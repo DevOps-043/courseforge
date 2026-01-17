@@ -1,0 +1,11 @@
+[build]
+  command = "npm run build -w apps/web"
+  publish = "apps/web/.next"
+
+[dev]
+  command = "npm run dev -w apps/web"
+  framework = "next"
+  targetPort = 3000
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

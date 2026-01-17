@@ -1,0 +1,5 @@
+id,task_id,type,url,label,metadata_json,captured_by,captured_at,created_at
+15318d4f-5560-4b1d-b6dd-64748d00ce05,2cae395e-32a4-49cd-a1ca-7441185e2d73,LINK,heygen.com/T7 M1 V1,Prueba,{},,2026-01-03 19:31:14.741+00,2026-01-03 19:31:14.930242+00
+6813d98a-47d5-4a8e-b951-5688dae994a1,de314242-d720-401c-9e9d-dfd5f95e615c,LINK,youtube.com,video 1 - Prueba de entregable.,{},,2026-01-03 19:42:47.32+00,2026-01-03 19:42:47.487379+00
+ba7671a8-b4d2-4a99-8c80-881ca9f9c85d,db501b26-8bc2-4267-b586-d00bdb2ac7e8,HEYGEN_PROJECT,heygen.com,prieba,{},,2026-01-03 19:29:48.103+00,2026-01-03 19:29:48.27943+00
+db9993dd-f43d-4351-b2d8-1c300d5bd634,0aa36a40-3e95-4a90-bed3-fa55e14327fb,DRIVE_FILE,chat.com,proeba,{},,2026-01-03 19:14:32.172+00,2026-01-03 19:14:32.438768+00

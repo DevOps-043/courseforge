@@ -36,3 +36,6 @@ Thumbs.db
 
 # Turborepo
 .turbo/
+
+# Local Netlify folder
+.netlify
