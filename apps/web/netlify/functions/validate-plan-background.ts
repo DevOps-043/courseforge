@@ -1,5 +1,5 @@
 
-import { Handler } from '@netlify/functions';
+// import { Handler } from '@netlify/functions'; // Removed to avoid missing dependency error
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateObject } from 'ai';
 import { createClient } from '@supabase/supabase-js';
@@ -105,7 +105,7 @@ const googleAI = createGoogleGenerativeAI({
     apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY
 });
 
-export const handler: Handler = async (event, context) => {
+export const handler = async (event: any, context: any) => {
     // 1. Parsing Request
     if (event.httpMethod !== 'POST') {
         return { statusCode: 405, body: 'Method Not Allowed' };

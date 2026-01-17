@@ -110,4 +110,4 @@ measurable_criteria debe ser específico y medible (mínimo 20 caracteres).
 Si una lección tiene problemas, agrégalo a blockers en lugar de omitirla.
 NO uses campos adicionales fuera de los especificados.
 NO incluyas texto fuera del JSON (ni explicaciones, ni Markdown, ni tablas).
-IMPORTANTE FINAL: Responde SOLO con el JSON, sin texto adicional, sin Markdown, sin explicaciones fuera del JSON.`;`;
+IMPORTANTE FINAL: Responde SOLO con el JSON, sin texto adicional, sin Markdown, sin explicaciones fuera del JSON.`;

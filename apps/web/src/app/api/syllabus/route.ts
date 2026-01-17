@@ -50,15 +50,18 @@ export async function POST(request: NextRequest) {
     // Importación dinámica
     const { GoogleGenerativeAI } = await import('@google/generative-ai')
     
-    const apiKey = process.env.GOOGLE_API_KEY
-    if (!apiKey) return NextResponse.json({ error: 'API key no configurada' }, { status: 500 })
+    const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY
+    if (!apiKey) {
+        console.error(" [API/ESP-02] CRITICAL: GOOGLE_API_KEY missing");
+        return NextResponse.json({ error: 'API key no configurada' }, { status: 500 })
+    }
+    console.log(" [API/ESP-02] API Key found. Initializing GoogleGenerativeAI...");
 
     const genAI = new GoogleGenerativeAI(apiKey)
 
     // --- PASO 1: INVESTIGACIÓN con MOdelo Rápido (Flash 2.0) ---
-    // Usamos el modelo SEARCH definido en env, o fallback a gemini-2.0-flash
     const searchModelName = process.env.GEMINI_SEARCH_MODEL || 'gemini-2.0-flash'
-    console.log(`[API/ESP-02] Pasos 1: Investigando con ${searchModelName} + Google Search...`)
+    console.log(`[API/ESP-02] Pasos 1: Configurando modelo ${searchModelName}...`)
 
     const searchModel = genAI.getGenerativeModel({
       model: searchModelName,
@@ -74,19 +77,22 @@ export async function POST(request: NextRequest) {
     Dame un resumen denso y técnico.`
 
     let researchContext = ""
+    let researchMetadata: any = null
+
     try {
       const researchResult = await searchModel.generateContent(researchPrompt)
       researchContext = researchResult.response.text()
+      
+      // Capturar metadata de fuentes (links, queries)
+      researchMetadata = researchResult.response.candidates?.[0]?.groundingMetadata
+      
       console.log(`[API/ESP-02] Investigación completada (${researchContext.length} chars).`)
     } catch (err) {
       console.warn("[API/ESP-02] Falló la investigación con Flash, continuando sin contexto extra.", err)
       researchContext = "No se pudo realizar investigación previa."
     }
 
-
     // --- PASO 2: ESTRUCTURACIÓN con Modelo Potente (Pro 3) ---
-    // Usamos el modelo MAIN definido en env. FALLBACK PROHIBIDO A 1.5.
-    // Asumimos que GEMINI_MODEL tiene el valor correcto (ej. 'gemini-3-flash-preview' o similar).
     const mainModelName = process.env.GEMINI_MODEL
     
     if (!mainModelName) {
@@ -97,9 +103,6 @@ export async function POST(request: NextRequest) {
 
     const mainModel = genAI.getGenerativeModel({
       model: mainModelName,
-      // Nota: Le quitamos Search a este paso para que se base en el contexto que le damos
-      // y se "obligue" a estructurar en lugar de distraerse buscando de nuevo.
-      // O BIEN, se lo dejamos como backup. El usuario pidió search en flash.
       tools: [], 
       generationConfig: {
         temperature: parseFloat(process.env.GEMINI_TEMPERATURE || '0.7'),
@@ -112,16 +115,14 @@ export async function POST(request: NextRequest) {
       ? 'El contenido debe ser estructurado y formal, basado en fuentes académicas.'
       : 'Genera el contenido desde cero basándote en las mejores prácticas del tema.'
     
-    // AQUÍ ESTÁ EL TRUCO: Inyectamos la investigación DENTRO de la variable routeContext
     const enrichedContext = `${baseRouteContext}\n\n### INVESTIGACIÓN RECIENTE (Usar como base de conocimiento):\n${researchContext}`
 
     const objetivosStr = objetivos.map((obj: string, i: number) => `${i + 1}. ${obj}`).join('\n')
 
-    // Usamos el prompt EXACTO importado
     const finalPrompt = SYLLABUS_PROMPT
       .replace('{{ideaCentral}}', ideaCentral)
       .replace('{{objetivos}}', objetivosStr)
-      .replace('{{routeContext}}', enrichedContext) // Inyección mágica
+      .replace('{{routeContext}}', enrichedContext)
       .replace(/{{.*?}}/g, '')
 
     // Generar
@@ -142,15 +143,19 @@ export async function POST(request: NextRequest) {
       throw new Error("La IA no devolvió un JSON válido")
     }
 
-    // Cálculos post-generación
+    // Cálculos post-generación (Mantener igual)
     const totalLessons = content.modules.reduce((acc: number, m: any) => acc + m.lessons.length, 0)
     const estimatedHours = (totalLessons * COURSE_CONFIG.avgLessonMinutes) / 60
     content.total_estimated_hours = Math.round(estimatedHours * 10) / 10
 
     // Guardar metadata de la investigación para depuración/UI
+    const searchQueries = researchMetadata?.webSearchQueries || [];
+
     content.generation_metadata = {
       ...content.generation_metadata,
-      research_summary: researchContext.substring(0, 300) + '...',
+      research_summary: researchContext,
+      search_queries: searchQueries, // <--- Mapeo correcto para la UI
+      search_sources: researchMetadata, 
       models_used: { search: searchModelName, architect: mainModelName }
     }
 

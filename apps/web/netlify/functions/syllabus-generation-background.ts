@@ -96,7 +96,7 @@ export const handler: Handler = async (event, context) => {
         try {
             const searchModel = genAI.getGenerativeModel({
                 model: searchModelName,
-                tools: [{ googleSearch: {} }]
+                tools: [{ googleSearchRetrieval: { dynamicRetrievalConfig: { mode: 'MODE_DYNAMIC' as any } } }]
             });
 
             const researchPrompt = `Investiga en profundidad sobre el tema: "${ideaCentral}".

@@ -247,9 +247,9 @@ export function InstructionalPlanGenerationContainer({ artifactId }: Instruction
                         </div>
 
                         <div className="grid gap-4">
-                            {mod.lessons.map((lesson: any) => (
+                            {mod.lessons.map((lesson: any, idx: number) => (
                                 <div 
-                                    key={lesson.lesson_id} 
+                                    key={`lsn-${mod.index}-${idx}-${lesson.lesson_id || "noid"}`} 
                                     className={`
                                         group rounded-xl border transition-all duration-300 overflow-hidden
                                         ${expandedLessonId === lesson.lesson_id 

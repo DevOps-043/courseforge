@@ -12,6 +12,7 @@
     "lint": "npm run lint --workspaces"
   },
   "devDependencies": {
+    "@netlify/functions": "^5.1.2",
     "concurrently": "^8.2.2",
     "eslint": "^9.39.2",
     "netlify-cli": "^23.13.3",
