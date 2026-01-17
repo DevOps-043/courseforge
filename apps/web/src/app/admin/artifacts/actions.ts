@@ -127,13 +127,23 @@ export async function regenerateArtifactAction(artifactId: string, feedback?: st
 
     try {
         console.log('Triggering background regeneration...');
-        fetch(`${appUrl}/.netlify/functions/generate-artifact-background`, {
+
+        // IMPORTANT: await is required in serverless to ensure the request completes before function terminates
+        const triggerResponse = await fetch(`${appUrl}/.netlify/functions/generate-artifact-background`, {
             method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
             body: JSON.stringify(payload),
-        }).catch(err => console.error("Background trigger error (ignored):", err));
-        
+        });
+
+        if (!triggerResponse.ok) {
+            console.warn(`Background regeneration trigger might have failed: ${triggerResponse.status}`);
+        }
+
         return { success: true };
     } catch (e: any) {
+        console.error("Background trigger error:", e);
         return { success: false, error: e.message };
     }
 }
@@ -185,21 +195,29 @@ export async function generateInstructionalPlanAction(artifactId: string, custom
     try {
         console.log('Triggering Instructional Plan generation...');
         console.log('URL:', backgroundFunctionUrl);
-        
-        // Fire and forget fetch request to Netlify Function
-        fetch(backgroundFunctionUrl, {
+
+        // IMPORTANT: await is required in serverless to ensure the request completes before function terminates
+        const triggerResponse = await fetch(backgroundFunctionUrl, {
             method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
             body: JSON.stringify({
                 artifactId,
                 userToken: session.access_token,
                 customPrompt,
                 useCustomPrompt
             }),
-        }).catch(err => console.error("Background trigger error (ignored):", err));
+        });
+
+        if (!triggerResponse.ok) {
+            console.warn(`Background trigger might have failed: ${triggerResponse.status}`);
+        }
 
         // Return immediately to letting UI show "Generating..." state
         return { success: true };
     } catch (e: any) {
+        console.error("Background trigger error:", e);
         return { success: false, error: e.message };
     }
 }
@@ -222,18 +240,27 @@ export async function validateInstructionalPlanAction(artifactId: string) {
             .eq('artifact_id', artifactId);
 
         console.log('Triggering Instructional Plan Validation...');
-        
+
         // 2. Trigger Background Job
-        fetch(backgroundFunctionUrl, {
+        // IMPORTANT: await is required in serverless to ensure the request completes before function terminates
+        const triggerResponse = await fetch(backgroundFunctionUrl, {
             method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
             body: JSON.stringify({
                 artifactId,
                 userToken: session.access_token,
             }),
-        }).catch(err => console.error("Background validation trigger error (ignored):", err));
+        });
+
+        if (!triggerResponse.ok) {
+            console.warn(`Background validation trigger might have failed: ${triggerResponse.status}`);
+        }
 
         return { success: true };
     } catch (e: any) {
+        console.error("Background validation trigger error:", e);
         return { success: false, error: e.message };
     }
 }
