@@ -211,7 +211,7 @@ export async function validateInstructionalPlanAction(artifactId: string) {
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || 'http://localhost:3000';
     const baseUrl = appUrl.replace(/\/$/, ''); 
-    const backgroundFunctionUrl = `${baseUrl}/.netlify/functions/instructional-plan-validation`;
+    const backgroundFunctionUrl = `${baseUrl}/.netlify/functions/instructional-plan-validation-background`;
 
     try {
         // 1. CLEAR previous validation to ensure fresh results
