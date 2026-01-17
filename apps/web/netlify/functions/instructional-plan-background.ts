@@ -63,13 +63,24 @@ export const handler: Handler = async (event, context) => {
     console.log(`[Background Job] Starting Instructional Plan generation for artifacts/${artifactId}`);
 
     // 2. Setup Supabase Client
+    // 2. Setup Supabase Client
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-    const supabase = createClient(supabaseUrl, supabaseKey, {
-        global: {
+    // Use Service Role Key to avoid JWT expiration during long runs
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    
+    const options: any = {};
+    
+    // Only use user token if we don't have the service role key (fallback)
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        options.global = {
             headers: { Authorization: `Bearer ${userToken}` },
-        },
-    });
+        };
+        console.log("[Background Job] Warn: Using User Token (Risk of JWT expiry)");
+    } else {
+        console.log("[Background Job] Using Service Role Key (Safe from expiry)");
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey, options);
 
     try {
         // --- STEP 1: FETCH ARTIFACT & SYLLABUS ---
