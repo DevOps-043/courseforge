@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 1, "column": 0}, "map": {"version":3,"sources":["turbopack:///[project]/apps/web/src/app/globals.css"],"sourcesContent":["@tailwind base;\r\n@tailwind components;\r\n@tailwind utilities;\r\n\r\n:root {\r\n  --primary-600: #1f5af6;\r\n  --neutral-900: #0a1633;\r\n}\r\n"],"names":[],"mappings":"AAAA;;AACA;;AACA;;AAEA"}}]
+}

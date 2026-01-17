@@ -1,0 +1,13 @@
+/* [project]/apps/web/src/app/globals.css [app-client] (css) */
+@tailwind base;
+
+@tailwind components;
+
+@tailwind utilities;
+
+:root {
+  --primary-600: #1f5af6;
+  --neutral-900: #0a1633;
+}
+
+/*# sourceMappingURL=apps_web_src_app_globals_css_bad6b30c._.single.css.map*/
