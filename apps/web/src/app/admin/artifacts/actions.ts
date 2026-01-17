@@ -152,3 +152,22 @@ export async function updateArtifactContentAction(artifactId: string, updates: {
     
     return { success: true };
 }
+
+// NUEVA ACCIÓN para actualizar el estado del artefacto (ej: aprobar fase 1)
+export async function updateArtifactStatusAction(artifactId: string, status: string) {
+    const supabase = await createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { success: false, error: 'Unauthorized' };
+
+    const { error } = await supabase
+        .from('artifacts')
+        .update({ state: status })
+        .eq('id', artifactId);
+
+    if (error) {
+        console.error('Error updating artifact status:', error);
+        return { success: false, error: error.message };
+    }
+    
+    return { success: true };
+}
