@@ -1,13 +1,95 @@
 
-import { useState, useEffect } from 'react';
-import { BookOpen, Sparkles, Settings2, Play, CheckCircle2, ChevronDown, ChevronRight, LayoutList, MessageSquare, Book, FileText, Video as VideoIcon, BrainCircuit, RefreshCw, Clock, Target, CheckSquare, Layers, Info, AlertCircle, Edit3 } from 'lucide-react';
+import { useRef, useState, useEffect } from 'react';
+import { BookOpen, Sparkles, Settings2, Play, CheckCircle2, ChevronDown, ChevronRight, LayoutList, MessageSquare, Book, FileText, Video as VideoIcon, BrainCircuit, RefreshCw, Clock, Target, CheckSquare, Layers, Info, AlertCircle, Edit3, Check, X, Trash2, Plus } from 'lucide-react';
 import { InstructionalPlanValidationResult } from './InstructionalPlanValidationResult';
 import { createClient } from '@supabase/supabase-js';
+import { toast } from 'sonner';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // Initialize Supabase client for client-side
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+const PremiumInput = ({ className, ...props }: any) => (
+  <input
+    className={`w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 
+              text-white placeholder-white/30 focus:outline-none focus:border-[#00D4B3]/50 focus:bg-white/10
+              transition-all duration-200 ${className}`}
+    {...props}
+  />
+);
+
+const PremiumTextarea = ({ className, ...props }: any) => (
+  <textarea
+    className={`w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 
+              text-white placeholder-white/30 focus:outline-none focus:border-[#00D4B3]/50 focus:bg-white/10
+              transition-all duration-200 resize-none ${className}`}
+    {...props}
+  />
+);
+
+const PremiumSelect = ({ options, value, onChange, placeholder = "Select...", className }: any) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedLabel = options.find((o: any) => o.value === value)?.label || value || placeholder;
+
+  return (
+    <div className={`relative ${className}`} ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 flex items-center justify-between gap-2 text-xs font-medium text-white hover:border-[#00D4B3]/50 transition-all"
+      >
+        <span className="truncate">{selectedLabel}</span>
+        <ChevronDown size={14} className={`text-white/50 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: 5, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 5, scale: 0.95 }}
+            transition={{ duration: 0.1 }}
+            className="absolute top-full left-0 right-0 mt-1 rounded-xl border border-white/10 bg-[#1E2329] shadow-2xl overflow-hidden z-[50] min-w-[150px]"
+          >
+            <div className="max-h-[200px] overflow-y-auto py-1">
+                {options.map((option: any) => (
+                <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => {
+                        onChange(option.value);
+                        setIsOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-2 text-xs hover:bg-white/5 transition-colors flex items-center justify-between
+                            ${option.value === value ? 'text-[#00D4B3] bg-[#00D4B3]/10' : 'text-gray-300'}
+                    `}
+                >
+                    {option.label}
+                    {option.value === value && <Check size={12} />}
+                </button>
+                ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 
 interface InstructionalPlanGenerationContainerProps {
   artifactId: string;
@@ -29,7 +111,7 @@ const getComponentBadge = (type: string) => {
     if (t.includes('READ')) return { color: 'text-green-400 bg-green-400/10 border-green-400/20', icon: <Book size={12} />, label: 'Lectura' };
     
     // Video Types Specifics
-    if (t === 'VIDEO_DEMO' || t === 'VIDEO_GUIDE') return { color: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20', icon: <VideoIcon size={12} />, label: t === 'VIDEO_DEMO' ? 'Video Demo' : 'Video Guía' };
+    if (t === 'VIDEO_DEMO' || t === 'VIDEO_GUIDE') return { color: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20', icon: <VideoIcon size={12} />, label: 'Video Demo' };
     if (t.includes('VIDEO')) return { color: 'text-purple-400 bg-purple-400/10 border-purple-400/20', icon: <VideoIcon size={12} />, label: 'Video Teórico' };
     
     if (t.includes('QUIZ')) return { color: 'text-orange-400 bg-orange-400/10 border-orange-400/20', icon: <BrainCircuit size={12} />, label: 'Quiz' };
@@ -39,12 +121,26 @@ const getComponentBadge = (type: string) => {
     return { color: 'text-gray-400 bg-gray-400/10 border-gray-400/20', icon: <FileText size={12} />, label: type };
 };
 
+const COMPONENT_TYPES = [
+    { value: 'DIALOGUE', label: 'Diálogo' },
+    { value: 'READING', label: 'Lectura' },
+    { value: 'VIDEO_THEORY', label: 'Video Teórico' },
+    { value: 'VIDEO_DEMO', label: 'Video Demo' },
+    { value: 'QUIZ', label: 'Quiz' },
+    { value: 'EXERCISE', label: 'Ejercicio' },
+    { value: 'DEMO_GUIDE', label: 'Guía Interactiva' }
+];
+
 export function InstructionalPlanGenerationContainer({ artifactId, onNext }: InstructionalPlanGenerationContainerProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isValidating, setIsValidating] = useState(false); // New state
   const [existingPlan, setExistingPlan] = useState<any>(null);
   const [loadingPlan, setLoadingPlan] = useState(true);
   const [expandedLessonId, setExpandedLessonId] = useState<string | null>(null);
+  
+  // Edit State
+  const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
+  const [editedLesson, setEditedLesson] = useState<any>(null);
   
   // Custom Prompt States
   const [useCustomPrompt, setUseCustomPrompt] = useState(false);
@@ -176,6 +272,70 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
       }
   };
   
+  // Lesson Editing Handlers
+  const handleStartEdit = (lesson: any) => {
+      setEditingLessonId(lesson.lesson_id);
+      setEditedLesson(JSON.parse(JSON.stringify(lesson))); // Deep copy
+      setExpandedLessonId(lesson.lesson_id); // Ensure it's expanded
+  };
+
+  const handleCancelEdit = () => {
+      setEditingLessonId(null);
+      setEditedLesson(null);
+  };
+
+  interface Component {
+    type: string;
+    description?: string;
+    summary?: string;
+    duration?: string;
+    [key: string]: any;
+  }
+
+  const handleSaveLesson = async () => {
+      if (!editedLesson || !editingLessonId) return;
+
+      try {
+          // Prepare updated plan
+          const updatedLessonPlans = existingPlan.lesson_plans.map((l: any) => 
+              l.lesson_id === editingLessonId ? editedLesson : l
+          );
+
+          // Optimistic Update
+          setExistingPlan({ ...existingPlan, lesson_plans: updatedLessonPlans });
+          setEditingLessonId(null);
+          
+          // Server Action
+          const { updateInstructionalPlanContentAction } = await import('../../../app/admin/artifacts/actions');
+          const result = await updateInstructionalPlanContentAction(artifactId, updatedLessonPlans);
+          
+          if (result.success) {
+              toast.success('Lección actualizada correctamente');
+          } else {
+              toast.error('Error al guardar cambios');
+              // Revert logic could go here if critical
+          }
+      } catch (e) {
+          console.error(e);
+          toast.error('Error de conexión');
+      }
+  };
+
+  const handleUpdateComponent = (idx: number, field: string, value: any) => {
+      if (!editedLesson) return;
+      const newComponents = [...editedLesson.components];
+      newComponents[idx] = { ...newComponents[idx], [field]: value };
+      setEditedLesson({ ...editedLesson, components: newComponents });
+  };
+
+  const handleTypeChange = (idx: number, newType: string) => {
+      if (!editedLesson) return;
+      const newComponents = [...editedLesson.components];
+      // Reset implicit fields if type changes mostly? Or keep generic ones.
+      newComponents[idx] = { ...newComponents[idx], type: newType };
+      setEditedLesson({ ...editedLesson, components: newComponents });
+  };
+  
   // Group lessons by module
   const groupedModules = existingPlan?.lesson_plans?.reduce((acc: any, lesson: any) => {
       const modTitle = lesson.module_title || 'Módulo General';
@@ -242,7 +402,11 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                         </div>
 
                         <div className="grid gap-4">
-                            {mod.lessons.map((lesson: any, idx: number) => (
+                            {mod.lessons.map((lesson: any, idx: number) => {
+                                const isEditing = editingLessonId === lesson.lesson_id;
+                                const displayLesson = isEditing ? editedLesson : lesson;
+
+                                return (
                                 <div 
                                     key={`lsn-${mod.index}-${idx}-${lesson.lesson_id || "noid"}`} 
                                     className={`
@@ -253,12 +417,12 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                         }
                                     `}
                                 >
-                                    {/* Header Section - Always Visible */}
+                                    {/* Header Section */}
                                     <div 
-                                        onClick={() => setExpandedLessonId(expandedLessonId === lesson.lesson_id ? null : lesson.lesson_id)}
-                                        className="p-5 flex items-start justify-between cursor-pointer"
+                                        onClick={() => !isEditing && setExpandedLessonId(expandedLessonId === lesson.lesson_id ? null : lesson.lesson_id)}
+                                        className={`p-5 flex items-start justify-between cursor-pointer ${isEditing ? 'cursor-default' : ''}`}
                                     >
-                                        <div className="flex gap-4">
+                                        <div className="flex gap-4 flex-1">
                                             <div className="mt-1 flex flex-col items-center gap-2">
                                                 <div className="h-6 w-6 rounded-full bg-gray-800 text-gray-400 flex items-center justify-center text-xs font-bold font-mono">
                                                     {lesson.lesson_order}
@@ -266,35 +430,52 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                                 <div className={`h-full w-0.5 rounded-full ${expandedLessonId === lesson.lesson_id ? 'bg-[#00D4B3]/20' : 'bg-transparent'}`} />
                                             </div>
                                             
-                                            <div className="space-y-1">
+                                            <div className="space-y-1 flex-1">
                                                 <h4 className={`font-semibold text-base transition-colors ${expandedLessonId === lesson.lesson_id ? 'text-[#00D4B3]' : 'text-gray-200 group-hover:text-white'}`}>
                                                     {lesson.lesson_title}
                                                 </h4>
                                                 
-                                                <div className="flex flex-wrap gap-2 pt-1">
-                                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium tracking-wide bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase">
-                                                        <Clock size={10} />
-                                                        {lesson.duration}
-                                                    </span>
-                                                    
-                                                    {lesson.components.map((comp: any, idx: number) => {
-                                                        const badge = getComponentBadge(comp.type);
-                                                        return (
-                                                            <span key={idx} className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium tracking-wide border uppercase ${badge.color}`}>
-                                                                {badge.icon}
-                                                                {badge.label}
-                                                            </span>
-                                                        );
-                                                    })}
-                                                </div>
+                                                {!isEditing && (
+                                                    <div className="flex flex-wrap gap-2 pt-1">
+                                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium tracking-wide bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase">
+                                                            <Clock size={10} />
+                                                            {lesson.duration}
+                                                        </span>
+                                                        
+                                                        {lesson.components.map((comp: any, cIdx: number) => {
+                                                            const badge = getComponentBadge(comp.type);
+                                                            return (
+                                                                <span key={cIdx} className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium tracking-wide border uppercase ${badge.color}`}>
+                                                                    {badge.icon}
+                                                                    {badge.label}
+                                                                </span>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
 
-                                        <div className={`
-                                            p-2 rounded-lg transition-all duration-300
-                                            ${expandedLessonId === lesson.lesson_id ? 'bg-[#00D4B3] text-[#0A2540] rotate-180' : 'text-gray-500 bg-gray-800/50 group-hover:bg-gray-800 group-hover:text-gray-300'}
-                                        `}>
-                                            <ChevronDown size={16} />
+                                        <div className="flex items-center gap-2">
+                                            {/* Edit Button in Header */}
+                                            {!isEditing && expandedLessonId === lesson.lesson_id && (
+                                                <button 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleStartEdit(lesson);
+                                                    }}
+                                                    className="p-2 rounded-lg bg-gray-800/50 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+                                                >
+                                                    <Edit3 size={16} />
+                                                </button>
+                                            )}
+
+                                            <div className={`
+                                                p-2 rounded-lg transition-all duration-300
+                                                ${expandedLessonId === lesson.lesson_id ? 'bg-[#00D4B3] text-[#0A2540] rotate-180' : 'text-gray-500 bg-gray-800/50 group-hover:bg-gray-800 group-hover:text-gray-300'}
+                                            `}>
+                                                <ChevronDown size={16} />
+                                            </div>
                                         </div>
                                     </div>
 
@@ -302,87 +483,183 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                     {expandedLessonId === lesson.lesson_id && (
                                         <div className="px-5 pb-5 pl-[3.25rem] space-y-6 animate-in slide-in-from-top-2 duration-300">
                                             
-                                            {/* Learning Objective */}
-                                            <div className="space-y-3 relative">
-                                                <div className="absolute left-[-1.5rem] top-2 w-0.5 h-full bg-[#00D4B3]/20" />
-                                                
-                                                <div className="bg-[#00D4B3]/5 rounded-lg p-4 border border-[#00D4B3]/10">
-                                                    <div className="flex items-center gap-2 mb-2 text-[#00D4B3] text-xs font-bold uppercase tracking-wider">
-                                                        <Target size={14} />
-                                                        Objetivo de Aprendizaje
+                                            {isEditing ? (
+                                                // EDIT MODE FORM
+                                                <div className="space-y-6 bg-[#0A0E12] p-4 rounded-2xl border border-gray-800/60 shadow-inner">
+                                                    
+                                                    {/* Edit Objective */}
+                                                    <div className="space-y-2">
+                                                        <label className="text-xs font-bold text-[#00D4B3] uppercase tracking-wider flex items-center gap-2">
+                                                            <Target size={14} /> Objetivo de Aprendizaje
+                                                        </label>
+                                                        <PremiumTextarea
+                                                            value={displayLesson.learning_objective || displayLesson.oa_text || ''}
+                                                            onChange={(e: any) => setEditedLesson({...displayLesson, learning_objective: e.target.value})}
+                                                            placeholder="Describe qué aprenderá el estudiante..."
+                                                            className="min-h-[100px] text-sm"
+                                                        />
                                                     </div>
-                                                    <p className="text-gray-300 text-sm leading-relaxed">
-                                                        {lesson.learning_objective || lesson.oa_text}
-                                                    </p>
-                                                    <div className="mt-3 flex gap-2">
-                                                        {/* Bloom Badge placeholder - backend should provide bloom_level if possible, otherwise we infer or prompt asked for it */}
-                                                        {(lesson.bloom_taxonomy_level || lesson.oa_bloom_verb) && (
-                                                            <span className="inline-flex items-center px-2 py-1 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[10px] font-bold uppercase">
-                                                                Bloom: {lesson.bloom_taxonomy_level || lesson.oa_bloom_verb}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
 
-                                                {/* Measurable Criteria */}
-                                                {lesson.measurable_criteria && (
-                                                    <div className="flex gap-3 items-start pl-2">
-                                                        <div className="mt-1 p-1 rounded bg-green-500/10 text-green-500">
-                                                            <CheckSquare size={12} />
-                                                        </div>
-                                                        <div>
-                                                            <span className="text-xs font-bold text-gray-500 uppercase">Criterio de Éxito</span>
-                                                            <p className="text-gray-400 text-sm">{lesson.measurable_criteria}</p>
-                                                        </div>
+                                                    {/* Edit Criteria */}
+                                                    <div className="space-y-2">
+                                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                                                            <CheckSquare size={14} /> Criterio de Éxito
+                                                        </label>
+                                                        <PremiumInput
+                                                            value={displayLesson.measurable_criteria || ''}
+                                                            onChange={(e: any) => setEditedLesson({...displayLesson, measurable_criteria: e.target.value})}
+                                                            placeholder="Ej: Identificar 3 de 5 elementos..."
+                                                            className="text-sm"
+                                                        />
                                                     </div>
-                                                )}
-                                            </div>
 
-                                            {/* Components Detail List */}
-                                            <div className="space-y-3">
-                                                <div className="flex items-center gap-2 text-gray-500 text-xs font-bold uppercase tracking-wider">
-                                                    <Layers size={14} />
-                                                    Componentes Detallados
-                                                </div>
-                                                
-                                                <div className="grid gap-3">
-                                                    {lesson.components.map((comp: any, idx: number) => {
-                                                        const badge = getComponentBadge(comp.type);
-                                                        return (
-                                                            <div key={idx} className="bg-[#161b22] p-3 rounded-lg border border-gray-800 flex gap-3 group/card hover:border-gray-700 transition-colors">
-                                                                <div className={`mt-0.5 p-1.5 rounded h-fit ${badge.color.split(' ')[1]} ${badge.color.split(' ')[0]}`}>
-                                                                    {badge.icon}
-                                                                </div>
-                                                                <div className="space-y-1">
-                                                                    <div className="flex items-center justify-between">
-                                                                        <span className={`text-xs font-bold ${badge.color.split(' ')[0]}`}>
-                                                                            {badge.label}
-                                                                        </span>
-                                                                        {comp.duration && <span className="text-[10px] text-gray-600 font-mono">{comp.duration}</span>}
+                                                    {/* Edit Components List */}
+                                                    <div className="space-y-4">
+                                                        <div className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center justify-between">
+                                                            <span className="flex items-center gap-2"><Layers size={14} /> Componentes</span>
+                                                        </div>
+
+                                                        {displayLesson.components.map((comp: Component, cIdx: number) => (
+                                                            <div key={cIdx} className="bg-[#151A21]/50 border border-gray-700/50 rounded-xl p-4 space-y-3 relative group/edit-card hover:border-gray-600 transition-colors">
+                                                                <div className="flex gap-4">
+                                                                    {/* Component Type & Duration Column */}
+                                                                    <div className="w-48 space-y-3 flex-shrink-0">
+                                                                        <div>
+                                                                            <label className="text-[10px] text-gray-500 font-bold uppercase mb-1 block">Tipo</label>
+                                                                            <PremiumSelect 
+                                                                                options={COMPONENT_TYPES}
+                                                                                value={comp.type}
+                                                                                onChange={(val: string) => handleTypeChange(cIdx, val)}
+                                                                            />
+                                                                        </div>
+                                                                        <div>
+                                                                            <label className="text-[10px] text-gray-500 font-bold uppercase mb-1 block">Duración</label>
+                                                                            <PremiumInput
+                                                                                value={comp.duration || ''}
+                                                                                placeholder="Ej: 5 min"
+                                                                                onChange={(e: any) => handleUpdateComponent(cIdx, 'duration', e.target.value)}
+                                                                                className="px-3 py-2 text-xs"
+                                                                            />
+                                                                        </div>
                                                                     </div>
-                                                                    <p className="text-gray-400 text-sm leading-snug">
-                                                                        {comp.description || comp.summary}
-                                                                    </p>
+                                                                    
+                                                                    {/* Description Column */}
+                                                                    <div className="flex-1">
+                                                                        <label className="text-[10px] text-gray-500 font-bold uppercase mb-1 block">Descripción / Guion</label>
+                                                                        <PremiumTextarea
+                                                                            value={comp.description || comp.summary || ''}
+                                                                            onChange={(e: any) => handleUpdateComponent(cIdx, 'description', e.target.value)}
+                                                                            placeholder="Detalles sobre este componente..."
+                                                                            className="min-h-[105px] text-xs leading-relaxed"
+                                                                        />
+                                                                    </div>
                                                                 </div>
                                                             </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
+                                                        ))}
+                                                    </div>
 
-                                            {/* Notes Table */}
-                                            {lesson.alignment_notes && (
-                                                <div className="pt-2 border-t border-gray-800">
-                                                    <div className="flex gap-2 items-start text-xs text-gray-500 italic">
-                                                        <Info size={12} className="mt-0.5" />
-                                                        <p>{lesson.alignment_notes}</p>
+                                                    {/* Actions */}
+                                                    <div className="flex gap-3 items-center pt-2">
+                                                        <button 
+                                                            onClick={handleSaveLesson}
+                                                            className="px-5 py-2.5 bg-gradient-to-r from-[#00D4B3] to-[#00A38D] text-[#0A2540] rounded-xl font-bold text-sm flex items-center gap-2 hover:shadow-lg hover:shadow-[#00D4B3]/20 transition-all transform hover:-translate-y-0.5"
+                                                        >
+                                                            <Check size={16} /> Guardar Cambios
+                                                        </button>
+                                                        <button 
+                                                            onClick={handleCancelEdit}
+                                                            className="px-5 py-2.5 bg-white/5 border border-white/10 text-gray-300 rounded-xl font-medium text-sm flex items-center gap-2 hover:bg-white/10 transition-colors"
+                                                        >
+                                                            <X size={16} /> Cancelar
+                                                        </button>
                                                     </div>
                                                 </div>
+                                            ) : (
+                                                // VIEW MODE
+                                                <>
+                                                    {/* Learning Objective */}
+                                                    <div className="space-y-3 relative">
+                                                        <div className="absolute left-[-1.5rem] top-2 w-0.5 h-full bg-[#00D4B3]/20" />
+                                                        
+                                                        <div className="bg-[#00D4B3]/5 rounded-lg p-4 border border-[#00D4B3]/10">
+                                                            <div className="flex items-center gap-2 mb-2 text-[#00D4B3] text-xs font-bold uppercase tracking-wider">
+                                                                <Target size={14} />
+                                                                Objetivo de Aprendizaje
+                                                            </div>
+                                                            <p className="text-gray-300 text-sm leading-relaxed">
+                                                                {lesson.learning_objective || lesson.oa_text}
+                                                            </p>
+                                                            <div className="mt-3 flex gap-2">
+                                                                {(lesson.bloom_taxonomy_level || lesson.oa_bloom_verb) && (
+                                                                    <span className="inline-flex items-center px-2 py-1 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[10px] font-bold uppercase">
+                                                                        Bloom: {lesson.bloom_taxonomy_level || lesson.oa_bloom_verb}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Measurable Criteria */}
+                                                        {lesson.measurable_criteria && (
+                                                            <div className="flex gap-3 items-start pl-2">
+                                                                <div className="mt-1 p-1 rounded bg-green-500/10 text-green-500">
+                                                                    <CheckSquare size={12} />
+                                                                </div>
+                                                                <div>
+                                                                    <span className="text-xs font-bold text-gray-500 uppercase">Criterio de Éxito</span>
+                                                                    <p className="text-gray-400 text-sm">{lesson.measurable_criteria}</p>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Components Detail List */}
+                                                    <div className="space-y-3">
+                                                        <div className="flex items-center gap-2 text-gray-500 text-xs font-bold uppercase tracking-wider">
+                                                            <Layers size={14} />
+                                                            Componentes Detallados
+                                                        </div>
+                                                        
+                                                        <div className="grid gap-3">
+                                                            {lesson.components.map((comp: any, idx: number) => {
+                                                                const badge = getComponentBadge(comp.type);
+                                                                return (
+                                                                    <div key={idx} className="bg-[#161b22] p-3 rounded-lg border border-gray-800 flex gap-3 group/card hover:border-gray-700 transition-colors">
+                                                                        <div className={`mt-0.5 p-1.5 rounded h-fit ${badge.color.split(' ')[1]} ${badge.color.split(' ')[0]}`}>
+                                                                            {badge.icon}
+                                                                        </div>
+                                                                        <div className="space-y-1">
+                                                                            <div className="flex items-center justify-between">
+                                                                                <span className={`text-xs font-bold ${badge.color.split(' ')[0]}`}>
+                                                                                    {badge.label}
+                                                                                </span>
+                                                                                {comp.duration && <span className="text-[10px] text-gray-600 font-mono">{comp.duration}</span>}
+                                                                            </div>
+                                                                            <p className="text-gray-400 text-sm leading-snug">
+                                                                                {comp.description || comp.summary}
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Notes Table */}
+                                                    {lesson.alignment_notes && (
+                                                        <div className="pt-2 border-t border-gray-800">
+                                                            <div className="flex gap-2 items-start text-xs text-gray-500 italic">
+                                                                <Info size={12} className="mt-0.5" />
+                                                                <p>{lesson.alignment_notes}</p>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </>
                                             )}
                                         </div>
                                     )}
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
                 ))}

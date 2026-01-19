@@ -104,6 +104,114 @@ export const handler: Handler = async (event) => {
     // --- HELPERS ---
     const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+    // Resolver redirects de Google para obtener URL real
+    const resolveGoogleRedirect = async (url: string): Promise<string> => {
+      // Si no es un redirect de Google, devolver como está
+      if (!url.includes('vertexaisearch.cloud.google.com') && !url.includes('grounding-api-redirect')) {
+        return url;
+      }
+
+      try {
+        // Seguir redirects manualmente para obtener URL final
+        const response = await fetch(url, {
+          method: 'HEAD',
+          redirect: 'follow',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
+        });
+
+        // La URL final después de seguir redirects
+        const finalUrl = response.url;
+
+        // Verificar que no siga siendo una URL de Google
+        if (finalUrl && !finalUrl.includes('vertexaisearch.cloud.google.com') && !finalUrl.includes('google.com/sorry')) {
+          console.log(`[BG-CURATION] Redirect resuelto: ${url.substring(0, 50)}... -> ${finalUrl}`);
+          return finalUrl;
+        }
+
+        return url; // Devolver original si no se pudo resolver
+      } catch (err) {
+        console.warn(`[BG-CURATION] Error resolviendo redirect: ${err}`);
+        return url;
+      }
+    };
+
+    // Verificar si una URL es accesible Y tiene contenido mínimo
+    // - Verifica HTTP 200 (no 404)
+    // - Verifica que tenga al menos 50 palabras (no página vacía/menú)
+    // La validación de CALIDAD se hace en el paso 2
+    const verifyUrlExists = async (url: string): Promise<{ valid: boolean; wordCount?: number; error?: string }> => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+        const response = await fetch(url, {
+          method: 'GET',
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+          }
+        });
+        clearTimeout(timeoutId);
+
+        // Verificar HTTP status
+        if (!response.ok) {
+          return { valid: false, error: `HTTP ${response.status}` };
+        }
+
+        const html = await response.text();
+
+        // Extraer contenido de texto básico (quitar HTML)
+        const content = html
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+          .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+          .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        // Contar palabras (mínimo 3 caracteres)
+        const wordCount = content.split(/\s+/).filter(w => w.length > 2).length;
+
+        // Verificar contenido mínimo (50 palabras - menos estricto que paso 2)
+        if (wordCount < 50) {
+          return { valid: false, wordCount, error: `Solo ${wordCount} palabras (mínimo 50)` };
+        }
+
+        return { valid: true, wordCount };
+
+      } catch (e: any) {
+        return { valid: false, error: e.message || 'Error de conexión' };
+      }
+    };
+
+    // Normalizar hostname para comparación (quitar www., convertir a minúsculas)
+    const normalizeHost = (url: string): string => {
+      try {
+        const host = new URL(url).hostname.toLowerCase();
+        return host.replace(/^www\./, '');
+      } catch {
+        return url.toLowerCase();
+      }
+    };
+
+    // Normalizar URL para comparación más flexible
+    const normalizeUrl = (url: string): string => {
+      try {
+        const parsed = new URL(url);
+        // Normalizar: quitar www, lowercase, quitar trailing slash, normalizar guiones/espacios
+        let normalized = parsed.hostname.toLowerCase().replace(/^www\./, '');
+        let path = parsed.pathname.toLowerCase().replace(/\/$/, '').replace(/-/g, '').replace(/_/g, '');
+        return normalized + path;
+      } catch {
+        return url.toLowerCase().replace(/-/g, '').replace(/_/g, '');
+      }
+    };
+
     // Limpiar JSON de caracteres problemáticos
     const cleanJsonResponse = (text: string): string => {
       let clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -216,15 +324,40 @@ Solo JSON válido, sin explicaciones.`;
           const grounding = result.candidates?.[0]?.groundingMetadata;
 
           // Extraer URLs de grounding (verificadas por Google)
+          // IMPORTANTE: Resolvemos redirects Y verificamos que tengan contenido válido
           groundingUrls = [];
           if (grounding?.groundingChunks) {
-            for (const chunk of grounding.groundingChunks) {
-              if (chunk.web?.uri) {
-                groundingUrls.push({
-                  uri: chunk.web.uri,
-                  title: chunk.web.title || 'Fuente Google'
-                });
-              }
+            const resolveAndVerifyPromises = grounding.groundingChunks
+              .filter(chunk => chunk.web?.uri)
+              .map(async (chunk) => {
+                const originalUri = chunk.web!.uri as string;
+                const resolvedUri = await resolveGoogleRedirect(originalUri);
+
+                // NUEVO: Verificar que la URL exista (no 404)
+                const verification = await verifyUrlExists(resolvedUri);
+
+                return {
+                  uri: resolvedUri,
+                  originalUri: originalUri,
+                  title: (chunk.web!.title as string) || 'Fuente Google',
+                  valid: verification.valid,
+                  error: verification.error
+                };
+              });
+
+            const resolvedUrls = await Promise.all(resolveAndVerifyPromises);
+
+            // Filtrar solo URLs que existen y tienen contenido
+            const validUrls = resolvedUrls.filter(r => r.valid);
+            const invalidUrls = resolvedUrls.filter(r => !r.valid);
+
+            groundingUrls = validUrls.map(r => ({ uri: r.uri, title: r.title }));
+
+            console.log(`[BG-CURATION] URLs válidas: ${validUrls.length}/${resolvedUrls.length} (con contenido ≥50 palabras)`);
+            if (invalidUrls.length > 0) {
+              invalidUrls.forEach(u => {
+                console.log(`[BG-CURATION] ✗ URL rechazada: ${u.uri.substring(0, 50)}... - ${u.error}`);
+              });
             }
           }
 
@@ -266,6 +399,8 @@ Solo JSON válido, sin explicaciones.`;
 
       // Construir filas para insertar
       const rowsToInsert: any[] = [];
+      const usedGroundingUrls = new Set<string>(); // Track used grounding URLs to avoid duplicates
+      const componentsWithoutSource: RequiredComponent[] = []; // Components that need fallback
 
       // Opción A: Usar respuesta parseada del modelo
       if (parsedResponse?.sources_by_lesson) {
@@ -280,36 +415,75 @@ Solo JSON válido, sin explicaciones.`;
 
             const source = comp.candidate_sources?.[0];
             if (source?.url) {
-              // VALIDACIÓN ANTI-ALUCINACIÓN: La URL debe estar en grounding
-              const isVerified = groundingUrls.some(g => {
-                try {
-                  const gHost = new URL(g.uri).hostname;
-                  return source.url.includes(gHost) || g.uri === source.url;
-                } catch { return false; }
+              // VALIDACIÓN ANTI-ALUCINACIÓN MEJORADA: Comparación normalizada
+              const sourceNormalized = normalizeUrl(source.url);
+              const sourceHost = normalizeHost(source.url);
+
+              // Buscar coincidencia en grounding (flexible)
+              const matchingGrounding = groundingUrls.find(g => {
+                const gNormalized = normalizeUrl(g.uri);
+                const gHost = normalizeHost(g.uri);
+                // Coincidencia si: mismo host, o URL normalizada similar
+                return sourceHost === gHost ||
+                       sourceNormalized === gNormalized ||
+                       sourceNormalized.includes(gHost) ||
+                       gNormalized.includes(sourceHost);
               });
 
-              if (!isVerified) {
-                console.warn(`[BG-CURATION] URL rechazada (no en grounding): ${source.url}`);
-                continue; // NO insertar URLs alucinadas
+              if (matchingGrounding) {
+                // URL verificada - usar la URL del modelo pero marcar grounding como usado
+                usedGroundingUrls.add(matchingGrounding.uri);
+                rowsToInsert.push({
+                  curation_id: curationId,
+                  lesson_id: originalComp.lesson_id,
+                  lesson_title: originalComp.lesson_title,
+                  component: originalComp.component,
+                  is_critical: originalComp.is_critical,
+                  source_ref: source.url,
+                  source_title: source.title || matchingGrounding.title || 'Fuente verificada',
+                  source_rationale: source.rationale || 'Encontrada via Google Search',
+                  url_status: 'OK',
+                  http_status_code: 200,
+                  apta: null,
+                  notes: `Fuente: google_verified (${successModel})`,
+                  created_at: new Date().toISOString()
+                });
+              } else {
+                // URL no verificada - guardar componente para asignarle URL de grounding
+                console.warn(`[BG-CURATION] URL no coincide con grounding: ${source.url}`);
+                componentsWithoutSource.push(originalComp);
               }
-
-              rowsToInsert.push({
-                curation_id: curationId,
-                lesson_id: originalComp.lesson_id,
-                lesson_title: originalComp.lesson_title,
-                component: originalComp.component,
-                is_critical: originalComp.is_critical,
-                source_ref: source.url,
-                source_title: source.title || 'Fuente verificada',
-                source_rationale: source.rationale || 'Encontrada via Google Search',
-                url_status: 'OK',
-                http_status_code: 200,
-                apta: null,
-                notes: `Fuente: google_verified (${successModel})`,
-                created_at: new Date().toISOString()
-              });
+            } else {
+              // Sin URL en respuesta del modelo
+              componentsWithoutSource.push(originalComp);
             }
           }
+        }
+      }
+
+      // Asignar URLs de grounding no usadas a componentes sin fuente
+      if (componentsWithoutSource.length > 0) {
+        const unusedGroundingUrls = groundingUrls.filter(g => !usedGroundingUrls.has(g.uri));
+        console.log(`[BG-CURATION] Asignando ${Math.min(unusedGroundingUrls.length, componentsWithoutSource.length)} URLs de grounding a componentes sin fuente`);
+
+        for (let i = 0; i < componentsWithoutSource.length && i < unusedGroundingUrls.length; i++) {
+          const comp = componentsWithoutSource[i];
+          const gUrl = unusedGroundingUrls[i];
+          rowsToInsert.push({
+            curation_id: curationId,
+            lesson_id: comp.lesson_id,
+            lesson_title: comp.lesson_title,
+            component: comp.component,
+            is_critical: comp.is_critical,
+            source_ref: gUrl.uri,
+            source_title: gUrl.title,
+            source_rationale: 'Fuente asignada de Google Search grounding',
+            url_status: 'OK',
+            http_status_code: 200,
+            apta: null,
+            notes: `Fuente: grounding_fallback (${successModel})`,
+            created_at: new Date().toISOString()
+          });
         }
       }
 

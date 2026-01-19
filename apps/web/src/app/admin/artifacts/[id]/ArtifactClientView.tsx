@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { 
   CheckCircle2, AlertCircle, BookOpen, Layers, 
   FileText, Edit3, Target, RotateCw,
-  Save, X, Edit2
+  Save, X, Edit2, Check
 } from 'lucide-react';
 import { regenerateArtifactAction, updateArtifactContentAction, updateArtifactStatusAction } from '../actions';
 import { useRouter } from 'next/navigation';
@@ -97,6 +97,42 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
   const planApproved = artifact.plan_state === 'STEP_APPROVED';
 
 
+
+  const handleSaveContent = async () => {
+      if (!editingSection) return;
+      
+      try {
+          const updates: any = {};
+          if (editingSection === 'nombres') updates.nombres = editedContent.nombres;
+          if (editingSection === 'objetivos') updates.objetivos = editedContent.objetivos;
+          if (editingSection === 'descripcion') updates.descripcion = { ...artifact.descripcion, ...editedContent.descripcion };
+
+          const res = await updateArtifactContentAction(artifact.id, updates);
+          
+          if (res.success) {
+              setEditingSection(null);
+              showToast('Cambios guardados.', 'success');
+              router.refresh();
+          } else {
+              showToast('Error al guardar.', 'error');
+          }
+      } catch (e) {
+          showToast('Error de conexión', 'error');
+      }
+  };
+
+  const handleCancelEdit = () => {
+      setEditingSection(null);
+      setEditedContent({
+          nombres: artifact.nombres || [],
+          objetivos: artifact.objetivos || [],
+          descripcion: {
+              texto: artifact.descripcion?.texto || artifact.descripcion?.resumen || '',
+              publico_objetivo: artifact.descripcion?.publico_objetivo || '',
+              beneficios: artifact.descripcion?.beneficios || ''
+          }
+      });
+  };
 
   return (
     <div className="space-y-8 relative">
@@ -196,28 +232,116 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
 
               {activeTab === 'content' ? (
                 <div className="space-y-6">
-                    <SectionCard title="Nombres del Curso" icon={<FileText size={18} className="text-[#00D4B3]" />}>
-                        <div className="space-y-3">
-                            {(artifact.nombres || []).map((nombre: string, idx: number) => (
-                                <div key={idx} className="flex items-start gap-3 p-3 rounded-lg bg-[#0F1419] border border-[#6C757D]/10 text-white text-sm">
-                                    <span className="text-[#6C757D] font-mono">{idx + 1}.</span> {nombre}
+                    <SectionCard 
+                        title="Nombres del Curso" 
+                        icon={<FileText size={18} className="text-[#00D4B3]" />}
+                        action={
+                            editingSection === 'nombres' ? (
+                                <div className="flex items-center gap-2">
+                                    <button onClick={handleSaveContent} className="p-1.5 bg-green-500/10 hover:bg-green-500/20 text-green-500 rounded-lg transition-colors"><Check size={16}/></button>
+                                    <button onClick={handleCancelEdit} className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors"><X size={16}/></button>
                                 </div>
-                            ))}
-                        </div>
+                            ) : (
+                                <button onClick={() => setEditingSection('nombres')} className="p-1.5 hover:bg-[#1F5AF6]/10 text-[#6C757D] hover:text-[#1F5AF6] rounded-lg transition-colors"><Edit2 size={16}/></button>
+                            )
+                        }
+                    >
+                        {editingSection === 'nombres' ? (
+                            <div className="space-y-3">
+                                 {editedContent.nombres.map((nombre: string, idx: number) => (
+                                    <div key={idx} className="flex items-center gap-3">
+                                        <span className="text-[#6C757D] font-mono text-sm">{idx + 1}.</span>
+                                        <input 
+                                            className="flex-1 bg-[#0F1419] border border-[#6C757D]/20 rounded-lg p-3 text-white text-sm focus:outline-none focus:border-[#00D4B3] transition-colors"
+                                            value={nombre}
+                                            onChange={(e) => {
+                                                const newNombres = [...editedContent.nombres];
+                                                newNombres[idx] = e.target.value;
+                                                setEditedContent({...editedContent, nombres: newNombres});
+                                            }}
+                                        />
+                                    </div>
+                                 ))}
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {(artifact.nombres || []).map((nombre: string, idx: number) => (
+                                    <div key={idx} className="flex items-start gap-3 p-3 rounded-lg bg-[#0F1419] border border-[#6C757D]/10 text-white text-sm">
+                                        <span className="text-[#6C757D] font-mono">{idx + 1}.</span> {nombre}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </SectionCard>
 
-                    <SectionCard title="Objetivos" icon={<Target size={18} className="text-[#F59E0B]" />}>
-                        <ul className="space-y-3">
-                            {(artifact.objetivos || []).map((obj: string, idx: number) => (
-                                <li key={idx} className="flex gap-3 text-sm text-[#E9ECEF] bg-[#0F1419] p-3 rounded-lg border border-[#6C757D]/10">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-[#F59E0B] mt-2 shrink-0" /> {obj}
-                                </li>
-                            ))}
-                        </ul>
+                    <SectionCard 
+                        title="Objetivos" 
+                        icon={<Target size={18} className="text-[#F59E0B]" />}
+                        action={
+                            editingSection === 'objetivos' ? (
+                                <div className="flex items-center gap-2">
+                                    <button onClick={handleSaveContent} className="p-1.5 bg-green-500/10 hover:bg-green-500/20 text-green-500 rounded-lg transition-colors"><Check size={16}/></button>
+                                    <button onClick={handleCancelEdit} className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors"><X size={16}/></button>
+                                </div>
+                            ) : (
+                                <button onClick={() => setEditingSection('objetivos')} className="p-1.5 hover:bg-[#1F5AF6]/10 text-[#6C757D] hover:text-[#1F5AF6] rounded-lg transition-colors"><Edit2 size={16}/></button>
+                            )
+                        }
+                    >
+                        {editingSection === 'objetivos' ? (
+                            <div className="space-y-3">
+                                {editedContent.objetivos.map((obj: string, idx: number) => (
+                                    <div key={idx} className="flex items-start gap-3">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-[#F59E0B] mt-4 shrink-0" />
+                                        <textarea 
+                                            className="flex-1 bg-[#0F1419] border border-[#6C757D]/20 rounded-lg p-3 text-white text-sm focus:outline-none focus:border-[#F59E0B] transition-colors min-h-[60px]"
+                                            value={obj}
+                                            onChange={(e) => {
+                                                const newObjetivos = [...editedContent.objetivos];
+                                                newObjetivos[idx] = e.target.value;
+                                                setEditedContent({...editedContent, objetivos: newObjetivos});
+                                            }}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <ul className="space-y-3">
+                                {(artifact.objetivos || []).map((obj: string, idx: number) => (
+                                    <li key={idx} className="flex gap-3 text-sm text-[#E9ECEF] bg-[#0F1419] p-3 rounded-lg border border-[#6C757D]/10">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-[#F59E0B] mt-2 shrink-0" /> {obj}
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
                     </SectionCard>
 
-                    <SectionCard title="Descripción" icon={<Layers size={18} className="text-[#1F5AF6]" />}>
-                        <p className="text-sm text-[#E9ECEF] bg-[#0F1419] p-4 rounded-xl border border-[#6C757D]/10">{artifact.descripcion?.texto || 'N/A'}</p>
+                    <SectionCard 
+                        title="Descripción" 
+                        icon={<Layers size={18} className="text-[#1F5AF6]" />}
+                        action={
+                            editingSection === 'descripcion' ? (
+                                <div className="flex items-center gap-2">
+                                    <button onClick={handleSaveContent} className="p-1.5 bg-green-500/10 hover:bg-green-500/20 text-green-500 rounded-lg transition-colors"><Check size={16}/></button>
+                                    <button onClick={handleCancelEdit} className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors"><X size={16}/></button>
+                                </div>
+                            ) : (
+                                <button onClick={() => setEditingSection('descripcion')} className="p-1.5 hover:bg-[#1F5AF6]/10 text-[#6C757D] hover:text-[#1F5AF6] rounded-lg transition-colors"><Edit2 size={16}/></button>
+                            )
+                        }
+                    >
+                        {editingSection === 'descripcion' ? (
+                            <textarea 
+                                className="w-full bg-[#0F1419] border border-[#6C757D]/20 rounded-xl p-4 text-white text-sm focus:outline-none focus:border-[#1F5AF6] min-h-[150px] leading-relaxed"
+                                value={editedContent.descripcion.texto}
+                                onChange={(e) => setEditedContent({
+                                    ...editedContent, 
+                                    descripcion: { ...editedContent.descripcion, texto: e.target.value }
+                                })}
+                            />
+                        ) : (
+                            <p className="text-sm text-[#E9ECEF] bg-[#0F1419] p-4 rounded-xl border border-[#6C757D]/10 leading-relaxed">{artifact.descripcion?.texto || 'N/A'}</p>
+                        )}
                     </SectionCard>
 
                     <div className="bg-[#151A21] border border-[#6C757D]/10 rounded-2xl p-6 mt-8">

@@ -38,19 +38,16 @@ export function PremiumSelect({ options, value, onChange, label, icon, placehold
       setIsOpen(false);
     }
     
-    function handleScroll() {
-        if(isOpen) setIsOpen(false);
-    }
+
 
     if (isOpen) {
         document.addEventListener("mousedown", handleClickOutside);
-        window.addEventListener("scroll", handleScroll, true);
-        window.addEventListener("resize", handleScroll);
+        // Removed scroll listener that was auto-closing the menu
+        window.addEventListener("resize", updatePosition); // Update position instead of closing
     }
     return () => {
         document.removeEventListener("mousedown", handleClickOutside);
-        window.removeEventListener("scroll", handleScroll, true);
-        window.removeEventListener("resize", handleScroll);
+        window.removeEventListener("resize", updatePosition);
     };
   }, [isOpen]);
 
@@ -157,7 +154,7 @@ export function PremiumSelect({ options, value, onChange, label, icon, placehold
                       style={menuStyle}
                       className="rounded-xl border border-[#1E2329] bg-[#151A21] shadow-2xl overflow-hidden ring-1 ring-black/50 flex flex-col"
                     >
-                      <div className="p-1 overflow-y-auto custom-scrollbar flex-1">
+                      <div className="p-2 overflow-y-auto custom-scrollbar flex-1 overscroll-contain">
                         {options.map((option) => {
                            const isSelected = option.value === value;
                            return (

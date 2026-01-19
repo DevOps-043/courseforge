@@ -208,6 +208,24 @@ class SyllabusService {
   }
 
   /**
+   * Actualiza los módulos del temario (edición manual).
+   */
+  async updateModules(artifactId: string, modules: any[]): Promise<void> {
+    const { error } = await this.supabase
+      .from('syllabus')
+      .update({
+        modules: modules,
+        updated_at: new Date().toISOString()
+      })
+      .eq('artifact_id', artifactId);
+
+    if (error) {
+      console.error('[SyllabusService] Error updating modules:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Ejecuta validaciones sobre un temario (lógica local pura).
    */
   validateTemario(temario: TemarioEsp02, objetivos: string[] = []) {

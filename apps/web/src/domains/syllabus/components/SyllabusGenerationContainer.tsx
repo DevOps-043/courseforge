@@ -137,6 +137,24 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
     .split('.')[0]
     .trim();
 
+  // Funcion para guardar edicion de modulos
+  const handleSaveModules = async (newModules: any[]) => {
+      if (!temario) return;
+      
+      try {
+          // Actualización optimista local
+          const updatedTemario = { ...temario, modules: newModules };
+          setTemario(updatedTemario);
+          
+          // Actualización en DB
+          await syllabusService.updateModules(artifactId, newModules);
+          console.log('Módulos actualizados correctamente');
+      } catch (e) {
+          console.error('Error guardando módulos:', e);
+          // Opcional: Revertir si falla o mostrar toast
+      }
+  };
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-20">
       
@@ -318,6 +336,8 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
                 modules={temario.modules} 
                 validation={temario.validation}
                 metadata={temario.source_summary as any}
+                onSave={handleSaveModules}
+                isEditable={true}
             />
 
             {/* REVISION PANEL FASE 2 */}

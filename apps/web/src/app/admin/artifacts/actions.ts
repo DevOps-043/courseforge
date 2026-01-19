@@ -304,6 +304,28 @@ export async function updateInstructionalPlanStatusAction(artifactId: string, st
     return { success: true };
 }
 
+// NUEVA ACCIÓN para actualizar el contenido del plan instruccional (edición manual)
+export async function updateInstructionalPlanContentAction(artifactId: string, lessonPlans: any[]) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    const { error } = await supabase
+        .from('instructional_plans')
+        .update({ 
+            lesson_plans: lessonPlans,
+            updated_at: new Date().toISOString()
+        })
+        .eq('artifact_id', artifactId);
+
+    if (error) {
+        console.error('Error updating instructional plan content:', error);
+        return { success: false, error: error.message };
+    }
+    
+    return { success: true };
+}
+
 export async function deleteInstructionalPlanAction(artifactId: string) {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -486,5 +508,67 @@ export async function updateCurationRowAction(rowId: string, updates: any) {
         .eq('id', rowId);
 
     if (error) return { success: false, error: error.message };
+    return { success: true };
+}
+
+export async function updateCurationStatusAction(artifactId: string, status: string, notes?: string) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    // Map generic step status to specific Phase 2 status if needed
+    // The UI might send STEP_APPROVED, we map it to PHASE2_APPROVED
+    let finalStatus = status;
+    let decision = 'PENDING';
+
+    if (status === 'STEP_APPROVED') {
+        finalStatus = 'PHASE2_APPROVED';
+        decision = 'APPROVED';
+    } else if (status === 'STEP_REJECTED') {
+        finalStatus = 'PHASE2_BLOCKED';
+        decision = 'BLOCKED';
+    }
+
+    const updateData: any = { state: finalStatus };
+    
+    // Construct qa_decision JSON object (matching curation schema)
+    const decisionData = {
+        notes: notes || '',
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: user.email || 'user',
+        decision: decision
+    };
+    
+    // Use qa_decision column instead of approvals
+    updateData.qa_decision = decisionData;
+
+    const { error } = await supabase
+        .from('curation')
+        .update(updateData)
+        .eq('artifact_id', artifactId);
+
+    if (error) {
+        console.error('Error updating curation status:', error);
+        return { success: false, error: error.message };
+    }
+    
+    return { success: true };
+}
+
+export async function deleteCurationAction(artifactId: string) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    const { error } = await supabase
+        .from('curation')
+        .delete()
+        .eq('artifact_id', artifactId);
+
+    if (error) {
+        console.error('Error deleting curation:', error);
+        return { success: false, error: error.message };
+    }
+    
     return { success: true };
 }
