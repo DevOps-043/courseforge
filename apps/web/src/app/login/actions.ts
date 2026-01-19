@@ -1,20 +1,53 @@
 'use server'
 
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { createClient } from '@/utils/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
-import { headers } from 'next/headers'
+import { headers, cookies } from 'next/headers'
 
 export async function loginAction(prevState: any, formData: FormData) {
   const identifier = formData.get('identifier') as string
   const password = formData.get('password') as string
+  const rememberMe = formData.get('rememberMe') === 'true'
   
   if (!identifier || !password) {
       return { error: "Por favor completa todos los campos" }
   }
 
   try {
-      const supabase = await createClient()
+      // Use custom client for key Login step to handle Remember Me
+      const cookieStore = await cookies()
+      
+      const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          cookies: {
+            get(name: string) {
+              return cookieStore.get(name)?.value
+            },
+            set(name: string, value: string, options: CookieOptions) {
+              try {
+                // If Remember Me is checked, extend cookie life to 1 year
+                if (rememberMe) {
+                   options.maxAge = 60 * 60 * 24 * 365; // 1 year
+                }
+                cookieStore.set({ name, value, ...options })
+              } catch (error) {
+                // The `set` method was called from a Server Component.
+              }
+            },
+            remove(name: string, options: CookieOptions) {
+              try {
+                cookieStore.set({ name, value: '', ...options })
+              } catch (error) {
+                // The `delete` method was called from a Server Component.
+              }
+            },
+          },
+        }
+      )
 
       let email = identifier
 

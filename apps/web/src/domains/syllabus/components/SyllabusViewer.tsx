@@ -126,22 +126,48 @@ export function SyllabusViewer({ modules, validation, metadata }: SyllabusViewer
                       <div className="mt-6 pt-6 border-t border-white/5">
                           <p className="text-xs font-bold text-gray-500 mb-2">RESUMEN DE INVESTIGACIÓN</p>
                           <div className="text-sm text-gray-400 leading-relaxed max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-                              {metadata.research_summary.split('###').map((part, i) => {
-                                  if (!part.trim()) return null;
+                              {metadata.research_summary.split('###').map((section, i) => {
+                                  if (!section.trim()) return null;
                                   
-                                  const lines = part.trim().split('\n');
-                                  // Detectar si es un título (si viene después de ### o es el inicio de un bloque grande)
-                                  const isTitle = i > 0 || metadata.research_summary?.startsWith('###');
+                                  const sectionLines = section.trim().split('\n');
+                                  // Heuristic: First line is title if we are ensuring sections split by ###, or if it looks like a header
+                                  const isTitle = i > 0 || metadata.research_summary?.includes('###');
                                   
-                                  const title = isTitle ? lines[0] : '';
-                                  const content = isTitle ? lines.slice(1).join('\n') : part;
+                                  const title = isTitle ? sectionLines[0] : '';
+                                  const contentLines = isTitle ? sectionLines.slice(1) : sectionLines;
 
-                                  if (!title && !content) return null;
+                                  if (!title && contentLines.length === 0) return null;
 
                                   return (
-                                      <div key={i} className="mb-4 last:mb-0">
-                                          {title && <h5 className="font-bold text-white mb-1.5 block">{title}</h5>}
-                                          {content && <p className="whitespace-pre-line">{content.trim()}</p>}
+                                      <div key={i} className="mb-6 last:mb-0">
+                                          {title && <h5 className="font-bold text-white mb-3 text-base">{title.replace(/^\s*#+\s*/, '')}</h5>}
+                                          
+                                          <div className="space-y-2">
+                                              {contentLines.map((line, lIdx) => {
+                                                  if (!line.trim()) return null;
+                                                  
+                                                  // List detection
+                                                  const isList = /^\s*[\-\*]\s/.test(line);
+                                                  const cleanLine = line.replace(/^\s*[\-\*]\s/, '');
+                                                  
+                                                  // Bold parsing: **text**
+                                                  const parts = cleanLine.split(/(\*\*.*?\*\*)/g);
+
+                                                  return (
+                                                      <div key={lIdx} className={`text-sm leading-relaxed ${isList ? 'flex gap-2 pl-2' : ''}`}>
+                                                          {isList && <span className="text-[#00D4B3] mt-1.5 w-1.5 h-1.5 rounded-full bg-[#00D4B3] shrink-0 block" />}
+                                                          <p className={isList ? 'text-gray-300' : 'text-gray-400'}>
+                                                              {parts.map((part, pIdx) => {
+                                                                  if (part.startsWith('**') && part.endsWith('**')) {
+                                                                      return <strong key={pIdx} className="text-white font-semibold">{part.slice(2, -2)}</strong>;
+                                                                  }
+                                                                  return part;
+                                                              })}
+                                                          </p>
+                                                      </div>
+                                                  );
+                                              })}
+                                          </div>
                                       </div>
                                   )
                               })}

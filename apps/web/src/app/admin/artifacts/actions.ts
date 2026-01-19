@@ -12,10 +12,11 @@ export async function generateArtifactAction(formData: {
     const supabase = await createClient();
     
     // Auth Check & Get Session Token
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session || !session.user) {
-        return { success: false, error: 'Unauthorized' };
-    }
+    if (!session) return { success: false, error: 'Unauthorized' };
 
     try {
         console.log('Initiating background generation for:', formData.title);
@@ -42,7 +43,7 @@ export async function generateArtifactAction(formData: {
                 started_at: new Date().toISOString()
             },
             state: 'GENERATING',
-            created_by: session.user.id
+            created_by: user.id
         }).select().single();
 
         if (error) {
@@ -88,8 +89,10 @@ export async function generateArtifactAction(formData: {
 
 export async function regenerateArtifactAction(artifactId: string, feedback?: string) {
     const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
     const { data: { session } } = await supabase.auth.getSession();
-    
     if (!session) return { success: false, error: 'Unauthorized' };
 
     // 1. Get Original Input
@@ -150,8 +153,8 @@ export async function regenerateArtifactAction(artifactId: string, feedback?: st
 
 export async function updateArtifactContentAction(artifactId: string, updates: { nombres?: string[], objetivos?: string[], descripcion?: any }) {
     const supabase = await createClient();
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return { success: false, error: 'Unauthorized' };
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
 
     const { error } = await supabase
         .from('artifacts')
@@ -166,8 +169,8 @@ export async function updateArtifactContentAction(artifactId: string, updates: {
 // NUEVA ACCIÓN para actualizar el estado del artefacto (ej: aprobar fase 1)
 export async function updateArtifactStatusAction(artifactId: string, status: string) {
     const supabase = await createClient();
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return { success: false, error: 'Unauthorized' };
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
 
     const { error } = await supabase
         .from('artifacts')
@@ -184,6 +187,9 @@ export async function updateArtifactStatusAction(artifactId: string, status: str
 
 export async function generateInstructionalPlanAction(artifactId: string, customPrompt?: string, useCustomPrompt: boolean = false) {
     const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return { success: false, error: 'Unauthorized' };
 
@@ -224,6 +230,9 @@ export async function generateInstructionalPlanAction(artifactId: string, custom
 
 export async function validateInstructionalPlanAction(artifactId: string) {
     const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return { success: false, error: 'Unauthorized' };
 
@@ -263,4 +272,219 @@ export async function validateInstructionalPlanAction(artifactId: string) {
         console.error("Background validation trigger error:", e);
         return { success: false, error: e.message };
     }
+}
+
+export async function updateInstructionalPlanStatusAction(artifactId: string, status: string, feedback?: string) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    const updateData: any = { state: status };
+    
+    // Construct approvals JSON object to match existing schema
+    const approvalData = {
+        notes: feedback || '',
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: user.email || 'user',
+        architect_status: status === 'STEP_APPROVED' ? 'APPROVED' : 'REJECTED'
+    };
+    
+    updateData.approvals = approvalData;
+
+    const { error } = await supabase
+        .from('instructional_plans')
+        .update(updateData)
+        .eq('artifact_id', artifactId);
+
+    if (error) {
+        console.error('Error updating instructional plan status:', error);
+        return { success: false, error: error.message };
+    }
+    
+    return { success: true };
+}
+
+export async function deleteInstructionalPlanAction(artifactId: string) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    const { error } = await supabase
+        .from('instructional_plans')
+        .delete()
+        .eq('artifact_id', artifactId);
+
+    if (error) {
+        console.error('Error deleting instructional plan:', error);
+        return { success: false, error: error.message };
+    }
+    
+    return { success: true };
+}
+
+// ==============================================================================
+// CURATION ACTIONS (Step 4)
+// ==============================================================================
+
+export async function startCurationAction(artifactId: string, attemptNumber: number = 1, gaps: string[] = []) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { success: false, error: 'Unauthorized' };
+
+    try {
+        // 1. Get Artifact Data
+        const { data: artifact } = await supabase
+            .from('artifacts')
+            .select('idea_central, course_id') // course_id usually stores the name/code
+            .eq('id', artifactId)
+            .single();
+
+        if (!artifact) throw new Error('Artifact not found');
+
+        // 2. Get Instructional Plan (Source of components)
+        const { data: plan, error: planError } = await supabase
+            .from('instructional_plans')
+            .select('lesson_plans') // Correct column name
+            .eq('artifact_id', artifactId)
+            .maybeSingle();
+
+        if (planError) {
+             console.error('[Actions] DB Error fetching plan:', planError);
+             throw new Error(`Database error fetching plan: ${planError.message}`);
+        }
+        
+        if (!plan) {
+             console.error(`[Actions] Plan not found for artifact: ${artifactId}`);
+             throw new Error('No Instructional Plan found. Please go back to Step 3 and generate/approve the plan first.');
+        }
+
+        if (!plan.lesson_plans || (Array.isArray(plan.lesson_plans) && plan.lesson_plans.length === 0)) {
+             console.error(`[Actions] Plan has no lessons: ${artifactId}`);
+             throw new Error('Instructional Plan is empty. Please regenerate the plan in Step 3.');
+        }
+
+        // 3. Extract Components from Plan
+        // Map lesson_plans JSON to flat list of components
+        const components: any[] = [];
+        const lessons = (plan.lesson_plans as any[]);
+        
+        lessons.forEach((l: any) => {
+            const lessonId = l.lesson_id || l.id || `L${Math.random().toString(36).substr(2, 5)}`;
+            const lessonTitle = l.lesson_title || l.title || 'Untitled Lesson';
+            
+            if (Array.isArray(l.components)) {
+                l.components.forEach((c: any) => {
+                    const compType = typeof c === 'string' ? c : c.type || c.component || 'UNKNOWN';
+                    // Check critical flag if exists
+                    const isCritical = typeof c === 'object' && c.is_critical ? true : false;
+                    
+                    components.push({
+                        lesson_id: lessonId,
+                        lesson_title: lessonTitle,
+                        component: compType,
+                        is_critical: isCritical
+                    });
+                });
+            }
+        });
+
+        if (components.length === 0) throw new Error('No components found in the plan');
+
+        // 4. Create or Update Curation Entry
+        // Check if exists first to avoid duplicates or reset state
+        const { data: existingCuration } = await supabase
+            .from('curation')
+            .select('id')
+            .eq('artifact_id', artifactId)
+            .maybeSingle();
+
+        let curationId = existingCuration?.id;
+
+        if (existingCuration) {
+            // Update existing
+            await supabase
+                .from('curation')
+                .update({ 
+                    state: 'PHASE2_GENERATING', 
+                    attempt_number: attemptNumber,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', curationId);
+        } else {
+            // Create new
+            const { data: newCuration, error: createError } = await supabase
+                .from('curation')
+                .insert({
+                    artifact_id: artifactId,
+                    state: 'PHASE2_GENERATING',
+                    attempt_number: attemptNumber
+                })
+                .select('id')
+                .single();
+            
+            if (createError) throw new Error(`Failed to create curation record: ${createError.message}`);
+            curationId = newCuration.id;
+        }
+
+        // 5. Trigger Background Function
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || 'http://localhost:3000';
+        const baseUrl = appUrl.replace(/\/$/, '');
+        const backgroundFunctionUrl = `${baseUrl}/.netlify/functions/curation-background`;
+
+        console.log('[Actions] Triggering Curation Background:', backgroundFunctionUrl);
+
+        // Fetch System Prompt Code if needed, but the Background function will handle the specific prompt building.
+        // We pass the payload expected by curation-background.ts
+
+        const payload = {
+            curationId,
+            artifactId,
+            components,
+            courseName: artifact.course_id || 'Untitled Course', // Using course_id as name proxy if titles are mixed
+            ideaCentral: artifact.idea_central,
+            accessToken: session.access_token,
+            attemptNumber,
+            gaps
+        };
+
+        const triggerResponse = await fetch(backgroundFunctionUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!triggerResponse.ok) {
+            console.warn(`[Actions] Curation trigger failed: ${triggerResponse.status}`);
+        }
+
+        return { success: true, curationId };
+
+    } catch (error: any) {
+        console.error('[Actions] Start Curation Error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+export async function updateCurationRowAction(rowId: string, updates: any) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    // Validate allowed fields to update
+    const allowedUpdates: any = {};
+    if (updates.apta !== undefined) allowedUpdates.apta = updates.apta;
+    if (updates.cobertura_completa !== undefined) allowedUpdates.cobertura_completa = updates.cobertura_completa;
+    if (updates.motivo_no_apta !== undefined) allowedUpdates.motivo_no_apta = updates.motivo_no_apta;
+    if (updates.notes !== undefined) allowedUpdates.notes = updates.notes;
+
+    const { error } = await supabase
+        .from('curation_rows')
+        .update(allowedUpdates)
+        .eq('id', rowId);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
 }

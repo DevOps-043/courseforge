@@ -374,7 +374,12 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
                             </div>
                             {onNext && (
                                 <button
-                                    onClick={onNext}
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        console.log('Navigating to next step...');
+                                        if (onNext) onNext();
+                                    }}
                                     className="flex-1 bg-[#1F5AF6] hover:bg-[#1548c7] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#1F5AF6]/20"
                                 >
                                     Continuar a Plan

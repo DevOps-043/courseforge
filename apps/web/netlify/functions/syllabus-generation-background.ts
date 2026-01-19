@@ -1,6 +1,5 @@
-
 import { Handler } from '@netlify/functions';
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 
 // --- CONFIG ---
@@ -77,13 +76,13 @@ export const handler: Handler = async (event, context) => {
     
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // 3. Setup Gemini
+    // 3. Setup Gemini con nuevo SDK @google/genai
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || '';
     if (!apiKey) {
         console.error('[Syllabus Background] No API Key found');
         return { statusCode: 500, body: 'Server Configuration Error' };
     }
-    const genAI = new GoogleGenerativeAI(apiKey);
+    const genAI = new GoogleGenAI({ apiKey });
 
     try {
         // --- PASO 1: INVESTIGACIÓN (Gemini 2.0 Flash + Search) ---
@@ -94,11 +93,6 @@ export const handler: Handler = async (event, context) => {
         let searchQueries: string[] = [];
 
         try {
-            const searchModel = genAI.getGenerativeModel({
-                model: searchModelName,
-                tools: [{ googleSearchRetrieval: { dynamicRetrievalConfig: { mode: 'MODE_DYNAMIC' as any } } }]
-            });
-
             const researchPrompt = `Investiga en profundidad sobre el tema: "${ideaCentral}".
             Objetivos del curso: ${objetivos.join(', ')}.
             Identifica:
@@ -107,18 +101,29 @@ export const handler: Handler = async (event, context) => {
             3. Estructura lógica recomendada.
             Dame un resumen denso y técnico.`;
 
-            const searchResult = await searchModel.generateContent(researchPrompt);
-            researchContext = searchResult.response.text();
-            
+            // Nueva API de @google/genai con Google Search Grounding
+            const searchResult = await genAI.models.generateContent({
+                model: searchModelName,
+                contents: researchPrompt,
+                config: {
+                    tools: [{ googleSearch: {} }],
+                    temperature: 0.7
+                }
+            });
+
+            researchContext = searchResult.text || '';
+
             // Extract queries metadata if available
-            const grounding = searchResult.response.candidates?.[0]?.groundingMetadata;
-            // @ts-ignore
+            const grounding = searchResult.candidates?.[0]?.groundingMetadata;
             if (grounding?.webSearchQueries) {
-                // @ts-ignore
-                searchQueries = grounding.webSearchQueries;
+                searchQueries = grounding.webSearchQueries as string[];
             }
 
-            console.log(`[Syllabus Background] Investigación completada. Queries: ${searchQueries.length}`);
+            // Log de grounding para debug
+            const groundingChunks = grounding?.groundingChunks || [];
+            console.log(`[Syllabus Background] ✅ Investigación completada.`);
+            console.log(`[Syllabus Background] Búsquedas ejecutadas: ${searchQueries.length}`, searchQueries);
+            console.log(`[Syllabus Background] URLs de grounding: ${groundingChunks.length}`);
 
         } catch (err: any) {
             console.warn(`[Syllabus Background] Falló research con ${searchModelName}:`, err.message);
@@ -129,14 +134,6 @@ export const handler: Handler = async (event, context) => {
         // --- PASO 2: ESTRUCTURACIÓN CON AUTO-CORRECCIÓN (Agentic Loop) ---
         const mainModelName = process.env.GEMINI_MODEL || 'gemini-1.5-pro'; 
         console.log(`[Syllabus Background] Paso 2: Arquitectura con ${mainModelName}...`);
-
-        const architectModel = genAI.getGenerativeModel({
-            model: mainModelName,
-            generationConfig: {
-                temperature: parseFloat(process.env.GEMINI_TEMPERATURE || '0.7'),
-                responseMimeType: "application/json"
-            }
-        });
 
         const baseRouteContext = route === 'A_WITH_SOURCE'
             ? 'El contenido debe ser estructurado y formal, basado en fuentes académicas.'
@@ -182,8 +179,16 @@ export const handler: Handler = async (event, context) => {
             }
 
             try {
-                const result = await architectModel.generateContent(finalPrompt);
-                const responseText = result.response.text();
+                // Nueva API de @google/genai (sin Google Search, solo estructuración)
+                const result = await genAI.models.generateContent({
+                    model: mainModelName,
+                    contents: finalPrompt,
+                    config: {
+                        temperature: parseFloat(process.env.GEMINI_TEMPERATURE || '0.7'),
+                        responseMimeType: "application/json"
+                    }
+                });
+                const responseText = result.text || '';
                 
                 const cleanJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
                 const jsonMatch = cleanJson.match(/\{[\s\S]*\}/);

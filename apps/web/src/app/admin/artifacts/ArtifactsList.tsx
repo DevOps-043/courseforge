@@ -322,7 +322,7 @@ function ArtifactCard({
     return (
       <Link href={`/admin/artifacts/${artifact.id}`} className="block">
         <div className="bg-[#151A21] border border-[#6C757D]/10 rounded-xl p-4 flex items-center gap-4 hover:border-[#6C757D]/30 transition-all group">
-          <div className="w-10 h-10 rounded-lg bg-[#2D333B] flex items-center justify-center text-[#94A3B8]">
+          <div className="w-10 h-10 rounded-lg bg-[#2D333B] flex shrink-0 items-center justify-center text-[#94A3B8]">
             <FileText size={20} />
           </div>
           <div className="flex-1 min-w-0">
@@ -332,11 +332,11 @@ function ArtifactCard({
                 .split(/IDEA PRINCIPAL:/i)[0]
                 .trim()}
             </h4>
-            <p className="text-xs text-[#94A3B8] truncate">{descText}</p>
+            <p className="text-xs text-[#94A3B8] line-clamp-1 md:line-clamp-2">{descText}</p>
           </div>
 
           <div
-            className={`px-2.5 py-1 rounded-full text-xs border ${status.color} flex items-center gap-1.5`}
+            className={`px-2.5 py-1 rounded-full text-xs border ${status.color} flex shrink-0 items-center gap-1.5`}
           >
             {StatusIcon && (
               <StatusIcon
@@ -352,16 +352,16 @@ function ArtifactCard({
             {status.label}
           </div>
 
-          <div className="text-xs text-[#6C757D] hidden md:block w-32 truncate text-right px-2">
+          <div className="text-xs text-[#6C757D] hidden md:block w-32 truncate text-right px-2 shrink-0">
             {artifact.profiles?.username || "Anon"}
           </div>
 
-          <div className="text-xs text-[#6C757D] w-20 text-right">
+          <div className="text-xs text-[#6C757D] w-20 text-right shrink-0">
             {timeDisplay}
           </div>
 
           <button
-            className="text-[#94A3B8] hover:text-white p-2"
+            className="text-[#94A3B8] hover:text-white p-2 shrink-0"
             onClick={(e) => {
               e.preventDefault(); /* Menu logic */
             }}

@@ -10,10 +10,10 @@ export default async function ArtifactDetailPage({ params }: { params: Promise<{
   const supabase = await createClient();
   
   // Fetch Artifact
-  // Fetch Artifact con Syllabus relacionado
+  // Fetch Artifact con Syllabus e Instructional Plans relacionados
   const { data: artifactRaw, error } = await supabase
     .from('artifacts')
-    .select('*, syllabus(*)')
+    .select('*, syllabus(*), instructional_plans(*)')
     .eq('id', id)
     .single();
 
@@ -24,14 +24,17 @@ export default async function ArtifactDetailPage({ params }: { params: Promise<{
   // Aplanar estructura para el cliente
   // Supabase devuelve relaciones 1:N como array por defecto si no detecta 1:1 estricto
   const syllabusData = Array.isArray(artifactRaw.syllabus) ? artifactRaw.syllabus[0] : artifactRaw.syllabus;
+  const instructionalPlanData = Array.isArray(artifactRaw.instructional_plans) ? artifactRaw.instructional_plans[0] : artifactRaw.instructional_plans;
   
   const artifact = {
     ...artifactRaw,
     // Inyectamos el registro de syllabus como 'temario' para que el cliente lo consuma
     temario: syllabusData || null,
+    instructional_plan: instructionalPlanData || null,
     // Helpers directos de estado
     syllabus_state: syllabusData?.state,
-    syllabus_status: syllabusData?.state // Alias por si acaso
+    syllabus_status: syllabusData?.state, // Alias por si acaso
+    plan_state: instructionalPlanData?.state
   };
 
   return (

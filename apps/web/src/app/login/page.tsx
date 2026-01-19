@@ -14,6 +14,7 @@ function LoginContent() {
   
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +29,7 @@ function LoginContent() {
       const formData = new FormData();
       formData.append('identifier', identifier);
       formData.append('password', password);
+      formData.append('rememberMe', rememberMe.toString());
 
       const res = await loginAction(null, formData);
 
@@ -109,7 +111,12 @@ function LoginContent() {
         <div className="flex items-center justify-between text-sm">
           <label className="flex items-center gap-2 cursor-pointer group">
             <div className="relative flex items-center">
-              <input type="checkbox" className="peer sr-only" />
+              <input 
+                type="checkbox" 
+                className="peer sr-only" 
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+              />
               <div className="w-5 h-5 border-2 border-white/20 rounded bg-[#0A0D12] peer-checked:bg-[#00D4B3] peer-checked:border-[#00D4B3] transition-all" />
               <div className="absolute inset-0 flex items-center justify-center text-[#0F1419] opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity">
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">

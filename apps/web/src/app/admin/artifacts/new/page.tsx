@@ -271,8 +271,8 @@ export default function NewArtifactPage() {
                         className={`
                             relative w-full overflow-hidden group px-6 py-4 rounded-2xl font-bold font-sans shadow-2xl flex items-center justify-center gap-3 transition-all duration-300 transform
                             ${isLoading || !formData.description 
-                                ? 'bg-[#1F5AF6]/20 text-white/30 cursor-not-allowed border border-[#1F5AF6]/20' 
-                                : 'bg-linear-to-r from-[#1F5AF6] via-[#3B7BF7] to-[#1F5AF6] background-animate hover:scale-[1.02] hover:shadow-[0_0_30px_-5px_rgba(31,90,246,0.5)] border border-white/10 text-white shadow-[#1F5AF6]/20'
+                                ? 'bg-[#00D4B3]/10 text-[#00D4B3]/30 cursor-not-allowed border border-[#00D4B3]/10' 
+                                : 'bg-[#00D4B3] hover:bg-[#00bda0] text-[#0A2540] shadow-lg shadow-[#00D4B3]/25 hover:shadow-[#00D4B3]/40 hover:-translate-y-0.5'
                             }
                         `}
                    >
@@ -288,7 +288,7 @@ export default function NewArtifactPage() {
                             </>
                         ) : (
                             <>
-                                <Sparkles size={20} className={`${formData.description ? 'text-white group-hover:animate-pulse' : ''}`} />
+                                <Sparkles size={20} className={`${formData.description ? 'group-hover:animate-pulse' : ''}`} />
                                 <span className="text-lg">Generar Estructura</span>
                                 <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                             </>

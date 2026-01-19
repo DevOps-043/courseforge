@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import { BookOpen, Sparkles, Settings2, Play, CheckCircle2, ChevronDown, ChevronRight, LayoutList, MessageSquare, Book, FileText, Video as VideoIcon, BrainCircuit, RefreshCw, Clock, Target, CheckSquare, Layers, Info } from 'lucide-react';
+import { BookOpen, Sparkles, Settings2, Play, CheckCircle2, ChevronDown, ChevronRight, LayoutList, MessageSquare, Book, FileText, Video as VideoIcon, BrainCircuit, RefreshCw, Clock, Target, CheckSquare, Layers, Info, AlertCircle, Edit3 } from 'lucide-react';
 import { InstructionalPlanValidationResult } from './InstructionalPlanValidationResult';
 import { createClient } from '@supabase/supabase-js';
 
@@ -11,6 +11,7 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 interface InstructionalPlanGenerationContainerProps {
   artifactId: string;
+  onNext?: () => void;
 }
 
 const DEFAULT_PROMPT_PREVIEW = `Genera un plan instruccional detallado para cada lección del temario proporcionado.
@@ -38,7 +39,7 @@ const getComponentBadge = (type: string) => {
     return { color: 'text-gray-400 bg-gray-400/10 border-gray-400/20', icon: <FileText size={12} />, label: type };
 };
 
-export function InstructionalPlanGenerationContainer({ artifactId }: InstructionalPlanGenerationContainerProps) {
+export function InstructionalPlanGenerationContainer({ artifactId, onNext }: InstructionalPlanGenerationContainerProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isValidating, setIsValidating] = useState(false); // New state
   const [existingPlan, setExistingPlan] = useState<any>(null);
@@ -48,6 +49,7 @@ export function InstructionalPlanGenerationContainer({ artifactId }: Instruction
   // Custom Prompt States
   const [useCustomPrompt, setUseCustomPrompt] = useState(false);
   const [customPrompt, setCustomPrompt] = useState('');
+  const [reviewNotes, setReviewNotes] = useState('');
 
   // Fetch plan on mount or poll
   const fetchPlan = async (silent = false) => {
@@ -62,8 +64,10 @@ export function InstructionalPlanGenerationContainer({ artifactId }: Instruction
       if (data && data.lesson_plans && data.lesson_plans.length > 0) {
           // USER REQUEST: Do not load previous validations on mount. 
           // Only show validation if it comes from a poll (silent update) triggered by the user.
-          if (!silent && data.validation) {
-              data.validation = null;
+          // Keep validation visible always
+
+          if (data.approvals && data.approvals.notes) {
+              setReviewNotes(data.approvals.notes);
           }
 
           setExistingPlan(data);
@@ -154,9 +158,7 @@ export function InstructionalPlanGenerationContainer({ artifactId }: Instruction
   const handleValidate = async () => {
       setIsValidating(true);
       // Clear previous validation to show fresh state
-      if (existingPlan) {
-          setExistingPlan({ ...existingPlan, validation: null });
-      }
+      // Retain existing validation while re-validating
       try {
           const { validateInstructionalPlanAction } = await import('../../../app/admin/artifacts/actions');
           const result = await validateInstructionalPlanAction(artifactId);
@@ -211,14 +213,7 @@ export function InstructionalPlanGenerationContainer({ artifactId }: Instruction
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <button 
-                        onClick={handleValidate}
-                        disabled={isValidating || isGenerating}
-                        className="flex items-center gap-2 px-4 py-2 bg-[#00D4B3] hover:bg-[#00bda0] disabled:opacity-50 disabled:cursor-not-allowed text-[#0A2540] rounded-lg transition-all text-sm font-semibold shadow-lg shadow-[#00D4B3]/20 hover:shadow-[#00D4B3]/40"
-                    >
-                        {isValidating ? <RefreshCw size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                        {isValidating ? "Validando..." : "Validar"}
-                    </button>
+
                     
                     <button 
                         onClick={handleGenerate}
@@ -317,13 +312,13 @@ export function InstructionalPlanGenerationContainer({ artifactId }: Instruction
                                                         Objetivo de Aprendizaje
                                                     </div>
                                                     <p className="text-gray-300 text-sm leading-relaxed">
-                                                        {lesson.learning_objective}
+                                                        {lesson.learning_objective || lesson.oa_text}
                                                     </p>
                                                     <div className="mt-3 flex gap-2">
                                                         {/* Bloom Badge placeholder - backend should provide bloom_level if possible, otherwise we infer or prompt asked for it */}
-                                                        {lesson.bloom_taxonomy_level && (
+                                                        {(lesson.bloom_taxonomy_level || lesson.oa_bloom_verb) && (
                                                             <span className="inline-flex items-center px-2 py-1 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[10px] font-bold uppercase">
-                                                                Bloom: {lesson.bloom_taxonomy_level}
+                                                                Bloom: {lesson.bloom_taxonomy_level || lesson.oa_bloom_verb}
                                                             </span>
                                                         )}
                                                     </div>
@@ -366,7 +361,7 @@ export function InstructionalPlanGenerationContainer({ artifactId }: Instruction
                                                                         {comp.duration && <span className="text-[10px] text-gray-600 font-mono">{comp.duration}</span>}
                                                                     </div>
                                                                     <p className="text-gray-400 text-sm leading-snug">
-                                                                        {comp.description}
+                                                                        {comp.description || comp.summary}
                                                                     </p>
                                                                 </div>
                                                             </div>
@@ -399,6 +394,108 @@ export function InstructionalPlanGenerationContainer({ artifactId }: Instruction
                     <InstructionalPlanValidationResult validation={existingPlan.validation} />
                 </div>
             )}
+
+            {/* REVISION PANEL FASE 3 */}
+            <div className="bg-[#151A21] border border-[#6C757D]/10 rounded-2xl p-6 mt-8">
+                <h3 className="text-white font-bold mb-4 flex items-center gap-2">
+                    <Edit3 size={18} /> Revisión Fase 3: Plan Instruccional
+                </h3>
+                
+                <textarea
+                    className="w-full bg-[#0F1419] border border-[#6C757D]/20 rounded-xl p-4 text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 min-h-[100px]"
+                    placeholder="Escribe tus comentarios o feedback sobre el plan instruccional..."
+                    value={reviewNotes}
+                    onChange={(e) => setReviewNotes(e.target.value)}
+                    disabled={existingPlan.state === 'STEP_APPROVED'}
+                />
+
+                <div className="flex items-center gap-4 mt-4">
+                    {existingPlan.state !== 'STEP_APPROVED' && existingPlan.state !== 'STEP_REJECTED' && (
+                        <>
+                            <button 
+                                onClick={handleValidate}
+                                disabled={isValidating || isGenerating}
+                                className="flex-1 bg-[#0F1419] border border-[#00D4B3] hover:bg-[#00D4B3]/10 text-[#00D4B3] py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isValidating ? <RefreshCw size={18} className="animate-spin" /> : <CheckSquare size={18} />}
+                                {isValidating ? "Validando..." : "Validar Contenido"}
+                            </button>
+                            <button 
+                                onClick={async () => {
+                                    const { updateInstructionalPlanStatusAction } = await import('../../../app/admin/artifacts/actions');
+                                    await updateInstructionalPlanStatusAction(artifactId, 'STEP_APPROVED', reviewNotes);
+                                    setExistingPlan({ ...existingPlan, state: 'STEP_APPROVED' });
+                                    if (onNext) onNext();
+                                }}
+                                disabled={!existingPlan.validation || isValidating}
+                                className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2
+                                    ${!existingPlan.validation || isValidating 
+                                        ? 'bg-[#00D4B3]/5 text-[#00D4B3]/30 border border-[#00D4B3]/5 cursor-not-allowed' 
+                                        : 'bg-[#00D4B3]/10 hover:bg-[#00D4B3]/20 text-[#00D4B3] border border-[#00D4B3]/20'
+                                    }
+                                `}
+                            >
+                                <CheckCircle2 size={18} />
+                                Aprobar Fase 3
+                            </button>
+                            <button 
+                                onClick={async () => {
+                                    const { updateInstructionalPlanStatusAction } = await import('../../../app/admin/artifacts/actions');
+                                    await updateInstructionalPlanStatusAction(artifactId, 'STEP_REJECTED', reviewNotes);
+                                    setExistingPlan({ ...existingPlan, state: 'STEP_REJECTED' }); 
+                                }}
+                                disabled={!existingPlan.validation || isValidating}
+                                className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2
+                                    ${!existingPlan.validation || isValidating 
+                                        ? 'bg-[#EF4444]/5 text-[#EF4444]/30 border border-[#EF4444]/5 cursor-not-allowed' 
+                                        : 'bg-[#EF4444]/10 hover:bg-[#EF4444]/20 text-[#EF4444] border border-[#EF4444]/20'
+                                    }
+                                `}
+                            >
+                                <RefreshCw size={18} />
+                                Rechazar Fase 3
+                            </button>
+                        </>
+                    )}
+
+                    {existingPlan.state === 'STEP_APPROVED' && (
+                        <div className="w-full flex gap-4">
+                                <div className="flex-1 bg-[#00D4B3]/20 text-[#00D4B3] py-3 rounded-xl font-bold text-center flex items-center justify-center gap-2">
+                                <CheckCircle2 size={18} />
+                                Fase 3 Aprobada
+                            </div>
+                        </div>
+                    )}
+                    
+                    {existingPlan.state === 'STEP_REJECTED' && (
+                         <div className="w-full flex gap-4">
+                                <div className="flex-1 bg-[#EF4444]/20 text-[#EF4444] py-3 rounded-xl font-bold text-center flex items-center justify-center gap-2">
+                                <AlertCircle size={18} />
+                                Fase 3 Rechazada
+                            </div>
+                             <button
+                                onClick={async () => {
+                                    if(!confirm("¿Estás seguro de que quieres regenerar? Esto eliminará el plan actual.")) return;
+                                    try {
+                                        const { deleteInstructionalPlanAction } = await import('../../../app/admin/artifacts/actions');
+                                        await deleteInstructionalPlanAction(artifactId);
+                                        setExistingPlan(null);
+                                        setIsGenerating(false);
+                                        setIsValidating(false);
+                                        setReviewNotes('');
+                                    } catch (e) {
+                                        console.error(e);
+                                    }
+                                }}
+                                className="flex-1 bg-[#EF4444] hover:bg-[#cc3a3a] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg"
+                             >
+                                <RefreshCw size={18} />
+                                Regenerar Plan
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
         </div>
       );
   }
@@ -408,7 +505,7 @@ export function InstructionalPlanGenerationContainer({ artifactId }: Instruction
     <div className="max-w-4xl mx-auto space-y-8 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
       <div className="space-y-2">
          <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-[#1F5AF6]/10 text-[#1F5AF6]">
+            <div className="p-2 rounded-lg bg-[#00D4B3]/10 text-[#00D4B3]">
                 <BookOpen size={24} />
             </div>
             Paso 3: Plan Instruccional
@@ -422,11 +519,11 @@ export function InstructionalPlanGenerationContainer({ artifactId }: Instruction
           <div className="flex justify-between items-center mb-6">
               <h3 className="text-white font-semibold text-sm uppercase tracking-wider flex items-center gap-2">
                   <Settings2 size={16} className="text-[#00D4B3]" />
-                  Configuración de Generación
+                  Versión del Prompt
               </h3>
               <div className="flex items-center gap-2">
                   <span className={`text-xs font-medium transition-colors ${useCustomPrompt ? 'text-[#00D4B3]' : 'text-[#6C757D]'}`}>
-                      {useCustomPrompt ? 'Prompt Personalizado Activo' : 'Prompt Personalizado'}
+                      {useCustomPrompt ? 'Prompt personalizado' : 'Prompt personalizado'}
                   </span>
                   
                   <button 
@@ -451,24 +548,33 @@ export function InstructionalPlanGenerationContainer({ artifactId }: Instruction
                           className="w-full h-48 bg-[#0F1419] border border-[#00D4B3]/30 rounded-xl p-4 text-sm text-gray-300 font-mono leading-relaxed focus:outline-none focus:border-[#00D4B3] transition-colors resize-none shadow-inner placeholder:text-gray-600"
                           placeholder={DEFAULT_PROMPT_PREVIEW}
                       />
-                      <p className="text-xs text-gray-500">
+                       <p className="text-xs text-gray-500">
                         <span className="text-[#00D4B3]">*</span> Asegúrate de solicitar una respuesta en formato JSON estrictamente válido.
                       </p>
                   </div>
               ) : (
-                  <div className="bg-[#0F1419] border border-[#6C757D]/10 rounded-xl p-4 flex items-center gap-4 group hover:border-[#00D4B3]/20 transition-colors cursor-default animate-in fade-in duration-300">
-                      <div className="w-10 h-10 rounded-full bg-[#00D4B3]/10 flex items-center justify-center shrink-0">
-                           <Sparkles size={18} className="text-[#00D4B3]" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                              <h4 className="text-gray-200 font-medium text-sm">Modelo Estándar Optimizado (Gemini Flash)</h4>
-                              <span className="px-2 py-0.5 rounded text-[10px] bg-[#00D4B3]/10 text-[#00D4B3] border border-[#00D4B3]/20 font-mono">v2.0</span>
-                          </div>
-                          <p className="text-[#6C757D] text-xs truncate">
-                              Incluye validación Bloom, componentes obligatorios (Diálogo, Quiz, Video) y estructura JSON.
-                          </p>
-                      </div>
+                  <div className="bg-[#0F1419] border border-[#6C757D]/10 rounded-xl p-6 flex flex-col gap-4 group hover:border-[#00D4B3]/20 transition-colors cursor-default animate-in fade-in duration-300 relative overflow-hidden">
+                       <div className="flex items-center gap-3 relative z-10">
+                            <CheckCircle2 size={18} className="text-[#00D4B3]" />
+                            <h4 className="text-[#00D4B3] font-bold text-sm">Configuración Optimizada</h4>
+                       </div>
+                       
+                       <p className="text-[#94A3B8] text-sm leading-relaxed relative z-10">
+                            Prompt optimizado para generar lecciones detalladas alineadas con el temario aprobado. Incluye la definición de objetivos de aprendizaje, criterios de éxito medibles y 4 componentes obligatorios por lección: Diálogo, Lectura, Quiz y Video, con validación de estructura JSON.
+                       </p>
+
+                       <div className="flex flex-wrap gap-2 relative z-10 mt-2">
+                            {['Estructura JSON', 'Optimizado Gemini 2.0', 'Validación Pedagógica', 'Componentes Modulares'].map((tag, i) => (
+                                <span key={i} className="text-[10px] bg-[#151A21] text-gray-400 border border-gray-700 px-2 py-1 rounded font-bold uppercase tracking-wider">
+                                    {tag}
+                                </span>
+                            ))}
+                       </div>
+                       
+                       {/* Shield Icon Background Effect */}
+                       <div className="absolute right-[-20px] top-[-20px] opacity-5">
+                            <svg width="200" height="200" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                       </div>
                   </div>
               )}
           </div>

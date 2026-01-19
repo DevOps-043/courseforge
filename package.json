@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.10",
+    "@google/genai": "^1.37.0",
     "@google/generative-ai": "^0.24.1",
     "@supabase/ssr": "^0.8.0",
     "ai": "^6.0.39",
@@ -28,6 +29,7 @@
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "scorm-again": "^3.0.0",
+    "sonner": "^2.0.7",
     "zod": "^4.3.5"
   }
 }

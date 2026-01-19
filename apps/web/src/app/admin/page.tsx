@@ -9,14 +9,39 @@ export default async function AdminPage() {
     .from('profiles')
     .select('*', { count: 'exact', head: true });
 
-  const { data: recentUsers } = await supabase
+  // 1. Get recent logins (fetch enough to get 5 unique users)
+  const { data: recentLogins } = await supabase
+    .from('login_history')
+    .select('user_id, login_at')
+    .order('login_at', { ascending: false })
+    .limit(20);
+
+  // 2. Client-side dedupe to get unique users and their latest login
+  const uniqueLogins = new Map<string, string>();
+  recentLogins?.forEach((log: any) => {
+    if (!uniqueLogins.has(log.user_id)) {
+      uniqueLogins.set(log.user_id, log.login_at);
+    }
+  });
+
+  const topUserIds = Array.from(uniqueLogins.keys()).slice(0, 5);
+
+  // 3. Fetch profiles for these users
+  const { data: profilesData } = await supabase
     .from('profiles')
     .select('*')
-    .order('created_at', { ascending: false })
-    .limit(5);
+    .in('id', topUserIds);
 
-  // Mock data for unimplemented features
-  const artifactsCount = 0; 
+  // 4. Merge ordered data
+  const recentUsers = topUserIds.map(id => {
+      const profile = profilesData?.find(p => p.id === id);
+      return profile ? { ...profile, last_seen_at: uniqueLogins.get(id) } : null;
+  }).filter(Boolean);
+
+  // Fetch real artifact count
+  const { count: artifactsCount } = await supabase
+    .from('artifacts')
+    .select('*', { count: 'exact', head: true });
 
   return (
     <div className="space-y-8">
@@ -62,11 +87,11 @@ export default async function AdminPage() {
         {/* Recent Activity (Wide) */}
         <div className="lg:col-span-2 bg-[#151A21] border border-[#6C757D]/10 rounded-2xl p-6">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-white">Usuarios Recientes</h3>
+            <h3 className="text-lg font-bold text-white">Usuarios Activos Recientemente</h3>
             <button className="text-sm text-[#00D4B3] hover:underline">Ver todo</button>
           </div>
           <div className="space-y-4">
-            {recentUsers?.map((user) => (
+            {recentUsers?.map((user: any) => (
               <div key={user.id} className="flex items-center gap-4 p-3 hover:bg-[#1E2329] rounded-xl transition-colors cursor-default group">
                 <div className="w-10 h-10 rounded-full bg-[#00D4B3]/10 flex items-center justify-center text-[#00D4B3]">
                   <UserPlus size={18} />
@@ -77,12 +102,14 @@ export default async function AdminPage() {
                   </p>
                   <p className="text-xs text-[#94A3B8]">{user.email}</p>
                 </div>
-                <div className="text-xs text-[#6C757D]">{timeAgo(user.created_at)}</div>
+                <div className="text-xs text-[#6C757D]">
+                    {user.last_seen_at ? timeAgo(user.last_seen_at) : 'Recién registrado'}
+                </div>
               </div>
             ))}
             
             {recentUsers?.length === 0 && (
-                <p className="text-gray-500 text-sm text-center py-4">No hay usuarios registrados.</p>
+                <p className="text-gray-500 text-sm text-center py-4">No hay actividad reciente.</p>
             )}
           </div>
         </div>

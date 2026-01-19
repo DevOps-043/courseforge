@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { GoogleGenAI } from '@google/genai'
 import { COURSE_CONFIG, SYLLABUS_PROMPT } from '@/domains/syllabus/config/syllabus.config'
 
 // Detectar si estamos en Netlify (producción) o local (desarrollo)
@@ -46,27 +47,20 @@ export async function POST(request: NextRequest) {
 
     // [LOCAL LOGIC - Direct Execution]
     console.log('[API/ESP-02] Modo local - Ejecutando generación directa...')
-    
-    // Importación dinámica
-    const { GoogleGenerativeAI } = await import('@google/generative-ai')
-    
+
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY
     if (!apiKey) {
         console.error(" [API/ESP-02] CRITICAL: GOOGLE_API_KEY missing");
         return NextResponse.json({ error: 'API key no configurada' }, { status: 500 })
     }
-    console.log(" [API/ESP-02] API Key found. Initializing GoogleGenerativeAI...");
+    console.log(" [API/ESP-02] API Key found. Initializing GoogleGenAI (new SDK)...");
 
-    const genAI = new GoogleGenerativeAI(apiKey)
+    // Nuevo SDK @google/genai para Google Search Grounding
+    const genAI = new GoogleGenAI({ apiKey })
 
-    // --- PASO 1: INVESTIGACIÓN con MOdelo Rápido (Flash 2.0) ---
+    // --- PASO 1: INVESTIGACIÓN con Modelo Rápido (Flash 2.0) ---
     const searchModelName = process.env.GEMINI_SEARCH_MODEL || 'gemini-2.0-flash'
-    console.log(`[API/ESP-02] Pasos 1: Configurando modelo ${searchModelName}...`)
-
-    const searchModel = genAI.getGenerativeModel({
-      model: searchModelName,
-      tools: [{ googleSearch: {} }] // Search activado
-    })
+    console.log(`[API/ESP-02] Paso 1: Configurando modelo ${searchModelName} con Google Search...`)
 
     const researchPrompt = `Investiga en profundidad sobre el tema: "${ideaCentral}".
     Objetivos del curso: ${objetivos.join(', ')}.
@@ -80,13 +74,27 @@ export async function POST(request: NextRequest) {
     let researchMetadata: any = null
 
     try {
-      const researchResult = await searchModel.generateContent(researchPrompt)
-      researchContext = researchResult.response.text()
-      
+      // Nueva API de @google/genai con Google Search Grounding
+      const researchResult = await genAI.models.generateContent({
+        model: searchModelName,
+        contents: researchPrompt,
+        config: {
+          tools: [{ googleSearch: {} }],
+          temperature: 0.7
+        }
+      })
+
+      researchContext = researchResult.text || ''
+
       // Capturar metadata de fuentes (links, queries)
-      researchMetadata = researchResult.response.candidates?.[0]?.groundingMetadata
-      
-      console.log(`[API/ESP-02] Investigación completada (${researchContext.length} chars).`)
+      researchMetadata = researchResult.candidates?.[0]?.groundingMetadata
+
+      // Log de grounding para debug
+      const searchQueries = researchMetadata?.webSearchQueries || []
+      const groundingChunks = researchMetadata?.groundingChunks || []
+      console.log(`[API/ESP-02] ✅ Investigación completada (${researchContext.length} chars).`)
+      console.log(`[API/ESP-02] Búsquedas ejecutadas: ${searchQueries.length}`, searchQueries)
+      console.log(`[API/ESP-02] URLs de grounding: ${groundingChunks.length}`)
     } catch (err) {
       console.warn("[API/ESP-02] Falló la investigación con Flash, continuando sin contexto extra.", err)
       researchContext = "No se pudo realizar investigación previa."
@@ -94,21 +102,12 @@ export async function POST(request: NextRequest) {
 
     // --- PASO 2: ESTRUCTURACIÓN con Modelo Potente (Pro 3) ---
     const mainModelName = process.env.GEMINI_MODEL
-    
+
     if (!mainModelName) {
       throw new Error("GEMINI_MODEL no está configurado en .env. Se requiere un modelo Pro/3.")
     }
-    
-    console.log(`[API/ESP-02] Paso 2: Generando estructura con ${mainModelName}...`)
 
-    const mainModel = genAI.getGenerativeModel({
-      model: mainModelName,
-      tools: [], 
-      generationConfig: {
-        temperature: parseFloat(process.env.GEMINI_TEMPERATURE || '0.7'),
-        responseMimeType: "application/json"
-      }
-    })
+    console.log(`[API/ESP-02] Paso 2: Generando estructura con ${mainModelName}...`)
 
     // Preparar el contexto enriquecido
     const baseRouteContext = route === 'A_WITH_SOURCE'
@@ -125,10 +124,16 @@ export async function POST(request: NextRequest) {
       .replace('{{routeContext}}', enrichedContext)
       .replace(/{{.*?}}/g, '')
 
-    // Generar
-    const result = await mainModel.generateContent(finalPrompt)
-    const response = await result.response
-    const responseText = response.text()
+    // Generar con nueva API (sin Google Search, solo estructuración)
+    const result = await genAI.models.generateContent({
+      model: mainModelName,
+      contents: finalPrompt,
+      config: {
+        temperature: parseFloat(process.env.GEMINI_TEMPERATURE || '0.7'),
+        responseMimeType: "application/json"
+      }
+    })
+    const responseText = result.text || ''
     
     // Parsing JSON
     const cleanJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()

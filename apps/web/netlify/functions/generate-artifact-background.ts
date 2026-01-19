@@ -1,8 +1,7 @@
-
 import { Handler } from '@netlify/functions';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateObject } from 'ai';
-import { GoogleGenerativeAI, DynamicRetrievalMode } from "@google/generative-ai";
+import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
@@ -22,7 +21,8 @@ const googleAI = createGoogleGenerativeAI({
     apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY
 });
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || '');
+// Nuevo SDK @google/genai para Google Search Grounding
+const genAI = new GoogleGenAI({ apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || '' });
 
 export const handler: Handler = async (event, context) => {
     // 1. Parsing Request
@@ -72,21 +72,31 @@ export const handler: Handler = async (event, context) => {
         for (const modelName of searchModels) {
             try {
                 console.log(`[Background Job] Researching with ${modelName}...`);
-                const model = genAI.getGenerativeModel({ 
+
+                // Nueva API de @google/genai con Google Search Grounding
+                const result = await genAI.models.generateContent({
                     model: modelName,
-                    tools: [{ googleSearch: {} }]
+                    contents: researchPrompt,
+                    config: {
+                        tools: [{ googleSearch: {} }],
+                        temperature: 0.7
+                    }
                 });
-                const result = await model.generateContent(researchPrompt);
-                researchContext = result.response.text();
-                
-                const grounding = result.response.candidates?.[0]?.groundingMetadata;
+
+                researchContext = result.text || '';
+
+                const grounding = result.candidates?.[0]?.groundingMetadata;
                 if (grounding?.webSearchQueries) {
-                     detectedSearchQueries = grounding.webSearchQueries;
-                     console.log(`[Background Job] Google Search used. Queries: ${detectedSearchQueries.join(', ')}`);
+                     detectedSearchQueries = grounding.webSearchQueries as string[];
+                     console.log(`[Background Job] ✅ Google Search used. Queries: ${detectedSearchQueries.join(', ')}`);
                 } else {
                      console.log(`[Background Job] Warning: Model ${modelName} did NOT perform a Google Search.`);
                 }
-                
+
+                // Verificar grounding chunks (URLs verificadas)
+                const groundingChunks = grounding?.groundingChunks || [];
+                console.log(`[Background Job] Grounding URLs found: ${groundingChunks.length}`);
+
                 console.log(`[Background Job] Research complete using ${modelName}.`);
                 researchSuccess = true;
                 break; // Exit loop on success

@@ -11,6 +11,7 @@ import { regenerateArtifactAction, updateArtifactContentAction, updateArtifactSt
 import { useRouter } from 'next/navigation';
 import { SyllabusGenerationContainer } from '@/domains/syllabus/components/SyllabusGenerationContainer';
 import { InstructionalPlanGenerationContainer } from '@/domains/plan/components/InstructionalPlanGenerationContainer';
+import { SourcesCurationGenerationContainer } from '@/domains/curation/components/SourcesCurationGenerationContainer';
 
 export default function ArtifactClientView({ artifact }: { artifact: any }) {
   const [activeTab, setActiveTab] = useState<'content' | 'validation'>('content');
@@ -93,6 +94,9 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
   // Lógica de aprobación de Syllabus
   // Asumimos que artifact tiene relación con syllabus y trae su estado.
   const syllabusApproved = artifact.syllabus_status === 'STEP_APPROVED' || (artifact.temario && artifact.temario.qa?.status === 'APPROVED');
+  const planApproved = artifact.plan_state === 'STEP_APPROVED';
+
+
 
   return (
     <div className="space-y-8 relative">
@@ -145,10 +149,10 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                 onClick={() => setCurrentStep(2)} 
                 icon={<BookOpen size={16} />} 
                 disabled={reviewState !== 'approved' && !artifact.temario} 
-                done={syllabusApproved}
+                done={syllabusApproved || currentStep > 2}
             />
             
-            <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors ${syllabusApproved ? 'bg-[#1F5AF6]' : 'bg-[#2D333B]'}`} />
+            <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors ${syllabusApproved || currentStep > 2 ? 'bg-[#1F5AF6]' : 'bg-[#2D333B]'}`} />
             
             <StepItem 
                 step={3} 
@@ -157,10 +161,18 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                 onClick={() => setCurrentStep(3)} 
                 icon={<Layers size={16} />} 
                 disabled={!syllabusApproved}
+                done={planApproved}
             />
              {/* Future Steps */}
-             <div className="h-0.5 flex-1 mx-4 rounded-full bg-[#2D333B]" />
-             <StepItem step={4} label="Fuentes" disabled icon={<FileText size={16} />} />
+             <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors ${planApproved ? 'bg-[#1F5AF6]' : 'bg-[#2D333B]'}`} />
+             <StepItem 
+                 step={4} 
+                 label="Fuentes" 
+                 active={currentStep === 4} 
+                 onClick={() => setCurrentStep(4)} 
+                 disabled={!planApproved} 
+                 icon={<FileText size={16} />} 
+             />
              <div className="h-0.5 flex-1 mx-4 rounded-full bg-[#2D333B]" />
              <StepItem step={5} label="Materiales" disabled icon={<Layers size={16} />} />
              <div className="h-0.5 flex-1 mx-4 rounded-full bg-[#2D333B]" />
@@ -336,7 +348,14 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
            </div>
        ) : currentStep === 3 ? (
            <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                <InstructionalPlanGenerationContainer artifactId={artifact.id} />
+                <InstructionalPlanGenerationContainer 
+                     artifactId={artifact.id} 
+                     onNext={() => setCurrentStep(4)}
+                />
+           </div>
+       ) : currentStep === 4 ? (
+           <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                <SourcesCurationGenerationContainer artifactId={artifact.id} />
            </div>
        ) : null}
     </div>
