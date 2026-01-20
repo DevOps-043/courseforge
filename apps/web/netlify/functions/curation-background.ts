@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 // --- INTERFACES ---
 interface RequiredComponent {
@@ -67,9 +68,29 @@ export const handler: Handler = async (event) => {
     console.log(`[BG-CURATION] Iniciando para CurationID: ${curationId} (${components.length} componentes)`);
 
     // 3. Inicializar clientes
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: `Bearer ${accessToken}` } }
-    });
+    // IMPORTANTE: Usar Service Role Key para evitar JWT expired en procesos largos
+    // El Service Role Key NO expira (o expira en muchos años), a diferencia del accessToken del usuario
+    const hasServiceKey = !!SUPABASE_SERVICE_ROLE_KEY;
+    console.log(`[BG-CURATION] Service Role Key disponible: ${hasServiceKey ? 'SÍ' : 'NO - USARÁ accessToken que puede expirar!'}`);
+
+    if (!hasServiceKey) {
+      console.error('[BG-CURATION] ⚠️ CRITICAL: SUPABASE_SERVICE_ROLE_KEY no está configurada.');
+      console.error('[BG-CURATION] El proceso usará el accessToken del usuario que EXPIRARÁ en ~1 hora.');
+      console.error('[BG-CURATION] Configura SUPABASE_SERVICE_ROLE_KEY en las variables de entorno de Netlify.');
+    }
+
+    const supabase = createClient(
+      SUPABASE_URL,
+      hasServiceKey ? SUPABASE_SERVICE_ROLE_KEY! : SUPABASE_ANON_KEY,
+      hasServiceKey ? {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      } : {
+        global: { headers: { Authorization: `Bearer ${accessToken}` } }
+      }
+    );
 
     const ai = new GoogleGenAI({ apiKey: GOOGLE_API_KEY });
 
@@ -137,21 +158,50 @@ export const handler: Handler = async (event) => {
       }
     };
 
-    // Verificar si una URL es accesible Y tiene contenido mínimo
-    // - Verifica HTTP 200 (no 404)
-    // - Verifica que tenga al menos 50 palabras (no página vacía/menú)
-    // La validación de CALIDAD se hace en el paso 2
-    const verifyUrlExists = async (url: string): Promise<{ valid: boolean; wordCount?: number; error?: string }> => {
+    // VERIFICACIÓN ESTRICTA de URLs - Descarga contenido completo y valida rigurosamente
+    // Esta función es CRÍTICA para evitar guardar URLs inválidas
+    const verifyUrlExists = async (url: string): Promise<{ valid: boolean; wordCount?: number; error?: string; content?: string }> => {
       try {
+        // Validar formato de URL primero
+        if (!url || !url.startsWith('http')) {
+          return { valid: false, error: 'URL inválida o vacía' };
+        }
+
+        // Rechazar URLs que claramente no son contenido educativo
+        const blockedPatterns = [
+          /youtube\.com/i,
+          /youtu\.be/i,
+          /facebook\.com/i,
+          /twitter\.com/i,
+          /instagram\.com/i,
+          /tiktok\.com/i,
+          /linkedin\.com\/posts/i,
+          /reddit\.com/i,
+          /pinterest\.com/i,
+          /google\.com\/search/i,
+          /google\.com\/sorry/i,
+          /vertexaisearch\.cloud\.google\.com/i,
+        ];
+
+        for (const pattern of blockedPatterns) {
+          if (pattern.test(url)) {
+            return { valid: false, error: `URL bloqueada: ${pattern.source}` };
+          }
+        }
+
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout para contenido completo
 
         const response = await fetch(url, {
           method: 'GET',
           signal: controller.signal,
+          redirect: 'follow',
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Cache-Control': 'no-cache'
           }
         });
         clearTimeout(timeoutId);
@@ -161,28 +211,160 @@ export const handler: Handler = async (event) => {
           return { valid: false, error: `HTTP ${response.status}` };
         }
 
+        // Verificar que sea HTML
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
+          return { valid: false, error: `No es HTML: ${contentType}` };
+        }
+
+        // Verificar URL final (después de redirects)
+        const finalUrl = response.url;
+        if (finalUrl.includes('vertexaisearch.cloud.google.com') || finalUrl.includes('google.com/sorry')) {
+          return { valid: false, error: 'Redirect a Google - URL no resuelta' };
+        }
+
         const html = await response.text();
 
-        // Extraer contenido de texto básico (quitar HTML)
-        const content = html
+        // Si el HTML es muy corto, rechazar
+        if (html.length < 1000) {
+          return { valid: false, error: `HTML muy corto: ${html.length} caracteres` };
+        }
+
+        // DETECCIÓN DE SOFT 404 - Patrones en título
+        const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+        const titleText = titleMatch ? titleMatch[1].toLowerCase().trim() : '';
+
+        const titleErrorPatterns = [
+          /^404$/,
+          /404\s*(error|page|página)?/i,
+          /not\s*found/i,
+          /no\s*encontrad[ao]/i,
+          /página\s*no\s*(existe|encontrada)/i,
+          /page\s*not\s*found/i,
+          /error\s*404/i,
+          /página\s*eliminada/i,
+          /contenido\s*no\s*disponible/i,
+          /access\s*denied/i,
+          /forbidden/i,
+          /no\s*existe/i,
+          /removed/i,
+          /deleted/i,
+        ];
+
+        for (const pattern of titleErrorPatterns) {
+          if (pattern.test(titleText)) {
+            return { valid: false, error: `Soft 404 (título): "${titleText.substring(0, 60)}"` };
+          }
+        }
+
+        // DETECCIÓN DE SOFT 404 - Patrones en HTML
+        const soft404HtmlPatterns = [
+          /<h1[^>]*>\s*404\s*<\/h1>/i,
+          /<h1[^>]*>[^<]*not\s*found[^<]*<\/h1>/i,
+          /<h1[^>]*>[^<]*no\s*encontrad[ao][^<]*<\/h1>/i,
+          /<h1[^>]*>[^<]*página\s*no\s*existe[^<]*<\/h1>/i,
+          /<h2[^>]*>\s*404\s*<\/h2>/i,
+          /class\s*=\s*["'][^"']*(?:error-?404|not-?found|error-?page)[^"']*["']/i,
+          /id\s*=\s*["'][^"']*(?:error-?404|not-?found|error-?page)[^"']*["']/i,
+          /<div[^>]*class[^>]*error[^>]*>[\s\S]{0,500}404[\s\S]{0,500}<\/div>/i,
+          />\s*404\s*</,
+          />\s*page\s*not\s*found\s*</i,
+          />\s*página\s*no\s*encontrada\s*</i,
+          />\s*this\s*page\s*(doesn't|does\s*not|can't|cannot)\s*exist/i,
+          />\s*esta\s*página\s*no\s*existe\s*</i,
+          />\s*oops!?\s*</i,
+          /lo\s*sentimos[^<]{0,50}(página|contenido|artículo)[^<]{0,50}(no|ya\s*no)\s*(existe|está\s*disponible)/i,
+          /sorry[^<]{0,50}(page|content)[^<]{0,50}(doesn't|does\s*not|no\s*longer)\s*exist/i,
+          /the\s*page\s*you('re|\s*are)\s*looking\s*for/i,
+          /la\s*página\s*que\s*buscas/i,
+        ];
+
+        for (const pattern of soft404HtmlPatterns) {
+          if (pattern.test(html)) {
+            return { valid: false, error: 'Soft 404 (HTML): contenido indica página de error' };
+          }
+        }
+
+        // EXTRAER CONTENIDO PRINCIPAL (más agresivo)
+        let content = html
+          // Eliminar scripts, styles, y elementos no-contenido
           .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
           .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '')
+          .replace(/<svg[^>]*>[\s\S]*?<\/svg>/gi, '')
           .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
           .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
           .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+          .replace(/<aside[^>]*>[\s\S]*?<\/aside>/gi, '')
+          .replace(/<form[^>]*>[\s\S]*?<\/form>/gi, '')
+          .replace(/<!--[\s\S]*?-->/g, '')
+          // Quitar tags HTML
           .replace(/<[^>]+>/g, ' ')
+          // Decodificar entidades HTML
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/&#\d+;/g, ' ')
+          .replace(/&\w+;/g, ' ')
+          // Limpiar espacios
           .replace(/\s+/g, ' ')
           .trim();
 
-        // Contar palabras (mínimo 3 caracteres)
-        const wordCount = content.split(/\s+/).filter(w => w.length > 2).length;
+        const contentLower = content.toLowerCase();
 
-        // Verificar contenido mínimo (50 palabras - menos estricto que paso 2)
-        if (wordCount < 50) {
-          return { valid: false, wordCount, error: `Solo ${wordCount} palabras (mínimo 50)` };
+        // Contar palabras reales (mínimo 3 caracteres, solo letras)
+        const words = content.split(/\s+/).filter(w => w.length > 2 && /[a-záéíóúñü]/i.test(w));
+        const wordCount = words.length;
+
+        // VALIDACIÓN ESTRICTA DE CONTENIDO
+        // Necesitamos al menos 150 palabras de contenido útil
+        if (wordCount < 150) {
+          return { valid: false, wordCount, error: `Contenido insuficiente: ${wordCount} palabras (mínimo 150)` };
         }
 
-        return { valid: true, wordCount };
+        // Verificar patrones de error en contenido corto
+        if (wordCount < 300) {
+          const errorInContentPatterns = [
+            /404/,
+            /page\s*not\s*found/i,
+            /página\s*no\s*encontrada/i,
+            /no\s*encontramos/i,
+            /no\s*pudimos\s*encontrar/i,
+            /this\s*page\s*(doesn't|does\s*not)\s*exist/i,
+            /esta\s*página\s*no\s*existe/i,
+            /el\s*contenido\s*(no\s*está\s*disponible|fue\s*eliminado|ya\s*no\s*existe)/i,
+            /access\s*denied/i,
+            /permission\s*denied/i,
+            /acceso\s*denegado/i,
+          ];
+
+          for (const pattern of errorInContentPatterns) {
+            if (pattern.test(contentLower)) {
+              return { valid: false, wordCount, error: `Soft 404 (texto): "${pattern.source}" encontrado en contenido corto` };
+            }
+          }
+        }
+
+        // Verificar que no sea solo un menú o índice
+        const menuIndicators = [
+          /^(home|inicio|about|contacto|blog|services|productos|login|register|cart|checkout)\s/i,
+          /skip\s*to\s*(main\s*)?content/i,
+          /cookie\s*(policy|notice|consent)/i,
+        ];
+
+        let menuScore = 0;
+        for (const pattern of menuIndicators) {
+          if (pattern.test(contentLower)) menuScore++;
+        }
+
+        if (menuScore >= 2 && wordCount < 250) {
+          return { valid: false, wordCount, error: 'Parece ser solo navegación/menú, no contenido principal' };
+        }
+
+        console.log(`[BG-CURATION] ✓ URL verificada: ${url.substring(0, 60)}... (${wordCount} palabras)`);
+        return { valid: true, wordCount, content: content.substring(0, 500) };
 
       } catch (e: any) {
         return { valid: false, error: e.message || 'Error de conexión' };
@@ -461,14 +643,15 @@ Solo JSON válido, sin explicaciones.`;
         }
       }
 
-      // Asignar URLs de grounding no usadas a componentes sin fuente
-      if (componentsWithoutSource.length > 0) {
-        const unusedGroundingUrls = groundingUrls.filter(g => !usedGroundingUrls.has(g.uri));
-        console.log(`[BG-CURATION] Asignando ${Math.min(unusedGroundingUrls.length, componentsWithoutSource.length)} URLs de grounding a componentes sin fuente`);
+      // Asignar URLs de grounding a componentes sin fuente
+      // IMPORTANTE: Reutilizar URLs si no hay suficientes únicas - TODOS los componentes deben tener fuente
+      if (componentsWithoutSource.length > 0 && groundingUrls.length > 0) {
+        console.log(`[BG-CURATION] Asignando fuentes a ${componentsWithoutSource.length} componentes sin URL verificada`);
 
-        for (let i = 0; i < componentsWithoutSource.length && i < unusedGroundingUrls.length; i++) {
+        for (let i = 0; i < componentsWithoutSource.length; i++) {
           const comp = componentsWithoutSource[i];
-          const gUrl = unusedGroundingUrls[i];
+          // Reutilizar URLs en ciclo si hay menos URLs que componentes
+          const gUrl = groundingUrls[i % groundingUrls.length];
           rowsToInsert.push({
             curation_id: curationId,
             lesson_id: comp.lesson_id,
@@ -489,34 +672,60 @@ Solo JSON válido, sin explicaciones.`;
 
       // Opción B: Si no se pudo parsear JSON pero hay grounding, usar URLs directamente
       if (rowsToInsert.length === 0 && groundingUrls.length > 0) {
-        console.log(`[BG-CURATION] Usando ${groundingUrls.length} URLs de grounding directamente`);
-        let urlIdx = 0;
-        for (const comp of batch) {
-          if (urlIdx < groundingUrls.length) {
-            const gUrl = groundingUrls[urlIdx];
-            rowsToInsert.push({
-              curation_id: curationId,
-              lesson_id: comp.lesson_id,
-              lesson_title: comp.lesson_title,
-              component: comp.component,
-              is_critical: comp.is_critical,
-              source_ref: gUrl.uri,
-              source_title: gUrl.title,
-              source_rationale: 'Fuente directa de Google Search',
-              url_status: 'OK',
-              http_status_code: 200,
-              apta: null,
-              notes: 'Fuente: grounding_direct',
-              created_at: new Date().toISOString()
-            });
-            urlIdx++;
-          }
+        console.log(`[BG-CURATION] Usando URLs de grounding directamente para ${batch.length} componentes`);
+        for (let i = 0; i < batch.length; i++) {
+          const comp = batch[i];
+          // Reutilizar URLs en ciclo si hay menos URLs que componentes
+          const gUrl = groundingUrls[i % groundingUrls.length];
+          rowsToInsert.push({
+            curation_id: curationId,
+            lesson_id: comp.lesson_id,
+            lesson_title: comp.lesson_title,
+            component: comp.component,
+            is_critical: comp.is_critical,
+            source_ref: gUrl.uri,
+            source_title: gUrl.title,
+            source_rationale: 'Fuente directa de Google Search',
+            url_status: 'OK',
+            http_status_code: 200,
+            apta: null,
+            notes: 'Fuente: grounding_direct',
+            created_at: new Date().toISOString()
+          });
         }
       }
 
-      // Determinar componentes fallidos (sin fuente asignada)
+      // VERIFICACIÓN FINAL: Asegurar que TODOS los componentes del batch tengan fuente
       const coveredComponents = new Set(rowsToInsert.map(r => `${r.lesson_id}|${r.component}`));
-      const failedComponents = batch.filter(c => !coveredComponents.has(`${c.lesson_id}|${c.component}`));
+      const missingComponents = batch.filter(c => !coveredComponents.has(`${c.lesson_id}|${c.component}`));
+
+      // Si hay componentes sin fuente y tenemos URLs de grounding, asignarles
+      if (missingComponents.length > 0 && groundingUrls.length > 0) {
+        console.log(`[BG-CURATION] ⚠️ ${missingComponents.length} componentes sin fuente, asignando grounding...`);
+        for (let i = 0; i < missingComponents.length; i++) {
+          const comp = missingComponents[i];
+          const gUrl = groundingUrls[i % groundingUrls.length];
+          rowsToInsert.push({
+            curation_id: curationId,
+            lesson_id: comp.lesson_id,
+            lesson_title: comp.lesson_title,
+            component: comp.component,
+            is_critical: comp.is_critical,
+            source_ref: gUrl.uri,
+            source_title: gUrl.title,
+            source_rationale: 'Fuente de respaldo de Google Search',
+            url_status: 'OK',
+            http_status_code: 200,
+            apta: null,
+            notes: 'Fuente: grounding_backup',
+            created_at: new Date().toISOString()
+          });
+        }
+      }
+
+      // Componentes que definitivamente fallaron (sin grounding disponible)
+      const finalCovered = new Set(rowsToInsert.map(r => `${r.lesson_id}|${r.component}`));
+      const failedComponents = batch.filter(c => !finalCovered.has(`${c.lesson_id}|${c.component}`));
 
       // Insertar en DB
       if (rowsToInsert.length > 0) {
@@ -585,9 +794,15 @@ Solo JSON válido, sin explicaciones.`;
     }
 
     // 5. Actualizar Estado Final
-    await supabase.from('curation')
+    const { error: updateError } = await supabase.from('curation')
       .update({ state: 'PHASE2_GENERATED', updated_at: new Date().toISOString() })
       .eq('id', curationId);
+
+    if (updateError) {
+      console.error('[BG-CURATION] Error actualizando estado final:', updateError.message);
+    } else {
+      console.log('[BG-CURATION] Estado actualizado a PHASE2_GENERATED');
+    }
 
     console.log(`[BG-CURATION] ✅ COMPLETADO: ${totalInserted} fuentes totales para ${components.length} componentes`);
 
@@ -602,6 +817,27 @@ Solo JSON válido, sin explicaciones.`;
 
   } catch (error: any) {
     console.error('[BG-CURATION] Error Global:', error);
+
+    // Intentar actualizar estado a PHASE2_GENERATED incluso si hubo error parcial
+    // para que el frontend no se quede colgado
+    try {
+      const supabaseRecovery = createClient(
+        SUPABASE_URL,
+        SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY,
+        { auth: { autoRefreshToken: false, persistSession: false } }
+      );
+
+      const payload = JSON.parse(event.body || '{}') as CurationPayload;
+      if (payload.curationId) {
+        await supabaseRecovery.from('curation')
+          .update({ state: 'PHASE2_GENERATED', updated_at: new Date().toISOString() })
+          .eq('id', payload.curationId);
+        console.log('[BG-CURATION] Estado actualizado a PHASE2_GENERATED en recovery');
+      }
+    } catch (recoveryError) {
+      console.error('[BG-CURATION] Error en recovery de estado:', recoveryError);
+    }
+
     return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
   }
 };

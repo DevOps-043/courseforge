@@ -12,4 +12,8 @@
 
 [functions]
   directory = "apps/web/netlify/functions"
+  # Cargar variables de entorno para funciones en desarrollo
+  [functions.environment]
+    # Las variables sensibles se cargan desde .env.local automáticamente
+    # pero las funciones background a veces no las leen correctamente
 

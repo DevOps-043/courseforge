@@ -84,7 +84,7 @@ export default function AdminLayoutClient({
   };
 
   return (
-    <div className="min-h-screen bg-[#09090b] flex text-slate-200 overflow-x-hidden selection:bg-[#00D4B3]/30">
+    <div className="min-h-screen bg-[#0F1419] flex text-slate-200 overflow-x-hidden selection:bg-[#00D4B3]/30">
       
       {/* Sidebar Area */}
       <motion.aside
@@ -107,7 +107,7 @@ export default function AdminLayoutClient({
         onDoubleClick={() => setIsPinned(false)}
         className={`fixed left-0 top-0 h-full z-40 border-r border-white/5 backdrop-blur-3xl flex flex-col
             ${!isPinned ? 'cursor-pointer hover:shadow-[0_0_40px_rgba(0,0,0,0.5)]' : ''}
-            ${isOpen ? 'bg-[#121214]/80' : 'bg-transparent hover:bg-[#121214]/90'}
+            ${isOpen ? 'bg-[#151A21]/80' : 'bg-transparent hover:bg-[#151A21]/90'}
         `}
       >
         {/* Glass Background Layer */}
