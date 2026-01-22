@@ -1,5 +1,6 @@
 
 import { Handler } from '@netlify/functions';
+import { createClient } from '@supabase/supabase-js';
 import { processUnifiedCuration } from './unified-curation-logic';
 
 const handler: Handler = async (event) => {
@@ -14,17 +15,22 @@ const handler: Handler = async (event) => {
     const geminiApiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || '';
 
     if (!supabaseUrl || !supabaseKey || !geminiApiKey) {
-        throw new Error('Missing environment configuration');
+      throw new Error('Missing environment configuration');
     }
+
+    // Clear existing rows to prevent duplicates (same as validate-curation-background.ts)
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    await supabase.from('curation_rows').delete().eq('curation_id', curationId);
+    console.log(`[Curation Background] Cleared old rows for curation: ${curationId}`);
 
     // Call shared logic
     const processed = await processUnifiedCuration({
-        artifactId,
-        curationId,
-        customPrompt,
-        supabaseUrl,
-        supabaseKey,
-        geminiApiKey
+      artifactId,
+      curationId,
+      customPrompt,
+      supabaseUrl,
+      supabaseKey,
+      geminiApiKey
     });
 
     return { statusCode: 200, body: JSON.stringify({ success: true, processed }) };

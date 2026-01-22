@@ -67,7 +67,7 @@ async function resolveRedirectUrl(url: string, timeoutMs: number = 8000): Promis
 }
 
 // Deep content validation - verifies URL has real educational content
-async function validateUrlWithContent(url: string, timeoutMs: number = 10000): Promise<{isValid: boolean; reason: string; contentLength: number}> {
+async function validateUrlWithContent(url: string, timeoutMs: number = 10000): Promise<{ isValid: boolean; reason: string; contentLength: number }> {
     const browserHeaders = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -93,7 +93,7 @@ async function validateUrlWithContent(url: string, timeoutMs: number = 10000): P
         }
 
         const html = await response.text();
-        
+
         // Check for soft 404 indicators
         const soft404Patterns = [
             /page\s*(not|no)\s*found/i,
@@ -124,7 +124,7 @@ async function validateUrlWithContent(url: string, timeoutMs: number = 10000): P
 
         // Extract text content
         const textContent = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-        
+
         if (textContent.length < MIN_CONTENT_LENGTH) {
             console.log(`[Content Validation] ${url.substring(0, 50)}... -> Too short (${textContent.length} chars)`);
             return { isValid: false, reason: `Too short (${textContent.length} chars)`, contentLength: textContent.length };
@@ -237,7 +237,7 @@ const BLOCKED_DOMAINS = [
 function isBlockedDomain(url: string, courseTitle: string): boolean {
     const urlLower = url.toLowerCase();
     const courseLower = courseTitle.toLowerCase();
-    
+
     // Check explicit blocklist
     for (const domain of BLOCKED_DOMAINS) {
         if (urlLower.includes(domain)) {
@@ -252,7 +252,7 @@ function isBlockedDomain(url: string, courseTitle: string): boolean {
             return true;
         }
     }
-    
+
     return false;
 }
 
@@ -307,16 +307,16 @@ export async function processUnifiedCuration(params: {
     const courseDescription = artifactResult.data?.description || '';
     const courseAudience = artifactResult.data?.audience || '';
     const courseObjectives = artifactResult.data?.objectives || [];
-    
+
     // Extract syllabus info for better context
     const syllabusModules = syllabusResult.data?.modules || [];
     const syllabusKeywords = syllabusResult.data?.keywords || [];
     const learningObjectives = syllabusResult.data?.learning_objectives || courseObjectives;
-    
+
     // Build module summary for context
     const moduleNames = syllabusModules.slice(0, 5).map((m: any) => m.title || m.name).filter(Boolean);
     const keywordsStr = Array.isArray(syllabusKeywords) ? syllabusKeywords.slice(0, 10).join(', ') : '';
-    
+
     console.log(`[Lesson Curation] Course: "${courseTitle}"`);
     console.log(`[Lesson Curation] Modules: ${moduleNames.join(', ') || 'N/A'}`);
     console.log(`[Lesson Curation] Keywords: ${keywordsStr || 'N/A'}`);
@@ -343,10 +343,18 @@ ${Array.isArray(learningObjectives) && learningObjectives.length > 0 ? `LEARNING
     const lessonsToProcess: LessonToProcess[] = [];
 
     if (Array.isArray(lessonPlans)) {
-        lessonPlans.forEach((lesson: any) => {
+        lessonPlans.forEach((lesson: any, index: number) => {
+            // Ensure unique lesson_id - use index as fallback suffix
+            // Also catch 'undefined' string literal which can happen from bad JSON parsing
+            const baseId = lesson.lesson_id || lesson.id;
+            const isValidId = baseId && baseId !== 'undefined' && baseId !== 'null' && baseId.trim() !== '';
+            const uniqueId = isValidId ? baseId : `lesson-${index + 1}`;
+
+            console.log(`[Lesson Curation] Lesson ${index}: baseId="${baseId}" -> uniqueId="${uniqueId}"`);
+
             lessonsToProcess.push({
-                lesson_id: lesson.lesson_id || lesson.id,
-                lesson_title: lesson.lesson_title || lesson.title,
+                lesson_id: uniqueId,
+                lesson_title: lesson.lesson_title || lesson.title || `Lección ${index + 1}`,
                 lesson_objective: lesson.objective || lesson.summary || lesson.description || '',
                 module_title: lesson.module_title || '',
                 component_count: lesson.components?.length || 0
@@ -355,6 +363,9 @@ ${Array.isArray(learningObjectives) && learningObjectives.length > 0 ? `LEARNING
     }
 
     console.log(`[Lesson Curation] Found ${lessonsToProcess.length} lessons to process.`);
+    // DEBUG: Log all lesson IDs being processed
+    console.log(`[Lesson Curation] Lesson IDs: ${lessonsToProcess.map(l => l.lesson_id).join(', ')}`);
+    console.log(`[Lesson Curation] Lesson Titles: ${lessonsToProcess.map(l => l.lesson_title).slice(0, 5).join(' | ')}...`);
 
     // 3. Process Lessons in Batches
     const curatedResults: CurationRowInsert[] = [];
@@ -365,9 +376,9 @@ ${Array.isArray(learningObjectives) && learningObjectives.length > 0 ? `LEARNING
 
     while (remainingLessons.length > 0 && attempt <= maxRetries) {
         console.log(`[Lesson Curation] Pass ${attempt + 1}/${maxRetries + 1}. Remaining lessons: ${remainingLessons.length}`);
-        
+
         const failedInThisPass: LessonToProcess[] = [];
-        
+
         for (let i = 0; i < remainingLessons.length; i += LESSONS_PER_BATCH) {
             const batch = remainingLessons.slice(i, i + LESSONS_PER_BATCH);
             const batchNum = Math.floor(i / LESSONS_PER_BATCH) + 1;
@@ -395,11 +406,11 @@ ${fullCourseContext}
 LESSONS TO RESEARCH
 ═══════════════════════════════════════════════════════════════
 ${JSON.stringify(batch.map(l => ({
-    lesson_id: l.lesson_id,
-    title: l.lesson_title,
-    objective: l.lesson_objective,
-    module: l.module_title
-})), null, 2)}
+                lesson_id: l.lesson_id,
+                title: l.lesson_title,
+                objective: l.lesson_objective,
+                module: l.module_title
+            })), null, 2)}
 
 TASK: Find 1-2 HIGH-QUALITY sources for EACH lesson above.
 
@@ -412,7 +423,7 @@ SEARCH STRATEGY:
 
             try {
                 console.log(`[Lesson Curation] Calling ${activeModel}...`);
-                
+
                 const response = await client.models.generateContent({
                     model: activeModel,
                     contents: [{ role: 'user', parts: [{ text: batchPrompt }] }],
@@ -437,12 +448,12 @@ SEARCH STRATEGY:
                             if (finalUri.includes('grounding-api-redirect')) {
                                 finalUri = await resolveRedirectUrl(finalUri);
                             }
-                            
+
                             // FILTER: Skip blocked/irrelevant domains
                             if (isBlockedDomain(finalUri, courseTitle)) {
                                 continue; // Skip this source
                             }
-                            
+
                             groundingUrls.push({
                                 uri: finalUri,
                                 title: chunk.web.title || 'Source from Google Search'
@@ -456,29 +467,31 @@ SEARCH STRATEGY:
                 const responseText = response.candidates?.[0]?.content?.parts?.[0]?.text;
                 if (!responseText) {
                     console.warn(`[Lesson Curation] Empty response. Using grounding URLs as fallback.`);
-                    
-                    // Fallback: assign grounding URLs to lessons
+
+                    // Fallback: assign grounding URLs to lessons (limit to SOURCES_PER_LESSON)
                     if (groundingUrls.length > 0) {
                         for (let j = 0; j < batch.length; j++) {
                             const lesson = batch[j];
-                            const sourceIdx = j % groundingUrls.length;
-                            const source = groundingUrls[sourceIdx];
-                            
-                            curatedResults.push({
-                                curation_id: curationId,
-                                lesson_id: lesson.lesson_id,
-                                lesson_title: lesson.lesson_title,
-                                component: 'LESSON_SOURCE',
-                                is_critical: true,
-                                source_ref: source.uri,
-                                source_title: source.title,
-                                source_rationale: 'Fuente de Google Search (respuesta vacía del modelo)',
-                                url_status: 'OK',
-                                apta: true,
-                                cobertura_completa: true,
-                                auto_evaluated: false,
-                                auto_reason: `Grounding fallback (${activeModel})`
-                            });
+                            // Only add up to SOURCES_PER_LESSON per lesson
+                            const sourcesToAdd = Math.min(SOURCES_PER_LESSON, groundingUrls.length);
+                            for (let s = 0; s < sourcesToAdd; s++) {
+                                const source = groundingUrls[s];
+                                curatedResults.push({
+                                    curation_id: curationId,
+                                    lesson_id: lesson.lesson_id,
+                                    lesson_title: lesson.lesson_title,
+                                    component: 'LESSON_SOURCE',
+                                    is_critical: true,
+                                    source_ref: source.uri,
+                                    source_title: source.title,
+                                    source_rationale: 'Fuente de Google Search (respuesta vacía del modelo)',
+                                    url_status: 'OK',
+                                    apta: true,
+                                    cobertura_completa: true,
+                                    auto_evaluated: false,
+                                    auto_reason: `Grounding fallback (${activeModel})`
+                                });
+                            }
                         }
                         continue;
                     } else {
@@ -507,22 +520,26 @@ SEARCH STRATEGY:
                     if (groundingUrls.length > 0) {
                         for (let j = 0; j < batch.length; j++) {
                             const lesson = batch[j];
-                            const source = groundingUrls[j % groundingUrls.length];
-                            curatedResults.push({
-                                curation_id: curationId,
-                                lesson_id: lesson.lesson_id,
-                                lesson_title: lesson.lesson_title,
-                                component: 'LESSON_SOURCE',
-                                is_critical: true,
-                                source_ref: source.uri,
-                                source_title: source.title,
-                                source_rationale: 'Fuente de Google Search (error de parseo)',
-                                url_status: 'OK',
-                                apta: true,
-                                cobertura_completa: true,
-                                auto_evaluated: false,
-                                auto_reason: `Grounding fallback (${activeModel})`
-                            });
+                            // Only add up to SOURCES_PER_LESSON per lesson
+                            const sourcesToAdd = Math.min(SOURCES_PER_LESSON, groundingUrls.length);
+                            for (let s = 0; s < sourcesToAdd; s++) {
+                                const source = groundingUrls[s];
+                                curatedResults.push({
+                                    curation_id: curationId,
+                                    lesson_id: lesson.lesson_id,
+                                    lesson_title: lesson.lesson_title,
+                                    component: 'LESSON_SOURCE',
+                                    is_critical: true,
+                                    source_ref: source.uri,
+                                    source_title: source.title,
+                                    source_rationale: 'Fuente de Google Search (error de parseo)',
+                                    url_status: 'OK',
+                                    apta: true,
+                                    cobertura_completa: true,
+                                    auto_evaluated: false,
+                                    auto_reason: `Grounding fallback (${activeModel})`
+                                });
+                            }
                         }
                         continue;
                     }
@@ -531,16 +548,33 @@ SEARCH STRATEGY:
                 }
 
                 // Process each lesson result
-                for (const lesson of batch) {
-                    const lessonResult = parsed.lessons?.find(l => 
-                        l.lesson_id === lesson.lesson_id || 
+                // DEBUG: Log parsed lesson IDs vs expected
+                const parsedLessonIds = parsed.lessons?.map(l => l.lesson_id) || [];
+                console.log(`[Lesson Curation] Model returned lessons: ${parsedLessonIds.join(', ')}`);
+                console.log(`[Lesson Curation] Expected lessons: ${batch.map(l => l.lesson_id).join(', ')}`);
+
+                // FIXED: Use position-based assignment if ID matching fails
+                for (let lessonIdx = 0; lessonIdx < batch.length; lessonIdx++) {
+                    const lesson = batch[lessonIdx];
+
+                    // Try to find by ID first, then fallback to position
+                    let lessonResult = parsed.lessons?.find(l =>
+                        l.lesson_id === lesson.lesson_id ||
                         l.lesson_id?.toLowerCase() === lesson.lesson_id?.toLowerCase()
                     );
 
+                    // If no ID match, try to match by position in array
+                    if (!lessonResult && parsed.lessons && parsed.lessons[lessonIdx]) {
+                        console.log(`[Lesson Curation] ID mismatch for ${lesson.lesson_id}, using position ${lessonIdx}`);
+                        lessonResult = parsed.lessons[lessonIdx];
+                    }
+
                     if (!lessonResult?.sources || lessonResult.sources.length === 0) {
                         console.warn(`[Lesson Curation] No sources for ${lesson.lesson_id}. Using grounding.`);
+                        // Use a different grounding URL for each lesson to avoid duplicates
                         if (groundingUrls.length > 0) {
-                            const source = groundingUrls[0];
+                            const sourceIdx = lessonIdx % groundingUrls.length;
+                            const source = groundingUrls[sourceIdx];
                             curatedResults.push({
                                 curation_id: curationId,
                                 lesson_id: lesson.lesson_id,
@@ -596,7 +630,7 @@ SEARCH STRATEGY:
                             console.log(`[Lesson Curation] ✓ ${lesson.lesson_id}: ${source.title}`);
                         } else {
                             console.log(`[Lesson Curation] ✗ ${lesson.lesson_id}: ${source.url} - ${validation.reason}`);
-                            
+
                             // Try grounding URL as fallback
                             if (groundingUrls.length > 0 && validSourceCount === 0) {
                                 const groundingSource = groundingUrls[0];
@@ -627,10 +661,10 @@ SEARCH STRATEGY:
 
             } catch (err: any) {
                 console.error(`[Lesson Curation] Batch Error (${activeModel}):`, err.message);
-                
+
                 if (attempt < maxRetries) {
                     failedInThisPass.push(...batch);
-                    
+
                     if (err.message.includes('503') || err.message.includes('overloaded')) {
                         console.warn(`[Lesson Curation] Model overloaded. Switching to: ${fallbackModel}`);
                         activeModel = fallbackModel;
