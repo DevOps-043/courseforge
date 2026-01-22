@@ -175,7 +175,8 @@ export function SourcesCurationGenerationContainer({ artifactId }: SourcesCurati
      
      if (rows.length > 0) {
          // Adjusted divisor to 80 to prevent premature 98% on large courses
-         const calculated = Math.min(Math.round((rows.length / 80) * 100), 95);
+         // Adjusted divisor to 25 considering typical course size
+          const calculated = Math.min(Math.round((rows.length / 25) * 100), 95);
          setProgress(prev => Math.max(prev, calculated)); 
      }
   }, [rows.length, isGenerating]);
@@ -322,7 +323,7 @@ export function SourcesCurationGenerationContainer({ artifactId }: SourcesCurati
                           </h3>
                           <div className="flex flex-col gap-2">
                              <p className="text-[#94A3B8] text-base leading-relaxed max-w-sm mx-auto font-light">
-                                Navegando la web en tiempo real, validando accesibilidad y curando el mejor contenido para tu curso.
+                                Investigando fuentes de alta calidad para cada lección del curso.
                              </p>
                              {rows.length > 0 && (
                                 <span className="text-xs font-mono text-[#00D4B3] bg-[#00D4B3]/10 px-2 py-1 rounded-md mx-auto border border-[#00D4B3]/20">
@@ -388,7 +389,7 @@ export function SourcesCurationGenerationContainer({ artifactId }: SourcesCurati
                         Paso 4: Curaduría de Fuentes (Fase 2)
                     </h2>
                     <p className="text-[#6C757D] text-base ml-12">
-                        Fuentes generadas y validadas. Revise los ítems críticos.
+                        Fuentes de calidad encontradas para cada lección.
                     </p>
                  </div>
                  <div className="flex items-center gap-2">
@@ -526,7 +527,7 @@ export function SourcesCurationGenerationContainer({ artifactId }: SourcesCurati
                 Paso 4: Curaduría de Fuentes (Fase 2)
             </h2>
             <p className="text-[#94A3B8] text-base leading-relaxed max-w-2xl ml-12">
-                Genera y evalúa fuentes para cada componente del plan instruccional. Incluye validación automática de disponibilidad.
+                Genera fuentes de alta calidad para cada lección. Búsqueda profunda con 1-2 fuentes verificadas por lección.
             </p>
       </div>
 

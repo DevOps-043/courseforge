@@ -98,66 +98,88 @@ apps/web/src/domains/curation/
 
 ## 4. Lógica de Negocio y Backend (Automated Pipeline)
 
-El proceso de curaduría es un **Background Job** complejo que debe manejar fallos y alucinaciones.
+El proceso de curaduría se divide en 3 fases secuenciales gestionadas por background jobs (`curation-background.ts` y `validate-curation-background.ts`).
 
-### 4.1. Fuentes de Prompts
+### 4.1. Fase 1 y 2: Búsqueda y Generación (Search & Generation)
 
-El sistema utilizará una combinación de prompts almacenados y dinámicos:
+_Implementado en `curation-background.ts`_
 
-1.  **System Prompt (Instrucción Base):**
-    - Se obtendrá de la tabla `system_prompts` donde `code = 'CURATION_PLAN'`.
-    - _Nota:_ Este prompt define la personalidad y las reglas generales de curaduría.
+1.  **Objetivo**: Encontrar al menos una fuente candidata para cada componente del plan instruccional.
+2.  **Estrategia de Búsqueda**:
+    - Se utiliza `googleSearch` tool nativa de Gemini.
+    - Se verifica **estrictamente** que cada URL provenga de `groundingChunks` (anti-alucinación).
+    - **Resolución de Redirects**: Se resuelven las URLs de `vertexaisearch` y `grounding-api-redirect` para obtener el enlace final real.
+3.  **Fase 2 (Recuperación):**
+    - Si la Fase 1 falla para ciertos componentes, se ejecuta una ronda de recuperación.
+    - Se ajusta la temperatura (`-0.4`) para forzar resultados más deterministas.
+    - Se intenta reasignar URLs de "grounding" excedentes a componentes huérfanos si son relevantes.
 
-2.  **User Prompt (Contexto y Búsqueda):**
-    - Se construirá dinámicamente incluyendo:
-      - Datos del curso (Nombre, Idea Central).
-      - Lista de Componentes (Lecciones).
-      - **Instrucciones Estrictas de Búsqueda (Google Search):** (Copiadas del sistema anterior)
+### 4.2. Fase 3: Validación y Calificación Avanzada (Deep Validation)
 
-        ```text
-        ⛔⛔⛔ REGLA CRÍTICA: USA SOLO GOOGLE SEARCH ⛔⛔⛔
-        Tienes la herramienta Google Search activada y DEBES USARLA para el 100% de las fuentes.
-        Cualquier URL que NO provenga de un resultado de Google Search será RECHAZADA automáticamente.
+_Implementado en `validate-curation-background.ts`_
 
-        PARA CADA COMPONENTE:
-        1. EJECUTA una búsqueda en Google con palabras clave específicas.
-        2. ESPERA y LEE los resultados reales.
-        3. EXTRAE URLs ÚNICAMENTE de los resultados (groundingChunks).
-        ```
+Esta es la fase crítica de control de calidad. Cada fuente encontrada se somete a un juicio estricto tanto técnico como semántico.
 
-### 4.2. Estrategia de Modelos IA (Fallback)
+#### A. Validación Técnica (Pre-LLM)
 
-El sistema implementará una estrategia de doble modelo para garantizar calidad y uso de herramientas:
+Antes de gastar tokens en IA, se ejecutan chequeos de bajo nivel:
 
-1.  **Intento 1: Modelo Primario (`gemini-1.5-pro`)**
-    - _Configuración:_ `temperature: 0.7`.
-    - _Objetivo:_ Máximo razonamiento para seleccionar la mejor fuente pedagógica.
+1.  **Resolución de Redirects**: Se asegura llegar a la URL final (status 200).
+2.  **Detección de Bloqueos**: Se rechazan dominios no educativos (Youtube, Facebook, Reddit, Medium Profiles).
+3.  **Detección de "Soft 404"**:
+    - Se analizan patrones en el `<title>` (ej: "Page not found", "Error 404").
+    - Se analizan patrones en el HTML body (ej: H1 con "No encontrado").
+4.  **Verificación de Homepages**:
+    - Regex para detectar si es una landing page genérica (`/`, `/home`, `/index.html`).
+    - Análisis de contenido genérico (e.g., "Welcome to our site", "Contact us").
+5.  **Contenido Mínimo**:
+    - Se rechaza si tiene < 150 palabras.
+    - Se alerta si tiene < 300 palabras (posible contenido pobre).
 
-2.  **Intento 2: Modelo Fallback (`gemini-2.0-flash-exp`)**
-    - _Trigger:_ Se activa si el modelo primario no retorna `groundingChunks` (no usó la herramienta de búsqueda).
-    - _Prompt de Reintento:_ Se inyecta una instrucción de refuerzo:
-      ```text
-      ⚠️ REINTENTO DE BÚSQUEDA - IMPORTANCIA CRÍTICA ⚠️
-      EL INTENTO ANTERIOR FALLÓ PORQUE NO SE ACTIVÓ LA BÚSQUEDA WEB.
-      TU TAREA PRINCIPAL ES:
-      1. USAR la herramienta de búsqueda de Google.
-      2. CITAR las URLs encontradas.
-      ```
-    - _Ventaja:_ Los modelos Flash suelen tener mayor adherencia a herramientas (Tool Use).
+#### B. Validación Semántica (Scoring System)
 
-### 4.3. Flujo de Ejecución (`startCurationAction`)
+Si pasa la validación técnica, se envía el contenido (hasta 8000 chars) a un modelo de razonamiento (`gemini-2.5-pro` o configurado) con un prompt **ULTRA-ESTRICTO**.
 
-1.  **Validación Inicial:** Verificar que no existan llamadas duplicadas activas para este artefacto.
-2.  **Ejecución IA:**
-    - Llamada a Gemini con `googleSearch` tool enabled.
-    - Verificación de `groundingMetadata`.
-3.  **Procesamiento de Resultados:**
-    - Parseo del JSON estricto retornado.
-    - **Validación de Grounding:** Verificar que cada URL sugerida coincida con una URL real devuelta por Google Search (anti-alicinación).
-4.  **Validación HTTP (Ping):**
-    - Verificación de que la URL existe (Status 200).
-5.  **Persistencia:**
-    - Guardar en `curation_rows` con `url_status: 'OK'` o `'BROKEN'`.
+**Sistema de Calificación (Escala 1-10):**
+
+1.  **Relevance**: ¿Qué tan relacionado está con el tema específico de la lección?
+2.  **Depth**: ¿Profundidad del contenido (no superficial)?
+3.  **Quality**: Estructura, claridad y autoridad pedagógica.
+4.  **Applicability**: Utilidad práctica para el estudiante.
+
+**Compuertas Booleanas (Gates) - RECHAZO INMEDIATO:**
+
+- `is_homepage_or_index`: ¿Es un índice o landing page? -> **RECHAZAR**
+- `is_specific_to_topic`: ¿El tema central es el requerido? -> **RECHAZAR SI NO**
+- `is_educational`: ¿Es marketing disfrazado? -> **RECHAZAR SI NO**
+- `has_depth`: ¿Tiene al menos 3 párrafos sustanciales? -> **RECHAZAR SI NO**
+
+#### C. Criterio de Aprobación
+
+Para que una URL sea marcada como `apta: true`:
+
+- Promedio de Score ≥ **7.0**
+- Ningún sub-score ≤ **4.0**
+- TODAS las compuertas booleanas (Gates) deben ser positivas (Educational, Specific, Deep).
+
+#### D. Flujo de Recuperación (Retry Loop)
+
+El sistema no se rinde al primer rechazo. Si una URL es rechazada en Fase 3:
+
+1.  **Trigger**: El validador detecta `apta: false` o fallo técnico.
+2.  **Búsqueda Alternativa**: Inmediatamente invoca a `searchAlternativeUrl` (usando `SEARCH_MODEL`).
+3.  **Re-evaluación**: La nueva URL pasa por todo el pipeline de validación nuevamente.
+4.  **Límite**: Este ciclo se repite hasta **4 veces** (MAX_ATTEMPTS) por componente.
+
+### 4.3. Estrategia de Modelos (Model Routing)
+
+| Tarea                    | Modelo Principal   | Fallback           | Config                         |
+| :----------------------- | :----------------- | :----------------- | :----------------------------- |
+| **Búsqueda** (Fase 1/2)  | `gemini-2.0-flash` | `gemini-2.0-flash` | Temp dinámica, Tools activadas |
+| **Validación** (Fase 3)  | `gemini-2.5-pro`   | `gemini-2.0-flash` | Temp 0.1 (Determinista)        |
+| **Búsqueda Alternativa** | `gemini-2.5-pro`   | -                  | Alta capacidad de razonamiento |
+
+_Nota: Los modelos son configurables desde la tabla `curation_settings`._
 
 ---
 
