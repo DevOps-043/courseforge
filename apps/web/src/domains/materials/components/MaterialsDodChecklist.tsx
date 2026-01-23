@@ -34,22 +34,22 @@ export function MaterialsDodChecklist({ dod, checks, className = '' }: Materials
     const getStatusIcon = (status: 'PASS' | 'FAIL' | 'PENDING') => {
         switch (status) {
             case 'PASS':
-                return <CheckCircle className="h-5 w-5 text-green-500" />;
+                return <CheckCircle className="h-5 w-5 text-[#00D4B3]" />; // Aqua
             case 'FAIL':
                 return <XCircle className="h-5 w-5 text-red-500" />;
             case 'PENDING':
-                return <Clock className="h-5 w-5 text-gray-400" />;
+                return <Clock className="h-5 w-5 text-gray-500" />;
         }
     };
 
     const getStatusBg = (status: 'PASS' | 'FAIL' | 'PENDING') => {
         switch (status) {
             case 'PASS':
-                return 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800';
+                return 'bg-[#00D4B3]/5 border-[#00D4B3]/20';
             case 'FAIL':
-                return 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800';
+                return 'bg-red-500/5 border-red-500/20';
             case 'PENDING':
-                return 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10';
+                return 'bg-white/5 border-white/5';
         }
     };
 
@@ -57,26 +57,26 @@ export function MaterialsDodChecklist({ dod, checks, className = '' }: Materials
     const hasFails = controls.some((c) => c.status === 'FAIL');
 
     return (
-        <div className={`space-y-4 ${className}`}>
+        <div className={`space-y-6 ${className}`}>
             {/* Header */}
             <div className="flex items-center justify-between">
-                <h4 className="font-semibold text-gray-900 dark:text-white">Definition of Done (DoD)</h4>
+                <h4 className="font-semibold text-lg text-gray-900 dark:text-white">Definition of Done (DoD)</h4>
                 {allPassed && (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 rounded-full">
-                        <CheckCircle className="h-3 w-3" />
-                        Todos los controles pasaron
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold bg-[#00D4B3]/10 text-[#00D4B3] border border-[#00D4B3]/20 rounded-full">
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        Aprobado por IA
                     </span>
                 )}
                 {hasFails && (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 rounded-full">
-                        <AlertTriangle className="h-3 w-3" />
-                        Requiere correcciones
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/20 rounded-full">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        Correcciones requeridas
                     </span>
                 )}
             </div>
 
             {/* Controls List */}
-            <div className="space-y-2">
+            <div className="space-y-3">
                 {controls.map((control) => (
                     <div
                         key={control.code}
@@ -95,8 +95,10 @@ export function MaterialsDodChecklist({ dod, checks, className = '' }: Materials
 
             {/* Errors List */}
             {dod.errors && dod.errors.length > 0 && (
-                <div className="mt-4">
-                    <h5 className="text-sm font-medium text-red-700 dark:text-red-400 mb-2">Errores detectados:</h5>
+                <div className="mt-6 p-4 bg-red-500/5 border border-red-500/10 rounded-xl">
+                    <h5 className="text-sm font-semibold text-red-400 mb-3 flex items-center gap-2">
+                         <XCircle className="w-4 h-4" /> Errores detectados
+                    </h5>
                     <ul className="space-y-1">
                         {dod.errors.map((error, index) => (
                             <li key={index} className="flex items-start gap-2 text-sm text-red-600 dark:text-red-400">

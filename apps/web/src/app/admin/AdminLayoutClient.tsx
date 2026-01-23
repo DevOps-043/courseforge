@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { LayoutDashboard, Users, FileCode, Settings, LogOut, Sun, Moon, User, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTheme } from 'next-themes';
 
 // Separate NavItem component for cleaner code
 const NavItem = ({ href, icon, label, isActive, isCollapsed }: any) => {
@@ -64,7 +65,14 @@ export default function AdminLayoutClient({
   const [isPinned, setIsPinned] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(true); // Mock state for now
+  
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const pathname = usePathname();
   
   // Sidebar state logic
@@ -83,14 +91,26 @@ export default function AdminLayoutClient({
     return pathname.startsWith(href);
   };
 
+  if (!mounted) {
+      return null; // or a loading skeleton
+  }
+
+  const isDark = theme === 'dark';
+
   return (
-    <div className="min-h-screen bg-[#0F1419] flex text-slate-200 overflow-x-hidden selection:bg-[#00D4B3]/30">
+    <div className="min-h-screen bg-gray-50 dark:bg-[#0F1419] flex text-slate-800 dark:text-slate-200 overflow-x-hidden selection:bg-[#00D4B3]/30">
       
       {/* Sidebar Area */}
+      {/* Note: Keeping Sidebar always dark for now or update if needed. Let's keep sidebar dark for contrast or update it?
+          The user previously saw "blanco" errors, meaning we want consistency. 
+          If I leave sidebar dark, I need to make sure text is readable.
+          The current Sidebar implementation has hardcoded 'text-white' etc.
+          Let's keep Sidebar distinctively dark for branding, but ensure it works well.
+      */}
       <motion.aside
         initial={false}
         animate={{ 
-            width: isOpen ? 280 : 20, // 20px strip when collapsed
+            width: isOpen ? 280 : 20, 
         }}
         transition={{ 
             type: 'spring', 
@@ -100,18 +120,17 @@ export default function AdminLayoutClient({
         onMouseEnter={() => !isPinned && setIsHovered(true)}
         onMouseLeave={() => !isPinned && setIsHovered(false)}
         onClick={(e) => {
-            // Prevent sidebar expansion click from triggering when clicking menu items
             e.stopPropagation(); 
             if(!isPinned) setIsPinned(true);
         }}
         onDoubleClick={() => setIsPinned(false)}
-        className={`fixed left-0 top-0 h-full z-40 border-r border-white/5 backdrop-blur-3xl flex flex-col
+        className={`fixed left-0 top-0 h-full z-40 border-r border-[#0A2540]/10 dark:border-white/5 backdrop-blur-3xl flex flex-col
             ${!isPinned ? 'cursor-pointer hover:shadow-[0_0_40px_rgba(0,0,0,0.5)]' : ''}
-            ${isOpen ? 'bg-[#151A21]/80' : 'bg-transparent hover:bg-[#151A21]/90'}
+            bg-[#0A2540] dark:bg-[#151A21]/80
         `}
       >
         {/* Glass Background Layer */}
-        <div className="absolute inset-0 bg-gradient-to-b from-white/[0.02] to-transparent pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-b from-white/[0.05] to-transparent pointer-events-none" />
 
         {/* Branding & Logo */}
         <div className={`h-20 flex items-center ${isOpen ? 'px-6' : 'justify-center px-0'} overflow-hidden transition-all duration-300 border-b border-white/5 relative`}>
@@ -192,11 +211,11 @@ export default function AdminLayoutClient({
                         </Link>
 
                         <button 
-                            onClick={(e) => { e.stopPropagation(); setIsDarkMode(!isDarkMode); }}
+                            onClick={(e) => { e.stopPropagation(); setTheme(isDark ? 'light' : 'dark'); }}
                             className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white rounded-lg transition-colors text-left"
                         >
-                            {isDarkMode ? <Sun size={16} className="text-yellow-400" /> : <Moon size={16} className="text-blue-400" />}
-                            {isDarkMode ? 'Modo Claro' : 'Modo Oscuro'}
+                            {isDark ? <Sun size={16} className="text-yellow-400" /> : <Moon size={16} className="text-blue-400" />}
+                            {isDark ? 'Modo Claro' : 'Modo Oscuro'}
                         </button>
 
                         <div className="h-px bg-white/5 my-1" />
