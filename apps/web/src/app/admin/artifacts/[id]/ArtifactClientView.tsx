@@ -13,6 +13,7 @@ import { SyllabusGenerationContainer } from '@/domains/syllabus/components/Sylla
 import { InstructionalPlanGenerationContainer } from '@/domains/plan/components/InstructionalPlanGenerationContainer';
 import { SourcesCurationGenerationContainer } from '@/domains/curation/components/SourcesCurationGenerationContainer';
 import { MaterialsForm } from '@/domains/materials/components/MaterialsForm';
+import { VisualProductionContainer } from '@/domains/materials/components/VisualProductionContainer';
 
 export default function ArtifactClientView({ artifact }: { artifact: any }) {
     const [activeTab, setActiveTab] = useState<'content' | 'validation'>('content');
@@ -221,7 +222,14 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                     done={artifact.materials_state === 'PHASE3_APPROVED'}
                 />
                 <div className="h-0.5 flex-1 mx-4 rounded-full bg-[#2D333B]" />
-                <StepItem step={6} label="Slides" disabled icon={<Target size={16} />} />
+                <StepItem
+                    step={6}
+                    label="Producción"
+                    active={currentStep === 6}
+                    onClick={() => setCurrentStep(6)}
+                    icon={<Target size={16} />}
+                    disabled={artifact.materials_state !== 'PHASE3_APPROVED'}
+                />
             </div>
 
             {/* CONTENT SWITCHER */}
@@ -496,6 +504,10 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
             ) : currentStep === 5 ? (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                     <MaterialsForm artifactId={artifact.id} />
+                </div>
+            ) : currentStep === 6 ? (
+                <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                    <VisualProductionContainer artifactId={artifact.id} />
                 </div>
             ) : null}
         </div>

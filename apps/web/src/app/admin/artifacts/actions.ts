@@ -10,7 +10,7 @@ export async function generateArtifactAction(formData: {
     courseId?: string;
 }) {
     const supabase = await createClient();
-    
+
     // Auth Check & Get Session Token
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return { success: false, error: 'Unauthorized' };
@@ -37,7 +37,7 @@ export async function generateArtifactAction(formData: {
             idea_central: formData.title,
             nombres: [],
             objetivos: [],
-            descripcion: {}, 
+            descripcion: {},
             generation_metadata: {
                 original_input: formData,
                 started_at: new Date().toISOString()
@@ -119,7 +119,7 @@ export async function regenerateArtifactAction(artifactId: string, feedback?: st
 
     // 3. Trigger Background Job
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || 'http://localhost:8888';
-    
+
     // We need to pass the same payload as create, but we reuse originalInput
     const payload = {
         artifactId,
@@ -162,7 +162,7 @@ export async function updateArtifactContentAction(artifactId: string, updates: {
         .eq('id', artifactId);
 
     if (error) return { success: false, error: error.message };
-    
+
     return { success: true };
 }
 
@@ -181,7 +181,7 @@ export async function updateArtifactStatusAction(artifactId: string, status: str
         console.error('Error updating artifact status:', error);
         return { success: false, error: error.message };
     }
-    
+
     return { success: true };
 }
 
@@ -195,7 +195,7 @@ export async function generateInstructionalPlanAction(artifactId: string, custom
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || 'http://localhost:3000';
     // Construct the URL ensuring we don't have double slashes if env var has trailing slash
-    const baseUrl = appUrl.replace(/\/$/, ''); 
+    const baseUrl = appUrl.replace(/\/$/, '');
     const backgroundFunctionUrl = `${baseUrl}/.netlify/functions/instructional-plan-background`;
 
     try {
@@ -237,7 +237,7 @@ export async function validateInstructionalPlanAction(artifactId: string) {
     if (!session) return { success: false, error: 'Unauthorized' };
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || 'http://localhost:3000';
-    const baseUrl = appUrl.replace(/\/$/, ''); 
+    const baseUrl = appUrl.replace(/\/$/, '');
     const backgroundFunctionUrl = `${baseUrl}/.netlify/functions/validate-plan-background`;
 
     try {
@@ -280,7 +280,7 @@ export async function updateInstructionalPlanStatusAction(artifactId: string, st
     if (authError || !user) return { success: false, error: 'Unauthorized' };
 
     const updateData: any = { state: status };
-    
+
     // Construct approvals JSON object to match existing schema
     const approvalData = {
         notes: feedback || '',
@@ -288,7 +288,7 @@ export async function updateInstructionalPlanStatusAction(artifactId: string, st
         reviewed_by: user.email || 'user',
         architect_status: status === 'STEP_APPROVED' ? 'APPROVED' : 'REJECTED'
     };
-    
+
     updateData.approvals = approvalData;
 
     const { error } = await supabase
@@ -300,7 +300,7 @@ export async function updateInstructionalPlanStatusAction(artifactId: string, st
         console.error('Error updating instructional plan status:', error);
         return { success: false, error: error.message };
     }
-    
+
     return { success: true };
 }
 
@@ -312,7 +312,7 @@ export async function updateInstructionalPlanContentAction(artifactId: string, l
 
     const { error } = await supabase
         .from('instructional_plans')
-        .update({ 
+        .update({
             lesson_plans: lessonPlans,
             updated_at: new Date().toISOString()
         })
@@ -322,7 +322,7 @@ export async function updateInstructionalPlanContentAction(artifactId: string, l
         console.error('Error updating instructional plan content:', error);
         return { success: false, error: error.message };
     }
-    
+
     return { success: true };
 }
 
@@ -340,7 +340,7 @@ export async function deleteInstructionalPlanAction(artifactId: string) {
         console.error('Error deleting instructional plan:', error);
         return { success: false, error: error.message };
     }
-    
+
     return { success: true };
 }
 
@@ -374,35 +374,35 @@ export async function startCurationAction(artifactId: string, attemptNumber: num
             .maybeSingle();
 
         if (planError) {
-             console.error('[Actions] DB Error fetching plan:', planError);
-             throw new Error(`Database error fetching plan: ${planError.message}`);
+            console.error('[Actions] DB Error fetching plan:', planError);
+            throw new Error(`Database error fetching plan: ${planError.message}`);
         }
-        
+
         if (!plan) {
-             console.error(`[Actions] Plan not found for artifact: ${artifactId}`);
-             throw new Error('No Instructional Plan found. Please go back to Step 3 and generate/approve the plan first.');
+            console.error(`[Actions] Plan not found for artifact: ${artifactId}`);
+            throw new Error('No Instructional Plan found. Please go back to Step 3 and generate/approve the plan first.');
         }
 
         if (!plan.lesson_plans || (Array.isArray(plan.lesson_plans) && plan.lesson_plans.length === 0)) {
-             console.error(`[Actions] Plan has no lessons: ${artifactId}`);
-             throw new Error('Instructional Plan is empty. Please regenerate the plan in Step 3.');
+            console.error(`[Actions] Plan has no lessons: ${artifactId}`);
+            throw new Error('Instructional Plan is empty. Please regenerate the plan in Step 3.');
         }
 
         // 3. Extract Components from Plan
         // Map lesson_plans JSON to flat list of components
         const components: any[] = [];
         const lessons = (plan.lesson_plans as any[]);
-        
+
         lessons.forEach((l: any) => {
             const lessonId = l.lesson_id || l.id || `L${Math.random().toString(36).substr(2, 5)}`;
             const lessonTitle = l.lesson_title || l.title || 'Untitled Lesson';
-            
+
             if (Array.isArray(l.components)) {
                 l.components.forEach((c: any) => {
                     const compType = typeof c === 'string' ? c : c.type || c.component || 'UNKNOWN';
                     // Check critical flag if exists
                     const isCritical = typeof c === 'object' && c.is_critical ? true : false;
-                    
+
                     components.push({
                         lesson_id: lessonId,
                         lesson_title: lessonTitle,
@@ -429,8 +429,8 @@ export async function startCurationAction(artifactId: string, attemptNumber: num
             // Update existing
             await supabase
                 .from('curation')
-                .update({ 
-                    state: 'PHASE2_GENERATING', 
+                .update({
+                    state: 'PHASE2_GENERATING',
                     attempt_number: attemptNumber,
                     updated_at: new Date().toISOString()
                 })
@@ -446,7 +446,7 @@ export async function startCurationAction(artifactId: string, attemptNumber: num
                 })
                 .select('id')
                 .single();
-            
+
             if (createError) throw new Error(`Failed to create curation record: ${createError.message}`);
             curationId = newCuration.id;
         }
@@ -530,7 +530,7 @@ export async function updateCurationStatusAction(artifactId: string, status: str
     }
 
     const updateData: any = { state: finalStatus };
-    
+
     // Construct qa_decision JSON object (matching curation schema)
     const decisionData = {
         notes: notes || '',
@@ -538,7 +538,7 @@ export async function updateCurationStatusAction(artifactId: string, status: str
         reviewed_by: user.email || 'user',
         decision: decision
     };
-    
+
     // Use qa_decision column instead of approvals
     updateData.qa_decision = decisionData;
 
@@ -551,7 +551,7 @@ export async function updateCurationStatusAction(artifactId: string, status: str
         console.error('Error updating curation status:', error);
         return { success: false, error: error.message };
     }
-    
+
     return { success: true };
 }
 
@@ -569,6 +569,261 @@ export async function deleteCurationAction(artifactId: string) {
         console.error('Error deleting curation:', error);
         return { success: false, error: error.message };
     }
-    
+
     return { success: true };
+}
+
+// ==============================================================================
+// STEP 6: VISUAL PRODUCTION ACTIONS
+// ==============================================================================
+
+export async function generateVideoPromptsAction(componentId: string, storyboard: any[]) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { success: false, error: 'Unauthorized' };
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || 'http://localhost:3000';
+    const baseUrl = appUrl.replace(/\/$/, '');
+    const backgroundFunctionUrl = `${baseUrl}/.netlify/functions/video-prompts-generation`;
+
+    try {
+        // Trigger Background Function - Note: Netlify functions might timeout if we await robust generation
+        // But for prompts (text) it should be fast enough (< 10s)
+        const response = await fetch(backgroundFunctionUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                componentId,
+                storyboard,
+                userToken: session.access_token
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to generate prompts');
+        }
+
+        return { success: true, prompts: data.prompts };
+
+    } catch (error: any) {
+        console.error('Error generating video prompts:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+export async function saveMaterialAssetsAction(componentId: string, assets: any) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    // Fetch existing assets to merge
+    const { data: component } = await supabase
+        .from('material_components')
+        .select('assets')
+        .eq('id', componentId)
+        .single();
+
+    const currentAssets = component?.assets || {};
+    const newAssets = { ...currentAssets, ...assets };
+
+    const { error } = await supabase
+        .from('material_components')
+        .update({ assets: newAssets })
+        .eq('id', componentId);
+
+    if (error) return { success: false, error: error.message };
+
+    return { success: true };
+}
+
+export async function validateMaterialsAction(artifactId: string) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { success: false, error: 'Unauthorized' };
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || 'http://localhost:3000';
+    const baseUrl = appUrl.replace(/\/$/, '');
+    const backgroundFunctionUrl = `${baseUrl}/.netlify/functions/validate-materials-background`;
+
+    try {
+        console.log('[Actions] Triggering Materials Validation...');
+
+        const response = await fetch(backgroundFunctionUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                artifactId,
+                userToken: session.access_token
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Validation failed');
+        }
+
+        return { success: true, ...data };
+
+    } catch (error: any) {
+        console.error('Error validating materials:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+export async function validateLessonAction(lessonId: string) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    try {
+        // Fetch lesson
+        const { data: lesson, error: lessonError } = await supabase
+            .from('material_lessons')
+            .select('*, materials_id')
+            .eq('id', lessonId)
+            .single();
+
+        if (lessonError || !lesson) {
+            return { success: false, error: 'Lesson not found' };
+        }
+
+        // Fetch components
+        const { data: components } = await supabase
+            .from('material_components')
+            .select('*')
+            .eq('material_lesson_id', lessonId);
+
+        // Simple inline validation
+        const expectedTypes = lesson.expected_components || [];
+        const generatedTypes = (components || []).map((c: any) => c.type);
+        const missing = expectedTypes.filter((type: string) => !generatedTypes.includes(type));
+        const errors: string[] = [];
+
+        if (missing.length > 0) {
+            errors.push(`Faltan componentes: ${missing.join(', ')}`);
+        }
+
+        // Quiz validation
+        const quizComponent = (components || []).find((c: any) => c.type === 'QUIZ');
+        if (expectedTypes.includes('QUIZ') && !quizComponent) {
+            errors.push('Se esperaba QUIZ pero no fue generado');
+        }
+
+        const hasErrors = errors.length > 0;
+        const newState = hasErrors ? 'NEEDS_FIX' : 'APPROVABLE';
+
+        const dod = {
+            control3_consistency: missing.length > 0 ? 'FAIL' : 'PASS',
+            control4_sources: 'PASS',
+            control5_quiz: quizComponent ? 'PASS' : (expectedTypes.includes('QUIZ') ? 'FAIL' : 'PASS'),
+            errors,
+        };
+
+        // Update lesson
+        await supabase
+            .from('material_lessons')
+            .update({
+                dod,
+                state: newState,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', lessonId);
+
+        return { success: true, state: newState, dod };
+
+    } catch (error: any) {
+        console.error('Error validating lesson:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+export async function regenerateLessonAction(lessonId: string) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { success: false, error: 'Unauthorized' };
+
+    try {
+        // Fetch lesson
+        const { data: lesson, error: lessonError } = await supabase
+            .from('material_lessons')
+            .select('*, materials_id')
+            .eq('id', lessonId)
+            .single();
+
+        if (lessonError || !lesson) {
+            return { success: false, error: 'Lesson not found' };
+        }
+
+        // Check max iterations
+        if (lesson.iteration_count >= lesson.max_iterations) {
+            return { success: false, error: 'Max iterations reached' };
+        }
+
+        // Update state to GENERATING
+        await supabase
+            .from('material_lessons')
+            .update({
+                state: 'GENERATING',
+                iteration_count: lesson.iteration_count + 1,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', lessonId);
+
+        // Trigger background job
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || 'http://localhost:3000';
+        const baseUrl = appUrl.replace(/\/$/, '');
+
+        await fetch(`${baseUrl}/.netlify/functions/materials-generation-background`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                materialsId: lesson.materials_id,
+                lessonId: lessonId,
+                iterationNumber: lesson.iteration_count + 1,
+            })
+        });
+
+        return { success: true };
+
+    } catch (error: any) {
+        console.error('Error regenerating lesson:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+export async function markLessonForFixAction(lessonId: string) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    try {
+        // Update lesson state to NEEDS_FIX
+        const { error } = await supabase
+            .from('material_lessons')
+            .update({
+                state: 'NEEDS_FIX',
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', lessonId);
+
+        if (error) throw error;
+
+        return { success: true };
+
+    } catch (error: any) {
+        console.error('Error marking lesson for fix:', error);
+        return { success: false, error: error.message };
+    }
 }

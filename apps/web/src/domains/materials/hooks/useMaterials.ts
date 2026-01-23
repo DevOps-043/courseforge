@@ -20,11 +20,13 @@ interface UseMaterialsReturn {
     runFixIteration: (lessonId: string, fixInstructions: string) => Promise<void>;
     submitToQA: () => Promise<void>;
     applyQADecision: (decision: 'APPROVED' | 'REJECTED', notes?: string) => Promise<void>;
+    validateMaterials: () => Promise<void>;
     refresh: () => Promise<void>;
 
     // Helpers
     getLessonComponents: (lessonId: string) => Promise<MaterialComponent[]>;
     isGenerating: boolean;
+    isValidating: boolean;
     isReadyForQA: boolean;
     isApproved: boolean;
 }
@@ -140,6 +142,33 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
         }
     }, [materials?.id]);
 
+    const validateMaterials = useCallback(async () => {
+        if (!materials?.artifact_id) {
+            setError('No hay artefacto para validar');
+            return;
+        }
+
+        try {
+            setError(null);
+            // Call the validation action
+            const response = await fetch('/.netlify/functions/validate-materials-background', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ artifactId: materials.artifact_id }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Error en validación');
+            }
+
+            // Refresh to get updated states
+            await loadMaterials();
+        } catch (err) {
+            console.error('Error validating materials:', err);
+            setError('Error al validar materiales');
+        }
+    }, [materials?.artifact_id, loadMaterials]);
+
     const getLessonComponents = useCallback(async (lessonId: string): Promise<MaterialComponent[]> => {
         return materialsService.getLessonComponents(lessonId);
     }, []);
@@ -153,6 +182,8 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
 
     const isApproved = materials?.state === 'PHASE3_APPROVED';
 
+    const isValidating = materials?.state === 'PHASE3_VALIDATING';
+
     return {
         materials,
         loading,
@@ -161,9 +192,11 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
         runFixIteration,
         submitToQA,
         applyQADecision,
+        validateMaterials,
         refresh: loadMaterials,
         getLessonComponents,
-        isGenerating,
+        isGenerating: isGenerating || false,
+        isValidating,
         isReadyForQA,
         isApproved,
     };

@@ -129,9 +129,40 @@ export const handler: Handler = async (event) => {
                 throw new Error(`Lesson not found: ${lessonError?.message}`);
             }
 
+            console.log(`[Materials Background] Single lesson mode - Looking for lesson_id: ${lessonRecord.lesson_id}, lesson_title: ${lessonRecord.lesson_title}`);
+            console.log(`[Materials Background] Available lesson_plans count: ${planRecord.lesson_plans?.length}`);
+
+            // Try to find by lesson_id first, then by title
             lessonsToProcess = planRecord.lesson_plans.filter(
-                (lp: any) => lp.lesson_id === lessonRecord.lesson_id
+                (lp: any) => lp.lesson_id === lessonRecord.lesson_id || lp.lesson_title === lessonRecord.lesson_title
             );
+
+            // If no match found, log available lesson_ids for debugging
+            if (lessonsToProcess.length === 0) {
+                const availableIds = planRecord.lesson_plans.map((lp: any) => lp.lesson_id).slice(0, 10);
+                console.log(`[Materials Background] WARNING: No matching lesson found. Available lesson_ids (first 10): ${availableIds.join(', ')}`);
+
+                // Fallback: create a minimal lesson plan from the lessonRecord data
+                console.log(`[Materials Background] Using fallback: recreating lesson plan from material_lessons record`);
+                lessonsToProcess = [{
+                    lesson_id: lessonRecord.lesson_id,
+                    lesson_title: lessonRecord.lesson_title,
+                    module_id: lessonRecord.module_id,
+                    module_title: lessonRecord.module_title,
+                    oa_text: lessonRecord.oa_text,
+                    components: lessonRecord.expected_components.map((c: string) => ({ type: c, summary: '' })),
+                    quiz_spec: lessonRecord.quiz_spec,
+                    requires_demo_guide: lessonRecord.requires_demo_guide || false,
+                    // IMPORTANT: Store the existing DB record ID for regeneration
+                    _existingRecordId: lessonRecord.id
+                }];
+            } else {
+                // Even when found, attach the existing record ID for regeneration
+                lessonsToProcess = lessonsToProcess.map((lp: any) => ({
+                    ...lp,
+                    _existingRecordId: lessonRecord.id
+                }));
+            }
         }
 
         console.log(`[Materials Background] Processing ${lessonsToProcess.length} lessons`);
@@ -187,8 +218,25 @@ export const handler: Handler = async (event) => {
                 globalLessonIndex++; // Increment for each lesson
                 console.log(`[Materials Background] Processing lesson #${globalLessonIndex}: ${lessonPlan.lesson_title}`);
 
-                // Find or create material_lesson record - pass globalLessonIndex for unique ID
-                let materialLesson = await findOrCreateMaterialLesson(supabase, materialsId, lessonPlan, globalLessonIndex);
+                // For single-lesson regeneration, use the existing record directly
+                let materialLesson;
+                if (lessonPlan._existingRecordId) {
+                    console.log(`[Materials Background] Using existing lesson record: ${lessonPlan._existingRecordId}`);
+                    const { data: existingLesson } = await supabase
+                        .from('material_lessons')
+                        .select('*')
+                        .eq('id', lessonPlan._existingRecordId)
+                        .single();
+                    materialLesson = existingLesson;
+                } else {
+                    // Find or create material_lesson record - pass globalLessonIndex for unique ID
+                    materialLesson = await findOrCreateMaterialLesson(supabase, materialsId, lessonPlan, globalLessonIndex);
+                }
+
+                if (!materialLesson) {
+                    console.error(`[Materials Background] Could not find/create lesson record for: ${lessonPlan.lesson_title}`);
+                    continue;
+                }
 
                 // Update state to GENERATING
                 await supabase

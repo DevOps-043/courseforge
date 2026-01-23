@@ -26,14 +26,17 @@ export function MaterialsForm({ artifactId, className = '' }: MaterialsFormProps
         runFixIteration,
         submitToQA,
         applyQADecision,
+        validateMaterials,
         refresh,
         isGenerating,
+        isValidating,
         isReadyForQA,
         isApproved,
     } = useMaterials(artifactId);
 
     const { label: stateLabel, color: stateColor } = useMaterialStateStyles(materials?.state);
     const [qaNote, setQaNote] = useState('');
+    const [isValidatingAll, setIsValidatingAll] = useState(false);
 
     // Group lessons by module
     const lessonsByModule = materials?.lessons.reduce((acc, lesson) => {
@@ -51,6 +54,36 @@ export function MaterialsForm({ artifactId, className = '' }: MaterialsFormProps
 
     const handleIterationStart = async (lessonId: string, instructions: string) => {
         await runFixIteration(lessonId, instructions);
+    };
+
+    // Real-time updates are handled by Supabase subscriptions in useMaterials hook
+
+    const handleValidateLesson = async (lessonId: string) => {
+        // Call the validate endpoint
+        const response = await fetch('/.netlify/functions/validate-materials-background', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lessonId }),
+        });
+        if (response.ok) {
+            refresh();
+        }
+    };
+
+    const handleRegenerateLesson = async (lessonId: string) => {
+        await runFixIteration(lessonId, 'Regenerar completamente esta lección siguiendo el plan original.');
+    };
+
+    const handleMarkForFix = async (lessonId: string) => {
+        // Simply update the lesson state to NEEDS_FIX
+        const response = await fetch('/.netlify/functions/validate-materials-background', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lessonId, markForFix: true }),
+        });
+        if (response.ok) {
+            refresh();
+        }
     };
 
     const handleQADecision = async (decision: 'APPROVED' | 'REJECTED') => {
@@ -119,14 +152,13 @@ export function MaterialsForm({ artifactId, className = '' }: MaterialsFormProps
                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${stateColor}`}>
                         {stateLabel}
                     </span>
+                    {(isGenerating || isValidating) && (
+                        <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Actualizando...
+                        </span>
+                    )}
                 </div>
-                <button
-                    onClick={refresh}
-                    className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-colors"
-                    title="Actualizar"
-                >
-                    <RefreshCw className="h-4 w-4" />
-                </button>
             </div>
 
             {/* Generation in progress */}
@@ -140,6 +172,45 @@ export function MaterialsForm({ artifactId, className = '' }: MaterialsFormProps
                                 Este proceso puede tomar varios minutos dependiendo del número de lecciones.
                             </p>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Validation needed / in progress */}
+            {isValidating && (
+                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <CheckCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+                            <div>
+                                <p className="font-medium text-yellow-800 dark:text-yellow-300">Materiales generados - Validación pendiente</p>
+                                <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                                    Ejecuta la validación para verificar la calidad de los materiales generados.
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={async () => {
+                                setIsValidatingAll(true);
+                                await validateMaterials();
+                                await refresh();
+                                setIsValidatingAll(false);
+                            }}
+                            disabled={isValidatingAll}
+                            className="inline-flex items-center gap-2 px-4 py-2 text-white bg-yellow-600 rounded-lg hover:bg-yellow-700 transition-colors font-medium disabled:opacity-50"
+                        >
+                            {isValidatingAll ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    Validando...
+                                </>
+                            ) : (
+                                <>
+                                    <CheckCircle className="h-4 w-4" />
+                                    Validar Materiales
+                                </>
+                            )}
+                        </button>
                     </div>
                 </div>
             )}
@@ -170,6 +241,22 @@ export function MaterialsForm({ artifactId, className = '' }: MaterialsFormProps
                         <p className="text-xs text-gray-500 dark:text-gray-400">En proceso</p>
                     </div>
                 </div>
+            )}
+
+            {/* Bulk Regenerate Button - show when there are NEEDS_FIX lessons */}
+            {materials.lessons.filter((l) => l.state === 'NEEDS_FIX').length > 0 && !isGenerating && (
+                <button
+                    onClick={async () => {
+                        const needsFixLessons = materials.lessons.filter((l) => l.state === 'NEEDS_FIX');
+                        for (const lesson of needsFixLessons) {
+                            await runFixIteration(lesson.id, 'Regenerar esta lección corrigiendo los errores identificados.');
+                        }
+                    }}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-colors font-medium"
+                >
+                    <RefreshCw className="h-4 w-4" />
+                    Regenerar Todas las Pendientes ({materials.lessons.filter((l) => l.state === 'NEEDS_FIX').length})
+                </button>
             )}
 
             {/* Submit to QA Button */}
@@ -249,6 +336,9 @@ export function MaterialsForm({ artifactId, className = '' }: MaterialsFormProps
                                     key={lesson.id}
                                     lesson={lesson}
                                     onIterationStart={handleIterationStart}
+                                    onValidateLesson={handleValidateLesson}
+                                    onRegenerateLesson={handleRegenerateLesson}
+                                    onMarkForFix={handleMarkForFix}
                                 />
                             ))}
                         </div>

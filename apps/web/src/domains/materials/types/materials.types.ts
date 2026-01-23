@@ -101,6 +101,15 @@ export interface MaterialComponent {
     validation_errors: string[];
     generated_at: string;
     iteration_number: number;
+    assets: MaterialAssets;
+}
+
+export interface MaterialAssets {
+    slides_url?: string;
+    b_roll_prompts?: string;
+    video_url?: string;
+    screencast_url?: string;
+    notes?: string;
 }
 
 // Lección con materiales
