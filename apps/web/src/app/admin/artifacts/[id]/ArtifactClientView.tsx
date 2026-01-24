@@ -227,9 +227,16 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                     done={artifact.materials_state === 'PHASE3_APPROVED'}
                 />
 
-                <div className="h-0.5 flex-1 mx-4 rounded-full bg-gray-200 dark:bg-[#2D333B] relative top-[-10px]" />
+                <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${artifact.materials_state === 'PHASE3_APPROVED' ? 'bg-[#1F5AF6]' : 'bg-gray-200 dark:bg-[#2D333B]'}`} />
 
-                <StepItem step={6} label="Slides" disabled icon={<Target size={18} />} />
+                <StepItem
+                    step={6}
+                    label="Producción"
+                    active={currentStep === 6}
+                    onClick={() => setCurrentStep(6)}
+                    icon={<Target size={18} />}
+                    disabled={artifact.materials_state !== 'PHASE3_APPROVED'}
+                />
             </div>
 
             {/* CONTENT SWITCHER */}
