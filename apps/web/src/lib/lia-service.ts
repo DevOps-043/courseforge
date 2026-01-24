@@ -4,6 +4,7 @@ export interface LiaMessage {
   role: 'user' | 'model';
   content: string;
   timestamp: string;
+  sources?: { title: string; url: string }[];
 }
 
 export interface LiaAction {
@@ -23,7 +24,9 @@ export interface LiaRequest {
 export interface LiaResponse {
   message: LiaMessage;
   action?: LiaAction;
+  actions?: LiaAction[]; // Support for multiple sequential actions
   requiresFollowUp?: boolean;
+  groundingMetadata?: any;
 }
 
 // Execute Computer Use actions on the page
@@ -57,18 +60,127 @@ export const executeAction = async (action: LiaAction): Promise<string> => {
         const activeElement = document.activeElement as HTMLInputElement | HTMLTextAreaElement;
 
         if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
-          activeElement.value += text;
-          activeElement.dispatchEvent(new Event('input', { bubbles: true }));
-          return `Texto escrito: "${text}"`;
+            // Robustly set value for React
+            const prototype = activeElement.tagName === 'INPUT' 
+                ? window.HTMLInputElement.prototype 
+                : window.HTMLTextAreaElement.prototype;
+            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+            
+            if (nativeInputValueSetter) {
+                const currentValue = activeElement.value;
+                nativeInputValueSetter.call(activeElement, currentValue + text);
+            } else {
+                activeElement.value += text;
+            }
+
+            activeElement.dispatchEvent(new Event('input', { bubbles: true }));
+            activeElement.dispatchEvent(new Event('change', { bubbles: true }));
+            return `Texto escrito: "${text}"`;
         }
         return 'No hay campo de texto activo para escribir';
       }
 
+      case 'type_at': {
+        // Combined action: click on field + type text
+        const { x, y, text } = args;
+        const element = document.elementFromPoint(x, y) as HTMLElement;
+
+        if (element) {
+          // Visual feedback
+          showClickFeedback(x, y);
+
+          // Focus the element
+          element.focus();
+          element.click();
+
+          // Small delay to ensure focus
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          let targetInput = element as HTMLInputElement | HTMLTextAreaElement;
+
+          // Check if it's an input or textarea
+          if (element.tagName !== 'INPUT' && element.tagName !== 'TEXTAREA') {
+            const nestedInput = element.querySelector('input, textarea') as HTMLInputElement | HTMLTextAreaElement;
+            if (nestedInput) {
+                targetInput = nestedInput;
+                targetInput.focus();
+            } else {
+                return `No se encontró campo de texto en (${x}, ${y})`;
+            }
+          }
+
+          // Robustly set value for React
+          const prototype = targetInput.tagName === 'INPUT' 
+              ? window.HTMLInputElement.prototype 
+              : window.HTMLTextAreaElement.prototype;
+          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+
+          if (nativeInputValueSetter) {
+              nativeInputValueSetter.call(targetInput, text);
+          } else {
+              targetInput.value = text;
+          }
+          
+          // Dispatch events to trigger React/form handlers
+          targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+          targetInput.dispatchEvent(new Event('change', { bubbles: true }));
+          
+          return `Texto "${text}" escrito en el campo`;
+        }
+        return `No se encontró campo de texto en (${x}, ${y})`;
+      }
+
       case 'scroll': {
-        const { direction, amount = 300 } = args;
+        const { direction, amount = 400 } = args;
         const scrollAmount = direction === 'up' ? -amount : amount;
-        window.scrollBy({ top: scrollAmount, behavior: 'smooth' });
-        return `Scroll ${direction} ejecutado`;
+
+        // Try to scroll the main content area first, then fallback to window
+        const mainContent = document.querySelector('main') || document.querySelector('[role="main"]');
+        if (mainContent) {
+          mainContent.scrollBy({ top: scrollAmount, behavior: 'smooth' });
+        } else {
+          window.scrollBy({ top: scrollAmount, behavior: 'smooth' });
+        }
+
+        // Show visual feedback for scroll
+        showScrollFeedback(direction);
+
+        return `Scroll ${direction} ejecutado (${Math.abs(scrollAmount)}px)`;
+      }
+
+      case 'scroll_to_element': {
+        // Scroll to bring a specific element into view
+        const { x, y } = args;
+        const element = document.elementFromPoint(x, y) as HTMLElement;
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return `Scroll hacia elemento en (${x}, ${y})`;
+        }
+        return `No se encontró elemento en (${x}, ${y}) para scroll`;
+      }
+
+      case 'scroll_to_bottom': {
+        // Scroll to the bottom of the page/container
+        const mainContent = document.querySelector('main') || document.querySelector('[role="main"]');
+        if (mainContent) {
+          mainContent.scrollTo({ top: mainContent.scrollHeight, behavior: 'smooth' });
+        } else {
+          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        }
+        showScrollFeedback('down');
+        return 'Scroll al final de la página';
+      }
+
+      case 'scroll_to_top': {
+        // Scroll to the top of the page/container
+        const mainContent = document.querySelector('main') || document.querySelector('[role="main"]');
+        if (mainContent) {
+          mainContent.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        showScrollFeedback('up');
+        return 'Scroll al inicio de la página';
       }
 
       case 'key_press': {
@@ -95,6 +207,24 @@ export const executeAction = async (action: LiaAction): Promise<string> => {
   } catch (error) {
     return `Error ejecutando ${name}: ${error}`;
   }
+};
+
+// Execute multiple actions sequentially with delays
+export const executeActions = async (actions: LiaAction[]): Promise<string[]> => {
+  const results: string[] = [];
+
+  for (const action of actions) {
+    // Execute action
+    const result = await executeAction(action);
+    results.push(result);
+
+    // Wait between actions to allow UI to update
+    // Longer wait for navigation actions
+    const delay = action.name === 'click_at' ? 800 : 400;
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+
+  return results;
 };
 
 // Show visual feedback for clicks
@@ -129,6 +259,48 @@ const showClickFeedback = (x: number, y: number, type: 'click' | 'move' = 'click
 
   document.body.appendChild(feedback);
   setTimeout(() => feedback.remove(), 500);
+};
+
+// Show visual feedback for scroll
+const showScrollFeedback = (direction: string) => {
+  const feedback = document.createElement('div');
+  const isUp = direction === 'up';
+
+  feedback.innerHTML = isUp ? '↑' : '↓';
+  feedback.style.cssText = `
+    position: fixed;
+    right: 20px;
+    ${isUp ? 'top: 20px' : 'bottom: 20px'};
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: rgba(0, 212, 179, 0.9);
+    color: white;
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 999999;
+    animation: lia-scroll-fade 0.8s ease-out forwards;
+    box-shadow: 0 4px 12px rgba(0, 212, 179, 0.4);
+  `;
+
+  // Add animation styles if not exists
+  if (!document.getElementById('lia-scroll-styles')) {
+    const style = document.createElement('style');
+    style.id = 'lia-scroll-styles';
+    style.textContent = `
+      @keyframes lia-scroll-fade {
+        0% { opacity: 1; transform: translateY(0); }
+        100% { opacity: 0; transform: translateY(${isUp ? '-20px' : '20px'}); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  document.body.appendChild(feedback);
+  setTimeout(() => feedback.remove(), 800);
 };
 
 export const liaService = {

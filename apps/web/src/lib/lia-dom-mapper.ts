@@ -50,6 +50,16 @@ function isElementVisible(element: Element): boolean {
 
 // Obtener texto legible de un elemento
 function getElementText(element: Element): string {
+  // Para inputs y textareas, usar placeholder o name
+  if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
+    const input = element as HTMLInputElement | HTMLTextAreaElement;
+    const placeholder = input.placeholder;
+    if (placeholder) return `[Campo: ${placeholder}]`;
+    const name = input.name || input.id;
+    if (name) return `[Campo: ${name}]`;
+    return `[Campo de texto]`;
+  }
+
   // Primero intentar aria-label
   const ariaLabel = element.getAttribute('aria-label');
   if (ariaLabel) return ariaLabel;
@@ -77,7 +87,9 @@ export function scanDOM(): DOMMap {
     '[role="button"]',            // Role button
     '[role="link"]',              // Role link
     '[role="menuitem"]',          // Menu items
+    '[role="option"]',            // Opciones de menú
     '[role="tab"]',               // Tabs
+    '[role="switch"]',            // Switches/toggles
     '[onclick]',                  // Elementos con onclick
     '[data-lia-action]',          // Elementos marcados para Lia
     '[data-testid]',              // Test IDs
@@ -85,7 +97,28 @@ export function scanDOM(): DOMMap {
     'aside a',                    // Links del sidebar
     '.sidebar a',                 // Links del sidebar (clase)
     '[class*="menu"] a',          // Links en menús
+    '[class*="menu"] button',     // Botones en menús
+    '[class*="menu"] div[role]',  // Divs con role en menús
+    '[class*="dropdown"] a',      // Links en dropdowns
+    '[class*="dropdown"] button', // Botones en dropdowns
+    '[class*="popover"] a',       // Links en popovers
+    '[class*="popover"] button',  // Botones en popovers
     '[class*="nav"] a',           // Links en navegación
+    // User menu specific
+    '[class*="user"] button',     // Botones de usuario
+    '[class*="avatar"]',          // Avatares clickeables
+    '[class*="profile"]',         // Elementos de perfil
+    '[class*="account"]',         // Elementos de cuenta
+    // Theme toggles
+    '[class*="theme"]',           // Elementos de tema
+    '[class*="dark"]',            // Elementos dark mode
+    '[class*="light"]',           // Elementos light mode
+    // Spans and divs that might be clickable
+    'span[onclick]',
+    'div[onclick]',
+    'li[onclick]',
+    // Lucide icons in buttons (common in this app)
+    'button svg',
   ];
 
   const allElements = document.querySelectorAll(selectors.join(', '));
@@ -133,34 +166,101 @@ export function scanDOM(): DOMMap {
   };
 }
 
+// Detect if page has more content below
+function detectScrollableContent(): { hasMoreBelow: boolean; hasMoreAbove: boolean; scrollPosition: string } {
+  const mainContent = document.querySelector('main') || document.querySelector('[role="main"]') || document.documentElement;
+  const scrollTop = mainContent.scrollTop || window.scrollY;
+  const scrollHeight = mainContent.scrollHeight || document.documentElement.scrollHeight;
+  const clientHeight = mainContent.clientHeight || window.innerHeight;
+
+  const hasMoreBelow = scrollTop + clientHeight < scrollHeight - 50;
+  const hasMoreAbove = scrollTop > 50;
+
+  let scrollPosition = 'inicio';
+  if (hasMoreAbove && hasMoreBelow) {
+    scrollPosition = 'medio';
+  } else if (hasMoreAbove) {
+    scrollPosition = 'final';
+  }
+
+  return { hasMoreBelow, hasMoreAbove, scrollPosition };
+}
+
 // Generar un resumen legible del mapa para el modelo
 export function generateDOMSummary(map: DOMMap): string {
   if (map.elements.length === 0) {
     return 'No se encontraron elementos interactivos en la página.';
   }
 
+  // Detect scroll state
+  const scrollState = detectScrollableContent();
+
   let summary = `## Elementos Interactivos Detectados\n\n`;
   summary += `Página: ${map.title}\n`;
-  summary += `URL: ${map.url}\n\n`;
-  summary += `### Lista de Elementos (${map.elements.length} encontrados):\n\n`;
+  summary += `URL: ${map.url}\n`;
 
-  // Agrupar por tipo/ubicación
-  const sidebar = map.elements.filter(el => el.x < 250);
-  const main = map.elements.filter(el => el.x >= 250);
+  // Add scroll indicator
+  if (scrollState.hasMoreBelow || scrollState.hasMoreAbove) {
+    summary += `\n### ESTADO DE SCROLL\n`;
+    summary += `- Posición actual: ${scrollState.scrollPosition} de la página\n`;
+    if (scrollState.hasMoreBelow) {
+      summary += `- ⬇️ HAY MÁS CONTENIDO ABAJO - usa scroll(direction: "down") para ver más\n`;
+    }
+    if (scrollState.hasMoreAbove) {
+      summary += `- ⬆️ HAY CONTENIDO ARRIBA - usa scroll(direction: "up") para volver\n`;
+    }
+  }
+  summary += '\n';
 
-  if (sidebar.length > 0) {
-    summary += `**Menú Lateral (izquierda):**\n`;
-    sidebar.forEach(el => {
-      summary += `- "${el.text}" → click en x=${el.x}, y=${el.y}\n`;
+  // Separar campos de texto de otros elementos
+  const inputFields = map.elements.filter(el => el.tag === 'input' || el.tag === 'textarea');
+  const otherElements = map.elements.filter(el => el.tag !== 'input' && el.tag !== 'textarea');
+
+  // Mostrar campos de texto primero (importante para escribir)
+  if (inputFields.length > 0) {
+    summary += `### CAMPOS DE TEXTO (para escribir usa type_at):\n`;
+    inputFields.forEach(el => {
+      summary += `- ${el.text} → type_at x=${el.x}, y=${el.y}\n`;
     });
     summary += '\n';
   }
 
-  if (main.length > 0) {
-    summary += `**Área Principal:**\n`;
-    main.slice(0, 20).forEach(el => { // Limitar a 20 elementos
+  // Agrupar otros por ubicación
+  const sidebar = otherElements.filter(el => el.x < 250);
+  const main = otherElements.filter(el => el.x >= 250);
+
+  if (sidebar.length > 0) {
+    summary += `### Menú Lateral:\n`;
+    sidebar.forEach(el => {
+      summary += `- "${el.text}" → click_at x=${el.x}, y=${el.y}\n`;
+    });
+    summary += '\n';
+  }
+
+  // Separar botones de acción importantes (Generar, Crear, Guardar, etc.)
+  const actionKeywords = ['generar', 'crear', 'guardar', 'enviar', 'submit', 'nuevo', 'añadir', 'agregar', 'confirmar', 'aceptar'];
+  const actionButtons = main.filter(el => {
+    const text = (el.text || el.ariaLabel || '').toLowerCase();
+    return el.tag === 'button' && actionKeywords.some(keyword => text.includes(keyword));
+  });
+
+  const otherMain = main.filter(el => !actionButtons.includes(el));
+
+  // Mostrar SIEMPRE los botones de acción importantes primero
+  if (actionButtons.length > 0) {
+    summary += `### BOTONES DE ACCIÓN (IMPORTANTES):\n`;
+    actionButtons.forEach(el => {
       const label = el.text || el.ariaLabel || el.dataTestId || el.tag;
-      summary += `- "${label}" (${el.tag}) → click en x=${el.x}, y=${el.y}\n`;
+      summary += `- "${label}" (button) → click_at x=${el.x}, y=${el.y}\n`;
+    });
+    summary += '\n';
+  }
+
+  if (otherMain.length > 0) {
+    summary += `### Área Principal:\n`;
+    otherMain.slice(0, 25).forEach(el => {
+      const label = el.text || el.ariaLabel || el.dataTestId || el.tag;
+      summary += `- "${label}" (${el.tag}) → click_at x=${el.x}, y=${el.y}\n`;
     });
   }
 

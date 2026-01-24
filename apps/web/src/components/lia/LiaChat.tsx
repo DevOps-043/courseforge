@@ -42,11 +42,11 @@ export const LiaChat: React.FC = () => {
         {isOpen ? (
             <MessageCircle size={24} />
         ) : (
-            <div className="relative">
-                <Sparkles size={24} />
-                <span className="absolute -top-1 -right-1 flex h-3 w-3">
+            <div className="relative w-full h-full overflow-hidden rounded-full">
+                <img src="/lia-avatar.png" alt="Lia" className="w-full h-full object-cover" />
+                <span className="absolute top-1 right-1 flex h-2.5 w-2.5 z-10">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00D4B3] opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-[#00D4B3]"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#00D4B3] border border-[#0A2540]"></span>
                 </span>
             </div>
         )}
