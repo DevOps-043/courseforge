@@ -360,15 +360,15 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
   if (existingPlan) {
       return (
         <div className="max-w-5xl mx-auto space-y-8 pb-20 animate-in fade-in duration-500">
-            <div className="flex justify-between items-center border-b border-gray-800 pb-6">
+            <div className="flex justify-between items-center border-b border-gray-200 dark:border-gray-800 pb-6">
                 <div>
-                    <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
                         <div className="p-2 rounded-lg bg-green-500/10 text-green-500">
                             <CheckCircle2 size={24} />
                         </div>
                         Plan Instruccional Generado
                     </h2>
-                    <p className="text-gray-400 text-sm mt-1 ml-12">
+                    <p className="text-gray-500 dark:text-gray-400 text-sm mt-1 ml-12">
                         {existingPlan.lesson_plans.length} lecciones planificadas • Iteración {existingPlan.iteration_count || 1}/2
                     </p>
                 </div>
@@ -378,7 +378,7 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                     <button 
                         onClick={handleGenerate}
                         disabled={isGenerating}
-                        className="flex items-center gap-2 px-4 py-2 bg-[#0F1419] border border-gray-700 hover:border-[#00D4B3] text-gray-300 hover:text-[#00D4B3] rounded-lg transition-colors text-sm"
+                        className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#0F1419] border border-gray-200 dark:border-gray-700 hover:border-[#00D4B3] text-gray-700 dark:text-gray-300 hover:text-[#00D4B3] dark:hover:text-[#00D4B3] rounded-lg transition-colors text-sm"
                     >
                         <RefreshCw size={14} className={isGenerating ? "animate-spin" : ""} />
                         {isGenerating ? "Regenerando..." : "Regenerar"}
@@ -389,14 +389,14 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
             <div className="space-y-8">
                 {sortedModules.map((mod: any) => (
                     <div key={mod.index} className="space-y-4">
-                        <div className="flex items-center gap-3 py-4 border-b border-gray-800/50">
-                            <div className="h-8 w-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-sm">
+                        <div className="flex items-center gap-3 py-4 border-b border-gray-200 dark:border-gray-800/50">
+                            <div className="h-8 w-8 rounded-lg bg-blue-500/10 text-blue-500 dark:text-blue-400 flex items-center justify-center font-bold text-sm">
                                 {mod.index}
                             </div>
-                            <h3 className="text-lg font-bold text-gray-200">
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-gray-200">
                                 {mod.title}
                             </h3>
-                            <span className="text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-1 rounded bg-gray-800/50">
+                            <span className="text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-1 rounded bg-gray-100 dark:bg-gray-800/50">
                                 {mod.lessons.length} Lecciones
                             </span>
                         </div>
@@ -412,8 +412,8 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                     className={`
                                         group rounded-xl border transition-all duration-300 overflow-hidden
                                         ${expandedLessonId === lesson.lesson_id 
-                                            ? 'bg-[#0f1418] border-[#00D4B3]/30 shadow-lg shadow-black/40' 
-                                            : 'bg-[#0A0E12] border-gray-800 hover:border-gray-700 hover:bg-[#0f1418]'
+                                            ? 'bg-white dark:bg-[#0f1418] border-[#00D4B3]/30 shadow-lg shadow-black/5 dark:shadow-black/40' 
+                                            : 'bg-white dark:bg-[#0A0E12] border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 hover:bg-gray-50 dark:hover:bg-[#0f1418]'
                                         }
                                     `}
                                 >
@@ -424,20 +424,20 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                     >
                                         <div className="flex gap-4 flex-1">
                                             <div className="mt-1 flex flex-col items-center gap-2">
-                                                <div className="h-6 w-6 rounded-full bg-gray-800 text-gray-400 flex items-center justify-center text-xs font-bold font-mono">
+                                                <div className="h-6 w-6 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 flex items-center justify-center text-xs font-bold font-mono">
                                                     {lesson.lesson_order}
                                                 </div>
                                                 <div className={`h-full w-0.5 rounded-full ${expandedLessonId === lesson.lesson_id ? 'bg-[#00D4B3]/20' : 'bg-transparent'}`} />
                                             </div>
                                             
                                             <div className="space-y-1 flex-1">
-                                                <h4 className={`font-semibold text-base transition-colors ${expandedLessonId === lesson.lesson_id ? 'text-[#00D4B3]' : 'text-gray-200 group-hover:text-white'}`}>
+                                                <h4 className={`font-semibold text-base transition-colors ${expandedLessonId === lesson.lesson_id ? 'text-[#00D4B3]' : 'text-gray-900 dark:text-gray-200 group-hover:text-[#00D4B3] dark:group-hover:text-white'}`}>
                                                     {lesson.lesson_title}
                                                 </h4>
                                                 
                                                 {!isEditing && (
                                                     <div className="flex flex-wrap gap-2 pt-1">
-                                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium tracking-wide bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase">
+                                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium tracking-wide bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 uppercase">
                                                             <Clock size={10} />
                                                             {lesson.duration}
                                                         </span>
@@ -464,7 +464,7 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                                         e.stopPropagation();
                                                         handleStartEdit(lesson);
                                                     }}
-                                                    className="p-2 rounded-lg bg-gray-800/50 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+                                                    className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                                                 >
                                                     <Edit3 size={16} />
                                                 </button>
@@ -472,7 +472,7 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
 
                                             <div className={`
                                                 p-2 rounded-lg transition-all duration-300
-                                                ${expandedLessonId === lesson.lesson_id ? 'bg-[#00D4B3] text-[#0A2540] rotate-180' : 'text-gray-500 bg-gray-800/50 group-hover:bg-gray-800 group-hover:text-gray-300'}
+                                                ${expandedLessonId === lesson.lesson_id ? 'bg-[#00D4B3] text-white dark:text-[#0A2540] rotate-180' : 'text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800/50 group-hover:bg-white dark:group-hover:bg-gray-800 group-hover:text-gray-600 dark:group-hover:text-gray-300'}
                                             `}>
                                                 <ChevronDown size={16} />
                                             </div>
@@ -485,7 +485,7 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                             
                                             {isEditing ? (
                                                 // EDIT MODE FORM
-                                                <div className="space-y-6 bg-[#0A0E12] p-4 rounded-2xl border border-gray-800/60 shadow-inner">
+                                                <div className="space-y-6 bg-white dark:bg-[#0A0E12] p-4 rounded-2xl border border-gray-200 dark:border-gray-800/60 shadow-inner">
                                                     
                                                     {/* Edit Objective */}
                                                     <div className="space-y-2">
@@ -496,7 +496,7 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                                             value={displayLesson.learning_objective || displayLesson.oa_text || ''}
                                                             onChange={(e: any) => setEditedLesson({...displayLesson, learning_objective: e.target.value})}
                                                             placeholder="Describe qué aprenderá el estudiante..."
-                                                            className="min-h-[100px] text-sm"
+                                                            className="min-h-[100px] text-sm bg-gray-50 dark:bg-white/5 text-gray-900 dark:text-white border-gray-200 dark:border-white/10"
                                                         />
                                                     </div>
 
@@ -509,7 +509,7 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                                             value={displayLesson.measurable_criteria || ''}
                                                             onChange={(e: any) => setEditedLesson({...displayLesson, measurable_criteria: e.target.value})}
                                                             placeholder="Ej: Identificar 3 de 5 elementos..."
-                                                            className="text-sm"
+                                                            className="text-sm bg-gray-50 dark:bg-white/5 text-gray-900 dark:text-white border-gray-200 dark:border-white/10"
                                                         />
                                                     </div>
 
@@ -520,7 +520,7 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                                         </div>
 
                                                         {displayLesson.components.map((comp: Component, cIdx: number) => (
-                                                            <div key={cIdx} className="bg-[#151A21]/50 border border-gray-700/50 rounded-xl p-4 space-y-3 relative group/edit-card hover:border-gray-600 transition-colors">
+                                                            <div key={cIdx} className="bg-gray-50 dark:bg-[#151A21]/50 border border-gray-200 dark:border-gray-700/50 rounded-xl p-4 space-y-3 relative group/edit-card hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
                                                                 <div className="flex gap-4">
                                                                     {/* Component Type & Duration Column */}
                                                                     <div className="w-48 space-y-3 flex-shrink-0">
@@ -530,6 +530,7 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                                                                 options={COMPONENT_TYPES}
                                                                                 value={comp.type}
                                                                                 onChange={(val: string) => handleTypeChange(cIdx, val)}
+                                                                                className="text-gray-900 dark:text-white bg-white dark:bg-white/5 border-gray-200 dark:border-white/10"
                                                                             />
                                                                         </div>
                                                                         <div>
@@ -538,7 +539,7 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                                                                 value={comp.duration || ''}
                                                                                 placeholder="Ej: 5 min"
                                                                                 onChange={(e: any) => handleUpdateComponent(cIdx, 'duration', e.target.value)}
-                                                                                className="px-3 py-2 text-xs"
+                                                                                className="px-3 py-2 text-xs bg-white dark:bg-white/5 text-gray-900 dark:text-white border-gray-200 dark:border-white/10"
                                                                             />
                                                                         </div>
                                                                     </div>
@@ -550,7 +551,7 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                                                             value={comp.description || comp.summary || ''}
                                                                             onChange={(e: any) => handleUpdateComponent(cIdx, 'description', e.target.value)}
                                                                             placeholder="Detalles sobre este componente..."
-                                                                            className="min-h-[105px] text-xs leading-relaxed"
+                                                                            className="min-h-[105px] text-xs leading-relaxed bg-white dark:bg-white/5 text-gray-900 dark:text-white border-gray-200 dark:border-white/10"
                                                                         />
                                                                     </div>
                                                                 </div>
@@ -562,13 +563,13 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                                     <div className="flex gap-3 items-center pt-2">
                                                         <button 
                                                             onClick={handleSaveLesson}
-                                                            className="px-5 py-2.5 bg-gradient-to-r from-[#00D4B3] to-[#00A38D] text-[#0A2540] rounded-xl font-bold text-sm flex items-center gap-2 hover:shadow-lg hover:shadow-[#00D4B3]/20 transition-all transform hover:-translate-y-0.5"
+                                                            className="px-5 py-2.5 bg-gradient-to-r from-[#00D4B3] to-[#00A38D] text-white dark:text-[#0A2540] rounded-xl font-bold text-sm flex items-center gap-2 hover:shadow-lg hover:shadow-[#00D4B3]/20 transition-all transform hover:-translate-y-0.5"
                                                         >
                                                             <Check size={16} /> Guardar Cambios
                                                         </button>
                                                         <button 
                                                             onClick={handleCancelEdit}
-                                                            className="px-5 py-2.5 bg-white/5 border border-white/10 text-gray-300 rounded-xl font-medium text-sm flex items-center gap-2 hover:bg-white/10 transition-colors"
+                                                            className="px-5 py-2.5 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 rounded-xl font-medium text-sm flex items-center gap-2 hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
                                                         >
                                                             <X size={16} /> Cancelar
                                                         </button>
@@ -586,12 +587,12 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                                                 <Target size={14} />
                                                                 Objetivo de Aprendizaje
                                                             </div>
-                                                            <p className="text-gray-300 text-sm leading-relaxed">
+                                                            <p className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed">
                                                                 {lesson.learning_objective || lesson.oa_text}
                                                             </p>
                                                             <div className="mt-3 flex gap-2">
                                                                 {(lesson.bloom_taxonomy_level || lesson.oa_bloom_verb) && (
-                                                                    <span className="inline-flex items-center px-2 py-1 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[10px] font-bold uppercase">
+                                                                    <span className="inline-flex items-center px-2 py-1 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 text-[10px] font-bold uppercase">
                                                                         Bloom: {lesson.bloom_taxonomy_level || lesson.oa_bloom_verb}
                                                                     </span>
                                                                 )}
@@ -601,12 +602,12 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                                         {/* Measurable Criteria */}
                                                         {lesson.measurable_criteria && (
                                                             <div className="flex gap-3 items-start pl-2">
-                                                                <div className="mt-1 p-1 rounded bg-green-500/10 text-green-500">
+                                                                <div className="mt-1 p-1 rounded bg-green-500/10 text-green-600 dark:text-green-500">
                                                                     <CheckSquare size={12} />
                                                                 </div>
                                                                 <div>
                                                                     <span className="text-xs font-bold text-gray-500 uppercase">Criterio de Éxito</span>
-                                                                    <p className="text-gray-400 text-sm">{lesson.measurable_criteria}</p>
+                                                                    <p className="text-gray-600 dark:text-gray-400 text-sm">{lesson.measurable_criteria}</p>
                                                                 </div>
                                                             </div>
                                                         )}
@@ -623,7 +624,7 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                                             {lesson.components.map((comp: any, idx: number) => {
                                                                 const badge = getComponentBadge(comp.type);
                                                                 return (
-                                                                    <div key={idx} className="bg-[#161b22] p-3 rounded-lg border border-gray-800 flex gap-3 group/card hover:border-gray-700 transition-colors">
+                                                                    <div key={idx} className="bg-white dark:bg-[#161b22] p-3 rounded-lg border border-gray-200 dark:border-gray-800 flex gap-3 group/card hover:border-gray-300 dark:hover:border-gray-700 transition-colors">
                                                                         <div className={`mt-0.5 p-1.5 rounded h-fit ${badge.color.split(' ')[1]} ${badge.color.split(' ')[0]}`}>
                                                                             {badge.icon}
                                                                         </div>
@@ -632,9 +633,9 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                                                                 <span className={`text-xs font-bold ${badge.color.split(' ')[0]}`}>
                                                                                     {badge.label}
                                                                                 </span>
-                                                                                {comp.duration && <span className="text-[10px] text-gray-600 font-mono">{comp.duration}</span>}
+                                                                                {comp.duration && <span className="text-[10px] text-gray-500 dark:text-gray-600 font-mono">{comp.duration}</span>}
                                                                             </div>
-                                                                            <p className="text-gray-400 text-sm leading-snug">
+                                                                            <p className="text-gray-700 dark:text-gray-400 text-sm leading-snug">
                                                                                 {comp.description || comp.summary}
                                                                             </p>
                                                                         </div>
@@ -646,7 +647,7 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
 
                                                     {/* Notes Table */}
                                                     {lesson.alignment_notes && (
-                                                        <div className="pt-2 border-t border-gray-800">
+                                                        <div className="pt-2 border-t border-gray-200 dark:border-gray-800">
                                                             <div className="flex gap-2 items-start text-xs text-gray-500 italic">
                                                                 <Info size={12} className="mt-0.5" />
                                                                 <p>{lesson.alignment_notes}</p>
@@ -667,19 +668,19 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
 
             {/* Validation Result - Bottom Placement */}
             {existingPlan.validation && (
-                <div className="pt-8 border-t border-gray-800">
+                <div className="pt-8 border-t border-gray-200 dark:border-gray-800">
                     <InstructionalPlanValidationResult validation={existingPlan.validation} />
                 </div>
             )}
 
             {/* REVISION PANEL FASE 3 */}
-            <div className="bg-[#151A21] border border-[#6C757D]/10 rounded-2xl p-6 mt-8">
-                <h3 className="text-white font-bold mb-4 flex items-center gap-2">
+            <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 mt-8">
+                <h3 className="text-gray-900 dark:text-white font-bold mb-4 flex items-center gap-2">
                     <Edit3 size={18} /> Revisión Fase 3: Plan Instruccional
                 </h3>
                 
                 <textarea
-                    className="w-full bg-[#0F1419] border border-[#6C757D]/20 rounded-xl p-4 text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 min-h-[100px]"
+                    className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl p-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 min-h-[100px] placeholder-gray-400 dark:placeholder-gray-600"
                     placeholder="Escribe tus comentarios o feedback sobre el plan instruccional..."
                     value={reviewNotes}
                     onChange={(e) => setReviewNotes(e.target.value)}
@@ -692,7 +693,7 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                             <button 
                                 onClick={handleValidate}
                                 disabled={isValidating || isGenerating}
-                                className="flex-1 bg-[#0F1419] border border-[#00D4B3] hover:bg-[#00D4B3]/10 text-[#00D4B3] py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex-1 bg-white dark:bg-[#0F1419] border border-[#00D4B3] hover:bg-[#00D4B3]/10 text-[#00D4B3] py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {isValidating ? <RefreshCw size={18} className="animate-spin" /> : <CheckSquare size={18} />}
                                 {isValidating ? "Validando..." : "Validar Contenido"}
@@ -741,6 +742,19 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                 <CheckCircle2 size={18} />
                                 Fase 3 Aprobada
                             </div>
+                            {onNext && (
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        console.log('Navigating to next step (Sources)...');
+                                        if (onNext) onNext();
+                                    }}
+                                    className="flex-1 bg-[#1F5AF6] hover:bg-[#1548c7] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#1F5AF6]/20"
+                                >
+                                    Continuar a Fuentes
+                                </button>
+                            )}
                         </div>
                     )}
                     

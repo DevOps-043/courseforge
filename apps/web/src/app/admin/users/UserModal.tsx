@@ -116,7 +116,7 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
           />
 
           {/* Modal Box */}
@@ -125,7 +125,7 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ type: "spring", duration: 0.5, bounce: 0.3 }}
-            className="relative w-full max-w-5xl bg-[#0F1419] rounded-2xl shadow-2xl overflow-hidden border border-[#white]/10 flex flex-col md:flex-row min-h-[600px]"
+            className="relative w-full max-w-5xl bg-white dark:bg-[#0F1419] rounded-2xl shadow-2xl overflow-hidden border border-gray-200 dark:border-white/10 flex flex-col md:flex-row min-h-[600px] transition-colors"
             style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}
           >
             {/* Left Panel - Preview */}
@@ -191,17 +191,17 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
             </div>
 
             {/* Right Panel - Form */}
-            <div className="flex-1 flex flex-col bg-[#151A21] relative">
+            <div className="flex-1 flex flex-col bg-white dark:bg-[#151A21] relative transition-colors">
               
               {/* Header */}
-              <div className="flex items-center justify-between p-8 border-b border-[#6C757D]/10">
+              <div className="flex items-center justify-between p-8 border-b border-gray-100 dark:border-[#6C757D]/10">
                 <div>
-                  <h2 className="text-2xl font-bold text-white mb-1">{isEdit ? 'Editar Usuario' : 'Nuevo Usuario'}</h2>
-                  <p className="text-sm text-[#94A3B8]">{isEdit ? 'Actualiza los permisos y datos del perfil.' : 'Completa la información para dar de alta un acceso.'}</p>
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">{isEdit ? 'Editar Usuario' : 'Nuevo Usuario'}</h2>
+                  <p className="text-sm text-gray-500 dark:text-[#94A3B8]">{isEdit ? 'Actualiza los permisos y datos del perfil.' : 'Completa la información para dar de alta un acceso.'}</p>
                 </div>
                 <button 
                   onClick={onClose}
-                  className="p-2 text-[#94A3B8] hover:text-white hover:bg-white/5 rounded-xl transition-all"
+                  className="p-2 text-gray-400 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-all"
                 >
                   <X size={24} />
                 </button>
@@ -214,29 +214,29 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
                     {/* Name Section */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
-                            <label className="text-xs font-semibold text-[#94A3B8] uppercase tracking-wider ml-1">Nombre</label>
+                            <label className="text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider ml-1">Nombre</label>
                             <div className="relative group">
-                                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6C757D] group-focus-within:text-[#00D4B3] transition-colors" size={18} />
+                                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#6C757D] group-focus-within:text-[#00D4B3] transition-colors" size={18} />
                                 <input
                                     name="firstName"
                                     value={formData.firstName}
                                     onChange={handleChange}
                                     placeholder="Ej. Sofia"
-                                    className="w-full pl-11 pr-4 py-3 rounded-xl bg-[#0F1419] border border-[#6C757D]/20 text-white placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all"
+                                    className="w-full pl-11 pr-4 py-3 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all"
                                     required
                                 />
                             </div>
                         </div>
                         <div className="space-y-2">
-                            <label className="text-xs font-semibold text-[#94A3B8] uppercase tracking-wider ml-1">Apellido Paterno</label>
+                            <label className="text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider ml-1">Apellido Paterno</label>
                             <div className="relative group">
-                                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6C757D] group-focus-within:text-[#00D4B3] transition-colors" size={18} />
+                                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#6C757D] group-focus-within:text-[#00D4B3] transition-colors" size={18} />
                                 <input
                                     name="lastNameFather"
                                     value={formData.lastNameFather}
                                     onChange={handleChange}
                                     placeholder="Ej. López"
-                                    className="w-full pl-11 pr-4 py-3 rounded-xl bg-[#0F1419] border border-[#6C757D]/20 text-white placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all"
+                                    className="w-full pl-11 pr-4 py-3 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all"
                                     required
                                 />
                             </div>
@@ -245,44 +245,44 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
-                             <label className="text-xs font-semibold text-[#94A3B8] uppercase tracking-wider ml-1">Apellido Materno</label>
+                             <label className="text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider ml-1">Apellido Materno</label>
                              <div className="relative group">
-                                 <User className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6C757D] group-focus-within:text-[#00D4B3] transition-colors" size={18} />
+                                 <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#6C757D] group-focus-within:text-[#00D4B3] transition-colors" size={18} />
                                  <input
                                      name="lastNameMother"
                                      value={formData.lastNameMother}
                                      onChange={handleChange}
                                      placeholder="Ej. García"
-                                     className="w-full pl-11 pr-4 py-3 rounded-xl bg-[#0F1419] border border-[#6C757D]/20 text-white placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all"
+                                     className="w-full pl-11 pr-4 py-3 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all"
                                  />
                              </div>
                         </div>
                          <div className="space-y-2">
-                            <label className="text-xs font-semibold text-[#94A3B8] uppercase tracking-wider ml-1">Nombre de Usuario</label>
+                            <label className="text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider ml-1">Nombre de Usuario</label>
                             <div className="relative group">
-                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6C757D] font-mono text-sm">@</div>
+                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#6C757D] font-mono text-sm">@</div>
                                 <input
                                     name="username"
                                     value={formData.username}
                                     onChange={handleChange}
                                     placeholder="usuario"
-                                    className="w-full pl-10 pr-4 py-3 rounded-xl bg-[#0F1419] border border-[#6C757D]/20 text-white placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all"
+                                    className="w-full pl-10 pr-4 py-3 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all"
                                 />
                             </div>
                         </div>
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-xs font-semibold text-[#94A3B8] uppercase tracking-wider ml-1">Correo Electrónico</label>
+                        <label className="text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider ml-1">Correo Electrónico</label>
                         <div className="relative group">
-                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6C757D] group-focus-within:text-[#00D4B3] transition-colors" size={18} />
+                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#6C757D] group-focus-within:text-[#00D4B3] transition-colors" size={18} />
                             <input
                                 type="email"
                                 name="email"
                                 value={formData.email}
                                 onChange={handleChange}
                                 placeholder="usuario@organizacion.com"
-                                className="w-full pl-11 pr-4 py-3 rounded-xl bg-[#0F1419] border border-[#6C757D]/20 text-white placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all"
+                                className="w-full pl-11 pr-4 py-3 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all"
                                 required
                             />
                         </div>
@@ -291,49 +291,49 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
                      {/* Password Field */}
                      {!isEdit && (
                         <div className="space-y-2">
-                            <label className="text-xs font-semibold text-[#94A3B8] uppercase tracking-wider ml-1">Contraseña</label>
+                            <label className="text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider ml-1">Contraseña</label>
                             <div className="relative group">
-                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6C757D] group-focus-within:text-[#00D4B3] transition-colors" size={18} />
+                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#6C757D] group-focus-within:text-[#00D4B3] transition-colors" size={18} />
                                 <input
                                     type={showPassword ? "text" : "password"}
                                     name="password"
                                     value={formData.password}
                                     onChange={handleChange}
                                     placeholder="••••••••"
-                                    className="w-full pl-11 pr-12 py-3 rounded-xl bg-[#0F1419] border border-[#6C757D]/20 text-white placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all"
+                                    className="w-full pl-11 pr-12 py-3 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all"
                                     required={!isEdit}
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-[#6C757D] hover:text-white transition-colors"
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#6C757D] hover:text-gray-600 dark:hover:text-white transition-colors"
                                 >
                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
                             </div>
-                            <p className="text-[10px] text-[#6C757D] ml-1">Mínimo 8 caracteres, alfanumérico.</p>
+                            <p className="text-[10px] text-gray-400 dark:text-[#6C757D] ml-1">Mínimo 8 caracteres, alfanumérico.</p>
                         </div>
                     )}
 
                     {/* Custom Dropdown for Role */}
                     <div className="space-y-2 relative" ref={roleDropdownRef}>
-                        <label className="text-xs font-semibold text-[#94A3B8] uppercase tracking-wider ml-1">Rol de Plataforma</label>
+                        <label className="text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider ml-1">Rol de Plataforma</label>
                         <button
                             type="button"
                             onClick={() => setIsRoleOpen(!isRoleOpen)}
-                            className="w-full text-left px-4 py-3 rounded-xl bg-[#0F1419] border border-[#6C757D]/20 flex items-center justify-between group hover:border-[#6C757D]/40 transition-all"
+                            className="w-full text-left px-4 py-3 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 flex items-center justify-between group hover:border-gray-300 dark:hover:border-[#6C757D]/40 transition-all"
                         >
                             <div className="flex items-center gap-3">
                                 <Briefcase className="text-[#00D4B3]" size={18} />
                                 <div>
-                                    <span className="block text-sm font-medium text-white">
+                                    <span className="block text-sm font-medium text-gray-900 dark:text-white">
                                         {roleOptions.find(o => o.value === formData.role)?.label}
                                     </span>
                                 </div>
                             </div>
                             <ChevronDown 
                                 size={18} 
-                                className={`text-[#6C757D] transition-transform duration-300 ${isRoleOpen ? 'rotate-180' : ''}`}
+                                className={`text-gray-400 dark:text-[#6C757D] transition-transform duration-300 ${isRoleOpen ? 'rotate-180' : ''}`}
                             />
                         </button>
 
@@ -344,23 +344,23 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                     exit={{ opacity: 0, y: -10, scale: 0.98 }}
                                     transition={{ duration: 0.2 }}
-                                    className="absolute top-full left-0 right-0 mt-2 rounded-xl bg-[#151A21] border border-[#6C757D]/20 shadow-xl overflow-hidden z-50 py-1"
+                                    className="absolute top-full left-0 right-0 mt-2 rounded-xl bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/20 shadow-xl overflow-hidden z-50 py-1"
                                 >
                                     {roleOptions.map((option) => (
                                         <button
                                             key={option.value}
                                             type="button"
                                             onClick={() => handleRoleSelect(option.value)}
-                                            className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-[#1E2329] transition-colors ${formData.role === option.value ? 'bg-[#00D4B3]/5' : ''}`}
+                                            className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-gray-50 dark:hover:bg-[#1E2329] transition-colors ${formData.role === option.value ? 'bg-[#00D4B3]/5' : ''}`}
                                         >
-                                            <div className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center ${formData.role === option.value ? 'border-[#00D4B3]' : 'border-[#6C757D]/50'}`}>
+                                            <div className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center ${formData.role === option.value ? 'border-[#00D4B3]' : 'border-gray-300 dark:border-[#6C757D]/50'}`}>
                                                 {formData.role === option.value && <div className="w-2 h-2 rounded-full bg-[#00D4B3]" />}
                                             </div>
                                             <div>
-                                                <span className={`block text-sm font-medium ${formData.role === option.value ? 'text-[#00D4B3]' : 'text-white'}`}>
+                                                <span className={`block text-sm font-medium ${formData.role === option.value ? 'text-[#00D4B3]' : 'text-gray-900 dark:text-white'}`}>
                                                     {option.label}
                                                 </span>
-                                                <span className="block text-xs text-[#94A3B8] leading-tight mt-0.5">
+                                                <span className="block text-xs text-gray-500 dark:text-[#94A3B8] leading-tight mt-0.5">
                                                     {option.desc}
                                                 </span>
                                             </div>
@@ -375,11 +375,11 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
               </div>
 
               {/* Footer */}
-              <div className="p-8 border-t border-[#6C757D]/10 flex justify-end gap-4 bg-[#151A21]">
+              <div className="p-8 border-t border-gray-100 dark:border-[#6C757D]/10 flex justify-end gap-4 bg-gray-50 dark:bg-[#151A21] transition-colors">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-6 py-3 rounded-xl text-sm font-semibold text-[#94A3B8] hover:text-white hover:bg-white/5 transition-colors"
+                  className="px-6 py-3 rounded-xl text-sm font-semibold text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
                 >
                   Cancelar
                 </button>
@@ -388,7 +388,7 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
                     <button
                         type="submit"
                         form="user-form"
-                        className="relative px-8 py-3 rounded-xl text-sm font-bold text-black flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg"
+                        className="relative px-8 py-3 rounded-xl text-sm font-bold text-white dark:text-black flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg"
                         style={{
                             background: `linear-gradient(135deg, ${accentColor}, #22d3ee)`
                         }}

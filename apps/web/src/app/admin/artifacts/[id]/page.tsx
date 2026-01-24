@@ -68,13 +68,13 @@ export default async function ArtifactDetailPage({ params }: { params: Promise<{
     <div className="max-w-6xl mx-auto space-y-6 pb-20">
 
       {/* Top Navigation */}
-      <div className="flex items-center gap-4 text-sm text-[#94A3B8]">
-        <Link href="/admin/artifacts" className="hover:text-white flex items-center gap-1 transition-colors">
+      <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-[#94A3B8]">
+        <Link href="/admin/artifacts" className="hover:text-gray-900 dark:hover:text-white flex items-center gap-1 transition-colors">
           <ArrowLeft size={16} />
           Volver a Artefactos
         </Link>
-        <span className="text-[#6C757D]">/</span>
-        <span className="text-white truncate max-w-xs">{artifact.idea_central}</span>
+        <span className="text-gray-300 dark:text-[#6C757D]">/</span>
+        <span className="text-gray-900 dark:text-white truncate max-w-xs">{artifact.idea_central}</span>
       </div>
 
       {/* Interactive Client View */}

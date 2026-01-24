@@ -72,14 +72,27 @@ export const materialsService = {
             .from('material_components')
             .select('*')
             .eq('material_lesson_id', lessonId)
-            .order('type', { ascending: true });
+            .order('iteration_number', { ascending: false });
 
         if (error) {
             console.error('Error fetching lesson components:', error);
             return [];
         }
 
-        return data as MaterialComponent[];
+        // Deduplicate by type, keeping the latest iteration (since we ordered by iteration DESC)
+        const components = data as MaterialComponent[];
+        const uniqueComponents = new Map<string, MaterialComponent>();
+        
+        for (const comp of components) {
+            if (!uniqueComponents.has(comp.type)) {
+                uniqueComponents.set(comp.type, comp);
+            }
+        }
+
+        // Return sorted by type order usually, or just values. 
+        // Let's sort them alphabetically or by some standard order if needed, 
+        // but for now values() is fine, maybe sort by type for consistency.
+        return Array.from(uniqueComponents.values()).sort((a, b) => a.type.localeCompare(b.type));
     },
 
     /**

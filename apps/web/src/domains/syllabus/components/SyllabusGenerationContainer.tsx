@@ -159,7 +159,7 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
     <div className="space-y-6 max-w-5xl mx-auto pb-20">
       
       {/* Header Styled as Screenshot */}
-      <div className="bg-[#1E2329] rounded-2xl border border-white/5 p-8 relative overflow-hidden">
+      <div className="bg-white dark:bg-[#1E2329] rounded-2xl border border-gray-200 dark:border-white/5 p-8 relative overflow-hidden">
         <div className="relative z-10">
             <div className="flex items-center gap-4 mb-4">
                 <div className="p-2.5 bg-[#00D4B3]/10 rounded-xl flex-shrink-0">
@@ -168,38 +168,38 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
                     </svg>
                 </div>
                 <div>
-                   <h2 className="text-xl font-bold text-white leading-tight">Crear Temario</h2>
-                   <p className="text-white/40 text-xs mt-1 font-medium tracking-wide">PASO 2 DEL PROCESO</p>
+                   <h2 className="text-xl font-bold text-gray-900 dark:text-white leading-tight">Crear Temario</h2>
+                   <p className="text-gray-500 dark:text-white/40 text-xs mt-1 font-medium tracking-wide">PASO 2 DEL PROCESO</p>
                 </div>
             </div>
-            <p className="text-gray-400 text-sm leading-relaxed max-w-3xl">
-                Define la estructura modular del curso <strong className="text-white">"{cleanTitle}"</strong>.
+            <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed max-w-3xl">
+                Define la estructura modular del curso <strong className="text-gray-900 dark:text-white">"{cleanTitle}"</strong>.
                 Puedes generar con IA o importar un temario existente.
             </p>
         </div>
         {/* Background Gradient */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-[#0A2540] opacity-20 blur-[100px] rounded-full pointer-events-none" />
+        <div className="absolute top-0 right-0 w-64 h-64 bg-[#0A2540] opacity-5 dark:opacity-20 blur-[100px] rounded-full pointer-events-none" />
       </div>
 
       {/* Accordion Objetivos */}
       <div className="space-y-2">
           <button 
             onClick={() => setIsObjectivesOpen(!isObjectivesOpen)}
-            className="w-full bg-[#1E2329] border border-white/5 rounded-xl px-6 py-4 flex justify-between items-center cursor-pointer hover:bg-white/5 transition-all group"
+            className="w-full bg-white dark:bg-[#1E2329] border border-gray-200 dark:border-white/5 rounded-xl px-6 py-4 flex justify-between items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-all group"
           >
             <div className="flex items-center gap-4">
-                <div className="p-2 bg-white/5 rounded-lg group-hover:bg-white/10 transition-colors">
-                   <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                <div className="p-2 bg-gray-100 dark:bg-white/5 rounded-lg group-hover:bg-gray-200 dark:group-hover:bg-white/10 transition-colors">
+                   <svg className="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
                 </div>
                 <div className="flex items-center gap-3">
-                    <span className="text-white font-medium">Objetivos de Aprendizaje</span>
-                    <span className="px-2.5 py-0.5 rounded-full bg-white/10 text-xs text-white/70 font-mono border border-white/5">
+                    <span className="text-gray-900 dark:text-white font-medium">Objetivos de Aprendizaje</span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-gray-100 dark:bg-white/10 text-xs text-gray-600 dark:text-white/70 font-mono border border-gray-200 dark:border-white/5">
                         {initialObjetivos.length}
                     </span>
                 </div>
             </div>
             <svg 
-                className={`w-5 h-5 text-gray-500 transition-transform duration-200 ${isObjectivesOpen ? 'rotate-180' : ''}`} 
+                className={`w-5 h-5 text-gray-400 dark:text-gray-500 transition-transform duration-200 ${isObjectivesOpen ? 'rotate-180' : ''}`} 
                 fill="none" 
                 viewBox="0 0 24 24" 
                 stroke="currentColor"
@@ -209,10 +209,10 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
           </button>
           
           {isObjectivesOpen && (
-              <div className="bg-[#1E2329]/50 border border-white/5 rounded-xl p-6 animate-in slide-in-from-top-2 duration-200">
+              <div className="bg-gray-50 dark:bg-[#1E2329]/50 border border-gray-200 dark:border-white/5 rounded-xl p-6 animate-in slide-in-from-top-2 duration-200">
                   <ul className="space-y-3">
                       {initialObjetivos.map((obj, idx) => (
-                          <li key={idx} className="flex gap-4 text-sm text-gray-300 items-start">
+                          <li key={idx} className="flex gap-4 text-sm text-gray-600 dark:text-gray-300 items-start">
                               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#00D4B3]/10 text-[#00D4B3] flex items-center justify-center text-xs font-mono border border-[#00D4B3]/20 mt-0.5">
                                   {idx + 1}
                               </span>
@@ -234,16 +234,16 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
                         p-6 rounded-xl border-2 text-left transition-all relative overflow-hidden group
                         ${activeTab === 'GENERATE' 
                             ? 'border-[#00D4B3] bg-[#00D4B3]/5' 
-                            : 'border-white/5 bg-[#1E2329] hover:bg-white/5'}
+                            : 'border-gray-200 dark:border-white/5 bg-white dark:bg-[#1E2329] hover:bg-gray-50 dark:hover:bg-white/5'}
                     `}
                 >
                     <div className="flex items-center gap-3 mb-2">
-                         <div className={`p-1.5 rounded ${activeTab === 'GENERATE' ? 'bg-[#00D4B3] text-[#0A2540]' : 'bg-white/10 text-gray-400'}`}>
+                         <div className={`p-1.5 rounded ${activeTab === 'GENERATE' ? 'bg-[#00D4B3] text-[#0A2540]' : 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400'}`}>
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                          </div>
-                         <h3 className={`font-bold ${activeTab === 'GENERATE' ? 'text-white' : 'text-gray-400'}`}>Generar con IA</h3>
+                         <h3 className={`font-bold ${activeTab === 'GENERATE' ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>Generar con IA</h3>
                     </div>
-                    <p className="text-sm text-gray-500 group-hover:text-gray-400 transition-colors">La IA crea el temario basándose en los objetivos.</p>
+                    <p className="text-sm text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-400 transition-colors">La IA crea el temario basándose en los objetivos.</p>
                     
                     {activeTab === 'GENERATE' && (
                         <div className="absolute top-4 right-4 w-2 h-2 rounded-full bg-[#00D4B3] shadow-[0_0_10px_#00D4B3]" />
@@ -256,16 +256,16 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
                         p-6 rounded-xl border-2 text-left transition-all relative overflow-hidden group
                         ${activeTab === 'IMPORT' 
                             ? 'border-[#00D4B3] bg-[#00D4B3]/5' 
-                            : 'border-white/5 bg-[#1E2329] hover:bg-white/5'}
+                            : 'border-gray-200 dark:border-white/5 bg-white dark:bg-[#1E2329] hover:bg-gray-50 dark:hover:bg-white/5'}
                     `}
                 >
                     <div className="flex items-center gap-3 mb-2">
-                         <div className={`p-1.5 rounded ${activeTab === 'IMPORT' ? 'bg-[#00D4B3] text-[#0A2540]' : 'bg-white/10 text-gray-400'}`}>
+                         <div className={`p-1.5 rounded ${activeTab === 'IMPORT' ? 'bg-[#00D4B3] text-[#0A2540]' : 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400'}`}>
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
                          </div>
-                         <h3 className={`font-bold ${activeTab === 'IMPORT' ? 'text-white' : 'text-gray-400'}`}>Importar Temario</h3>
+                         <h3 className={`font-bold ${activeTab === 'IMPORT' ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>Importar Temario</h3>
                     </div>
-                    <p className="text-sm text-gray-500 group-hover:text-gray-400 transition-colors">Pega un temario existente en formato Markdown.</p>
+                    <p className="text-sm text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-400 transition-colors">Pega un temario existente en formato Markdown.</p>
 
                     {activeTab === 'IMPORT' && (
                         <div className="absolute top-4 right-4 w-2 h-2 rounded-full bg-[#00D4B3] shadow-[0_0_10px_#00D4B3]" />
@@ -277,7 +277,7 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
             <div className="mt-2">
                 {activeTab === 'GENERATE' && (
                     <div className="space-y-6">
-                        <div className="bg-[#1E2329] border border-white/5 rounded-2xl p-6">
+                        <div className="bg-white dark:bg-[#1E2329] border border-gray-200 dark:border-white/5 rounded-2xl p-6">
                             <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-6">Método de Generación</h4>
                             <SyllabusRouteSelector 
                                 selectedRoute={route} 
@@ -291,7 +291,7 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
                                 w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-all
                                 ${route 
                                     ? 'bg-[#00D4B3] text-[#0A2540] hover:bg-[#00bda0] shadow-[0_4px_20px_rgba(0,212,179,0.2)]' 
-                                    : 'bg-gray-800 text-gray-500 cursor-not-allowed'}
+                                    : 'bg-gray-200 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed'}
                             `}
                             disabled={!route}
                         >
@@ -310,7 +310,7 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
 
       {/* States: Loading, Error, Result */}
       {status === 'STEP_GENERATING' && (
-        <div className="bg-[#1E2329] rounded-2xl border border-white/5 p-12 text-center">
+        <div className="bg-white dark:bg-[#1E2329] rounded-2xl border border-gray-200 dark:border-white/5 p-12 text-center">
             <div className="inline-block relative w-16 h-16 mb-6">
                 {/* Spinner Ring */}
                 <div className="absolute inset-0 rounded-full border-4 border-[#00D4B3]/20 border-t-[#00D4B3] animate-spin"></div>
@@ -319,15 +319,15 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
                     <svg className="w-6 h-6 text-[#00D4B3]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                 </div>
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Generando Estructura Inteligente</h3>
-            <p className="text-gray-400">Analizando objetivos, investigando tendencias y estructurando módulos...</p>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Generando Estructura Inteligente</h3>
+            <p className="text-gray-500 dark:text-gray-400">Analizando objetivos, investigando tendencias y estructurando módulos...</p>
         </div>
       )}
 
       {temario && (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                     <svg className="w-6 h-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                     Temario Generado
                 </h3>
@@ -341,14 +341,14 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
             />
 
             {/* REVISION PANEL FASE 2 */}
-            <div className="bg-[#151A21] border border-white/5 rounded-2xl p-6 mt-8">
-                <h3 className="text-white font-bold mb-4 flex items-center gap-2">
+            <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-white/5 rounded-2xl p-6 mt-8">
+                <h3 className="text-gray-900 dark:text-white font-bold mb-4 flex items-center gap-2">
                     <svg className="w-4 h-4 text-[#00D4B3]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                     Revisión Fase 2: Estructura
                 </h3>
                 
                 <textarea
-                    className="w-full bg-[#0F1419] border border-white/10 rounded-xl p-4 text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 min-h-[100px]"
+                    className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-white/10 rounded-xl p-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 min-h-[100px] placeholder-gray-400 dark:placeholder-gray-600"
                     placeholder="Escribe tus comentarios o feedback sobre la estructura del temario..."
                     value={reviewNotes}
                     onChange={(e) => setReviewNotes(e.target.value)}
@@ -411,7 +411,7 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
 
                 {/* BOTÓN DESCARTAR / RESETEAR MEJORADO */}
                 {(status === 'STEP_REJECTED' || status === 'STEP_READY_FOR_QA') && (
-                    <div className="mt-6 pt-6 border-t border-white/5">
+                    <div className="mt-6 pt-6 border-t border-gray-200 dark:border-white/5">
                         <button 
                             onClick={async () => {
                                 if(!confirm("¿Estás seguro de que quieres eliminar este temario y volver a generarlo?")) return;

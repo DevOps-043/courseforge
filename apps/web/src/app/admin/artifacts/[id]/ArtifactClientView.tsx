@@ -156,11 +156,11 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
             )}
 
             {/* HEADER */}
-            <div className="bg-[#151A21] border border-[#6C757D]/10 rounded-2xl p-6 relative overflow-hidden flex items-center justify-between gap-4">
+            <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 relative overflow-hidden flex items-center justify-between gap-4">
                 <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-[#1F5AF6]/5 rounded-full blur-[80px] pointer-events-none translate-x-1/2 -translate-y-1/2" />
                 <div className="relative z-10 flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-1">
-                        <h1 className="text-xl font-bold text-white truncate" title={artifact.idea_central}>
+                        <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate" title={artifact.idea_central}>
                             {(artifact.idea_central || 'Artefacto sin nombre')
                                 .replace(/(TEMA:|IDEA PRINCIPAL:|PÚBLICO:|RESULTADOS:)/g, '')
                                 .split('.')[0]
@@ -171,65 +171,65 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                             {artifact.state.replace('_', ' ')}
                         </div>
                     </div>
-                    <p className="text-[#6C757D] text-xs font-mono">{artifact.courseId || artifact.id} • Creado hace {new Date(artifact.created_at).toLocaleDateString()}</p>
+                    <p className="text-gray-500 dark:text-[#6C757D] text-xs font-mono">{artifact.courseId || artifact.id} • Creado hace {new Date(artifact.created_at).toLocaleDateString()}</p>
                 </div>
             </div>
 
             {/* STEPPER */}
-            <div className="px-6 py-6 bg-[#151A21] border border-[#6C757D]/10 rounded-2xl flex items-center justify-between overflow-x-auto">
-                <StepItem step={1} label="Base" active={currentStep === 1} onClick={() => setCurrentStep(1)} icon={<Target size={16} />} done={reviewState === 'approved'} />
-                <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors ${reviewState === 'approved' ? 'bg-[#1F5AF6]' : 'bg-[#2D333B]'}`} />
+            <div className="px-8 py-6 bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl flex items-center justify-between overflow-x-auto">
+                <StepItem step={1} label="Base" active={currentStep === 1} onClick={() => setCurrentStep(1)} icon={<Target size={18} />} done={reviewState === 'approved'} />
+
+                <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${reviewState === 'approved' ? 'bg-[#1F5AF6]' : 'bg-gray-200 dark:bg-[#2D333B]'}`} />
 
                 <StepItem
                     step={2}
                     label="Temario"
                     active={currentStep === 2}
                     onClick={() => setCurrentStep(2)}
-                    icon={<BookOpen size={16} />}
+                    icon={<BookOpen size={18} />}
                     disabled={reviewState !== 'approved' && !artifact.temario}
                     done={syllabusApproved || currentStep > 2}
                 />
 
-                <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors ${syllabusApproved || currentStep > 2 ? 'bg-[#1F5AF6]' : 'bg-[#2D333B]'}`} />
+                <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${syllabusApproved || currentStep > 2 ? 'bg-[#1F5AF6]' : 'bg-gray-200 dark:bg-[#2D333B]'}`} />
 
                 <StepItem
                     step={3}
                     label="Plan"
                     active={currentStep === 3}
                     onClick={() => setCurrentStep(3)}
-                    icon={<Layers size={16} />}
+                    icon={<Layers size={18} />}
                     disabled={!syllabusApproved}
                     done={planApproved}
                 />
-                {/* Future Steps */}
-                <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors ${planApproved ? 'bg-[#1F5AF6]' : 'bg-[#2D333B]'}`} />
+
+                <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${planApproved ? 'bg-[#1F5AF6]' : 'bg-gray-200 dark:bg-[#2D333B]'}`} />
+
                 <StepItem
                     step={4}
                     label="Fuentes"
                     active={currentStep === 4}
                     onClick={() => setCurrentStep(4)}
                     disabled={!planApproved}
-                    icon={<FileText size={16} />}
+                    icon={<FileText size={18} />}
+                    done={curationApproved}
                 />
-                <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors ${curationApproved ? 'bg-[#1F5AF6]' : 'bg-[#2D333B]'}`} />
+
+                <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${curationApproved ? 'bg-[#1F5AF6]' : 'bg-gray-200 dark:bg-[#2D333B]'}`} />
+
                 <StepItem
                     step={5}
                     label="Materiales"
                     active={currentStep === 5}
                     onClick={() => setCurrentStep(5)}
-                    icon={<Layers size={16} />}
+                    icon={<Layers size={18} />}
                     disabled={!curationApproved}
                     done={artifact.materials_state === 'PHASE3_APPROVED'}
                 />
-                <div className="h-0.5 flex-1 mx-4 rounded-full bg-[#2D333B]" />
-                <StepItem
-                    step={6}
-                    label="Producción"
-                    active={currentStep === 6}
-                    onClick={() => setCurrentStep(6)}
-                    icon={<Target size={16} />}
-                    disabled={artifact.materials_state !== 'PHASE3_APPROVED'}
-                />
+
+                <div className="h-0.5 flex-1 mx-4 rounded-full bg-gray-200 dark:bg-[#2D333B] relative top-[-10px]" />
+
+                <StepItem step={6} label="Slides" disabled icon={<Target size={18} />} />
             </div>
 
             {/* CONTENT SWITCHER */}
@@ -240,7 +240,7 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab as any)}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === tab ? 'bg-[#1F5AF6] text-white' : 'bg-[#151A21] text-[#94A3B8] hover:text-white border border-[#6C757D]/10'}`}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === tab ? 'bg-[#1F5AF6] text-white' : 'bg-white dark:bg-[#151A21] text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-[#6C757D]/10'}`}
                             >
                                 {tab === 'content' ? 'Idea Central' : 'Validación'}
                             </button>
@@ -269,7 +269,7 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                                             <div key={idx} className="flex items-center gap-3">
                                                 <span className="text-[#6C757D] font-mono text-sm">{idx + 1}.</span>
                                                 <input
-                                                    className="flex-1 bg-[#0F1419] border border-[#6C757D]/20 rounded-lg p-3 text-white text-sm focus:outline-none focus:border-[#00D4B3] transition-colors"
+                                                    className="flex-1 bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-lg p-3 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#00D4B3] transition-colors"
                                                     value={nombre}
                                                     onChange={(e) => {
                                                         const newNombres = [...editedContent.nombres];
@@ -283,7 +283,7 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                                 ) : (
                                     <div className="space-y-3">
                                         {(artifact.nombres || []).map((nombre: string, idx: number) => (
-                                            <div key={idx} className="flex items-start gap-3 p-3 rounded-lg bg-[#0F1419] border border-[#6C757D]/10 text-white text-sm">
+                                            <div key={idx} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/10 text-gray-900 dark:text-white text-sm">
                                                 <span className="text-[#6C757D] font-mono">{idx + 1}.</span> {nombre}
                                             </div>
                                         ))}
@@ -311,7 +311,7 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                                             <div key={idx} className="flex items-start gap-3">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-[#F59E0B] mt-4 shrink-0" />
                                                 <textarea
-                                                    className="flex-1 bg-[#0F1419] border border-[#6C757D]/20 rounded-lg p-3 text-white text-sm focus:outline-none focus:border-[#F59E0B] transition-colors min-h-[60px]"
+                                                    className="flex-1 bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-lg p-3 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#F59E0B] transition-colors min-h-[60px]"
                                                     value={obj}
                                                     onChange={(e) => {
                                                         const newObjetivos = [...editedContent.objetivos];
@@ -325,7 +325,7 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                                 ) : (
                                     <ul className="space-y-3">
                                         {(artifact.objetivos || []).map((obj: string, idx: number) => (
-                                            <li key={idx} className="flex gap-3 text-sm text-[#E9ECEF] bg-[#0F1419] p-3 rounded-lg border border-[#6C757D]/10">
+                                            <li key={idx} className="flex gap-3 text-sm text-gray-700 dark:text-[#E9ECEF] bg-gray-50 dark:bg-[#0F1419] p-3 rounded-lg border border-gray-200 dark:border-[#6C757D]/10">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-[#F59E0B] mt-2 shrink-0" /> {obj}
                                             </li>
                                         ))}
@@ -349,7 +349,7 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                             >
                                 {editingSection === 'descripcion' ? (
                                     <textarea
-                                        className="w-full bg-[#0F1419] border border-[#6C757D]/20 rounded-xl p-4 text-white text-sm focus:outline-none focus:border-[#1F5AF6] min-h-[150px] leading-relaxed"
+                                        className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl p-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#1F5AF6] min-h-[150px] leading-relaxed"
                                         value={editedContent.descripcion.texto}
                                         onChange={(e) => setEditedContent({
                                             ...editedContent,
@@ -357,17 +357,17 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                                         })}
                                     />
                                 ) : (
-                                    <p className="text-sm text-[#E9ECEF] bg-[#0F1419] p-4 rounded-xl border border-[#6C757D]/10 leading-relaxed">{artifact.descripcion?.texto || 'N/A'}</p>
+                                    <p className="text-sm text-gray-700 dark:text-[#E9ECEF] bg-gray-50 dark:bg-[#0F1419] p-4 rounded-xl border border-gray-200 dark:border-[#6C757D]/10 leading-relaxed">{artifact.descripcion?.texto || 'N/A'}</p>
                                 )}
                             </SectionCard>
 
-                            <div className="bg-[#151A21] border border-[#6C757D]/10 rounded-2xl p-6 mt-8">
-                                <h3 className="text-white font-bold mb-4 flex items-center gap-2">
+                            <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 mt-8">
+                                <h3 className="text-gray-900 dark:text-white font-bold mb-4 flex items-center gap-2">
                                     <Edit3 size={18} /> Revisión Fase 1
                                 </h3>
 
                                 <textarea
-                                    className="w-full bg-[#0F1419] border border-[#6C757D]/20 rounded-xl p-4 text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 min-h-[100px]"
+                                    className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl p-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 min-h-[100px] placeholder-gray-400 dark:placeholder-gray-600"
                                     placeholder="Escribe tus comentarios o feedback para la IA..."
                                     value={feedback}
                                     onChange={(e) => setFeedback(e.target.value)}
@@ -451,14 +451,14 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                         <div className="space-y-6">
                             {/* SEARCH QUERIES */}
                             {artifact.generation_metadata?.search_queries && artifact.generation_metadata.search_queries.length > 0 && (
-                                <div className="bg-[#151A21] border border-[#6C757D]/10 rounded-xl p-5">
-                                    <h3 className="text-white font-bold text-sm mb-3 flex items-center gap-2">
+                                <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-xl p-5">
+                                    <h3 className="text-gray-900 dark:text-white font-bold text-sm mb-3 flex items-center gap-2">
                                         <Layers size={16} className="text-[#1F5AF6]" />
                                         Búsquedas de Investigación
                                     </h3>
                                     <div className="flex flex-wrap gap-2">
                                         {artifact.generation_metadata.search_queries.map((q: string, idx: number) => (
-                                            <span key={idx} className="text-xs text-[#E9ECEF] bg-[#0F1419] px-3 py-1.5 rounded-full border border-[#6C757D]/20">
+                                            <span key={idx} className="text-xs text-gray-600 dark:text-[#E9ECEF] bg-gray-100 dark:bg-[#0F1419] px-3 py-1.5 rounded-full border border-gray-200 dark:border-[#6C757D]/20">
                                                 🔍 {q}
                                             </span>
                                         ))}
@@ -469,9 +469,9 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                             {/* VALIDATION RESULTS */}
                             <div className="space-y-2">
                                 {validation.results?.map((res: any, idx: number) => (
-                                    <div key={idx} className={`p-4 rounded-xl border flex items-start gap-4 ${res.passed ? 'bg-[#00D4B3]/5 border-[#00D4B3]/20' : 'bg-[#EF4444]/5 border-[#EF4444]/20'}`}>
+                                    <div key={idx} className={`p-4 rounded-xl border flex items-start gap-4 ${res.passed ? 'bg-[#00D4B3]/10 border-[#00D4B3]/20' : 'bg-[#EF4444]/10 border-[#EF4444]/20'}`}>
                                         {res.passed ? <CheckCircle2 className="text-[#00D4B3]" /> : <AlertCircle className="text-[#EF4444]" />}
-                                        <p className="text-sm text-white mt-1">{res.message}</p>
+                                        <p className="text-sm text-gray-900 dark:text-white mt-1">{res.message}</p>
                                     </div>
                                 ))}
                             </div>
@@ -498,7 +498,6 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                 <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                     <SourcesCurationGenerationContainer
                         artifactId={artifact.id}
-                        onNext={() => setCurrentStep(5)}
                     />
                 </div>
             ) : currentStep === 5 ? (
@@ -516,9 +515,9 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
 
 function SectionCard({ title, icon, action, children }: any) {
     return (
-        <div className="bg-[#151A21] border border-[#6C757D]/10 rounded-2xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-[#6C757D]/10 flex justify-between items-center bg-[#1A2027]">
-                <h3 className="text-white font-bold flex items-center gap-2">{icon} {title}</h3>
+        <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-[#6C757D]/10 flex justify-between items-center bg-gray-50 dark:bg-[#1A2027]">
+                <h3 className="text-gray-900 dark:text-white font-bold flex items-center gap-2">{icon} {title}</h3>
                 {action && <div>{action}</div>}
             </div>
             <div className="p-6">{children}</div>
@@ -533,13 +532,16 @@ function StepItem({ step, label, active, onClick, icon, disabled, done }: any) {
             disabled={disabled}
             className={`flex flex-col items-center gap-2 group ${disabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}`}
         >
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all bg-[#0F1419] border-2 relative 
-                ${active ? 'border-[#1F5AF6] text-[#1F5AF6]' :
-                    done ? 'border-[#00D4B3] text-[#00D4B3] bg-[#00D4B3]/10' :
-                        'border-[#2D333B] text-[#6C757D]'}`}>
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all border-2 relative 
+                ${active
+                    ? 'border-blue-600 text-blue-600 dark:border-[#1F5AF6] dark:text-[#1F5AF6] bg-white dark:bg-[#0F1419]'
+                    : done
+                        ? 'border-green-500 text-green-500 dark:border-[#00D4B3] dark:text-[#00D4B3] bg-green-50 dark:bg-[#00D4B3]/10'
+                        : 'border-gray-200 dark:border-[#2D333B] text-gray-400 dark:text-[#6C757D] bg-white dark:bg-[#0F1419]'
+                }`}>
                 {done ? <CheckCircle2 size={16} /> : icon}
             </div>
-            <span className={`text-xs font-medium uppercase ${active ? 'text-[#1F5AF6]' : done ? 'text-[#00D4B3]' : 'text-[#6C757D]'}`}>{label}</span>
+            <span className={`text-xs font-medium uppercase ${active ? 'text-blue-600 dark:text-[#1F5AF6]' : done ? 'text-green-500 dark:text-[#00D4B3]' : 'text-gray-400 dark:text-[#6C757D]'}`}>{label}</span>
         </button>
     )
 }

@@ -62,9 +62,9 @@ export function CurationDashboard({ rows, onUpdateRow, isGenerating }: CurationD
 
   if (rows.length === 0 && !isGenerating) {
      return (
-        <div className="flex flex-col items-center justify-center p-12 text-[#6C757D] border border-dashed border-[#1E2329] rounded-xl bg-[#0F1419]/50">
+        <div className="flex flex-col items-center justify-center p-12 text-gray-500 dark:text-[#6C757D] border border-dashed border-gray-300 dark:border-[#1E2329] rounded-xl bg-gray-50 dark:bg-[#0F1419]/50">
            <Layers className="mb-4 opacity-50" size={48} />
-           <p className="text-lg font-medium text-[#E9ECEF]">No hay fuentes curadas aún.</p>
+           <p className="text-lg font-medium text-gray-900 dark:text-[#E9ECEF]">No hay fuentes curadas aún.</p>
            <p className="text-sm">Inicia la curaduría para comenzar a buscar.</p>
         </div>
      );
@@ -74,7 +74,7 @@ export function CurationDashboard({ rows, onUpdateRow, isGenerating }: CurationD
     <div className="space-y-6">
       
       {/* 1. Stats Bar - Simplified for Lesson-based view */}
-      <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl bg-[#0F1419] border border-[#1E2329] shadow-sm">
+      <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl bg-white dark:bg-[#0F1419] border border-gray-200 dark:border-[#1E2329] shadow-sm">
          <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-[#1F5AF6]/10 text-[#1F5AF6] border border-[#1F5AF6]/20">
             <BookOpen size={16} />
             <span className="font-bold">{stats.lessons}</span>
@@ -85,15 +85,15 @@ export function CurationDashboard({ rows, onUpdateRow, isGenerating }: CurationD
             <span className="font-bold">{stats.apta}</span>
             <span className="text-xs opacity-80 uppercase tracking-wide">Fuentes Válidas</span>
          </div>
-         <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20">
+         <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-rose-500/10 text-rose-500 dark:text-rose-400 border border-rose-500/20">
             <XCircle size={16} />
             <span className="font-bold">{stats.rejected}</span>
             <span className="text-xs opacity-80 uppercase tracking-wide">Inválidas</span>
          </div>
          
-         <div className="ml-auto text-xs text-[#6C757D] flex items-center gap-2">
+         <div className="ml-auto text-xs text-gray-500 dark:text-[#6C757D] flex items-center gap-2">
             <span>{stats.auto} auto-validadas</span>
-            <div className="h-4 w-px bg-[#1E2329] mx-2" />
+            <div className="h-4 w-px bg-gray-200 dark:bg-[#1E2329] mx-2" />
             <span>Total: {stats.total} fuentes</span>
          </div>
       </div>
@@ -101,7 +101,7 @@ export function CurationDashboard({ rows, onUpdateRow, isGenerating }: CurationD
       {isGenerating && stats.total === 0 && (
          <div className="p-8 text-center animate-pulse text-[#00D4B3]">
             <p>Investigando fuentes para cada lección...</p>
-            <p className="text-xs text-[#6C757D] mt-2">Búsqueda profunda en progreso (1-2 fuentes por lección).</p>
+            <p className="text-xs text-gray-500 dark:text-[#6C757D] mt-2">Búsqueda profunda en progreso (1-2 fuentes por lección).</p>
          </div>
       )}
 
@@ -116,20 +116,20 @@ export function CurationDashboard({ rows, onUpdateRow, isGenerating }: CurationD
           const isComplete = validSources > 0;
 
           return (
-            <div key={lessonId} className="border border-[#1E2329] rounded-xl overflow-hidden bg-[#0F1419]">
+            <div key={lessonId} className="border border-gray-200 dark:border-[#1E2329] rounded-xl overflow-hidden bg-white dark:bg-[#0F1419]">
               {/* Lesson Header */}
               <button 
                  onClick={() => toggleLesson(lessonId)}
-                 className="w-full flex items-center gap-3 p-4 bg-[#0F1419] hover:bg-[#1E2329]/50 transition-colors text-left group"
+                 className="w-full flex items-center gap-3 p-4 bg-white dark:bg-[#0F1419] hover:bg-gray-50 dark:hover:bg-[#1E2329]/50 transition-colors text-left group"
               >
                  {isCollapsed ? (
-                    <ChevronRight size={18} className="text-[#6C757D] group-hover:text-white transition-colors" />
+                    <ChevronRight size={18} className="text-gray-400 dark:text-[#6C757D] group-hover:text-gray-900 dark:group-hover:text-white transition-colors" />
                  ) : (
-                    <ChevronDown size={18} className="text-[#6C757D] group-hover:text-white transition-colors" />
+                    <ChevronDown size={18} className="text-gray-400 dark:text-[#6C757D] group-hover:text-gray-900 dark:group-hover:text-white transition-colors" />
                  )}
                  
                  <div className="flex-1 min-w-0">
-                    <h3 className={`font-semibold text-base truncate ${isComplete ? 'text-[#00D4B3]' : 'text-[#E9ECEF]'}`}>
+                    <h3 className={`font-semibold text-base truncate ${isComplete ? 'text-[#00D4B3]' : 'text-gray-900 dark:text-[#E9ECEF]'}`}>
                        {title}
                     </h3>
                  </div>
@@ -138,7 +138,7 @@ export function CurationDashboard({ rows, onUpdateRow, isGenerating }: CurationD
                  <div className={`flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded border
                     ${isComplete 
                       ? 'text-[#00D4B3] bg-[#00D4B3]/10 border-[#00D4B3]/20' 
-                      : 'text-[#6C757D] bg-[#151A21] border-[#1E2329]'
+                      : 'text-gray-500 dark:text-[#6C757D] bg-gray-100 dark:bg-[#151A21] border-gray-200 dark:border-[#1E2329]'
                     }`}
                  >
                     <FileText size={12} />
@@ -154,11 +154,11 @@ export function CurationDashboard({ rows, onUpdateRow, isGenerating }: CurationD
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: "auto", opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
-                      className="border-t border-[#1E2329]"
+                      className="border-t border-gray-200 dark:border-[#1E2329]"
                     >
                        <div className="p-4 space-y-3">
                           {sources.length === 0 ? (
-                            <p className="text-[#6C757D] text-sm italic">No se encontraron fuentes para esta lección.</p>
+                            <p className="text-gray-500 dark:text-[#6C757D] text-sm italic">No se encontraron fuentes para esta lección.</p>
                           ) : (
                             sources.map((source, idx) => (
                               <LessonSourceCard 
@@ -198,7 +198,7 @@ function LessonSourceCard({ source, index, onUpdate }: LessonSourceCardProps) {
     ? 'border-[#00D4B3]/30 bg-[#00D4B3]/5' 
     : isInvalid 
       ? 'border-rose-500/30 bg-rose-500/5' 
-      : 'border-[#1E2329] bg-[#151A21]';
+      : 'border-gray-200 dark:border-[#1E2329] bg-white dark:bg-[#151A21]';
 
   const handleToggleApta = () => {
     // Cycle: null -> true -> false -> true
@@ -211,7 +211,7 @@ function LessonSourceCard({ source, index, onUpdate }: LessonSourceCardProps) {
       <div className="flex items-start gap-3">
         {/* Index Number */}
         <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold
-          ${isValid ? 'bg-[#00D4B3] text-[#0A2540]' : isInvalid ? 'bg-rose-500 text-white' : 'bg-[#1E2329] text-[#6C757D]'}`}
+          ${isValid ? 'bg-[#00D4B3] text-[#0A2540]' : isInvalid ? 'bg-rose-500 text-white' : 'bg-gray-200 dark:bg-[#1E2329] text-gray-600 dark:text-[#6C757D]'}`}
         >
           {index}
         </div>
@@ -220,7 +220,7 @@ function LessonSourceCard({ source, index, onUpdate }: LessonSourceCardProps) {
         <div className="flex-1 min-w-0 space-y-2">
           {/* Title & Link */}
           <div className="flex items-start gap-2">
-            <h4 className="text-white font-medium text-sm leading-tight flex-1">
+            <h4 className="text-gray-900 dark:text-white font-medium text-sm leading-tight flex-1">
               {source.source_title || 'Fuente sin título'}
             </h4>
             {source.source_ref && (
@@ -237,14 +237,14 @@ function LessonSourceCard({ source, index, onUpdate }: LessonSourceCardProps) {
 
           {/* URL Preview */}
           {source.source_ref && (
-            <p className="text-[#6C757D] text-xs truncate font-mono">
+            <p className="text-gray-500 dark:text-[#6C757D] text-xs truncate font-mono">
               {source.source_ref}
             </p>
           )}
 
           {/* Rationale */}
           {source.source_rationale && (
-            <p className="text-[#94A3B8] text-xs leading-relaxed">
+            <p className="text-gray-600 dark:text-[#94A3B8] text-xs leading-relaxed">
               {source.source_rationale}
             </p>
           )}
@@ -252,7 +252,7 @@ function LessonSourceCard({ source, index, onUpdate }: LessonSourceCardProps) {
           {/* Tags/Notes */}
           {source.notes && (
             <div className="flex flex-wrap gap-1 mt-2">
-              <span className="text-[10px] bg-[#1E2329] text-[#6C757D] px-2 py-0.5 rounded">
+              <span className="text-[10px] bg-gray-100 dark:bg-[#1E2329] text-gray-600 dark:text-[#6C757D] px-2 py-0.5 rounded">
                 {source.notes}
               </span>
             </div>
@@ -274,8 +274,8 @@ function LessonSourceCard({ source, index, onUpdate }: LessonSourceCardProps) {
             ${isValid 
               ? 'bg-[#00D4B3]/20 text-[#00D4B3] border border-[#00D4B3]/30 hover:bg-[#00D4B3]/30' 
               : isInvalid 
-                ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:bg-rose-500/30' 
-                : 'bg-[#1E2329] text-[#6C757D] border border-[#1E2329] hover:border-[#00D4B3]/50 hover:text-white'
+                ? 'bg-rose-500/20 text-rose-500 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/30' 
+                : 'bg-gray-100 dark:bg-[#1E2329] text-gray-500 dark:text-[#6C757D] border border-gray-200 dark:border-[#1E2329] hover:border-[#00D4B3]/50 hover:text-gray-900 dark:hover:text-white'
             }`}
         >
           {isValid ? 'Válida' : isInvalid ? 'Inválida' : 'Pendiente'}

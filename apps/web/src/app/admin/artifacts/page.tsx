@@ -6,10 +6,10 @@ import { Plus } from 'lucide-react';
 export default async function ArtifactsPage() {
   const supabase = await createClient();
 
-  // 1. Fetch Artifacts
+  // 1. Fetch Artifacts with syllabus and plan states
   const { data: artifacts } = await supabase
     .from('artifacts')
-    .select('*')
+    .select('*, syllabus(state), instructional_plans(state)')
     .order('created_at', { ascending: false });
 
   // 2. Fetch Profiles related to these artifacts
@@ -24,7 +24,7 @@ export default async function ArtifactsPage() {
     profiles = data || [];
   }
 
-  // 3. Fetch production status for each artifact (simplified)
+  // 3. Fetch production status for each artifact
   // Get materials -> lessons -> components with VIDEO type
   const artifactIds = artifacts?.map((a: any) => a.id) || [];
   let productionStatusMap: Record<string, { total: number; completed: number }> = {};
@@ -66,16 +66,29 @@ export default async function ArtifactsPage() {
     });
   }
 
-  // 4. Merge data
+  // 4. Get current user for ownership filter
+  const { data: { user } } = await supabase.auth.getUser();
+  const currentUserId = user?.id;
+
+  // 5. Merge all data
   const artifactsWithProfiles = artifacts?.map((art: any) => {
+    // Supabase returns 1:N relations as arrays
+    const syllabus = Array.isArray(art.syllabus) ? art.syllabus[0] : art.syllabus;
+    const instructional_plan = Array.isArray(art.instructional_plans) ? art.instructional_plans[0] : art.instructional_plans;
+
     const prodStatus = productionStatusMap[art.id];
     const isProductionComplete = prodStatus && prodStatus.total > 0 && prodStatus.completed === prodStatus.total;
 
     return {
       ...art,
-      profiles: profiles.find((p: any) => p.id === art.created_by),
+      // Sub-step states (from main branch)
+      syllabus_state: syllabus?.state,
+      plan_state: instructional_plan?.state,
+      // Production status (from HEAD branch)
       production_status: prodStatus || { total: 0, completed: 0 },
       production_complete: isProductionComplete,
+      // Profile info
+      profiles: profiles.find((p: any) => p.id === art.created_by)
     };
   }) || [];
 
@@ -96,7 +109,7 @@ export default async function ArtifactsPage() {
       </div>
 
       {/* Client List Component */}
-      <ArtifactsList initialArtifacts={artifactsWithProfiles} />
+      <ArtifactsList initialArtifacts={artifactsWithProfiles} currentUserId={currentUserId} />
     </div>
   )
 }

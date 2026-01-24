@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
+@variant dark (&:where(.dark, .dark *));
+
 @theme {
-  --color-background: #050B14;
-  --color-surface: #0F172A;
-  --color-primary: #00E5C0;
-  --color-secondary: #1F5AF6;
+  --color-background: #050b14;
+  --color-surface: #0f172a;
+  --color-primary: #00e5c0;
+  --color-secondary: #1f5af6;
 }
 
 body {
-  background-color: #050B14;
-  color: #FFFFFF;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
 }

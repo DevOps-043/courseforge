@@ -410,13 +410,13 @@ export function SourcesCurationGenerationContainer({ artifactId }: SourcesCurati
              />
 
              {/* REVISION PANEL FASE 4 */}
-             <div className="bg-[#151A21] border border-[#6C757D]/10 rounded-2xl p-6 mt-8">
-                <h3 className="text-white font-bold mb-4 flex items-center gap-2">
+             <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 mt-8">
+                <h3 className="text-gray-900 dark:text-white font-bold mb-4 flex items-center gap-2">
                     <Edit3 size={18} /> Revisión Fase 4: Curaduría de Fuentes
                 </h3>
                 
                 <textarea
-                    className="w-full bg-[#0F1419] border border-[#6C757D]/20 rounded-xl p-4 text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 min-h-[100px]"
+                    className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl p-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 min-h-[100px] placeholder-gray-400 dark:placeholder-gray-600"
                     placeholder="Escribe tus comentarios o feedback sobre la curaduría de fuentes..."
                     value={reviewNotes}
                     onChange={(e) => setReviewNotes(e.target.value)}
@@ -429,7 +429,7 @@ export function SourcesCurationGenerationContainer({ artifactId }: SourcesCurati
                             <button 
                                 onClick={handleValidate}
                                 disabled={isValidating || isGenerating}
-                                className="flex-1 bg-[#0F1419] border border-[#00D4B3] hover:bg-[#00D4B3]/10 text-[#00D4B3] py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex-1 bg-white dark:bg-[#0F1419] border border-[#00D4B3] hover:bg-[#00D4B3]/10 text-[#00D4B3] py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {isValidating ? <RefreshCw size={18} className="animate-spin" /> : <CheckSquare size={18} />}
                                 {isValidating ? "Validando..." : "Validar Contenido"}
@@ -520,34 +520,34 @@ export function SourcesCurationGenerationContainer({ artifactId }: SourcesCurati
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
       <div className="space-y-2">
-            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-[#1F5AF6]/10 text-[#1F5AF6]">
                     <BookOpen size={24} />
                 </div>
                 Paso 4: Curaduría de Fuentes (Fase 2)
             </h2>
-            <p className="text-[#94A3B8] text-base leading-relaxed max-w-2xl ml-12">
+            <p className="text-gray-500 dark:text-[#94A3B8] text-base leading-relaxed max-w-2xl ml-12">
                 Genera fuentes de alta calidad para cada lección. Búsqueda profunda con 1-2 fuentes verificadas por lección.
             </p>
       </div>
 
       {/* Configuration Card */}
-      <div className="bg-[#151A21] border border-[#6C757D]/10 rounded-2xl p-6 shadow-xl shadow-black/20 transition-all duration-300">
+      <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 shadow-xl shadow-black/5 dark:shadow-black/20 transition-all duration-300">
           <div className="flex justify-between items-center mb-6">
-              <h3 className="text-white font-semibold text-sm uppercase tracking-wider flex items-center gap-2">
+              <h3 className="text-gray-900 dark:text-white font-semibold text-sm uppercase tracking-wider flex items-center gap-2">
                   <Settings2 size={16} className="text-[#00D4B3]" />
                   Configuración del Prompt
               </h3>
               <div className="flex items-center gap-2">
-                  <span className={`text-xs font-medium transition-colors ${useCustomPrompt ? 'text-[#00D4B3]' : 'text-[#6C757D]'}`}>
+                  <span className={`text-xs font-medium transition-colors ${useCustomPrompt ? 'text-[#00D4B3]' : 'text-gray-500 dark:text-[#6C757D]'}`}>
                       {useCustomPrompt ? 'Prompt personalizado' : 'Sistema por defecto'}
                   </span>
                   
                   <button 
                       onClick={() => setUseCustomPrompt(!useCustomPrompt)}
-                      className={`w-10 h-5 rounded-full relative border transition-all duration-300 focus:outline-none ${useCustomPrompt ? 'bg-[#00D4B3]/20 border-[#00D4B3]' : 'bg-[#0F1419] border-[#6C757D]/20'}`}
+                      className={`w-10 h-5 rounded-full relative border transition-all duration-300 focus:outline-none ${useCustomPrompt ? 'bg-[#00D4B3]/20 border-[#00D4B3]' : 'bg-gray-200 dark:bg-[#0F1419] border-gray-300 dark:border-[#6C757D]/20'}`}
                   >
-                      <div className={`absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all duration-300 shadow-sm ${useCustomPrompt ? 'left-5 bg-[#00D4B3]' : 'left-0.5 bg-[#6C757D]'}`} />
+                      <div className={`absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all duration-300 shadow-sm ${useCustomPrompt ? 'left-5 bg-[#00D4B3]' : 'left-0.5 bg-gray-400 dark:bg-[#6C757D]'}`} />
                   </button>
               </div>
           </div>
@@ -556,18 +556,18 @@ export function SourcesCurationGenerationContainer({ artifactId }: SourcesCurati
               {useCustomPrompt ? (
                   <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-3">
                       <div className="flex justify-between items-center">
-                          <label className="text-xs text-gray-400 font-medium">Instrucciones Adicionales</label>
+                          <label className="text-xs text-gray-500 dark:text-gray-400 font-medium">Instrucciones Adicionales</label>
                           <span className="text-[10px] text-[#00D4B3] bg-[#00D4B3]/10 px-2 py-0.5 rounded border border-[#00D4B3]/20">Modo Edición</span>
                       </div>
                       <textarea 
                           value={customPrompt}
                           onChange={(e) => setCustomPrompt(e.target.value)}
-                          className="w-full h-48 bg-[#0F1419] border border-[#00D4B3]/30 rounded-xl p-4 text-sm text-gray-300 font-mono leading-relaxed focus:outline-none focus:border-[#00D4B3] transition-colors resize-none shadow-inner placeholder:text-gray-600"
+                          className="w-full h-48 bg-gray-50 dark:bg-[#0F1419] border border-gray-300 dark:border-[#00D4B3]/30 rounded-xl p-4 text-sm text-gray-900 dark:text-gray-300 font-mono leading-relaxed focus:outline-none focus:border-[#00D4B3] transition-colors resize-none shadow-inner placeholder:text-gray-400 dark:placeholder:text-gray-600"
                           placeholder={DEFAULT_PROMPT_PREVIEW}
                       />
                   </div>
               ) : (
-                  <div className="bg-[#0F1419] border border-[#6C757D]/10 rounded-xl p-6 flex flex-col gap-4 group hover:border-[#00D4B3]/20 transition-colors cursor-default animate-in fade-in duration-300 relative overflow-hidden">
+                  <div className="bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/10 rounded-xl p-6 flex flex-col gap-4 group hover:border-[#00D4B3]/20 transition-colors cursor-default animate-in fade-in duration-300 relative overflow-hidden">
                        <div className="flex items-center gap-3 relative z-10">
                             <CheckCircle2 size={18} className="text-[#00D4B3]" />
                             <h4 className="text-[#00D4B3] font-bold text-sm">
@@ -575,13 +575,13 @@ export function SourcesCurationGenerationContainer({ artifactId }: SourcesCurati
                             </h4>
                        </div>
                        
-                       <p className="text-[#94A3B8] text-sm leading-relaxed relative z-10">
+                       <p className="text-gray-600 dark:text-[#94A3B8] text-sm leading-relaxed relative z-10">
                             {DEFAULT_PROMPT_PREVIEW}
                        </p>
 
                        <div className="flex flex-wrap gap-2 relative z-10 mt-2">
                             {['Google Search Live', 'Validación 200 OK', 'Anti-Hallucination', 'Premium Sources'].map((tag, i) => (
-                                <span key={i} className="text-[10px] bg-[#151A21] text-gray-400 border border-gray-700 px-2 py-1 rounded font-bold uppercase tracking-wider">
+                                <span key={i} className="text-[10px] bg-white dark:bg-[#151A21] text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 px-2 py-1 rounded font-bold uppercase tracking-wider">
                                     {tag}
                                 </span>
                             ))}
@@ -608,7 +608,7 @@ export function SourcesCurationGenerationContainer({ artifactId }: SourcesCurati
       </button>
 
       <div className="text-center">
-            <p className="text-[#6C757D] text-xs">
+            <p className="text-gray-500 dark:text-[#6C757D] text-xs">
                 La curaduría validará la disponibilidad de enlaces externamente.
             </p>
       </div>
