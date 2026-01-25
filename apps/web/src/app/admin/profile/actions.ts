@@ -85,6 +85,34 @@ export async function updatePassword(data: {
     return { error: error.message };
   }
 
+
   revalidatePath('/admin/profile');
   return { success: true };
 }
+
+export async function updateAvatar(url: string) {
+  const supabase = await createClient();
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return { error: 'Usuario no autenticado' };
+  }
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      avatar_url: url,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', user.id);
+
+  if (error) {
+    console.error('Error updating avatar:', error);
+    return { error: 'Error al actualizar el avatar' };
+  }
+
+  revalidatePath('/admin/layout'); 
+  revalidatePath('/admin/profile');
+  return { success: true };
+}
+

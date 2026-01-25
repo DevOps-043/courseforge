@@ -7,9 +7,10 @@ interface ChatMessageProps {
   role: 'user' | 'model';
   content: string;
   sources?: { title: string; url: string }[];
+  userAvatarUrl?: string;
 }
 
-export const ChatMessage: React.FC<ChatMessageProps> = ({ role, content, sources }) => {
+export const ChatMessage: React.FC<ChatMessageProps> = ({ role, content, sources, userAvatarUrl }) => {
   const isUser = role === 'user';
 
   return (
@@ -18,13 +19,17 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ role, content, sources
       isUser ? "flex-row-reverse" : "flex-row"
     )}>
       <div className={cn(
-        "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center shadow-sm",
+        "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center shadow-sm overflow-hidden",
         isUser 
           ? "bg-[#0A2540] text-white dark:bg-[#00D4B3] dark:text-[#0A0D12]" 
           : "bg-gradient-to-br from-[#1F5AF6] to-[#0A2540] text-white"
       )}>
         {isUser ? (
-          <User size={14} /> 
+          userAvatarUrl ? (
+            <img src={userAvatarUrl} alt="User" className="w-full h-full object-cover" />
+          ) : (
+            <User size={14} /> 
+          )
         ) : (
           <div className="w-full h-full overflow-hidden rounded-full">
             <img src="/lia-avatar.png" alt="Lia" className="w-full h-full object-cover" />

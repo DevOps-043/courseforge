@@ -134,6 +134,13 @@ export function CurationSettingsManager() {
                         { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro Preview', description: 'Next Gen Preview' },
                         { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview', description: 'High Speed Preview' },
 
+                        // Computer Use
+                        { value: 'computer-use-preview', label: 'Computer Use Preview', description: 'Agentic Capabilities' },
+
+                        // Gemini 2.5 Series
+                        { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', description: 'Advanced Reasoning' },
+                        { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', description: 'High Speed' },
+
                         // Gemini 2.0 Series (Experimental)
                         { value: 'gemini-2.0-pro-exp', label: 'Gemini 2.0 Pro Exp', description: 'SOTA Experimental' },
                         { value: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash Exp', description: 'Fast Experimental' },
@@ -153,6 +160,13 @@ export function CurationSettingsManager() {
                         // Gemini 3.0 Series (Preview)
                         { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro Preview', description: 'Next Gen Preview' },
                         { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview', description: 'High Speed Preview' },
+
+                        // Computer Use
+                        { value: 'computer-use-preview', label: 'Computer Use Preview', description: 'Agentic Capabilities' },
+
+                        // Gemini 2.5 Series
+                        { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', description: 'Advanced Reasoning' },
+                        { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', description: 'High Speed' },
 
                         // Gemini 2.0 Series (Experimental)
                         { value: 'gemini-2.0-pro-exp', label: 'Gemini 2.0 Pro Exp', description: 'SOTA Experimental' },

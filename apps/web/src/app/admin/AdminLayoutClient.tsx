@@ -56,11 +56,13 @@ const NavItem = ({ href, icon, label, isActive, isCollapsed }: any) => {
 export default function AdminLayoutClient({
   children,
   userEmail,
-  logoutAction
+  logoutAction,
+  profile
 }: {
   children: React.ReactNode;
   userEmail?: string;
   logoutAction: () => void;
+  profile?: any;
 }) {
   const [isPinned, setIsPinned] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
@@ -247,12 +249,18 @@ export default function AdminLayoutClient({
                 `}
              >
                 <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#00D4B3] to-[#009688] flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-[#00D4B3]/20 relative">
-                    AD
-                    <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white dark:border-[#151A21] rounded-full"></div>
+                    {profile?.avatar_url ? (
+                        <div className="w-full h-full overflow-hidden rounded-full">
+                           <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
+                        </div>
+                    ) : (
+                        (profile?.first_name?.[0] || userEmail?.[0]?.toUpperCase())
+                    )}
+                    <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white dark:border-[#151A21] rounded-full z-10"></div>
                 </div>
                 <div className="flex-1 overflow-hidden">
                     <p className="text-sm text-gray-900 dark:text-white font-medium truncate capitalize">
-                        {userEmail?.split('@')[0].split('.')[0] || 'Usuario'}
+                        {profile?.first_name ? `${profile.first_name} ${profile.last_name_father || ''}` : (userEmail?.split('@')[0].split('.')[0] || 'Usuario')}
                     </p>
                 </div>
                 

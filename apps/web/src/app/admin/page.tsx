@@ -1,4 +1,5 @@
 import { createClient } from '@/utils/supabase/server';
+import Link from 'next/link';
 import { ArrowUpRight, Users, Code, Activity, Server, UserPlus } from 'lucide-react';
 
 export default async function AdminPage() {
@@ -116,15 +117,17 @@ export default async function AdminPage() {
 
         {/* Quick Actions / System Status */}
         <div className="space-y-6">
-             {/* Create Artifact Widget */}
-            <div className="bg-[#0A2540] border border-[#1F5AF6]/30 rounded-2xl p-6 relative overflow-hidden group hover:border-[#1F5AF6] transition-all cursor-pointer shadow-lg">
-                <div className="absolute top-[-20%] right-[-20%] w-[150px] h-[150px] bg-[#1F5AF6]/20 rounded-full blur-[40px]" />
-                <h3 className="text-lg font-bold text-white mb-2 relative z-10">Nuevo Artefacto</h3>
-                <p className="text-sm text-[#94A3B8] mb-4 relative z-10">Crear un nuevo componente o curso manualmente.</p>
-                <div className="w-10 h-10 bg-[#1F5AF6] rounded-full flex items-center justify-center text-white relative z-10 group-hover:scale-110 transition-transform">
-                     <ArrowUpRight size={20} />
+            {/* Create Artifact Widget */}
+            <Link href="/admin/artifacts/new" className="block">
+                <div className="bg-[#0A2540] border border-[#1F5AF6]/30 rounded-2xl p-6 relative overflow-hidden group hover:border-[#1F5AF6] transition-all cursor-pointer shadow-lg">
+                    <div className="absolute top-[-20%] right-[-20%] w-[150px] h-[150px] bg-[#1F5AF6]/20 rounded-full blur-[40px]" />
+                    <h3 className="text-lg font-bold text-white mb-2 relative z-10">Nuevo Artefacto</h3>
+                    <p className="text-sm text-[#94A3B8] mb-4 relative z-10">Crear un nuevo componente o curso manualmente.</p>
+                    <div className="w-10 h-10 bg-[#1F5AF6] rounded-full flex items-center justify-center text-white relative z-10 group-hover:scale-110 transition-transform">
+                        <ArrowUpRight size={20} />
+                    </div>
                 </div>
-            </div>
+            </Link>
 
             {/* System Health */}
             <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 shadow-sm dark:shadow-none transition-colors">

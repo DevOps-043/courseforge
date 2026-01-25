@@ -1,16 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { User, Mail, Shield, Camera, Save, Loader2, Lock, Eye, EyeOff, Calendar, CheckCircle2, Phone, MapPin, FileCode, Key } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 
-import { updateProfile, updatePassword } from './actions';
+import { createClient } from '@/utils/supabase/client';
+import { updateProfile, updatePassword, updateAvatar } from './actions';
 
 export default function ProfileForm({ user, profile, artifactCount }: { user: any, profile: any, artifactCount: number }) {
   const [isLoading, setIsLoading] = useState(false);
   const [activeSection, setActiveSection] = useState<'general' | 'security'>('general');
-  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url);
+
   // Profile State
   const [formData, setFormData] = useState({
     firstName: profile?.first_name || '',
@@ -69,6 +72,51 @@ export default function ProfileForm({ user, profile, artifactCount }: { user: an
     }
   };
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+        toast.error("La imagen no debe superar los 5MB");
+        return;
+    }
+
+    setIsLoading(true);
+    const supabase = createClient();
+    
+    // Upload with standard name (overwrite usually handled by uuid specific names or upsert)
+    // We append timestamp to avoid cache issues
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+    const filePath = `${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file);
+
+    if (uploadError) {
+        console.error(uploadError);
+        toast.error("Error al subir la imagen");
+        setIsLoading(false);
+        return;
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+    const result = await updateAvatar(publicUrl);
+    
+    setIsLoading(false);
+
+    if (result.error) {
+        toast.error(result.error);
+    } else {
+        setAvatarUrl(publicUrl);
+        toast.success("Foto de perfil actualizada");
+    }
+  };
+
   // Boxed Input Component mimicking the reference design
   const BoxInput = ({ label, icon: Icon, readOnly = false, ...props }: any) => (
     <div className={`bg-gray-50 dark:bg-[#151A21] border border-gray-200 dark:border-white/5 rounded-2xl p-4 flex flex-col gap-2 transition-all group ${readOnly ? 'opacity-60' : 'focus-within:border-[#00D4B3] focus-within:ring-1 focus-within:ring-[#00D4B3]/20 dark:focus-within:border-[#00D4B3]/50 dark:focus-within:bg-[#1A2029]'}`}>
@@ -96,10 +144,25 @@ export default function ProfileForm({ user, profile, artifactCount }: { user: an
              <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center gap-8">
                  {/* Avatar */}
                  <div className="relative group shrink-0">
-                     <div className="w-32 h-32 rounded-3xl bg-gray-100 dark:bg-[#1A2029] border border-gray-200 dark:border-white/5 flex items-center justify-center text-4xl font-bold text-gray-400 dark:text-slate-300 shadow-xl group-hover:border-[#00D4B3]/30 transition-colors">
-                        {profile?.first_name?.[0] || user?.email?.[0]?.toUpperCase()}
+                     <div className="w-32 h-32 rounded-3xl bg-gray-100 dark:bg-[#1A2029] border border-gray-200 dark:border-white/5 flex items-center justify-center text-4xl font-bold text-gray-400 dark:text-slate-300 shadow-xl group-hover:border-[#00D4B3]/30 transition-colors overflow-hidden relative">
+                        {avatarUrl ? (
+                            <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover" />
+                        ) : (
+                            profile?.first_name?.[0] || user?.email?.[0]?.toUpperCase()
+                        )}
                      </div>
-                     <button className="absolute -bottom-3 -right-3 bg-[#00D4B3] text-white dark:text-black p-2.5 rounded-xl hover:scale-110 transition-transform shadow-lg shadow-[#00D4B3]/20 cursor-pointer border border-white dark:border-transparent">
+                     <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        onChange={handleImageUpload} 
+                        hidden 
+                        accept="image/*"
+                     />
+                     <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        type="button"
+                        className="absolute -bottom-3 -right-3 bg-[#00D4B3] text-white dark:text-black p-2.5 rounded-xl hover:scale-110 transition-transform shadow-lg shadow-[#00D4B3]/20 cursor-pointer border border-white dark:border-transparent z-10"
+                     >
                         <Camera size={18} />
                      </button>
                  </div>

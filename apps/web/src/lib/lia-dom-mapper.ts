@@ -119,6 +119,15 @@ export function scanDOM(): DOMMap {
     'li[onclick]',
     // Lucide icons in buttons (common in this app)
     'button svg',
+    // Stepper/Wizard steps (important for artifact phases)
+    '[class*="stepper"]',         // Stepper containers
+    '[class*="step"]',            // Step elements
+    '[class*="wizard"]',          // Wizard elements
+    '[class*="phase"]',           // Phase elements
+    '[data-state]',               // Elements with state (often steppers)
+    '[aria-current="step"]',      // Current step indicator
+    '.step',                      // Generic step class
+    '.stepper-item',              // Stepper items
   ];
 
   const allElements = document.querySelectorAll(selectors.join(', '));
@@ -168,13 +177,61 @@ export function scanDOM(): DOMMap {
 
 // Detect if page has more content below
 function detectScrollableContent(): { hasMoreBelow: boolean; hasMoreAbove: boolean; scrollPosition: string } {
-  const mainContent = document.querySelector('main') || document.querySelector('[role="main"]') || document.documentElement;
-  const scrollTop = mainContent.scrollTop || window.scrollY;
-  const scrollHeight = mainContent.scrollHeight || document.documentElement.scrollHeight;
-  const clientHeight = mainContent.clientHeight || window.innerHeight;
+  // Try to find the main scrollable container
+  // Check multiple potential scrollable containers
+  const scrollableSelectors = [
+    'main',
+    '[role="main"]',
+    '.main-content',
+    '.content',
+    '[class*="content"]',
+    '[class*="scroll"]',
+    '[class*="container"]',
+    '[style*="overflow"]'
+  ];
 
-  const hasMoreBelow = scrollTop + clientHeight < scrollHeight - 50;
-  const hasMoreAbove = scrollTop > 50;
+  let scrollableContainer: Element | null = null;
+  let maxScrollHeight = 0;
+
+  // Find the container with the most scrollable content
+  for (const selector of scrollableSelectors) {
+    const elements = document.querySelectorAll(selector);
+    elements.forEach(el => {
+      const htmlEl = el as HTMLElement;
+      if (htmlEl.scrollHeight > htmlEl.clientHeight && htmlEl.scrollHeight > maxScrollHeight) {
+        maxScrollHeight = htmlEl.scrollHeight;
+        scrollableContainer = el;
+      }
+    });
+  }
+
+  // Also check if the document body or html element is scrollable
+  const docScrollHeight = Math.max(
+    document.body.scrollHeight,
+    document.documentElement.scrollHeight
+  );
+  const docClientHeight = window.innerHeight;
+  const docScrollTop = window.scrollY || document.documentElement.scrollTop;
+
+  // Use whichever has more scroll potential
+  let scrollTop: number;
+  let scrollHeight: number;
+  let clientHeight: number;
+
+  if (scrollableContainer && maxScrollHeight > docScrollHeight) {
+    const container = scrollableContainer as HTMLElement;
+    scrollTop = container.scrollTop;
+    scrollHeight = container.scrollHeight;
+    clientHeight = container.clientHeight;
+  } else {
+    scrollTop = docScrollTop;
+    scrollHeight = docScrollHeight;
+    clientHeight = docClientHeight;
+  }
+
+  // Use a smaller threshold for detection (20px instead of 50px)
+  const hasMoreBelow = scrollTop + clientHeight < scrollHeight - 20;
+  const hasMoreAbove = scrollTop > 20;
 
   let scrollPosition = 'inicio';
   if (hasMoreAbove && hasMoreBelow) {
@@ -182,6 +239,15 @@ function detectScrollableContent(): { hasMoreBelow: boolean; hasMoreAbove: boole
   } else if (hasMoreAbove) {
     scrollPosition = 'final';
   }
+
+  console.log('[DOM Mapper] Scroll detection:', {
+    scrollTop,
+    scrollHeight,
+    clientHeight,
+    hasMoreBelow,
+    hasMoreAbove,
+    container: scrollableContainer?.className || 'document'
+  });
 
   return { hasMoreBelow, hasMoreAbove, scrollPosition };
 }
@@ -199,16 +265,17 @@ export function generateDOMSummary(map: DOMMap): string {
   summary += `Página: ${map.title}\n`;
   summary += `URL: ${map.url}\n`;
 
-  // Add scroll indicator
-  if (scrollState.hasMoreBelow || scrollState.hasMoreAbove) {
-    summary += `\n### ESTADO DE SCROLL\n`;
-    summary += `- Posición actual: ${scrollState.scrollPosition} de la página\n`;
-    if (scrollState.hasMoreBelow) {
-      summary += `- ⬇️ HAY MÁS CONTENIDO ABAJO - usa scroll(direction: "down") para ver más\n`;
-    }
-    if (scrollState.hasMoreAbove) {
-      summary += `- ⬆️ HAY CONTENIDO ARRIBA - usa scroll(direction: "up") para volver\n`;
-    }
+  // ALWAYS add scroll indicator section to help model decide
+  summary += `\n### ESTADO DE SCROLL\n`;
+  summary += `- Posición actual: ${scrollState.scrollPosition} de la página\n`;
+  if (scrollState.hasMoreBelow) {
+    summary += `- ⬇️ **HAY MÁS CONTENIDO ABAJO** - usa scroll(direction: "down") para ver más elementos\n`;
+  }
+  if (scrollState.hasMoreAbove) {
+    summary += `- ⬆️ HAY CONTENIDO ARRIBA - usa scroll(direction: "up") para volver\n`;
+  }
+  if (!scrollState.hasMoreBelow && !scrollState.hasMoreAbove) {
+    summary += `- ✓ No hay más contenido para scroll (estás viendo toda la página)\n`;
   }
   summary += '\n';
 
@@ -216,7 +283,38 @@ export function generateDOMSummary(map: DOMMap): string {
   const inputFields = map.elements.filter(el => el.tag === 'input' || el.tag === 'textarea');
   const otherElements = map.elements.filter(el => el.tag !== 'input' && el.tag !== 'textarea');
 
-  // Mostrar campos de texto primero (importante para escribir)
+  // Detectar pasos del wizard/stepper (BASE, TEMARIO, PLAN, FUENTES, MATERIALES, SLIDES)
+  const wizardStepNames = ['base', 'temario', 'plan', 'fuentes', 'materiales', 'slides', 'validación', 'idea central'];
+  const wizardSteps = otherElements.filter(el => {
+    const text = (el.text || '').toLowerCase().trim();
+    // Only match if the text IS the step name (exact or very close), not just contains it
+    // This avoids picking up container elements with concatenated text like "BaseTemarioPlanFuentes..."
+    const isExactMatch = wizardStepNames.some(step => text === step);
+    const isCloseMatch = wizardStepNames.some(step => text.startsWith(step) && text.length < step.length + 5);
+    return isExactMatch || isCloseMatch;
+  });
+
+  // Deduplicate wizard steps by text (keep only one entry per step name)
+  const seenSteps = new Set<string>();
+  const uniqueWizardSteps = wizardSteps.filter(el => {
+    const text = (el.text || '').toLowerCase().trim();
+    if (seenSteps.has(text)) return false;
+    seenSteps.add(text);
+    return true;
+  });
+
+  // Mostrar pasos del wizard si existen (IMPORTANTE para navegación de artefactos)
+  if (uniqueWizardSteps.length > 0) {
+    summary += `### PASOS/FASES DEL ARTEFACTO (wizard de creación):\n`;
+    summary += `NOTA: Cuando el usuario dice "ve a base", "llévame a temario", "fase plan", etc., se refiere a estos pasos.\n`;
+    uniqueWizardSteps.forEach(el => {
+      const label = el.text || el.ariaLabel || el.dataTestId || 'paso';
+      summary += `- "${label}" (PASO) → click_at x=${el.x}, y=${el.y}\n`;
+    });
+    summary += '\n';
+  }
+
+  // Mostrar campos de texto (importante para escribir)
   if (inputFields.length > 0) {
     summary += `### CAMPOS DE TEXTO (para escribir usa type_at):\n`;
     inputFields.forEach(el => {
@@ -225,9 +323,10 @@ export function generateDOMSummary(map: DOMMap): string {
     summary += '\n';
   }
 
-  // Agrupar otros por ubicación
-  const sidebar = otherElements.filter(el => el.x < 250);
-  const main = otherElements.filter(el => el.x >= 250);
+  // Agrupar otros por ubicación (excluir los pasos del wizard ya mostrados)
+  const nonWizardElements = otherElements.filter(el => !wizardSteps.includes(el));
+  const sidebar = nonWizardElements.filter(el => el.x < 250);
+  const main = nonWizardElements.filter(el => el.x >= 250);
 
   if (sidebar.length > 0) {
     summary += `### Menú Lateral:\n`;

@@ -20,7 +20,7 @@ export default async function AdminLayout({
   // 2. Verificar Rol de Admin
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('platform_role')
+    .select('*')
     .eq('id', user.id)
     .single();
 
@@ -30,7 +30,7 @@ export default async function AdminLayout({
   }
 
   return (
-    <AdminLayoutClient userEmail={user.email} logoutAction={logoutAction}>
+    <AdminLayoutClient userEmail={user.email} logoutAction={logoutAction} profile={profile}>
       {children}
     </AdminLayoutClient>
   );

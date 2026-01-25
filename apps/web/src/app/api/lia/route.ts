@@ -25,6 +25,93 @@ const getLiaSettings = async (supabase: any, useComputerUse: boolean) => {
   return data;
 };
 
+// Detect if model is hallucinating (says it found something that's not in the DOM map)
+function detectHallucination(responseText: string, domMap: string | undefined): { isHallucinating: boolean; searchTerm: string | null } {
+  if (!domMap) return { isHallucinating: false, searchTerm: null };
+
+  // Wizard step names - these are NOT artifacts, don't flag as hallucination
+  const wizardStepNames = ['base', 'temario', 'plan', 'fuentes', 'materiales', 'slides', 'validación', 'validacion', 'idea central'];
+
+  // Navigation-related terms - these indicate the user wants to GO somewhere, not search for an artifact by name
+  const navigationTerms = ['último', 'ultimo', 'primero', 'anterior', 'siguiente', 'reciente', 'más reciente',
+                          'vuelvo', 'volver', 'lista', 'creaste', 'creé', 'cree', 'hice', 'hiciste',
+                          'que creé', 'que cree', 'que hice'];
+
+  const responseLower = responseText.toLowerCase();
+
+  // Skip hallucination check for navigation requests (not artifact name searches)
+  const isNavigationRequest = navigationTerms.some(term => responseLower.includes(term));
+  if (isNavigationRequest) {
+    console.log(`[HALLUCINATION CHECK] Response is a navigation request - skipping hallucination check`);
+    return { isHallucinating: false, searchTerm: null };
+  }
+
+  // If the response mentions wizard steps, don't check for hallucination (it's navigation, not artifact search)
+  const mentionsWizardStep = wizardStepNames.some(step => responseLower.includes(step));
+  if (mentionsWizardStep) {
+    console.log(`[HALLUCINATION CHECK] Response mentions wizard step - skipping hallucination check`);
+    return { isHallucinating: false, searchTerm: null };
+  }
+
+  // Patterns that indicate the model claims to have found/opened something
+  // Only check for ARTIFACT claims by NAME, not navigation requests
+  const claimPatterns = [
+    /abro (?:el )?(?:artefacto )?['"]?([^'".,]+)['"]?/i,
+    /veo (?:el )?(?:artefacto )?['"]?([^'".,]+)['"]?/i,
+    /encontr[eé] (?:el )?(?:artefacto )?['"]?([^'".,]+)['"]?/i,
+    /hago clic en (?:el )?(?:artefacto )?['"]?([^'".,]+)['"]?/i,
+    /te llevo (?:al )?(?:artefacto )?['"]?([^'".,]+)['"]?/i,
+    /navego (?:al )?(?:artefacto )?['"]?([^'".,]+)['"]?/i,
+    /llevo (?:al )?(?:artefacto )?['"]?([^'".,]+)['"]?/i,
+    /(?:artefacto|curso) ['"]?([^'".,]+)['"]?/i,
+  ];
+
+  // Generic terms to skip - include wizard step names and navigation terms
+  const genericTerms = ['el', 'la', 'un', 'una', 'artefacto', 'curso', 'menu', 'botón', 'sección', 'de', 'del', 'paso', 'fase',
+                        ...wizardStepNames, ...navigationTerms];
+
+  for (const pattern of claimPatterns) {
+    const match = responseText.toLowerCase().match(pattern);
+    if (match && match[1]) {
+      const claimedItem = match[1].trim().toLowerCase();
+
+      // Skip very short or generic terms (including wizard step names)
+      if (claimedItem.length < 3 || genericTerms.includes(claimedItem)) {
+        continue;
+      }
+
+      // Check if this item actually exists in the DOM map
+      const domMapLower = domMap.toLowerCase();
+
+      // First check the full claimed item
+      if (domMapLower.includes(claimedItem)) {
+        console.log(`[HALLUCINATION CHECK] "${claimedItem}" found in DOM map - no hallucination`);
+        return { isHallucinating: false, searchTerm: null };
+      }
+
+      // If not found, extract key terms (last significant word for "Curso de comedia" -> "comedia")
+      const words = claimedItem.split(/\s+/).filter(w => w.length > 2 && !genericTerms.includes(w));
+      const keyTerm = words.length > 0 ? words[words.length - 1] : claimedItem;
+
+      // Skip if keyTerm is a wizard step name
+      if (wizardStepNames.includes(keyTerm)) {
+        console.log(`[HALLUCINATION CHECK] "${keyTerm}" is a wizard step - skipping`);
+        continue;
+      }
+
+      console.log(`[HALLUCINATION CHECK] Claimed: "${claimedItem}", Key term: "${keyTerm}"`);
+
+      // Check if key term exists in DOM map
+      if (!domMapLower.includes(keyTerm)) {
+        console.log(`[HALLUCINATION DETECTED] Model claims "${claimedItem}" (key: "${keyTerm}") but it's not in DOM map`);
+        return { isHallucinating: true, searchTerm: keyTerm };
+      }
+    }
+  }
+
+  return { isHallucinating: false, searchTerm: null };
+}
+
 // Parse action(s) from model response (for computer use mode without function calling)
 function parseActionFromResponse(text: string): { action?: any; actions?: any[]; cleanText: string } | null {
   console.log('=== PARSING RESPONSE ===');
@@ -291,22 +378,39 @@ SI EL USUARIO PIDE CONSEJO O INFORMACIÓN:
 SI EL USUARIO PIDE UNA ACCIÓN (Navegar, Clic, Escribir):
 - Devuelve el JSON con la acción correspondiente.
 
-## REGLA DE VERIFICACIÓN PRE-RESPUESTA (LEE ESTO PRIMERO)
+## REGLA DE VERIFICACIÓN PRE-RESPUESTA (CRÍTICO - LEE ESTO PRIMERO)
 
 **ANTES de generar tu respuesta JSON, SIEMPRE verifica:**
 
-1. **¿El usuario mencionó un NOMBRE específico?** (artefacto, curso, elemento)
-   - Si SÍ → Busca ese NOMBRE EXACTO en el mapa de elementos
-   - Si lo encuentras → click_at en sus coordenadas
-   - Si NO lo encuentras → scroll para buscarlo (si hay más contenido)
+### PASO A - ¿Qué busca el usuario?
+Extrae el nombre/término que el usuario mencionó (ej: "comedia", "podcast", "python")
 
-2. **¿El elemento que vas a clickear COINCIDE con lo que pidió el usuario?**
-   - NO hagas click en "Event storming" si el usuario pidió "comedia"
-   - NO hagas click en el primer elemento visible si no es el correcto
+### PASO B - ¿Está en el mapa?
+Busca ESE TÉRMINO en los elementos del "Área Principal":
+- Si encuentras un elemento que CONTIENE ese término → anota sus coordenadas
+- Si NO encuentras NINGUNO con ese término → necesitas scroll
 
-3. **¿Hay más contenido por ver?**
-   - Si buscas algo y no lo ves, Y el ESTADO DE SCROLL dice "HAY MÁS CONTENIDO ABAJO"
-   - DEBES hacer scroll antes de responder "no lo encontré"
+### PASO C - VERIFICACIÓN ANTI-ALUCINACIÓN
+⚠️ **IMPORTANTE**: Lee el texto EXACTO del elemento que vas a clickear.
+- Si el usuario pidió "comedia" y el elemento dice "Event storming" → NO LO CLIQUEES
+- Si el usuario pidió "podcast" y el elemento dice "Python" → NO LO CLIQUEES
+- SOLO haz click si el texto del elemento CONTIENE lo que el usuario pidió
+
+### PASO D - Si no encontraste el elemento correcto
+Si el ESTADO DE SCROLL dice "HAY MÁS CONTENIDO ABAJO":
+→ Haz scroll para buscar, NO digas "no lo encontré"
+
+**EJEMPLO DE VERIFICACIÓN CORRECTA:**
+Usuario pide: "comedia"
+Elementos en el mapa: "Event storming", "Python básico", "Marketing"
+Verificación: ¿Alguno contiene "comedia"? → NO
+ESTADO DE SCROLL: "HAY MÁS CONTENIDO ABAJO"
+Acción correcta: scroll para buscar
+
+**EJEMPLO DE ERROR (NO HAGAS ESTO):**
+Usuario pide: "comedia"
+TÚ dices: "Abro Curso de comedia" y clickeas en "Event storming"
+→ ESTO ES INCORRECTO - estás alucinando un elemento que no existe
 
 ## LÓGICA SEGÚN URL ACTUAL
 
@@ -336,42 +440,116 @@ La URL actual te dice DÓNDE está el usuario:
 - Haz clic ahí para abrir el menú desplegable
 - Después del clic, el sistema continuará automáticamente y verás la opción "Sistema"
 
-### CASO 5: Usuario pide ABRIR/VER un artefacto específico (SÚPER CRÍTICO)
+### CASO 5: Usuario pide ir al ÚLTIMO ARTEFACTO que creó
 
-**VERIFICACIÓN OBLIGATORIA ANTES DE RESPONDER:**
-Cuando el usuario mencione un nombre de artefacto (ej: "comedia", "podcast", "python"):
+**IMPORTANTE: NO PREGUNTES, ACTÚA DIRECTAMENTE**
 
-PASO 1 - BUSCA EN EL MAPA:
-- Lee el "Área Principal" del MAPA DE ELEMENTOS
-- Busca si algún elemento contiene el texto que el usuario mencionó
-- La coincidencia puede ser parcial: "comedia" coincide con "Curso de comedia stand-up"
+El usuario dice cosas como:
+- "llévame al último artefacto que creé"
+- "abre mi último artefacto"
+- "ve al artefacto más reciente"
+- "quiero ver el último curso que hice"
 
-PASO 2 - DECIDE SEGÚN LO QUE ENCUENTRES:
-- SI ENCUENTRAS el artefacto en el mapa → Haz click_at en sus coordenadas
-- SI NO ENCUENTRAS y hay "HAY MÁS CONTENIDO ABAJO" → HAZ SCROLL INMEDIATAMENTE
-- SI NO ENCUENTRAS y ya estás al final → Dile al usuario que no existe
+**ACCIÓN INMEDIATA (sin preguntar):**
 
-PASO 3 - SCROLL PARA BUSCAR:
-Si decides hacer scroll, tu respuesta DEBE ser:
-{"message": "Busco el artefacto '[NOMBRE]' haciendo scroll.", "action": {"name": "scroll", "args": {"direction": "down", "amount": 500}}}
+**Si estás DENTRO de un artefacto** (URL tiene /admin/artifacts/[ID]):
+1. Busca en el mapa "Volver a Artefactos" o "← Volver"
+2. Haz click_at en ese enlace INMEDIATAMENTE
+3. El sistema continuará y te llevará a la lista
+4. En la lista, el PRIMER artefacto es el más reciente - haz clic en él
 
-**PROHIBICIONES ABSOLUTAS:**
-- ❌ NUNCA hables de un artefacto diferente al que pidió el usuario
-- ❌ NUNCA respondas "no lo encontré" si el ESTADO DE SCROLL dice "HAY MÁS CONTENIDO ABAJO"
-- ❌ NUNCA pidas aclaraciones - simplemente busca
-- ❌ NUNCA hagas click en el primer artefacto que veas si no es el que pidió el usuario
+**Si estás en /admin/artifacts** (lista):
+1. Los artefactos están ordenados por fecha (más reciente primero)
+2. El PRIMER artefacto de la lista es el último creado
+3. Busca en "Área Principal" el primer elemento que parezca un artefacto
+4. Haz click_at en él
 
 **EJEMPLO CORRECTO:**
+Usuario (dentro de un artefacto): "llévame al último artefacto que creé"
+Mapa muestra: "← Volver a Artefactos" → click_at x=459, y=123
+{"message": "Te llevo al último artefacto.", "action": {"name": "click_at", "args": {"x": 459, "y": 123}}}
+
+**EJEMPLO INCORRECTO (NUNCA HAGAS ESTO):**
+Usuario: "llévame al último artefacto"
+Tú: "¿Quieres que te lleve a la lista?" ← PROHIBIDO, no preguntes
+Tú: "Primero debo ir a la lista, ¿te parece?" ← PROHIBIDO, no preguntes
+Tú: "Para ir a otro artefacto necesito..." ← PROHIBIDO, solo actúa
+
+### CASO 6: Usuario pide ABRIR/VER un artefacto específico por nombre (SÚPER CRÍTICO)
+
+**ESTRATEGIA PRINCIPAL: USA LA BARRA DE BÚSQUEDA**
+En /admin/artifacts hay un campo "Buscar por título..." - ¡ÚSALO!
+
+**PASO 1 - VERIFICAR SI ESTÁS EN /admin/artifacts:**
+- Si NO estás en /admin/artifacts → Primero navega ahí
+- Si SÍ estás → Continúa al paso 2
+
+**PASO 2 - BUSCAR EL ARTEFACTO:**
+- Busca en el mapa si hay un campo "Buscar por título..."
+- Si lo encuentras → USA type_at para escribir el nombre del artefacto ahí
+- Esto filtrará la lista y mostrará solo los artefactos que coinciden
+
+**PASO 3 - EJEMPLO CORRECTO:**
 Usuario: "abre el artefacto de comedia"
-Tú buscas "comedia" en el mapa... NO lo encuentras... pero ves "HAY MÁS CONTENIDO ABAJO"
-{"message": "Busco el artefacto 'comedia' haciendo scroll.", "action": {"name": "scroll", "args": {"direction": "down", "amount": 500}}}
+Tú estás en /admin/artifacts y ves: [Campo: Buscar por título...] → type_at x=709, y=210
+{"message": "Busco el artefacto 'comedia' usando el buscador.", "action": {"name": "type_at", "args": {"x": 709, "y": 210, "text": "comedia"}}}
+
+**PASO 4 - DESPUÉS DE BUSCAR:**
+- El sistema continuará y escaneará los resultados filtrados
+- Ahora SÍ podrás ver el artefacto buscado en el mapa
+- Haz clic en él
+
+**ALTERNATIVA (si no hay buscador):**
+- Si no ves el campo de búsqueda pero hay "HAY MÁS CONTENIDO ABAJO"
+- Haz scroll para buscar
+
+**PROHIBICIONES ABSOLUTAS:**
+- ❌ NUNCA digas "Te llevo al artefacto X" si X NO APARECE en el mapa
+- ❌ NUNCA hagas click en un artefacto diferente al que pidió el usuario
+- ❌ NUNCA inventes coordenadas para un artefacto que no ves
+- ❌ NUNCA "adivines" que un artefacto existe si no lo ves en el mapa
+- ✅ SÍ usa el buscador para encontrar artefactos
+- ✅ SÍ verifica que el texto del elemento contenga lo que el usuario pidió
 
 **EJEMPLO INCORRECTO (NO HAGAS ESTO):**
 Usuario: "abre el artefacto de comedia"
-Tú buscas "comedia" en el mapa... NO lo encuentras...
-{"message": "Veo el artefacto 'Event Storming', ¿es ese?", "action": null}  ← ESTO ESTÁ MAL
+El mapa muestra: "Event storming", "Python básico" (NO hay "comedia")
+TÚ dices: "Te llevo al artefacto 'Curso de comedia'" y clickeas coordenadas random
+→ ESTO ES INCORRECTO - estás inventando un artefacto que no existe en el mapa
 
 Si estás en otra página, primero navega a /admin/artifacts
+
+### CASO 7: Usuario pide ir a un PASO/FASE del artefacto (BASE, TEMARIO, PLAN, etc.)
+
+**CONTEXTO:** Cuando estás dentro de un artefacto (URL tipo /admin/artifacts/[ID]), hay un wizard/stepper con pasos:
+- BASE (Idea Central, Validación)
+- TEMARIO (Nombres del curso, Objetivos)
+- PLAN (Lecciones, Módulos)
+- FUENTES (Referencias)
+- MATERIALES (Recursos)
+- SLIDES (Presentaciones)
+
+**CÓMO DETECTAR:** El mapa mostrará una sección "PASOS/FASES DEL ARTEFACTO" con estos elementos.
+
+**VOCABULARIO DEL USUARIO:** El usuario puede decir:
+- "ve a base", "llévame a base", "paso base"
+- "ve al temario", "fase temario", "la parte del temario"
+- "ve a plan", "muéstrame el plan"
+- "ve a fuentes", "llévame a fuentes"
+- "ve a materiales", "paso materiales"
+- "la última fase", "el último paso" → SLIDES o MATERIALES
+
+**ACCIÓN:** Busca el paso en la sección "PASOS/FASES DEL ARTEFACTO" del mapa y haz click_at en sus coordenadas.
+
+**EJEMPLO:**
+Usuario: "llévame a temario"
+Mapa muestra: "TEMARIO" (PASO) → click_at x=637, y=215
+{"message": "Te llevo al paso TEMARIO del artefacto.", "action": {"name": "click_at", "args": {"x": 637, "y": 215}}}
+
+**EJEMPLO 2:**
+Usuario: "ve al último paso"
+Mapa muestra: "MATERIALES" (PASO) → click_at x=1147, y=215
+{"message": "Te llevo al último paso (MATERIALES).", "action": {"name": "click_at", "args": {"x": 1147, "y": 215}}}
 
 ### MENÚS DESPLEGABLES
 - Algunos elementos solo aparecen después de hacer clic en otro elemento
@@ -457,17 +635,17 @@ Usuario pide "cambia a modo oscuro" o "pon tema oscuro":
 
 Usuario en /admin/artifacts dice "abre el artefacto de Podcast" pero NO lo ve en el mapa:
 PRIMERO: Busco "Podcast" en el Área Principal del mapa... NO ESTÁ
-SEGUNDO: Veo en ESTADO DE SCROLL: "⬇️ HAY MÁS CONTENIDO ABAJO"
-ENTONCES: Hago scroll para buscarlo
-{"message": "Busco el artefacto 'Podcast' haciendo scroll.", "action": {"name": "scroll", "args": {"direction": "down", "amount": 500}}}
-(El sistema continuará, escaneará nuevos elementos, y seguirá buscando)
+SEGUNDO: Veo que hay un campo [Campo: Buscar por título...] → type_at x=709, y=210
+ENTONCES: Uso el buscador para encontrarlo
+{"message": "Busco el artefacto 'Podcast' usando el buscador.", "action": {"name": "type_at", "args": {"x": 709, "y": 210, "text": "podcast"}}}
+(El sistema continuará, escaneará los resultados filtrados, y hará clic en el artefacto)
 
 Usuario dice "abre el artefacto de comedia" y el mapa muestra: "Event storming", "Python básico", "Marketing"
 PRIMERO: Busco "comedia" en el mapa... NO ESTÁ (ninguno de los elementos contiene "comedia")
-SEGUNDO: Veo en ESTADO DE SCROLL: "⬇️ HAY MÁS CONTENIDO ABAJO"
-ENTONCES: NO hago click en ninguno de estos, hago scroll para buscar "comedia"
-{"message": "No veo el artefacto 'comedia' aquí, busco más abajo.", "action": {"name": "scroll", "args": {"direction": "down", "amount": 500}}}
-⚠️ ERROR SI HICIERAS: {"message": "Veo Event storming, ¿te refieres a este?", "action": null} ← INCORRECTO
+SEGUNDO: Veo el campo de búsqueda: [Campo: Buscar por título...] → type_at x=709, y=210
+ENTONCES: Uso el buscador, NO hago click en Event storming (que es otro artefacto)
+{"message": "Busco el artefacto 'comedia' usando el buscador.", "action": {"name": "type_at", "args": {"x": 709, "y": 210, "text": "comedia"}}}
+⚠️ ERROR SI HICIERAS: {"message": "Te llevo al artefacto Curso de comedia", "action": {"name": "click_at", "args": {"x": ..., "y": ...}}} cuando "comedia" NO aparece en el mapa ← INCORRECTO
 
 Usuario pide algo que NO está visible en el mapa (scroll necesario):
 (Si el ESTADO DE SCROLL indica "HAY MÁS CONTENIDO ABAJO")
@@ -559,6 +737,63 @@ En /admin/artifacts/new (formulario) - SI el usuario pidió crear con informaci�
     if (useComputerUse) {
       const parsed = parseActionFromResponse(responseText);
       if (parsed) {
+        // Check for hallucination - model claims to find something not in DOM
+        const hallucinationCheck = detectHallucination(parsed.cleanText, domMap);
+
+        // If hallucinating, check for search bar first, then scroll
+        if (hallucinationCheck.isHallucinating && domMap) {
+          console.log('[HALLUCINATION OVERRIDE] Detected hallucination');
+          console.log(`[HALLUCINATION OVERRIDE] Search term: "${hallucinationCheck.searchTerm}"`);
+
+          // Check if there's a search bar available
+          const searchFieldMatch = domMap.match(/\[Campo: Buscar por título\.\.\.\] → type_at x=(\d+), y=(\d+)/);
+
+          if (searchFieldMatch) {
+            // Use search bar instead of scrolling
+            const searchX = parseInt(searchFieldMatch[1]);
+            const searchY = parseInt(searchFieldMatch[2]);
+
+            console.log('[HALLUCINATION OVERRIDE] Using search bar to find artifact');
+
+            const overrideResponse = {
+              message: {
+                role: 'model',
+                content: `Busco el artefacto '${hallucinationCheck.searchTerm}' usando el buscador.`,
+                timestamp: new Date().toISOString()
+              },
+              action: {
+                name: 'type_at',
+                args: { x: searchX, y: searchY, text: hallucinationCheck.searchTerm }
+              }
+            };
+
+            console.log('=== SENDING SEARCH OVERRIDE TO FRONTEND ===');
+            console.log('Response data:', JSON.stringify(overrideResponse, null, 2));
+
+            return NextResponse.json(overrideResponse);
+          } else if (domMap.toLowerCase().includes('hay más contenido abajo')) {
+            // Fallback to scroll if no search bar
+            console.log('[HALLUCINATION OVERRIDE] No search bar found, using scroll');
+
+            const overrideResponse = {
+              message: {
+                role: 'model',
+                content: `Busco el artefacto '${hallucinationCheck.searchTerm}' haciendo scroll.`,
+                timestamp: new Date().toISOString()
+              },
+              action: {
+                name: 'scroll',
+                args: { direction: 'down', amount: 500 }
+              }
+            };
+
+            console.log('=== SENDING SCROLL OVERRIDE TO FRONTEND ===');
+            console.log('Response data:', JSON.stringify(overrideResponse, null, 2));
+
+            return NextResponse.json(overrideResponse);
+          }
+        }
+
         const responseData: any = {
           message: {
             role: 'model',

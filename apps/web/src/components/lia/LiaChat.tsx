@@ -1,18 +1,39 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChatWindow } from './ChatWindow';
 import { Sparkles, MessageCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
+import { createClient } from '@/utils/supabase/client';
 
 export const LiaChat: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [userAvatarUrl, setUserAvatarUrl] = useState<string>();
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('avatar_url')
+          .eq('id', user.id)
+          .single();
+        if (profile?.avatar_url) {
+            setUserAvatarUrl(profile.avatar_url);
+        }
+      }
+    };
+    fetchUser();
+  }, [isOpen]); // Refetch when opened to be fresh, or just on mount. on mount is fine, but if they change it, reopen might catch it.
+
 
   return (
-    <div 
-        id="lia-chat-container" 
-        className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-4"
+    <div
+        id="lia-chat-container"
+        className="fixed bottom-3 right-3 sm:bottom-4 sm:right-4 md:bottom-6 md:right-6 z-50 flex flex-col items-end gap-3 sm:gap-4"
     >
       <AnimatePresence>
         {isOpen && (
@@ -23,7 +44,7 @@ export const LiaChat: React.FC = () => {
             transition={{ duration: 0.2 }}
             className="origin-bottom-right"
           >
-            <ChatWindow onClose={() => setIsOpen(false)} />
+            <ChatWindow onClose={() => setIsOpen(false)} userAvatarUrl={userAvatarUrl} />
           </motion.div>
         )}
       </AnimatePresence>

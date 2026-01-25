@@ -9,6 +9,7 @@ import { scanDOM, generateDOMSummary } from '@/lib/lia-dom-mapper';
 
 interface ChatWindowProps {
   onClose: () => void;
+  userAvatarUrl?: string;
 }
 
 // Function to detect if message requires screen control (action intent)
@@ -56,6 +57,14 @@ const detectActionIntent = (message: string): boolean => {
     /\b(abre|busca|encuentra|ve al?) (?:el )?artefacto\b/,
     /\b(?:el|al) artefacto (?:de|del|sobre|llamado)\b/,
     /\b(llevame|lleva|ve) a(?:l)? (?:ultimo|ultima|artefacto)\b/,
+    /\b(ultimo|ultima|reciente|anterior)\s*(artefacto|curso)\b/i,
+    /\bartefacto\s*(que cree|que hice|mas reciente)\b/i,
+
+    // Wizard step/phase navigation (BASE, TEMARIO, PLAN, FUENTES, MATERIALES, SLIDES)
+    /\b(ve a|llevame a|ir a|paso|fase|seccion)\s*(base|temario|plan|fuentes|materiales|slides)\b/i,
+    /\b(base|temario|plan|fuentes|materiales|slides)\s*(del artefacto|del curso)?\b/i,
+    /\b(ultimo|ultima|primer|primera)\s*(paso|fase|seccion)\b/i,
+    /\b(idea central|validacion|objetivos|lecciones|modulos)\b/i,
 
     // Direct commands
     /\b(ejecuta|ejecutar|realiza|realizar|inicia|iniciar|comienza|comenzar)\b/,
@@ -66,12 +75,16 @@ const detectActionIntent = (message: string): boolean => {
     /\b(ve abajo|ve arriba|ir abajo|ir arriba)\b/,
     /\b(mas abajo|mas arriba|hacia abajo|hacia arriba)\b/,
     /\b(al final|al inicio|al principio|al fondo)\b/,
+
+    // Confirmation words (user confirming a previous action suggestion)
+    /^(si|sí|ok|okay|dale|hazlo|adelante|claro|por supuesto|confirmo|confirmado)$/i,
+    /\b(si,? por favor|sí,? por favor|hazlo por favor)\b/i,
   ];
 
   return actionPatterns.some(pattern => pattern.test(lowerMessage));
 };
 
-export const ChatWindow: React.FC<ChatWindowProps> = ({ onClose }) => {
+export const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, userAvatarUrl }) => {
   const [messages, setMessages] = useState<LiaMessage[]>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('lia_chat_history');
@@ -134,6 +147,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ onClose }) => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isActionMode, setIsActionMode] = useState(false); // Indicates if current request is using screen control
+  const [isMinimizedForAction, setIsMinimizedForAction] = useState(false); // Minimize chat during action execution
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -242,6 +256,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ onClose }) => {
 
       // Handle actions if present (when screen control was used)
       if (useScreenControl && (response.action || response.actions)) {
+        // Minimize chat to give Lia full view of the screen
+        setIsMinimizedForAction(true);
+
         // Get the original user message for continuations
         const originalUserMessage = contentToSend || messages.filter(m => m.role === 'user').pop()?.content || '';
 
@@ -279,14 +296,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ onClose }) => {
             return currentResponse.message?.content || 'Acción completada.';
           }
 
-          // Check if action requires continuation (click, scroll)
+          // Check if action requires continuation (click, scroll, type_at for search)
           const actionName = currentResponse.action?.name || '';
           const isClickAction = actionName === 'click_at';
           const isScrollAction = actionName.startsWith('scroll');
+          const isTypeAction = actionName === 'type_at'; // Type in search field should also continue
 
-          if ((isClickAction || isScrollAction) && continuationCount < maxContinuations) {
-            // Wait for navigation/animation/scroll to complete
-            const waitTime = isScrollAction ? 800 : 1500;
+          if ((isClickAction || isScrollAction || isTypeAction) && continuationCount < maxContinuations) {
+            // Wait for navigation/animation/scroll/search results to complete
+            const waitTime = isTypeAction ? 1000 : (isScrollAction ? 800 : 1500);
             await new Promise(resolve => setTimeout(resolve, waitTime));
 
             const urlAfterAction = window.location.href;
@@ -304,9 +322,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ onClose }) => {
             console.log('URL changed:', urlChanged);
             console.log('Action was scroll:', isScrollAction);
 
-            // Continue if URL changed OR if DOM changed (dropdown opened) OR after scroll
-            if (urlChanged || domChanged || isScrollAction) {
-              console.log(`=== ${urlChanged ? 'URL' : isScrollAction ? 'SCROLL' : 'DOM'} CHANGED - AUTO-CONTINUING (${continuationCount + 1}/${maxContinuations}) ===`);
+            // Continue if URL changed OR if DOM changed (dropdown opened) OR after scroll/type (search needs to continue to click result)
+            if (urlChanged || domChanged || isScrollAction || isTypeAction) {
+              console.log(`=== ${urlChanged ? 'URL' : isScrollAction ? 'SCROLL' : isTypeAction ? 'TYPE' : 'DOM'} CHANGED - AUTO-CONTINUING (${continuationCount + 1}/${maxContinuations}) ===`);
 
               // Send a continuation request with the new DOM
               const newDomSummary = domSummaryAfter;
@@ -317,6 +335,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ onClose }) => {
               let scrollSearchInstruction = '';
               if (urlChanged) {
                 changeType = `La página cambió a ${urlAfterAction}`;
+              } else if (isTypeAction) {
+                // After typing in search field, we need to click on the result
+                changeType = 'Has buscado usando el campo de búsqueda. Los resultados deberían aparecer ahora.';
+                // Extract the search term from the original message
+                const searchTermMatch = originalUserMessage.match(/(?:abre|busca|encuentra|ve a|muestra)(?:\s+el)?(?:\s+artefacto)?(?:\s+de)?\s+["']?(\w+)["']?/i);
+                const searchTerm = searchTermMatch ? searchTermMatch[1] : '';
+                scrollSearchInstruction = searchTerm
+                  ? ` AHORA debes hacer click_at en el artefacto "${searchTerm}" que aparece en los resultados de búsqueda. ` +
+                    `Busca en el MAPA DE ELEMENTOS el artefacto que contenga "${searchTerm}" y haz click_at en sus coordenadas.`
+                  : ' Ahora haz click_at en el resultado de búsqueda que corresponda a lo que el usuario pidió.';
               } else if (isScrollAction) {
                 changeType = 'Se hizo scroll en la página. NUEVOS ELEMENTOS VISIBLES.';
                 // Extract the search term from the original message for more specific instructions
@@ -376,7 +404,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ onClose }) => {
           content: finalMessage,
           timestamp: new Date().toISOString()
         };
+
+        // First add the message, then restore chat so user sees the result
         setMessages(prev => [...prev, summaryMessage]);
+
+        // Small delay to ensure message is rendered before showing chat
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // Restore chat to show the summary
+        setIsMinimizedForAction(false);
 
       } else {
         // No actions - just add the response message normally
@@ -389,6 +425,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ onClose }) => {
         content: 'Lo siento, tuve un problema al procesar tu solicitud. ¿Podrías intentarlo de nuevo?',
         timestamp: new Date().toISOString()
       }]);
+      // Restore chat on error too
+      setIsMinimizedForAction(false);
     } finally {
       setIsLoading(false);
       setIsActionMode(false); // Reset action mode indicator
@@ -447,13 +485,44 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ onClose }) => {
     }
   };
 
+  // Minimized view when executing actions
+  if (isMinimizedForAction) {
+    return (
+      <motion.div
+        id="lia-chat-container"
+        initial={{ scale: 1, opacity: 1 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="bg-[#0A2540] rounded-2xl shadow-2xl border border-white/10 overflow-hidden font-sans p-4"
+      >
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center overflow-hidden">
+              <img src="/lia-avatar.png" alt="Lia" className="w-full h-full object-cover" />
+            </div>
+            <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 border-2 border-[#0A2540] rounded-full bg-[#00D4B3] animate-pulse"></div>
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <Zap size={14} className="text-[#00D4B3] fill-current" />
+              <span className="text-sm font-medium text-white">Ejecutando acciones...</span>
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <Loader2 size={12} className="animate-spin text-[#00D4B3]" />
+              <span className="text-xs text-blue-200/70">Lia está trabajando en la pantalla</span>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
   return (
     <div
       id="lia-chat-container"
-      className="flex flex-col h-[650px] w-[420px] bg-white dark:bg-[#0A0D12] rounded-2xl shadow-2xl border border-gray-200 dark:border-white/10 overflow-hidden font-sans"
+      className="flex flex-col h-[calc(100dvh-100px)] max-h-[650px] w-[calc(100vw-24px)] sm:w-[380px] md:w-[420px] bg-white dark:bg-[#0A0D12] rounded-2xl shadow-2xl border border-gray-200 dark:border-white/10 overflow-hidden font-sans"
     >
       {/* Premium Header */}
-      <div className="bg-[#0A2540] p-4 flex items-center justify-between shadow-md z-10">
+      <div className="bg-[#0A2540] p-3 sm:p-4 flex items-center justify-between shadow-md z-10 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="relative">
              <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white font-bold backdrop-blur-sm border border-white/10 overflow-hidden">
@@ -475,18 +544,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ onClose }) => {
           </div>
         </div>
         <div className="flex items-center gap-1">
-            {/* Action mode indicator (visual only, no toggle) */}
-            <div
-                className={cn(
-                    "p-2 rounded-lg transition-all",
-                    isActionMode
-                        ? "text-[#00D4B3] bg-[#00D4B3]/10"
-                        : "text-blue-200/30"
-                )}
-                title={isActionMode ? "Modo Acción Activo" : "Modo Conversación"}
-            >
-                {isActionMode ? <Zap size={18} className="fill-current" /> : <Monitor size={18} />}
-            </div>
+
             <button
                 onClick={requestClearChat}
                 className={cn(
@@ -550,7 +608,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ onClose }) => {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-[#F8FAFC] dark:bg-[#0A0D12] scroll-smooth custom-scrollbar">
         {messages.map((msg, idx) => (
-          <ChatMessage key={idx} role={msg.role} content={msg.content} sources={msg.sources} />
+          <ChatMessage key={idx} role={msg.role} content={msg.content} sources={msg.sources} userAvatarUrl={userAvatarUrl} />
         ))}
         {isLoading && (
           <div className="flex justify-start animate-in fade-in slide-in-from-bottom-2">
@@ -564,7 +622,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ onClose }) => {
       </div>
 
       {/* Input Area */}
-      <div className="p-3 bg-white dark:bg-[#0A0D12] border-t border-gray-100 dark:border-[#6C757D]/10">
+      <div className="p-2 sm:p-3 bg-white dark:bg-[#0A0D12] border-t border-gray-100 dark:border-[#6C757D]/10 flex-shrink-0">
         <div 
             className={cn(
                 "relative flex items-end gap-1.5 p-1.5 rounded-[26px] bg-gray-50 dark:bg-[#1E2329] border transition-all duration-300",
