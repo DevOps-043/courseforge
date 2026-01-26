@@ -224,8 +224,13 @@ export async function POST(req: NextRequest) {
     //   Note: gemini-2.5-computer-use-preview requires Computer Use API access which isn't enabled
     const modelName = useComputerUse ? 'gemini-2.0-flash-exp' : settings.model_name;
 
-    // Configure Gemini Client
-    const client = new GoogleGenAI({ apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY! });
+    // Configure Gemini Client (fallback to GOOGLE_API_KEY for compatibility)
+    const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+      console.error('Lia API - CRITICAL: No API key found');
+      return NextResponse.json({ error: 'API key not configured' }, { status: 500 });
+    }
+    const client = new GoogleGenAI({ apiKey });
 
     // Build conversation history
     const lastMessage = messages[messages.length - 1];
