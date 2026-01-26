@@ -726,22 +726,49 @@ En /admin/artifacts/new (formulario) - SI el usuario pidió crear con informaci�
       systemInstruction = SYSTEM_PROMPT;
     }
 
-    // Build contents with system instruction
-    const contents = [
-      { role: 'user', parts: [{ text: systemInstruction }] },
-      { role: 'model', parts: [{ text: 'Entendido. Soy Lia, tu asistente de CourseForge. ¿En qué puedo ayudarte?' }] },
-      ...previousHistory,
-      { role: 'user', parts: currentUserParts }
-    ];
+    // Build conversation as simple string (same format as working background functions)
+    const historyText = previousHistory.map((msg: any) =>
+      `${msg.role === 'model' ? 'Asistente' : 'Usuario'}: ${msg.parts[0]?.text || ''}`
+    ).join('\n\n');
 
-    // Generate response
-    const response = await client.models.generateContent({
-      model: modelName,
-      contents: contents,
-      config: config
-    });
+    const currentMessageText = currentUserParts
+      .filter((part: any) => part.text)
+      .map((part: any) => part.text)
+      .join('\n');
 
-    const responseText = response.text || '';
+    const fullPrompt = `${systemInstruction}
+
+${historyText ? `--- CONVERSACIÓN PREVIA ---\n${historyText}\n` : ''}
+--- MENSAJE DEL USUARIO ---
+${currentMessageText}
+
+--- TU RESPUESTA ---`;
+
+    // Generate response using SAME pattern as working background functions
+    let response;
+    let responseText = '';
+
+    try {
+      console.log('Lia API - Calling generateContent with string format...');
+
+      response = await client.models.generateContent({
+        model: modelName,
+        contents: fullPrompt,  // Simple string like background functions
+        config: config
+      });
+
+      responseText = response.text || '';
+      console.log('Lia API - Response received, length:', responseText.length);
+    } catch (apiError: any) {
+      console.error('Lia API - Generation failed:', {
+        name: apiError?.name,
+        message: apiError?.message,
+        status: apiError?.status,
+        code: apiError?.code,
+        cause: apiError?.cause
+      });
+      throw apiError;
+    }
 
     // For computer use mode, check if response contains action(s)
     if (useComputerUse) {
