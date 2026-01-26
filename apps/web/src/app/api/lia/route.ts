@@ -20,7 +20,7 @@ const getLiaSettings = async (supabase: any, useComputerUse: boolean) => {
     console.warn(`No ${settingType} settings found, using defaults.`);
     return useComputerUse
       ? { model_name: 'gemini-2.0-flash-exp', temperature: 0.3, setting_type: 'COMPUTER' }
-      : { model_name: 'gemini-2.0-flash-exp', temperature: 0.7, setting_type: 'LIA_MODEL' };
+      : { model_name: 'gemini-2.0-flash', temperature: 0.7, setting_type: 'LIA_MODEL' };
   }
   return data;
 };
@@ -218,14 +218,19 @@ export async function POST(req: NextRequest) {
     // Get settings from database based on mode
     const settings = await getLiaSettings(supabase, useComputerUse);
 
-    // Model selection:
-    // - STANDARD mode: Use model from DB (gemini-3-pro-preview for reasoning)
-    // - COMPUTER mode: Use gemini-2.0-flash-exp (vision-capable, works with our prompt-based approach)
-    //   Note: gemini-2.5-computer-use-preview requires Computer Use API access which isn't enabled
-    const modelName = useComputerUse ? 'gemini-2.0-flash-exp' : settings.model_name;
+    // Model selection: Use the model from DB settings
+    const modelName = settings.model_name;
 
     // Configure Gemini Client (fallback to GOOGLE_API_KEY for compatibility)
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
+
+    // Debug: Log API key status (not the actual key for security)
+    console.log('Lia API - API Key check:', {
+      GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY ? `Found (${process.env.GOOGLE_GENERATIVE_AI_API_KEY.slice(0, 8)}...)` : 'NOT FOUND',
+      GOOGLE_API_KEY: process.env.GOOGLE_API_KEY ? `Found (${process.env.GOOGLE_API_KEY.slice(0, 8)}...)` : 'NOT FOUND',
+      usingKey: apiKey ? `Yes (${apiKey.slice(0, 8)}...)` : 'NO KEY'
+    });
+
     if (!apiKey) {
       console.error('Lia API - CRITICAL: No API key found');
       return NextResponse.json({ error: 'API key not configured' }, { status: 500 });
