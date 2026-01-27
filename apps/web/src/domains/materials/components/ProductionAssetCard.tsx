@@ -274,7 +274,7 @@ CONTENIDO
     const StatusIcon = statusBadge.icon;
 
     // Calculate which DoD items are required for this component type
-    const needsSlides = component.type === 'VIDEO_THEORETICAL' || component.type === 'VIDEO_GUIDE';
+    const needsSlides = component.type === 'VIDEO_THEORETICAL' || component.type === 'VIDEO_GUIDE' || component.type === 'VIDEO_DEMO';
     const needsScreencast = component.type === 'DEMO_GUIDE' || component.type === 'VIDEO_GUIDE';
     const needsVideo = component.type.includes('VIDEO');
     const needsFinalVideo = component.type.includes('VIDEO');
@@ -310,6 +310,17 @@ CONTENIDO
         );
     };
 
+    // Helper para traducir tipos de componentes
+    const getComponentLabel = (type: string) => {
+        const map: Record<string, string> = {
+            'VIDEO_THEORETICAL': 'VIDEO TEÓRICO',
+            'VIDEO_GUIDE': 'VIDEO GUÍA',
+            'DEMO_GUIDE': 'GUÍA DEMOSTRATIVA',
+            'VIDEO_DEMO': 'VIDEO DEMOSTRATIVO'
+        };
+        return map[type] || type.replace(/_/g, ' ');
+    };
+
     return (
         <div className={`bg-[#151A21] border rounded-2xl overflow-hidden ${productionStatus === 'COMPLETED' ? 'border-green-500/30' : 'border-[#6C757D]/10'}`}>
             {/* Header */}
@@ -321,7 +332,8 @@ CONTENIDO
                             {component.type.includes('VIDEO') ? <Video size={18} /> : <MonitorPlay size={18} />}
                         </div>
                         <div>
-                            <h3 className="text-white font-bold text-sm">{component.type.replace(/_/g, ' ')}</h3>
+                            <h3 className="text-white font-bold text-sm">{getComponentLabel(component.type)}</h3>
+
                             <p className="text-[#6C757D] text-xs">{lessonTitle}</p>
                         </div>
                     </div>
@@ -361,7 +373,7 @@ CONTENIDO
                 <div className="space-y-6">
 
                     {/* SLIDES SECTION (Gamma) */}
-                    {(component.type === 'VIDEO_THEORETICAL' || component.type === 'VIDEO_GUIDE') && (
+                    {(component.type === 'VIDEO_THEORETICAL' || component.type === 'VIDEO_GUIDE' || component.type === 'VIDEO_DEMO') && (
                         <div className="space-y-3">
                             <h4 className="text-xs font-bold text-[#E9ECEF] flex items-center gap-2">
                                 <FileText size={14} /> GAMMA SLIDES
