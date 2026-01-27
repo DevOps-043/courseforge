@@ -16,7 +16,10 @@ import {
   MoreHorizontal,
   Loader2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Trash2,
+  X,
+  AlertTriangle
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -228,8 +231,8 @@ export default function ArtifactsList({
             <button
               onClick={() => setOwnershipFilter('all')}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${ownershipFilter === 'all'
-                  ? 'bg-white dark:bg-[#1E2329] text-gray-900 dark:text-white shadow-sm'
-                  : 'text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white'
+                ? 'bg-white dark:bg-[#1E2329] text-gray-900 dark:text-white shadow-sm'
+                : 'text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white'
                 }`}
             >
               Todos
@@ -237,8 +240,8 @@ export default function ArtifactsList({
             <button
               onClick={() => setOwnershipFilter('mine')}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${ownershipFilter === 'mine'
-                  ? 'bg-white dark:bg-[#1E2329] text-gray-900 dark:text-white shadow-sm'
-                  : 'text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white'
+                ? 'bg-white dark:bg-[#1E2329] text-gray-900 dark:text-white shadow-sm'
+                : 'text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white'
                 }`}
             >
               Mis Artefactos
@@ -269,12 +272,8 @@ export default function ArtifactsList({
                 key={tab.id}
                 onClick={() => setFilterStatus(tab.id)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors border ${filterStatus === tab.id
-                    ? "bg-[#00D4B3]/10 text-[#00D4B3] border-[#00D4B3]/20"
-                    : "text-gray-500 dark:text-[#94A3B8] border-transparent hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1E2329]"
-                  }`}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors border ${filterStatus === tab.id
                   ? "bg-[#00D4B3]/10 text-[#00D4B3] border-[#00D4B3]/20"
-                  : "text-[#94A3B8] border-transparent hover:text-white hover:bg-[#1E2329]"
+                  : "text-gray-500 dark:text-[#94A3B8] border-transparent hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1E2329]"
                   }`}
               >
                 {tab.label}
@@ -314,7 +313,12 @@ export default function ArtifactsList({
             }
           >
             {paginatedArtifacts.map((art) => (
-              <ArtifactCard key={art.id} artifact={art} viewMode={viewMode} />
+              <ArtifactCard
+                key={art.id}
+                artifact={art}
+                viewMode={viewMode}
+                onDelete={(id) => setArtifacts(prev => prev.filter(a => a.id !== id))}
+              />
             ))}
           </div>
 
@@ -408,13 +412,156 @@ function getArtifactProgress(artifact: Artifact) {
   }
 }
 
+// Delete Confirmation Modal Component
+function DeleteConfirmationModal({
+  isOpen,
+  onClose,
+  onConfirm,
+  artifactTitle,
+  isDeleting
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  artifactTitle: string;
+  isDeleting: boolean;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Modal */}
+      <div className="relative bg-white dark:bg-[#1E2329] rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl border border-gray-200 dark:border-[#6C757D]/20 animate-in fade-in zoom-in-95 duration-200">
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors"
+        >
+          <X size={20} />
+        </button>
+
+        {/* Icon */}
+        <div className="w-14 h-14 bg-red-100 dark:bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+          <AlertTriangle className="text-red-500" size={28} />
+        </div>
+
+        {/* Title */}
+        <h3 className="text-xl font-bold text-gray-900 dark:text-white text-center mb-2">
+          ¿Eliminar artefacto?
+        </h3>
+
+        {/* Description */}
+        <p className="text-gray-500 dark:text-[#94A3B8] text-center text-sm mb-2">
+          Estás a punto de eliminar permanentemente:
+        </p>
+        <p className="text-gray-900 dark:text-white font-medium text-center text-sm bg-gray-50 dark:bg-[#151A21] rounded-lg py-2 px-3 mb-4 line-clamp-2">
+          "{artifactTitle}"
+        </p>
+        <p className="text-red-500 dark:text-red-400 text-center text-xs mb-6">
+          Esta acción no se puede deshacer. Se eliminarán todos los datos asociados.
+        </p>
+
+        {/* Buttons */}
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            disabled={isDeleting}
+            className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#6C757D]/30 text-gray-700 dark:text-[#94A3B8] font-medium text-sm hover:bg-gray-50 dark:hover:bg-[#151A21] transition-colors disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-medium text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {isDeleting ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Eliminando...
+              </>
+            ) : (
+              <>
+                <Trash2 size={16} />
+                Eliminar
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Dropdown Menu Component
+function ArtifactDropdownMenu({
+  isOpen,
+  onClose,
+  onDelete,
+  position
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onDelete: () => void;
+  position: { x: number; y: number };
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <>
+      {/* Backdrop to close menu */}
+      <div
+        className="fixed inset-0 z-40"
+        onClick={onClose}
+      />
+
+      {/* Menu */}
+      <div
+        className="fixed z-50 bg-white dark:bg-[#1E2329] rounded-xl shadow-xl border border-gray-200 dark:border-[#6C757D]/20 py-1.5 min-w-[160px] animate-in fade-in slide-in-from-top-2 duration-150"
+        style={{
+          top: position.y,
+          left: position.x,
+          transform: 'translateX(-100%)'
+        }}
+      >
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDelete();
+            onClose();
+          }}
+          className="w-full px-4 py-2.5 text-left text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center gap-3 transition-colors"
+        >
+          <Trash2 size={16} />
+          Eliminar artefacto
+        </button>
+      </div>
+    </>
+  );
+}
+
 function ArtifactCard({
   artifact,
   viewMode,
+  onDelete,
 }: {
   artifact: Artifact;
   viewMode: "grid" | "list";
+  onDelete: (id: string) => void;
 }) {
+  const [showMenu, setShowMenu] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const supabase = createClient();
+
   // Determine display status - prioritize PRODUCTION_COMPLETE if all videos done
   const displayState = artifact.production_complete ? 'PRODUCTION_COMPLETE' : artifact.state;
   const status = statusConfig[displayState] || statusConfig.DRAFT;
@@ -450,149 +597,209 @@ function ArtifactCard({
       descText = JSON.stringify(artifact.descripcion).substring(0, 100);
   }
 
+  const artifactTitle = (artifact.idea_central || "Artefacto sin nombre")
+    .replace(/^TEMA:\s*/i, "")
+    .split(/IDEA PRINCIPAL:/i)[0]
+    .trim();
+
+  const handleMenuClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    setMenuPosition({ x: rect.right, y: rect.bottom + 4 });
+    setShowMenu(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('artifacts')
+        .delete()
+        .eq('id', artifact.id);
+
+      if (error) {
+        console.error('Error deleting artifact:', error);
+        alert('Error al eliminar el artefacto: ' + error.message);
+      } else {
+        setShowDeleteModal(false);
+        onDelete(artifact.id);
+      }
+    } catch (err) {
+      console.error('Error deleting artifact:', err);
+      alert('Error inesperado al eliminar el artefacto');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   if (viewMode === "list") {
     return (
-      <Link href={`/admin/artifacts/${artifact.id}`} className="block">
-        <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-xl p-4 flex items-center gap-4 hover:border-gray-300 dark:hover:border-[#6C757D]/30 transition-all group shadow-sm dark:shadow-none">
-          <div className="w-10 h-10 rounded-lg bg-gray-50 dark:bg-[#2D333B] flex shrink-0 items-center justify-center text-gray-400 dark:text-[#94A3B8]">
-            <FileText size={20} />
+      <>
+        <Link href={`/admin/artifacts/${artifact.id}`} className="block">
+          <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-xl p-4 flex items-center gap-4 hover:border-gray-300 dark:hover:border-[#6C757D]/30 transition-all group shadow-sm dark:shadow-none">
+            <div className="w-10 h-10 rounded-lg bg-gray-50 dark:bg-[#2D333B] flex shrink-0 items-center justify-center text-gray-400 dark:text-[#94A3B8]">
+              <FileText size={20} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-gray-900 dark:text-white font-medium truncate group-hover:text-[#00D4B3] transition-colors">
+                {artifactTitle}
+              </h4>
+              <div className="flex items-center gap-3">
+                <p className="text-xs text-gray-500 dark:text-[#94A3B8] line-clamp-1 max-w-[200px]">{descText}</p>
+                {/* Mini Progress for List */}
+                <div className="h-1.5 w-24 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden flex-shrink-0">
+                  <div
+                    className={`h-full ${progress.color} transition-all duration-500 ${progress.animated ? 'animate-pulse' : ''}`}
+                    style={{ width: `${progress.percent}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div
+              className={`px-2.5 py-1 rounded-full text-xs border ${status.color} flex shrink-0 items-center gap-1.5`}
+            >
+              {StatusIcon && (
+                <StatusIcon
+                  size={12}
+                  className={
+                    status.label.includes("Generando") ||
+                      status.label.includes("Validando")
+                      ? "animate-spin"
+                      : ""
+                  }
+                />
+              )}
+              {status.label}
+            </div>
+
+            <div className="text-xs text-gray-400 dark:text-[#6C757D] hidden md:block w-32 truncate text-right px-2 shrink-0">
+              {artifact.profiles?.username || "Anon"}
+            </div>
+
+            <div className="text-xs text-gray-400 dark:text-[#6C757D] w-20 text-right shrink-0">
+              {timeDisplay}
+            </div>
+
+            <button
+              className="text-gray-400 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white p-2 shrink-0"
+              onClick={handleMenuClick}
+            >
+              <MoreHorizontal size={18} />
+            </button>
           </div>
-          <div className="flex-1 min-w-0">
-            <h4 className="text-gray-900 dark:text-white font-medium truncate group-hover:text-[#00D4B3] transition-colors">
-              {(artifact.idea_central || "Artefacto sin nombre")
-                .replace(/^TEMA:\s*/i, "")
-                .split(/IDEA PRINCIPAL:/i)[0]
-                .trim()}
-            </h4>
-            <div className="flex items-center gap-3">
-              <p className="text-xs text-gray-500 dark:text-[#94A3B8] line-clamp-1 max-w-[200px]">{descText}</p>
-              {/* Mini Progress for List */}
-              <div className="h-1.5 w-24 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden flex-shrink-0">
+        </Link>
+
+        <ArtifactDropdownMenu
+          isOpen={showMenu}
+          onClose={() => setShowMenu(false)}
+          onDelete={() => setShowDeleteModal(true)}
+          position={menuPosition}
+        />
+
+        <DeleteConfirmationModal
+          isOpen={showDeleteModal}
+          onClose={() => setShowDeleteModal(false)}
+          onConfirm={handleDeleteConfirm}
+          artifactTitle={artifactTitle}
+          isDeleting={isDeleting}
+        />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Link href={`/admin/artifacts/${artifact.id}`} className="block h-full">
+        <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-5 hover:border-gray-300 dark:hover:border-[#6C757D]/30 transition-all group flex flex-col h-full cursor-pointer relative shadow-sm dark:shadow-none">
+
+          {/* Header: Status Badge & Menu */}
+          <div className="flex items-start justify-between mb-4">
+            <div
+              className={`px-2.5 py-1 rounded-full text-xs font-medium border ${status.color} flex items-center gap-1.5`}
+            >
+              {StatusIcon && (
+                <StatusIcon
+                  size={12}
+                  className={
+                    status.label.includes("Generando") ||
+                      status.label.includes("Validando")
+                      ? "animate-spin"
+                      : ""
+                  }
+                />
+              )}
+              {status.label}
+            </div>
+            <button
+              className="text-gray-400 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white z-20"
+              onClick={handleMenuClick}
+            >
+              <MoreHorizontal size={18} />
+            </button>
+          </div>
+
+          {/* Content Body */}
+          <div className="flex-1 mb-4">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-[#00D4B3] transition-colors line-clamp-2">
+              {artifactTitle}
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-[#94A3B8] line-clamp-3 mb-4">{descText}</p>
+
+            {/* Progress Bar */}
+            <div className="w-full">
+              <div className="flex justify-between text-[10px] text-gray-400 dark:text-[#6C757D] mb-1.5 uppercase tracking-wider font-semibold">
+                <span>Progreso</span>
+                <span>{progress.percent}%</span>
+              </div>
+              <div className="h-1.5 w-full bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden">
                 <div
-                  className={`h-full ${progress.color} transition-all duration-500 ${progress.animated ? 'animate-pulse' : ''}`}
+                  className={`h-full ${progress.color} transition-all duration-700 ease-out ${progress.animated ? 'animate-[pulse_2s_infinite]' : ''}`}
                   style={{ width: `${progress.percent}%` }}
                 />
               </div>
             </div>
           </div>
 
-          <div
-            className={`px-2.5 py-1 rounded-full text-xs border ${status.color} flex shrink-0 items-center gap-1.5`}
-          >
-            {StatusIcon && (
-              <StatusIcon
-                size={12}
-                className={
-                  status.label.includes("Generando") ||
-                    status.label.includes("Validando")
-                    ? "animate-spin"
-                    : ""
-                }
-              />
-            )}
-            {status.label}
+          {/* Footer */}
+          <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-[#6C757D]/10">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-[#00D4B3]/10 dark:bg-[#00D4B3]/20 flex items-center justify-center text-[10px] text-[#00D4B3]">
+                {(artifact.profiles?.username?.[0] || "A").toUpperCase()}
+              </div>
+              <span className="text-xs text-gray-500 dark:text-[#94A3B8]">
+                {artifact.profiles?.username || "Usuario"}
+              </span>
+            </div>
+            <span className="text-xs text-gray-400 dark:text-[#6C757D]">{timeDisplay}</span>
+            <div className="flex items-center gap-3">
+              {artifact.production_status && artifact.production_status.total > 0 && (
+                <span className={`text-xs ${artifact.production_complete ? 'text-emerald-400' : 'text-[#6C757D]'}`}>
+                  🎬 {artifact.production_status.completed}/{artifact.production_status.total}
+                </span>
+              )}
+              <span className="text-xs text-[#6C757D]">{timeDisplay}</span>
+            </div>
           </div>
-
-          <div className="text-xs text-gray-400 dark:text-[#6C757D] hidden md:block w-32 truncate text-right px-2 shrink-0">
-            {artifact.profiles?.username || "Anon"}
-          </div>
-
-          <div className="text-xs text-gray-400 dark:text-[#6C757D] w-20 text-right shrink-0">
-            {timeDisplay}
-          </div>
-
-          <button
-            className="text-gray-400 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white p-2 shrink-0"
-            onClick={(e) => {
-              e.preventDefault(); /* Menu logic */
-            }}
-          >
-            <MoreHorizontal size={18} />
-          </button>
         </div>
       </Link>
-    );
-  }
 
-  return (
-    <Link href={`/admin/artifacts/${artifact.id}`} className="block h-full">
-      <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-5 hover:border-gray-300 dark:hover:border-[#6C757D]/30 transition-all group flex flex-col h-full cursor-pointer relative shadow-sm dark:shadow-none">
+      <ArtifactDropdownMenu
+        isOpen={showMenu}
+        onClose={() => setShowMenu(false)}
+        onDelete={() => setShowDeleteModal(true)}
+        position={menuPosition}
+      />
 
-        {/* Header: Status Badge & Menu */}
-        <div className="flex items-start justify-between mb-4">
-          <div
-            className={`px-2.5 py-1 rounded-full text-xs font-medium border ${status.color} flex items-center gap-1.5`}
-          >
-            {StatusIcon && (
-              <StatusIcon
-                size={12}
-                className={
-                  status.label.includes("Generando") ||
-                    status.label.includes("Validando")
-                    ? "animate-spin"
-                    : ""
-                }
-              />
-            )}
-            {status.label}
-          </div>
-          <button
-            className="text-gray-400 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white z-20"
-            onClick={(e) => {
-              e.preventDefault(); /* Menu logic */
-            }}
-          >
-            <MoreHorizontal size={18} />
-          </button>
-        </div>
-
-        {/* Content Body */}
-        <div className="flex-1 mb-4">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-[#00D4B3] transition-colors line-clamp-2">
-            {artifact.idea_central
-              .replace(/^TEMA:\s*/i, "")
-              .split(/IDEA PRINCIPAL:/i)[0]
-              .trim()}
-          </h3>
-          <p className="text-sm text-gray-500 dark:text-[#94A3B8] line-clamp-3 mb-4">{descText}</p>
-
-          {/* Progress Bar */}
-          <div className="w-full">
-            <div className="flex justify-between text-[10px] text-gray-400 dark:text-[#6C757D] mb-1.5 uppercase tracking-wider font-semibold">
-              <span>Progreso</span>
-              <span>{progress.percent}%</span>
-            </div>
-            <div className="h-1.5 w-full bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden">
-              <div
-                className={`h-full ${progress.color} transition-all duration-700 ease-out ${progress.animated ? 'animate-[pulse_2s_infinite]' : ''}`}
-                style={{ width: `${progress.percent}%` }}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-[#6C757D]/10">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-[#00D4B3]/10 dark:bg-[#00D4B3]/20 flex items-center justify-center text-[10px] text-[#00D4B3]">
-              {(artifact.profiles?.username?.[0] || "A").toUpperCase()}
-            </div>
-            <span className="text-xs text-gray-500 dark:text-[#94A3B8]">
-              {artifact.profiles?.username || "Usuario"}
-            </span>
-          </div>
-          <span className="text-xs text-gray-400 dark:text-[#6C757D]">{timeDisplay}</span>
-          <div className="flex items-center gap-3">
-            {artifact.production_status && artifact.production_status.total > 0 && (
-              <span className={`text-xs ${artifact.production_complete ? 'text-emerald-400' : 'text-[#6C757D]'}`}>
-                🎬 {artifact.production_status.completed}/{artifact.production_status.total}
-              </span>
-            )}
-            <span className="text-xs text-[#6C757D]">{timeDisplay}</span>
-          </div>
-        </div>
-      </div>
-    </Link>
+      <DeleteConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleDeleteConfirm}
+        artifactTitle={artifactTitle}
+        isDeleting={isDeleting}
+      />
+    </>
   );
 }
 

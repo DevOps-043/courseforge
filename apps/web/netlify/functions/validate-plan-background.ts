@@ -77,27 +77,27 @@ Debes generar un reporte estructurado en JSON con el siguiente esquema exacto:
 
 // Validation Schema Output
 const MetricSchema = z.object({
-  calidad_contenido: z.number().describe("0-100"),
-  calidad_objetivos: z.number().describe("0-100"),
-  cobertura_objetivos: z.number().describe("0-100"),
-  coherencia_tematica: z.number().describe("0-100"),
-  estructura_pedagogica: z.number().describe("0-100"),
-  adherencia_bloom: z.number().describe("0-100"),
+    calidad_contenido: z.number().describe("0-100"),
+    calidad_objetivos: z.number().describe("0-100"),
+    cobertura_objetivos: z.number().describe("0-100"),
+    coherencia_tematica: z.number().describe("0-100"),
+    estructura_pedagogica: z.number().describe("0-100"),
+    adherencia_bloom: z.number().describe("0-100"),
 });
 
 const ValidationCheckSchema = z.object({
-  es_actual: z.boolean(),
-  notas: z.string()
+    es_actual: z.boolean(),
+    notas: z.string()
 });
 
 const ValidationResultSchema = z.object({
-  score_general: z.number(),
-  estado: z.enum(['APROBADO', 'RECHAZADO', 'REQUIERE_AJUSTES']),
-  metricas: MetricSchema,
-  resumen_ejecutivo: z.string(),
-  fortalezas: z.array(z.string()),
-  recomendaciones: z.array(z.string()),
-  actualidad_check: ValidationCheckSchema
+    score_general: z.number(),
+    estado: z.enum(['APROBADO', 'RECHAZADO', 'REQUIERE_AJUSTES']),
+    metricas: MetricSchema,
+    resumen_ejecutivo: z.string(),
+    fortalezas: z.array(z.string()),
+    recomendaciones: z.array(z.string()),
+    actualidad_check: ValidationCheckSchema
 });
 
 // Setup Clients
@@ -145,19 +145,19 @@ export const handler = async (event: any, context: any) => {
             .single();
 
         if (planError || !plan) throw new Error(`Plan not found: ${planError?.message}`);
-        
+
         // Get the Artifact for context (Title, Idea Central)
         const { data: artifact } = await supabase
             .from('artifacts')
             .select('idea_central, nombres, audiencia_objetivo')
             .eq('id', artifactId)
             .single();
-            
+
         const courseName = (artifact?.nombres && artifact.nombres[0]) || artifact?.idea_central || "Curso Desconocido";
 
         // --- STEP 2: PREPARE PAYLOAD FOR AI ---
         const lessonsPayload = JSON.stringify(plan.lesson_plans, null, 2);
-        
+
         const validationContext = `
         FECHA ACTUAL: ${new Date().toISOString().split('T')[0]}
         
@@ -170,7 +170,7 @@ export const handler = async (event: any, context: any) => {
 
         // --- STEP 3: RUN VALIDATION AGENTS ---
         // modelName: Use env var to match project config (e.g. gemini-3-flash-preview or gemini-2.0-flash)
-        const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash'; 
+        const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
         console.log(`[Validation Job] Validating with ${modelName}...`);
 
         const result = await generateObject({
@@ -179,7 +179,7 @@ export const handler = async (event: any, context: any) => {
             prompt: `${INSTRUCTIONAL_PLAN_VALIDATION_PROMPT}\n\n${validationContext}`,
             temperature: 0.2, // Low temp for strict analysis
         });
-        
+
         const validationOutput = result.object;
         console.log(`[Validation Job] Score: ${validationOutput.score_general}, Status: ${validationOutput.estado}`);
 

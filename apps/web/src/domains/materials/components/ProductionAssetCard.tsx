@@ -95,74 +95,116 @@ export function ProductionAssetCard({
         setTimeout(() => setCopyFeedback(null), 2000);
     };
 
-    // Format storyboard for Gamma (human-readable outline optimized for AI generation)
-    const formatStoryboardForGamma = (storyboard: any[]): string => {
-        if (!storyboard || storyboard.length === 0) return '';
+    // ============================================
+    // HALLAZGO 3: Estructura recomendada para slides
+    // Opciones: Script + Storyboard, Solo Guión
+    // Siempre mantener Story Overview
+    // ============================================
 
+    // Extraer el Story Overview (contexto general del video)
+    const getStoryOverview = (): string => {
         const content = component.content as any;
-        const title = content.title || 'Presentación';
-        const totalSlides = storyboard.length;
+        const title = content.title || content.script?.title || 'Presentación';
+        const duration = content.duration_estimate_minutes || content.script?.duration_estimate_minutes || 5;
+        const script = content.script as { sections?: any[] } | undefined;
+        const storyboard = content.storyboard as any[] | undefined;
 
-        // Create optimized prompt for Gamma
-        let formatted = `📌 CONFIGURACIÓN GAMMA:
+        // Extraer el objetivo/intro del script si existe
+        let objective = '';
+        if (script?.sections?.length) {
+            const introSection = script.sections.find((s: any) =>
+                s.section_type === 'intro' || s.section_number === 1
+            );
+            if (introSection?.narration_text) {
+                const sentences = introSection.narration_text.split(/[.!?]+/).filter((s: string) => s.trim());
+                objective = sentences.slice(0, 2).join('. ').trim();
+                if (objective && !objective.endsWith('.')) objective += '.';
+            }
+        }
+
+        return `STORY OVERVIEW
+--------------------------------------------------
+Titulo: ${title}
+Duracion estimada: ${duration} minutos
+Total de slides: ${storyboard?.length || script?.sections?.length || 'N/A'}
+${objective ? `\nObjetivo: ${objective}` : ''}
+--------------------------------------------------`;
+    };
+
+    // OPCIÓN A: Script + Storyboard combinado
+    // Generar estructura para Gamma (Markdown optimizado para no generar imágenes)
+    const formatForGamma = (): string => {
+        const content = component.content as any;
+        const script = content.script as { sections?: any[] } | undefined;
+        const storyboard = content.storyboard as any[] | undefined;
+
+        if ((!script?.sections || script.sections.length === 0) && (!storyboard || storyboard.length === 0)) {
+            return '';
+        }
+
+        let formatted = `${getStoryOverview()}
+
+CONFIGURACION GAMMA:
 - Idioma: Español Latinoamericano
-- Estilo: Texto mínimo, sin imágenes de stock
-- Formato: Presentación educativa profesional
+- IMAGENES: NO GENERAR (Usar solo texto y layouts solidos)
+- Estilo: Minimalista, fuentes limpias
+- Formato: Presentacion educativa
 
-🎬 TÍTULO: ${title}
-📊 TOTAL SLIDES: ${totalSlides}
-
+---
+CONTENIDO
 ---
 
 `;
 
-        storyboard.forEach((item, index) => {
-            const slideNum = item.take_number || index + 1;
-            const visualType = item.visual_type || 'slide';
+        // Usar script como fuente principal, fallback a storyboard si es necesario
+        // Combinamos la mejor información disponible de ambos
+        const sections = script?.sections || [];
+        const storyboardItems = storyboard || [];
+        const maxItems = Math.max(sections.length, storyboardItems.length);
 
-            formatted += `### SLIDE ${slideNum}\n`;
+        for (let i = 0; i < maxItems; i++) {
+            const section = sections[i];
+            const storyItem = storyboardItems[i];
+            const slideNum = i + 1;
+            const type = section?.section_type ? `[${section.section_type.toUpperCase()}]` : '';
 
-            // Main text for the slide
-            if (item.on_screen_text) {
-                formatted += `**Texto principal:** ${item.on_screen_text}\n`;
+            formatted += `### SLIDE ${slideNum} ${type}\n\n`;
+
+            // Texto en pantalla
+            const text = section?.on_screen_text || storyItem?.on_screen_text || '';
+            if (text) {
+                formatted += `**Texto en Pantalla:**\n${text}\n\n`;
             }
 
-            // Visual description
-            if (item.visual_content) {
-                formatted += `**Visual:** ${item.visual_content}\n`;
+            // Narración
+            const narration = section?.narration_text || storyItem?.narration_text || '';
+            if (narration) {
+                formatted += `**Narracion (Speaker Notes):**\n${narration}\n\n`;
             }
 
-            // Key points from narration (extract bullet points if possible)
-            if (item.narration_text) {
-                const keyPoints = item.narration_text
-                    .split(/[.!?]+/)
-                    .filter((s: string) => s.trim().length > 20)
-                    .slice(0, 3)
-                    .map((s: string) => `• ${s.trim()}`);
-
-                if (keyPoints.length > 0) {
-                    formatted += `**Puntos clave:**\n${keyPoints.join('\n')}\n`;
-                }
+            // Contexto Visual (Referencia)
+            const visual = section?.visual_notes || storyItem?.visual_content || '';
+            if (visual) {
+                formatted += `**Contexto Visual (Referencia):**\n${visual}\n\n`;
             }
 
-            formatted += '\n---\n\n';
-        });
+            formatted += `---\n\n`;
+        }
 
         return formatted.trim();
     };
 
     // Generate URL for opening Gamma with pre-filled content
     const openInGamma = () => {
-        const storyboard = (component.content as any).storyboard || [];
-        const formattedContent = formatStoryboardForGamma(storyboard);
+        const formattedContent = formatForGamma();
 
-        // Encode the content for URL (Gamma accepts prompt parameter)
-        const encodedPrompt = encodeURIComponent(formattedContent);
+        if (!formattedContent) {
+            alert('No hay contenido de guión o storyboard para exportar.');
+            return;
+        }
 
-        // Open Gamma's create page - user will paste the content
-        // Unfortunately Gamma doesn't support URL parameters for prompts directly
-        // So we copy to clipboard and open Gamma
-        copyToClipboard(formattedContent, '¡Copiado! Pega en Gamma');
+        // Copy to clipboard and open Gamma's create page
+        copyToClipboard(formattedContent, '¡Estructura copiada! Pega en Gamma');
         window.open('https://gamma.app/create', '_blank');
     };
 
@@ -392,21 +434,25 @@ export function ProductionAssetCard({
                                         <span className="text-xs text-gray-400">(copia y abre)</span>
                                     </button>
 
-                                    {/* Secondary options */}
-                                    <div className="flex gap-2">
+                                    {/* Secondary options - HALLAZGO 3: Dos formatos disponibles */}
+                                    {/* Secondary options - Estructura optimizada */}
+                                    <div className="space-y-2">
+                                        <p className="text-[10px] text-[#6C757D]">📋 Copiar estructura para Gamma:</p>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => copyToClipboard(formatForGamma(), 'Estructura copiada')}
+                                                className="flex-1 bg-[#1F5AF6]/10 hover:bg-[#1F5AF6]/20 text-[#1F5AF6] text-xs py-2 rounded-lg border border-[#1F5AF6]/20 flex items-center justify-center gap-2 transition-colors"
+                                                title="Copia el guión estructurado para generar slides de texto en Gamma"
+                                            >
+                                                <Copy size={12} /> Copiar Estructura Gamma
+                                            </button>
+                                        </div>
                                         <button
-                                            onClick={() => copyToClipboard(formatStoryboardForGamma((component.content as any).storyboard || []), 'Estructura copiada')}
-                                            className="flex-1 bg-[#1F5AF6]/10 hover:bg-[#1F5AF6]/20 text-[#1F5AF6] text-xs py-2 rounded-lg border border-[#1F5AF6]/20 flex items-center justify-center gap-2 transition-colors"
-                                            title="Copiar estructura formateada para Gamma"
+                                            onClick={() => copyToClipboard(JSON.stringify((component.content as any).storyboard || (component.content as any).script, null, 2), 'JSON copiado')}
+                                            className="w-full bg-[#2D333B] hover:bg-[#373E47] text-[#6C757D] text-xs py-1.5 rounded-lg border border-[#6C757D]/20 flex items-center justify-center gap-2 transition-colors"
+                                            title="Copiar datos raw como JSON"
                                         >
-                                            <Copy size={12} /> Copiar Estructura
-                                        </button>
-                                        <button
-                                            onClick={() => copyToClipboard(JSON.stringify((component.content as any).storyboard, null, 2), 'JSON copiado')}
-                                            className="bg-[#2D333B] hover:bg-[#373E47] text-[#6C757D] text-xs py-2 px-3 rounded-lg border border-[#6C757D]/20 flex items-center justify-center gap-2 transition-colors"
-                                            title="Copiar storyboard como JSON"
-                                        >
-                                            <Copy size={12} /> JSON
+                                            <Copy size={10} /> JSON Raw
                                         </button>
                                     </div>
 
@@ -446,14 +492,26 @@ export function ProductionAssetCard({
                                     </div>
                                 </div>
                             ) : (
-                                <button
-                                    onClick={handleGeneratePrompts}
-                                    disabled={isGenerating}
-                                    className="w-full bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 py-3 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all"
-                                >
-                                    {isGenerating ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
-                                    Generar Prompts con Gemini
-                                </button>
+                                <div className="space-y-2">
+                                    <button
+                                        onClick={handleGeneratePrompts}
+                                        disabled={isGenerating}
+                                        className={`w-full py-3 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all ${isGenerating
+                                            ? 'bg-purple-500/5 text-purple-400/50 border border-purple-500/10 cursor-not-allowed'
+                                            : 'bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20'
+                                            }`}
+                                    >
+                                        {isGenerating ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
+                                        {isGenerating ? 'Generando Prompts...' : 'Generar Prompts con Gemini'}
+                                    </button>
+                                    {isGenerating && (
+                                        <div className="flex items-center justify-center gap-2 p-2 bg-blue-500/5 border border-blue-500/10 rounded-lg animate-pulse">
+                                            <span className="text-[10px] text-blue-400">
+                                                ⏳ Analizando storyboard y generando prompts técnicos... Por favor espera.
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
                             )}
                         </div>
                     )}
