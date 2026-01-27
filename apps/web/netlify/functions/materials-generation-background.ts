@@ -277,11 +277,17 @@ async function triggerNextLesson(materialsId: string, artifactId: string, logPre
     const url = `${getBaseUrl()}/.netlify/functions/materials-generation-background`;
     console.log(`${logPrefix} Triggering next at: ${url}`);
 
-    fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ materialsId, artifactId, mode: 'process-next' }),
-    }).catch(err => console.error(`${logPrefix} Trigger failed:`, err));
+    try {
+        // IMPORTANT: Must await to ensure request is sent before function terminates
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ materialsId, artifactId, mode: 'process-next' }),
+        });
+        console.log(`${logPrefix} Trigger response: ${response.status}`);
+    } catch (err) {
+        console.error(`${logPrefix} Trigger failed:`, err);
+    }
 }
 
 async function processSingleLesson(
