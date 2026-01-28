@@ -7,7 +7,7 @@ const handler: Handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' };
 
   try {
-    const { artifactId, curationId, customPrompt } = JSON.parse(event.body || '{}');
+    const { artifactId, curationId, customPrompt, resume } = JSON.parse(event.body || '{}');
     if (!curationId) throw new Error('Missing curationId');
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -18,10 +18,15 @@ const handler: Handler = async (event) => {
       throw new Error('Missing environment configuration');
     }
 
-    // Clear existing rows to prevent duplicates (same as validate-curation-background.ts)
+    // Clear existing rows ONLY if not resuming
     const supabase = createClient(supabaseUrl, supabaseKey);
-    await supabase.from('curation_rows').delete().eq('curation_id', curationId);
-    console.log(`[Curation Background] Cleared old rows for curation: ${curationId}`);
+
+    if (!resume) {
+      await supabase.from('curation_rows').delete().eq('curation_id', curationId);
+      console.log(`[Curation Background] Cleared old rows for curation: ${curationId}`);
+    } else {
+      console.log(`[Curation Background] RESUME requested. Keeping existing rows for curation: ${curationId}`);
+    }
 
     // Call shared logic
     const processed = await processUnifiedCuration({
@@ -30,7 +35,8 @@ const handler: Handler = async (event) => {
       customPrompt,
       supabaseUrl,
       supabaseKey,
-      geminiApiKey
+      geminiApiKey,
+      resume
     });
 
     return { statusCode: 200, body: JSON.stringify({ success: true, processed }) };

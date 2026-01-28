@@ -19,8 +19,8 @@ export function useCuration(artifactId: string) {
         const rowsData = await curationService.getCurationRows(curData.id);
         setRows(rowsData);
 
-        // Si el estado es GENERATING, asumimos que estamos en proceso
-        if (curData.state === 'PHASE2_GENERATING') {
+        // Si el estado es GENERATING o REQUESTED, asumimos que estamos en proceso
+        if (curData.state === 'PHASE2_GENERATING' || curData.state === 'PAUSED_REQUESTED' || curData.state === 'STOPPED_REQUESTED') {
           setIsGenerating(true);
         } else {
           setIsGenerating(false);
@@ -40,22 +40,23 @@ export function useCuration(artifactId: string) {
   // Polling to check for completion status
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    
-    if (isGenerating && curation?.id) {
-           interval = setInterval(async () => {
-               const latest = await curationService.getCurationByArtifactId(artifactId);
-               if (latest) {
-                   setCuration(latest);
-                   
-                   // También actualizar filas por si falla el realtime
-                   const latestRows = await curationService.getCurationRows(latest.id);
-                   setRows(latestRows);
 
-                   if (latest.state !== 'PHASE2_GENERATING') {
-                       setIsGenerating(false);
-                   }
-               }
-           }, 3000); // Check every 3 seconds
+    if (isGenerating && curation?.id) {
+      interval = setInterval(async () => {
+        const latest = await curationService.getCurationByArtifactId(artifactId);
+        if (latest) {
+          setCuration(latest);
+
+          // También actualizar filas por si falla el realtime
+          const latestRows = await curationService.getCurationRows(latest.id);
+          setRows(latestRows);
+
+          const isGen = latest.state === 'PHASE2_GENERATING' || latest.state === 'PAUSED_REQUESTED' || latest.state === 'STOPPED_REQUESTED';
+          if (!isGen) {
+            setIsGenerating(false);
+          }
+        }
+      }, 3000); // Check every 3 seconds
     }
 
     return () => clearInterval(interval);
@@ -69,16 +70,17 @@ export function useCuration(artifactId: string) {
     let subscription: { unsubscribe: () => void } | null = null;
 
     if (curation?.id) {
-       subscription = curationService.subscribeToCurationRows(curation.id, () => {
-          // Cuando hay cambios, recargamos las filas
-          curationService.getCurationRows(curation.id).then(setRows);
-          
-          // También intentamos ver si ya terminó
-          curationService.getCurationByArtifactId(artifactId).then(c => {
-             setCuration(c);
-             if (c?.state !== 'PHASE2_GENERATING') setIsGenerating(false);
-          });
-       });
+      subscription = curationService.subscribeToCurationRows(curation.id, () => {
+        // Cuando hay cambios, recargamos las filas
+        curationService.getCurationRows(curation.id).then(setRows);
+
+        // También intentamos ver si ya terminó
+        curationService.getCurationByArtifactId(artifactId).then(c => {
+          setCuration(c);
+          const isGen = c?.state === 'PHASE2_GENERATING' || c?.state === 'PAUSED_REQUESTED' || c?.state === 'STOPPED_REQUESTED';
+          if (!isGen) setIsGenerating(false);
+        });
+      });
     }
 
     return () => {
@@ -87,13 +89,13 @@ export function useCuration(artifactId: string) {
   }, [artifactId, curation?.id, fetchCurationData]);
 
   // Actions
-  const startCuration = async (attemptNumber: number = 1, gaps: string[] = []) => {
+  const startCuration = async (attemptNumber: number = 1, gaps: string[] = [], resume: boolean = false) => {
     setIsGenerating(true);
     // Optimistic UI update could happen here, but we rely on actions return
-    const result = await startCurationAction(artifactId, attemptNumber, gaps);
-    
+    const result = await startCurationAction(artifactId, attemptNumber, gaps, resume);
+
     if (result.success) {
-      toast.success('Curaduría iniciada. Las fuentes comenzarán a aparecer pronto.');
+      toast.success(resume ? 'Reanudando curaduría...' : 'Curaduría iniciada. Las fuentes comenzarán a aparecer pronto.');
       // Refetch inmediato para obtener el curation_id si era nuevo
       fetchCurationData();
     } else {
@@ -104,12 +106,12 @@ export function useCuration(artifactId: string) {
 
   const updateRow = async (rowId: string, updates: Partial<CurationRow>) => {
     // Optimistic update
-    setRows(current => 
+    setRows(current =>
       current.map(r => r.id === rowId ? { ...r, ...updates } : r)
     );
 
     const result = await updateCurationRowAction(rowId, updates);
-    
+
     if (!result.success) {
       toast.error('Error al actualizar fila');
       // Revertir (podríamos hacer un refetch aquí para asegurar consistencia)

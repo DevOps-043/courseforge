@@ -6,7 +6,11 @@ export type CurationState =
   | 'PHASE2_READY_FOR_QA'
   | 'PHASE2_APPROVED'
   | 'PHASE2_CORRECTABLE'
-  | 'PHASE2_BLOCKED';
+  | 'PHASE2_BLOCKED'
+  | 'PAUSED_REQUESTED'
+  | 'PAUSED'
+  | 'STOPPED_REQUESTED'
+  | 'STOPPED';
 
 export interface Curation {
   id: string;

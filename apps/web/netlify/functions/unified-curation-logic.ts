@@ -280,8 +280,9 @@ export async function processUnifiedCuration(params: {
     supabaseUrl: string;
     supabaseKey: string;
     geminiApiKey: string;
+    resume?: boolean;
 }) {
-    const { artifactId, curationId, customPrompt, supabaseUrl, supabaseKey, geminiApiKey } = params;
+    const { artifactId, curationId, customPrompt, supabaseUrl, supabaseKey, geminiApiKey, resume } = params;
 
     const supabase = createClient(supabaseUrl, supabaseKey);
     const client = new GoogleGenAI({ apiKey: geminiApiKey });
@@ -358,14 +359,26 @@ ${Array.isArray(learningObjectives) && learningObjectives.length > 0 ? `LEARNING
 
     console.log(`[Lesson Curation] Found ${lessonsToProcess.length} lessons to process.`);
     // DEBUG: Log all lesson IDs being processed
-    console.log(`[Lesson Curation] Lesson IDs: ${lessonsToProcess.map(l => l.lesson_id).join(', ')}`);
     console.log(`[Lesson Curation] Lesson Titles: ${lessonsToProcess.map(l => l.lesson_title).slice(0, 5).join(' | ')}...`);
 
-    // 3. Process Lessons in Batches
-    const curatedResults: CurationRowInsert[] = [];
-    const maxRetries = 3; // Increased retries for better coverage
+    // 3. Filter for RESUME if requested
+    let lessonsToSearch = [...lessonsToProcess];
+    if (resume) {
+        const { data: existingRows } = await supabase
+            .from('curation_rows')
+            .select('lesson_id')
+            .eq('curation_id', curationId);
 
-    let remainingLessons = [...lessonsToProcess];
+        const processedLessonIds = new Set(existingRows?.map(r => r.lesson_id));
+        lessonsToSearch = lessonsToProcess.filter(l => !processedLessonIds.has(l.lesson_id));
+        console.log(`[Resume] Skipping ${lessonsToProcess.length - lessonsToSearch.length} completed lessons. Remaining: ${lessonsToSearch.length}`);
+    }
+
+    // 4. Process Lessons in Batches
+    const curatedResults: CurationRowInsert[] = [];
+    const maxRetries = 3;
+
+    let remainingLessons = [...lessonsToSearch];
     let attempt = 0;
 
     while (remainingLessons.length > 0 && attempt <= maxRetries) {
@@ -374,6 +387,28 @@ ${Array.isArray(learningObjectives) && learningObjectives.length > 0 ? `LEARNING
         const failedInThisPass: LessonToProcess[] = [];
 
         for (let i = 0; i < remainingLessons.length; i += LESSONS_PER_BATCH) {
+            // --- SIGNAL CHECK (PAUSE/STOP) ---
+            const { data: curStatus } = await supabase.from('curation').select('state').eq('id', curationId).single();
+            if (curStatus?.state === 'PAUSED_REQUESTED' || curStatus?.state === 'PAUSED') {
+                if (curStatus.state === 'PAUSED_REQUESTED') {
+                    await supabase.from('curation').update({ state: 'PAUSED' }).eq('id', curationId);
+                    console.log('[Signal] Paused by user.');
+                } else {
+                    console.log('[Signal] Already PAUSED. Exiting.');
+                }
+                return curatedResults.length;
+            }
+            // Strict Stop: If requested OR already stopped
+            if (curStatus?.state === 'STOPPED_REQUESTED' || curStatus?.state === 'STOPPED') {
+                if (curStatus.state === 'STOPPED_REQUESTED') {
+                    await supabase.from('curation').update({ state: 'STOPPED' }).eq('id', curationId);
+                    console.log('[Signal] Stopped by user.');
+                } else {
+                    console.log('[Signal] Already STOPPED. Exiting.');
+                }
+                return curatedResults.length;
+            }
+
             const batch = remainingLessons.slice(i, i + LESSONS_PER_BATCH);
             const batchNum = Math.floor(i / LESSONS_PER_BATCH) + 1;
             console.log(`[Lesson Curation] Processing batch ${batchNum} (${batch.length} lessons)...`);
@@ -738,6 +773,19 @@ SEARCH STRATEGY:
                     }
                 }
             }
+
+            // --- INCREMENTAL SAVE (BATCH LEVEL) ---
+            const batchLessonIds = new Set(batch.map((l: LessonToProcess) => l.lesson_id));
+            const rowsForBatch = curatedResults.filter(r => batchLessonIds.has(r.lesson_id));
+
+            if (rowsForBatch.length > 0) {
+                const { error: insertError } = await supabase.from('curation_rows').insert(rowsForBatch);
+                if (insertError) {
+                    console.error('[Lesson Curation] Incremental Insert Error:', insertError);
+                } else {
+                    console.log(`[Lesson Curation] Saved ${rowsForBatch.length} rows for batch ${batchNum}.`);
+                }
+            }
         }
 
         remainingLessons = failedInThisPass;
@@ -761,17 +809,8 @@ SEARCH STRATEGY:
     }
     console.log(`[Lesson Curation] ═══════════════════════════════════════════════`);
 
-    // Insert results
-    if (curatedResults.length > 0) {
-        const { error } = await supabase.from('curation_rows').insert(curatedResults);
-        if (error) {
-            console.error('[Lesson Curation] Insert Error:', error);
-        } else {
-            console.log(`[Lesson Curation] Inserted ${curatedResults.length} lesson sources.`);
-        }
-    } else {
-        console.warn(`[Lesson Curation] WARNING: No sources found for any lesson!`);
-    }
+    // Insert results - REMOVED BULK INSERT (done incrementally)
+    // if (curatedResults.length > 0) { ... }
 
     // Update curation status
     await supabase.from('curation').update({

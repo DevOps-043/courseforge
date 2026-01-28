@@ -348,7 +348,7 @@ export async function deleteInstructionalPlanAction(artifactId: string) {
 // CURATION ACTIONS (Step 4)
 // ==============================================================================
 
-export async function startCurationAction(artifactId: string, attemptNumber: number = 1, gaps: string[] = []) {
+export async function startCurationAction(artifactId: string, attemptNumber: number = 1, gaps: string[] = [], resume: boolean = false) {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return { success: false, error: 'Unauthorized' };
@@ -469,7 +469,8 @@ export async function startCurationAction(artifactId: string, attemptNumber: num
             ideaCentral: artifact.idea_central,
             accessToken: session.access_token,
             attemptNumber,
-            gaps
+            gaps,
+            resume // Pass resume flag
         };
 
         const triggerResponse = await fetch(backgroundFunctionUrl, {
@@ -527,6 +528,10 @@ export async function updateCurationStatusAction(artifactId: string, status: str
     } else if (status === 'STEP_REJECTED') {
         finalStatus = 'PHASE2_BLOCKED';
         decision = 'BLOCKED';
+    } else if (status === 'PAUSED_REQUESTED') {
+        finalStatus = 'PAUSED_REQUESTED';
+    } else if (status === 'STOPPED_REQUESTED') {
+        finalStatus = 'STOPPED_REQUESTED';
     }
 
     const updateData: any = { state: finalStatus };
