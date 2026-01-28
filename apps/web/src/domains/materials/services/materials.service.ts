@@ -134,7 +134,7 @@ export const materialsService = {
             const response = await fetch('/.netlify/functions/materials-generation-background', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ artifactId, materialsId: materials.id }),
+                body: JSON.stringify({ artifactId, materialsId: materials.id, mode: 'init' }),
             });
 
             if (!response.ok) {
@@ -250,11 +250,12 @@ export const materialsService = {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    artifactId: null, // No es necesario para iteración de lección
+                    artifactId: null,
                     materialsId: lesson.materials_id,
                     lessonId,
                     fixInstructions,
                     iterationNumber: lesson.iteration_count + 1,
+                    mode: 'single-lesson', // Modo para procesar una sola lección
                 }),
             });
 
