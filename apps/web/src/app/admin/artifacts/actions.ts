@@ -621,10 +621,19 @@ export async function saveMaterialAssetsAction(componentId: string, assets: any)
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return { success: false, error: 'Unauthorized' };
 
-    // Fetch existing component data (including type for context)
+    // Fetch existing component data with hierarchy for ID generation
     const { data: component } = await supabase
         .from('material_components')
-        .select('assets, type, material_lesson_id')
+        .select(`
+            assets, type, material_lesson_id,
+            material_lessons (
+                lesson_id, lesson_title, module_id,
+                materials (
+                    artifact_id,
+                    artifacts ( course_id )
+                )
+            )
+        `)
         .eq('id', componentId)
         .single();
 
@@ -667,9 +676,39 @@ export async function saveMaterialAssetsAction(componentId: string, assets: any)
         productionStatus = 'IN_PROGRESS';
     }
 
+    // Generate Composite ID if missing (gamma_deck_id)
+    let gammaDeckId = mergedAssets.gamma_deck_id;
+    if (!gammaDeckId && component?.material_lessons) {
+        // Extract data for ID generation
+        const lesson = component.material_lessons as any;
+        const materials = lesson.materials as any;
+        const artifact = materials?.artifacts as any;
+
+        const courseId = artifact?.course_id || 'CRS';
+        // Try to parse lesson number from title (e.g. "1.1 Intro") -> "1.1"
+        const lessonNumMatch = lesson.lesson_title.match(/^(\d+(\.\d+)*)/);
+        const lessonNum = lessonNumMatch ? lessonNumMatch[0] : 'L' + lesson.lesson_id.substring(0, 4);
+
+        // Component Type Shortcut
+        const typeMap: Record<string, string> = {
+            'VIDEO_THEORETICAL': 'VTH',
+            'VIDEO_GUIDE': 'VGD',
+            'VIDEO_DEMO': 'VDM',
+            'DEMO_GUIDE': 'DG',
+            'QUIZ': 'QZ'
+        };
+        const typeCode = typeMap[componentType] || 'UNK';
+
+        // Format: [COURSE]-[LESSON]-[TYPE]-[RANDOM_SUFFIX]
+        // Example: COURSE-3030-1.2-VTH-X9Y
+        const suffix = Math.random().toString(36).substring(2, 5).toUpperCase();
+        gammaDeckId = `${courseId}-${lessonNum}-${typeCode}-${suffix}`;
+    }
+
     // Build final assets object
     const finalAssets = {
         ...mergedAssets,
+        gamma_deck_id: gammaDeckId,
         production_status: productionStatus,
         dod_checklist: dodChecklist,
         updated_at: new Date().toISOString(),

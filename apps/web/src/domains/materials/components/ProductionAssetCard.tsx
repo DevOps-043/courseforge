@@ -375,14 +375,25 @@ CONTENIDO
                     {/* SLIDES SECTION (Gamma) */}
                     {(component.type === 'VIDEO_THEORETICAL' || component.type === 'VIDEO_GUIDE' || component.type === 'VIDEO_DEMO') && (
                         <div className="space-y-3">
-                            <h4 className="text-xs font-bold text-[#E9ECEF] flex items-center gap-2">
-                                <FileText size={14} /> GAMMA SLIDES
-                                {copyFeedback && (
-                                    <span className="ml-auto text-green-400 font-normal text-xs animate-pulse">
-                                        ✓ {copyFeedback}
-                                    </span>
+                            <div className="flex items-center justify-between">
+                                <h4 className="text-xs font-bold text-[#E9ECEF] flex items-center gap-2">
+                                    <FileText size={14} /> GAMMA SLIDES
+                                    {copyFeedback && (
+                                        <span className="ml-auto text-green-400 font-normal text-xs animate-pulse">
+                                            ✓ {copyFeedback}
+                                        </span>
+                                    )}
+                                </h4>
+                                {component.assets?.gamma_deck_id && (
+                                    <div
+                                        onClick={() => copyToClipboard(component.assets.gamma_deck_id!, 'ID Copiado')}
+                                        className="flex items-center gap-1 px-2 py-0.5 bg-[#1F5AF6]/10 hover:bg-[#1F5AF6]/20 border border-[#1F5AF6]/20 rounded text-[10px] text-[#1F5AF6] font-mono cursor-pointer transition-colors"
+                                        title="Click para copiar ID Compuesto"
+                                    >
+                                        #{component.assets.gamma_deck_id}
+                                    </div>
                                 )}
-                            </h4>
+                            </div>
 
                             {/* If we have a slides URL, show the embed preview */}
                             {gammaEmbedUrl ? (
