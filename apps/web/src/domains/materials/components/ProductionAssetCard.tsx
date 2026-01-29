@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
     Video, FileText, MonitorPlay, Copy, ExternalLink,
     Sparkles, Save, CheckCircle, Loader2, Play,
-    CheckCircle2, Circle, AlertCircle, Eye, X, Maximize2, Wand2
+    CheckCircle2, Circle, AlertCircle, Eye, X, Maximize2, Wand2, Upload
 } from 'lucide-react';
+import { createClient } from '@/utils/supabase/client';
+import { toast } from 'sonner';
 import { MaterialComponent, ProductionStatus } from '../types/materials.types';
 
 interface ProductionAssetCardProps {
@@ -27,13 +29,56 @@ export function ProductionAssetCard({
     const [isSaving, setIsSaving] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
     const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
-
+    const [isUploading, setIsUploading] = useState(false);
     // Local state for inputs
     const [slidesUrl, setSlidesUrl] = useState(component.assets?.slides_url || '');
     const [videoUrl, setVideoUrl] = useState(component.assets?.video_url || '');
     const [screencastUrl, setScreencastUrl] = useState(component.assets?.screencast_url || '');
     const [bRollPrompts, setBRollPrompts] = useState(component.assets?.b_roll_prompts || '');
     const [finalVideoUrl, setFinalVideoUrl] = useState(component.assets?.final_video_url || '');
+
+    const fileRef = useRef<HTMLInputElement>(null);
+
+    const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // 500MB limit
+        if (file.size > 500 * 1024 * 1024) {
+            toast.error("El video no debe superar los 500MB. Para videos más grandes, usa YouTube/Vimeo.");
+            return;
+        }
+
+        setIsUploading(true);
+        const supabase = createClient();
+
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${component.id}-${Date.now()}.${fileExt}`;
+            const filePath = `${fileName}`;
+
+            // Upload to 'videos' bucket
+            const { error: uploadError } = await supabase.storage
+                .from('videos')
+                .upload(filePath, file);
+
+            if (uploadError) throw uploadError;
+
+            const { data: { publicUrl } } = supabase.storage
+                .from('videos')
+                .getPublicUrl(filePath);
+
+            updateAsset('final_video_url', publicUrl, setFinalVideoUrl);
+            toast.success("Video subido correctamente");
+        } catch (error: any) {
+            console.error('Upload error:', error);
+            toast.error("Error al subir video: " + error.message);
+        } finally {
+            setIsUploading(false);
+            // Reset input
+            if (fileRef.current) fileRef.current.value = '';
+        }
+    };
 
     // Helper to update state and notify parent
     const updateAsset = (field: string, value: string, setter: (v: string) => void) => {
@@ -566,16 +611,39 @@ CONTENIDO
                                     </span>
                                 )}
                             </h4>
-                            <input
-                                type="text"
-                                placeholder="URL del video final (después de edición)..."
-                                value={finalVideoUrl}
-                                onChange={(e) => updateAsset('final_video_url', e.target.value, setFinalVideoUrl)}
-                                className={`w-full bg-[#0F1419] border rounded-lg p-2.5 text-white text-xs focus:outline-none transition-colors ${finalVideoUrl
-                                    ? 'border-green-500/30 focus:border-green-500'
-                                    : 'border-[#6C757D]/20 focus:border-[#1F5AF6]'
-                                    }`}
-                            />
+
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    placeholder="URL del video final (después de edición)..."
+                                    value={finalVideoUrl}
+                                    onChange={(e) => updateAsset('final_video_url', e.target.value, setFinalVideoUrl)}
+                                    className={`w-full bg-[#0F1419] border rounded-lg p-2.5 pr-24 text-white text-xs focus:outline-none transition-colors ${finalVideoUrl
+                                        ? 'border-green-500/30 focus:border-green-500'
+                                        : 'border-[#6C757D]/20 focus:border-[#1F5AF6]'
+                                        }`}
+                                />
+
+                                <input
+                                    type="file"
+                                    ref={fileRef}
+                                    onChange={handleVideoUpload}
+                                    className="hidden"
+                                    accept="video/mp4,video/webm,video/ogg,video/quicktime"
+                                />
+                                <button
+                                    onClick={() => fileRef.current?.click()}
+                                    disabled={isUploading || isSaving}
+                                    className="absolute right-1 top-1 bottom-1 px-3 bg-[#1F5AF6]/10 hover:bg-[#1F5AF6]/20 text-[#1F5AF6] rounded-md transition-colors disabled:opacity-50 text-xs font-medium flex items-center gap-2"
+                                    title="Subir video local"
+                                >
+                                    {isUploading ? <Loader2 className="animate-spin" size={14} /> : <Upload size={14} />}
+                                    <span className="hidden sm:inline">{isUploading ? '...' : 'Subir'}</span>
+                                </button>
+                            </div>
+
+                            {isUploading && <p className="text-[10px] text-[#1F5AF6] animate-pulse">Subiendo video... Por favor no cierres esta página.</p>}
+
                             {finalVideoUrl && (
                                 <a
                                     href={finalVideoUrl}
@@ -592,50 +660,52 @@ CONTENIDO
             </div>
 
             {/* Fullscreen Preview Modal */}
-            {showPreview && gammaEmbedUrl && (
-                <div
-                    className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
-                    onClick={() => setShowPreview(false)}
-                >
+            {
+                showPreview && gammaEmbedUrl && (
                     <div
-                        className="relative w-full max-w-6xl h-[80vh] bg-[#151A21] rounded-2xl overflow-hidden border border-[#6C757D]/20"
-                        onClick={(e) => e.stopPropagation()}
+                        className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+                        onClick={() => setShowPreview(false)}
                     >
-                        {/* Modal Header */}
-                        <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent">
-                            <div className="flex items-center gap-3">
-                                <FileText size={20} className="text-purple-400" />
-                                <span className="text-white font-bold">Vista Previa - Gamma Slides</span>
+                        <div
+                            className="relative w-full max-w-6xl h-[80vh] bg-[#151A21] rounded-2xl overflow-hidden border border-[#6C757D]/20"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Modal Header */}
+                            <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent">
+                                <div className="flex items-center gap-3">
+                                    <FileText size={20} className="text-purple-400" />
+                                    <span className="text-white font-bold">Vista Previa - Gamma Slides</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <a
+                                        href={slidesUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white text-sm transition-colors"
+                                    >
+                                        <ExternalLink size={14} /> Abrir en Gamma
+                                    </a>
+                                    <button
+                                        onClick={() => setShowPreview(false)}
+                                        className="p-2 hover:bg-white/10 rounded-lg text-white transition-colors"
+                                        title="Cerrar"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <a
-                                    href={slidesUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white text-sm transition-colors"
-                                >
-                                    <ExternalLink size={14} /> Abrir en Gamma
-                                </a>
-                                <button
-                                    onClick={() => setShowPreview(false)}
-                                    className="p-2 hover:bg-white/10 rounded-lg text-white transition-colors"
-                                    title="Cerrar"
-                                >
-                                    <X size={20} />
-                                </button>
-                            </div>
-                        </div>
 
-                        {/* Embedded Gamma Presentation */}
-                        <iframe
-                            src={gammaEmbedUrl}
-                            className="w-full h-full border-0"
-                            allow="fullscreen"
-                            title="Gamma Presentation"
-                        />
+                            {/* Embedded Gamma Presentation */}
+                            <iframe
+                                src={gammaEmbedUrl}
+                                className="w-full h-full border-0"
+                                allow="fullscreen"
+                                title="Gamma Presentation"
+                            />
+                        </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 }
