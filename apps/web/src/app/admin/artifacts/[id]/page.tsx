@@ -5,6 +5,9 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import ArtifactClientView from './ArtifactClientView';
 
+export const revalidate = 0;
+export const dynamic = 'force-dynamic';
+
 export default async function ArtifactDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
@@ -64,6 +67,70 @@ export default async function ArtifactDetailPage({ params }: { params: Promise<{
     materials_state: materialsData?.state
   };
 
+  // Fetch Publication Request
+  const { data: publicationRequest } = await supabase
+    .from('publication_requests')
+    .select('*')
+    .eq('artifact_id', id)
+    .maybeSingle();
+
+  // Fetch Lessons for publication map
+  let publicationLessons: any[] = [];
+  if (materialsData) {
+    const { data: rawLessons } = await supabase
+      .from('material_lessons')
+      .select(`
+        lesson_id, 
+        lesson_title, 
+        module_title,
+        material_components(
+          type,
+          assets,
+          content
+        )
+      `)
+      .eq('materials_id', materialsData.id)
+      .order('lesson_id');
+
+    if (rawLessons) {
+      publicationLessons = rawLessons.map((l: any) => {
+        let videoUrl = '';
+        let duration = 0;
+
+        if (l.material_components && Array.isArray(l.material_components)) {
+          const videoComp = l.material_components.find((c: any) =>
+            c.assets?.final_video_url || c.assets?.video_url || c.type.includes('VIDEO')
+          );
+
+          if (videoComp) {
+            // 1. URL Logic
+            videoUrl = videoComp.assets?.final_video_url || videoComp.assets?.video_url || '';
+
+            // 2. Duration Logic
+            if (videoComp.content) {
+              const content = videoComp.content;
+              // Try to sum up section durations if available
+              if (content.script?.sections) {
+                duration = content.script.sections.reduce((acc: number, sec: any) => acc + (sec.duration_seconds || 0), 0);
+              }
+              // Fallback to estimate if sum is 0
+              if (duration === 0 && content.duration_estimate_minutes) {
+                duration = Math.round(content.duration_estimate_minutes * 60);
+              }
+            }
+          }
+        }
+        return {
+          id: l.lesson_id,
+          title: l.lesson_title,
+          module_title: l.module_title,
+          auto_video_url: videoUrl,
+          auto_duration: duration
+        };
+      });
+    }
+  }
+
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-20">
 
@@ -78,7 +145,11 @@ export default async function ArtifactDetailPage({ params }: { params: Promise<{
       </div>
 
       {/* Interactive Client View */}
-      <ArtifactClientView artifact={artifact} />
+      <ArtifactClientView
+        artifact={artifact}
+        publicationRequest={publicationRequest}
+        publicationLessons={publicationLessons}
+      />
 
     </div>
   );

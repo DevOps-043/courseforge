@@ -188,6 +188,27 @@ CREATE TABLE public.profiles (
   CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id),
   CONSTRAINT profiles_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id)
 );
+CREATE TABLE public.publication_requests (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  artifact_id uuid NOT NULL UNIQUE,
+  category text NOT NULL,
+  level text NOT NULL CHECK (level = ANY (ARRAY['beginner'::text, 'intermediate'::text, 'advanced'::text])),
+  instructor_email text NOT NULL,
+  thumbnail_url text,
+  slug text NOT NULL,
+  price numeric DEFAULT 0.00,
+  lesson_videos jsonb NOT NULL DEFAULT '[]'::jsonb,
+  status text NOT NULL DEFAULT 'DRAFT'::text CHECK (status = ANY (ARRAY['DRAFT'::text, 'READY'::text, 'SENT'::text, 'APPROVED'::text, 'REJECTED'::text])),
+  soflia_course_id uuid,
+  soflia_response jsonb,
+  sent_at timestamp with time zone,
+  response_at timestamp with time zone,
+  rejection_reason text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT publication_requests_pkey PRIMARY KEY (id),
+  CONSTRAINT publication_requests_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id)
+);
 CREATE TABLE public.syllabus (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   artifact_id uuid NOT NULL UNIQUE,

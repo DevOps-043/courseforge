@@ -14,25 +14,36 @@ import { InstructionalPlanGenerationContainer } from '@/domains/plan/components/
 import { SourcesCurationGenerationContainer } from '@/domains/curation/components/SourcesCurationGenerationContainer';
 import { MaterialsForm } from '@/domains/materials/components/MaterialsForm';
 import { VisualProductionContainer } from '@/domains/materials/components/VisualProductionContainer';
+import PublicationClientView from './publish/PublicationClientView';
 
-export default function ArtifactClientView({ artifact }: { artifact: any }) {
+export default function ArtifactClientView({
+    artifact,
+    publicationRequest,
+    publicationLessons
+}: {
+    artifact: any,
+    publicationRequest?: any,
+    publicationLessons?: any[]
+}) {
     const [activeTab, setActiveTab] = useState<'content' | 'validation'>('content');
 
     // Calculate initial step based on artifact state (persist step across refreshes)
+    // Calculate initial step based on artifact state (persist step across refreshes)
     const calculateInitialStep = () => {
         // Check from highest step down to find where user should be
-        if (artifact.materials_state === 'PHASE3_APPROVED') return 6;
+        if (publicationRequest?.status === 'SENT' || publicationRequest?.status === 'APPROVED') return 7;
+        if (artifact.materials_state === 'PHASE3_APPROVED') return publicationRequest ? 7 : 6;
 
         const curationApproved = artifact.curation_state === 'PHASE2_APPROVED' ||
-                                  artifact.curation_state === 'PHASE2_READY_FOR_QA' ||
-                                  artifact.curation_state === 'PHASE2_HITL_REVIEW' ||
-                                  artifact.curation_state === 'PHASE2_GENERATED';
+            artifact.curation_state === 'PHASE2_READY_FOR_QA' ||
+            artifact.curation_state === 'PHASE2_HITL_REVIEW' ||
+            artifact.curation_state === 'PHASE2_GENERATED';
         if (curationApproved) return 5;
 
         if (artifact.plan_state === 'STEP_APPROVED') return 4;
 
         const syllabusApproved = artifact.syllabus_status === 'STEP_APPROVED' ||
-                                  (artifact.temario && artifact.temario.qa?.status === 'APPROVED');
+            (artifact.temario && artifact.temario.qa?.status === 'APPROVED');
         if (syllabusApproved) return 3;
 
         const phase1Approved = artifact.state === 'APPROVED' || artifact.qa_status === 'APPROVED';
@@ -267,6 +278,18 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
                     onClick={() => setCurrentStep(6)}
                     icon={<Target size={18} />}
                     disabled={artifact.materials_state !== 'PHASE3_APPROVED'}
+                />
+
+                <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${publicationRequest ? 'bg-[#1F5AF6]' : 'bg-gray-200 dark:bg-[#2D333B]'}`} />
+
+                <StepItem
+                    step={7}
+                    label="Publicar"
+                    active={currentStep === 7}
+                    onClick={() => setCurrentStep(7)}
+                    icon={<Target size={18} />} // Can change icon if needed, maybe Send or Globe
+                    disabled={!artifact.production_complete && artifact.materials_state !== 'PHASE3_APPROVED'}
+                    done={publicationRequest?.status === 'SENT' || publicationRequest?.status === 'APPROVED'}
                 />
             </div>
 
@@ -545,6 +568,15 @@ export default function ArtifactClientView({ artifact }: { artifact: any }) {
             ) : currentStep === 6 ? (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                     <VisualProductionContainer artifactId={artifact.id} />
+                </div>
+            ) : currentStep === 7 ? (
+                <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                    <PublicationClientView
+                        artifactId={artifact.id}
+                        artifactTitle={artifact.idea_central}
+                        lessons={publicationLessons || []}
+                        existingRequest={publicationRequest}
+                    />
                 </div>
             ) : null}
         </div>
