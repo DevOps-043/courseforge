@@ -379,7 +379,12 @@ function getArtifactProgress(artifact: Artifact) {
     return { percent: 100, color: "bg-red-500", animated: false };
   }
 
-  // 2. Calculating Progress based on Sub-Steps
+  // 2. Production Complete (Global override)
+  if (artifact.production_complete) {
+    return { percent: 100, color: "bg-emerald-500", animated: false };
+  }
+
+  // 3. Calculating Progress based on Sub-Steps
   // If the Base Artifact is Approved, we check deeper.
   if (artifact.state === 'APPROVED') {
     if (artifact.plan_state === 'STEP_APPROVED') {
@@ -392,21 +397,21 @@ function getArtifactProgress(artifact: Artifact) {
     return { percent: 20, color: "bg-[#00D4B3]", animated: false };
   }
 
-  // 3. Early States (Pre-Approval)
+  // 4. Early States (Pre-Approval)
   switch (artifact.state) {
     case "DRAFT":
-      return { percent: 10, color: "bg-gray-400 dark:bg-gray-600", animated: false };
+      return { percent: 5, color: "bg-gray-400 dark:bg-gray-600", animated: false };
     case "GENERATING":
-      return { percent: 35, color: "bg-blue-500", animated: true };
+      return { percent: 10, color: "bg-blue-500", animated: true };
     case "VALIDATING":
-      return { percent: 50, color: "bg-purple-500", animated: true };
+      return { percent: 12, color: "bg-purple-500", animated: true };
     case "READY_FOR_QA":
     case "PENDING_QA":
-      return { percent: 80, color: "bg-cyan-500", animated: false };
+      return { percent: 18, color: "bg-cyan-500", animated: false };
     case "ESCALATED":
-      return { percent: 80, color: "bg-orange-500", animated: false };
+      return { percent: 18, color: "bg-orange-500", animated: false };
     case "IN_PROCESS":
-      return { percent: 15, color: "bg-blue-500", animated: true };
+      return { percent: 10, color: "bg-blue-500", animated: true };
     default:
       return { percent: 5, color: "bg-gray-300", animated: false };
   }
@@ -772,7 +777,6 @@ function ArtifactCard({
                 {artifact.profiles?.username || "Usuario"}
               </span>
             </div>
-            <span className="text-xs text-gray-400 dark:text-[#6C757D]">{timeDisplay}</span>
             <div className="flex items-center gap-3">
               {artifact.production_status && artifact.production_status.total > 0 && (
                 <span className={`text-xs ${artifact.production_complete ? 'text-emerald-400' : 'text-[#6C757D]'}`}>
