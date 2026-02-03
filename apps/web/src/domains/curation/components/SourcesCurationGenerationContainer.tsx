@@ -29,8 +29,8 @@ interface SourcesCurationGenerationContainerProps {
 
 const DEFAULT_PROMPT_PREVIEW = `Prompt optimizado con reglas de curaduría, enfoque en accesibilidad (sin descargas), validación de URLs y estructura JSON estricta. Utiliza búsquedas en tiempo real para verificar la disponibilidad.`;
 
-// URL del GPT personalizado (actualizar cuando se cree)
-const GPT_URL = 'https://chat.openai.com/g/g-courseforge-sources';
+// URL del GPT personalizado
+const GPT_URL = 'https://chatgpt.com/g/g-69823d9a6470819196393ee8c227adab-soflia-generating-sources-assistant';
 
 export function SourcesCurationGenerationContainer({ artifactId, temario, ideaCentral }: SourcesCurationGenerationContainerProps) {
     const { curation, rows, isGenerating, startCuration, updateRow, refresh } = useCuration(artifactId);
