@@ -23,6 +23,7 @@ interface SyllabusModule {
 
 interface SourcesCurationGenerationContainerProps {
     artifactId: string;
+    courseId?: string; // Nuevo prop para ID público
     temario?: SyllabusModule[];
     ideaCentral?: string;
 }
@@ -32,7 +33,7 @@ const DEFAULT_PROMPT_PREVIEW = `Prompt optimizado con reglas de curaduría, enfo
 // URL del GPT personalizado
 const GPT_URL = 'https://chatgpt.com/g/g-69823d9a6470819196393ee8c227adab-soflia-generating-sources-assistant';
 
-export function SourcesCurationGenerationContainer({ artifactId, temario, ideaCentral }: SourcesCurationGenerationContainerProps) {
+export function SourcesCurationGenerationContainer({ artifactId, courseId, temario, ideaCentral }: SourcesCurationGenerationContainerProps) {
     const { curation, rows, isGenerating, startCuration, updateRow, refresh } = useCuration(artifactId);
     const router = useRouter();
     const [useCustomPrompt, setUseCustomPrompt] = useState(false);
@@ -233,10 +234,11 @@ export function SourcesCurationGenerationContainer({ artifactId, temario, ideaCe
     // Generate context for GPT
     const generateGPTContext = (): string => {
         if (!temario || !ideaCentral) {
-            return `ARTIFACT_ID: ${artifactId}\n\nNo hay temario disponible. Por favor genera el temario primero.`;
+            return `COURSE_ID: ${courseId || artifactId}\n\nNo hay temario disponible. Por favor genera el temario primero.`;
         }
 
-        let context = `ARTIFACT_ID: ${artifactId}\n\n`;
+        // Usamos courseId si existe (más seguro/limpio), o artifactId como fallback
+        let context = `COURSE_ID: ${courseId || artifactId}\n\n`;
         context += `IDEA CENTRAL: ${ideaCentral}\n\n`;
         context += `TEMARIO:\n`;
 

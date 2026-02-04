@@ -17,7 +17,7 @@ interface Source {
 }
 
 interface SourcesPayload {
-    artifact_id: string;
+    course_id: string; // Changed from artifact_id
     sources: Source[];
     metadata?: {
         total_lessons?: number;
@@ -42,9 +42,9 @@ export async function POST(request: NextRequest) {
         // 2. Parse and validate payload
         const payload: SourcesPayload = await request.json();
 
-        if (!payload.artifact_id || !payload.sources || !Array.isArray(payload.sources)) {
+        if (!payload.course_id || !payload.sources || !Array.isArray(payload.sources)) {
             return NextResponse.json(
-                { success: false, error: 'Invalid payload: artifact_id and sources are required' },
+                { success: false, error: 'Invalid payload: course_id and sources are required' },
                 { status: 400 }
             );
         }
@@ -56,32 +56,34 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        console.log(`[GPT Sources API] Received ${payload.sources.length} sources for artifact ${payload.artifact_id}`);
+        console.log(`[GPT Sources API] Received ${payload.sources.length} sources for course ${payload.course_id}`);
 
         // 3. Initialize Supabase with service role (server-side)
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-        // 4. Verify artifact exists
+        // 4. Verify artifact exists using course_id OR id (fallback)
         const { data: artifact, error: artifactError } = await supabase
             .from('artifacts')
             .select('id, idea_central')
-            .eq('id', payload.artifact_id)
+            .or(`course_id.eq.${payload.course_id},id.eq.${payload.course_id}`) // Try both for robustness
             .single();
 
         if (artifactError || !artifact) {
-            console.error('[GPT Sources API] Artifact not found:', payload.artifact_id);
+            console.error('[GPT Sources API] Artifact not found for course_id:', payload.course_id);
             return NextResponse.json(
-                { success: false, error: 'Artifact not found' },
+                { success: false, error: 'Course/Artifact not found' },
                 { status: 404 }
             );
         }
+
+        const artifactId = artifact.id; // Resolve internal UUID
 
         // 5. Get or create curation record
         let curationId: string;
         const { data: existingCuration } = await supabase
             .from('curation')
             .select('id')
-            .eq('artifact_id', payload.artifact_id)
+            .eq('artifact_id', artifactId) // Use resolved UUID
             .single();
 
         if (existingCuration) {
@@ -101,7 +103,7 @@ export async function POST(request: NextRequest) {
             const { data: newCuration, error: createError } = await supabase
                 .from('curation')
                 .insert({
-                    artifact_id: payload.artifact_id,
+                    artifact_id: artifactId, // Use resolved UUID
                     state: 'PHASE2_GENERATED',
                     attempt_number: 1
                 })
@@ -149,7 +151,7 @@ export async function POST(request: NextRequest) {
             })
             .eq('id', curationId);
 
-        console.log(`[GPT Sources API] Successfully saved ${payload.sources.length} sources for artifact ${payload.artifact_id}`);
+        console.log(`[GPT Sources API] Successfully saved ${payload.sources.length} sources for artifact ${artifactId}`);
 
         return NextResponse.json({
             success: true,
