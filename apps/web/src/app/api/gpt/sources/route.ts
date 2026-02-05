@@ -64,14 +64,24 @@ export async function POST(request: NextRequest) {
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
         // 4. Verify artifact exists using course_id OR id (fallback)
-        const { data: artifact, error: artifactError } = await supabase
+        // CHECK: If lookupId is NOT a valid UUID, searching 'id' (uuid column) will cause a Postgres error (22P02).
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lookupId);
+
+        let query = supabase
             .from('artifacts')
             .select('id, idea_central')
-            .or(`course_id.eq.${lookupId},id.eq.${lookupId}`) // Try both for robustness
-            .single();
+
+        if (isUuid) {
+            query = query.or(`course_id.eq.${lookupId},id.eq.${lookupId}`);
+        } else {
+            // If strictly not a UUID (e.g. "LA-3096"), only search course_id to avoid pg error
+            query = query.eq('course_id', lookupId);
+        }
+
+        const { data: artifact, error: artifactError } = await query.single();
 
         if (artifactError || !artifact) {
-            console.error('[GPT Sources API] Artifact not found for lookupId:', lookupId);
+            console.error(`[GPT Sources API] Artifact not found for lookupId: ${lookupId} (isUuid: ${isUuid})`, artifactError);
             return NextResponse.json(
                 { success: false, error: 'Course/Artifact not found' },
                 { status: 404 }
