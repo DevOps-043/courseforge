@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { deleteArtifactAction } from "./actions";
 
 interface Artifact {
   id: string;
@@ -618,14 +619,12 @@ function ArtifactCard({
   const handleDeleteConfirm = async () => {
     setIsDeleting(true);
     try {
-      const { error } = await supabase
-        .from('artifacts')
-        .delete()
-        .eq('id', artifact.id);
+      // Use Server Action to handle cascading deletes
+      const result = await deleteArtifactAction(artifact.id);
 
-      if (error) {
-        console.error('Error deleting artifact:', error);
-        alert('Error al eliminar el artefacto: ' + error.message);
+      if (!result.success) {
+        console.error('Error deleting artifact:', result.error);
+        alert('Error al eliminar el artefacto: ' + result.error);
       } else {
         setShowDeleteModal(false);
         onDelete(artifact.id);

@@ -1003,3 +1003,52 @@ export async function updateProductionStatusAction(artifactId: string, isComplet
 
     return { success: true };
 }
+
+// NUEVA ACCIÓN para eliminar artefactos con limpieza de dependencias
+export async function deleteArtifactAction(artifactId: string) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    try {
+        console.log(`[deleteArtifactAction] Deleting artifact ${artifactId}...`);
+
+        // 1. Delete dependent: Publication Requests (The reported error)
+        const { error: pubError } = await supabase.from('publication_requests').delete().eq('artifact_id', artifactId);
+        if (pubError) console.warn('Error deleting publication_requests:', pubError);
+
+        // 2. Delete dependent: Pipeline Events
+        const { error: pipeError } = await supabase.from('pipeline_events').delete().eq('artifact_id', artifactId);
+        if (pipeError) console.warn('Error deleting pipeline_events:', pipeError);
+
+        // 3. Delete dependent: Curation
+        const { error: curError } = await supabase.from('curation').delete().eq('artifact_id', artifactId);
+        if (curError) console.warn('Error deleting curation:', curError);
+
+        // 4. Delete dependent: Instructional Plans
+        const { error: planError } = await supabase.from('instructional_plans').delete().eq('artifact_id', artifactId);
+        if (planError) console.warn('Error deleting instructional_plans:', planError);
+
+        // 5. Delete dependent: Syllabus
+        const { error: sylError } = await supabase.from('syllabus').delete().eq('artifact_id', artifactId);
+        if (sylError) console.warn('Error deleting syllabus:', sylError);
+
+        // 6. Delete dependent: Materials
+        const { error: matError } = await supabase.from('materials').delete().eq('artifact_id', artifactId);
+        if (matError) console.warn('Error deleting materials:', matError);
+
+        // 7. Finally Delete Artifact
+        const { error } = await supabase.from('artifacts').delete().eq('id', artifactId);
+
+        if (error) {
+            console.error('Error deleting artifact record:', error);
+            throw new Error(error.message);
+        }
+
+        return { success: true };
+
+    } catch (error: any) {
+        console.error('Error in deleteArtifactAction:', error);
+        return { success: false, error: error.message || "Error eliminando dependencias." };
+    }
+}

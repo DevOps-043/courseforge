@@ -66,6 +66,36 @@ export async function getPublicationData(artifactId: string) {
                     components: l.material_components || []
                 };
             });
+
+            // --- SORTING LOGIC (UI & Export) ---
+            const naturalSort = (a: string, b: string) => {
+                return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+            };
+
+            const moduleMap = new Map<string, any[]>();
+            lessons.forEach(l => {
+                // Determine module title
+                const modTitle = l.module_title || '';
+                // Note: If module_title is missing, it might be empty string or null. 
+                // We group by it anyway.
+                if (!moduleMap.has(modTitle)) {
+                    moduleMap.set(modTitle, []);
+                }
+                moduleMap.get(modTitle)?.push(l);
+            });
+
+            // Sort keys (Modules)
+            const sortedKeys = Array.from(moduleMap.keys()).sort(naturalSort);
+
+            const sortedLessons: any[] = [];
+            for (const key of sortedKeys) {
+                const modLessons = moduleMap.get(key) || [];
+                // Sort lessons within module
+                modLessons.sort((a, b) => naturalSort(a.title || '', b.title || ''));
+                sortedLessons.push(...modLessons);
+            }
+            lessons = sortedLessons;
+            // -----------------------------------
         }
     }
 
@@ -204,6 +234,11 @@ export async function publishToSoflia(artifactId: string) {
             modules: [] as any[]
         };
 
+        // Helper for Natural Sort (e.g. handles "1, 2, 10" correctly instead of "1, 10, 2")
+        const naturalSort = (a: string, b: string) => {
+            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+        };
+
         // Group lessons by module
         const moduleMap = new Map<string, any[]>();
         lessons.forEach(l => {
@@ -214,9 +249,17 @@ export async function publishToSoflia(artifactId: string) {
             moduleMap.get(modTitle)?.push(l);
         });
 
-        // Build Modules Array
+        // Sort Modules by Title
+        const sortedModuleTitles = Array.from(moduleMap.keys()).sort(naturalSort);
+
+        // Build Modules Array in Order
         let moduleOrder = 1;
-        for (const [modTitle, modLessons] of moduleMap.entries()) {
+        for (const modTitle of sortedModuleTitles) {
+            const modLessons = moduleMap.get(modTitle) || [];
+
+            // Sort Lessons by Title (assuming index prefixes like "1.1", "1.2" etc)
+            modLessons.sort((a: any, b: any) => naturalSort(a.title || '', b.title || ''));
+
             const moduleObj = {
                 title: modTitle,
                 order_index: moduleOrder++,
@@ -225,6 +268,7 @@ export async function publishToSoflia(artifactId: string) {
 
             let lessonOrder = 1;
             for (const l of modLessons) {
+
                 // Get video data from request mapping
                 const mapping = request.lesson_videos?.[l.id];
 
@@ -261,16 +305,10 @@ export async function publishToSoflia(artifactId: string) {
                     }
                 });
 
-                // Activities (Quiz & Dialogue)
+                // Activities (Dialogue)
                 const activities = [] as any[];
                 components.forEach((c: any) => {
-                    if (c.type === 'QUIZ' && c.content) {
-                        activities.push({
-                            title: c.content.title || 'Evaluación',
-                            type: 'quiz',
-                            data: transformQuizContent(c.content)
-                        });
-                    } else if (c.type === 'DIALOGUE' && c.content) {
+                    if (c.type === 'DIALOGUE' && c.content) {
                         activities.push({
                             title: c.content.title || 'Simulación con LIA',
                             type: 'lia_script',
@@ -304,15 +342,25 @@ export async function publishToSoflia(artifactId: string) {
                     }
                 });
 
-                // Materials (Slides & Package)
+                // Materials (Slides & Package & Quiz)
                 const materials = [] as any[];
-                // Slides from assets
+                // Slides from assets & Quizzes
                 components.forEach((c: any) => {
                     if (c.assets?.slides_url) {
                         materials.push({
                             title: 'Presentación (Diapositivas)',
                             url: c.assets.slides_url,
                             type: 'link'
+                        });
+                    }
+
+                    // Quiz (Moved from Activities - Requires Backend Update)
+                    if (c.type === 'QUIZ' && c.content) {
+                        materials.push({
+                            title: c.content.title || 'Evaluación',
+                            type: 'quiz',
+                            data: transformQuizContent(c.content),
+                            description: c.content.instructions || ''
                         });
                     }
                 });
@@ -418,24 +466,53 @@ export async function publishToSoflia(artifactId: string) {
 // Helper to normalize Quiz Content to Spec (camelCase)
 function transformQuizContent(content: any) {
     if (!content) return {};
-    
-    // Normalize questions
-    const questions = Array.isArray(content.questions) 
-        ? content.questions.map((q: any) => ({
-            id: q.id,
+
+    // 1. Detect source array (support 'items' or 'questions')
+    const rawItems = Array.isArray(content.questions) ? content.questions : (Array.isArray(content.items) ? content.items : []);
+
+    let calculatedTotalPoints = 0;
+
+    // 2. Normalize questions
+    const questions = rawItems.map((q: any) => {
+        // Ensure options are strings
+        const options = Array.isArray(q.options)
+            ? q.options.map((o: any) => typeof o === 'string' ? o : JSON.stringify(o))
+            : [];
+
+        const points = Number(q.points) || 10;
+        calculatedTotalPoints += points;
+
+        // Handle correct_answer (index vs string)
+        let correctAnswer = '';
+        if (typeof q.correct_answer === 'number' || typeof q.correctAnswer === 'number') {
+            const idx = typeof q.correct_answer === 'number' ? q.correct_answer : q.correctAnswer;
+            if (idx >= 0 && idx < options.length) {
+                correctAnswer = options[idx];
+            }
+        } else {
+            correctAnswer = q.correctAnswer || q.correct_answer || '';
+        }
+
+        // Normalize Question Type
+        let qType = q.questionType || q.question_type || q.type || 'multiple_choice';
+        if (typeof qType === 'string') qType = qType.toLowerCase();
+
+        return {
+            id: q.id || `q-${Math.random().toString(36).substr(2, 9)}`,
             question: q.question,
-            // Map snake_case to camelCase
-            questionType: q.questionType || q.question_type || 'multiple_choice',
-            options: q.options || [],
-            correctAnswer: q.correctAnswer || q.correct_answer || '',
+            questionType: qType,
+            options: options,
+            correctAnswer: correctAnswer,
             explanation: q.explanation || '',
-            points: q.points || 10
-        }))
-        : [];
+            points: points,
+            difficulty: q.difficulty,
+            bloom_level: q.bloom_level
+        };
+    });
 
     return {
         passing_score: content.passing_score || 80,
-        totalPoints: content.totalPoints || content.total_points || 100, // spec says totalPoints in camelCase example
+        totalPoints: calculatedTotalPoints > 0 ? calculatedTotalPoints : (content.totalPoints || content.total_points || 100),
         questions: questions
     };
 }
