@@ -564,7 +564,7 @@ function transformQuizContent(content: any) {
     const questions = rawItems.map((q: any) => {
         // Ensure options are strings
         const options = Array.isArray(q.options)
-            ? q.options.map((o: any) => typeof o === 'string' ? o : JSON.stringify(o))
+            ? q.options.map((o: any) => typeof o === 'string' ? o : String(o))
             : [];
 
         const points = Number(q.points) || 10;
@@ -572,34 +572,32 @@ function transformQuizContent(content: any) {
 
         // Handle correct_answer (index vs string)
         let correctAnswer = '';
-        if (typeof q.correct_answer === 'number' || typeof q.correctAnswer === 'number') {
-            const idx = typeof q.correct_answer === 'number' ? q.correct_answer : q.correctAnswer;
-            if (idx >= 0 && idx < options.length) {
-                correctAnswer = options[idx];
+        const rawCorrect = q.correctAnswer !== undefined ? q.correctAnswer : q.correct_answer;
+
+        if (typeof rawCorrect === 'number') {
+            if (rawCorrect >= 0 && rawCorrect < options.length) {
+                correctAnswer = options[rawCorrect];
             }
         } else {
-            correctAnswer = q.correctAnswer || q.correct_answer || '';
+            correctAnswer = String(rawCorrect || '');
         }
 
         // Normalize Question Type
-        let qType = q.questionType || q.question_type || q.type || 'multiple_choice';
-        if (typeof qType === 'string') qType = qType.toLowerCase();
+        let qType = (q.questionType || q.question_type || q.type || 'multiple_choice').toLowerCase();
 
         return {
             id: q.id || `q-${Math.random().toString(36).substr(2, 9)}`,
-            question: q.question,
+            question: q.question || q.questionText || '',
             questionType: qType,
             options: options,
             correctAnswer: correctAnswer,
             explanation: q.explanation || '',
-            points: points,
-            difficulty: q.difficulty,
-            bloom_level: q.bloom_level
+            points: points
         };
     });
 
     return {
-        passing_score: content.passing_score || 80,
+        passing_score: Number(content.passing_score) || 80,
         totalPoints: calculatedTotalPoints > 0 ? calculatedTotalPoints : (content.totalPoints || content.total_points || 100),
         questions: questions
     };
