@@ -202,7 +202,10 @@ export async function testSofliaConnection() {
         const API_URL = process.env.SOFLIA_API_URL;
         const API_KEY = process.env.SOFLIA_API_KEY;
 
+        console.log(`[testConnection] Env Check - URL: ${API_URL ? 'Defined' : 'Missing'}, Key: ${API_KEY ? 'Defined' : 'Missing'}, Mock: ${MOCK_MODE}`);
+
         if (!MOCK_MODE && (!API_URL || !API_KEY)) {
+             console.error('[testConnection] Missing Configuration');
              return { success: false, error: 'Config Error: Missing API_URL or API_KEY env vars' };
         }
         
@@ -214,9 +217,10 @@ export async function testSofliaConnection() {
         console.log(`[testConnection] Pinging: ${targetUrl}`);
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // Increased to 10s
 
         try {
+            const start = Date.now();
             const response = await fetch(targetUrl, {
                 method: 'POST',
                 headers: {
@@ -227,23 +231,32 @@ export async function testSofliaConnection() {
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
+            const duration = Date.now() - start;
+
+            console.log(`[testConnection] Response: ${response.status} ${response.statusText} (${duration}ms)`);
 
             if (response.ok) {
-                const data = await response.json();
+                const text = await response.text();
+                let data = {};
+                try { data = JSON.parse(text); } catch (e) { data = { text }; }
                 return { success: true, data };
             } else {
+                const errorText = await response.text();
+                console.error(`[testConnection] HTTP Error: ${response.status}`, errorText);
                 return { success: false, error: `HTTP Error: ${response.status} ${response.statusText}` };
             }
         } catch (fetchError: any) {
             clearTimeout(timeoutId);
+            console.error('[testConnection] Network Error:', fetchError);
             const isAbort = fetchError.name === 'AbortError';
             return { 
                 success: false, 
-                error: isAbort ? 'Connection Timeout (5s)' : `Network Error: ${fetchError.message}` 
+                error: isAbort ? 'Connection Timeout (10s)' : `Network Error: ${fetchError.message}` 
             };
         }
 
     } catch (e: any) {
+        console.error('[testConnection] Unexpected Error:', e);
         return { success: false, error: `Unexpected Error: ${e.message}` };
     }
 }
@@ -264,9 +277,9 @@ export async function publishToSoflia(artifactId: string) {
 
         // DEBUG: Log Env Vars (Obfuscated)
         if (!MOCK_MODE) {
-            console.log(`[publishToSoflia] Config Check:`);
-            console.log(`[publishToSoflia] URL: ${API_URL}`);
-            console.log(`[publishToSoflia] Key: ${API_KEY ? `${API_KEY.substring(0, 5)}...${API_KEY.substring(API_KEY.length - 5)}` : 'MISSING'}`);
+            console.log(`[publishToSoflia] CONFIG CHECK:`);
+            console.log(`[publishToSoflia] URL: ${API_URL ? 'DEFINED' : 'MISSING'} (${API_URL})`);
+            console.log(`[publishToSoflia] Key: ${API_KEY ? 'DEFINED' : 'MISSING'}`);
         }
 
         // 2. Data Gathering

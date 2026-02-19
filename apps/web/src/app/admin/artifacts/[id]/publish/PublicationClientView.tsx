@@ -355,6 +355,22 @@ export default function PublicationClientView({
                     </button>
 
                     <button
+                        onClick={async () => {
+                            try {
+                                const res = await fetch('/api/debug/soflia');
+                                const data = await res.json();
+                                alert(JSON.stringify(data, null, 2));
+                            } catch (e: any) {
+                                alert('Error: ' + e.message);
+                            }
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors"
+                        title="Debug Interno (API Route)"
+                    >
+                       <span className="text-xs">🐛</span> Debug API
+                    </button>
+
+                    <button
                         onClick={handleSaveDraft}
                         disabled={isSaving || isPublishing}
                         className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 dark:bg-[#1F2937] dark:text-gray-200 dark:border-gray-700 dark:hover:bg-[#374151] rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
