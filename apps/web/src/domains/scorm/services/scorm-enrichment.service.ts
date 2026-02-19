@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 
 export interface EnrichmentResult {
   objectives: string[];
@@ -9,13 +9,10 @@ export interface EnrichmentResult {
 }
 
 export class ScormEnrichmentService {
-  private genAI: GoogleGenerativeAI;
+  private genAI: GoogleGenAI;
 
   constructor() {
-    // Initialize Gemini 
-    // If the package is @google/genai, verify the constructor. 
-    // Assuming standard usage for now.
-    this.genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENERATIVE_AI_API_KEY || '');
+    this.genAI = new GoogleGenAI({ apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || '' });
   }
 
   async enrichCourseMetadata(
@@ -34,7 +31,7 @@ export class ScormEnrichmentService {
       };
     }
 
-    const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const modelArg = { model: 'gemini-2.0-flash' };
 
     const prompt = `
     Analiza la estructura de este curso SCORM:
@@ -54,9 +51,12 @@ export class ScormEnrichmentService {
     `;
 
     try {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const result = await this.genAI.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: prompt
+      });
+      
+      const text = result.text || '';
       const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
       return JSON.parse(jsonStr);
 
