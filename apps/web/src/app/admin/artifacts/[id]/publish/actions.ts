@@ -194,83 +194,7 @@ export async function savePublicationDraft(artifactId: string, data: any) {
     }
 }
 
-export async function testSofliaConnection() {
-    console.log('[testConnection] Starting connectivity test...');
-
-    try {
-        const MOCK_MODE = process.env.SOFLIA_MOCK_MODE === 'true';
-        const API_URL = process.env.SOFLIA_API_URL;
-        const API_KEY = process.env.SOFLIA_API_KEY;
-
-        console.log(`[testConnection] Env Check - URL: ${API_URL ? 'Defined' : 'Missing'}, Key: ${API_KEY ? 'Defined' : 'Missing'}, Mock: ${MOCK_MODE}`);
-
-        if (!MOCK_MODE && (!API_URL || !API_KEY)) {
-             console.error('[testConnection] Missing Configuration');
-             return { success: false, error: 'Config Error: Missing API_URL or API_KEY env vars' };
-        }
-        
-        if (MOCK_MODE) {
-             return { success: true, message: 'Mock Mode Active - Connection Simulated' };
-        }
-
-        const targetUrl = `${API_URL}/api/courses/import`;
-        console.log(`[testConnection] Pinging: ${targetUrl}`);
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // Increased to 10s
-
-        try {
-            const start = Date.now();
-            const response = await fetch(targetUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': API_KEY || ''
-                },
-                body: JSON.stringify({ type: 'ping' }),
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-            const duration = Date.now() - start;
-
-            console.log(`[testConnection] Response: ${response.status} ${response.statusText} (${duration}ms)`);
-
-            if (response.ok) {
-                const text = await response.text();
-                let data = {};
-                try { data = JSON.parse(text); } catch (e) { data = { text }; }
-                return { success: true, data };
-            } else {
-                const errorText = await response.text();
-                console.error(`[testConnection] HTTP Status: ${response.status}`, errorText);
-                
-                // If we get a 400 Validation Error, it means we DID reach the server and it validated our payload.
-                // This counts as a successful CONNECTION test (which is the point of this button).
-                if (response.status === 400) {
-                     return { 
-                        success: true, 
-                        data: { message: "Conexión Establecida (API Activa)" },
-                        warning: "Payload de prueba rechazado por validación (Normal)"
-                     };
-                }
-
-                return { success: false, error: `HTTP Error: ${response.status} ${response.statusText}` };
-            }
-        } catch (fetchError: any) {
-            clearTimeout(timeoutId);
-            console.error('[testConnection] Network Error:', fetchError);
-            const isAbort = fetchError.name === 'AbortError';
-            return { 
-                success: false, 
-                error: isAbort ? 'Connection Timeout (10s)' : `Network Error: ${fetchError.message}` 
-            };
-        }
-
-    } catch (e: any) {
-        console.error('[testConnection] Unexpected Error:', e);
-        return { success: false, error: `Unexpected Error: ${e.message}` };
-    }
-}
+// testSofliaConnection removed
 
 export async function publishToSoflia(artifactId: string) {
     const supabase = await createClient();
@@ -278,20 +202,17 @@ export async function publishToSoflia(artifactId: string) {
 
     try {
         // 1. Validate Config
-        const MOCK_MODE = process.env.SOFLIA_MOCK_MODE === 'true';
         const API_URL = process.env.SOFLIA_API_URL;
         const API_KEY = process.env.SOFLIA_API_KEY;
 
-        if (!MOCK_MODE && (!API_URL || !API_KEY)) {
+        if (!API_URL || !API_KEY) {
             throw new Error("Configuración incompleta: Faltan variables de entorno SOFLIA_API_URL o SOFLIA_API_KEY");
         }
 
         // DEBUG: Log Env Vars (Obfuscated)
-        if (!MOCK_MODE) {
-            console.log(`[publishToSoflia] CONFIG CHECK:`);
-            console.log(`[publishToSoflia] URL: ${API_URL ? 'DEFINED' : 'MISSING'} (${API_URL})`);
-            console.log(`[publishToSoflia] Key: ${API_KEY ? 'DEFINED' : 'MISSING'}`);
-        }
+        console.log(`[publishToSoflia] CONFIG CHECK:`);
+        console.log(`[publishToSoflia] URL: ${API_URL}`);
+        console.log(`[publishToSoflia] Key: ${API_KEY ? 'DEFINED' : 'MISSING'}`);
 
         // 2. Data Gathering
         const { request, lessons, artifact, materialsPackage } = await getPublicationData(artifactId);
@@ -499,47 +420,42 @@ export async function publishToSoflia(artifactId: string) {
 
         console.log(`[publishToSoflia] Payload constructed. Slug: ${payload.course.slug}, Modules: ${payload.modules.length}`);
 
-        let result;
-        if (MOCK_MODE) {
-            console.log('--- MOCK MODE ENABLED ---');
-            console.log('Skipping actual API call. Payload that would be sent:', JSON.stringify(payload, null, 2));
-            // Simulate delay
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            result = { message: "Mock success", mock: true };
-        } else {
-            // 4. Send to Soflia
-            const targetUrl = `${API_URL}/api/courses/import`;
-            console.log(`[publishToSoflia] Sending to: ${targetUrl}`);
+        // 4. Send to Soflia
+        const baseUrl = API_URL.replace(/\/$/, '');
+        const targetUrl = `${baseUrl}/api/courses/import`;
+        console.log(`[publishToSoflia] Sending to: ${targetUrl}`);
 
-            const response = await fetch(targetUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': API_KEY || ''
-                },
-                body: JSON.stringify(payload),
-                signal: AbortSignal.timeout(30000)  // 30s timeout para payloads grandes
-            });
+        const response = await fetch(targetUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': API_KEY || ''
+            },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(60000)  // 60s timeout para payloads grandes
+        });
 
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`[publishToSoflia] API Error (${response.status}):`, errorText);
-                throw new Error(`Error remoto (${response.status}): ${errorText.substring(0, 500)}`);
-            }
-
-            result = await response.json();
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`[publishToSoflia] API Error (${response.status}):`, errorText);
+            throw new Error(`Error remoto (${response.status}): ${errorText.substring(0, 500)}`);
         }
 
+        const result = await response.json();
         console.log('[publishToSoflia] Success:', result);
 
         // 5. Update Status locally
-        await supabase
+        const { error: updateError } = await supabase
             .from('publication_requests')
             .update({
                 status: 'SENT',
                 updated_at: new Date().toISOString()
             })
             .eq('id', request.id);
+
+        if (updateError) {
+            console.error('[publishToSoflia] Error updating local status:', updateError);
+        }
 
         revalidatePath(`/admin/artifacts/${artifactId}/publish`);
 
