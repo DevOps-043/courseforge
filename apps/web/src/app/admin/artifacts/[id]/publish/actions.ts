@@ -3,6 +3,8 @@
 import { createClient } from "@/utils/supabase/server";
 import { revalidatePath } from "next/cache";
 
+declare const process: any;
+
 export async function getPublicationData(artifactId: string) {
     const supabase = await createClient();
 
@@ -192,6 +194,60 @@ export async function savePublicationDraft(artifactId: string, data: any) {
     }
 }
 
+export async function testSofliaConnection() {
+    console.log('[testConnection] Starting connectivity test...');
+
+    try {
+        const MOCK_MODE = process.env.SOFLIA_MOCK_MODE === 'true';
+        const API_URL = process.env.SOFLIA_API_URL;
+        const API_KEY = process.env.SOFLIA_API_KEY;
+
+        if (!MOCK_MODE && (!API_URL || !API_KEY)) {
+             return { success: false, error: 'Config Error: Missing API_URL or API_KEY env vars' };
+        }
+        
+        if (MOCK_MODE) {
+             return { success: true, message: 'Mock Mode Active - Connection Simulated' };
+        }
+
+        const targetUrl = `${API_URL}/api/courses/import`;
+        console.log(`[testConnection] Pinging: ${targetUrl}`);
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        try {
+            const response = await fetch(targetUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': API_KEY || ''
+                },
+                body: JSON.stringify({ type: 'ping' }),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+                const data = await response.json();
+                return { success: true, data };
+            } else {
+                return { success: false, error: `HTTP Error: ${response.status} ${response.statusText}` };
+            }
+        } catch (fetchError: any) {
+            clearTimeout(timeoutId);
+            const isAbort = fetchError.name === 'AbortError';
+            return { 
+                success: false, 
+                error: isAbort ? 'Connection Timeout (5s)' : `Network Error: ${fetchError.message}` 
+            };
+        }
+
+    } catch (e: any) {
+        return { success: false, error: `Unexpected Error: ${e.message}` };
+    }
+}
+
 export async function publishToSoflia(artifactId: string) {
     const supabase = await createClient();
     console.log(`[publishToSoflia] Starting publication for artifact: ${artifactId}`);
@@ -204,6 +260,13 @@ export async function publishToSoflia(artifactId: string) {
 
         if (!MOCK_MODE && (!API_URL || !API_KEY)) {
             throw new Error("Configuración incompleta: Faltan variables de entorno SOFLIA_API_URL o SOFLIA_API_KEY");
+        }
+
+        // DEBUG: Log Env Vars (Obfuscated)
+        if (!MOCK_MODE) {
+            console.log(`[publishToSoflia] Config Check:`);
+            console.log(`[publishToSoflia] URL: ${API_URL}`);
+            console.log(`[publishToSoflia] Key: ${API_KEY ? `${API_KEY.substring(0, 5)}...${API_KEY.substring(API_KEY.length - 5)}` : 'MISSING'}`);
         }
 
         // 2. Data Gathering

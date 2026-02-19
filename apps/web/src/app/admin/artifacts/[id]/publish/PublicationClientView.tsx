@@ -6,7 +6,7 @@ import { Loader2, Save, Send, AlertTriangle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { CourseDataForm } from './components/CourseDataForm';
 import { VideoMappingList, LessonVideoData } from './components/VideoMappingList';
-import { savePublicationDraft, publishToSoflia, fetchVideoMetadata } from './actions';
+import { savePublicationDraft, publishToSoflia, fetchVideoMetadata, testSofliaConnection } from './actions';
 import { ConfirmationModal } from '@/shared/components/ConfirmationModal';
 
 interface PublicationClientViewProps {
@@ -108,6 +108,23 @@ export default function PublicationClientView({
     const [isResetting, setIsResetting] = useState(false);
     const [hasAutoSynced, setHasAutoSynced] = useState(false);
     const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+    const [isTesting, setIsTesting] = useState(false);
+
+    const handleTestConnection = async () => {
+        setIsTesting(true);
+        try {
+            const result = await testSofliaConnection();
+            if (result.success) {
+                toast.success("✅ Conexión Exitosa: " + (result.data?.message || "OK"));
+            } else {
+                toast.error("❌ Error de Conexión: " + result.error);
+            }
+        } catch (e: any) {
+            toast.error("Error al probar conexión: " + e.message);
+        } finally {
+            setIsTesting(false);
+        }
+    };
 
     const handleConfirmReset = async () => {
         setIsResetting(true);
@@ -325,6 +342,16 @@ export default function PublicationClientView({
                         title="Restablecer y Sincronizar Todo"
                     >
                         {isResetting ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                    </button>
+
+                    <button
+                        onClick={handleTestConnection}
+                        disabled={isTesting || isSaving || isPublishing}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 dark:bg-[#1F2937] dark:text-gray-200 dark:border-gray-700 dark:hover:bg-[#374151] rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                        title="Probar Conexión con Soflia"
+                    >
+                        {isTesting ? <Loader2 size={16} className="animate-spin" /> : <span className="text-xs">⚡</span>}
+                        Test
                     </button>
 
                     <button
