@@ -1,10 +1,15 @@
-'use server';
-
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+// CORS headers required for GPT Actions (OpenAI servers)
+const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, x-api-key',
+};
 
 interface Source {
     title: string;
@@ -35,7 +40,7 @@ export async function POST(request: NextRequest) {
         console.error('[GPT Sources API] Invalid API key attempt');
         return NextResponse.json(
             { success: false, error: 'Invalid or missing API key' },
-            { status: 401 }
+            { status: 401, headers: corsHeaders }
         );
     }
 
@@ -47,14 +52,14 @@ export async function POST(request: NextRequest) {
         if (!lookupId || !payload.sources || !Array.isArray(payload.sources)) {
             return NextResponse.json(
                 { success: false, error: 'Invalid payload: course_id (or artifact_id) and sources are required' },
-                { status: 400 }
+                { status: 400, headers: corsHeaders }
             );
         }
 
         if (payload.sources.length === 0) {
             return NextResponse.json(
                 { success: false, error: 'At least one source is required' },
-                { status: 400 }
+                { status: 400, headers: corsHeaders }
             );
         }
 
@@ -84,7 +89,7 @@ export async function POST(request: NextRequest) {
             console.error(`[GPT Sources API] Artifact not found for lookupId: ${lookupId} (isUuid: ${isUuid})`, artifactError);
             return NextResponse.json(
                 { success: false, error: 'Course/Artifact not found' },
-                { status: 404 }
+                { status: 404, headers: corsHeaders }
             );
         }
 
@@ -170,25 +175,21 @@ export async function POST(request: NextRequest) {
             message: 'Sources received and saved successfully',
             sources_saved: payload.sources.length,
             artifact_title: artifact.idea_central
-        });
+        }, { headers: corsHeaders });
 
     } catch (error: any) {
         console.error('[GPT Sources API] Error:', error);
         return NextResponse.json(
             { success: false, error: error.message || 'Internal server error' },
-            { status: 500 }
+            { status: 500, headers: corsHeaders }
         );
     }
 }
 
-// Handle OPTIONS for CORS (GPT Actions might need this)
+// Handle OPTIONS preflight for CORS (required by GPT Actions)
 export async function OPTIONS() {
     return new NextResponse(null, {
         status: 200,
-        headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, x-api-key',
-        },
+        headers: corsHeaders,
     });
 }
