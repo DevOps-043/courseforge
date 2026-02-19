@@ -578,6 +578,130 @@ export async function deleteCurationAction(artifactId: string) {
     return { success: true };
 }
 
+/**
+ * Import curation sources from a JSON payload (e.g. pasted from ChatGPT).
+ * This is the manual alternative when GPT Actions fail.
+ * Reuses the same insertion logic as /api/gpt/sources/route.ts
+ */
+export async function importCurationJsonAction(artifactId: string, jsonString: string) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'No autorizado' };
+
+    try {
+        // 1. Parse JSON
+        let payload: any;
+        try {
+            payload = JSON.parse(jsonString);
+        } catch {
+            return { success: false, error: 'JSON inválido. Verifica el formato e intenta de nuevo.' };
+        }
+
+        // 2. Validate structure
+        if (!payload.sources || !Array.isArray(payload.sources) || payload.sources.length === 0) {
+            return { success: false, error: 'El JSON debe contener un array "sources" con al menos una fuente.' };
+        }
+
+        // Validate each source has required fields
+        for (let i = 0; i < payload.sources.length; i++) {
+            const src = payload.sources[i];
+            if (!src.url || !src.title || !src.lesson_id) {
+                return {
+                    success: false,
+                    error: `Fuente #${i + 1} incompleta: requiere al menos "url", "title" y "lesson_id".`
+                };
+            }
+        }
+
+        console.log(`[importCurationJson] Processing ${payload.sources.length} sources for artifact ${artifactId}`);
+
+        // 3. Get or create curation record
+        let curationId: string;
+        const { data: existingCuration } = await supabase
+            .from('curation')
+            .select('id')
+            .eq('artifact_id', artifactId)
+            .maybeSingle();
+
+        if (existingCuration) {
+            curationId = existingCuration.id;
+
+            // Clear existing GPT-generated rows (keep manual and automatic ones)
+            const { error: deleteError } = await supabase
+                .from('curation_rows')
+                .delete()
+                .eq('curation_id', curationId)
+                .eq('source_rationale', 'GPT_GENERATED');
+
+            if (deleteError) {
+                console.warn('[importCurationJson] Could not clear old GPT rows:', deleteError);
+            }
+        } else {
+            const { data: newCuration, error: createError } = await supabase
+                .from('curation')
+                .insert({
+                    artifact_id: artifactId,
+                    state: 'PHASE2_GENERATED',
+                    attempt_number: 1
+                })
+                .select('id')
+                .single();
+
+            if (createError || !newCuration) {
+                console.error('[importCurationJson] Failed to create curation:', createError);
+                return { success: false, error: 'Error creando registro de curaduría.' };
+            }
+            curationId = newCuration.id;
+        }
+
+        // 4. Insert sources as curation_rows
+        const rowsToInsert = payload.sources.map((source: any) => ({
+            curation_id: curationId,
+            lesson_id: source.lesson_id,
+            lesson_title: source.lesson_title || '',
+            component: (source.type || 'DOCUMENTATION').toUpperCase(),
+            is_critical: false,
+            source_ref: source.url,
+            source_title: source.title,
+            source_rationale: 'GPT_GENERATED',
+            url_status: 'VALID',
+            apta: source.validated ?? true,
+            auto_evaluated: true,
+            auto_reason: source.summary || 'Importado manualmente desde GPT'
+        }));
+
+        const { error: insertError } = await supabase
+            .from('curation_rows')
+            .insert(rowsToInsert);
+
+        if (insertError) {
+            console.error('[importCurationJson] Insert error:', insertError);
+            return { success: false, error: `Error insertando fuentes: ${insertError.message}` };
+        }
+
+        // 5. Update curation state
+        await supabase
+            .from('curation')
+            .update({
+                state: 'PHASE2_GENERATED',
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', curationId);
+
+        console.log(`[importCurationJson] Successfully saved ${payload.sources.length} sources`);
+
+        return {
+            success: true,
+            message: `${payload.sources.length} fuentes importadas exitosamente.`,
+            sourcesSaved: payload.sources.length
+        };
+
+    } catch (error: any) {
+        console.error('[importCurationJson] Error:', error);
+        return { success: false, error: error.message || 'Error interno del servidor' };
+    }
+}
+
 // ==============================================================================
 // STEP 6: VISUAL PRODUCTION ACTIONS
 // ==============================================================================

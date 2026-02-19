@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { BookOpen, Settings2, CheckCircle2, Play, RefreshCw, Library, Loader2, Edit3, AlertCircle, CheckSquare, Pause, Square, PlayCircle, Clipboard, ExternalLink, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { BookOpen, Settings2, CheckCircle2, Play, RefreshCw, Library, Loader2, Edit3, AlertCircle, CheckSquare, Pause, Square, PlayCircle, Clipboard, ExternalLink, ChevronDown, ChevronUp, Sparkles, FileText, Upload } from 'lucide-react';
 import { useCuration } from '../hooks/useCuration';
 import { CurationDashboard } from './CurationDashboard';
 import { motion } from 'framer-motion';
@@ -40,6 +40,11 @@ export function SourcesCurationGenerationContainer({ artifactId, courseId, temar
     const [customPrompt, setCustomPrompt] = useState('');
     const [showAutomaticFlow, setShowAutomaticFlow] = useState(false);
     const [copiedToClipboard, setCopiedToClipboard] = useState(false);
+    const [showJsonImport, setShowJsonImport] = useState(false);
+    const [jsonInput, setJsonInput] = useState('');
+    const [isProcessingJson, setIsProcessingJson] = useState(false);
+    const [jsonError, setJsonError] = useState<string | null>(null);
+    const [jsonPreview, setJsonPreview] = useState<{ count: number; lessons: string[] } | null>(null);
 
     // Review States
     const [reviewNotes, setReviewNotes] = useState('');
@@ -274,6 +279,64 @@ export function SourcesCurationGenerationContainer({ artifactId, courseId, temar
             // Fallback for browsers that don't support clipboard API
             toast.error('No se pudo copiar. Copia el contexto manualmente.');
             console.error('Clipboard error:', err);
+        }
+    };
+
+    // Handle JSON input change with live preview
+    const handleJsonInputChange = (value: string) => {
+        setJsonInput(value);
+        setJsonError(null);
+        setJsonPreview(null);
+
+        if (!value.trim()) return;
+
+        try {
+            const parsed = JSON.parse(value);
+            if (!parsed.sources || !Array.isArray(parsed.sources)) {
+                setJsonError('El JSON debe contener un array "sources".');
+                return;
+            }
+            if (parsed.sources.length === 0) {
+                setJsonError('El array "sources" está vacío.');
+                return;
+            }
+
+            // Extract unique lesson titles for preview
+            const lessonTitles = [...new Set(parsed.sources.map((s: any) => s.lesson_title || s.lesson_id || 'Sin título'))] as string[];
+            setJsonPreview({ count: parsed.sources.length, lessons: lessonTitles });
+        } catch {
+            setJsonError('JSON inválido. Verifica que esté bien formateado.');
+        }
+    };
+
+    // Handle JSON import submission
+    const handleImportJson = async () => {
+        if (!jsonInput.trim() || isProcessingJson) return;
+
+        setIsProcessingJson(true);
+        setJsonError(null);
+
+        try {
+            const { importCurationJsonAction } = await import('../../../app/admin/artifacts/actions');
+            const result = await importCurationJsonAction(artifactId, jsonInput);
+
+            if (result.success) {
+                toast.success(result.message || 'Fuentes importadas exitosamente');
+                setJsonInput('');
+                setJsonPreview(null);
+                setShowJsonImport(false);
+                refresh();
+                router.refresh();
+            } else {
+                setJsonError(result.error || 'Error desconocido');
+                toast.error(result.error || 'Error importando fuentes');
+            }
+        } catch (err: any) {
+            console.error('Import error:', err);
+            setJsonError(err.message || 'Error inesperado');
+            toast.error('Error inesperado al importar');
+        } finally {
+            setIsProcessingJson(false);
         }
     };
 
@@ -830,6 +893,115 @@ export function SourcesCurationGenerationContainer({ artifactId, courseId, temar
                         </p>
                     )}
                 </div>
+            </div>
+
+            {/* JSON IMPORT: Collapsible Section */}
+            <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl overflow-hidden shadow-md shadow-black/5 dark:shadow-black/20 transition-all duration-300">
+                <button
+                    onClick={() => setShowJsonImport(!showJsonImport)}
+                    className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-[#1A2027] transition-colors"
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-[#8B5CF6]/10 text-[#8B5CF6]">
+                            <FileText size={18} />
+                        </div>
+                        <div>
+                            <h3 className="text-gray-900 dark:text-white font-semibold text-sm">
+                                ¿Ya tienes el JSON del GPT?
+                            </h3>
+                            <p className="text-gray-500 dark:text-[#6C757D] text-xs">
+                                Pega aquí el resultado que generó ChatGPT
+                            </p>
+                        </div>
+                    </div>
+                    {showJsonImport ? (
+                        <ChevronUp size={20} className="text-gray-400" />
+                    ) : (
+                        <ChevronDown size={20} className="text-gray-400" />
+                    )}
+                </button>
+
+                {showJsonImport && (
+                    <div className="p-6 pt-0 animate-in fade-in slide-in-from-top-2 duration-300 border-t border-gray-100 dark:border-[#2D333B]">
+                        <div className="mb-4">
+                            <label className="text-gray-700 dark:text-gray-300 font-medium text-sm flex items-center gap-2 mb-2">
+                                <Clipboard size={14} className="text-[#8B5CF6]" />
+                                Pega el JSON completo
+                            </label>
+                            <textarea
+                                value={jsonInput}
+                                onChange={(e) => handleJsonInputChange(e.target.value)}
+                                className={`w-full h-48 bg-gray-50 dark:bg-[#0F1419] border rounded-xl p-4 text-sm font-mono leading-relaxed focus:outline-none transition-colors resize-none ${
+                                    jsonError
+                                        ? 'border-[#EF4444]/50 focus:border-[#EF4444]'
+                                        : jsonPreview
+                                            ? 'border-[#00D4B3]/50 focus:border-[#00D4B3]'
+                                            : 'border-gray-300 dark:border-[#6C757D]/30 focus:border-[#8B5CF6]'
+                                } text-gray-900 dark:text-gray-300`}
+                                placeholder='{\n  "course_id": "IA-3269",\n  "sources": [\n    {\n      "title": "...",\n      "url": "https://...",\n      "type": "documentation",\n      "lesson_id": "les-1-1",\n      "lesson_title": "...",\n      "summary": "...",\n      "validated": true\n    }\n  ]\n}'
+                                disabled={isProcessingJson}
+                            />
+                        </div>
+
+                        {/* Error message */}
+                        {jsonError && (
+                            <div className="mb-4 flex items-start gap-2 bg-[#EF4444]/10 border border-[#EF4444]/20 rounded-lg p-3">
+                                <AlertCircle size={16} className="text-[#EF4444] mt-0.5 flex-shrink-0" />
+                                <p className="text-[#EF4444] text-sm">{jsonError}</p>
+                            </div>
+                        )}
+
+                        {/* Preview */}
+                        {jsonPreview && (
+                            <div className="mb-4 bg-[#00D4B3]/5 border border-[#00D4B3]/20 rounded-lg p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <CheckCircle2 size={14} className="text-[#00D4B3]" />
+                                    <span className="text-[#00D4B3] text-sm font-medium">
+                                        {jsonPreview.count} fuentes detectadas
+                                    </span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {jsonPreview.lessons.slice(0, 8).map((lesson, i) => (
+                                        <span key={i} className="text-[10px] bg-white dark:bg-[#151A21] text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 px-2 py-1 rounded">
+                                            {lesson.length > 40 ? lesson.substring(0, 40) + '...' : lesson}
+                                        </span>
+                                    ))}
+                                    {jsonPreview.lessons.length > 8 && (
+                                        <span className="text-[10px] text-gray-500 dark:text-gray-400 px-2 py-1">
+                                            +{jsonPreview.lessons.length - 8} más
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        <button
+                            onClick={handleImportJson}
+                            disabled={!jsonInput.trim() || !!jsonError || isProcessingJson}
+                            className={`w-full py-3 rounded-xl font-bold text-base flex items-center justify-center gap-3 transition-all ${
+                                !jsonInput.trim() || !!jsonError || isProcessingJson
+                                    ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                                    : 'bg-[#8B5CF6] hover:bg-[#7C3AED] text-white shadow-md shadow-[#8B5CF6]/20'
+                            }`}
+                        >
+                            {isProcessingJson ? (
+                                <>
+                                    <Loader2 size={18} className="animate-spin" />
+                                    Procesando...
+                                </>
+                            ) : (
+                                <>
+                                    <Upload size={18} />
+                                    Importar Fuentes
+                                </>
+                            )}
+                        </button>
+
+                        <p className="text-center text-gray-500 dark:text-[#6C757D] text-xs mt-3">
+                            Las fuentes existentes generadas por GPT serán reemplazadas.
+                        </p>
+                    </div>
+                )}
             </div>
 
             {/* Divider */}
