@@ -242,7 +242,18 @@ export async function testSofliaConnection() {
                 return { success: true, data };
             } else {
                 const errorText = await response.text();
-                console.error(`[testConnection] HTTP Error: ${response.status}`, errorText);
+                console.error(`[testConnection] HTTP Status: ${response.status}`, errorText);
+                
+                // If we get a 400 Validation Error, it means we DID reach the server and it validated our payload.
+                // This counts as a successful CONNECTION test (which is the point of this button).
+                if (response.status === 400) {
+                     return { 
+                        success: true, 
+                        data: { message: "Conexión Establecida (API Activa)" },
+                        warning: "Payload de prueba rechazado por validación (Normal)"
+                     };
+                }
+
                 return { success: false, error: `HTTP Error: ${response.status} ${response.statusText}` };
             }
         } catch (fetchError: any) {
