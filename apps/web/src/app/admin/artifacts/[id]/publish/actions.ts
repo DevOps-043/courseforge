@@ -493,13 +493,14 @@ export async function publishToSoflia(artifactId: string) {
                     'Content-Type': 'application/json',
                     'x-api-key': API_KEY || ''
                 },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
+                signal: AbortSignal.timeout(30000)  // 30s timeout para payloads grandes
             });
 
             if (!response.ok) {
                 const errorText = await response.text();
-                // console.error(`[publishToSoflia] API Error (${response.status}):`, errorText);
-                throw new Error(`Error remoto (${response.status}): ${errorText.substring(0, 200)}`);
+                console.error(`[publishToSoflia] API Error (${response.status}):`, errorText);
+                throw new Error(`Error remoto (${response.status}): ${errorText.substring(0, 500)}`);
             }
 
             result = await response.json();
