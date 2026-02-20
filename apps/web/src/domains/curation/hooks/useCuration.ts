@@ -57,10 +57,16 @@ export function useCuration(artifactId: string) {
           }
         }
       }, 3000); // Check every 3 seconds
+    } else if (!isGenerating && rows.length === 0) {
+      // Polling para detectar cuando GPT haya creado el curation y las filas en background
+      // si aún no tenemos datos en la UI y no estamos explícitamente "generando".
+      interval = setInterval(async () => {
+        await fetchCurationData();
+      }, 5000); // Revisa cada 5 segundos
     }
 
     return () => clearInterval(interval);
-  }, [isGenerating, curation?.id, artifactId]);
+  }, [isGenerating, curation?.id, artifactId, rows.length, fetchCurationData]);
 
   // Initial Load & Realtime Subscription
   useEffect(() => {

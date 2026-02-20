@@ -936,6 +936,21 @@ export function SourcesCurationGenerationContainer({ artifactId, courseId, temar
                         )}
                     </button>
 
+                    {/* NUEVO BOTON DE ACTUALIZACION MANUAL PARA FLUJO GPT */}
+                    <div className="mt-6 flex flex-col justify-center items-center gap-3 border-t border-[#1F5AF6]/10 pt-6">
+                        <p className="text-gray-600 dark:text-[#94A3B8] text-sm text-center font-medium">¿El asistente terminó de generar las fuentes?</p>
+                        <button
+                            onClick={() => {
+                                toast.info('Actualizando datos...');
+                                refresh();
+                            }}
+                            className="px-6 py-2.5 bg-white dark:bg-[#10151A] border border-gray-200 dark:border-[#334155] text-gray-700 dark:text-gray-300 rounded-xl shadow-sm hover:border-[#1F5AF6]/50 hover:text-[#1F5AF6] dark:hover:text-[#1F5AF6] transition-all flex items-center justify-center gap-2 group"
+                        >
+                            <RefreshCw size={16} className="group-hover:rotate-180 transition-transform duration-500" />
+                            Actualizar y ver resultados
+                        </button>
+                    </div>
+
                     {(!temario || temario.length === 0) && (
                         <p className="text-center text-amber-500 text-xs mt-3 flex items-center justify-center gap-1">
                             <AlertCircle size={12} />
