@@ -512,6 +512,52 @@ export async function updateCurationRowAction(rowId: string, updates: any) {
     return { success: true };
 }
 
+export async function deleteCurationRowAction(rowId: string) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    const { error } = await supabase
+        .from('curation_rows')
+        .delete()
+        .eq('id', rowId);
+
+    if (error) {
+        console.error('Error deleting curation row:', error);
+        return { success: false, error: error.message };
+    }
+    return { success: true };
+}
+
+export async function clearGPTCurationRowsAction(artifactId: string) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    // 1. Get curation ID
+    const { data: curation } = await supabase
+        .from('curation')
+        .select('id')
+        .eq('artifact_id', artifactId)
+        .single();
+
+    if (!curation) return { success: true }; // Nothing to clear
+
+    // 2. Delete GPT-generated rows
+    const { error } = await supabase
+        .from('curation_rows')
+        .delete()
+        .eq('curation_id', curation.id)
+        .eq('source_rationale', 'GPT_GENERATED');
+
+    if (error) {
+        console.error('Error clearing GPT curation rows:', error);
+        return { success: false, error: error.message };
+    }
+
+    return { success: true };
+}
+
 export async function updateCurationStatusAction(artifactId: string, status: string, notes?: string) {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();

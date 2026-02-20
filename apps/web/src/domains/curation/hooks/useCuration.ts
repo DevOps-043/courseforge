@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { curationService } from '../services/curation.service';
 import { Curation, CurationRow } from '../types/curation.types';
-import { startCurationAction, updateCurationRowAction } from '@/app/admin/artifacts/actions';
+import { startCurationAction, updateCurationRowAction, deleteCurationRowAction, clearGPTCurationRowsAction } from '@/app/admin/artifacts/actions';
 import { toast } from 'sonner';
 
 export function useCuration(artifactId: string) {
@@ -119,6 +119,32 @@ export function useCuration(artifactId: string) {
     }
   };
 
+  const deleteRow = async (rowId: string) => {
+    // Optimistic UI
+    setRows(current => current.filter(r => r.id !== rowId));
+
+    const result = await deleteCurationRowAction(rowId);
+    if (!result.success) {
+      toast.error('Error al eliminar fila');
+      fetchCurationData();
+    } else {
+      toast.success('Fuente eliminada');
+    }
+  };
+
+  const clearGPTRows = async () => {
+    // Optimistic UI
+    setRows(current => current.filter(r => r.source_rationale !== 'GPT_GENERATED'));
+
+    const result = await clearGPTCurationRowsAction(artifactId);
+    if (!result.success) {
+      toast.error('Error al limpiar fuentes GPT');
+      fetchCurationData();
+    } else {
+      toast.success('Fuentes GPT eliminadas');
+    }
+  };
+
   return {
     curation,
     rows,
@@ -126,6 +152,8 @@ export function useCuration(artifactId: string) {
     isGenerating,
     startCuration,
     updateRow,
+    deleteRow,
+    clearGPTRows,
     refresh: fetchCurationData
   };
 }

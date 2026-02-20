@@ -1,16 +1,16 @@
 import { useMemo, useState } from 'react';
 import { CurationRow } from '../types/curation.types';
-import { CurationRowItem } from './CurationRowItem';
-import { CheckCircle2, XCircle, AlertCircle, ChevronDown, ChevronRight, Layers, BookOpen, ExternalLink, FileText } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertCircle, ChevronDown, ChevronRight, Layers, BookOpen, ExternalLink, FileText, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface CurationDashboardProps {
   rows: CurationRow[];
   onUpdateRow: (id: string, updates: Partial<CurationRow>) => void;
+  onDeleteRow: (id: string) => void;
   isGenerating: boolean;
 }
 
-export function CurationDashboard({ rows, onUpdateRow, isGenerating }: CurationDashboardProps) {
+export function CurationDashboard({ rows, onUpdateRow, onDeleteRow, isGenerating }: CurationDashboardProps) {
   
   // 1. Stats Calculation
   const stats = useMemo(() => {
@@ -24,8 +24,7 @@ export function CurationDashboard({ rows, onUpdateRow, isGenerating }: CurationD
     };
   }, [rows]);
 
-  // 2. NEW: Group by Lesson Only (not by component)
-  // Now each lesson has 1-2 sources that cover the entire lesson
+  // 2. Group by Lesson Only
   const groupedByLesson = useMemo(() => {
     const groups: Record<string, { title: string; sources: CurationRow[] }> = {};
 
@@ -40,10 +39,8 @@ export function CurationDashboard({ rows, onUpdateRow, isGenerating }: CurationD
       groups[lessonKey].sources.push(row);
     });
 
-    // Sort sources by quality (notes may contain quality score)
     Object.values(groups).forEach(group => {
       group.sources.sort((a, b) => {
-        // Prioritize apta sources
         if (a.apta && !b.apta) return -1;
         if (!a.apta && b.apta) return 1;
         return 0;
@@ -73,7 +70,7 @@ export function CurationDashboard({ rows, onUpdateRow, isGenerating }: CurationD
   return (
     <div className="space-y-6">
       
-      {/* 1. Stats Bar - Simplified for Lesson-based view */}
+      {/* 1. Stats Bar */}
       <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl bg-white dark:bg-[#0F1419] border border-gray-200 dark:border-[#1E2329] shadow-sm">
          <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-[#1F5AF6]/10 text-[#1F5AF6] border border-[#1F5AF6]/20">
             <BookOpen size={16} />
@@ -105,7 +102,7 @@ export function CurationDashboard({ rows, onUpdateRow, isGenerating }: CurationD
          </div>
       )}
 
-      {/* 2. Lesson List - Clean, Card-based Design */}
+      {/* 2. Lesson List */}
       <div className="space-y-3">
         {Object.entries(groupedByLesson).map(([lessonId, { title, sources }]) => {
           const isCollapsed = collapsedLessons[lessonId];
@@ -166,6 +163,7 @@ export function CurationDashboard({ rows, onUpdateRow, isGenerating }: CurationD
                                 source={source} 
                                 index={idx + 1}
                                 onUpdate={onUpdateRow}
+                                onDelete={onDeleteRow}
                               />
                             ))
                           )}
@@ -182,17 +180,17 @@ export function CurationDashboard({ rows, onUpdateRow, isGenerating }: CurationD
   );
 }
 
-// NEW: Simplified Source Card for Lesson-based view
+// Simplified Source Card
 interface LessonSourceCardProps {
   source: CurationRow;
   index: number;
   onUpdate: (id: string, updates: Partial<CurationRow>) => void;
+  onDelete: (id: string) => void;
 }
 
-function LessonSourceCard({ source, index, onUpdate }: LessonSourceCardProps) {
+function LessonSourceCard({ source, index, onUpdate, onDelete }: LessonSourceCardProps) {
   const isValid = source.apta === true;
   const isInvalid = source.apta === false;
-  const isPending = source.apta === null;
 
   const statusColor = isValid 
     ? 'border-[#00D4B3]/30 bg-[#00D4B3]/5' 
@@ -201,16 +199,22 @@ function LessonSourceCard({ source, index, onUpdate }: LessonSourceCardProps) {
       : 'border-gray-200 dark:border-[#1E2329] bg-white dark:bg-[#151A21]';
 
   const handleToggleApta = () => {
-    // Cycle: null -> true -> false -> true
     const newValue = source.apta === null ? true : source.apta === true ? false : true;
     onUpdate(source.id, { apta: newValue });
   };
 
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirm('¿Estás seguro de eliminar esta fuente?')) {
+      onDelete(source.id);
+    }
+  };
+
   return (
-    <div className={`p-4 rounded-xl border ${statusColor} transition-all hover:border-[#00D4B3]/50`}>
+    <div className={`p-4 rounded-xl border ${statusColor} transition-all hover:border-[#00D4B3]/50 relative group/card`}>
       <div className="flex items-start gap-3">
         {/* Index Number */}
-        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold
+        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0
           ${isValid ? 'bg-[#00D4B3] text-[#0A2540]' : isInvalid ? 'bg-rose-500 text-white' : 'bg-gray-200 dark:bg-[#1E2329] text-gray-600 dark:text-[#6C757D]'}`}
         >
           {index}
@@ -223,16 +227,25 @@ function LessonSourceCard({ source, index, onUpdate }: LessonSourceCardProps) {
             <h4 className="text-gray-900 dark:text-white font-medium text-sm leading-tight flex-1">
               {source.source_title || 'Fuente sin título'}
             </h4>
-            {source.source_ref && (
-              <a 
-                href={source.source_ref} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-[#1F5AF6] hover:text-[#1F5AF6]/80 transition-colors flex-shrink-0"
-              >
-                <ExternalLink size={14} />
-              </a>
-            )}
+            <div className="flex items-center gap-2 shrink-0">
+               {source.source_ref && (
+                 <a 
+                   href={source.source_ref} 
+                   target="_blank" 
+                   rel="noopener noreferrer"
+                   className="text-[#1F5AF6] hover:text-[#1F5AF6]/80 transition-colors p-1"
+                 >
+                   <ExternalLink size={14} />
+                 </a>
+               )}
+               <button
+                 onClick={handleDelete}
+                 className="text-rose-500 hover:text-rose-600 dark:hover:text-rose-400 opacity-0 group-hover/card:opacity-100 transition-opacity p-1"
+                 title="Eliminar fuente"
+               >
+                 <Trash2 size={14} />
+               </button>
+            </div>
           </div>
 
           {/* URL Preview */}
@@ -270,7 +283,7 @@ function LessonSourceCard({ source, index, onUpdate }: LessonSourceCardProps) {
         {/* Status Toggle Button */}
         <button
           onClick={handleToggleApta}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0
             ${isValid 
               ? 'bg-[#00D4B3]/20 text-[#00D4B3] border border-[#00D4B3]/30 hover:bg-[#00D4B3]/30' 
               : isInvalid 

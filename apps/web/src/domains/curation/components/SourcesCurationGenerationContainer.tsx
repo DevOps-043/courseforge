@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { BookOpen, Settings2, CheckCircle2, Play, RefreshCw, Library, Loader2, Edit3, AlertCircle, CheckSquare, Pause, Square, PlayCircle, Clipboard, ExternalLink, ChevronDown, ChevronUp, Sparkles, FileText, Upload } from 'lucide-react';
+import { BookOpen, Settings2, CheckCircle2, Play, RefreshCw, Library, Loader2, Edit3, AlertCircle, CheckSquare, Pause, Square, PlayCircle, Clipboard, ExternalLink, ChevronDown, ChevronUp, Sparkles, FileText, Upload, Trash2 } from 'lucide-react';
 import { useCuration } from '../hooks/useCuration';
 import { CurationDashboard } from './CurationDashboard';
 import { motion } from 'framer-motion';
@@ -34,7 +34,7 @@ const DEFAULT_PROMPT_PREVIEW = `Prompt optimizado con reglas de curaduría, enfo
 const GPT_URL = 'https://chatgpt.com/g/g-69823d9a6470819196393ee8c227adab-soflia-generating-sources-assistant';
 
 export function SourcesCurationGenerationContainer({ artifactId, courseId, temario, ideaCentral }: SourcesCurationGenerationContainerProps) {
-    const { curation, rows, isGenerating, startCuration, updateRow, refresh } = useCuration(artifactId);
+    const { curation, rows, isGenerating, startCuration, updateRow, deleteRow, clearGPTRows, refresh } = useCuration(artifactId);
     const router = useRouter();
     const [useCustomPrompt, setUseCustomPrompt] = useState(false);
     const [customPrompt, setCustomPrompt] = useState('');
@@ -234,6 +234,61 @@ export function SourcesCurationGenerationContainer({ artifactId, courseId, temar
     const handleGenerate = async () => {
         setProgress(5); // Reset progress on new run
         await startCuration(1, []);
+    };
+
+    const handleResetStep = () => {
+        setModalConfig({
+            isOpen: true,
+            title: 'Reiniciar Paso 4',
+            message: (
+                <div className="space-y-4">
+                    <p className="text-sm text-gray-500 dark:text-[#94A3B8]">¿Qué acción deseas realizar para reiniciar la curaduría?</p>
+                    <div className="grid grid-cols-1 gap-3">
+                        <button 
+                            onClick={async () => {
+                                setIsLoadingModal(true);
+                                await clearGPTRows();
+                                setIsLoadingModal(false);
+                                setModalConfig(prev => ({ ...prev, isOpen: false }));
+                            }}
+                            className="w-full p-4 text-left rounded-xl border border-gray-200 dark:border-[#1E2329] hover:border-rose-500/50 transition-colors bg-white dark:bg-[#0F1419] group"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-rose-500/10 text-rose-500 group-hover:bg-rose-500 group-hover:text-white transition-colors">
+                                    <Trash2 size={18} />
+                                </div>
+                                <div className="flex-1">
+                                    <div className="font-bold text-gray-900 dark:text-white text-sm">Limpiar información actual</div>
+                                    <div className="text-xs text-gray-500 dark:text-[#6C757D]">Elimina todas las fuentes generadas por GPT para empezar de cero manualmente.</div>
+                                </div>
+                            </div>
+                        </button>
+                        <button 
+                            onClick={async () => {
+                                setIsLoadingModal(true);
+                                await handleGenerate();
+                                setIsLoadingModal(false);
+                                setModalConfig(prev => ({ ...prev, isOpen: false }));
+                            }}
+                            className="w-full p-4 text-left rounded-xl border border-gray-200 dark:border-[#1E2329] hover:border-[#00D4B3]/50 transition-colors bg-white dark:bg-[#0F1419] group"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-[#00D4B3]/10 text-[#00D4B3] group-hover:bg-[#00D4B3] group-hover:text-[#0A2540] transition-colors">
+                                    <RefreshCw size={18} />
+                                </div>
+                                <div className="flex-1">
+                                    <div className="font-bold text-gray-900 dark:text-white text-sm">Reiniciar búsqueda automática</div>
+                                    <div className="text-xs text-gray-500 dark:text-[#6C757D]">Inicia de nuevo el proceso de búsqueda interna de CourseForge (puede no terminar).</div>
+                                </div>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            ),
+            variant: 'info',
+            confirmText: 'Cancelar',
+            onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+        });
     };
 
     // Generate context for GPT
@@ -657,7 +712,7 @@ export function SourcesCurationGenerationContainer({ artifactId, courseId, temar
                     </div>
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={() => handleGenerate()}
+                            onClick={handleResetStep}
                             className="px-3 py-1.5 rounded-lg border border-[#1E2329] text-[#6C757D] text-xs hover:border-[#6C757D] hover:text-white hover:bg-[#1E2329] transition-colors flex items-center gap-2"
                         >
                             <RefreshCw size={14} />
@@ -679,6 +734,7 @@ export function SourcesCurationGenerationContainer({ artifactId, courseId, temar
                 <CurationDashboard
                     rows={rows}
                     onUpdateRow={updateRow}
+                    onDeleteRow={deleteRow}
                     isGenerating={isGenerating}
                 />
 
