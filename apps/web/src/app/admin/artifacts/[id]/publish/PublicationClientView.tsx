@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Save, Send, AlertTriangle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { CourseDataForm } from './components/CourseDataForm';
 import { VideoMappingList, LessonVideoData } from './components/VideoMappingList';
-import { savePublicationDraft, publishToSoflia, fetchVideoMetadata } from './actions';
+import { savePublicationDraft, fetchVideoMetadata } from './actions';
 import { ConfirmationModal } from '@/shared/components/ConfirmationModal';
 
 interface PublicationClientViewProps {
@@ -106,7 +106,7 @@ export default function PublicationClientView({
     const [isSaving, setIsSaving] = useState(false);
     const [isPublishing, setIsPublishing] = useState(false);
     const [isResetting, setIsResetting] = useState(false);
-    const [hasAutoSynced, setHasAutoSynced] = useState(false);
+
     const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
 
@@ -172,76 +172,7 @@ export default function PublicationClientView({
         }
     };
 
-    // Auto-sync durations on mount for YouTube/Vimeo items that have 0 duration or look suspicious
-    useEffect(() => {
-        if (hasAutoSynced) return;
 
-        const syncUnverifiedVideos = async () => {
-            let needsUpdate = false;
-            const updates: Record<string, number> = {};
-            const promises: Promise<void>[] = [];
-
-            Object.values(videoMappings).forEach(mapping => {
-                // Determine if we should sync:
-                // 1. Has ID
-                // 2. Is YT/Vimeo
-                // 3. Duration is 0 OR it seems to be a placeholder (like exact minutes from script estimation)
-                // For now, let's sync anything that is YT/Vimeo to be safe, unless we want to avoid traffic.
-                // Let's stick to syncing if duration is 0 or if we haven't synced yet.
-
-                // Better heuristic: sync if duration is 0 or less than 60s (likely placeholder) OR if we just want to ensure accuracy.
-                // To avoid spamming on every reload if valid, maybe check if it matches auto_duration?
-                // Let's just sync everything that is YT/Vimeo once per session for this page view.
-
-                if (mapping.video_id && (mapping.video_provider === 'youtube' || mapping.video_provider === 'vimeo')) {
-                    const fullUrl = mapping.video_provider === 'youtube'
-                        ? `https://www.youtube.com/watch?v=${mapping.video_id}`
-                        : `https://vimeo.com/${mapping.video_id}`;
-
-                    const p = fetchVideoMetadata(fullUrl).then(meta => {
-                        if (meta.duration > 0 && meta.duration !== mapping.duration) {
-                            updates[mapping.lesson_id] = meta.duration;
-                            needsUpdate = true;
-                        }
-                    }).catch(console.error);
-                    promises.push(p);
-                }
-            });
-
-            if (promises.length > 0) {
-                // toast("Verificando duraciones de videos...", { duration: 2000 });
-                await Promise.all(promises);
-
-                if (needsUpdate) {
-                    const newMappings = { ...videoMappings };
-                    Object.entries(updates).forEach(([id, duration]) => {
-                        if (newMappings[id]) {
-                            newMappings[id] = { ...newMappings[id], duration };
-                        }
-                    });
-
-                    setVideoMappings(newMappings);
-
-                    // Auto-save the corrections immediately
-                    try {
-                        await savePublicationDraft(artifactId, {
-                            ...courseData,
-                            lesson_videos: newMappings,
-                            status: existingRequest?.status || 'DRAFT'
-                        });
-                        toast.success("Duraciones corregidas y guardadas automáticamente");
-                    } catch (err) {
-                        console.error("Auto-save failed", err);
-                    }
-                }
-            }
-            setHasAutoSynced(true);
-        };
-
-        if (lessons.length > 0) {
-            syncUnverifiedVideos();
-        }
-    }, [hasAutoSynced, videoMappings, artifactId, courseData, existingRequest, lessons]);
 
 
 
@@ -284,14 +215,23 @@ export default function PublicationClientView({
                 status: 'READY'
             });
 
-            // Then trigger publish
-            const result = await publishToSoflia(artifactId);
+            // Then trigger publish via API Route instead of Server Action
+            // This ensures process.env is read correctly in Netlify Edge/Node Runtime
+            const response = await fetch('/api/publish', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ artifactId }),
+            });
 
-            if (result.success) {
+            const result = await response.json();
+
+            if (response.ok && result.success) {
                 toast.success("¡Curso enviado exitosamente a Soflia!");
-                router.push(`/admin/artifacts/${artifactId}`); // Or refresh to show status
+                router.push(`/admin/artifacts/${artifactId}`);
             } else {
-                toast.error("Error al publicar en Soflia: " + result.error);
+                toast.error("Error al publicar en Soflia: " + (result.error || "Fallo desconocido"));
             }
         } catch (e: any) {
             toast.error("Error crítico: " + e.message);

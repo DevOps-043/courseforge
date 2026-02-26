@@ -236,22 +236,25 @@ Genera TODOS los componentes solicitados en el plan instruccional:
 
 ### 3.1 Generar guiones y storyboards de video (según plan)
 
+**REGLA DE ORO PARA STORYBOARDS:**
+El texto narrativo (\`narration_text\`) en el storyboard **DEBE SER EL GUIÓN EXACTO Y LITERAL** que se va a leer. NO hagas resúmenes, no pongas "aproximaciones" ni viñetas. Escribe palabra por palabra lo que el locutor dirá. La sincronización entre lo que se dice (guion) y lo que se ve (visuales) debe ser **perfecta y 1:1**.
+
 **Si el plan incluye Video Teórico:**
 
 - Genera guion con secciones según estructura del Prompt Maestro
-- Genera storyboard con timecodes y descripciones visuales
+- Genera storyboard documentando el **guion literal** y su correlato visual exacto por cada toma
 - Incluye 1 pregunta de reflexión (sin micro-prácticas)
 
 **Si el plan incluye Video Demo:**
 
-- Genera guion narrado con pasos claros
-- Genera storyboard con capturas reales y acciones en pantalla
+- Genera guion narrado con pasos claros (palabra por palabra)
+- Genera storyboard vinculando ese guion literal con capturas reales y acciones en pantalla
 - Enfatiza buenas prácticas y errores comunes
 
 **Si el plan incluye Video Guía o \`requires_demo_guide: true\`:**
 
-- Genera guion detallado con pasos numerados
-- Genera storyboard con capturas paso a paso
+- Genera guion detallado (palabra por palabra)
+- Genera storyboard vinculando el guion literal con capturas paso a paso
 - Genera instrucciones paso a paso para ejercicio paralelo
 - Incluye criterios de éxito
 
@@ -259,7 +262,7 @@ Genera TODOS los componentes solicitados en el plan instruccional:
 
 - Los OA del plan instruccional
 - Las fuentes de Fase 2 (para ejemplos, casos, terminología)
-- NO copies texto de terceros de forma literal
+- NO copies texto de terceros de forma literal para material de lectura, pero el guion final en el storyboard sí debe ser el texto definitivo a locutar.
 
 ### 3.2 Generar Diálogo Interactivo con Lia
 
@@ -329,6 +332,7 @@ Considera la Fase 3 terminada solo si:
 - Los guiones y storyboards:
   - Tienen timecodes coherentes
   - Describen visuales específicos
+  - **El \`narration_text\` del storyboard es el guion EXACTO, LITERAL y COMPLETO palabra por palabra (cero resúmenes o aproximaciones).**
   - Siguen las estructuras del Prompt Maestro
 
 ---
@@ -426,7 +430,7 @@ Responde **SOLO con JSON válido** usando esta estructura exacta:
           "visual_content": "string (descripción exacta)",
           "on_screen_action": "string (opcional)",
           "on_screen_text": "string (opcional)",
-          "narration_text": "string",
+          "narration_text": "string (GUIÓN EXACTO Y LITERAL, palabra por palabra, sin resumir)",
           "operational_notes": "string (opcional)"
         }
       ],
@@ -474,7 +478,7 @@ Responde **SOLO con JSON válido** usando esta estructura exacta:
           "visual_type": "slide | text | iconography | diagram | b_roll",
           "visual_content": "string (descripción exacta de lo que se ve)",
           "on_screen_text": "string (texto literal en pantalla)",
-          "narration_text": "string (frase del guion asociada)",
+          "narration_text": "string (GUIÓN EXACTO Y LITERAL, palabra por palabra, sin resumir)",
           "operational_notes": "string (opcional)"
         }
       ]
@@ -508,7 +512,7 @@ Responde **SOLO con JSON válido** usando esta estructura exacta:
           "visual_content": "string (contenido visual exacto - captura real)",
           "on_screen_action": "string (acción en pantalla)",
           "on_screen_text": "string (texto literal en pantalla)",
-          "narration_text": "string (frase del guion asociada)",
+          "narration_text": "string (GUIÓN EXACTO Y LITERAL, palabra por palabra, sin resumir)",
           "operational_notes": "string (opcional)"
         }
       ]
@@ -540,7 +544,7 @@ Responde **SOLO con JSON válido** usando esta estructura exacta:
           "visual_content": "string (contenido visual operativo exacto)",
           "success_criteria_visible": "string (criterio de éxito visible)",
           "on_screen_text": "string (texto literal en pantalla)",
-          "narration_text": "string (frase del guion asociada)",
+          "narration_text": "string (GUIÓN EXACTO Y LITERAL, palabra por palabra, sin resumir)",
           "operational_notes": "string (opcional)"
         }
       ],
@@ -569,7 +573,7 @@ Responde **SOLO con JSON válido** usando esta estructura exacta:
    - Si el OA es Recordar/Comprender → puede incluir VIDEO_THEORETICAL
    - Si el OA es ≥ Aplicar → debe incluir VIDEO_DEMO o VIDEO_GUIDE
    - Si \`requires_demo_guide: true\` → DEBE incluir DEMO_GUIDE con video_script y storyboard
-4. **storyboard** arrays deben tener timecodes coherentes y progresivos.
+4. **storyboard** arrays deben tener timecodes coherentes y progresivos. El \`narration_text\` en CADA TOMA debe ser el guion EXACTO a locutar. NO hagas resúmenes. La suma de los \`narration_text\` del storyboard debe ser el script completo al 100%.
 5. **visual_content** debe describir EXACTAMENTE lo que se ve en pantalla (sin metáforas abstractas).
 6. **explanation** en QUIZ es REQUERIDO para cada pregunta (feedback por opción).
 7. **passing_score** en QUIZ debe ser 80.

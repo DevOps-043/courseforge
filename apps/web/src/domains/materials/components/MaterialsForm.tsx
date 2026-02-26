@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useMaterials, useMaterialStateStyles } from '../hooks/useMaterials';
 import { LessonMaterialsCard } from './LessonMaterialsCard';
+import { useRouter } from 'next/navigation';
 import {
     Loader2,
     Play,
@@ -20,6 +21,7 @@ interface MaterialsFormProps {
 }
 
 export function MaterialsForm({ artifactId, className = '' }: MaterialsFormProps) {
+    const router = useRouter();
     const {
         materials,
         loading,
@@ -103,6 +105,7 @@ export function MaterialsForm({ artifactId, className = '' }: MaterialsFormProps
     const handleQADecision = async (decision: 'APPROVED' | 'REJECTED') => {
         await applyQADecision(decision, qaNote);
         setQaNote('');
+        router.refresh();
     };
 
     // Loading state

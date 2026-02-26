@@ -42,11 +42,13 @@ export function VideoMappingList({ lessons, mappings, onMappingChange }: VideoMa
         };
 
         // If updating URL/ID, try to auto-detect provider
+        let shouldAutoSync = false;
         if (field === 'video_id') {
             const { provider, id } = detectVideoProvider(value);
             if (provider) {
                 currentMapping.video_provider = provider;
                 currentMapping.video_id = id;
+                shouldAutoSync = true; // Auto-sync duration for YT/Vimeo
             } else {
                 currentMapping.video_id = value;
             }
@@ -57,6 +59,12 @@ export function VideoMappingList({ lessons, mappings, onMappingChange }: VideoMa
         const newMappings = { ...mappings, [lessonId]: currentMapping };
         // No local state update, only notify parent
         onMappingChange(newMappings);
+
+        // Auto-sync duration when a YouTube/Vimeo video is detected
+        if (shouldAutoSync && currentMapping.video_id) {
+            // Small delay to let state propagate before syncing
+            setTimeout(() => handleSyncDuration(lessonId), 100);
+        }
     };
 
     const detectVideoProvider = (url: string): { provider: 'youtube' | 'vimeo' | null, id: string } => {

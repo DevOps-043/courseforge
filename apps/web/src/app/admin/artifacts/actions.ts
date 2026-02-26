@@ -896,6 +896,12 @@ export async function saveMaterialAssetsAction(componentId: string, assets: any)
 
     if (error) return { success: false, error: error.message };
 
+    // SYNC Production Status globally for the artifact
+    // This allows the stepper to show a checkmark even if the user isn't on Step 6
+    if (component?.material_lessons?.materials?.artifact_id) {
+        await syncProductionStatusAction(component.material_lessons.materials.artifact_id);
+    }
+
     // Log pipeline event for status change
     if (component?.material_lesson_id) {
         // Fetch artifact_id through the chain
@@ -931,6 +937,60 @@ export async function saveMaterialAssetsAction(componentId: string, assets: any)
     }
 
     return { success: true, productionStatus, dodChecklist };
+}
+
+/**
+ * Synchronizes the global production_complete flag of an artifact
+ * based on the completion of all its material components.
+ */
+export async function syncProductionStatusAction(artifactId: string) {
+    const supabase = await createClient();
+    
+    // 1. Get all components that require production
+    const { data: components, error: componentsError } = await supabase
+        .from('material_components')
+        .select(`
+            id, type, assets,
+            material_lessons!inner (
+                materials!inner (
+                    artifact_id
+                )
+            )
+        `)
+        .eq('material_lessons.materials.artifact_id', artifactId);
+
+    if (componentsError || !components) {
+        console.error('Error fetching components for sync:', componentsError);
+        return { success: false };
+    }
+
+    // 2. Filter produceable components (same logic as VisualProductionContainer)
+    const produceable = components.filter(c =>
+        c.type.includes('VIDEO') || c.type === 'DEMO_GUIDE'
+    );
+
+    if (produceable.length === 0) return { success: true };
+
+    // 3. Count completed
+    const total = produceable.length;
+    const completed = produceable.filter(c => 
+        (c.assets as any)?.production_status === 'COMPLETED'
+    ).length;
+
+    const isDone = total > 0 && total === completed;
+
+    // 4. Update artifact
+    const { error: updateError } = await supabase
+        .from('artifacts')
+        .update({ production_complete: isDone })
+        .eq('id', artifactId);
+
+    if (updateError) {
+        console.error('Error syncing production status to artifact:', updateError);
+        return { success: false };
+    }
+
+    return { success: true, isDone, progress: Math.round((completed / total) * 100) };
 }
 
 // Registrar eventos de pipeline para trazabilidad

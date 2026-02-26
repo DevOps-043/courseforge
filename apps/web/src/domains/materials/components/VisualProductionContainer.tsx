@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation';
 interface VisualProductionContainerProps {
     artifactId: string;
     productionComplete?: boolean;
+    onStatusChange?: (isComplete: boolean) => void;
 }
 
 interface ProductionGroup {
@@ -29,7 +30,7 @@ interface PendingAssets {
     };
 }
 
-export function VisualProductionContainer({ artifactId, productionComplete }: VisualProductionContainerProps) {
+export function VisualProductionContainer({ artifactId, productionComplete, onStatusChange }: VisualProductionContainerProps) {
     const router = useRouter();
     const { materials, getLessonComponents, refresh } = useMaterials(artifactId);
     const [productionItems, setProductionItems] = useState<ProductionGroup[]>([]);
@@ -112,8 +113,9 @@ export function VisualProductionContainer({ artifactId, productionComplete }: Vi
             delete next[componentId];
             return next;
         });
-        // Refresh to update progress after save
-        refresh();
+        // Refresh materials data + server component (to update stepper check)
+        await refresh();
+        router.refresh();
     };
 
     // Save all pending changes
@@ -131,8 +133,9 @@ export function VisualProductionContainer({ artifactId, productionComplete }: Vi
 
             // Clear all pending
             setPendingAssets({});
-            // Refresh to update progress
-            refresh();
+            // Refresh materials data + server component (to update stepper check)
+            await refresh();
+            router.refresh();
         } catch (err) {
             console.error('Error saving all:', err);
             alert('Error al guardar algunos datos');
@@ -164,24 +167,42 @@ export function VisualProductionContainer({ artifactId, productionComplete }: Vi
     // Auto-complete artifact production status
     useEffect(() => {
         const checkCompletion = async () => {
-            if (productionItems.length === 0) return;
+            // Guard: don't run while still loading or with no items
+            if (isLoading || productionItems.length === 0) return;
+
+            console.log(`[Production] Completion Check: ${progressStats.percentage}% (DB: ${productionComplete})`);
 
             // If 100% and not marked complete -> Mark complete
             if (progressStats.percentage === 100 && !productionComplete) {
-                await updateProductionStatusAction(artifactId, true);
-                router.refresh();
+                console.log('[Production] Reached 100%. Updating DB...');
+
+                const result = await updateProductionStatusAction(artifactId, true);
+                if (result.success) {
+                    console.log('[Production] DB updated successfully. Refreshing...');
+                    // Notify parent ONLY after DB confirms success
+                    if (onStatusChange) onStatusChange(true);
+                    router.refresh();
+                } else {
+                    console.error('[Production] DB update failed:', result.error);
+                    // Do NOT set optimistic UI — the DB didn't persist
+                }
             }
             // If not 100% but marked complete -> Unmark (revert)
             else if (progressStats.percentage < 100 && productionComplete) {
-                await updateProductionStatusAction(artifactId, false);
-                router.refresh();
+                console.log(`[Production] Percentage dropped to ${progressStats.percentage}%. Reverting completion...`);
+
+                const result = await updateProductionStatusAction(artifactId, false);
+                if (result.success) {
+                    if (onStatusChange) onStatusChange(false);
+                    router.refresh();
+                }
             }
         };
 
-        // Add small delay to allow things to settle
-        const timer = setTimeout(checkCompletion, 1000);
+        // Add small delay to allow things to settle after data loads
+        const timer = setTimeout(checkCompletion, 1500);
         return () => clearTimeout(timer);
-    }, [progressStats.percentage, productionComplete, artifactId, router, productionItems.length]);
+    }, [progressStats.percentage, productionComplete, artifactId, router, productionItems.length, onStatusChange, isLoading]);
 
     if (isLoading) {
         return (
@@ -211,7 +232,12 @@ export function VisualProductionContainer({ artifactId, productionComplete }: Vi
                 <div className="flex justify-between items-start mb-4">
                     <div>
                         <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-3">
-                            <Clapperboard className="text-[#1F5AF6]" /> Producción Visual
+                            {progressStats.percentage === 100 ? (
+                                <CheckCircle2 className="text-green-400" />
+                            ) : (
+                                <Clapperboard className="text-[#1F5AF6]" />
+                            )}
+                            Producción Visual
                         </h2>
                         <p className="text-[#E9ECEF] text-sm max-w-2xl">
                             Genera y gestiona los activos visuales finales (Slides, Videos, Screencasts).

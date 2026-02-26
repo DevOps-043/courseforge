@@ -32,12 +32,10 @@ export default function ArtifactClientView({
     const calculateInitialStep = () => {
         // Check from highest step down to find where user should be
         if (publicationRequest?.status === 'SENT' || publicationRequest?.status === 'APPROVED') return 7;
-        if (artifact.materials_state === 'PHASE3_APPROVED') return publicationRequest ? 7 : 6;
+        if (artifact.production_complete) return 7;
+        if (artifact.materials_state === 'PHASE3_APPROVED') return 6;
 
-        const curationApproved = artifact.curation_state === 'PHASE2_APPROVED' ||
-            artifact.curation_state === 'PHASE2_READY_FOR_QA' ||
-            artifact.curation_state === 'PHASE2_HITL_REVIEW' ||
-            artifact.curation_state === 'PHASE2_GENERATED';
+        const curationApproved = artifact.curation_state === 'PHASE2_APPROVED';
         if (curationApproved) return 5;
 
         if (artifact.plan_state === 'STEP_APPROVED') return 4;
@@ -56,10 +54,17 @@ export default function ArtifactClientView({
     const [feedback, setFeedback] = useState('');
     const [isRegenerating, setIsRegenerating] = useState(false);
 
-    // Si el artefacto ya está aprobado (Fase 1), inicializamos en 'approved'
     const [reviewState, setReviewState] = useState<'pending' | 'approved' | 'rejected'>(
         artifact.state === 'APPROVED' || artifact.qa_status === 'APPROVED' ? 'approved' : 'pending'
     );
+
+    // Local state for optimistic UI updates in stepper
+    const [localProductionComplete, setLocalProductionComplete] = useState(!!artifact.production_complete);
+
+    // Sync local state when artifact prop updates (e.g. after refresh)
+    useEffect(() => {
+        setLocalProductionComplete(!!artifact.production_complete);
+    }, [artifact.production_complete]);
 
     const [toast, setToast] = useState<{ show: boolean, message: string, type: 'success' | 'error' | 'info' }>({ show: false, message: '', type: 'info' });
     const router = useRouter();
@@ -139,7 +144,7 @@ export default function ArtifactClientView({
     // Asumimos que artifact tiene relación con syllabus y trae su estado.
     const syllabusApproved = artifact.syllabus_status === 'STEP_APPROVED' || (artifact.temario && artifact.temario.qa?.status === 'APPROVED');
     const planApproved = artifact.plan_state === 'STEP_APPROVED';
-    const curationApproved = artifact.curation_state === 'PHASE2_APPROVED' || artifact.curation_state === 'PHASE2_READY_FOR_QA' || artifact.curation_state === 'PHASE2_HITL_REVIEW' || artifact.curation_state === 'PHASE2_GENERATED';
+    const curationApproved = artifact.curation_state === 'PHASE2_APPROVED';
 
 
 
@@ -229,11 +234,11 @@ export default function ArtifactClientView({
                     active={currentStep === 2}
                     onClick={() => setCurrentStep(2)}
                     icon={<BookOpen size={18} />}
-                    disabled={reviewState !== 'approved' && !artifact.temario}
-                    done={syllabusApproved || currentStep > 2}
+                    disabled={reviewState !== 'approved'}
+                    done={syllabusApproved}
                 />
 
-                <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${syllabusApproved || currentStep > 2 ? 'bg-[#1F5AF6]' : 'bg-gray-200 dark:bg-[#2D333B]'}`} />
+                <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${syllabusApproved ? 'bg-[#1F5AF6]' : 'bg-gray-200 dark:bg-[#2D333B]'}`} />
 
                 <StepItem
                     step={3}
@@ -278,10 +283,10 @@ export default function ArtifactClientView({
                     onClick={() => setCurrentStep(6)}
                     icon={<Target size={18} />}
                     disabled={artifact.materials_state !== 'PHASE3_APPROVED'}
-                    done={artifact.production_complete}
+                    done={localProductionComplete}
                 />
 
-                <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${publicationRequest ? 'bg-[#1F5AF6]' : 'bg-gray-200 dark:bg-[#2D333B]'}`} />
+                <div className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${(localProductionComplete || publicationRequest) ? 'bg-[#1F5AF6]' : 'bg-gray-200 dark:bg-[#2D333B]'}`} />
 
                 <StepItem
                     step={7}
@@ -289,7 +294,7 @@ export default function ArtifactClientView({
                     active={currentStep === 7}
                     onClick={() => setCurrentStep(7)}
                     icon={<Target size={18} />} // Can change icon if needed, maybe Send or Globe
-                    disabled={!artifact.production_complete && artifact.materials_state !== 'PHASE3_APPROVED'}
+                    disabled={!localProductionComplete}
                     done={publicationRequest?.status === 'SENT' || publicationRequest?.status === 'APPROVED'}
                 />
             </div>
@@ -571,7 +576,11 @@ export default function ArtifactClientView({
                 </div>
             ) : currentStep === 6 ? (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                    <VisualProductionContainer artifactId={artifact.id} productionComplete={artifact.production_complete} />
+                    <VisualProductionContainer 
+                        artifactId={artifact.id} 
+                        productionComplete={artifact.production_complete} 
+                        onStatusChange={setLocalProductionComplete} 
+                    />
                 </div>
             ) : currentStep === 7 ? (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-300">

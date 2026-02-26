@@ -1,6 +1,7 @@
 
 import { useState, useEffect } from 'react';
-import { Esp02Route, TemarioEsp02, Esp02StepState } from '../../types/syllabus.types';
+import { useRouter } from 'next/navigation';
+import { Esp02Route, TemarioEsp02, Esp02StepState } from '../types/syllabus.types';
 import { syllabusService } from '@/domains/syllabus/services/syllabus.service';
 import { SyllabusRouteSelector } from './SyllabusRouteSelector';
 import { SyllabusViewer } from './SyllabusViewer';
@@ -16,6 +17,7 @@ interface SyllabusGenerationContainerProps {
 type TabMode = 'GENERATE' | 'IMPORT';
 
 export function SyllabusGenerationContainer({ artifactId, initialObjetivos, initialIdeaCentral, onNext }: SyllabusGenerationContainerProps) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabMode>('GENERATE');
   const [route, setRoute] = useState<Esp02Route | null>('B_NO_SOURCE'); // Default a IA
   const [status, setStatus] = useState<Esp02StepState>('STEP_DRAFT');
@@ -364,6 +366,7 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
                                         await syllabusService.updateStatus(artifactId, 'STEP_APPROVED', reviewNotes);
                                         // Aquí deberíamos notificar al padre o refrescar status, pero por simplicidad actualizamos local
                                         setStatus('STEP_APPROVED');
+                                        router.refresh();
                                     } catch(e) { console.error(e); }
                                 }}
                                 className="flex-1 bg-[#00D4B3]/10 hover:bg-[#00D4B3]/20 text-[#00D4B3] border border-[#00D4B3]/20 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
@@ -376,6 +379,7 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
                                      try {
                                         await syllabusService.updateStatus(artifactId, 'STEP_REJECTED', reviewNotes);
                                         setStatus('STEP_REJECTED');
+                                        router.refresh();
                                      } catch(e) { console.error(e); }
                                 }}
                                 className="flex-1 bg-[#EF4444]/10 hover:bg-[#EF4444]/20 text-[#EF4444] border border-[#EF4444]/20 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2"

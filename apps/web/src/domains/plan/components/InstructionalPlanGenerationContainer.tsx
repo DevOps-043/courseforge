@@ -1,5 +1,6 @@
 
 import { useRef, useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { BookOpen, Sparkles, Settings2, Play, CheckCircle2, ChevronDown, ChevronRight, LayoutList, MessageSquare, Book, FileText, Video as VideoIcon, BrainCircuit, RefreshCw, Clock, Target, CheckSquare, Layers, Info, AlertCircle, Edit3, Check, X, Trash2, Plus } from 'lucide-react';
 import { InstructionalPlanValidationResult } from './InstructionalPlanValidationResult';
 import { createClient } from '@supabase/supabase-js';
@@ -132,6 +133,7 @@ const COMPONENT_TYPES = [
 ];
 
 export function InstructionalPlanGenerationContainer({ artifactId, onNext }: InstructionalPlanGenerationContainerProps) {
+    const router = useRouter();
     const [isGenerating, setIsGenerating] = useState(false);
     const [isValidating, setIsValidating] = useState(false); // New state
     const [existingPlan, setExistingPlan] = useState<any>(null);
@@ -708,6 +710,7 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                         const { updateInstructionalPlanStatusAction } = await import('../../../app/admin/artifacts/actions');
                                         await updateInstructionalPlanStatusAction(artifactId, 'STEP_APPROVED', reviewNotes);
                                         setExistingPlan({ ...existingPlan, state: 'STEP_APPROVED' });
+                                        router.refresh();
                                         if (onNext) onNext();
                                     }}
                                     disabled={!existingPlan.validation || isValidating}
@@ -726,6 +729,7 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                         const { updateInstructionalPlanStatusAction } = await import('../../../app/admin/artifacts/actions');
                                         await updateInstructionalPlanStatusAction(artifactId, 'STEP_REJECTED', reviewNotes);
                                         setExistingPlan({ ...existingPlan, state: 'STEP_REJECTED' });
+                                        router.refresh();
                                     }}
                                     disabled={!existingPlan.validation || isValidating}
                                     className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2
