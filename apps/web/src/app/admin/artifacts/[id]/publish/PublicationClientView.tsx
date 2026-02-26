@@ -217,7 +217,7 @@ export default function PublicationClientView({
 
             // Then trigger publish via API Route instead of Server Action
             // This ensures process.env is read correctly in Netlify Edge/Node Runtime
-            const response = await fetch('/api/publish', {
+            const response = await fetch('/api/trigger-publish', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
