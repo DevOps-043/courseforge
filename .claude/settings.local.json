@@ -8,7 +8,8 @@
       "Bash(npx supabase:*)",
       "Bash(npx ts-node:*)",
       "Bash(npx tsx:*)",
-      "Bash(powershell -Command \"Get-Content ''c:\\\\Users\\\\fysg5\\\\OneDrive\\\\Escritorio\\\\Trabajo\\\\Courseforge\\\\courseforge\\\\supabase\\\\data\\\\curation_rows_rows.csv'' | Select-String -Pattern ''OK|PENDING|FAILED|NOT_FOUND|FORBIDDEN'' | Select-Object -First 5\")"
+      "Bash(powershell -Command \"Get-Content ''c:\\\\Users\\\\fysg5\\\\OneDrive\\\\Escritorio\\\\Trabajo\\\\Courseforge\\\\courseforge\\\\supabase\\\\data\\\\curation_rows_rows.csv'' | Select-String -Pattern ''OK|PENDING|FAILED|NOT_FOUND|FORBIDDEN'' | Select-Object -First 5\")",
+      "Bash(ls \"c:\\\\Users\\\\Lordg\\\\Desktop\\\\Pulse Hub\\\\SofLIA - CourseGen\\\\courseforge\\\\netlify\\\\functions\"\" 2>/dev/null && echo \"---\" && ls \"c:UsersLordgDesktopPulse HubSofLIA - CourseGencourseforgenetlify\"\")"
     ]
   }
 }
