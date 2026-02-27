@@ -6,7 +6,7 @@ import { Loader2, Save, Send, AlertTriangle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { CourseDataForm } from './components/CourseDataForm';
 import { VideoMappingList, LessonVideoData } from './components/VideoMappingList';
-import { savePublicationDraft, fetchVideoMetadata } from './actions';
+import { fetchVideoMetadata } from './actions';
 import { ConfirmationModal } from '@/shared/components/ConfirmationModal';
 
 interface PublicationClientViewProps {
@@ -184,11 +184,12 @@ export default function PublicationClientView({
     const handleSaveDraft = async () => {
         setIsSaving(true);
         try {
-            const result = await savePublicationDraft(artifactId, {
-                ...courseData,
-                lesson_videos: videoMappings,
-                status: 'DRAFT'
+            const response = await fetch('/api/save-draft', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ artifactId, data: { ...courseData, lesson_videos: videoMappings, status: 'DRAFT' } })
             });
+            const result = await response.json();
 
             if (result.success) {
                 toast.success("Borrador guardado correctamente");
@@ -209,11 +210,13 @@ export default function PublicationClientView({
         setIsPublishing(true);
         try {
             // First save current state
-            await savePublicationDraft(artifactId, {
-                ...courseData,
-                lesson_videos: videoMappings,
-                status: 'READY'
+            const saveResponse = await fetch('/api/save-draft', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ artifactId, data: { ...courseData, lesson_videos: videoMappings, status: 'READY' } })
             });
+            const saveResult = await saveResponse.json();
+            if (!saveResult.success) throw new Error(saveResult.error || 'Error al guardar borrador');
 
             // Then trigger publish via API Route instead of Server Action
             // This ensures process.env is read correctly in Netlify Edge/Node Runtime
