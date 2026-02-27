@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { SyllabusModule } from '../../types/syllabus.types';
-
+import { SyllabusModule, SyllabusLesson } from '../types/syllabus.types';
 interface SyllabusViewerProps {
   modules: SyllabusModule[];
   validation?: {
@@ -58,6 +57,48 @@ export function SyllabusViewer({ modules, validation, metadata, onSave, isEditab
       setEditedModules(updated);
   };
 
+  const handleDeleteModule = async (idx: number) => {
+      if (confirm('¿Estás seguro de que deseas eliminar este módulo?')) {
+          const newModules = modules.filter((_, i: number) => i !== idx);
+          if (onSave) {
+              await onSave(newModules);
+          }
+      }
+  };
+
+  const handleAddModule = async () => {
+      const newModule: SyllabusModule = {
+          objective_general_ref: "",
+          title: "Nuevo Módulo",
+          lessons: [
+              {
+                  title: "Nueva Lección",
+                  objective_specific: "",
+                  estimated_minutes: 30
+              }
+          ]
+      };
+      const newModules = [...modules, newModule];
+      if (onSave) {
+          await onSave(newModules);
+      }
+  };
+
+  const handleAddLesson = (mIdx: number) => {
+      const updated = [...editedModules];
+      updated[mIdx].lessons.push({
+          title: "Nueva Lección",
+          objective_specific: "",
+          estimated_minutes: 30
+      });
+      setEditedModules(updated);
+  };
+
+  const handleDeleteLesson = (mIdx: number, lIdx: number) => {
+      const updated = [...editedModules];
+      updated[mIdx].lessons = updated[mIdx].lessons.filter((_, i: number) => i !== lIdx);
+      setEditedModules(updated);
+  };
 
   const toggleModule = (index: number) => {
     if (editingModuleIdx !== null) return; // Disable toggle while editing
@@ -261,16 +302,29 @@ export function SyllabusViewer({ modules, validation, metadata, onSave, isEditab
                 
                 <div className="flex items-center gap-3 pl-4">
                     {!isEditing && isEditable && (
-                        <button 
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleStartEdit(index);
-                            }} 
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 rounded-lg text-gray-500 dark:text-gray-400 hover:text-[#00D4B3] transition-colors border border-gray-200 dark:border-white/5 hover:border-[#00D4B3]/30 text-xs font-medium"
-                        >
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                            <span>Editar</span>
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleStartEdit(index);
+                                }} 
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 rounded-lg text-gray-500 dark:text-gray-400 hover:text-[#00D4B3] transition-colors border border-gray-200 dark:border-white/5 hover:border-[#00D4B3]/30 text-xs font-medium"
+                            >
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                <span>Editar</span>
+                            </button>
+                            <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteModule(index);
+                                }} 
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 rounded-lg text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 transition-colors border border-red-200 dark:border-red-500/20 hover:border-red-300 dark:hover:border-red-500/30 text-xs font-medium"
+                                title="Eliminar Módulo"
+                            >
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                <span className="hidden sm:inline">Eliminar</span>
+                            </button>
+                        </div>
                     )}
                     
                     {isEditing ? (
@@ -308,13 +362,24 @@ export function SyllabusViewer({ modules, validation, metadata, onSave, isEditab
                             
                             <div className="flex-grow min-w-0 space-y-2">
                                 {isEditing ? (
-                                    <div className="space-y-3">
-                                        <input 
-                                            className="w-full bg-white dark:bg-[#0F1419] border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-base font-medium text-gray-900 dark:text-white focus:outline-none focus:border-[#00D4B3] transition-all focus:bg-white dark:focus:bg-[#151A21] placeholder-gray-400 dark:placeholder-gray-600"
-                                            value={lesson.title}
-                                            onChange={(e) => updateLesson(index, lIndex, 'title', e.target.value)}
-                                            placeholder="Título de la lección"
-                                        />
+                                    <div className="space-y-3 relative">
+                                        <div className="flex justify-between items-start gap-4">
+                                            <input 
+                                                className="w-full bg-white dark:bg-[#0F1419] border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-base font-medium text-gray-900 dark:text-white focus:outline-none focus:border-[#00D4B3] transition-all focus:bg-white dark:focus:bg-[#151A21] placeholder-gray-400 dark:placeholder-gray-600"
+                                                value={lesson.title}
+                                                onChange={(e) => updateLesson(index, lIndex, 'title', e.target.value)}
+                                                placeholder="Título de la lección"
+                                            />
+                                            {displayModule.lessons.length > 1 && (
+                                                <button 
+                                                    onClick={() => handleDeleteLesson(index, lIndex)}
+                                                    className="shrink-0 p-3 mt-0.5 text-red-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-colors border border-transparent hover:border-red-100 dark:hover:border-red-500/20"
+                                                    title="Eliminar lección"
+                                                >
+                                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                </button>
+                                            )}
+                                        </div>
                                         <textarea
                                             className="w-full bg-white dark:bg-[#0F1419] border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:border-[#00D4B3] min-h-[80px] transition-all focus:bg-white dark:focus:bg-[#151A21] resize-none placeholder-gray-400 dark:placeholder-gray-600"
                                             value={lesson.objective_specific}
@@ -363,12 +428,34 @@ export function SyllabusViewer({ modules, validation, metadata, onSave, isEditab
                         </div>
                     </div>
                     ))}
+                    {isEditing && (
+                        <div className="p-4 border-t border-gray-200/50 dark:border-white/5">
+                            <button
+                                onClick={() => handleAddLesson(index)}
+                                className="w-full py-3 flex items-center justify-center gap-2 border-2 border-dashed border-[#00D4B3]/30 hover:border-[#00D4B3] rounded-xl text-[#00D4B3] hover:bg-[#00D4B3]/5 transition-colors text-sm font-semibold"
+                            >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                <span>Añadir Lección</span>
+                            </button>
+                        </div>
+                    )}
                 </div>
                 </div>
             )}
             </div>
         );
       })}
+      {isEditable && editingModuleIdx === null && (
+          <div className="flex justify-center mt-6">
+              <button 
+                  onClick={handleAddModule}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 border border-dashed border-gray-300 dark:border-white/20 rounded-xl text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors text-sm font-medium shadow-sm hover:shadow"
+              >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                  <span>Añadir Módulo</span>
+              </button>
+          </div>
+      )}
       </div>
       </>
       )}

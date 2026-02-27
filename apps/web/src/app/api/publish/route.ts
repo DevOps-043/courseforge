@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPublicationData } from '@/app/admin/artifacts/[id]/publish/actions';
 import { createClient } from '@/utils/supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
 export async function POST(request: Request) {
     try {
@@ -14,16 +15,16 @@ export async function POST(request: Request) {
         console.log(`[API /publish] Starting publication for artifact: ${artifactId}`);
 
         // 1. Validate Config
-        const API_URL = process.env.SOFLIA_API_URL;
-        const API_KEY = process.env.SOFLIA_API_KEY;
+        const INBOX_URL = process.env.SOFLIA_INBOX_SUPABASE_URL;
+        const INBOX_KEY = process.env.SOFLIA_INBOX_SUPABASE_KEY;
 
-        if (!API_URL || !API_KEY) {
+        if (!INBOX_URL || !INBOX_KEY) {
             console.error(`[API /publish] CRITICAL ERR - Faltan variables de entorno.`);
             return NextResponse.json({
-                error: "Configuración incompleta: Faltan variables de entorno SOFLIA_API_URL o SOFLIA_API_KEY",
+                error: "Configuración incompleta: Faltan variables de entorno SOFLIA_INBOX_SUPABASE_URL o SOFLIA_INBOX_SUPABASE_KEY",
                 debug: {
-                    hasUrl: !!API_URL,
-                    hasKey: !!API_KEY
+                    hasUrl: !!INBOX_URL,
+                    hasKey: !!INBOX_KEY
                 }
             }, { status: 500 });
         }
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
         // 3. Payload Construction
         const outPayload = {
             source: {
-                platform: 'courseforge',
+                platform: 'courseengine',
                 version: '1.0',
                 artifact_id: artifactId
             },
@@ -202,30 +203,29 @@ export async function POST(request: Request) {
             outPayload.modules.push(moduleObj);
         }
 
-        // 4. Send to Soflia
-        const baseUrl = API_URL.replace(/\/$/, '');
-        const targetUrl = `${baseUrl}/api/courses/import`;
+        // 4. Deposit in SofLIA inbox (direct DB write, no HTTP)
+        console.log(`[API /publish] Depositando en buzón de SofLIA (slug: ${pubRequest.slug})`);
 
-        console.log(`[API /publish] Sending to Soflia: ${targetUrl}`);
+        const sofliaSupabase = createSupabaseClient(INBOX_URL, INBOX_KEY);
+        const { error: inboxError } = await sofliaSupabase
+            .from('courseengine_inbox')
+            .upsert(
+                {
+                    course_slug:   pubRequest.slug,
+                    payload:       outPayload,
+                    status:        'pending',
+                    error_message: null,
+                    updated_at:    new Date().toISOString()
+                },
+                { onConflict: 'course_slug' }
+            );
 
-        const response = await fetch(targetUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': API_KEY || ''
-            },
-            body: JSON.stringify(outPayload),
-            signal: AbortSignal.timeout(60000)
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`[API /publish] Soflia Error (${response.status}):`, errorText);
-            return NextResponse.json({ error: `Error remoto (${response.status}): ${errorText.substring(0, 500)}` }, { status: response.status });
+        if (inboxError) {
+            console.error('[API /publish] Error depositando en buzón:', inboxError);
+            throw new Error(`Error depositando en buzón de SofLIA: ${inboxError.message}`);
         }
 
-        const result = await response.json();
-        console.log('[API /publish] Success:', result);
+        console.log('[API /publish] Depositado en buzón correctamente.');
 
         // 5. Update Status locally
         const supabase = await createClient();
@@ -241,7 +241,7 @@ export async function POST(request: Request) {
             console.error('[API /publish] Error updating local status:', updateError);
         }
 
-        return NextResponse.json({ success: true, data: result });
+        return NextResponse.json({ success: true, message: 'Curso depositado en buzón de SofLIA. Será procesado en los próximos 5 minutos.' });
 
     } catch (error: any) {
         console.error('[API /publish] Route Error:', error);
