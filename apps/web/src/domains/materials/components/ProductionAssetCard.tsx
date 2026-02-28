@@ -4,7 +4,8 @@ import { useState, useRef } from 'react';
 import {
     Video, FileText, MonitorPlay, Copy, ExternalLink,
     Sparkles, Save, CheckCircle, Loader2, Play,
-    CheckCircle2, Circle, AlertCircle, Eye, X, Maximize2, Wand2, Upload
+    CheckCircle2, Circle, AlertCircle, Eye, X, Maximize2, Wand2, Upload,
+    Link as LinkIcon, AlertTriangle
 } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 import { toast } from 'sonner';
@@ -30,6 +31,11 @@ export function ProductionAssetCard({
     const [showPreview, setShowPreview] = useState(false);
     const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const [urlError, setUrlError] = useState<string | null>(null);
+    // Track whether the final video URL came from upload or manual link
+    const [finalVideoSource, setFinalVideoSource] = useState<'upload' | 'link' | null>(
+        component.assets?.final_video_source || (component.assets?.final_video_url ? 'link' : null)
+    );
     // Local state for inputs
     const [slidesUrl, setSlidesUrl] = useState(component.assets?.slides_url || '');
     const [videoUrl, setVideoUrl] = useState(component.assets?.video_url || '');
@@ -38,6 +44,12 @@ export function ProductionAssetCard({
     const [finalVideoUrl, setFinalVideoUrl] = useState(component.assets?.final_video_url || '');
 
     const fileRef = useRef<HTMLInputElement>(null);
+
+    // URL validation helper
+    const isValidUrl = (url: string): boolean => {
+        if (!url) return true; // empty is fine
+        return url.startsWith('https://') || url.startsWith('http://');
+    };
 
     const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -57,18 +69,20 @@ export function ProductionAssetCard({
             const fileName = `${component.id}-${Date.now()}.${fileExt}`;
             const filePath = `${fileName}`;
 
-            // Upload to 'videos' bucket
+            // Upload to 'production-videos' bucket
             const { error: uploadError } = await supabase.storage
-                .from('videos')
+                .from('production-videos')
                 .upload(filePath, file);
 
             if (uploadError) throw uploadError;
 
             const { data: { publicUrl } } = supabase.storage
-                .from('videos')
+                .from('production-videos')
                 .getPublicUrl(filePath);
 
             updateAsset('final_video_url', publicUrl, setFinalVideoUrl);
+            setFinalVideoSource('upload');
+            setUrlError(null);
             toast.success("Video subido correctamente");
         } catch (error: any) {
             console.error('Upload error:', error);
@@ -116,6 +130,13 @@ export function ProductionAssetCard({
     };
 
     const handleSave = async () => {
+        // Validate final video URL before saving
+        if (finalVideoUrl && !isValidUrl(finalVideoUrl)) {
+            setUrlError('La URL debe comenzar con https:// o http://');
+            toast.error('URL del video final no es válida');
+            return;
+        }
+
         setIsSaving(true);
         try {
             const assets: any = {};
@@ -124,6 +145,8 @@ export function ProductionAssetCard({
             if (screencastUrl) assets.screencast_url = screencastUrl;
             if (bRollPrompts) assets.b_roll_prompts = bRollPrompts;
             if (finalVideoUrl) assets.final_video_url = finalVideoUrl;
+            // Track the source of the final video
+            if (finalVideoSource) assets.final_video_source = finalVideoSource;
 
             await onSaveAssets(component.id, assets);
         } catch (e) {
@@ -608,21 +631,55 @@ CONTENIDO
                                 {finalVideoUrl && (
                                     <span className="ml-auto flex items-center gap-1 text-green-400 text-xs">
                                         <CheckCircle2 size={12} /> Completado
+                                        {finalVideoSource === 'upload' && ' (subido)'}
+                                        {finalVideoSource === 'link' && ' (enlace)'}
                                     </span>
                                 )}
                             </h4>
 
+                            {/* Method selector hint */}
+                            {!finalVideoUrl && (
+                                <p className="text-[10px] text-[#6C757D]">
+                                    Pega un enlace <strong>o</strong> sube un archivo de video. Solo se permite una opción.
+                                </p>
+                            )}
+
                             <div className="relative">
                                 <input
                                     type="text"
-                                    placeholder="URL del video final (después de edición)..."
+                                    placeholder="https://... URL del video final"
                                     value={finalVideoUrl}
-                                    onChange={(e) => updateAsset('final_video_url', e.target.value, setFinalVideoUrl)}
-                                    className={`w-full bg-[#0F1419] border rounded-lg p-2.5 pr-24 text-white text-xs focus:outline-none transition-colors ${finalVideoUrl
-                                        ? 'border-green-500/30 focus:border-green-500'
-                                        : 'border-[#6C757D]/20 focus:border-[#1F5AF6]'
-                                        }`}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        updateAsset('final_video_url', val, setFinalVideoUrl);
+                                        setFinalVideoSource(val ? 'link' : null);
+                                        // Clear error when user edits
+                                        if (urlError) setUrlError(null);
+                                    }}
+                                    disabled={finalVideoSource === 'upload'}
+                                    className={`w-full bg-[#0F1419] border rounded-lg p-2.5 pr-24 text-white text-xs focus:outline-none transition-colors ${
+                                        urlError
+                                            ? 'border-red-500/50 focus:border-red-500'
+                                            : finalVideoUrl
+                                                ? 'border-green-500/30 focus:border-green-500'
+                                                : 'border-[#6C757D]/20 focus:border-[#1F5AF6]'
+                                    } ${finalVideoSource === 'upload' ? 'opacity-70 cursor-not-allowed' : ''}`}
                                 />
+
+                                {/* Clear button when there's a value */}
+                                {finalVideoUrl && (
+                                    <button
+                                        onClick={() => {
+                                            updateAsset('final_video_url', '', setFinalVideoUrl);
+                                            setFinalVideoSource(null);
+                                            setUrlError(null);
+                                        }}
+                                        className="absolute right-20 top-1 bottom-1 px-2 text-[#6C757D] hover:text-red-400 rounded-md transition-colors flex items-center"
+                                        title="Limpiar URL"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                )}
 
                                 <input
                                     type="file"
@@ -633,18 +690,29 @@ CONTENIDO
                                 />
                                 <button
                                     onClick={() => fileRef.current?.click()}
-                                    disabled={isUploading || isSaving}
-                                    className="absolute right-1 top-1 bottom-1 px-3 bg-[#1F5AF6]/10 hover:bg-[#1F5AF6]/20 text-[#1F5AF6] rounded-md transition-colors disabled:opacity-50 text-xs font-medium flex items-center gap-2"
-                                    title="Subir video local"
+                                    disabled={isUploading || isSaving || (finalVideoSource === 'link' && !!finalVideoUrl)}
+                                    className={`absolute right-1 top-1 bottom-1 px-3 rounded-md transition-colors text-xs font-medium flex items-center gap-2 ${
+                                        finalVideoSource === 'link' && finalVideoUrl
+                                            ? 'bg-[#6C757D]/10 text-[#6C757D]/50 cursor-not-allowed'
+                                            : 'bg-[#1F5AF6]/10 hover:bg-[#1F5AF6]/20 text-[#1F5AF6] disabled:opacity-50'
+                                    }`}
+                                    title={finalVideoSource === 'link' && finalVideoUrl ? 'Limpia el enlace primero para subir' : 'Subir video local'}
                                 >
                                     {isUploading ? <Loader2 className="animate-spin" size={14} /> : <Upload size={14} />}
                                     <span className="hidden sm:inline">{isUploading ? '...' : 'Subir'}</span>
                                 </button>
                             </div>
 
+                            {/* Validation error */}
+                            {urlError && (
+                                <p className="text-[10px] text-red-400 flex items-center gap-1">
+                                    <AlertTriangle size={10} /> {urlError}
+                                </p>
+                            )}
+
                             {isUploading && <p className="text-[10px] text-[#1F5AF6] animate-pulse">Subiendo video... Por favor no cierres esta página.</p>}
 
-                            {finalVideoUrl && (
+                            {finalVideoUrl && isValidUrl(finalVideoUrl) && (
                                 <a
                                     href={finalVideoUrl}
                                     target="_blank"

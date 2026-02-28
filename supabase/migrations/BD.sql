@@ -18,6 +18,7 @@ CREATE TABLE public.artifacts (
   created_by uuid,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  production_complete boolean DEFAULT false,
   CONSTRAINT artifacts_pkey PRIMARY KEY (id),
   CONSTRAINT artifacts_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id)
 );
@@ -208,6 +209,54 @@ CREATE TABLE public.publication_requests (
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT publication_requests_pkey PRIMARY KEY (id),
   CONSTRAINT publication_requests_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id)
+);
+CREATE TABLE public.scorm_imports (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  artifact_id uuid,
+  original_filename text NOT NULL,
+  storage_path text NOT NULL,
+  scorm_version text,
+  manifest_raw jsonb,
+  organizations jsonb,
+  resources jsonb,
+  sco_count integer DEFAULT 0,
+  status text DEFAULT 'UPLOADED'::text,
+  processing_step text,
+  error_message text,
+  content_analysis jsonb DEFAULT '{}'::jsonb,
+  detected_components jsonb DEFAULT '[]'::jsonb,
+  gaps_detected jsonb DEFAULT '[]'::jsonb,
+  enrichment_plan jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone DEFAULT now(),
+  completed_at timestamp with time zone,
+  created_by uuid,
+  CONSTRAINT scorm_imports_pkey PRIMARY KEY (id),
+  CONSTRAINT scorm_imports_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id),
+  CONSTRAINT scorm_imports_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id)
+);
+CREATE TABLE public.scorm_resources (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  scorm_import_id uuid,
+  resource_identifier text NOT NULL,
+  scorm_type text,
+  href text,
+  files jsonb DEFAULT '[]'::jsonb,
+  extracted_path text,
+  content_type text,
+  raw_html text,
+  clean_text text,
+  word_count integer DEFAULT 0,
+  images jsonb DEFAULT '[]'::jsonb,
+  videos jsonb DEFAULT '[]'::jsonb,
+  documents jsonb DEFAULT '[]'::jsonb,
+  has_quiz boolean DEFAULT false,
+  quiz_raw jsonb,
+  quiz_transformed jsonb,
+  mapped_to_lesson_id text,
+  material_component_id uuid,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT scorm_resources_pkey PRIMARY KEY (id),
+  CONSTRAINT scorm_resources_scorm_import_id_fkey FOREIGN KEY (scorm_import_id) REFERENCES public.scorm_imports(id)
 );
 CREATE TABLE public.syllabus (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
