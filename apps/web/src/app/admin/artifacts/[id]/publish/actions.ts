@@ -43,12 +43,14 @@ export async function getPublicationData(artifactId: string) {
                 )
             `)
             .eq('materials_id', materials.id)
-            .order('lesson_id');
+            .order('module_id', { ascending: true })
+            .order('lesson_id', { ascending: true });
 
         if (rawLessons) {
             lessons = rawLessons.map((l: any) => {
                 // Try to find a video URL in components
                 let videoUrl = '';
+                let videoDuration = 0;
                 if (l.material_components && Array.isArray(l.material_components)) {
                     // Prioritize final_video_url, then video_url
                     const videoComp = l.material_components.find((c: any) =>
@@ -56,6 +58,7 @@ export async function getPublicationData(artifactId: string) {
                     );
                     if (videoComp) {
                         videoUrl = videoComp.assets.final_video_url || videoComp.assets.video_url;
+                        videoDuration = videoComp.assets.video_duration || 0;
                     }
                 }
 
@@ -64,40 +67,12 @@ export async function getPublicationData(artifactId: string) {
                     title: l.lesson_title,
                     module_title: l.module_title,
                     auto_video_url: videoUrl,
+                    auto_duration: videoDuration,
                     summary: l.oa_text,
                     components: l.material_components || []
                 };
             });
-
-            // --- SORTING LOGIC (UI & Export) ---
-            const naturalSort = (a: string, b: string) => {
-                return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-            };
-
-            const moduleMap = new Map<string, any[]>();
-            lessons.forEach(l => {
-                // Determine module title
-                const modTitle = l.module_title || '';
-                // Note: If module_title is missing, it might be empty string or null. 
-                // We group by it anyway.
-                if (!moduleMap.has(modTitle)) {
-                    moduleMap.set(modTitle, []);
-                }
-                moduleMap.get(modTitle)?.push(l);
-            });
-
-            // Sort keys (Modules)
-            const sortedKeys = Array.from(moduleMap.keys()).sort(naturalSort);
-
-            const sortedLessons: any[] = [];
-            for (const key of sortedKeys) {
-                const modLessons = moduleMap.get(key) || [];
-                // Sort lessons within module
-                modLessons.sort((a, b) => naturalSort(a.title || '', b.title || ''));
-                sortedLessons.push(...modLessons);
-            }
-            lessons = sortedLessons;
-            // -----------------------------------
+            // No sorting needed here, backend provides pre-sorted by module_id and lesson_id.
         }
     }
 

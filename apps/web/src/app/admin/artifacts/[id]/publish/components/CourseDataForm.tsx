@@ -17,6 +17,16 @@ interface CourseDataFormProps {
     onDataChange: (data: any) => void;
 }
 
+const formatThumbnailUrl = (url?: string) => {
+    if (!url) return '';
+    const driveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (driveMatch && driveMatch[1]) {
+        // Thumbnail endpoint works better for previews and bypassing HTML blocks
+        return `https://drive.google.com/thumbnail?id=${driveMatch[1]}`;
+    }
+    return url;
+};
+
 export function CourseDataForm({ initialData, onDataChange }: CourseDataFormProps) {
     const [formData, setFormData] = useState({
         category: initialData?.category || 'ia',
@@ -24,7 +34,7 @@ export function CourseDataForm({ initialData, onDataChange }: CourseDataFormProp
         instructor_email: initialData?.instructor_email || '',
         slug: initialData?.slug || '',
         price: initialData?.price || 0,
-        thumbnail_url: initialData?.thumbnail_url || '',
+        thumbnail_url: formatThumbnailUrl(initialData?.thumbnail_url) || '',
     });
 
     const [isUploading, setIsUploading] = useState(false);
@@ -68,7 +78,14 @@ export function CourseDataForm({ initialData, onDataChange }: CourseDataFormProp
     };
 
     const handleChange = (field: string, value: any) => {
-        const newData = { ...formData, [field]: value };
+        let finalValue = value;
+        
+        // Fix for Google Drive view links to display as image correctly
+        if (field === 'thumbnail_url' && typeof finalValue === 'string') {
+            finalValue = formatThumbnailUrl(finalValue);
+        }
+
+        const newData = { ...formData, [field]: finalValue };
         setFormData(newData);
         onDataChange(newData);
     };

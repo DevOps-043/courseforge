@@ -36,6 +36,10 @@ export default function ArtifactClientView({
         if (artifact.materials_state === 'PHASE3_APPROVED') return 6;
 
         const curationApproved = artifact.curation_state === 'PHASE2_APPROVED';
+        
+        // Progress to production if materials are not in DRAFT state and not null, allowing progressive production
+        if (curationApproved && artifact.materials_state && artifact.materials_state !== 'PHASE3_DRAFT') return 6;
+
         if (curationApproved) return 5;
 
         if (artifact.plan_state === 'STEP_APPROVED') return 4;
@@ -282,7 +286,7 @@ export default function ArtifactClientView({
                     active={currentStep === 6}
                     onClick={() => setCurrentStep(6)}
                     icon={<Target size={18} />}
-                    disabled={artifact.materials_state !== 'PHASE3_APPROVED'}
+                    disabled={!curationApproved}
                     done={localProductionComplete}
                 />
 

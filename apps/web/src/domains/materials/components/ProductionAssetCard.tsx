@@ -10,6 +10,7 @@ import {
 import { createClient } from '@/utils/supabase/client';
 import { toast } from 'sonner';
 import { MaterialComponent, ProductionStatus } from '../types/materials.types';
+import { fetchVideoMetadata } from '@/app/admin/artifacts/[id]/publish/actions';
 
 interface ProductionAssetCardProps {
     component: MaterialComponent;
@@ -147,6 +148,47 @@ export function ProductionAssetCard({
             if (finalVideoUrl) assets.final_video_url = finalVideoUrl;
             // Track the source of the final video
             if (finalVideoSource) assets.final_video_source = finalVideoSource;
+
+            // Attempt to sync video duration here
+            if (finalVideoUrl) {
+                try {
+                    let provider: 'youtube' | 'vimeo' | 'direct' = 'direct';
+                    let videoId = finalVideoUrl;
+
+                    const ytMatch = finalVideoUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
+                    const vimeoMatch = finalVideoUrl.match(/vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/(?:[^\/]*)\/videos\/|album\/(?:\d+)\/video\/|video\/|)(\d+)/);
+
+                    if (ytMatch) { provider = 'youtube'; videoId = ytMatch[1]; }
+                    else if (vimeoMatch) { provider = 'vimeo'; videoId = vimeoMatch[1]; }
+
+                    let duration = 0;
+                    if (provider === 'direct') {
+                        duration = await new Promise<number>((resolve) => {
+                            const video = document.createElement('video');
+                            video.preload = 'metadata';
+                            video.onloadedmetadata = () => {
+                                const durationRaw = video.duration;
+                                if (!isNaN(durationRaw) && durationRaw > 0) {
+                                    resolve(Math.round(durationRaw));
+                                } else {
+                                    resolve(0);
+                                }
+                            };
+                            video.onerror = () => resolve(0);
+                            video.src = videoId;
+                        });
+                    } else {
+                        const metadata = await fetchVideoMetadata(finalVideoUrl);
+                        duration = metadata.duration || 0;
+                    }
+                    
+                    if (duration > 0) {
+                        assets.video_duration = duration;
+                    }
+                } catch (durationError) {
+                    console.error('Error auto-detecting duration:', durationError);
+                }
+            }
 
             await onSaveAssets(component.id, assets);
         } catch (e) {

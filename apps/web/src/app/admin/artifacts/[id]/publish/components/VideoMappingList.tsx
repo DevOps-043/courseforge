@@ -5,6 +5,44 @@ import { Video, Youtube, Link as LinkIcon, AlertCircle, Clock, Loader2, RefreshC
 import { fetchVideoMetadata } from '../actions';
 import { toast } from 'sonner';
 
+// Helper function to sync duration supporting both client-side MP4 and server-side YT/Vimeo
+export async function syncVideoDuration(provider: 'youtube' | 'vimeo' | 'direct', videoId: string): Promise<number> {
+    if (!videoId) return 0;
+
+    if (provider === 'direct') {
+        return new Promise((resolve, reject) => {
+            const video = document.createElement('video');
+            video.preload = 'metadata';
+            
+            video.onloadedmetadata = () => {
+                const durationRaw = video.duration;
+                if (!isNaN(durationRaw) && durationRaw > 0) {
+                    resolve(Math.round(durationRaw));
+                } else {
+                    reject(new Error("No se pudo leer la duración del archivo."));
+                }
+            };
+            
+            video.onerror = () => {
+                reject(new Error("No se pudo obtener la duración del MP4. Verifica el enlace y bloqueadores (CORS)."));
+            };
+            
+            video.src = videoId;
+        });
+    }
+
+    // Server-side extraction for YouTube/Vimeo
+    let url = videoId;
+    if (provider === 'youtube' && !url.includes('http')) {
+        url = `https://www.youtube.com/watch?v=${videoId}`;
+    } else if (provider === 'vimeo' && !url.includes('http')) {
+        url = `https://vimeo.com/${videoId}`;
+    }
+
+    const metadata = await fetchVideoMetadata(url);
+    return metadata.duration || 0;
+}
+
 export interface LessonVideoData {
     lesson_id: string;
     lesson_title: string;
@@ -86,26 +124,18 @@ export function VideoMappingList({ lessons, mappings, onMappingChange }: VideoMa
         if (!mapping || !mapping.video_id) return;
 
         setSyncingId(lessonId);
+
         try {
-            let url = mapping.video_id;
-            // Construct full URL if it's just an ID
-            if (mapping.video_provider === 'youtube' && !url.includes('http')) {
-                url = `https://www.youtube.com/watch?v=${mapping.video_id}`;
-            } else if (mapping.video_provider === 'vimeo' && !url.includes('http')) {
-                url = `https://vimeo.com/${mapping.video_id}`;
-            }
-
-            const metadata = await fetchVideoMetadata(url);
-
-            if (metadata.duration > 0) {
-                handleUpdate(lessonId, 'duration', metadata.duration);
-                toast.success(`Duración actualizada: ${formatDuration(metadata.duration)}`);
+            const durationSec = await syncVideoDuration(mapping.video_provider, mapping.video_id);
+            if (durationSec > 0) {
+                handleUpdate(lessonId, 'duration', durationSec);
+                toast.success(`Duración actualizada: ${formatDuration(durationSec)}`);
             } else {
-                toast.error("No se pudo obtener la duración. Verifica que el video sea público.");
+                toast.error("No se pudo obtener la duración. Verifica que el video sea válido y público.");
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            toast.error("Error al sincronizar duración.");
+            toast.error(error.message || "Error al sincronizar duración.");
         } finally {
             setSyncingId(null);
         }
@@ -176,17 +206,37 @@ export function VideoMappingList({ lessons, mappings, onMappingChange }: VideoMa
                                             {mapping.video_provider === 'vimeo' && <Video size={16} />}
                                             {mapping.video_provider === 'direct' && <LinkIcon size={16} />}
                                         </div>
-                                        <input
-                                            type="text"
-                                            placeholder={
-                                                mapping.video_provider === 'youtube' ? "Pegar URL de YouTube o ID..." :
-                                                    mapping.video_provider === 'vimeo' ? "Pegar URL de Vimeo o ID..." :
-                                                        "URL del archivo de video..."
-                                            }
-                                            className="w-full pl-9 pr-4 py-2 bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/20 rounded-lg text-sm focus:ring-2 focus:ring-[#00D4B3]/20 focus:border-[#00D4B3] outline-none"
-                                            value={mapping.video_id}
-                                            onChange={(e) => handleUpdate(lesson.id, 'video_id', e.target.value)}
-                                        />
+                                        
+                                        {/* Mask Supabase URLs to look prettier and more secure */}
+                                        {mapping.video_provider === 'direct' && mapping.video_id.includes('supabase.co') ? (
+                                            <div className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-lg text-sm flex items-center justify-between group">
+                                                <div className="flex items-center gap-2 truncate text-[#00D4B3]">
+                                                    <span className="truncate font-medium">Video Interno de Plataforma</span>
+                                                    <span className="text-xs text-gray-400 truncate max-w-[150px] opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        ({mapping.video_id.split('/').pop()?.substring(0, 15)}...)
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleUpdate(lesson.id, 'video_id', '')}
+                                                    className="text-xs text-gray-500 hover:text-red-500 transition-colors ml-2 flex-shrink-0 font-medium"
+                                                    title="Eliminar este enlace"
+                                                >
+                                                    Eliminar
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <input
+                                                type="text"
+                                                placeholder={
+                                                    mapping.video_provider === 'youtube' ? "Pegar URL de YouTube o ID..." :
+                                                        mapping.video_provider === 'vimeo' ? "Pegar URL de Vimeo o ID..." :
+                                                            "URL del archivo de video (.mp4)..."
+                                                }
+                                                className="w-full pl-9 pr-4 py-2 bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/20 rounded-lg text-sm focus:ring-2 focus:ring-[#00D4B3]/20 focus:border-[#00D4B3] outline-none"
+                                                value={mapping.video_id}
+                                                onChange={(e) => handleUpdate(lesson.id, 'video_id', e.target.value)}
+                                            />
+                                        )}
                                     </div>
                                     {mapping.video_id && mapping.video_provider === 'youtube' && mapping.video_id.length !== 11 && (
                                         <p className="text-xs text-orange-500 mt-1 flex items-center gap-1">

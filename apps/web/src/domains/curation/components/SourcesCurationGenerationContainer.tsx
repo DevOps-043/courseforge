@@ -488,77 +488,14 @@ export function SourcesCurationGenerationContainer({ artifactId, courseId, temar
         );
     }
 
-    // --- ADDED: VALIDATION LOADING VIEW ---
-    if (isValidating) {
-        return (
-            <div className="max-w-4xl mx-auto space-y-8 pb-20 animate-in fade-in duration-700">
-                <div className="space-y-2">
-                    <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-[#0A2540] border border-[#00D4B3]/20 text-[#00D4B3]">
-                            <CheckSquare size={24} />
-                        </div>
-                        Validación de Contenido
-                    </h2>
-                </div>
-
-                <div className="relative overflow-hidden rounded-3xl border border-[#1E2329] bg-[#0F1419] shadow-2xl p-12 min-h-[500px] flex flex-col items-center justify-center group ring-1 ring-[#00D4B3]/10">
-
-                    {/* Background Effects */}
-                    <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5 mix-blend-overlay" />
-                    <div className="absolute top-[-50%] right-[-20%] w-[800px] h-[800px] bg-[#1F5AF6]/5 rounded-full blur-[120px] animate-pulse-slow opacity-30" />
-
-                    <div className="relative z-10 flex flex-col items-center max-w-xl w-full text-center space-y-12">
-
-                        {/* Animated Icon */}
-                        <div className="relative w-32 h-32 flex items-center justify-center">
-                            <div className="absolute inset-0 animate-[spin_3s_linear_infinite]">
-                                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 w-2 h-2 bg-[#00D4B3] rounded-full shadow-[0_0_8px_#00D4B3]" />
-                            </div>
-                            <div className="absolute inset-4 animate-[spin_5s_linear_infinite_reverse]">
-                                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1 w-1.5 h-1.5 bg-[#1F5AF6] rounded-full" />
-                            </div>
-
-                            <div className="relative w-16 h-16 bg-[#151A21] border border-[#1E2329] rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(0,212,179,0.05)] z-10">
-                                <CheckCircle2 size={28} className="text-[#00D4B3] animate-pulse" />
-                            </div>
-                        </div>
-
-                        {/* Text Content */}
-                        <div className="space-y-4">
-                            <h3 className="text-3xl font-bold text-white tracking-tight">
-                                Verificando Fuentes
-                            </h3>
-                            <div className="flex flex-col gap-2">
-                                <p className="text-[#94A3B8] text-base leading-relaxed max-w-sm mx-auto font-light">
-                                    El Agente de Validación está revisando cada enlace, asegurando accesibilidad y relevancia en segundo plano...
-                                </p>
-                                <span className="text-xs font-mono text-[#00D4B3] bg-[#00D4B3]/10 px-2 py-1 rounded-md mx-auto border border-[#00D4B3]/20 flex items-center gap-2">
-                                    <RefreshCw size={10} className="animate-spin" />
-                                    Procesando en tiempo real
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* Progress Indication (Fake or Indeterminate) */}
-                        <div className="w-full max-w-md space-y-3">
-                            <div className="h-1.5 w-full bg-[#151A21] rounded-full overflow-hidden border border-[#1E2329]">
-                                {/* Indeterminate loading bar */}
-                                <motion.div
-                                    className="h-full bg-gradient-to-r from-[#00D4B3] via-[#1F5AF6] to-[#00D4B3] w-[40%]"
-                                    animate={{ x: ["-100%", "300%"] }}
-                                    transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-                                />
-                            </div>
-                            <p className="text-[10px] text-[#6C757D] font-mono text-center">
-                                Esto puede tomar unos minutos dependiendo de la cantidad de fuentes.
-                            </p>
-                        </div>
-
-                    </div>
-                </div>
-            </div>
-        );
-    }
+    // --- ADDED: VALIDATION PROGRESS CALCULATION ---
+    const pendingValidationCount = rows.filter(row => {
+        const hasGoogleRedirect = row.source_ref &&
+            (row.source_ref.includes('vertexaisearch.cloud.google.com') ||
+                row.source_ref.includes('grounding-api-redirect'));
+        return !row.auto_evaluated || hasGoogleRedirect;
+    }).length;
+    const validatedCount = rows.length - pendingValidationCount;
 
     // --- VIEW 1: GENERATING PROGRESS ---
     if (showGeneratingView) {
@@ -752,6 +689,46 @@ export function SourcesCurationGenerationContainer({ artifactId, courseId, temar
                         disabled={curation?.state === 'PHASE2_APPROVED'}
                     />
 
+                    {/* Validation Progress Indicator */}
+                    {isValidating && rows.length > 0 && (
+                        <div className="mt-4 mb-2 p-4 bg-[#0A0D12] border border-[#1E2329] rounded-xl flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <RefreshCw size={20} className="text-[#00D4B3] animate-spin" />
+                                <div>
+                                    <p className="text-white font-medium text-sm">Validando fuentes en segundo plano...</p>
+                                    <p className="text-[#6C757D] text-xs">Mantén esta página abierta o ciérrala, el proceso continuará.</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <div className="text-right">
+                                    <p className="text-[#00D4B3] font-bold text-lg leading-none">{validatedCount} <span className="text-[#6C757D] text-sm">/ {rows.length}</span></p>
+                                    <p className="text-[#6C757D] text-[10px] uppercase tracking-wider font-semibold mt-1">Validadas</p>
+                                </div>
+                                <div className="w-12 h-12">
+                                    <svg viewBox="0 0 36 36" className="w-full h-full circular-chart inline-block">
+                                        <path
+                                            className="text-[#1E2329] stroke-current"
+                                            fill="none"
+                                            strokeWidth="3"
+                                            strokeDasharray="100, 100"
+                                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                        />
+                                        <motion.path
+                                            className="text-[#00D4B3] stroke-current"
+                                            fill="none"
+                                            strokeWidth="3"
+                                            strokeDasharray={`${Math.max(2, Math.round((validatedCount / rows.length) * 100))}, 100`}
+                                            initial={{ strokeDasharray: "0, 100" }}
+                                            animate={{ strokeDasharray: `${Math.max(2, Math.round((validatedCount / rows.length) * 100))}, 100` }}
+                                            transition={{ duration: 0.5 }}
+                                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                        />
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="flex items-center gap-4 mt-4">
                         {curation?.state !== 'PHASE2_APPROVED' && curation?.state !== 'PHASE2_BLOCKED' && (
                             <>
@@ -761,7 +738,7 @@ export function SourcesCurationGenerationContainer({ artifactId, courseId, temar
                                     className="flex-1 bg-white dark:bg-[#0F1419] border border-[#00D4B3] hover:bg-[#00D4B3]/10 text-[#00D4B3] py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {isValidating ? <RefreshCw size={18} className="animate-spin" /> : <CheckSquare size={18} />}
-                                    {isValidating ? "Validando..." : "Validar Contenido"}
+                                    {isValidating ? "Validando en progreso..." : "Validar Contenido"}
                                 </button>
                                 <button
                                     onClick={async () => {

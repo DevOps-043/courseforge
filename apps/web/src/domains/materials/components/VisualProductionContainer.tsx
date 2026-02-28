@@ -260,22 +260,41 @@ export function VisualProductionContainer({ artifactId, productionComplete, onSt
                         <div className="h-6 w-px bg-[#6C757D]/30" />
                         <span className="text-white font-bold">{progressStats.percentage}%</span>
                     </div>
-                    {/* Save All Button */}
-                    <button
-                        onClick={handleSaveAll}
-                        disabled={isSavingAll || !hasPendingChanges}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${hasPendingChanges
-                            ? 'bg-[#1F5AF6] hover:bg-[#1a4bd6] text-white shadow-lg shadow-[#1F5AF6]/20'
-                            : 'bg-[#0F1419] text-[#6C757D] border border-[#6C757D]/20 cursor-not-allowed'
-                            }`}
-                    >
-                        {isSavingAll ? (
-                            <Loader2 className="animate-spin" size={16} />
-                        ) : (
-                            <Save size={16} />
+                    <div className="flex gap-2">
+                        {/* Partial Production Button */}
+                        {progressStats.percentage > 0 && progressStats.percentage < 100 && !productionComplete && (
+                            <button
+                                onClick={async () => {
+                                    if(confirm('¿Estás seguro de marcar la producción como completa aunque falten videos? Esto te permitirá avanzar a la publicación parcial.')) {
+                                        const result = await updateProductionStatusAction(artifactId, true);
+                                        if (result.success) {
+                                            if (onStatusChange) onStatusChange(true);
+                                            router.refresh();
+                                        }
+                                    }
+                                }}
+                                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all bg-[#00D4B3]/10 hover:bg-[#00D4B3]/20 text-[#00D4B3] border border-[#00D4B3]/20"
+                            >
+                                Completar Parcial
+                            </button>
                         )}
-                        Guardar Todo
-                    </button>
+                        {/* Save All Button */}
+                        <button
+                            onClick={handleSaveAll}
+                            disabled={isSavingAll || !hasPendingChanges}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${hasPendingChanges
+                                ? 'bg-[#1F5AF6] hover:bg-[#1a4bd6] text-white shadow-lg shadow-[#1F5AF6]/20'
+                                : 'bg-[#0F1419] text-[#6C757D] border border-[#6C757D]/20 cursor-not-allowed'
+                                }`}
+                        >
+                            {isSavingAll ? (
+                                <Loader2 className="animate-spin" size={16} />
+                            ) : (
+                                <Save size={16} />
+                            )}
+                            Guardar Todo
+                        </button>
+                    </div>
                 </div>
 
                 {/* Progress Bar */}

@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import { Loader2, Save, Send, AlertTriangle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { CourseDataForm } from './components/CourseDataForm';
-import { VideoMappingList, LessonVideoData } from './components/VideoMappingList';
-import { fetchVideoMetadata } from './actions';
+import { VideoMappingList, LessonVideoData, syncVideoDuration } from './components/VideoMappingList';
 import { ConfirmationModal } from '@/shared/components/ConfirmationModal';
+import { PublishSuccessModal } from './components/PublishSuccessModal';
 
 interface PublicationClientViewProps {
     artifactId: string;
@@ -108,6 +108,8 @@ export default function PublicationClientView({
     const [isResetting, setIsResetting] = useState(false);
 
     const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+    const [isPublishConfirmModalOpen, setIsPublishConfirmModalOpen] = useState(false);
+    const [isPublishSuccessModalOpen, setIsPublishSuccessModalOpen] = useState(false);
 
 
 
@@ -143,16 +145,12 @@ export default function PublicationClientView({
                 newMappings[l.id] = mapping;
 
                 // 2. Queue synchronization if we have a valid ID
-                if (videoId && (provider === 'youtube' || provider === 'vimeo')) {
-                    const fullUrl = provider === 'youtube'
-                        ? `https://www.youtube.com/watch?v=${videoId}`
-                        : `https://vimeo.com/${videoId}`;
-
+                if (videoId) {
                     // We run this async without blocking the main loop immediately
                     // But we wait for all of them before setting state
-                    const p = fetchVideoMetadata(fullUrl).then(meta => {
-                        if (meta.duration > 0) {
-                            newMappings[l.id].duration = meta.duration;
+                    const p = syncVideoDuration(provider, videoId).then(durationSec => {
+                        if (durationSec > 0) {
+                            newMappings[l.id].duration = durationSec;
                         }
                     }).catch(console.error);
                     promises.push(p);
@@ -179,7 +177,8 @@ export default function PublicationClientView({
     // Computed completeness status
     const missingVideos = lessons.filter(l => !videoMappings[l.id]?.video_id).length;
     const isMetadataComplete = courseData.instructor_email && courseData.slug && courseData.thumbnail_url;
-    const isReady = isMetadataComplete && missingVideos === 0;
+    // Removed missingVideos === 0 requirement to allow partial publishing
+    const isReady = isMetadataComplete;
 
     const handleSaveDraft = async () => {
         setIsSaving(true);
@@ -204,10 +203,11 @@ export default function PublicationClientView({
         }
     };
 
-    const handlePublish = async () => {
-        if (!confirm("¿Estás seguro de enviar este curso a Soflia? Esta acción creará los registros en la plataforma de destino.")) return;
 
+
+    const handlePublish = async () => {
         setIsPublishing(true);
+        setIsPublishConfirmModalOpen(false);
         try {
             // First save current state
             const saveResponse = await fetch('/api/save-draft', {
@@ -231,8 +231,8 @@ export default function PublicationClientView({
             const result = await response.json();
 
             if (response.ok && result.success) {
-                toast.success("¡Curso enviado exitosamente a Soflia!");
-                router.push(`/admin/artifacts/${artifactId}`);
+                // Instantly save, but wait for user to click "continue" on Success Modal
+                setIsPublishSuccessModalOpen(true);
             } else {
                 toast.error("Error al publicar en Soflia: " + (result.error || "Fallo desconocido"));
             }
@@ -285,7 +285,7 @@ export default function PublicationClientView({
                     </button>
 
                     <button
-                        onClick={handlePublish}
+                        onClick={() => setIsPublishConfirmModalOpen(true)}
                         disabled={!isReady || isSaving || isPublishing}
                         className={`flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isReady ? 'bg-[#00D4B3] hover:bg-[#00c0a1]' : 'bg-gray-400 dark:bg-gray-600'
                             }`}
@@ -297,14 +297,16 @@ export default function PublicationClientView({
             </div>
 
             {/* Validation Warning */}
-            {!isReady && (
-                <div className="bg-orange-50 border border-orange-200 text-orange-800 dark:bg-orange-900/20 dark:border-orange-800/50 dark:text-orange-200 px-4 py-3 rounded-xl flex items-start gap-3">
+            {(!isReady || missingVideos > 0) && (
+                <div className={`p-4 rounded-xl flex items-start gap-3 border ${!isReady ? 'bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-900/20 dark:border-orange-800/50 dark:text-orange-200' : 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-800/50 dark:text-blue-200'}`}>
                     <AlertTriangle className="shrink-0 mt-0.5" size={18} />
                     <div>
-                        <p className="font-semibold text-sm">Faltan datos para publicar:</p>
+                        <p className="font-semibold text-sm">
+                            {!isReady ? 'Faltan datos para publicar:' : 'Aviso de Publicación Parcial:'}
+                        </p>
                         <ul className="list-disc list-inside text-sm mt-1 space-y-0.5 opacity-90">
-                            {!isMetadataComplete && <li>Completa el email del instructor, slug y thumbnail.</li>}
-                            {missingVideos > 0 && <li>Asigna videos a {missingVideos} lecciones faltantes.</li>}
+                            {!isMetadataComplete && <li>Completa el email del instructor, slug y thumbnail (Requerido).</li>}
+                            {missingVideos > 0 && <li>Faltan {missingVideos} videos. Las lecciones/módulos sin video {isReady ? 'serán ignorados al publicar en SofLIA' : 'faltantes'}.</li>}
                         </ul>
                     </div>
                 </div>
@@ -323,6 +325,31 @@ export default function PublicationClientView({
                     onMappingChange={setVideoMappings}
                 />
             </div>
+
+            {/* Custom Confirmations & Alerts */}
+            <ConfirmationModal
+                isOpen={isPublishConfirmModalOpen}
+                onClose={() => setIsPublishConfirmModalOpen(false)}
+                onConfirm={async () => {
+                    await handlePublish();
+                }}
+                title="¿Confirmas el envío a SofLIA?"
+                message={
+                    <div className="space-y-3">
+                        <p>Esta acción creará los registros y empaquetará el curso para la plataforma de destino.</p>
+                        <p className="text-sm text-gray-500">Asegúrate de haber guardado cualquier cambio en los datos antes de continuar.</p>
+                    </div>
+                }
+                confirmText="Sí, Enviar a Soflia"
+                cancelText="Cancelar"
+                variant="info"
+                isLoading={isPublishing}
+            />
+
+            <PublishSuccessModal
+                isOpen={isPublishSuccessModalOpen}
+                onClose={() => setIsPublishSuccessModalOpen(false)}
+            />
 
             <ConfirmationModal
                 isOpen={isResetModalOpen}

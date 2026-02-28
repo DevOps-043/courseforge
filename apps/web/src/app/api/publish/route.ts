@@ -57,10 +57,6 @@ export async function POST(request: Request) {
             modules: [] as any[]
         };
 
-        const naturalSort = (a: string, b: string) => {
-            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-        };
-
         const moduleMap = new Map<string, any[]>();
         lessons.forEach(l => {
             const modTitle = l.module_title || 'Módulo General';
@@ -70,12 +66,11 @@ export async function POST(request: Request) {
             moduleMap.get(modTitle)?.push(l);
         });
 
-        const sortedModuleTitles = Array.from(moduleMap.keys()).sort(naturalSort);
+        const sortedModuleTitles = Array.from(moduleMap.keys());
 
         let moduleOrder = 1;
         for (const modTitle of sortedModuleTitles) {
             const modLessons = moduleMap.get(modTitle) || [];
-            modLessons.sort((a: any, b: any) => naturalSort(a.title || '', b.title || ''));
 
             const moduleObj = {
                 title: modTitle,
@@ -100,6 +95,12 @@ export async function POST(request: Request) {
                     else videoUrl = videoId;
                 } else if (l.auto_video_url) {
                     videoUrl = l.auto_video_url;
+                }
+                
+                // Skip lesson if no video is assigned (enabling progressive publishing)
+                if (!videoId && !videoUrl) {
+                    console.log(`[API /publish] Skipping lesson ${l.id} (${l.title}) due to missing video.`);
+                    continue;
                 }
 
                 const components = l.components || [];
@@ -200,7 +201,13 @@ export async function POST(request: Request) {
                     materials: materials
                 });
             }
-            outPayload.modules.push(moduleObj);
+            
+            // Only add the module if it has valid lessons
+            if (moduleObj.lessons.length > 0) {
+                outPayload.modules.push(moduleObj);
+            } else {
+                console.log(`[API /publish] Skipping module "${modTitle}" because it has no valid lessons.`);
+            }
         }
 
         // 4. Deposit in SofLIA inbox (direct DB write, no HTTP)
