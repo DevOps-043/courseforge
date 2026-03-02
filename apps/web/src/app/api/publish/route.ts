@@ -146,14 +146,6 @@ export async function POST(request: Request) {
 
                 const materials = [] as any[];
                 components.forEach((c: any) => {
-                    if (c.assets?.slides_url) {
-                        materials.push({
-                            title: 'Presentación (Diapositivas)',
-                            url: c.assets.slides_url,
-                            type: 'link'
-                        });
-                    }
-
                     if (c.type === 'QUIZ' && c.content) {
                         materials.push({
                             title: c.content.title || 'Evaluación',
