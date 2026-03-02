@@ -123,13 +123,7 @@ export async function POST(request: Request) {
                             type: 'lia_script',
                             data: transformLiaContent(c.content)
                         });
-                    }
-                });
-
-                const contentBlocks = [] as any[];
-                let blockOrder = 1;
-                components.forEach((c: any) => {
-                    if (['READING', 'EXERCISE', 'DEMO_GUIDE'].includes(c.type) && c.content) {
+                    } else if (['READING', 'EXERCISE', 'DEMO_GUIDE'].includes(c.type) && c.content) {
                         let contentHtml = c.content.body_html || '';
 
                         if (c.type === 'DEMO_GUIDE' && !contentHtml && c.content.steps) {
@@ -139,15 +133,16 @@ export async function POST(request: Request) {
                         }
 
                         if (contentHtml) {
-                            contentBlocks.push({
+                            activities.push({
                                 title: c.content.title || (c.type === 'READING' ? 'Lectura' : 'Ejercicio'),
-                                content: contentHtml,
-                                type: 'html',
-                                order: blockOrder++
+                                type: c.type === 'READING' ? 'reflection' : 'exercise',
+                                data: { content: contentHtml }
                             });
                         }
                     }
                 });
+
+                const contentBlocks = [] as any[]; // kept for backward compatibility if needed, but empty now.
 
                 const materials = [] as any[];
                 components.forEach((c: any) => {
