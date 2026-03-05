@@ -376,7 +376,7 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                             Plan Instruccional Generado
                         </h2>
                         <p className="text-gray-500 dark:text-gray-400 text-sm mt-1 ml-12">
-                            {existingPlan.lesson_plans.length} lecciones planificadas • Iteración {existingPlan.iteration_count || 1}/2
+                            {existingPlan.lesson_plans.length} lecciones planificadas • Iteración {existingPlan.iteration_count || 1}/5
                         </p>
                     </div>
                     <div className="flex items-center gap-3">

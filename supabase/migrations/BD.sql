@@ -126,7 +126,7 @@ CREATE TABLE public.material_lessons (
   dod jsonb NOT NULL DEFAULT '{}'::jsonb,
   state text NOT NULL DEFAULT 'PENDING'::text,
   iteration_count integer NOT NULL DEFAULT 0,
-  max_iterations integer NOT NULL DEFAULT 2,
+  max_iterations integer NOT NULL DEFAULT 5,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT material_lessons_pkey PRIMARY KEY (id),

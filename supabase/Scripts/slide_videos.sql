@@ -16,7 +16,7 @@ create table public.slide_videos (
   dod jsonb not null default '{}'::jsonb,
   state text not null default 'PENDING'::text,
   iteration_count integer not null default 0,
-  max_iterations integer not null default 2,
+  max_iterations integer not null default 5,
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null default now(),
   constraint slide_videos_pkey primary key (id),
