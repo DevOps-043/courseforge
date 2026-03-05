@@ -29,6 +29,7 @@ export async function POST(request: Request) {
                     price: data.price,
                     thumbnail_url: data.thumbnail_url,
                     lesson_videos: data.lesson_videos,
+                    selected_lessons: data.selected_lessons || null,
                     status: data.status,
                     updated_at: new Date().toISOString()
                 })
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
                     price: data.price,
                     thumbnail_url: data.thumbnail_url,
                     lesson_videos: data.lesson_videos,
+                    selected_lessons: data.selected_lessons || null,
                     status: data.status
                 });
 

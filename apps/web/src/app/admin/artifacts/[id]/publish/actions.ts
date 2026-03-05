@@ -129,6 +129,7 @@ export async function savePublicationDraft(artifactId: string, data: any) {
                     price: data.price,
                     thumbnail_url: data.thumbnail_url,
                     lesson_videos: data.lesson_videos, // JSONB
+                    selected_lessons: data.selected_lessons || null, // JSONB array of lesson IDs
                     status: data.status, // DRAFT or READY
                     updated_at: new Date().toISOString()
                 })
@@ -151,6 +152,7 @@ export async function savePublicationDraft(artifactId: string, data: any) {
                     price: data.price,
                     thumbnail_url: data.thumbnail_url,
                     lesson_videos: data.lesson_videos,
+                    selected_lessons: data.selected_lessons || null,
                     status: data.status
                 });
 

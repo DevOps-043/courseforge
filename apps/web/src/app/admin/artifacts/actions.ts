@@ -1282,3 +1282,265 @@ export async function deleteArtifactAction(artifactId: string) {
         return { success: false, error: error.message || "Error eliminando dependencias." };
     }
 }
+
+// ==============================================================================
+// CHANGE PROPAGATION & CASCADE DELETE ACTIONS
+// ==============================================================================
+
+/**
+ * Mark all downstream steps as "dirty" when a previous step is modified.
+ * fromStep: 1=Base, 2=Temario, 3=Plan, 4=Fuentes, 5=Materiales, 6=Producción
+ * This marks steps fromStep+1 onwards.
+ */
+export async function markDownstreamDirtyAction(artifactId: string, fromStep: number, sourceName: string) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    const dirtySource = `${sourceName} (modificado por ${user.email || 'usuario'})`;
+    const errors: string[] = [];
+
+    try {
+        // Step 3: Instructional Plans (dirty if change came from step 1 or 2)
+        if (fromStep <= 2) {
+            const { error } = await supabase
+                .from('instructional_plans')
+                .update({ upstream_dirty: true, upstream_dirty_source: dirtySource })
+                .eq('artifact_id', artifactId);
+            if (error) errors.push(`instructional_plans: ${error.message}`);
+        }
+
+        // Step 4: Curation (dirty if change came from step 1, 2, or 3)
+        if (fromStep <= 3) {
+            const { error } = await supabase
+                .from('curation')
+                .update({ upstream_dirty: true, upstream_dirty_source: dirtySource })
+                .eq('artifact_id', artifactId);
+            if (error) errors.push(`curation: ${error.message}`);
+        }
+
+        // Step 5: Materials (dirty if change came from step 1-4)
+        if (fromStep <= 4) {
+            const { error } = await supabase
+                .from('materials')
+                .update({ upstream_dirty: true, upstream_dirty_source: dirtySource })
+                .eq('artifact_id', artifactId);
+            if (error) errors.push(`materials: ${error.message}`);
+        }
+
+        // Step 7: Publication Requests (dirty if change came from any earlier step)
+        if (fromStep <= 6) {
+            const { error } = await supabase
+                .from('publication_requests')
+                .update({ upstream_dirty: true, upstream_dirty_source: dirtySource })
+                .eq('artifact_id', artifactId);
+            if (error) errors.push(`publication_requests: ${error.message}`);
+        }
+
+        if (errors.length > 0) {
+            console.warn('[markDownstreamDirty] Some updates failed:', errors);
+        }
+
+        return { success: true, errors };
+    } catch (error: any) {
+        console.error('[markDownstreamDirty] Error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Dismiss the upstream_dirty flag for a specific step (user clicked "Mantener").
+ * table: 'instructional_plans' | 'curation' | 'materials' | 'publication_requests'
+ */
+export async function dismissUpstreamDirtyAction(
+    table: 'instructional_plans' | 'curation' | 'materials' | 'publication_requests',
+    artifactId: string
+) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    const { error } = await supabase
+        .from(table)
+        .update({ upstream_dirty: false, upstream_dirty_source: null })
+        .eq('artifact_id', artifactId);
+
+    if (error) {
+        console.error(`[dismissUpstreamDirty] Error on ${table}:`, error);
+        return { success: false, error: error.message };
+    }
+
+    return { success: true };
+}
+
+/**
+ * Cascade delete a lesson from the given step downward.
+ * Removes all dependent data in subsequent steps.
+ * fromStep: 2=Temario, 3=Plan
+ */
+export async function cascadeDeleteLessonAction(artifactId: string, lessonId: string, fromStep: number) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    const deletedFrom: string[] = [];
+
+    try {
+        // From Temario (step 2): also remove from instructional_plans
+        if (fromStep <= 2) {
+            const { data: plan } = await supabase
+                .from('instructional_plans')
+                .select('id, lesson_plans')
+                .eq('artifact_id', artifactId)
+                .maybeSingle();
+
+            if (plan && plan.lesson_plans) {
+                const filtered = (plan.lesson_plans as any[]).filter((lp: any) => lp.lesson_id !== lessonId);
+                if (filtered.length !== (plan.lesson_plans as any[]).length) {
+                    await supabase
+                        .from('instructional_plans')
+                        .update({ lesson_plans: filtered, updated_at: new Date().toISOString() })
+                        .eq('id', plan.id);
+                    deletedFrom.push('Plan Instruccional');
+                }
+            }
+        }
+
+        // From Plan (step 3) or above: remove curation_rows
+        if (fromStep <= 3) {
+            const { data: curation } = await supabase
+                .from('curation')
+                .select('id')
+                .eq('artifact_id', artifactId)
+                .maybeSingle();
+
+            if (curation) {
+                const { data: deleted } = await supabase
+                    .from('curation_rows')
+                    .delete()
+                    .eq('curation_id', curation.id)
+                    .eq('lesson_id', lessonId)
+                    .select('id');
+
+                if (deleted && deleted.length > 0) {
+                    deletedFrom.push(`Fuentes (${deleted.length} filas)`);
+                }
+            }
+        }
+
+        // From Fuentes (step 4) or above: remove material_lessons + components
+        if (fromStep <= 4) {
+            const { data: materials } = await supabase
+                .from('materials')
+                .select('id')
+                .eq('artifact_id', artifactId)
+                .maybeSingle();
+
+            if (materials) {
+                // First get the material_lesson to delete its components
+                const { data: matLesson } = await supabase
+                    .from('material_lessons')
+                    .select('id')
+                    .eq('materials_id', materials.id)
+                    .eq('lesson_id', lessonId)
+                    .maybeSingle();
+
+                if (matLesson) {
+                    // Delete components first (FK constraint)
+                    await supabase
+                        .from('material_components')
+                        .delete()
+                        .eq('material_lesson_id', matLesson.id);
+
+                    // Delete the material_lesson
+                    await supabase
+                        .from('material_lessons')
+                        .delete()
+                        .eq('id', matLesson.id);
+
+                    deletedFrom.push('Materiales y Componentes');
+                }
+            }
+        }
+
+        // Remove from publication_requests.selected_lessons
+        const { data: pubReq } = await supabase
+            .from('publication_requests')
+            .select('id, selected_lessons')
+            .eq('artifact_id', artifactId)
+            .maybeSingle();
+
+        if (pubReq && pubReq.selected_lessons && Array.isArray(pubReq.selected_lessons)) {
+            const filtered = pubReq.selected_lessons.filter((id: string) => id !== lessonId);
+            if (filtered.length !== pubReq.selected_lessons.length) {
+                await supabase
+                    .from('publication_requests')
+                    .update({ selected_lessons: filtered })
+                    .eq('id', pubReq.id);
+                deletedFrom.push('Publicación (selección)');
+            }
+        }
+
+        console.log(`[cascadeDeleteLesson] Lesson ${lessonId} cascaded from step ${fromStep}:`, deletedFrom);
+        return { success: true, deletedFrom };
+
+    } catch (error: any) {
+        console.error('[cascadeDeleteLesson] Error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Cascade delete an entire module from the given step downward.
+ * Identifies all lessons in the module and runs cascadeDeleteLessonAction for each.
+ */
+export async function cascadeDeleteModuleAction(artifactId: string, moduleId: string, fromStep: number) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    try {
+        // Get syllabus to find all lesson IDs in this module
+        const { data: syllabus } = await supabase
+            .from('syllabus')
+            .select('modules')
+            .eq('artifact_id', artifactId)
+            .maybeSingle();
+
+        if (!syllabus || !syllabus.modules) {
+            return { success: false, error: 'Temario no encontrado' };
+        }
+
+        const modules = syllabus.modules as any[];
+        const targetModule = modules.find((m: any) => m.id === moduleId);
+
+        if (!targetModule) {
+            return { success: false, error: `Módulo ${moduleId} no encontrado en el temario` };
+        }
+
+        const lessonIds = (targetModule.lessons || []).map((l: any) => l.id).filter(Boolean);
+
+        // CASCADE: delete each lesson
+        const results = [];
+        for (const lessonId of lessonIds) {
+            const result = await cascadeDeleteLessonAction(artifactId, lessonId, fromStep);
+            results.push({ lessonId, ...result });
+        }
+
+        // Remove the module from syllabus if deleting from step 2
+        if (fromStep <= 2) {
+            const updatedModules = modules.filter((m: any) => m.id !== moduleId);
+            await supabase
+                .from('syllabus')
+                .update({ modules: updatedModules, updated_at: new Date().toISOString() })
+                .eq('artifact_id', artifactId);
+        }
+
+        console.log(`[cascadeDeleteModule] Module ${moduleId} (${lessonIds.length} lessons) deleted from step ${fromStep}`);
+        return { success: true, lessonsDeleted: lessonIds.length, results };
+
+    } catch (error: any) {
+        console.error('[cascadeDeleteModule] Error:', error);
+        return { success: false, error: error.message };
+    }
+}

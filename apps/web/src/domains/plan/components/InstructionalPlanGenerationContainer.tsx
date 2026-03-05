@@ -3,6 +3,7 @@ import { useRef, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { BookOpen, Sparkles, Settings2, Play, CheckCircle2, ChevronDown, ChevronRight, LayoutList, MessageSquare, Book, FileText, Video as VideoIcon, BrainCircuit, RefreshCw, Clock, Target, CheckSquare, Layers, Info, AlertCircle, Edit3, Check, X, Trash2, Plus } from 'lucide-react';
 import { InstructionalPlanValidationResult } from './InstructionalPlanValidationResult';
+import { UpstreamChangeAlert } from '@/shared/components/UpstreamChangeAlert';
 import { createClient } from '@supabase/supabase-js';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -308,14 +309,15 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
             setEditingLessonId(null);
 
             // Server Action
-            const { updateInstructionalPlanContentAction } = await import('../../../app/admin/artifacts/actions');
+            const { updateInstructionalPlanContentAction, markDownstreamDirtyAction } = await import('../../../app/admin/artifacts/actions');
             const result = await updateInstructionalPlanContentAction(artifactId, updatedLessonPlans);
 
             if (result.success) {
                 toast.success('Lección actualizada correctamente');
+                // Mark downstream steps as dirty (change propagation)
+                await markDownstreamDirtyAction(artifactId, 3, 'Plan Instruccional');
             } else {
                 toast.error('Error al guardar cambios');
-                // Revert logic could go here if critical
             }
         } catch (e) {
             console.error(e);
@@ -392,6 +394,25 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                         </button>
                     </div>
                 </div>
+
+                {/* Upstream Change Alert */}
+                {existingPlan.upstream_dirty && (
+                    <UpstreamChangeAlert
+                        source={existingPlan.upstream_dirty_source || 'un paso anterior'}
+                        onIterate={async () => {
+                            handleGenerate();
+                            const { dismissUpstreamDirtyAction } = await import('../../../app/admin/artifacts/actions');
+                            await dismissUpstreamDirtyAction('instructional_plans', artifactId);
+                            setExistingPlan({ ...existingPlan, upstream_dirty: false });
+                        }}
+                        onDismiss={async () => {
+                            const { dismissUpstreamDirtyAction } = await import('../../../app/admin/artifacts/actions');
+                            await dismissUpstreamDirtyAction('instructional_plans', artifactId);
+                            setExistingPlan({ ...existingPlan, upstream_dirty: false });
+                        }}
+                        isIterating={isGenerating}
+                    />
+                )}
 
                 <div className="space-y-8">
                     {sortedModules.map((mod: any) => (

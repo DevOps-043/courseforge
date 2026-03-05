@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { BookOpen, Settings2, CheckCircle2, Play, RefreshCw, Library, Loader2, Edit3, AlertCircle, CheckSquare, Pause, Square, PlayCircle, Clipboard, ExternalLink, ChevronDown, ChevronUp, Sparkles, FileText, Upload, Trash2 } from 'lucide-react';
 import { useCuration } from '../hooks/useCuration';
 import { CurationDashboard } from './CurationDashboard';
+import { UpstreamChangeAlert } from '@/shared/components/UpstreamChangeAlert';
 import { motion } from 'framer-motion';
 import { createClient } from '@/utils/supabase/client';
 import { toast } from 'sonner';
@@ -674,6 +675,23 @@ export function SourcesCurationGenerationContainer({ artifactId, courseId, temar
                     onDeleteRow={deleteRow}
                     isGenerating={isGenerating}
                 />
+
+                {/* Upstream Change Alert */}
+                {curation?.upstream_dirty && (
+                    <UpstreamChangeAlert
+                        source={curation?.upstream_dirty_source || 'un paso anterior'}
+                        onIterate={async () => {
+                            handleGenerate();
+                            const { dismissUpstreamDirtyAction } = await import('../../../app/admin/artifacts/actions');
+                            await dismissUpstreamDirtyAction('curation', artifactId);
+                        }}
+                        onDismiss={async () => {
+                            const { dismissUpstreamDirtyAction } = await import('../../../app/admin/artifacts/actions');
+                            await dismissUpstreamDirtyAction('curation', artifactId);
+                        }}
+                        isIterating={isGenerating}
+                    />
+                )}
 
                 {/* REVISION PANEL FASE 4 */}
                 <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 mt-8">

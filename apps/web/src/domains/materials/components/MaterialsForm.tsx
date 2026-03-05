@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useMaterials, useMaterialStateStyles } from '../hooks/useMaterials';
 import { LessonMaterialsCard } from './LessonMaterialsCard';
+import { UpstreamChangeAlert } from '@/shared/components/UpstreamChangeAlert';
 import { useRouter } from 'next/navigation';
 import {
     Loader2,
@@ -177,6 +178,24 @@ export function MaterialsForm({ artifactId, className = '' }: MaterialsFormProps
                     )}
                 </div>
             </div>
+
+            {/* Upstream Change Alert */}
+            {(materials as any)?.upstream_dirty && (
+                <UpstreamChangeAlert
+                    source={(materials as any)?.upstream_dirty_source || 'un paso anterior'}
+                    onIterate={async () => {
+                        startGeneration();
+                        const { dismissUpstreamDirtyAction } = await import('../../../app/admin/artifacts/actions');
+                        await dismissUpstreamDirtyAction('materials', artifactId);
+                    }}
+                    onDismiss={async () => {
+                        const { dismissUpstreamDirtyAction } = await import('../../../app/admin/artifacts/actions');
+                        await dismissUpstreamDirtyAction('materials', artifactId);
+                        refresh();
+                    }}
+                    isIterating={isGenerating}
+                />
+            )}
 
             {/* Generation in progress */}
             {isGenerating && (

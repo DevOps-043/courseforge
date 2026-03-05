@@ -103,6 +103,13 @@ export async function POST(request: Request) {
                     continue;
                 }
 
+                // Skip lesson if not in selected_lessons (when user has made a selection)
+                const selectedLessons: string[] | null = pubRequest.selected_lessons;
+                if (selectedLessons && Array.isArray(selectedLessons) && !selectedLessons.includes(l.id)) {
+                    console.log(`[API /publish] Skipping lesson ${l.id} (${l.title}) — not selected for publishing.`);
+                    continue;
+                }
+
                 const components = l.components || [];
 
                 let transcription = '';

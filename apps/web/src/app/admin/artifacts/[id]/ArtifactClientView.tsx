@@ -32,6 +32,7 @@ export default function ArtifactClientView({
     const calculateInitialStep = () => {
         // Check from highest step down to find where user should be
         if (publicationRequest?.status === 'SENT' || publicationRequest?.status === 'APPROVED') return 7;
+        if (publicationRequest) return 7; // Allow returning to publish step if a draft exists
         if (artifact.production_complete) return 7;
         if (artifact.materials_state === 'PHASE3_APPROVED') return 6;
 
@@ -297,8 +298,8 @@ export default function ArtifactClientView({
                     label="Publicar"
                     active={currentStep === 7}
                     onClick={() => setCurrentStep(7)}
-                    icon={<Target size={18} />} // Can change icon if needed, maybe Send or Globe
-                    disabled={!localProductionComplete}
+                    icon={<Target size={18} />}
+                    disabled={!curationApproved}
                     done={publicationRequest?.status === 'SENT' || publicationRequest?.status === 'APPROVED'}
                 />
             </div>

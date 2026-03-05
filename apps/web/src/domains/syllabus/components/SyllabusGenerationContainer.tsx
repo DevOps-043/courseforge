@@ -151,9 +151,12 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
           // Actualización en DB
           await syllabusService.updateModules(artifactId, newModules);
           console.log('Módulos actualizados correctamente');
+
+          // Mark downstream steps as dirty (change propagation)
+          const { markDownstreamDirtyAction } = await import('../../../app/admin/artifacts/actions');
+          await markDownstreamDirtyAction(artifactId, 2, 'Temario');
       } catch (e) {
           console.error('Error guardando módulos:', e);
-          // Opcional: Revertir si falla o mostrar toast
       }
   };
 

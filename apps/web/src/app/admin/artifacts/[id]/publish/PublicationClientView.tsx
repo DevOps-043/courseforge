@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Save, Send, AlertTriangle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
@@ -8,6 +8,7 @@ import { CourseDataForm } from './components/CourseDataForm';
 import { VideoMappingList, LessonVideoData, syncVideoDuration } from './components/VideoMappingList';
 import { ConfirmationModal } from '@/shared/components/ConfirmationModal';
 import { PublishSuccessModal } from './components/PublishSuccessModal';
+import { UpstreamChangeAlert } from '@/shared/components/UpstreamChangeAlert';
 
 interface PublicationClientViewProps {
     artifactId: string;
@@ -28,6 +29,9 @@ interface PublicationClientViewProps {
         price: number;
         thumbnail_url?: string;
         lesson_videos: Record<string, LessonVideoData>; // Stored as JSONB, mapped back
+        selected_lessons?: string[] | null;
+        upstream_dirty?: boolean;
+        upstream_dirty_source?: string;
         status: string;
     } | null;
 }
@@ -101,6 +105,22 @@ export default function PublicationClientView({
         });
 
         return initial;
+    });
+
+    // Selected lessons state — initialized from DB or computed from lessons with video
+    const [selectedLessons, setSelectedLessons] = useState<Set<string>>(() => {
+        if (existingRequest?.selected_lessons && Array.isArray(existingRequest.selected_lessons)) {
+            return new Set(existingRequest.selected_lessons);
+        }
+        // Default: select all lessons that have a video
+        const withVideo = new Set<string>();
+        lessons.forEach(l => {
+            const draft = existingRequest?.lesson_videos?.[l.id];
+            if (draft?.video_id || (l as any).auto_video_url) {
+                withVideo.add(l.id);
+            }
+        });
+        return withVideo;
     });
 
     const [isSaving, setIsSaving] = useState(false);
@@ -186,7 +206,7 @@ export default function PublicationClientView({
             const response = await fetch('/api/save-draft', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ artifactId, data: { ...courseData, lesson_videos: videoMappings, status: 'DRAFT' } })
+                body: JSON.stringify({ artifactId, data: { ...courseData, lesson_videos: videoMappings, selected_lessons: Array.from(selectedLessons), status: 'DRAFT' } })
             });
             const result = await response.json();
 
@@ -213,7 +233,7 @@ export default function PublicationClientView({
             const saveResponse = await fetch('/api/save-draft', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ artifactId, data: { ...courseData, lesson_videos: videoMappings, status: 'READY' } })
+                body: JSON.stringify({ artifactId, data: { ...courseData, lesson_videos: videoMappings, selected_lessons: Array.from(selectedLessons), status: 'READY' } })
             });
             const saveResult = await saveResponse.json();
             if (!saveResult.success) throw new Error(saveResult.error || 'Error al guardar borrador');
@@ -245,6 +265,22 @@ export default function PublicationClientView({
 
     return (
         <div className="space-y-8">
+            {/* Upstream Change Alert */}
+            {existingRequest?.upstream_dirty && (
+                <UpstreamChangeAlert
+                    source={existingRequest?.upstream_dirty_source || 'un paso anterior'}
+                    onIterate={async () => {
+                        router.refresh();
+                        const { dismissUpstreamDirtyAction } = await import('../../actions');
+                        await dismissUpstreamDirtyAction('publication_requests', artifactId);
+                    }}
+                    onDismiss={async () => {
+                        const { dismissUpstreamDirtyAction } = await import('../../actions');
+                        await dismissUpstreamDirtyAction('publication_requests', artifactId);
+                    }}
+                />
+            )}
+
             {/* Header Actions */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-[#151A21] p-4 rounded-xl border border-gray-200 dark:border-[#6C757D]/10">
                 <div>
@@ -306,7 +342,10 @@ export default function PublicationClientView({
                         </p>
                         <ul className="list-disc list-inside text-sm mt-1 space-y-0.5 opacity-90">
                             {!isMetadataComplete && <li>Completa el email del instructor, slug y thumbnail (Requerido).</li>}
-                            {missingVideos > 0 && <li>Faltan {missingVideos} videos. Las lecciones/módulos sin video {isReady ? 'serán ignorados al publicar en SofLIA' : 'faltantes'}.</li>}
+                            {missingVideos > 0 && <li>Faltan {missingVideos} videos. Las lecciones sin video no pueden seleccionarse para envío.</li>}
+                            {selectedLessons.size > 0 && selectedLessons.size < lessons.filter(l => !!videoMappings[l.id]?.video_id).length && (
+                                <li>Se enviarán {selectedLessons.size} de {lessons.filter(l => !!videoMappings[l.id]?.video_id).length} lecciones con video.</li>
+                            )}
                         </ul>
                     </div>
                 </div>
@@ -323,6 +362,8 @@ export default function PublicationClientView({
                     lessons={lessons}
                     mappings={videoMappings}
                     onMappingChange={setVideoMappings}
+                    selectedLessons={selectedLessons}
+                    onSelectionChange={setSelectedLessons}
                 />
             </div>
 
