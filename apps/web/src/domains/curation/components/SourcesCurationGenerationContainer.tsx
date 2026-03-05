@@ -31,7 +31,7 @@ interface SourcesCurationGenerationContainerProps {
 const DEFAULT_PROMPT_PREVIEW = `Prompt optimizado con reglas de curaduría, enfoque en accesibilidad (sin descargas), validación de URLs y estructura JSON estricta. Utiliza búsquedas en tiempo real para verificar la disponibilidad.`;
 
 // URL del GPT personalizado
-const GPT_URL = 'https://chatgpt.com/g/g-69823d9a6470819196393ee8c227adab-soflia-generating-sources-assistant';
+const GPT_URL = 'https://chatgpt.com/g/g-69a9a074e8dc8191a8cf38f3b54fbf55-soflia-generating-sources-assistant';
 
 export function SourcesCurationGenerationContainer({ artifactId, courseId, temario, ideaCentral }: SourcesCurationGenerationContainerProps) {
     const { curation, rows, isGenerating, startCuration, updateRow, deleteRow, clearGPTRows, refresh } = useCuration(artifactId);
