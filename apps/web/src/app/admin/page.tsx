@@ -1,9 +1,11 @@
 import { createClient } from '@/utils/supabase/server';
+import { getActiveOrganizationId } from '@/utils/auth/session';
 import Link from 'next/link';
 import { ArrowUpRight, Users, Code, Activity, Server, UserPlus } from 'lucide-react';
 
 export default async function AdminPage() {
   const supabase = await createClient();
+  const activeOrgId = await getActiveOrganizationId();
 
   // Fetch Stats
   const { count: totalUsers } = await supabase
@@ -39,10 +41,17 @@ export default async function AdminPage() {
       return profile ? { ...profile, last_seen_at: uniqueLogins.get(id) } : null;
   }).filter(Boolean);
 
-  // Fetch real artifact count
-  const { count: artifactsCount } = await supabase
+  // Fetch real artifact count filtered by organization
+  let artifactCountQuery = supabase
     .from('artifacts')
     .select('*', { count: 'exact', head: true });
+
+  if (activeOrgId) {
+    artifactCountQuery = artifactCountQuery.eq('organization_id', activeOrgId);
+  }
+
+  const { count: artifactsCount } = await artifactCountQuery;
+
 
   return (
     <div className="space-y-8">
@@ -62,7 +71,7 @@ export default async function AdminPage() {
         />
         <StatCard 
           title="Artefactos Generados" 
-          val={artifactsCount.toLocaleString()} 
+          val={(artifactsCount ?? 0).toLocaleString()} 
           trend="--%" 
           positive={true}
           icon={<Code className="text-[#1F5AF6]" size={24} />} 

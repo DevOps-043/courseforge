@@ -1,16 +1,25 @@
 import { createClient } from '@/utils/supabase/server';
+import { getActiveOrganizationId, getAuthBridgeUser } from '@/utils/auth/session';
 import ArtifactsList from './ArtifactsList';
 import Link from 'next/link';
 import { Plus } from 'lucide-react';
 
 export default async function ArtifactsPage() {
   const supabase = await createClient();
+  const activeOrgId = await getActiveOrganizationId();
 
-  // 1. Fetch Artifacts with syllabus and plan states
-  const { data: artifacts } = await supabase
+  // 1. Fetch Artifacts filtered by organization
+  let query = supabase
     .from('artifacts')
     .select('*, syllabus(state), instructional_plans(state)')
     .order('created_at', { ascending: false });
+
+  // Filtrar por organización activa (multi-tenant)
+  if (activeOrgId) {
+    query = query.eq('organization_id', activeOrgId);
+  }
+
+  const { data: artifacts } = await query;
 
   // 2. Fetch Profiles related to these artifacts
   const userIds = artifacts ? [...new Set(artifacts.map((a: any) => a.created_by))] : [];
@@ -68,7 +77,8 @@ export default async function ArtifactsPage() {
 
   // 4. Get current user for ownership filter
   const { data: { user } } = await supabase.auth.getUser();
-  const currentUserId = user?.id;
+  const bridgeUser = !user ? await getAuthBridgeUser() : null;
+  const currentUserId = user?.id || bridgeUser?.id;
 
   // 5. Merge all data
   const artifactsWithProfiles = artifacts?.map((art: any) => {

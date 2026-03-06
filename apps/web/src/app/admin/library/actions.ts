@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/utils/supabase/server';
+import { getActiveOrganizationId, getAuthBridgeUser } from '@/utils/auth/session';
 
 export type SearchFilters = {
     type?: string;
@@ -23,16 +24,65 @@ export type MaterialSearchResult = {
 export async function searchMaterialsAction(query: string, filters: SearchFilters = {}) {
     const supabase = await createClient();
 
-    // Auth Check
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return { success: false, error: 'Unauthorized' };
+    // Auth Check con fallback
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+        const bridgeUser = await getAuthBridgeUser();
+        if (!bridgeUser) return { success: false, error: 'Unauthorized' };
+    }
+
+    // Obtener organización activa para filtrar
+    const activeOrgId = await getActiveOrganizationId();
 
     try {
         let searchTerm = query?.trim() || '';
 
         // --- FETCH DEFAULT (Si no hay query) ---
         if (searchTerm.length === 0) {
-            const defaultQuery = supabase
+            // Primero, obtener IDs de artifacts de esta organización
+            let artifactIdsForOrg: string[] = [];
+            if (activeOrgId) {
+                const { data: orgArtifacts } = await supabase
+                    .from('artifacts')
+                    .select('id')
+                    .eq('organization_id', activeOrgId);
+                artifactIdsForOrg = orgArtifacts?.map(a => a.id) || [];
+
+                // Si no hay artifacts en esta org, retornar vacío
+                if (artifactIdsForOrg.length === 0) {
+                    return { success: true, results: [] };
+                }
+            }
+
+            // Obtener materials de esos artifacts
+            let materialIds: string[] = [];
+            if (artifactIdsForOrg.length > 0) {
+                const { data: mats } = await supabase
+                    .from('materials')
+                    .select('id')
+                    .in('artifact_id', artifactIdsForOrg);
+                materialIds = mats?.map(m => m.id) || [];
+
+                if (materialIds.length === 0) {
+                    return { success: true, results: [] };
+                }
+            }
+
+            // Obtener lesson IDs de esos materials
+            let lessonIds: string[] = [];
+            if (materialIds.length > 0) {
+                const { data: lessons } = await supabase
+                    .from('material_lessons')
+                    .select('id')
+                    .in('materials_id', materialIds);
+                lessonIds = lessons?.map(l => l.id) || [];
+
+                if (lessonIds.length === 0) {
+                    return { success: true, results: [] };
+                }
+            }
+
+            let defaultQuery = supabase
                 .from('material_components')
                 .select(`
                     id, type, assets, generated_at,
@@ -43,6 +93,11 @@ export async function searchMaterialsAction(query: string, filters: SearchFilter
                 `)
                 .limit(100)
                 .order('generated_at', { ascending: false });
+
+            // Filtrar por organización (si hay)
+            if (lessonIds.length > 0) {
+                defaultQuery = defaultQuery.in('material_lesson_id', lessonIds.slice(0, 100));
+            }
 
             if (filters.type && filters.type !== 'ALL') defaultQuery.eq('type', filters.type);
             if (filters.status && filters.status !== 'ALL') defaultQuery.eq('assets->>production_status', filters.status);
@@ -56,12 +111,20 @@ export async function searchMaterialsAction(query: string, filters: SearchFilter
         const likeTerm = `%${searchTerm}%`;
 
         // --- ESTRATEGIA WATERFALL (Paso a Paso) ---
-        // 1. Encontrar IDs de Artefactos relevantes (por Nombre o Curso)
-        const { data: artifacts } = await supabase
+        // 1. Encontrar IDs de Artefactos relevantes (por Nombre o Curso) + filtrar por org
+        let artifactQuery = supabase
             .from('artifacts')
             .select('id')
             .or(`idea_central.ilike.${likeTerm},course_id.ilike.${likeTerm}`)
             .limit(50);
+
+        // Filtrar por organización activa
+        if (activeOrgId) {
+            artifactQuery = artifactQuery.eq('organization_id', activeOrgId);
+        }
+
+        const { data: artifacts } = await artifactQuery;
+
 
         const artifactIds = artifacts?.map(a => a.id) || [];
 

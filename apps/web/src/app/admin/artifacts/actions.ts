@@ -1,6 +1,35 @@
 'use server';
 
 import { createClient } from '@/utils/supabase/server';
+import { getActiveOrganizationId, getAuthBridgeUser } from '@/utils/auth/session';
+import { cookies } from 'next/headers';
+
+/**
+ * Helper: Obtener usuario autenticado (GoTrue o Auth Bridge)
+ */
+async function getAuthenticatedUser(supabase: any) {
+    // Intentar GoTrue primero
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) return { userId: user.id, email: user.email };
+
+    // Fallback: Auth Bridge
+    const bridgeUser = await getAuthBridgeUser();
+    if (bridgeUser) return { userId: bridgeUser.id, email: bridgeUser.email };
+
+    return null;
+}
+
+/**
+ * Helper: Obtener access_token para background functions
+ */
+async function getAccessToken(supabase: any) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) return session.access_token;
+
+    // Fallback: leer de la cookie directa
+    const cookieStore = await cookies();
+    return cookieStore.get('cf_access_token')?.value || null;
+}
 
 export async function generateArtifactAction(formData: {
     title: string;
@@ -11,12 +40,15 @@ export async function generateArtifactAction(formData: {
 }) {
     const supabase = await createClient();
 
-    // Auth Check & Get Session Token
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return { success: false, error: 'Unauthorized' };
+    // Auth Check con fallback
+    const authUser = await getAuthenticatedUser(supabase);
+    if (!authUser) return { success: false, error: 'Unauthorized' };
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return { success: false, error: 'Unauthorized' };
+    const accessToken = await getAccessToken(supabase);
+    if (!accessToken) return { success: false, error: 'Unauthorized' };
+
+    // Obtener organización activa
+    const activeOrgId = await getActiveOrganizationId();
 
     try {
         console.log('Initiating background generation for:', formData.title);
@@ -24,14 +56,12 @@ export async function generateArtifactAction(formData: {
         // Auto-generate course_id if missing
         let finalCourseId = formData.courseId?.trim();
         if (!finalCourseId) {
-            // Generate ID: "WORD-XXXX"
             const prefix = formData.title.split(' ')[0].toUpperCase().substring(0, 10).replace(/[^A-Z0-9]/g, '');
-            const random = Math.floor(1000 + Math.random() * 9000); // 4 digit random
+            const random = Math.floor(1000 + Math.random() * 9000);
             finalCourseId = `${prefix || 'COURSE'}-${random}`;
         }
 
-        // 1. Create Placeholder Artifact
-        // Initial State: GENERATING (as per Migration Guide)
+        // 1. Create Placeholder Artifact WITH organization_id
         const { data: artifact, error } = await supabase.from('artifacts').insert({
             course_id: finalCourseId,
             idea_central: formData.title,
@@ -43,8 +73,10 @@ export async function generateArtifactAction(formData: {
                 started_at: new Date().toISOString()
             },
             state: 'GENERATING',
-            created_by: user.id
+            created_by: authUser.userId,
+            organization_id: activeOrgId, // Multi-tenant: asignar a la org activa
         }).select().single();
+
 
         if (error) {
             console.error('Database Insert Error:', error);
@@ -69,7 +101,7 @@ export async function generateArtifactAction(formData: {
             body: JSON.stringify({
                 artifactId: artifact.id,
                 formData: formData,
-                userToken: session.access_token
+                userToken: accessToken
             })
         });
 

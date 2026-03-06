@@ -1,5 +1,6 @@
 
 import { createClient } from '@/utils/supabase/server';
+import { getActiveOrganizationId } from '@/utils/auth/session';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
@@ -11,8 +12,8 @@ export const dynamic = 'force-dynamic';
 export default async function ArtifactDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
+  const activeOrgId = await getActiveOrganizationId();
 
-  // Fetch Artifact
   // Fetch Artifact con Syllabus e Instructional Plans relacionados
   const { data: artifactRaw, error } = await supabase
     .from('artifacts')
@@ -23,6 +24,12 @@ export default async function ArtifactDetailPage({ params }: { params: Promise<{
   if (error || !artifactRaw) {
     notFound();
   }
+
+  // Verificar que el artifact pertenece a la organización activa
+  if (activeOrgId && artifactRaw.organization_id && artifactRaw.organization_id !== activeOrgId) {
+    notFound(); // No revelar que existe — simplemente 404
+  }
+
 
   // Fetch Curation separadamente (relación puede no estar configurada)
   const { data: curationRaw } = await supabase
