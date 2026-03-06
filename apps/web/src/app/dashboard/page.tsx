@@ -1,24 +1,43 @@
 import { createClient } from '@/utils/supabase/server'
+import { getAuthBridgeUser } from '@/utils/auth/session'
 import { redirect } from 'next/navigation'
 import Image from 'next/image'
 import UserMenu from '@/components/layout/UserMenu'
 import { logoutAction } from '../login/actions'
 
 export default async function DashboardPage() {
+  // Intentar primero con Supabase Auth (sesiones locales legacy)
   const supabase = await createClient()
+  let { data: { user } } = await supabase.auth.getUser()
 
-  const { data: { user } } = await supabase.auth.getUser()
-
+  // Si no hay sesión de Supabase, intentar con el Auth Bridge (SofLIA JWT)
+  let bridgeUser = null
   if (!user) {
-    return redirect('/login')
+    bridgeUser = await getAuthBridgeUser()
+    if (!bridgeUser) {
+      return redirect('/login')
+    }
   }
 
-  // Obtener perfil para mostrar nombre/avatar
+  // Unificar datos del usuario para el render
+  const userId = user?.id || bridgeUser?.id
+  const userEmail = user?.email || bridgeUser?.email
+
+  // Obtener perfil (puede no existir en CourseForge para usuarios nuevos de SofLIA)
   const { data: profile } = await supabase
     .from('profiles')
     .select('*')
-    .eq('id', user.id)
+    .eq('id', userId)
     .single()
+
+  // Si no hay perfil local, usar datos del bridge
+  const displayProfile = profile || (bridgeUser ? {
+    first_name: bridgeUser.first_name,
+    last_name: bridgeUser.last_name,
+    username: bridgeUser.username,
+    avatar_url: bridgeUser.avatar_url,
+  } : null)
+
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-[#0F1419] text-gray-900 dark:text-white transition-colors duration-300">
@@ -37,8 +56,8 @@ export default async function DashboardPage() {
           {/* Actions area */}
           <div className="flex items-center gap-4">
             <UserMenu
-              userEmail={user.email}
-              profile={profile}
+              userEmail={userEmail}
+              profile={displayProfile}
               logoutAction={logoutAction}
               align="top" // Dropdown opens down
             />
@@ -50,7 +69,7 @@ export default async function DashboardPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
-          <p className="text-gray-600 dark:text-[#94A3B8]">Bienvenido de nuevo, <span className="text-[#00D4B3] font-medium">{profile?.first_name || user.email}</span></p>
+          <p className="text-gray-600 dark:text-[#94A3B8]">Bienvenido de nuevo, <span className="text-[#00D4B3] font-medium">{displayProfile?.first_name || userEmail}</span></p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
