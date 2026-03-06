@@ -1,16 +1,14 @@
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import bcrypt from 'bcryptjs'
+import { SignJWT } from 'jose'
 
 /**
  * POST /api/auth/login
  * 
- * API Route alternativa para login. Autentica contra SofLIA (Master)
- * y retorna datos del usuario + organizaciones.
- * 
- * NOTA: El server action loginAction (en /app/login/actions.ts) es el
- * flujo principal ya que maneja directamente las cookies de sesión.
- * Este endpoint sirve como API alternativa para clientes que prefieran
- * un flujo REST.
+ * API Route alternativa para login (Option C).
+ * Valida credenciales contra SofLIA (bcrypt) y firma un JWT
+ * con el secret de CourseForge.
  */
 export async function POST(request: Request) {
   try {
@@ -20,48 +18,49 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Credenciales requeridas' }, { status: 400 })
     }
 
-    // Conectar a SofLIA (Master)
     const sofliaUrl = process.env.SOFLIA_INBOX_SUPABASE_URL!
     const sofliaKey = process.env.SOFLIA_INBOX_SUPABASE_KEY!
+    const courseforgeJwtSecret = process.env.COURSEFORGE_JWT_SECRET!
 
-    if (!sofliaUrl || !sofliaKey) {
+    if (!sofliaUrl || !sofliaKey || !courseforgeJwtSecret) {
       return NextResponse.json({ error: 'Configuración incompleta' }, { status: 500 })
     }
 
     const sofliaAdmin = createAdminClient(sofliaUrl, sofliaKey)
 
-    // Resolver identificador → email
-    let email = identifier
-    if (!identifier.includes('@')) {
-      const { data: userRecord } = await sofliaAdmin
-        .from('users')
-        .select('email')
-        .ilike('username', identifier)
-        .single()
+    // Buscar usuario en SofLIA
+    const isEmail = identifier.includes('@')
+    const column = isEmail ? 'email' : 'username'
 
-      if (!userRecord?.email) {
-        return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 })
-      }
-      email = userRecord.email
+    const { data: user, error: userError } = await sofliaAdmin
+      .from('users')
+      .select('id, email, username, first_name, last_name, display_name, profile_picture_url, cargo_rol, is_banned, password_hash')
+      .ilike(column, identifier)
+      .single()
+
+    if (userError || !user) {
+      return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 })
     }
 
-    // Autenticar contra SofLIA
-    const { data: authData, error: authError } =
-      await sofliaAdmin.auth.signInWithPassword({ email, password })
-
-    if (authError) {
-      return NextResponse.json({ error: authError.message }, { status: 401 })
+    if (user.is_banned) {
+      return NextResponse.json({ error: 'Cuenta suspendida' }, { status: 403 })
     }
 
-    // Obtener organizaciones del usuario
+    if (!user.password_hash) {
+      return NextResponse.json({ error: 'Cuenta OAuth. Usa tu proveedor externo.' }, { status: 400 })
+    }
+
+    // Verificar contraseña (bcrypt)
+    const passwordValid = await bcrypt.compare(password, user.password_hash)
+    if (!passwordValid) {
+      return NextResponse.json({ error: 'Contraseña incorrecta' }, { status: 401 })
+    }
+
+    // Obtener organizaciones
     const { data: orgUsers } = await sofliaAdmin
       .from('organization_users')
-      .select(`
-        role,
-        organization_id,
-        organizations (id, name, slug, logo_url)
-      `)
-      .eq('user_id', authData.user.id)
+      .select(`role, organization_id, organizations (id, name, slug, logo_url)`)
+      .eq('user_id', user.id)
       .eq('status', 'active')
 
     const organizations = (orgUsers || []).map((ou: any) => ({
@@ -71,12 +70,44 @@ export async function POST(request: Request) {
       role: ou.role,
     }))
 
+    const activeOrgId = organizations[0]?.id || null
+
+    // Firmar JWT para CourseForge
+    const secret = new TextEncoder().encode(courseforgeJwtSecret)
+    const now = Math.floor(Date.now() / 1000)
+
+    const accessToken = await new SignJWT({
+      aud: 'authenticated',
+      role: 'authenticated',
+      sub: user.id,
+      email: user.email,
+      iss: 'courseforge-auth-bridge',
+      app_metadata: {
+        provider: 'soflia',
+        organization_ids: organizations.map((o: any) => o.id),
+        active_organization_id: activeOrgId,
+      },
+      user_metadata: {
+        username: user.username,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        display_name: user.display_name,
+        avatar_url: user.profile_picture_url,
+      },
+    })
+      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+      .setIssuedAt(now)
+      .setExpirationTime(now + 3600)
+      .sign(secret)
+
+    const { password_hash: _, ...safeUser } = user
+
     return NextResponse.json({
       success: true,
-      user: authData.user,
-      session: authData.session,
+      user: safeUser,
+      access_token: accessToken,
       organizations,
-      activeOrganizationId: organizations[0]?.id || null,
+      activeOrganizationId: activeOrgId,
     }, { status: 200 })
 
   } catch (error: any) {

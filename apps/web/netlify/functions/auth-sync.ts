@@ -1,49 +1,29 @@
 /**
  * Netlify Function: auth-sync
  * 
- * Microservicio de autenticación centralizado que valida credenciales
- * contra la base de datos maestra de SofLIA Learning y retorna
- * la información del usuario + sus organizaciones.
+ * Microservicio de autenticación que actúa como puente (Option C):
+ * 1. Valida credenciales contra la tabla `public.users` de SofLIA (bcrypt)
+ * 2. Obtiene las organizaciones del usuario
+ * 3. Firma un JWT nuevo usando el JWT_SECRET de CourseForge
+ * 4. Retorna el token compatible para que CourseForge lo use nativamente
  * 
- * Este endpoint NO firma JWTs directamente — delega eso a SofLIA's
- * signInWithPassword que ya produce un JWT válido. CourseForge
- * usará ese JWT si ambos proyectos comparten el mismo JWT_SECRET.
+ * SofLIA usa auth personalizado (NO Supabase Auth), por lo que
+ * debemos verificar el password_hash (bcrypt) directamente.
  * 
  * Endpoint: POST /.netlify/functions/auth-sync
  * Body: { identifier: string, password: string }
- * Returns: { user, session, organizations, activeOrganizationId }
  */
 
 import { createClient } from '@supabase/supabase-js';
+import bcrypt from 'bcryptjs';
+import { SignJWT } from 'jose';
 
 interface AuthSyncRequest {
   identifier: string;
   password: string;
 }
 
-interface AuthSyncResponse {
-  success: boolean;
-  user?: any;
-  session?: {
-    access_token: string;
-    refresh_token: string;
-    expires_in: number;
-    expires_at?: number;
-  };
-  organizations?: Array<{
-    id: string;
-    name: string;
-    slug: string;
-    role: string;
-    logo_url?: string;
-  }>;
-  activeOrganizationId?: string;
-  profile?: any;
-  error?: string;
-}
-
 export default async function handler(req: any) {
-  // Solo aceptar POST
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
@@ -64,49 +44,57 @@ export default async function handler(req: any) {
 
     // ---------- Conexión a SofLIA (Master) ----------
     const sofliaUrl = process.env.SOFLIA_INBOX_SUPABASE_URL;
-    const sofliaServiceKey = process.env.SOFLIA_INBOX_SUPABASE_KEY;
+    const sofliaKey = process.env.SOFLIA_INBOX_SUPABASE_KEY;
+    const courseforgeJwtSecret = process.env.COURSEFORGE_JWT_SECRET;
 
-    if (!sofliaUrl || !sofliaServiceKey) {
-      console.error('Missing SOFLIA_INBOX_SUPABASE_URL or SOFLIA_INBOX_SUPABASE_KEY');
+    if (!sofliaUrl || !sofliaKey || !courseforgeJwtSecret) {
+      console.error('Missing env vars: SOFLIA_INBOX_SUPABASE_URL, SOFLIA_INBOX_SUPABASE_KEY, or COURSEFORGE_JWT_SECRET');
       return new Response(
         JSON.stringify({ error: 'Configuración del servidor incompleta' }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    const sofliaAdmin = createClient(sofliaUrl, sofliaServiceKey);
+    const sofliaAdmin = createClient(sofliaUrl, sofliaKey);
 
-    // ---------- Resolver identificador → email ----------
-    let email = identifier;
+    // ---------- Buscar usuario en SofLIA ----------
+    const isEmail = identifier.includes('@');
+    const column = isEmail ? 'email' : 'username';
 
-    if (!identifier.includes('@')) {
-      // Buscar por username en la tabla users de SofLIA
-      const { data: userRecord } = await sofliaAdmin
-        .from('users')
-        .select('email')
-        .ilike('username', identifier)
-        .single();
+    const { data: user, error: userError } = await sofliaAdmin
+      .from('users')
+      .select('id, email, username, first_name, last_name, display_name, profile_picture_url, cargo_rol, is_banned, password_hash')
+      .ilike(column, identifier)
+      .single();
 
-      if (!userRecord?.email) {
-        return new Response(
-          JSON.stringify({ error: 'Usuario no encontrado' }),
-          { status: 404, headers: { 'Content-Type': 'application/json' } }
-        );
-      }
-
-      email = userRecord.email;
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Usuario no encontrado' }),
+        { status: 404, headers: { 'Content-Type': 'application/json' } }
+      );
     }
 
-    // ---------- Autenticar contra SofLIA ----------
-    const { data: authData, error: authError } =
-      await sofliaAdmin.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-    if (authError || !authData.user) {
+    // ---------- Verificar estado del usuario ----------
+    if (user.is_banned) {
       return new Response(
-        JSON.stringify({ error: authError?.message || 'Credenciales inválidas' }),
+        JSON.stringify({ error: 'Tu cuenta ha sido suspendida. Contacta al administrador.' }),
+        { status: 403, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!user.password_hash) {
+      return new Response(
+        JSON.stringify({ error: 'Esta cuenta usa un método de autenticación externo (OAuth). Por favor, inicia sesión con tu proveedor.' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ---------- Verificar contraseña (bcrypt) ----------
+    const passwordValid = await bcrypt.compare(password, user.password_hash);
+
+    if (!passwordValid) {
+      return new Response(
+        JSON.stringify({ error: 'Contraseña incorrecta' }),
         { status: 401, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -124,7 +112,7 @@ export default async function handler(req: any) {
           logo_url
         )
       `)
-      .eq('user_id', authData.user.id)
+      .eq('user_id', user.id)
       .eq('status', 'active');
 
     const organizations = (orgUsers || []).map((ou: any) => ({
@@ -135,38 +123,76 @@ export default async function handler(req: any) {
       logo_url: ou.organizations?.logo_url || null,
     }));
 
-    // Seleccionar la primera organización como activa por defecto
     const activeOrganizationId = organizations.length > 0
       ? organizations[0].id
       : null;
 
-    // ---------- Obtener perfil del usuario ----------
-    const { data: userProfile } = await sofliaAdmin
+    // ---------- Actualizar last_login_at en SofLIA ----------
+    await sofliaAdmin
       .from('users')
-      .select('id, email, username, first_name, last_name, avatar_url, role, is_active')
-      .eq('id', authData.user.id)
-      .single();
+      .update({ last_login_at: new Date().toISOString() })
+      .eq('id', user.id);
+
+    // ---------- Firmar JWT para CourseForge ----------
+    const secret = new TextEncoder().encode(courseforgeJwtSecret);
+    const now = Math.floor(Date.now() / 1000);
+
+    const accessToken = await new SignJWT({
+      // Claims estándar de Supabase para compatibilidad con RLS
+      aud: 'authenticated',
+      role: 'authenticated',
+      sub: user.id,
+      email: user.email,
+      iss: 'courseforge-auth-bridge',
+      // Custom claims con datos de SofLIA
+      app_metadata: {
+        provider: 'soflia',
+        organization_ids: organizations.map(o => o.id),
+        active_organization_id: activeOrganizationId,
+      },
+      user_metadata: {
+        username: user.username,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        display_name: user.display_name,
+        avatar_url: user.profile_picture_url,
+        cargo_rol: user.cargo_rol,
+      },
+    })
+      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+      .setIssuedAt(now)
+      .setExpirationTime(now + 3600) // 1 hora
+      .setNotBefore(now)
+      .sign(secret);
+
+    // Refresh token (más largo, 7 días)
+    const refreshToken = await new SignJWT({
+      sub: user.id,
+      type: 'refresh',
+      iss: 'courseforge-auth-bridge',
+    })
+      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+      .setIssuedAt(now)
+      .setExpirationTime(now + 604800) // 7 días
+      .sign(secret);
 
     // ---------- Respuesta ----------
-    const response: AuthSyncResponse = {
+    // Eliminar password_hash antes de enviar
+    const { password_hash: _, ...safeUser } = user;
+
+    return new Response(JSON.stringify({
       success: true,
-      user: {
-        id: authData.user.id,
-        email: authData.user.email,
-        ...userProfile,
+      user: safeUser,
+      session: {
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        expires_in: 3600,
+        expires_at: now + 3600,
+        token_type: 'bearer',
       },
-      session: authData.session ? {
-        access_token: authData.session.access_token,
-        refresh_token: authData.session.refresh_token,
-        expires_in: authData.session.expires_in,
-        expires_at: authData.session.expires_at,
-      } : undefined,
       organizations,
       activeOrganizationId,
-      profile: userProfile,
-    };
-
-    return new Response(JSON.stringify(response), {
+    }), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',

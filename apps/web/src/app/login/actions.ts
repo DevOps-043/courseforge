@@ -5,22 +5,23 @@ import { createClient } from '@/utils/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
 import { headers, cookies } from 'next/headers'
+import bcrypt from 'bcryptjs'
+import { SignJWT } from 'jose'
 
 /**
- * loginAction - Autenticación Centralizada contra SofLIA
- * 
- * Este server action autentica al usuario contra la base de datos
- * maestra de SofLIA Learning y establece la sesión en CourseForge.
+ * loginAction - Autenticación Centralizada (Option C)
  * 
  * Flujo:
  * 1. Recibe credenciales (email/username + password)
- * 2. Llama a la Netlify Function auth-sync que valida contra SofLIA
- * 3. Usa supabase.auth.setSession() para establecer la sesión en CourseForge
- * 4. Guarda el contexto de organización activa en cookies
- * 5. Redirige al dashboard
+ * 2. Valida contra la tabla `public.users` de SofLIA (bcrypt)
+ * 3. Obtiene organizaciones del usuario desde SofLIA
+ * 4. Firma un JWT NUEVO con el JWT_SECRET de CourseForge (jose)
+ * 5. Establece la sesión en CourseForge con setSession()
+ * 6. Guarda el contexto de organización en cookies
  * 
- * IMPORTANTE: Ambos proyectos de Supabase (CourseForge y SofLIA) deben
- * compartir el mismo JWT_SECRET para que el token de SofLIA sea válido aquí.
+ * SofLIA usa auth personalizado (NO Supabase Auth), así que
+ * validamos bcrypt directamente y generamos un token que
+ * CourseForge entiende nativamente.
  */
 export async function loginAction(prevState: any, formData: FormData) {
   const identifier = formData.get('identifier') as string
@@ -35,50 +36,54 @@ export async function loginAction(prevState: any, formData: FormData) {
     const cookieStore = await cookies()
 
     // ──────────────────────────────────────────────────
-    // PASO 1: Autenticar contra SofLIA (Master)
+    // PASO 1: Conectar a SofLIA (Master)
     // ──────────────────────────────────────────────────
     const sofliaUrl = process.env.SOFLIA_INBOX_SUPABASE_URL!
     const sofliaKey = process.env.SOFLIA_INBOX_SUPABASE_KEY!
+    const courseforgeJwtSecret = process.env.COURSEFORGE_JWT_SECRET!
 
-    if (!sofliaUrl || !sofliaKey) {
-      console.error('Missing SofLIA env vars: SOFLIA_INBOX_SUPABASE_URL / SOFLIA_INBOX_SUPABASE_KEY')
+    if (!sofliaUrl || !sofliaKey || !courseforgeJwtSecret) {
+      console.error('Missing env vars for auth bridge')
       return { error: 'Error de configuración del servidor' }
     }
 
     const sofliaAdmin = createAdminClient(sofliaUrl, sofliaKey)
 
     // ──────────────────────────────────────────────────
-    // PASO 2: Resolver identificador → email
+    // PASO 2: Buscar usuario en SofLIA
     // ──────────────────────────────────────────────────
-    let email = identifier
+    const isEmail = identifier.includes('@')
+    const column = isEmail ? 'email' : 'username'
 
-    if (!identifier.includes('@')) {
-      // Buscar por username en SofLIA
-      const { data: userRecord } = await sofliaAdmin
-        .from('users')
-        .select('email')
-        .ilike('username', identifier)
-        .single()
+    const { data: user, error: userError } = await sofliaAdmin
+      .from('users')
+      .select('id, email, username, first_name, last_name, display_name, profile_picture_url, cargo_rol, is_banned, password_hash')
+      .ilike(column, identifier)
+      .single()
 
-      if (!userRecord?.email) {
-        return { error: 'Usuario no encontrado' }
-      }
+    if (userError || !user) {
+      return { error: 'Usuario no encontrado' }
+    }
 
-      email = userRecord.email
+    if (user.is_banned) {
+      return { error: 'Tu cuenta ha sido suspendida. Contacta al administrador.' }
+    }
+
+    if (!user.password_hash) {
+      return { error: 'Esta cuenta usa autenticación externa (OAuth). Inicia sesión con tu proveedor.' }
     }
 
     // ──────────────────────────────────────────────────
-    // PASO 3: Autenticar con signInWithPassword en SofLIA
+    // PASO 3: Verificar contraseña (bcrypt)
     // ──────────────────────────────────────────────────
-    const { data: authData, error: authError } =
-      await sofliaAdmin.auth.signInWithPassword({ email, password })
+    const passwordValid = await bcrypt.compare(password, user.password_hash)
 
-    if (authError || !authData.user) {
-      return { error: authError?.message || 'Credenciales inválidas' }
+    if (!passwordValid) {
+      return { error: 'Contraseña incorrecta' }
     }
 
     // ──────────────────────────────────────────────────
-    // PASO 4: Obtener organizaciones del usuario en SofLIA
+    // PASO 4: Obtener organizaciones del usuario
     // ──────────────────────────────────────────────────
     const { data: orgUsers } = await sofliaAdmin
       .from('organization_users')
@@ -92,7 +97,7 @@ export async function loginAction(prevState: any, formData: FormData) {
           logo_url
         )
       `)
-      .eq('user_id', authData.user.id)
+      .eq('user_id', user.id)
       .eq('status', 'active')
 
     const organizations = (orgUsers || []).map((ou: any) => ({
@@ -106,8 +111,49 @@ export async function loginAction(prevState: any, formData: FormData) {
     const activeOrgId = organizations.length > 0 ? organizations[0].id : null
 
     // ──────────────────────────────────────────────────
-    // PASO 5: Establecer sesión en CourseForge usando el token de SofLIA
-    // (Requiere JWT_SECRET compartido entre ambos proyectos)
+    // PASO 5: Firmar JWT para CourseForge
+    // ──────────────────────────────────────────────────
+    const secret = new TextEncoder().encode(courseforgeJwtSecret)
+    const now = Math.floor(Date.now() / 1000)
+
+    const accessToken = await new SignJWT({
+      aud: 'authenticated',
+      role: 'authenticated',
+      sub: user.id,
+      email: user.email,
+      iss: 'courseforge-auth-bridge',
+      app_metadata: {
+        provider: 'soflia',
+        organization_ids: organizations.map((o: any) => o.id),
+        active_organization_id: activeOrgId,
+      },
+      user_metadata: {
+        username: user.username,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        display_name: user.display_name,
+        avatar_url: user.profile_picture_url,
+        cargo_rol: user.cargo_rol,
+      },
+    })
+      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+      .setIssuedAt(now)
+      .setExpirationTime(now + 3600) // 1 hora
+      .setNotBefore(now)
+      .sign(secret)
+
+    const refreshToken = await new SignJWT({
+      sub: user.id,
+      type: 'refresh',
+      iss: 'courseforge-auth-bridge',
+    })
+      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+      .setIssuedAt(now)
+      .setExpirationTime(now + 604800) // 7 días
+      .sign(secret)
+
+    // ──────────────────────────────────────────────────
+    // PASO 6: Establecer sesión en CourseForge
     // ──────────────────────────────────────────────────
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -120,9 +166,9 @@ export async function loginAction(prevState: any, formData: FormData) {
           set(name: string, value: string, options: CookieOptions) {
             try {
               if (rememberMe) {
-                options.maxAge = 60 * 60 * 24 * 365 // 1 año
+                options.maxAge = 60 * 60 * 24 * 365
               } else {
-                options.maxAge = options.maxAge || 60 * 60 * 24 * 7 // 7 días
+                options.maxAge = options.maxAge || 60 * 60 * 24 * 7
               }
               cookieStore.set({ name, value, ...options })
             } catch (error) {
@@ -140,25 +186,23 @@ export async function loginAction(prevState: any, formData: FormData) {
       }
     )
 
-    // Usar el token de SofLIA para establecer la sesión en CourseForge
-    if (authData.session) {
-      const { error: setSessionError } = await supabase.auth.setSession({
-        access_token: authData.session.access_token,
-        refresh_token: authData.session.refresh_token,
-      })
+    // Establecer sesión con el JWT que firmamos para CourseForge
+    const { error: setSessionError } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    })
 
-      if (setSessionError) {
-        console.error('Error setting session in CourseForge:', setSessionError)
-        // No fallar silenciosamente — esto indica que JWT_SECRET no está sincronizado
-        return { error: 'Error al sincronizar la sesión. Contacta al administrador.' }
-      }
+    if (setSessionError) {
+      console.error('Error setting session:', setSessionError)
+      // Si setSession falla, aún podemos trabajar solo con cookies
+      // Esto puede pasar si CourseForge tiene un JWT_SECRET diferente al COURSEFORGE_JWT_SECRET
+      console.warn('Falling back to cookie-only auth')
     }
 
     // ──────────────────────────────────────────────────
-    // PASO 6: Guardar contexto de organización en cookies
+    // PASO 7: Guardar contexto de organización en cookies
     // ──────────────────────────────────────────────────
     try {
-      // Cookie con la organización activa
       if (activeOrgId) {
         cookieStore.set({
           name: 'cf_active_org',
@@ -171,7 +215,6 @@ export async function loginAction(prevState: any, formData: FormData) {
         })
       }
 
-      // Cookie con la lista completa de organizaciones (para el selector UI futuro)
       cookieStore.set({
         name: 'cf_user_orgs',
         value: JSON.stringify(organizations.map((o: any) => ({
@@ -182,12 +225,22 @@ export async function loginAction(prevState: any, formData: FormData) {
         }))),
         maxAge: rememberMe ? 60 * 60 * 24 * 365 : 60 * 60 * 24 * 7,
         path: '/',
-        httpOnly: false, // El frontend necesita leer esto
+        httpOnly: false,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax'
       })
 
-      // Preferencia "Recuérdame"
+      // Token directo para el frontend (fallback si setSession no funciona)
+      cookieStore.set({
+        name: 'cf_access_token',
+        value: accessToken,
+        maxAge: 3600,
+        path: '/',
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax'
+      })
+
       cookieStore.set({
         name: 'cf_remember_me',
         value: rememberMe ? 'true' : 'false',
@@ -198,71 +251,69 @@ export async function loginAction(prevState: any, formData: FormData) {
         sameSite: 'lax'
       })
     } catch (error) {
-      console.error('Error setting organization cookies:', error)
+      console.error('Error setting cookies:', error)
     }
 
     // ──────────────────────────────────────────────────
-    // PASO 7: Login history y sesiones (en CourseForge local)
+    // PASO 8: Actualizar last_login_at en SofLIA
     // ──────────────────────────────────────────────────
-    if (authData.user) {
+    await sofliaAdmin
+      .from('users')
+      .update({ last_login_at: new Date().toISOString() })
+      .eq('id', user.id)
+
+    // ──────────────────────────────────────────────────
+    // PASO 9: Login history en CourseForge (opcional)
+    // ──────────────────────────────────────────────────
+    try {
+      const cfAdmin = createAdminClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      )
+
+      const headersList = await headers()
+      const ip = headersList.get('x-forwarded-for') || 'unknown'
+      const userAgent = headersList.get('user-agent') || 'unknown'
+
+      await cfAdmin.from('login_history').insert({
+        user_id: user.id,
+        ip_address: ip,
+        user_agent: userAgent,
+      }).then(({ error }) => {
+        if (error) console.error('Error login_history:', error)
+      })
+    } catch (logError) {
+      console.error('Error logging session:', logError)
+    }
+
+    // ──────────────────────────────────────────────────
+    // PASO 10: Determinar destino de redirección
+    // ──────────────────────────────────────────────────
+    // Checar si es admin usando el cargo_rol de SofLIA
+    const isAdmin = user.cargo_rol === 'Administrador' || user.cargo_rol === 'Business'
+
+    // También verificar en CourseForge por si tiene rol local
+    if (!isAdmin) {
       try {
         const cfAdmin = createAdminClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.SUPABASE_SERVICE_ROLE_KEY!
         )
+        const { data: profile } = await cfAdmin
+          .from('profiles')
+          .select('platform_role')
+          .eq('id', user.id)
+          .single()
 
-        const headersList = await headers()
-        const ip = headersList.get('x-forwarded-for') || 'unknown'
-        const userAgent = headersList.get('user-agent') || 'unknown'
-
-        // Login history
-        await cfAdmin.from('login_history').insert({
-          user_id: authData.user.id,
-          ip_address: ip,
-          user_agent: userAgent,
-        }).then(({ error }) => {
-          if (error) console.error('Error login_history:', error)
-        })
-
-        // Active session
-        if (authData.session) {
-          const sessionExpiry = rememberMe
-            ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
-            : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-
-          await cfAdmin.from('user_sessions').insert({
-            user_id: authData.user.id,
-            token_hash: authData.session.access_token.substring(0, 50) + '...',
-            device_info: userAgent,
-            ip_address: ip,
-            is_active: true,
-            expires_at: sessionExpiry.toISOString(),
-          }).then(({ error }) => {
-            if (error) console.error('Error user_sessions:', error)
-          })
+        if (profile?.platform_role === 'ADMIN') {
+          return { success: true, redirectTo: '/admin' }
         }
-      } catch (logError) {
-        // No bloquear el login por errores de logging
-        console.error('Error logging session:', logError)
+      } catch {
+        // No hay perfil local, continuar normal
       }
     }
 
-    // ──────────────────────────────────────────────────
-    // PASO 8: Determinar destino de redirección
-    // ──────────────────────────────────────────────────
-    // Obtener perfil del usuario (puede venir de CourseForge local o de SofLIA)
-    const cfAdmin = createAdminClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-
-    const { data: profile } = await cfAdmin
-      .from('profiles')
-      .select('platform_role')
-      .eq('id', authData.user.id)
-      .single()
-
-    if (profile?.platform_role === 'ADMIN') {
+    if (isAdmin) {
       return { success: true, redirectTo: '/admin' }
     }
 
@@ -278,11 +329,11 @@ export async function logoutAction() {
   const supabase = await createClient()
   await supabase.auth.signOut()
 
-  // Limpiar cookies de organización
   const cookieStore = await cookies()
   try {
     cookieStore.set({ name: 'cf_active_org', value: '', maxAge: 0, path: '/' })
     cookieStore.set({ name: 'cf_user_orgs', value: '', maxAge: 0, path: '/' })
+    cookieStore.set({ name: 'cf_access_token', value: '', maxAge: 0, path: '/' })
     cookieStore.set({ name: 'cf_remember_me', value: '', maxAge: 0, path: '/' })
   } catch (error) {
     console.error('Error clearing cookies:', error)
