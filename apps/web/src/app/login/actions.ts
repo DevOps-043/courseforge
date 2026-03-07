@@ -287,36 +287,38 @@ export async function loginAction(prevState: any, formData: FormData) {
     }
 
     // ──────────────────────────────────────────────────
-    // PASO 10: Determinar destino de redirección
+    // PASO 10: Determinar destino de redirección y sincronizar a profiles
     // ──────────────────────────────────────────────────
-    // Checar si es admin usando el cargo_rol de SofLIA
-    const isAdmin = user.cargo_rol === 'Administrador' || user.cargo_rol === 'Business'
 
-    // También verificar en CourseForge por si tiene rol local
-    if (!isAdmin) {
-      try {
-        const cfAdmin = createAdminClient(
+    try {
+      const cfAdmin = createAdminClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.SUPABASE_SERVICE_ROLE_KEY!
-        )
-        const { data: profile } = await cfAdmin
+      )
+
+      // Upsert profile in CourseForge database
+      const { data: profile } = await cfAdmin
           .from('profiles')
+          .upsert({
+              id: user.id,
+              username: user.username,
+              email: user.email,
+              first_name: user.first_name,
+              last_name_father: user.last_name,
+              avatar_url: user.profile_picture_url,
+              // don't overwrite platform_role if it exists, otherwise it defaults to CONSTRUCTOR basically.
+          }, { onConflict: 'id', ignoreDuplicates: false })
           .select('platform_role')
-          .eq('id', user.id)
           .single()
 
-        if (profile?.platform_role === 'ADMIN') {
-          return { success: true, redirectTo: '/admin' }
-        }
-      } catch {
-        // No hay perfil local, continuar normal
+      if (profile?.platform_role === 'ADMIN') {
+        return { success: true, redirectTo: '/admin' }
       }
+    } catch (err) {
+      console.error('Error sincronizando el perfil o verificando admin local:', err)
     }
 
-    if (isAdmin) {
-      return { success: true, redirectTo: '/admin' }
-    }
-
+    // Ya no tomamos en cuenta el rol de soflia para dejarlos como administradores.
     return { success: true, redirectTo: '/dashboard' }
 
   } catch (err: any) {

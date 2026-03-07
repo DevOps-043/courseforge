@@ -62,34 +62,59 @@ export default function UsersTable({ initialUsers }: { initialUsers: any[] }) {
       setOpenMenuId(null);
   };
 
-  const handleSaveUser = (userData: any) => {
-      if (editingUser) {
-          // Edit Logic
-          setUsers(users.map(u => u.id === userData.id ? { 
-              ...u, 
-              first_name: userData.firstName, 
-              last_name_father: userData.lastNameFather,
-              last_name_mother: userData.lastNameMother,
-              email: userData.email,
-              platform_role: userData.role,
-              username: userData.username
-          } : u));
-          setEditingUser(null);
-      } else {
-          // Create Logic
-          const newUser = {
-              id: crypto.randomUUID(),
-              first_name: userData.firstName,
-              last_name_father: userData.lastNameFather,
-              last_name_mother: userData.lastNameMother,
-              email: userData.email,
-              platform_role: userData.role,
-              username: userData.username,
-              created_at: new Date().toISOString(),
-              status: 'active'
-          };
-          setUsers([newUser, ...users]);
-          setIsCreateOpen(false);
+  const handleSaveUser = async (userData: any) => {
+      // Optimizacion: Guardar en bd
+      try {
+        const response = await fetch('/api/admin/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                id: userData.id || crypto.randomUUID(),
+                firstName: userData.firstName,
+                lastNameFather: userData.lastNameFather,
+                lastNameMother: userData.lastNameMother,
+                email: userData.email,
+                role: userData.role,
+                username: userData.username,
+                isEdit: !!editingUser
+             })
+        });
+
+        if (!response.ok) {
+            throw new Error('Error al guardar el usuario en la base de datos');
+        }
+
+        if (editingUser) {
+            // Edit Logic
+            setUsers(users.map(u => u.id === userData.id ? { 
+                ...u, 
+                first_name: userData.firstName, 
+                last_name_father: userData.lastNameFather,
+                last_name_mother: userData.lastNameMother,
+                email: userData.email,
+                platform_role: userData.role,
+                username: userData.username
+            } : u));
+            setEditingUser(null);
+        } else {
+            // Create Logic
+            const newUser = {
+                id: userData.id || crypto.randomUUID(),
+                first_name: userData.firstName,
+                last_name_father: userData.lastNameFather,
+                last_name_mother: userData.lastNameMother,
+                email: userData.email,
+                platform_role: userData.role,
+                username: userData.username,
+                created_at: new Date().toISOString(),
+                status: 'active'
+            };
+            setUsers([newUser, ...users]);
+            setIsCreateOpen(false);
+        }
+      } catch (error) {
+          console.error("Error saving user:", error);
+          alert("Hubo un error al guardar el usuario. Revisa la consola para más detalles.");
       }
   };
 

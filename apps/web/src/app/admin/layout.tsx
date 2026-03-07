@@ -25,11 +25,7 @@ export default async function AdminLayout({
   const userId = user?.id || bridgeUser?.id;
   const userEmail = user?.email || bridgeUser?.email;
 
-  // 2. Verificar Rol de Admin
-  // Primero checar el cargo_rol de SofLIA (viene en el Auth Bridge JWT)
-  const isAdminViaSoflia = bridgeUser?.cargo_rol === 'Administrador' || bridgeUser?.cargo_rol === 'Business';
-
-  // También checar perfil local de CourseForge
+  // 2. Verificar Rol de Admin local de CourseForge
   const { data: profile } = await supabase
     .from('profiles')
     .select('*')
@@ -38,7 +34,7 @@ export default async function AdminLayout({
 
   const isAdminLocal = profile?.platform_role === 'ADMIN';
 
-  if (!isAdminViaSoflia && !isAdminLocal) {
+  if (!isAdminLocal) {
     redirect('/dashboard?error=unauthorized');
   }
 
