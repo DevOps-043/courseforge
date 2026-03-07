@@ -6,6 +6,7 @@ import { Loader2, Save, Send, AlertTriangle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { CourseDataForm } from './components/CourseDataForm';
 import { VideoMappingList, LessonVideoData, syncVideoDuration } from './components/VideoMappingList';
+import { refreshProductionVideos } from './actions';
 import { ConfirmationModal } from '@/shared/components/ConfirmationModal';
 import { PublishSuccessModal } from './components/PublishSuccessModal';
 import { UpstreamChangeAlert } from '@/shared/components/UpstreamChangeAlert';
@@ -137,14 +138,22 @@ export default function PublicationClientView({
     const handleConfirmReset = async () => {
         setIsResetting(true);
         try {
+            // 1. Fetch FRESH production data from the server (not stale props)
+            const result = await refreshProductionVideos(artifactId);
+            if (!result.success) {
+                toast.error("Error al obtener datos de producción: " + result.error);
+                return;
+            }
+
+            const freshLessons = result.lessons;
             const newMappings: Record<string, LessonVideoData> = {};
             const promises: Promise<void>[] = [];
 
-            // 1. Build initial mappings from auto-detect
-            lessons.forEach(l => {
-                const autoUrl = (l as any).auto_video_url;
+            // 2. Build mappings from fresh production data
+            freshLessons.forEach((l: any) => {
+                const autoUrl = l.auto_video_url || '';
                 let provider: 'youtube' | 'vimeo' | 'direct' = 'direct';
-                let videoId = autoUrl || '';
+                let videoId = autoUrl;
 
                 if (autoUrl) {
                     const ytMatch = autoUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
@@ -153,21 +162,18 @@ export default function PublicationClientView({
                     else if (vimeoMatch) { provider = 'vimeo'; videoId = vimeoMatch[1]; }
                 }
 
-                // Create mapping object
                 const mapping = {
                     lesson_id: l.id,
                     lesson_title: l.title,
                     module_title: l.module_title,
                     video_provider: provider,
                     video_id: videoId,
-                    duration: (l as any).auto_duration || 0
+                    duration: l.auto_duration || 0
                 };
                 newMappings[l.id] = mapping;
 
-                // 2. Queue synchronization if we have a valid ID
-                if (videoId) {
-                    // We run this async without blocking the main loop immediately
-                    // But we wait for all of them before setting state
+                // 3. Queue external duration sync for YouTube/Vimeo
+                if (videoId && (provider === 'youtube' || provider === 'vimeo')) {
                     const p = syncVideoDuration(provider, videoId).then(durationSec => {
                         if (durationSec > 0) {
                             newMappings[l.id].duration = durationSec;
@@ -177,11 +183,19 @@ export default function PublicationClientView({
                 }
             });
 
-            // Wait for all syncs to finish
+            // Wait for duration syncs
             await Promise.all(promises);
 
             setVideoMappings(newMappings);
-            toast.success("Mapeo restablecido y duraciones sincronizadas");
+
+            // Also auto-select all lessons with video
+            const withVideo = new Set<string>();
+            Object.keys(newMappings).forEach(id => {
+                if (newMappings[id].video_id) withVideo.add(id);
+            });
+            setSelectedLessons(withVideo);
+
+            toast.success("Videos sincronizados desde producción ✓");
         } catch (error) {
             console.error(error);
             toast.error("Error al restablecer mappings");
@@ -189,6 +203,7 @@ export default function PublicationClientView({
             setIsResetting(false);
         }
     };
+
 
 
 
@@ -399,14 +414,14 @@ export default function PublicationClientView({
                     setIsResetModalOpen(false);
                     await handleConfirmReset();
                 }}
-                title="¿Restablecer y Sincronizar?"
+                title="¿Sincronizar desde Producción?"
                 message={
                     <div className="space-y-3">
-                        <p>Esto borrará todas tus asignaciones manuales actuales y volverá a detectar los videos desde el contenido original.</p>
-                        <p className="font-semibold text-yellow-500">Además, se sincronizarán las duraciones reales de todos los videos detectados.</p>
+                        <p>Esto descartará las asignaciones manuales actuales y <strong>re-cargará los videos más recientes</strong> desde el paso de producción.</p>
+                        <p className="font-semibold text-yellow-500">Se sincronizarán las duraciones reales de los videos detectados (YouTube/Vimeo).</p>
                     </div>
                 }
-                confirmText="Sí, Restablecer"
+                confirmText="Sí, Sincronizar"
                 cancelText="Cancelar"
                 variant="warning"
                 isLoading={isResetting}

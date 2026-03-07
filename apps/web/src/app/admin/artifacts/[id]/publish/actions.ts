@@ -236,3 +236,80 @@ export async function fetchVideoMetadata(url: string) {
 
     return { duration: 0, title: '' };
 }
+
+/**
+ * Re-fetch fresh video URLs and durations from production (material_components).
+ * Used by the "reset" button to sync publication data with the latest production state.
+ */
+export async function refreshProductionVideos(artifactId: string) {
+    const supabase = await createClient();
+
+    // 1. Get materials for this artifact
+    const { data: materials } = await supabase
+        .from('materials')
+        .select('id')
+        .eq('artifact_id', artifactId)
+        .single();
+
+    if (!materials) {
+        return { success: false, error: 'No materials found', lessons: [] };
+    }
+
+    // 2. Fetch fresh lessons with their components
+    const { data: rawLessons, error } = await supabase
+        .from('material_lessons')
+        .select(`
+            lesson_id, 
+            lesson_title, 
+            module_title,
+            material_components(
+                type,
+                assets,
+                content
+            )
+        `)
+        .eq('materials_id', materials.id)
+        .order('module_id', { ascending: true })
+        .order('lesson_id', { ascending: true });
+
+    if (error) {
+        return { success: false, error: error.message, lessons: [] };
+    }
+
+    // 3. Extract video URLs and durations from components
+    const lessons = (rawLessons || []).map((l: any) => {
+        let videoUrl = '';
+        let videoDuration = 0;
+
+        if (l.material_components && Array.isArray(l.material_components)) {
+            const videoComp = l.material_components.find((c: any) =>
+                c.assets?.final_video_url || c.assets?.video_url || c.type?.includes('VIDEO')
+            );
+
+            if (videoComp) {
+                videoUrl = videoComp.assets?.final_video_url || videoComp.assets?.video_url || '';
+                videoDuration = videoComp.assets?.video_duration || 0;
+
+                // Try to compute duration from script sections if not stored
+                if (videoDuration === 0 && videoComp.content?.script?.sections) {
+                    videoDuration = videoComp.content.script.sections.reduce(
+                        (acc: number, sec: any) => acc + (sec.duration_seconds || 0), 0
+                    );
+                }
+                if (videoDuration === 0 && videoComp.content?.duration_estimate_minutes) {
+                    videoDuration = Math.round(videoComp.content.duration_estimate_minutes * 60);
+                }
+            }
+        }
+
+        return {
+            id: l.lesson_id,
+            title: l.lesson_title,
+            module_title: l.module_title,
+            auto_video_url: videoUrl,
+            auto_duration: videoDuration,
+        };
+    });
+
+    return { success: true, lessons };
+}
