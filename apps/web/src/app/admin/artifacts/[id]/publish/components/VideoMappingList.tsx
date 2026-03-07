@@ -13,6 +13,7 @@ export async function syncVideoDuration(provider: 'youtube' | 'vimeo' | 'direct'
         return new Promise((resolve, reject) => {
             const video = document.createElement('video');
             video.preload = 'metadata';
+            video.crossOrigin = 'anonymous';
             
             video.onloadedmetadata = () => {
                 const durationRaw = video.duration;

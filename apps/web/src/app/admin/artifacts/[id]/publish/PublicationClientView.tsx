@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Loader2, Save, Send, AlertTriangle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { CourseDataForm } from './components/CourseDataForm';
-import { VideoMappingList, LessonVideoData, syncVideoDuration } from './components/VideoMappingList';
+import { VideoMappingList, LessonVideoData } from './components/VideoMappingList';
 import { refreshProductionVideos } from './actions';
 import { ConfirmationModal } from '@/shared/components/ConfirmationModal';
 import { PublishSuccessModal } from './components/PublishSuccessModal';
@@ -147,9 +147,8 @@ export default function PublicationClientView({
 
             const freshLessons = result.lessons;
             const newMappings: Record<string, LessonVideoData> = {};
-            const promises: Promise<void>[] = [];
 
-            // 2. Build mappings from fresh production data
+            // 2. Build mappings from fresh production data (URLs + auto_duration)
             freshLessons.forEach((l: any) => {
                 const autoUrl = l.auto_video_url || '';
                 let provider: 'youtube' | 'vimeo' | 'direct' = 'direct';
@@ -162,7 +161,7 @@ export default function PublicationClientView({
                     else if (vimeoMatch) { provider = 'vimeo'; videoId = vimeoMatch[1]; }
                 }
 
-                const mapping = {
+                newMappings[l.id] = {
                     lesson_id: l.id,
                     lesson_title: l.title,
                     module_title: l.module_title,
@@ -170,32 +169,85 @@ export default function PublicationClientView({
                     video_id: videoId,
                     duration: l.auto_duration || 0
                 };
-                newMappings[l.id] = mapping;
-
-                // 3. Queue external duration sync for YouTube/Vimeo
-                if (videoId && (provider === 'youtube' || provider === 'vimeo')) {
-                    const p = syncVideoDuration(provider, videoId).then(durationSec => {
-                        if (durationSec > 0) {
-                            newMappings[l.id].duration = durationSec;
-                        }
-                    }).catch(console.error);
-                    promises.push(p);
-                }
             });
 
-            // Wait for duration syncs
-            await Promise.all(promises);
+            // 3. Fetch real durations for ALL videos
+            const { fetchVideoMetadata } = await import('./actions');
+            let syncedCount = 0;
 
-            setVideoMappings(newMappings);
+            // Helper: get duration for a direct/uploaded video via browser <video> element with timeout
+            const getDirectVideoDuration = (url: string, timeoutMs = 15000): Promise<number> => {
+                return new Promise((resolve) => {
+                    const video = document.createElement('video');
+                    video.preload = 'metadata';
+                    video.crossOrigin = 'anonymous';
+                    const timer = setTimeout(() => {
+                        video.src = ''; // abort
+                        resolve(0);
+                    }, timeoutMs);
+                    video.onloadedmetadata = () => {
+                        clearTimeout(timer);
+                        const d = video.duration;
+                        video.src = ''; // cleanup
+                        resolve(!isNaN(d) && d > 0 ? Math.round(d) : 0);
+                    };
+                    video.onerror = () => {
+                        clearTimeout(timer);
+                        resolve(0);
+                    };
+                    video.src = url;
+                });
+            };
 
-            // Also auto-select all lessons with video
+            // Process lessons with video sequentially
+            const lessonsWithVideo = freshLessons.filter((l: any) => newMappings[l.id]?.video_id);
+
+            for (const l of lessonsWithVideo) {
+                const m = newMappings[l.id];
+                try {
+                    if (m.video_provider === 'youtube' || m.video_provider === 'vimeo') {
+                        // Server-side fetch for YT/Vimeo
+                        let url = m.video_id;
+                        if (m.video_provider === 'youtube' && !url.includes('http')) {
+                            url = `https://www.youtube.com/watch?v=${url}`;
+                        } else if (m.video_provider === 'vimeo' && !url.includes('http')) {
+                            url = `https://vimeo.com/${url}`;
+                        }
+                        const metadata = await fetchVideoMetadata(url);
+                        if (metadata.duration > 0) {
+                            newMappings[l.id].duration = metadata.duration;
+                            syncedCount++;
+                        }
+                    } else if (m.video_provider === 'direct' && m.video_id) {
+                        // Client-side for direct/Supabase uploaded videos
+                        // Only try if we don't already have a valid duration from production
+                        if (m.duration <= 0) {
+                            const duration = await getDirectVideoDuration(m.video_id);
+                            if (duration > 0) {
+                                newMappings[l.id].duration = duration;
+                                syncedCount++;
+                            }
+                        } else {
+                            syncedCount++; // already had duration from production
+                        }
+                    }
+                } catch (err) {
+                    console.error(`Error syncing duration for ${l.id}:`, err);
+                }
+            }
+
+            // 4. Set the final state with ALL mappings updated
+            setVideoMappings({ ...newMappings });
+
+            // 5. Auto-select all lessons with video
             const withVideo = new Set<string>();
             Object.keys(newMappings).forEach(id => {
                 if (newMappings[id].video_id) withVideo.add(id);
             });
             setSelectedLessons(withVideo);
 
-            toast.success("Videos sincronizados desde producción ✓");
+            const totalWithVideo = lessonsWithVideo.length;
+            toast.success(`Videos sincronizados ✓ (${totalWithVideo} videos, ${syncedCount} con duración)`);
         } catch (error) {
             console.error(error);
             toast.error("Error al restablecer mappings");

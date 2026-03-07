@@ -166,6 +166,7 @@ export function ProductionAssetCard({
                         duration = await new Promise<number>((resolve) => {
                             const video = document.createElement('video');
                             video.preload = 'metadata';
+                            video.crossOrigin = 'anonymous';
                             video.onloadedmetadata = () => {
                                 const durationRaw = video.duration;
                                 if (!isNaN(durationRaw) && durationRaw > 0) {
