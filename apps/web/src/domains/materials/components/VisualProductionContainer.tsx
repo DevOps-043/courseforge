@@ -12,6 +12,7 @@ interface VisualProductionContainerProps {
     artifactId: string;
     productionComplete?: boolean;
     onStatusChange?: (isComplete: boolean) => void;
+    profile?: any;
 }
 
 interface ProductionGroup {
@@ -30,7 +31,7 @@ interface PendingAssets {
     };
 }
 
-export function VisualProductionContainer({ artifactId, productionComplete, onStatusChange }: VisualProductionContainerProps) {
+export function VisualProductionContainer({ artifactId, productionComplete, onStatusChange, profile }: VisualProductionContainerProps) {
     const router = useRouter();
     const { materials, getLessonComponents, refresh } = useMaterials(artifactId);
     const [productionItems, setProductionItems] = useState<ProductionGroup[]>([]);

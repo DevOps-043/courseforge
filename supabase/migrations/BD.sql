@@ -19,6 +19,7 @@ CREATE TABLE public.artifacts (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   production_complete boolean DEFAULT false,
+  organization_id uuid,
   CONSTRAINT artifacts_pkey PRIMARY KEY (id),
   CONSTRAINT artifacts_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id)
 );
@@ -30,6 +31,8 @@ CREATE TABLE public.curation (
   qa_decision jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  upstream_dirty boolean DEFAULT false,
+  upstream_dirty_source text,
   CONSTRAINT curation_pkey PRIMARY KEY (id),
   CONSTRAINT curation_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id)
 );
@@ -85,6 +88,8 @@ CREATE TABLE public.instructional_plans (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   validation jsonb,
+  upstream_dirty boolean DEFAULT false,
+  upstream_dirty_source text,
   CONSTRAINT instructional_plans_pkey PRIMARY KEY (id),
   CONSTRAINT instructional_plans_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id)
 );
@@ -145,6 +150,8 @@ CREATE TABLE public.materials (
   lessons jsonb DEFAULT '[]'::jsonb,
   global_blockers jsonb DEFAULT '[]'::jsonb,
   dod jsonb DEFAULT '{"checklist": [], "automatic_checks": []}'::jsonb,
+  upstream_dirty boolean DEFAULT false,
+  upstream_dirty_source text,
   CONSTRAINT materials_pkey PRIMARY KEY (id),
   CONSTRAINT materials_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id)
 );
@@ -186,7 +193,6 @@ CREATE TABLE public.profiles (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT profiles_pkey PRIMARY KEY (id),
-  CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id),
   CONSTRAINT profiles_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id)
 );
 CREATE TABLE public.publication_requests (
@@ -207,6 +213,9 @@ CREATE TABLE public.publication_requests (
   rejection_reason text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  selected_lessons jsonb,
+  upstream_dirty boolean DEFAULT false,
+  upstream_dirty_source text,
   CONSTRAINT publication_requests_pkey PRIMARY KEY (id),
   CONSTRAINT publication_requests_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id)
 );

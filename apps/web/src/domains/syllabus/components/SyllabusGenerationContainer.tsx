@@ -12,11 +12,12 @@ interface SyllabusGenerationContainerProps {
   initialObjetivos: string[];
   initialIdeaCentral: string;
   onNext?: () => void;
+  profile?: any;
 }
 
 type TabMode = 'GENERATE' | 'IMPORT';
 
-export function SyllabusGenerationContainer({ artifactId, initialObjetivos, initialIdeaCentral, onNext }: SyllabusGenerationContainerProps) {
+export function SyllabusGenerationContainer({ artifactId, initialObjetivos, initialIdeaCentral, onNext, profile }: SyllabusGenerationContainerProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabMode>('GENERATE');
   const [route, setRoute] = useState<Esp02Route | null>('B_NO_SOURCE'); // Default a IA
@@ -361,7 +362,7 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
                 />
 
                 <div className="flex items-center gap-4 mt-4">
-                    {status !== 'STEP_APPROVED' && status !== 'STEP_REJECTED' && (
+                    {profile?.platform_role !== 'CONSTRUCTOR' && status !== 'STEP_APPROVED' && status !== 'STEP_REJECTED' && (
                         <>
                             <button 
                                 onClick={async () => {

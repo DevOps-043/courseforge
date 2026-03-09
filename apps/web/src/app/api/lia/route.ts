@@ -3,20 +3,27 @@ import { createClient } from '@/utils/supabase/server';
 import { SYSTEM_PROMPT, COMPUTER_USE_PROMPT } from '@/lib/lia-app-context';
 import { getLiaDBContext, generateDBContextSummary } from '@/lib/lia-db-context';
 
-// Get Lia settings from database
-const getLiaSettings = async (supabase: any, useComputerUse: boolean) => {
+// Get Lia settings from database, filtered by organization
+const getLiaSettings = async (supabase: any, useComputerUse: boolean, organizationId?: string | null) => {
   // COMPUTER for computer use mode, LIA_MODEL for standard mode
   const settingType = useComputerUse ? 'COMPUTER' : 'LIA_MODEL';
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('model_settings')
     .select('*')
     .eq('setting_type', settingType)
-    .eq('is_active', true)
-    .single();
+    .eq('is_active', true);
+
+  if (organizationId) {
+    query = query.eq('organization_id', organizationId);
+  } else {
+    query = query.is('organization_id', null);
+  }
+
+  const { data, error } = await query.single();
 
   if (error || !data) {
-    console.warn(`No ${settingType} settings found, using defaults.`);
+    console.warn(`No ${settingType} settings found for org ${organizationId || 'global'}, using defaults.`);
     return useComputerUse
       ? { model_name: 'gemini-2.0-flash-exp', temperature: 0.3, setting_type: 'COMPUTER' }
       : { model_name: 'gemini-2.0-flash', temperature: 0.7, setting_type: 'LIA_MODEL' };
@@ -214,8 +221,13 @@ export async function POST(req: NextRequest) {
     // Determine if we should use Computer Use mode
     const useComputerUse = computerUseMode && screenshot;
 
-    // Get settings from database based on mode
-    const settings = await getLiaSettings(supabase, useComputerUse);
+    // Get organization_id from cookies for org-specific settings
+    const cookieHeader = req.headers.get('cookie') || '';
+    const orgMatch = cookieHeader.match(/(?:^|;\s*)cf_active_org=([^;]*)/);
+    const activeOrgId = orgMatch ? decodeURIComponent(orgMatch[1]) : null;
+
+    // Get settings from database based on mode and organization
+    const settings = await getLiaSettings(supabase, useComputerUse, activeOrgId);
 
     // Model selection: Use the model from DB settings
     const modelName = settings.model_name;

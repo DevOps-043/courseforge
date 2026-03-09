@@ -3,7 +3,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Search, Filter, MoreHorizontal, User, Shield, Mail, Calendar, Edit, Trash2, X } from 'lucide-react';
+import { Search, Filter, MoreHorizontal, User, Shield, Mail, Calendar, Edit, X } from 'lucide-react';
 import UserModal from './UserModal';
 
 export default function UsersTable({ initialUsers }: { initialUsers: any[] }) {
@@ -11,7 +11,6 @@ export default function UsersTable({ initialUsers }: { initialUsers: any[] }) {
   const [searchTerm, setSearchTerm] = useState('');
   
   // Modal States
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any | null>(null);
 
   // Actions Menu State
@@ -50,13 +49,6 @@ export default function UsersTable({ initialUsers }: { initialUsers: any[] }) {
     }
   }, [openMenuId]);
 
-  const handleDelete = (id: string) => {
-    if (confirm('¿Estás seguro de que deseas eliminar este usuario?')) {
-        setUsers(users.filter(u => u.id !== id));
-        setOpenMenuId(null);
-    }
-  };
-
   const handleEdit = (user: any) => {
       setEditingUser(user);
       setOpenMenuId(null);
@@ -84,34 +76,13 @@ export default function UsersTable({ initialUsers }: { initialUsers: any[] }) {
             throw new Error('Error al guardar el usuario en la base de datos');
         }
 
-        if (editingUser) {
-            // Edit Logic
-            setUsers(users.map(u => u.id === userData.id ? { 
-                ...u, 
-                first_name: userData.firstName, 
-                last_name_father: userData.lastNameFather,
-                last_name_mother: userData.lastNameMother,
-                email: userData.email,
-                platform_role: userData.role,
-                username: userData.username
-            } : u));
-            setEditingUser(null);
-        } else {
-            // Create Logic
-            const newUser = {
-                id: userData.id || crypto.randomUUID(),
-                first_name: userData.firstName,
-                last_name_father: userData.lastNameFather,
-                last_name_mother: userData.lastNameMother,
-                email: userData.email,
-                platform_role: userData.role,
-                username: userData.username,
-                created_at: new Date().toISOString(),
-                status: 'active'
-            };
-            setUsers([newUser, ...users]);
-            setIsCreateOpen(false);
-        }
+        // Edit Logic
+        setUsers(users.map(u => u.id === userData.id ? { 
+            ...u, 
+            platform_role: userData.role
+        } : u));
+        setEditingUser(null);
+
       } catch (error) {
           console.error("Error saving user:", error);
           alert("Hubo un error al guardar el usuario. Revisa la consola para más detalles.");
@@ -135,14 +106,7 @@ export default function UsersTable({ initialUsers }: { initialUsers: any[] }) {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Usuarios</h1>
           <p className="text-gray-600 dark:text-[#94A3B8]">Gestiona los usuarios y sus permisos en la plataforma.</p>
         </div>
-        <button 
-            onClick={() => setIsCreateOpen(true)}
-            className="group relative bg-[#0A2540] dark:bg-[#00D4B3] hover:bg-[#0d2f4d] dark:hover:bg-[#00D4B3]/90 text-white dark:text-black px-4 py-2 rounded-xl font-medium transition-all flex items-center gap-2 overflow-hidden shadow-sm"
-        >
-            <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform"/>
-            <User size={18} className="relative z-10" />
-            <span className="relative z-10">Nuevo Usuario</span>
-        </button>
+        {/* Centralized user management - Create User button hidden */}
       </div>
 
       {/* Filters & Search */}
@@ -261,25 +225,14 @@ export default function UsersTable({ initialUsers }: { initialUsers: any[] }) {
                     className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-[#00D4B3]/10 hover:text-[#00D4B3] flex items-center gap-2 transition-colors"
                 >
                     <Edit size={14} />
-                    Editar Información
-                </button>
-                <button 
-                    onClick={() => handleDelete(activeUser.id)}
-                    className="w-full text-left px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center gap-2 transition-colors"
-                >
-                    <Trash2 size={14} />
-                    Eliminar Usuario
+                    Ver / Editar Rol
                 </button>
             </div>
         </>
       )}
 
       {/* Modals */}
-      <UserModal 
-        isOpen={isCreateOpen} 
-        onClose={() => setIsCreateOpen(false)} 
-        onSave={handleSaveUser}
-      />
+      {/* Only edit modal, creation is hidden */}
       
       <UserModal 
         isOpen={!!editingUser} 

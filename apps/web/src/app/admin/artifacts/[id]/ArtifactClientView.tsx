@@ -19,11 +19,15 @@ import PublicationClientView from './publish/PublicationClientView';
 export default function ArtifactClientView({
     artifact,
     publicationRequest,
-    publicationLessons
+    publicationLessons,
+    profile,
+    basePath = '/admin'
 }: {
     artifact: any,
     publicationRequest?: any,
-    publicationLessons?: any[]
+    publicationLessons?: any[],
+    profile?: any,
+    basePath?: string
 }) {
     const [activeTab, setActiveTab] = useState<'content' | 'validation'>('content');
 
@@ -433,9 +437,11 @@ export default function ArtifactClientView({
                                 )}
                             </SectionCard>
 
+                            {/* Ocultar bloque de QA para CONSTRUCTOR */}
+                            {profile?.platform_role !== 'CONSTRUCTOR' && (
                             <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 mt-8">
                                 <h3 className="text-gray-900 dark:text-white font-bold mb-4 flex items-center gap-2">
-                                    <Edit3 size={18} /> Revisión Fase 1
+                                    <Edit3 size={18} /> Revisión Fase 1 (QA)
                                 </h3>
 
                                 <textarea
@@ -518,6 +524,7 @@ export default function ArtifactClientView({
                                     )}
                                 </div>
                             </div>
+                            )}
                         </div>
                     ) : (
                         <div className="space-y-6">
@@ -557,6 +564,7 @@ export default function ArtifactClientView({
                         initialObjetivos={artifact.objetivos || []}
                         initialIdeaCentral={artifact.idea_central || ''}
                         onNext={() => setCurrentStep(3)}
+                        profile={profile}
                     />
                 </div>
             ) : currentStep === 3 ? (
@@ -573,18 +581,20 @@ export default function ArtifactClientView({
                         courseId={artifact.courseId || artifact.course_id}
                         temario={artifact.temario?.modules}
                         ideaCentral={artifact.idea_central}
+                        profile={profile}
                     />
                 </div>
             ) : currentStep === 5 ? (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                    <MaterialsForm artifactId={artifact.id} />
+                    <MaterialsForm artifactId={artifact.id} profile={profile} />
                 </div>
             ) : currentStep === 6 ? (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                     <VisualProductionContainer 
                         artifactId={artifact.id} 
                         productionComplete={artifact.production_complete} 
-                        onStatusChange={setLocalProductionComplete} 
+                        onStatusChange={setLocalProductionComplete}
+                        profile={profile}
                     />
                 </div>
             ) : currentStep === 7 ? (
@@ -594,6 +604,8 @@ export default function ArtifactClientView({
                         artifactTitle={artifact.idea_central}
                         lessons={publicationLessons || []}
                         existingRequest={publicationRequest}
+                        profile={profile}
+                        basePath={basePath}
                     />
                 </div>
             ) : null}

@@ -11,6 +11,14 @@ export async function POST(request: Request) {
         }
 
         const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
+        }
+        const { data: profile } = await supabase.from('profiles').select('platform_role').eq('id', user.id).single();
+        if (profile?.platform_role === 'CONSTRUCTOR') {
+            return NextResponse.json({ error: 'Falta de permisos. Solo Arquitectos y Admins pueden guardar para publicación.' }, { status: 403 });
+        }
 
         const { data: existing } = await supabase
             .from('publication_requests')

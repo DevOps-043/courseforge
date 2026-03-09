@@ -9,14 +9,38 @@ import { cookies } from 'next/headers';
  */
 async function getAuthenticatedUser(supabase: any) {
     // Intentar GoTrue primero
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) return { userId: user.id, email: user.email };
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (user) {
+        console.log('[Auth] Logged in via GoTrue:', user.email);
+        return { userId: user.id, email: user.email };
+    }
+    if (authError) {
+        console.log('[Auth] GoTrue error or no user:', authError.message);
+    }
 
     // Fallback: Auth Bridge
+    console.log('[Auth] Attempting Auth Bridge fallback...');
     const bridgeUser = await getAuthBridgeUser();
-    if (bridgeUser) return { userId: bridgeUser.id, email: bridgeUser.email };
+    if (bridgeUser) {
+        console.log('[Auth] Logged in via Auth Bridge:', bridgeUser.email);
+        return { userId: bridgeUser.id, email: bridgeUser.email };
+    }
 
+    console.log('[Auth] No authenticated user found in any provider');
     return null;
+}
+
+/**
+ * Helper: Verificar si el usuario puede aprobar contenido (ADMIN o ARQUITECTO)
+ */
+async function canReviewContent(supabase: any, userId: string) {
+    const { data } = await supabase
+        .from('profiles')
+        .select('platform_role')
+        .eq('id', userId)
+        .single();
+    
+    return data?.platform_role === 'ADMIN' || data?.platform_role === 'ARQUITECTO' || data?.platform_role === 'SUPERADMIN';
 }
 
 /**
@@ -42,10 +66,10 @@ export async function generateArtifactAction(formData: {
 
     // Auth Check con fallback
     const authUser = await getAuthenticatedUser(supabase);
-    if (!authUser) return { success: false, error: 'Unauthorized' };
+    if (!authUser) return { success: false, error: 'Unauthorized (No User)' };
 
     const accessToken = await getAccessToken(supabase);
-    if (!accessToken) return { success: false, error: 'Unauthorized' };
+    if (!accessToken) return { success: false, error: 'Unauthorized (No Token)' };
 
     // Obtener organización activa
     const activeOrgId = await getActiveOrganizationId();
@@ -204,6 +228,9 @@ export async function updateArtifactStatusAction(artifactId: string, status: str
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return { success: false, error: 'Unauthorized' };
 
+    const hasPermission = await canReviewContent(supabase, user.id);
+    if (!hasPermission) return { success: false, error: 'Forbidden: Requiere rol de Arquitecto o Admin' };
+
     const { error } = await supabase
         .from('artifacts')
         .update({ state: status })
@@ -310,6 +337,9 @@ export async function updateInstructionalPlanStatusAction(artifactId: string, st
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    const hasPermission = await canReviewContent(supabase, user.id);
+    if (!hasPermission) return { success: false, error: 'Forbidden: Requiere rol de Arquitecto o Admin' };
 
     const updateData: any = { state: status };
 
@@ -594,6 +624,9 @@ export async function updateCurationStatusAction(artifactId: string, status: str
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    const hasPermission = await canReviewContent(supabase, user.id);
+    if (!hasPermission) return { success: false, error: 'Forbidden: Requiere rol de Arquitecto o Admin' };
 
     // Map generic step status to specific Phase 2 status if needed
     // The UI might send STEP_APPROVED, we map it to PHASE2_APPROVED

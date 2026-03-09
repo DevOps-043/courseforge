@@ -19,9 +19,10 @@ import {
 interface MaterialsFormProps {
     artifactId: string;
     className?: string;
+    profile?: any;
 }
 
-export function MaterialsForm({ artifactId, className = '' }: MaterialsFormProps) {
+export function MaterialsForm({ artifactId, className = '', profile }: MaterialsFormProps) {
     const router = useRouter();
     const {
         materials,
@@ -365,29 +366,33 @@ export function MaterialsForm({ artifactId, className = '' }: MaterialsFormProps
                         <CheckCircle className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                         <span className="font-medium text-purple-800 dark:text-purple-300">Pendiente de revisión QA</span>
                     </div>
-                    <textarea
-                        value={qaNote}
-                        onChange={(e) => setQaNote(e.target.value)}
-                        placeholder="Notas de revisión (opcional)"
-                        className="w-full p-3 text-sm border border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-[#1E2329] text-gray-900 dark:text-white placeholder-gray-400"
-                        rows={2}
-                    />
-                    <div className="flex gap-3">
-                        <button
-                            onClick={() => handleQADecision('APPROVED')}
-                            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
-                        >
-                            <CheckCircle className="h-4 w-4" />
-                            Aprobar
-                        </button>
-                        <button
-                            onClick={() => handleQADecision('REJECTED')}
-                            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
-                        >
-                            <AlertTriangle className="h-4 w-4" />
-                            Rechazar
-                        </button>
-                    </div>
+                    {profile?.platform_role !== 'CONSTRUCTOR' && (
+                        <>
+                            <textarea
+                                value={qaNote}
+                                onChange={(e) => setQaNote(e.target.value)}
+                                placeholder="Notas de revisión (opcional)"
+                                className="w-full p-3 text-sm border border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-[#1E2329] text-gray-900 dark:text-white placeholder-gray-400"
+                                rows={2}
+                            />
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => handleQADecision('APPROVED')}
+                                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
+                                >
+                                    <CheckCircle className="h-4 w-4" />
+                                    Aprobar
+                                </button>
+                                <button
+                                    onClick={() => handleQADecision('REJECTED')}
+                                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
+                                >
+                                    <AlertTriangle className="h-4 w-4" />
+                                    Rechazar
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </div>
             )}
 
