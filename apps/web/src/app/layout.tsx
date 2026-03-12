@@ -3,7 +3,6 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 
 import { Providers } from './providers';
-import { LiaChat } from '@/components/lia/LiaChat';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -22,7 +21,6 @@ export default function RootLayout({
       <body className={`${inter.className} bg-gray-50 dark:bg-[#050B14] text-slate-900 dark:text-white transition-colors duration-300`}>
         <Providers>
           {children}
-          <LiaChat />
         </Providers>
       </body>
     </html>

@@ -729,8 +729,10 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext, profi
                                 </button>
                                 <button
                                     onClick={async () => {
-                                        const { updateInstructionalPlanStatusAction } = await import('../../../app/admin/artifacts/actions');
+                                        const { updateInstructionalPlanStatusAction, updateArtifactStatusAction } = await import('../../../app/admin/artifacts/actions');
                                         await updateInstructionalPlanStatusAction(artifactId, 'STEP_APPROVED', reviewNotes);
+                                        // Update main artifact status to trigger QA
+                                        await updateArtifactStatusAction(artifactId, 'READY_FOR_QA');
                                         setExistingPlan({ ...existingPlan, state: 'STEP_APPROVED' });
                                         router.refresh();
                                         if (onNext) onNext();

@@ -101,7 +101,7 @@ export default async function ArchitectArtifactsPage() {
       </div>
 
       {/* Client List Component - Reused from Admin */}
-      <ArtifactsList initialArtifacts={artifactsWithProfiles} currentUserId={currentUserId} />
+      <ArtifactsList initialArtifacts={artifactsWithProfiles} currentUserId={currentUserId} basePath="/architect" />
     </div>
   );
 }
