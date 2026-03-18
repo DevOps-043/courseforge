@@ -80,13 +80,17 @@ export default function AdminLayoutClient({
     const isOpen = isPinned || isHovered;
 
     // Navigation Items
-    const navItems = [
-        { href: '/admin', icon: <LayoutDashboard size={22} />, label: 'Dashboard' },
-        { href: '/admin/users', icon: <Users size={22} />, label: 'Usuarios' },
-        { href: '/admin/artifacts', icon: <FileCode size={22} />, label: 'Artefactos' },
-        { href: '/admin/library', icon: <FileCode size={22} />, label: 'Librería' },
-        { href: '/admin/settings', icon: <Settings size={22} />, label: 'Configuración' },
+    const allNavItems = [
+        { href: '/admin', icon: <LayoutDashboard size={22} />, label: 'Dashboard', roles: ['ADMIN', 'ARQUITECTO', 'CONSTRUCTOR'] },
+        { href: '/admin/users', icon: <Users size={22} />, label: 'Usuarios', roles: ['ADMIN'] },
+        { href: '/admin/artifacts', icon: <FileCode size={22} />, label: 'Artefactos', roles: ['ADMIN', 'ARQUITECTO', 'CONSTRUCTOR'] },
+        { href: '/admin/library', icon: <FileCode size={22} />, label: 'Librería', roles: ['ADMIN', 'ARQUITECTO'] },
+        { href: '/admin/settings', icon: <Settings size={22} />, label: 'Configuración', roles: ['ADMIN'] },
     ];
+
+    const navItems = allNavItems.filter(item => 
+        item.roles.includes(profile?.platform_role as string)
+    );
 
     const isActive = (href: string) => {
         if (href === '/admin') return pathname === '/admin';

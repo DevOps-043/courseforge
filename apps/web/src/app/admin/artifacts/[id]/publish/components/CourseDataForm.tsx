@@ -21,8 +21,8 @@ const formatThumbnailUrl = (url?: string) => {
     if (!url) return '';
     const driveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
     if (driveMatch && driveMatch[1]) {
-        // Thumbnail endpoint works better for previews and bypassing HTML blocks
-        return `https://drive.google.com/thumbnail?id=${driveMatch[1]}`;
+        // Standard view endpoint for Google Drive images bypassing HTML blocks
+        return `https://drive.google.com/uc?export=view&id=${driveMatch[1]}`;
     }
     return url;
 };
