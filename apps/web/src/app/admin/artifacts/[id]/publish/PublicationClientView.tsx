@@ -35,13 +35,17 @@ interface PublicationClientViewProps {
         upstream_dirty_source?: string;
         status: string;
     } | null;
+    profile?: any;
+    basePath?: string;
 }
 
 export default function PublicationClientView({
     artifactId,
     artifactTitle,
     lessons,
-    existingRequest
+    existingRequest,
+    profile,
+    basePath = '/admin'
 }: PublicationClientViewProps) {
     const router = useRouter();
     const [courseData, setCourseData] = useState(existingRequest || {
@@ -387,15 +391,17 @@ export default function PublicationClientView({
                         Guardar Borrador
                     </button>
 
-                    <button
-                        onClick={() => setIsPublishConfirmModalOpen(true)}
-                        disabled={!isReady || isSaving || isPublishing}
-                        className={`flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isReady ? 'bg-[#00D4B3] hover:bg-[#00c0a1]' : 'bg-gray-400 dark:bg-gray-600'
-                            }`}
-                    >
-                        {isPublishing ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
-                        Enviar a Soflia
-                    </button>
+                    {profile?.platform_role !== 'CONSTRUCTOR' && (
+                        <button
+                            onClick={() => setIsPublishConfirmModalOpen(true)}
+                            disabled={!isReady || isSaving || isPublishing}
+                            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isReady ? 'bg-[#00D4B3] hover:bg-[#00c0a1]' : 'bg-gray-400 dark:bg-gray-600'
+                                }`}
+                        >
+                            {isPublishing ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
+                            Enviar a Soflia
+                        </button>
+                    )}
                 </div>
             </div>
 

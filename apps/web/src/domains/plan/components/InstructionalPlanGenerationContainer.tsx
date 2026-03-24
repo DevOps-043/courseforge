@@ -96,6 +96,7 @@ const PremiumSelect = ({ options, value, onChange, placeholder = "Select...", cl
 interface InstructionalPlanGenerationContainerProps {
     artifactId: string;
     onNext?: () => void;
+    profile?: any;
 }
 
 const DEFAULT_PROMPT_PREVIEW = `Genera un plan instruccional detallado para cada lección del temario proporcionado.
@@ -133,7 +134,7 @@ const COMPONENT_TYPES = [
     { value: 'DEMO_GUIDE', label: 'Guía Interactiva' }
 ];
 
-export function InstructionalPlanGenerationContainer({ artifactId, onNext }: InstructionalPlanGenerationContainerProps) {
+export function InstructionalPlanGenerationContainer({ artifactId, onNext, profile }: InstructionalPlanGenerationContainerProps) {
     const router = useRouter();
     const [isGenerating, setIsGenerating] = useState(false);
     const [isValidating, setIsValidating] = useState(false); // New state
@@ -716,7 +717,7 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                     />
 
                     <div className="flex items-center gap-4 mt-4">
-                        {existingPlan.state !== 'STEP_APPROVED' && existingPlan.state !== 'STEP_REJECTED' && (
+                        {profile?.platform_role !== 'CONSTRUCTOR' && existingPlan.state !== 'STEP_APPROVED' && existingPlan.state !== 'STEP_REJECTED' && (
                             <>
                                 <button
                                     onClick={handleValidate}
@@ -728,8 +729,10 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext }: Ins
                                 </button>
                                 <button
                                     onClick={async () => {
-                                        const { updateInstructionalPlanStatusAction } = await import('../../../app/admin/artifacts/actions');
+                                        const { updateInstructionalPlanStatusAction, updateArtifactStatusAction } = await import('../../../app/admin/artifacts/actions');
                                         await updateInstructionalPlanStatusAction(artifactId, 'STEP_APPROVED', reviewNotes);
+                                        // Update main artifact status to trigger QA
+                                        await updateArtifactStatusAction(artifactId, 'READY_FOR_QA');
                                         setExistingPlan({ ...existingPlan, state: 'STEP_APPROVED' });
                                         router.refresh();
                                         if (onNext) onNext();

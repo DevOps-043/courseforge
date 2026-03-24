@@ -27,6 +27,7 @@ export async function getAuthBridgeUser(): Promise<AuthBridgeUser | null> {
   try {
     const cookieStore = await cookies()
     const token = cookieStore.get('cf_access_token')?.value
+    console.log('[AuthBridge] Cookie cf_access_token:', token ? 'Present' : 'MISSING');
 
     if (!token) {
       return null
@@ -34,15 +35,17 @@ export async function getAuthBridgeUser(): Promise<AuthBridgeUser | null> {
 
     const secret = process.env.COURSEFORGE_JWT_SECRET
     if (!secret) {
-      console.error('COURSEFORGE_JWT_SECRET not configured')
+      console.error('[AuthBridge] COURSEFORGE_JWT_SECRET not configured');
       return null
     }
 
+    console.log('[AuthBridge] Verifying token with secret...');
     const secretKey = new TextEncoder().encode(secret)
 
     const { payload } = await jwtVerify(token, secretKey, {
       algorithms: ['HS256'],
     })
+    console.log('[AuthBridge] Token verified for sub:', payload.sub);
 
     if (!payload.sub || !payload.email) {
       return null

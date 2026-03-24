@@ -27,6 +27,7 @@ interface SourcesCurationGenerationContainerProps {
     courseId?: string; // Nuevo prop para ID público
     temario?: SyllabusModule[];
     ideaCentral?: string;
+    profile?: any;
 }
 
 const DEFAULT_PROMPT_PREVIEW = `Prompt optimizado con reglas de curaduría, enfoque en accesibilidad (sin descargas), validación de URLs y estructura JSON estricta. Utiliza búsquedas en tiempo real para verificar la disponibilidad.`;
@@ -34,7 +35,7 @@ const DEFAULT_PROMPT_PREVIEW = `Prompt optimizado con reglas de curaduría, enfo
 // URL del GPT personalizado
 const GPT_URL = 'https://chatgpt.com/g/g-69a9a074e8dc8191a8cf38f3b54fbf55-soflia-generating-sources-assistant';
 
-export function SourcesCurationGenerationContainer({ artifactId, courseId, temario, ideaCentral }: SourcesCurationGenerationContainerProps) {
+export function SourcesCurationGenerationContainer({ artifactId, courseId, temario, ideaCentral, profile }: SourcesCurationGenerationContainerProps) {
     const { curation, rows, isGenerating, startCuration, updateRow, deleteRow, clearGPTRows, refresh } = useCuration(artifactId);
     const router = useRouter();
     const [useCustomPrompt, setUseCustomPrompt] = useState(false);
@@ -748,7 +749,7 @@ export function SourcesCurationGenerationContainer({ artifactId, courseId, temar
                     )}
 
                     <div className="flex items-center gap-4 mt-4">
-                        {curation?.state !== 'PHASE2_APPROVED' && curation?.state !== 'PHASE2_BLOCKED' && (
+                        {profile?.platform_role !== 'CONSTRUCTOR' && curation?.state !== 'PHASE2_APPROVED' && curation?.state !== 'PHASE2_BLOCKED' && (
                             <>
                                 <button
                                     onClick={handleValidate}

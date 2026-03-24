@@ -2,9 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { Zap, BrainCircuit, Loader2, Save, Search, CheckCircle2, Box, Settings2, FileText, Monitor } from 'lucide-react';
-import { createClient } from '@/utils/supabase/client';
 import { toast } from 'sonner';
 import { PremiumSelect } from '@/shared/components/PremiumSelect';
+import { getModelSettingsAction, updateModelSettingsAction } from '@/app/admin/settings/actions';
+
+// Helper to read the active org cookie on the client side
+function getActiveOrgIdClient(): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(/(?:^|;\s*)cf_active_org=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
 
 interface CurationConfig {
     id: number;
@@ -50,7 +57,6 @@ const SETTING_METADATA: Record<string, { title: string; icon: React.ReactNode; i
 };
 
 export function CurationSettingsManager() {
-  const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
@@ -58,17 +64,13 @@ export function CurationSettingsManager() {
 
   useEffect(() => {
      async function loadSettings() {
-         const { data, error } = await supabase
-            .from('model_settings')
-            .select('*')
-            .eq('is_active', true)
-            .order('id', { ascending: true });
-         
-         if (data) {
-             setSettingsList(data);
-         } else if (error) {
-             console.error("Error loading settings:", error);
-             toast.error("Error al cargar la configuración");
+         const res = await getModelSettingsAction();
+
+         if (res.success && res.settings) {
+             setSettingsList(res.settings as CurationConfig[]);
+         } else {
+             console.error("Error loading settings:", res.error);
+             toast.error("Error al cargar la configuración de modelos");
          }
          setLoading(false);
      }
@@ -84,23 +86,12 @@ export function CurationSettingsManager() {
   const saveSettings = async () => {
       setSaving(true);
       
-      const updates = settingsList.map(setting => 
-          supabase.from('model_settings').update({
-              model_name: setting.model_name,
-              fallback_model: setting.fallback_model,
-              temperature: setting.temperature,
-              thinking_level: setting.thinking_level
-          }).eq('id', setting.id)
-      );
+      const res = await updateModelSettingsAction(settingsList);
 
-      const results = await Promise.all(updates);
-      const errors = results.filter(r => r.error);
-
-      if (errors.length > 0) {
-          console.error('Save errors:', errors);
-          toast.error('Error guardando algunas configuraciones');
+      if (!res.success) {
+          toast.error(res.error || 'Error guardando algunas configuraciones');
       } else {
-          toast.success('Configuraciones guardadas correctamente');
+          toast.success('Configuraciones de modelos guardadas correctamente');
       }
       setSaving(false);
   };

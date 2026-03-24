@@ -168,7 +168,7 @@ export const handler: Handler = async (event, context) => {
         // --- STEP 3: VALIDATION (PHASE 1) ---
         const objectives = content.objetivos || [];
         const names = content.nombres || [];
-        const description = content.descripcion?.texto || content.descripcion?.resumen || ""; // Handle variable schema response
+        const description = content.descripcion?.texto || (content.descripcion as any)?.resumen || ""; // Handle variable schema response
 
         // Checks
         const checkBloom = objectives.every((obj: string) => BLOOM_VERBS.some(v => obj.trim().toLowerCase().startsWith(v.toLowerCase())));
@@ -216,7 +216,7 @@ export const handler: Handler = async (event, context) => {
                 last_feedback_used: feedback || null
             },
             validation_report: { results: validationReport, all_passed: allPassed },
-            state: allPassed ? 'READY_FOR_QA' : 'ESCALATED' 
+            state: allPassed ? 'APPROVED' : 'ESCALATED' 
         }).eq('id', artifactId);
 
         if (error) throw error;

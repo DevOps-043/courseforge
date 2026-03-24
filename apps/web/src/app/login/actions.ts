@@ -111,6 +111,33 @@ export async function loginAction(prevState: any, formData: FormData) {
     const activeOrgId = organizations.length > 0 ? organizations[0].id : null
 
     // ──────────────────────────────────────────────────
+    // PASO 4.5: Sincronizar organizaciones localmente
+    // ──────────────────────────────────────────────────
+    if (organizations.length > 0) {
+      // Must use service_role to bypass RLS and insert the organizations
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+      const supabaseAdmin = createAdminClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        serviceRoleKey
+      );
+      
+      const orgsToUpsert = organizations.map((org: any) => ({
+        id: org.id,
+        name: org.name || 'Organización',
+        slug: org.slug || org.id,
+        logo_url: org.logo_url
+      }));
+
+      const { error: syncError } = await supabaseAdmin
+        .from('organizations')
+        .upsert(orgsToUpsert, { onConflict: 'id' });
+
+      if (syncError) {
+        console.error('Error sincronizando organizaciones localmente:', syncError);
+      }
+    }
+
+    // ──────────────────────────────────────────────────
     // PASO 5: Firmar JWT para CourseForge
     // ──────────────────────────────────────────────────
     const secret = new TextEncoder().encode(courseforgeJwtSecret)
@@ -339,16 +366,20 @@ export async function loginAction(prevState: any, formData: FormData) {
           .select('platform_role')
           .single()
 
-      // Redirigir a /admin si tiene cualquier rol válido de plataforma
-      if (profile?.platform_role === 'ADMIN' || profile?.platform_role === 'ARQUITECTO' || profile?.platform_role === 'CONSTRUCTOR') {
+      // Redirigir según rol de plataforma
+      if (profile?.platform_role === 'ADMIN') {
         return { success: true, redirectTo: '/admin' }
+      } else if (profile?.platform_role === 'ARQUITECTO') {
+        return { success: true, redirectTo: '/architect' }
+      } else if (profile?.platform_role === 'CONSTRUCTOR') {
+        return { success: true, redirectTo: '/builder' }
       }
     } catch (err) {
       console.error('Error sincronizando el perfil o verificando roles:', err)
     }
 
-    // Fallback default redirect to /admin (antes /dashboard)
-    return { success: true, redirectTo: '/admin' }
+    // Constructor por defecto o si hay fallo en la lectura de profiles
+    return { success: true, redirectTo: '/builder' }
 
   } catch (err: any) {
     console.error('loginAction error:', err)

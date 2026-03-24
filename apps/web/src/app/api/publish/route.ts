@@ -12,6 +12,16 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Falta artifactId' }, { status: 400 });
         }
 
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
+        }
+        const { data: profile } = await supabase.from('profiles').select('platform_role').eq('id', user.id).single();
+        if (profile?.platform_role === 'CONSTRUCTOR') {
+            return NextResponse.json({ error: 'Falta de permisos. Solo Arquitectos y Admins pueden publicar.' }, { status: 403 });
+        }
+
         console.log(`[API /publish] Starting publication for artifact: ${artifactId}`);
 
         // 1. Validate Config
@@ -229,7 +239,6 @@ export async function POST(request: Request) {
         console.log('[API /publish] Depositado en buzón correctamente.');
 
         // 5. Update Status locally
-        const supabase = await createClient();
         const { error: updateError } = await supabase
             .from('publication_requests')
             .update({

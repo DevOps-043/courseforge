@@ -100,9 +100,11 @@ const statusConfig: Record<
 export default function ArtifactsList({
   initialArtifacts,
   currentUserId,
+  basePath = "/admin"
 }: {
   initialArtifacts: Artifact[];
   currentUserId?: string;
+  basePath?: string;
 }) {
   const [artifacts, setArtifacts] = useState<Artifact[]>(initialArtifacts);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -128,7 +130,7 @@ export default function ArtifactsList({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "artifacts" },
-        (payload) => {
+        (payload: any) => {
           console.log("Realtime Event received:", payload);
           if (payload.eventType === "INSERT") {
             setArtifacts((prev) => [payload.new as Artifact, ...prev]);
@@ -180,7 +182,7 @@ export default function ArtifactsList({
         let changed = false;
         setArtifacts((prev) =>
           prev.map((a) => {
-            const fresh = data.find((New) => New.id === a.id);
+            const fresh = data.find((New: any) => New.id === a.id);
             if (fresh && fresh.state !== a.state) {
               changed = true;
               return { ...a, ...fresh };
@@ -303,7 +305,7 @@ export default function ArtifactsList({
 
       {/* Content */}
       {filteredArtifacts.length === 0 ? (
-        <EmptyState />
+        <EmptyState basePath={basePath} />
       ) : (
         <>
           <div
@@ -318,6 +320,7 @@ export default function ArtifactsList({
                 key={art.id}
                 artifact={art}
                 viewMode={viewMode}
+                basePath={basePath}
                 onDelete={(id) => setArtifacts(prev => prev.filter(a => a.id !== id))}
               />
             ))}
@@ -353,7 +356,7 @@ export default function ArtifactsList({
   );
 }
 
-function EmptyState() {
+function EmptyState({ basePath }: { basePath: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-[#151A21]/50 border border-dashed border-gray-200 dark:border-[#6C757D]/20 rounded-2xl shadow-sm dark:shadow-none transition-colors">
       <div className="w-16 h-16 bg-[#1F5AF6]/10 rounded-full flex items-center justify-center text-[#1F5AF6] mb-4">
@@ -364,7 +367,7 @@ function EmptyState() {
         Genera tu primer artefacto para comenzar
       </p>
       <Link
-        href="/admin/artifacts/new"
+        href={`${basePath}/artifacts/new`}
         className="bg-[#1F5AF6] hover:bg-[#1a4bd6] text-white px-6 py-2.5 rounded-xl text-sm font-medium transition-colors"
       >
         Generar Artefacto
@@ -556,10 +559,12 @@ function ArtifactDropdownMenu({
 function ArtifactCard({
   artifact,
   viewMode,
+  basePath,
   onDelete,
 }: {
   artifact: Artifact;
   viewMode: "grid" | "list";
+  basePath: string;
   onDelete: (id: string) => void;
 }) {
   const [showMenu, setShowMenu] = useState(false);
@@ -640,7 +645,7 @@ function ArtifactCard({
   if (viewMode === "list") {
     return (
       <>
-        <Link href={`/admin/artifacts/${artifact.id}`} className="block">
+        <Link href={`${basePath}/artifacts/${artifact.id}`} className="block">
           <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-xl p-4 flex items-center gap-4 hover:border-gray-300 dark:hover:border-[#6C757D]/30 transition-all group shadow-sm dark:shadow-none">
             <div className="w-10 h-10 rounded-lg bg-gray-50 dark:bg-[#2D333B] flex shrink-0 items-center justify-center text-gray-400 dark:text-[#94A3B8]">
               <FileText size={20} />
@@ -715,7 +720,7 @@ function ArtifactCard({
 
   return (
     <>
-      <Link href={`/admin/artifacts/${artifact.id}`} className="block h-full">
+      <Link href={`${basePath}/artifacts/${artifact.id}`} className="block h-full">
         <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-5 hover:border-gray-300 dark:hover:border-[#6C757D]/30 transition-all group flex flex-col h-full cursor-pointer relative shadow-sm dark:shadow-none">
 
           {/* Header: Status Badge & Menu */}

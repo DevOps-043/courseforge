@@ -1,18 +1,27 @@
-
 import { createClient } from '@/utils/supabase/server';
-import { getActiveOrganizationId } from '@/utils/auth/session';
-import { notFound } from 'next/navigation';
+import { redirect } from 'next/navigation';
+import ArtifactClientView from '@/app/admin/artifacts/[id]/ArtifactClientView';
+import { getAuthBridgeUser } from '@/utils/auth/session';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import ArtifactClientView from './ArtifactClientView';
 
-export const revalidate = 0;
-export const dynamic = 'force-dynamic';
-
-export default async function ArtifactDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ConstructorArtifactPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+
+  // UUID Validation
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(id)) {
+      return (
+          <div className="p-8 pb-32 max-w-7xl mx-auto">
+              <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-xl shadow-sm text-center">
+                  <h2 className="text-lg font-semibold mb-2">ID de Artefacto Inválido</h2>
+                  <p>El identificador proporcionado no tiene un formato válido.</p>
+              </div>
+          </div>
+      );
+  }
+
   const supabase = await createClient();
-  const activeOrgId = await getActiveOrganizationId();
 
   // Obtener Perfil del Usuario Actual
   let { data: { user } } = await supabase.auth.getUser();
@@ -30,23 +39,17 @@ export default async function ArtifactDetailPage({ params }: { params: Promise<{
     .single();
 
   if (error || !artifactRaw) {
-    notFound();
+    redirect('/builder/artifacts');
   }
 
-  // Verificar que el artifact pertenece a la organización activa
-  if (activeOrgId && artifactRaw.organization_id && artifactRaw.organization_id !== activeOrgId) {
-    notFound(); // No revelar que existe — simplemente 404
-  }
-
-
-  // Fetch Curation separadamente (relación puede no estar configurada)
+  // Fetch Curation separadamente
   const { data: curationRaw } = await supabase
     .from('curation')
     .select('*')
     .eq('artifact_id', id)
     .maybeSingle();
 
-  // Fetch Materials separadamente (la tabla puede no existir aún)
+  // Fetch Materials separadamente
   let materialsRaw = null;
   try {
     const { data } = await supabase
@@ -56,12 +59,10 @@ export default async function ArtifactDetailPage({ params }: { params: Promise<{
       .maybeSingle();
     materialsRaw = data;
   } catch {
-    // Tabla materials puede no existir aún
     console.log('Materials table not found or query failed');
   }
 
   // Aplanar estructura para el cliente
-  // Supabase devuelve relaciones 1:N como array por defecto si no detecta 1:1 estricto
   const syllabusData = Array.isArray(artifactRaw.syllabus) ? artifactRaw.syllabus[0] : artifactRaw.syllabus;
   const instructionalPlanData = Array.isArray(artifactRaw.instructional_plans) ? artifactRaw.instructional_plans[0] : artifactRaw.instructional_plans;
   const curationData = curationRaw || null;
@@ -69,14 +70,12 @@ export default async function ArtifactDetailPage({ params }: { params: Promise<{
 
   const artifact = {
     ...artifactRaw,
-    // Inyectamos el registro de syllabus como 'temario' para que el cliente lo consuma
     temario: syllabusData || null,
     instructional_plan: instructionalPlanData || null,
     curation: curationData,
     materials: materialsData,
-    // Helpers directos de estado
     syllabus_state: syllabusData?.state,
-    syllabus_status: syllabusData?.state, // Alias por si acaso
+    syllabus_status: syllabusData?.state,
     plan_state: instructionalPlanData?.state,
     curation_state: curationData?.state,
     materials_state: materialsData?.state
@@ -118,17 +117,12 @@ export default async function ArtifactDetailPage({ params }: { params: Promise<{
           );
 
           if (videoComp) {
-            // 1. URL Logic
             videoUrl = videoComp.assets?.final_video_url || videoComp.assets?.video_url || '';
-
-            // 2. Duration Logic
             if (videoComp.content) {
               const content = videoComp.content;
-              // Try to sum up section durations if available
               if (content.script?.sections) {
                 duration = content.script.sections.reduce((acc: number, sec: any) => acc + (sec.duration_seconds || 0), 0);
               }
-              // Fallback to estimate if sum is 0
               if (duration === 0 && content.duration_estimate_minutes) {
                 duration = Math.round(content.duration_estimate_minutes * 60);
               }
@@ -146,27 +140,30 @@ export default async function ArtifactDetailPage({ params }: { params: Promise<{
     }
   }
 
+  const displayProfile = profile || {
+      first_name: user?.email?.split('@')[0] || 'Constructor',
+      platform_role: 'CONSTRUCTOR' 
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-20">
-
       {/* Top Navigation */}
       <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-[#94A3B8]">
-        <Link href="/admin/artifacts" className="hover:text-gray-900 dark:hover:text-white flex items-center gap-1 transition-colors">
+        <Link href="/builder/artifacts" className="hover:text-gray-900 dark:hover:text-white flex items-center gap-1 transition-colors">
           <ArrowLeft size={16} />
-          Volver a Artefactos
+          Volver a Mis Asignaciones
         </Link>
         <span className="text-gray-300 dark:text-[#6C757D]">/</span>
         <span className="text-gray-900 dark:text-white truncate max-w-xs">{artifact.idea_central}</span>
       </div>
 
-      {/* Interactive Client View */}
-      <ArtifactClientView
-        artifact={artifact}
+      <ArtifactClientView 
+        artifact={artifact} 
         publicationRequest={publicationRequest}
         publicationLessons={publicationLessons}
-        profile={profile}
+        profile={displayProfile}
+        basePath="/builder"
       />
-
     </div>
   );
 }

@@ -1,10 +1,10 @@
 'use client';
 
 import React from 'react';
-import { LayoutDashboard, Users, FileCode, Settings } from 'lucide-react';
+import { LayoutDashboard, FileArchive } from 'lucide-react';
 import SharedSidebarLayout, { NavItemConfig } from '@/components/layout/SharedSidebarLayout';
 
-export default function AdminLayoutClient({
+export default function BuilderLayoutClient({
     children,
     userEmail,
     logoutAction,
@@ -16,11 +16,8 @@ export default function AdminLayoutClient({
     profile?: any;
 }) {
     const navItems: NavItemConfig[] = [
-        { href: '/admin', icon: <LayoutDashboard size={22} />, label: 'Dashboard' },
-        { href: '/admin/users', icon: <Users size={22} />, label: 'Usuarios' },
-        { href: '/admin/artifacts', icon: <FileCode size={22} />, label: 'Artefactos' },
-        { href: '/admin/library', icon: <FileCode size={22} />, label: 'Librería' },
-        { href: '/admin/settings', icon: <Settings size={22} />, label: 'Configuración' },
+        { href: '/builder', icon: <LayoutDashboard size={22} />, label: 'Mi Espacio' },
+        { href: '/builder/artifacts', icon: <FileArchive size={22} />, label: 'Mis Asignaciones' },
     ];
 
     return (
@@ -29,10 +26,10 @@ export default function AdminLayoutClient({
             logoutAction={logoutAction}
             profile={profile}
             navItems={navItems}
-            basePath="/admin"
+            basePath="/builder"
             title={
                 <>
-                    Admin<span className="text-[#00D4B3]">Panel</span>
+                    Buil<span className="text-[#00D4B3]">der</span>
                 </>
             }
         >

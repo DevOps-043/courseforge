@@ -196,8 +196,8 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
               {/* Header */}
               <div className="flex items-center justify-between p-8 border-b border-gray-100 dark:border-[#6C757D]/10">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">{isEdit ? 'Editar Usuario' : 'Nuevo Usuario'}</h2>
-                  <p className="text-sm text-gray-500 dark:text-[#94A3B8]">{isEdit ? 'Actualiza los permisos y datos del perfil.' : 'Completa la información para dar de alta un acceso.'}</p>
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Ver/Editar Rol de Usuario</h2>
+                  <p className="text-sm text-gray-500 dark:text-[#94A3B8]">La información personal se gestiona desde el sistema centralizado. Solo puedes cambiar el rol de plataforma.</p>
                 </div>
                 <button 
                   onClick={onClose}
@@ -222,8 +222,8 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
                                     value={formData.firstName}
                                     onChange={handleChange}
                                     placeholder="Ej. Sofia"
-                                    className="w-full pl-11 pr-4 py-3 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all"
-                                    required
+                                    className="w-full pl-11 pr-4 py-3 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                                    disabled
                                 />
                             </div>
                         </div>
@@ -236,8 +236,8 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
                                     value={formData.lastNameFather}
                                     onChange={handleChange}
                                     placeholder="Ej. López"
-                                    className="w-full pl-11 pr-4 py-3 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all"
-                                    required
+                                    className="w-full pl-11 pr-4 py-3 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                                    disabled
                                 />
                             </div>
                         </div>
@@ -253,7 +253,8 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
                                      value={formData.lastNameMother}
                                      onChange={handleChange}
                                      placeholder="Ej. García"
-                                     className="w-full pl-11 pr-4 py-3 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all"
+                                     className="w-full pl-11 pr-4 py-3 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                                     disabled
                                  />
                              </div>
                         </div>
@@ -266,7 +267,8 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
                                     value={formData.username}
                                     onChange={handleChange}
                                     placeholder="usuario"
-                                    className="w-full pl-10 pr-4 py-3 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all"
+                                    className="w-full pl-10 pr-4 py-3 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                                    disabled
                                 />
                             </div>
                         </div>
@@ -276,44 +278,17 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
                         <label className="text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider ml-1">Correo Electrónico</label>
                         <div className="relative group">
                             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#6C757D] group-focus-within:text-[#00D4B3] transition-colors" size={18} />
-                            <input
+                                <input
                                 type="email"
                                 name="email"
                                 value={formData.email}
                                 onChange={handleChange}
                                 placeholder="usuario@organizacion.com"
-                                className="w-full pl-11 pr-4 py-3 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all"
-                                required
+                                className="w-full pl-11 pr-4 py-3 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                                disabled
                             />
                         </div>
                     </div>
-
-                     {/* Password Field */}
-                     {!isEdit && (
-                        <div className="space-y-2">
-                            <label className="text-xs font-semibold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider ml-1">Contraseña</label>
-                            <div className="relative group">
-                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#6C757D] group-focus-within:text-[#00D4B3] transition-colors" size={18} />
-                                <input
-                                    type={showPassword ? "text" : "password"}
-                                    name="password"
-                                    value={formData.password}
-                                    onChange={handleChange}
-                                    placeholder="••••••••"
-                                    className="w-full pl-11 pr-12 py-3 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3] focus:ring-1 focus:ring-[#00D4B3] transition-all"
-                                    required={!isEdit}
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#6C757D] hover:text-gray-600 dark:hover:text-white transition-colors"
-                                >
-                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                </button>
-                            </div>
-                            <p className="text-[10px] text-gray-400 dark:text-[#6C757D] ml-1">Mínimo 8 caracteres, alfanumérico.</p>
-                        </div>
-                    )}
 
                     {/* Custom Dropdown for Role */}
                     <div className="space-y-2 relative" ref={roleDropdownRef}>
@@ -394,7 +369,7 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
                         }}
                     >
                         <Save size={18} />
-                        <span>{isEdit ? 'Guardar Cambios' : 'Crear Usuario'}</span>
+                        <span>Guardar Cambios</span>
                     </button>
                 </div>
               </div>
