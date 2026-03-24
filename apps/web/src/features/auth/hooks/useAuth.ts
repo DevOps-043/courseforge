@@ -26,9 +26,11 @@ export const useAuth = () => {
     organizations,
     activeOrganizationId,
     isLoaded: orgsLoaded,
+    isSwitching,
     loadFromCookies,
     switchOrganization,
     getActiveOrganization,
+    canSwitch,
   } = useOrganizationStore();
 
   useEffect(() => {
@@ -47,5 +49,7 @@ export const useAuth = () => {
     activeOrganizationId,
     activeOrganization: getActiveOrganization(),
     switchOrganization,
+    isSwitching,
+    canSwitch: canSwitch(),
   };
 };
