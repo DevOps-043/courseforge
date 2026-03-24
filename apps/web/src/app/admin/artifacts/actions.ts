@@ -185,8 +185,8 @@ export async function regenerateArtifactAction(artifactId: string, feedback?: st
 
 export async function updateArtifactContentAction(artifactId: string, updates: { nombres?: string[], objetivos?: string[], descripcion?: any }) {
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return { success: false, error: 'Unauthorized' };
+    const authUser = await getAuthenticatedUser(supabase);
+    if (!authUser) return { success: false, error: 'Unauthorized' };
 
     const { error } = await supabase
         .from('artifacts')
@@ -201,8 +201,8 @@ export async function updateArtifactContentAction(artifactId: string, updates: {
 // NUEVA ACCIÓN para actualizar el estado del artefacto (ej: aprobar fase 1)
 export async function updateArtifactStatusAction(artifactId: string, status: string) {
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return { success: false, error: 'Unauthorized' };
+    const authUser = await getAuthenticatedUser(supabase);
+    if (!authUser) return { success: false, error: 'Unauthorized' };
 
     const { error } = await supabase
         .from('artifacts')
