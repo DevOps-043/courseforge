@@ -1,8 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
-import { curationService } from '../services/curation.service';
-import { Curation, CurationRow } from '../types/curation.types';
-import { startCurationAction, updateCurationRowAction, deleteCurationRowAction, clearGPTCurationRowsAction } from '@/app/admin/artifacts/actions';
-import { toast } from 'sonner';
+import { useState, useEffect, useCallback } from "react";
+import { Curation, CurationRow } from "../types/curation.types";
+import {
+  startCurationAction,
+  updateCurationRowAction,
+  deleteCurationRowAction,
+  clearGPTCurationRowsAction,
+  getCurationSnapshotAction,
+} from "@/app/admin/artifacts/actions";
+import { toast } from "sonner";
 
 export function useCuration(artifactId: string) {
   const [curation, setCuration] = useState<Curation | null>(null);
@@ -12,142 +17,116 @@ export function useCuration(artifactId: string) {
 
   const fetchCurationData = useCallback(async () => {
     try {
-      const curData = await curationService.getCurationByArtifactId(artifactId);
+      const result = await getCurationSnapshotAction(artifactId);
+      if (!result.success) {
+        throw new Error(result.error || "Error loading curation");
+      }
+
+      const curData = result.curation || null;
       setCuration(curData);
 
       if (curData) {
-        const rowsData = await curationService.getCurationRows(curData.id);
-        setRows(rowsData);
+        setRows(result.rows || []);
 
-        // Si el estado es GENERATING o REQUESTED, asumimos que estamos en proceso
-        if (curData.state === 'PHASE2_GENERATING' || curData.state === 'PAUSED_REQUESTED' || curData.state === 'STOPPED_REQUESTED') {
-          setIsGenerating(true);
-        } else {
-          setIsGenerating(false);
-        }
+        const isGen =
+          curData.state === "PHASE2_GENERATING" ||
+          curData.state === "PAUSED_REQUESTED" ||
+          curData.state === "STOPPED_REQUESTED";
+        setIsGenerating(isGen);
       } else {
         setRows([]);
         setIsGenerating(false);
       }
     } catch (error) {
-      console.error('Error in useCuration fetch:', error);
-      toast.error('Error cargando datos de curaduría');
+      console.error("Error in useCuration fetch:", error);
+      toast.error("Error cargando datos de curaduria");
     } finally {
       setLoading(false);
     }
   }, [artifactId]);
 
-  // Polling to check for completion status
   useEffect(() => {
     let interval: NodeJS.Timeout;
 
     if (isGenerating && curation?.id) {
       interval = setInterval(async () => {
-        const latest = await curationService.getCurationByArtifactId(artifactId);
-        if (latest) {
-          setCuration(latest);
-
-          // También actualizar filas por si falla el realtime
-          const latestRows = await curationService.getCurationRows(latest.id);
-          setRows(latestRows);
-
-          const isGen = latest.state === 'PHASE2_GENERATING' || latest.state === 'PAUSED_REQUESTED' || latest.state === 'STOPPED_REQUESTED';
-          if (!isGen) {
-            setIsGenerating(false);
-          }
-        }
-      }, 3000); // Check every 3 seconds
+        await fetchCurationData();
+      }, 3000);
     } else if (!isGenerating && rows.length === 0) {
-      // Polling para detectar cuando GPT haya creado el curation y las filas en background
-      // si aún no tenemos datos en la UI y no estamos explícitamente "generando".
       interval = setInterval(async () => {
         await fetchCurationData();
-      }, 5000); // Revisa cada 5 segundos
+      }, 5000);
     }
 
     return () => clearInterval(interval);
-  }, [isGenerating, curation?.id, artifactId, rows.length, fetchCurationData]);
+  }, [isGenerating, curation?.id, rows.length, fetchCurationData]);
 
-  // Initial Load & Realtime Subscription
   useEffect(() => {
     fetchCurationData();
+  }, [artifactId, fetchCurationData]);
 
-    // Solo suscribirse si ya tenemos un ID de curaduría
-    let subscription: { unsubscribe: () => void } | null = null;
-
-    if (curation?.id) {
-      subscription = curationService.subscribeToCurationRows(curation.id, () => {
-        // Cuando hay cambios, recargamos las filas
-        curationService.getCurationRows(curation.id).then(setRows);
-
-        // También intentamos ver si ya terminó
-        curationService.getCurationByArtifactId(artifactId).then(c => {
-          setCuration(c);
-          const isGen = c?.state === 'PHASE2_GENERATING' || c?.state === 'PAUSED_REQUESTED' || c?.state === 'STOPPED_REQUESTED';
-          if (!isGen) setIsGenerating(false);
-        });
-      });
-    }
-
-    return () => {
-      if (subscription) subscription.unsubscribe();
-    };
-  }, [artifactId, curation?.id, fetchCurationData]);
-
-  // Actions
-  const startCuration = async (attemptNumber: number = 1, gaps: string[] = [], resume: boolean = false) => {
+  const startCuration = async (
+    attemptNumber: number = 1,
+    gaps: string[] = [],
+    resume: boolean = false,
+  ) => {
     setIsGenerating(true);
-    // Optimistic UI update could happen here, but we rely on actions return
-    const result = await startCurationAction(artifactId, attemptNumber, gaps, resume);
+    const result = await startCurationAction(
+      artifactId,
+      attemptNumber,
+      gaps,
+      resume,
+    );
 
     if (result.success) {
-      toast.success(resume ? 'Reanudando curaduría...' : 'Curaduría iniciada. Las fuentes comenzarán a aparecer pronto.');
-      // Refetch inmediato para obtener el curation_id si era nuevo
+      toast.success(
+        resume
+          ? "Reanudando curaduria..."
+          : "Curaduria iniciada. Las fuentes comenzaran a aparecer pronto.",
+      );
       fetchCurationData();
     } else {
       setIsGenerating(false);
-      toast.error('Error al iniciar curaduría: ' + result.error);
+      toast.error("Error al iniciar curaduria: " + result.error);
     }
   };
 
   const updateRow = async (rowId: string, updates: Partial<CurationRow>) => {
-    // Optimistic update
-    setRows(current =>
-      current.map(r => r.id === rowId ? { ...r, ...updates } : r)
+    setRows((current) =>
+      current.map((r) => (r.id === rowId ? { ...r, ...updates } : r)),
     );
 
     const result = await updateCurationRowAction(rowId, updates);
 
     if (!result.success) {
-      toast.error('Error al actualizar fila');
-      // Revertir (podríamos hacer un refetch aquí para asegurar consistencia)
+      toast.error("Error al actualizar fila");
       fetchCurationData();
     }
   };
 
   const deleteRow = async (rowId: string) => {
-    // Optimistic UI
-    setRows(current => current.filter(r => r.id !== rowId));
+    setRows((current) => current.filter((r) => r.id !== rowId));
 
     const result = await deleteCurationRowAction(rowId);
     if (!result.success) {
-      toast.error('Error al eliminar fila');
+      toast.error("Error al eliminar fila");
       fetchCurationData();
     } else {
-      toast.success('Fuente eliminada');
+      toast.success("Fuente eliminada");
     }
   };
 
   const clearGPTRows = async () => {
-    // Optimistic UI
-    setRows(current => current.filter(r => r.source_rationale !== 'GPT_GENERATED'));
+    setRows((current) =>
+      current.filter((r) => r.source_rationale !== "GPT_GENERATED"),
+    );
 
     const result = await clearGPTCurationRowsAction(artifactId);
     if (!result.success) {
-      toast.error('Error al limpiar fuentes GPT');
+      toast.error("Error al limpiar fuentes GPT");
       fetchCurationData();
     } else {
-      toast.success('Fuentes GPT eliminadas');
+      toast.success("Fuentes GPT eliminadas");
     }
   };
 
@@ -160,6 +139,6 @@ export function useCuration(artifactId: string) {
     updateRow,
     deleteRow,
     clearGPTRows,
-    refresh: fetchCurationData
+    refresh: fetchCurationData,
   };
 }

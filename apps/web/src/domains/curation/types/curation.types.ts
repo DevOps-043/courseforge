@@ -1,24 +1,26 @@
 export type CurationState =
-  | 'PHASE2_DRAFT'
-  | 'PHASE2_GENERATING'
-  | 'PHASE2_GENERATED'
-  | 'PHASE2_HITL_REVIEW'
-  | 'PHASE2_READY_FOR_QA'
-  | 'PHASE2_APPROVED'
-  | 'PHASE2_CORRECTABLE'
-  | 'PHASE2_BLOCKED'
-  | 'PAUSED_REQUESTED'
-  | 'PAUSED'
-  | 'STOPPED_REQUESTED'
-  | 'STOPPED';
+  | "PHASE2_DRAFT"
+  | "PHASE2_GENERATING"
+  | "PHASE2_GENERATED"
+  | "PHASE2_HITL_REVIEW"
+  | "PHASE2_READY_FOR_QA"
+  | "PHASE2_APPROVED"
+  | "PHASE2_CORRECTABLE"
+  | "PHASE2_BLOCKED"
+  | "PAUSED_REQUESTED"
+  | "PAUSED"
+  | "STOPPED_REQUESTED"
+  | "STOPPED";
 
 export interface Curation {
   id: string;
   artifact_id: string;
   attempt_number: number;
   state: CurationState;
+  upstream_dirty?: boolean | null;
+  upstream_dirty_source?: string | null;
   qa_decision: {
-    decision: 'APPROVED' | 'CORRECTABLE' | 'BLOCKED';
+    decision: "APPROVED" | "CORRECTABLE" | "BLOCKED";
     notes?: string;
     reviewed_by?: string;
     reviewed_at?: string;
@@ -60,7 +62,7 @@ export interface CurationBlocker {
   component: string;
   impact: string;
   owner: string;
-  status: 'OPEN' | 'MITIGATING' | 'ACCEPTED';
+  status: "OPEN" | "MITIGATING" | "ACCEPTED";
   created_at: string;
 }
 
