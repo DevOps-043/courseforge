@@ -77,18 +77,54 @@ function getServiceRoleClient() {
   );
 }
 
+function getBackgroundFunctionsBaseUrl() {
+  const candidate =
+    process.env.URL ||
+    process.env.DEPLOY_URL ||
+    process.env.NEXT_PUBLIC_APP_URL;
+
+  if (candidate) {
+    const normalized = candidate.replace(/\/$/, "");
+    if (
+      process.env.NODE_ENV !== "production" &&
+      normalized.includes("localhost:3000")
+    ) {
+      return "http://localhost:8888";
+    }
+
+    return normalized.startsWith("http") ? normalized : `https://${normalized}`;
+  }
+
+  return "http://localhost:8888";
+}
+
 async function assertArtifactOrgAccess(
   artifactId: string,
   activeOrgId: string | null,
 ) {
   const admin = getServiceRoleClient();
+  const bridgeUser = await getAuthBridgeUser();
+  const organizationIds = new Set<string>();
+
+  if (activeOrgId) {
+    organizationIds.add(activeOrgId);
+  }
+  if (bridgeUser?.active_organization_id) {
+    organizationIds.add(bridgeUser.active_organization_id);
+  }
+  if (Array.isArray(bridgeUser?.organization_ids)) {
+    bridgeUser.organization_ids.forEach((orgId) => {
+      if (orgId) organizationIds.add(orgId);
+    });
+  }
+
   let query = admin
     .from("artifacts")
     .select("id, organization_id")
     .eq("id", artifactId);
 
-  if (activeOrgId) {
-    query = query.eq("organization_id", activeOrgId);
+  if (organizationIds.size > 0) {
+    query = query.in("organization_id", Array.from(organizationIds));
   } else {
     query = query.is("organization_id", null);
   }
@@ -222,10 +258,7 @@ export async function generateArtifactAction(formData: {
 
     // 2. Trigger Netlify Background Function
     // Construct URL based on environment
-    const baseUrl =
-      process.env.URL ||
-      process.env.NEXT_PUBLIC_APP_URL ||
-      "http://localhost:3000";
+    const baseUrl = getBackgroundFunctionsBaseUrl();
     const backgroundFunctionUrl = `${baseUrl}/.netlify/functions/generate-artifact-background`;
 
     console.log(`Triggering background job at: ${backgroundFunctionUrl}`);
@@ -318,10 +351,7 @@ export async function regenerateArtifactAction(
   if (resetError) return { success: false, error: resetError.message };
 
   // 3. Trigger Background Job
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.URL ||
-    "http://localhost:8888";
+  const appUrl = getBackgroundFunctionsBaseUrl();
 
   // We need to pass the same payload as create, but we reuse originalInput
   const payload = {
@@ -429,12 +459,7 @@ export async function generateInstructionalPlanAction(
   const accessToken = await getAccessToken(supabase);
   if (!accessToken) return { success: false, error: "Unauthorized" };
 
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.URL ||
-    "http://localhost:3000";
-  // Construct the URL ensuring we don't have double slashes if env var has trailing slash
-  const baseUrl = appUrl.replace(/\/$/, "");
+  const baseUrl = getBackgroundFunctionsBaseUrl();
   const backgroundFunctionUrl = `${baseUrl}/.netlify/functions/instructional-plan-background`;
 
   try {
@@ -486,11 +511,7 @@ export async function validateInstructionalPlanAction(artifactId: string) {
 
   const { admin } = authorized;
 
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.URL ||
-    "http://localhost:3000";
-  const baseUrl = appUrl.replace(/\/$/, "");
+  const baseUrl = getBackgroundFunctionsBaseUrl();
   const backgroundFunctionUrl = `${baseUrl}/.netlify/functions/validate-plan-background`;
 
   try {
@@ -502,6 +523,35 @@ export async function validateInstructionalPlanAction(artifactId: string) {
       .eq("artifact_id", artifactId);
 
     console.log("Triggering Instructional Plan Validation...");
+
+    if (process.env.NODE_ENV !== "production") {
+      const { handler } =
+        await import("../../../../netlify/functions/validate-plan-background");
+      const localResponse = await handler(
+        {
+          httpMethod: "POST",
+          body: JSON.stringify({
+            artifactId,
+            userToken: accessToken,
+          }),
+        } as any,
+        {} as any,
+      );
+
+      if (!localResponse || localResponse.statusCode >= 400) {
+        let localError = "Validation failed while running locally";
+        try {
+          const parsed = JSON.parse(localResponse?.body || "{}");
+          localError = parsed.error || localError;
+        } catch {
+          localError = localResponse?.body || localError;
+        }
+
+        return { success: false, error: localError };
+      }
+
+      return { success: true };
+    }
 
     // 2. Trigger Background Job
     // IMPORTANT: await is required in serverless to ensure the request completes before function terminates
@@ -517,9 +567,20 @@ export async function validateInstructionalPlanAction(artifactId: string) {
     });
 
     if (!triggerResponse.ok) {
+      const responseText = await triggerResponse.text();
+      const sanitizedError = /<(?:!doctype|html|body|script|div)\b/i.test(
+        responseText,
+      )
+        ? `Validation service unavailable (${triggerResponse.status})`
+        : responseText ||
+          `Background validation trigger failed (${triggerResponse.status})`;
       console.warn(
-        `Background validation trigger might have failed: ${triggerResponse.status}`,
+        `Background validation trigger failed: ${triggerResponse.status} ${responseText}`,
       );
+      return {
+        success: false,
+        error: sanitizedError,
+      };
     }
 
     return { success: true };
@@ -840,11 +901,7 @@ export async function startCurationAction(
     }
 
     // 5. Trigger Background Function
-    const appUrl =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.URL ||
-      "http://localhost:3000";
-    const baseUrl = appUrl.replace(/\/$/, "");
+    const baseUrl = getBackgroundFunctionsBaseUrl();
     const backgroundFunctionUrl = `${baseUrl}/.netlify/functions/curation-background`;
 
     console.log(
@@ -1247,11 +1304,7 @@ export async function generateVideoPromptsAction(
   } = await supabase.auth.getSession();
   if (!session) return { success: false, error: "Unauthorized" };
 
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.URL ||
-    "http://localhost:3000";
-  const baseUrl = appUrl.replace(/\/$/, "");
+  const baseUrl = getBackgroundFunctionsBaseUrl();
   const backgroundFunctionUrl = `${baseUrl}/.netlify/functions/video-prompts-generation`;
 
   try {
@@ -1572,11 +1625,7 @@ export async function validateMaterialsAction(artifactId: string) {
   } = await supabase.auth.getSession();
   if (!session) return { success: false, error: "Unauthorized" };
 
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.URL ||
-    "http://localhost:3000";
-  const baseUrl = appUrl.replace(/\/$/, "");
+  const baseUrl = getBackgroundFunctionsBaseUrl();
   const backgroundFunctionUrl = `${baseUrl}/.netlify/functions/validate-materials-background`;
 
   try {
@@ -1722,11 +1771,7 @@ export async function regenerateLessonAction(lessonId: string) {
       .eq("id", lessonId);
 
     // Trigger background job
-    const appUrl =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.URL ||
-      "http://localhost:3000";
-    const baseUrl = appUrl.replace(/\/$/, "");
+    const baseUrl = getBackgroundFunctionsBaseUrl();
 
     await fetch(
       `${baseUrl}/.netlify/functions/materials-generation-background`,

@@ -241,13 +241,26 @@ export function InstructionalPlanGenerationContainer({
     if (!silent) setLoadingPlan(true);
 
     try {
-      const { getInstructionalPlanSnapshotAction } = await import(
-        "../../../app/admin/artifacts/actions"
-      );
+      const { getInstructionalPlanSnapshotAction } =
+        await import("../../../app/admin/artifacts/actions");
       const result = await getInstructionalPlanSnapshotAction(artifactId);
 
       if (!result.success) {
         console.error("[InstructionalPlan] Error fetching plan:", result.error);
+        if (
+          result.error === "Artifact not found or inaccessible" ||
+          result.error === "Unauthorized"
+        ) {
+          setIsGenerating(false);
+          setIsValidating(false);
+          if (silent) {
+            toast.error(
+              result.error === "Unauthorized"
+                ? "Tu sesion expiro. Recarga la pagina e inicia sesion de nuevo."
+                : "No se pudo volver a leer el plan. Verifica la organizacion activa y vuelve a intentar.",
+            );
+          }
+        }
         return;
       }
 
