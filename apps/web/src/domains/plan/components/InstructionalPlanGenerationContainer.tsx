@@ -161,17 +161,17 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext, profi
             .eq('artifact_id', artifactId)
             .maybeSingle();
 
-        if (data && data.lesson_plans && data.lesson_plans.length > 0) {
-            // USER REQUEST: Do not load previous validations on mount. 
-            // Only show validation if it comes from a poll (silent update) triggered by the user.
-            // Keep validation visible always
-
-            if (data.approvals && data.approvals.notes) {
-                setReviewNotes(data.approvals.notes);
-            }
-
+        if (data) {
             setExistingPlan(data);
-            setIsGenerating(false); // Stop generating state if plan exists
+
+            if (data.state === 'STEP_READY_FOR_REVIEW' || (data.lesson_plans && data.lesson_plans.length > 0 && !isGenerating)) {
+                setIsGenerating(false);
+            }
+            
+            if (data.state === 'STEP_FAILED') {
+                setIsGenerating(false);
+                toast.error('La generación falló. Por favor, intenta de nuevo o revisa los logs.');
+            }
 
             if (data.validation) {
                 setIsValidating(false);
@@ -922,7 +922,7 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext, profi
                 {isGenerating ? (
                     <>
                         <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        <span>Generando Estructura Instruccional...</span>
+                        <span>Generando Estructura Instruccional... {existingPlan?.lesson_plans?.length > 0 ? `(${existingPlan.lesson_plans.length})` : ''}</span>
                     </>
                 ) : (
                     <>

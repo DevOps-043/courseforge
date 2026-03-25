@@ -94,151 +94,135 @@ export const handler: Handler = async (event, context) => {
 
         const { data: syllabusRecord, error: syllabusError } = await supabase
             .from('syllabus')
-            .select('modules') // Only need the modules JSON
+            .select('modules')
             .eq('artifact_id', artifactId)
             .single();
         
         if (syllabusError) throw new Error(`Syllabus not found: ${syllabusError.message}`);
         if (!syllabusRecord || !syllabusRecord.modules) throw new Error("Syllabus record has no modules.");
 
-        const syllabusModules = syllabusRecord.modules;
+        const syllabusModules = syllabusRecord.modules as any[];
 
-        // Flatten lessons for context
-        let allLessons: any[] = [];
-        // Assuming syllabusModules is an array of objects
-        if (Array.isArray(syllabusModules)) {
-            syllabusModules.forEach((mod: any, index: number) => {
-                 if (mod.lessons && Array.isArray(mod.lessons)) {
-                     mod.lessons.forEach((l: any) => {
-                         allLessons.push({
-                             ...l,
-                             module_id: mod.id || `mod-${index}`,
-                             module_title: mod.title,
-                             module_index: index // Use array index as module index
-                         });
-                     });
-                 }
-            });
-        }
-
-        if (allLessons.length === 0) {
-            throw new Error("No lessons found in syllabus to plan.");
+        if (!Array.isArray(syllabusModules) || syllabusModules.length === 0) {
+            throw new Error("Syllabus modules is empty or not an array.");
         }
 
         // --- STEP 2: PREPARE PROMPTS ---
-        
-        // A) System Prompt (Immutable Rules)
         const systemPromptRef = INSTRUCTIONAL_PLAN_SYSTEM_PROMPT;
-
-        // B) User Context Prompt (Variable)
         let contextPromptTemplate = "";
         
         if (useCustomPrompt && customPrompt && customPrompt.trim().length > 0) {
-            console.log("[Background Job] Using CUSTOM User Prompt.");
             contextPromptTemplate = customPrompt;
         } else {
-            console.log("[Background Job] Using DATABASE Default User Prompt.");
-            const { data: dbPrompt, error: promptError } = await supabase
+            const { data: dbPrompt } = await supabase
                 .from('system_prompts')
                 .select('content')
                 .eq('code', 'INSTRUCTIONAL_PLAN')
                 .eq('is_active', true)
                 .single();
             
-            if (promptError || !dbPrompt) {
-                console.warn("[Background Job] DB Prompt not found, using fallback string.");
-                contextPromptTemplate = `CONTEXTO DEL CURSO:
-Curso: \${courseName}
-Idea Central: \${ideaCentral}
+            contextPromptTemplate = dbPrompt?.content || `CONTEXTO DEL CURSO:
+Curso: ${artifact.nombres?.[0] || artifact.idea_central}
+Idea Central: ${artifact.idea_central}
 
-ESTRUCTURA DE LECCIONES (\${lessonCount}):
+ESTRUCTURA DE LECCIONES:
 \${lessonsText}`;
-            } else {
-                contextPromptTemplate = dbPrompt.content;
-            }
         }
 
-        // C) Variable Replacement
-        const lessonsText = allLessons.map((l, i) => 
-            `${i+1}. ID: ${l.id}\n   Módulo: ${l.module_title}\n   Lección: ${l.title}\n   OA Original: ${l.objective_specific || 'N/A'}`
-        ).join('\n\n');
-
-        const courseName = (artifact.nombres && artifact.nombres[0]) || artifact.idea_central || "Curso Sin Nombre";
-        const ideaCentral = artifact.idea_central || "Sin descripción";
-
-        // Replace placeholders
-        // We support both ${var} and {{var}} styles just in case
-        let finalContextPrompt = contextPromptTemplate
-            .replace(/\$\{courseName\}/g, courseName).replace(/\{\{courseName\}\}/g, courseName)
-            .replace(/\$\{ideaCentral\}/g, ideaCentral).replace(/\{\{ideaCentral\}\}/g, ideaCentral)
-            .replace(/\$\{lessonCount\}/g, String(allLessons.length)).replace(/\{\{lessonCount\}\}/g, String(allLessons.length))
-            .replace(/\$\{lessonsText\}/g, lessonsText).replace(/\{\{lessonsText\}\}/g, lessonsText);
-
-
-        // --- STEP 3: GENERATE WITH GEMINI ---
-        const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash'; // Fallback to a stable model
-        console.log(`[Background Job] Generando plan con modelo: ${modelName}`);
-        console.log(`[Background Job] Context payload size: ~${finalContextPrompt.length} chars`);
-
-        let generatedPlan;
-        try {
-            const result = await generateObject({
-                model: googleAI(modelName),
-                schema: GeneratedPlanSchema,
-                prompt: `${systemPromptRef}\n\n═══════════════════════════════════════════════════════════════\n    CONTEXTO Y TAREA ESPECÍFICA (Variable)\n═══════════════════════════════════════════════════════════════\n\n${finalContextPrompt}`,
-                temperature: 0.7,
-            });
-            generatedPlan = result.object;
-            console.log(`[Background Job] Generation completed. Received ${generatedPlan.lesson_plans?.length} lessons.`);
-        } catch (genError: any) {
-            console.error(`[Background Job] AI Generation Failed:`, genError);
-            throw new Error(`AI generation failed: ${genError.message}`);
-        }
-
-        const lessonPlanCount = generatedPlan.lesson_plans?.length || 0;
-        if (lessonPlanCount === 0) {
-            console.warn("[Background Job] Warning: AI returned 0 lessons.");
-        }
-
-        // --- STEP 4: SAVE TO DB ---
-        
-        // Check if plan exists to update or insert
+        // --- STEP 3: INITIALIZE OR CLEAR PLAN ---
         const { data: existingPlan } = await supabase
             .from('instructional_plans')
             .select('id')
             .eq('artifact_id', artifactId)
-            .single();
+            .maybeSingle();
 
-        let saveError;
         if (existingPlan) {
-            const { error } = await supabase.from('instructional_plans').update({
-                lesson_plans: generatedPlan.lesson_plans,
-                blockers: generatedPlan.blockers,
-                state: 'STEP_READY_FOR_REVIEW', // Or similar status
+            await supabase.from('instructional_plans').update({
+                lesson_plans: [],
+                state: 'STEP_PROCESSING',
                 updated_at: new Date().toISOString()
             }).eq('id', existingPlan.id);
-            saveError = error;
         } else {
-            const { error } = await supabase.from('instructional_plans').insert({
+            await supabase.from('instructional_plans').insert({
                 artifact_id: artifactId,
-                lesson_plans: generatedPlan.lesson_plans,
-                blockers: generatedPlan.blockers,
-                state: 'STEP_READY_FOR_REVIEW'
+                lesson_plans: [],
+                state: 'STEP_PROCESSING'
             });
-            saveError = error;
         }
 
-        if (saveError) throw saveError;
+        // --- STEP 4: INCREMENTAL GENERATION BY MODULE ---
+        const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+        console.log(`[Background Job] Starting incremental generation with ${modelName}`);
+        
+        let allGeneratedPlans: any[] = [];
 
-        // Update Artifact Status too if needed (optional based on your flow)
-        // await supabase.from('artifacts').update({ instructional_plan_status: 'READY' }).eq('id', artifactId);
+        for (let i = 0; i < syllabusModules.length; i++) {
+            const mod = syllabusModules[i];
+            const lessons = mod.lessons || [];
+            if (lessons.length === 0) continue;
 
-        console.log(`[Background Job] Plan generated successfully for ${generatedPlan.lesson_plans.length} lessons.`);
+            console.log(`[Background Job] Processing Module ${i+1}/${syllabusModules.length}: ${mod.title} (${lessons.length} lessons)`);
 
-        return { statusCode: 200, body: JSON.stringify({ success: true, count: generatedPlan.lesson_plans.length }) };
+            const lessonsText = lessons.map((l: any, idx: number) => 
+                `${idx+1}. ID: ${l.id}\n   Lección: ${l.title}\n   OA Original: ${l.objective_specific || 'N/A'}`
+            ).join('\n\n');
+
+            const finalContextPrompt = contextPromptTemplate
+                .replace(/\$\{courseName\}/g, artifact.nombres?.[0] || artifact.idea_central)
+                .replace(/\$\{ideaCentral\}/g, artifact.idea_central)
+                .replace(/\$\{lessonsText\}/g, lessonsText)
+                .replace(/\$\{currentModule\}/g, mod.title);
+
+            try {
+                const result = await generateObject({
+                    model: googleAI(modelName),
+                    schema: GeneratedPlanSchema,
+                    prompt: `${systemPromptRef}\n\nMODULO ACTUAL: ${mod.title}\n${finalContextPrompt}`,
+                    temperature: 0.7,
+                });
+
+                const modulePlans = result.object.lesson_plans.map(lp => ({
+                    ...lp,
+                    module_id: mod.id || `mod-${i}`,
+                    module_title: mod.title,
+                    module_index: i
+                }));
+
+                allGeneratedPlans = [...allGeneratedPlans, ...modulePlans];
+
+                // Immediate partial save to DB
+                await supabase.from('instructional_plans').update({
+                    lesson_plans: allGeneratedPlans,
+                    updated_at: new Date().toISOString()
+                }).eq('artifact_id', artifactId);
+
+                console.log(`[Background Job] Module ${i+1} saved. Total lessons so far: ${allGeneratedPlans.length}`);
+
+            } catch (moduleError: any) {
+                console.error(`[Background Job] Error in module ${i+1}:`, moduleError);
+                // We could continue with other modules or fail. 
+                // Decision: Fail for now to ensure consistency.
+                throw new Error(`Module ${i+1} generation failed: ${moduleError.message}`);
+            }
+        }
+
+        // --- STEP 5: FINALIZE ---
+        await supabase.from('instructional_plans').update({
+            state: 'STEP_READY_FOR_REVIEW',
+            updated_at: new Date().toISOString()
+        }).eq('artifact_id', artifactId);
+
+        console.log(`[Background Job] Generation finished successfully for ${allGeneratedPlans.length} lessons.`);
+        return { statusCode: 200, body: JSON.stringify({ success: true, count: allGeneratedPlans.length }) };
 
     } catch (err: any) {
-        console.error('[Background Job] Generation Failed:', err);
+        console.error('[Background Job] Fatal Error:', err);
+        
+        // Attempt to mark as failed in DB
+        await supabase.from('instructional_plans')
+            .update({ state: 'STEP_FAILED', updated_at: new Date().toISOString() })
+            .eq('artifact_id', artifactId);
+
         return { statusCode: 500, body: JSON.stringify({ success: false, error: err.message }) };
     }
 };
