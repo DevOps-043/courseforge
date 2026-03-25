@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { loginAction } from "@/app/login/actions";
+import { completeAuthBridgeLogin } from "@/app/login/auth-bridge";
 
 /**
  * POST /api/auth/login
@@ -13,14 +13,13 @@ export async function POST(request: Request) {
   try {
     const { identifier, password, rememberMe } = await request.json();
 
-    const formData = new FormData();
-    formData.append("identifier", identifier || "");
-    formData.append("password", password || "");
-    formData.append("rememberMe", rememberMe ? "true" : "false");
+    const result = await completeAuthBridgeLogin(
+      identifier || "",
+      password || "",
+      Boolean(rememberMe),
+    );
 
-    const result = await loginAction(null, formData);
-
-    if (result?.error) {
+    if ("error" in result) {
       return NextResponse.json(
         { error: result.error },
         { status: result.error === "OcurriÃ³ un error inesperado" ? 500 : 400 },
