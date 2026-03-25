@@ -15,12 +15,12 @@ export default async function LoginPage() {
       .eq('id', session.user.id)
       .single();
 
-    if (profile?.platform_role === 'ADMIN') {
+    if (profile?.platform_role === 'ADMIN' || profile?.platform_role === 'ARQUITECTO' || profile?.platform_role === 'CONSTRUCTOR') {
       redirect('/admin');
     }
 
-    // Usuario estándar
-    redirect('/dashboard');
+    // Default fallback to admin
+    redirect('/admin');
   }
 
   // Si no hay sesión, mostrar el formulario de login (Cliente)

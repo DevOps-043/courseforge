@@ -243,35 +243,40 @@ export function InstructionalPlanGenerationContainer({ artifactId, onNext, profi
 
             if (!result.success) {
                 console.error(result.error);
+                toast.error(result.error === 'Unauthorized' 
+                    ? 'Sesión expirada. Por favor, recarga la página e inicia sesión nuevamente.' 
+                    : `Error al generar: ${result.error}`);
                 setIsGenerating(false);
             } else {
                 console.log("Generation started successfully");
+                toast.info('Generación iniciada. Esto puede tomar entre 30 a 60 segundos.');
                 // We rely on realtime or manual poll, but let's wait a bit and re-fetch just in case
                 setTimeout(fetchPlan, 2000);
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error("Error calling action:", e);
+            toast.error(`Error de conexión: ${e.message || 'Intenta de nuevo'}`);
             setIsGenerating(false);
         }
     };
 
     const handleValidate = async () => {
         setIsValidating(true);
-        // Clear previous validation to show fresh state
-        // Retain existing validation while re-validating
         try {
             const { validateInstructionalPlanAction } = await import('../../../app/admin/artifacts/actions');
             const result = await validateInstructionalPlanAction(artifactId);
             if (!result.success) {
                 console.error(result.error);
+                toast.error(result.error === 'Unauthorized' 
+                    ? 'Sesión expirada. Por favor, recarga la página e inicia sesión nuevamente.' 
+                    : `Error al validar: ${result.error}`);
                 setIsValidating(false);
             } else {
-                // Validation background job started
-                // Polling will pick up the result
-                // We keep isValidating true until polling finds the 'validation' field
+                toast.info('Validación iniciada...');
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error("Error calling validate action:", e);
+            toast.error(`Error de conexión: ${e.message || 'Intenta de nuevo'}`);
             setIsValidating(false);
         }
     };

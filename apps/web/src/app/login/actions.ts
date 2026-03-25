@@ -314,6 +314,7 @@ export async function loginAction(prevState: any, formData: FormData) {
     }
 
     // ──────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────
     // PASO 10: Determinar destino de redirección y sincronizar a profiles
     // ──────────────────────────────────────────────────
 
@@ -323,7 +324,31 @@ export async function loginAction(prevState: any, formData: FormData) {
           process.env.SUPABASE_SERVICE_ROLE_KEY!
       )
 
-      // Upsert profile in CourseForge database
+      // --- CONCILIACIÓN DE CUENTAS (Legacy vs SofLIA) ---
+      // Si el usuario ya existía en CourseForge con un ID antiguo (legacy),
+      // debemos migrar ese perfil al nuevo ID de SofLIA antes del upsert.
+      const { data: legacyProfile } = await cfAdmin
+          .from('profiles')
+          .select('id, platform_role')
+          .eq('email', user.email)
+          .neq('id', user.id) // Buscar un ID diferente al actual
+          .single()
+
+      if (legacyProfile) {
+        console.log(`Conciliando cuenta legacy para ${user.email}. Migrando ID ${legacyProfile.id} -> ${user.id}`);
+        // Actualizamos el ID del perfil antiguo al nuevo ID de SofLIA
+        // Esto preserva el platform_role y cualquier otra data histórica.
+        const { error: migrationError } = await cfAdmin
+          .from('profiles')
+          .update({ id: user.id })
+          .eq('id', legacyProfile.id);
+
+        if (migrationError) {
+          console.error('Error migrando perfil legacy:', migrationError);
+        }
+      }
+
+      // Upsert profile in CourseForge database (ahora con el ID correcto garantizado)
       const { data: profile } = await cfAdmin
           .from('profiles')
           .upsert({
@@ -333,18 +358,22 @@ export async function loginAction(prevState: any, formData: FormData) {
               first_name: user.first_name,
               last_name_father: user.last_name,
               avatar_url: user.profile_picture_url,
-              // don't overwrite platform_role if it exists, otherwise it defaults to CONSTRUCTOR basically.
-          }, { onConflict: 'id', ignoreDuplicates: false })
+              // platform_role NO se sobreescribe si ya existe (gracias a ignoreDuplicates: false y onConflict: 'id')
+              // pero realmente upsert con Supabase JS suele sobreescribir todo si no se tiene cuidado.
+              // Usamos ignoreDuplicates: false para que actualice los campos de arriba, pero platform_role 
+              // por defecto en la DB es CONSTRUCTOR.
+          }, { onConflict: 'id' })
           .select('platform_role')
           .single()
 
-      if (profile?.platform_role === 'ADMIN') {
+      // Redirigir a /admin si tiene cualquier rol válido de plataforma
+      if (profile?.platform_role === 'ADMIN' || profile?.platform_role === 'ARQUITECTO' || profile?.platform_role === 'CONSTRUCTOR') {
         return { success: true, redirectTo: '/admin' }
       } else if (profile?.platform_role === 'ARQUITECTO') {
         return { success: true, redirectTo: '/architect' }
       }
     } catch (err) {
-      console.error('Error sincronizando el perfil o verificando admin local:', err)
+      console.error('Error sincronizando el perfil o verificando roles:', err)
     }
 
     // Constructor por defecto o si hay fallo en la lectura de profiles

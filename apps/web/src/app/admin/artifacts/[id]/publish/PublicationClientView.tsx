@@ -405,19 +405,29 @@ export default function PublicationClientView({
                 </div>
             </div>
 
-            {/* Validation Warning */}
-            {(!isReady || missingVideos > 0) && (
-                <div className={`p-4 rounded-xl flex items-start gap-3 border ${!isReady ? 'bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-900/20 dark:border-orange-800/50 dark:text-orange-200' : 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-800/50 dark:text-blue-200'}`}>
+            {/* Validation Error */}
+            {!isReady && (
+                <div className="p-4 rounded-xl flex items-start gap-3 border bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800/50 dark:text-red-200">
                     <AlertTriangle className="shrink-0 mt-0.5" size={18} />
                     <div>
-                        <p className="font-semibold text-sm">
-                            {!isReady ? 'Faltan datos para publicar:' : 'Aviso de Publicación Parcial:'}
-                        </p>
+                        <p className="font-semibold text-sm">Faltan datos requeridos para publicar:</p>
                         <ul className="list-disc list-inside text-sm mt-1 space-y-0.5 opacity-90">
                             {!isMetadataComplete && <li>Completa el email del instructor, slug y thumbnail (Requerido).</li>}
-                            {missingVideos > 0 && <li>Faltan {missingVideos} videos. Las lecciones sin video no pueden seleccionarse para envío.</li>}
-                            {selectedLessons.size > 0 && selectedLessons.size < lessons.filter(l => !!videoMappings[l.id]?.video_id).length && (
-                                <li>Se enviarán {selectedLessons.size} de {lessons.filter(l => !!videoMappings[l.id]?.video_id).length} lecciones con video.</li>
+                        </ul>
+                    </div>
+                </div>
+            )}
+
+            {/* Partial Publication Notice */}
+            {(missingVideos > 0 || (selectedLessons.size > 0 && selectedLessons.size < lessons.filter(l => !!videoMappings[l.id]?.video_id).length)) && (
+                <div className="p-4 rounded-xl flex items-start gap-3 border bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-800/50 dark:text-blue-200">
+                    <AlertTriangle className="shrink-0 mt-0.5" size={18} />
+                    <div>
+                        <p className="font-semibold text-sm">Aviso de Publicación Parcial:</p>
+                        <ul className="list-disc list-inside text-sm mt-1 space-y-0.5 opacity-90">
+                            {missingVideos > 0 && <li>Faltan {missingVideos} videos. Las lecciones sin video no se enviarán, pero podrás actualizarlas después.</li>}
+                            {selectedLessons.size > 0 && (
+                                <li>Se enviarán {selectedLessons.size} lecciones con video en este envío.</li>
                             )}
                         </ul>
                     </div>
