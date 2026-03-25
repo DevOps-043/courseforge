@@ -30,6 +30,7 @@ El sistema simula el flujo de trabajo de un equipo humano (Investigador + Diseñ
 ## 🧠 Filosofía del Sistema
 
 CourseEngine se basa en tres principios no negociables:
+CourseEngine se basa en tres principios no negociables:
 
 1.  **NO A LA ALUCINACIÓN**: A diferencia de ChatGPT, CourseEngine _no inventa_ hechos. Utiliza un motor de curaduría (Fase 4) que busca referencias reales, verifica que las URLs funcionen (HTTP 200) y valida que el contenido sea relevante antes de usarlo para escribir.
 2.  **ESTRUCTURA PRIMERO, CONTENIDO DESPUÉS**: No se genera texto hasta que no haya un plan instruccional aprobado (Fase 3). Esto asegura coherencia pedagógica.
@@ -40,6 +41,20 @@ CourseEngine se basa en tres principios no negociables:
 ## 🏗 Arquitectura Técnica
 
 El proyecto es un **Monorepo** gestionado con npm workspaces, implementando "Screaming Architecture" donde la estructura de carpetas refleja el dominio del negocio.
+
+### Tecnologías Clave
+
+| Capa          | Tecnología                                                   |
+| ------------- | ------------------------------------------------------------ |
+| Frontend      | Next.js 16, React 19, TypeScript                             |
+| Estilos       | TailwindCSS 4.x, Framer Motion                               |
+| Estado        | Zustand                                                      |
+| Backend       | Express + Netlify Functions (Node.js 20+)                    |
+| Base de datos | Supabase (PostgreSQL 15)                                     |
+| Auth          | Auth Bridge JWT (HS256, `jose`) + Supabase GoTrue            |
+| IA Principal  | Google Gemini (`gemini-2.0-flash`, `gemini-3-flash-preview`) |
+| IA Secundaria | OpenAI (fallback)                                            |
+| Servicios     | Gamma API (slides), Google Search (grounding)                |
 
 ### Estructura de Directorios
 
@@ -65,12 +80,38 @@ courseengine/
 └── supabase/                   # Migraciones y Seeds SQL
 ```
 
-### Tecnologías Clave
+---
 
-- **Frontend**: React 19, TailwindCSS 4, Framer Motion.
-- **Orquestación**: Netlify Functions (Node.js 20+).
-- **Base de Datos**: Supabase (PostgreSQL 15) con extensión `vector` habilitada.
-- **IA**: Google Generative AI (`gemini-2.0-flash`, `gemini-1.5-pro`) y OpenAI como fallback.
+## Autenticación - Auth Bridge
+
+CourseEngine implementa un sistema de autenticación personalizado que valida credenciales contra la BD de **SofLIA** y emite JWTs propios (HS256).
+
+### Flujo de Login
+
+1. Usuario envía `identifier` + `password` desde `/login`
+2. API valida contra BD de SofLIA (tabla `users`, campo `password_hash` con `bcryptjs`)
+3. Se obtienen las organizaciones del usuario (`organization_users`)
+4. Se firma un JWT HS256 con `COURSEENGINE_JWT_SECRET` usando `jose`
+5. JWT payload: `sub`, `email`, `app_metadata.organizations`, `user_metadata`
+6. Se establecen cookies: `cf_access_token`, `cf_active_org`, `cf_user_orgs`, `cf_remember_me`
+7. Se registra `login_history` y se hace upsert del perfil en CourseEngine
+
+### Multi-tenancy
+
+- Usuario puede pertenecer a múltiples organizaciones
+- `cf_active_org` cookie indica la organización activa
+- Artefactos filtrados por `organization_id`
+- Migración automática de cuentas legacy al ID de SofLIA
+
+### Archivos Clave
+
+| Archivo                          | Función                                  |
+| -------------------------------- | ---------------------------------------- |
+| `app/api/auth/login/route.ts`    | Emisión del JWT + cookies                |
+| `app/api/auth/callback/route.ts` | OAuth callback GoTrue                    |
+| `app/login/actions.ts`           | Server action del formulario             |
+| `utils/auth/session.ts`          | `getAuthBridgeUser()` - verificación JWT |
+| `app/admin/layout.tsx`           | Guard de autenticación                   |
 
 ---
 
@@ -82,96 +123,129 @@ Cada curso pasa por una secuencia estricta de 6 fases. A continuación se detall
 
 **Objetivo**: Transformar una intención vaga ("quiero un curso de ventas") en una ficha técnica sólida.
 
-- **Entrada**: String de texto (la idea del usuario).
-- **Proceso (`generate-artifact-background.ts`)**:
-  1.  Analiza la intención del usuario.
-  2.  Genera 3-5 variantes de títulos comerciales.
-  3.  Define el **Público Objetivo** y los **Prerrequisitos**.
-  4.  Redacta los **Objetivos de Aprendizaje (OA)** usando verbos de la Taxonomía de Bloom.
-- **Salida**: Registro en tabla `artifacts`.
-- **Validación**: Verifica que la descripción tenga >50 palabras y coincida semánticamente con el título.
+**Proceso** (`generate-artifact-background.ts`):
+
+1. Analiza la intención del usuario con Gemini + Google Search grounding
+2. Genera 3-5 variantes de títulos comerciales
+3. Define público objetivo y prerrequisitos
+4. Redacta objetivos de aprendizaje usando verbos de la Taxonomía de Bloom
+
+**Salida**: Artefacto con `objetivos[]`, `nombres[]`, `generation_metadata`
+**Estado**: `GENERATING` → `STEP_APPROVED`
+
+---
 
 ### Fase 2: Syllabus y Estructura
 
 **Objetivo**: Crear el esqueleto jerárquico del curso.
 
-- **Entrada**: ID del Artefacto validado.
-- **Proceso (`syllabus-generation-background.ts`)**:
-  - Toma los OAs definidos en la Fase 1.
-  - Propone una estructura de **Módulos** (agrupadores temáticos).
-  - Dentro de cada módulo, define **Lecciones** secuenciales.
-  - Asigna tiempos estimados (e.g., "15 min") a cada lección.
-- **Salida**: JSON estructurado en tabla `syllabus`.
+**Proceso** (`syllabus-generation-background.ts`):
+
+- Genera estructura JSON de módulos y lecciones (3-10 módulos, 2-5 lecciones c/u)
+- Valida cobertura de niveles Bloom
+- Selecciona ruta: `A_WITH_SOURCE` (fuentes externas) o `B_NO_SOURCE` (solo IA)
+
+**Estado**: `STEP_READY_FOR_QA` (requiere aprobación manual)
+
+---
 
 ### Fase 3: Planificación Instruccional
 
 **Objetivo**: El "Cerebro Pedagógico". Decide CÓMO enseñar cada tema.
 
-- **Entrada**: Syllabus aprobado.
-- **Proceso (`instructional-plan-background.ts`)**:
-  - Itera sobre cada lección del syllabus.
-  - Basado en la complejidad del tema, asigna **Componentes**:
-    - _Es un concepto teórico?_ -> Asigna `READING` (Lectura).
-    - _Es un proceso paso a paso?_ -> Asigna `DEMO_GUIDE` o `VIDEO_SCRIPT`.
-    - _Requiere verificación?_ -> Asigna `QUIZ` o `EXERCISE`.
-- **Lógica Crítica**:
-  - No permite lecciones vacías (sin componentes).
-  - Asegura variedad didáctica (no solo lecturas).
+**Proceso** (`instructional-plan-background.ts`):
+Por cada lección asigna componentes según complejidad:
+
+| Componente          | Cuándo usarlo                                      |
+| ------------------- | -------------------------------------------------- |
+| `DIALOGUE`          | Conversación guiada entre Lia y estudiante         |
+| `READING`           | Concepto teórico con puntos clave                  |
+| `QUIZ`              | Verificación de comprensión (multiple choice, V/F) |
+| `DEMO_GUIDE`        | Proceso paso a paso con screenshots                |
+| `EXERCISE`          | Tarea práctica con resultado esperado              |
+| `VIDEO_THEORETICAL` | Explicación teórica en video                       |
+| `VIDEO_DEMO`        | Demostración en video                              |
+| `VIDEO_GUIDE`       | Video guía interactivo                             |
+
+**Estado**: `STEP_APPROVED` o `STEP_WITH_BLOCKERS`
+
+---
 
 ### Fase 4: Curaduría e Investigación Deep
 
 **Objetivo**: Encontrar la verdad. **Esta es la fase más compleja y crítica.**
 
-- **Archivo Principal**: `apps/web/netlify/functions/unified-curation-logic.ts`
-- **Lógica de Ejecución**:
-  1.  **Batch Processing**: Procesa lecciones en lotes de 2 para evitar saturar la API y timeouts.
-  2.  **Context Injection**: Inyecta el título del curso y descripción en el prompt del sistema para asegurar relevancia.
-  3.  **Google Grounding**: Utiliza la herramienta de búsqueda de Google integrada en Gemini para encontrar URLs candidatas.
+**Proceso** (`unified-curation-logic.ts`):
 
-#### Sub-proceso de Validación de Fuentes (`validateUrlWithContent`)
+1. Batch processing: 2 lecciones por vez (5s delay entre batches)
+2. Google Grounding en Gemini para encontrar URLs candidatas
+3. Validación exhaustiva de cada URL:
+   - Check de conectividad (HEAD/GET)
+   - Detección de "soft 404" (200 pero con "Page not found")
+   - Detección de paywalls ("Subscribe to read")
+   - Longitud mínima: 500+ caracteres de contenido educativo
+   - Blacklist: Reddit, Twitter, Facebook, TikTok, Quora, etc.
 
-Antes de aceptar una URL, el sistema realiza una "autopsia" HTTP:
+**QA Manual**: Admin revisa y aprueba/rechaza cada fuente
+**Estado**: `PHASE2_READY_FOR_QA`
 
-1.  **Check de Conectividad**: Hace una petición `HEAD` o `GET`. Si devuelve 404, 403 o 500, se descarta INMEDIATAMENTE.
-2.  **Detección de "Soft 404"**: Analiza el HTML buscando frases como "Page not found" o "No se encuentra", incluso si el status es 200.
-3.  **Detección de Paywalls**: Busca patrones como "Subscribe to read" o "Sign in". Se descartan.
-4.  **Longitud de Contenido**: Si el texto extraído es < 500 caracteres, se considera "thin content" y se descarta.
-5.  **Blacklist de Dominios**: Se bloquean automáticamente dominios no educativos (Reddit, Twitter, Facebook, TikTok, Quora) definidos en la constante `BLOCKED_DOMAINS`.
-
-- **Salida**: Un set de filas en `curation_rows` marcadas como `apta=true` o `apta=false` con su justificación.
+---
 
 ### Fase 5: Generación de Materiales
 
 **Objetivo**: Redacción final de los contenidos usando las fuentes validadas.
 
-- **Archivo Principal**: `apps/web/netlify/functions/materials-generation-background.ts`
-- **Modo de Operación**: "Daisy Chain" (Cadena de Margaritas).
-  - Debido a que generar un guión de video toma ~30-60 segundos, no se puede hacer todo en una sola petición HTTP.
-  - El sistema usa un patrón recursivo: La función procesa UNA lección, guarda el estado, y se "auto-invoca" (`check-next`) para procesar la siguiente.
-- **Lógica de Reintentos y Fallback**:
-  - Intenta primero con **Gemini 2.5 Flash** (rápido).
-  - Si falla o se satura (429), espera y reintenta.
-  - Si persiste, baja a **Gemini 2.0 Flash** o **1.5 Pro**.
-- **Prompt Engineering**:
-  - Se construye un prompt masivo que incluye:
-    - El perfil del "Experto" (definido en el sistema).
-    - El Objetivo de Aprendizaje exacto.
-    - El texto completo extraído de las fuentes curadas en Fase 4.
-    - Las reglas de formato (JSON estricto).
-- **Salida**: JSON guardado en `material_components` (separado por tipos: `DIALOGUE`, `QUIZ`, `READING`).
+**Proceso** (`materials-generation-background.ts`):
+
+- Patrón "Daisy Chain" recursivo para manejar timeouts de Netlify
+- Cascade de modelos: Gemini 3-flash → Gemini 2.0-flash → 1.5-pro
+- Prompt masivo con: perfil del experto + OA exacto + contenido de fuentes curadas
+
+| Componente | Genera                                           |
+| ---------- | ------------------------------------------------ |
+| DIALOGUE   | Escenas con emociones, preguntas, reflexiones    |
+| READING    | Artículo HTML con secciones y tiempo de lectura  |
+| QUIZ       | Preguntas con explicaciones y nivel Bloom        |
+| VIDEO\_\*  | Script con timecodes, storyboard, B-roll prompts |
+| DEMO_GUIDE | Pasos, screenshots, tips, warnings, video script |
+| EXERCISE   | Descripción, instrucciones, resultados esperados |
+
+**Estado**: `PHASE3_READY_FOR_QA`
+
+---
 
 ### Fase 6: Producción Visual
 
 **Objetivo**: Preparar activos multimedia.
 
-- Utiliza los guiones generados en Fase 5 para crear prompts de imagen (para DALL-E o Midjourney) que ilustren los conceptos.
-- Genera estructura para diapositivas (exportables a Gamma.app o PowerPoint).
+**B-Roll Prompts** (`video-prompts-generation.ts`):
+
+- Descripciones detalladas de secuencias visuales con timecodes
+- Ejemplo: "0:05-0:10: Mostrar escritorio con IDE Python, usuario escribiendo código"
+
+**Integración Gamma**:
+
+- Genera estructura de slides (exportables a Gamma.app)
+- `gamma_deck_id`, `slides_url`, `png_export_path`
+
+**Estados**: `PENDING` → `IN_PROGRESS` → `DECK_READY` → `EXPORTED` → `COMPLETED`
 
 ---
 
-## 🗄 Modelo de Datos
+## SofLIA - Asistente IA
 
-Las tablas principales en Supabase están diseñadas para mantener la integridad referencial y el historial.
+SofLIA es la asistente IA integrada en toda la aplicación (`POST /api/lia`).
+
+### Modo Conversacional
+
+- Gemini `gemini-2.0-flash` + Google Search grounding
+- Temperatura 0.7 — responde en markdown con fuentes citadas
+
+---
+
+## Publicación a SofLIA
+
+Los cursos se publican a SofLIA desde `/admin/artifacts/[id]/publish`.
 
 ### 1. `artifacts` (La tabla padre)
 
@@ -259,10 +333,23 @@ Acceder a `http://localhost:3000`.
 
 ### Debugging
 
-Para ver logs detallados del backend en desarrollo:
+Los logs del backend usan prefijos identificables:
 
-- La terminal donde corre `npm run dev` mostrará los `console.log` del backend con prefijos como `[Lesson Curation]`.
-- Busca mensajes como `✓` para éxitos y `✗` para fallos de validación.
+- `[Lesson Curation]` — Fase 4
+- `[Mat IDs-xyz]` — Fase 5
+- `✓` éxito, `✗` fallo de validación
+
+Los errores actualizan el estado en BD a `NEEDS_FIX` o `ERROR` (no hay spinners infinitos).
+
+### Patrones de Código
+
+- **Path aliases**: `@/*`, `@/features/*`, `@/shared/*`, `@/core/*`
+- **Componentes cliente**: `"use client"` al inicio del archivo
+- **Estilos condicionales**: `cn()` helper de TailwindCSS
+- **Dark mode**: `darkMode: "class"` en Tailwind
+- **Validación de schemas**: Zod
+- **JWT**: `jose` library (compatible con Edge runtime, no `jsonwebtoken`)
+- **Passwords**: `bcryptjs` (sin bindings nativos, compatible con Netlify)
 
 ---
 

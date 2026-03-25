@@ -7,6 +7,8 @@ import Image from 'next/image';
 import { LogOut, Sun, Moon, User, ChevronUp, Monitor } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from 'next-themes';
+import OrganizationSwitcher from '@/components/OrganizationSwitcher';
+import { useAuth } from '@/features/auth/hooks/useAuth';
 
 export interface NavItemConfig {
     href: string;
@@ -77,6 +79,7 @@ export default function SharedSidebarLayout({
     const [isPinned, setIsPinned] = useState(true);
     const [isHovered, setIsHovered] = useState(false);
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+    useAuth(); // Inicializa stores de auth y organización
 
     const { theme, setTheme } = useTheme();
     const [mounted, setMounted] = useState(false);
@@ -147,6 +150,10 @@ export default function SharedSidebarLayout({
                             </motion.div>
                         )}
                     </AnimatePresence>
+                </div>
+
+                <div className={`py-2 ${isOpen ? 'border-b border-gray-100 dark:border-white/5' : ''}`}>
+                    <OrganizationSwitcher collapsed={!isOpen} />
                 </div>
 
                 <div className="flex-1 py-6 px-3 flex flex-col gap-2 overflow-y-auto overflow-x-hidden scrollbar-hide">

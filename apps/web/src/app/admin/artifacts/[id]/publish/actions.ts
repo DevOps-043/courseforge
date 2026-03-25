@@ -1,20 +1,22 @@
 'use server';
 
 import { createClient } from "@/utils/supabase/server";
-import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { getActiveOrganizationId } from "@/utils/auth/session";
 import { revalidatePath } from "next/cache";
 
 declare const process: any;
 
 export async function getPublicationData(artifactId: string) {
     const supabase = await createClient();
+    const activeOrgId = await getActiveOrganizationId();
 
-    // 1. Get Artifact basic info
-    const { data: artifact, error: artError } = await supabase
+    // 1. Get Artifact basic info (scoped to org)
+    let artQuery = supabase
         .from('artifacts')
         .select('id, idea_central, generation_metadata, descripcion')
-        .eq('id', artifactId)
-        .single();
+        .eq('id', artifactId);
+    if (activeOrgId) artQuery = artQuery.eq('organization_id', activeOrgId);
+    const { data: artifact, error: artError } = await artQuery.single();
 
     if (artError || !artifact) {
         throw new Error('Artifact not found');

@@ -151,15 +151,19 @@ export async function regenerateArtifactAction(artifactId: string, feedback?: st
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return { success: false, error: 'Unauthorized' };
 
-    // 1. Get Original Input
-    const { data: artifact } = await supabase.from('artifacts').select('generation_metadata').eq('id', artifactId).single();
+    const activeOrgId = await getActiveOrganizationId();
+
+    // 1. Get Original Input (scoped to org)
+    let artifactQuery = supabase.from('artifacts').select('generation_metadata').eq('id', artifactId);
+    if (activeOrgId) artifactQuery = artifactQuery.eq('organization_id', activeOrgId);
+    const { data: artifact } = await artifactQuery.single();
     if (!artifact) return { success: false, error: 'Artifact not found' };
 
     const originalInput = artifact.generation_metadata?.original_input;
     if (!originalInput) return { success: false, error: 'Original input lost' };
 
-    // 2. Reset Artifact
-    const { error: resetError } = await supabase.from('artifacts').update({
+    // 2. Reset Artifact (scoped to org)
+    let resetQuery = supabase.from('artifacts').update({
         nombres: [],
         objetivos: [],
         descripcion: {},
@@ -170,6 +174,8 @@ export async function regenerateArtifactAction(artifactId: string, feedback?: st
             last_feedback: feedback
         }
     }).eq('id', artifactId);
+    if (activeOrgId) resetQuery = resetQuery.eq('organization_id', activeOrgId);
+    const { error: resetError } = await resetQuery;
 
     if (resetError) return { success: false, error: resetError.message };
 
@@ -212,10 +218,15 @@ export async function updateArtifactContentAction(artifactId: string, updates: {
     const authUser = await getAuthenticatedUser(supabase);
     if (!authUser) return { success: false, error: 'Unauthorized' };
 
-    const { error } = await supabase
+    const activeOrgId = await getActiveOrganizationId();
+
+    let query = supabase
         .from('artifacts')
         .update(updates)
         .eq('id', artifactId);
+    if (activeOrgId) query = query.eq('organization_id', activeOrgId);
+
+    const { error } = await query;
 
     if (error) return { success: false, error: error.message };
 
@@ -231,10 +242,15 @@ export async function updateArtifactStatusAction(artifactId: string, status: str
     const hasPermission = await canReviewContent(supabase, user.id);
     if (!hasPermission) return { success: false, error: 'Forbidden: Requiere rol de Arquitecto o Admin' };
 
-    const { error } = await supabase
+    const activeOrgId = await getActiveOrganizationId();
+
+    let query = supabase
         .from('artifacts')
         .update({ state: status })
         .eq('id', artifactId);
+    if (activeOrgId) query = query.eq('organization_id', activeOrgId);
+
+    const { error } = await query;
 
     if (error) {
         console.error('Error updating artifact status:', error);
@@ -246,11 +262,13 @@ export async function updateArtifactStatusAction(artifactId: string, status: str
 
 export async function generateInstructionalPlanAction(artifactId: string, customPrompt?: string, useCustomPrompt: boolean = false) {
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return { success: false, error: 'Unauthorized' };
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return { success: false, error: 'Unauthorized' };
+    // Auth Check con fallback (GoTrue → Auth Bridge)
+    const authUser = await getAuthenticatedUser(supabase);
+    if (!authUser) return { success: false, error: 'Unauthorized' };
+
+    const accessToken = await getAccessToken(supabase);
+    if (!accessToken) return { success: false, error: 'Unauthorized' };
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || 'http://localhost:3000';
     // Construct the URL ensuring we don't have double slashes if env var has trailing slash
@@ -269,7 +287,7 @@ export async function generateInstructionalPlanAction(artifactId: string, custom
             },
             body: JSON.stringify({
                 artifactId,
-                userToken: session.access_token,
+                userToken: accessToken,
                 customPrompt,
                 useCustomPrompt
             }),
@@ -289,11 +307,13 @@ export async function generateInstructionalPlanAction(artifactId: string, custom
 
 export async function validateInstructionalPlanAction(artifactId: string) {
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return { success: false, error: 'Unauthorized' };
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return { success: false, error: 'Unauthorized' };
+    // Auth Check con fallback (GoTrue → Auth Bridge)
+    const authUser = await getAuthenticatedUser(supabase);
+    if (!authUser) return { success: false, error: 'Unauthorized' };
+
+    const accessToken = await getAccessToken(supabase);
+    if (!accessToken) return { success: false, error: 'Unauthorized' };
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || 'http://localhost:3000';
     const baseUrl = appUrl.replace(/\/$/, '');
@@ -318,7 +338,7 @@ export async function validateInstructionalPlanAction(artifactId: string) {
             },
             body: JSON.stringify({
                 artifactId,
-                userToken: session.access_token,
+                userToken: accessToken,
             }),
         });
 
@@ -335,8 +355,10 @@ export async function validateInstructionalPlanAction(artifactId: string) {
 
 export async function updateInstructionalPlanStatusAction(artifactId: string, status: string, feedback?: string) {
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    // Auth Check con fallback (GoTrue → Auth Bridge)
+    const authUser = await getAuthenticatedUser(supabase);
+    if (!authUser) return { success: false, error: 'Unauthorized' };
 
     const hasPermission = await canReviewContent(supabase, user.id);
     if (!hasPermission) return { success: false, error: 'Forbidden: Requiere rol de Arquitecto o Admin' };
@@ -347,7 +369,7 @@ export async function updateInstructionalPlanStatusAction(artifactId: string, st
     const approvalData = {
         notes: feedback || '',
         reviewed_at: new Date().toISOString(),
-        reviewed_by: user.email || 'user',
+        reviewed_by: authUser.email || 'user',
         architect_status: status === 'STEP_APPROVED' ? 'APPROVED' : 'REJECTED'
     };
 
@@ -369,8 +391,10 @@ export async function updateInstructionalPlanStatusAction(artifactId: string, st
 // NUEVA ACCIÓN para actualizar el contenido del plan instruccional (edición manual)
 export async function updateInstructionalPlanContentAction(artifactId: string, lessonPlans: any[]) {
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    // Auth Check con fallback (GoTrue → Auth Bridge)
+    const authUser = await getAuthenticatedUser(supabase);
+    if (!authUser) return { success: false, error: 'Unauthorized' };
 
     const { error } = await supabase
         .from('instructional_plans')
@@ -390,8 +414,10 @@ export async function updateInstructionalPlanContentAction(artifactId: string, l
 
 export async function deleteInstructionalPlanAction(artifactId: string) {
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return { success: false, error: 'Unauthorized' };
+
+    // Auth Check con fallback (GoTrue → Auth Bridge)
+    const authUser = await getAuthenticatedUser(supabase);
+    if (!authUser) return { success: false, error: 'Unauthorized' };
 
     const { error } = await supabase
         .from('instructional_plans')

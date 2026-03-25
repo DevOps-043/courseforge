@@ -25,12 +25,14 @@ npm run build        # Build producción
 Lia es el asistente IA integrado en toda la app. Tiene dos modos:
 
 ### Modo Estándar (Conversacional)
+
 - Usuario envía mensaje de texto
 - Llama a `/api/lia` con Gemini + Google Search grounding
 - Modelo: `gemini-2.0-flash`, temperatura 0.7
 - Responde en markdown con fuentes citadas
 
 ### Modo Computer Use (Agéntico)
+
 - Usuario envía mensaje + screenshot de la página actual
 - `lia-dom-mapper.ts` escanea el DOM detectando elementos interactivos
 - Modelo: `gemini-2.0-flash-exp`, temperatura 0.3
@@ -39,15 +41,17 @@ Lia es el asistente IA integrado en toda la app. Tiene dos modos:
 
 ### Servicios de Lia
 
-| Archivo | Función |
-|---------|---------|
-| `lia-service.ts` | Ejecuta acciones en el navegador (click_at, type_at, scroll, key_press) con feedback visual |
-| `lia-app-context.ts` | Prompts del sistema y contexto de la app (páginas, menús, comportamiento) |
-| `lia-db-context.ts` | Obtiene contexto de Supabase (usuario, artefactos recientes, estadísticas) |
-| `lia-dom-mapper.ts` | Escanea DOM, detecta elementos interactivos, retorna coordenadas |
+| Archivo              | Función                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------- |
+| `lia-service.ts`     | Ejecuta acciones en el navegador (click_at, type_at, scroll, key_press) con feedback visual |
+| `lia-app-context.ts` | Prompts del sistema y contexto de la app (páginas, menús, comportamiento)                   |
+| `lia-db-context.ts`  | Obtiene contexto de Supabase (usuario, artefactos recientes, estadísticas)                  |
+| `lia-dom-mapper.ts`  | Escanea DOM, detecta elementos interactivos, retorna coordenadas                            |
 
 ### Detección de Alucinaciones
+
 Si Lia intenta abrir un artefacto que no existe en el DOM, automáticamente:
+
 1. Busca en la barra de búsqueda
 2. Si no encuentra, hace scroll para buscar el elemento
 
@@ -56,9 +60,11 @@ Si Lia intenta abrir un artefacto que no existe en el DOM, automáticamente:
 ## Pipeline de Creación de Cursos (6 Fases)
 
 ### Fase 1: BASE - Idea Central
+
 **Entrada**: Título, descripción, público objetivo, resultados esperados
 
 **Proceso** (`generate-artifact-background.ts`):
+
 1. **Research**: Gemini + Google Search investiga el tema (tendencias, herramientas, prácticas)
 2. **Objetivos**: Extrae 5-7 objetivos de aprendizaje usando taxonomía de Bloom
 3. **Nombres**: Genera 3-5 títulos alternativos para el curso
@@ -70,25 +76,32 @@ Si Lia intenta abrir un artefacto que no existe en el DOM, automáticamente:
 ---
 
 ### Fase 2: SYLLABUS - Estructura
+
 **Entrada**: Idea central + objetivos de aprendizaje
 
 **Proceso** (`syllabus-generation-background.ts`):
+
 1. Genera estructura JSON de módulos y lecciones
 2. Valida: 3-10 módulos, 2-5 lecciones por módulo, cobertura de niveles Bloom
 3. Selecciona ruta: `A_WITH_SOURCE` (fuentes externas) o `B_NO_SOURCE` (solo IA)
 
 **Salida**:
+
 ```json
 {
-  "modules": [{
-    "id": "mod-1",
-    "title": "Nombre del módulo",
-    "lessons": [{
-      "id": "les-1-1",
-      "title": "Título de lección",
-      "objective_specific": "Qué aprende el estudiante"
-    }]
-  }]
+  "modules": [
+    {
+      "id": "mod-1",
+      "title": "Nombre del módulo",
+      "lessons": [
+        {
+          "id": "les-1-1",
+          "title": "Título de lección",
+          "objective_specific": "Qué aprende el estudiante"
+        }
+      ]
+    }
+  ]
 }
 ```
 
@@ -97,10 +110,12 @@ Si Lia intenta abrir un artefacto que no existe en el DOM, automáticamente:
 ---
 
 ### Fase 3: PLAN INSTRUCCIONAL - Diseño de Aprendizaje
+
 **Entrada**: Syllabus + objetivos
 
 **Proceso** (`instructional-plan-background.ts`):
 Para cada lección genera:
+
 - `oa_text`: Resultado de aprendizaje
 - `oa_bloom_verb`: Nivel Bloom (comprender, aplicar, analizar, evaluar, crear)
 - `measurable_criteria`: Criterios medibles
@@ -123,9 +138,11 @@ Para cada lección genera:
 ---
 
 ### Fase 4: CURACIÓN - Búsqueda de Fuentes
+
 **Entrada**: Plan instruccional con componentes
 
 **Proceso** (`unified-curation-logic.ts`):
+
 1. Para cada componente, genera queries de búsqueda específicos
 2. Busca en Google fuentes confiables (.edu, docs oficiales, publicaciones)
 3. Valida cada URL:
@@ -137,6 +154,7 @@ Para cada lección genera:
 4. Procesa en batches de 2 lecciones (5s delay entre batches)
 
 **Almacena en `curation_rows`**:
+
 - URL, título, justificación
 - Estado de validación (apta, cobertura_completa)
 - Código HTTP, última verificación
@@ -148,20 +166,22 @@ Para cada lección genera:
 ---
 
 ### Fase 5: MATERIALES - Generación de Contenido
+
 **Entrada**: Plan + fuentes curadas
 
 **Proceso** (`materials-generation-background.ts`):
 
-| Componente | Genera |
-|------------|--------|
-| DIALOGUE | Escenas con emociones, preguntas, reflexiones |
-| READING | Artículo HTML con secciones, tiempo de lectura, preguntas |
-| QUIZ | Multiple choice, V/F, completar. Con explicaciones y nivel Bloom |
-| VIDEO_* | Script con timecodes, storyboard, texto en pantalla, B-roll prompts |
-| DEMO_GUIDE | Pasos, screenshots, tips, warnings, video script |
-| EXERCISE | Descripción, instrucciones, resultados esperados, dificultad |
+| Componente | Genera                                                              |
+| ---------- | ------------------------------------------------------------------- |
+| DIALOGUE   | Escenas con emociones, preguntas, reflexiones                       |
+| READING    | Artículo HTML con secciones, tiempo de lectura, preguntas           |
+| QUIZ       | Multiple choice, V/F, completar. Con explicaciones y nivel Bloom    |
+| VIDEO\_\*  | Script con timecodes, storyboard, texto en pantalla, B-roll prompts |
+| DEMO_GUIDE | Pasos, screenshots, tips, warnings, video script                    |
+| EXERCISE   | Descripción, instrucciones, resultados esperados, dificultad        |
 
 **Validación**:
+
 - Todos los componentes generados
 - Consistencia con fuentes
 - Cobertura de quiz
@@ -172,14 +192,17 @@ Para cada lección genera:
 ---
 
 ### Fase 6: PRODUCCIÓN VISUAL - Video y Slides
+
 **Entrada**: Storyboards de componentes de video
 
 **B-Roll Prompts** (`video-prompts-generation.ts`):
+
 - Genera descripciones detalladas de secuencias visuales
 - Timing, elementos visuales, texto en pantalla, notas de narración
 - Ejemplo: "0:05-0:10: Mostrar escritorio con IDE Python, usuario escribiendo código"
 
 **Integración Gamma**:
+
 - `gamma_deck_id`: ID único del deck
 - `slides_url`: Link a presentación Gamma
 - `png_export_path`: Slides exportados
@@ -196,6 +219,7 @@ Para cada lección genera:
 Flujo alternativo para importar cursos existentes en formato SCORM y convertirlos al pipeline de Courseforge.
 
 **Proceso** (domain: `domains/scorm/`):
+
 1. **Upload**: Sube paquete `.zip` SCORM → bucket `scorm-packages`
 2. **Parsing** (`scorm-parser.service.ts`): Extrae manifiesto, SCOs, recursos, HTML
 3. **Análisis**: Detecta componentes, quizzes, gaps de contenido
@@ -205,6 +229,7 @@ Flujo alternativo para importar cursos existentes en formato SCORM y convertirlo
 **Estados**: `UPLOADED` → `PARSING` → `ANALYZED` → `ENRICHING` → `TRANSFORMING` → `COMPLETED` | `FAILED`
 
 **API**:
+
 - `POST /api/admin/scorm/upload` - Sube y registra paquete
 - `POST /api/admin/scorm/process` - Inicia procesamiento
 
@@ -217,6 +242,7 @@ Flujo alternativo para importar cursos existentes en formato SCORM y convertirlo
 Flujo para publicar un artefacto completado a la plataforma Soflia.
 
 **Proceso** (`/admin/artifacts/[id]/publish`):
+
 1. Admin completa datos del curso: categoría, nivel, instructor, thumbnail, slug, precio
 2. Mapea videos de producción a cada lección (`VideoMappingList`)
 3. Guarda borrador → `POST /api/save-draft`
@@ -226,6 +252,7 @@ Flujo para publicar un artefacto completado a la plataforma Soflia.
 `DRAFT` → `READY` → `SENT` → `APPROVED` | `REJECTED`
 
 **Campos de `publication_requests`**:
+
 - `category`, `level` (beginner|intermediate|advanced)
 - `instructor_email`, `thumbnail_url`, `slug`, `price`
 - `lesson_videos` (JSONB): mapeo video por lección con duración y proveedor
@@ -237,41 +264,46 @@ Flujo para publicar un artefacto completado a la plataforma Soflia.
 ## API Routes
 
 ### Autenticación
-- `POST /api/auth/login` - Login
+
+- `POST /api/auth/login` - Login con Auth Bridge (SofLIA credentials → JWT)
 - `POST /api/auth/sign-up` - Registro
 - `GET /api/auth/callback` - OAuth callback
 
-### Lia
-- `POST /api/lia` - Chat con Lia (ambos modos)
+- `POST /api/lia` - Chat con SofLIA (ambos modos)
 
 ### Syllabus
+
 - `POST /api/syllabus` - Inicia generación de syllabus
 
 ### Publicación
+
 - `POST /api/publish` - Publica artefacto a Soflia
 - `POST /api/save-draft` - Guarda borrador de publicación
 
 ### Admin
+
 - `POST /api/admin/users` - Gestión de usuarios
 - `POST /api/admin/scorm/upload` - Sube paquete SCORM
 - `POST /api/admin/scorm/process` - Procesa paquete SCORM
 
 ### Debug / GPT
+
 - `GET /api/debug/soflia` - Debug integración Soflia
 - `GET /api/gpt/sources` - Fuentes para GPT
 
 ### Netlify Functions (Background)
-| Función | Descripción |
-|---------|-------------|
-| `generate-artifact-background` | Fase 1 completa |
-| `syllabus-generation-background` | Fase 2 |
-| `instructional-plan-background` | Fase 3 |
-| `validate-plan-background` | Validación Fase 3 |
-| `unified-curation-logic` | Fase 4 |
-| `validate-curation-background` | Validación Fase 4 |
-| `materials-generation-background` | Fase 5 |
-| `validate-materials-background` | Validación Fase 5 |
-| `video-prompts-generation` | B-roll prompts |
+
+| Función                           | Descripción       |
+| --------------------------------- | ----------------- |
+| `generate-artifact-background`    | Fase 1 completa   |
+| `syllabus-generation-background`  | Fase 2            |
+| `instructional-plan-background`   | Fase 3            |
+| `validate-plan-background`        | Validación Fase 3 |
+| `unified-curation-logic`          | Fase 4            |
+| `validate-curation-background`    | Validación Fase 4 |
+| `materials-generation-background` | Fase 5            |
+| `validate-materials-background`   | Validación Fase 5 |
+| `video-prompts-generation`        | B-roll prompts    |
 
 ---
 
@@ -280,6 +312,7 @@ Flujo para publicar un artefacto completado a la plataforma Soflia.
 El sistema tiene tres dashboards con roles diferenciados:
 
 ### Admin Dashboard (`/admin`)
+
 - `/admin/artifacts` - Lista y gestión de artefactos
 - `/admin/artifacts/new` - Crear artefacto (manual o importar SCORM)
 - `/admin/artifacts/[id]` - Detalle: navegar fases, aprobar/rechazar, regenerar
@@ -290,11 +323,13 @@ El sistema tiene tres dashboards con roles diferenciados:
 - `/admin/profile` - Perfil del administrador
 
 ### Builder Dashboard (`/builder`)
+
 - `/builder/artifacts` - Artefactos del builder
 - `/builder/artifacts/new` - Crear nuevo artefacto
 - `/builder/artifacts/[id]` - Detalle de artefacto
 
 ### Architect Dashboard (`/architect`)
+
 - `/architect/artifacts` - Artefactos del architect
 - `/architect/artifacts/[id]` - Detalle de artefacto
 
@@ -302,22 +337,22 @@ El sistema tiene tres dashboards con roles diferenciados:
 
 ## Base de Datos (Tablas Principales)
 
-| Tabla | Contenido |
-|-------|-----------|
-| `profiles` | Auth Bridge: datos de usuario (sustituye referencias directas a auth.users) |
-| `artifacts` | Curso base: idea_central, objetivos[], nombres[], state, organization_id |
-| `syllabus` | Estructura: modules (JSONB), route, validation |
-| `instructional_plans` | Planes: lesson_plans[], blockers, dod, validation |
-| `curation` | Estado de curación, qa_decision |
-| `curation_rows` | Fuentes: URL, validación, aptness |
-| `materials` | Estado global de materiales |
-| `material_lessons` | Componentes por lección |
-| `material_components` | Contenido + assets (slides, b_roll, production_status) |
-| `publication_requests` | Publicación a Soflia: datos, video mapping, estado |
-| `scorm_imports` | Paquetes SCORM: manifiesto, análisis, estado de procesamiento |
-| `scorm_resources` | Recursos SCORM: HTML, quizzes, mapeo a lecciones |
-| `model_settings` | Configuración de modelos IA por organización |
-| `pipeline_events` | Log de eventos del pipeline |
+| Tabla                  | Contenido                                                                   |
+| ---------------------- | --------------------------------------------------------------------------- |
+| `profiles`             | Auth Bridge: datos de usuario (sustituye referencias directas a auth.users) |
+| `artifacts`            | Curso base: idea_central, objetivos[], nombres[], state, organization_id    |
+| `syllabus`             | Estructura: modules (JSONB), route, validation                              |
+| `instructional_plans`  | Planes: lesson_plans[], blockers, dod, validation                           |
+| `curation`             | Estado de curación, qa_decision                                             |
+| `curation_rows`        | Fuentes: URL, validación, aptness                                           |
+| `materials`            | Estado global de materiales                                                 |
+| `material_lessons`     | Componentes por lección                                                     |
+| `material_components`  | Contenido + assets (slides, b_roll, production_status)                      |
+| `publication_requests` | Publicación a Soflia: datos, video mapping, estado                          |
+| `scorm_imports`        | Paquetes SCORM: manifiesto, análisis, estado de procesamiento               |
+| `scorm_resources`      | Recursos SCORM: HTML, quizzes, mapeo a lecciones                            |
+| `model_settings`       | Configuración de modelos IA por organización                                |
+| `pipeline_events`      | Log de eventos del pipeline                                                 |
 
 **Storage Buckets**: `scorm-packages`, `thumbnails`, `production-videos`
 

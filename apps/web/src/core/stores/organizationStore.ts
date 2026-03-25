@@ -27,15 +27,19 @@ interface OrganizationStore {
   organizations: UserOrganization[];
   activeOrganizationId: string | null;
   isLoaded: boolean;
+  isSwitching: boolean;
 
   /** Cargar organizaciones desde la cookie cf_user_orgs */
   loadFromCookies: () => void;
 
-  /** Cambiar la organización activa (para el futuro selector de empresas) */
-  switchOrganization: (organizationId: string) => void;
+  /** Cambiar la organización activa — regenera JWT en el servidor */
+  switchOrganization: (organizationId: string) => Promise<boolean>;
 
   /** Obtener la organización activa completa */
   getActiveOrganization: () => UserOrganization | null;
+
+  /** Retorna true si el usuario tiene más de una organización */
+  canSwitch: () => boolean;
 
   /** Limpiar el store (logout) */
   clear: () => void;
@@ -57,10 +61,10 @@ export const useOrganizationStore = create<OrganizationStore>((set, get) => ({
   organizations: [],
   activeOrganizationId: null,
   isLoaded: false,
+  isSwitching: false,
 
   loadFromCookies: () => {
     try {
-      // Leer organizaciones desde la cookie
       const orgsRaw = getCookie('cf_user_orgs');
       const activeOrgId = getCookie('cf_active_org');
 
@@ -69,9 +73,19 @@ export const useOrganizationStore = create<OrganizationStore>((set, get) => ({
         organizations = JSON.parse(orgsRaw);
       }
 
+      // Priority: cookie > localStorage > first org
+      let resolvedOrgId = activeOrgId;
+      if (!resolvedOrgId && typeof localStorage !== 'undefined') {
+        try { resolvedOrgId = localStorage.getItem('cf_last_org'); } catch {}
+      }
+      // Validate that the resolved org actually exists in the user's list
+      if (resolvedOrgId && !organizations.find(o => o.id === resolvedOrgId)) {
+        resolvedOrgId = null;
+      }
+
       set({
         organizations,
-        activeOrganizationId: activeOrgId || (organizations[0]?.id ?? null),
+        activeOrganizationId: resolvedOrgId || (organizations[0]?.id ?? null),
         isLoaded: true,
       });
     } catch (error) {
@@ -80,19 +94,42 @@ export const useOrganizationStore = create<OrganizationStore>((set, get) => ({
     }
   },
 
-  switchOrganization: (organizationId: string) => {
-    const { organizations } = get();
-    const exists = organizations.find(o => o.id === organizationId);
+  switchOrganization: async (organizationId: string) => {
+    const { organizations, activeOrganizationId } = get();
 
+    if (organizationId === activeOrganizationId) return true;
+
+    const exists = organizations.find(o => o.id === organizationId);
     if (!exists) {
       console.error('Organization not found:', organizationId);
-      return;
+      return false;
     }
 
-    // Actualizar la cookie del servidor
-    setCookie('cf_active_org', organizationId);
+    set({ isSwitching: true });
 
-    set({ activeOrganizationId: organizationId });
+    try {
+      const res = await fetch('/api/auth/switch-organization', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organizationId }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.error('Switch org failed:', data.error || res.statusText);
+        set({ isSwitching: false });
+        return false;
+      }
+
+      // Actualizar cookie cliente (cf_active_org es httpOnly, pero
+      // actualizamos el store que es lo que usan los componentes)
+      set({ activeOrganizationId: organizationId, isSwitching: false });
+      return true;
+    } catch (error) {
+      console.error('Error switching organization:', error);
+      set({ isSwitching: false });
+      return false;
+    }
   },
 
   getActiveOrganization: () => {
@@ -100,7 +137,11 @@ export const useOrganizationStore = create<OrganizationStore>((set, get) => ({
     return organizations.find(o => o.id === activeOrganizationId) || null;
   },
 
+  canSwitch: () => {
+    return get().organizations.length > 1;
+  },
+
   clear: () => {
-    set({ organizations: [], activeOrganizationId: null, isLoaded: false });
+    set({ organizations: [], activeOrganizationId: null, isLoaded: false, isSwitching: false });
   },
 }));
