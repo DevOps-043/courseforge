@@ -22,20 +22,16 @@ export default async function ArtifactDetailPage({ params }: { params: Promise<{
     .eq('id', user?.id)
     .single();
 
-  // Fetch Artifact con Syllabus e Instructional Plans relacionados
-  const { data: artifactRaw, error } = await supabase
+  // Fetch Artifact con Syllabus e Instructional Plans (scoped to org)
+  let artifactQuery = supabase
     .from('artifacts')
     .select('*, syllabus(*), instructional_plans(*)')
-    .eq('id', id)
-    .single();
+    .eq('id', id);
+  if (activeOrgId) artifactQuery = artifactQuery.eq('organization_id', activeOrgId);
+  const { data: artifactRaw, error } = await artifactQuery.single();
 
   if (error || !artifactRaw) {
     notFound();
-  }
-
-  // Verificar que el artifact pertenece a la organización activa
-  if (activeOrgId && artifactRaw.organization_id && artifactRaw.organization_id !== activeOrgId) {
-    notFound(); // No revelar que existe — simplemente 404
   }
 
 

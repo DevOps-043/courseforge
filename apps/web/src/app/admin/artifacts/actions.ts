@@ -151,15 +151,19 @@ export async function regenerateArtifactAction(artifactId: string, feedback?: st
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return { success: false, error: 'Unauthorized' };
 
-    // 1. Get Original Input
-    const { data: artifact } = await supabase.from('artifacts').select('generation_metadata').eq('id', artifactId).single();
+    const activeOrgId = await getActiveOrganizationId();
+
+    // 1. Get Original Input (scoped to org)
+    let artifactQuery = supabase.from('artifacts').select('generation_metadata').eq('id', artifactId);
+    if (activeOrgId) artifactQuery = artifactQuery.eq('organization_id', activeOrgId);
+    const { data: artifact } = await artifactQuery.single();
     if (!artifact) return { success: false, error: 'Artifact not found' };
 
     const originalInput = artifact.generation_metadata?.original_input;
     if (!originalInput) return { success: false, error: 'Original input lost' };
 
-    // 2. Reset Artifact
-    const { error: resetError } = await supabase.from('artifacts').update({
+    // 2. Reset Artifact (scoped to org)
+    let resetQuery = supabase.from('artifacts').update({
         nombres: [],
         objetivos: [],
         descripcion: {},
@@ -170,6 +174,8 @@ export async function regenerateArtifactAction(artifactId: string, feedback?: st
             last_feedback: feedback
         }
     }).eq('id', artifactId);
+    if (activeOrgId) resetQuery = resetQuery.eq('organization_id', activeOrgId);
+    const { error: resetError } = await resetQuery;
 
     if (resetError) return { success: false, error: resetError.message };
 
@@ -212,10 +218,15 @@ export async function updateArtifactContentAction(artifactId: string, updates: {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return { success: false, error: 'Unauthorized' };
 
-    const { error } = await supabase
+    const activeOrgId = await getActiveOrganizationId();
+
+    let query = supabase
         .from('artifacts')
         .update(updates)
         .eq('id', artifactId);
+    if (activeOrgId) query = query.eq('organization_id', activeOrgId);
+
+    const { error } = await query;
 
     if (error) return { success: false, error: error.message };
 
@@ -231,10 +242,15 @@ export async function updateArtifactStatusAction(artifactId: string, status: str
     const hasPermission = await canReviewContent(supabase, user.id);
     if (!hasPermission) return { success: false, error: 'Forbidden: Requiere rol de Arquitecto o Admin' };
 
-    const { error } = await supabase
+    const activeOrgId = await getActiveOrganizationId();
+
+    let query = supabase
         .from('artifacts')
         .update({ state: status })
         .eq('id', artifactId);
+    if (activeOrgId) query = query.eq('organization_id', activeOrgId);
+
+    const { error } = await query;
 
     if (error) {
         console.error('Error updating artifact status:', error);

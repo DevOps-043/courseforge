@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/utils/supabase/server';
+import { getActiveOrganizationId } from '@/utils/auth/session';
 import ProfileForm from './ProfileForm';
 
 export default async function ProfilePage() {
@@ -11,16 +12,20 @@ export default async function ProfilePage() {
     redirect('/login');
   }
 
+  const activeOrgId = await getActiveOrganizationId();
+
   const { data: profile } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', user.id)
     .single();
 
-  const { count: artifactCount } = await supabase
+  let artifactCountQuery = supabase
     .from('artifacts')
     .select('*', { count: 'exact', head: true })
     .eq('created_by', user.id);
+  if (activeOrgId) artifactCountQuery = artifactCountQuery.eq('organization_id', activeOrgId);
+  const { count: artifactCount } = await artifactCountQuery;
 
   return (
     <div className="w-full space-y-8">

@@ -73,9 +73,19 @@ export const useOrganizationStore = create<OrganizationStore>((set, get) => ({
         organizations = JSON.parse(orgsRaw);
       }
 
+      // Priority: cookie > localStorage > first org
+      let resolvedOrgId = activeOrgId;
+      if (!resolvedOrgId && typeof localStorage !== 'undefined') {
+        try { resolvedOrgId = localStorage.getItem('cf_last_org'); } catch {}
+      }
+      // Validate that the resolved org actually exists in the user's list
+      if (resolvedOrgId && !organizations.find(o => o.id === resolvedOrgId)) {
+        resolvedOrgId = null;
+      }
+
       set({
         organizations,
-        activeOrganizationId: activeOrgId || (organizations[0]?.id ?? null),
+        activeOrganizationId: resolvedOrgId || (organizations[0]?.id ?? null),
         isLoaded: true,
       });
     } catch (error) {
