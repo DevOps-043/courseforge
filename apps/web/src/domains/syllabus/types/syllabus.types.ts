@@ -5,6 +5,7 @@ export type Esp02StepState =
   | "STEP_DRAFT"
   | "STEP_GENERATING"
   | "STEP_VALIDATING"
+  | "STEP_REVIEW"
   | "STEP_READY_FOR_QA"
   | "STEP_APPROVED"
   | "STEP_REJECTED"
@@ -33,12 +34,14 @@ export interface SourceFile {
 export interface ValidationCheck {
   code: string;
   pass: boolean;
-  message?: string;
+  message: string;
   observed?: any;
 }
 
 export interface TemarioEsp02 {
   route: Esp02Route;
+  state?: Esp02StepState;
+  generation_metadata?: Record<string, unknown>;
   source_summary?: {
     files: SourceFile[];
     notes?: string;
@@ -59,4 +62,12 @@ export interface TemarioEsp02 {
     reviewed_at?: string;
     notes?: string;
   };
+}
+
+export interface SyllabusRow extends TemarioEsp02 {
+  artifact_id: string;
+  state: Esp02StepState;
+  iteration_count?: number;
+  created_at?: string;
+  updated_at?: string;
 }

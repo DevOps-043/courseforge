@@ -26,6 +26,15 @@ import { InstructionalPlanGenerationContainer } from "@/domains/plan/components/
 import { SourcesCurationGenerationContainer } from "@/domains/curation/components/SourcesCurationGenerationContainer";
 import { MaterialsForm } from "@/domains/materials/components/MaterialsForm";
 import { VisualProductionContainer } from "@/domains/materials/components/VisualProductionContainer";
+import {
+  getArtifactWorkflowStep,
+  hasCurationStarted,
+  hasMaterialsStarted,
+  isCurationApproved,
+  isInstructionalPlanApproved,
+  isMaterialsApproved,
+  isSyllabusApproved,
+} from "@/lib/artifact-workflow";
 import PublicationClientView from "./publish/PublicationClientView";
 
 export default function ArtifactClientView({
@@ -45,43 +54,8 @@ export default function ArtifactClientView({
     "content",
   );
 
-  // Calculate initial step based on artifact state (persist step across refreshes)
-  // Calculate initial step based on artifact state (persist step across refreshes)
   const calculateInitialStep = () => {
-    // Check from highest step down to find where user should be
-    if (
-      publicationRequest?.status === "SENT" ||
-      publicationRequest?.status === "APPROVED"
-    )
-      return 7;
-    if (publicationRequest) return 7; // Allow returning to publish step if a draft exists
-    if (artifact.production_complete) return 7;
-    if (artifact.materials_state === "PHASE3_APPROVED") return 6;
-
-    const curationApproved = artifact.curation_state === "PHASE2_APPROVED";
-
-    // Progress to production if materials are not in DRAFT state and not null, allowing progressive production
-    if (
-      curationApproved &&
-      artifact.materials_state &&
-      artifact.materials_state !== "PHASE3_DRAFT"
-    )
-      return 6;
-
-    if (curationApproved) return 5;
-
-    if (artifact.plan_state === "STEP_APPROVED") return 4;
-
-    const syllabusApproved =
-      artifact.syllabus_status === "STEP_APPROVED" ||
-      (artifact.temario && artifact.temario.qa?.status === "APPROVED");
-    if (syllabusApproved) return 3;
-
-    const phase1Approved =
-      artifact.state === "APPROVED" || artifact.qa_status === "APPROVED";
-    if (phase1Approved) return 2;
-
-    return 1;
+    return getArtifactWorkflowStep(artifact, publicationRequest);
   };
 
   const [currentStep, setCurrentStep] = useState(calculateInitialStep);
@@ -118,13 +92,7 @@ export default function ArtifactClientView({
     const newStep = calculateInitialStep();
     // Only advance forward, never go back automatically
     setCurrentStep((prev) => Math.max(prev, newStep));
-  }, [
-    artifact.state,
-    artifact.syllabus_status,
-    artifact.plan_state,
-    artifact.curation_state,
-    artifact.materials_state,
-  ]);
+  }, [artifact, publicationRequest]);
 
   const [editingSection, setEditingSection] = useState<
     "nombres" | "objetivos" | "descripcion" | null
@@ -202,11 +170,64 @@ export default function ArtifactClientView({
 
   // Lógica de aprobación de Syllabus
   // Asumimos que artifact tiene relación con syllabus y trae su estado.
-  const syllabusApproved =
-    artifact.syllabus_status === "STEP_APPROVED" ||
-    (artifact.temario && artifact.temario.qa?.status === "APPROVED");
-  const planApproved = artifact.plan_state === "STEP_APPROVED";
-  const curationApproved = artifact.curation_state === "PHASE2_APPROVED";
+  const syllabusApproved = isSyllabusApproved(artifact);
+  const planApproved = isInstructionalPlanApproved(artifact);
+  const curationStarted = hasCurationStarted(artifact);
+  const curationApproved = isCurationApproved(artifact);
+  const materialsStarted = hasMaterialsStarted(artifact);
+  const materialsApproved = isMaterialsApproved(artifact);
+  const publicationStarted = !!publicationRequest;
+  const canAccessSourcesStep =
+    planApproved ||
+    curationStarted ||
+    materialsStarted ||
+    !!artifact.production_complete ||
+    publicationStarted;
+  const canAccessMaterialsStep =
+    curationApproved ||
+    materialsStarted ||
+    !!artifact.production_complete ||
+    publicationStarted;
+  const canAccessProductionStep =
+    canAccessMaterialsStep || !!artifact.production_complete;
+  const canAccessPublicationStep =
+    canAccessProductionStep || publicationStarted;
+  const baseDone =
+    reviewState === "approved" ||
+    syllabusApproved ||
+    planApproved ||
+    curationStarted ||
+    curationApproved ||
+    materialsStarted ||
+    materialsApproved ||
+    !!artifact.production_complete ||
+    publicationStarted;
+  const syllabusDone =
+    syllabusApproved ||
+    planApproved ||
+    curationStarted ||
+    curationApproved ||
+    materialsStarted ||
+    materialsApproved ||
+    !!artifact.production_complete ||
+    publicationStarted;
+  const planDone =
+    planApproved ||
+    curationStarted ||
+    curationApproved ||
+    materialsStarted ||
+    materialsApproved ||
+    !!artifact.production_complete ||
+    publicationStarted;
+  const curationDone =
+    curationApproved ||
+    materialsStarted ||
+    materialsApproved ||
+    !!artifact.production_complete ||
+    publicationStarted;
+  const materialsDone =
+    materialsApproved || !!artifact.production_complete || publicationStarted;
+  const productionDone = !!artifact.production_complete || publicationStarted;
 
   const handleSaveContent = async () => {
     if (!editingSection) return;
@@ -320,11 +341,11 @@ export default function ArtifactClientView({
           active={currentStep === 1}
           onClick={() => setCurrentStep(1)}
           icon={<Target size={18} />}
-          done={reviewState === "approved"}
+          done={baseDone}
         />
 
         <div
-          className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${reviewState === "approved" ? "bg-[#1F5AF6]" : "bg-gray-200 dark:bg-[#2D333B]"}`}
+          className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${baseDone ? "bg-[#1F5AF6]" : "bg-gray-200 dark:bg-[#2D333B]"}`}
         />
 
         <StepItem
@@ -333,12 +354,12 @@ export default function ArtifactClientView({
           active={currentStep === 2}
           onClick={() => setCurrentStep(2)}
           icon={<BookOpen size={18} />}
-          disabled={reviewState !== "approved"}
-          done={syllabusApproved}
+          disabled={!baseDone}
+          done={syllabusDone}
         />
 
         <div
-          className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${syllabusApproved ? "bg-[#1F5AF6]" : "bg-gray-200 dark:bg-[#2D333B]"}`}
+          className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${syllabusDone ? "bg-[#1F5AF6]" : "bg-gray-200 dark:bg-[#2D333B]"}`}
         />
 
         <StepItem
@@ -347,12 +368,12 @@ export default function ArtifactClientView({
           active={currentStep === 3}
           onClick={() => setCurrentStep(3)}
           icon={<Layers size={18} />}
-          disabled={!syllabusApproved}
-          done={planApproved}
+          disabled={!syllabusDone}
+          done={planDone}
         />
 
         <div
-          className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${planApproved ? "bg-[#1F5AF6]" : "bg-gray-200 dark:bg-[#2D333B]"}`}
+          className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${planDone ? "bg-[#1F5AF6]" : "bg-gray-200 dark:bg-[#2D333B]"}`}
         />
 
         <StepItem
@@ -360,13 +381,13 @@ export default function ArtifactClientView({
           label="Fuentes"
           active={currentStep === 4}
           onClick={() => setCurrentStep(4)}
-          disabled={!planApproved}
+          disabled={!canAccessSourcesStep}
           icon={<FileText size={18} />}
-          done={curationApproved}
+          done={curationDone}
         />
 
         <div
-          className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${curationApproved ? "bg-[#1F5AF6]" : "bg-gray-200 dark:bg-[#2D333B]"}`}
+          className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${curationDone ? "bg-[#1F5AF6]" : "bg-gray-200 dark:bg-[#2D333B]"}`}
         />
 
         <StepItem
@@ -375,12 +396,12 @@ export default function ArtifactClientView({
           active={currentStep === 5}
           onClick={() => setCurrentStep(5)}
           icon={<Layers size={18} />}
-          disabled={!curationApproved}
-          done={artifact.materials_state === "PHASE3_APPROVED"}
+          disabled={!canAccessMaterialsStep}
+          done={materialsDone}
         />
 
         <div
-          className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${artifact.materials_state === "PHASE3_APPROVED" ? "bg-[#1F5AF6]" : "bg-gray-200 dark:bg-[#2D333B]"}`}
+          className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${materialsDone ? "bg-[#1F5AF6]" : "bg-gray-200 dark:bg-[#2D333B]"}`}
         />
 
         <StepItem
@@ -389,12 +410,12 @@ export default function ArtifactClientView({
           active={currentStep === 6}
           onClick={() => setCurrentStep(6)}
           icon={<Target size={18} />}
-          disabled={!curationApproved}
-          done={localProductionComplete}
+          disabled={!canAccessProductionStep}
+          done={productionDone}
         />
 
         <div
-          className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${localProductionComplete || publicationRequest ? "bg-[#1F5AF6]" : "bg-gray-200 dark:bg-[#2D333B]"}`}
+          className={`h-0.5 flex-1 mx-4 rounded-full transition-colors relative top-[-10px] ${productionDone ? "bg-[#1F5AF6]" : "bg-gray-200 dark:bg-[#2D333B]"}`}
         />
 
         <StepItem
@@ -403,7 +424,7 @@ export default function ArtifactClientView({
           active={currentStep === 7}
           onClick={() => setCurrentStep(7)}
           icon={<Target size={18} />}
-          disabled={!curationApproved}
+          disabled={!canAccessPublicationStep}
           done={
             publicationRequest?.status === "SENT" ||
             publicationRequest?.status === "APPROVED"
@@ -789,6 +810,7 @@ export default function ArtifactClientView({
             temario={artifact.temario?.modules}
             ideaCentral={artifact.idea_central}
             profile={profile}
+            onNext={() => setCurrentStep(5)}
           />
         </div>
       ) : currentStep === 5 ? (

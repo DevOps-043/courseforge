@@ -30,6 +30,10 @@ import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import {
+  isCurationApproved,
+  isCurationBlocked,
+} from "@/lib/artifact-workflow";
+import {
   ConfirmationModal,
   ModalVariant,
 } from "../../../shared/components/ConfirmationModal";
@@ -53,6 +57,7 @@ interface SourcesCurationGenerationContainerProps {
   temario?: SyllabusModule[];
   ideaCentral?: string;
   profile?: any;
+  onNext?: () => void;
 }
 
 const DEFAULT_PROMPT_PREVIEW = `Prompt optimizado con reglas de curaduría, enfoque en accesibilidad (sin descargas), validación de URLs y estructura JSON estricta. Utiliza búsquedas en tiempo real para verificar la disponibilidad.`;
@@ -68,6 +73,7 @@ export function SourcesCurationGenerationContainer({
   temario,
   ideaCentral,
   profile,
+  onNext,
 }: SourcesCurationGenerationContainerProps) {
   const {
     curation,
@@ -81,6 +87,8 @@ export function SourcesCurationGenerationContainer({
   } = useCuration(artifactId);
   const router = useRouter();
   const canReview = REVIEWER_ROLES.has(profile?.platform_role);
+  const curationApproved = isCurationApproved(curation);
+  const curationBlocked = isCurationBlocked(curation);
   const [useCustomPrompt, setUseCustomPrompt] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
   const [showAutomaticFlow, setShowAutomaticFlow] = useState(false);
@@ -826,7 +834,7 @@ export function SourcesCurationGenerationContainer({
             placeholder="Escribe tus comentarios o feedback sobre la curaduría de fuentes..."
             value={reviewNotes}
             onChange={(e) => setReviewNotes(e.target.value)}
-            disabled={curation?.state === "PHASE2_APPROVED"}
+            disabled={curationApproved}
           />
 
           {/* Validation Progress Indicator */}
@@ -887,9 +895,7 @@ export function SourcesCurationGenerationContainer({
           )}
 
           <div className="flex items-center gap-4 mt-4">
-            {canReview &&
-              curation?.state !== "PHASE2_APPROVED" &&
-              curation?.state !== "PHASE2_BLOCKED" && (
+            {canReview && !curationApproved && !curationBlocked && (
                 <>
                   <button
                     onClick={handleValidate}
@@ -916,7 +922,7 @@ export function SourcesCurationGenerationContainer({
                       );
                       toast.success("Fase 4 aprobada exitosamente");
                       // Refresh both curation data and parent artifact view
-                      refresh();
+                      await refresh();
                       router.refresh();
                     }}
                     disabled={isValidating}
@@ -942,7 +948,7 @@ export function SourcesCurationGenerationContainer({
                       );
                       toast.info("Fase 4 rechazada");
                       // Refresh both curation data and parent artifact view
-                      refresh();
+                      await refresh();
                       router.refresh();
                     }}
                     disabled={isValidating}
@@ -960,16 +966,25 @@ export function SourcesCurationGenerationContainer({
                 </>
               )}
 
-            {curation?.state === "PHASE2_APPROVED" && (
+            {curationApproved && (
               <div className="w-full flex gap-4">
                 <div className="flex-1 bg-[#00D4B3]/20 text-[#00D4B3] py-3 rounded-xl font-bold text-center flex items-center justify-center gap-2">
                   <CheckCircle2 size={18} />
                   Fase 4 Aprobada
                 </div>
+                {onNext && (
+                  <button
+                    type="button"
+                    onClick={onNext}
+                    className="flex-1 bg-[#1F5AF6] hover:bg-[#1548c7] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#1F5AF6]/20"
+                  >
+                    Continuar a Materiales
+                  </button>
+                )}
               </div>
             )}
 
-            {curation?.state === "PHASE2_BLOCKED" && (
+            {curationBlocked && (
               <div className="w-full flex gap-4">
                 <div className="flex-1 bg-[#EF4444]/20 text-[#EF4444] py-3 rounded-xl font-bold text-center flex items-center justify-center gap-2">
                   <AlertCircle size={18} />

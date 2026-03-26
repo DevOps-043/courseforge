@@ -41,8 +41,8 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
       });
 
       // Si retorna temario inmediato (Local mode)
-      if (result.modules) {
-        processResult(result as any);
+      if ("modules" in result && Array.isArray(result.modules)) {
+        processResult(result);
       } 
       // Si es background processing, el useEffect se encargará del polling
       
@@ -76,7 +76,7 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
     const checkExisting = async () => {
         try {
             const data = await syllabusService.getSyllabus(artifactId);
-            if (data?.modules?.length > 0) {
+            if (data && Array.isArray(data.modules) && data.modules.length > 0) {
                 processResult(data);
             }
         } catch (e) {

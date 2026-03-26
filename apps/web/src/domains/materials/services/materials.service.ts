@@ -1,5 +1,9 @@
 import { createClient } from '@/utils/supabase/client';
 import {
+    getLessonComponentsSnapshotAction,
+    getMaterialsSnapshotAction,
+} from '@/app/admin/artifacts/actions';
+import {
     MaterialsPayload,
     MaterialLesson,
     MaterialComponent,
@@ -16,26 +20,18 @@ export const materialsService = {
      * Obtiene el registro de materiales para un artefacto
      */
     async getMaterialsByArtifactId(artifactId: string): Promise<MaterialsPayload | null> {
-        const supabase = createClient();
-        const { data, error } = await supabase
-            .from('materials')
-            .select('*')
-            .eq('artifact_id', artifactId)
-            .maybeSingle();
-
-        if (error) {
-            console.error('Error fetching materials:', error);
+        const result = await getMaterialsSnapshotAction(artifactId);
+        if (!result.success) {
+            console.error('Error fetching materials snapshot:', result.error);
             return null;
         }
 
+        const data = result.materials;
         if (!data) return null;
-
-        // Obtener las lecciones asociadas
-        const lessons = await this.getMaterialLessons(data.id);
 
         return {
             ...data,
-            lessons,
+            lessons: (result.lessons || []) as MaterialLesson[],
             global_blockers: data.global_blockers || [],
             dod: data.dod || { checklist: [], automatic_checks: [] },
             qa_decision: data.qa_decision,
@@ -67,20 +63,14 @@ export const materialsService = {
      * Obtiene los componentes de una lección
      */
     async getLessonComponents(lessonId: string): Promise<MaterialComponent[]> {
-        const supabase = createClient();
-        const { data, error } = await supabase
-            .from('material_components')
-            .select('*')
-            .eq('material_lesson_id', lessonId)
-            .order('iteration_number', { ascending: false });
-
-        if (error) {
-            console.error('Error fetching lesson components:', error);
+        const result = await getLessonComponentsSnapshotAction(lessonId);
+        if (!result.success) {
+            console.error('Error fetching lesson components snapshot:', result.error);
             return [];
         }
 
         // Deduplicate by type, keeping the latest iteration (since we ordered by iteration DESC)
-        const components = data as MaterialComponent[];
+        const components = (result.components || []) as MaterialComponent[];
         const uniqueComponents = new Map<string, MaterialComponent>();
         
         for (const comp of components) {

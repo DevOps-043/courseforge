@@ -41,7 +41,11 @@ export function VisualProductionContainer({ artifactId, productionComplete, onSt
 
     useEffect(() => {
         const fetchProductionItems = async () => {
-            if (!materials?.lessons) return;
+            if (!materials?.lessons) {
+                setProductionItems([]);
+                setIsLoading(false);
+                return;
+            }
 
             setIsLoading(true);
             try {

@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { TemarioEsp02, SyllabusModule } from '../../types/syllabus.types';
+import { TemarioEsp02, SyllabusModule } from '../types/syllabus.types';
 
 interface SyllabusImportFormProps {
   onImport: (modules: SyllabusModule[]) => void;

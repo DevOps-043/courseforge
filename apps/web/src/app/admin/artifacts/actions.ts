@@ -1653,6 +1653,100 @@ export async function validateMaterialsAction(artifactId: string) {
   }
 }
 
+export async function getMaterialsSnapshotAction(artifactId: string) {
+  const supabase = await createClient();
+  const authUser = await getAuthenticatedUser(supabase);
+  if (!authUser) return { success: false, error: "Unauthorized" };
+
+  const authorized = await getAuthorizedArtifactAdmin(artifactId);
+  if (!authorized) {
+    return { success: false, error: "Artifact not found or inaccessible" };
+  }
+
+  const { admin } = authorized;
+
+  const { data: materials, error: materialsError } = await admin
+    .from("materials")
+    .select("*")
+    .eq("artifact_id", artifactId)
+    .maybeSingle();
+
+  if (materialsError) {
+    console.error("[Materials] Snapshot error:", materialsError);
+    return { success: false, error: materialsError.message };
+  }
+
+  let lessons: any[] = [];
+
+  if (materials?.id) {
+    const { data: lessonData, error: lessonsError } = await admin
+      .from("material_lessons")
+      .select("*")
+      .eq("materials_id", materials.id)
+      .order("module_id", { ascending: true })
+      .order("lesson_id", { ascending: true });
+
+    if (lessonsError) {
+      console.error("[Materials] Lessons snapshot error:", lessonsError);
+      return { success: false, error: lessonsError.message };
+    }
+
+    lessons = lessonData || [];
+  }
+
+  return { success: true, materials, lessons };
+}
+
+export async function getLessonComponentsSnapshotAction(lessonId: string) {
+  const supabase = await createClient();
+  const authUser = await getAuthenticatedUser(supabase);
+  if (!authUser) return { success: false, error: "Unauthorized" };
+
+  const admin = getServiceRoleClient();
+
+  const { data: lesson, error: lessonError } = await admin
+    .from("material_lessons")
+    .select(
+      `
+        id,
+        materials_id,
+        materials!inner (
+          artifact_id
+        )
+      `,
+    )
+    .eq("id", lessonId)
+    .maybeSingle();
+
+  if (lessonError) {
+    console.error("[Materials] Lesson snapshot error:", lessonError);
+    return { success: false, error: lessonError.message };
+  }
+
+  const artifactId = (lesson?.materials as any)?.artifact_id;
+  if (!artifactId) {
+    return { success: false, error: "Lesson not found or inaccessible" };
+  }
+
+  const authorized = await getAuthorizedArtifactAdmin(artifactId);
+  if (!authorized) {
+    return { success: false, error: "Lesson not found or inaccessible" };
+  }
+
+  const { data: components, error: componentsError } = await admin
+    .from("material_components")
+    .select("*")
+    .eq("material_lesson_id", lessonId)
+    .order("iteration_number", { ascending: false });
+
+  if (componentsError) {
+    console.error("[Materials] Components snapshot error:", componentsError);
+    return { success: false, error: componentsError.message };
+  }
+
+  return { success: true, components: components || [] };
+}
+
 export async function validateLessonAction(lessonId: string) {
   const supabase = await createClient();
   const {

@@ -1,5 +1,5 @@
 
-import { Esp02Route } from '../../types/syllabus.types';
+import { Esp02Route } from '../types/syllabus.types';
 
 interface SyllabusRouteSelectorProps {
   selectedRoute: Esp02Route | null;
