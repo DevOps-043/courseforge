@@ -555,6 +555,7 @@ export function InstructionalPlanGenerationContainer({
                 artifactId,
               );
               setExistingPlan({ ...existingPlan, upstream_dirty: false });
+              router.refresh();
             }}
             onDismiss={async () => {
               const { dismissUpstreamDirtyAction } =
@@ -564,6 +565,7 @@ export function InstructionalPlanGenerationContainer({
                 artifactId,
               );
               setExistingPlan({ ...existingPlan, upstream_dirty: false });
+              router.refresh();
             }}
             isIterating={isGenerating}
           />

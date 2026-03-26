@@ -818,6 +818,8 @@ export function SourcesCurationGenerationContainer({
               const { dismissUpstreamDirtyAction } =
                 await import("../../../app/admin/artifacts/actions");
               await dismissUpstreamDirtyAction("curation", artifactId);
+              refresh();
+              router.refresh();
             }}
             isIterating={isGenerating}
           />

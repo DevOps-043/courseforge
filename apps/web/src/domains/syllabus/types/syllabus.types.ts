@@ -62,6 +62,17 @@ export interface TemarioEsp02 {
     reviewed_at?: string;
     notes?: string;
   };
+  // Propiedades de seguimiento de iteración
+  upstream_dirty?: boolean;
+  upstream_dirty_source?: string;
+}
+
+export interface SyllabusRow extends TemarioEsp02 {
+  id: string;
+  artifact_id: string;
+  created_at?: string;
+  updated_at?: string;
+  iteration_count?: number;
 }
 
 export interface SyllabusRow extends TemarioEsp02 {

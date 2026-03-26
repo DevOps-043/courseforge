@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Esp02Route, TemarioEsp02, Esp02StepState } from '../types/syllabus.types';
@@ -6,6 +5,9 @@ import { syllabusService } from '@/domains/syllabus/services/syllabus.service';
 import { SyllabusRouteSelector } from './SyllabusRouteSelector';
 import { SyllabusViewer } from './SyllabusViewer';
 import { SyllabusImportForm } from './SyllabusImportForm';
+import { UpstreamChangeAlert } from '@/shared/components/UpstreamChangeAlert';
+import { dismissUpstreamDirtyAction } from '../../../app/admin/artifacts/actions';
+import { Loader2 } from 'lucide-react';
 
 interface SyllabusGenerationContainerProps {
   artifactId: string;
@@ -13,11 +15,12 @@ interface SyllabusGenerationContainerProps {
   initialIdeaCentral: string;
   onNext?: () => void;
   profile?: any;
+  className?: string;
 }
 
 type TabMode = 'GENERATE' | 'IMPORT';
 
-export function SyllabusGenerationContainer({ artifactId, initialObjetivos, initialIdeaCentral, onNext, profile }: SyllabusGenerationContainerProps) {
+export function SyllabusGenerationContainer({ artifactId, initialObjetivos, initialIdeaCentral, onNext, profile, className = '' }: SyllabusGenerationContainerProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabMode>('GENERATE');
   const [route, setRoute] = useState<Esp02Route | null>('B_NO_SOURCE'); // Default a IA
@@ -25,6 +28,8 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
   const [temario, setTemario] = useState<TemarioEsp02 | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [isIterating, setIsIterating] = useState(false);
 
   const handleGenerate = async () => {
     if (!route) return;
@@ -41,8 +46,8 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
       });
 
       // Si retorna temario inmediato (Local mode)
-      if ("modules" in result && Array.isArray(result.modules)) {
-        processResult(result);
+      if (result && (result as any).modules) {
+        processResult(result as any);
       } 
       // Si es background processing, el useEffect se encargará del polling
       
@@ -53,6 +58,23 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
     }
   };
 
+  const handleDismissAlert = async () => {
+    try {
+      await dismissUpstreamDirtyAction('syllabus', artifactId);
+      setTemario(prev => prev ? { ...prev, upstream_dirty: false } : null);
+    } catch (e) {
+      console.error('Error dismissing alert:', e);
+    }
+  };
+
+  if (loading) {
+    return (
+        <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+        </div>
+    );
+  }
+
   // Helper para procesar resultado
   const processResult = (generatedTemario: TemarioEsp02) => {
       const validation = syllabusService.validateTemario(generatedTemario, initialObjetivos);
@@ -60,15 +82,19 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
         ...generatedTemario,
         route: route || 'B_NO_SOURCE',
         validation: {
-          automatic_pass: validation.passed,
-          checks: validation.checks
+          automatic_pass: !!validation.passed,
+          checks: validation.checks as any
         },
         qa: { status: 'PENDING' }
       };
       setTemario(completeTemario);
       
       // FIX: Respetar el estado que viene de BD si existe, sino READY_FOR_QA
-      setStatus((generatedTemario.state as Esp02StepState) || 'STEP_READY_FOR_QA');
+      if ((generatedTemario as any).state) {
+        setStatus((generatedTemario as any).state as Esp02StepState);
+      } else if (status === 'STEP_DRAFT' || status === 'STEP_GENERATING') {
+        setStatus('STEP_READY_FOR_QA');
+      }
   };
 
   // CHECK INITIAL STATE
@@ -76,7 +102,7 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
     const checkExisting = async () => {
         try {
             const data = await syllabusService.getSyllabus(artifactId);
-            if (data && Array.isArray(data.modules) && data.modules.length > 0) {
+            if (data && data.modules && data.modules.length > 0) {
                 processResult(data);
             }
         } catch (e) {
@@ -154,6 +180,8 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
           console.log('Módulos actualizados correctamente');
 
           // Mark downstream steps as dirty (change propagation)
+          // The original code had a commented out line, and the instruction provides a different context.
+          // Keeping the original intent of marking downstream dirty for syllabus.
           const { markDownstreamDirtyAction } = await import('../../../app/admin/artifacts/actions');
           await markDownstreamDirtyAction(artifactId, 2, 'Temario');
       } catch (e) {
@@ -161,9 +189,20 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
       }
   };
 
+  const isStepApproved = status === 'STEP_READY_FOR_QA' || status === 'STEP_APPROVED';
+
   return (
-    <div className="space-y-6 max-w-5xl mx-auto pb-20">
+    <div className={`space-y-6 max-w-5xl mx-auto pb-20 ${className}`}>
       
+      {/* Upstream Change Alert (Changes in Step 1) */}
+      {(temario as any)?.upstream_dirty && (
+          <UpstreamChangeAlert
+              source={(temario as any)?.upstream_dirty_source || 'la idea central'}
+              onIterate={handleGenerate}
+              onDismiss={handleDismissAlert}
+              isIterating={status === 'STEP_GENERATING' || isIterating}
+          />
+      )}
       {/* Header Styled as Screenshot */}
       <div className="bg-white dark:bg-[#1E2329] rounded-2xl border border-gray-200 dark:border-white/5 p-8 relative overflow-hidden">
         <div className="relative z-10">
@@ -340,7 +379,7 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
             </div>
             <SyllabusViewer 
                 modules={temario.modules} 
-                validation={temario.validation}
+                validation={temario.validation as any}
                 metadata={temario.source_summary as any}
                 onSave={handleSaveModules}
                 isEditable={true}

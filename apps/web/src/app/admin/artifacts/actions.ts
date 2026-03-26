@@ -403,8 +403,10 @@ export async function updateArtifactContentAction(
   if (activeOrgId) query = query.eq("organization_id", activeOrgId);
 
   const { error } = await query;
-
   if (error) return { success: false, error: error.message };
+
+  // Mark all downstream steps as dirty whenever basic info changes
+  await markDownstreamDirtyAction(artifactId, 1, "Idea Central");
 
   return { success: true };
 }
@@ -970,6 +972,11 @@ export async function updateCurationRowAction(rowId: string, updates: any) {
     .eq("id", rowId);
 
   if (error) return { success: false, error: error.message };
+
+  // Mark downstream (Materials and Publication) as dirty
+  const { artifactId } = authorized;
+  await markDownstreamDirtyAction(artifactId, 4, "Curaduría (fila actualizada)");
+
   return { success: true };
 }
 
@@ -991,6 +998,11 @@ export async function deleteCurationRowAction(rowId: string) {
     console.error("Error deleting curation row:", error);
     return { success: false, error: error.message };
   }
+
+  // Mark downstream as dirty
+  const { artifactId } = authorized;
+  await markDownstreamDirtyAction(artifactId, 4, "Curaduría (fila eliminada)");
+
   return { success: true };
 }
 
@@ -1026,6 +1038,9 @@ export async function clearGPTCurationRowsAction(artifactId: string) {
     console.error("Error clearing GPT curation rows:", error);
     return { success: false, error: error.message };
   }
+
+  // Mark downstream as dirty
+  await markDownstreamDirtyAction(artifactId, 4, "Curaduría (limpieza GPT)");
 
   return { success: true };
 }
@@ -1270,6 +1285,9 @@ export async function importCurationJsonAction(
       `[importCurationJson] Successfully saved ${payload.sources.length} sources`,
     );
 
+    // Mark downstream as dirty after importing curation JSON
+    await markDownstreamDirtyAction(artifactId, 4, "Curación (JSON importado)");
+
     return {
       success: true,
       message: `${payload.sources.length} fuentes importadas exitosamente.`,
@@ -1463,7 +1481,16 @@ export async function saveMaterialAssetsAction(
     .update({ assets: finalAssets })
     .eq("id", componentId);
 
-  if (error) return { success: false, error: error.message };
+  if (error) {
+    console.error("Error saving material assets:", error);
+    return { success: false, error: error.message };
+  }
+
+  // Find artifactId from component hierarchy
+  const artifactId = component?.material_lessons?.materials?.artifact_id;
+  if (artifactId) {
+    await markDownstreamDirtyAction(artifactId, 5, "Materiales (assets actualizados)");
+  }
 
   // SYNC Production Status globally for the artifact
   // This allows the stepper to show a checkmark even if the user isn't on Step 6
@@ -2026,65 +2053,38 @@ export async function deleteArtifactAction(artifactId: string) {
  */
 export async function markDownstreamDirtyAction(
   artifactId: string,
-  fromStep: number,
-  sourceName: string,
+  stepIndex: number,
+  source: string,
 ) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-  if (authError || !user) return { success: false, error: "Unauthorized" };
+  const authorized = await getAuthorizedArtifactAdmin(artifactId);
+  if (!authorized) return { success: false, error: "No autorizado" };
 
-  const dirtySource = `${sourceName} (modificado por ${user.email || "usuario"})`;
-  const errors: string[] = [];
+  const { admin } = authorized;
 
-  try {
-    // Step 3: Instructional Plans (dirty if change came from step 1 or 2)
-    if (fromStep <= 2) {
-      const { error } = await supabase
-        .from("instructional_plans")
-        .update({ upstream_dirty: true, upstream_dirty_source: dirtySource })
-        .eq("artifact_id", artifactId);
-      if (error) errors.push(`instructional_plans: ${error.message}`);
+  const downstreamSteps = [
+    { index: 2, table: "syllabus" },
+    { index: 3, table: "instructional_plans" },
+    { index: 4, table: "curation" },
+    { index: 5, table: "materials" },
+    { index: 7, table: "publication_requests" },
+  ];
+
+  const targets = downstreamSteps.filter((s) => s.index > stepIndex);
+
+  if (targets.length === 0) return { success: true };
+
+  for (const target of targets) {
+    const { error } = await admin
+      .from(target.table)
+      .update({ upstream_dirty: true, upstream_dirty_source: source })
+      .eq("artifact_id", artifactId);
+
+    if (error) {
+      console.warn(`Could not mark ${target.table} as dirty:`, error.message);
     }
-
-    // Step 4: Curation (dirty if change came from step 1, 2, or 3)
-    if (fromStep <= 3) {
-      const { error } = await supabase
-        .from("curation")
-        .update({ upstream_dirty: true, upstream_dirty_source: dirtySource })
-        .eq("artifact_id", artifactId);
-      if (error) errors.push(`curation: ${error.message}`);
-    }
-
-    // Step 5: Materials (dirty if change came from step 1-4)
-    if (fromStep <= 4) {
-      const { error } = await supabase
-        .from("materials")
-        .update({ upstream_dirty: true, upstream_dirty_source: dirtySource })
-        .eq("artifact_id", artifactId);
-      if (error) errors.push(`materials: ${error.message}`);
-    }
-
-    // Step 7: Publication Requests (dirty if change came from any earlier step)
-    if (fromStep <= 6) {
-      const { error } = await supabase
-        .from("publication_requests")
-        .update({ upstream_dirty: true, upstream_dirty_source: dirtySource })
-        .eq("artifact_id", artifactId);
-      if (error) errors.push(`publication_requests: ${error.message}`);
-    }
-
-    if (errors.length > 0) {
-      console.warn("[markDownstreamDirty] Some updates failed:", errors);
-    }
-
-    return { success: true, errors };
-  } catch (error: any) {
-    console.error("[markDownstreamDirty] Error:", error);
-    return { success: false, error: error.message };
   }
+
+  return { success: true };
 }
 
 /**
@@ -2093,27 +2093,26 @@ export async function markDownstreamDirtyAction(
  */
 export async function dismissUpstreamDirtyAction(
   table:
+    | "syllabus"
     | "instructional_plans"
     | "curation"
     | "materials"
     | "publication_requests",
   artifactId: string,
 ) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-  if (authError || !user) return { success: false, error: "Unauthorized" };
+  const authorized = await getAuthorizedArtifactAdmin(artifactId);
+  if (!authorized) return { success: false, error: "No autorizado" };
 
-  const { error } = await supabase
+  const { admin } = authorized;
+
+  const { error } = await admin
     .from(table)
     .update({ upstream_dirty: false, upstream_dirty_source: null })
     .eq("artifact_id", artifactId);
 
   if (error) {
-    console.error(`[dismissUpstreamDirty] Error on ${table}:`, error);
-    return { success: false, error: error.message };
+    console.error(`Error dismissing upstream dirty for ${table}:`, error);
+    throw error;
   }
 
   return { success: true };

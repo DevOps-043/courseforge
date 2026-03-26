@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
 
     // ── Obtener datos de la org desde la cookie cf_user_orgs ──
     const orgsRaw = cookieStore.get('cf_user_orgs')?.value
-    let organizations: Array<{ id: string; name: string; slug: string; role: string }> = []
+    let organizations: Array<{ id: string; name: string; slug: string; role: string; logo_url?: string }> = []
     try {
       if (orgsRaw) organizations = JSON.parse(orgsRaw)
     } catch { /* ignore */ }
@@ -139,6 +139,7 @@ export async function POST(request: NextRequest) {
         name: targetOrg.name,
         slug: targetOrg.slug,
         role: targetOrg.role,
+        logo_url: targetOrg.logo_url,
       },
     })
   } catch (error: any) {
