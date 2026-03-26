@@ -43,7 +43,7 @@ const NavItem = ({ href, icon, label, isActive, isCollapsed }: any) => {
                 />
             )}
 
-            <div className={`flex items-center gap-4 min-w-[200px] ${isCollapsed ? 'justify-center w-full px-0' : 'pl-2'}`}>
+            <div className={`flex items-center gap-4 ${isCollapsed ? 'justify-center w-full px-0' : 'pl-2 min-w-[200px]'}`}>
                 <div className={`${isActive ? 'text-[#00D4B3]' : ''}`}>
                     {icon}
                 </div>
@@ -104,7 +104,7 @@ export default function SharedSidebarLayout({
         <div className="min-h-screen bg-gray-50 dark:bg-[#0F1419] flex text-slate-800 dark:text-slate-200 overflow-x-hidden selection:bg-[#00D4B3]/30 transition-colors duration-300">
             <motion.aside
                 initial={false}
-                animate={{ width: isOpen ? 280 : 20 }}
+                animate={{ width: isOpen ? 280 : 64 }}
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                 onMouseEnter={() => !isPinned && setIsHovered(true)}
                 onMouseLeave={() => !isPinned && setIsHovered(false)}
@@ -144,9 +144,11 @@ export default function SharedSidebarLayout({
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
-                                className="w-full h-full flex items-center justify-center"
+                                className="w-full h-full flex items-center justify-center p-4"
                             >
-                                <div className="h-2/3 w-[2px] bg-gradient-to-b from-transparent via-[#00D4B3]/50 to-transparent rounded-full" />
+                                <div className="w-8 h-8 relative shrink-0">
+                                    <Image src="/Logo.png" alt="Logo" fill className="object-contain" />
+                                </div>
                             </motion.div>
                         )}
                     </AnimatePresence>
@@ -157,21 +159,17 @@ export default function SharedSidebarLayout({
                 </div>
 
                 <div className="flex-1 py-6 px-3 flex flex-col gap-2 overflow-y-auto overflow-x-hidden scrollbar-hide">
-                    <AnimatePresence>
-                        {isOpen ? (
-                            navItems.map((item) => (
-                                <NavItem
-                                    key={item.href}
-                                    {...item}
-                                    isActive={isActive(item.href)}
-                                    isCollapsed={false}
-                                />
-                            ))
-                        ) : null}
-                    </AnimatePresence>
+                    {navItems.map((item) => (
+                        <NavItem
+                            key={item.href}
+                            {...item}
+                            isActive={isActive(item.href)}
+                            isCollapsed={!isOpen}
+                        />
+                    ))}
                 </div>
 
-                <div className={`border-t border-gray-100 dark:border-white/5 p-4 ${isOpen ? '' : 'hidden'} relative z-50`}>
+                <div className={`border-t border-gray-100 dark:border-white/5 p-4 relative z-50`}>
                     <AnimatePresence>
                         {isUserMenuOpen && (
                             <motion.div
@@ -230,9 +228,9 @@ export default function SharedSidebarLayout({
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.1 }}
                         onClick={(e) => { e.stopPropagation(); setIsUserMenuOpen(!isUserMenuOpen); }}
-                        className={`flex items-center gap-3 p-2 rounded-xl transition-all cursor-pointer border border-transparent ${isUserMenuOpen ? 'bg-gray-100 dark:bg-white/10' : 'hover:bg-gray-100 dark:hover:bg-white/10'}`}
+                        className={`flex items-center gap-3 p-2 rounded-xl transition-all cursor-pointer border border-transparent ${isUserMenuOpen ? 'bg-gray-100 dark:bg-white/10' : 'hover:bg-gray-100 dark:hover:bg-white/10'} ${!isOpen ? 'justify-center' : ''}`}
                     >
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#00D4B3] to-[#009688] flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-[#00D4B3]/20 relative">
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#00D4B3] to-[#009688] flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-[#00D4B3]/20 relative shrink-0">
                             {profile?.avatar_url ? (
                                 <div className="w-full h-full overflow-hidden rounded-full">
                                     <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
@@ -242,16 +240,20 @@ export default function SharedSidebarLayout({
                             )}
                             <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white dark:border-[#151A21] rounded-full z-10"></div>
                         </div>
-                        <div className="flex-1 overflow-hidden">
-                            <p className="text-sm text-gray-900 dark:text-white font-medium truncate capitalize">
-                                {profile?.first_name ? `${profile.first_name} ${profile.last_name_father || ''}` : (userEmail?.split('@')[0].split('.')[0] || 'Usuario')}
-                            </p>
-                        </div>
+                        {isOpen && (
+                            <>
+                                <div className="flex-1 overflow-hidden">
+                                    <p className="text-sm text-gray-900 dark:text-white font-medium truncate capitalize">
+                                        {profile?.first_name ? `${profile.first_name} ${profile.last_name_father || ''}` : (userEmail?.split('@')[0].split('.')[0] || 'Usuario')}
+                                    </p>
+                                </div>
 
-                        <ChevronUp
-                            size={16}
-                            className={`text-gray-400 dark:text-slate-500 transition-transform duration-300 ${isUserMenuOpen ? 'rotate-180' : ''}`}
-                        />
+                                <ChevronUp
+                                    size={16}
+                                    className={`text-gray-400 dark:text-slate-500 transition-transform duration-300 ${isUserMenuOpen ? 'rotate-180' : ''}`}
+                                />
+                            </>
+                        )}
                     </motion.div>
 
                     {isPinned && !isUserMenuOpen && (
@@ -263,7 +265,7 @@ export default function SharedSidebarLayout({
             </motion.aside>
 
             <motion.main
-                animate={{ marginLeft: isOpen ? 280 : 0, paddingLeft: isOpen ? 32 : 52 }}
+                animate={{ marginLeft: isOpen ? 280 : 0, paddingLeft: isOpen ? 32 : 96 }}
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                 className="flex-1 py-8 pr-8 min-h-screen"
                 onClick={() => setIsUserMenuOpen(false)}

@@ -217,6 +217,7 @@ export async function completeAuthBridgeLogin(
             name: o.name,
             slug: o.slug,
             role: o.role,
+            logo_url: o.logo_url,
           })),
         ),
         maxAge: rememberMe ? 60 * 60 * 24 * 365 : 60 * 60 * 24 * 7,

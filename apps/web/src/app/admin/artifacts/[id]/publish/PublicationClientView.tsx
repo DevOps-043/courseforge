@@ -348,6 +348,7 @@ export default function PublicationClientView({
                     onDismiss={async () => {
                         const { dismissUpstreamDirtyAction } = await import('../../actions');
                         await dismissUpstreamDirtyAction('publication_requests', artifactId);
+                        router.refresh();
                     }}
                 />
             )}

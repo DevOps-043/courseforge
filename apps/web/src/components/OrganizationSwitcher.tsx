@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, Check, Loader2 } from 'lucide-react';
+import { ChevronDown, Check, Loader2, Building2 } from 'lucide-react';
 import { useOrganizationStore, type UserOrganization } from '@/core/stores/organizationStore';
 
 const LS_KEY = 'cf_last_org';
@@ -224,20 +224,20 @@ export default function OrganizationSwitcher({ collapsed = false, onSwitch }: Or
   );
 }
 
-function OrgAvatar({ org, size = 'sm' }: { org: UserOrganization; size?: 'sm' | 'md' }) {
-  const px = size === 'sm' ? 'w-7 h-7 text-[10px]' : 'w-9 h-9 text-xs';
+function OrgAvatar({ org, size = 'sm' }: { org: UserOrganization; size?: 'sm' | 'md' | 'lg' }) {
+  const px = size === 'sm' ? 'w-8 h-8 text-[12px]' : size === 'md' ? 'w-10 h-10 text-xs' : 'w-12 h-12 text-sm';
 
   if (org.logo_url) {
     return (
-      <div className={`${px} rounded-lg overflow-hidden shrink-0`}>
+      <div className={`${px} rounded-xl overflow-hidden shrink-0 ring-1 ring-gray-200/50 dark:ring-white/10 shadow-sm transition-transform duration-300 group-hover:scale-105`}>
         <img src={org.logo_url} alt={org.name} className="w-full h-full object-cover" />
       </div>
     );
   }
 
   return (
-    <div className={`${px} rounded-lg bg-gradient-to-br from-[#0A2540] to-[#1a3a5c] flex items-center justify-center text-white font-bold shrink-0`}>
-      {org.name.charAt(0).toUpperCase()}
+    <div className={`${px} rounded-xl bg-linear-to-br from-[#0A2540] to-[#1a3a5c] flex items-center justify-center text-[#00D4B3] shadow-lg shadow-[#00D4B3]/5 shrink-0 ring-1 ring-white/10 transition-all duration-300 group-hover:scale-105 group-hover:shadow-[#00D4B3]/20`}>
+      <Building2 size={size === 'sm' ? 14 : size === 'md' ? 18 : 22} />
     </div>
   );
 }

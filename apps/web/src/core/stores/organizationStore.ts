@@ -1,5 +1,5 @@
-'use client';
 import { create } from 'zustand';
+import { createClient } from '@/utils/supabase/client';
 
 /**
  * Organization Context Store
@@ -43,6 +43,9 @@ interface OrganizationStore {
 
   /** Limpiar el store (logout) */
   clear: () => void;
+
+  /** Sincronizar logos desde la base de datos (por si la cookie estÃ¡ incompleta) */
+  syncLogos: () => Promise<void>;
 }
 
 function getCookie(name: string): string | null {
@@ -88,6 +91,11 @@ export const useOrganizationStore = create<OrganizationStore>((set, get) => ({
         activeOrganizationId: resolvedOrgId || (organizations[0]?.id ?? null),
         isLoaded: true,
       });
+
+      // Intentar sincronizar logos si faltan
+      if (organizations.some(o => !o.logo_url)) {
+        get().syncLogos();
+      }
     } catch (error) {
       console.error('Error loading organizations from cookies:', error);
       set({ organizations: [], activeOrganizationId: null, isLoaded: true });
@@ -143,5 +151,34 @@ export const useOrganizationStore = create<OrganizationStore>((set, get) => ({
 
   clear: () => {
     set({ organizations: [], activeOrganizationId: null, isLoaded: false, isSwitching: false });
+  },
+
+  syncLogos: async () => {
+    const { organizations } = get();
+    if (organizations.length === 0) return;
+
+    try {
+      const supabase = createClient();
+      const orgIds = organizations.map(o => o.id);
+      
+      const { data: dbOrgs, error } = await supabase
+        .from('organizations')
+        .select('id, logo_url')
+        .in('id', orgIds);
+
+      if (error || !dbOrgs) return;
+
+      const updatedOrgs = organizations.map(o => {
+        const dbOrg = dbOrgs.find((db: { id: string; logo_url: string | null }) => db.id === o.id);
+        return dbOrg ? { ...o, logo_url: dbOrg.logo_url ?? undefined } : o;
+      });
+
+      set({ organizations: updatedOrgs });
+      
+      // Persistir en cookie cliente para evitar fetch futuro
+      setCookie('cf_user_orgs', JSON.stringify(updatedOrgs));
+    } catch (err) {
+      console.warn('Silent logo sync failed:', err);
+    }
   },
 }));
