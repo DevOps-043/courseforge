@@ -2,8 +2,12 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Video, Youtube, Link as LinkIcon, AlertCircle, Clock, Loader2, RefreshCw, ChevronDown, CheckSquare, Square, MinusSquare, Info } from 'lucide-react';
-import { fetchVideoMetadata } from '../actions';
 import { toast } from 'sonner';
+import {
+    buildVideoUrl,
+    detectVideoProvider,
+    fetchVideoMetadata,
+} from '@/lib/video-platform';
 
 // Helper function to sync duration supporting both client-side MP4 and server-side YT/Vimeo
 export async function syncVideoDuration(provider: 'youtube' | 'vimeo' | 'direct', videoId: string): Promise<number> {
@@ -33,14 +37,7 @@ export async function syncVideoDuration(provider: 'youtube' | 'vimeo' | 'direct'
     }
 
     // Server-side extraction for YouTube/Vimeo
-    let url = videoId;
-    if (provider === 'youtube' && !url.includes('http')) {
-        url = `https://www.youtube.com/watch?v=${videoId}`;
-    } else if (provider === 'vimeo' && !url.includes('http')) {
-        url = `https://vimeo.com/${videoId}`;
-    }
-
-    const metadata = await fetchVideoMetadata(url);
+    const metadata = await fetchVideoMetadata(buildVideoUrl(provider, videoId));
     return metadata.duration || 0;
 }
 
@@ -219,19 +216,6 @@ export function VideoMappingList({ lessons, mappings, onMappingChange, selectedL
         if (shouldAutoSync && currentMapping.video_id) {
             setTimeout(() => handleSyncDuration(lessonId), 100);
         }
-    };
-
-    const detectVideoProvider = (url: string): { provider: 'youtube' | 'vimeo' | null, id: string } => {
-        const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
-        const vimeoRegex = /vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/(?:[^\/]*)\/videos\/|album\/(?:\d+)\/video\/|video\/|)(\d+)/;
-
-        const ytMatch = url.match(ytRegex);
-        if (ytMatch) return { provider: 'youtube', id: ytMatch[1] };
-
-        const vimeoMatch = url.match(vimeoRegex);
-        if (vimeoMatch) return { provider: 'vimeo', id: vimeoMatch[1] };
-
-        return { provider: null, id: url };
     };
 
     const handleSyncDuration = async (lessonId: string) => {

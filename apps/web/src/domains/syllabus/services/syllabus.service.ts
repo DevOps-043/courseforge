@@ -1,4 +1,5 @@
 import { createClient } from "@/utils/supabase/client";
+import { SYLLABUS_STATES } from "@/lib/pipeline-constants";
 import {
   Esp02Route,
   Esp02StepState,
@@ -29,7 +30,7 @@ class SyllabusService {
     );
 
     // 1. Actualizar estado a GENERATING (optimista)
-    await this.updateStatus(params.artifactId, "STEP_GENERATING");
+    await this.updateStatus(params.artifactId, SYLLABUS_STATES.GENERATING);
 
     try {
       const response = await fetch("/api/syllabus", {
@@ -69,7 +70,7 @@ class SyllabusService {
         );
 
         // Usar el estado soportado por el pipeline actual
-        await this.updateStatus(params.artifactId, "STEP_READY_FOR_QA");
+        await this.updateStatus(params.artifactId, SYLLABUS_STATES.READY_FOR_QA);
 
         return {
           status: "completed",
@@ -82,7 +83,7 @@ class SyllabusService {
       return result;
     } catch (error) {
       console.error("[SyllabusService] Error:", error);
-      await this.updateStatus(params.artifactId, "STEP_DRAFT");
+      await this.updateStatus(params.artifactId, SYLLABUS_STATES.DRAFT);
       throw error;
     }
   }
@@ -167,7 +168,7 @@ class SyllabusService {
       .update({
         modules: [],
         validation: { checks: [], automatic_pass: false },
-        state: "STEP_DRAFT",
+        state: SYLLABUS_STATES.DRAFT,
         qa: { status: "PENDING" },
         updated_at: new Date().toISOString(),
       })
@@ -195,9 +196,9 @@ class SyllabusService {
     if (notes !== undefined) {
       payload.qa = {
         status:
-          newState === "STEP_APPROVED"
+          newState === SYLLABUS_STATES.APPROVED
             ? "APPROVED"
-            : newState === "STEP_REJECTED"
+            : newState === SYLLABUS_STATES.REJECTED
               ? "REJECTED"
               : "PENDING",
         notes,

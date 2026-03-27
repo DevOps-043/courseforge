@@ -1,0 +1,63 @@
+export function extractKeywords(text: string): string[] {
+  const stopwords = [
+    "el",
+    "la",
+    "los",
+    "las",
+    "un",
+    "una",
+    "unos",
+    "unas",
+    "de",
+    "del",
+    "al",
+    "a",
+    "en",
+    "con",
+    "para",
+    "por",
+    "y",
+    "o",
+    "que",
+    "como",
+    "su",
+    "sus",
+    "se",
+    "es",
+    "son",
+    "ser",
+    "estar",
+    "ha",
+    "han",
+    "hay",
+    "puede",
+    "pueden",
+    "cuando",
+    "donde",
+    "que",
+    "como",
+    "cual",
+    "the",
+    "an",
+    "of",
+    "to",
+    "in",
+    "for",
+    "on",
+    "with",
+    "and",
+    "or",
+    "is",
+    "are",
+    "be",
+    "been",
+    "being",
+  ];
+
+  return text
+    .toLowerCase()
+    .replace(/[^\w\sáéíóúñü]/g, "")
+    .split(/\s+/)
+    .filter((word) => word.length > 3 && !stopwords.includes(word))
+    .slice(0, 10);
+}

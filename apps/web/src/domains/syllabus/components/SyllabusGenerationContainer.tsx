@@ -6,7 +6,10 @@ import { SyllabusRouteSelector } from './SyllabusRouteSelector';
 import { SyllabusViewer } from './SyllabusViewer';
 import { SyllabusImportForm } from './SyllabusImportForm';
 import { UpstreamChangeAlert } from '@/shared/components/UpstreamChangeAlert';
-import { dismissUpstreamDirtyAction } from '../../../app/admin/artifacts/actions';
+import {
+  dismissUpstreamDirtyAction,
+  markDownstreamDirtyAction,
+} from '@/lib/server/pipeline-dirty-actions';
 import { Loader2 } from 'lucide-react';
 
 interface SyllabusGenerationContainerProps {
@@ -182,7 +185,6 @@ export function SyllabusGenerationContainer({ artifactId, initialObjetivos, init
           // Mark downstream steps as dirty (change propagation)
           // The original code had a commented out line, and the instruction provides a different context.
           // Keeping the original intent of marking downstream dirty for syllabus.
-          const { markDownstreamDirtyAction } = await import('../../../app/admin/artifacts/actions');
           await markDownstreamDirtyAction(artifactId, 2, 'Temario');
       } catch (e) {
           console.error('Error guardando módulos:', e);

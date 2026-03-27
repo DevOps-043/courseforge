@@ -1,3 +1,10 @@
+import {
+  CURATION_STATES,
+  MATERIALS_STATES,
+  PLAN_STATES,
+  SYLLABUS_STATES,
+} from "@/lib/pipeline-constants";
+
 const APPROVED_DECISION = "APPROVED";
 
 export function isSyllabusApproved(artifactLike: any): boolean {
@@ -6,7 +13,10 @@ export function isSyllabusApproved(artifactLike: any): boolean {
   const qaStatus =
     artifactLike?.temario?.qa?.status ?? artifactLike?.syllabus?.qa?.status;
 
-  return syllabusState === "STEP_APPROVED" || qaStatus === APPROVED_DECISION;
+  return (
+    syllabusState === SYLLABUS_STATES.APPROVED ||
+    qaStatus === APPROVED_DECISION
+  );
 }
 
 export function isInstructionalPlanApproved(planLike: any): boolean {
@@ -18,7 +28,7 @@ export function isInstructionalPlanApproved(planLike: any): boolean {
     planLike?.approvals?.architect_status;
 
   return (
-    planState === "STEP_APPROVED" ||
+    planState === PLAN_STATES.APPROVED ||
     finalStatus === "APPROVED_PHASE_1" ||
     architectStatus === APPROVED_DECISION
   );
@@ -38,7 +48,10 @@ export function isCurationApproved(curationLike: any): boolean {
     curationLike?.curation?.qa_decision?.decision ??
     curationLike?.qa_decision?.decision;
 
-  return curationState === "PHASE2_APPROVED" || qaDecision === APPROVED_DECISION;
+  return (
+    curationState === CURATION_STATES.APPROVED ||
+    qaDecision === APPROVED_DECISION
+  );
 }
 
 export function isCurationBlocked(curationLike: any): boolean {
@@ -48,7 +61,7 @@ export function isCurationBlocked(curationLike: any): boolean {
     curationLike?.qa_decision?.decision;
 
   return (
-    curationState === "PHASE2_BLOCKED" ||
+    curationState === CURATION_STATES.BLOCKED ||
     qaDecision === "BLOCKED" ||
     qaDecision === "REJECTED"
   );
@@ -60,7 +73,7 @@ export function hasMaterialsStarted(materialsLike: any): boolean {
   return Boolean(
     materialsLike?.materials?.id ||
       materialsLike?.id ||
-      (materialsState && materialsState !== "PHASE3_DRAFT"),
+      (materialsState && materialsState !== MATERIALS_STATES.DRAFT),
   );
 }
 
@@ -71,7 +84,8 @@ export function isMaterialsApproved(materialsLike: any): boolean {
     materialsLike?.qa_decision?.decision;
 
   return (
-    materialsState === "PHASE3_APPROVED" || qaDecision === APPROVED_DECISION
+    materialsState === MATERIALS_STATES.APPROVED ||
+    qaDecision === APPROVED_DECISION
   );
 }
 

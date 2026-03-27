@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import { Sparkles, Upload, ArrowRight, BookOpen, Users, Target, Settings, ChevronDown, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { generateArtifactAction } from '@/app/admin/artifacts/actions';
+import { generateArtifactAction } from '@/domains/artifacts/actions/artifact.actions';
 import { ScormImportFlow } from '@/app/admin/artifacts/new/components/ScormImportFlow';
 
 export default function ConstructorNewArtifactPage() {

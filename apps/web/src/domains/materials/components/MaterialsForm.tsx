@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useMaterials, useMaterialStateStyles } from '../hooks/useMaterials';
 import { LessonMaterialsCard } from './LessonMaterialsCard';
 import { UpstreamChangeAlert } from '@/shared/components/UpstreamChangeAlert';
+import { dismissUpstreamDirtyAction } from '@/lib/server/pipeline-dirty-actions';
 import { useRouter } from 'next/navigation';
 import {
     Loader2,
@@ -30,6 +31,8 @@ export function MaterialsForm({ artifactId, className = '', profile }: Materials
         error,
         startGeneration,
         runFixIteration,
+        validateLesson,
+        markLessonForFix,
         submitToQA,
         applyQADecision,
         validateMaterials,
@@ -77,15 +80,7 @@ export function MaterialsForm({ artifactId, className = '', profile }: Materials
     // Real-time updates are handled by Supabase subscriptions in useMaterials hook
 
     const handleValidateLesson = async (lessonId: string) => {
-        // Call the validate endpoint
-        const response = await fetch('/.netlify/functions/validate-materials-background', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lessonId }),
-        });
-        if (response.ok) {
-            refresh();
-        }
+        await validateLesson(lessonId);
     };
 
     const handleRegenerateLesson = async (lessonId: string) => {
@@ -93,15 +88,7 @@ export function MaterialsForm({ artifactId, className = '', profile }: Materials
     };
 
     const handleMarkForFix = async (lessonId: string) => {
-        // Simply update the lesson state to NEEDS_FIX
-        const response = await fetch('/.netlify/functions/validate-materials-background', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lessonId, markForFix: true }),
-        });
-        if (response.ok) {
-            refresh();
-        }
+        await markLessonForFix(lessonId);
     };
 
     const handleQADecision = async (decision: 'APPROVED' | 'REJECTED') => {
@@ -186,11 +173,9 @@ export function MaterialsForm({ artifactId, className = '', profile }: Materials
                     source={(materials as any)?.upstream_dirty_source || 'un paso anterior'}
                     onIterate={async () => {
                         startGeneration();
-                        const { dismissUpstreamDirtyAction } = await import('../../../app/admin/artifacts/actions');
                         await dismissUpstreamDirtyAction('materials', artifactId);
                     }}
                     onDismiss={async () => {
-                        const { dismissUpstreamDirtyAction } = await import('../../../app/admin/artifacts/actions');
                         await dismissUpstreamDirtyAction('materials', artifactId);
                         refresh();
                     }}

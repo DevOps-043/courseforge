@@ -3,7 +3,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useMaterials } from '../hooks/useMaterials';
 import { ProductionAssetCard } from './ProductionAssetCard';
-import { generateVideoPromptsAction, saveMaterialAssetsAction, updateProductionStatusAction } from '@/app/admin/artifacts/actions';
+import {
+    generateVideoPromptsAction,
+    saveMaterialAssetsAction,
+    updateProductionStatusAction,
+} from '../actions/production.actions';
 import { MaterialComponent, MaterialLesson, ProductionStatus } from '../types/materials.types';
 import { Loader2, Clapperboard, CheckCircle2, Clock, AlertCircle, Save } from 'lucide-react';
 import { useRouter } from 'next/navigation';

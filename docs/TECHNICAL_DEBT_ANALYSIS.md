@@ -1,721 +1,311 @@
-# Análisis de Deuda Técnica — CourseForge
+# Technical Debt Analysis - CourseForge
 
-**Fecha**: 2026-03-24
-**Alcance**: Análisis exhaustivo de ~120 archivos fuente, 11 Netlify functions, 21 migraciones SQL, configuración y dependencias.
-**Objetivo**: Documentar toda la deuda técnica acumulada por vibecoding y generar un plan de refactorización incremental.
+**Original analysis date**: 2026-03-24
+**Last verified against live code**: 2026-03-26 (3rd revision)
+**Scope**: `apps/web/src`, `apps/web/netlify/functions`, domain actions, shared pipeline helpers, API routes, and shared packages.
 
----
-
-## Tabla de Contenido
-
-1. [Resumen Ejecutivo](#1-resumen-ejecutivo)
-2. [God Files — Archivos Gigantes con Responsabilidades Mezcladas](#2-god-files)
-3. [Código Duplicado](#3-código-duplicado)
-4. [Magic Strings y Magic Numbers](#4-magic-strings-y-magic-numbers)
-5. [Type Safety — Uso Excesivo de `any` y Tipos Inconsistentes](#5-type-safety)
-6. [Patrones Inconsistentes](#6-patrones-inconsistentes)
-7. [Código Muerto y Dependencias No Usadas](#7-código-muerto)
-8. [Seguridad](#8-seguridad)
-9. [Performance](#9-performance)
-10. [Base de Datos](#10-base-de-datos)
-11. [Configuración y Tooling](#11-configuración-y-tooling)
-12. [Plan de Refactorización](#12-plan-de-refactorización)
+All line counts and claims verified by reading files on disk.
 
 ---
 
-## 1. Resumen Ejecutivo
+## 1. Executive Summary
 
-| Categoría | Hallazgos | Severidad Máxima |
-|---|---|---|
-| God Files (>500 líneas) | 5 archivos | CRÍTICA |
-| Código Duplicado | 15+ patrones | CRÍTICA |
-| Magic Strings/Numbers | 40+ instancias | ALTA |
-| Uso de `any` | 30+ solo en actions.ts | CRÍTICA |
-| Tipos Duplicados/Inconsistentes | 4 conflictos | ALTA |
-| Patrones Inconsistentes | Auth (3 patrones), error handling (3 estilos), logging (0 estructura) | ALTA |
-| Código Muerto | Dependencias, comentarios, imports | BAJA |
-| Seguridad | Auth en Netlify functions, sin validación UUID | CRÍTICA |
-| Performance | Delays bloqueantes, N+1 queries | MEDIA |
-| DB Schema | Enums conflictivos, indexes faltantes | ALTA |
+### Debt trajectory
 
-**Deuda técnica estimada**: ~10-14 días de refactorización para reducir significativamente.
+| Revision | Estimate | Key driver |
+|----------|----------|------------|
+| 1st (2026-03-24) | ~42% | Dead code, god files, no abstractions, duplicated patterns everywhere |
+| 2nd (2026-03-26) | ~35-38% | Dead code removed, but god files and patterns untouched |
+| **3rd (2026-03-26, current)** | **~28-30%** | God files split, usePolling created, helpers extracted, constants centralized |
 
----
+### What changed between 2nd and 3rd revision
 
-## 2. God Files
+Major refactors landed between revisions:
 
-### 2.1 `apps/web/src/app/admin/artifacts/actions.ts` — 1578 líneas (CRÍTICA)
+| File | Before (2nd rev) | Now (3rd rev) | Delta |
+|------|----------------:|---------------:|------:|
+| `InstructionalPlanGenerationContainer.tsx` | 1,089 | **489** | **-600** |
+| `app/api/lia/route.ts` | 720 | **147** | **-573** |
+| `ProductionAssetCard.tsx` | 637 | **429** | **-208** |
+| `ArtifactClientView.tsx` | 554 | **343** | **-211** |
+| `SourcesCurationGenerationContainer.tsx` | 504 | **464** | **-40** |
+| `curation.actions.ts` | 498 | **498** | 0 |
+| `materials.actions.ts` | 564 | **456** | **-108** |
 
-**El archivo más problemático del proyecto.** Contiene 30+ funciones exportadas que cubren todo el pipeline:
-- CRUD de artefactos
-- Generación de syllabus
-- Plan instruccional
-- Curación de fuentes
-- Materiales
-- Pipeline events
-- Cascade deletes
+**Total lines removed from hotspots: ~1,740**
 
-**Problemas específicos:**
-- URL construction duplicada 8 veces (líneas 88, 153, 228, 271, 487, 795, 1072, 1205)
-- **Inconsistencia de puertos**: línea 153 usa `localhost:8888`, el resto usa `localhost:3000`
-- Fetch pattern para background functions duplicado 8 veces
-- 30+ usos de `any` type
-- Auth check inconsistente: algunas funciones usan `getAuthenticatedUser()`, otras hacen inline `supabase.auth.getUser()`
+New extraction targets created:
+- `shared/hooks/usePolling.ts` - shared polling abstraction (new)
+- `lib/lia-route-helpers.ts` - extracted from lia/route.ts (new)
+- `domains/curation/lib/curation-action-helpers.ts` (217 lines, new)
+- `domains/curation/lib/curation-ui.ts` (107 lines, new)
+- `domains/materials/lib/production-formatters.ts` (115 lines, new)
+- `domains/materials/validators/materials-control3.validators.ts` (167 lines, new)
+- `domains/materials/validators/materials-control4.validators.ts` (71 lines, new)
+- `domains/materials/validators/materials-control5.validators.ts` (212 lines, new)
+- `domains/materials/validators/materials-validation-helpers.ts` (63 lines, new)
+- `lib/pipeline-constants.ts` - centralized state constants (new)
+- `lib/video-platform.ts` - centralized video constants and helpers (new)
+- `ProductionAssetSections.tsx` (451 lines, extracted from ProductionAssetCard)
+- `InstructionalPlanLessonCard.tsx` (367 lines, extracted from InstructionalPlanGenerationContainer)
 
-### 2.2 `apps/web/src/domains/curation/components/SourcesCurationGenerationContainer.tsx` — 1179 líneas (ALTA)
+### Current reading
 
-Componente que maneja generación, validación, dashboard, settings y QA de curación en un solo archivo.
-
-### 2.3 `apps/web/src/domains/plan/components/InstructionalPlanGenerationContainer.tsx` — 935 líneas (ALTA)
-
-Mezcla lógica de generación, validación y renderizado UI.
-
-### 2.4 `apps/web/src/domains/materials/components/ProductionAssetCard.tsx` — 822 líneas (ALTA)
-
-Maneja video upload, URL validation, asset state management y rendering todo junto.
-
-### 2.5 `apps/web/src/components/lia/ChatWindow.tsx` — 683 líneas (CRÍTICA)
-
-**Nesting de 7-8 niveles** en la función `handleSend` (líneas 202-450+):
-```
-handleSend
-  → screenshot capture check
-    → LIA service call
-      → action detection
-        → executeWithContinuation (async recursiva)
-          → DOM scanning
-            → action execution
-              → continuation condition check
-                → recursion check
-```
-
-**Responsabilidades mezcladas:**
-- Chat message management (setState, localStorage)
-- Screenshot capture
-- DOM scanning
-- Action detection (60+ regex patterns hardcoded, líneas 16-82)
-- Action execution con continuaciones recursivas
-- Message polling
-- UI rendering
-
-### 2.6 `apps/web/netlify/functions/unified-curation-logic.ts` — 823 líneas (CRÍTICA)
-
-**Función principal de 547 líneas** con:
-- 6 niveles de nesting: `while → for → if → try → for → for`
-- Lógica de grounding URL fallback repetida 3 veces (líneas 500-543, 584-626, 650-688) — bloques de ~40 líneas idénticos
-- 63 `console.log` statements
+- **No executable TS/TSX files over 500 lines** in `apps/web/src` (the only 500+ file is `shared/config/prompts/materials-generation.prompts.ts` at 585 lines, which is prompt text, not logic)
+- The remaining debt is **no longer structural spaghetti** - it is now conventional maintenance debt: typing, duplicated patterns, config management, and background function modularity
+- Total lines in `apps/web/src`: **~28,193**
+- `any` type occurrences: **284** across 71 files (down from 319)
 
 ---
 
-## 3. Código Duplicado
+## 2. Debt Already Paid (Verified)
 
-### 3.1 URL Construction en actions.ts (8 repeticiones)
+### God files split (confirmed)
+- `app/api/lia/route.ts`: 720 → **147** lines. Logic extracted to `lia-route-helpers.ts`
+- `InstructionalPlanGenerationContainer.tsx`: 1,089 → **489** lines. Split into setup, lesson card (`InstructionalPlanLessonCard.tsx` 367 lines), review panel, results view
+- `ArtifactClientView.tsx`: 554 → **343** lines. Split into header, stepper, toast, stage-router subcomponents
+- `ProductionAssetCard.tsx`: 637 → **429** lines. Split into orchestrator + `ProductionAssetSections.tsx` (451 lines)
+- `materials.actions.ts`: 564 → **456** lines. Auth/Netlify helpers extracted to `materials-action-helpers.ts`
 
-```typescript
-// Este patrón aparece 8 veces con variaciones:
-const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || 'http://localhost:3000';
-const baseUrl = appUrl.replace(/\/$/, '');
-const backgroundFunctionUrl = `${baseUrl}/.netlify/functions/{nombre}`;
-```
+### Abstractions created (confirmed)
+- `shared/hooks/usePolling.ts` - replaces 3+ manual `setInterval` implementations
+- `lib/pipeline-constants.ts` - centralizes `SYLLABUS_STATES`, `PLAN_STATES`, `CURATION_STATES`, `MATERIALS_STATES`, `REVIEWER_ROLE_SET`
+- `lib/video-platform.ts` - centralizes `PRODUCTION_VIDEOS_BUCKET`, `MAX_VIDEO_UPLOAD_SIZE_BYTES`, `YOUTUBE_REGEX`, `VIMEO_REGEX`
+- `domains/curation/lib/curation-ui.ts` - extracts `GPT_URL` and UI helpers from component
+- `domains/curation/lib/curation-action-helpers.ts` - extracts parsing/trigger logic (217 lines)
+- `domains/materials/lib/production-formatters.ts` - extracts formatting logic (115 lines)
 
-**Ubicaciones**: líneas 88-90, 153-154, 228-231, 271-273, 487-489, 795-797, 1072-1074, 1205-1207
+### Validators expanded (confirmed)
+- `materials.validators.ts` now orchestrates 3 control-specific validators:
+  - `materials-control3.validators.ts` (167 lines) - structural validation
+  - `materials-control4.validators.ts` (71 lines) - source usage validation against APTA lists
+  - `materials-control5.validators.ts` (212 lines) - quiz quantity, difficulty, types, explanations
+  - `materials-validation-helpers.ts` (63 lines) - shared validation utilities
+- Total: 572 lines of typed validation code
 
-**Agravante**: línea 153 usa puerto `8888` mientras el resto usa `3000`.
-
-### 3.2 Fetch Pattern para Background Functions (8 repeticiones)
-
-```typescript
-// Repetido 8 veces con logging y error handling casi idéntico:
-const response = await fetch(url, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(payload)
-});
-if (!response.ok) {
-  console.warn(`Background trigger failed: ${response.status}`);
-}
-```
-
-**Ubicaciones**: líneas 96-106, 167-173, 238-248, 287-296, 508-520, 815-825, 1090-1100, 1214-1224
-
-### 3.3 Boilerplate de Netlify Functions (11 funciones)
-
-**HTTP method check + JSON parsing** duplicado en TODAS las funciones:
-```typescript
-if (event.httpMethod !== 'POST') {
-  return { statusCode: 405, body: 'Method Not Allowed' };
-}
-let body;
-try {
-  body = JSON.parse(event.body || '{}');
-} catch (e) {
-  return { statusCode: 400, body: 'Bad Request: Invalid JSON' };
-}
-```
-
-**Archivos afectados:**
-- `generate-artifact-background.ts` (líneas 28-38)
-- `syllabus-generation-background.ts` (líneas 51-61)
-- `instructional-plan-background.ts` (líneas 45-55)
-- `materials-generation-background.ts` (líneas 47-56)
-- `validate-plan-background.ts` (líneas 109-119)
-- `validate-materials-background.ts` (líneas 15-25)
-- `video-prompts-generation.ts` (líneas 49-59)
-- `unified-curation-logic.ts`
-- `curation-background.ts`
-- `validate-curation-background.ts`
-- `auth-sync.ts`
-
-### 3.4 Supabase Client Initialization (11 funciones)
-
-Cada función inicializa su propio cliente con variaciones:
-- `generate-artifact-background.ts:49-55` — usa anon key
-- `syllabus-generation-background.ts:74-77` — usa service role key primero
-- `instructional-plan-background.ts:69-83` — lógica de fallback compleja
-- `curation-background.ts:13-22` — usa service role key solo
-
-### 3.5 Grounding URL Fallback (3 repeticiones en unified-curation-logic.ts)
-
-Bloques de ~40 líneas idénticos en líneas 500-543, 584-626, 650-688.
-
-### 3.6 Prompts de Plan Instruccional Duplicados
-
-- `apps/web/src/config/prompts/instructional-plan.ts` (123 líneas)
-- `apps/web/src/shared/config/prompts/instructional-plan.prompts.ts` (113 líneas)
-
-Ambos exportan `INSTRUCTIONAL_PLAN_SYSTEM_PROMPT` con contenido 95% idéntico pero pequeñas variaciones.
-
-### 3.7 Utilidad `cn()` Duplicada
-
-- `apps/web/src/lib/utils.ts` (6 líneas)
-- `apps/web/src/shared/utils/cn.ts` (6 líneas)
-
-Implementación idéntica en dos ubicaciones.
+### Legacy cleanup (confirmed)
+- `app/admin/artifacts/actions.ts` - deleted, replaced by domain actions
+- `lib/lia-service.ts`, `lib/lia-dom-mapper.ts` - deleted
+- Artifact listing modularized into: `ArtifactCard.tsx`, `ArtifactDropdownMenu.tsx`, `ArtifactsEmptyState.tsx`, `DeleteConfirmationModal.tsx`, `useArtifactsSync.ts`
 
 ---
 
-## 4. Magic Strings y Magic Numbers
+## 3. Current Hotspots (Verified)
 
-### 4.1 Timeouts y Delays Hardcoded
+### Front-end files (largest active, all <500 lines now)
 
-| Valor | Ubicación | Propósito |
-|---|---|---|
-| `3000` ms | `SourcesCurationGenerationContainer.tsx:167`, `ArtifactClientView.tsx:123` | Polling interval, toast delay |
-| `4000` ms | `ArtifactClientView.tsx:130` | Toast delay |
-| `5000` ms | `useCuration.ts:59,65`, `SyllabusGenerationContainer.tsx:105` | Polling interval |
-| `8000` ms | `materials-generation-background.ts:260` | Delay entre operaciones |
-| `10000` ms | `unified-curation-logic.ts` | Timeout de validación |
-| `300000` ms | `ArtifactsList.tsx:193` | Cooldown de validación (5 min) |
-| `Math.random() * 3000` | `materials-generation-background.ts:126` | Delay aleatorio en handler |
-| `500 * 1024 * 1024` | `ProductionAssetCard.tsx:60` | Límite de tamaño de video (500MB) |
+| File | Lines | Status |
+|------|------:|--------|
+| `domains/plan/components/InstructionalPlanGenerationContainer.tsx` | **489** | Orchestration-heavy but not a god file |
+| `app/admin/artifacts/[id]/publish/components/VideoMappingList.tsx` | **495** | UI component, presentation-focused |
+| `domains/syllabus/components/SyllabusGenerationContainer.tsx` | **488** | UI container |
+| `app/admin/artifacts/[id]/publish/PublicationClientView.tsx` | **482** | Publication flow UI |
+| `domains/curation/components/SourcesCurationGenerationContainer.tsx` | **464** | Orchestrator, delegates rendering |
+| `domains/syllabus/components/SyllabusViewer.tsx` | **464** | Viewer component |
+| `domains/materials/components/ComponentViewer.tsx` | **458** | Material component viewer |
+| `domains/materials/actions/materials.actions.ts` | **456** | Still action-heavy |
+| `domains/materials/components/ProductionAssetSections.tsx` | **451** | Extracted from ProductionAssetCard |
+| `domains/materials/components/ProductionAssetCard.tsx` | **429** | Now an orchestrator |
+| `domains/materials/components/MaterialsForm.tsx` | **425** | Form component |
 
-### 4.2 Model Names Hardcoded (15+ lugares)
+### Netlify function hotspots (NOT addressed yet)
 
-```typescript
-// Aparecen en múltiples archivos sin constante centralizada:
-'gemini-2.0-flash'
-'gemini-1.5-pro'
-'gemini-2.0-flash-exp'
-```
+| Function | Lines | Problem |
+|----------|------:|---------|
+| `unified-curation-logic.ts` | **823** | **Largest file in entire project**, no modularity |
+| `materials-generation-background.ts` | **469** | Full generation pipeline inline |
+| `validate-materials-background.ts` | **317** | Validation logic inline |
+| `syllabus-generation-background.ts` | **294** | Duplicated prompt from config |
+| `instructional-plan-background.ts` | **288** | Mixes prompting + orchestration |
 
-### 4.3 State Strings Hardcoded
-
-```typescript
-// Sin enum, repetidos como strings literales en toda la codebase:
-'STEP_APPROVED'
-'STEP_READY_FOR_QA'
-'STEP_READY_FOR_REVIEW'
-'PHASE2_READY_FOR_QA'
-'PHASE3_READY_FOR_QA'
-'PHASE3_NEEDS_FIX'
-'NEEDS_FIX'
-'GENERATING'
-'VALIDATING'
-```
-
-### 4.4 Quiz Specs Duplicados
-
-```typescript
-// Hardcoded en 2 lugares de materials-generation-background.ts (líneas 225, 415):
-{ min_questions: 3, max_questions: 5, types: [...] }
-```
-
-### 4.5 Batch Sizes y Configuración
-
-```typescript
-// unified-curation-logic.ts (líneas 7-12):
-const LESSONS_PER_BATCH = 2;
-const SOURCES_PER_LESSON = 2;
-const MIN_CONTENT_LENGTH = 500;
-const DELAY_BETWEEN_BATCHES_MS = 5000;
-// Definidos como constantes locales, no centralizados
-```
+**Total Netlify functions: 3,106 lines across 11 files, 0 shared utilities**
 
 ---
 
-## 5. Type Safety
+## 4. Remaining Active Debt
 
-### 5.1 Uso Excesivo de `any` en actions.ts (CRÍTICA)
+### 4.1 Type safety - 284 `any` occurrences across 71 files
 
-**30+ instancias** en `apps/web/src/app/admin/artifacts/actions.ts`:
+**Top offenders:**
+| File | `any` count |
+|------|----------:|
+| `app/api/publish/route.ts` | 21 |
+| `domains/syllabus/components/SyllabusGenerationContainer.tsx` | 13 |
+| `domains/materials/components/ProductionAssetCard.tsx` | 11 |
+| `lib/artifact-workflow.ts` | 9 |
+| `domains/scorm/services/scorm-parser.service.ts` | 9 |
+| `app/admin/artifacts/[id]/publish/actions.ts` | 9 |
+| `app/admin/artifacts/[id]/publish/PublicationClientView.tsx` | 9 |
+| `lib/lia-route-helpers.ts` | 8 |
+| `app/builder/artifacts/page.tsx` | 8 |
+| `app/architect/artifacts/page.tsx` | 8 |
 
-| Línea | Uso | Debería ser |
-|---|---|---|
-| 10 | `supabase: any` | `SupabaseClient` |
-| 25 | `supabase: any` | `SupabaseClient` |
-| 340 | `lessonPlans: any[]` | `LessonPlan[]` |
-| 526 | `updates: any` | Interface tipada |
-| 116, 180, 257... | `catch (error: any)` | `catch (error: unknown)` |
+Improved from 319 but still significant. No `noImplicitAny` enabled.
 
-### 5.2 Tipos de Curación Duplicados (CRÍTICA)
+### 4.2 Error handling - 3 patterns still coexist
 
-**Dos archivos definen tipos de curación:**
-- `apps/web/src/shared/types/curation.types.ts` — Versión incompleta con `[key: string]: any`
-- `apps/web/src/domains/curation/types/curation.types.ts` — Versión canónica con tipos propios
+| Pattern | Count | Where |
+|---------|------:|-------|
+| `return { success: false, error }` | **127** | Server actions (9 files) |
+| `throw new Error()` | **33** | Inside try blocks in actions (19 files) |
+| `toast.error()` / `toast.success()` | **44** | Hooks and components (12 files) |
 
-**Riesgo**: Developers importan el tipo incorrecto, causando mismatches sutiles.
+Some actions internally `throw` then catch + convert to `{ success, error }`, adding unnecessary wrapping. No unified error boundary.
 
-### 5.3 Naming de Estados Inconsistente (ALTA)
+### 4.3 Duplicated auth/action patterns
 
-| Dominio | Tipo | Prefijo |
-|---|---|---|
-| Syllabus | `Esp02StepState` | `STEP_` |
-| Plan Instruccional | `Esp03StepState` | `STEP_` |
-| Curación | `CurationState` | `PHASE2_` |
-| Materiales | `Esp05StepState` | `PHASE3_` |
+All domain action files still repeat:
+1. `createClient()` → 2. `getAuthenticatedUser()` → 3. `getAccessToken()` → 4. `getAuthorizedArtifactAdmin()` → 5. Supabase query + Netlify call
 
-**No hay un type unificado** que represente el estado del pipeline completo.
+- `getAuthenticatedUser()` called **22+ times** across the codebase
+- `getAuthorizedArtifactAdmin()` called **41+ times**
+- Only `materials.actions.ts` has `callNetlifyJsonFunction()` helper; curation and plan still use raw `fetch()`
 
-### 5.4 Content Type Demasiado Loose
+### 4.4 Netlify functions - no shared utilities
 
-```typescript
-// materials.types.ts línea 98:
-content: Record<string, unknown>; // JSON dinámico según tipo
-```
+- **No `netlify/functions/shared/` directory** exists
+- Each of 11 functions independently imports `createClient` from `@supabase/supabase-js`
+- Each function independently initializes `GoogleGenAI`
+- `SYLLABUS_PROMPT` duplicated between background function and `domains/syllabus/config/`
+- `unified-curation-logic.ts` at **823 lines** is the single largest file in the entire project
 
-Debería ser una discriminated union por tipo de componente (`DIALOGUE`, `READING`, `QUIZ`, etc.).
+### 4.5 Environment config - scattered, no validation
 
-### 5.5 Validators con Severity Incorrecta
+- **30+ direct `process.env` accesses** with no centralized config
+- **No Zod validation** at startup
+- Confusing fallbacks: `GOOGLE_GENERATIVE_AI_API_KEY || GOOGLE_API_KEY`
+- **18+ env vars** without `.env.example`
+- Only `syllabus.config.ts` follows a config pattern
 
-```typescript
-// materials.validators.ts — Cuando la validación PASA:
-return {
-    code: 'CTRL3_COMPONENTS_COMPLETE',
-    pass: true,
-    message: 'Todos los componentes esperados fueron generados',
-    severity: 'error',  // BUG: debería ser 'info' o 'success'
-};
-```
+### 4.6 Magic strings still present (partially improved)
 
-**Líneas afectadas**: 41, 75, 92, 113, 142, 186, 213, 308, 363.
+**Extracted (good):**
+- `PRODUCTION_VIDEOS_BUCKET` in `video-platform.ts`
+- `MAX_VIDEO_UPLOAD_SIZE_BYTES` in `video-platform.ts`
+- `GPT_URL` in `curation-ui.ts`
+- Pipeline state constants in `pipeline-constants.ts`
 
-### 5.6 `any` en Netlify Functions
+**Still inline (needs work):**
+- `https://gamma.app/create` in ProductionAssetCard.tsx
+- `setTimeout(..., 3000)` UI feedback delays (multiple files)
+- `5000` polling intervals
+- `300000` validation cooldown (5 min)
+- `900000` validation timeout (15 min)
+- localStorage key patterns (`isValidating_`, `lastValidation_`)
 
-- `unified-curation-logic.ts`: `any` en líneas 300+, 337, 341, 360, 369-370, 391, 412, 468-469
-- `materials-generation-background.ts:214`: Campos casteados desde `any`
-- `syllabus-generation-background.ts:138-140`: `route` type no narrowed
+### 4.7 Domain structure inconsistency
 
----
+| Domain | actions | components | hooks | lib | services | types | validators |
+|--------|:-------:|:----------:|:-----:|:---:|:--------:|:-----:|:----------:|
+| artifacts | YES | - | - | - | - | - | - |
+| curation | YES | YES | YES | YES | - | YES | - |
+| materials | YES | YES | YES | YES | YES | YES | YES |
+| plan | YES | YES | - | - | - | - | - |
+| syllabus | - | YES | - | - | YES | YES | YES |
+| scorm | - | - | - | - | YES | YES | - |
+| prompts | - | YES | - | - | - | YES | - |
 
-## 6. Patrones Inconsistentes
+No standardized template. Materials is the most complete; others vary widely.
 
-### 6.1 Autenticación (3 Patrones Diferentes)
+### 4.8 Dead code / orphaned items still present
 
-**Patrón A** — Helper function (correcto):
-```typescript
-// Definido en actions.ts líneas 10-20
-const user = await getAuthenticatedUser(supabase);
-```
+| Item | Status | Action needed |
+|------|--------|---------------|
+| `config/prompts/instructional-plan.ts` | Consumed by Netlify functions | Verify, do NOT delete blindly |
+| `shared/config/prompts/materials-generation.prompts.ts` (585 lines) | Consumed by Netlify functions | Verify, do NOT delete blindly |
+| `components/lia/` | Empty directory | Delete |
+| `domains/instructionalPlan/` | Empty subdirectories | Delete |
+| `packages/shared/` | Exports only `SharedConstant = 'Shared Value'` | Decide: adopt or delete |
+| `packages/ui/` | Zero imports in entire codebase | Decide: adopt or delete |
 
-**Patrón B** — Inline getUser:
-```typescript
-// Usado en líneas 122, 222, 265, etc.
-const { data: { user } } = await supabase.auth.getUser();
-```
+**Note**: The prompt files listed above were previously marked as orphaned but are actually consumed by Netlify background functions. Deleting them would break builds.
 
-**Patrón C** — Inline getSession:
-```typescript
-// Usado en línea 127
-const { data: { session } } = await supabase.auth.getSession();
-```
+### 4.9 Security / auth debt
 
-### 6.2 Error Handling (3 Estilos)
+- Background jobs rely on token passing without dedicated hardening
+- Some routes/actions accept IDs without schema-level validation
+- Dual auth system (Supabase + SofLIA Bridge) with fallback logic in multiple places
 
-| Estilo | Ejemplo | Ubicación |
-|---|---|---|
-| `{ success: boolean, error?: string }` | Server actions | `artifacts/actions.ts` |
-| `throw new Error()` | Servicios | Varios |
-| `{ pass, severity, code, message }` | Validators | `materials.validators.ts` |
-| `NextResponse.json({ error })` | API routes | `publish/route.ts` |
+### 4.10 Operational debt
 
-### 6.3 Supabase Key Strategy (4 Variantes)
-
-| Función | Estrategia |
-|---|---|
-| `generate-artifact-background.ts` | Anon key + user token en headers |
-| `syllabus-generation-background.ts` | Service role key primero, fallback a anon |
-| `instructional-plan-background.ts` | Fallback complejo con 3 opciones |
-| `curation-background.ts` | Service role key solo |
-
-### 6.4 Logging (Sin Estructura)
-
-- **147+ `console.log`** en Netlify functions
-- **51 archivos** con console logging en el frontend
-- Sin niveles de log diferenciados
-- Algunos prefijos como `[Background Job]`, la mayoría sin prefijo
-- Sin correlation IDs
-- Sin formato JSON para parseo
-
-### 6.5 Validación (Zod vs Manual)
-
-- `validate-plan-background.ts:176-181` — Usa Zod schemas
-- `validate-materials-background.ts:176-230` — Validación manual inline
-- `unified-curation-logic.ts` — Parsing y validación runtime de JSON
+- Polling-heavy UX in pipeline stages (usePolling helps but pattern is still poll-based)
+- Long-running Netlify jobs with coarse-grained status transitions
+- Limited structured logging in background flows
 
 ---
 
-## 7. Código Muerto
+## 5. Progress Tracking
 
-### 7.1 Dependencias No Usadas
+### What improved across all 3 revisions
 
-| Dependencia | package.json | Importada | Estado |
-|---|---|---|---|
-| `html2canvas` | `apps/web/package.json:37` | Nunca | El proyecto usa `html-to-image` |
-| `@google/generative-ai` | `package.json:29` (root) | Parcial | Reemplazada por `@google/genai` |
+| Issue | 1st rev (42%) | 2nd rev (35-38%) | 3rd rev (28-30%) |
+|-------|:---:|:---:|:---:|
+| God files >500 lines | 5 | 5 | **0** |
+| Largest front-end file | 1,375 | 1,089 | **495** |
+| Dead legacy files | 17 | ~10 | **~4** (prompts used by netlify + empties) |
+| `any` types | 270+ | 319 (grew) | **284** (shrinking) |
+| Shared polling hook | None | None | **Created** |
+| Centralized constants | None | None | **pipeline-constants + video-platform** |
+| Extracted helpers | None | None | **6 new helper/lib files** |
+| Typed validators | 59 lines | 59 lines | **572 lines** (5 files) |
+| Artifact listing split | No | Yes | Yes |
+| Lia route split | No | No | **Yes (720→147)** |
 
-### 7.2 Código Comentado
+### What still has NOT improved
 
-| Archivo | Línea | Contenido |
-|---|---|---|
-| `instructional-plan-background.ts` | 234 | `// await supabase.from('artifacts').update(...)` — Intencional o forgotten? |
-| `validate-plan-background.ts` | 1-2 | `// import { Handler } from '@netlify/functions';` — Import sin resolver |
-| `validate-curation-background.ts` | 54-56 | `// Optional: Delete previous rows...` — Decisión de diseño no resuelta |
-
-### 7.3 Comentarios Duplicados
-
-```typescript
-// ArtifactClientView.tsx líneas 30-31:
-// Calculate initial step based on artifact state (persist step across refreshes)
-// Calculate initial step based on artifact state (persist step across refreshes)
-```
-
-### 7.4 Declaración de Tipo Innecesaria
-
-```typescript
-// artifacts/[id]/publish/actions.ts línea 7:
-declare const process: any; // process ya está tipado globalmente
-```
+| Issue | Status across all revisions |
+|-------|---------------------------|
+| Error handling (3 patterns) | Unchanged |
+| Netlify shared utilities | None created |
+| `unified-curation-logic.ts` (823 lines) | Untouched |
+| Centralized env config with Zod | Not created |
+| Domain structure template | Not standardized |
+| `packages/shared` and `packages/ui` | Still phantom |
+| Magic timeout numbers | Partially extracted, many remain |
 
 ---
 
-## 8. Seguridad
+## 6. Recommended Debt Paydown Order
 
-### 8.1 User Token en Body de Netlify Functions (CRÍTICA)
+### Priority 1: High impact, addresses largest remaining categories
 
-`generate-artifact-background.ts:40,53-55`: Pasa `userToken` en el body del request. Las Netlify functions pueden ejecutarse por 10-26 segundos. Si el JWT expira durante la ejecución, la operación falla silenciosamente.
+1. **Split `unified-curation-logic.ts`** (823 lines → target <400)
+   - This is the single largest file in the entire project
+2. **Create `netlify/functions/shared/`** - Supabase factory, GoogleGenAI factory, error response helper
+   - Eliminates duplication across 11 functions
+3. **Standardize error handling** - pick one pattern (`return { success, error }` recommended), eliminate throw+catch wrapping
 
-**Solución**: Usar `SUPABASE_SERVICE_ROLE_KEY` exclusivamente en background functions + validar origen del request con shared secret.
+### Priority 2: Type safety and config
 
-### 8.2 Sin Validación de Input en Background Functions (ALTA)
+4. **Create `config/env.ts`** with Zod validation at startup
+5. **Reduce `any` count** - start with `publish/route.ts` (21 instances) and action files
+6. **Extract remaining magic numbers** to constants (timeouts, cooldowns, localStorage keys)
 
-- `artifactId`, `materialsId`, `lessonId` — Strings sin validación UUID
-- `lessonIds` se verifica como "undefined" string pero no como formato válido
-- Sin límite de tamaño de request
-- Sin rate limiting
+### Priority 3: Structural consistency
 
-### 8.3 Environment Variables Sin Validación (MEDIA)
-
-```typescript
-// Patrón en todas las funciones:
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-// Non-null assertion sin verificar que la variable existe
-```
-
-`auth-sync.ts:50-51` es el único que valida. El resto asume.
-
-### 8.4 JSON Parsing Inseguro (MEDIA)
-
-`unified-curation-logic.ts:549-574`: Parsea JSON potencialmente malformado del modelo AI. Si falla, intenta extraer con substring — podría tener éxito con JSON parcial/malicioso.
+7. **Define domain template** and align all 7 domains
+8. **Enable `noImplicitAny`** incrementally (start with lib/ and actions/)
+9. **Decide on `packages/shared` and `packages/ui`** - adopt meaningfully or remove
+10. **Delete empty directories** (`components/lia/`, `domains/instructionalPlan/`)
 
 ---
 
-## 9. Performance
+## 7. Conclusion
 
-### 9.1 Delays Bloqueantes en Handlers (ALTA)
+CourseForge went from **~42% technical debt** (original) to **~28-30%** (current) in a meaningful way:
 
-```typescript
-// materials-generation-background.ts:126
-await new Promise(r => setTimeout(r, Math.random() * 3000)); // 0-3s random delay
+- **God files eliminated**: 0 executable files >500 lines (was 5)
+- **Largest front-end file**: 495 lines (was 1,375)
+- **New shared abstractions**: usePolling, pipeline-constants, video-platform, 6 helper/lib files
+- **Validators expanded**: 59 → 572 lines of typed validation
 
-// materials-generation-background.ts:260
-await new Promise(r => setTimeout(r, 8000)); // 8 segundos hardcoded
+The remaining ~28-30% is now driven by:
+- Type looseness (284 `any` across 71 files)
+- Duplicated action/auth patterns (no shared base)
+- Netlify function isolation (823-line monolith, no shared utilities)
+- Config/env scatter (30+ direct process.env accesses)
+- Error handling inconsistency (3 patterns, 204 total instances)
 
-// unified-curation-logic.ts:419
-await delay(DELAY_BETWEEN_BATCHES_MS); // 5 segundos
-```
+**Direction: Improving. The structural crisis is over. What remains is conventional maintenance debt.**
 
-### 9.2 N+1 Queries (MEDIA)
-
-```typescript
-// validate-materials-background.ts:103-141
-for (const lesson of lessons) {
-  const { data: components } = await supabase
-    .from('material_components')
-    .select('*')
-    .eq('lesson_id', lesson.id);
-  // Query individual por cada lección
-}
-```
-
-**Solución**: Batch fetch de todos los componentes con `lesson_id IN (...)`.
-
-### 9.3 Sin Paginación en Queries Grandes (BAJA)
-
-```typescript
-// materials-generation-background.ts:129-135
-const { data: pendingLessons } = await supabase
-  .from('material_lessons')
-  .select('*')      // Fetch all columns
-  .eq('materials_id', materialsId)
-  .limit(1);        // Limit DESPUÉS de seleccionar todo
-```
-
----
-
-## 10. Base de Datos
-
-### 10.1 Enums de Estado Conflictivos (CRÍTICA)
-
-**4 migraciones definen/modifican el mismo enum `artifact_state`:**
-
-| Migración | Estados |
-|---|---|
-| `20240117000001_create_full_schema.sql` | DRAFT, GENERATING, READY_FOR_QA, APPROVED, REJECTED, ESCALATED, COMPLETED |
-| `20240117_create_artifacts.sql` | DRAFT, PENDING_QA, IN_PROCESS, APPROVED, ESCALATED, COMPLETED, FAILED |
-| `20240117_fix_enum_states.sql` | Agrega 7 valores más |
-| `20260211_create_scorm_tables.sql` | Agrega valores SCORM |
-
-**Riesgo**: No hay fuente de verdad clara para los estados válidos.
-
-### 10.2 Indexes Faltantes en Foreign Keys (ALTA)
-
-`20240117000001_create_full_schema.sql` tiene indexes en `state`, `created_by`, `created_at` pero faltan:
-- `artifact_id` en tablas hijas
-- `materials_id` en `material_lessons`
-- `lesson_id` en varias tablas
-
-**Impacto**: Joins lentos a medida que crecen los datos.
-
-### 10.3 RLS Sin Filtro de Organización (ALTA)
-
-```sql
--- 20240117_create_artifacts.sql líneas 40-63:
--- RLS verifica platform_role = 'ADMIN' pero NO filtra por organization_id
--- Un admin de una org puede ver artefactos de TODAS las orgs
-```
-
----
-
-## 11. Configuración y Tooling
-
-### 11.1 ESLint Mínimo
-
-```json
-// apps/web/.eslintrc.json — Solo 3 líneas:
-{ "extends": "next/core-web-vitals" }
-```
-
-**Falta:**
-- `@typescript-eslint/no-explicit-any`
-- `@typescript-eslint/no-unused-vars`
-- `no-console` para src/
-
-### 11.2 SDKs de Gemini Duplicados
-
-| Package | Versión | Ubicación |
-|---|---|---|
-| `@google/generative-ai` | ^0.24.1 | Root `package.json` |
-| `@google/genai` | ^1.38.0 | `apps/web/package.json` |
-
-Dos SDKs diferentes para el mismo servicio. El nuevo (`@google/genai`) es el recomendado.
-
----
-
-## 12. Plan de Refactorización
-
-### Fase 1: Seguridad y Consolidación de Auth (2 días — CRÍTICA)
-
-**Objetivo**: Eliminar riesgos de seguridad inmediatos.
-
-| Acción | Archivos |
-|---|---|
-| Crear `_shared/supabase.ts` con `createServiceClient()` | `apps/web/netlify/functions/_shared/supabase.ts` (nuevo) |
-| Todas las Netlify functions usan `SUPABASE_SERVICE_ROLE_KEY` | 11 funciones en `netlify/functions/` |
-| Agregar validación UUID a inputs de background functions | 11 funciones |
-| Estandarizar auth en actions.ts con `getAuthenticatedUser()` | `apps/web/src/app/admin/artifacts/actions.ts` |
-
-**Verificación**: `npm run build` + probar trigger de cada fase del pipeline.
-
----
-
-### Fase 2: Infraestructura Compartida de Netlify Functions (2 días — ALTA)
-
-**Objetivo**: Eliminar duplicación de boilerplate en 11 funciones.
-
-| Acción | Archivos |
-|---|---|
-| Crear wrapper `createHandler()` | `_shared/handler.ts` (nuevo) |
-| Crear `createGeminiClient()` centralizado | `_shared/gemini.ts` (nuevo) |
-| Centralizar constantes (modelos, timeouts, batch sizes) | `_shared/constants.ts` (nuevo) |
-| Refactorizar cada función para usar imports compartidos | 11 funciones |
-
-**Verificación**: Trigger de cada background function vía UI.
-
----
-
-### Fase 3: Dividir actions.ts (3 días — ALTA)
-
-**Objetivo**: Romper el god file de 1578 líneas en módulos enfocados.
-
-| Nuevo Archivo | Funciones | Líneas Aprox |
-|---|---|---|
-| `actions/_shared.ts` | `getAuthenticatedUser`, `getAccessToken`, `triggerBackgroundFunction`, `ActionResult<T>` | ~50 |
-| `actions/artifact-crud.actions.ts` | generate, regenerate, update content/status, delete | ~250 |
-| `actions/instructional-plan.actions.ts` | generate, validate, update status/content, delete | ~200 |
-| `actions/curation.actions.ts` | start, update row, delete row, clear GPT rows, update status, delete, import JSON | ~400 |
-| `actions/materials.actions.ts` | validate, regenerate, mark for fix, save assets, video prompts, production status | ~400 |
-| `actions/pipeline.actions.ts` | log event, mark downstream dirty, dismiss upstream dirty, cascade deletes | ~300 |
-| `actions.ts` (barrel) | Re-exporta todo | ~30 |
-
-**Mejoras de tipos incluidas**: `any` → tipos propios, URL unificada (resolver 3000 vs 8888).
-
-**Verificación**: `npm run build` + grep de imports.
-
----
-
-### Fase 4: Eliminar Duplicados y Código Muerto (1 día — MEDIA, paralela con 2-3)
-
-| Acción | Archivos |
-|---|---|
-| Eliminar tipos de curación duplicados | Eliminar `shared/types/curation.types.ts`, mantener `domains/curation/types/` |
-| Consolidar prompts duplicados | Eliminar copia no importada de prompts de plan instruccional |
-| Unificar `cn()` | Mantener `lib/utils.ts`, actualizar 3 imports de `shared/utils/cn` |
-| Eliminar `html2canvas` | `apps/web/package.json` |
-| Limpiar código comentado | `instructional-plan-background.ts`, `validate-plan-background.ts` |
-| Eliminar comentario duplicado | `ArtifactClientView.tsx` líneas 30-31 |
-| Eliminar `declare const process: any` | `publish/actions.ts` línea 7 |
-
-**Verificación**: `npm run build` + `npm install`.
-
----
-
-### Fase 5: Type Safety — State Enums y Constantes (2 días — MEDIA)
-
-| Acción | Archivos |
-|---|---|
-| Crear enums canónicos | `shared/types/states.ts` (nuevo): `ArtifactState`, `SyllabusState`, `CurationState`, `MaterialState`, `ProductionState` |
-| Reemplazar magic strings de estado | Todos los archivos que usan strings de estado |
-| Crear discriminated union para `MaterialContent` | `domains/materials/types/materials.types.ts` |
-| Corregir `severity: 'error'` en validators que pasan | `domains/materials/validators/materials.validators.ts` (9 líneas) |
-
-**Verificación**: `npm run build` (TypeScript detecta strings no encontrados).
-
----
-
-### Fase 6: Dividir God Components (3 días — MEDIA)
-
-#### SourcesCurationGenerationContainer.tsx (1179 → ~5 archivos)
-
-| Archivo | Responsabilidad |
-|---|---|
-| `CurationGenerationContainer.tsx` | Orquestador (state machine, data fetching) |
-| `CurationSourceTable.tsx` | Tabla de fuentes con edición inline |
-| `CurationQAPanel.tsx` | UI de revisión/aprobación QA |
-| `CurationProgressBar.tsx` | Barra de progreso |
-| `hooks/useCurationGeneration.ts` | Hook de estado/polling |
-
-#### InstructionalPlanGenerationContainer.tsx (935 → ~5 archivos)
-
-| Archivo | Responsabilidad |
-|---|---|
-| `PlanGenerationContainer.tsx` | Orquestador |
-| `PlanModuleTree.tsx` | Vista árbol módulos/lecciones |
-| `PlanLessonDetail.tsx` | Detalle de plan por lección |
-| `PlanValidationPanel.tsx` | Resultados de validación |
-| `hooks/usePlanGeneration.ts` | Hook de generación |
-
-#### ProductionAssetCard.tsx (822 → ~5 archivos)
-
-| Archivo | Responsabilidad |
-|---|---|
-| `ProductionAssetCard.tsx` | Contenedor reducido |
-| `SlidesDeckSection.tsx` | UI de slides Gamma |
-| `VideoProductionSection.tsx` | UI de video/B-roll |
-| `AssetUploadDropzone.tsx` | Área de upload |
-| `ProductionChecklist.tsx` | Checklist DoD |
-
-#### ChatWindow.tsx (683 → ~5 archivos)
-
-| Archivo | Responsabilidad |
-|---|---|
-| `ChatWindow.tsx` | Contenedor (~200 líneas) |
-| `ChatInput.tsx` | Input con detección de modo |
-| `services/ChatActionExecutor.ts` | Ejecución de acciones (aplanar 7-8 niveles) |
-| `hooks/useLiaChat.ts` | Hook de estado del chat |
-| `config/lia-action-patterns.ts` | 60+ regex patterns extraídos |
-
-**Verificación**: QA visual de cada página del pipeline.
-
----
-
-### Fase 7: Refactorizar unified-curation-logic.ts (2 días — MEDIA)
-
-| Acción | Archivos |
-|---|---|
-| Extraer validación de URLs | `_shared/url-validator.ts` (nuevo) |
-| Extraer procesamiento por batch | `curation-batch-processor.ts` (nuevo) |
-| Extraer búsqueda de fuentes | `curation-source-finder.ts` (nuevo) |
-| Extraer validación de fuentes | `curation-source-validator.ts` (nuevo) |
-| Reducir función principal | `unified-curation-logic.ts` → ~150 líneas como orquestador |
-
-**Verificación**: Ejecutar curación en artefacto de prueba, comparar resultados.
-
----
-
-### Fase 8: Tooling y Configuración (1 día — BAJA)
-
-| Acción | Archivos |
-|---|---|
-| Agregar reglas ESLint | `.eslintrc.json`: `no-explicit-any` (warn), `no-unused-vars` (error), `no-console` (warn para src/) |
-| Migrar a SDK unificado | Eliminar `@google/generative-ai`, usar `@google/genai` |
-| Logging estructurado | Crear logger simple para Netlify functions |
-
-**Verificación**: `npm run lint` + `npm run build`.
-
----
-
-### Secuenciación
-
-```
-Semana 1:
-  Fase 1 (seguridad) ──→ Fase 2 (infra netlify) ──→ Fase 3 (split actions)
-  Fase 4 (dedup) ─────── en paralelo ──────────────────────────────────────→
-
-Semana 2:
-  Fase 5 (type safety) ──→ Fase 6 (split components)
-  Fase 7 (curation) ──────── en paralelo ──→ Fase 8 (tooling)
-```
-
-**Camino crítico**: ~10 días (Fases 1 → 2 → 3 → 5 → 6)
-
----
-
-### Fuera de Alcance (Deliberadamente)
-
-| Tema | Razón |
-|---|---|
-| Consolidar migraciones SQL de enum | PostgreSQL maneja `ADD VALUE IF NOT EXISTS`; deuda cosmética |
-| Agregar indexes faltantes en FK | Requiere medición con `pg_stat_user_tables` antes de actuar |
-| RLS con filtro por `organization_id` | Requiere entender el modelo multi-tenant; workstream separado |
-| Rate limiting en background functions | Decisión de infraestructura (Netlify built-in vs app-level) |
-| N+1 queries en validators | Optimización de performance; investigación separada |
+**Current verified estimate: ~28-30%**

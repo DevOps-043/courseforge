@@ -3,6 +3,7 @@
 import { createClient } from "@/utils/supabase/server";
 import { getActiveOrganizationId } from "@/utils/auth/session";
 import { revalidatePath } from "next/cache";
+import { fetchVideoMetadata } from "@/lib/video-platform";
 
 declare const process: any;
 
@@ -175,70 +176,6 @@ export async function savePublicationDraft(artifactId: string, data: any) {
 }
 
 // testSofliaConnection removed
-
-// Helper to parse ISO 8601 duration (PT1H2M3S)
-function parseISODuration(duration: string): number {
-    const matches = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-    if (!matches) return 0;
-
-    const hours = parseInt(matches[1] || '0', 10);
-    const minutes = parseInt(matches[2] || '0', 10);
-    const seconds = parseInt(matches[3] || '0', 10);
-
-    return (hours * 3600) + (minutes * 60) + seconds;
-}
-
-export async function fetchVideoMetadata(url: string) {
-    if (!url) return { duration: 0, title: '' };
-
-    try {
-        // VIMEO
-        if (url.includes('vimeo.com')) {
-            const res = await fetch(`https://vimeo.com/api/oembed.json?url=${encodeURIComponent(url)}`);
-            if (res.ok) {
-                const data = await res.json();
-                return {
-                    duration: data.duration, // Vimeo gives seconds
-                    title: data.title
-                };
-            }
-        }
-
-        // YOUTUBE
-        if (url.includes('youtube.com') || url.includes('youtu.be')) {
-            // We fetch the page body to find the meta tag
-            const res = await fetch(url, {
-                headers: {
-                    // Masquerade as a browser to avoid some bot detection, though Youtube is strict
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                }
-            });
-            const text = await res.text();
-
-            // Look for <meta itemprop="duration" content="PT1M33S">
-            const metaMatch = text.match(/itemprop="duration" content="([^"]+)"/);
-            if (metaMatch && metaMatch[1]) {
-                const seconds = parseISODuration(metaMatch[1]);
-                // Title
-                const titleMatch = text.match(/<title>([^<]*)<\/title>/);
-                const title = titleMatch ? titleMatch[1].replace(' - YouTube', '') : '';
-                return { duration: seconds, title };
-            }
-
-            // Fallback: videoDurationSeconds in JSON
-            const jsonMatch = text.match(/"videoDurationSeconds":"(\d+)"/);
-            if (jsonMatch && jsonMatch[1]) {
-                const titleMatch = text.match(/<title>([^<]*)<\/title>/);
-                const title = titleMatch ? titleMatch[1].replace(' - YouTube', '') : '';
-                return { duration: parseInt(jsonMatch[1], 10), title };
-            }
-        }
-    } catch (e) {
-        console.error('Error fetching video metadata:', e);
-    }
-
-    return { duration: 0, title: '' };
-}
 
 /**
  * Re-fetch fresh video URLs and durations from production (material_components).

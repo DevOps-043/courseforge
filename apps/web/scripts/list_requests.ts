@@ -10,6 +10,19 @@ const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+type ArtifactRelation =
+    | { idea_central: string | null }
+    | { idea_central: string | null }[]
+    | null;
+
+interface PublicationRequestRow {
+    id: string;
+    status: string;
+    created_at: string;
+    artifact_id: string;
+    artifacts: ArtifactRelation;
+}
+
 async function listRequests() {
     console.log('Listing all publication requests...');
 
@@ -30,9 +43,13 @@ async function listRequests() {
     }
 
     console.log(`Found ${requests.length} requests:`);
-    requests.forEach(r => {
-        console.log(`- ${r.created_at} | Status: ${r.status}`);
-        console.log(`  Artifact: ${r.artifacts?.idea_central} (${r.artifact_id})`);
+    (requests as PublicationRequestRow[]).forEach((request) => {
+        const artifact = Array.isArray(request.artifacts)
+            ? request.artifacts[0]
+            : request.artifacts;
+
+        console.log(`- ${request.created_at} | Status: ${request.status}`);
+        console.log(`  Artifact: ${artifact?.idea_central ?? 'Sin título'} (${request.artifact_id})`);
     });
 }
 

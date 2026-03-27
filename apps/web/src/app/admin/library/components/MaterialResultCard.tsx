@@ -3,6 +3,8 @@
 import { Copy, ExternalLink, FileText, MonitorPlay, Video, CheckCircle2, PlayCircle, X, Calendar, Hash, Layout } from 'lucide-react';
 import { MaterialSearchResult } from '../actions';
 import { useState } from 'react';
+import { getEmbedVideoUrl } from '@/lib/video-platform';
+import { getGammaEmbedUrl as resolveGammaEmbedUrl } from '@/domains/materials/lib/production-formatters';
 
 interface MaterialResultCardProps {
     result: MaterialSearchResult;
@@ -43,30 +45,6 @@ export function MaterialResultCard({ result }: MaterialResultCardProps) {
         return new Date(dateString).toLocaleDateString();
     };
 
-    /**
-     * UNIVERSAL VIDEO PLAYER LOGIC
-     * Detects YouTube or Vimeo URLs and converts them to embed links.
-     * Returns a valid embed URL or NULL if it's a direct file.
-     */
-    const getEmbedUrl = (url: string | undefined): { isEmbed: boolean; url: string } => {
-        if (!url) return { isEmbed: false, url: '' };
-
-        // 1. YouTube Detection
-        const ytMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
-        if (ytMatch && ytMatch[1]) {
-            return { isEmbed: true, url: `https://www.youtube.com/embed/${ytMatch[1]}` };
-        }
-
-        // 2. Vimeo Detection
-        const vimeoMatch = url.match(/(?:vimeo\.com\/)(\d+)/);
-        if (vimeoMatch && vimeoMatch[1]) {
-            return { isEmbed: true, url: `https://player.vimeo.com/video/${vimeoMatch[1]}` };
-        }
-
-        // 3. Default: Direct File or unknown
-        return { isEmbed: false, url: url };
-    };
-
     const getTypeLabel = (type: string) => {
         const map: Record<string, string> = {
             'VIDEO_THEORETICAL': 'Video Teórico',
@@ -78,23 +56,8 @@ export function MaterialResultCard({ result }: MaterialResultCardProps) {
         return map[type] || type.replace(/_/g, ' ');
     };
 
-    // Helper to extract Gamma deck ID from URL for embedding
-    const getGammaEmbedUrl = (url: string | undefined): string | null => {
-        if (!url) return null;
-        const patterns = [
-            /gamma\.app\/docs\/([a-zA-Z0-9-]+)/,
-            /gamma\.app\/embed\/([a-zA-Z0-9-]+)/,
-            /gamma\.app\/public\/([a-zA-Z0-9-]+)/,
-        ];
-        for (const pattern of patterns) {
-            const match = url.match(pattern);
-            if (match && match[1]) return `https://gamma.app/embed/${match[1]}`;
-        }
-        return url.includes('gamma.app/embed/') ? url : null;
-    };
-
-    const videoConfig = getEmbedUrl(validVideoUrl);
-    const gammaEmbedUrl = getGammaEmbedUrl(result.assets?.slides_url);
+    const videoConfig = getEmbedVideoUrl(validVideoUrl);
+    const gammaEmbedUrl = resolveGammaEmbedUrl(result.assets?.slides_url);
 
     return (
         <>

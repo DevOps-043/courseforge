@@ -1,42 +1,35 @@
-import { useState, useEffect, useRef } from "react";
-import {
-  BookOpen,
-  Settings2,
-  CheckCircle2,
-  Play,
-  RefreshCw,
-  Library,
-  Loader2,
-  Edit3,
-  AlertCircle,
-  CheckSquare,
-  Pause,
-  Square,
-  PlayCircle,
-  Clipboard,
-  ExternalLink,
-  ChevronDown,
-  ChevronUp,
-  Sparkles,
-  FileText,
-  Upload,
-  Trash2,
-} from "lucide-react";
-import { useCuration } from "../hooks/useCuration";
-import { CurationDashboard } from "./CurationDashboard";
-import { UpstreamChangeAlert } from "@/shared/components/UpstreamChangeAlert";
-import { motion } from "framer-motion";
-import { createClient } from "@/utils/supabase/client";
+import { useEffect, useRef, useState } from "react";
+import { AlertCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useCuration } from "../hooks/useCuration";
+import {
+  deleteCurationAction,
+  importCurationJsonAction,
+  updateCurationStatusAction,
+} from "../actions/curation.actions";
+import { CurationDashboardView } from "./CurationDashboardView";
+import type { CurationModalConfig } from "./CurationDashboardView";
+import { CurationGenerationView } from "./CurationGenerationView";
+import { CurationSetupView } from "./CurationSetupView";
+import { CurationResetOptions } from "./CurationResetOptions";
+import { ConfirmationModal } from "../../../shared/components/ConfirmationModal";
 import {
   isCurationApproved,
   isCurationBlocked,
 } from "@/lib/artifact-workflow";
+import { dismissUpstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import {
-  ConfirmationModal,
-  ModalVariant,
-} from "../../../shared/components/ConfirmationModal";
+  CURATION_RUNNING_STATES,
+  CURATION_STATES,
+  REVIEWER_ROLE_SET,
+} from "@/lib/pipeline-constants";
+import {
+  buildGPTContext,
+  GPT_URL,
+  parseCurationJsonPreview,
+} from "../lib/curation-ui";
+import { useCurationValidation } from "../hooks/useCurationValidation";
 
 interface SyllabusLesson {
   id?: string;
@@ -53,19 +46,14 @@ interface SyllabusModule {
 
 interface SourcesCurationGenerationContainerProps {
   artifactId: string;
-  courseId?: string; // Nuevo prop para ID público
+  courseId?: string;
   temario?: SyllabusModule[];
   ideaCentral?: string;
-  profile?: any;
+  profile?: {
+    platform_role?: string | null;
+  } | null;
   onNext?: () => void;
 }
-
-const DEFAULT_PROMPT_PREVIEW = `Prompt optimizado con reglas de curaduría, enfoque en accesibilidad (sin descargas), validación de URLs y estructura JSON estricta. Utiliza búsquedas en tiempo real para verificar la disponibilidad.`;
-
-// URL del GPT personalizado
-const GPT_URL =
-  "https://chatgpt.com/g/g-69a9a074e8dc8191a8cf38f3b54fbf55-soflia-generating-sources-assistant";
-const REVIEWER_ROLES = new Set(["ADMIN", "ARQUITECTO", "SUPERADMIN"]);
 
 export function SourcesCurationGenerationContainer({
   artifactId,
@@ -86,11 +74,9 @@ export function SourcesCurationGenerationContainer({
     refresh,
   } = useCuration(artifactId);
   const router = useRouter();
-  const canReview = REVIEWER_ROLES.has(profile?.platform_role);
+  const canReview = REVIEWER_ROLE_SET.has(profile?.platform_role ?? "");
   const curationApproved = isCurationApproved(curation);
   const curationBlocked = isCurationBlocked(curation);
-  const [useCustomPrompt, setUseCustomPrompt] = useState(false);
-  const [customPrompt, setCustomPrompt] = useState("");
   const [showAutomaticFlow, setShowAutomaticFlow] = useState(false);
   const [copiedToClipboard, setCopiedToClipboard] = useState(false);
   const [showJsonImport, setShowJsonImport] = useState(false);
@@ -101,43 +87,28 @@ export function SourcesCurationGenerationContainer({
     count: number;
     lessons: string[];
   } | null>(null);
-
-  // Review States
   const [reviewNotes, setReviewNotes] = useState("");
-  const [isValidating, setIsValidating] = useState(false);
-  const [isHydrated, setIsHydrated] = useState(false);
-
   const [isLoadingModal, setIsLoadingModal] = useState(false);
-  const [modalConfig, setModalConfig] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: React.ReactNode;
-    variant: ModalVariant;
-    confirmText?: string;
-    onConfirm: () => Promise<void> | void;
-  }>({
+  const [modalConfig, setModalConfig] = useState<CurationModalConfig>({
     isOpen: false,
     title: "",
     message: null,
     variant: "info",
     onConfirm: () => {},
   });
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastKnownCurationStateRef = useRef<string | null>(null);
-
-  // Hydration: Restaurar estado desde localStorage INMEDIATAMENTE después del mount
-  useEffect(() => {
-    const storedValidating = localStorage.getItem(`isValidating_${artifactId}`);
-    console.log(
-      "[Hydration] Checking localStorage for validation state:",
-      storedValidating,
-    );
-    if (storedValidating === "true") {
-      console.log("[Hydration] Restoring validation state from localStorage");
-      setIsValidating(true);
-    }
-    setIsHydrated(true);
-  }, [artifactId]);
+  const {
+    handleValidate,
+    isHydrated,
+    isValidating,
+    setIsValidating,
+    validatedCount,
+  } = useCurationValidation({
+    artifactId,
+    rows,
+    refresh,
+  });
+  const [progress, setProgress] = useState(5);
 
   useEffect(() => {
     if (curation?.qa_decision?.notes) {
@@ -149,11 +120,7 @@ export function SourcesCurationGenerationContainer({
     if (!curation?.state) return;
 
     const previousState = lastKnownCurationStateRef.current;
-    const isTerminalState = ![
-      "PHASE2_GENERATING",
-      "PAUSED_REQUESTED",
-      "STOPPED_REQUESTED",
-    ].includes(curation.state);
+    const isTerminalState = !CURATION_RUNNING_STATES.has(curation.state);
 
     if (previousState && previousState !== curation.state && isTerminalState) {
       router.refresh();
@@ -162,163 +129,27 @@ export function SourcesCurationGenerationContainer({
     lastKnownCurationStateRef.current = curation.state;
   }, [curation?.state, router]);
 
-  // Completion Check: Stop polling when all rows are validated
   useEffect(() => {
-    if (isValidating && rows.length > 0) {
-      const pendingCount = rows.filter((row) => {
-        const hasGoogleRedirect =
-          row.source_ref &&
-          (row.source_ref.includes("vertexaisearch.cloud.google.com") ||
-            row.source_ref.includes("grounding-api-redirect"));
-
-        // A row is pending if it's not auto-evaluated OR if it still has a google redirect
-        return !row.auto_evaluated || hasGoogleRedirect;
-      }).length;
-
-      console.log(`[Validation] Pending rows: ${pendingCount}/${rows.length}`);
-
-      if (pendingCount === 0) {
-        console.log("[Validation] All rows processed. Stopping polling.");
-
-        if (pollIntervalRef.current) {
-          clearInterval(pollIntervalRef.current);
-          pollIntervalRef.current = null;
-        }
-
-        setIsValidating(false);
-        localStorage.removeItem(`isValidating_${artifactId}`);
-        toast.success("Validación de fuentes completada exitosamente.");
-      }
-    }
-  }, [rows, isValidating, artifactId]);
-
-  // Start polling when isValidating becomes true (including on mount if restored from localStorage)
-  useEffect(() => {
-    if (isValidating && !pollIntervalRef.current && isHydrated) {
-      console.log("[Validation] Starting polling for artifact:", artifactId);
-      toast.info("Monitoreando progreso de validación...");
-
-      const pollInterval = setInterval(async () => {
-        // Only refresh if validting to avoid zombies
-        await refresh();
-      }, 5000);
-
-      pollIntervalRef.current = pollInterval;
-
-      // Failsafe: Stop polling after 15 minutes max (Netlify background functions can take up to 15 min)
-      const timeoutId = setTimeout(() => {
-        console.log("[Validation] Timeout reached, stopping polling");
-        clearInterval(pollInterval);
-        pollIntervalRef.current = null;
-        setIsValidating(false);
-        localStorage.removeItem(`isValidating_${artifactId}`);
-        toast.info(
-          "Monitoreo de validación finalizado. Revisa los resultados.",
-        );
-        refresh();
-      }, 900000); // 15 minutes
-
-      return () => {
-        clearInterval(pollInterval);
-        clearTimeout(timeoutId);
-        pollIntervalRef.current = null;
-      };
-    }
-  }, [isValidating, artifactId, refresh, isHydrated]);
-
-  const startPolling = () => {
-    // This function now just sets state - the useEffect handles the actual polling
-    setIsValidating(true);
-    localStorage.setItem(`isValidating_${artifactId}`, "true");
-  };
-
-  const handleValidate = async () => {
-    // Evitar múltiples ejecuciones simultáneas
-    if (isValidating) {
-      toast.warning("Ya hay una validación en curso. Por favor espera.");
-      return;
-    }
-
-    // Verificar si ya hay una validación reciente (últimos 5 minutos)
-    const lastValidation = localStorage.getItem(`lastValidation_${artifactId}`);
-    if (lastValidation) {
-      const elapsed = Date.now() - parseInt(lastValidation);
-      if (elapsed < 300000) {
-        // 5 minutos
-        toast.warning(
-          `Validación reciente detectada. Espera ${Math.ceil((300000 - elapsed) / 60000)} minutos más.`,
-        );
-        return;
-      }
-    }
-
-    // Start polling first (this will show the loading UI immediately)
-    startPolling();
-    localStorage.setItem(`lastValidation_${artifactId}`, Date.now().toString());
-
-    try {
-      const {
-        data: { session },
-      } = await createClient().auth.getSession();
-      if (!session) throw new Error("No session found");
-
-      const response = await fetch(
-        "/.netlify/functions/validate-curation-background",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            artifactId,
-            userToken: session.access_token,
-          }),
-        },
-      );
-
-      // Las funciones background de Netlify devuelven 202 Accepted inmediatamente
-      if (response.status === 202 || response.ok) {
-        toast.success(
-          "Validación iniciada. El proceso se ejecuta en segundo plano.",
-        );
-        toast.info("Los resultados se actualizarán automáticamente.");
-      } else {
-        throw new Error("Error en el servicio de validación");
-      }
-    } catch (err: any) {
-      console.error(err);
-      toast.error("Falló la validación: " + err.message);
-      setIsValidating(false);
-      localStorage.removeItem(`isValidating_${artifactId}`);
-    }
-  };
-
-  // Dynamic Progress Calculation based on real data
-  // Heuristic: Each row found adds to progress. Capped at 98% until 'isGenerating' becomes false.
-  // Assuming average course has ~30-50 components. We'll map 50 components to 100%.
-  const [progress, setProgress] = useState(5);
-
-  useEffect(() => {
-    // If process finished significantly, jump to 100%
     if (!isGenerating && rows.length > 0) {
       setProgress(100);
       return;
     }
 
     if (rows.length > 0) {
-      // Adjusted divisor to 80 to prevent premature 98% on large courses
-      // Adjusted divisor to 25 considering typical course size
       const calculated = Math.min(Math.round((rows.length / 25) * 100), 95);
-      setProgress((prev) => Math.max(prev, calculated));
+      setProgress((previousProgress) =>
+        Math.max(previousProgress, calculated),
+      );
     }
   }, [rows.length, isGenerating]);
 
-  // Logic to determine view state
-  const hasRows = rows.length > 0;
-
   const showGeneratingView = isGenerating;
-  const showDashboard = !isGenerating && hasRows;
+  const showDashboard = !isGenerating && rows.length > 0;
+  const closeModal = () =>
+    setModalConfig((previous) => ({ ...previous, isOpen: false }));
 
   const handleGenerate = async () => {
-    setProgress(5); // Reset progress on new run
+    setProgress(5);
     await startCuration(1, []);
   };
 
@@ -327,148 +158,54 @@ export function SourcesCurationGenerationContainer({
       isOpen: true,
       title: "Reiniciar Paso 4",
       message: (
-        <div className="space-y-4">
-          <p className="text-sm text-gray-500 dark:text-[#94A3B8]">
-            ¿Qué acción deseas realizar para reiniciar la curaduría?
-          </p>
-          <div className="grid grid-cols-1 gap-3">
-            <button
-              onClick={async () => {
-                setIsLoadingModal(true);
-                await clearGPTRows();
-                setIsLoadingModal(false);
-                setModalConfig((prev) => ({ ...prev, isOpen: false }));
-              }}
-              className="w-full p-4 text-left rounded-xl border border-gray-200 dark:border-[#1E2329] hover:border-rose-500/50 transition-colors bg-white dark:bg-[#0F1419] group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-rose-500/10 text-rose-500 group-hover:bg-rose-500 group-hover:text-white transition-colors">
-                  <Trash2 size={18} />
-                </div>
-                <div className="flex-1">
-                  <div className="font-bold text-gray-900 dark:text-white text-sm">
-                    Limpiar información actual
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-[#6C757D]">
-                    Elimina todas las fuentes generadas por GPT para empezar de
-                    cero manualmente.
-                  </div>
-                </div>
-              </div>
-            </button>
-            <button
-              onClick={async () => {
-                setIsLoadingModal(true);
-                await handleGenerate();
-                setIsLoadingModal(false);
-                setModalConfig((prev) => ({ ...prev, isOpen: false }));
-              }}
-              className="w-full p-4 text-left rounded-xl border border-gray-200 dark:border-[#1E2329] hover:border-[#00D4B3]/50 transition-colors bg-white dark:bg-[#0F1419] group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-[#00D4B3]/10 text-[#00D4B3] group-hover:bg-[#00D4B3] group-hover:text-[#0A2540] transition-colors">
-                  <RefreshCw size={18} />
-                </div>
-                <div className="flex-1">
-                  <div className="font-bold text-gray-900 dark:text-white text-sm">
-                    Reiniciar búsqueda automática
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-[#6C757D]">
-                    Inicia de nuevo el proceso de búsqueda interna de
-                    CourseForge (puede no terminar).
-                  </div>
-                </div>
-              </div>
-            </button>
-          </div>
-        </div>
+        <CurationResetOptions
+          onClearCurrentData={async () => {
+            setIsLoadingModal(true);
+            await clearGPTRows();
+            setIsLoadingModal(false);
+            closeModal();
+          }}
+          onRestartAutomaticSearch={async () => {
+            setIsLoadingModal(true);
+            await handleGenerate();
+            setIsLoadingModal(false);
+            closeModal();
+          }}
+        />
       ),
       variant: "info",
       confirmText: "Cancelar",
-      onConfirm: () => setModalConfig((prev) => ({ ...prev, isOpen: false })),
+      onConfirm: closeModal,
     });
   };
 
-  // Generate context for GPT
-  const generateGPTContext = (): string => {
-    if (!temario || !ideaCentral) {
-      return `COURSE_ID: ${courseId || artifactId}\n\nNo hay temario disponible. Por favor genera el temario primero.`;
-    }
-
-    // Usamos courseId si existe (más seguro/limpio), o artifactId como fallback
-    let context = `COURSE_ID: ${courseId || artifactId}\n\n`;
-    context += `IDEA CENTRAL: ${ideaCentral}\n\n`;
-    context += `TEMARIO:\n`;
-
-    temario.forEach((module, mIdx) => {
-      context += `- Módulo ${mIdx + 1}: ${module.title}\n`;
-      module.lessons.forEach((lesson, lIdx) => {
-        const lessonId = lesson.id || `M${mIdx + 1}L${lIdx + 1}`;
-        context += `  - Lección ${mIdx + 1}.${lIdx + 1} (${lessonId}): ${lesson.title}\n`;
-        if (lesson.objective_specific) {
-          context += `    Objetivo: ${lesson.objective_specific}\n`;
-        }
-      });
-    });
-
-    return context;
-  };
-
-  // Handle GPT button click
   const handleOpenGPT = async () => {
-    const context = generateGPTContext();
+    const context = buildGPTContext({
+      artifactId,
+      courseId,
+      ideaCentral,
+      temario,
+    });
 
     try {
       await navigator.clipboard.writeText(context);
       setCopiedToClipboard(true);
-      toast.success("Contexto copiado al portapapeles. Pégalo en ChatGPT.");
-
-      // Reset copied state after 3 seconds
+      toast.success("Contexto copiado al portapapeles. Pegalo en ChatGPT.");
       setTimeout(() => setCopiedToClipboard(false), 3000);
-
-      // Open GPT in new tab
       window.open(GPT_URL, "_blank");
-    } catch (err) {
-      // Fallback for browsers that don't support clipboard API
+    } catch (error) {
+      console.error("Clipboard error:", error);
       toast.error("No se pudo copiar. Copia el contexto manualmente.");
-      console.error("Clipboard error:", err);
     }
   };
 
-  // Handle JSON input change with live preview
   const handleJsonInputChange = (value: string) => {
     setJsonInput(value);
-    setJsonError(null);
-    setJsonPreview(null);
-
-    if (!value.trim()) return;
-
-    try {
-      const parsed = JSON.parse(value);
-      if (!parsed.sources || !Array.isArray(parsed.sources)) {
-        setJsonError('El JSON debe contener un array "sources".');
-        return;
-      }
-      if (parsed.sources.length === 0) {
-        setJsonError('El array "sources" está vacío.');
-        return;
-      }
-
-      // Extract unique lesson titles for preview
-      const lessonTitles = [
-        ...new Set(
-          parsed.sources.map(
-            (s: any) => s.lesson_title || s.lesson_id || "Sin título",
-          ),
-        ),
-      ] as string[];
-      setJsonPreview({ count: parsed.sources.length, lessons: lessonTitles });
-    } catch {
-      setJsonError("JSON inválido. Verifica que esté bien formateado.");
-    }
+    const { error, preview } = parseCurationJsonPreview(value);
+    setJsonError(error);
+    setJsonPreview(preview);
   };
 
-  // Handle JSON import submission
   const handleImportJson = async () => {
     if (!jsonInput.trim() || isProcessingJson) return;
 
@@ -476,93 +213,90 @@ export function SourcesCurationGenerationContainer({
     setJsonError(null);
 
     try {
-      const { importCurationJsonAction } =
-        await import("../../../app/admin/artifacts/actions");
       const result = await importCurationJsonAction(artifactId, jsonInput);
 
-      if (result.success) {
-        toast.success(result.message || "Fuentes importadas exitosamente");
-        setJsonInput("");
-        setJsonPreview(null);
-        setShowJsonImport(false);
-        refresh();
-        router.refresh();
-      } else {
-        setJsonError(result.error || "Error desconocido");
-        toast.error(result.error || "Error importando fuentes");
+      if (!result.success) {
+        const errorMessage = result.error || "Error importando fuentes";
+        setJsonError(errorMessage);
+        toast.error(errorMessage);
+        return;
       }
-    } catch (err: any) {
-      console.error("Import error:", err);
-      setJsonError(err.message || "Error inesperado");
+
+      toast.success(result.message || "Fuentes importadas exitosamente");
+      setJsonInput("");
+      setJsonPreview(null);
+      setShowJsonImport(false);
+      await refresh();
+      router.refresh();
+    } catch (error) {
+      console.error("Import error:", error);
+      setJsonError("Error inesperado");
       toast.error("Error inesperado al importar");
     } finally {
       setIsProcessingJson(false);
     }
   };
 
-  const handlePausar = () => {
+  const handlePause = () => {
     setModalConfig({
       isOpen: true,
-      title: "Pausar Curaduría",
+      title: "Pausar Curaduria",
       message:
-        "El proceso se pausará después de completar el lote actual. Podrás reanudarlo más tarde sin perder progreso.",
+        "El proceso se pausara despues de completar el lote actual. Podras reanudarlo mas tarde sin perder progreso.",
       variant: "warning",
       confirmText: "Pausar Proceso",
       onConfirm: async () => {
         setIsLoadingModal(true);
-        const { updateCurationStatusAction } =
-          await import("../../../app/admin/artifacts/actions");
         toast.info("Solicitando pausa...");
-        await updateCurationStatusAction(artifactId, "PAUSED_REQUESTED");
-        refresh();
+        await updateCurationStatusAction(
+          artifactId,
+          CURATION_STATES.PAUSED_REQUESTED,
+        );
+        await refresh();
         setIsLoadingModal(false);
-        setModalConfig((prev) => ({ ...prev, isOpen: false }));
+        closeModal();
       },
     });
   };
 
-  const handleDetener = () => {
-    // Force Stop Case
-    if (curation?.state === "STOPPED_REQUESTED") {
+  const handleStop = () => {
+    if (curation?.state === CURATION_STATES.STOPPED_REQUESTED) {
       setModalConfig({
         isOpen: true,
-        title: "¿Forzar Detención?",
+        title: "Forzar detencion?",
         message: (
           <div className="space-y-2">
             <p>El proceso parece estar tardando en detenerse.</p>
             <p className="text-sm font-light opacity-80">
-              Esto actualizará forzosamente el estado en la interfaz a
-              "Detenido". Si el proceso de fondo sigue activo, podría intentar
-              escribir más resultados, pero la interfaz ya no los esperará.
+              Esto actualizara forzosamente el estado en la interfaz a
+              "Detenido". Si el proceso de fondo sigue activo, podria intentar
+              escribir mas resultados.
             </p>
           </div>
         ),
         variant: "critical",
-        confirmText: "Sí, Forzar Detención",
+        confirmText: "Si, Forzar Detencion",
         onConfirm: async () => {
           setIsLoadingModal(true);
-          const { updateCurationStatusAction } =
-            await import("../../../app/admin/artifacts/actions");
-          await updateCurationStatusAction(artifactId, "STOPPED"); // Force update
-          refresh();
+          await updateCurationStatusAction(artifactId, CURATION_STATES.STOPPED);
+          await refresh();
           setIsLoadingModal(false);
-          setModalConfig((prev) => ({ ...prev, isOpen: false }));
+          closeModal();
         },
       });
       return;
     }
 
-    // Normal Stop Case
     setModalConfig({
       isOpen: true,
-      title: "Detener Curaduría",
+      title: "Detener Curaduria",
       message: (
         <div className="space-y-2">
-          <p>¿Seguro que deseas detener el proceso completamente?</p>
+          <p>Seguro que deseas detener el proceso completamente?</p>
           <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-red-200 text-sm">
             <AlertCircle size={14} className="inline mr-2" />
-            Esta acción detendrá la búsqueda de fuentes permanentemente para
-            esta sesión.
+            Esta accion detendra la busqueda de fuentes permanentemente para
+            esta sesion.
           </div>
         </div>
       ),
@@ -570,23 +304,65 @@ export function SourcesCurationGenerationContainer({
       confirmText: "Detener Definitivamente",
       onConfirm: async () => {
         setIsLoadingModal(true);
-        const { updateCurationStatusAction } =
-          await import("../../../app/admin/artifacts/actions");
         toast.info("Deteniendo proceso...");
-        await updateCurationStatusAction(artifactId, "STOPPED_REQUESTED");
-        refresh();
+        await updateCurationStatusAction(
+          artifactId,
+          CURATION_STATES.STOPPED_REQUESTED,
+        );
+        await refresh();
         setIsLoadingModal(false);
-        setModalConfig((prev) => ({ ...prev, isOpen: false }));
+        closeModal();
       },
     });
   };
 
-  const handleReanudar = async () => {
+  const handleResume = async () => {
     await startCuration(1, [], true);
   };
 
-  // --- LOADING STATE WHILE HYDRATING ---
-  // Evitar flash mostrando loading mientras se restaura el estado desde localStorage
+  const handleApprove = async () => {
+    await updateCurationStatusAction(
+      artifactId,
+      CURATION_STATES.APPROVED,
+      reviewNotes,
+    );
+    toast.success("Fase 4 aprobada exitosamente");
+    await refresh();
+    router.refresh();
+  };
+
+  const handleReject = async () => {
+    await updateCurationStatusAction(
+      artifactId,
+      CURATION_STATES.BLOCKED,
+      reviewNotes,
+    );
+    toast.info("Fase 4 rechazada");
+    await refresh();
+    router.refresh();
+  };
+
+  const handleRegenerateBlocked = async () => {
+    if (
+      !confirm(
+        "Estas seguro de que quieres regenerar? Esto eliminara la curaduria actual.",
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await deleteCurationAction(artifactId);
+      setIsValidating(false);
+      setReviewNotes("");
+      await refresh();
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+      toast.error("No se pudo regenerar la curaduria.");
+    }
+  };
+
   if (!isHydrated) {
     return (
       <div className="max-w-4xl mx-auto flex items-center justify-center min-h-[400px]">
@@ -598,157 +374,20 @@ export function SourcesCurationGenerationContainer({
     );
   }
 
-  // --- ADDED: VALIDATION PROGRESS CALCULATION ---
-  const pendingValidationCount = rows.filter((row) => {
-    const hasGoogleRedirect =
-      row.source_ref &&
-      (row.source_ref.includes("vertexaisearch.cloud.google.com") ||
-        row.source_ref.includes("grounding-api-redirect"));
-    return !row.auto_evaluated || hasGoogleRedirect;
-  }).length;
-  const validatedCount = rows.length - pendingValidationCount;
-
-  // --- VIEW 1: GENERATING PROGRESS ---
   if (showGeneratingView) {
     return (
-      <div className="max-w-4xl mx-auto space-y-8 pb-20 animate-in fade-in duration-700">
-        <div className="space-y-2">
-          <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-[#0A2540] border border-[#00D4B3]/20 text-[#00D4B3]">
-              <BookOpen size={24} />
-            </div>
-            Paso 4: Curaduría de Fuentes (Fase 2)
-          </h2>
-        </div>
-
-        {/* Background changed to #0F1419 to blend with Admin Panel */}
-        <div className="relative overflow-hidden rounded-3xl border border-[#1E2329] bg-[#0F1419] shadow-2xl p-12 min-h-[500px] flex flex-col items-center justify-center group ring-1 ring-[#00D4B3]/10">
-          {/* Subtle Background Effects */}
-          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5 mix-blend-overlay" />
-          <div className="absolute top-[-50%] left-[-20%] w-[800px] h-[800px] bg-[#00D4B3]/5 rounded-full blur-[120px] animate-pulse-slow opacity-30" />
-
-          <div className="relative z-10 flex flex-col items-center max-w-xl w-full text-center space-y-12">
-            {/* Central Animated Illustration - NO RINGS, ONLY DOTS */}
-            <div className="relative w-32 h-32 flex items-center justify-center">
-              {/* Orbiting Dots - Tracks hidden, only dots visible */}
-              <div className="absolute inset-0 animate-[spin_4s_linear_infinite]">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 w-2 h-2 bg-[#00D4B3] rounded-full shadow-[0_0_8px_#00D4B3]" />
-              </div>
-              <div className="absolute inset-4 animate-[spin_6s_linear_infinite_reverse]">
-                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1 w-1.5 h-1.5 bg-[#1F5AF6] rounded-full" />
-              </div>
-
-              {/* Core Icon */}
-              <div className="relative w-16 h-16 bg-[#151A21] border border-[#1E2329] rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(0,212,179,0.05)] z-10">
-                <Library size={28} className="text-[#00D4B3]" />
-              </div>
-            </div>
-
-            {/* Text Content */}
-            <div className="space-y-4">
-              <h3 className="text-3xl font-bold text-white tracking-tight">
-                Buscando Fuentes
-              </h3>
-              <div className="flex flex-col gap-2">
-                <p className="text-[#94A3B8] text-base leading-relaxed max-w-sm mx-auto font-light">
-                  Investigando fuentes de alta calidad para cada lección del
-                  curso.
-                </p>
-                {rows.length > 0 && (
-                  <span className="text-xs font-mono text-[#00D4B3] bg-[#00D4B3]/10 px-2 py-1 rounded-md mx-auto border border-[#00D4B3]/20">
-                    {rows.length} fuentes encontradas hasta ahora
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Dynamic Progress Bar */}
-            <div className="w-full max-w-md space-y-3">
-              <div className="flex justify-between items-end px-1">
-                <span className="text-[10px] font-bold tracking-widest uppercase text-[#6C757D]">
-                  Estado del Agente
-                </span>
-                <span className="text-xs font-mono font-medium text-[#00D4B3] flex items-center gap-2">
-                  {progress < 30
-                    ? "Iniciando..."
-                    : progress < 60
-                      ? "Analizando..."
-                      : "Finalizando..."}
-                  <span className="opacity-80">| {progress}%</span>
-                </span>
-              </div>
-              <div className="h-2 w-full bg-[#151A21] rounded-full overflow-hidden border border-[#1E2329] p-[1px]">
-                <motion.div
-                  className="h-full rounded-full bg-gradient-to-r from-[#00D4B3] to-[#10B981] shadow-[0_0_10px_rgba(16,185,129,0.3)]"
-                  initial={{ width: "0%" }}
-                  animate={{ width: `${progress}%` }}
-                  transition={{ type: "spring", stiffness: 50, damping: 20 }}
-                />
-              </div>
-            </div>
-
-            {/* Footer Info & Refresh Button */}
-            <div className="flex flex-col gap-6 items-center w-full max-w-xs">
-              <div className="flex items-center gap-2 px-4 py-2 bg-[#151A21]/80 rounded-full border border-[#00D4B3]/20 backdrop-blur-sm">
-                <Loader2 size={12} className="text-[#00D4B3] animate-spin" />
-                <span className="text-[10px] text-[#00D4B3] font-medium tracking-wide uppercase">
-                  Auto-Refresh Activo
-                </span>
-              </div>
-
-              <button
-                onClick={() => refresh()}
-                className="w-full py-3 px-4 rounded-xl border border-[#6C757D]/30 text-[#94A3B8] hover:text-white hover:border-[#00D4B3] hover:bg-[#00D4B3]/5 transition-all duration-300 flex items-center justify-center gap-2 group"
-              >
-                <RefreshCw
-                  size={14}
-                  className="group-hover:rotate-180 transition-transform duration-500"
-                />
-                <span className="text-xs font-medium uppercase tracking-wide">
-                  Actualizar Progreso Manualmente
-                </span>
-              </button>
-            </div>
-
-            {/* Control Buttons */}
-            <div className="flex gap-4 items-center">
-              <button
-                onClick={handlePausar}
-                disabled={
-                  curation?.state === "PAUSED_REQUESTED" ||
-                  curation?.state === "STOPPED_REQUESTED"
-                }
-                className="flex items-center gap-2 px-4 py-2 bg-[#F59E0B]/10 text-[#F59E0B] border border-[#F59E0B]/20 rounded-lg hover:bg-[#F59E0B]/20 transition-colors disabled:opacity-50"
-              >
-                <Pause size={16} />{" "}
-                {curation?.state === "PAUSED_REQUESTED"
-                  ? "Pausando..."
-                  : "Pausar"}
-              </button>
-              <button
-                onClick={handleDetener}
-                disabled={curation?.state === "PAUSED_REQUESTED"}
-                className={`flex items-center gap-2 px-4 py-2 border rounded-lg transition-colors disabled:opacity-50
-                                   ${
-                                     curation?.state === "STOPPED_REQUESTED"
-                                       ? "bg-[#EF4444]/20 text-[#EF4444] border-[#EF4444] font-bold animate-pulse"
-                                       : "bg-[#EF4444]/10 text-[#EF4444] border-[#EF4444]/20 hover:bg-[#EF4444]/20"
-                                   }
-                                `}
-              >
-                <Square size={16} />
-                {curation?.state === "STOPPED_REQUESTED"
-                  ? "Forzar Detención"
-                  : "Detener"}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Confirmation Modal */}
+      <>
+        <CurationGenerationView
+          curationState={curation?.state}
+          progress={progress}
+          rowsCount={rows.length}
+          onPause={handlePause}
+          onRefresh={refresh}
+          onStop={handleStop}
+        />
         <ConfirmationModal
           isOpen={modalConfig.isOpen}
-          onClose={() => setModalConfig((prev) => ({ ...prev, isOpen: false }))}
+          onClose={closeModal}
           onConfirm={modalConfig.onConfirm}
           title={modalConfig.title}
           message={modalConfig.message}
@@ -756,642 +395,70 @@ export function SourcesCurationGenerationContainer({
           confirmText={modalConfig.confirmText}
           isLoading={isLoadingModal}
         />
-      </div>
+      </>
     );
   }
 
-  // --- VIEW 2: DASHBOARD (SOFIA Dark Theme) ---
   if (showDashboard) {
     return (
-      <div className="max-w-4xl mx-auto space-y-8 pb-20 animate-in fade-in duration-500">
-        <div className="space-y-2 flex justify-between items-start">
-          <div>
-            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-[#0A0D12] border border-[#1E2329] text-[#00D4B3]">
-                <BookOpen size={24} />
-              </div>
-              Paso 4: Curaduría de Fuentes (Fase 2)
-            </h2>
-            <p className="text-[#6C757D] text-base ml-12">
-              Fuentes de calidad encontradas para cada lección.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleResetStep}
-              className="px-3 py-1.5 rounded-lg border border-[#1E2329] text-[#6C757D] text-xs hover:border-[#6C757D] hover:text-white hover:bg-[#1E2329] transition-colors flex items-center gap-2"
-            >
-              <RefreshCw size={14} />
-              Reiniciar este paso
-            </button>
-
-            {curation?.state === "PAUSED" && (
-              <button
-                onClick={handleReanudar}
-                className="px-3 py-1.5 rounded-lg bg-[#00D4B3]/10 text-[#00D4B3] border border-[#00D4B3]/20 hover:bg-[#00D4B3]/20 transition-colors flex items-center gap-2 font-bold animate-pulse"
-              >
-                <PlayCircle size={14} />
-                Reanudar Generación
-              </button>
-            )}
-          </div>
-        </div>
-
-        <CurationDashboard
-          rows={rows}
-          onUpdateRow={updateRow}
-          onDeleteRow={deleteRow}
-          isGenerating={isGenerating}
-        />
-
-        {/* Upstream Change Alert */}
-        {curation?.upstream_dirty && (
-          <UpstreamChangeAlert
-            source={curation?.upstream_dirty_source || "un paso anterior"}
-            onIterate={async () => {
-              handleGenerate();
-              const { dismissUpstreamDirtyAction } =
-                await import("../../../app/admin/artifacts/actions");
-              await dismissUpstreamDirtyAction("curation", artifactId);
-            }}
-            onDismiss={async () => {
-              const { dismissUpstreamDirtyAction } =
-                await import("../../../app/admin/artifacts/actions");
-              await dismissUpstreamDirtyAction("curation", artifactId);
-              refresh();
-              router.refresh();
-            }}
-            isIterating={isGenerating}
-          />
-        )}
-
-        {/* REVISION PANEL FASE 4 */}
-        <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 mt-8">
-          <h3 className="text-gray-900 dark:text-white font-bold mb-4 flex items-center gap-2">
-            <Edit3 size={18} /> Revisión Fase 4: Curaduría de Fuentes
-          </h3>
-
-          <textarea
-            className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl p-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 min-h-[100px] placeholder-gray-400 dark:placeholder-gray-600"
-            placeholder="Escribe tus comentarios o feedback sobre la curaduría de fuentes..."
-            value={reviewNotes}
-            onChange={(e) => setReviewNotes(e.target.value)}
-            disabled={curationApproved}
-          />
-
-          {/* Validation Progress Indicator */}
-          {isValidating && rows.length > 0 && (
-            <div className="mt-4 mb-2 p-4 bg-[#0A0D12] border border-[#1E2329] rounded-xl flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <RefreshCw size={20} className="text-[#00D4B3] animate-spin" />
-                <div>
-                  <p className="text-white font-medium text-sm">
-                    Validando fuentes en segundo plano...
-                  </p>
-                  <p className="text-[#6C757D] text-xs">
-                    Mantén esta página abierta o ciérrala, el proceso
-                    continuará.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="text-right">
-                  <p className="text-[#00D4B3] font-bold text-lg leading-none">
-                    {validatedCount}{" "}
-                    <span className="text-[#6C757D] text-sm">
-                      / {rows.length}
-                    </span>
-                  </p>
-                  <p className="text-[#6C757D] text-[10px] uppercase tracking-wider font-semibold mt-1">
-                    Validadas
-                  </p>
-                </div>
-                <div className="w-12 h-12">
-                  <svg
-                    viewBox="0 0 36 36"
-                    className="w-full h-full circular-chart inline-block"
-                  >
-                    <path
-                      className="text-[#1E2329] stroke-current"
-                      fill="none"
-                      strokeWidth="3"
-                      strokeDasharray="100, 100"
-                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    />
-                    <motion.path
-                      className="text-[#00D4B3] stroke-current"
-                      fill="none"
-                      strokeWidth="3"
-                      strokeDasharray={`${Math.max(2, Math.round((validatedCount / rows.length) * 100))}, 100`}
-                      initial={{ strokeDasharray: "0, 100" }}
-                      animate={{
-                        strokeDasharray: `${Math.max(2, Math.round((validatedCount / rows.length) * 100))}, 100`,
-                      }}
-                      transition={{ duration: 0.5 }}
-                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    />
-                  </svg>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="flex items-center gap-4 mt-4">
-            {canReview && !curationApproved && !curationBlocked && (
-                <>
-                  <button
-                    onClick={handleValidate}
-                    disabled={isValidating || isGenerating}
-                    className="flex-1 bg-white dark:bg-[#0F1419] border border-[#00D4B3] hover:bg-[#00D4B3]/10 text-[#00D4B3] py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isValidating ? (
-                      <RefreshCw size={18} className="animate-spin" />
-                    ) : (
-                      <CheckSquare size={18} />
-                    )}
-                    {isValidating
-                      ? "Validando en progreso..."
-                      : "Validar Contenido"}
-                  </button>
-                  <button
-                    onClick={async () => {
-                      const { updateCurationStatusAction } =
-                        await import("../../../app/admin/artifacts/actions");
-                      await updateCurationStatusAction(
-                        artifactId,
-                        "STEP_APPROVED",
-                        reviewNotes,
-                      );
-                      toast.success("Fase 4 aprobada exitosamente");
-                      // Refresh both curation data and parent artifact view
-                      await refresh();
-                      router.refresh();
-                    }}
-                    disabled={isValidating}
-                    className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2
-                                    ${
-                                      isValidating
-                                        ? "bg-[#00D4B3]/5 text-[#00D4B3]/30 border border-[#00D4B3]/5 cursor-not-allowed"
-                                        : "bg-[#00D4B3]/10 hover:bg-[#00D4B3]/20 text-[#00D4B3] border border-[#00D4B3]/20"
-                                    }
-                                `}
-                  >
-                    <CheckCircle2 size={18} />
-                    Aprobar Fase 4
-                  </button>
-                  <button
-                    onClick={async () => {
-                      const { updateCurationStatusAction } =
-                        await import("../../../app/admin/artifacts/actions");
-                      await updateCurationStatusAction(
-                        artifactId,
-                        "STEP_REJECTED",
-                        reviewNotes,
-                      );
-                      toast.info("Fase 4 rechazada");
-                      // Refresh both curation data and parent artifact view
-                      await refresh();
-                      router.refresh();
-                    }}
-                    disabled={isValidating}
-                    className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2
-                                    ${
-                                      isValidating
-                                        ? "bg-[#EF4444]/5 text-[#EF4444]/30 border border-[#EF4444]/5 cursor-not-allowed"
-                                        : "bg-[#EF4444]/10 hover:bg-[#EF4444]/20 text-[#EF4444] border border-[#EF4444]/20"
-                                    }
-                                `}
-                  >
-                    <RefreshCw size={18} />
-                    Rechazar Fase 4
-                  </button>
-                </>
-              )}
-
-            {curationApproved && (
-              <div className="w-full flex gap-4">
-                <div className="flex-1 bg-[#00D4B3]/20 text-[#00D4B3] py-3 rounded-xl font-bold text-center flex items-center justify-center gap-2">
-                  <CheckCircle2 size={18} />
-                  Fase 4 Aprobada
-                </div>
-                {onNext && (
-                  <button
-                    type="button"
-                    onClick={onNext}
-                    className="flex-1 bg-[#1F5AF6] hover:bg-[#1548c7] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#1F5AF6]/20"
-                  >
-                    Continuar a Materiales
-                  </button>
-                )}
-              </div>
-            )}
-
-            {curationBlocked && (
-              <div className="w-full flex gap-4">
-                <div className="flex-1 bg-[#EF4444]/20 text-[#EF4444] py-3 rounded-xl font-bold text-center flex items-center justify-center gap-2">
-                  <AlertCircle size={18} />
-                  Fase 4 Rechazada
-                </div>
-                <button
-                  onClick={async () => {
-                    if (
-                      !confirm(
-                        "¿Estás seguro de que quieres regenerar? Esto eliminará la curaduría actual.",
-                      )
-                    )
-                      return;
-                    try {
-                      const { deleteCurationAction } =
-                        await import("../../../app/admin/artifacts/actions");
-                      await deleteCurationAction(artifactId);
-                      refresh();
-                      // Reset local state if needed
-                      setIsValidating(false);
-                      setReviewNotes("");
-                      // Force UI reset if useCuration hook doesn't auto-handle it effectively
-                      window.location.reload();
-                    } catch (e) {
-                      console.error(e);
-                    }
-                  }}
-                  className="flex-1 bg-[#EF4444] hover:bg-[#cc3a3a] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg"
-                >
-                  <RefreshCw size={18} />
-                  Regenerar Curaduría
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Confirmation Modal */}
-        <ConfirmationModal
-          isOpen={modalConfig.isOpen}
-          onClose={() => setModalConfig((prev) => ({ ...prev, isOpen: false }))}
-          onConfirm={modalConfig.onConfirm}
-          title={modalConfig.title}
-          message={modalConfig.message}
-          variant={modalConfig.variant}
-          confirmText={modalConfig.confirmText}
-          isLoading={isLoadingModal}
-        />
-      </div>
+      <CurationDashboardView
+        canReview={canReview}
+        curationApproved={curationApproved}
+        curationBlocked={curationBlocked}
+        curationState={curation?.state}
+        deleteRow={deleteRow}
+        isGenerating={isGenerating}
+        isLoadingModal={isLoadingModal}
+        isValidating={isValidating}
+        modalConfig={modalConfig}
+        onApprove={handleApprove}
+        onContinue={onNext}
+        onDismissDirty={async () => {
+          await dismissUpstreamDirtyAction("curation", artifactId);
+          await refresh();
+          router.refresh();
+        }}
+        onIterateDirty={async () => {
+          await handleGenerate();
+          await dismissUpstreamDirtyAction("curation", artifactId);
+        }}
+        onModalClose={closeModal}
+        onRegenerate={handleRegenerateBlocked}
+        onReject={handleReject}
+        onResetStep={handleResetStep}
+        onResume={handleResume}
+        onValidate={handleValidate}
+        reviewNotes={reviewNotes}
+        rows={rows}
+        setReviewNotes={setReviewNotes}
+        updateRow={updateRow}
+        upstreamDirty={Boolean(curation?.upstream_dirty)}
+        upstreamDirtySource={curation?.upstream_dirty_source}
+        validatedCount={validatedCount}
+      />
     );
   }
 
-  // --- VIEW 3: INITIAL CONFIG - GPT PRIMARY, AUTOMATIC SECONDARY ---
   return (
-    <div className="max-w-4xl mx-auto space-y-8 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
-      <div className="space-y-2">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-[#1F5AF6]/10 text-[#1F5AF6]">
-            <BookOpen size={24} />
-          </div>
-          Paso 4: Curaduría de Fuentes (Fase 2)
-        </h2>
-        <p className="text-gray-500 dark:text-[#94A3B8] text-base leading-relaxed max-w-2xl ml-12">
-          Encuentra fuentes de alta calidad para cada lección. Búsqueda profunda
-          con 1-2 fuentes verificadas por lección.
-        </p>
-      </div>
-
-      {/* PRIMARY: GPT Flow */}
-      <div className="bg-gradient-to-br from-[#1F5AF6]/5 via-[#00D4B3]/5 to-[#1F5AF6]/5 dark:from-[#1F5AF6]/10 dark:via-[#00D4B3]/10 dark:to-[#1F5AF6]/10 border border-[#1F5AF6]/20 dark:border-[#1F5AF6]/30 rounded-2xl p-8 shadow-xl shadow-[#1F5AF6]/5 dark:shadow-black/20 transition-all duration-300 relative overflow-hidden">
-        {/* Background decoration */}
-        <div className="absolute top-0 right-0 w-32 h-32 bg-[#1F5AF6]/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-24 h-24 bg-[#00D4B3]/10 rounded-full blur-2xl pointer-events-none" />
-
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-[#1F5AF6]/20 text-[#1F5AF6]">
-              <Sparkles size={20} />
-            </div>
-            <div>
-              <h3 className="text-gray-900 dark:text-white font-bold text-lg">
-                Buscar con ChatGPT
-              </h3>
-              <span className="text-[10px] bg-[#1F5AF6]/20 text-[#1F5AF6] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
-                Recomendado
-              </span>
-            </div>
-          </div>
-
-          <p className="text-gray-600 dark:text-[#94A3B8] text-sm leading-relaxed mb-6 max-w-lg">
-            Usa nuestro GPT especializado para encontrar fuentes verificadas y
-            relevantes. El contexto del taller se copiará automáticamente al
-            portapapeles.
-          </p>
-
-          <div className="flex flex-wrap gap-3 mb-6">
-            {["Fuentes Verificadas", "Revisión Humana", "Envío Automático"].map(
-              (tag, i) => (
-                <span
-                  key={i}
-                  className="text-[10px] bg-white dark:bg-[#151A21] text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-full font-medium flex items-center gap-1.5"
-                >
-                  <CheckCircle2 size={10} className="text-[#00D4B3]" />
-                  {tag}
-                </span>
-              ),
-            )}
-          </div>
-
-          <button
-            onClick={handleOpenGPT}
-            disabled={!temario || temario.length === 0}
-            className={`
-                            w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-all relative overflow-hidden
-                            ${
-                              temario && temario.length > 0
-                                ? "bg-[#1F5AF6] hover:bg-[#1548c7] text-white shadow-lg shadow-[#1F5AF6]/25 hover:shadow-[#1F5AF6]/40 hover:-translate-y-0.5"
-                                : "bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed"
-                            }
-                        `}
-          >
-            {copiedToClipboard ? (
-              <>
-                <CheckCircle2 size={20} />
-                ¡Copiado! Abriendo ChatGPT...
-              </>
-            ) : (
-              <>
-                <ExternalLink size={20} />
-                Buscar fuentes con ChatGPT
-              </>
-            )}
-          </button>
-
-          {/* NUEVO BOTON DE ACTUALIZACION MANUAL PARA FLUJO GPT */}
-          <div className="mt-6 flex flex-col justify-center items-center gap-3 border-t border-[#1F5AF6]/10 pt-6">
-            <p className="text-gray-600 dark:text-[#94A3B8] text-sm text-center font-medium">
-              ¿El asistente terminó de generar las fuentes?
-            </p>
-            <button
-              onClick={() => {
-                toast.info("Actualizando datos...");
-                refresh();
-              }}
-              className="px-6 py-2.5 bg-white dark:bg-[#10151A] border border-gray-200 dark:border-[#334155] text-gray-700 dark:text-gray-300 rounded-xl shadow-sm hover:border-[#1F5AF6]/50 hover:text-[#1F5AF6] dark:hover:text-[#1F5AF6] transition-all flex items-center justify-center gap-2 group"
-            >
-              <RefreshCw
-                size={16}
-                className="group-hover:rotate-180 transition-transform duration-500"
-              />
-              Actualizar y ver resultados
-            </button>
-          </div>
-
-          {(!temario || temario.length === 0) && (
-            <p className="text-center text-amber-500 text-xs mt-3 flex items-center justify-center gap-1">
-              <AlertCircle size={12} />
-              Necesitas completar el temario primero (Paso 2)
-            </p>
-          )}
-
-          {temario && temario.length > 0 && (
-            <p className="text-center text-gray-500 dark:text-[#6C757D] text-xs mt-3">
-              📋 Se copiará el contexto del taller (
-              {temario.reduce((acc, m) => acc + m.lessons.length, 0)} lecciones)
-              al portapapeles
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* JSON IMPORT: Collapsible Section */}
-      <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl overflow-hidden shadow-md shadow-black/5 dark:shadow-black/20 transition-all duration-300">
-        <button
-          onClick={() => setShowJsonImport(!showJsonImport)}
-          className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-[#1A2027] transition-colors"
-        >
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-[#8B5CF6]/10 text-[#8B5CF6]">
-              <FileText size={18} />
-            </div>
-            <div>
-              <h3 className="text-gray-900 dark:text-white font-semibold text-sm">
-                ¿Ya tienes el JSON del GPT?
-              </h3>
-              <p className="text-gray-500 dark:text-[#6C757D] text-xs">
-                Pega aquí el resultado que generó ChatGPT
-              </p>
-            </div>
-          </div>
-          {showJsonImport ? (
-            <ChevronUp size={20} className="text-gray-400" />
-          ) : (
-            <ChevronDown size={20} className="text-gray-400" />
-          )}
-        </button>
-
-        {showJsonImport && (
-          <div className="p-6 pt-0 animate-in fade-in slide-in-from-top-2 duration-300 border-t border-gray-100 dark:border-[#2D333B]">
-            <div className="mb-4">
-              <label className="text-gray-700 dark:text-gray-300 font-medium text-sm flex items-center gap-2 mb-2">
-                <Clipboard size={14} className="text-[#8B5CF6]" />
-                Pega el JSON completo
-              </label>
-              <textarea
-                value={jsonInput}
-                onChange={(e) => handleJsonInputChange(e.target.value)}
-                className={`w-full h-48 bg-gray-50 dark:bg-[#0F1419] border rounded-xl p-4 text-sm font-mono leading-relaxed focus:outline-none transition-colors resize-none ${
-                  jsonError
-                    ? "border-[#EF4444]/50 focus:border-[#EF4444]"
-                    : jsonPreview
-                      ? "border-[#00D4B3]/50 focus:border-[#00D4B3]"
-                      : "border-gray-300 dark:border-[#6C757D]/30 focus:border-[#8B5CF6]"
-                } text-gray-900 dark:text-gray-300`}
-                placeholder='{\n  "course_id": "IA-3269",\n  "sources": [\n    {\n      "title": "...",\n      "url": "https://...",\n      "type": "documentation",\n      "lesson_id": "les-1-1",\n      "lesson_title": "...",\n      "summary": "...",\n      "validated": true\n    }\n  ]\n}'
-                disabled={isProcessingJson}
-              />
-            </div>
-
-            {/* Error message */}
-            {jsonError && (
-              <div className="mb-4 flex items-start gap-2 bg-[#EF4444]/10 border border-[#EF4444]/20 rounded-lg p-3">
-                <AlertCircle
-                  size={16}
-                  className="text-[#EF4444] mt-0.5 flex-shrink-0"
-                />
-                <p className="text-[#EF4444] text-sm">{jsonError}</p>
-              </div>
-            )}
-
-            {/* Preview */}
-            {jsonPreview && (
-              <div className="mb-4 bg-[#00D4B3]/5 border border-[#00D4B3]/20 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle2 size={14} className="text-[#00D4B3]" />
-                  <span className="text-[#00D4B3] text-sm font-medium">
-                    {jsonPreview.count} fuentes detectadas
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {jsonPreview.lessons.slice(0, 8).map((lesson, i) => (
-                    <span
-                      key={i}
-                      className="text-[10px] bg-white dark:bg-[#151A21] text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 px-2 py-1 rounded"
-                    >
-                      {lesson.length > 40
-                        ? lesson.substring(0, 40) + "..."
-                        : lesson}
-                    </span>
-                  ))}
-                  {jsonPreview.lessons.length > 8 && (
-                    <span className="text-[10px] text-gray-500 dark:text-gray-400 px-2 py-1">
-                      +{jsonPreview.lessons.length - 8} más
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <button
-              onClick={handleImportJson}
-              disabled={!jsonInput.trim() || !!jsonError || isProcessingJson}
-              className={`w-full py-3 rounded-xl font-bold text-base flex items-center justify-center gap-3 transition-all ${
-                !jsonInput.trim() || !!jsonError || isProcessingJson
-                  ? "bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed"
-                  : "bg-[#8B5CF6] hover:bg-[#7C3AED] text-white shadow-md shadow-[#8B5CF6]/20"
-              }`}
-            >
-              {isProcessingJson ? (
-                <>
-                  <Loader2 size={18} className="animate-spin" />
-                  Procesando...
-                </>
-              ) : (
-                <>
-                  <Upload size={18} />
-                  Importar Fuentes
-                </>
-              )}
-            </button>
-
-            <p className="text-center text-gray-500 dark:text-[#6C757D] text-xs mt-3">
-              Las fuentes existentes generadas por GPT serán reemplazadas.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Divider */}
-      <div className="flex items-center gap-4">
-        <div className="flex-1 h-px bg-gray-200 dark:bg-[#2D333B]" />
-        <span className="text-xs text-gray-400 dark:text-[#6C757D] font-medium">
-          o
-        </span>
-        <div className="flex-1 h-px bg-gray-200 dark:bg-[#2D333B]" />
-      </div>
-
-      {/* SECONDARY: Automatic Flow (Collapsible) */}
-      <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl overflow-hidden shadow-md shadow-black/5 dark:shadow-black/20 transition-all duration-300">
-        <button
-          onClick={() => setShowAutomaticFlow(!showAutomaticFlow)}
-          className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-[#1A2027] transition-colors"
-        >
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-[#00D4B3]/10 text-[#00D4B3]">
-              <Settings2 size={18} />
-            </div>
-            <div>
-              <h3 className="text-gray-900 dark:text-white font-semibold text-sm">
-                Búsqueda Automática
-              </h3>
-              <p className="text-gray-500 dark:text-[#6C757D] text-xs">
-                Usa el sistema de curaduría automática con IA
-              </p>
-            </div>
-          </div>
-          {showAutomaticFlow ? (
-            <ChevronUp size={20} className="text-gray-400" />
-          ) : (
-            <ChevronDown size={20} className="text-gray-400" />
-          )}
-        </button>
-
-        {showAutomaticFlow && (
-          <div className="p-6 pt-0 animate-in fade-in slide-in-from-top-2 duration-300 border-t border-gray-100 dark:border-[#2D333B]">
-            {/* Configuration Card */}
-            <div className="mb-6">
-              <div className="flex justify-between items-center mb-4">
-                <h4 className="text-gray-700 dark:text-gray-300 font-medium text-sm flex items-center gap-2">
-                  <Settings2 size={14} className="text-[#00D4B3]" />
-                  Configuración del Prompt
-                </h4>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`text-xs font-medium transition-colors ${useCustomPrompt ? "text-[#00D4B3]" : "text-gray-500 dark:text-[#6C757D]"}`}
-                  >
-                    {useCustomPrompt ? "Personalizado" : "Por defecto"}
-                  </span>
-                  <button
-                    onClick={() => setUseCustomPrompt(!useCustomPrompt)}
-                    className={`w-9 h-5 rounded-full relative border transition-all duration-300 focus:outline-none ${useCustomPrompt ? "bg-[#00D4B3]/20 border-[#00D4B3]" : "bg-gray-200 dark:bg-[#0F1419] border-gray-300 dark:border-[#6C757D]/20"}`}
-                  >
-                    <div
-                      className={`absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all duration-300 shadow-sm ${useCustomPrompt ? "left-[18px] bg-[#00D4B3]" : "left-0.5 bg-gray-400 dark:bg-[#6C757D]"}`}
-                    />
-                  </button>
-                </div>
-              </div>
-
-              {useCustomPrompt ? (
-                <textarea
-                  value={customPrompt}
-                  onChange={(e) => setCustomPrompt(e.target.value)}
-                  className="w-full h-32 bg-gray-50 dark:bg-[#0F1419] border border-gray-300 dark:border-[#00D4B3]/30 rounded-xl p-4 text-sm text-gray-900 dark:text-gray-300 font-mono leading-relaxed focus:outline-none focus:border-[#00D4B3] transition-colors resize-none"
-                  placeholder={DEFAULT_PROMPT_PREVIEW}
-                />
-              ) : (
-                <div className="bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/10 rounded-xl p-4">
-                  <p className="text-gray-600 dark:text-[#94A3B8] text-sm leading-relaxed">
-                    {DEFAULT_PROMPT_PREVIEW}
-                  </p>
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {[
-                      "Google Search",
-                      "Validación URL",
-                      "Anti-Hallucination",
-                    ].map((tag, i) => (
-                      <span
-                        key={i}
-                        className="text-[10px] bg-white dark:bg-[#151A21] text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 px-2 py-1 rounded font-bold uppercase tracking-wider"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <button
-              onClick={handleGenerate}
-              className="w-full py-3 rounded-xl font-bold text-base flex items-center justify-center gap-3 transition-all bg-[#00D4B3] hover:bg-[#00bda0] text-[#0A2540] shadow-md shadow-[#00D4B3]/20"
-            >
-              <Play size={18} fill="currentColor" />
-              Iniciar Curaduría Automática
-            </button>
-
-            <p className="text-center text-gray-500 dark:text-[#6C757D] text-xs mt-3">
-              La curaduría validará la disponibilidad de enlaces externamente.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={modalConfig.isOpen}
-        onClose={() => setModalConfig((prev) => ({ ...prev, isOpen: false }))}
-        onConfirm={modalConfig.onConfirm}
-        title={modalConfig.title}
-        message={modalConfig.message}
-        variant={modalConfig.variant}
-        confirmText={modalConfig.confirmText}
-        isLoading={isLoadingModal}
-      />
-    </div>
+    <CurationSetupView
+      copiedToClipboard={copiedToClipboard}
+      isProcessingJson={isProcessingJson}
+      jsonError={jsonError}
+      jsonInput={jsonInput}
+      jsonPreview={jsonPreview}
+      onGenerate={handleGenerate}
+      onImportJson={handleImportJson}
+      onJsonInputChange={handleJsonInputChange}
+      onOpenGPT={handleOpenGPT}
+      onRefresh={async () => {
+        toast.info("Actualizando datos...");
+        await refresh();
+      }}
+      setShowAutomaticFlow={setShowAutomaticFlow}
+      setShowJsonImport={setShowJsonImport}
+      showAutomaticFlow={showAutomaticFlow}
+      showJsonImport={showJsonImport}
+      temario={temario}
+    />
   );
 }

@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
 import { Curation, CurationRow } from "../types/curation.types";
 import {
+  getCurationSnapshotAction,
   startCurationAction,
   updateCurationRowAction,
   deleteCurationRowAction,
   clearGPTCurationRowsAction,
-  getCurationSnapshotAction,
-} from "@/app/admin/artifacts/actions";
+} from "../actions/curation.actions";
 import { toast } from "sonner";
+import { CURATION_RUNNING_STATES } from "@/lib/pipeline-constants";
+import { usePolling } from "@/shared/hooks/usePolling";
 
 export function useCuration(artifactId: string) {
   const [curation, setCuration] = useState<Curation | null>(null);
@@ -28,10 +30,7 @@ export function useCuration(artifactId: string) {
       if (curData) {
         setRows(result.rows || []);
 
-        const isGen =
-          curData.state === "PHASE2_GENERATING" ||
-          curData.state === "PAUSED_REQUESTED" ||
-          curData.state === "STOPPED_REQUESTED";
+        const isGen = CURATION_RUNNING_STATES.has(curData.state);
         setIsGenerating(isGen);
       } else {
         setRows([]);
@@ -45,21 +44,13 @@ export function useCuration(artifactId: string) {
     }
   }, [artifactId]);
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
+  usePolling(fetchCurationData, Boolean(isGenerating && curation?.id), {
+    intervalMs: 3000,
+  });
 
-    if (isGenerating && curation?.id) {
-      interval = setInterval(async () => {
-        await fetchCurationData();
-      }, 3000);
-    } else if (!isGenerating && rows.length === 0) {
-      interval = setInterval(async () => {
-        await fetchCurationData();
-      }, 5000);
-    }
-
-    return () => clearInterval(interval);
-  }, [isGenerating, curation?.id, rows.length, fetchCurationData]);
+  usePolling(fetchCurationData, !isGenerating && rows.length === 0, {
+    intervalMs: 5000,
+  });
 
   useEffect(() => {
     fetchCurationData();

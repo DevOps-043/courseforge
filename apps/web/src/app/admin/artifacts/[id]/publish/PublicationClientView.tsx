@@ -10,6 +10,12 @@ import { refreshProductionVideos } from './actions';
 import { ConfirmationModal } from '@/shared/components/ConfirmationModal';
 import { PublishSuccessModal } from './components/PublishSuccessModal';
 import { UpstreamChangeAlert } from '@/shared/components/UpstreamChangeAlert';
+import { dismissUpstreamDirtyAction } from '@/lib/server/pipeline-dirty-actions';
+import {
+    buildVideoUrl,
+    fetchVideoMetadata,
+    getVideoProviderAndId,
+} from '@/lib/video-platform';
 
 interface PublicationClientViewProps {
     artifactId: string;
@@ -73,15 +79,7 @@ export default function PublicationClientView({
             }
             // Otherwise, if we have an auto-detected URL, use that
             else if (autoUrl) {
-                // Auto-detect provider from URL
-                let provider: 'youtube' | 'vimeo' | 'direct' = 'direct';
-                let videoId = autoUrl;
-
-                const ytMatch = autoUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
-                const vimeoMatch = autoUrl.match(/vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/(?:[^\/]*)\/videos\/|album\/(?:\d+)\/video\/|video\/|)(\d+)/);
-
-                if (ytMatch) { provider = 'youtube'; videoId = ytMatch[1]; }
-                else if (vimeoMatch) { provider = 'vimeo'; videoId = vimeoMatch[1]; }
+                const { provider, id: videoId } = getVideoProviderAndId(autoUrl);
 
                 initial[l.id] = {
                     lesson_id: l.id,
@@ -155,15 +153,7 @@ export default function PublicationClientView({
             // 2. Build mappings from fresh production data (URLs + auto_duration)
             freshLessons.forEach((l: any) => {
                 const autoUrl = l.auto_video_url || '';
-                let provider: 'youtube' | 'vimeo' | 'direct' = 'direct';
-                let videoId = autoUrl;
-
-                if (autoUrl) {
-                    const ytMatch = autoUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
-                    const vimeoMatch = autoUrl.match(/vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/(?:[^\/]*)\/videos\/|album\/(?:\d+)\/video\/|video\/|)(\d+)/);
-                    if (ytMatch) { provider = 'youtube'; videoId = ytMatch[1]; }
-                    else if (vimeoMatch) { provider = 'vimeo'; videoId = vimeoMatch[1]; }
-                }
+                const { provider, id: videoId } = getVideoProviderAndId(autoUrl);
 
                 newMappings[l.id] = {
                     lesson_id: l.id,
@@ -176,7 +166,6 @@ export default function PublicationClientView({
             });
 
             // 3. Fetch real durations for ALL videos
-            const { fetchVideoMetadata } = await import('./actions');
             let syncedCount = 0;
 
             // Helper: get duration for a direct/uploaded video via browser <video> element with timeout
@@ -211,12 +200,7 @@ export default function PublicationClientView({
                 try {
                     if (m.video_provider === 'youtube' || m.video_provider === 'vimeo') {
                         // Server-side fetch for YT/Vimeo
-                        let url = m.video_id;
-                        if (m.video_provider === 'youtube' && !url.includes('http')) {
-                            url = `https://www.youtube.com/watch?v=${url}`;
-                        } else if (m.video_provider === 'vimeo' && !url.includes('http')) {
-                            url = `https://vimeo.com/${url}`;
-                        }
+                        const url = buildVideoUrl(m.video_provider, m.video_id);
                         const metadata = await fetchVideoMetadata(url);
                         if (metadata.duration > 0) {
                             newMappings[l.id].duration = metadata.duration;
@@ -342,11 +326,9 @@ export default function PublicationClientView({
                     source={existingRequest?.upstream_dirty_source || 'un paso anterior'}
                     onIterate={async () => {
                         router.refresh();
-                        const { dismissUpstreamDirtyAction } = await import('../../actions');
                         await dismissUpstreamDirtyAction('publication_requests', artifactId);
                     }}
                     onDismiss={async () => {
-                        const { dismissUpstreamDirtyAction } = await import('../../actions');
                         await dismissUpstreamDirtyAction('publication_requests', artifactId);
                         router.refresh();
                     }}

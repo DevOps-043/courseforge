@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import { Sparkles, Upload, ArrowRight, BookOpen, Users, Target, Settings, ChevronDown, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 
-import { generateArtifactAction } from '../actions';
+import { generateArtifactAction } from '@/domains/artifacts/actions/artifact.actions';
 import { ScormImportFlow } from './components/ScormImportFlow';
 import { toast } from 'sonner';
 
