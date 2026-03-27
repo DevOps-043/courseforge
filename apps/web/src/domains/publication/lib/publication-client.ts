@@ -5,6 +5,7 @@ import type {
   PublicationRequestRecord,
   PublicationVideoLesson,
 } from "@/domains/publication/types/publication.types";
+import { DIRECT_VIDEO_METADATA_TIMEOUT_MS } from "@/shared/constants/timing";
 
 const DEFAULT_COURSE_DATA: PublicationCourseData = {
   category: "ia",
@@ -144,7 +145,7 @@ export function buildMappingsFromProductionLessons(
 
 export async function getDirectVideoDuration(
   url: string,
-  timeoutMs = 15000,
+  timeoutMs = DIRECT_VIDEO_METADATA_TIMEOUT_MS,
 ): Promise<number> {
   return new Promise((resolve) => {
     const video = document.createElement("video");

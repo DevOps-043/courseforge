@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { getErrorMessage } from '@/lib/errors';
 import { Button } from '@/shared/components/Button';
 
 export default function RegisterPage() {
@@ -51,7 +52,7 @@ export default function RegisterPage() {
       router.push('/login?registered=true');
 
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : 'Error al registrarse');
+      setError(getErrorMessage(error, 'Error al registrarse'));
     } finally {
       setIsLoading(false);
     }

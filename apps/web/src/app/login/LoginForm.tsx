@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { ArrowRight, Eye, EyeOff, Lock, Mail } from "lucide-react";
+import { getErrorMessage } from "@/lib/errors";
 
 function LoginContent() {
   const router = useRouter();
@@ -19,14 +20,6 @@ function LoginContent() {
   const [error, setError] = useState<string | null>(null);
 
   const registered = searchParams.get("registered");
-
-  const getErrorMessage = (caughtError: unknown) => {
-    if (caughtError instanceof Error) {
-      return caughtError.message;
-    }
-
-    return "Error al iniciar sesion";
-  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -56,7 +49,7 @@ function LoginContent() {
       router.refresh();
     } catch (caughtError) {
       console.error("Login failed", caughtError);
-      setError(getErrorMessage(caughtError));
+      setError(getErrorMessage(caughtError, "Error al iniciar sesion"));
     } finally {
       setIsLoading(false);
     }

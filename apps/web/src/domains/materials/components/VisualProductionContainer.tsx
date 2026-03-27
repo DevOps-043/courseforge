@@ -17,6 +17,7 @@ import {
 } from '../types/materials.types';
 import { Loader2, Clapperboard, CheckCircle2, Clock, AlertCircle, Save } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { PRODUCTION_COMPLETION_RECHECK_DELAY_MS } from '@/shared/constants/timing';
 
 interface VisualProductionContainerProps {
     artifactId: string;
@@ -210,7 +211,10 @@ export function VisualProductionContainer({ artifactId, productionComplete, onSt
         };
 
         // Add small delay to allow things to settle after data loads
-        const timer = setTimeout(checkCompletion, 1500);
+        const timer = setTimeout(
+            checkCompletion,
+            PRODUCTION_COMPLETION_RECHECK_DELAY_MS,
+        );
         return () => clearTimeout(timer);
     }, [progressStats.percentage, productionComplete, artifactId, router, productionItems.length, onStatusChange, isLoading]);
 

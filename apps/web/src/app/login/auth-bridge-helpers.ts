@@ -234,11 +234,3 @@ export function resolveRedirectTo(profile: AuthBridgeProfileRecord | null) {
 
   return "/builder";
 }
-
-export function getErrorMessage(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "Ocurrio un error inesperado";
-}

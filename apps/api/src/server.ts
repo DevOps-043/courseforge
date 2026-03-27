@@ -4,12 +4,13 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { errorHandler } from './core/middleware/errorHandler';
+import { getApiPort } from './config/env';
 import { authRoutes } from './features/auth/auth.routes';
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = getApiPort();
 
 app.use(helmet());
 app.use(cors());

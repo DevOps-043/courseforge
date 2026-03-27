@@ -14,6 +14,7 @@ import type { CurationModalConfig } from "../components/CurationDashboardView";
 import { CurationResetOptions } from "../components/CurationResetOptions";
 import { CURATION_STATES } from "@/lib/pipeline-constants";
 import { buildGPTContext, GPT_URL, parseCurationJsonPreview } from "../lib/curation-ui";
+import { STATUS_MESSAGE_DISMISS_DELAY_MS } from "@/shared/constants/timing";
 
 interface SyllabusLesson {
   id?: string;
@@ -150,7 +151,10 @@ export function useCurationControls({
       await navigator.clipboard.writeText(context);
       setCopiedToClipboard(true);
       toast.success("Contexto copiado al portapapeles. Pegalo en ChatGPT.");
-      setTimeout(() => setCopiedToClipboard(false), 3000);
+      setTimeout(
+        () => setCopiedToClipboard(false),
+        STATUS_MESSAGE_DISMISS_DELAY_MS,
+      );
       window.open(GPT_URL, "_blank");
     } catch (error) {
       console.error("Clipboard error:", error);

@@ -1,5 +1,6 @@
 "use server";
 
+import { getErrorMessage } from "@/lib/errors";
 import type { Esp05StepState, QADecision } from "../types/materials.types";
 import {
   createMaterialsActionError,
@@ -26,14 +27,6 @@ const RESTARTABLE_MATERIALS_STATES = new Set<Esp05StepState>([
   "PHASE3_DRAFT",
   "PHASE3_NEEDS_FIX",
 ]);
-
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "Unknown error";
-}
 
 export async function getMaterialsSnapshotAction(artifactId: string) {
   const context = await getAuthorizedArtifactMaterialsContext(artifactId);

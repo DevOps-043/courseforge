@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { jwtVerify, SignJWT, type JWTPayload } from 'jose'
+import { getErrorMessage } from '@/lib/errors'
+import { getCourseforgeJwtSecret, isProductionEnvironment } from '@/lib/server/env'
 
 interface OrganizationSummary {
   id: string
@@ -25,23 +27,11 @@ interface SwitchOrgJwtPayload extends JWTPayload {
   user_metadata?: Record<string, unknown>
 }
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Unknown error'
-}
-
 /**
  * POST /api/auth/switch-organization
  *
  * Regenera el JWT con un nuevo `active_organization_id`.
- * Esto es necesario porque las RLS policies de Supabase validan
- * el claim `active_organization_id` del JWT para filtrar datos.
- *
- * Flujo:
- * 1. Verificar JWT actual (cf_access_token)
- * 2. Validar que el usuario pertenece a la org destino
- * 3. Firmar nuevo JWT con active_organization_id actualizado
- * 4. Actualizar cookies: cf_access_token, cf_active_org
- * 5. Retornar la organizaciÃ³n activa
+ * Esto permite que las RLS policies filtren correctamente por organizacion.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -51,7 +41,7 @@ export async function POST(request: NextRequest) {
     if (!organizationId) {
       return NextResponse.json(
         { error: 'organizationId es requerido' },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -59,31 +49,21 @@ export async function POST(request: NextRequest) {
     const token = cookieStore.get('cf_access_token')?.value
 
     if (!token) {
-      return NextResponse.json(
-        { error: 'No autenticado' },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
 
-    const courseforgeJwtSecret = process.env.COURSEFORGE_JWT_SECRET
-    if (!courseforgeJwtSecret) {
-      console.error('[switch-org] COURSEFORGE_JWT_SECRET not configured')
-      return NextResponse.json(
-        { error: 'Error de configuraciÃ³n del servidor' },
-        { status: 500 }
-      )
-    }
-
-    const secretKey = new TextEncoder().encode(courseforgeJwtSecret)
+    const secretKey = new TextEncoder().encode(getCourseforgeJwtSecret())
 
     let payload: SwitchOrgJwtPayload
     try {
-      const verified = await jwtVerify(token, secretKey, { algorithms: ['HS256'] })
+      const verified = await jwtVerify(token, secretKey, {
+        algorithms: ['HS256'],
+      })
       payload = verified.payload as SwitchOrgJwtPayload
     } catch {
       return NextResponse.json(
-        { error: 'Token invÃ¡lido o expirado' },
-        { status: 401 }
+        { error: 'Token invalido o expirado' },
+        { status: 401 },
       )
     }
 
@@ -92,31 +72,34 @@ export async function POST(request: NextRequest) {
 
     if (!organizationIds.includes(organizationId)) {
       return NextResponse.json(
-        { error: 'No tienes acceso a esta organizaciÃ³n' },
-        { status: 403 }
+        { error: 'No tienes acceso a esta organizacion' },
+        { status: 403 },
       )
     }
 
     const orgsRaw = cookieStore.get('cf_user_orgs')?.value
     let organizations: OrganizationSummary[] = []
+
     try {
       if (orgsRaw) {
         organizations = JSON.parse(orgsRaw) as OrganizationSummary[]
       }
     } catch {
-      // ignore invalid cookie payload
+      // Ignore malformed org cookie payload.
     }
 
-    const targetOrg = organizations.find((organization) => organization.id === organizationId)
+    const targetOrg = organizations.find(
+      (organization) => organization.id === organizationId,
+    )
+
     if (!targetOrg) {
       return NextResponse.json(
-        { error: 'OrganizaciÃ³n no encontrada en tu lista' },
-        { status: 404 }
+        { error: 'Organizacion no encontrada en tu lista' },
+        { status: 404 },
       )
     }
 
     const now = Math.floor(Date.now() / 1000)
-
     const newAccessToken = await new SignJWT({
       aud: payload.aud,
       role: payload.role,
@@ -137,7 +120,7 @@ export async function POST(request: NextRequest) {
 
     const rememberMe = cookieStore.get('cf_remember_me')?.value === 'true'
     const maxAge = rememberMe ? 60 * 60 * 24 * 365 : 60 * 60 * 24 * 7
-    const isProduction = process.env.NODE_ENV === 'production'
+    const isProduction = isProductionEnvironment()
 
     cookieStore.set({
       name: 'cf_access_token',
@@ -173,7 +156,7 @@ export async function POST(request: NextRequest) {
     console.error('[switch-org] Error:', getErrorMessage(error))
     return NextResponse.json(
       { error: 'Error interno del servidor' },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }

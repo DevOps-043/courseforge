@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { getOptionalGeminiApiKey } from '@/lib/server/env';
 
 export interface EnrichmentResult {
   objectives: string[];
@@ -10,9 +11,11 @@ export interface EnrichmentResult {
 
 export class ScormEnrichmentService {
   private genAI: GoogleGenAI;
+  private readonly apiKey: string | null;
 
   constructor() {
-    this.genAI = new GoogleGenAI({ apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || '' });
+    this.apiKey = getOptionalGeminiApiKey();
+    this.genAI = new GoogleGenAI({ apiKey: this.apiKey || '' });
   }
 
   async enrichCourseMetadata(
@@ -21,7 +24,7 @@ export class ScormEnrichmentService {
     rawManifestSummary: string
   ): Promise<EnrichmentResult> {
 
-    if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+    if (!this.apiKey) {
       return {
         objectives: ['Comprender los conceptos básicos', 'Aplicar conocimientos'],
         targetAudience: 'General',

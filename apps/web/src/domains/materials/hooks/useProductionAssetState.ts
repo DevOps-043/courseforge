@@ -3,12 +3,16 @@
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { createClient } from "@/utils/supabase/client";
+import { getErrorMessage } from "@/lib/errors";
 import {
   fetchVideoMetadata,
   getVideoProviderAndId,
   MAX_VIDEO_UPLOAD_SIZE_BYTES,
   PRODUCTION_VIDEOS_BUCKET,
 } from "@/lib/video-platform";
+import {
+  COPY_FEEDBACK_RESET_DELAY_MS,
+} from "@/shared/constants/timing";
 import type {
   MaterialAssets,
   MaterialComponent,
@@ -98,7 +102,7 @@ export function useProductionAssetState({
   const copyToClipboard = (text: string, label = "Copiado") => {
     navigator.clipboard.writeText(text);
     setCopyFeedback(label);
-    window.setTimeout(() => setCopyFeedback(null), 2000);
+    window.setTimeout(() => setCopyFeedback(null), COPY_FEEDBACK_RESET_DELAY_MS);
   };
 
   const openInGamma = () => {
@@ -132,8 +136,7 @@ export function useProductionAssetState({
       onAssetChange?.(component.id, { b_roll_prompts: prompts });
     } catch (error) {
       console.error(error);
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      const errorMessage = getErrorMessage(error, String(error));
 
       if (
         errorMessage.includes("429") ||
@@ -195,7 +198,7 @@ export function useProductionAssetState({
       console.error("Upload error:", error);
       toast.error(
         `Error al subir video: ${
-          error instanceof Error ? error.message : "Error desconocido"
+          getErrorMessage(error, "Error desconocido")
         }`,
       );
     } finally {

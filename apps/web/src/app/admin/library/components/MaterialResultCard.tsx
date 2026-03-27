@@ -5,6 +5,7 @@ import { MaterialSearchResult } from '../actions';
 import { useState } from 'react';
 import { getEmbedVideoUrl } from '@/lib/video-platform';
 import { getGammaEmbedUrl as resolveGammaEmbedUrl } from '@/domains/materials/lib/production-formatters';
+import { COPY_FEEDBACK_RESET_DELAY_MS } from '@/shared/constants/timing';
 
 interface MaterialResultCardProps {
     result: MaterialSearchResult;
@@ -23,7 +24,7 @@ export function MaterialResultCard({ result }: MaterialResultCardProps) {
         if (!text || text === 'NO-ID') return;
         navigator.clipboard.writeText(text);
         setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        setTimeout(() => setCopied(false), COPY_FEEDBACK_RESET_DELAY_MS);
     };
 
     const getIcon = (type: string) => {

@@ -3,7 +3,14 @@ import { generateObject } from "ai";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { INSTRUCTIONAL_PLAN_SYSTEM_PROMPT } from "../../src/config/prompts/instructional-plan";
-import { createGoogleAIProvider } from "./shared/bootstrap";
+import {
+  createGoogleAIProvider,
+  getGeminiModel,
+  getSupabaseServiceKey,
+  getSupabaseUrl,
+  hasSupabaseServiceRoleKey,
+} from "./shared/bootstrap";
+import { getErrorMessage } from "./shared/errors";
 import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
 
 const ComponentSchema = z.object({
@@ -88,17 +95,11 @@ interface PromptRecord {
   content?: string | null;
 }
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Unknown error";
-}
-
 function createBackgroundSupabaseClient(userToken: string) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const supabaseUrl = getSupabaseUrl();
+  const supabaseKey = getSupabaseServiceKey();
 
-  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (hasSupabaseServiceRoleKey()) {
     console.log("[Background Job] Using Service Role Key (Safe from expiry)");
     return createClient(supabaseUrl, supabaseKey);
   }
@@ -287,7 +288,7 @@ export const handler: Handler = async (event) => {
 
     await upsertInstructionalPlanRecord(supabase, artifactId);
 
-    const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+    const modelName = getGeminiModel("gemini-1.5-flash");
     console.log(
       `[Background Job] Starting incremental generation with ${modelName}`,
     );

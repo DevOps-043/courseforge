@@ -3,6 +3,7 @@
 import type { MaterialAssets } from '@/domains/materials/types/materials.types';
 import { createClient } from '@/utils/supabase/server';
 import { getActiveOrganizationId, getAuthBridgeUser } from '@/utils/auth/session';
+import { getErrorMessage } from '@/lib/errors';
 
 export type SearchFilters = {
     type?: string;
@@ -63,10 +64,6 @@ function firstRelation<T>(value: T | T[] | null | undefined): T | null {
     }
 
     return value ?? null;
-}
-
-function getErrorMessage(error: unknown) {
-    return error instanceof Error ? error.message : 'Unknown error';
 }
 
 function buildMaterialComponentsQuery(

@@ -3,6 +3,7 @@ import {
     createGeminiClient,
     createServiceRoleClient,
 } from './shared/bootstrap';
+import { getErrorMessage } from './shared/errors';
 import {
     jsonResponse,
     methodNotAllowedResponse,
@@ -57,10 +58,6 @@ interface VideoPromptResultItem {
 
 interface VideoPromptResponsePayload {
     prompts: VideoPromptResultItem[];
-}
-
-function getErrorMessage(error: unknown) {
-    return error instanceof Error ? error.message : 'Unknown error';
 }
 
 export const handler: Handler = async (event) => {

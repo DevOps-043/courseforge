@@ -1,6 +1,7 @@
 "use server";
 
 import type { PlanLessonItem } from "@/domains/plan/components/plan-view.types";
+import { getErrorMessage } from "@/lib/errors";
 import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { createClient } from "@/utils/supabase/server";
 import { getActiveOrganizationId } from "@/utils/auth/session";
@@ -12,10 +13,6 @@ import {
   getAuthorizedArtifactAdmin,
   getServiceRoleClient,
 } from "@/lib/server/artifact-action-auth";
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Unknown error";
-}
 
 export async function generateInstructionalPlanAction(
   artifactId: string,

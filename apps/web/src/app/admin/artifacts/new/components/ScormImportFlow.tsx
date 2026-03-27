@@ -6,7 +6,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, CheckCircle2, AlertCircle, ArrowRight, Database } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { getErrorMessage } from '@/lib/errors';
 import type { ScormItem, ScormManifest } from '@/domains/scorm/types';
+import {
+    SCORM_REVIEW_STEP_DELAY_MS,
+    SCORM_UPLOAD_PROGRESS_TICK_MS,
+} from '@/shared/constants/timing';
 
 interface ScormImportFlowProps {
     onComplete: (importId: string) => void;
@@ -19,7 +24,7 @@ function getAxiosErrorMessage(error: unknown, fallback: string) {
         return error.response?.data?.error || error.message || fallback;
     }
 
-    return error instanceof Error ? error.message : fallback;
+    return getErrorMessage(error, fallback);
 }
 
 export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
@@ -51,7 +56,7 @@ export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
                     if (prev >= 90) return prev;
                     return prev + 10;
                 });
-            }, 500);
+            }, SCORM_UPLOAD_PROGRESS_TICK_MS);
 
             const { data } = await axios.post('/api/admin/scorm/upload', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
@@ -65,7 +70,7 @@ export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
 
             setTimeout(() => {
                 setStep('review');
-            }, 500);
+            }, SCORM_REVIEW_STEP_DELAY_MS);
 
         } catch (err: unknown) {
             console.error(err);

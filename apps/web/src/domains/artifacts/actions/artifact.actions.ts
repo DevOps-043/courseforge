@@ -1,6 +1,7 @@
 "use server";
 
 import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
+import { getErrorMessage } from "@/lib/errors";
 import { createClient } from "@/utils/supabase/server";
 import { getActiveOrganizationId } from "@/utils/auth/session";
 import type { ArtifactContentUpdates } from "@/app/admin/artifacts/[id]/artifact-view.types";
@@ -82,10 +83,7 @@ export async function generateArtifactAction(formData: {
     console.error("[ArtifactActions] Generation error:", error);
     return {
       success: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Error initiating generation",
+      error: getErrorMessage(error, "Error initiating generation"),
     };
   }
 }
@@ -203,7 +201,7 @@ export async function regenerateArtifactAction(
     console.error("[ArtifactActions] Regeneration error:", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Error regenerating artifact",
+      error: getErrorMessage(error, "Error regenerating artifact"),
     };
   }
 }
@@ -271,7 +269,7 @@ export async function deleteArtifactAction(artifactId: string) {
     console.error("[ArtifactActions] Delete error:", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Error deleting artifact",
+      error: getErrorMessage(error, "Error deleting artifact"),
     };
   }
 }

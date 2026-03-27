@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Save, AlertTriangle, CheckCircle2, MessageSquareCode } from 'lucide-react';
 import { SystemPrompt, UpdateSystemPromptDTO } from '../types';
 import { getSystemPromptsAction, updateSystemPromptAction } from '../../../app/admin/settings/actions';
+import { STATUS_MESSAGE_DISMISS_DELAY_MS } from '@/shared/constants/timing';
 
 export function SystemPromptsManager() {
     const [prompts, setPrompts] = useState<SystemPrompt[]>([]);
@@ -59,8 +60,7 @@ export function SystemPromptsManager() {
             setPrompts(prev => prev.map(p => p.id === selectedPromptId ? res.prompt! : p));
             setMessage({ type: 'success', text: 'Prompt actualizado correctamente.' });
             
-            // Clear message after 3 seconds
-            setTimeout(() => setMessage(null), 3000);
+            setTimeout(() => setMessage(null), STATUS_MESSAGE_DISMISS_DELAY_MS);
         } else {
             setMessage({ type: 'error', text: res.error || 'Error al guardar.' });
         }

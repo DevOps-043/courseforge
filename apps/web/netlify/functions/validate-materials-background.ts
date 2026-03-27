@@ -1,5 +1,6 @@
 import { Handler } from '@netlify/functions';
 import { createServiceRoleClient } from './shared/bootstrap';
+import { getErrorMessage } from './shared/errors';
 import { methodNotAllowedResponse, parseJsonBody } from './shared/http';
 
 interface LessonDod {
@@ -37,10 +38,6 @@ interface MaterialComponentContent {
 interface MaterialComponentRecord {
     content?: MaterialComponentContent | null;
     type: string;
-}
-
-function getErrorMessage(error: unknown) {
-    return error instanceof Error ? error.message : 'Unknown error';
 }
 
 export const handler: Handler = async (event) => {

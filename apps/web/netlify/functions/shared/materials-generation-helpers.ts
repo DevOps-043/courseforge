@@ -7,6 +7,8 @@ import type {
   MaterialsGenerationOutput,
   QuizSpec,
 } from "../../../src/domains/materials/types/materials.types";
+import { getErrorMessage } from "./errors";
+import { MATERIALS_RETRY_BACKOFF_BASE_MS } from "./timing";
 
 interface LessonPlanComponentRecord {
   type: ComponentType;
@@ -147,11 +149,11 @@ export async function generateWithRetry(
         );
         return { success: true as const, content };
       } catch (error) {
-        const message = error instanceof Error ? error.message : "";
+        const message = getErrorMessage(error, "");
         console.warn(`${logPrefix} ${model} failed: ${message}`);
 
         if (message.includes("429") || message.includes("rate limit")) {
-          await wait(15000 * (retry + 1));
+          await wait(MATERIALS_RETRY_BACKOFF_BASE_MS * (retry + 1));
           break;
         }
       }

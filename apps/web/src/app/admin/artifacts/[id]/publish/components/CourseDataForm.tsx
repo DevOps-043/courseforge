@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { Loader2, Upload, Image as ImageIcon } from 'lucide-react';
+import { getErrorMessage } from '@/lib/errors';
 import { createClient } from '@/utils/supabase/client';
 import { toast } from 'sonner';
 import {
@@ -58,7 +59,9 @@ export function CourseDataForm({ initialData, onDataChange }: CourseDataFormProp
             toast.success("Imagen subida correctamente");
         } catch (error: unknown) {
             console.error('Upload error:', error);
-            toast.error("Error al subir imagen: " + (error instanceof Error ? error.message : 'Error desconocido'));
+            toast.error(
+                `Error al subir imagen: ${getErrorMessage(error, 'Error desconocido')}`,
+            );
         } finally {
             setIsUploading(false);
         }

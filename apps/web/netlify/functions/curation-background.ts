@@ -7,6 +7,7 @@ import {
   getSupabaseServiceKey,
   getSupabaseUrl,
 } from './shared/bootstrap';
+import { getErrorMessage } from './shared/errors';
 import { methodNotAllowedResponse, parseJsonBody } from './shared/http';
 
 const handler: Handler = async (event) => {
@@ -53,7 +54,7 @@ const handler: Handler = async (event) => {
     return {
       statusCode: 500,
       body: JSON.stringify({
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: getErrorMessage(error),
       }),
     };
   }

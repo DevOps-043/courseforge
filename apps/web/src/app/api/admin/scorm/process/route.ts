@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { ScormTransformationService } from '@/domains/scorm/services/scorm-transformation.service';
+import { getErrorMessage } from '@/lib/errors';
 
 interface ScormProcessRequestBody {
     importId?: string;
-}
-
-function getErrorMessage(error: unknown) {
-    return error instanceof Error ? error.message : 'Processing failed';
 }
 
 export async function POST(req: NextRequest) {
@@ -34,6 +31,6 @@ export async function POST(req: NextRequest) {
 
     } catch (error: unknown) {
         console.error('Process Error:', error);
-        return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
+        return NextResponse.json({ error: getErrorMessage(error, 'Processing failed') }, { status: 500 });
     }
 }

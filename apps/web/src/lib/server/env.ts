@@ -7,6 +7,8 @@ const serverEnvSchema = z
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
     SOFLIA_INBOX_SUPABASE_URL: z.string().min(1).optional(),
     SOFLIA_INBOX_SUPABASE_KEY: z.string().min(1).optional(),
+    SOFLIA_API_URL: z.string().min(1).optional(),
+    SOFLIA_API_KEY: z.string().min(1).optional(),
     COURSEFORGE_JWT_SECRET: z.string().min(1).optional(),
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
     GOOGLE_API_KEY: z.string().min(1).optional(),
@@ -37,6 +39,10 @@ function getParsedServerEnv() {
 
 export function getSupabaseUrl() {
   return getParsedServerEnv().NEXT_PUBLIC_SUPABASE_URL;
+}
+
+export function getOptionalServerEnvValue<Key extends keyof ServerEnv>(key: Key) {
+  return getParsedServerEnv()[key] ?? null;
 }
 
 export function getSupabaseServiceRoleKey() {
@@ -102,6 +108,11 @@ export function getGeminiApiKey() {
   }
 
   return apiKey;
+}
+
+export function getOptionalGeminiApiKey() {
+  const env = getParsedServerEnv();
+  return env.GOOGLE_GENERATIVE_AI_API_KEY || env.GOOGLE_API_KEY || null;
 }
 
 export function getGeminiModel() {

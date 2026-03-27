@@ -1,3 +1,9 @@
+import { getErrorMessage } from "./errors";
+import {
+  CURATION_CONTENT_VALIDATION_TIMEOUT_MS,
+  CURATION_REDIRECT_RESOLUTION_TIMEOUT_MS,
+} from "./timing";
+
 const MIN_CONTENT_LENGTH = 500;
 
 export const LESSONS_PER_BATCH = 2;
@@ -11,7 +17,7 @@ export const delay = (ms: number) =>
 
 export async function resolveRedirectUrl(
   url: string,
-  timeoutMs = 8000,
+  timeoutMs = CURATION_REDIRECT_RESOLUTION_TIMEOUT_MS,
 ): Promise<string> {
   try {
     const controller = new AbortController();
@@ -36,7 +42,7 @@ export async function resolveRedirectUrl(
 
 export async function validateUrlWithContent(
   url: string,
-  timeoutMs = 10000,
+  timeoutMs = CURATION_CONTENT_VALIDATION_TIMEOUT_MS,
 ): Promise<{ isValid: boolean; reason: string; contentLength: number }> {
   const browserHeaders = {
     'User-Agent':
@@ -105,7 +111,7 @@ export async function validateUrlWithContent(
   } catch (error: unknown) {
     return {
       isValid: false,
-      reason: error instanceof Error ? error.message : 'Unknown error',
+      reason: getErrorMessage(error),
       contentLength: 0,
     };
   }

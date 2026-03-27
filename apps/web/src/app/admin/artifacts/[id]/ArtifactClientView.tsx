@@ -25,6 +25,10 @@ import { ArtifactStageContent } from "./ArtifactStageContent";
 import { ArtifactToast } from "./ArtifactToast";
 import { ArtifactWorkflowHeader } from "./ArtifactWorkflowHeader";
 import { ArtifactWorkflowStepper } from "./ArtifactWorkflowStepper";
+import {
+  ARTIFACT_REFRESH_POLL_INTERVAL_MS,
+  ARTIFACT_TOAST_HIDE_DELAY_MS,
+} from "@/shared/constants/timing";
 import type {
   ArtifactContentUpdates,
   ArtifactEditedContent,
@@ -113,7 +117,7 @@ export default function ArtifactClientView({
     if (artifact.state === "GENERATING" || isRegenerating) {
       const interval = setInterval(() => {
         router.refresh();
-      }, 3000);
+      }, ARTIFACT_REFRESH_POLL_INTERVAL_MS);
 
       return () => clearInterval(interval);
     }
@@ -126,7 +130,7 @@ export default function ArtifactClientView({
     setToast({ show: true, message, type });
     setTimeout(() => {
       setToast((previous) => ({ ...previous, show: false }));
-    }, 4000);
+    }, ARTIFACT_TOAST_HIDE_DELAY_MS);
   };
 
   const handleSaveContent = async () => {

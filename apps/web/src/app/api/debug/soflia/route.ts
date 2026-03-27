@@ -1,4 +1,7 @@
 import { NextResponse } from 'next/server';
+import { getErrorDetails, getErrorMessage } from '@/lib/errors';
+import { getOptionalServerEnvValue } from '@/lib/server/env';
+import { API_ABORT_TIMEOUT_MS } from '@/shared/constants/timing';
 
 export const dynamic = 'force-dynamic'; // Ensure this doesn't get statically cached
 
@@ -8,17 +11,9 @@ interface ConnectivityResult {
     success: boolean;
 }
 
-function getErrorDetails(error: unknown) {
-    if (error instanceof Error) {
-        return { error_name: error.name, stack: error.stack };
-    }
-
-    return { error_name: 'UnknownError' };
-}
-
 export async function GET() {
-    const API_URL = process.env.SOFLIA_API_URL;
-    const API_KEY = process.env.SOFLIA_API_KEY;
+    const API_URL = getOptionalServerEnvValue('SOFLIA_API_URL');
+    const API_KEY = getOptionalServerEnvValue('SOFLIA_API_KEY');
 
     // Masked keys for safety
     const maskedKey = API_KEY 
@@ -43,7 +38,10 @@ export async function GET() {
             console.log(`[Debug API] Pinging: ${targetUrl}`);
             
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000);
+            const timeoutId = setTimeout(
+                () => controller.abort(),
+                API_ABORT_TIMEOUT_MS,
+            );
 
             const start = Date.now();
             const response = await fetch(targetUrl, {
@@ -74,7 +72,7 @@ export async function GET() {
         } catch (error: unknown) {
             connectivityResult = {
                 success: false,
-                message: `Fetch Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                message: `Fetch Error: ${getErrorMessage(error)}`,
                 details: getErrorDetails(error),
             };
         }

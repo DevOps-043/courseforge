@@ -18,6 +18,11 @@ import {
   getActiveOrgIdFromCookieHeader,
 } from "@/lib/lia-route-helpers";
 import type { LiaRequestPayload } from "@/lib/lia-types";
+import { getErrorMessage } from "@/lib/errors";
+import {
+  getGeminiApiKey,
+  getOptionalServerEnvValue,
+} from "@/lib/server/env";
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,26 +35,21 @@ export async function POST(req: NextRequest) {
     const settings = await getLiaSettings(supabase, useComputerUse, activeOrgId);
     const modelName = settings.model_name;
     const config = buildLiaConfig(settings, useComputerUse);
-    const apiKey =
-      process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
+    const primaryGeminiApiKey = getOptionalServerEnvValue(
+      "GOOGLE_GENERATIVE_AI_API_KEY",
+    );
+    const fallbackGeminiApiKey = getOptionalServerEnvValue("GOOGLE_API_KEY");
+    const apiKey = getGeminiApiKey();
 
     console.log("Lia API - API Key check:", {
-      GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY
-        ? `Found (${process.env.GOOGLE_GENERATIVE_AI_API_KEY.slice(0, 8)}...)`
+      GOOGLE_GENERATIVE_AI_API_KEY: primaryGeminiApiKey
+        ? `Found (${primaryGeminiApiKey.slice(0, 8)}...)`
         : "NOT FOUND",
-      GOOGLE_API_KEY: process.env.GOOGLE_API_KEY
-        ? `Found (${process.env.GOOGLE_API_KEY.slice(0, 8)}...)`
+      GOOGLE_API_KEY: fallbackGeminiApiKey
+        ? `Found (${fallbackGeminiApiKey.slice(0, 8)}...)`
         : "NOT FOUND",
       usingKey: apiKey ? `Yes (${apiKey.slice(0, 8)}...)` : "NO KEY",
     });
-
-    if (!apiKey) {
-      console.error("Lia API - CRITICAL: No API key found");
-      return NextResponse.json(
-        { error: "API key not configured" },
-        { status: 500 },
-      );
-    }
 
     console.log("Lia API - Mode:", useComputerUse ? "COMPUTER" : "STANDARD");
     console.log("Lia API - Model:", modelName);
@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error: "Internal Server Error",
-        details: error instanceof Error ? error.message : "Unknown error",
+        details: getErrorMessage(error),
       },
       { status: 500 },
     );

@@ -2,7 +2,11 @@ import { Handler } from "@netlify/functions";
 import {
   createGeminiClient,
   createServiceRoleClient,
+  getGeminiModel,
+  getGeminiSearchModel,
+  getGeminiTemperature,
 } from "./shared/bootstrap";
+import { getErrorMessage } from "./shared/errors";
 import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
 import {
   COURSE_CONFIG,
@@ -117,7 +121,7 @@ export const handler: Handler = async (event) => {
   const genAI = createGeminiClient();
 
   try {
-    const searchModelName = process.env.GEMINI_SEARCH_MODEL || "gemini-2.0-flash";
+    const searchModelName = getGeminiSearchModel("gemini-2.0-flash");
     let researchContext = "";
     let searchQueries: string[] = [];
 
@@ -147,10 +151,7 @@ export const handler: Handler = async (event) => {
         `[Syllabus Background] URLs de grounding: ${grounding?.groundingChunks?.length || 0}`,
       );
     } catch (researchError) {
-      const message =
-        researchError instanceof Error
-          ? researchError.message
-          : "Error desconocido";
+      const message = getErrorMessage(researchError, "Error desconocido");
       console.warn(
         `[Syllabus Background] Falló research con ${searchModelName}:`,
         message,
@@ -159,7 +160,7 @@ export const handler: Handler = async (event) => {
         "Investigación no disponible por error técnico. Usar conocimiento base.";
     }
 
-    const mainModelName = process.env.GEMINI_MODEL || "gemini-1.5-pro";
+    const mainModelName = getGeminiModel("gemini-1.5-pro");
     const basePrompt = buildSyllabusPrompt(
       ideaCentral,
       objetivos,
@@ -181,7 +182,7 @@ export const handler: Handler = async (event) => {
           model: mainModelName,
           contents: appendValidationFeedback(basePrompt, validationErrors),
           config: {
-            temperature: parseFloat(process.env.GEMINI_TEMPERATURE || "0.7"),
+            temperature: getGeminiTemperature(0.7),
             responseMimeType: "application/json",
           },
         });
@@ -201,10 +202,7 @@ export const handler: Handler = async (event) => {
           validationErrors,
         );
       } catch (generationError) {
-        const message =
-          generationError instanceof Error
-            ? generationError.message
-            : "Error desconocido";
+        const message = getErrorMessage(generationError, "Error desconocido");
         console.error(
           `[Syllabus Background] Error parseando/generando en intento ${attempts}:`,
           message,
@@ -265,8 +263,7 @@ export const handler: Handler = async (event) => {
       }),
     };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Error fatal desconocido";
+    const message = getErrorMessage(error, "Error fatal desconocido");
 
     console.error("[Syllabus Background] Error fatal:", message);
 

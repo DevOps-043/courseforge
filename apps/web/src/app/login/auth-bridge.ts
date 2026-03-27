@@ -10,7 +10,6 @@ import {
   buildProfileUpsert,
   createAuthBridgeTokens,
   createSupabaseCookieAdapter,
-  getErrorMessage,
   mapOrganizations,
   resolveRedirectTo,
   setAuthBridgeCookies,
@@ -29,6 +28,7 @@ import {
   getSupabaseUrl,
   isProductionEnvironment,
 } from "@/lib/server/env";
+import { getErrorMessage } from "@/lib/errors";
 
 async function syncOrganizations(
   courseforgeAdmin: SupabaseClient,

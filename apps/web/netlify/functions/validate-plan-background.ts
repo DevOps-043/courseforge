@@ -4,7 +4,13 @@ import type { Handler } from '@netlify/functions';
 import { generateObject } from 'ai';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import { createGoogleAIProvider } from './shared/bootstrap';
+import {
+    createGoogleAIProvider,
+    getGeminiModel,
+    getSupabaseAnonKey,
+    getSupabaseUrl,
+} from './shared/bootstrap';
+import { getErrorMessage } from './shared/errors';
 import { methodNotAllowedResponse, parseJsonBody } from './shared/http';
 
 // EMBEDDED PROMPT TO AVOID IMPORT ISSUES
@@ -105,10 +111,6 @@ const ValidationResultSchema = z.object({
 // Setup Clients
 const googleAI = createGoogleAIProvider();
 
-function getErrorMessage(error: unknown) {
-    return error instanceof Error ? error.message : 'Unknown error';
-}
-
 export const handler: Handler = async (event) => {
     // 1. Parsing Request
     if (event.httpMethod !== 'POST') {
@@ -130,8 +132,8 @@ export const handler: Handler = async (event) => {
         console.log(`[Validation Job] Starting validation for artifacts/${artifactId}`);
 
         // 2. Setup Supabase Client
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+        const supabaseUrl = getSupabaseUrl();
+        const supabaseKey = getSupabaseAnonKey();
         const supabase = createClient(supabaseUrl, supabaseKey, {
             global: {
                 headers: { Authorization: `Bearer ${userToken}` },
@@ -172,7 +174,7 @@ export const handler: Handler = async (event) => {
 
         // --- STEP 3: RUN VALIDATION AGENTS ---
         // modelName: Use env var to match project config (e.g. gemini-3-flash-preview or gemini-2.0-flash)
-        const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+        const modelName = getGeminiModel('gemini-1.5-flash');
         console.log(`[Validation Job] Validating with ${modelName}...`);
 
         const result = await generateObject({

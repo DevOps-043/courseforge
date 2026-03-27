@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getErrorMessage } from '@/lib/errors';
 import { getGptSourcesApiKey, getSupabaseServiceRoleKey, getSupabaseUrl } from '@/lib/server/env';
 
 const supabaseUrl = getSupabaseUrl();
@@ -30,10 +31,6 @@ interface SourcesPayload {
         total_lessons?: number;
         search_timestamp?: string;
     };
-}
-
-function getErrorMessage(error: unknown) {
-    return error instanceof Error ? error.message : 'Internal server error';
 }
 
 export async function POST(request: NextRequest) {
@@ -184,7 +181,7 @@ export async function POST(request: NextRequest) {
     } catch (error: unknown) {
         console.error('[GPT Sources API] Error:', error);
         return NextResponse.json(
-            { success: false, error: getErrorMessage(error) },
+            { success: false, error: getErrorMessage(error, 'Internal server error') },
             { status: 500, headers: corsHeaders }
         );
     }

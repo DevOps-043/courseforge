@@ -1,5 +1,6 @@
 "use server";
 
+import { getErrorMessage } from "@/lib/errors";
 import { CURATION_STATES } from "@/lib/pipeline-constants";
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import {
@@ -34,8 +35,7 @@ export async function getCurationSnapshotAction(artifactId: string) {
       rows: snapshot.rows,
     };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Error al obtener curaduria";
+    const message = getErrorMessage(error, "Error al obtener curaduria");
     console.error("[CurationActions] Snapshot error:", message);
     return { success: false, error: message };
   }
@@ -91,8 +91,7 @@ export async function startCurationAction(
 
     return { success: true, curationId };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Error al iniciar curaduria";
+    const message = getErrorMessage(error, "Error al iniciar curaduria");
     console.error("[CurationActions] Start error:", message);
     return { success: false, error: message };
   }
@@ -107,8 +106,7 @@ export async function validateCurationAction(artifactId: string) {
 
     return { success: true };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Error al validar curaduria";
+    const message = getErrorMessage(error, "Error al validar curaduria");
     console.error("[CurationActions] Validate error:", message);
     return { success: false, error: message };
   }
@@ -150,8 +148,7 @@ export async function updateCurationRowAction(
 
     return { success: true };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Error al actualizar fila";
+    const message = getErrorMessage(error, "Error al actualizar fila");
     return { success: false, error: message };
   }
 }
@@ -174,8 +171,7 @@ export async function deleteCurationRowAction(rowId: string) {
 
     return { success: true };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Error al eliminar fila";
+    const message = getErrorMessage(error, "Error al eliminar fila");
     return { success: false, error: message };
   }
 }
@@ -199,8 +195,7 @@ export async function clearGPTCurationRowsAction(artifactId: string) {
     await markDownstreamDirtyAction(artifactId, 4, "Curaduria (limpieza GPT)");
     return { success: true };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Error limpiando filas GPT";
+    const message = getErrorMessage(error, "Error limpiando filas GPT");
     console.error("[CurationActions] Error clearing GPT rows:", message);
     return { success: false, error: message };
   }
@@ -236,8 +231,7 @@ export async function updateCurationStatusAction(
 
     return { success: true };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Error al actualizar estado";
+    const message = getErrorMessage(error, "Error al actualizar estado");
     return { success: false, error: message };
   }
 }
@@ -248,8 +242,7 @@ export async function deleteCurationAction(artifactId: string) {
     await deleteCurationByArtifactId(admin, artifactId);
     return { success: true };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Error eliminando curaduria";
+    const message = getErrorMessage(error, "Error eliminando curaduria");
     console.error("[CurationActions] Error deleting curation:", message);
     return { success: false, error: message };
   }
@@ -315,10 +308,7 @@ export async function importCurationJsonAction(
       sourcesSaved: parsedSources.sources.length,
     };
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Error interno del servidor";
+    const message = getErrorMessage(error, "Error interno del servidor");
     console.error("[CurationActions] Import error:", message);
     return {
       success: false,

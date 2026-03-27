@@ -27,14 +27,6 @@ export function wait(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-export function getErrorMessage(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "Unknown error";
-}
-
 export async function loadLessonPlans(
   supabase: SupabaseClient,
   artifactId: string,

@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { getErrorMessage } from '@/lib/errors';
 import {
     buildInitialSelectedLessons,
     buildInitialVideoMappings,
@@ -210,7 +211,7 @@ export default function PublicationClientView({
             toast.success('Borrador guardado correctamente');
         } catch (error: unknown) {
             toast.error(
-                `Error inesperado: ${error instanceof Error ? error.message : 'Error desconocido'}`,
+                `Error inesperado: ${getErrorMessage(error, 'Error desconocido')}`,
             );
         } finally {
             setIsSaving(false);
@@ -250,7 +251,7 @@ export default function PublicationClientView({
             }
         } catch (error: unknown) {
             toast.error(
-                `Error critico: ${error instanceof Error ? error.message : 'Error desconocido'}`,
+                `Error critico: ${getErrorMessage(error, 'Error desconocido')}`,
             );
         } finally {
             setIsPublishing(false);

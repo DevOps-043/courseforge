@@ -3,10 +3,7 @@ import { createClient } from '@/utils/supabase/server';
 import { ScormParserService } from '@/domains/scorm/services/scorm-parser.service';
 import type { ScormManifest } from '@/domains/scorm/types';
 import { randomUUID } from 'crypto';
-
-function getErrorMessage(error: unknown) {
-    return error instanceof Error ? error.message : 'Unknown error';
-}
+import { getErrorMessage } from '@/lib/errors';
 
 export async function POST(req: NextRequest) {
     try {

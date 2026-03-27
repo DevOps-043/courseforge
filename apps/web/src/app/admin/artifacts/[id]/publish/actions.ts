@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { getErrorMessage } from '@/lib/errors';
 import type { PublicationComponent } from '@/domains/publication/types/publication.types';
 import type {
     PublicationDataResult,
@@ -235,8 +236,7 @@ export async function savePublicationDraft(
         console.error('Save Draft Error:', error);
         return {
             success: false as const,
-            error:
-                error instanceof Error ? error.message : 'Error desconocido',
+            error: getErrorMessage(error, 'Error desconocido'),
         };
     }
 }

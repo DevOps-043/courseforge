@@ -5,7 +5,12 @@ import { z } from 'zod';
 import {
     createGeminiClient,
     createGoogleAIProvider,
+    getGeminiModel,
+    getGeminiSearchModel,
+    getSupabaseAnonKey,
+    getSupabaseUrl,
 } from './shared/bootstrap';
+import { getErrorMessage } from './shared/errors';
 import { methodNotAllowedResponse, parseJsonBody } from './shared/http';
 
 const BLOOM_VERBS = [
@@ -61,10 +66,6 @@ interface ValidationReportItem {
   passed: boolean;
 }
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Unknown error';
-}
-
 export const handler: Handler = async (event) => {
     if (event.httpMethod !== 'POST') {
         return methodNotAllowedResponse();
@@ -80,8 +81,8 @@ export const handler: Handler = async (event) => {
 
         console.log(`[Background Job] Starting generation for artifacts/${artifactId}`);
 
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+        const supabaseUrl = getSupabaseUrl();
+        const supabaseKey = getSupabaseAnonKey();
         const supabase = createClient(supabaseUrl, supabaseKey, {
             global: {
                 headers: { Authorization: `Bearer ${userToken}` },
@@ -90,7 +91,7 @@ export const handler: Handler = async (event) => {
 
         let researchContext = "";
         let detectedSearchQueries: string[] = [];
-        const searchModels = [process.env.GEMINI_SEARCH_MODEL, 'gemini-2.0-flash'].filter(Boolean) as string[];
+        const searchModels = [getGeminiSearchModel(), 'gemini-2.0-flash'].filter(Boolean) as string[];
         let researchSuccess = false;
 
         const researchPrompt = `
@@ -140,7 +141,7 @@ export const handler: Handler = async (event) => {
             researchContext = "Research unavailable due to API errors.";
         }
 
-        const genModels = [process.env.GEMINI_MODEL, 'gemini-2.0-flash'].filter(Boolean) as string[];
+        const genModels = [getGeminiModel(), 'gemini-2.0-flash'].filter(Boolean) as string[];
         const systemPrompt = `
             Eres un Diseñador Instruccional Experto y Copywriter Senior.
             CONTEXTO RESEARCH: ${researchContext}

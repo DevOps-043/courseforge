@@ -4,6 +4,7 @@ import {
   COURSE_CONFIG,
   SYLLABUS_PROMPT,
 } from "@/domains/syllabus/config/syllabus.config";
+import { getErrorMessage } from "@/lib/errors";
 import {
   buildSyllabusResearchPrompt,
   calculateSyllabusEstimatedHours,
@@ -173,8 +174,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(content);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Error desconocido al generar el syllabus.";
+    const message = getErrorMessage(
+      error,
+      "Error desconocido al generar el syllabus.",
+    );
 
     console.error("[API/ESP-02] Error:", message);
     return NextResponse.json({ error: message }, { status: 500 });

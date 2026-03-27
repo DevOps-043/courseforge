@@ -1,6 +1,7 @@
 "use server";
 
 import { getBackgroundFunctionsBaseUrl } from "@/lib/server/artifact-action-auth";
+import { isProductionEnvironment } from "@/lib/server/env";
 
 type BackgroundFunctionPayload = Record<string, unknown>;
 
@@ -104,7 +105,7 @@ async function tryLocalHandler<TData>(
   payload: BackgroundFunctionPayload,
   options: BackgroundFunctionOptions,
 ) {
-  if (process.env.NODE_ENV === "production" || !options.localHandlerLoader) {
+  if (isProductionEnvironment() || !options.localHandlerLoader) {
     return null;
   }
 

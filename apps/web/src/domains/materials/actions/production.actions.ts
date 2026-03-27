@@ -1,5 +1,6 @@
 "use server";
 
+import { getErrorMessage } from "@/lib/errors";
 import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import { createClient } from "@/utils/supabase/server";
@@ -31,10 +32,6 @@ interface ProductionComponentRecord {
   material_lesson_id?: string | null;
   material_lessons?: ProductionLessonRelation | ProductionLessonRelation[] | null;
   type: string;
-}
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Unknown error";
 }
 
 function firstRelation<T>(value: T | T[] | null | undefined): T | undefined {

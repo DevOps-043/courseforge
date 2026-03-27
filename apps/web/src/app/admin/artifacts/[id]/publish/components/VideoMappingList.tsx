@@ -17,6 +17,7 @@ import {
   groupLessonsByModule,
 } from './video-mapping.utils';
 import { VideoMappingModuleSection } from './VideoMappingModuleSection';
+import { VIDEO_DURATION_AUTOSYNC_DELAY_MS } from '@/shared/constants/timing';
 
 export async function syncVideoDuration(
   provider: 'youtube' | 'vimeo' | 'direct',
@@ -184,7 +185,7 @@ export function VideoMappingList({
     if (shouldAutoSync && nextMapping.video_id) {
       setTimeout(() => {
         void handleSyncDuration(lessonId, nextMapping);
-      }, 100);
+      }, VIDEO_DURATION_AUTOSYNC_DELAY_MS);
     }
   };
 

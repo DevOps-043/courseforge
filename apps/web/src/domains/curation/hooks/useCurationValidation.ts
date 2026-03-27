@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { validateCurationAction } from "../actions/curation.actions";
 import type { CurationRow } from "../types/curation.types";
 import { getPendingValidationCount } from "../lib/curation-ui";
+import { getErrorMessage } from "@/lib/errors";
 
 const VALIDATION_KEY_PREFIX = "isValidating_";
 const LAST_VALIDATION_KEY_PREFIX = "lastValidation_";
@@ -140,7 +141,7 @@ export function useCurationValidation(params: {
       console.error(error);
       toast.error(
         "Fallo la validacion: " +
-          (error instanceof Error ? error.message : "Error desconocido"),
+          getErrorMessage(error, "Error desconocido"),
       );
       setIsValidating(false);
       localStorage.removeItem(`${VALIDATION_KEY_PREFIX}${artifactId}`);

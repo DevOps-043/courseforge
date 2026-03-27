@@ -2,14 +2,11 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
 import type { PublicationDraftData } from '@/domains/publication/types/publication.types';
+import { getErrorMessage } from '@/lib/errors';
 
 interface SaveDraftRequestBody {
     artifactId?: string;
     data?: PublicationDraftData;
-}
-
-function getErrorMessage(error: unknown) {
-    return error instanceof Error ? error.message : 'Unknown error';
 }
 
 export async function POST(request: Request) {

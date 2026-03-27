@@ -3,6 +3,7 @@ import {
   createGeminiClient,
   createServiceRoleClient,
 } from "./shared/bootstrap";
+import { getErrorMessage } from "./shared/errors";
 import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
 import {
   findOrCreateMaterialLesson,
@@ -10,7 +11,6 @@ import {
 } from "./shared/materials-generation-helpers";
 import {
   generateLessonMaterials,
-  getErrorMessage,
   loadLessonPlans,
   loadMaterialsGenerationContext,
   markMaterialsValidating,

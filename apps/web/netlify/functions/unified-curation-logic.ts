@@ -8,6 +8,7 @@ import {
   LESSONS_PER_BATCH,
   delay,
 } from "./shared/curation-runtime";
+import { getErrorMessage } from "./shared/errors";
 import { generateSystemPrompt } from "./shared/curation-prompts";
 import { processLessonBatch } from "./shared/unified-curation-batch";
 import {
@@ -15,6 +16,7 @@ import {
   buildLessonsToProcess,
 } from "./shared/unified-curation-helpers";
 import type { LessonToProcess } from "./shared/unified-curation-types";
+import { CURATION_MODEL_COOLDOWN_DELAY_MS } from "./shared/timing";
 
 interface UnifiedCurationParams {
   artifactId: string;
@@ -257,8 +259,7 @@ export async function processUnifiedCuration({
 
         failedInThisPass.push(...batchResult.failedLessons);
       } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error";
+        const errorMessage = getErrorMessage(error);
         console.error(
           `[Lesson Curation] Batch Error (${activeModel}):`,
           errorMessage,
@@ -275,7 +276,7 @@ export async function processUnifiedCuration({
               `[Lesson Curation] Model overloaded. Switching to: ${fallbackModel}`,
             );
             activeModel = fallbackModel;
-            await delay(10000);
+            await delay(CURATION_MODEL_COOLDOWN_DELAY_MS);
           }
         }
       }

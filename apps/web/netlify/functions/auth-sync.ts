@@ -18,6 +18,8 @@ import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
 import { SignJWT } from 'jose';
 import type { HandlerEvent } from '@netlify/functions';
+import { getCourseforgeJwtSecret, getSofliaInboxEnv } from './shared/bootstrap';
+import { getErrorMessage } from './shared/errors';
 
 interface AuthSyncRequest {
   identifier: string;
@@ -52,10 +54,6 @@ interface OrganizationUserRow {
 
 type AuthSyncEvent = Pick<HandlerEvent, 'body' | 'httpMethod'>;
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Unknown error';
-}
-
 export default async function handler(req: AuthSyncEvent) {
   if (req.httpMethod !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
@@ -75,9 +73,8 @@ export default async function handler(req: AuthSyncEvent) {
       );
     }
 
-    const sofliaUrl = process.env.SOFLIA_INBOX_SUPABASE_URL;
-    const sofliaKey = process.env.SOFLIA_INBOX_SUPABASE_KEY;
-    const courseforgeJwtSecret = process.env.COURSEFORGE_JWT_SECRET;
+    const { url: sofliaUrl, key: sofliaKey } = getSofliaInboxEnv();
+    const courseforgeJwtSecret = getCourseforgeJwtSecret();
 
     if (!sofliaUrl || !sofliaKey || !courseforgeJwtSecret) {
       console.error('Missing env vars: SOFLIA_INBOX_SUPABASE_URL, SOFLIA_INBOX_SUPABASE_KEY, or COURSEFORGE_JWT_SECRET');

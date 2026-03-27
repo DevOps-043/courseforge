@@ -1,5 +1,7 @@
 import { cookies } from 'next/headers'
 import { jwtVerify, type JWTPayload } from 'jose'
+import { getErrorMessage } from '@/lib/errors'
+import { getCourseforgeJwtSecret } from '@/lib/server/env'
 
 /**
  * Verifica la sesiÃ³n del usuario desde la cookie cf_access_token.
@@ -49,10 +51,6 @@ function getErrorCode(error: unknown) {
     : null
 }
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Unknown error'
-}
-
 export async function getAuthBridgeUser(): Promise<AuthBridgeUser | null> {
   try {
     const cookieStore = await cookies()
@@ -63,14 +61,8 @@ export async function getAuthBridgeUser(): Promise<AuthBridgeUser | null> {
       return null
     }
 
-    const secret = process.env.COURSEFORGE_JWT_SECRET
-    if (!secret) {
-      console.error('[AuthBridge] COURSEFORGE_JWT_SECRET not configured')
-      return null
-    }
-
     console.log('[AuthBridge] Verifying token with secret...')
-    const secretKey = new TextEncoder().encode(secret)
+    const secretKey = new TextEncoder().encode(getCourseforgeJwtSecret())
 
     const { payload } = await jwtVerify(token, secretKey, {
       algorithms: ['HS256'],
