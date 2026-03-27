@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { ScormParserService } from '@/domains/scorm/services/scorm-parser.service';
+import type { ScormManifest } from '@/domains/scorm/types';
 import { randomUUID } from 'crypto';
+
+function getErrorMessage(error: unknown) {
+    return error instanceof Error ? error.message : 'Unknown error';
+}
 
 export async function POST(req: NextRequest) {
     try {
@@ -65,16 +70,17 @@ export async function POST(req: NextRequest) {
         try {
             const parser = new ScormParserService();
             const manifest = await parser.parsePackage(buffer);
+            const typedManifest = manifest as ScormManifest;
 
             await supabase
                 .from('scorm_imports')
                 .update({
                     status: 'SCORM_ANALYZED',
-                    scorm_version: manifest.version,
-                    manifest_raw: manifest as any, // jsonb
-                    organizations: manifest.organizations as any,
-                    resources: manifest.resources as any,
-                    sco_count: manifest.resources.filter(r => r.type === 'sco').length
+                    scorm_version: typedManifest.version,
+                    manifest_raw: typedManifest,
+                    organizations: typedManifest.organizations,
+                    resources: typedManifest.resources,
+                    sco_count: typedManifest.resources.filter((resource) => resource.type === 'sco').length
                 })
                 .eq('id', importRecord.id);
 
@@ -84,20 +90,20 @@ export async function POST(req: NextRequest) {
                 manifest
             });
 
-        } catch (parseError: any) {
+        } catch (parseError: unknown) {
             console.error('Parse Error:', parseError);
             await supabase
                 .from('scorm_imports')
                 .update({
                     status: 'FAILED',
-                    error_message: parseError.message
+                    error_message: getErrorMessage(parseError)
                 })
                 .eq('id', importRecord.id);
 
-            return NextResponse.json({ error: 'Failed to parse SCORM package: ' + parseError.message }, { status: 400 });
+            return NextResponse.json({ error: 'Failed to parse SCORM package: ' + getErrorMessage(parseError) }, { status: 400 });
         }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('API Error:', error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }

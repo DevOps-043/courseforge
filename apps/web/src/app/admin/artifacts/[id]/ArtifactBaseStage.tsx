@@ -1,5 +1,6 @@
 "use client";
 
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 import {
   AlertCircle,
   Check,
@@ -12,23 +13,28 @@ import {
   Target,
   X,
 } from "lucide-react";
+import type {
+  ArtifactDisplayProfile,
+  ArtifactEditedContent,
+  ArtifactEditingSection,
+  ArtifactValidationReport,
+  ArtifactViewRecord,
+} from "./artifact-view.types";
 
 interface ArtifactBaseStageProps {
-  artifact: any;
-  profile?: any;
+  artifact: ArtifactViewRecord;
+  profile?: ArtifactDisplayProfile;
   activeTab: "content" | "validation";
   setActiveTab: (tab: "content" | "validation") => void;
-  editingSection: "nombres" | "objetivos" | "descripcion" | null;
-  setEditingSection: (
-    section: "nombres" | "objetivos" | "descripcion" | null,
-  ) => void;
-  editedContent: any;
-  setEditedContent: (updater: any) => void;
+  editingSection: ArtifactEditingSection;
+  setEditingSection: (section: ArtifactEditingSection) => void;
+  editedContent: ArtifactEditedContent;
+  setEditedContent: Dispatch<SetStateAction<ArtifactEditedContent>>;
   feedback: string;
   setFeedback: (feedback: string) => void;
   reviewState: "pending" | "approved" | "rejected";
   isRegenerating: boolean;
-  validation: any;
+  validation: ArtifactValidationReport;
   onSaveContent: () => Promise<void>;
   onCancelEdit: () => void;
   onApprove: () => Promise<void>;
@@ -300,7 +306,7 @@ export function ArtifactBaseStage({
             )}
 
           <div className="space-y-2">
-            {validation.results?.map((res: any, idx: number) => (
+            {validation.results?.map((res, idx) => (
               <div
                 key={idx}
                 className={`p-4 rounded-xl border flex items-start gap-4 ${res.passed ? "bg-[#00D4B3]/10 border-[#00D4B3]/20" : "bg-[#EF4444]/10 border-[#EF4444]/20"}`}
@@ -347,7 +353,17 @@ function EditActions({
   );
 }
 
-function SectionCard({ title, icon, action, children }: any) {
+function SectionCard({
+  title,
+  icon,
+  action,
+  children,
+}: {
+  title: string;
+  icon: ReactNode;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-200 dark:border-[#6C757D]/10 flex justify-between items-center bg-gray-50 dark:bg-[#1A2027]">

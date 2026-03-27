@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from 'next-themes';
 import OrganizationSwitcher from '@/components/OrganizationSwitcher';
 import { useAuth } from '@/features/auth/hooks/useAuth';
+import type { SidebarProfile } from './layout.types';
 
 export interface NavItemConfig {
     href: string;
@@ -20,13 +21,18 @@ interface SharedSidebarLayoutProps {
     children: React.ReactNode;
     userEmail?: string;
     logoutAction: () => void;
-    profile?: any;
+    profile?: SidebarProfile | null;
     navItems: NavItemConfig[];
     basePath: string; // The root path to match exactly, e.g. '/admin', '/architect'
     title: React.ReactNode; // e.g., Admin<span className="text-[#00D4B3]">Panel</span>
 }
 
-const NavItem = ({ href, icon, label, isActive, isCollapsed }: any) => {
+interface SidebarNavItemProps extends NavItemConfig {
+    isActive: boolean;
+    isCollapsed: boolean;
+}
+
+const NavItem = ({ href, icon, label, isActive, isCollapsed }: SidebarNavItemProps) => {
     return (
         <Link
             href={href}

@@ -1,10 +1,108 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { headers, cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
+import {
+  createClient as createAdminClient,
+  type SupabaseClient,
+} from "@supabase/supabase-js";
 import bcrypt from "bcryptjs";
-import { SignJWT } from "jose";
+import { cookies, headers } from "next/headers";
+import {
+  buildOrganizationsUpsert,
+  buildProfileUpsert,
+  createAuthBridgeTokens,
+  createSupabaseCookieAdapter,
+  getErrorMessage,
+  mapOrganizations,
+  resolveRedirectTo,
+  setAuthBridgeCookies,
+} from "./auth-bridge-helpers";
+import type {
+  AuthBridgeProfileRecord,
+  LoginResult,
+  OrganizationUserRecord,
+  SofliaUserRecord,
+} from "./auth-bridge.types";
+import {
+  getCourseforgeJwtSecret,
+  getSofliaInboxEnv,
+  getSupabaseAnonKey,
+  getSupabaseServiceRoleKey,
+  getSupabaseUrl,
+  isProductionEnvironment,
+} from "@/lib/server/env";
 
-type LoginResult = { success: true; redirectTo: string } | { error: string };
+async function syncOrganizations(
+  courseforgeAdmin: SupabaseClient,
+  organizations: ReturnType<typeof mapOrganizations>,
+) {
+  if (organizations.length === 0) {
+    return;
+  }
+
+  const { error } = await courseforgeAdmin
+    .from("organizations")
+    .upsert(buildOrganizationsUpsert(organizations), { onConflict: "id" });
+
+  if (error) {
+    console.error("Error sincronizando organizaciones localmente:", error);
+  }
+}
+
+async function logLoginSession(
+  courseforgeAdmin: SupabaseClient,
+  userId: string,
+) {
+  try {
+    const headersList = await headers();
+    const ip = headersList.get("x-forwarded-for") || "unknown";
+    const userAgent = headersList.get("user-agent") || "unknown";
+
+    await courseforgeAdmin.from("login_history").insert({
+      user_id: userId,
+      ip_address: ip,
+      user_agent: userAgent,
+    });
+  } catch (error) {
+    console.error("Error logging session:", error);
+  }
+}
+
+async function syncProfileAndResolveRedirect(
+  courseforgeAdmin: SupabaseClient,
+  user: SofliaUserRecord,
+) {
+  try {
+    const { data: legacyProfile } = await courseforgeAdmin
+      .from("profiles")
+      .select("id, platform_role")
+      .eq("email", user.email)
+      .neq("id", user.id)
+      .single();
+
+    if (legacyProfile) {
+      const { error: migrationError } = await courseforgeAdmin
+        .from("profiles")
+        .update({ id: user.id })
+        .eq("id", legacyProfile.id);
+
+      if (migrationError) {
+        console.error("Error migrando perfil legacy:", migrationError);
+      }
+    }
+
+    const { data: profileData } = await courseforgeAdmin
+      .from("profiles")
+      .upsert(buildProfileUpsert(user), { onConflict: "id" })
+      .select("platform_role")
+      .single();
+
+    const profile = (profileData || null) as AuthBridgeProfileRecord | null;
+
+    return resolveRedirectTo(profile);
+  } catch (error) {
+    console.error("Error sincronizando el perfil o verificando roles:", error);
+    return "/builder";
+  }
+}
 
 export async function completeAuthBridgeLogin(
   identifier: string,
@@ -17,28 +115,29 @@ export async function completeAuthBridgeLogin(
 
   try {
     const cookieStore = await cookies();
-
-    const sofliaUrl = process.env.SOFLIA_INBOX_SUPABASE_URL!;
-    const sofliaKey = process.env.SOFLIA_INBOX_SUPABASE_KEY!;
-    const courseforgeJwtSecret = process.env.COURSEFORGE_JWT_SECRET!;
-
-    if (!sofliaUrl || !sofliaKey || !courseforgeJwtSecret) {
-      console.error("Missing env vars for auth bridge");
-      return { error: "Error de configuracion del servidor" };
-    }
+    const { url: sofliaUrl, key: sofliaKey } = getSofliaInboxEnv();
+    const supabaseUrl = getSupabaseUrl();
+    const supabaseAnonKey = getSupabaseAnonKey();
+    const supabaseServiceRoleKey = getSupabaseServiceRoleKey();
+    const jwtSecret = getCourseforgeJwtSecret();
+    const secureCookies = isProductionEnvironment();
 
     const sofliaAdmin = createAdminClient(sofliaUrl, sofliaKey);
-    const isEmail = identifier.includes("@");
-    const column = isEmail ? "email" : "username";
+    const courseforgeAdmin = createAdminClient(
+      supabaseUrl,
+      supabaseServiceRoleKey,
+    );
+    const identifierColumn = identifier.includes("@") ? "email" : "username";
 
-    const { data: user, error: userError } = await sofliaAdmin
+    const { data: rawUser, error: userError } = await sofliaAdmin
       .from("users")
       .select(
         "id, email, username, first_name, last_name, display_name, profile_picture_url, cargo_rol, is_banned, password_hash",
       )
-      .ilike(column, identifier)
+      .ilike(identifierColumn, identifier)
       .single();
 
+    const user = rawUser as SofliaUserRecord | null;
     if (userError || !user) {
       return { error: "Usuario no encontrado" };
     }
@@ -61,7 +160,7 @@ export async function completeAuthBridgeLogin(
       return { error: "Contrasena incorrecta" };
     }
 
-    const { data: orgUsers } = await sofliaAdmin
+    const { data: rawOrganizationUsers } = await sofliaAdmin
       .from("organization_users")
       .select(
         `
@@ -78,113 +177,23 @@ export async function completeAuthBridgeLogin(
       .eq("user_id", user.id)
       .eq("status", "active");
 
-    const organizations = (orgUsers || []).map((ou: any) => ({
-      id: ou.organizations?.id || ou.organization_id,
-      name: ou.organizations?.name || "",
-      slug: ou.organizations?.slug || "",
-      role: ou.role,
-      logo_url: ou.organizations?.logo_url || null,
-    }));
-
-    const activeOrgId = organizations.length > 0 ? organizations[0].id : null;
-
-    if (organizations.length > 0) {
-      const serviceRoleKey =
-        process.env.SUPABASE_SERVICE_ROLE_KEY ||
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-      const supabaseAdmin = createAdminClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        serviceRoleKey,
-      );
-
-      const orgsToUpsert = organizations.map((org: any) => ({
-        id: org.id,
-        name: org.name || "Organizacion",
-        slug: org.slug || org.id,
-        logo_url: org.logo_url,
-      }));
-
-      const { error: syncError } = await supabaseAdmin
-        .from("organizations")
-        .upsert(orgsToUpsert, { onConflict: "id" });
-
-      if (syncError) {
-        console.error(
-          "Error sincronizando organizaciones localmente:",
-          syncError,
-        );
-      }
-    }
-
-    const secret = new TextEncoder().encode(courseforgeJwtSecret);
-    const now = Math.floor(Date.now() / 1000);
-
-    const accessToken = await new SignJWT({
-      aud: "authenticated",
-      role: "authenticated",
-      sub: user.id,
-      email: user.email,
-      iss: "courseforge-auth-bridge",
-      app_metadata: {
-        provider: "soflia",
-        organization_ids: organizations.map((o: any) => o.id),
-        active_organization_id: activeOrgId,
-      },
-      user_metadata: {
-        username: user.username,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        display_name: user.display_name,
-        avatar_url: user.profile_picture_url,
-        cargo_rol: user.cargo_rol,
-      },
-    })
-      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
-      .setIssuedAt(now)
-      .setExpirationTime(now + 3600)
-      .setNotBefore(now)
-      .sign(secret);
-
-    const refreshToken = await new SignJWT({
-      sub: user.id,
-      type: "refresh",
-      iss: "courseforge-auth-bridge",
-    })
-      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
-      .setIssuedAt(now)
-      .setExpirationTime(now + 604800)
-      .sign(secret);
-
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-          set(name: string, value: string, options: CookieOptions) {
-            try {
-              if (rememberMe) {
-                options.maxAge = 60 * 60 * 24 * 365;
-              } else {
-                options.maxAge = options.maxAge || 60 * 60 * 24 * 7;
-              }
-              cookieStore.set({ name, value, ...options });
-            } catch (_error) {
-              // No-op in non-mutable contexts
-            }
-          },
-          remove(name: string, options: CookieOptions) {
-            try {
-              cookieStore.set({ name, value: "", ...options });
-            } catch (_error) {
-              // No-op in non-mutable contexts
-            }
-          },
-        },
-      },
+    const organizations = mapOrganizations(
+      ((rawOrganizationUsers || []) as unknown) as OrganizationUserRecord[],
     );
+    const activeOrgId = organizations[0]?.id || null;
+
+    await syncOrganizations(courseforgeAdmin, organizations);
+
+    const { accessToken, refreshToken } = await createAuthBridgeTokens({
+      jwtSecret,
+      user,
+      organizations,
+      activeOrgId,
+    });
+
+    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: createSupabaseCookieAdapter(cookieStore, rememberMe),
+    });
 
     const { error: setSessionError } = await supabase.auth.setSession({
       access_token: accessToken,
@@ -197,54 +206,13 @@ export async function completeAuthBridgeLogin(
     }
 
     try {
-      if (activeOrgId) {
-        cookieStore.set({
-          name: "cf_active_org",
-          value: activeOrgId,
-          maxAge: rememberMe ? 60 * 60 * 24 * 365 : 60 * 60 * 24 * 7,
-          path: "/",
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-        });
-      }
-
-      cookieStore.set({
-        name: "cf_user_orgs",
-        value: JSON.stringify(
-          organizations.map((o: any) => ({
-            id: o.id,
-            name: o.name,
-            slug: o.slug,
-            role: o.role,
-            logo_url: o.logo_url,
-          })),
-        ),
-        maxAge: rememberMe ? 60 * 60 * 24 * 365 : 60 * 60 * 24 * 7,
-        path: "/",
-        httpOnly: false,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-      });
-
-      cookieStore.set({
-        name: "cf_access_token",
-        value: accessToken,
-        maxAge: 3600,
-        path: "/",
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-      });
-
-      cookieStore.set({
-        name: "cf_remember_me",
-        value: rememberMe ? "true" : "false",
-        maxAge: rememberMe ? 60 * 60 * 24 * 365 : 60 * 60 * 24 * 7,
-        path: "/",
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
+      setAuthBridgeCookies({
+        cookieStore,
+        activeOrgId,
+        organizations,
+        accessToken,
+        rememberMe,
+        secure: secureCookies,
       });
     } catch (error) {
       console.error("Error setting cookies:", error);
@@ -255,86 +223,12 @@ export async function completeAuthBridgeLogin(
       .update({ last_login_at: new Date().toISOString() })
       .eq("id", user.id);
 
-    try {
-      const cfAdmin = createAdminClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      );
+    await logLoginSession(courseforgeAdmin, user.id);
 
-      const headersList = await headers();
-      const ip = headersList.get("x-forwarded-for") || "unknown";
-      const userAgent = headersList.get("user-agent") || "unknown";
-
-      await cfAdmin.from("login_history").insert({
-        user_id: user.id,
-        ip_address: ip,
-        user_agent: userAgent,
-      });
-    } catch (logError) {
-      console.error("Error logging session:", logError);
-    }
-
-    try {
-      const cfAdmin = createAdminClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      );
-
-      const { data: legacyProfile } = await cfAdmin
-        .from("profiles")
-        .select("id, platform_role")
-        .eq("email", user.email)
-        .neq("id", user.id)
-        .single();
-
-      if (legacyProfile) {
-        const { error: migrationError } = await cfAdmin
-          .from("profiles")
-          .update({ id: user.id })
-          .eq("id", legacyProfile.id);
-
-        if (migrationError) {
-          console.error("Error migrando perfil legacy:", migrationError);
-        }
-      }
-
-      const { data: profile } = await cfAdmin
-        .from("profiles")
-        .upsert(
-          {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            first_name: user.first_name,
-            last_name_father: user.last_name,
-            avatar_url: user.profile_picture_url,
-          },
-          { onConflict: "id" },
-        )
-        .select("platform_role")
-        .single();
-
-      if (
-        profile?.platform_role === "ADMIN" ||
-        profile?.platform_role === "SUPERADMIN"
-      ) {
-        return { success: true, redirectTo: "/admin" };
-      }
-
-      if (profile?.platform_role === "ARQUITECTO") {
-        return { success: true, redirectTo: "/architect" };
-      }
-
-      if (profile?.platform_role === "CONSTRUCTOR") {
-        return { success: true, redirectTo: "/builder" };
-      }
-    } catch (err) {
-      console.error("Error sincronizando el perfil o verificando roles:", err);
-    }
-
-    return { success: true, redirectTo: "/builder" };
-  } catch (err: any) {
-    console.error("completeAuthBridgeLogin error:", err);
-    return { error: "Ocurrio un error inesperado" };
+    const redirectTo = await syncProfileAndResolveRedirect(courseforgeAdmin, user);
+    return { success: true, redirectTo };
+  } catch (error) {
+    console.error("completeAuthBridgeLogin error:", error);
+    return { error: getErrorMessage(error) };
   }
 }

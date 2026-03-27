@@ -7,7 +7,6 @@ import {
     LessonMaterialState,
 } from '../types/materials.types';
 import { materialsService } from '../services/materials.service';
-import { ComponentViewer } from './ComponentViewer';
 import { MaterialsDodChecklist } from './MaterialsDodChecklist';
 import { IterationPanel } from './IterationPanel';
 import {
@@ -15,7 +14,6 @@ import {
     ExternalLink,
     Sparkles,
     ChevronDown,
-    ChevronUp,
     Loader2,
     CheckCircle,
     AlertTriangle,
@@ -85,19 +83,6 @@ export function LessonMaterialsCard({ lesson, onIterationStart, onValidateLesson
             BLOCKED: 'Bloqueado',
         };
         return labels[state];
-    };
-
-    const getStateBg = (state: LessonMaterialState) => {
-        const colors: Record<LessonMaterialState, string> = {
-            PENDING: 'bg-gray-100 dark:bg-white/5',
-            GENERATING: 'bg-blue-50 dark:bg-blue-900/20',
-            GENERATED: 'bg-blue-50 dark:bg-blue-900/20',
-            VALIDATING: 'bg-yellow-50 dark:bg-yellow-900/20',
-            APPROVABLE: 'bg-green-50 dark:bg-green-900/20',
-            NEEDS_FIX: 'bg-orange-50 dark:bg-orange-900/20',
-            BLOCKED: 'bg-red-50 dark:bg-red-900/20',
-        };
-        return colors[state];
     };
 
     const handleIterationStart = (instructions: string) => {

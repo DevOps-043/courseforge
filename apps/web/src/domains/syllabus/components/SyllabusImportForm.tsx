@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { TemarioEsp02, SyllabusModule } from '../types/syllabus.types';
+import { SyllabusModule } from '../types/syllabus.types';
 
 interface SyllabusImportFormProps {
   onImport: (modules: SyllabusModule[]) => void;
@@ -34,7 +34,7 @@ export function SyllabusImportForm({ onImport, onCancel }: SyllabusImportFormPro
         }
       }
       
-      // TODO: Implementar parser robusto de Markdown aquí
+      // El importador libre de Markdown queda fuera de este flujo; por ahora solo aceptamos JSON estructurado.
       setError('El formato no es reconocido. Por favor usa un JSON válido por ahora.');
       
     } catch (err) {

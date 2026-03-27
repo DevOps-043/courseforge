@@ -8,13 +8,11 @@ import {
   deleteInstructionalPlanAction,
   generateInstructionalPlanAction,
   getInstructionalPlanSnapshotAction,
-  updateInstructionalPlanContentAction,
   updateInstructionalPlanStatusAction,
   validateInstructionalPlanAction,
 } from "../actions/plan.actions";
 import {
   dismissUpstreamDirtyAction,
-  markDownstreamDirtyAction,
 } from "@/lib/server/pipeline-dirty-actions";
 import {
   PLAN_STATES,
@@ -22,12 +20,10 @@ import {
   REVIEWER_ROLE_SET,
 } from "@/lib/pipeline-constants";
 import { usePolling } from "@/shared/hooks/usePolling";
+import { useInstructionalPlanEditor } from "../hooks/useInstructionalPlanEditor";
 import { InstructionalPlanResultsView } from "./InstructionalPlanResultsView";
 import { InstructionalPlanSetupView } from "./InstructionalPlanSetupView";
-import type {
-  InstructionalPlanRecord,
-  PlanLessonItem,
-} from "./plan-view.types";
+import type { InstructionalPlanRecord } from "./plan-view.types";
 
 interface InstructionalPlanGenerationContainerProps {
   artifactId: string;
@@ -40,12 +36,6 @@ interface InstructionalPlanGenerationContainerProps {
 const PLAN_POLL_INTERVAL_MS = 3000;
 const PLAN_REFRESH_DELAY_MS = 2000;
 
-function cloneLesson(lesson: PlanLessonItem): PlanLessonItem {
-  return typeof structuredClone === "function"
-    ? structuredClone(lesson)
-    : (JSON.parse(JSON.stringify(lesson)) as PlanLessonItem);
-}
-
 export function InstructionalPlanGenerationContainer({
   artifactId,
   onNext,
@@ -53,11 +43,8 @@ export function InstructionalPlanGenerationContainer({
 }: InstructionalPlanGenerationContainerProps) {
   const router = useRouter();
   const [customPrompt, setCustomPrompt] = useState("");
-  const [editedLesson, setEditedLesson] = useState<PlanLessonItem | null>(null);
-  const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
   const [existingPlan, setExistingPlan] =
     useState<InstructionalPlanRecord | null>(null);
-  const [expandedLessonId, setExpandedLessonId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [loadingPlan, setLoadingPlan] = useState(true);
@@ -66,6 +53,22 @@ export function InstructionalPlanGenerationContainer({
   const canReview = REVIEWER_ROLE_SET.has(profile?.platform_role || "");
   const lastKnownPlanStateRef = useRef<string | null>(null);
   const lastKnownValidationRef = useRef(false);
+  const {
+    editedLesson,
+    editingLessonId,
+    expandedLessonId,
+    handleCancelEdit,
+    handleComponentFieldChange,
+    handleComponentTypeChange,
+    handleLessonFieldChange,
+    handleSaveLesson,
+    handleStartEdit,
+    handleToggleExpandedLesson,
+  } = useInstructionalPlanEditor({
+    artifactId,
+    existingPlan,
+    setExistingPlan,
+  });
 
   const fetchPlan = useCallback(
     async (silent = false) => {
@@ -236,126 +239,6 @@ export function InstructionalPlanGenerationContainer({
     }
   }, [artifactId]);
 
-  const handleStartEdit = useCallback((lesson: PlanLessonItem) => {
-    setEditingLessonId(lesson.lesson_id);
-    setEditedLesson(cloneLesson(lesson));
-    setExpandedLessonId(lesson.lesson_id);
-  }, []);
-
-  const handleCancelEdit = useCallback(() => {
-    setEditingLessonId(null);
-    setEditedLesson(null);
-  }, []);
-
-  const updateEditedLesson = useCallback(
-    (updater: (lesson: PlanLessonItem) => PlanLessonItem) => {
-      setEditedLesson((currentLesson) =>
-        currentLesson ? updater(currentLesson) : currentLesson,
-      );
-    },
-    [],
-  );
-
-  const handleLessonFieldChange = useCallback(
-    (field: "learning_objective" | "measurable_criteria", value: string) => {
-      updateEditedLesson((currentLesson) => ({
-        ...currentLesson,
-        [field]: value,
-      }));
-    },
-    [updateEditedLesson],
-  );
-
-  const handleComponentFieldChange = useCallback(
-    (
-      componentIndex: number,
-      field: "description" | "duration",
-      value: string,
-    ) => {
-      updateEditedLesson((currentLesson) => {
-        const components = [...currentLesson.components];
-        const component = components[componentIndex];
-
-        if (!component) {
-          return currentLesson;
-        }
-
-        components[componentIndex] = {
-          ...component,
-          [field]: value,
-        };
-
-        return {
-          ...currentLesson,
-          components,
-        };
-      });
-    },
-    [updateEditedLesson],
-  );
-
-  const handleComponentTypeChange = useCallback(
-    (componentIndex: number, newType: string) => {
-      updateEditedLesson((currentLesson) => {
-        const components = [...currentLesson.components];
-        const component = components[componentIndex];
-
-        if (!component) {
-          return currentLesson;
-        }
-
-        components[componentIndex] = {
-          ...component,
-          type: newType,
-        };
-
-        return {
-          ...currentLesson,
-          components,
-        };
-      });
-    },
-    [updateEditedLesson],
-  );
-
-  const handleSaveLesson = useCallback(async () => {
-    if (!editedLesson || !editingLessonId || !existingPlan) {
-      return;
-    }
-
-    const previousPlan = existingPlan;
-    const updatedLessonPlans = existingPlan.lesson_plans.map((lesson) =>
-      lesson.lesson_id === editingLessonId ? editedLesson : lesson,
-    );
-
-    try {
-      setExistingPlan({
-        ...existingPlan,
-        lesson_plans: updatedLessonPlans,
-      });
-      setEditingLessonId(null);
-      setEditedLesson(null);
-
-      const result = await updateInstructionalPlanContentAction(
-        artifactId,
-        updatedLessonPlans,
-      );
-
-      if (!result.success) {
-        toast.error("Error al guardar cambios");
-        setExistingPlan(previousPlan);
-        return;
-      }
-
-      toast.success("Leccion actualizada correctamente");
-      await markDownstreamDirtyAction(artifactId, 3, "Plan Instruccional");
-    } catch (error) {
-      console.error(error);
-      toast.error("Error de conexion");
-      setExistingPlan(previousPlan);
-    }
-  }, [artifactId, editedLesson, editingLessonId, existingPlan]);
-
   const handleApprove = useCallback(async () => {
     await updateInstructionalPlanStatusAction(
       artifactId,
@@ -429,12 +312,6 @@ export function InstructionalPlanGenerationContainer({
     );
     router.refresh();
   }, [artifactId, handleGenerate, router]);
-
-  const handleToggleExpandedLesson = useCallback((lessonId: string) => {
-    setExpandedLessonId((currentLessonId) =>
-      currentLessonId === lessonId ? null : lessonId,
-    );
-  }, []);
 
   if (loadingPlan) {
     return (

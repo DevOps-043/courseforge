@@ -3,15 +3,15 @@ import type { LucideIcon } from "lucide-react";
 export interface Artifact {
   id: string;
   idea_central: string;
-  descripcion: any;
+  descripcion: unknown;
   state: string;
   created_at: string;
   created_by: string;
   syllabus_state?: string;
   plan_state?: string;
   profiles?: {
-    username: string;
-    email: string;
+    username: string | null;
+    email: string | null;
   } | null;
   production_status?: {
     total: number;

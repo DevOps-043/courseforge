@@ -13,6 +13,15 @@ interface SyllabusModule {
   lessons: SyllabusLesson[];
 }
 
+interface CurationPreviewSource {
+  lesson_title?: string;
+  lesson_id?: string;
+}
+
+interface CurationPreviewPayload {
+  sources?: CurationPreviewSource[];
+}
+
 export const DEFAULT_PROMPT_PREVIEW = `Prompt optimizado con reglas de curaduria, enfoque en accesibilidad (sin descargas), validacion de URLs y estructura JSON estricta. Utiliza busquedas en tiempo real para verificar la disponibilidad.`;
 
 export const GPT_URL =
@@ -67,7 +76,7 @@ export function parseCurationJsonPreview(value: string) {
   }
 
   try {
-    const parsed = JSON.parse(value);
+    const parsed = JSON.parse(value) as CurationPreviewPayload;
     if (!parsed.sources || !Array.isArray(parsed.sources)) {
       return {
         error: 'El JSON debe contener un array "sources".',
@@ -85,7 +94,7 @@ export function parseCurationJsonPreview(value: string) {
     const lessonTitles = [
       ...new Set(
         parsed.sources.map(
-          (source: any) =>
+          (source) =>
             source.lesson_title || source.lesson_id || "Sin titulo",
         ),
       ),

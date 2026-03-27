@@ -1,10 +1,13 @@
 import { Handler } from '@netlify/functions';
-import { createClient } from '@supabase/supabase-js';
-import { GoogleGenAI } from '@google/genai';
-
-// Setup
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+import {
+    createGeminiClient,
+    createServiceRoleClient,
+} from './shared/bootstrap';
+import {
+    jsonResponse,
+    methodNotAllowedResponse,
+    parseJsonBody,
+} from './shared/http';
 
 const VIDEO_PROMPT_SYSTEM = `
 Eres un experto Prompt Engineer para Google VEO (Modelos BO2/BO3) y Director de Fotografía.
@@ -46,30 +49,39 @@ Devuelve un JSON válido con la siguiente estructura:
 }
 `;
 
+interface VideoPromptResultItem {
+    generated_prompt: string;
+    original_description: string;
+    scene_index: number;
+}
+
+interface VideoPromptResponsePayload {
+    prompts: VideoPromptResultItem[];
+}
+
+function getErrorMessage(error: unknown) {
+    return error instanceof Error ? error.message : 'Unknown error';
+}
+
 export const handler: Handler = async (event) => {
     if (event.httpMethod !== 'POST') {
-        return { statusCode: 405, body: 'Method Not Allowed' };
+        return methodNotAllowedResponse();
     }
-
-    let body;
-    try {
-        body = JSON.parse(event.body || '{}');
-    } catch {
-        return { statusCode: 400, body: 'Bad Request: Invalid JSON' };
-    }
-
-    const { componentId, storyboard, userToken } = body;
-
-    if (!componentId || !storyboard) {
-        return { statusCode: 400, body: 'Missing required fields' };
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    const genAI = new GoogleGenAI({
-        apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || '',
-    });
 
     try {
+        const body = parseJsonBody<{
+            componentId?: string;
+            storyboard?: unknown;
+            userToken?: string;
+        }>(event);
+        const { componentId, storyboard } = body;
+
+        if (!componentId || !storyboard) {
+            return { statusCode: 400, body: 'Missing required fields' };
+        }
+
+        const supabase = createServiceRoleClient();
+        const genAI = createGeminiClient();
         console.log(`[Video Prompts] Generating for component: ${componentId}`);
 
         // 1. Prepare Input for Gemini
@@ -94,7 +106,7 @@ export const handler: Handler = async (event) => {
             throw new Error('No valid JSON in response');
         }
 
-        const result = JSON.parse(jsonMatch[0]);
+        const result = JSON.parse(jsonMatch[0]) as VideoPromptResponsePayload;
 
         // 3. Update Component Assets
         // Fetch existing assets first
@@ -107,8 +119,8 @@ export const handler: Handler = async (event) => {
         const currentAssets = component?.assets || {};
 
         // Format prompts as a readable string for the text area
-        const promptsText = result.prompts.map((p: any) =>
-            `[Escena ${p.scene_index}] ${p.generated_prompt}`
+        const promptsText = result.prompts.map((promptItem) =>
+            `[Escena ${promptItem.scene_index}] ${promptItem.generated_prompt}`
         ).join('\n\n');
 
         const newAssets = {
@@ -125,16 +137,10 @@ export const handler: Handler = async (event) => {
 
         console.log(`[Video Prompts] Assets updated for ${componentId}`);
 
-        return {
-            statusCode: 200,
-            body: JSON.stringify({ success: true, prompts: promptsText }),
-        };
+        return jsonResponse({ success: true, prompts: promptsText });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('[Video Prompts] Error:', error);
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ success: false, error: error.message }),
-        };
+        return jsonResponse({ success: false, error: getErrorMessage(error) }, 500);
     }
 };

@@ -1,34 +1,21 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { Loader2, Upload, Image as ImageIcon, X } from 'lucide-react';
+import { Loader2, Upload, Image as ImageIcon } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 import { toast } from 'sonner';
+import {
+    formatThumbnailUrl,
+} from '@/domains/publication/lib/publication-client';
+import type { PublicationCourseData } from '@/domains/publication/types/publication.types';
 
 interface CourseDataFormProps {
-    initialData?: {
-        category: string;
-        level: string;
-        instructor_email: string;
-        slug: string;
-        price: number;
-        thumbnail_url?: string;
-    };
-    onDataChange: (data: any) => void;
+    initialData?: PublicationCourseData;
+    onDataChange: (data: PublicationCourseData) => void;
 }
 
-const formatThumbnailUrl = (url?: string) => {
-    if (!url) return '';
-    const driveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
-    if (driveMatch && driveMatch[1]) {
-        // Standard view endpoint for Google Drive images bypassing HTML blocks
-        return `https://drive.google.com/uc?export=view&id=${driveMatch[1]}`;
-    }
-    return url;
-};
-
 export function CourseDataForm({ initialData, onDataChange }: CourseDataFormProps) {
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<PublicationCourseData>({
         category: initialData?.category || 'ia',
         level: initialData?.level || 'beginner',
         instructor_email: initialData?.instructor_email || '',
@@ -69,23 +56,26 @@ export function CourseDataForm({ initialData, onDataChange }: CourseDataFormProp
 
             handleChange('thumbnail_url', publicUrl);
             toast.success("Imagen subida correctamente");
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Upload error:', error);
-            toast.error("Error al subir imagen: " + error.message);
+            toast.error("Error al subir imagen: " + (error instanceof Error ? error.message : 'Error desconocido'));
         } finally {
             setIsUploading(false);
         }
     };
 
-    const handleChange = (field: string, value: any) => {
-        let finalValue = value;
+    const handleChange = (
+        field: keyof PublicationCourseData,
+        value: string | number,
+    ) => {
+        let finalValue: string | number | undefined = value;
         
         // Fix for Google Drive view links to display as image correctly
         if (field === 'thumbnail_url' && typeof finalValue === 'string') {
             finalValue = formatThumbnailUrl(finalValue);
         }
 
-        const newData = { ...formData, [field]: finalValue };
+        const newData: PublicationCourseData = { ...formData, [field]: finalValue };
         setFormData(newData);
         onDataChange(newData);
     };

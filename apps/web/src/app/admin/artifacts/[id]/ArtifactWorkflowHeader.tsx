@@ -4,16 +4,16 @@ import { AlertCircle, CheckCircle2 } from "lucide-react";
 
 interface ArtifactWorkflowHeaderProps {
   artifact: {
-    courseId?: string;
+    courseId?: string | null;
     created_at: string;
     id: string;
-    idea_central?: string;
+    idea_central?: string | null;
     state: string;
   };
   currentStatusStyle: string;
 }
 
-function getArtifactTitle(title?: string) {
+function getArtifactTitle(title?: string | null) {
   return (title || "Artefacto sin nombre")
     .replace(/(TEMA:|IDEA PRINCIPAL:|PÃƒÅ¡BLICO:|RESULTADOS:)/g, "")
     .split(".")[0]
@@ -31,7 +31,7 @@ export function ArtifactWorkflowHeader({
         <div className="flex items-center gap-3 mb-1">
           <h1
             className="text-xl font-bold text-gray-900 dark:text-white truncate"
-            title={artifact.idea_central}
+            title={artifact.idea_central || undefined}
           >
             {getArtifactTitle(artifact.idea_central)}
           </h1>

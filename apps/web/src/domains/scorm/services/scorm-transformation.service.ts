@@ -4,7 +4,34 @@ import JSZip from 'jszip';
 import * as cheerio from 'cheerio';
 import sanitizeHtml from 'sanitize-html';
 import { randomUUID } from 'crypto';
-import { ComponentType, MaterialComponent, ReadingContent } from '../../materials/types/materials.types';
+import { ReadingContent } from '../../materials/types/materials.types';
+import type { ScormManifest, ScormResource } from '../types';
+
+interface ScormImportRecord {
+    id: string;
+    manifest_raw: ScormManifest;
+    storage_path: string;
+}
+
+interface ArtifactRecord {
+    id: string;
+}
+
+interface MaterialsRecord {
+    id: string;
+}
+
+interface SyllabusLessonSummary {
+    duration_minutes: number;
+    id: string;
+    title: string;
+}
+
+interface SyllabusModuleSummary {
+    id: string;
+    lessons: SyllabusLessonSummary[];
+    title: string;
+}
 
 export class ScormTransformationService {
 
@@ -14,17 +41,18 @@ export class ScormTransformationService {
         // 1. Get Import Record
         const { data: importRecord, error } = await supabase
             .from('scorm_imports')
-            .select('*')
+            .select('id, manifest_raw, storage_path')
             .eq('id', importId)
             .single();
 
         if (error || !importRecord) throw new Error('Import not found');
+        const typedImportRecord = importRecord as ScormImportRecord;
 
         // 2. Download Zip 
         const { data: zipData, error: downloadError } = await supabase
             .storage
             .from('scorm-packages')
-            .download(importRecord.storage_path);
+            .download(typedImportRecord.storage_path);
 
         if (downloadError || !zipData) throw new Error('Failed to download SCORM package');
 
@@ -32,10 +60,10 @@ export class ScormTransformationService {
         const zip = await JSZip.loadAsync(zipBuffer);
 
         // 3. Prepare Data for Enrichment
-        const rawManifest = importRecord.manifest_raw;
+        const rawManifest = typedImportRecord.manifest_raw;
         const courseTitle = rawManifest.title;
         const orgItems = rawManifest.organizations[0]?.items || [];
-        const modulesList = orgItems.map((i: any) => i.title);
+        const modulesList = orgItems.map((item) => item.title);
 
         // 4. AI Enrichment (Metadata)
         const enrichmentService = new ScormEnrichmentService();
@@ -69,47 +97,52 @@ export class ScormTransformationService {
                 state: 'DRAFT', // Start as DRAFT
                 created_by: userId
             })
-            .select()
+            .select('id')
             .single();
 
-        if (artifactError) throw new Error('Failed to create artifact: ' + artifactError.message);
+        if (artifactError || !artifact) {
+            throw new Error('Failed to create artifact: ' + artifactError?.message);
+        }
+        const typedArtifact = artifact as ArtifactRecord;
 
         // 6. Construct Syllabus Structure & Extract Content
-        const syllabusModules: any[] = [];
-        const resourcesMap = new Map<string, any>();
+        const syllabusModules: SyllabusModuleSummary[] = [];
+        const resourcesMap = new Map<string, ScormResource>();
 
         // Index resources for quick lookup
-        if (rawManifest.resources) {
-            const resList = Array.isArray(rawManifest.resources) ? rawManifest.resources : [rawManifest.resources];
-            resList.forEach((r: any) => resourcesMap.set(r.identifier, r));
+        for (const resource of rawManifest.resources || []) {
+            resourcesMap.set(resource.identifier, resource);
         }
 
         // Create Materials Record
         const { data: materials, error: materialsError } = await supabase
             .from('materials')
             .insert({
-                artifact_id: artifact.id,
+                artifact_id: typedArtifact.id,
                 state: 'PHASE3_DRAFT',
                 version: 1,
                 prompt_version: 'scorm_import'
             })
-            .select()
+            .select('id')
             .single();
 
-        if (materialsError) throw new Error('Failed to create materials: ' + materialsError.message);
+        if (materialsError || !materials) {
+            throw new Error('Failed to create materials: ' + materialsError?.message);
+        }
+        const typedMaterials = materials as MaterialsRecord;
 
         // Iterate structure
-        for (const [modIndex, modItem] of orgItems.entries()) {
+        for (const modItem of orgItems) {
             const moduleId = randomUUID();
-            const moduleLessons: any[] = [];
+            const moduleLessons: SyllabusLessonSummary[] = [];
 
             const children = modItem.children || [];
 
-            for (const [lessIndex, lessItem] of children.entries()) {
+            for (const lessItem of children) {
                 const lessonId = randomUUID();
 
                 // Extract Content for this lesson
-                let components: any[] = [];
+                const components: ReadingContent[] = [];
                 if (lessItem.resourceRef) {
                     const resource = resourcesMap.get(lessItem.resourceRef);
                     if (resource && resource.href) {
@@ -124,7 +157,7 @@ export class ScormTransformationService {
                 const { data: matLesson, error: matLessonError } = await supabase
                     .from('material_lessons')
                     .insert({
-                        materials_id: materials.id,
+                        materials_id: typedMaterials.id,
                         lesson_id: lessonId,
                         lesson_title: lessItem.title,
                         module_id: moduleId,
@@ -165,8 +198,8 @@ export class ScormTransformationService {
 
         // 7. Create Syllabus
         await supabase.from('syllabus').insert({
-            artifact_id: artifact.id,
-            modules: syllabusModules as any,
+            artifact_id: typedArtifact.id,
+            modules: syllabusModules,
             state: 'STEP_DRAFT'
         });
 
@@ -175,12 +208,12 @@ export class ScormTransformationService {
             .from('scorm_imports')
             .update({
                 status: 'COMPLETED',
-                artifact_id: artifact.id,
+                artifact_id: typedArtifact.id,
                 completed_at: new Date().toISOString()
             })
             .eq('id', importId);
 
-        return { artifactId: artifact.id };
+        return { artifactId: typedArtifact.id };
     }
 
     private async extractResourceContent(zip: JSZip, href: string): Promise<ReadingContent | null> {

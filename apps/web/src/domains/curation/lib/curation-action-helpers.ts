@@ -1,3 +1,4 @@
+import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { CURATION_STATES, PLAN_STATES } from "@/lib/pipeline-constants";
 
 export interface CurationPlanComponent {
@@ -161,7 +162,6 @@ interface TriggerCurationGenerationParams {
   accessToken: string;
   artifactId: string;
   attemptNumber: number;
-  baseUrl: string;
   components: CurationPlanComponent[];
   courseName: string;
   curationId?: string;
@@ -174,7 +174,6 @@ export async function triggerCurationGeneration({
   accessToken,
   artifactId,
   attemptNumber,
-  baseUrl,
   components,
   courseName,
   curationId,
@@ -182,10 +181,9 @@ export async function triggerCurationGeneration({
   ideaCentral,
   resume,
 }: TriggerCurationGenerationParams) {
-  const response = await fetch(`${baseUrl}/.netlify/functions/curation-background`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  return callBackgroundFunctionJson(
+    "curation-background",
+    {
       curationId,
       artifactId,
       components,
@@ -195,23 +193,26 @@ export async function triggerCurationGeneration({
       attemptNumber,
       gaps,
       resume,
-    }),
-  });
-
-  return response;
+    },
+    {
+      fallbackError: "Error al iniciar la curaduria",
+      localHandlerLoader: () =>
+        import("../../../../netlify/functions/curation-background"),
+    },
+  );
 }
 
-export async function triggerCurationValidation(
-  artifactId: string,
-  userToken: string,
-  baseUrl: string,
-) {
-  return fetch(`${baseUrl}/.netlify/functions/validate-curation-background`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+export async function triggerCurationValidation(artifactId: string, userToken: string) {
+  return callBackgroundFunctionJson(
+    "validate-curation-background",
+    {
       artifactId,
       userToken,
-    }),
-  });
+    },
+    {
+      fallbackError: "Error en el servicio de validacion de curaduria",
+      localHandlerLoader: () =>
+        import("../../../../netlify/functions/validate-curation-background"),
+    },
+  );
 }

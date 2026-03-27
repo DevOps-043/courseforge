@@ -3,6 +3,31 @@ import { getActiveOrganizationId } from '@/utils/auth/session';
 import Link from 'next/link';
 import { ArrowUpRight, Users, Code, Activity, Server, UserPlus } from 'lucide-react';
 
+interface LoginHistoryRow {
+  login_at: string;
+  user_id: string;
+}
+
+interface RecentProfileRow {
+  email?: string | null;
+  first_name?: string | null;
+  id: string;
+  last_name_father?: string | null;
+  username?: string | null;
+}
+
+interface RecentUser extends RecentProfileRow {
+  last_seen_at?: string | null;
+}
+
+interface StatCardProps {
+  icon: React.ReactNode;
+  positive?: boolean;
+  title: string;
+  trend: string;
+  val: string;
+}
+
 export default async function AdminPage() {
   const supabase = await createClient();
   const activeOrgId = await getActiveOrganizationId();
@@ -10,7 +35,7 @@ export default async function AdminPage() {
   // Fetch Stats
   const { count: totalUsers } = await supabase
     .from('profiles')
-    .select('*', { count: 'exact', head: true });
+    .select('id', { count: 'exact', head: true });
 
   // 1. Get recent logins (fetch enough to get 5 unique users)
   const { data: recentLogins } = await supabase
@@ -21,7 +46,7 @@ export default async function AdminPage() {
 
   // 2. Client-side dedupe to get unique users and their latest login
   const uniqueLogins = new Map<string, string>();
-  recentLogins?.forEach((log: any) => {
+  (recentLogins as LoginHistoryRow[] | null)?.forEach((log) => {
     if (!uniqueLogins.has(log.user_id)) {
       uniqueLogins.set(log.user_id, log.login_at);
     }
@@ -30,21 +55,31 @@ export default async function AdminPage() {
   const topUserIds = Array.from(uniqueLogins.keys()).slice(0, 5);
 
   // 3. Fetch profiles for these users
-  const { data: profilesData } = await supabase
-    .from('profiles')
-    .select('*')
-    .in('id', topUserIds);
+  const { data: profilesData } = topUserIds.length > 0
+    ? await supabase
+        .from('profiles')
+        .select('id, first_name, last_name_father, username, email')
+        .in('id', topUserIds)
+    : { data: [] as RecentProfileRow[] };
 
   // 4. Merge ordered data
-  const recentUsers = topUserIds.map(id => {
-      const profile = profilesData?.find(p => p.id === id);
-      return profile ? { ...profile, last_seen_at: uniqueLogins.get(id) } : null;
-  }).filter(Boolean);
+  const recentUsers: RecentUser[] = [];
+  for (const id of topUserIds) {
+    const profile = profilesData?.find((item) => item.id === id);
+    if (!profile) {
+      continue;
+    }
+
+    recentUsers.push({
+      ...profile,
+      last_seen_at: uniqueLogins.get(id) ?? undefined,
+    });
+  }
 
   // Fetch real artifact count filtered by organization
   let artifactCountQuery = supabase
     .from('artifacts')
-    .select('*', { count: 'exact', head: true });
+    .select('id', { count: 'exact', head: true });
 
   if (activeOrgId) {
     artifactCountQuery = artifactCountQuery.eq('organization_id', activeOrgId);
@@ -101,7 +136,7 @@ export default async function AdminPage() {
             <button className="text-sm text-[#00D4B3] hover:underline">Ver todo</button>
           </div>
           <div className="space-y-4">
-            {recentUsers?.map((user: any) => (
+            {recentUsers?.map((user) => (
               <div key={user.id} className="flex items-center gap-4 p-3 hover:bg-gray-50 dark:hover:bg-[#1E2329] rounded-xl transition-colors cursor-default group border border-transparent hover:border-gray-100 dark:hover:border-transparent">
                 <div className="w-10 h-10 rounded-full bg-[#00D4B3]/10 flex items-center justify-center text-[#00D4B3]">
                   <UserPlus size={18} />
@@ -168,7 +203,7 @@ function timeAgo(dateString: string) {
   return `Hace ${days} días`;
 }
 
-function StatCard({ title, val, trend, icon, positive = true }: any) {
+function StatCard({ title, val, trend, icon, positive = true }: StatCardProps) {
     return (
         <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-5 hover:border-gray-300 dark:hover:border-[#6C757D]/30 transition-all shadow-sm dark:shadow-none">
             <div className="flex items-start justify-between mb-4">
@@ -188,12 +223,15 @@ function StatCard({ title, val, trend, icon, positive = true }: any) {
 }
 
 function StatusItem({ label, status }: { label: string, status: 'active' | 'down' }) {
+    const isActive = status === 'active';
     return (
         <div className="flex items-center justify-between">
             <span className="text-sm text-gray-600 dark:text-[#94A3B8]">{label}</span>
             <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-green-600 dark:text-green-400">Operativo</span>
-                <span className="w-2 h-2 rounded-full bg-green-500 dark:bg-green-400 animate-pulse" />
+                <span className={`text-xs font-medium ${isActive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                    {isActive ? 'Operativo' : 'No disponible'}
+                </span>
+                <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-green-500 dark:bg-green-400 animate-pulse' : 'bg-red-500 dark:bg-red-400'}`} />
             </div>
         </div>
     )

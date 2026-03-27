@@ -1,6 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { jwtVerify, SignJWT } from 'jose'
+import { jwtVerify, SignJWT, type JWTPayload } from 'jose'
+
+interface OrganizationSummary {
+  id: string
+  logo_url?: string
+  name: string
+  role: string
+  slug: string
+}
+
+interface SwitchOrganizationRequestBody {
+  organizationId?: string
+}
+
+interface SwitchOrgAppMetadata {
+  active_organization_id?: string | null
+  organization_ids?: string[]
+}
+
+interface SwitchOrgJwtPayload extends JWTPayload {
+  app_metadata?: SwitchOrgAppMetadata
+  email?: string
+  user_metadata?: Record<string, unknown>
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Unknown error'
+}
 
 /**
  * POST /api/auth/switch-organization
@@ -14,11 +41,12 @@ import { jwtVerify, SignJWT } from 'jose'
  * 2. Validar que el usuario pertenece a la org destino
  * 3. Firmar nuevo JWT con active_organization_id actualizado
  * 4. Actualizar cookies: cf_access_token, cf_active_org
- * 5. Retornar la organización activa
+ * 5. Retornar la organizaciÃ³n activa
  */
 export async function POST(request: NextRequest) {
   try {
-    const { organizationId } = await request.json()
+    const { organizationId } =
+      (await request.json()) as SwitchOrganizationRequestBody
 
     if (!organizationId) {
       return NextResponse.json(
@@ -27,7 +55,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ── Verificar JWT actual ──
     const cookieStore = await cookies()
     const token = cookieStore.get('cf_access_token')?.value
 
@@ -42,51 +69,52 @@ export async function POST(request: NextRequest) {
     if (!courseforgeJwtSecret) {
       console.error('[switch-org] COURSEFORGE_JWT_SECRET not configured')
       return NextResponse.json(
-        { error: 'Error de configuración del servidor' },
+        { error: 'Error de configuraciÃ³n del servidor' },
         { status: 500 }
       )
     }
 
     const secretKey = new TextEncoder().encode(courseforgeJwtSecret)
 
-    let payload: any
+    let payload: SwitchOrgJwtPayload
     try {
       const verified = await jwtVerify(token, secretKey, { algorithms: ['HS256'] })
-      payload = verified.payload
-    } catch (err: any) {
+      payload = verified.payload as SwitchOrgJwtPayload
+    } catch {
       return NextResponse.json(
-        { error: 'Token inválido o expirado' },
+        { error: 'Token invÃ¡lido o expirado' },
         { status: 401 }
       )
     }
 
-    // ── Validar membresía ──
     const appMetadata = payload.app_metadata || {}
     const organizationIds: string[] = appMetadata.organization_ids || []
 
     if (!organizationIds.includes(organizationId)) {
       return NextResponse.json(
-        { error: 'No tienes acceso a esta organización' },
+        { error: 'No tienes acceso a esta organizaciÃ³n' },
         { status: 403 }
       )
     }
 
-    // ── Obtener datos de la org desde la cookie cf_user_orgs ──
     const orgsRaw = cookieStore.get('cf_user_orgs')?.value
-    let organizations: Array<{ id: string; name: string; slug: string; role: string; logo_url?: string }> = []
+    let organizations: OrganizationSummary[] = []
     try {
-      if (orgsRaw) organizations = JSON.parse(orgsRaw)
-    } catch { /* ignore */ }
+      if (orgsRaw) {
+        organizations = JSON.parse(orgsRaw) as OrganizationSummary[]
+      }
+    } catch {
+      // ignore invalid cookie payload
+    }
 
-    const targetOrg = organizations.find(o => o.id === organizationId)
+    const targetOrg = organizations.find((organization) => organization.id === organizationId)
     if (!targetOrg) {
       return NextResponse.json(
-        { error: 'Organización no encontrada en tu lista' },
+        { error: 'OrganizaciÃ³n no encontrada en tu lista' },
         { status: 404 }
       )
     }
 
-    // ── Firmar nuevo JWT con org actualizada ──
     const now = Math.floor(Date.now() / 1000)
 
     const newAccessToken = await new SignJWT({
@@ -103,11 +131,10 @@ export async function POST(request: NextRequest) {
     })
       .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
       .setIssuedAt(now)
-      .setExpirationTime(now + 3600) // 1 hora
+      .setExpirationTime(now + 3600)
       .setNotBefore(now)
       .sign(secretKey)
 
-    // ── Actualizar cookies ──
     const rememberMe = cookieStore.get('cf_remember_me')?.value === 'true'
     const maxAge = rememberMe ? 60 * 60 * 24 * 365 : 60 * 60 * 24 * 7
     const isProduction = process.env.NODE_ENV === 'production'
@@ -142,8 +169,8 @@ export async function POST(request: NextRequest) {
         logo_url: targetOrg.logo_url,
       },
     })
-  } catch (error: any) {
-    console.error('[switch-org] Error:', error)
+  } catch (error: unknown) {
+    console.error('[switch-org] Error:', getErrorMessage(error))
     return NextResponse.json(
       { error: 'Error interno del servidor' },
       { status: 500 }

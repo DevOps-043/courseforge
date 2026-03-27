@@ -3,6 +3,7 @@
 import React from 'react';
 import { LayoutDashboard, Users, FileCode, Settings } from 'lucide-react';
 import SharedSidebarLayout, { NavItemConfig } from '@/components/layout/SharedSidebarLayout';
+import type { SidebarProfile } from '@/components/layout/layout.types';
 
 export default function AdminLayoutClient({
     children,
@@ -13,7 +14,7 @@ export default function AdminLayoutClient({
     children: React.ReactNode;
     userEmail?: string;
     logoutAction: () => void;
-    profile?: any;
+    profile?: SidebarProfile | null;
 }) {
     const navItems: NavItemConfig[] = [
         { href: '/admin', icon: <LayoutDashboard size={22} />, label: 'Dashboard' },

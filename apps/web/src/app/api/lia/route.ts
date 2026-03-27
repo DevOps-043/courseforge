@@ -17,15 +17,7 @@ import {
   extractGroundingSources,
   getActiveOrgIdFromCookieHeader,
 } from "@/lib/lia-route-helpers";
-
-interface LiaRequestPayload {
-  actionResult?: string;
-  computerUseMode?: boolean;
-  domMap?: string;
-  messages: Array<{ content: string; role: string }>;
-  screenshot?: string;
-  url?: string;
-}
+import type { LiaRequestPayload } from "@/lib/lia-types";
 
 export async function POST(req: NextRequest) {
   try {
@@ -137,10 +129,13 @@ export async function POST(req: NextRequest) {
         sources: sources.length > 0 ? sources : undefined,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error in Lia API:", error);
     return NextResponse.json(
-      { error: "Internal Server Error", details: error.message },
+      {
+        error: "Internal Server Error",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
       { status: 500 },
     );
   }

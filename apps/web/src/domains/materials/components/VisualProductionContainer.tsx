@@ -8,7 +8,13 @@ import {
     saveMaterialAssetsAction,
     updateProductionStatusAction,
 } from '../actions/production.actions';
-import { MaterialComponent, MaterialLesson, ProductionStatus } from '../types/materials.types';
+import {
+    MaterialAssets,
+    MaterialComponent,
+    MaterialLesson,
+    ProductionStatus,
+    StoryboardItem,
+} from '../types/materials.types';
 import { Loader2, Clapperboard, CheckCircle2, Clock, AlertCircle, Save } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -16,7 +22,7 @@ interface VisualProductionContainerProps {
     artifactId: string;
     productionComplete?: boolean;
     onStatusChange?: (isComplete: boolean) => void;
-    profile?: any;
+    profile?: unknown;
 }
 
 interface ProductionGroup {
@@ -26,16 +32,10 @@ interface ProductionGroup {
 
 // Track pending changes for each component
 interface PendingAssets {
-    [componentId: string]: {
-        slides_url?: string;
-        video_url?: string;
-        screencast_url?: string;
-        b_roll_prompts?: string;
-        final_video_url?: string;
-    };
+    [componentId: string]: Partial<MaterialAssets>;
 }
 
-export function VisualProductionContainer({ artifactId, productionComplete, onStatusChange, profile }: VisualProductionContainerProps) {
+export function VisualProductionContainer({ artifactId, productionComplete, onStatusChange }: VisualProductionContainerProps) {
     const router = useRouter();
     const { materials, getLessonComponents, refresh } = useMaterials(artifactId);
     const [productionItems, setProductionItems] = useState<ProductionGroup[]>([]);
@@ -53,8 +53,6 @@ export function VisualProductionContainer({ artifactId, productionComplete, onSt
 
             setIsLoading(true);
             try {
-                const items: ProductionGroup[] = [];
-
                 // Process lessons in parallel chunks to avoid blocking but ensure speed
                 const promises = materials.lessons.map(async (lesson) => {
                     const components = await getLessonComponents(lesson.id);
@@ -94,7 +92,10 @@ export function VisualProductionContainer({ artifactId, productionComplete, onSt
         fetchProductionItems();
     }, [materials, getLessonComponents]);
 
-    const handleGeneratePrompts = async (componentId: string, storyboard: any[]) => {
+    const handleGeneratePrompts = async (
+        componentId: string,
+        storyboard: StoryboardItem[],
+    ): Promise<string> => {
         const result = await generateVideoPromptsAction(componentId, storyboard);
         if (!result.success) throw new Error(result.error);
 
@@ -102,18 +103,18 @@ export function VisualProductionContainer({ artifactId, productionComplete, onSt
         // For simplicity we just return the prompts so the Card can update its state locally
         // But ideally we should also refresh the global state or Context
 
-        return result.prompts;
+        return result.prompts || "";
     };
 
     // Track changes from individual cards
-    const handleAssetChange = useCallback((componentId: string, assets: any) => {
+    const handleAssetChange = useCallback((componentId: string, assets: Partial<MaterialAssets>) => {
         setPendingAssets(prev => ({
             ...prev,
             [componentId]: { ...prev[componentId], ...assets }
         }));
     }, []);
 
-    const handleSaveAssets = async (componentId: string, assets: any) => {
+    const handleSaveAssets = async (componentId: string, assets: Partial<MaterialAssets>) => {
         const result = await saveMaterialAssetsAction(componentId, assets);
         if (!result.success) throw new Error(result.error);
         // Clear pending for this component

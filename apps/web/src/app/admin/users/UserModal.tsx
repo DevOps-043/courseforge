@@ -3,20 +3,19 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, User, Mail, Shield, Save, Sparkles, Briefcase, Eye, EyeOff, Lock, ChevronDown } from 'lucide-react';
+import { X, User, Mail, Shield, Save, Sparkles, Briefcase, ChevronDown } from 'lucide-react';
+import type { PlatformRole, PlatformUser, UserModalFormData } from './user-management.types';
 
 interface UserModalProps {
   isOpen: boolean;
   onClose: () => void;
-  user?: any | null; 
-  onSave?: (userData: any) => void;
+  user?: PlatformUser | null;
+  onSave?: (userData: UserModalFormData) => void;
 }
 
 export default function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
-  const isEdit = !!user;
-  
   // Form State
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<UserModalFormData>({
     firstName: '',
     lastNameFather: '',
     lastNameMother: '',
@@ -25,9 +24,6 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
     username: '',
     password: ''
   });
-
-  const [showPassword, setShowPassword] = useState(false);
-  
   // Custom Dropdown State
   const [isRoleOpen, setIsRoleOpen] = useState(false);
   const roleDropdownRef = useRef<HTMLDivElement>(null);
@@ -73,7 +69,7 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleRoleSelect = (role: string) => {
+  const handleRoleSelect = (role: PlatformRole) => {
     setFormData(prev => ({ ...prev, role }));
     setIsRoleOpen(false);
   };
@@ -100,7 +96,7 @@ export default function UserModal({ isOpen, onClose, user, onSave }: UserModalPr
   const primaryColor = '#0A2540';
   const accentColor = '#00D4B3';
 
-  const roleOptions = [
+  const roleOptions: Array<{ desc: string; label: string; value: PlatformRole }> = [
     { value: 'CONSTRUCTOR', label: 'Constructor', desc: 'Permisos básicos para crear y ver contenido' },
     { value: 'ARQUITECTO', label: 'Arquitecto', desc: 'Diseño de estructuras y revisión de contenido' },
     { value: 'ADMIN', label: 'Administrador', desc: 'Control total de la plataforma y usuarios' },

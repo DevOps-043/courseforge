@@ -1,6 +1,19 @@
 import { createClient as createServiceRoleClient } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 import { getAuthBridgeUser } from "@/utils/auth/session";
+import type {
+  ArtifactStageRelation,
+  ArtifactDisplayProfile,
+  ArtifactTemarioRelation,
+  ArtifactViewRecord,
+} from "@/app/admin/artifacts/[id]/artifact-view.types";
+import type {
+  PublicationRequestRecord,
+  PublicationVideoLesson,
+} from "@/domains/publication/types/publication.types";
+import type { MaterialAssets, VideoScript } from "@/domains/materials/types/materials.types";
+import type { SyllabusModule } from "@/domains/syllabus/types/syllabus.types";
+import { getSupabaseServiceRoleKey, getSupabaseUrl } from "@/lib/server/env";
 
 type PlatformRole = "ADMIN" | "CONSTRUCTOR" | "ARQUITECTO";
 
@@ -11,19 +24,46 @@ interface ArtifactDetailLoadOptions {
   fallbackName: string;
 }
 
-interface PublicationLesson {
-  id: string;
-  title: string;
-  module_title: string;
-  auto_video_url: string;
-  auto_duration: number;
+interface ArtifactDetailPageData {
+  artifact: ArtifactViewRecord;
+  publicationRequest: PublicationRequestRecord | null;
+  publicationLessons: PublicationVideoLesson[];
+  displayProfile: ArtifactDisplayProfile;
 }
 
-interface ArtifactDetailPageData {
-  artifact: any;
-  publicationRequest: any;
-  publicationLessons: PublicationLesson[];
-  displayProfile: any;
+interface ProfileRow extends ArtifactDisplayProfile {
+  username?: string | null;
+}
+
+interface PublicationLessonSection {
+  duration_seconds?: number;
+}
+
+interface PublicationLessonComponentRow {
+  assets?: MaterialAssets | null;
+  content?: {
+    duration_estimate_minutes?: number;
+    script?: Pick<VideoScript, "sections">;
+  } | null;
+  type: string;
+}
+
+interface PublicationLessonRow {
+  lesson_id: string;
+  lesson_title: string;
+  material_components?: PublicationLessonComponentRow[] | null;
+  module_title: string;
+}
+
+interface ArtifactRelationRecord extends ArtifactStageRelation {}
+
+interface SyllabusRelationRecord extends ArtifactTemarioRelation {
+  modules?: SyllabusModule[] | null;
+}
+
+interface ArtifactRawRecord extends ArtifactViewRecord {
+  instructional_plans?: ArtifactRelationRecord | ArtifactRelationRecord[] | null;
+  syllabus?: SyllabusRelationRecord | SyllabusRelationRecord[] | null;
 }
 
 function normalizeSingleRelation<T>(value: T | T[] | null | undefined): T | null {
@@ -36,15 +76,15 @@ function normalizeSingleRelation<T>(value: T | T[] | null | undefined): T | null
 
 function getServiceRoleClient() {
   return createServiceRoleClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    getSupabaseUrl(),
+    getSupabaseServiceRoleKey(),
   );
 }
 
 async function loadDisplayProfile(
   supabase: Awaited<ReturnType<typeof createClient>>,
   options: Pick<ArtifactDetailLoadOptions, "fallbackRole" | "fallbackName">,
-) {
+): Promise<ArtifactDisplayProfile> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -60,7 +100,12 @@ async function loadDisplayProfile(
       .maybeSingle();
 
     if (profile) {
-      return profile;
+      const typedProfile = profile as ProfileRow;
+      return {
+        first_name: typedProfile.first_name || typedProfile.username || null,
+        email: typedProfile.email || user?.email || bridgeUser?.email,
+        platform_role: typedProfile.platform_role || null,
+      };
     }
   }
 
@@ -77,7 +122,7 @@ async function loadDisplayProfile(
 async function loadPublicationLessons(
   supabase: Awaited<ReturnType<typeof createClient>>,
   materialsId: string,
-): Promise<PublicationLesson[]> {
+): Promise<PublicationVideoLesson[]> {
   const { data: rawLessons } = await supabase
     .from("material_lessons")
     .select(
@@ -99,7 +144,7 @@ async function loadPublicationLessons(
     return [];
   }
 
-  return rawLessons.map((lesson: any) => {
+  return (rawLessons as PublicationLessonRow[]).map((lesson) => {
     let videoUrl = "";
     let duration = 0;
 
@@ -108,7 +153,7 @@ async function loadPublicationLessons(
       Array.isArray(lesson.material_components)
     ) {
       const videoComponent = lesson.material_components.find(
-        (component: any) =>
+        (component) =>
           component.assets?.final_video_url ||
           component.assets?.video_url ||
           component.type.includes("VIDEO"),
@@ -122,7 +167,7 @@ async function loadPublicationLessons(
 
         if (videoComponent.content?.script?.sections) {
           duration = videoComponent.content.script.sections.reduce(
-            (total: number, section: any) =>
+            (total: number, section: PublicationLessonSection) =>
               total + (section.duration_seconds || 0),
             0,
           );
@@ -166,6 +211,7 @@ export async function loadArtifactDetailPageData(
   if (error || !artifactRaw) {
     return null;
   }
+  const typedArtifactRaw = artifactRaw as ArtifactRawRecord;
 
   const [displayProfile, curationResult, materialsResult, publicationResult] =
     await Promise.all([
@@ -187,9 +233,9 @@ export async function loadArtifactDetailPageData(
         .maybeSingle(),
     ]);
 
-  const syllabusData = normalizeSingleRelation(artifactRaw.syllabus);
+  const syllabusData = normalizeSingleRelation(typedArtifactRaw.syllabus);
   const instructionalPlanData = normalizeSingleRelation(
-    artifactRaw.instructional_plans,
+    typedArtifactRaw.instructional_plans,
   );
   const curationData = curationResult.data || null;
   const materialsData = materialsResult.data || null;
@@ -199,7 +245,7 @@ export async function loadArtifactDetailPageData(
 
   return {
     artifact: {
-      ...artifactRaw,
+      ...typedArtifactRaw,
       temario: syllabusData,
       instructional_plan: instructionalPlanData,
       curation: curationData,
@@ -210,7 +256,7 @@ export async function loadArtifactDetailPageData(
       curation_state: curationData?.state,
       materials_state: materialsData?.state,
     },
-    publicationRequest: publicationResult.data || null,
+    publicationRequest: (publicationResult.data as PublicationRequestRecord | null) || null,
     publicationLessons,
     displayProfile,
   };

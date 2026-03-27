@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { completeAuthBridgeLogin } from "./auth-bridge";
 
-export async function loginAction(_prevState: any, formData: FormData) {
+export async function loginAction(_prevState: unknown, formData: FormData) {
   const identifier = formData.get("identifier") as string;
   const password = formData.get("password") as string;
   const rememberMe = formData.get("rememberMe") === "true";

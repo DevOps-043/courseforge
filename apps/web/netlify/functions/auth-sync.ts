@@ -1,15 +1,15 @@
 /**
  * Netlify Function: auth-sync
- * 
+ *
  * Microservicio de autenticación que actúa como puente (Option C):
  * 1. Valida credenciales contra la tabla `public.users` de SofLIA (bcrypt)
  * 2. Obtiene las organizaciones del usuario
  * 3. Firma un JWT nuevo usando el JWT_SECRET de CourseForge
  * 4. Retorna el token compatible para que CourseForge lo use nativamente
- * 
+ *
  * SofLIA usa auth personalizado (NO Supabase Auth), por lo que
  * debemos verificar el password_hash (bcrypt) directamente.
- * 
+ *
  * Endpoint: POST /.netlify/functions/auth-sync
  * Body: { identifier: string, password: string }
  */
@@ -17,14 +17,47 @@
 import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
 import { SignJWT } from 'jose';
+import type { HandlerEvent } from '@netlify/functions';
 
 interface AuthSyncRequest {
   identifier: string;
   password: string;
 }
 
-export default async function handler(req: any) {
-  if (req.method !== 'POST') {
+interface SofliaUserRecord {
+  cargo_rol?: string | null;
+  display_name?: string | null;
+  email: string;
+  first_name?: string | null;
+  id: string;
+  is_banned?: boolean | null;
+  last_name?: string | null;
+  password_hash?: string | null;
+  profile_picture_url?: string | null;
+  username?: string | null;
+}
+
+interface OrganizationRelation {
+  id?: string | null;
+  logo_url?: string | null;
+  name?: string | null;
+  slug?: string | null;
+}
+
+interface OrganizationUserRow {
+  organization_id: string;
+  organizations?: OrganizationRelation | null;
+  role: string;
+}
+
+type AuthSyncEvent = Pick<HandlerEvent, 'body' | 'httpMethod'>;
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
+
+export default async function handler(req: AuthSyncEvent) {
+  if (req.httpMethod !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
       headers: { 'Content-Type': 'application/json' },
@@ -32,7 +65,7 @@ export default async function handler(req: any) {
   }
 
   try {
-    const body: AuthSyncRequest = JSON.parse(req.body);
+    const body = JSON.parse(req.body || '{}') as AuthSyncRequest;
     const { identifier, password } = body;
 
     if (!identifier || !password) {
@@ -42,7 +75,6 @@ export default async function handler(req: any) {
       );
     }
 
-    // ---------- Conexión a SofLIA (Master) ----------
     const sofliaUrl = process.env.SOFLIA_INBOX_SUPABASE_URL;
     const sofliaKey = process.env.SOFLIA_INBOX_SUPABASE_KEY;
     const courseforgeJwtSecret = process.env.COURSEFORGE_JWT_SECRET;
@@ -57,7 +89,6 @@ export default async function handler(req: any) {
 
     const sofliaAdmin = createClient(sofliaUrl, sofliaKey);
 
-    // ---------- Buscar usuario en SofLIA ----------
     const isEmail = identifier.includes('@');
     const column = isEmail ? 'email' : 'username';
 
@@ -67,30 +98,30 @@ export default async function handler(req: any) {
       .ilike(column, identifier)
       .single();
 
-    if (userError || !user) {
+    const typedUser = user as SofliaUserRecord | null;
+
+    if (userError || !typedUser) {
       return new Response(
         JSON.stringify({ error: 'Usuario no encontrado' }),
         { status: 404, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // ---------- Verificar estado del usuario ----------
-    if (user.is_banned) {
+    if (typedUser.is_banned) {
       return new Response(
         JSON.stringify({ error: 'Tu cuenta ha sido suspendida. Contacta al administrador.' }),
         { status: 403, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    if (!user.password_hash) {
+    if (!typedUser.password_hash) {
       return new Response(
         JSON.stringify({ error: 'Esta cuenta usa un método de autenticación externo (OAuth). Por favor, inicia sesión con tu proveedor.' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // ---------- Verificar contraseña (bcrypt) ----------
-    const passwordValid = await bcrypt.compare(password, user.password_hash);
+    const passwordValid = await bcrypt.compare(password, typedUser.password_hash);
 
     if (!passwordValid) {
       return new Response(
@@ -99,7 +130,6 @@ export default async function handler(req: any) {
       );
     }
 
-    // ---------- Obtener organizaciones del usuario ----------
     const { data: orgUsers } = await sofliaAdmin
       .from('organization_users')
       .select(`
@@ -112,73 +142,66 @@ export default async function handler(req: any) {
           logo_url
         )
       `)
-      .eq('user_id', user.id)
+      .eq('user_id', typedUser.id)
       .eq('status', 'active');
 
-    const organizations = (orgUsers || []).map((ou: any) => ({
-      id: ou.organizations?.id || ou.organization_id,
-      name: ou.organizations?.name || '',
-      slug: ou.organizations?.slug || '',
-      role: ou.role,
-      logo_url: ou.organizations?.logo_url || null,
+    const organizations = ((orgUsers || []) as OrganizationUserRow[]).map((organizationUser) => ({
+      id: organizationUser.organizations?.id || organizationUser.organization_id,
+      name: organizationUser.organizations?.name || '',
+      slug: organizationUser.organizations?.slug || '',
+      role: organizationUser.role,
+      logo_url: organizationUser.organizations?.logo_url || null,
     }));
 
     const activeOrganizationId = organizations.length > 0
       ? organizations[0].id
       : null;
 
-    // ---------- Actualizar last_login_at en SofLIA ----------
     await sofliaAdmin
       .from('users')
       .update({ last_login_at: new Date().toISOString() })
-      .eq('id', user.id);
+      .eq('id', typedUser.id);
 
-    // ---------- Firmar JWT para CourseForge ----------
     const secret = new TextEncoder().encode(courseforgeJwtSecret);
     const now = Math.floor(Date.now() / 1000);
 
     const accessToken = await new SignJWT({
-      // Claims estándar de Supabase para compatibilidad con RLS
       aud: 'authenticated',
       role: 'authenticated',
-      sub: user.id,
-      email: user.email,
+      sub: typedUser.id,
+      email: typedUser.email,
       iss: 'courseforge-auth-bridge',
-      // Custom claims con datos de SofLIA
       app_metadata: {
         provider: 'soflia',
-        organization_ids: organizations.map(o => o.id),
+        organization_ids: organizations.map((organization) => organization.id),
         active_organization_id: activeOrganizationId,
       },
       user_metadata: {
-        username: user.username,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        display_name: user.display_name,
-        avatar_url: user.profile_picture_url,
-        cargo_rol: user.cargo_rol,
+        username: typedUser.username,
+        first_name: typedUser.first_name,
+        last_name: typedUser.last_name,
+        display_name: typedUser.display_name,
+        avatar_url: typedUser.profile_picture_url,
+        cargo_rol: typedUser.cargo_rol,
       },
     })
       .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
       .setIssuedAt(now)
-      .setExpirationTime(now + 3600) // 1 hora
+      .setExpirationTime(now + 3600)
       .setNotBefore(now)
       .sign(secret);
 
-    // Refresh token (más largo, 7 días)
     const refreshToken = await new SignJWT({
-      sub: user.id,
+      sub: typedUser.id,
       type: 'refresh',
       iss: 'courseforge-auth-bridge',
     })
       .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
       .setIssuedAt(now)
-      .setExpirationTime(now + 604800) // 7 días
+      .setExpirationTime(now + 604800)
       .sign(secret);
 
-    // ---------- Respuesta ----------
-    // Eliminar password_hash antes de enviar
-    const { password_hash: _, ...safeUser } = user;
+    const { password_hash: _, ...safeUser } = typedUser;
 
     return new Response(JSON.stringify({
       success: true,
@@ -200,8 +223,8 @@ export default async function handler(req: any) {
       },
     });
 
-  } catch (error: any) {
-    console.error('auth-sync error:', error);
+  } catch (error: unknown) {
+    console.error('auth-sync error:', getErrorMessage(error));
     return new Response(
       JSON.stringify({ error: 'Error interno del servidor' }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }

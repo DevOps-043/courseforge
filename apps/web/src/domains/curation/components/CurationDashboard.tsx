@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { CurationRow } from '../types/curation.types';
-import { CheckCircle2, XCircle, AlertCircle, ChevronDown, ChevronRight, Layers, BookOpen, ExternalLink, FileText, Trash2 } from 'lucide-react';
+import { CheckCircle2, XCircle, ChevronDown, ChevronRight, Layers, BookOpen, ExternalLink, FileText, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface CurationDashboardProps {

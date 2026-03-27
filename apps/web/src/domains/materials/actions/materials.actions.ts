@@ -1,145 +1,115 @@
 "use server";
 
-import { createClient } from "@/utils/supabase/server";
+import type { Esp05StepState, QADecision } from "../types/materials.types";
 import {
-  canReviewContent,
-  getAuthenticatedUser,
-  getAuthorizedArtifactAdmin,
-} from "@/lib/server/artifact-action-auth";
-import type {
-  Esp05StepState,
-  LessonMaterialState,
-  QADecision,
-} from "../types/materials.types";
+  createMaterialsActionError,
+  getAuthorizedArtifactMaterialsContext,
+  getAuthorizedLessonMaterialsContext,
+  getAuthorizedMaterialsContext,
+  getAuthorizedMaterialsReviewerContext,
+} from "./materials-action-context";
 import {
   callMaterialsNetlifyFunction,
-  getAuthorizedMaterialLessonAdmin,
-  getAuthorizedMaterialsAdmin,
 } from "./materials-action-helpers";
+import {
+  countNonApprovableLessons,
+  fetchArtifactMaterialsRecord,
+  fetchLessonComponentsSnapshot,
+  fetchMaterialsSnapshot,
+  fetchResettableMaterialsRecord,
+  resetGeneratingLessons,
+  updateMaterialsState,
+  upsertGenerationMaterialsRecord,
+} from "./materials-action-db";
 
 const RESTARTABLE_MATERIALS_STATES = new Set<Esp05StepState>([
   "PHASE3_DRAFT",
   "PHASE3_NEEDS_FIX",
 ]);
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Unknown error";
+}
+
 export async function getMaterialsSnapshotAction(artifactId: string) {
-  const supabase = await createClient();
-  const authUser = await getAuthenticatedUser(supabase);
-  if (!authUser) return { success: false, error: "Unauthorized" };
-
-  const authorized = await getAuthorizedArtifactAdmin(artifactId);
-  if (!authorized) {
-    return { success: false, error: "Artifact not found or inaccessible" };
+  const context = await getAuthorizedArtifactMaterialsContext(artifactId);
+  if (!context.ok) {
+    return context.errorResult;
   }
 
-  const { admin } = authorized;
-
-  const { data: materials, error: materialsError } = await admin
-    .from("materials")
-    .select("*")
-    .eq("artifact_id", artifactId)
-    .maybeSingle();
-
-  if (materialsError) {
-    console.error("[MaterialsActions] Snapshot error:", materialsError);
-    return { success: false, error: materialsError.message };
+  const snapshot = await fetchMaterialsSnapshot(context.admin, artifactId);
+  if (snapshot.error) {
+    console.error("[MaterialsActions] Snapshot error:", snapshot.error);
+    return createMaterialsActionError(snapshot.error.message);
   }
 
-  let lessons: any[] = [];
-
-  if (materials?.id) {
-    const { data: lessonData, error: lessonsError } = await admin
-      .from("material_lessons")
-      .select("*")
-      .eq("materials_id", materials.id)
-      .order("module_id", { ascending: true })
-      .order("lesson_id", { ascending: true });
-
-    if (lessonsError) {
-      console.error("[MaterialsActions] Lessons snapshot error:", lessonsError);
-      return { success: false, error: lessonsError.message };
-    }
-
-    lessons = lessonData || [];
-  }
-
-  return { success: true, materials, lessons };
+  return {
+    success: true as const,
+    lessons: snapshot.lessons,
+    materials: snapshot.materials,
+  };
 }
 
 export async function getLessonComponentsSnapshotAction(lessonId: string) {
-  const supabase = await createClient();
-  const authUser = await getAuthenticatedUser(supabase);
-  if (!authUser) return { success: false, error: "Unauthorized" };
-
-  const authorizedLesson = await getAuthorizedMaterialLessonAdmin(lessonId);
-  if (!authorizedLesson) {
-    return { success: false, error: "Lesson not found or inaccessible" };
+  const context = await getAuthorizedLessonMaterialsContext(lessonId);
+  if (!context.ok) {
+    return context.errorResult;
   }
 
-  const { admin } = authorizedLesson;
-  const { data: components, error } = await admin
-    .from("material_components")
-    .select("*")
-    .eq("material_lesson_id", lessonId)
-    .order("iteration_number", { ascending: false });
+  const { data: components, error } = await fetchLessonComponentsSnapshot(
+    context.admin,
+    lessonId,
+  );
 
   if (error) {
     console.error("[MaterialsActions] Components snapshot error:", error);
-    return { success: false, error: error.message };
+    return createMaterialsActionError(error.message);
   }
 
-  return { success: true, components: components || [] };
+  return { success: true as const, components: components || [] };
 }
 
 export async function startMaterialsGenerationAction(artifactId: string) {
-  const supabase = await createClient();
-  const authUser = await getAuthenticatedUser(supabase);
-  if (!authUser) return { success: false, error: "Unauthorized" };
-
-  const authorized = await getAuthorizedArtifactAdmin(artifactId);
-  if (!authorized) {
-    return { success: false, error: "Artifact not found or inaccessible" };
+  const context = await getAuthorizedArtifactMaterialsContext(artifactId);
+  if (!context.ok) {
+    return context.errorResult;
   }
 
-  const { admin } = authorized;
-
-  const { data: existing, error: existingError } = await admin
-    .from("materials")
-    .select("id, state, version")
-    .eq("artifact_id", artifactId)
-    .maybeSingle();
+  const { data: existing, error: existingError } =
+    await fetchArtifactMaterialsRecord(context.admin, artifactId);
 
   if (existingError) {
-    console.error("[MaterialsActions] Error checking existing materials:", existingError);
-    return { success: false, error: existingError.message };
+    console.error(
+      "[MaterialsActions] Error checking existing materials:",
+      existingError,
+    );
+    return createMaterialsActionError(existingError.message);
   }
 
-  if (existing && !RESTARTABLE_MATERIALS_STATES.has(existing.state as Esp05StepState)) {
-    return {
-      success: false,
-      error: "Ya existe un proceso de materiales en curso",
-    };
+  if (
+    existing &&
+    !RESTARTABLE_MATERIALS_STATES.has(existing.state as Esp05StepState)
+  ) {
+    return createMaterialsActionError(
+      "Ya existe un proceso de materiales en curso",
+    );
   }
 
-  const { data: materials, error: materialsError } = await admin
-    .from("materials")
-    .upsert(
-      {
-        artifact_id: artifactId,
-        state: "PHASE3_GENERATING" as Esp05StepState,
-        prompt_version: "prompt05",
-        version: existing ? existing.version + 1 : 1,
-        qa_decision: null,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "artifact_id" },
-    )
-    .select("id")
-    .single();
+  const { data: materials, error: upsertError } =
+    await upsertGenerationMaterialsRecord(context.admin, artifactId, existing);
 
-  if (materialsError || !materials?.id) {
-    console.error("[MaterialsActions] Error creating materials record:", materialsError);
-    return { success: false, error: materialsError?.message || "No se pudo crear el registro de materiales" };
+  if (upsertError || !materials?.id) {
+    console.error(
+      "[MaterialsActions] Error creating materials record:",
+      upsertError,
+    );
+    return createMaterialsActionError(
+      upsertError?.message || "No se pudo crear el registro de materiales",
+    );
   }
 
   try {
@@ -147,20 +117,14 @@ export async function startMaterialsGenerationAction(artifactId: string) {
       "materials-generation-background",
       { artifactId, materialsId: materials.id, mode: "init" },
       "Error al iniciar la generacion de materiales",
+      () => import("../../../../netlify/functions/materials-generation-background"),
     );
 
-    return { success: true };
-  } catch (error: any) {
-    await admin
-      .from("materials")
-      .update({
-        state: "PHASE3_DRAFT" as Esp05StepState,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", materials.id);
-
+    return { success: true as const };
+  } catch (error) {
+    await updateMaterialsState(context.admin, materials.id, "PHASE3_DRAFT");
     console.error("[MaterialsActions] Error triggering generation:", error);
-    return { success: false, error: error.message };
+    return createMaterialsActionError(getErrorMessage(error));
   }
 }
 
@@ -168,69 +132,62 @@ export async function runMaterialsFixIterationAction(
   lessonId: string,
   fixInstructions: string,
 ) {
-  const supabase = await createClient();
-  const authUser = await getAuthenticatedUser(supabase);
-  if (!authUser) return { success: false, error: "Unauthorized" };
-
-  const authorizedLesson = await getAuthorizedMaterialLessonAdmin(lessonId);
-  if (!authorizedLesson) {
-    return { success: false, error: "Lesson not found or inaccessible" };
+  const context = await getAuthorizedLessonMaterialsContext(lessonId);
+  if (!context.ok) {
+    return context.errorResult;
   }
 
-  const { admin, lesson } = authorizedLesson;
-
-  if (lesson.iteration_count >= lesson.max_iterations) {
-    return {
-      success: false,
-      error: `Maximo de iteraciones alcanzado (${lesson.max_iterations})`,
-    };
+  if (context.lesson.iteration_count >= context.lesson.max_iterations) {
+    return createMaterialsActionError(
+      `Maximo de iteraciones alcanzado (${context.lesson.max_iterations})`,
+    );
   }
 
-  const nextIteration = lesson.iteration_count + 1;
+  const nextIteration = context.lesson.iteration_count + 1;
 
-  const { error: updateError } = await admin
+  const { error: updateError } = await context.admin
     .from("material_lessons")
     .update({
-      state: "GENERATING" as LessonMaterialState,
+      state: "GENERATING",
       iteration_count: nextIteration,
       updated_at: new Date().toISOString(),
     })
     .eq("id", lessonId);
 
   if (updateError) {
-    console.error("[MaterialsActions] Error updating lesson for fix iteration:", updateError);
-    return { success: false, error: updateError.message };
+    console.error(
+      "[MaterialsActions] Error updating lesson for fix iteration:",
+      updateError,
+    );
+    return createMaterialsActionError(updateError.message);
   }
 
   try {
     await callMaterialsNetlifyFunction(
       "materials-generation-background",
       {
-        artifactId: null,
-        materialsId: lesson.materials_id,
+        artifactId: context.artifactId,
+        materialsId: context.lesson.materials_id,
         lessonId,
         fixInstructions,
         iterationNumber: nextIteration,
         mode: "single-lesson",
       },
       "Error al iniciar la iteracion dirigida",
+      () => import("../../../../netlify/functions/materials-generation-background"),
     );
 
-    return { success: true };
-  } catch (error: any) {
+    return { success: true as const };
+  } catch (error) {
     console.error("[MaterialsActions] Error triggering fix iteration:", error);
-    return { success: false, error: error.message };
+    return createMaterialsActionError(getErrorMessage(error));
   }
 }
 
 export async function validateMaterialsAction(artifactId: string) {
-  const supabase = await createClient();
-  const authUser = await getAuthenticatedUser(supabase);
-  if (!authUser) return { success: false, error: "Unauthorized" };
-
-  const authorized = await getAuthorizedArtifactAdmin(artifactId);
-  if (!authorized) {
-    return { success: false, error: "Artifact not found or inaccessible" };
+  const context = await getAuthorizedArtifactMaterialsContext(artifactId);
+  if (!context.ok) {
+    return context.errorResult;
   }
 
   try {
@@ -238,23 +195,20 @@ export async function validateMaterialsAction(artifactId: string) {
       "validate-materials-background",
       { artifactId },
       "Error al validar materiales",
+      () => import("../../../../netlify/functions/validate-materials-background"),
     );
 
-    return { success: true, ...data };
-  } catch (error: any) {
+    return { success: true as const, ...data };
+  } catch (error) {
     console.error("[MaterialsActions] Error validating materials:", error);
-    return { success: false, error: error.message };
+    return createMaterialsActionError(getErrorMessage(error));
   }
 }
 
 export async function validateMaterialLessonAction(lessonId: string) {
-  const supabase = await createClient();
-  const authUser = await getAuthenticatedUser(supabase);
-  if (!authUser) return { success: false, error: "Unauthorized" };
-
-  const authorizedLesson = await getAuthorizedMaterialLessonAdmin(lessonId);
-  if (!authorizedLesson) {
-    return { success: false, error: "Lesson not found or inaccessible" };
+  const context = await getAuthorizedLessonMaterialsContext(lessonId);
+  if (!context.ok) {
+    return context.errorResult;
   }
 
   try {
@@ -262,23 +216,20 @@ export async function validateMaterialLessonAction(lessonId: string) {
       "validate-materials-background",
       { lessonId },
       "Error al validar la leccion",
+      () => import("../../../../netlify/functions/validate-materials-background"),
     );
 
-    return { success: true, ...data };
-  } catch (error: any) {
+    return { success: true as const, ...data };
+  } catch (error) {
     console.error("[MaterialsActions] Error validating lesson:", error);
-    return { success: false, error: error.message };
+    return createMaterialsActionError(getErrorMessage(error));
   }
 }
 
 export async function markMaterialLessonForFixAction(lessonId: string) {
-  const supabase = await createClient();
-  const authUser = await getAuthenticatedUser(supabase);
-  if (!authUser) return { success: false, error: "Unauthorized" };
-
-  const authorizedLesson = await getAuthorizedMaterialLessonAdmin(lessonId);
-  if (!authorizedLesson) {
-    return { success: false, error: "Lesson not found or inaccessible" };
+  const context = await getAuthorizedLessonMaterialsContext(lessonId);
+  if (!context.ok) {
+    return context.errorResult;
   }
 
   try {
@@ -286,61 +237,53 @@ export async function markMaterialLessonForFixAction(lessonId: string) {
       "validate-materials-background",
       { lessonId, markForFix: true },
       "Error al marcar la leccion para correccion",
+      () => import("../../../../netlify/functions/validate-materials-background"),
     );
 
-    return { success: true };
-  } catch (error: any) {
+    return { success: true as const };
+  } catch (error) {
     console.error("[MaterialsActions] Error marking lesson for fix:", error);
-    return { success: false, error: error.message };
+    return createMaterialsActionError(getErrorMessage(error));
   }
 }
 
 export async function submitMaterialsToQaAction(materialsId: string) {
-  const supabase = await createClient();
-  const authUser = await getAuthenticatedUser(supabase);
-  if (!authUser) return { success: false, error: "Unauthorized" };
-
-  const authorizedMaterials = await getAuthorizedMaterialsAdmin(materialsId);
-  if (!authorizedMaterials) {
-    return { success: false, error: "Materials not found or inaccessible" };
+  const context = await getAuthorizedMaterialsContext(materialsId);
+  if (!context.ok) {
+    return context.errorResult;
   }
 
-  const { admin } = authorizedMaterials;
-  const { data: lessons, error: lessonsError } = await admin
-    .from("material_lessons")
-    .select("state")
-    .eq("materials_id", materialsId);
-
-  if (lessonsError) {
-    console.error("[MaterialsActions] Error loading lessons for QA:", lessonsError);
-    return { success: false, error: lessonsError.message };
-  }
-
-  const notApprovable = (lessons || []).filter(
-    (lesson) => lesson.state !== "APPROVABLE",
+  const { count, error } = await countNonApprovableLessons(
+    context.admin,
+    materialsId,
   );
 
-  if (notApprovable.length > 0) {
-    return {
-      success: false,
-      error: `${notApprovable.length} lecciones no estan listas para QA`,
-    };
-  }
-
-  const { error } = await admin
-    .from("materials")
-    .update({
-      state: "PHASE3_READY_FOR_QA" as Esp05StepState,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", materialsId);
-
   if (error) {
-    console.error("[MaterialsActions] Error submitting materials to QA:", error);
-    return { success: false, error: error.message };
+    console.error("[MaterialsActions] Error loading lessons for QA:", error);
+    return createMaterialsActionError(error.message);
   }
 
-  return { success: true };
+  if (count > 0) {
+    return createMaterialsActionError(
+      `${count} lecciones no estan listas para QA`,
+    );
+  }
+
+  const { error: updateError } = await updateMaterialsState(
+    context.admin,
+    materialsId,
+    "PHASE3_READY_FOR_QA",
+  );
+
+  if (updateError) {
+    console.error(
+      "[MaterialsActions] Error submitting materials to QA:",
+      updateError,
+    );
+    return createMaterialsActionError(updateError.message);
+  }
+
+  return { success: true as const };
 }
 
 export async function applyMaterialsQaDecisionAction(
@@ -348,109 +291,82 @@ export async function applyMaterialsQaDecisionAction(
   decision: "APPROVED" | "REJECTED",
   notes?: string,
 ) {
-  const supabase = await createClient();
-  const authUser = await getAuthenticatedUser(supabase);
-  if (!authUser) return { success: false, error: "Unauthorized" };
-
-  const hasPermission = await canReviewContent(authUser.userId);
-  if (!hasPermission) {
-    return {
-      success: false,
-      error: "Forbidden: Requiere rol de Arquitecto o Admin",
-    };
+  const context = await getAuthorizedMaterialsReviewerContext(materialsId);
+  if (!context.ok) {
+    return context.errorResult;
   }
 
-  const authorizedMaterials = await getAuthorizedMaterialsAdmin(materialsId);
-  if (!authorizedMaterials) {
-    return { success: false, error: "Materials not found or inaccessible" };
-  }
-
-  const { admin } = authorizedMaterials;
   const qaDecision: QADecision = {
     decision,
     notes,
-    reviewed_by: authUser.email || authUser.userId,
+    reviewed_by: context.authUser.email || context.authUser.userId,
     reviewed_at: new Date().toISOString(),
   };
 
-  const newState: Esp05StepState =
-    decision === "APPROVED" ? "PHASE3_APPROVED" : "PHASE3_REJECTED";
-
-  const { error } = await admin
-    .from("materials")
-    .update({
-      state: newState,
-      qa_decision: qaDecision,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", materialsId);
+  const { error } = await updateMaterialsState(
+    context.admin,
+    materialsId,
+    decision === "APPROVED" ? "PHASE3_APPROVED" : "PHASE3_REJECTED",
+    qaDecision,
+  );
 
   if (error) {
     console.error("[MaterialsActions] Error applying QA decision:", error);
-    return { success: false, error: error.message };
+    return createMaterialsActionError(error.message);
   }
 
-  return { success: true };
+  return { success: true as const };
 }
 
 export async function forceResetMaterialsGenerationAction(artifactId: string) {
-  const supabase = await createClient();
-  const authUser = await getAuthenticatedUser(supabase);
-  if (!authUser) return { success: false, error: "Unauthorized" };
-
-  const authorized = await getAuthorizedArtifactAdmin(artifactId);
-  if (!authorized) {
-    return { success: false, error: "Artifact not found or inaccessible" };
+  const context = await getAuthorizedArtifactMaterialsContext(artifactId);
+  if (!context.ok) {
+    return context.errorResult;
   }
 
-  const { admin } = authorized;
-  const { data: materials, error: materialsError } = await admin
-    .from("materials")
-    .select("id, state")
-    .eq("artifact_id", artifactId)
-    .maybeSingle();
+  const { data: materials, error: materialsError } =
+    await fetchResettableMaterialsRecord(context.admin, artifactId);
 
   if (materialsError) {
-    console.error("[MaterialsActions] Error loading materials for reset:", materialsError);
-    return { success: false, error: materialsError.message };
+    console.error(
+      "[MaterialsActions] Error loading materials for reset:",
+      materialsError,
+    );
+    return createMaterialsActionError(materialsError.message);
   }
 
   if (!materials) {
-    return { success: false, error: "No hay materiales para resetear" };
+    return createMaterialsActionError("No hay materiales para resetear");
   }
 
   if (materials.state !== "PHASE3_GENERATING") {
-    return {
-      success: false,
-      error: `Estado actual (${materials.state}) no requiere reset`,
-    };
+    return createMaterialsActionError(
+      `Estado actual (${materials.state}) no requiere reset`,
+    );
   }
 
-  const { error: resetMaterialsError } = await admin
-    .from("materials")
-    .update({
-      state: "PHASE3_DRAFT" as Esp05StepState,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", materials.id);
+  const { error: resetMaterialsError } = await updateMaterialsState(
+    context.admin,
+    materials.id,
+    "PHASE3_DRAFT",
+  );
 
   if (resetMaterialsError) {
     console.error("[MaterialsActions] Error resetting materials:", resetMaterialsError);
-    return { success: false, error: resetMaterialsError.message };
+    return createMaterialsActionError(resetMaterialsError.message);
   }
 
-  const { error: resetLessonsError } = await admin
-    .from("material_lessons")
-    .update({
-      state: "PENDING" as LessonMaterialState,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("materials_id", materials.id)
-    .eq("state", "GENERATING");
+  const { error: resetLessonsError } = await resetGeneratingLessons(
+    context.admin,
+    materials.id,
+  );
 
   if (resetLessonsError) {
-    console.warn("[MaterialsActions] Error resetting lesson states:", resetLessonsError);
+    console.warn(
+      "[MaterialsActions] Error resetting lesson states:",
+      resetLessonsError,
+    );
   }
 
-  return { success: true };
+  return { success: true as const };
 }

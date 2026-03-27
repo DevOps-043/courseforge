@@ -1,14 +1,37 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { User, Mail, Shield, Camera, Save, Loader2, Lock, Eye, EyeOff, Calendar, CheckCircle2, Phone, MapPin, FileCode, Key } from 'lucide-react';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
+import { User, Shield, Camera, Save, Loader2, Lock, Eye, EyeOff, Calendar, CheckCircle2, FileCode, Key } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { createClient } from '@/utils/supabase/client';
 import { updateProfile, updatePassword, updateAvatar } from './actions';
 
-export default function ProfileForm({ user, profile, artifactCount }: { user: any, profile: any, artifactCount: number }) {
+interface ProfileFormProfile {
+  avatar_url?: string | null;
+  first_name?: string | null;
+  last_name_father?: string | null;
+  last_name_mother?: string | null;
+  platform_role?: string | null;
+  username?: string | null;
+}
+
+interface ProfileFormProps {
+  artifactCount: number;
+  profile: ProfileFormProfile | null;
+  user: Pick<SupabaseUser, 'created_at' | 'email' | 'id'>;
+}
+
+interface BoxInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  icon?: LucideIcon;
+  label: string;
+  readOnly?: boolean;
+}
+
+export default function ProfileForm({ user, profile, artifactCount }: ProfileFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [activeSection, setActiveSection] = useState<'general' | 'security'>('general');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -30,7 +53,7 @@ export default function ProfileForm({ user, profile, artifactCount }: { user: an
   });
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleProfileChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleProfileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
@@ -118,7 +141,7 @@ export default function ProfileForm({ user, profile, artifactCount }: { user: an
   };
 
   // Boxed Input Component mimicking the reference design
-  const BoxInput = ({ label, icon: Icon, readOnly = false, ...props }: any) => (
+  const BoxInput = ({ label, icon: Icon, readOnly = false, ...props }: BoxInputProps) => (
     <div className={`bg-gray-50 dark:bg-[#151A21] border border-gray-200 dark:border-white/5 rounded-2xl p-4 flex flex-col gap-2 transition-all group ${readOnly ? 'opacity-60' : 'focus-within:border-[#00D4B3] focus-within:ring-1 focus-within:ring-[#00D4B3]/20 dark:focus-within:border-[#00D4B3]/50 dark:focus-within:bg-[#1A2029]'}`}>
        <div className="flex items-center gap-2">
            {Icon && <Icon size={14} className={`text-gray-400 dark:text-slate-600 ${!readOnly && 'group-focus-within:text-[#00D4B3]'} transition-colors`} />}
@@ -231,7 +254,7 @@ export default function ProfileForm({ user, profile, artifactCount }: { user: an
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                         <BoxInput label="Nombre" name="firstName" value={formData.firstName} onChange={handleProfileChange} icon={User} />
                         <BoxInput label="Apellido" name="lastNameFather" value={formData.lastNameFather} onChange={handleProfileChange} icon={User} />
-                        <BoxInput label="Nombre de Usuario" name="username" value={formData.username} onChange={handleProfileChange} icon={User} prefix="@" />
+                        <BoxInput label="Nombre de Usuario" name="username" value={formData.username} onChange={handleProfileChange} icon={User} />
                     </div>
 
                     {/* Floating Save Button */}

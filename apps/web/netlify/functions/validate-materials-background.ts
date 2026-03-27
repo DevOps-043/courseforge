@@ -1,9 +1,6 @@
 import { Handler } from '@netlify/functions';
-import { createClient } from '@supabase/supabase-js';
-
-// Setup
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+import { createServiceRoleClient } from './shared/bootstrap';
+import { methodNotAllowedResponse, parseJsonBody } from './shared/http';
 
 interface LessonDod {
     control3_consistency: 'PASS' | 'FAIL' | 'PENDING';
@@ -12,95 +9,106 @@ interface LessonDod {
     errors: string[];
 }
 
+interface MaterialsRecord {
+    id: string;
+}
+
+interface LessonQuizSpec {
+    min_questions?: number;
+}
+
+interface MaterialLessonRecord {
+    expected_components?: string[] | null;
+    id: string;
+    lesson_title?: string | null;
+    materials_id: string;
+    quiz_spec?: LessonQuizSpec | null;
+    state?: string | null;
+}
+
+interface QuizItem {
+    explanation?: string | null;
+}
+
+interface MaterialComponentContent {
+    items?: QuizItem[] | null;
+}
+
+interface MaterialComponentRecord {
+    content?: MaterialComponentContent | null;
+    type: string;
+}
+
+function getErrorMessage(error: unknown) {
+    return error instanceof Error ? error.message : 'Unknown error';
+}
+
 export const handler: Handler = async (event) => {
     if (event.httpMethod !== 'POST') {
-        return { statusCode: 405, body: 'Method Not Allowed' };
+        return methodNotAllowedResponse();
     }
 
-    let body;
     try {
-        body = JSON.parse(event.body || '{}');
-    } catch {
-        return { statusCode: 400, body: 'Bad Request: Invalid JSON' };
-    }
+        const body = parseJsonBody<{
+            materialsId?: string;
+            artifactId?: string;
+            lessonId?: string;
+            markForFix?: boolean;
+        }>(event);
 
-    const { materialsId, artifactId, lessonId, markForFix } = body;
+        const { materialsId, artifactId, lessonId, markForFix } = body;
 
-    // If lessonId is provided, validate only that lesson (or mark for fix)
-    if (lessonId) {
-        if (markForFix) {
-            return await markLessonForFix(lessonId);
+        // If lessonId is provided, validate only that lesson (or mark for fix)
+        if (lessonId) {
+            if (markForFix) {
+                return await markLessonForFix(lessonId);
+            }
+            return await validateSingleLesson(lessonId);
         }
-        return await validateSingleLesson(lessonId);
-    }
 
-    if (!materialsId && !artifactId) {
-        return { statusCode: 400, body: 'Missing materialsId, artifactId, or lessonId' };
-    }
+        if (!materialsId && !artifactId) {
+            return { statusCode: 400, body: 'Missing materialsId, artifactId, or lessonId' };
+        }
 
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    try {
+        const supabase = createServiceRoleClient();
         console.log(`[Validate Materials] Starting validation for: ${materialsId || artifactId}`);
 
         // 1. Get materials record
-        let materials;
+        let materials: MaterialsRecord;
         if (materialsId) {
             const { data, error } = await supabase
                 .from('materials')
-                .select('*, artifact_id')
+                .select('id')
                 .eq('id', materialsId)
                 .single();
             if (error) throw new Error(`Materials not found: ${error.message}`);
-            materials = data;
+            materials = data as MaterialsRecord;
         } else {
             const { data, error } = await supabase
                 .from('materials')
-                .select('*, artifact_id')
+                .select('id')
                 .eq('artifact_id', artifactId)
                 .single();
             if (error) throw new Error(`Materials not found: ${error.message}`);
-            materials = data;
+            materials = data as MaterialsRecord;
         }
-
-        const targetArtifactId = materials.artifact_id;
 
         // 2. Get all lessons for this materials record
         const { data: lessons, error: lessonsError } = await supabase
             .from('material_lessons')
-            .select('*')
+            .select('id, materials_id, lesson_title, expected_components, quiz_spec, state')
             .eq('materials_id', materials.id);
 
         if (lessonsError) throw new Error(`Error fetching lessons: ${lessonsError.message}`);
 
         console.log(`[Validate Materials] Found ${lessons?.length || 0} lessons to validate`);
 
-        // 3. Get apt sources from curation
-        const { data: curationRecord } = await supabase
-            .from('curation')
-            .select('id')
-            .eq('artifact_id', targetArtifactId)
-            .single();
-
-        let aptaSourceIds: string[] = [];
-        let nonAptaSourceIds: string[] = [];
-
-        if (curationRecord) {
-            const { data: curationRows } = await supabase
-                .from('curation_rows')
-                .select('id, apta')
-                .eq('curation_id', curationRecord.id);
-
-            aptaSourceIds = (curationRows || []).filter(r => r.apta === true).map(r => r.id);
-            nonAptaSourceIds = (curationRows || []).filter(r => r.apta === false).map(r => r.id);
-        }
-
-        // 4. Validate each lesson
+        // 3. Validate each lesson
         let allApprovable = true;
         let validatedCount = 0;
         let skippedCount = 0;
 
-        for (const lesson of (lessons || [])) {
+        for (const lesson of ((lessons || []) as MaterialLessonRecord[])) {
             // Skip lessons already marked as NEEDS_FIX (preserve user's manual marking)
             if (lesson.state === 'NEEDS_FIX') {
                 console.log(`[Validate Materials] Skipping ${lesson.lesson_title} - already NEEDS_FIX`);
@@ -112,11 +120,14 @@ export const handler: Handler = async (event) => {
             // Get components for this lesson
             const { data: components } = await supabase
                 .from('material_components')
-                .select('*')
+                .select('type, content')
                 .eq('material_lesson_id', lesson.id);
 
             // Run inline validation
-            const dod = runInlineValidation(lesson, components || [], aptaSourceIds, nonAptaSourceIds);
+            const dod = runInlineValidation(
+                lesson,
+                (components || []) as MaterialComponentRecord[],
+            );
 
             // Determine new state
             const hasErrors = dod.errors.length > 0;
@@ -140,7 +151,7 @@ export const handler: Handler = async (event) => {
             console.log(`[Validate Materials] Lesson ${lesson.lesson_title}: ${newState}`);
         }
 
-        // 5. Update global materials state
+        // 4. Update global materials state
         const newGlobalState = allApprovable ? 'PHASE3_READY_FOR_QA' : 'PHASE3_NEEDS_FIX';
 
         await supabase
@@ -163,27 +174,25 @@ export const handler: Handler = async (event) => {
             }),
         };
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('[Validate Materials] Error:', error);
         return {
             statusCode: 500,
-            body: JSON.stringify({ success: false, error: error.message }),
+            body: JSON.stringify({ success: false, error: getErrorMessage(error) }),
         };
     }
 };
 
 // Inline validation function (simplified version of the full validator)
 function runInlineValidation(
-    lesson: any,
-    components: any[],
-    aptaSourceIds: string[],
-    nonAptaSourceIds: string[]
+    lesson: MaterialLessonRecord,
+    components: MaterialComponentRecord[],
 ): LessonDod {
     const errors: string[] = [];
 
     // Control 3: Components Complete
     const expectedTypes = lesson.expected_components || [];
-    const generatedTypes = components.map(c => c.type);
+    const generatedTypes = components.map((component) => component.type);
     const missing = expectedTypes.filter((type: string) => !generatedTypes.includes(type));
 
     if (missing.length > 0) {
@@ -191,11 +200,8 @@ function runInlineValidation(
     }
 
     // Control 4: Sources Usage (simplified - just check if any sources used)
-    const usedSourceIds = components.flatMap(c => c.source_refs || []);
-    // Note: We're being lenient here. Full validation would check aptaSourceIds.
-
     // Control 5: Quiz Validation (if expected)
-    const quizComponent = components.find(c => c.type === 'QUIZ');
+    const quizComponent = components.find((component) => component.type === 'QUIZ');
     const expectsQuiz = expectedTypes.includes('QUIZ');
 
     if (expectsQuiz && !quizComponent) {
@@ -210,7 +216,9 @@ function runInlineValidation(
         }
 
         // Check explanations
-        const withoutExplanation = items.filter((item: any) => !item.explanation || item.explanation.length < 10);
+        const withoutExplanation = items.filter(
+            (item) => !item.explanation || item.explanation.length < 10,
+        );
         if (withoutExplanation.length > 0) {
             errors.push(`${withoutExplanation.length} pregunta(s) sin explicación adecuada`);
         }
@@ -231,13 +239,13 @@ function runInlineValidation(
 
 // Single lesson validation
 async function validateSingleLesson(lessonId: string) {
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = createServiceRoleClient();
 
     try {
         // Fetch lesson
         const { data: lesson, error: lessonError } = await supabase
             .from('material_lessons')
-            .select('*, materials_id')
+            .select('id, materials_id, lesson_title, expected_components, quiz_spec, state')
             .eq('id', lessonId)
             .single();
 
@@ -251,11 +259,14 @@ async function validateSingleLesson(lessonId: string) {
         // Fetch components
         const { data: components } = await supabase
             .from('material_components')
-            .select('*')
+            .select('type, content')
             .eq('material_lesson_id', lessonId);
 
         // Run validation
-        const dod = runInlineValidation(lesson, components || [], [], []);
+        const dod = runInlineValidation(
+            lesson as MaterialLessonRecord,
+            (components || []) as MaterialComponentRecord[],
+        );
         const hasErrors = dod.errors.length > 0;
         const newState = hasErrors ? 'NEEDS_FIX' : 'APPROVABLE';
 
@@ -276,18 +287,18 @@ async function validateSingleLesson(lessonId: string) {
             body: JSON.stringify({ success: true, state: newState, dod })
         };
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('[Validate Single Lesson] Error:', error);
         return {
             statusCode: 500,
-            body: JSON.stringify({ success: false, error: error.message })
+            body: JSON.stringify({ success: false, error: getErrorMessage(error) })
         };
     }
 }
 
 // Simple function to mark a lesson as NEEDS_FIX
 async function markLessonForFix(lessonId: string) {
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = createServiceRoleClient();
 
     try {
         const { error } = await supabase
@@ -307,11 +318,11 @@ async function markLessonForFix(lessonId: string) {
             body: JSON.stringify({ success: true })
         };
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('[Mark For Fix] Error:', error);
         return {
             statusCode: 500,
-            body: JSON.stringify({ success: false, error: error.message })
+            body: JSON.stringify({ success: false, error: getErrorMessage(error) })
         };
     }
 }

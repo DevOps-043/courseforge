@@ -1,315 +1,125 @@
 import { NextResponse } from 'next/server';
-import { getPublicationData } from '@/app/admin/artifacts/[id]/publish/actions';
-import { createClient } from '@/utils/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { getPublicationData } from '@/app/admin/artifacts/[id]/publish/actions';
+import { buildPublicationPayload } from '@/domains/publication/lib/publication-payload';
+import { getSofliaInboxEnv } from '@/lib/server/env';
+import { createClient } from '@/utils/supabase/server';
+
+interface PublishRequestPayload {
+    artifactId?: string;
+}
 
 export async function POST(request: Request) {
     try {
-        const payload = await request.json();
-        const { artifactId } = payload;
+        const payload = (await request.json()) as PublishRequestPayload;
+        const artifactId = payload.artifactId;
 
         if (!artifactId) {
-            return NextResponse.json({ error: 'Falta artifactId' }, { status: 400 });
+            return NextResponse.json(
+                { error: 'Falta artifactId' },
+                { status: 400 },
+            );
         }
 
         const supabase = await createClient();
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+            data: { user },
+        } = await supabase.auth.getUser();
+
         if (!user) {
-            return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
+            return NextResponse.json(
+                { error: 'No autorizado.' },
+                { status: 401 },
+            );
         }
-        const { data: profile } = await supabase.from('profiles').select('platform_role').eq('id', user.id).single();
+
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('platform_role')
+            .eq('id', user.id)
+            .single();
+
         if (profile?.platform_role === 'CONSTRUCTOR') {
-            return NextResponse.json({ error: 'Falta de permisos. Solo Arquitectos y Admins pueden publicar.' }, { status: 403 });
+            return NextResponse.json(
+                {
+                    error: 'Falta de permisos. Solo Arquitectos y Admins pueden publicar.',
+                },
+                { status: 403 },
+            );
         }
 
-        console.log(`[API /publish] Starting publication for artifact: ${artifactId}`);
+        const { request: publicationRequest, lessons, artifact, materialsPackage } =
+            await getPublicationData(artifactId);
 
-        // 1. Validate Config
-        const INBOX_URL = process.env.SOFLIA_INBOX_SUPABASE_URL;
-        const INBOX_KEY = process.env.SOFLIA_INBOX_SUPABASE_KEY;
-
-        if (!INBOX_URL || !INBOX_KEY) {
-            console.error(`[API /publish] CRITICAL ERR - Faltan variables de entorno.`);
-            return NextResponse.json({
-                error: "Configuración incompleta: Faltan variables de entorno SOFLIA_INBOX_SUPABASE_URL o SOFLIA_INBOX_SUPABASE_KEY",
-                debug: {
-                    hasUrl: !!INBOX_URL,
-                    hasKey: !!INBOX_KEY
-                }
-            }, { status: 500 });
+        if (!publicationRequest || publicationRequest.status !== 'READY') {
+            return NextResponse.json(
+                {
+                    error:
+                        "El curso no esta en estado 'READY' para publicar. Guarda el borrador primero.",
+                },
+                { status: 400 },
+            );
         }
 
-        // 2. Data Gathering
-        const { request: pubRequest, lessons, artifact, materialsPackage } = await getPublicationData(artifactId);
-
-        if (!pubRequest || pubRequest.status !== 'READY') {
-            return NextResponse.json({ error: "El curso no está en estado 'READY' para publicar. Guarde el borrador primero." }, { status: 400 });
-        }
-
-        // 3. Payload Construction
-        const outPayload = {
-            source: {
-                platform: 'courseengine',
-                version: '1.0',
-                artifact_id: artifactId
-            },
-            course: {
-                title: artifact.title,
-                description: getArtifactDescription(artifact),
-                slug: pubRequest.slug,
-                category: pubRequest.category,
-                level: pubRequest.level,
-                instructor_email: pubRequest.instructor_email,
-                price: pubRequest.price || 0,
-                thumbnail_url: pubRequest.thumbnail_url,
-                is_published: false
-            },
-            modules: [] as any[]
-        };
-
-        const moduleMap = new Map<string, any[]>();
-        lessons.forEach(l => {
-            const modTitle = l.module_title || 'Módulo General';
-            if (!moduleMap.has(modTitle)) {
-                moduleMap.set(modTitle, []);
-            }
-            moduleMap.get(modTitle)?.push(l);
+        const inboxEnv = getSofliaInboxEnv();
+        const payloadToSend = buildPublicationPayload({
+            artifactId,
+            artifact,
+            lessons,
+            materialsPackage,
+            request: publicationRequest,
         });
 
-        const sortedModuleTitles = Array.from(moduleMap.keys());
-
-        let moduleOrder = 1;
-        for (const modTitle of sortedModuleTitles) {
-            const modLessons = moduleMap.get(modTitle) || [];
-
-            const moduleObj = {
-                title: modTitle,
-                order_index: moduleOrder++,
-                lessons: [] as any[]
-            };
-
-            let lessonOrder = 1;
-            for (const l of modLessons) {
-                const mapping = pubRequest.lesson_videos?.[l.id];
-
-                let videoUrl = '';
-                let videoId = '';
-                let provider = 'youtube';
-
-                if (mapping?.video_id) {
-                    videoId = mapping.video_id;
-                    provider = mapping.video_provider || 'youtube';
-
-                    if (provider === 'youtube') videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-                    else if (provider === 'vimeo') videoUrl = `https://vimeo.com/${videoId}`;
-                    else videoUrl = videoId;
-                } else if (l.auto_video_url) {
-                    videoUrl = l.auto_video_url;
-                }
-                
-                // Skip lesson if no video is assigned (enabling progressive publishing)
-                if (!videoId && !videoUrl) {
-                    console.log(`[API /publish] Skipping lesson ${l.id} (${l.title}) due to missing video.`);
-                    continue;
-                }
-
-                // Skip lesson if not in selected_lessons (when user has made a selection)
-                const selectedLessons: string[] | null = pubRequest.selected_lessons;
-                if (selectedLessons && Array.isArray(selectedLessons) && !selectedLessons.includes(l.id)) {
-                    console.log(`[API /publish] Skipping lesson ${l.id} (${l.title}) — not selected for publishing.`);
-                    continue;
-                }
-
-                const components = l.components || [];
-
-                let transcription = '';
-                const videoComps = components.filter((c: any) => ['VIDEO_THEORETICAL', 'VIDEO_DEMO', 'VIDEO_GUIDE'].includes(c.type));
-                videoComps.forEach((vc: any) => {
-                    if (vc.content?.script?.sections) {
-                        transcription += vc.content.script.sections
-                            .map((s: any) => `[${s.timecode_start}] ${s.narration_text}`)
-                            .join('\n\n');
-                    }
-                });
-
-                const activities = [] as any[];
-                components.forEach((c: any) => {
-                    if (c.type === 'DIALOGUE' && c.content) {
-                        activities.push({
-                            title: c.content.title || 'Simulación con LIA',
-                            type: 'lia_script',
-                            data: transformLiaContent(c.content)
-                        });
-                    } else if (['READING', 'EXERCISE', 'DEMO_GUIDE'].includes(c.type) && c.content) {
-                        let contentHtml = c.content.body_html || '';
-
-                        if (c.type === 'DEMO_GUIDE' && !contentHtml && c.content.steps) {
-                            contentHtml = `<h3>${c.content.title}</h3><ul>` +
-                                c.content.steps.map((s: any) => `<li><strong>Paso ${s.step_number}:</strong> ${s.instruction}</li>`).join('') +
-                                '</ul>';
-                        }
-
-                        if (contentHtml) {
-                            activities.push({
-                                title: c.content.title || (c.type === 'READING' ? 'Lectura' : 'Ejercicio'),
-                                type: c.type === 'READING' ? 'reflection' : 'exercise',
-                                data: { content: contentHtml }
-                            });
-                        }
-                    }
-                });
-
-                const contentBlocks = [] as any[]; // kept for backward compatibility if needed, but empty now.
-
-                const materials = [] as any[];
-                components.forEach((c: any) => {
-                    if (c.type === 'QUIZ' && c.content) {
-                        materials.push({
-                            title: c.content.title || 'Evaluación',
-                            type: 'quiz',
-                            data: transformQuizContent(c.content),
-                            description: c.content.instructions || ''
-                        });
-                    }
-                });
-
-                if (materialsPackage?.files) {
-                    const lessonFiles = materialsPackage.files.filter((f: any) => f.lesson_id === l.id);
-                    lessonFiles.forEach((f: any) => {
-                        materials.push({
-                            title: `Recurso: ${f.component}`,
-                            url: f.path,
-                            type: 'download'
-                        });
-                    });
-                }
-
-                const durationRaw = mapping?.duration;
-                const durationNum = Number(durationRaw);
-                const finalDuration = Math.round(Math.max(durationNum || 0, 60));
-
-                moduleObj.lessons.push({
-                    title: l.title,
-                    order_index: lessonOrder++,
-                    duration_seconds: finalDuration,
-                    duration: finalDuration,
-                    summary: l.summary || '',
-                    description: l.summary || '',
-                    transcription: transcription,
-                    video_url: videoUrl,
-                    video_provider: provider,
-                    video_provider_id: videoId || videoUrl,
-                    is_free: false,
-                    content_blocks: contentBlocks,
-                    activities: activities,
-                    materials: materials
-                });
-            }
-            
-            // Only add the module if it has valid lessons
-            if (moduleObj.lessons.length > 0) {
-                outPayload.modules.push(moduleObj);
-            } else {
-                console.log(`[API /publish] Skipping module "${modTitle}" because it has no valid lessons.`);
-            }
-        }
-
-        // 4. Deposit in SofLIA inbox (direct DB write, no HTTP)
-        console.log(`[API /publish] Depositando en buzón de SofLIA (slug: ${pubRequest.slug})`);
-
-        const sofliaSupabase = createSupabaseClient(INBOX_URL, INBOX_KEY);
+        const sofliaSupabase = createSupabaseClient(inboxEnv.url, inboxEnv.key);
         const { error: inboxError } = await sofliaSupabase
             .from('courseengine_inbox')
             .upsert(
                 {
-                    course_slug:   pubRequest.slug,
-                    payload:       outPayload,
-                    status:        'pending',
+                    course_slug: publicationRequest.slug,
+                    payload: payloadToSend,
+                    status: 'pending',
                     error_message: null,
-                    updated_at:    new Date().toISOString()
+                    updated_at: new Date().toISOString(),
                 },
-                { onConflict: 'course_slug' }
+                { onConflict: 'course_slug' },
             );
 
         if (inboxError) {
-            console.error('[API /publish] Error depositando en buzón:', inboxError);
-            throw new Error(`Error depositando en buzón de SofLIA: ${inboxError.message}`);
+            throw new Error(
+                `Error depositando en buzon de Soflia: ${inboxError.message}`,
+            );
         }
 
-        console.log('[API /publish] Depositado en buzón correctamente.');
-
-        // 5. Update Status locally
         const { error: updateError } = await supabase
             .from('publication_requests')
             .update({
                 status: 'SENT',
-                updated_at: new Date().toISOString()
+                updated_at: new Date().toISOString(),
             })
-            .eq('id', pubRequest.id);
+            .eq('id', publicationRequest.id);
 
         if (updateError) {
-            console.error('[API /publish] Error updating local status:', updateError);
+            console.error(
+                '[API /publish] Error updating local status:',
+                updateError,
+            );
         }
 
-        return NextResponse.json({ success: true, message: 'Curso depositado en buzón de SofLIA. Será procesado en los próximos 5 minutos.' });
-
-    } catch (error: any) {
+        return NextResponse.json({
+            success: true,
+            message:
+                'Curso depositado en buzon de Soflia. Sera procesado en los proximos 5 minutos.',
+        });
+    } catch (error: unknown) {
         console.error('[API /publish] Route Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json(
+            {
+                error:
+                    error instanceof Error
+                        ? error.message
+                        : 'Error desconocido al publicar',
+            },
+            { status: 500 },
+        );
     }
-}
-
-// Helpers
-function getArtifactDescription(artifact: any): string {
-    if (!artifact.description) return artifact.title || '';
-    if (typeof artifact.description === 'string') return artifact.description;
-    const desc = artifact.description;
-    return desc.texto || desc.resumen || desc.overview || desc.description || JSON.stringify(desc);
-}
-
-function transformQuizContent(content: any) {
-    if (!content) return {};
-    const rawItems = Array.isArray(content.questions) ? content.questions : (Array.isArray(content.items) ? content.items : []);
-    let calculatedTotalPoints = 0;
-    const questions = rawItems.map((q: any) => {
-        const options = Array.isArray(q.options) ? q.options.map((o: any) => typeof o === 'string' ? o : String(o)) : [];
-        const points = Number(q.points) || 10;
-        calculatedTotalPoints += points;
-        let correctAnswer = '';
-        const rawCorrect = q.correctAnswer !== undefined ? q.correctAnswer : q.correct_answer;
-        if (typeof rawCorrect === 'number') {
-            if (rawCorrect >= 0 && rawCorrect < options.length) correctAnswer = options[rawCorrect];
-        } else {
-            correctAnswer = String(rawCorrect || '');
-        }
-        let qType = (q.questionType || q.question_type || q.type || 'multiple_choice').toLowerCase();
-        return {
-            id: q.id || `q-${Math.random().toString(36).substr(2, 9)}`,
-            question: q.question || q.questionText || '',
-            questionType: qType,
-            options: options,
-            correctAnswer: correctAnswer,
-            explanation: q.explanation || '',
-            points: points
-        };
-    });
-    return {
-        passing_score: Number(content.passing_score) || 80,
-        totalPoints: calculatedTotalPoints > 0 ? calculatedTotalPoints : (content.totalPoints || content.total_points || 100),
-        questions: questions
-    };
-}
-
-function transformLiaContent(content: any) {
-    if (!content) return {};
-    const scenes = Array.isArray(content.scenes) ? content.scenes.map((s: any) => ({
-        character: s.character,
-        message: s.message,
-        emotion: s.emotion || 'neutral'
-    })) : [];
-    return {
-        introduction: content.introduction || '',
-        scenes: scenes,
-        conclusion: content.conclusion || ''
-    };
 }

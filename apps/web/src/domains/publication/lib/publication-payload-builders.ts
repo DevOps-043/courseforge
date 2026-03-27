@@ -1,0 +1,362 @@
+import type { PackageFile } from "@/domains/materials/types/materials.types";
+import type {
+  LessonVideoData,
+  PublicationArtifactRecord,
+  PublicationComponent,
+  PublicationLesson,
+  PublicationPayloadActivity,
+  PublicationPayloadLesson,
+  PublicationPayloadMaterial,
+  PublicationPreviewLesson,
+  PublicationRequestRecord,
+} from "@/domains/publication/types/publication.types";
+
+const VIDEO_COMPONENT_TYPES = new Set([
+  "VIDEO_THEORETICAL",
+  "VIDEO_DEMO",
+  "VIDEO_GUIDE",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getString(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function getNumber(value: unknown) {
+  return typeof value === "number" && !Number.isNaN(value) ? value : 0;
+}
+
+function buildVideoUrl(mapping?: LessonVideoData, fallbackUrl?: string) {
+  if (!mapping?.video_id) {
+    return fallbackUrl || "";
+  }
+
+  if (mapping.video_provider === "youtube") {
+    return `https://www.youtube.com/watch?v=${mapping.video_id}`;
+  }
+
+  if (mapping.video_provider === "vimeo") {
+    return `https://vimeo.com/${mapping.video_id}`;
+  }
+
+  return mapping.video_id;
+}
+
+export function getArtifactDescription(artifact: PublicationArtifactRecord) {
+  if (!artifact.description) {
+    return artifact.title || "";
+  }
+
+  if (typeof artifact.description === "string") {
+    return artifact.description;
+  }
+
+  const description = artifact.description as Record<string, unknown>;
+  return (
+    getString(description.texto) ||
+    getString(description.resumen) ||
+    getString(description.overview) ||
+    getString(description.description) ||
+    JSON.stringify(description)
+  );
+}
+
+function transformQuizContent(content: unknown) {
+  if (!isRecord(content)) {
+    return {};
+  }
+
+  const rawQuestions = Array.isArray(content.questions)
+    ? content.questions
+    : Array.isArray(content.items)
+      ? content.items
+      : [];
+
+  let totalPoints = 0;
+  const questions = rawQuestions.map((rawQuestion, index) => {
+    const question = isRecord(rawQuestion) ? rawQuestion : {};
+    const options = Array.isArray(question.options)
+      ? question.options.map((option) =>
+          typeof option === "string" ? option : String(option),
+        )
+      : [];
+    const points = Number(question.points) || 10;
+    totalPoints += points;
+
+    const rawCorrect =
+      question.correctAnswer !== undefined
+        ? question.correctAnswer
+        : question.correct_answer;
+
+    let correctAnswer = "";
+    if (typeof rawCorrect === "number") {
+      if (rawCorrect >= 0 && rawCorrect < options.length) {
+        correctAnswer = options[rawCorrect];
+      }
+    } else {
+      correctAnswer = String(rawCorrect || "");
+    }
+
+    return {
+      id: getString(question.id) || `question-${index + 1}`,
+      question: getString(question.question) || getString(question.questionText),
+      questionType:
+        getString(question.questionType || question.question_type || question.type)
+          .toLowerCase() || "multiple_choice",
+      options,
+      correctAnswer,
+      explanation: getString(question.explanation),
+      points,
+    };
+  });
+
+  return {
+    passing_score: Number(content.passing_score) || 80,
+    totalPoints:
+      totalPoints > 0
+        ? totalPoints
+        : Number(content.totalPoints || content.total_points) || 100,
+    questions,
+  };
+}
+
+function transformLiaContent(content: unknown) {
+  if (!isRecord(content)) {
+    return {};
+  }
+
+  const scenes = Array.isArray(content.scenes)
+    ? content.scenes
+        .filter(isRecord)
+        .map((scene) => ({
+          character: getString(scene.character),
+          message: getString(scene.message),
+          emotion: getString(scene.emotion) || "neutral",
+        }))
+    : [];
+
+  return {
+    introduction: getString(content.introduction),
+    scenes,
+    conclusion: getString(content.conclusion),
+  };
+}
+
+function buildTranscription(components: PublicationComponent[]) {
+  let transcription = "";
+
+  for (const component of components) {
+    if (!VIDEO_COMPONENT_TYPES.has(component.type)) {
+      continue;
+    }
+
+    const content = isRecord(component.content) ? component.content : null;
+    const script = content && isRecord(content.script) ? content.script : null;
+    const sections = script && Array.isArray(script.sections) ? script.sections : [];
+
+    if (sections.length === 0) {
+      continue;
+    }
+
+    const serialized = sections
+      .filter(isRecord)
+      .map((section) => {
+        const timecode = getString(section.timecode_start);
+        const narration = getString(section.narration_text);
+        return timecode || narration ? `[${timecode}] ${narration}`.trim() : "";
+      })
+      .filter(Boolean)
+      .join("\n\n");
+
+    if (!serialized) {
+      continue;
+    }
+
+    transcription += `${transcription ? "\n\n" : ""}${serialized}`;
+  }
+
+  return transcription;
+}
+
+function buildActivities(components: PublicationComponent[]) {
+  const activities: PublicationPayloadActivity[] = [];
+
+  for (const component of components) {
+    const content = component.content;
+    if (!content || !isRecord(content)) {
+      continue;
+    }
+
+    if (component.type === "DIALOGUE") {
+      activities.push({
+        title: getString(content.title) || "Simulacion con LIA",
+        type: "lia_script",
+        data: transformLiaContent(content),
+      });
+      continue;
+    }
+
+    if (!["READING", "EXERCISE", "DEMO_GUIDE"].includes(component.type)) {
+      continue;
+    }
+
+    let contentHtml = getString(content.body_html);
+    if (
+      component.type === "DEMO_GUIDE" &&
+      !contentHtml &&
+      Array.isArray(content.steps)
+    ) {
+      const items = content.steps
+        .filter(isRecord)
+        .map((step) => {
+          const stepNumber = getNumber(step.step_number);
+          const instruction = getString(step.instruction);
+          return `<li><strong>Paso ${stepNumber}:</strong> ${instruction}</li>`;
+        })
+        .join("");
+      contentHtml = `<h3>${getString(content.title)}</h3><ul>${items}</ul>`;
+    }
+
+    if (!contentHtml) {
+      continue;
+    }
+
+    activities.push({
+      title:
+        getString(content.title) ||
+        (component.type === "READING" ? "Lectura" : "Ejercicio"),
+      type: component.type === "READING" ? "reflection" : "exercise",
+      data: { content: contentHtml },
+    });
+  }
+
+  return activities;
+}
+
+function buildMaterials(
+  lessonId: string,
+  components: PublicationComponent[],
+  files: PackageFile[],
+) {
+  const materials: PublicationPayloadMaterial[] = [];
+
+  for (const component of components) {
+    const content = component.content;
+    if (component.type !== "QUIZ" || !content) {
+      continue;
+    }
+
+    materials.push({
+      title:
+        isRecord(content) && getString(content.title)
+          ? getString(content.title)
+          : "Evaluacion",
+      type: "quiz",
+      data: transformQuizContent(content),
+      description:
+        isRecord(content) && getString(content.instructions)
+          ? getString(content.instructions)
+          : "",
+    });
+  }
+
+  for (const file of files.filter((entry) => entry.lesson_id === lessonId)) {
+    materials.push({
+      title: `Recurso: ${file.component}`,
+      type: "download",
+      url: file.path,
+    });
+  }
+
+  return materials;
+}
+
+export function groupLessonsByModule(lessons: PublicationLesson[]) {
+  const groups = new Map<string, PublicationLesson[]>();
+
+  for (const lesson of lessons) {
+    const key = lesson.module_title || "Modulo General";
+    const bucket = groups.get(key);
+    if (bucket) {
+      bucket.push(lesson);
+      continue;
+    }
+
+    groups.set(key, [lesson]);
+  }
+
+  return groups;
+}
+
+export function buildPublicationLesson(params: {
+  lesson: PublicationLesson;
+  request: PublicationRequestRecord;
+  orderIndex: number;
+  files: PackageFile[];
+}) {
+  const { lesson, request, orderIndex, files } = params;
+  const mapping = request.lesson_videos?.[lesson.id];
+  const videoUrl = buildVideoUrl(mapping, lesson.auto_video_url);
+  const videoId = mapping?.video_id || videoUrl;
+  const provider = mapping?.video_provider || "youtube";
+
+  if (!videoId || !videoUrl) {
+    return null;
+  }
+
+  if (
+    Array.isArray(request.selected_lessons) &&
+    !request.selected_lessons.includes(lesson.id)
+  ) {
+    return null;
+  }
+
+  const duration = Math.round(Math.max(Number(mapping?.duration) || 0, 60));
+  const payloadLesson: PublicationPayloadLesson = {
+    title: lesson.title,
+    order_index: orderIndex,
+    duration_seconds: duration,
+    duration,
+    summary: lesson.summary || "",
+    description: lesson.summary || "",
+    transcription: buildTranscription(lesson.components || []),
+    video_url: videoUrl,
+    video_provider: provider,
+    video_provider_id: videoId,
+    is_free: false,
+    content_blocks: [],
+    activities: buildActivities(lesson.components || []),
+    materials: buildMaterials(lesson.id, lesson.components || [], files),
+  };
+
+  return payloadLesson;
+}
+
+export function buildPreviewLesson(params: {
+  lesson: PublicationLesson;
+  request: PublicationRequestRecord;
+  orderIndex: number;
+}) {
+  const { lesson, request, orderIndex } = params;
+  const mapping = request.lesson_videos?.[lesson.id];
+  const videoUrl = buildVideoUrl(mapping, lesson.auto_video_url);
+  const videoProvider = mapping?.video_provider || "youtube";
+  const videoProviderId = mapping?.video_id || videoUrl;
+
+  if (!videoProviderId || !videoUrl) {
+    return null;
+  }
+
+  const previewLesson: PublicationPreviewLesson = {
+    title: lesson.title,
+    order_index: orderIndex,
+    video_provider: videoProvider,
+    video_provider_id: videoProviderId,
+    has_transcription: buildTranscription(lesson.components || []).length > 0,
+  };
+
+  return previewLesson;
+}

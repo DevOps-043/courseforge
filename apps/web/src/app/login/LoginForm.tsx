@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { Suspense, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { Mail, Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Lock, Mail } from "lucide-react";
 
 function LoginContent() {
   const router = useRouter();
@@ -20,10 +20,19 @@ function LoginContent() {
 
   const registered = searchParams.get("registered");
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const getErrorMessage = (caughtError: unknown) => {
+    if (caughtError instanceof Error) {
+      return caughtError.message;
+    }
+
+    return "Error al iniciar sesion";
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setIsLoading(true);
     setError(null);
+
     try {
       const response = await fetch("/api/auth/login", {
         method: "POST",
@@ -37,17 +46,17 @@ function LoginContent() {
         }),
       });
 
-      const res = await response.json();
+      const result = await response.json();
 
-      if (res?.error) {
-        throw new Error(res.error);
+      if (result?.error) {
+        throw new Error(result.error);
       }
 
-      router.push(res.redirectTo || "/dashboard");
+      router.push(result.redirectTo || "/dashboard");
       router.refresh();
-    } catch (err: any) {
-      console.error("Login failed", err);
-      setError(err.message || "Error al iniciar sesión");
+    } catch (caughtError) {
+      console.error("Login failed", caughtError);
+      setError(getErrorMessage(caughtError));
     } finally {
       setIsLoading(false);
     }
@@ -60,10 +69,16 @@ function LoginContent() {
           Bienvenido de nuevo
         </h1>
         <p className="text-gray-600 dark:text-[#94A3B8]">
-          Inicia sesión para{" "}
+          Inicia sesion para{" "}
           <span className="text-[#00D4B3]">continuar innovando y creando</span>
         </p>
       </div>
+
+      {registered === "true" && (
+        <div className="mb-6 p-3 bg-emerald-100 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-lg text-emerald-700 dark:text-emerald-400 text-sm text-center">
+          Registro completado. Ya puedes iniciar sesion.
+        </div>
+      )}
 
       {error && (
         <div className="mb-6 p-3 bg-red-100 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg text-red-600 dark:text-red-400 text-sm text-center">
@@ -72,7 +87,6 @@ function LoginContent() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Identifier Input */}
         <div className="space-y-2">
           <label className="text-sm font-medium text-gray-700 dark:text-[#94A3B8] ml-1">
             Usuario o Correo
@@ -86,7 +100,7 @@ function LoginContent() {
               name="username"
               autoComplete="username"
               value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
+              onChange={(event) => setIdentifier(event.target.value)}
               className="w-full bg-white dark:bg-[#0A0D12] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl py-3.5 pl-12 pr-4 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:border-[#00D4B3] dark:focus:border-[#00D4B3]/50 focus:ring-1 focus:ring-[#00D4B3] dark:focus:ring-[#00D4B3]/50 transition-all"
               placeholder="tu@correo.com o username"
               required
@@ -94,10 +108,9 @@ function LoginContent() {
           </div>
         </div>
 
-        {/* Password Input */}
         <div className="space-y-2">
           <label className="text-sm font-medium text-gray-700 dark:text-[#94A3B8] ml-1">
-            Contraseña
+            Contrasena
           </label>
           <div className="relative group">
             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#6C757D] group-focus-within:text-[#00D4B3] transition-colors">
@@ -108,9 +121,9 @@ function LoginContent() {
               name="password"
               autoComplete="current-password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(event) => setPassword(event.target.value)}
               className="w-full bg-white dark:bg-[#0A0D12] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl py-3.5 pl-12 pr-12 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:border-[#00D4B3] dark:focus:border-[#00D4B3]/50 focus:ring-1 focus:ring-[#00D4B3] dark:focus:ring-[#00D4B3]/50 transition-all"
-              placeholder="••••••••"
+              placeholder="********"
               required
             />
             <button
@@ -123,7 +136,6 @@ function LoginContent() {
           </div>
         </div>
 
-        {/* Remember Me & Forgot Password */}
         <div className="flex items-center justify-between text-sm">
           <label className="flex items-center gap-2 cursor-pointer group">
             <div className="relative flex items-center">
@@ -131,7 +143,7 @@ function LoginContent() {
                 type="checkbox"
                 className="peer sr-only"
                 checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
+                onChange={(event) => setRememberMe(event.target.checked)}
               />
               <div className="w-5 h-5 border-2 border-gray-300 dark:border-white/20 rounded bg-white dark:bg-[#0A0D12] peer-checked:bg-[#00D4B3] peer-checked:border-[#00D4B3] transition-all" />
               <div className="absolute inset-0 flex items-center justify-center text-[#0F1419] opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity">
@@ -161,11 +173,10 @@ function LoginContent() {
             type="button"
             className="text-[#00D4B3] hover:text-[#00CDB0] transition-colors"
           >
-            ¿Olvidaste tu contraseña?
+            Olvidaste tu contrasena?
           </button>
         </div>
 
-        {/* Submit Button */}
         <button
           type="submit"
           disabled={isLoading}
@@ -175,21 +186,20 @@ function LoginContent() {
             <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
           ) : (
             <>
-              Iniciar Sesión
+              Iniciar Sesion
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </>
           )}
         </button>
 
-        {/* Register Link */}
         <div className="text-center mt-4 pt-2 border-t border-gray-100 dark:border-white/5">
           <p className="text-xs text-gray-500 dark:text-[#94A3B8]">
-            ¿No tienes cuenta?{" "}
+            No tienes cuenta?{" "}
             <Link
               href="/register"
               className="text-[#00D4B3] hover:underline hover:text-[#00bda0] transition-colors"
             >
-              Regístrate aquí
+              Registrate aqui
             </Link>
           </p>
         </div>
@@ -201,14 +211,12 @@ function LoginContent() {
 export default function LoginForm() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-[#0F1419] flex items-center justify-center p-4 lg:p-10 font-sans selection:bg-[#00D4B3] selection:text-[#0F1419] overflow-hidden transition-colors duration-300">
-      {/* Ambient Glows */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-[#00D4B3]/5 dark:bg-[#0A2540]/20 rounded-full blur-[120px]" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/5 dark:bg-[#00D4B3]/5 rounded-full blur-[120px]" />
       </div>
 
       <div className="w-full max-w-7xl px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center justify-items-center relative z-10">
-        {/* Left Column: Visual 3D Logo */}
         <div className="w-full flex justify-center lg:justify-end order-1 lg:order-1 mb-8 lg:mb-0">
           <motion.div
             animate={{ y: [-15, 15, -15] }}
@@ -225,9 +233,7 @@ export default function LoginForm() {
           </motion.div>
         </div>
 
-        {/* Right Column: Login Form */}
         <div className="w-full flex justify-center lg:justify-start order-2 lg:order-2">
-          {/* Card Bg: White (Light) / #1E2329 (Dark) */}
           <div className="w-full max-w-md bg-white dark:bg-[#1E2329] border border-gray-200 dark:border-[#6C757D]/20 rounded-2xl p-6 sm:p-8 lg:p-12 shadow-xl dark:shadow-2xl mx-auto lg:mx-0 transition-colors duration-300">
             <Suspense
               fallback={

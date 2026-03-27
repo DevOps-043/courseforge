@@ -1,6 +1,6 @@
 'use client';
 
-import { Copy, ExternalLink, FileText, MonitorPlay, Video, CheckCircle2, PlayCircle, X, Calendar, Hash, Layout } from 'lucide-react';
+import { Copy, ExternalLink, FileText, MonitorPlay, Video, CheckCircle2, X, Calendar, Hash, Layout } from 'lucide-react';
 import { MaterialSearchResult } from '../actions';
 import { useState } from 'react';
 import { getEmbedVideoUrl } from '@/lib/video-platform';
@@ -57,7 +57,9 @@ export function MaterialResultCard({ result }: MaterialResultCardProps) {
     };
 
     const videoConfig = getEmbedVideoUrl(validVideoUrl);
-    const gammaEmbedUrl = resolveGammaEmbedUrl(result.assets?.slides_url);
+    const gammaEmbedUrl = result.assets?.slides_url
+        ? resolveGammaEmbedUrl(result.assets.slides_url)
+        : null;
 
     return (
         <>

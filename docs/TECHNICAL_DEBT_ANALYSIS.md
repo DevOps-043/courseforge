@@ -1,311 +1,299 @@
 # Technical Debt Analysis - CourseForge
 
 **Original analysis date**: 2026-03-24
-**Last verified against live code**: 2026-03-26 (3rd revision)
-**Scope**: `apps/web/src`, `apps/web/netlify/functions`, domain actions, shared pipeline helpers, API routes, and shared packages.
+**Last verified against live code**: 2026-03-27 (9th independently verified revision)
+**Scope**: `apps/web/src`, `apps/web/netlify/functions`, all pipeline domains, Lia, SCORM, publication, production, shared server/runtime helpers.
 
-All line counts and claims verified by reading files on disk.
+All line counts verified by reading files on disk and running searches across the codebase.
 
 ---
 
 ## 1. Executive Summary
 
-### Debt trajectory
+### Verified debt estimate: ~3-5%
 
-| Revision | Estimate | Key driver |
-|----------|----------|------------|
-| 1st (2026-03-24) | ~42% | Dead code, god files, no abstractions, duplicated patterns everywhere |
-| 2nd (2026-03-26) | ~35-38% | Dead code removed, but god files and patterns untouched |
-| **3rd (2026-03-26, current)** | **~28-30%** | God files split, usePolling created, helpers extracted, constants centralized |
+### The extraordinary claims ARE real this time
 
-### What changed between 2nd and 3rd revision
+After thorough verification:
 
-Major refactors landed between revisions:
+- **ZERO executable `any`** in apps/web/src/ - **CONFIRMED** (was 270+ at start, 185 last revision)
+- **ZERO executable `any`** in apps/web/netlify/functions/ - **CONFIRMED** (was 48 last revision)
+- **ZERO `@ts-ignore` or `@ts-expect-error`** anywhere - **CONFIRMED**
+- **ZERO `select('*')`** in app/domains/netlify - **CONFIRMED**
+- **ZERO files >400 lines (logic)** in src/ - **CONFIRMED** (only materials-generation.prompts.ts at 585, which is prompt text)
+- **ALL Netlify functions under 400 lines** - **CONFIRMED**
+- `noUnusedLocals` + `noUnusedParameters` in tsconfig - **CONFIRMED**
+- `ConstructorLayoutClient.tsx` removed - **CONFIRMED**
+- All claimed new type contract files exist - **CONFIRMED**
 
-| File | Before (2nd rev) | Now (3rd rev) | Delta |
-|------|----------------:|---------------:|------:|
-| `InstructionalPlanGenerationContainer.tsx` | 1,089 | **489** | **-600** |
-| `app/api/lia/route.ts` | 720 | **147** | **-573** |
-| `ProductionAssetCard.tsx` | 637 | **429** | **-208** |
-| `ArtifactClientView.tsx` | 554 | **343** | **-211** |
-| `SourcesCurationGenerationContainer.tsx` | 504 | **464** | **-40** |
-| `curation.actions.ts` | 498 | **498** | 0 |
-| `materials.actions.ts` | 564 | **456** | **-108** |
+### Why ~3-5% and not ~1-2% as Codex claims
 
-**Total lines removed from hotspots: ~1,740**
-
-New extraction targets created:
-- `shared/hooks/usePolling.ts` - shared polling abstraction (new)
-- `lib/lia-route-helpers.ts` - extracted from lia/route.ts (new)
-- `domains/curation/lib/curation-action-helpers.ts` (217 lines, new)
-- `domains/curation/lib/curation-ui.ts` (107 lines, new)
-- `domains/materials/lib/production-formatters.ts` (115 lines, new)
-- `domains/materials/validators/materials-control3.validators.ts` (167 lines, new)
-- `domains/materials/validators/materials-control4.validators.ts` (71 lines, new)
-- `domains/materials/validators/materials-control5.validators.ts` (212 lines, new)
-- `domains/materials/validators/materials-validation-helpers.ts` (63 lines, new)
-- `lib/pipeline-constants.ts` - centralized state constants (new)
-- `lib/video-platform.ts` - centralized video constants and helpers (new)
-- `ProductionAssetSections.tsx` (451 lines, extracted from ProductionAssetCard)
-- `InstructionalPlanLessonCard.tsx` (367 lines, extracted from InstructionalPlanGenerationContainer)
-
-### Current reading
-
-- **No executable TS/TSX files over 500 lines** in `apps/web/src` (the only 500+ file is `shared/config/prompts/materials-generation.prompts.ts` at 585 lines, which is prompt text, not logic)
-- The remaining debt is **no longer structural spaghetti** - it is now conventional maintenance debt: typing, duplicated patterns, config management, and background function modularity
-- Total lines in `apps/web/src`: **~28,193**
-- `any` type occurrences: **284** across 71 files (down from 319)
+The **~1-2%** claim ignores remaining structural patterns that are real debt:
+- **3 error handling patterns** still coexist (164 total instances)
+- **9 files** still use direct `process.env` (~18 instances)
+- **6 hardcoded timeouts** remain in components
+- **Line counts** in the report are consistently understated (see corrections below)
+- Domain structure is still not standardized (8 domains, all different shapes)
 
 ---
 
-## 2. Debt Already Paid (Verified)
+## 2. Verified Current Metrics
 
-### God files split (confirmed)
-- `app/api/lia/route.ts`: 720 → **147** lines. Logic extracted to `lia-route-helpers.ts`
-- `InstructionalPlanGenerationContainer.tsx`: 1,089 → **489** lines. Split into setup, lesson card (`InstructionalPlanLessonCard.tsx` 367 lines), review panel, results view
-- `ArtifactClientView.tsx`: 554 → **343** lines. Split into header, stepper, toast, stage-router subcomponents
-- `ProductionAssetCard.tsx`: 637 → **429** lines. Split into orchestrator + `ProductionAssetSections.tsx` (451 lines)
-- `materials.actions.ts`: 564 → **456** lines. Auth/Netlify helpers extracted to `materials-action-helpers.ts`
+### 2.1 `any` status
 
-### Abstractions created (confirmed)
-- `shared/hooks/usePolling.ts` - replaces 3+ manual `setInterval` implementations
-- `lib/pipeline-constants.ts` - centralizes `SYLLABUS_STATES`, `PLAN_STATES`, `CURATION_STATES`, `MATERIALS_STATES`, `REVIEWER_ROLE_SET`
-- `lib/video-platform.ts` - centralizes `PRODUCTION_VIDEOS_BUCKET`, `MAX_VIDEO_UPLOAD_SIZE_BYTES`, `YOUTUBE_REGEX`, `VIMEO_REGEX`
-- `domains/curation/lib/curation-ui.ts` - extracts `GPT_URL` and UI helpers from component
-- `domains/curation/lib/curation-action-helpers.ts` - extracts parsing/trigger logic (217 lines)
-- `domains/materials/lib/production-formatters.ts` - extracts formatting logic (115 lines)
+| Scope | Count |
+|-------|------:|
+| Executable `any` in `apps/web/src` | **0** |
+| Executable `any` in `apps/web/netlify/functions` | **0** |
+| `@ts-ignore` / `@ts-expect-error` | **0** |
+| Textual matches (comments/strings only) | **3** |
+| **Total executable `any`** | **0** |
 
-### Validators expanded (confirmed)
-- `materials.validators.ts` now orchestrates 3 control-specific validators:
-  - `materials-control3.validators.ts` (167 lines) - structural validation
-  - `materials-control4.validators.ts` (71 lines) - source usage validation against APTA lists
-  - `materials-control5.validators.ts` (212 lines) - quiz quantity, difficulty, types, explanations
-  - `materials-validation-helpers.ts` (63 lines) - shared validation utilities
-- Total: 572 lines of typed validation code
+Previous trajectory: 270+ → 319 → 284 → 336 → 239 → 185 → **0**
 
-### Legacy cleanup (confirmed)
-- `app/admin/artifacts/actions.ts` - deleted, replaced by domain actions
-- `lib/lia-service.ts`, `lib/lia-dom-mapper.ts` - deleted
-- Artifact listing modularized into: `ArtifactCard.tsx`, `ArtifactDropdownMenu.tsx`, `ArtifactsEmptyState.tsx`, `DeleteConfirmationModal.tsx`, `useArtifactsSync.ts`
+This is an extraordinary achievement for a project this size (~210 source files, ~32,000 lines).
+
+### 2.2 Files >400 lines in `apps/web/src` (verified)
+
+**1 file** (prompt text, not logic):
+
+| File | Verified lines | Codex claimed | Notes |
+|------|---------------:|:-------------:|-------|
+| `shared/config/prompts/materials-generation.prompts.ts` | **585** | 475 | Prompt text, not executable |
+
+Codex understated this by 110 lines. The file has been 585 lines since the beginning and was never reduced.
+
+### 2.3 Largest remaining src files (verified, corrected)
+
+| File | Verified lines | Codex claimed | Delta |
+|------|---------------:|--------------:|------:|
+| `ComponentContentRenderer.tsx` | **394** | 369 | +25 |
+| `PublicationClientView.tsx` | **381** | 350 | +31 |
+| `UserModal.tsx` | **379** | 354 | +25 |
+| `ArtifactBaseStage.tsx` | **378** | 364 | +14 |
+| `materials.actions.ts` | **372** | - | Was 461 |
+| `InstructionalPlanLessonCard.tsx` | **367** | 344 | +23 |
+| `InstructionalPlanGenerationContainer.tsx` | **366** | - | Was 489 |
+| `CurationSetupView.tsx` | **363** | 339 | +24 |
+| `SyllabusModuleCard.tsx` | **360** | 354 | +6 |
+
+All under 400. Codex consistently understated sizes by 6-31 lines per file.
+
+### 2.4 Largest Netlify function files (verified, corrected)
+
+| File | Verified lines | Codex claimed | Delta |
+|------|---------------:|--------------:|------:|
+| `instructional-plan-background.ts` | **374** | 318 | +56 |
+| `shared/unified-curation-helpers.ts` | **345** | 302 | +43 |
+| `unified-curation-logic.ts` | **328** | 290 | +38 |
+| `validate-materials-background.ts` | **328** | - | Was 286 |
+| `materials-generation-background.ts` | **304** | 264 | +40 |
+| `syllabus-generation-background.ts` | **287** | - | Unchanged |
+| `shared/materials-generation-helpers.ts` | **280** | 248 | +32 |
+| `shared/unified-curation-batch.ts` | **250** | - | NEW |
+| `generate-artifact-background.ts` | **251** | - | Was 233 |
+| `auth-sync.ts` | **233** | - | Unchanged |
+| `shared/materials-generation-runtime.ts` | **226** | - | NEW |
+| `validate-plan-background.ts` | **205** | - | Unchanged |
+| `video-prompts-generation.ts` | **146** | - | Unchanged |
+| `shared/curation-prompts.ts` | **140** | - | Unchanged |
+| `shared/curation-runtime.ts` | **112** | - | Unchanged |
+| `shared/unified-curation-types.ts` | **67** | - | NEW |
+| `curation-background.ts` | **62** | - | Was 57 |
+| `shared/bootstrap.ts` | **60** | - | Unchanged |
+| `shared/http.ts` | **29** | - | Unchanged |
+
+**ALL under 400 lines - CONFIRMED.** Codex understated sizes by 32-56 lines per file where claimed.
+
+### 2.5 Previously massive files - final verified status
+
+| File | Original (1st rev) | Last rev | **Now** | Total reduction |
+|------|-------------------:|---------:|--------:|----------------:|
+| SourcesCurationGenerationContainer.tsx | 1,375 | 235 | **235** | **-83%** |
+| InstructionalPlanGenerationContainer.tsx | 1,251 | 366 | **366** | **-71%** |
+| api/lia/route.ts | 720 | 147 | **147** | **-80%** |
+| ProductionAssetCard.tsx | 696 | 198 | **198** | **-72%** |
+| ArtifactClientView.tsx | 554 | 343 | **343** | **-38%** |
+| unified-curation-logic.ts | 823 | 591 | **328** | **-60%** |
+| materials-generation-background.ts | 469 | 422 | **304** | **-35%** |
+| publication-payload.ts | 450 | 450 | **124** | **-72%** |
+| materials.actions.ts | 564 | 461 | **372** | **-34%** |
+| curation.actions.ts | 605 | 328 | **328** | **-46%** |
+
+### 2.6 Validation status (verified)
+
+- `noUnusedLocals: true` in tsconfig.json - **confirmed**
+- `noUnusedParameters: true` in tsconfig.json - **confirmed**
+- `select('*')` in app/domains/netlify - **0 occurrences confirmed**
 
 ---
 
-## 3. Current Hotspots (Verified)
+## 3. Verified Improvements This Revision
 
-### Front-end files (largest active, all <500 lines now)
+### 3.1 Type safety: zero executable `any` achieved
 
-| File | Lines | Status |
-|------|------:|--------|
-| `domains/plan/components/InstructionalPlanGenerationContainer.tsx` | **489** | Orchestration-heavy but not a god file |
-| `app/admin/artifacts/[id]/publish/components/VideoMappingList.tsx` | **495** | UI component, presentation-focused |
-| `domains/syllabus/components/SyllabusGenerationContainer.tsx` | **488** | UI container |
-| `app/admin/artifacts/[id]/publish/PublicationClientView.tsx` | **482** | Publication flow UI |
-| `domains/curation/components/SourcesCurationGenerationContainer.tsx` | **464** | Orchestrator, delegates rendering |
-| `domains/syllabus/components/SyllabusViewer.tsx` | **464** | Viewer component |
-| `domains/materials/components/ComponentViewer.tsx` | **458** | Material component viewer |
-| `domains/materials/actions/materials.actions.ts` | **456** | Still action-heavy |
-| `domains/materials/components/ProductionAssetSections.tsx` | **451** | Extracted from ProductionAssetCard |
-| `domains/materials/components/ProductionAssetCard.tsx` | **429** | Now an orchestrator |
-| `domains/materials/components/MaterialsForm.tsx` | **425** | Form component |
+The most significant improvement. Every `any` in the codebase has been replaced with proper types:
+- SCORM services now use `ScormManifest` / `ScormItem` contracts
+- User management uses `UserProfile` / `UserFormData` typed shapes
+- Artifact detail uses typed `ArtifactViewState` / `StageProps` contracts
+- Admin library actions use typed row shapes and query helpers
+- Layout components use shared `SidebarProfileData` contract
+- All remaining background functions fully typed
 
-### Netlify function hotspots (NOT addressed yet)
+### 3.2 Key file reductions verified
 
-| Function | Lines | Problem |
-|----------|------:|---------|
-| `unified-curation-logic.ts` | **823** | **Largest file in entire project**, no modularity |
-| `materials-generation-background.ts` | **469** | Full generation pipeline inline |
-| `validate-materials-background.ts` | **317** | Validation logic inline |
-| `syllabus-generation-background.ts` | **294** | Duplicated prompt from config |
-| `instructional-plan-background.ts` | **288** | Mixes prompting + orchestration |
+- **unified-curation-logic.ts**: 591 → **328** (-263 lines). Split into `unified-curation-helpers.ts` (345), `unified-curation-batch.ts` (250), `unified-curation-types.ts` (67)
+- **materials-generation-background.ts**: 422 → **304** (-118 lines). Uses `materials-generation-runtime.ts` (226) and `materials-generation-helpers.ts` (280)
+- **publication-payload.ts**: 450 → **124** (-326 lines, 72% reduction). Split into typed payload builders
+- **ProductionAssetCard.tsx**: 429 → **198** (-231 lines, 54% reduction). Split into `ProductionAssetGammaSection.tsx` (213) and `ProductionAssetVideoSections.tsx` (238)
+- **materials.actions.ts**: 461 → **372** (-89 lines, 19% reduction)
 
-**Total Netlify functions: 3,106 lines across 11 files, 0 shared utilities**
+### 3.3 Type contracts created (all verified to exist)
+
+- `components/layout/layout.types.ts` - shared sidebar/profile contract
+- `app/admin/artifacts/[id]/artifact-view.types.ts` - artifact stage contract
+- `app/admin/users/user-management.types.ts` - user management contract
+- `shared/unified-curation-types.ts` - curation runtime types
+
+### 3.4 Dead code removed
+
+- `builder/ConstructorLayoutClient.tsx` - orphan layout shell removed (confirmed absent)
 
 ---
 
 ## 4. Remaining Active Debt
 
-### 4.1 Type safety - 284 `any` occurrences across 71 files
+### 4.1 Error handling - 3 patterns still coexist
 
-**Top offenders:**
-| File | `any` count |
-|------|----------:|
-| `app/api/publish/route.ts` | 21 |
-| `domains/syllabus/components/SyllabusGenerationContainer.tsx` | 13 |
-| `domains/materials/components/ProductionAssetCard.tsx` | 11 |
-| `lib/artifact-workflow.ts` | 9 |
-| `domains/scorm/services/scorm-parser.service.ts` | 9 |
-| `app/admin/artifacts/[id]/publish/actions.ts` | 9 |
-| `app/admin/artifacts/[id]/publish/PublicationClientView.tsx` | 9 |
-| `lib/lia-route-helpers.ts` | 8 |
-| `app/builder/artifacts/page.tsx` | 8 |
-| `app/architect/artifacts/page.tsx` | 8 |
+| Pattern | Count | Files |
+|---------|------:|------:|
+| `return { success: false, error }` | **70** | 8 |
+| `throw new Error()` | **51** | 21 |
+| `toast.error()` | **43** | 13 |
+| **Total** | **164** | - |
 
-Improved from 319 but still significant. No `noImplicitAny` enabled.
+No unification effort has been made across all revisions. This is the single most persistent debt pattern.
 
-### 4.2 Error handling - 3 patterns still coexist
+### 4.2 Direct process.env access
 
-| Pattern | Count | Where |
-|---------|------:|-------|
-| `return { success: false, error }` | **127** | Server actions (9 files) |
-| `throw new Error()` | **33** | Inside try blocks in actions (19 files) |
-| `toast.error()` / `toast.success()` | **44** | Hooks and components (12 files) |
+**9 files** still use direct `process.env` (~18 instances):
+- `lib/server/env.ts` (7 - this is the centralized config, expected)
+- `app/api/lia/route.ts`
+- `app/api/debug/soflia/route.ts`
+- `app/api/auth/switch-organization/route.ts`
+- `utils/supabase/client.ts`
+- `utils/supabase/server.ts`
+- `utils/auth/session.ts`
+- `domains/scorm/services/scorm-enrichment.service.ts`
+- `lib/server/background-function-client.ts`
 
-Some actions internally `throw` then catch + convert to `{ success, error }`, adding unnecessary wrapping. No unified error boundary.
+Note: `auth-bridge.ts` **now properly imports from `@/lib/server/env`** instead of direct process.env (verified).
 
-### 4.3 Duplicated auth/action patterns
+### 4.3 Hardcoded timeouts (6 instances)
 
-All domain action files still repeat:
-1. `createClient()` → 2. `getAuthenticatedUser()` → 3. `getAccessToken()` → 4. `getAuthorizedArtifactAdmin()` → 5. Supabase query + Netlify call
+| File | Value | Purpose |
+|------|------:|---------|
+| `MaterialResultCard.tsx` | 2000ms | Copy feedback |
+| `debug/soflia/route.ts` | 5000ms | API abort |
+| `useCurationControls.tsx` | 3000ms | Clipboard feedback |
+| `VisualProductionContainer.tsx` | 1500ms | Completion check |
+| `useProductionAssetState.ts` | 2000ms | Copy feedback |
+| `SystemPromptsManager.tsx` | 3000ms | Message dismissal |
 
-- `getAuthenticatedUser()` called **22+ times** across the codebase
-- `getAuthorizedArtifactAdmin()` called **41+ times**
-- Only `materials.actions.ts` has `callNetlifyJsonFunction()` helper; curation and plan still use raw `fetch()`
+Minor - all are UI feedback timers.
 
-### 4.4 Netlify functions - no shared utilities
-
-- **No `netlify/functions/shared/` directory** exists
-- Each of 11 functions independently imports `createClient` from `@supabase/supabase-js`
-- Each function independently initializes `GoogleGenAI`
-- `SYLLABUS_PROMPT` duplicated between background function and `domains/syllabus/config/`
-- `unified-curation-logic.ts` at **823 lines** is the single largest file in the entire project
-
-### 4.5 Environment config - scattered, no validation
-
-- **30+ direct `process.env` accesses** with no centralized config
-- **No Zod validation** at startup
-- Confusing fallbacks: `GOOGLE_GENERATIVE_AI_API_KEY || GOOGLE_API_KEY`
-- **18+ env vars** without `.env.example`
-- Only `syllabus.config.ts` follows a config pattern
-
-### 4.6 Magic strings still present (partially improved)
-
-**Extracted (good):**
-- `PRODUCTION_VIDEOS_BUCKET` in `video-platform.ts`
-- `MAX_VIDEO_UPLOAD_SIZE_BYTES` in `video-platform.ts`
-- `GPT_URL` in `curation-ui.ts`
-- Pipeline state constants in `pipeline-constants.ts`
-
-**Still inline (needs work):**
-- `https://gamma.app/create` in ProductionAssetCard.tsx
-- `setTimeout(..., 3000)` UI feedback delays (multiple files)
-- `5000` polling intervals
-- `300000` validation cooldown (5 min)
-- `900000` validation timeout (15 min)
-- localStorage key patterns (`isValidating_`, `lastValidation_`)
-
-### 4.7 Domain structure inconsistency
+### 4.4 Domain structure (still inconsistent)
 
 | Domain | actions | components | hooks | lib | services | types | validators |
 |--------|:-------:|:----------:|:-----:|:---:|:--------:|:-----:|:----------:|
 | artifacts | YES | - | - | - | - | - | - |
 | curation | YES | YES | YES | YES | - | YES | - |
 | materials | YES | YES | YES | YES | YES | YES | YES |
-| plan | YES | YES | - | - | - | - | - |
-| syllabus | - | YES | - | - | YES | YES | YES |
-| scorm | - | - | - | - | YES | YES | - |
-| prompts | - | YES | - | - | - | YES | - |
+| plan | YES | YES | YES | - | - | - | - |
+| publication | - | - | - | YES | - | YES | - |
+| prompts | - | YES | - | - | - | - | - |
+| scorm | - | - | - | - | YES | - | - |
+| syllabus | - | YES | - | YES | YES | YES | YES |
 
-No standardized template. Materials is the most complete; others vary widely.
+### 4.5 Line count accuracy note
 
-### 4.8 Dead code / orphaned items still present
-
-| Item | Status | Action needed |
-|------|--------|---------------|
-| `config/prompts/instructional-plan.ts` | Consumed by Netlify functions | Verify, do NOT delete blindly |
-| `shared/config/prompts/materials-generation.prompts.ts` (585 lines) | Consumed by Netlify functions | Verify, do NOT delete blindly |
-| `components/lia/` | Empty directory | Delete |
-| `domains/instructionalPlan/` | Empty subdirectories | Delete |
-| `packages/shared/` | Exports only `SharedConstant = 'Shared Value'` | Decide: adopt or delete |
-| `packages/ui/` | Zero imports in entire codebase | Decide: adopt or delete |
-
-**Note**: The prompt files listed above were previously marked as orphaned but are actually consumed by Netlify background functions. Deleting them would break builds.
-
-### 4.9 Security / auth debt
-
-- Background jobs rely on token passing without dedicated hardening
-- Some routes/actions accept IDs without schema-level validation
-- Dual auth system (Supabase + SofLIA Bridge) with fallback logic in multiple places
-
-### 4.10 Operational debt
-
-- Polling-heavy UX in pipeline stages (usePolling helps but pattern is still poll-based)
-- Long-running Netlify jobs with coarse-grained status transitions
-- Limited structured logging in background flows
+Codex consistently understates file sizes by 6-56 lines per file. While all files ARE under their respective thresholds (400 for src, 400 for netlify), the exact numbers in Codex's reports should not be trusted as precise measurements.
 
 ---
 
-## 5. Progress Tracking
+## 5. Complete Revision Trajectory
 
-### What improved across all 3 revisions
+| Revision | Estimate | Key change | Verified? |
+|----------|----------|------------|:---------:|
+| 1st (03-24) | ~42% | Initial analysis: dead code, god files, no abstractions | YES |
+| 2nd (03-26) | ~35-38% | Dead code removed | YES |
+| 3rd (03-26) | ~28-30% | God files split, usePolling, helpers | YES |
+| 4th (03-27) | ~24-26% | Netlify shared/, workspace cleanup | YES |
+| 5th (03-27) | ~18-20% | Publication domain, syllabus split, env.ts | YES |
+| 6th (03-27) | ~13-15% | Auth bridge, materials UI/background split | YES |
+| 7th-10th (03-27) | ~8% → ~4% | Incremental: curation/materials runtime, Lia/SCORM typing, artifact/library cleanup | Partially |
+| **11th (03-27, current)** | **~3-5%** | Zero `any`, zero select('*'), unified-curation split, publication-payload split, ProductionAssetCard split | **YES** |
 
-| Issue | 1st rev (42%) | 2nd rev (35-38%) | 3rd rev (28-30%) |
-|-------|:---:|:---:|:---:|
-| God files >500 lines | 5 | 5 | **0** |
-| Largest front-end file | 1,375 | 1,089 | **495** |
-| Dead legacy files | 17 | ~10 | **~4** (prompts used by netlify + empties) |
-| `any` types | 270+ | 319 (grew) | **284** (shrinking) |
-| Shared polling hook | None | None | **Created** |
-| Centralized constants | None | None | **pipeline-constants + video-platform** |
-| Extracted helpers | None | None | **6 new helper/lib files** |
-| Typed validators | 59 lines | 59 lines | **572 lines** (5 files) |
-| Artifact listing split | No | Yes | Yes |
-| Lia route split | No | No | **Yes (720→147)** |
-
-### What still has NOT improved
-
-| Issue | Status across all revisions |
-|-------|---------------------------|
-| Error handling (3 patterns) | Unchanged |
-| Netlify shared utilities | None created |
-| `unified-curation-logic.ts` (823 lines) | Untouched |
-| Centralized env config with Zod | Not created |
-| Domain structure template | Not standardized |
-| `packages/shared` and `packages/ui` | Still phantom |
-| Magic timeout numbers | Partially extracted, many remain |
+### Cumulative reduction: ~37-39 percentage points
 
 ---
 
-## 6. Recommended Debt Paydown Order
+## 6. Before and After
 
-### Priority 1: High impact, addresses largest remaining categories
-
-1. **Split `unified-curation-logic.ts`** (823 lines → target <400)
-   - This is the single largest file in the entire project
-2. **Create `netlify/functions/shared/`** - Supabase factory, GoogleGenAI factory, error response helper
-   - Eliminates duplication across 11 functions
-3. **Standardize error handling** - pick one pattern (`return { success, error }` recommended), eliminate throw+catch wrapping
-
-### Priority 2: Type safety and config
-
-4. **Create `config/env.ts`** with Zod validation at startup
-5. **Reduce `any` count** - start with `publish/route.ts` (21 instances) and action files
-6. **Extract remaining magic numbers** to constants (timeouts, cooldowns, localStorage keys)
-
-### Priority 3: Structural consistency
-
-7. **Define domain template** and align all 7 domains
-8. **Enable `noImplicitAny`** incrementally (start with lib/ and actions/)
-9. **Decide on `packages/shared` and `packages/ui`** - adopt meaningfully or remove
-10. **Delete empty directories** (`components/lia/`, `domains/instructionalPlan/`)
+| Metric | Start (42%) | **Now (~3-5%)** |
+|--------|:-----------:|:---------------:|
+| God files >500 lines (src/) | 5 | **0** |
+| Files >400 lines (src/, logic) | 12+ | **0** |
+| Executable `any` types | 270+ | **0** |
+| `select('*')` in runtime | Present | **0** |
+| Largest src file (logic) | 1,375 | **394** |
+| Largest Netlify function | 823 | **374** |
+| Shared abstractions | 0 | usePolling, env.ts, pipeline-constants, video-platform, netlify shared/ (9 files) |
+| Type contracts | 0 | layout.types, artifact-view.types, user-management.types, curation-types, publication.types |
+| tsconfig strict flags | None | `noUnusedLocals` + `noUnusedParameters` |
+| Phantom packages | Present | Deleted |
+| Empty legacy dirs | 2+ | **0** |
+| Error handling patterns | 3 | **3** (unchanged) |
 
 ---
 
-## 7. Conclusion
+## 7. Recommended Next Paydown Order
 
-CourseForge went from **~42% technical debt** (original) to **~28-30%** (current) in a meaningful way:
+### Priority 1: The one structural debt remaining
 
-- **God files eliminated**: 0 executable files >500 lines (was 5)
-- **Largest front-end file**: 495 lines (was 1,375)
-- **New shared abstractions**: usePolling, pipeline-constants, video-platform, 6 helper/lib files
-- **Validators expanded**: 59 → 572 lines of typed validation
+1. **Standardize error handling** - 164 instances across 3 patterns. This is the last real structural inconsistency.
 
-The remaining ~28-30% is now driven by:
-- Type looseness (284 `any` across 71 files)
-- Duplicated action/auth patterns (no shared base)
-- Netlify function isolation (823-line monolith, no shared utilities)
-- Config/env scatter (30+ direct process.env accesses)
-- Error handling inconsistency (3 patterns, 204 total instances)
+### Priority 2: Operational maturity
 
-**Direction: Improving. The structural crisis is over. What remains is conventional maintenance debt.**
+2. Add E2E coverage for pipeline phases and SCORM/publication happy paths
+3. Review production query plans and add DB indexes where traffic proves needed
+4. Add tracing/observability around background jobs
 
-**Current verified estimate: ~28-30%**
+### Priority 3: Polish
+
+5. Migrate remaining 8 files off direct `process.env` to env.ts getters
+6. Extract 6 hardcoded timeouts to named constants
+7. Opportunistic file splitting when readability demands it
+
+---
+
+## 8. Conclusion
+
+CourseForge has gone from **~42% technical debt to ~3-5%** across 11 revisions. This is a **~37-39 point reduction**.
+
+The structural crisis is fully resolved:
+- **Zero executable `any`** across the entire web workspace
+- **Zero god files** - largest logic file is 394 lines
+- **Zero wildcard Supabase selects** in runtime paths
+- **All Netlify functions under 400 lines** (largest was 823)
+- **Strict TypeScript flags enforced** permanently
+
+The remaining ~3-5% is:
+- 3 error handling patterns (164 instances) - the only remaining structural inconsistency
+- 9 files with direct process.env (mostly in expected locations)
+- 6 hardcoded UI timeouts (trivial)
+- Domain structure variation (functional, not blocking)
+
+**The system has moved from debt-remediation to operational maturity.**
+
+**Current verified estimate: ~3-5%**

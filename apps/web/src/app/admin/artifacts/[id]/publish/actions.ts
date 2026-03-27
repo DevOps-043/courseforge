@@ -1,43 +1,151 @@
 'use server';
 
-import { createClient } from "@/utils/supabase/server";
-import { getActiveOrganizationId } from "@/utils/auth/session";
-import { revalidatePath } from "next/cache";
-import { fetchVideoMetadata } from "@/lib/video-platform";
+import { revalidatePath } from 'next/cache';
+import type { PublicationComponent } from '@/domains/publication/types/publication.types';
+import type {
+    PublicationDataResult,
+    PublicationDraftData,
+    PublicationLesson,
+    PublicationRequestRecord,
+    PublicationVideoLesson,
+} from '@/domains/publication/types/publication.types';
+import { getActiveOrganizationId } from '@/utils/auth/session';
+import { createClient } from '@/utils/supabase/server';
 
-declare const process: any;
+interface RawMaterialLessonRow {
+    lesson_id: string;
+    lesson_title: string;
+    module_title: string;
+    oa_text?: string | null;
+    material_components?: PublicationComponent[] | null;
+}
 
-export async function getPublicationData(artifactId: string) {
+interface RawArtifactRow {
+    id: string;
+    idea_central: string;
+    descripcion: unknown;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+}
+
+function extractVideoMetadata(
+    components: PublicationComponent[] | null | undefined,
+) {
+    let videoUrl = '';
+    let videoDuration = 0;
+
+    if (!Array.isArray(components)) {
+        return { videoUrl, videoDuration };
+    }
+
+    const videoComponent = components.find(
+        (component) =>
+            component.assets?.final_video_url ||
+            component.assets?.video_url ||
+            component.type.includes('VIDEO'),
+    );
+
+    if (!videoComponent) {
+        return { videoUrl, videoDuration };
+    }
+
+    videoUrl =
+        videoComponent.assets?.final_video_url ||
+        videoComponent.assets?.video_url ||
+        '';
+
+    const content = isRecord(videoComponent.content)
+        ? videoComponent.content
+        : null;
+    const script = content && isRecord(content.script) ? content.script : null;
+    const sections = script && Array.isArray(script.sections) ? script.sections : [];
+
+    if (videoDuration === 0 && sections.length > 0) {
+        videoDuration = sections.reduce((total, section) => {
+            if (!isRecord(section)) {
+                return total;
+            }
+            return total + (Number(section.duration_seconds) || 0);
+        }, 0);
+    }
+
+    if (videoDuration === 0 && typeof content?.duration_estimate_minutes === 'number') {
+        videoDuration = Math.round(content.duration_estimate_minutes * 60);
+    }
+
+    return { videoUrl, videoDuration };
+}
+
+function mapLessonToPublicationLesson(
+    lesson: RawMaterialLessonRow,
+): PublicationLesson {
+    const components = lesson.material_components || [];
+    const { videoUrl, videoDuration } = extractVideoMetadata(components);
+
+    return {
+        id: lesson.lesson_id,
+        title: lesson.lesson_title,
+        module_title: lesson.module_title,
+        auto_video_url: videoUrl,
+        auto_duration: videoDuration,
+        summary: lesson.oa_text || '',
+        components,
+    };
+}
+
+function mapLessonToVideoLesson(
+    lesson: RawMaterialLessonRow,
+): PublicationVideoLesson {
+    const { videoUrl, videoDuration } = extractVideoMetadata(
+        lesson.material_components,
+    );
+
+    return {
+        id: lesson.lesson_id,
+        title: lesson.lesson_title,
+        module_title: lesson.module_title,
+        auto_video_url: videoUrl,
+        auto_duration: videoDuration,
+    };
+}
+
+export async function getPublicationData(
+    artifactId: string,
+): Promise<PublicationDataResult> {
     const supabase = await createClient();
     const activeOrgId = await getActiveOrganizationId();
 
-    // 1. Get Artifact basic info (scoped to org)
-    let artQuery = supabase
+    let artifactQuery = supabase
         .from('artifacts')
         .select('id, idea_central, generation_metadata, descripcion')
         .eq('id', artifactId);
-    if (activeOrgId) artQuery = artQuery.eq('organization_id', activeOrgId);
-    const { data: artifact, error: artError } = await artQuery.single();
 
-    if (artError || !artifact) {
+    if (activeOrgId) {
+        artifactQuery = artifactQuery.eq('organization_id', activeOrgId);
+    }
+
+    const { data: artifact, error: artifactError } = await artifactQuery.single<RawArtifactRow>();
+
+    if (artifactError || !artifact) {
         throw new Error('Artifact not found');
     }
 
-    // 2. Get Lessons for this artifact (from material_lessons)
-    // We need to join with materials -> material_lessons
-    const { data: materials, error: matError } = await supabase
+    const { data: materials } = await supabase
         .from('materials')
         .select('id, package')
         .eq('artifact_id', artifactId)
-        .single();
+        .maybeSingle();
 
-    let lessons: any[] = [];
-    if (materials) {
+    let lessons: PublicationLesson[] = [];
+
+    if (materials?.id) {
         const { data: rawLessons } = await supabase
             .from('material_lessons')
             .select(`
-                lesson_id, 
-                lesson_title, 
+                lesson_id,
+                lesson_title,
                 module_title,
                 oa_text,
                 material_components(
@@ -50,157 +158,111 @@ export async function getPublicationData(artifactId: string) {
             .order('module_id', { ascending: true })
             .order('lesson_id', { ascending: true });
 
-        if (rawLessons) {
-            lessons = rawLessons.map((l: any) => {
-                // Try to find a video URL in components
-                let videoUrl = '';
-                let videoDuration = 0;
-                if (l.material_components && Array.isArray(l.material_components)) {
-                    // Prioritize final_video_url, then video_url
-                    const videoComp = l.material_components.find((c: any) =>
-                        c.assets?.final_video_url || c.assets?.video_url
-                    );
-                    if (videoComp) {
-                        videoUrl = videoComp.assets.final_video_url || videoComp.assets.video_url;
-                        videoDuration = videoComp.assets.video_duration || 0;
-                    }
-                }
-
-                return {
-                    id: l.lesson_id,
-                    title: l.lesson_title,
-                    module_title: l.module_title,
-                    auto_video_url: videoUrl,
-                    auto_duration: videoDuration,
-                    summary: l.oa_text,
-                    components: l.material_components || []
-                };
-            });
-            // No sorting needed here, backend provides pre-sorted by module_id and lesson_id.
-        }
+        lessons = (rawLessons || []).map((lesson) =>
+            mapLessonToPublicationLesson(lesson as RawMaterialLessonRow),
+        );
     }
 
-
-    // 3. Get existing publication request if any
     const { data: request } = await supabase
         .from('publication_requests')
-        .select('*')
+        .select('id, category, level, instructor_email, slug, price, thumbnail_url, lesson_videos, selected_lessons, upstream_dirty, upstream_dirty_source, status')
         .eq('artifact_id', artifactId)
-        .single();
-
-    console.log(`[getPublicationData] Artifact: ${artifactId}`);
-    console.log(`[getPublicationData] Request found: ${!!request}`);
-    if (request?.lesson_videos) {
-        const keys = Object.keys(request.lesson_videos);
-        console.log(`[getPublicationData] Video Mappings: ${keys.length}`);
-        if (keys.length > 0) {
-            console.log(`[getPublicationData] Sample Duration: ${request.lesson_videos[keys[0]].duration}`);
-        }
-    }
+        .maybeSingle();
 
     return {
         artifact: {
             id: artifact.id,
             title: artifact.idea_central,
-            description: artifact.descripcion
+            description: artifact.descripcion,
         },
         lessons,
-        request,
-        materialsPackage: materials?.package
+        request: (request as PublicationRequestRecord | null) || null,
+        materialsPackage: materials?.package || null,
     };
 }
 
-export async function savePublicationDraft(artifactId: string, data: any) {
+export async function savePublicationDraft(
+    artifactId: string,
+    data: PublicationDraftData,
+) {
     const supabase = await createClient();
-    try {
-        console.log('--- SAVE DRAFT START ---');
 
+    try {
         const { data: existing } = await supabase
             .from('publication_requests')
             .select('id')
             .eq('artifact_id', artifactId)
-            .single();
+            .maybeSingle();
 
-        if (existing) {
-            console.log('Updating existing request:', existing.id);
+        const payload = {
+            category: data.category,
+            level: data.level,
+            instructor_email: data.instructor_email,
+            slug: data.slug,
+            price: data.price,
+            thumbnail_url: data.thumbnail_url,
+            lesson_videos: data.lesson_videos,
+            selected_lessons: data.selected_lessons || null,
+            status: data.status,
+            updated_at: new Date().toISOString(),
+        };
+
+        if (existing?.id) {
             const { error } = await supabase
                 .from('publication_requests')
-                .update({
-                    category: data.category,
-                    level: data.level,
-                    instructor_email: data.instructor_email,
-                    slug: data.slug,
-                    price: data.price,
-                    thumbnail_url: data.thumbnail_url,
-                    lesson_videos: data.lesson_videos, // JSONB
-                    selected_lessons: data.selected_lessons || null, // JSONB array of lesson IDs
-                    status: data.status, // DRAFT or READY
-                    updated_at: new Date().toISOString()
-                })
+                .update(payload)
                 .eq('id', existing.id);
 
             if (error) {
-                console.error('Update Error:', error);
                 throw error;
             }
         } else {
-            console.log('Inserting new request');
             const { error } = await supabase
                 .from('publication_requests')
                 .insert({
                     artifact_id: artifactId,
-                    category: data.category,
-                    level: data.level,
-                    instructor_email: data.instructor_email,
-                    slug: data.slug,
-                    price: data.price,
-                    thumbnail_url: data.thumbnail_url,
-                    lesson_videos: data.lesson_videos,
-                    selected_lessons: data.selected_lessons || null,
-                    status: data.status
+                    ...payload,
                 });
 
             if (error) {
-                console.error('Insert Error:', error);
                 throw error;
             }
         }
 
-        console.log('Save successful, revalidating path...');
         revalidatePath(`/admin/artifacts/${artifactId}/publish`);
-        return { success: true };
-    } catch (error: any) {
+        return { success: true as const };
+    } catch (error: unknown) {
         console.error('Save Draft Error:', error);
-        return { success: false, error: error.message };
+        return {
+            success: false as const,
+            error:
+                error instanceof Error ? error.message : 'Error desconocido',
+        };
     }
 }
 
-// testSofliaConnection removed
-
-/**
- * Re-fetch fresh video URLs and durations from production (material_components).
- * Used by the "reset" button to sync publication data with the latest production state.
- */
 export async function refreshProductionVideos(artifactId: string) {
     const supabase = await createClient();
 
-    // 1. Get materials for this artifact
     const { data: materials } = await supabase
         .from('materials')
         .select('id')
         .eq('artifact_id', artifactId)
-        .single();
+        .maybeSingle();
 
-    if (!materials) {
-        return { success: false, error: 'No materials found', lessons: [] };
+    if (!materials?.id) {
+        return {
+            success: false as const,
+            error: 'No materials found',
+            lessons: [] as PublicationVideoLesson[],
+        };
     }
 
-    // 2. Fetch fresh lessons with their components
     const { data: rawLessons, error } = await supabase
         .from('material_lessons')
         .select(`
-            lesson_id, 
-            lesson_title, 
+            lesson_id,
+            lesson_title,
             module_title,
             material_components(
                 type,
@@ -213,43 +275,17 @@ export async function refreshProductionVideos(artifactId: string) {
         .order('lesson_id', { ascending: true });
 
     if (error) {
-        return { success: false, error: error.message, lessons: [] };
+        return {
+            success: false as const,
+            error: error.message,
+            lessons: [] as PublicationVideoLesson[],
+        };
     }
 
-    // 3. Extract video URLs and durations from components
-    const lessons = (rawLessons || []).map((l: any) => {
-        let videoUrl = '';
-        let videoDuration = 0;
-
-        if (l.material_components && Array.isArray(l.material_components)) {
-            const videoComp = l.material_components.find((c: any) =>
-                c.assets?.final_video_url || c.assets?.video_url || c.type?.includes('VIDEO')
-            );
-
-            if (videoComp) {
-                videoUrl = videoComp.assets?.final_video_url || videoComp.assets?.video_url || '';
-                videoDuration = videoComp.assets?.video_duration || 0;
-
-                // Try to compute duration from script sections if not stored
-                if (videoDuration === 0 && videoComp.content?.script?.sections) {
-                    videoDuration = videoComp.content.script.sections.reduce(
-                        (acc: number, sec: any) => acc + (sec.duration_seconds || 0), 0
-                    );
-                }
-                if (videoDuration === 0 && videoComp.content?.duration_estimate_minutes) {
-                    videoDuration = Math.round(videoComp.content.duration_estimate_minutes * 60);
-                }
-            }
-        }
-
-        return {
-            id: l.lesson_id,
-            title: l.lesson_title,
-            module_title: l.module_title,
-            auto_video_url: videoUrl,
-            auto_duration: videoDuration,
-        };
-    });
-
-    return { success: true, lessons };
+    return {
+        success: true as const,
+        lessons: (rawLessons || []).map((lesson) =>
+            mapLessonToVideoLesson(lesson as RawMaterialLessonRow),
+        ),
+    };
 }

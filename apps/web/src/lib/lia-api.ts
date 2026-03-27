@@ -1,8 +1,59 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type {
+  GeminiRestResponse,
+  LiaAction,
+  LiaConfig,
+  LiaGroundingMetadata,
+  LiaSettingsRecord,
+  ParsedLiaResponse,
+} from "@/lib/lia-types";
+
+const DEFAULT_COMPUTER_SETTINGS: LiaSettingsRecord = {
+  model_name: "gemini-2.0-flash-exp",
+  temperature: 0.3,
+  setting_type: "COMPUTER",
+};
+
+const DEFAULT_STANDARD_SETTINGS: LiaSettingsRecord = {
+  model_name: "gemini-2.0-flash",
+  temperature: 0.7,
+  setting_type: "LIA_MODEL",
+};
+
+interface GeminiRestCandidate {
+  content?: {
+    parts?: Array<{ text?: string }>;
+  };
+  groundingMetadata?: LiaGroundingMetadata;
+}
+
+interface GeminiRestApiResponse {
+  candidates?: GeminiRestCandidate[];
+}
+
+interface LiaActionEnvelope {
+  action?: LiaAction | null;
+  actions?: LiaAction[];
+  message?: string;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isLiaAction(value: unknown): value is LiaAction {
+  if (!isObject(value) || typeof value.name !== "string") {
+    return false;
+  }
+
+  return "args" in value && isObject(value.args);
+}
+
 export async function getLiaSettings(
-  supabase: any,
+  supabase: SupabaseClient,
   useComputerUse: boolean,
   organizationId?: string | null,
-) {
+): Promise<LiaSettingsRecord> {
   const settingType = useComputerUse ? "COMPUTER" : "LIA_MODEL";
 
   let query = supabase
@@ -24,19 +75,11 @@ export async function getLiaSettings(
       `No ${settingType} settings found for org ${organizationId || "global"}, using defaults.`,
     );
     return useComputerUse
-      ? {
-          model_name: "gemini-2.0-flash-exp",
-          temperature: 0.3,
-          setting_type: "COMPUTER",
-        }
-      : {
-          model_name: "gemini-2.0-flash",
-          temperature: 0.7,
-          setting_type: "LIA_MODEL",
-        };
+      ? DEFAULT_COMPUTER_SETTINGS
+      : DEFAULT_STANDARD_SETTINGS;
   }
 
-  return data;
+  return data as LiaSettingsRecord;
 }
 
 export function detectHallucination(
@@ -163,12 +206,6 @@ export function detectHallucination(
   return { isHallucinating: false, searchTerm: null };
 }
 
-interface ParsedLiaResponse {
-  action?: any;
-  actions?: any[];
-  cleanText: string;
-}
-
 function extractJsonBlock(text: string) {
   const start = text.indexOf("{");
   if (start === -1) return null;
@@ -233,18 +270,23 @@ export function parseActionFromResponse(text: string): ParsedLiaResponse | null 
   }
 
   try {
-    const parsed = JSON.parse(jsonStr);
-    const cleanText = parsed.message || "Ejecutando...";
+    const parsed = JSON.parse(jsonStr) as LiaActionEnvelope;
+    const cleanText =
+      typeof parsed.message === "string" ? parsed.message : "Ejecutando...";
     console.log("Parsed message:", cleanText);
     console.log("Parsed action:", parsed.action);
     console.log("Parsed actions:", parsed.actions);
 
-    if (parsed.actions && Array.isArray(parsed.actions) && parsed.actions.length > 0) {
+    if (
+      Array.isArray(parsed.actions) &&
+      parsed.actions.length > 0 &&
+      parsed.actions.every(isLiaAction)
+    ) {
       console.log("Multiple actions parsed:", parsed.actions.length);
       return { actions: parsed.actions, cleanText };
     }
 
-    if (parsed.action && parsed.action.name) {
+    if (isLiaAction(parsed.action)) {
       console.log("Single action parsed:", parsed.action.name);
       return { action: parsed.action, cleanText };
     }
@@ -265,10 +307,16 @@ export async function callGeminiREST(
   apiKey: string,
   model: string,
   prompt: string,
-  config: any,
-): Promise<{ text: string; groundingMetadata?: any }> {
+  config: LiaConfig,
+): Promise<GeminiRestResponse> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  const body: any = {
+  const body: {
+    contents: Array<{ parts: Array<{ text: string }> }>;
+    generationConfig: {
+      temperature: number;
+    };
+    tools?: LiaConfig["tools"];
+  } = {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: {
       temperature: config.temperature || 0.7,
@@ -293,7 +341,7 @@ export async function callGeminiREST(
     throw new Error(`Gemini API error: ${restResponse.status} - ${errorText}`);
   }
 
-  const data = await restResponse.json();
+  const data = (await restResponse.json()) as GeminiRestApiResponse;
   return {
     text: data.candidates?.[0]?.content?.parts?.[0]?.text || "",
     groundingMetadata: data.candidates?.[0]?.groundingMetadata,

@@ -1,13 +1,14 @@
 "use server";
 
+import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { createClient } from "@/utils/supabase/server";
 import { getActiveOrganizationId } from "@/utils/auth/session";
+import type { ArtifactContentUpdates } from "@/app/admin/artifacts/[id]/artifact-view.types";
 import {
   canReviewContent,
   getAccessToken,
   getAuthenticatedUser,
   getAuthorizedArtifactAdmin,
-  getBackgroundFunctionsBaseUrl,
 } from "@/lib/server/artifact-action-auth";
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 
@@ -62,33 +63,29 @@ export async function generateArtifactAction(formData: {
       throw new Error(`Database Error: ${error.message}`);
     }
 
-    const triggerResponse = await fetch(
-      `${getBackgroundFunctionsBaseUrl()}/.netlify/functions/generate-artifact-background`,
+    await callBackgroundFunctionJson(
+      "generate-artifact-background",
       {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          artifactId: artifact.id,
-          formData,
-          userToken: accessToken,
-        }),
+        artifactId: artifact.id,
+        formData,
+        userToken: accessToken,
+      },
+      {
+        fallbackError: "Error al iniciar la generacion del artefacto",
+        localHandlerLoader: () =>
+          import("../../../../netlify/functions/generate-artifact-background"),
       },
     );
 
-    if (!triggerResponse.ok) {
-      console.warn(
-        `[ArtifactActions] Background trigger failed: ${triggerResponse.status}`,
-      );
-    }
-
     return { success: true, artifactId: artifact.id, status: "queued" };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[ArtifactActions] Generation error:", error);
     return {
       success: false,
-      error: error.message || "Error initiating generation",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Error initiating generation",
     };
   }
 }
@@ -186,38 +183,34 @@ export async function regenerateArtifactAction(
   if (resetError) return { success: false, error: resetError.message };
 
   try {
-    const triggerResponse = await fetch(
-      `${getBackgroundFunctionsBaseUrl()}/.netlify/functions/generate-artifact-background`,
+    await callBackgroundFunctionJson(
+      "generate-artifact-background",
       {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          artifactId,
-          userToken: session.access_token,
-          formData: originalInput,
-          feedback,
-        }),
+        artifactId,
+        userToken: session.access_token,
+        formData: originalInput,
+        feedback,
+      },
+      {
+        fallbackError: "Error al relanzar la generacion del artefacto",
+        localHandlerLoader: () =>
+          import("../../../../netlify/functions/generate-artifact-background"),
       },
     );
 
-    if (!triggerResponse.ok) {
-      console.warn(
-        `[ArtifactActions] Background regeneration trigger failed: ${triggerResponse.status}`,
-      );
-    }
-
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[ArtifactActions] Regeneration error:", error);
-    return { success: false, error: error.message };
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Error regenerating artifact",
+    };
   }
 }
 
 export async function updateArtifactContentAction(
   artifactId: string,
-  updates: { nombres?: string[]; objetivos?: string[]; descripcion?: any },
+  updates: ArtifactContentUpdates,
 ) {
   const supabase = await createClient();
   const authUser = await getAuthenticatedUser(supabase);
@@ -274,8 +267,11 @@ export async function deleteArtifactAction(artifactId: string) {
     }
 
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[ArtifactActions] Delete error:", error);
-    return { success: false, error: error.message };
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Error deleting artifact",
+    };
   }
 }

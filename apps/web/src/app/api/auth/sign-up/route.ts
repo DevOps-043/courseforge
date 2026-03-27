@@ -1,11 +1,25 @@
 import { createClient } from '@/utils/supabase/server'
 import { NextResponse } from 'next/server'
 
+interface SignUpRequestBody {
+  email?: string
+  firstName?: string
+  lastNameFather?: string
+  lastNameMother?: string
+  password?: string
+  username?: string
+}
+
 export async function POST(request: Request) {
   try {
     const requestUrl = new URL(request.url)
-    const { email, password, firstName, lastNameFather, lastNameMother, username } = await request.json()
+    const { email, password, firstName, lastNameFather, lastNameMother, username } =
+      (await request.json()) as SignUpRequestBody
     const supabase = await createClient()
+
+    if (!email || !password) {
+      return NextResponse.json({ error: 'Email y password son requeridos' }, { status: 400 })
+    }
 
     const { error } = await supabase.auth.signUp({
       email,
@@ -26,7 +40,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true }, { status: 200 })
-  } catch (error: any) {
+  } catch {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
   }
 }

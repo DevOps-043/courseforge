@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getGptSourcesApiKey, getSupabaseServiceRoleKey, getSupabaseUrl } from '@/lib/server/env';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseUrl = getSupabaseUrl();
+const supabaseServiceKey = getSupabaseServiceRoleKey();
 
 // CORS headers required for GPT Actions (OpenAI servers)
 const corsHeaders = {
@@ -31,20 +32,23 @@ interface SourcesPayload {
     };
 }
 
+function getErrorMessage(error: unknown) {
+    return error instanceof Error ? error.message : 'Internal server error';
+}
+
 export async function POST(request: NextRequest) {
-    // 1. Validate API Key
-    const apiKey = request.headers.get('x-api-key');
-    const expectedKey = process.env.GPT_SOURCES_API_KEY;
-
-    if (!apiKey || apiKey !== expectedKey) {
-        console.error('[GPT Sources API] Invalid API key attempt');
-        return NextResponse.json(
-            { success: false, error: 'Invalid or missing API key' },
-            { status: 401, headers: corsHeaders }
-        );
-    }
-
     try {
+        const expectedKey = getGptSourcesApiKey();
+        const apiKey = request.headers.get('x-api-key');
+
+        if (!apiKey || apiKey !== expectedKey) {
+            console.error('[GPT Sources API] Invalid API key attempt');
+            return NextResponse.json(
+                { success: false, error: 'Invalid or missing API key' },
+                { status: 401, headers: corsHeaders }
+            );
+        }
+
         // 2. Parse and validate payload
         const payload: SourcesPayload = await request.json();
         const lookupId = payload.course_id || payload.artifact_id;
@@ -177,10 +181,10 @@ export async function POST(request: NextRequest) {
             artifact_title: artifact.idea_central
         }, { headers: corsHeaders });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('[GPT Sources API] Error:', error);
         return NextResponse.json(
-            { success: false, error: error.message || 'Internal server error' },
+            { success: false, error: getErrorMessage(error) },
             { status: 500, headers: corsHeaders }
         );
     }

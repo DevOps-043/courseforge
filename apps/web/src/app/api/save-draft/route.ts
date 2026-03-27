@@ -1,12 +1,22 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
+import type { PublicationDraftData } from '@/domains/publication/types/publication.types';
+
+interface SaveDraftRequestBody {
+    artifactId?: string;
+    data?: PublicationDraftData;
+}
+
+function getErrorMessage(error: unknown) {
+    return error instanceof Error ? error.message : 'Unknown error';
+}
 
 export async function POST(request: Request) {
     try {
-        const { artifactId, data } = await request.json();
+        const { artifactId, data } = (await request.json()) as SaveDraftRequestBody;
 
-        if (!artifactId) {
+        if (!artifactId || !data) {
             return NextResponse.json({ error: 'Falta artifactId' }, { status: 400 });
         }
 
@@ -65,8 +75,8 @@ export async function POST(request: Request) {
 
         revalidatePath(`/admin/artifacts/${artifactId}/publish`);
         return NextResponse.json({ success: true });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('[API /save-draft] Error:', error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
     }
 }

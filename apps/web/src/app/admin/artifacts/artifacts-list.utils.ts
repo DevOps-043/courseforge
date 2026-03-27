@@ -141,16 +141,23 @@ export function getArtifactDescription(descripcion: Artifact["descripcion"]) {
     return descripcion;
   }
 
-  if (descripcion.texto) {
-    return descripcion.texto;
-  }
+  if (typeof descripcion === "object" && descripcion !== null) {
+    const normalizedDescription = descripcion as {
+      texto?: string;
+      resumen?: string;
+    };
 
-  if (descripcion.resumen) {
-    return descripcion.resumen;
-  }
+    if (normalizedDescription.texto) {
+      return normalizedDescription.texto;
+    }
 
-  if (Object.keys(descripcion).length > 0) {
-    return JSON.stringify(descripcion).substring(0, 100);
+    if (normalizedDescription.resumen) {
+      return normalizedDescription.resumen;
+    }
+
+    if (Object.keys(normalizedDescription).length > 0) {
+      return JSON.stringify(normalizedDescription).substring(0, 100);
+    }
   }
 
   return "Sin descripcion";

@@ -1,19 +1,157 @@
 "use server";
 
-import { createClient } from "@/utils/supabase/server";
-import { getBackgroundFunctionsBaseUrl } from "@/lib/server/artifact-action-auth";
+import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
+import { createClient } from "@/utils/supabase/server";
+import type {
+  MaterialAssets,
+  ProductionDodChecklist,
+  ProductionStatus,
+  StoryboardItem,
+} from "../types/materials.types";
 
-export async function generateVideoPromptsAction(
-  componentId: string,
-  storyboard: any[],
-) {
+interface ProductionArtifactRelation {
+  course_id?: string | null;
+}
+
+interface ProductionMaterialsRelation {
+  artifact_id?: string | null;
+  artifacts?: ProductionArtifactRelation | ProductionArtifactRelation[] | null;
+}
+
+interface ProductionLessonRelation {
+  lesson_id: string;
+  lesson_title: string;
+  materials?: ProductionMaterialsRelation | ProductionMaterialsRelation[] | null;
+  module_id?: string | null;
+}
+
+interface ProductionComponentRecord {
+  assets?: MaterialAssets | null;
+  material_lesson_id?: string | null;
+  material_lessons?: ProductionLessonRelation | ProductionLessonRelation[] | null;
+  type: string;
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown error";
+}
+
+function firstRelation<T>(value: T | T[] | null | undefined): T | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function buildDodChecklist(
+  assets: Partial<MaterialAssets>,
+): ProductionDodChecklist {
+  return {
+    has_slides_url: Boolean(assets.slides_url),
+    has_video_url: Boolean(assets.video_url),
+    has_screencast_url: Boolean(assets.screencast_url),
+    has_b_roll_prompts: Boolean(assets.b_roll_prompts),
+    has_final_video_url: Boolean(assets.final_video_url),
+  };
+}
+
+function resolveProductionStatus(
+  componentType: string,
+  dodChecklist: ProductionDodChecklist,
+): ProductionStatus {
+  const needsSlides =
+    componentType === "VIDEO_THEORETICAL" || componentType === "VIDEO_GUIDE";
+  const needsScreencast =
+    componentType === "DEMO_GUIDE" || componentType === "VIDEO_GUIDE";
+  const needsVideo = componentType.includes("VIDEO");
+  const needsFinalVideo = componentType.includes("VIDEO");
+
+  const hasRequiredSlides = !needsSlides || dodChecklist.has_slides_url;
+  const hasRequiredScreencast =
+    !needsScreencast || dodChecklist.has_screencast_url;
+  const hasRequiredVideo = !needsVideo || dodChecklist.has_video_url;
+  const hasRequiredFinalVideo =
+    !needsFinalVideo || dodChecklist.has_final_video_url;
+
+  if (
+    (hasRequiredSlides &&
+      hasRequiredScreencast &&
+      hasRequiredVideo &&
+      hasRequiredFinalVideo) ||
+    dodChecklist.has_final_video_url
+  ) {
+    return "COMPLETED";
+  }
+
+  if (
+    dodChecklist.has_slides_url ||
+    dodChecklist.has_video_url ||
+    dodChecklist.has_screencast_url ||
+    dodChecklist.has_b_roll_prompts
+  ) {
+    return "IN_PROGRESS";
+  }
+
+  return "PENDING";
+}
+
+function buildGammaDeckId(params: {
+  componentType: string;
+  currentAssets: Partial<MaterialAssets>;
+  lesson?: ProductionLessonRelation;
+}) {
+  const { componentType, currentAssets, lesson } = params;
+  if (currentAssets.gamma_deck_id || !lesson) {
+    return currentAssets.gamma_deck_id;
+  }
+
+  const materials = firstRelation(lesson.materials);
+  const artifact = firstRelation(materials?.artifacts);
+  const courseId = artifact?.course_id || "CRS";
+  const lessonNumMatch = lesson.lesson_title.match(/^(\d+(\.\d+)*)/);
+  const lessonNum = lessonNumMatch
+    ? lessonNumMatch[0]
+    : `L${lesson.lesson_id.substring(0, 4)}`;
+
+  const typeMap: Record<string, string> = {
+    VIDEO_THEORETICAL: "VTH",
+    VIDEO_GUIDE: "VGD",
+    VIDEO_DEMO: "VDM",
+    DEMO_GUIDE: "DG",
+    QUIZ: "QZ",
+  };
+  const typeCode = typeMap[componentType] || "UNK";
+  const suffix = Math.random().toString(36).substring(2, 5).toUpperCase();
+
+  return `${courseId}-${lessonNum}-${typeCode}-${suffix}`;
+}
+
+function isProductionComplete(assets?: MaterialAssets | null) {
+  return assets?.production_status === "COMPLETED";
+}
+
+async function getAuthorizedSupabase() {
   const supabase = await createClient();
   const {
     data: { user },
     error: authError,
   } = await supabase.auth.getUser();
-  if (authError || !user) return { success: false, error: "Unauthorized" };
+
+  if (authError || !user) {
+    return { error: "Unauthorized", supabase, user: null };
+  }
+
+  return { error: null, supabase, user };
+}
+
+export async function generateVideoPromptsAction(
+  componentId: string,
+  storyboard: StoryboardItem[],
+) {
+  const { error, supabase } = await getAuthorizedSupabase();
+  if (error) return { success: false, error };
 
   const {
     data: { session },
@@ -21,43 +159,35 @@ export async function generateVideoPromptsAction(
   if (!session) return { success: false, error: "Unauthorized" };
 
   try {
-    const response = await fetch(
-      `${getBackgroundFunctionsBaseUrl()}/.netlify/functions/video-prompts-generation`,
+    const data = await callBackgroundFunctionJson<{ prompts?: string }>(
+      "video-prompts-generation",
       {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          componentId,
-          storyboard,
-          userToken: session.access_token,
-        }),
+        componentId,
+        storyboard,
+        userToken: session.access_token,
+      },
+      {
+        fallbackError: "No se pudieron generar los prompts de video",
+        localHandlerLoader: () =>
+          import("../../../../netlify/functions/video-prompts-generation"),
       },
     );
 
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Failed to generate prompts");
-    }
-
-    return { success: true, prompts: data.prompts };
-  } catch (error: any) {
+    return { success: true, prompts: data.prompts || "" };
+  } catch (error: unknown) {
     console.error("[ProductionActions] Error generating prompts:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 
 export async function saveMaterialAssetsAction(
   componentId: string,
-  assets: any,
+  assets: Partial<MaterialAssets>,
 ) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-  if (authError || !user) return { success: false, error: "Unauthorized" };
+  const { error: authError, supabase } = await getAuthorizedSupabase();
+  if (authError) return { success: false, error: authError };
 
-  const { data: component } = await supabase
+  const { data: rawComponent } = await supabase
     .from("material_components")
     .select(
       `
@@ -74,102 +204,37 @@ export async function saveMaterialAssetsAction(
     .eq("id", componentId)
     .single();
 
-  const currentAssets = component?.assets || {};
-  const mergedAssets = { ...currentAssets, ...assets };
+  const component = (rawComponent || null) as ProductionComponentRecord | null;
+  const currentAssets = (component?.assets || {}) as MaterialAssets;
+  const mergedAssets: MaterialAssets = { ...currentAssets, ...assets };
   const componentType = component?.type || "";
+  const lesson = firstRelation(component?.material_lessons);
+  const materials = firstRelation(lesson?.materials);
+  const artifactId = materials?.artifact_id || undefined;
+  const dodChecklist = buildDodChecklist(mergedAssets);
+  const productionStatus = resolveProductionStatus(componentType, dodChecklist);
 
-  const dodChecklist = {
-    has_slides_url: !!mergedAssets.slides_url,
-    has_video_url: !!mergedAssets.video_url,
-    has_screencast_url: !!mergedAssets.screencast_url,
-    has_b_roll_prompts: !!mergedAssets.b_roll_prompts,
-    has_final_video_url: !!mergedAssets.final_video_url,
-  };
-
-  const needsSlides =
-    componentType === "VIDEO_THEORETICAL" || componentType === "VIDEO_GUIDE";
-  const needsScreencast =
-    componentType === "DEMO_GUIDE" || componentType === "VIDEO_GUIDE";
-  const needsVideo = componentType.includes("VIDEO");
-  const needsFinalVideo = componentType.includes("VIDEO");
-
-  const hasRequiredSlides = !needsSlides || dodChecklist.has_slides_url;
-  const hasRequiredScreencast =
-    !needsScreencast || dodChecklist.has_screencast_url;
-  const hasRequiredVideo = !needsVideo || dodChecklist.has_video_url;
-  const hasRequiredFinalVideo =
-    !needsFinalVideo || dodChecklist.has_final_video_url;
-
-  let productionStatus = "PENDING";
-  if (
-    hasRequiredSlides &&
-    hasRequiredScreencast &&
-    hasRequiredVideo &&
-    hasRequiredFinalVideo
-  ) {
-    productionStatus = "COMPLETED";
-  } else if (dodChecklist.has_final_video_url) {
-    productionStatus = "COMPLETED";
-  } else if (
-    dodChecklist.has_slides_url ||
-    dodChecklist.has_video_url ||
-    dodChecklist.has_screencast_url ||
-    dodChecklist.has_b_roll_prompts
-  ) {
-    productionStatus = "IN_PROGRESS";
-  }
-
-  let gammaDeckId = mergedAssets.gamma_deck_id;
-  if (!gammaDeckId && component?.material_lessons) {
-    const lesson = component.material_lessons as any;
-    const materials = Array.isArray(lesson.materials)
-      ? lesson.materials[0]
-      : lesson.materials;
-    const artifact = Array.isArray(materials?.artifacts)
-      ? materials.artifacts[0]
-      : materials?.artifacts;
-
-    const courseId = artifact?.course_id || "CRS";
-    const lessonNumMatch = lesson.lesson_title.match(/^(\d+(\.\d+)*)/);
-    const lessonNum = lessonNumMatch
-      ? lessonNumMatch[0]
-      : `L${lesson.lesson_id.substring(0, 4)}`;
-
-    const typeMap: Record<string, string> = {
-      VIDEO_THEORETICAL: "VTH",
-      VIDEO_GUIDE: "VGD",
-      VIDEO_DEMO: "VDM",
-      DEMO_GUIDE: "DG",
-      QUIZ: "QZ",
-    };
-    const typeCode = typeMap[componentType] || "UNK";
-    const suffix = Math.random().toString(36).substring(2, 5).toUpperCase();
-    gammaDeckId = `${courseId}-${lessonNum}-${typeCode}-${suffix}`;
-  }
-
-  const finalAssets = {
+  const finalAssets: MaterialAssets = {
     ...mergedAssets,
-    gamma_deck_id: gammaDeckId,
+    gamma_deck_id: buildGammaDeckId({
+      componentType,
+      currentAssets: mergedAssets,
+      lesson,
+    }),
     production_status: productionStatus,
     dod_checklist: dodChecklist,
     updated_at: new Date().toISOString(),
   };
 
-  const { error } = await supabase
+  const { error: updateError } = await supabase
     .from("material_components")
     .update({ assets: finalAssets })
     .eq("id", componentId);
 
-  if (error) {
-    console.error("[ProductionActions] Error saving material assets:", error);
-    return { success: false, error: error.message };
+  if (updateError) {
+    console.error("[ProductionActions] Error saving material assets:", updateError);
+    return { success: false, error: updateError.message };
   }
-
-  const lessonHierarchy = component?.material_lessons as any;
-  const materialsHierarchy = Array.isArray(lessonHierarchy?.materials)
-    ? lessonHierarchy.materials[0]
-    : lessonHierarchy?.materials;
-  const artifactId = materialsHierarchy?.artifact_id;
 
   if (artifactId) {
     await markDownstreamDirtyAction(
@@ -178,40 +243,21 @@ export async function saveMaterialAssetsAction(
       "Materiales (assets actualizados)",
     );
     await syncProductionStatusAction(artifactId);
-  }
-
-  if (component?.material_lesson_id) {
-    const { data: lesson } = await supabase
-      .from("material_lessons")
-      .select("materials_id")
-      .eq("id", component.material_lesson_id)
-      .single();
-
-    if (lesson?.materials_id) {
-      const { data: materials } = await supabase
-        .from("materials")
-        .select("artifact_id")
-        .eq("id", lesson.materials_id)
-        .single();
-
-      if (materials?.artifact_id) {
-        await logPipelineEventAction(
-          materials.artifact_id,
-          productionStatus === "COMPLETED"
-            ? "GO-OP-06_ASSET_COMPLETED"
-            : "GO-OP-06_ASSET_UPDATED",
-          {
-            component_id: componentId,
-            component_type: componentType,
-            production_status: productionStatus,
-            dod_checklist: dodChecklist,
-          },
-          "GO-OP-06",
-          componentId,
-          "material_component",
-        );
-      }
-    }
+    await logPipelineEventAction(
+      artifactId,
+      productionStatus === "COMPLETED"
+        ? "GO-OP-06_ASSET_COMPLETED"
+        : "GO-OP-06_ASSET_UPDATED",
+      {
+        component_id: componentId,
+        component_type: componentType,
+        production_status: productionStatus,
+        dod_checklist: dodChecklist,
+      },
+      "GO-OP-06",
+      componentId,
+      "material_component",
+    );
   }
 
   return { success: true, productionStatus, dodChecklist };
@@ -219,7 +265,7 @@ export async function saveMaterialAssetsAction(
 
 export async function syncProductionStatusAction(artifactId: string) {
   const supabase = await createClient();
-  const { data: components, error: componentsError } = await supabase
+  const { data: rawComponents, error: componentsError } = await supabase
     .from("material_components")
     .select(
       `
@@ -233,7 +279,7 @@ export async function syncProductionStatusAction(artifactId: string) {
     )
     .eq("material_lessons.materials.artifact_id", artifactId);
 
-  if (componentsError || !components) {
+  if (componentsError || !rawComponents) {
     console.error(
       "[ProductionActions] Error fetching components for sync:",
       componentsError,
@@ -241,6 +287,10 @@ export async function syncProductionStatusAction(artifactId: string) {
     return { success: false };
   }
 
+  const components = rawComponents as Array<{
+    assets?: MaterialAssets | null;
+    type: string;
+  }>;
   const produceable = components.filter(
     (component) =>
       component.type.includes("VIDEO") || component.type === "DEMO_GUIDE",
@@ -249,8 +299,8 @@ export async function syncProductionStatusAction(artifactId: string) {
   if (produceable.length === 0) return { success: true };
 
   const total = produceable.length;
-  const completed = produceable.filter(
-    (component) => (component.assets as any)?.production_status === "COMPLETED",
+  const completed = produceable.filter((component) =>
+    isProductionComplete(component.assets),
   ).length;
   const isDone = total > 0 && total === completed;
 
@@ -277,17 +327,13 @@ export async function syncProductionStatusAction(artifactId: string) {
 export async function logPipelineEventAction(
   artifactId: string,
   eventType: string,
-  eventData: Record<string, any> = {},
+  eventData: Record<string, unknown> = {},
   stepId?: string,
   entityId?: string,
   entityType?: string,
 ) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-  if (authError || !user) return { success: false, error: "Unauthorized" };
+  const { error: authError, supabase, user } = await getAuthorizedSupabase();
+  if (authError || !user) return { success: false, error: authError };
 
   const { error } = await supabase.from("pipeline_events").insert({
     artifact_id: artifactId,
@@ -314,12 +360,8 @@ export async function updateProductionStatusAction(
   artifactId: string,
   isComplete: boolean,
 ) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-  if (authError || !user) return { success: false, error: "Unauthorized" };
+  const { error: authError, supabase } = await getAuthorizedSupabase();
+  if (authError) return { success: false, error: authError };
 
   const { error } = await supabase
     .from("artifacts")

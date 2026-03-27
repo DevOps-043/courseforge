@@ -16,13 +16,13 @@ export default async function ProfilePage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('*')
+    .select('avatar_url, first_name, last_name_father, last_name_mother, username, platform_role')
     .eq('id', user.id)
     .single();
 
   let artifactCountQuery = supabase
     .from('artifacts')
-    .select('*', { count: 'exact', head: true })
+    .select('id', { count: 'exact', head: true })
     .eq('created_by', user.id);
   if (activeOrgId) artifactCountQuery = artifactCountQuery.eq('organization_id', activeOrgId);
   const { count: artifactCount } = await artifactCountQuery;

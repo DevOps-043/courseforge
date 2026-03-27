@@ -1,5 +1,7 @@
 "use server";
 
+import type { PlanLessonItem } from "@/domains/plan/components/plan-view.types";
+import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { createClient } from "@/utils/supabase/server";
 import { getActiveOrganizationId } from "@/utils/auth/session";
 import {
@@ -8,9 +10,12 @@ import {
   getAccessToken,
   getAuthenticatedUser,
   getAuthorizedArtifactAdmin,
-  getBackgroundFunctionsBaseUrl,
   getServiceRoleClient,
 } from "@/lib/server/artifact-action-auth";
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown error";
+}
 
 export async function generateInstructionalPlanAction(
   artifactId: string,
@@ -25,32 +30,25 @@ export async function generateInstructionalPlanAction(
   if (!accessToken) return { success: false, error: "Unauthorized" };
 
   try {
-    const triggerResponse = await fetch(
-      `${getBackgroundFunctionsBaseUrl()}/.netlify/functions/instructional-plan-background`,
+    await callBackgroundFunctionJson(
+      "instructional-plan-background",
       {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          artifactId,
-          userToken: accessToken,
-          customPrompt,
-          useCustomPrompt,
-        }),
+        artifactId,
+        userToken: accessToken,
+        customPrompt,
+        useCustomPrompt,
+      },
+      {
+        fallbackError: "Error al iniciar la generacion del plan",
+        localHandlerLoader: () =>
+          import("../../../../netlify/functions/instructional-plan-background"),
       },
     );
 
-    if (!triggerResponse.ok) {
-      console.warn(
-        `[PlanActions] Generation trigger failed: ${triggerResponse.status}`,
-      );
-    }
-
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[PlanActions] Generation trigger error:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 
@@ -75,68 +73,23 @@ export async function validateInstructionalPlanAction(artifactId: string) {
       .update({ validation: null })
       .eq("artifact_id", artifactId);
 
-    if (process.env.NODE_ENV !== "production") {
-      const { handler } = await import(
-        "../../../../netlify/functions/validate-plan-background"
-      );
-      const localResponse = await handler(
-        {
-          httpMethod: "POST",
-          body: JSON.stringify({
-            artifactId,
-            userToken: accessToken,
-          }),
-        } as any,
-        {} as any,
-      );
-
-      if (!localResponse || localResponse.statusCode >= 400) {
-        let localError = "Validation failed while running locally";
-        try {
-          const parsed = JSON.parse(localResponse?.body || "{}");
-          localError = parsed.error || localError;
-        } catch {
-          localError = localResponse?.body || localError;
-        }
-
-        return { success: false, error: localError };
-      }
-
-      return { success: true };
-    }
-
-    const triggerResponse = await fetch(
-      `${getBackgroundFunctionsBaseUrl()}/.netlify/functions/validate-plan-background`,
+    await callBackgroundFunctionJson(
+      "validate-plan-background",
       {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          artifactId,
-          userToken: accessToken,
-        }),
+        artifactId,
+        userToken: accessToken,
+      },
+      {
+        fallbackError: "Error al validar el plan instruccional",
+        localHandlerLoader: () =>
+          import("../../../../netlify/functions/validate-plan-background"),
       },
     );
 
-    if (!triggerResponse.ok) {
-      const responseText = await triggerResponse.text();
-      const sanitizedError = /<(?:!doctype|html|body|script|div)\b/i.test(
-        responseText,
-      )
-        ? `Validation service unavailable (${triggerResponse.status})`
-        : responseText ||
-          `Background validation trigger failed (${triggerResponse.status})`;
-      return {
-        success: false,
-        error: sanitizedError,
-      };
-    }
-
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[PlanActions] Validation trigger error:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 
@@ -186,7 +139,7 @@ export async function updateInstructionalPlanStatusAction(
 
 export async function updateInstructionalPlanContentAction(
   artifactId: string,
-  lessonPlans: any[],
+  lessonPlans: PlanLessonItem[],
 ) {
   const supabase = await createClient();
   const authUser = await getAuthenticatedUser(supabase);

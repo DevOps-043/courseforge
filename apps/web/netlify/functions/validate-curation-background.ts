@@ -1,7 +1,13 @@
 
 import { Handler } from '@netlify/functions';
-import { createClient } from '@supabase/supabase-js';
 import { processUnifiedCuration } from './unified-curation-logic';
+import {
+  createServiceRoleClient,
+  getGeminiApiKey,
+  getSupabaseServiceKey,
+  getSupabaseUrl,
+} from './shared/bootstrap';
+import { methodNotAllowedResponse, parseJsonBody } from './shared/http';
 
 /**
  * PROXY FOR VALIDATION
@@ -10,22 +16,21 @@ import { processUnifiedCuration } from './unified-curation-logic';
  * for the artifact's latest curation.
  */
 const handler: Handler = async (event) => {
-  if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' };
+  if (event.httpMethod !== 'POST') return methodNotAllowedResponse();
 
   try {
-    const { artifactId, userToken } = JSON.parse(event.body || '{}');
+    const { artifactId } = parseJsonBody<{
+      artifactId?: string;
+      userToken?: string;
+    }>(event);
 
     if (!artifactId) throw new Error('Missing artifactId');
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''; // Use service key for backend operations
-    const geminiApiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || '';
+    const supabaseUrl = getSupabaseUrl();
+    const supabaseKey = getSupabaseServiceKey();
+    const geminiApiKey = getGeminiApiKey();
 
-    if (!supabaseUrl || !supabaseKey || !geminiApiKey) {
-        throw new Error('Missing environment configuration');
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = createServiceRoleClient();
 
     // 1. Find the active curation for this artifact
     // We assume the "Validation" button is clicked on an existing curation context.
@@ -72,9 +77,14 @@ const handler: Handler = async (event) => {
 
     return { statusCode: 200, body: JSON.stringify({ success: true, processed, mode: 'unified-proxy' }) };
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Validation Proxy] Error:', error);
-    return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }),
+    };
   }
 };
 

@@ -2,16 +2,17 @@
 
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { Search, Filter, MoreHorizontal, User, Shield, Mail, Calendar, Edit, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Search, Filter, MoreHorizontal, Shield, Mail, Calendar, Edit } from 'lucide-react';
 import UserModal from './UserModal';
+import type { PlatformUser, UserModalFormData } from './user-management.types';
 
-export default function UsersTable({ initialUsers }: { initialUsers: any[] }) {
+export default function UsersTable({ initialUsers }: { initialUsers: PlatformUser[] }) {
   const [users, setUsers] = useState(initialUsers || []);
   const [searchTerm, setSearchTerm] = useState('');
   
   // Modal States
-  const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [editingUser, setEditingUser] = useState<PlatformUser | null>(null);
 
   // Actions Menu State
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -49,12 +50,12 @@ export default function UsersTable({ initialUsers }: { initialUsers: any[] }) {
     }
   }, [openMenuId]);
 
-  const handleEdit = (user: any) => {
+  const handleEdit = (user: PlatformUser) => {
       setEditingUser(user);
       setOpenMenuId(null);
   };
 
-  const handleSaveUser = async (userData: any) => {
+  const handleSaveUser = async (userData: UserModalFormData) => {
       // Optimizacion: Guardar en bd
       try {
         const response = await fetch('/api/admin/users', {
@@ -77,7 +78,7 @@ export default function UsersTable({ initialUsers }: { initialUsers: any[] }) {
         }
 
         // Edit Logic
-        setUsers(users.map(u => u.id === userData.id ? { 
+        setUsers(users.map((u) => u.id === userData.id ? { 
             ...u, 
             platform_role: userData.role
         } : u));

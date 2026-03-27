@@ -4,11 +4,32 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Sparkles, Upload, ArrowRight, BookOpen, Users, Target, Settings, ChevronDown, CheckCircle2 } from 'lucide-react';
-import Link from 'next/link';
 
 import { generateArtifactAction } from '@/domains/artifacts/actions/artifact.actions';
 import { ScormImportFlow } from './components/ScormImportFlow';
 import { toast } from 'sonner';
+
+interface ArtifactIdeaFormData {
+    courseId: string;
+    description: string;
+    expectedResults: string;
+    targetAudience: string;
+    title: string;
+}
+
+interface SelectionCardProps {
+    active: boolean;
+    description: string;
+    icon: React.ReactNode;
+    onClick: () => void;
+    title: string;
+}
+
+interface TemplateCardProps {
+    description: string;
+    onClick: () => void;
+    title: string;
+}
 
 export default function NewArtifactPage() {
     const [mode, setMode] = useState<'ai' | 'import'>('ai');
@@ -16,7 +37,7 @@ export default function NewArtifactPage() {
     const [isLoading, setIsLoading] = useState(false);
 
     // Form State
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<ArtifactIdeaFormData>({
         title: '',
         description: '',
         targetAudience: '',
@@ -320,7 +341,7 @@ export default function NewArtifactPage() {
     );
 }
 
-function ModeCard({ active, onClick, icon, title, description }: any) {
+function ModeCard({ active, onClick, icon, title, description }: SelectionCardProps) {
     return (
         <button
             onClick={onClick}
@@ -347,7 +368,7 @@ function ModeCard({ active, onClick, icon, title, description }: any) {
     )
 }
 
-function TemplateCard({ title, description, onClick }: any) {
+function TemplateCard({ title, description, onClick }: TemplateCardProps) {
     return (
         <button
             onClick={onClick}

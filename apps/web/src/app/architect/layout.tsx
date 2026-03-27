@@ -3,6 +3,7 @@ import { createClient } from '@/utils/supabase/server';
 import { getAuthBridgeUser } from '@/utils/auth/session';
 import ArchitectLayoutClient from './ArchitectLayoutClient';
 import { logoutAction } from '../login/actions';
+import { resolveSidebarProfile } from '@/components/layout/layout.types';
 
 export default async function ArchitectLayout({
   children,
@@ -28,7 +29,7 @@ export default async function ArchitectLayout({
   // 2. Verify Architect Role
   const { data: profile } = await supabase
     .from('profiles')
-    .select('*')
+    .select('avatar_url, first_name, last_name_father, platform_role')
     .eq('id', userId)
     .single();
 
@@ -38,13 +39,7 @@ export default async function ArchitectLayout({
     redirect('/builder?error=unauthorized_architect');
   }
 
-  const displayProfile = profile || (bridgeUser ? {
-    first_name: bridgeUser.first_name,
-    last_name: bridgeUser.last_name,
-    username: bridgeUser.username,
-    avatar_url: bridgeUser.avatar_url,
-    platform_role: 'ARQUITECTO',
-  } : null);
+  const displayProfile = resolveSidebarProfile(profile, bridgeUser);
 
   return (
     <ArchitectLayoutClient userEmail={userEmail} logoutAction={logoutAction} profile={displayProfile}>

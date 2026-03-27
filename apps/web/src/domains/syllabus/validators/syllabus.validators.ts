@@ -1,5 +1,4 @@
 import { SyllabusModule, ValidationCheck } from "../types/syllabus.types";
-import { COURSE_CONFIG } from "../config/syllabus.config";
 
 export interface ValidationResult {
   passed: boolean;

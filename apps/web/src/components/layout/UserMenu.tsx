@@ -1,14 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { LogOut, Sun, Moon, User, ChevronUp, Monitor, ChevronDown } from 'lucide-react';
+import { LogOut, Sun, Moon, User, Monitor, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from 'next-themes';
+import type { SidebarProfile } from './layout.types';
 
 interface UserMenuProps {
     userEmail?: string;
-    profile?: any;
+    profile?: SidebarProfile | null;
     logoutAction: () => void;
     align?: 'bottom' | 'top'; // Dirección de apertura del menú
 }

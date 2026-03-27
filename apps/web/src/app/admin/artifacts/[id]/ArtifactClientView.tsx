@@ -16,10 +16,21 @@ import {
   isMaterialsApproved,
   isSyllabusApproved,
 } from "@/lib/artifact-workflow";
+import type {
+  PublicationProfile,
+  PublicationRequestRecord,
+  PublicationVideoLesson,
+} from "@/domains/publication/types/publication.types";
 import { ArtifactStageContent } from "./ArtifactStageContent";
 import { ArtifactToast } from "./ArtifactToast";
 import { ArtifactWorkflowHeader } from "./ArtifactWorkflowHeader";
 import { ArtifactWorkflowStepper } from "./ArtifactWorkflowStepper";
+import type {
+  ArtifactContentUpdates,
+  ArtifactEditedContent,
+  ArtifactValidationReport,
+  ArtifactViewRecord,
+} from "./artifact-view.types";
 
 const STATUS_STYLES: Record<string, string> = {
   READY_FOR_QA: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
@@ -28,7 +39,7 @@ const STATUS_STYLES: Record<string, string> = {
   APPROVED: "text-green-400 bg-green-500/10 border-green-500/20",
 };
 
-function buildEditedContent(artifact: any) {
+function buildEditedContent(artifact: ArtifactViewRecord): ArtifactEditedContent {
   return {
     nombres: artifact.nombres || [],
     objetivos: artifact.objetivos || [],
@@ -47,10 +58,10 @@ export default function ArtifactClientView({
   profile,
   basePath = "/admin",
 }: {
-  artifact: any;
-  publicationRequest?: any;
-  publicationLessons?: any[];
-  profile?: any;
+  artifact: ArtifactViewRecord;
+  publicationRequest?: PublicationRequestRecord | null;
+  publicationLessons?: PublicationVideoLesson[];
+  profile?: PublicationProfile;
   basePath?: string;
 }) {
   const router = useRouter();
@@ -122,7 +133,7 @@ export default function ArtifactClientView({
     if (!editingSection) return;
 
     try {
-      const updates: any = {};
+      const updates: ArtifactContentUpdates = {};
 
       if (editingSection === "nombres") {
         updates.nombres = editedContent.nombres;
@@ -213,7 +224,7 @@ export default function ArtifactClientView({
   const validation = artifact.validation_report || {
     results: [],
     all_passed: false,
-  };
+  } satisfies ArtifactValidationReport;
   const currentStatusStyle =
     STATUS_STYLES[artifact.state] || STATUS_STYLES.GENERATING;
   const productionComplete =

@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import Image from 'next/image'
 import UserMenu from '@/components/layout/UserMenu'
 import { logoutAction } from '../login/actions'
+import { resolveSidebarProfile } from '@/components/layout/layout.types'
 
 export default async function DashboardPage() {
   // Intentar primero con Supabase Auth (sesiones locales legacy)
@@ -26,17 +27,11 @@ export default async function DashboardPage() {
   // Obtener perfil (puede no existir en CourseForge para usuarios nuevos de SofLIA)
   const { data: profile } = await supabase
     .from('profiles')
-    .select('*')
+    .select('avatar_url, first_name, last_name_father')
     .eq('id', userId)
     .single()
 
-  // Si no hay perfil local, usar datos del bridge
-  const displayProfile = profile || (bridgeUser ? {
-    first_name: bridgeUser.first_name,
-    last_name: bridgeUser.last_name,
-    username: bridgeUser.username,
-    avatar_url: bridgeUser.avatar_url,
-  } : null)
+  const displayProfile = resolveSidebarProfile(profile, bridgeUser)
 
 
   return (

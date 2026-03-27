@@ -7,11 +7,71 @@ import {
 
 const APPROVED_DECISION = "APPROVED";
 
-export function isSyllabusApproved(artifactLike: any): boolean {
+interface QaStatusLike {
+  status?: string | null;
+}
+
+interface QaDecisionLike {
+  decision?: string | null;
+}
+
+interface ApprovalsLike {
+  architect_status?: string | null;
+}
+
+interface NestedWorkflowStateLike {
+  id?: string | null;
+  state?: string | null;
+  qa?: QaStatusLike | null;
+  qa_decision?: QaDecisionLike | null;
+  final_status?: string | null;
+  approvals?: ApprovalsLike | null;
+}
+
+export interface ArtifactWorkflowLike {
+  id?: string | null;
+  state?: string | null;
+  qa_status?: string | null;
+  qa_decision?: QaDecisionLike | null;
+  production_complete?: boolean | null;
+  syllabus_status?: string | null;
+  syllabus_state?: string | null;
+  plan_state?: string | null;
+  curation_state?: string | null;
+  materials_state?: string | null;
+  final_status?: string | null;
+  approvals?: ApprovalsLike | null;
+  temario?: {
+    qa?: QaStatusLike | null;
+  } | null;
+  syllabus?: NestedWorkflowStateLike | null;
+  instructional_plan?: NestedWorkflowStateLike | null;
+  curation?: NestedWorkflowStateLike | null;
+  materials?: NestedWorkflowStateLike | null;
+}
+
+export interface PublicationWorkflowLike {
+  status?: string | null;
+}
+
+function getNestedQaStatus(
+  value?: { qa?: QaStatusLike | null } | null,
+) {
+  return value?.qa?.status;
+}
+
+function getNestedQaDecision(
+  value?: { qa_decision?: QaDecisionLike | null } | null,
+) {
+  return value?.qa_decision?.decision;
+}
+
+export function isSyllabusApproved(artifactLike: ArtifactWorkflowLike): boolean {
   const syllabusState =
-    artifactLike?.syllabus_status ?? artifactLike?.syllabus_state;
+    artifactLike.syllabus_status ?? artifactLike.syllabus_state;
   const qaStatus =
-    artifactLike?.temario?.qa?.status ?? artifactLike?.syllabus?.qa?.status;
+    getNestedQaStatus(artifactLike.temario) ??
+    getNestedQaStatus(artifactLike.syllabus);
 
   return (
     syllabusState === SYLLABUS_STATES.APPROVED ||
@@ -19,13 +79,23 @@ export function isSyllabusApproved(artifactLike: any): boolean {
   );
 }
 
-export function isInstructionalPlanApproved(planLike: any): boolean {
-  const planState = planLike?.plan_state ?? planLike?.state;
-  const finalStatus =
-    planLike?.instructional_plan?.final_status ?? planLike?.final_status;
+export function isInstructionalPlanApproved(
+  planLike?: ArtifactWorkflowLike | NestedWorkflowStateLike | null,
+): boolean {
+  if (!planLike) {
+    return false;
+  }
+
+  const planState =
+    "plan_state" in planLike ? planLike.plan_state : planLike.state;
+  const instructionalPlan =
+    "instructional_plan" in planLike
+      ? planLike.instructional_plan
+      : undefined;
+  const finalStatus = instructionalPlan?.final_status ?? planLike.final_status;
   const architectStatus =
-    planLike?.instructional_plan?.approvals?.architect_status ??
-    planLike?.approvals?.architect_status;
+    instructionalPlan?.approvals?.architect_status ??
+    planLike.approvals?.architect_status;
 
   return (
     planState === PLAN_STATES.APPROVED ||
@@ -34,19 +104,34 @@ export function isInstructionalPlanApproved(planLike: any): boolean {
   );
 }
 
-export function hasCurationStarted(curationLike: any): boolean {
-  const curationState = curationLike?.curation_state ?? curationLike?.state;
+export function hasCurationStarted(
+  curationLike?: ArtifactWorkflowLike | NestedWorkflowStateLike | null,
+): boolean {
+  if (!curationLike) {
+    return false;
+  }
 
-  return Boolean(
-    curationLike?.curation?.id || curationLike?.id || curationState,
-  );
+  const curationState =
+    "curation_state" in curationLike ? curationLike.curation_state : curationLike.state;
+  const nestedCuration =
+    "curation" in curationLike ? curationLike.curation : undefined;
+
+  return Boolean(nestedCuration?.id || curationLike.id || curationState);
 }
 
-export function isCurationApproved(curationLike: any): boolean {
-  const curationState = curationLike?.curation_state ?? curationLike?.state;
+export function isCurationApproved(
+  curationLike?: ArtifactWorkflowLike | NestedWorkflowStateLike | null,
+): boolean {
+  if (!curationLike) {
+    return false;
+  }
+
+  const curationState =
+    "curation_state" in curationLike ? curationLike.curation_state : curationLike.state;
+  const nestedCuration =
+    "curation" in curationLike ? curationLike.curation : undefined;
   const qaDecision =
-    curationLike?.curation?.qa_decision?.decision ??
-    curationLike?.qa_decision?.decision;
+    getNestedQaDecision(nestedCuration) ?? getNestedQaDecision(curationLike);
 
   return (
     curationState === CURATION_STATES.APPROVED ||
@@ -54,11 +139,19 @@ export function isCurationApproved(curationLike: any): boolean {
   );
 }
 
-export function isCurationBlocked(curationLike: any): boolean {
-  const curationState = curationLike?.curation_state ?? curationLike?.state;
+export function isCurationBlocked(
+  curationLike?: ArtifactWorkflowLike | NestedWorkflowStateLike | null,
+): boolean {
+  if (!curationLike) {
+    return false;
+  }
+
+  const curationState =
+    "curation_state" in curationLike ? curationLike.curation_state : curationLike.state;
+  const nestedCuration =
+    "curation" in curationLike ? curationLike.curation : undefined;
   const qaDecision =
-    curationLike?.curation?.qa_decision?.decision ??
-    curationLike?.qa_decision?.decision;
+    getNestedQaDecision(nestedCuration) ?? getNestedQaDecision(curationLike);
 
   return (
     curationState === CURATION_STATES.BLOCKED ||
@@ -67,21 +160,38 @@ export function isCurationBlocked(curationLike: any): boolean {
   );
 }
 
-export function hasMaterialsStarted(materialsLike: any): boolean {
-  const materialsState = materialsLike?.materials_state ?? materialsLike?.state;
+export function hasMaterialsStarted(
+  materialsLike?: ArtifactWorkflowLike | NestedWorkflowStateLike | null,
+): boolean {
+  if (!materialsLike) {
+    return false;
+  }
+
+  const materialsState =
+    "materials_state" in materialsLike ? materialsLike.materials_state : materialsLike.state;
+  const nestedMaterials =
+    "materials" in materialsLike ? materialsLike.materials : undefined;
 
   return Boolean(
-    materialsLike?.materials?.id ||
-      materialsLike?.id ||
+    nestedMaterials?.id ||
+      materialsLike.id ||
       (materialsState && materialsState !== MATERIALS_STATES.DRAFT),
   );
 }
 
-export function isMaterialsApproved(materialsLike: any): boolean {
-  const materialsState = materialsLike?.materials_state ?? materialsLike?.state;
+export function isMaterialsApproved(
+  materialsLike?: ArtifactWorkflowLike | NestedWorkflowStateLike | null,
+): boolean {
+  if (!materialsLike) {
+    return false;
+  }
+
+  const materialsState =
+    "materials_state" in materialsLike ? materialsLike.materials_state : materialsLike.state;
+  const nestedMaterials =
+    "materials" in materialsLike ? materialsLike.materials : undefined;
   const qaDecision =
-    materialsLike?.materials?.qa_decision?.decision ??
-    materialsLike?.qa_decision?.decision;
+    getNestedQaDecision(nestedMaterials) ?? getNestedQaDecision(materialsLike);
 
   return (
     materialsState === MATERIALS_STATES.APPROVED ||
@@ -90,8 +200,8 @@ export function isMaterialsApproved(materialsLike: any): boolean {
 }
 
 export function getArtifactWorkflowStep(
-  artifact: any,
-  publicationRequest?: any,
+  artifact: ArtifactWorkflowLike,
+  publicationRequest?: PublicationWorkflowLike | null,
 ): number {
   if (
     publicationRequest?.status === "SENT" ||
@@ -100,7 +210,7 @@ export function getArtifactWorkflowStep(
     return 7;
   }
 
-  if (publicationRequest || artifact?.production_complete) {
+  if (publicationRequest || artifact.production_complete) {
     return 7;
   }
 
@@ -120,7 +230,7 @@ export function getArtifactWorkflowStep(
     return 3;
   }
 
-  if (artifact?.state === "APPROVED" || artifact?.qa_status === "APPROVED") {
+  if (artifact.state === "APPROVED" || artifact.qa_status === "APPROVED") {
     return 2;
   }
 

@@ -3,9 +3,8 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { Button } from "@/shared/components/Button";
 import { motion } from "framer-motion";
-import { ArrowRight, CheckCircle2, Sun, Moon, Monitor } from "lucide-react";
+import { CheckCircle2, Sun, Moon, Monitor } from "lucide-react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 

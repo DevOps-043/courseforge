@@ -69,7 +69,7 @@ async function inspect() {
     }
 
     console.log(`Found ${lessons.length} lessons.`);
-    lessons.forEach((l: any, idx) => {
+    lessons.forEach((l: any) => {
         console.log(`\nLesson ${l.lesson_id}: ${l.lesson_title}`);
         if (l.material_components) {
             l.material_components.forEach((c: any) => {

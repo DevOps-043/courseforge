@@ -2,10 +2,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
-  ChevronRight,
   CheckCircle,
-  AlertTriangle,
-  Clock,
   Layout,
   MessageSquare,
   BookOpen,

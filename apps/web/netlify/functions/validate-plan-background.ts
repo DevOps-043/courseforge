@@ -1,9 +1,11 @@
 
 // import { Handler } from '@netlify/functions'; // Removed to avoid missing dependency error
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import type { Handler } from '@netlify/functions';
 import { generateObject } from 'ai';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { createGoogleAIProvider } from './shared/bootstrap';
+import { methodNotAllowedResponse, parseJsonBody } from './shared/http';
 
 // EMBEDDED PROMPT TO AVOID IMPORT ISSUES
 const INSTRUCTIONAL_PLAN_VALIDATION_PROMPT = `Actúa como un Auditor de Calidad Instruccional Senior y Experto en Validación Curricular.
@@ -101,46 +103,46 @@ const ValidationResultSchema = z.object({
 });
 
 // Setup Clients
-const googleAI = createGoogleGenerativeAI({
-    apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY
-});
+const googleAI = createGoogleAIProvider();
 
-export const handler = async (event: any, context: any) => {
+function getErrorMessage(error: unknown) {
+    return error instanceof Error ? error.message : 'Unknown error';
+}
+
+export const handler: Handler = async (event) => {
     // 1. Parsing Request
     if (event.httpMethod !== 'POST') {
-        return { statusCode: 405, body: 'Method Not Allowed' };
+        return methodNotAllowedResponse();
     }
-
-    let body;
-    try {
-        body = JSON.parse(event.body || '{}');
-    } catch (e) {
-        return { statusCode: 400, body: 'Bad Request: Invalid JSON' };
-    }
-
-    const { artifactId, userToken } = body;
-
-    if (!artifactId || !userToken) {
-        return { statusCode: 400, body: 'Missing required fields' };
-    }
-
-    console.log(`[Validation Job] Starting validation for artifacts/${artifactId}`);
-
-    // 2. Setup Supabase Client
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-    const supabase = createClient(supabaseUrl, supabaseKey, {
-        global: {
-            headers: { Authorization: `Bearer ${userToken}` },
-        },
-    });
 
     try {
+        const body = parseJsonBody<{
+            artifactId?: string;
+            userToken?: string;
+        }>(event);
+
+        const { artifactId, userToken } = body;
+
+        if (!artifactId || !userToken) {
+            return { statusCode: 400, body: 'Missing required fields' };
+        }
+
+        console.log(`[Validation Job] Starting validation for artifacts/${artifactId}`);
+
+        // 2. Setup Supabase Client
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+        const supabase = createClient(supabaseUrl, supabaseKey, {
+            global: {
+                headers: { Authorization: `Bearer ${userToken}` },
+            },
+        });
+
         // --- STEP 1: FETCH DATA ---
         // Get the Instructional Plan
         const { data: plan, error: planError } = await supabase
             .from('instructional_plans')
-            .select('*')
+            .select('id, lesson_plans')
             .eq('artifact_id', artifactId)
             .single();
 
@@ -196,8 +198,8 @@ export const handler = async (event: any, context: any) => {
 
         return { statusCode: 200, body: JSON.stringify({ success: true, result: validationOutput }) };
 
-    } catch (err: any) {
-        console.error('[Validation Job] Failed:', err);
-        return { statusCode: 500, body: JSON.stringify({ success: false, error: err.message }) };
+    } catch (error: unknown) {
+        console.error('[Validation Job] Failed:', error);
+        return { statusCode: 500, body: JSON.stringify({ success: false, error: getErrorMessage(error) }) };
     }
 };

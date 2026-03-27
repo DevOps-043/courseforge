@@ -3,6 +3,7 @@ import { createClient } from '@/utils/supabase/server';
 import { getAuthBridgeUser } from '@/utils/auth/session';
 import BuilderLayoutClient from './BuilderLayoutClient';
 import { logoutAction } from '../login/actions';
+import { resolveSidebarProfile } from '@/components/layout/layout.types';
 
 export default async function BuilderLayout({
   children,
@@ -28,7 +29,7 @@ export default async function BuilderLayout({
   // 2. Verify Role
   const { data: profile } = await supabase
     .from('profiles')
-    .select('*')
+    .select('avatar_url, first_name, last_name_father, platform_role')
     .eq('id', userId)
     .single();
 
@@ -40,13 +41,7 @@ export default async function BuilderLayout({
     redirect('/login?error=unknown_role');
   }
 
-  const displayProfile = profile || (bridgeUser ? {
-    first_name: bridgeUser.first_name,
-    last_name: bridgeUser.last_name,
-    username: bridgeUser.username,
-    avatar_url: bridgeUser.avatar_url,
-    platform_role: profile?.platform_role || 'CONSTRUCTOR',
-  } : null);
+  const displayProfile = resolveSidebarProfile(profile, bridgeUser);
 
   return (
     <BuilderLayoutClient userEmail={userEmail} logoutAction={logoutAction} profile={displayProfile}>

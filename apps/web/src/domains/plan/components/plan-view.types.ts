@@ -3,7 +3,7 @@ export interface PlanComponentItem {
   description?: string;
   summary?: string;
   duration?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface PlanLessonItem {
@@ -20,7 +20,7 @@ export interface PlanLessonItem {
   measurable_criteria?: string;
   alignment_notes?: string;
   components: PlanComponentItem[];
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface PlanModuleGroup {
@@ -35,11 +35,11 @@ export interface InstructionalPlanRecord {
   state: string;
   upstream_dirty?: boolean;
   upstream_dirty_source?: string;
-  validation?: any;
+  validation?: Record<string, unknown> | null;
   qa_decision?: {
     notes?: string;
   };
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export function groupPlanModules(lessonPlans: PlanLessonItem[] = []) {

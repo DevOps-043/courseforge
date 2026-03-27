@@ -1,5 +1,22 @@
-import React from 'react';
 import { CheckCircle2, TrendingUp, ShieldCheck, AlertCircle, Sparkles } from 'lucide-react';
+
+interface PlanValidationMetrics {
+    adherencia_bloom?: number;
+    calidad_contenido?: number;
+    calidad_objetivos?: number;
+    coherencia_tematica?: number;
+    cobertura_objetivos?: number;
+    estructura_pedagogica?: number;
+}
+
+interface PlanValidationPayload {
+    estado?: string;
+    fortalezas?: string[];
+    metricas?: PlanValidationMetrics;
+    recomendaciones?: string[];
+    resumen_ejecutivo?: string;
+    score_general?: number;
+}
 
 interface MetricProps {
     label: string;
@@ -23,7 +40,11 @@ function MetricBar({ label, value }: MetricProps) {
     );
 }
 
-export function InstructionalPlanValidationResult({ validation }: { validation: any }) {
+export function InstructionalPlanValidationResult({
+    validation,
+}: {
+    validation: PlanValidationPayload | null | undefined;
+}) {
     if (!validation) return null;
     
     // Fallback default values if validation structure is partial

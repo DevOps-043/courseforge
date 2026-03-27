@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Mail, Lock, User, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { Button } from '@/shared/components/Button';
 
 export default function RegisterPage() {
@@ -50,8 +50,8 @@ export default function RegisterPage() {
       // Success! Redirect
       router.push('/login?registered=true');
 
-    } catch (err: any) {
-      setError(err.message || 'Error al registrarse');
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : 'Error al registrarse');
     } finally {
       setIsLoading(false);
     }

@@ -136,9 +136,12 @@ export function useCurationValidation(params: {
         "Validacion iniciada. El proceso se ejecuta en segundo plano.",
       );
       toast.info("Los resultados se actualizaran automaticamente.");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      toast.error("Fallo la validacion: " + error.message);
+      toast.error(
+        "Fallo la validacion: " +
+          (error instanceof Error ? error.message : "Error desconocido"),
+      );
       setIsValidating(false);
       localStorage.removeItem(`${VALIDATION_KEY_PREFIX}${artifactId}`);
     }

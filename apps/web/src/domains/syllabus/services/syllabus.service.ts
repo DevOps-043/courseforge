@@ -3,13 +3,57 @@ import { SYLLABUS_STATES } from "@/lib/pipeline-constants";
 import {
   Esp02Route,
   Esp02StepState,
+  SyllabusGenerationMetadata,
+  SyllabusModule,
   SyllabusRow,
+  SyllabusValidationReport,
   TemarioEsp02,
 } from "../types/syllabus.types";
-import { runAllValidations } from "../validators/syllabus.validators";
+import {
+  ValidationResult,
+  runAllValidations,
+} from "../validators/syllabus.validators";
 
 class SyllabusService {
   private supabase = createClient();
+  private emptyValidation: SyllabusValidationReport = {
+    automatic_pass: false,
+    checks: [],
+  };
+
+  private hasModules(
+    value: unknown,
+  ): value is { modules: SyllabusModule[] } {
+    return (
+      typeof value === "object" &&
+      value !== null &&
+      Array.isArray((value as { modules?: unknown }).modules)
+    );
+  }
+
+  private sanitizeModules(modules: SyllabusModule[]): SyllabusModule[] {
+    return modules.map((module) => ({
+      ...module,
+      lessons: module.lessons.map((lesson) => ({
+        ...lesson,
+        estimated_minutes: lesson.estimated_minutes || 30,
+      })),
+    }));
+  }
+
+  private sanitizeMetadata(
+    metadata?: SyllabusGenerationMetadata | null,
+  ): SyllabusGenerationMetadata | undefined {
+    if (!metadata) {
+      return undefined;
+    }
+
+    return {
+      ...metadata,
+      search_queries: metadata.search_queries || [],
+      final_validation_errors: metadata.final_validation_errors || [],
+    };
+  }
 
   /**
    * Inicia la generacion del temario.
@@ -49,15 +93,15 @@ class SyllabusService {
         throw new Error("Error al iniciar la generacion en el servidor");
       }
 
-      const result = await response.json();
+      const result = (await response.json()) as unknown;
 
       // Si la API devuelve contenido generado inmediatamente (modo local/sincrono)
-      if (result.modules && Array.isArray(result.modules)) {
+      if (this.hasModules(result)) {
         console.log(
           "[SyllabusService] Generacion sincrona completada. Guardando...",
         );
 
-        const temario: TemarioEsp02 = this.sanitizeSyllabus(result);
+        const temario = this.sanitizeSyllabus(result as TemarioEsp02);
 
         // Ejecutar validaciones locales antes de guardar
         const validation = runAllValidations(temario.modules);
@@ -80,7 +124,7 @@ class SyllabusService {
       }
 
       // Si es asincrono (processing), el estado ya esta en GENERATING.
-      return result;
+      return result as { status: string; message: string; data?: TemarioEsp02 };
     } catch (error) {
       console.error("[SyllabusService] Error:", error);
       await this.updateStatus(params.artifactId, SYLLABUS_STATES.DRAFT);
@@ -110,21 +154,17 @@ class SyllabusService {
   /**
    * Asegura que el temario tenga datos minimos para no romper la UI/validaciones.
    */
-  private sanitizeSyllabus(data: any): any {
-    if (!data || !data.modules) return data;
-
-    const sanitized = { ...data };
-
-    sanitized.modules = sanitized.modules.map((module: any) => ({
-      ...module,
-      lessons: module.lessons.map((lesson: any) => ({
-        ...lesson,
-        // Si falta estimacion, asignar 30 min por defecto
-        estimated_minutes: lesson.estimated_minutes || 30,
-      })),
-    }));
-
-    return sanitized;
+  private sanitizeSyllabus<T extends TemarioEsp02 | SyllabusRow>(
+    data: T,
+  ): T {
+    return {
+      ...data,
+      modules: this.sanitizeModules(data.modules),
+      generation_metadata: this.sanitizeMetadata(data.generation_metadata),
+      source_summary: this.sanitizeMetadata(data.source_summary),
+      validation: data.validation || this.emptyValidation,
+      qa: data.qa || { status: "PENDING" },
+    };
   }
 
   /**
@@ -134,7 +174,7 @@ class SyllabusService {
     artifactId: string,
     temario: TemarioEsp02,
     route: Esp02Route = "B_NO_SOURCE",
-    validation?: any,
+    validation: ValidationResult | SyllabusValidationReport = this.emptyValidation,
   ): Promise<void> {
     const current = await this.getSyllabus(artifactId);
     const nextIteration = (current?.iteration_count || 0) + 1;
@@ -143,8 +183,8 @@ class SyllabusService {
       artifact_id: artifactId,
       route,
       modules: temario.modules,
-      source_summary: temario.generation_metadata || null,
-      validation: validation || { checks: [], automatic_pass: false },
+      source_summary: temario.source_summary || temario.generation_metadata || null,
+      validation,
       updated_at: new Date().toISOString(),
       iteration_count: nextIteration,
     };
@@ -188,7 +228,15 @@ class SyllabusService {
     newState: Esp02StepState,
     notes?: string,
   ): Promise<void> {
-    const payload: any = {
+    const payload: {
+      state: Esp02StepState;
+      updated_at: string;
+      qa?: {
+        status: "PENDING" | "APPROVED" | "REJECTED";
+        notes?: string;
+        reviewed_at?: string;
+      };
+    } = {
       state: newState,
       updated_at: new Date().toISOString(),
     };
@@ -225,7 +273,10 @@ class SyllabusService {
   /**
    * Actualiza los modulos del temario (edicion manual).
    */
-  async updateModules(artifactId: string, modules: any[]): Promise<void> {
+  async updateModules(
+    artifactId: string,
+    modules: SyllabusModule[],
+  ): Promise<void> {
     const { error } = await this.supabase
       .from("syllabus")
       .update({
@@ -243,7 +294,10 @@ class SyllabusService {
   /**
    * Ejecuta validaciones sobre un temario (logica local pura).
    */
-  validateTemario(temario: TemarioEsp02, objetivos: string[] = []) {
+  validateTemario(
+    temario: Pick<TemarioEsp02, "modules">,
+    objetivos: string[] = [],
+  ) {
     return runAllValidations(temario.modules, objetivos);
   }
 }

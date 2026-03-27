@@ -9,13 +9,35 @@ import { toast } from 'sonner';
 import { generateArtifactAction } from '@/domains/artifacts/actions/artifact.actions';
 import { ScormImportFlow } from '@/app/admin/artifacts/new/components/ScormImportFlow';
 
+interface ArtifactIdeaFormData {
+    courseId: string;
+    description: string;
+    expectedResults: string;
+    targetAudience: string;
+    title: string;
+}
+
+interface SelectionCardProps {
+    active: boolean;
+    description: string;
+    icon: React.ReactNode;
+    onClick: () => void;
+    title: string;
+}
+
+interface TemplateCardProps {
+    description: string;
+    onClick: () => void;
+    title: string;
+}
+
 export default function ConstructorNewArtifactPage() {
     const [mode, setMode] = useState<'ai' | 'import'>('ai');
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
     // Form State
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<ArtifactIdeaFormData>({
         title: '',
         description: '',
         targetAudience: '',
@@ -261,7 +283,7 @@ export default function ConstructorNewArtifactPage() {
     );
 }
 
-function ModeCard({ active, onClick, icon, title, description }: any) {
+function ModeCard({ active, onClick, icon, title, description }: SelectionCardProps) {
     return (
         <button
             onClick={onClick}
@@ -280,7 +302,7 @@ function ModeCard({ active, onClick, icon, title, description }: any) {
     )
 }
 
-function TemplateCard({ title, description, onClick }: any) {
+function TemplateCard({ title, description, onClick }: TemplateCardProps) {
     return (
         <button
             onClick={onClick}

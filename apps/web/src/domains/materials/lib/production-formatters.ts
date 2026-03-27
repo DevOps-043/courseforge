@@ -1,53 +1,80 @@
-export function buildStoryOverview(content: any): string {
+import type {
+  StoryboardItem,
+  VideoGuideContent,
+  VideoScript,
+  VideoSection,
+} from "../types/materials.types";
+
+type ProductionContent = Partial<VideoGuideContent> & {
+  duration_estimate_minutes?: number;
+  title?: string;
+};
+
+function getScriptSections(
+  script?: Partial<VideoScript>,
+): VideoSection[] {
+  return Array.isArray(script?.sections) ? script.sections : [];
+}
+
+function getStoryboardItems(
+  storyboard?: StoryboardItem[],
+): StoryboardItem[] {
+  return Array.isArray(storyboard) ? storyboard : [];
+}
+
+function buildObjectiveSummary(sections: VideoSection[]) {
+  const introSection = sections.find(
+    (section) =>
+      section.section_type === "intro" || section.section_number === 1,
+  );
+
+  if (!introSection?.narration_text) {
+    return "";
+  }
+
+  const sentences = introSection.narration_text
+    .split(/[.!?]+/)
+    .filter((sentence) => sentence.trim());
+  const objective = sentences.slice(0, 2).join(". ").trim();
+
+  if (!objective) {
+    return "";
+  }
+
+  return objective.endsWith(".") ? objective : `${objective}.`;
+}
+
+export function buildStoryOverview(content: ProductionContent): string {
   const title = content.title || content.script?.title || "Presentacion";
   const duration =
     content.duration_estimate_minutes ||
     content.script?.duration_estimate_minutes ||
     5;
-  const script = content.script as { sections?: any[] } | undefined;
-  const storyboard = content.storyboard as any[] | undefined;
-
-  let objective = "";
-  if (script?.sections?.length) {
-    const introSection = script.sections.find(
-      (section: any) =>
-        section.section_type === "intro" || section.section_number === 1,
-    );
-    if (introSection?.narration_text) {
-      const sentences = introSection.narration_text
-        .split(/[.!?]+/)
-        .filter((sentence: string) => sentence.trim());
-      objective = sentences.slice(0, 2).join(". ").trim();
-      if (objective && !objective.endsWith(".")) {
-        objective += ".";
-      }
-    }
-  }
+  const sections = getScriptSections(content.script);
+  const storyboard = getStoryboardItems(content.storyboard);
+  const objective = buildObjectiveSummary(sections);
 
   return `STORY OVERVIEW
 --------------------------------------------------
 Titulo: ${title}
 Duracion estimada: ${duration} minutos
-Total de slides: ${storyboard?.length || script?.sections?.length || "N/A"}
+Total de slides: ${storyboard.length || sections.length || "N/A"}
 ${objective ? `\nObjetivo: ${objective}` : ""}
 --------------------------------------------------`;
 }
 
-export function formatGammaContent(content: any): string {
-  const script = content.script as { sections?: any[] } | undefined;
-  const storyboard = content.storyboard as any[] | undefined;
+export function formatGammaContent(content: ProductionContent): string {
+  const sections = getScriptSections(content.script);
+  const storyboard = getStoryboardItems(content.storyboard);
 
-  if (
-    (!script?.sections || script.sections.length === 0) &&
-    (!storyboard || storyboard.length === 0)
-  ) {
+  if (sections.length === 0 && storyboard.length === 0) {
     return "";
   }
 
   let formatted = `${buildStoryOverview(content)}
 
 CONFIGURACION GAMMA:
-- Idioma: EspaÃ±ol Latinoamericano
+- Idioma: EspaÃƒÂ±ol Latinoamericano
 - IMAGENES: NO GENERAR (Usar solo texto y layouts solidos)
 - Estilo: Minimalista, fuentes limpias
 - Formato: Presentacion educativa
@@ -58,13 +85,11 @@ CONTENIDO
 
 `;
 
-  const sections = script?.sections || [];
-  const storyboardItems = storyboard || [];
-  const maxItems = Math.max(sections.length, storyboardItems.length);
+  const maxItems = Math.max(sections.length, storyboard.length);
 
   for (let index = 0; index < maxItems; index += 1) {
     const section = sections[index];
-    const storyItem = storyboardItems[index];
+    const storyItem = storyboard[index];
     const slideNum = index + 1;
     const type = section?.section_type
       ? `[${section.section_type.toUpperCase()}]`

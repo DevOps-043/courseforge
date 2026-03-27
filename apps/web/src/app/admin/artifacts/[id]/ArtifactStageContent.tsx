@@ -1,20 +1,32 @@
 "use client";
 
+import type { Dispatch, SetStateAction } from "react";
 import { SyllabusGenerationContainer } from "@/domains/syllabus/components/SyllabusGenerationContainer";
 import { InstructionalPlanGenerationContainer } from "@/domains/plan/components/InstructionalPlanGenerationContainer";
 import { SourcesCurationGenerationContainer } from "@/domains/curation/components/SourcesCurationGenerationContainer";
 import { MaterialsForm } from "@/domains/materials/components/MaterialsForm";
 import { VisualProductionContainer } from "@/domains/materials/components/VisualProductionContainer";
+import type {
+  PublicationProfile,
+  PublicationRequestRecord,
+  PublicationVideoLesson,
+} from "@/domains/publication/types/publication.types";
 import PublicationClientView from "./publish/PublicationClientView";
 import { ArtifactBaseStage } from "./ArtifactBaseStage";
+import type {
+  ArtifactEditedContent,
+  ArtifactEditingSection,
+  ArtifactValidationReport,
+  ArtifactViewRecord,
+} from "./artifact-view.types";
 
 interface ArtifactStageContentProps {
   activeTab: "content" | "validation";
-  artifact: any;
+  artifact: ArtifactViewRecord;
   basePath: string;
   currentStep: number;
-  editedContent: any;
-  editingSection: "nombres" | "objetivos" | "descripcion" | null;
+  editedContent: ArtifactEditedContent;
+  editingSection: ArtifactEditingSection;
   feedback: string;
   isRegenerating: boolean;
   onApproveBase: () => Promise<void>;
@@ -23,19 +35,17 @@ interface ArtifactStageContentProps {
   onRejectBase: () => Promise<void>;
   onRegenerate: () => Promise<void>;
   onSaveContent: () => Promise<void>;
-  profile?: any;
+  profile?: PublicationProfile;
   productionComplete: boolean;
-  publicationLessons?: any[];
-  publicationRequest?: any;
+  publicationLessons?: PublicationVideoLesson[];
+  publicationRequest?: PublicationRequestRecord | null;
   reviewState: "pending" | "approved" | "rejected";
   setActiveTab: (tab: "content" | "validation") => void;
   setCurrentStep: (step: number) => void;
-  setEditedContent: (updater: any) => void;
-  setEditingSection: (
-    section: "nombres" | "objetivos" | "descripcion" | null,
-  ) => void;
+  setEditedContent: Dispatch<SetStateAction<ArtifactEditedContent>>;
+  setEditingSection: (section: ArtifactEditingSection) => void;
   setFeedback: (feedback: string) => void;
-  validation: any;
+  validation: ArtifactValidationReport;
 }
 
 const STAGE_WRAPPER = "animate-in fade-in slide-in-from-right-4 duration-300";
@@ -124,9 +134,9 @@ export function ArtifactStageContent({
       <div className={STAGE_WRAPPER}>
         <SourcesCurationGenerationContainer
           artifactId={artifact.id}
-          courseId={artifact.courseId || artifact.course_id}
-          temario={artifact.temario?.modules}
-          ideaCentral={artifact.idea_central}
+          courseId={artifact.courseId || artifact.course_id || undefined}
+          temario={artifact.temario?.modules ?? undefined}
+          ideaCentral={artifact.idea_central || undefined}
           profile={profile}
           onNext={() => setCurrentStep(5)}
         />
@@ -160,7 +170,7 @@ export function ArtifactStageContent({
       <div className={STAGE_WRAPPER}>
         <PublicationClientView
           artifactId={artifact.id}
-          artifactTitle={artifact.idea_central}
+          artifactTitle={artifact.idea_central || "Artefacto"}
           lessons={publicationLessons || []}
           existingRequest={publicationRequest}
           profile={profile}

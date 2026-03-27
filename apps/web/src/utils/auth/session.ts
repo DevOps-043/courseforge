@@ -1,13 +1,13 @@
 import { cookies } from 'next/headers'
-import { jwtVerify } from 'jose'
+import { jwtVerify, type JWTPayload } from 'jose'
 
 /**
- * Verifica la sesión del usuario desde la cookie cf_access_token.
- * 
- * Esta función reemplaza a supabase.auth.getUser() ya que usamos
+ * Verifica la sesiÃ³n del usuario desde la cookie cf_access_token.
+ *
+ * Esta funciÃ³n reemplaza a supabase.auth.getUser() ya que usamos
  * JWT propios firmados por el Auth Bridge (Option C), no GoTrue.
- * 
- * Retorna el payload del JWT decodificado si es válido, o null si no hay sesión.
+ *
+ * Retorna el payload del JWT decodificado si es vÃ¡lido, o null si no hay sesiÃ³n.
  */
 
 export interface AuthBridgeUser {
@@ -23,11 +23,41 @@ export interface AuthBridgeUser {
   active_organization_id?: string | null
 }
 
+interface AuthBridgeJwtAppMetadata {
+  active_organization_id?: string | null
+  organization_ids?: string[]
+}
+
+interface AuthBridgeJwtUserMetadata {
+  avatar_url?: string
+  cargo_rol?: string
+  display_name?: string
+  first_name?: string
+  last_name?: string
+  username?: string
+}
+
+interface AuthBridgeJwtPayload extends JWTPayload {
+  app_metadata?: AuthBridgeJwtAppMetadata
+  email?: string
+  user_metadata?: AuthBridgeJwtUserMetadata
+}
+
+function getErrorCode(error: unknown) {
+  return typeof error === 'object' && error !== null && 'code' in error
+    ? String(error.code)
+    : null
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Unknown error'
+}
+
 export async function getAuthBridgeUser(): Promise<AuthBridgeUser | null> {
   try {
     const cookieStore = await cookies()
     const token = cookieStore.get('cf_access_token')?.value
-    console.log('[AuthBridge] Cookie cf_access_token:', token ? 'Present' : 'MISSING');
+    console.log('[AuthBridge] Cookie cf_access_token:', token ? 'Present' : 'MISSING')
 
     if (!token) {
       return null
@@ -35,28 +65,29 @@ export async function getAuthBridgeUser(): Promise<AuthBridgeUser | null> {
 
     const secret = process.env.COURSEFORGE_JWT_SECRET
     if (!secret) {
-      console.error('[AuthBridge] COURSEFORGE_JWT_SECRET not configured');
+      console.error('[AuthBridge] COURSEFORGE_JWT_SECRET not configured')
       return null
     }
 
-    console.log('[AuthBridge] Verifying token with secret...');
+    console.log('[AuthBridge] Verifying token with secret...')
     const secretKey = new TextEncoder().encode(secret)
 
     const { payload } = await jwtVerify(token, secretKey, {
       algorithms: ['HS256'],
     })
-    console.log('[AuthBridge] Token verified for sub:', payload.sub);
+    const typedPayload = payload as AuthBridgeJwtPayload
+    console.log('[AuthBridge] Token verified for sub:', typedPayload.sub)
 
-    if (!payload.sub || !payload.email) {
+    if (!typedPayload.sub || !typedPayload.email) {
       return null
     }
 
-    const appMetadata = (payload as any).app_metadata || {}
-    const userMetadata = (payload as any).user_metadata || {}
+    const appMetadata = typedPayload.app_metadata || {}
+    const userMetadata = typedPayload.user_metadata || {}
 
     return {
-      id: payload.sub,
-      email: payload.email as string,
+      id: typedPayload.sub,
+      email: typedPayload.email,
       username: userMetadata.username,
       first_name: userMetadata.first_name,
       last_name: userMetadata.last_name,
@@ -66,19 +97,18 @@ export async function getAuthBridgeUser(): Promise<AuthBridgeUser | null> {
       organization_ids: appMetadata.organization_ids || [],
       active_organization_id: appMetadata.active_organization_id || null,
     }
-  } catch (error: any) {
-    // Token expirado o inválido
-    if (error.code === 'ERR_JWT_EXPIRED') {
+  } catch (error: unknown) {
+    if (getErrorCode(error) === 'ERR_JWT_EXPIRED') {
       console.log('Auth token expired')
     } else {
-      console.error('Auth verification error:', error.message)
+      console.error('Auth verification error:', getErrorMessage(error))
     }
     return null
   }
 }
 
 /**
- * Obtiene la organización activa desde la cookie cf_active_org
+ * Obtiene la organizaciÃ³n activa desde la cookie cf_active_org
  */
 export async function getActiveOrganizationId(): Promise<string | null> {
   const cookieStore = await cookies()
@@ -98,7 +128,12 @@ export async function getUserOrganizations(): Promise<Array<{
     const cookieStore = await cookies()
     const orgsRaw = cookieStore.get('cf_user_orgs')?.value
     if (!orgsRaw) return []
-    return JSON.parse(orgsRaw)
+    return JSON.parse(orgsRaw) as Array<{
+      id: string
+      name: string
+      slug: string
+      role: string
+    }>
   } catch {
     return []
   }

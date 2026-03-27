@@ -7,6 +7,18 @@ import type { Artifact } from "../artifacts-list.types";
 
 type SetArtifacts = React.Dispatch<React.SetStateAction<Artifact[]>>;
 
+interface ArtifactRealtimePayload {
+  eventType: "INSERT" | "UPDATE" | "DELETE";
+  new: Partial<Artifact> & { id: string };
+  old: Partial<Artifact> & { id: string };
+}
+
+interface ArtifactPollingRow {
+  id: string;
+  production_complete?: boolean | null;
+  state: string;
+}
+
 export function useArtifactsSync(
   artifacts: Artifact[],
   setArtifacts: SetArtifacts,
@@ -20,7 +32,7 @@ export function useArtifactsSync(
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "artifacts" },
-        (payload: any) => {
+        (payload: ArtifactRealtimePayload) => {
           console.log("Realtime Event received:", payload);
 
           if (payload.eventType === "INSERT") {
@@ -77,7 +89,7 @@ export function useArtifactsSync(
 
       const { data } = await supabase
         .from("artifacts")
-        .select("*")
+        .select("id,state,production_complete")
         .in(
           "id",
           generatingItems.map((artifact) => artifact.id),
@@ -87,14 +99,27 @@ export function useArtifactsSync(
         return;
       }
 
+      const freshArtifactsById = new Map(
+        ((data || []) as ArtifactPollingRow[]).map((row) => [row.id, row]),
+      );
+
       let changed = false;
       setArtifacts((prev) =>
         prev.map((artifact) => {
-          const freshArtifact = data.find((row: any) => row.id === artifact.id);
+          const freshArtifact = freshArtifactsById.get(artifact.id);
 
-          if (freshArtifact && freshArtifact.state !== artifact.state) {
+          if (
+            freshArtifact &&
+            (freshArtifact.state !== artifact.state ||
+              Boolean(freshArtifact.production_complete) !==
+                Boolean(artifact.production_complete))
+          ) {
             changed = true;
-            return { ...artifact, ...freshArtifact };
+            return {
+              ...artifact,
+              ...freshArtifact,
+              production_complete: freshArtifact.production_complete ?? undefined,
+            };
           }
 
           return artifact;

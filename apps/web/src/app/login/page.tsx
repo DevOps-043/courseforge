@@ -2,12 +2,13 @@ import { createClient } from "@/utils/supabase/server";
 import { getAuthBridgeUser } from "@/utils/auth/session";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
+import { getSupabaseServiceRoleKey, getSupabaseUrl } from "@/lib/server/env";
 import LoginForm from "./LoginForm";
 
 async function resolveRedirectForUser(userId: string) {
   const admin = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    getSupabaseUrl(),
+    getSupabaseServiceRoleKey(),
   );
 
   const { data: profile } = await admin

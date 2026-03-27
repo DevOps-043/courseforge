@@ -31,8 +31,6 @@ export class ScormEnrichmentService {
       };
     }
 
-    const modelArg = { model: 'gemini-2.0-flash' };
-
     const prompt = `
     Analiza la estructura de este curso SCORM:
     

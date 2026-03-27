@@ -1,8 +1,8 @@
 "use server";
 
+import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import {
   getAuthorizedArtifactAdmin,
-  getBackgroundFunctionsBaseUrl,
   getServiceRoleClient,
 } from "@/lib/server/artifact-action-auth";
 import type { Esp05StepState } from "../types/materials.types";
@@ -115,45 +115,10 @@ export async function callMaterialsNetlifyFunction<
   functionName: string,
   payload: Record<string, unknown>,
   fallbackError: string,
+  localHandlerLoader?: () => Promise<Record<string, unknown>>,
 ) {
-  const baseUrl = getBackgroundFunctionsBaseUrl();
-  const response = await fetch(`${baseUrl}/.netlify/functions/${functionName}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+  return callBackgroundFunctionJson<TData>(functionName, payload, {
+    fallbackError,
+    localHandlerLoader,
   });
-
-  const rawBody = await response.text();
-  let data: TData | { error?: string; message?: string } = {} as TData;
-
-  if (rawBody) {
-    try {
-      data = JSON.parse(rawBody) as TData;
-    } catch {
-      data = { message: rawBody };
-    }
-  }
-
-  if (!response.ok) {
-    const responseError =
-      typeof data === "object" &&
-      data !== null &&
-      "error" in data &&
-      typeof data.error === "string"
-        ? data.error
-        : undefined;
-    const responseMessage =
-      typeof data === "object" &&
-      data !== null &&
-      "message" in data &&
-      typeof data.message === "string"
-        ? data.message
-        : undefined;
-
-    throw new Error(
-      responseError || responseMessage || `${fallbackError} (${response.status})`,
-    );
-  }
-
-  return data as TData;
 }

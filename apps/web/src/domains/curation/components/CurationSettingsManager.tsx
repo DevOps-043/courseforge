@@ -1,27 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Zap, BrainCircuit, Loader2, Save, Search, CheckCircle2, Box, Settings2, FileText, Monitor } from 'lucide-react';
+import { Zap, BrainCircuit, Loader2, Save, Search, CheckCircle2, Box, Settings2, Monitor } from 'lucide-react';
 import { toast } from 'sonner';
 import { PremiumSelect } from '@/shared/components/PremiumSelect';
 import { getModelSettingsAction, updateModelSettingsAction } from '@/app/admin/settings/actions';
+import type { ModelSettingsRecord } from '@/app/admin/settings/actions';
 
-// Helper to read the active org cookie on the client side
-function getActiveOrgIdClient(): string | null {
-  if (typeof document === 'undefined') return null;
-  const match = document.cookie.match(/(?:^|;\s*)cf_active_org=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-interface CurationConfig {
-    id: number;
-    model_name: string;
-    fallback_model: string;
-    temperature: number;
-    thinking_level: string;
-    setting_type: string;
-    is_active: boolean;
-}
+type CurationConfig = ModelSettingsRecord;
 
 const SETTING_METADATA: Record<string, { title: string; icon: React.ReactNode; isValidation: boolean }> = {
     'CURATION': {
@@ -67,7 +53,7 @@ export function CurationSettingsManager() {
          const res = await getModelSettingsAction();
 
          if (res.success && res.settings) {
-             setSettingsList(res.settings as CurationConfig[]);
+             setSettingsList(res.settings);
          } else {
              console.error("Error loading settings:", res.error);
              toast.error("Error al cargar la configuración de modelos");
@@ -77,7 +63,11 @@ export function CurationSettingsManager() {
      loadSettings();
   }, []);
 
-  const handleUpdate = (id: number, key: keyof CurationConfig, value: any) => {
+  const handleUpdate = <Key extends keyof CurationConfig>(
+      id: number,
+      key: Key,
+      value: CurationConfig[Key],
+  ) => {
       setSettingsList(prev => prev.map(item => 
           item.id === id ? { ...item, [key]: value } : item
       ));
@@ -118,7 +108,7 @@ export function CurationSettingsManager() {
                 <PremiumSelect 
                     label="Modelo Principal"
                     icon={<Zap size={12} className={isValidation ? "text-[#10B981]" : "text-[#00D4B3]"} />}
-                    value={setting.model_name}
+                    value={setting.model_name ?? ''}
                     onChange={(val) => handleUpdate(setting.id, 'model_name', val)}
                     options={[
                         // Gemini 3.0 Series (Preview)
@@ -145,7 +135,7 @@ export function CurationSettingsManager() {
                 <PremiumSelect 
                     label="Modelo Fallback"
                     icon={<span className="w-3 h-3 rounded-full border border-gray-400 dark:border-[#6C757D] flex items-center justify-center text-[8px] text-gray-400 dark:text-[#6C757D]">?</span>}
-                    value={setting.fallback_model}
+                    value={setting.fallback_model ?? ''}
                     onChange={(val) => handleUpdate(setting.id, 'fallback_model', val)}
                     options={[
                         // Gemini 3.0 Series (Preview)
@@ -175,7 +165,7 @@ export function CurationSettingsManager() {
                 <PremiumSelect 
                     label="Nivel de Pensamiento"
                     icon={<BrainCircuit size={12} className="text-[#1F5AF6]" />}
-                    value={setting.thinking_level}
+                    value={setting.thinking_level ?? 'medium'}
                     onChange={(val) => handleUpdate(setting.id, 'thinking_level', val)}
                     options={[
                         { value: 'minimal', label: 'Minimal', description: 'Rápido' },
@@ -198,7 +188,7 @@ export function CurationSettingsManager() {
                             min="0.1" 
                             max="1.0" 
                             step="0.1"
-                            value={setting.temperature}
+                            value={setting.temperature ?? 0.7}
                             onChange={(e) => handleUpdate(setting.id, 'temperature', parseFloat(e.target.value))}
                             className={`w-full h-2 bg-gray-200 dark:bg-[#0A0D12] rounded-lg appearance-none cursor-pointer hover:opacity-100 relative z-20 ${isValidation ? 'accent-[#10B981]' : 'accent-[#00D4B3]'}`}
                         />

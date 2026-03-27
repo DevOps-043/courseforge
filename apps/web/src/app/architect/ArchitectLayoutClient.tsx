@@ -3,6 +3,7 @@
 import React from 'react';
 import { LayoutDashboard, ShieldCheck } from 'lucide-react';
 import SharedSidebarLayout, { NavItemConfig } from '@/components/layout/SharedSidebarLayout';
+import type { SidebarProfile } from '@/components/layout/layout.types';
 
 export default function ArchitectLayoutClient({
     children,
@@ -13,7 +14,7 @@ export default function ArchitectLayoutClient({
     children: React.ReactNode;
     userEmail?: string;
     logoutAction: () => void;
-    profile?: any;
+    profile?: SidebarProfile | null;
 }) {
     const navItems: NavItemConfig[] = [
         { href: '/architect', icon: <LayoutDashboard size={22} />, label: 'Dashboard' },

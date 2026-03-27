@@ -5,7 +5,12 @@ import {
   Circle,
   FileText,
 } from "lucide-react";
-import type { ProductionStatus } from "../types/materials.types";
+import type {
+  ProductionStatus,
+  StoryboardItem,
+  VideoContent,
+  VideoGuideContent,
+} from "../types/materials.types";
 
 export function getProductionStatusBadge(
   productionStatus: ProductionStatus,
@@ -98,14 +103,22 @@ export function getProductionComponentLabel(type: string) {
   return labelMap[type] || type.replace(/_/g, " ");
 }
 
-export function ProductionStoryboardViewer({ content }: { content: any }) {
+interface StoryboardContent {
+  storyboard?: StoryboardItem[];
+}
+
+export function ProductionStoryboardViewer({
+  content,
+}: {
+  content: Partial<VideoContent & VideoGuideContent> | StoryboardContent;
+}) {
   return (
     <div className="bg-[#0F1419] rounded-xl p-4 border border-[#6C757D]/10 max-h-[300px] overflow-y-auto custom-scrollbar">
       <h4 className="text-xs font-bold text-[#6C757D] mb-2 uppercase tracking-wide">
         Storyboard Reference
       </h4>
       <div className="space-y-4">
-        {content.storyboard?.map((item: any, index: number) => (
+        {content.storyboard?.map((item, index) => (
           <div key={index} className="flex gap-3 text-sm">
             <span className="text-[#1F5AF6] font-mono shrink-0">
               {item.timecode_start}

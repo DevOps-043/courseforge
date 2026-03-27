@@ -1,8 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic'; // Ensure this doesn't get statically cached
 
-export async function GET(request: NextRequest) {
+interface ConnectivityResult {
+    details: unknown;
+    message: string;
+    success: boolean;
+}
+
+function getErrorDetails(error: unknown) {
+    if (error instanceof Error) {
+        return { error_name: error.name, stack: error.stack };
+    }
+
+    return { error_name: 'UnknownError' };
+}
+
+export async function GET() {
     const API_URL = process.env.SOFLIA_API_URL;
     const API_KEY = process.env.SOFLIA_API_KEY;
 
@@ -20,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     console.log('[Debug API] Env Check:', envCheck);
 
-    let connectivityResult = { success: false, message: '', details: null as any };
+    let connectivityResult: ConnectivityResult = { success: false, message: '', details: null };
 
     // Try Connectivity
     if (API_URL) {
@@ -46,7 +60,7 @@ export async function GET(request: NextRequest) {
 
             const text = await response.text();
             let json = null;
-            try { json = JSON.parse(text); } catch (e) {}
+            try { json = JSON.parse(text); } catch {}
 
             connectivityResult = {
                 success: response.ok,
@@ -57,11 +71,11 @@ export async function GET(request: NextRequest) {
                 }
             };
 
-        } catch (e: any) {
+        } catch (error: unknown) {
             connectivityResult = {
                 success: false,
-                message: `Fetch Error: ${e.message}`,
-                details: { error_name: e.name, stack: e.stack }
+                message: `Fetch Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                details: getErrorDetails(error),
             };
         }
     } else {

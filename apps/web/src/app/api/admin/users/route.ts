@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { getAuthBridgeUser } from '@/utils/auth/session';
 import { createClient } from '@/utils/supabase/server';
+import { getSupabaseServiceRoleKey, getSupabaseUrl } from '@/lib/server/env';
 
 export async function POST(req: Request) {
   try {
@@ -34,8 +35,8 @@ export async function POST(req: Request) {
 
     // Use Service Role to update user profiles across the board
     const cfAdmin = createAdminClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+      getSupabaseUrl(),
+      getSupabaseServiceRoleKey(),
     );
 
     const { data, error } = await cfAdmin

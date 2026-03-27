@@ -1,18 +1,29 @@
 import { SYSTEM_PROMPT } from "@/lib/lia-app-context";
 import { buildComputerUseSystemInstruction } from "@/lib/lia-route-instructions";
+import type {
+  LiaAction,
+  LiaConfig,
+  LiaGroundingChunk,
+  LiaGroundingMetadata,
+  LiaGroundingSource,
+  LiaRequestPayload,
+  LiaSettingsRecord,
+} from "@/lib/lia-types";
 
-interface LiaMessage {
-  role: string;
-  content: string;
+interface LiaComputerUseResponse {
+  action?: LiaAction;
+  actions?: LiaAction[];
+  message: {
+    role: "model";
+    content: string;
+    timestamp: string;
+  };
 }
 
-interface LiaRequestPayload {
-  actionResult?: string;
-  computerUseMode?: boolean;
-  domMap?: string;
-  messages: LiaMessage[];
-  screenshot?: string;
-  url?: string;
+function hasGroundingUrl(
+  chunk: LiaGroundingChunk,
+): chunk is { web: { title?: string; uri: string } } {
+  return typeof chunk.web?.uri === "string" && chunk.web.uri.length > 0;
 }
 
 export function getActiveOrgIdFromCookieHeader(cookieHeader: string) {
@@ -20,8 +31,11 @@ export function getActiveOrgIdFromCookieHeader(cookieHeader: string) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-export function buildLiaConfig(settings: any, useComputerUse: boolean) {
-  const config: any = {
+export function buildLiaConfig(
+  settings: LiaSettingsRecord,
+  useComputerUse: boolean,
+): LiaConfig {
+  const config: LiaConfig = {
     temperature: settings.temperature,
   };
 
@@ -132,11 +146,11 @@ export function buildHallucinationOverrideResponse(
 }
 
 export function buildComputerUseResponse(parsed: {
-  action?: any;
-  actions?: any[];
+  action?: LiaAction;
+  actions?: LiaAction[];
   cleanText: string;
-}) {
-  const responseData: any = {
+}): LiaComputerUseResponse {
+  const responseData: LiaComputerUseResponse = {
     message: {
       role: "model",
       content: parsed.cleanText,
@@ -153,15 +167,17 @@ export function buildComputerUseResponse(parsed: {
   return responseData;
 }
 
-export function extractGroundingSources(groundingMetadata: any) {
+export function extractGroundingSources(
+  groundingMetadata?: LiaGroundingMetadata,
+): LiaGroundingSource[] {
   if (!groundingMetadata?.groundingChunks) {
     return [];
   }
 
   return groundingMetadata.groundingChunks
-    .filter((chunk: any) => chunk.web?.uri)
-    .map((chunk: any) => ({
-      title: chunk.web?.title || new URL(chunk.web.uri).hostname,
+    .filter(hasGroundingUrl)
+    .map((chunk) => ({
+      title: chunk.web.title || new URL(chunk.web.uri).hostname,
       url: chunk.web.uri,
     }));
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Info, CheckCircle, X, AlertOctagon } from 'lucide-react';
+import { AlertTriangle, Info, CheckCircle, AlertOctagon } from 'lucide-react';
 
 export type ModalVariant = 'info' | 'success' | 'warning' | 'danger' | 'critical';
 

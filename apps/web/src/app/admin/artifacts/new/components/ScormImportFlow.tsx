@@ -3,9 +3,10 @@
 import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, FileText, CheckCircle2, AlertCircle, Loader2, ArrowRight, Database } from 'lucide-react';
+import { Upload, CheckCircle2, AlertCircle, ArrowRight, Database } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import type { ScormItem, ScormManifest } from '@/domains/scorm/types';
 
 interface ScormImportFlowProps {
     onComplete: (importId: string) => void;
@@ -13,11 +14,19 @@ interface ScormImportFlowProps {
 
 type Step = 'upload' | 'uploading' | 'analyzing' | 'review' | 'success';
 
+function getAxiosErrorMessage(error: unknown, fallback: string) {
+    if (axios.isAxiosError(error)) {
+        return error.response?.data?.error || error.message || fallback;
+    }
+
+    return error instanceof Error ? error.message : fallback;
+}
+
 export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
     const [step, setStep] = useState<Step>('upload');
     const [progress, setProgress] = useState(0);
     const [error, setError] = useState<string | null>(null);
-    const [manifest, setManifest] = useState<any>(null);
+    const [manifest, setManifest] = useState<ScormManifest | null>(null);
     const [importId, setImportId] = useState<string | null>(null);
 
     const onDrop = useCallback(async (acceptedFiles: File[]) => {
@@ -58,9 +67,9 @@ export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
                 setStep('review');
             }, 500);
 
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error(err);
-            setError(err.response?.data?.error || 'Error al subir el archivo');
+            setError(getAxiosErrorMessage(err, 'Error al subir el archivo'));
             setStep('upload');
             toast.error('Error en la subida');
         }
@@ -88,9 +97,9 @@ export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
                 toast.success('Curso importado y procesado correctamente');
                 onComplete(response.data.artifactId);
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error(err);
-            toast.error('Error al procesar el curso: ' + (err.response?.data?.error || err.message));
+            toast.error('Error al procesar el curso: ' + getAxiosErrorMessage(err, 'Error al procesar el curso'));
             setStep('review'); // Go back to review on error
         }
     };
@@ -210,7 +219,7 @@ export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
                                         {manifest.title}
                                     </h4>
                                     <div className="pl-6 space-y-2">
-                                        {manifest.organizations[0]?.items.map((item: any, i: number) => (
+                                        {manifest.organizations[0]?.items.map((item: ScormItem, i: number) => (
                                             <div key={i} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-gray-300 mt-1.5 shrink-0" />
                                                 <span>{item.title}</span>

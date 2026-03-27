@@ -3,6 +3,8 @@ import { createClient } from '@/utils/supabase/server';
 import { getAuthBridgeUser } from '@/utils/auth/session';
 import { logoutAction } from '../login/actions';
 import AdminLayoutClient from './AdminLayoutClient';
+import { getSupabaseServiceRoleKey, getSupabaseUrl } from '@/lib/server/env';
+import { resolveSidebarProfile } from '@/components/layout/layout.types';
 
 export default async function AdminLayout({
   children,
@@ -28,7 +30,7 @@ export default async function AdminLayout({
   // 2. Verificar Rol de Admin local de CourseForge
   let { data: profile } = await supabase
     .from('profiles')
-    .select('*')
+    .select('avatar_url, first_name, last_name_father, platform_role')
     .eq('id', userId)
     .single();
 
@@ -38,12 +40,12 @@ export default async function AdminLayout({
   if (!profile) {
     const { createClient: createAdminClient } = await import('@supabase/supabase-js');
     const cfAdmin = createAdminClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+      getSupabaseUrl(),
+      getSupabaseServiceRoleKey(),
     );
     const { data: adminProfile } = await cfAdmin
       .from('profiles')
-      .select('*')
+      .select('avatar_url, first_name, last_name_father, platform_role')
       .eq('id', userId)
       .single();
     
@@ -59,13 +61,7 @@ export default async function AdminLayout({
   }
 
   // Usar datos disponibles
-  const displayProfile = profile || (bridgeUser ? {
-    first_name: bridgeUser.first_name,
-    last_name: bridgeUser.last_name,
-    username: bridgeUser.username,
-    avatar_url: bridgeUser.avatar_url,
-    platform_role: bridgeUser.cargo_rol || 'CONSTRUCTOR',
-  } : null);
+  const displayProfile = resolveSidebarProfile(profile, bridgeUser);
 
   return (
     <AdminLayoutClient userEmail={userEmail} logoutAction={logoutAction} profile={displayProfile}>

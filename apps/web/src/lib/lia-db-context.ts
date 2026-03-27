@@ -3,6 +3,21 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 
+interface ProfileRow {
+  email?: string | null;
+  username?: string | null;
+}
+
+interface ArtifactRow {
+  id: string;
+  course_id?: string | null;
+  created_at: string;
+  idea_central?: string | null;
+  instructional_plans?: { id: string }[] | { id: string } | null;
+  state?: string | null;
+  syllabus?: { id: string }[] | { id: string } | null;
+}
+
 export interface LiaDBContext {
   user: {
     id: string;
@@ -47,11 +62,12 @@ export async function getLiaDBContext(supabase: SupabaseClient): Promise<LiaDBCo
       .select('username, email')
       .eq('id', user.id)
       .single();
+    const typedProfile = (profile || null) as ProfileRow | null;
 
     userContext = {
       id: user.id,
       email: user.email || '',
-      name: profile?.username || user.email?.split('@')[0] || 'Usuario'
+      name: typedProfile?.username || user.email?.split('@')[0] || 'Usuario'
     };
   }
 
@@ -70,7 +86,7 @@ export async function getLiaDBContext(supabase: SupabaseClient): Promise<LiaDBCo
     .order('created_at', { ascending: false })
     .limit(20);
 
-  const artifactsList = (artifacts || []).map((art: any) => ({
+  const artifactsList = ((artifacts || []) as ArtifactRow[]).map((art) => ({
     id: art.id,
     course_id: art.course_id || '',
     title: art.idea_central || 'Sin título',

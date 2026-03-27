@@ -1,15 +1,27 @@
 'use server';
 
-import { createClient } from '@/utils/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { SystemPrompt, UpdateSystemPromptDTO } from '@/domains/prompts/types';
 import { revalidatePath } from 'next/cache';
 import { getActiveOrganizationId, getAuthBridgeUser } from '@/utils/auth/session';
+import { getSupabaseServiceRoleKey, getSupabaseUrl } from '@/lib/server/env';
+
+interface ModelSettingsUpdateInput {
+  fallback_model?: string | null;
+  id: number;
+  model_name: string;
+  temperature?: number | null;
+  thinking_level?: string | null;
+}
+
+export interface ModelSettingsRecord extends ModelSettingsUpdateInput {
+  is_active: boolean;
+  setting_type: string;
+}
 
 // Helper for admin client that bypasses the RLS if the session token is not understood by PostgREST
 function getAdminClient() {
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  return createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey);
+  return createAdminClient(getSupabaseUrl(), getSupabaseServiceRoleKey());
 }
 
 export async function getSystemPromptsAction() {
@@ -22,9 +34,9 @@ export async function getSystemPromptsAction() {
   const supabaseAdmin = getAdminClient();
 
   if (activeOrgId) {
-    const { data: orgData, error: orgError } = await supabaseAdmin
+    const { data: orgData } = await supabaseAdmin
       .from('system_prompts')
-      .select('*')
+      .select('id, code, version, content, description, is_active, created_at, updated_at')
       .eq('organization_id', activeOrgId)
       .order('code', { ascending: true });
 
@@ -36,7 +48,7 @@ export async function getSystemPromptsAction() {
   // Fallback a los globales (null org_id) si no hay específicos de la org
   const { data, error } = await supabaseAdmin
     .from('system_prompts')
-    .select('*')
+    .select('id, code, version, content, description, is_active, created_at, updated_at')
     .is('organization_id', null)
     .order('code', { ascending: true });
 
@@ -70,6 +82,11 @@ export async function updateSystemPromptAction(prompt: UpdateSystemPromptDTO) {
       .eq('id', prompt.id)
       .select()
       .single();
+
+    if (error) {
+      console.error('Error updating prompt:', error);
+      return { success: false, error: error.message };
+    }
   
     revalidatePath('/admin/settings');
     return { success: true, prompt: data as SystemPrompt };
@@ -85,22 +102,22 @@ export async function getModelSettingsAction() {
   const supabaseAdmin = getAdminClient();
 
   if (activeOrgId) {
-    const { data: orgData, error: orgError } = await supabaseAdmin
+    const { data: orgData } = await supabaseAdmin
       .from('model_settings')
-      .select('*')
+      .select('id, model_name, fallback_model, temperature, thinking_level, setting_type, is_active')
       .eq('is_active', true)
       .eq('organization_id', activeOrgId)
       .order('id', { ascending: true });
 
     if (orgData && orgData.length > 0) {
-      return { success: true, settings: orgData };
+      return { success: true, settings: orgData as ModelSettingsRecord[] };
     }
   }
 
   // Fallback a globales
   const { data, error } = await supabaseAdmin
     .from('model_settings')
-    .select('*')
+    .select('id, model_name, fallback_model, temperature, thinking_level, setting_type, is_active')
     .eq('is_active', true)
     .is('organization_id', null)
     .order('id', { ascending: true });
@@ -110,11 +127,11 @@ export async function getModelSettingsAction() {
     return { success: false, error: error.message };
   }
 
-  return { success: true, settings: data };
+  return { success: true, settings: data as ModelSettingsRecord[] };
 }
 
 // Actualiza un batch completo de configuraciones de modelo
-export async function updateModelSettingsAction(settings: any[]) {
+export async function updateModelSettingsAction(settings: ModelSettingsUpdateInput[]) {
   const user = await getAuthBridgeUser();
 
   if (!user) {

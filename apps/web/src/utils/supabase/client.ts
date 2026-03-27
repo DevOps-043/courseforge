@@ -1,7 +1,5 @@
 import { createBrowserClient } from '@supabase/ssr'
 
-declare const process: any;
-
 let client: ReturnType<typeof createBrowserClient> | undefined
 
 export function createClient() {

@@ -5,8 +5,32 @@ import {
   getAuthBridgeUser,
 } from "@/utils/auth/session";
 import { REVIEWER_ROLE_SET } from "@/lib/pipeline-constants";
+import {
+  getAppUrl,
+  getDeploymentSiteUrl,
+  getSupabaseServiceRoleKey,
+  getSupabaseUrl,
+  isProductionEnvironment,
+} from "@/lib/server/env";
 
-export async function getAuthenticatedUser(supabase: any) {
+interface AuthenticatedUserLike {
+  id: string;
+  email?: string | null;
+}
+
+interface SupabaseAuthLike {
+  auth: {
+    getUser(): Promise<{
+      data: { user: AuthenticatedUserLike | null };
+      error: { message?: string | null } | null;
+    }>;
+    getSession(): Promise<{
+      data: { session: { access_token: string } | null };
+    }>;
+  };
+}
+
+export async function getAuthenticatedUser(supabase: SupabaseAuthLike) {
   const {
     data: { user },
     error: authError,
@@ -34,9 +58,8 @@ export async function getAuthenticatedUser(supabase: any) {
 
 export function getServiceRoleClient() {
   return createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    getSupabaseUrl(),
+    getSupabaseServiceRoleKey(),
   );
 }
 
@@ -51,7 +74,7 @@ export async function canReviewContent(userId: string) {
   return REVIEWER_ROLE_SET.has(data?.platform_role);
 }
 
-export async function getAccessToken(supabase: any) {
+export async function getAccessToken(supabase: SupabaseAuthLike) {
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -64,17 +87,11 @@ export async function getAccessToken(supabase: any) {
 }
 
 export function getBackgroundFunctionsBaseUrl() {
-  const candidate =
-    process.env.URL ||
-    process.env.DEPLOY_URL ||
-    process.env.NEXT_PUBLIC_APP_URL;
+  const candidate = getDeploymentSiteUrl(getAppUrl() || "http://localhost:8888");
 
   if (candidate) {
     const normalized = candidate.replace(/\/$/, "");
-    if (
-      process.env.NODE_ENV !== "production" &&
-      normalized.includes("localhost:3000")
-    ) {
+    if (!isProductionEnvironment() && normalized.includes("localhost:3000")) {
       return "http://localhost:8888";
     }
 
