@@ -29,7 +29,7 @@ interface MaterialDetailsModalProps {
   components: MaterialComponent[];
   isOpen: boolean;
   onClose: () => void;
-  onIterationStart: (lessonId: string, instructions: string) => void;
+  onIterationStart: (lessonId: string, instructions: string, componentTypes?: string[]) => void;
 }
 
 export function MaterialDetailsModal({
@@ -238,8 +238,9 @@ export function MaterialDetailsModal({
                     <IterationPanel
                       currentIteration={lesson.iteration_count}
                       maxIterations={lesson.max_iterations}
-                      onStartIteration={(instr) =>
-                        onIterationStart(lesson.id, instr)
+                      availableComponents={lesson.expected_components}
+                      onStartIteration={(instr, types) =>
+                        onIterationStart(lesson.id, instr, types)
                       }
                       className="p-6 rounded-2xl border shadow-xl bg-white dark:bg-[#1E2329] border-gray-200 dark:border-white/5"
                     />

@@ -1,34 +1,68 @@
 'use client';
 
 import { useState } from 'react';
-import { RefreshCw, AlertCircle } from 'lucide-react';
+import { RefreshCw, AlertCircle, CheckSquare, Square } from 'lucide-react';
 
 interface IterationPanelProps {
     currentIteration: number;
     maxIterations: number;
-    onStartIteration: (instructions: string) => void;
+    /** Available component types for this lesson */
+    availableComponents?: string[];
+    onStartIteration: (instructions: string, componentTypes?: string[]) => void;
     className?: string;
 }
+
+const COMPONENT_LABELS: Record<string, string> = {
+    DIALOGUE: 'Diálogo con SofLIA',
+    READING: 'Lectura',
+    QUIZ: 'Cuestionario',
+    DEMO_GUIDE: 'Guía Demo',
+    EXERCISE: 'Ejercicio',
+    VIDEO_THEORETICAL: 'Video Teórico',
+    VIDEO_DEMO: 'Video Demo',
+    VIDEO_GUIDE: 'Video Guía',
+};
 
 export function IterationPanel({
     currentIteration,
     maxIterations,
+    availableComponents = [],
     onStartIteration,
     className = '',
 }: IterationPanelProps) {
     const [instructions, setInstructions] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [selectedComponents, setSelectedComponents] = useState<string[]>([]);
+    const [selectAll, setSelectAll] = useState(true);
 
     const canIterate = currentIteration < maxIterations;
     const remainingIterations = maxIterations - currentIteration;
+
+    const toggleComponent = (type: string) => {
+        setSelectAll(false);
+        setSelectedComponents(prev =>
+            prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+        );
+    };
+
+    const handleSelectAll = () => {
+        setSelectAll(true);
+        setSelectedComponents([]);
+    };
 
     const handleSubmit = async () => {
         if (!instructions.trim() || !canIterate) return;
 
         setIsSubmitting(true);
         try {
-            await onStartIteration(instructions);
+            // If selectAll or no specific selection, pass undefined (regenerate all)
+            const types = selectAll || selectedComponents.length === 0
+                ? undefined
+                : selectedComponents;
+            await onStartIteration(instructions, types);
             setInstructions('');
+            setSelectedComponents([]);
+            setSelectAll(true);
         } finally {
             setIsSubmitting(false);
         }
@@ -61,6 +95,58 @@ export function IterationPanel({
                 </span>
             </div>
 
+            {/* Component Selector */}
+            {availableComponents.length > 0 && (
+                <div className="mb-3">
+                    <p className="text-xs font-medium text-orange-700 dark:text-orange-400 mb-2">
+                        ¿Qué componentes regenerar?
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                        {/* Select All chip */}
+                        <button
+                            type="button"
+                            onClick={handleSelectAll}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                                selectAll
+                                    ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
+                                    : 'bg-white dark:bg-[#1E2329] text-orange-700 dark:text-orange-400 border-orange-300 dark:border-orange-700 hover:bg-orange-100 dark:hover:bg-orange-900/30'
+                            }`}
+                        >
+                            {selectAll ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+                            Todos
+                        </button>
+
+                        {/* Individual component chips */}
+                        {availableComponents.map(type => {
+                            const isSelected = !selectAll && selectedComponents.includes(type);
+                            return (
+                                <button
+                                    key={type}
+                                    type="button"
+                                    onClick={() => toggleComponent(type)}
+                                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                                        isSelected
+                                            ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
+                                            : selectAll
+                                                ? 'bg-orange-100/50 dark:bg-orange-900/10 text-orange-500 dark:text-orange-500 border-orange-200 dark:border-orange-800/50 opacity-60'
+                                                : 'bg-white dark:bg-[#1E2329] text-orange-700 dark:text-orange-400 border-orange-300 dark:border-orange-700 hover:bg-orange-100 dark:hover:bg-orange-900/30'
+                                    }`}
+                                >
+                                    {isSelected ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+                                    {COMPONENT_LABELS[type] || type.replace(/_/g, ' ')}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {!selectAll && selectedComponents.length > 0 && (
+                        <p className="text-[11px] text-orange-600 dark:text-orange-500 mt-1.5">
+                            Solo se regenerarán los componentes seleccionados. Los demás se mantendrán intactos.
+                        </p>
+                    )}
+                </div>
+            )}
+
             <p className="text-xs text-orange-700 dark:text-orange-400 mb-3">
                 Describe los problemas específicos que la IA debe corregir. Sé lo más específico posible.
             </p>
@@ -77,7 +163,7 @@ export function IterationPanel({
             <div className="flex justify-end mt-3">
                 <button
                     onClick={handleSubmit}
-                    disabled={!instructions.trim() || isSubmitting}
+                    disabled={!instructions.trim() || isSubmitting || (!selectAll && selectedComponents.length === 0)}
                     className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                     {isSubmitting ? (
@@ -85,7 +171,10 @@ export function IterationPanel({
                     ) : (
                         <RefreshCw className="h-4 w-4" />
                     )}
-                    Ejecutar Iteración
+                    {selectAll
+                        ? 'Regenerar Todo'
+                        : `Regenerar ${selectedComponents.length} componente${selectedComponents.length !== 1 ? 's' : ''}`
+                    }
                 </button>
             </div>
         </div>

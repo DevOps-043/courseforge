@@ -70,8 +70,8 @@ export function MaterialsForm({ artifactId, className = '', profile }: Materials
         return acc;
     }, {} as Record<string, { module_id: string; module_title: string; lessons: typeof materials.lessons }>) || {};
 
-    const handleIterationStart = async (lessonId: string, instructions: string) => {
-        await runFixIteration(lessonId, instructions);
+    const handleIterationStart = async (lessonId: string, instructions: string, componentTypes?: string[]) => {
+        await runFixIteration(lessonId, instructions, componentTypes);
     };
 
     // Real-time updates are handled by Supabase subscriptions in useMaterials hook

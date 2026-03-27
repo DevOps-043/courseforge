@@ -1,7 +1,7 @@
 import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
-import { materialsGenerationPrompt } from '../../src/shared/config/prompts/materials-generation.prompts';
+import { resolvePrompts, assemblePrompt } from '../../src/shared/config/prompts/prompt-resolver.service';
 
 // Types
 interface MaterialsGenerationInput {
@@ -31,7 +31,8 @@ interface RequestBody {
     lessonId?: string;
     fixInstructions?: string;
     iterationNumber?: number;
-    mode?: 'init' | 'process-next' | 'single-lesson';
+    mode?: 'init' | 'process-next' | 'single-lesson' | 'single-component';
+    componentTypes?: string[];
 }
 
 // Setup
@@ -85,7 +86,15 @@ export const handler: Handler = async (event) => {
 
         const targetArtifactId = artifactId || materials.artifact_id;
 
-        // SINGLE LESSON MODE
+        // SINGLE COMPONENT MODE — regenerate specific components of a lesson
+        if (mode === 'single-component' && lessonId && body.componentTypes?.length) {
+            return await processSingleLesson(
+                supabase, genAI, materialsId, lessonId, fixInstructions,
+                iterationNumber, targetArtifactId, logPrefix, body.componentTypes
+            );
+        }
+
+        // SINGLE LESSON MODE — regenerate all components of a lesson
         if (mode === 'single-lesson' && lessonId) {
             return await processSingleLesson(supabase, genAI, materialsId, lessonId, fixInstructions, iterationNumber, targetArtifactId, logPrefix);
         }
@@ -211,6 +220,8 @@ export const handler: Handler = async (event) => {
                 (lp: any) => lp.lesson_id === lesson.lesson_id || lp.lesson_title === lesson.lesson_title
             );
 
+            const componentTypesForGeneration = lesson.expected_components || [];
+
             const input: MaterialsGenerationInput = {
                 lesson: {
                     lesson_id: lesson.lesson_id,
@@ -218,7 +229,7 @@ export const handler: Handler = async (event) => {
                     module_id: lesson.module_id,
                     module_title: lesson.module_title,
                     oa_text: lesson.oa_text || planDetails?.oa_text || '',
-                    components: (lesson.expected_components || []).map((c: string) => ({
+                    components: componentTypesForGeneration.map((c: string) => ({
                         type: c,
                         summary: planDetails?.components?.find((comp: any) => comp.type === c)?.summary || '',
                     })),
@@ -234,10 +245,10 @@ export const handler: Handler = async (event) => {
                 iteration_number: lesson.iteration_count || 1,
             };
 
-            const result = await generateWithRetry(genAI, input, logPrefix);
+            const result = await generateWithRetry(genAI, supabase, input, componentTypesForGeneration, logPrefix);
 
             if (result.success && result.content) {
-                await saveGeneratedComponents(supabase, lesson.id, result.content, input.iteration_number, logPrefix);
+                await saveGeneratedComponents(supabase, lesson.id, result.content, input.iteration_number, logPrefix, undefined);
                 await supabase
                     .from('material_lessons')
                     .update({ state: 'GENERATED', updated_at: new Date().toISOString() })
@@ -293,7 +304,7 @@ async function triggerNextLesson(materialsId: string, artifactId: string, logPre
 async function processSingleLesson(
     supabase: any, genAI: GoogleGenAI, materialsId: string, lessonId: string,
     fixInstructions: string | undefined, iterationNumber: number | undefined,
-    artifactId: string, logPrefix: string
+    artifactId: string, logPrefix: string, componentTypes?: string[]
 ): Promise<{ statusCode: number; body: string }> {
     const { data: lesson } = await supabase
         .from('material_lessons')
@@ -326,6 +337,17 @@ async function processSingleLesson(
         );
     }
 
+    // Determine which components to generate:
+    // - If componentTypes specified (single-component mode): only those
+    // - Otherwise (single-lesson mode): all expected components
+    const targetComponents = componentTypes && componentTypes.length > 0
+        ? componentTypes
+        : (lesson.expected_components || []);
+
+    const isPartialRegeneration = componentTypes && componentTypes.length > 0;
+
+    console.log(`${logPrefix} Target components: ${targetComponents.join(', ')}${isPartialRegeneration ? ' (partial)' : ' (full)'}`);
+
     const input: MaterialsGenerationInput = {
         lesson: {
             lesson_id: lesson.lesson_id,
@@ -333,7 +355,7 @@ async function processSingleLesson(
             module_id: lesson.module_id,
             module_title: lesson.module_title,
             oa_text: lesson.oa_text || '',
-            components: (lesson.expected_components || []).map((c: string) => ({ type: c, summary: '' })),
+            components: targetComponents.map((c: string) => ({ type: c, summary: '' })),
             quiz_spec: lesson.quiz_spec,
             requires_demo_guide: lesson.requires_demo_guide || false,
         },
@@ -347,12 +369,15 @@ async function processSingleLesson(
         fix_instructions: fixInstructions,
     };
 
-    const result = await generateWithRetry(genAI, input, logPrefix);
+    const result = await generateWithRetry(genAI, supabase, input, targetComponents, logPrefix);
 
     if (result.success && result.content) {
-        await saveGeneratedComponents(supabase, lessonId, result.content, input.iteration_number, logPrefix);
+        await saveGeneratedComponents(
+            supabase, lessonId, result.content, input.iteration_number, logPrefix,
+            isPartialRegeneration ? targetComponents : undefined
+        );
         await supabase.from('material_lessons').update({ state: 'GENERATED', updated_at: new Date().toISOString() }).eq('id', lessonId);
-        return { statusCode: 200, body: JSON.stringify({ success: true }) };
+        return { statusCode: 200, body: JSON.stringify({ success: true, componentTypes: targetComponents }) };
     } else {
         await supabase.from('material_lessons').update({
             state: 'NEEDS_FIX',
@@ -364,7 +389,8 @@ async function processSingleLesson(
 }
 
 async function generateWithRetry(
-    genAI: GoogleGenAI, input: MaterialsGenerationInput, logPrefix: string
+    genAI: GoogleGenAI, supabase: any, input: MaterialsGenerationInput,
+    componentTypes: string[], logPrefix: string
 ): Promise<{ success: boolean; content?: any; error?: string }> {
     const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
@@ -372,7 +398,7 @@ async function generateWithRetry(
         for (const model of models) {
             try {
                 console.log(`${logPrefix} Try ${retry + 1}, Model: ${model}`);
-                const content = await generateMaterialsWithGemini(genAI, model, input, logPrefix);
+                const content = await generateMaterialsWithGemini(genAI, supabase, model, input, componentTypes, logPrefix);
                 return { success: true, content };
             } catch (err: any) {
                 const msg = err.message || '';
@@ -426,11 +452,16 @@ async function findOrCreateMaterialLesson(
 }
 
 async function generateMaterialsWithGemini(
-    genAI: GoogleGenAI, model: string, input: MaterialsGenerationInput, logPrefix: string
+    genAI: GoogleGenAI, supabase: any, model: string,
+    input: MaterialsGenerationInput, componentTypes: string[], logPrefix: string
 ): Promise<any> {
-    const prompt = materialsGenerationPrompt + `\n\n## DATOS DE ENTRADA\n\`\`\`json\n${JSON.stringify(input, null, 2)}\n\`\`\`\n\nResponde SOLO con JSON válido.`;
+    // Resolve prompts from DB with fallback to defaults
+    const resolved = await resolvePrompts(supabase, componentTypes);
+    const basePrompt = assemblePrompt(resolved, componentTypes);
 
-    console.log(`${logPrefix} Calling ${model}`);
+    const prompt = basePrompt + `\n\n## DATOS DE ENTRADA\n\`\`\`json\n${JSON.stringify(input, null, 2)}\n\`\`\`\n\nResponde SOLO con JSON válido.`;
+
+    console.log(`${logPrefix} Calling ${model} for components: ${componentTypes.join(', ')}`);
 
     const response = await genAI.models.generateContent({
         model,
@@ -445,13 +476,37 @@ async function generateMaterialsWithGemini(
     return JSON.parse(match[0]);
 }
 
+/**
+ * Saves generated components to the database.
+ * @param onlyTypes - If specified, only deletes/replaces these component types (preserves others).
+ *                    If undefined, deletes ALL components for the iteration (full regeneration).
+ */
 async function saveGeneratedComponents(
-    supabase: any, lessonId: string, content: any, iteration: number, logPrefix: string
+    supabase: any, lessonId: string, content: any, iteration: number,
+    logPrefix: string, onlyTypes?: string[]
 ): Promise<void> {
     const components = content.components || {};
     const refs = content.source_refs_used || [];
 
-    await supabase.from('material_components').delete().eq('material_lesson_id', lessonId).eq('iteration_number', iteration);
+    if (onlyTypes && onlyTypes.length > 0) {
+        // Partial regeneration: only delete the specific component types being regenerated
+        for (const type of onlyTypes) {
+            await supabase
+                .from('material_components')
+                .delete()
+                .eq('material_lesson_id', lessonId)
+                .eq('type', type)
+                .eq('iteration_number', iteration);
+        }
+        console.log(`${logPrefix} Deleted ${onlyTypes.length} component types for partial regeneration`);
+    } else {
+        // Full regeneration: delete all components for this iteration
+        await supabase
+            .from('material_components')
+            .delete()
+            .eq('material_lesson_id', lessonId)
+            .eq('iteration_number', iteration);
+    }
 
     for (const [type, data] of Object.entries(components)) {
         if (!data) continue;
@@ -465,5 +520,5 @@ async function saveGeneratedComponents(
             iteration_number: iteration,
         });
     }
-    console.log(`${logPrefix} Saved ${Object.keys(components).length} components`);
+    console.log(`${logPrefix} Saved ${Object.keys(components).length} components${onlyTypes ? ' (partial)' : ''}`);
 }

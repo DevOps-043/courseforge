@@ -21,31 +21,49 @@ export async function getSystemPromptsAction() {
   const activeOrgId = await getActiveOrganizationId();
   const supabaseAdmin = getAdminClient();
 
+  // 1. Fetch global prompts (organization_id IS NULL) — these are the defaults
+  const { data: globalData, error: globalError } = await supabaseAdmin
+    .from('system_prompts')
+    .select('*')
+    .is('organization_id', null)
+    .order('code', { ascending: true });
+
+  if (globalError) {
+    console.error('Error fetching global prompts:', globalError);
+    return { success: false, error: globalError.message };
+  }
+
+  const globalPrompts = (globalData || []) as SystemPrompt[];
+
+  // 2. If there's an active org, fetch org-specific overrides
   if (activeOrgId) {
-    const { data: orgData, error: orgError } = await supabaseAdmin
+    const { data: orgData } = await supabaseAdmin
       .from('system_prompts')
       .select('*')
       .eq('organization_id', activeOrgId)
       .order('code', { ascending: true });
 
     if (orgData && orgData.length > 0) {
-      return { success: true, prompts: orgData as SystemPrompt[] };
+      // Merge: org-specific prompts take priority, global fills the gaps
+      const orgMap = new Map((orgData as SystemPrompt[]).map(p => [p.code, p]));
+      const merged: SystemPrompt[] = [];
+
+      // First add all global prompts, replacing with org override if exists
+      for (const gp of globalPrompts) {
+        merged.push(orgMap.get(gp.code) || gp);
+        orgMap.delete(gp.code);
+      }
+      // Then add any org-specific prompts that don't exist globally
+      for (const op of orgMap.values()) {
+        merged.push(op);
+      }
+
+      return { success: true, prompts: merged };
     }
   }
 
-  // Fallback a los globales (null org_id) si no hay específicos de la org
-  const { data, error } = await supabaseAdmin
-    .from('system_prompts')
-    .select('*')
-    .is('organization_id', null)
-    .order('code', { ascending: true });
-
-  if (error) {
-    console.error('Error fetching prompts:', error);
-    return { success: false, error: error.message };
-  }
-
-  return { success: true, prompts: data as SystemPrompt[] };
+  // 3. No org or no org-specific overrides — return globals
+  return { success: true, prompts: globalPrompts };
 }
 
 export async function updateSystemPromptAction(prompt: UpdateSystemPromptDTO) {

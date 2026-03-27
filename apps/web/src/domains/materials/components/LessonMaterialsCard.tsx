@@ -25,7 +25,7 @@ import { MaterialDetailsModal } from './MaterialDetailsModal';
 
 interface LessonMaterialsCardProps {
     lesson: MaterialLesson;
-    onIterationStart?: (lessonId: string, instructions: string) => void;
+    onIterationStart?: (lessonId: string, instructions: string, componentTypes?: string[]) => void;
     onValidateLesson?: (lessonId: string) => Promise<void>;
     onRegenerateLesson?: (lessonId: string) => Promise<void>;
     onMarkForFix?: (lessonId: string) => Promise<void>;
@@ -100,9 +100,9 @@ export function LessonMaterialsCard({ lesson, onIterationStart, onValidateLesson
         return colors[state];
     };
 
-    const handleIterationStart = (instructions: string) => {
+    const handleIterationStart = (instructions: string, componentTypes?: string[]) => {
         if (onIterationStart) {
-            onIterationStart(lesson.id, instructions);
+            onIterationStart(lesson.id, instructions, componentTypes);
         }
     };
 
@@ -260,6 +260,7 @@ export function LessonMaterialsCard({ lesson, onIterationStart, onValidateLesson
                         <IterationPanel
                             currentIteration={lesson.iteration_count}
                             maxIterations={lesson.max_iterations}
+                            availableComponents={lesson.expected_components}
                             onStartIteration={handleIterationStart}
                         />
                     )}
@@ -311,7 +312,7 @@ export function LessonMaterialsCard({ lesson, onIterationStart, onValidateLesson
                 components={components}
                 isOpen={showModal}
                 onClose={() => setShowModal(false)}
-                onIterationStart={handleIterationStart}
+                onIterationStart={(_lessonId, instructions, componentTypes) => handleIterationStart(instructions, componentTypes)}
             />
         </div>
     );

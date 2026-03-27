@@ -200,11 +200,15 @@ export const materialsService = {
     },
 
     /**
-     * Ejecuta iteración dirigida (fix mode) para una lección
+     * Ejecuta iteración dirigida (fix mode) para una lección.
+     * @param lessonId - ID de la lección
+     * @param fixInstructions - Instrucciones de corrección para el LLM
+     * @param componentTypes - Tipos de componente a regenerar (opcional). Si se omite, regenera todos.
      */
     async runFixIteration(
         lessonId: string,
-        fixInstructions: string
+        fixInstructions: string,
+        componentTypes?: string[]
     ): Promise<{ success: boolean; error?: string }> {
         const supabase = createClient();
 
@@ -234,7 +238,11 @@ export const materialsService = {
             })
             .eq('id', lessonId);
 
-        // Disparar background job para esta lección específica
+        // Determine mode: single-component if specific types given, single-lesson otherwise
+        const isPartial = componentTypes && componentTypes.length > 0;
+        const mode = isPartial ? 'single-component' : 'single-lesson';
+
+        // Disparar background job
         try {
             const response = await fetch('/.netlify/functions/materials-generation-background', {
                 method: 'POST',
@@ -245,7 +253,8 @@ export const materialsService = {
                     lessonId,
                     fixInstructions,
                     iterationNumber: lesson.iteration_count + 1,
-                    mode: 'single-lesson', // Modo para procesar una sola lección
+                    mode,
+                    ...(isPartial ? { componentTypes } : {}),
                 }),
             });
 

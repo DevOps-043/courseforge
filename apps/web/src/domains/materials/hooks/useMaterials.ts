@@ -17,7 +17,7 @@ interface UseMaterialsReturn {
 
     // Actions
     startGeneration: () => Promise<void>;
-    runFixIteration: (lessonId: string, fixInstructions: string) => Promise<void>;
+    runFixIteration: (lessonId: string, fixInstructions: string, componentTypes?: string[]) => Promise<void>;
     submitToQA: () => Promise<void>;
     applyQADecision: (decision: 'APPROVED' | 'REJECTED', notes?: string) => Promise<void>;
     validateMaterials: () => Promise<void>;
@@ -101,10 +101,10 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
         }
     }, [artifactId]);
 
-    const runFixIteration = useCallback(async (lessonId: string, fixInstructions: string) => {
+    const runFixIteration = useCallback(async (lessonId: string, fixInstructions: string, componentTypes?: string[]) => {
         try {
             setError(null);
-            const result = await materialsService.runFixIteration(lessonId, fixInstructions);
+            const result = await materialsService.runFixIteration(lessonId, fixInstructions, componentTypes);
             if (!result.success) {
                 setError(result.error || 'Error en iteración dirigida');
                 return;
