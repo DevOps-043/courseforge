@@ -131,7 +131,7 @@ export function InstructionalPlanResultsView({
 
                 return (
                   <InstructionalPlanLessonCard
-                    key={lesson.lesson_id}
+                    key={lesson.lesson_id || `lesson-${module.index}-${module.lessons.indexOf(lesson)}`}
                     lesson={lesson}
                     displayLesson={displayLesson}
                     expanded={expandedLessonId === lesson.lesson_id}

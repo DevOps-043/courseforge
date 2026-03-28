@@ -9,6 +9,7 @@ import {
   Send,
   XCircle,
 } from "lucide-react";
+import { REVIEWER_ROLE_SET } from "@/lib/pipeline-constants";
 import type { MaterialLesson, QADecision } from "../types/materials.types";
 
 interface MaterialsGenerationStuckInfo {
@@ -288,7 +289,7 @@ export function MaterialsQaReviewPanel({
           Pendiente de revision QA
         </span>
       </div>
-      {profile?.platform_role !== "CONSTRUCTOR" && (
+      {REVIEWER_ROLE_SET.has(profile?.platform_role || "") && (
         <>
           <textarea
             value={qaNote}

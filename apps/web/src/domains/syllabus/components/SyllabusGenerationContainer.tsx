@@ -6,6 +6,7 @@ import {
   dismissUpstreamDirtyAction,
   markDownstreamDirtyAction,
 } from "@/lib/server/pipeline-dirty-actions";
+import { REVIEWER_ROLE_SET } from "@/lib/pipeline-constants";
 import { syllabusService } from "@/domains/syllabus/services/syllabus.service";
 import {
   Esp02Route,
@@ -326,7 +327,7 @@ export function SyllabusGenerationContainer({
           <SyllabusReviewPanel
             status={status}
             reviewNotes={reviewNotes}
-            canReview={profile?.platform_role !== "CONSTRUCTOR"}
+            canReview={REVIEWER_ROLE_SET.has(profile?.platform_role || "")}
             onReviewNotesChange={setReviewNotes}
             onApprove={handleApprove}
             onReject={handleReject}

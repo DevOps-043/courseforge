@@ -24,23 +24,26 @@ interface PremiumSelectProps {
 type PremiumInputProps = InputHTMLAttributes<HTMLInputElement>;
 type PremiumTextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement>;
 
-export const PremiumInput = ({ className, ...props }: PremiumInputProps) => (
+export const PremiumInput = ({ className, value, ...props }: PremiumInputProps) => (
   <input
-    className={`w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 
+    className={`w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10
               text-white placeholder-white/30 focus:outline-none focus:border-[#00D4B3]/50 focus:bg-white/10
               transition-all duration-200 ${className}`}
+    value={value != null && !Number.isNaN(value) ? value : ""}
     {...props}
   />
 );
 
 export const PremiumTextarea = ({
   className,
+  value,
   ...props
 }: PremiumTextareaProps) => (
   <textarea
-    className={`w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 
+    className={`w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10
               text-white placeholder-white/30 focus:outline-none focus:border-[#00D4B3]/50 focus:bg-white/10
               transition-all duration-200 resize-none ${className}`}
+    value={value != null && !Number.isNaN(value) ? value : ""}
     {...props}
   />
 );

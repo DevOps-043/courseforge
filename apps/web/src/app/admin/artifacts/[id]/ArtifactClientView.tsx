@@ -8,12 +8,11 @@ import {
   updateArtifactStatusAction,
 } from "@/domains/artifacts/actions/artifact.actions";
 import {
-  getArtifactWorkflowStep,
-  hasCurationStarted,
-  hasMaterialsStarted,
-  isCurationApproved,
+  buildWorkflowSnapshot,
+  getWorkflowStep,
+  isCurationApprovedFromSnapshot,
   isInstructionalPlanApproved,
-  isMaterialsApproved,
+  isMaterialsApprovedFromSnapshot,
   isSyllabusApproved,
 } from "@/lib/artifact-workflow";
 import type {
@@ -73,7 +72,7 @@ export default function ArtifactClientView({
     "content",
   );
   const [currentStep, setCurrentStep] = useState(() =>
-    getArtifactWorkflowStep(artifact, publicationRequest),
+    getWorkflowStep(buildWorkflowSnapshot(artifact, publicationRequest)),
   );
   const [feedback, setFeedback] = useState("");
   const [isRegenerating, setIsRegenerating] = useState(false);
@@ -104,9 +103,7 @@ export default function ArtifactClientView({
   }, [artifact.production_complete]);
 
   useEffect(() => {
-    setCurrentStep((previousStep) =>
-      Math.max(previousStep, getArtifactWorkflowStep(artifact, publicationRequest)),
-    );
+    setCurrentStep(getWorkflowStep(buildWorkflowSnapshot(artifact, publicationRequest)));
   }, [artifact, publicationRequest]);
 
   useEffect(() => {
@@ -165,7 +162,7 @@ export default function ArtifactClientView({
       router.refresh();
     } catch (error) {
       console.error(error);
-      showToast("Error de conexiÃƒÂ³n", "error");
+      showToast("Error de conexiҳn", "error");
     }
   };
 
@@ -179,7 +176,7 @@ export default function ArtifactClientView({
 
     try {
       await regenerateArtifactAction(artifact.id, feedback);
-      showToast("RegeneraciÃƒÂ³n iniciada.", "info");
+      showToast("Regeneraciҳn iniciada.", "info");
       setReviewState("pending");
       setFeedback("");
       router.refresh();
@@ -204,7 +201,7 @@ export default function ArtifactClientView({
       router.refresh();
     } catch (error) {
       console.error(error);
-      showToast("Error de conexiÃƒÂ³n.", "error");
+      showToast("Error de conexiҳn.", "error");
     }
   };
 
@@ -221,7 +218,7 @@ export default function ArtifactClientView({
       router.refresh();
     } catch (error) {
       console.error(error);
-      showToast("Error de conexiÃƒÂ³n.", "error");
+      showToast("Error de conexiҳn.", "error");
     }
   };
 
@@ -231,68 +228,30 @@ export default function ArtifactClientView({
   } satisfies ArtifactValidationReport;
   const currentStatusStyle =
     STATUS_STYLES[artifact.state] || STATUS_STYLES.GENERATING;
+
+  // Construir snapshot — extrae solo campos primitivos del artifact.
+  // Elimina contaminación cruzada entre fases.
+  const snapshot = buildWorkflowSnapshot(artifact, publicationRequest);
   const productionComplete =
-    localProductionComplete || Boolean(artifact.production_complete);
-  const syllabusApproved = isSyllabusApproved(artifact);
-  const planApproved = isInstructionalPlanApproved(artifact);
-  const curationStarted = hasCurationStarted(artifact);
-  const curationApproved = isCurationApproved(artifact);
-  const materialsStarted = hasMaterialsStarted(artifact);
-  const materialsApproved = isMaterialsApproved(artifact);
-  const publicationStarted = Boolean(publicationRequest);
+    localProductionComplete || snapshot.productionComplete;
+  const syllabusApproved = isSyllabusApproved(snapshot);
+  const planApproved = isInstructionalPlanApproved(snapshot);
+  const curationApproved = isCurationApprovedFromSnapshot(snapshot);
+  const materialsApproved = isMaterialsApprovedFromSnapshot(snapshot);
 
-  const canAccessSourcesStep =
-    planApproved ||
-    curationStarted ||
-    materialsStarted ||
-    productionComplete ||
-    publicationStarted;
-  const canAccessMaterialsStep =
-    curationApproved ||
-    materialsStarted ||
-    productionComplete ||
-    publicationStarted;
-  const canAccessProductionStep =
-    canAccessMaterialsStep || productionComplete || publicationStarted;
-  const canAccessPublicationStep =
-    canAccessProductionStep || publicationStarted;
+  // Cada paso se marca como "done" solo por su propia fase
+  const baseDone = reviewState === "approved" || syllabusApproved;
+  const syllabusDone = syllabusApproved;
+  const planDone = planApproved;
+  const curationDone = curationApproved;
+  const materialsDone = materialsApproved;
+  const productionDone = productionComplete;
 
-  const baseDone =
-    reviewState === "approved" ||
-    syllabusApproved ||
-    planApproved ||
-    curationStarted ||
-    curationApproved ||
-    materialsStarted ||
-    materialsApproved ||
-    productionComplete ||
-    publicationStarted;
-  const syllabusDone =
-    syllabusApproved ||
-    planApproved ||
-    curationStarted ||
-    curationApproved ||
-    materialsStarted ||
-    materialsApproved ||
-    productionComplete ||
-    publicationStarted;
-  const planDone =
-    planApproved ||
-    curationStarted ||
-    curationApproved ||
-    materialsStarted ||
-    materialsApproved ||
-    productionComplete ||
-    publicationStarted;
-  const curationDone =
-    curationApproved ||
-    materialsStarted ||
-    materialsApproved ||
-    productionComplete ||
-    publicationStarted;
-  const materialsDone =
-    materialsApproved || productionComplete || publicationStarted;
-  const productionDone = productionComplete || publicationStarted;
+  // Progresión lineal estricta: cada paso requiere que su predecesor esté done
+  const canAccessSourcesStep = planDone;
+  const canAccessMaterialsStep = curationDone;
+  const canAccessProductionStep = materialsDone;
+  const canAccessPublicationStep = productionDone;
 
   return (
     <div className="space-y-8 relative">

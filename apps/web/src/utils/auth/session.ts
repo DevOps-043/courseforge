@@ -4,12 +4,12 @@ import { getErrorMessage } from '@/lib/errors'
 import { getCourseforgeJwtSecret } from '@/lib/server/env'
 
 /**
- * Verifica la sesiÃ³n del usuario desde la cookie cf_access_token.
+ * Verifica la sesión del usuario desde la cookie cf_access_token.
  *
- * Esta funciÃ³n reemplaza a supabase.auth.getUser() ya que usamos
+ * Esta función reemplaza a supabase.auth.getUser() ya que usamos
  * JWT propios firmados por el Auth Bridge (Option C), no GoTrue.
  *
- * Retorna el payload del JWT decodificado si es vÃ¡lido, o null si no hay sesiÃ³n.
+ * Retorna el payload del JWT decodificado si es válido, o null si no hay sesión.
  */
 
 export interface AuthBridgeUser {
@@ -100,7 +100,7 @@ export async function getAuthBridgeUser(): Promise<AuthBridgeUser | null> {
 }
 
 /**
- * Obtiene la organizaciÃ³n activa desde la cookie cf_active_org
+ * Obtiene la organización activa desde la cookie cf_active_org
  */
 export async function getActiveOrganizationId(): Promise<string | null> {
   const cookieStore = await cookies()

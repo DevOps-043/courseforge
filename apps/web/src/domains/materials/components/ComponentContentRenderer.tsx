@@ -86,7 +86,7 @@ function DialogueViewer({ content }: { content: DialogueContent }) {
       {content.reflection_prompt && (
         <div className="mt-6 p-4 bg-amber-50 dark:bg-[#F59E0B]/10 border border-amber-200 dark:border-[#F59E0B]/20 rounded-xl">
           <p className="text-sm font-bold text-amber-600 dark:text-[#F59E0B] mb-2 flex items-center gap-2">
-            <Sparkles className="w-4 h-4" /> ReflexiÃ³n
+            <Sparkles className="w-4 h-4" /> Reflexión
           </p>
           <p className="text-sm text-amber-800 dark:text-[#F59E0B]/90 leading-relaxed">{content.reflection_prompt}</p>
         </div>
@@ -139,7 +139,7 @@ function ReadingViewer({ content }: { content: ReadingContent }) {
 
       {content.reflection_question && (
         <div className="p-5 bg-gradient-to-r from-gray-50 to-white dark:from-[#0A2540] dark:to-[#1E2329] border-l-4 border-[#00D4B3] rounded-r-xl shadow-sm">
-          <p className="text-xs font-bold uppercase tracking-wider text-[#00D4B3] mb-2">Pregunta de ReflexiÃ³n</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-[#00D4B3] mb-2">Pregunta de Reflexión</p>
           <p className="text-base font-medium text-gray-800 dark:text-white italic">"{content.reflection_question}"</p>
         </div>
       )}
@@ -214,7 +214,7 @@ function QuizViewer({ content }: { content: QuizContent }) {
               <div className="mt-5 md:ml-12 p-4 bg-amber-50 dark:bg-[#F59E0B]/10 border border-amber-200 dark:border-[#F59E0B]/20 rounded-xl flex gap-3">
                 <Lightbulb className="w-5 h-5 text-amber-500 dark:text-[#F59E0B] flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-amber-800 dark:text-[#F59E0B]/90">
-                  <span className="font-bold text-amber-600 dark:text-[#F59E0B] block mb-1">ExplicaciÃ³n</span>
+                  <span className="font-bold text-amber-600 dark:text-[#F59E0B] block mb-1">Explicación</span>
                   {item.explanation}
                 </div>
               </div>
@@ -265,7 +265,7 @@ function DemoGuideViewer({ content }: { content: DemoGuideContent }) {
               {step.warning && (
                 <p className="text-xs text-amber-600 dark:text-[#F59E0B] flex items-center gap-1.5 mt-2 bg-amber-50 dark:bg-[#F59E0B]/5 p-2 rounded-lg w-fit">
                   <AlertTriangle className="w-3.5 h-3.5" />
-                  <span className="font-medium">AtenciÃ³n:</span> {step.warning}
+                  <span className="font-medium">Atención:</span> {step.warning}
                 </p>
               )}
             </div>
@@ -334,7 +334,7 @@ function VideoViewer({ content }: { content: VideoContent }) {
 
       {content.script?.sections && (
         <div className="space-y-4">
-          <h5 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider pl-1">GuiÃ³n TÃ©cnico</h5>
+          <h5 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider pl-1">Guión Técnico</h5>
           {content.script.sections.map((section, i) => (
             <div key={i} className="p-5 bg-white dark:bg-[#131820] border border-gray-200 dark:border-white/5 rounded-xl text-sm hover:border-gray-300 dark:hover:border-white/10 transition-colors shadow-sm">
               <div className="flex justify-between items-center mb-3">
@@ -370,7 +370,7 @@ function VideoViewer({ content }: { content: VideoContent }) {
                   <th className="p-3 text-left font-bold text-gray-700 dark:text-gray-200">Toma</th>
                   <th className="p-3 text-left font-bold text-gray-700 dark:text-gray-200">Tiempo</th>
                   <th className="p-3 text-left font-bold text-gray-700 dark:text-gray-200">Visual</th>
-                  <th className="p-3 text-left font-bold text-gray-700 dark:text-gray-200">NarraciÃ³n</th>
+                  <th className="p-3 text-left font-bold text-gray-700 dark:text-gray-200">Narración</th>
                 </tr>
               </thead>
               <tbody>

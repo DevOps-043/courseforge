@@ -133,12 +133,12 @@ export function VideoMappingModuleSection({
                       <span
                         className={`text-xs mt-0.5 inline-block ${isSelected ? 'text-[#00D4B3]' : 'text-gray-400'}`}
                       >
-                        {isSelected ? 'âœ“ Incluida en envÃ­o' : 'â€” Excluida del envÃ­o'}
+                        {isSelected ? '✓ Incluida en envío' : '— Excluida del envío'}
                       </span>
                     ) : (
                       <span className="text-xs text-orange-500 dark:text-orange-400 mt-0.5 inline-flex items-center gap-1">
                         <AlertCircle size={11} />
-                        Sin video â€” no disponible para envÃ­o
+                        Sin video — no disponible para envío
                       </span>
                     )}
                   </div>
@@ -208,7 +208,7 @@ export function VideoMappingModuleSection({
                       mapping.video_provider === 'youtube' &&
                       mapping.video_id.length !== 11 && (
                         <p className="text-xs text-orange-500 mt-1 flex items-center gap-1">
-                          <AlertCircle size={12} /> ID de YouTube parece invÃ¡lido
+                          <AlertCircle size={12} /> ID de YouTube parece inválido
                           (debe ser 11 caracteres)
                         </p>
                       )}
@@ -217,7 +217,7 @@ export function VideoMappingModuleSection({
                   <div className="md:col-span-12 flex items-center gap-4">
                     <div className="flex items-center gap-2">
                       <label className="text-xs text-gray-500 dark:text-gray-400">
-                        DuraciÃ³n (MM:SS):
+                        Duración (MM:SS):
                       </label>
                       <input
                         type="text"
@@ -246,7 +246,7 @@ export function VideoMappingModuleSection({
                           onClick={() => onSyncDuration(lesson.id)}
                           disabled={syncingId === lesson.id}
                           className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 flex items-center gap-1 disabled:opacity-50"
-                          title="Sincronizar duraciÃ³n exacta desde YouTube/Vimeo"
+                          title="Sincronizar duración exacta desde YouTube/Vimeo"
                         >
                           {syncingId === lesson.id ? (
                             <Loader2 size={12} className="animate-spin" />
@@ -267,7 +267,7 @@ export function VideoMappingModuleSection({
                           rel="noopener noreferrer"
                           className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
                         >
-                          ProbÃ¡r enlace â†—
+                          Probar enlace â†—
                         </a>
                       </>
                     )}

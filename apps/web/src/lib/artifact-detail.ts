@@ -104,7 +104,7 @@ async function loadDisplayProfile(
       return {
         first_name: typedProfile.first_name || typedProfile.username || null,
         email: typedProfile.email || user?.email || bridgeUser?.email,
-        platform_role: typedProfile.platform_role || null,
+        platform_role: typedProfile.platform_role || options.fallbackRole,
       };
     }
   }
@@ -120,10 +120,10 @@ async function loadDisplayProfile(
 }
 
 async function loadPublicationLessons(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  client: ReturnType<typeof getServiceRoleClient>,
   materialsId: string,
 ): Promise<PublicationVideoLesson[]> {
-  const { data: rawLessons } = await supabase
+  const { data: rawLessons } = await client
     .from("material_lessons")
     .select(
       `
@@ -195,7 +195,14 @@ export async function loadArtifactDetailPageData(
   options: ArtifactDetailLoadOptions,
 ): Promise<ArtifactDetailPageData | null> {
   const supabase = await createClient();
-  let artifactQuery = supabase
+
+  // Usar service role client para las consultas de datos del artefacto.
+  // El usuario puede estar autenticado via Auth Bridge (JWT custom),
+  // cuyo token no es reconocido por las políticas RLS de Supabase.
+  // La autorización se controla por el filtro organization_id.
+  const admin = getServiceRoleClient();
+
+  let artifactQuery = admin
     .from("artifacts")
     .select("*, syllabus(*), instructional_plans(*)")
     .eq("id", options.artifactId);
@@ -216,17 +223,17 @@ export async function loadArtifactDetailPageData(
   const [displayProfile, curationResult, materialsResult, publicationResult] =
     await Promise.all([
       loadDisplayProfile(supabase, options),
-      supabase
+      admin
         .from("curation")
         .select("*")
         .eq("artifact_id", options.artifactId)
         .maybeSingle(),
-      supabase
+      admin
         .from("materials")
         .select("*")
         .eq("artifact_id", options.artifactId)
         .maybeSingle(),
-      supabase
+      admin
         .from("publication_requests")
         .select("*")
         .eq("artifact_id", options.artifactId)
@@ -240,7 +247,7 @@ export async function loadArtifactDetailPageData(
   const curationData = curationResult.data || null;
   const materialsData = materialsResult.data || null;
   const publicationLessons = materialsData
-    ? await loadPublicationLessons(supabase, materialsData.id)
+    ? await loadPublicationLessons(admin, materialsData.id)
     : [];
 
   return {

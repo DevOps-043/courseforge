@@ -36,14 +36,14 @@ const COMPONENT_ICONS: Record<ComponentType, ReactNode> = {
 };
 
 const COMPONENT_LABELS: Record<ComponentType, string> = {
-  DIALOGUE: 'DiÃ¡logo con Lia',
+  DIALOGUE: 'Diálogo con Lia',
   READING: 'Lectura',
   QUIZ: 'Cuestionario',
-  DEMO_GUIDE: 'GuÃ­a Demo',
+  DEMO_GUIDE: 'Guía Demo',
   EXERCISE: 'Ejercicio',
-  VIDEO_THEORETICAL: 'Video TeÃ³rico',
+  VIDEO_THEORETICAL: 'Video Teórico',
   VIDEO_DEMO: 'Video Demo',
-  VIDEO_GUIDE: 'Video GuÃ­a',
+  VIDEO_GUIDE: 'Video Guía',
 };
 
 export function ComponentViewer({

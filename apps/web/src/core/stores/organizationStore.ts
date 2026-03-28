@@ -44,7 +44,7 @@ interface OrganizationStore {
   /** Limpiar el store (logout) */
   clear: () => void;
 
-  /** Sincronizar logos desde la base de datos (por si la cookie estÃ¡ incompleta) */
+  /** Sincronizar logos desde la base de datos (por si la cookie está incompleta) */
   syncLogos: () => Promise<void>;
 }
 

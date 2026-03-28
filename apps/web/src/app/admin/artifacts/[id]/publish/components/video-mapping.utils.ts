@@ -21,7 +21,7 @@ export function groupLessonsByModule(
   const seen = new Map<string, number>();
 
   for (const lesson of lessons) {
-    const key = lesson.module_title || 'MÃ³dulo General';
+    const key = lesson.module_title || 'Módulo General';
     const existingIndex = seen.get(key);
 
     if (existingIndex !== undefined) {

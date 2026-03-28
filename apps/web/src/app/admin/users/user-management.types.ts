@@ -8,7 +8,7 @@ export interface PlatformUser {
   last_name_father?: string | null;
   last_name_mother?: string | null;
   platform_role?: PlatformRole | null;
-  status?: string | null;
+  is_active?: boolean | null;
   username?: string | null;
 }
 

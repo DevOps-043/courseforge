@@ -8,8 +8,8 @@ import { CurationGenerationView } from "./CurationGenerationView";
 import { CurationSetupView } from "./CurationSetupView";
 import { ConfirmationModal } from "../../../shared/components/ConfirmationModal";
 import {
-  isCurationApproved,
-  isCurationBlocked,
+  isCurationApprovedFromRecord,
+  isCurationBlockedFromRecord,
 } from "@/lib/artifact-workflow";
 import { dismissUpstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import {
@@ -63,8 +63,8 @@ export function SourcesCurationGenerationContainer({
   } = useCuration(artifactId);
   const router = useRouter();
   const canReview = REVIEWER_ROLE_SET.has(profile?.platform_role ?? "");
-  const curationApproved = isCurationApproved(curation);
-  const curationBlocked = isCurationBlocked(curation);
+  const curationApproved = isCurationApprovedFromRecord(curation);
+  const curationBlocked = isCurationBlockedFromRecord(curation);
   const lastKnownCurationStateRef = useRef<string | null>(null);
   const {
     handleValidate,

@@ -177,8 +177,8 @@ export default function UsersTable({ initialUsers }: { initialUsers: PlatformUse
                                 </div>
                             </td>
                             <td className="p-4">
-                                <span className={`px-2 py-1 rounded-full text-xs font-medium border ${user.status === 'inactive' ? 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20' : 'bg-green-100 dark:bg-green-500/10 text-green-600 dark:text-green-400 border-green-200 dark:border-green-500/20'}`}>
-                                    {user.status === 'inactive' ? 'Inactivo' : 'Activo'}
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium border ${user.is_active === false ? 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20' : 'bg-green-100 dark:bg-green-500/10 text-green-600 dark:text-green-400 border-green-200 dark:border-green-500/20'}`}>
+                                    {user.is_active === false ? 'Inactivo' : 'Activo'}
                                 </span>
                             </td>
                             <td className="p-4">

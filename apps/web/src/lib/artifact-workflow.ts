@@ -5,234 +5,249 @@ import {
   SYLLABUS_STATES,
 } from "@/lib/pipeline-constants";
 
-const APPROVED_DECISION = "APPROVED";
+// ---------------------------------------------------------------------------
+// WorkflowSnapshot — DTO plano con campos primitivos de origen explícito.
+// Elimina la contaminación cruzada: cada campo tiene un único origen
+// documentado, sin fallback a campos del artifact padre.
+// ---------------------------------------------------------------------------
 
-interface QaStatusLike {
-  status?: string | null;
+export interface WorkflowSnapshot {
+  /** artifact.state */
+  baseState: string | null;
+  /** artifact.qa_status */
+  baseQaStatus: string | null;
+
+  /** artifact.syllabus_state ?? artifact.syllabus_status (del join) */
+  syllabusState: string | null;
+  /** artifact.temario?.qa?.status ?? artifact.syllabus?.qa?.status */
+  syllabusQaStatus: string | null;
+
+  /** artifact.plan_state (del join) */
+  planState: string | null;
+  /** artifact.instructional_plan?.final_status */
+  planFinalStatus: string | null;
+  /** artifact.instructional_plan?.approvals?.architect_status */
+  planArchitectStatus: string | null;
+
+  /** artifact.curation_state (del join) */
+  curationState: string | null;
+  /** artifact.curation?.id */
+  curationId: string | null;
+  /** artifact.curation?.qa_decision?.decision */
+  curationQaDecision: string | null;
+
+  /** artifact.materials_state (del join) */
+  materialsState: string | null;
+  /** artifact.materials?.id */
+  materialsId: string | null;
+  /** artifact.materials?.qa_decision?.decision */
+  materialsQaDecision: string | null;
+
+  /** Boolean(artifact.production_complete) */
+  productionComplete: boolean;
+  /** Boolean(publicationRequest) */
+  hasPublicationRequest: boolean;
+  /** publicationRequest?.status */
+  publicationStatus: string | null;
 }
 
-interface QaDecisionLike {
-  decision?: string | null;
-}
+// ---------------------------------------------------------------------------
+// Tipos mínimos para el extractor — se usan en buildWorkflowSnapshot
+// para leer SOLO los campos que necesitamos del artifact, sin depender
+// del tipo completo ni de `[key: string]: unknown`.
+// ---------------------------------------------------------------------------
 
-interface ApprovalsLike {
-  architect_status?: string | null;
-}
-
-interface NestedWorkflowStateLike {
-  id?: string | null;
-  state?: string | null;
-  qa?: QaStatusLike | null;
-  qa_decision?: QaDecisionLike | null;
-  final_status?: string | null;
-  approvals?: ApprovalsLike | null;
-}
-
-export interface ArtifactWorkflowLike {
-  id?: string | null;
+interface SnapshotSourceArtifact {
   state?: string | null;
   qa_status?: string | null;
-  qa_decision?: QaDecisionLike | null;
   production_complete?: boolean | null;
-  syllabus_status?: string | null;
   syllabus_state?: string | null;
+  syllabus_status?: string | null;
   plan_state?: string | null;
   curation_state?: string | null;
   materials_state?: string | null;
-  final_status?: string | null;
-  approvals?: ApprovalsLike | null;
-  temario?: {
-    qa?: QaStatusLike | null;
+  temario?: { qa?: { status?: string | null } | null } | null;
+  syllabus?: { qa?: { status?: string | null } | null } | null;
+  instructional_plan?: {
+    final_status?: string | null;
+    approvals?: { architect_status?: string | null } | null;
   } | null;
-  syllabus?: NestedWorkflowStateLike | null;
-  instructional_plan?: NestedWorkflowStateLike | null;
-  curation?: NestedWorkflowStateLike | null;
-  materials?: NestedWorkflowStateLike | null;
+  curation?: {
+    id?: string | null;
+    qa_decision?: { decision?: string | null } | null;
+  } | null;
+  materials?: {
+    id?: string | null;
+    qa_decision?: { decision?: string | null } | null;
+  } | null;
 }
 
-export interface PublicationWorkflowLike {
+interface SnapshotSourcePublication {
   status?: string | null;
 }
 
-function getNestedQaStatus(
-  value?: { qa?: QaStatusLike | null } | null,
-) {
-  return value?.qa?.status;
+// ---------------------------------------------------------------------------
+// Extractor — transforma artifact + publicationRequest en snapshot plano
+// ---------------------------------------------------------------------------
+
+export function buildWorkflowSnapshot(
+  artifact: SnapshotSourceArtifact,
+  publicationRequest?: SnapshotSourcePublication | null,
+): WorkflowSnapshot {
+  return {
+    baseState: artifact.state ?? null,
+    baseQaStatus: artifact.qa_status ?? null,
+
+    syllabusState: artifact.syllabus_state ?? artifact.syllabus_status ?? null,
+    syllabusQaStatus:
+      artifact.temario?.qa?.status ??
+      artifact.syllabus?.qa?.status ??
+      null,
+
+    planState: artifact.plan_state ?? null,
+    planFinalStatus: artifact.instructional_plan?.final_status ?? null,
+    planArchitectStatus:
+      artifact.instructional_plan?.approvals?.architect_status ?? null,
+
+    curationState: artifact.curation_state ?? null,
+    curationId: artifact.curation?.id ?? null,
+    curationQaDecision: artifact.curation?.qa_decision?.decision ?? null,
+
+    materialsState: artifact.materials_state ?? null,
+    materialsId: artifact.materials?.id ?? null,
+    materialsQaDecision: artifact.materials?.qa_decision?.decision ?? null,
+
+    productionComplete: Boolean(artifact.production_complete),
+    hasPublicationRequest: Boolean(publicationRequest),
+    publicationStatus: publicationRequest?.status ?? null,
+  };
 }
 
-function getNestedQaDecision(
-  value?: { qa_decision?: QaDecisionLike | null } | null,
-) {
-  return value?.qa_decision?.decision;
-}
+// ---------------------------------------------------------------------------
+// Funciones de snapshot — operan SOLO sobre el DTO plano
+// ---------------------------------------------------------------------------
 
-export function isSyllabusApproved(artifactLike: ArtifactWorkflowLike): boolean {
-  const syllabusState =
-    artifactLike.syllabus_status ?? artifactLike.syllabus_state;
-  const qaStatus =
-    getNestedQaStatus(artifactLike.temario) ??
-    getNestedQaStatus(artifactLike.syllabus);
-
+export function isSyllabusApproved(s: WorkflowSnapshot): boolean {
   return (
-    syllabusState === SYLLABUS_STATES.APPROVED ||
-    qaStatus === APPROVED_DECISION
+    s.syllabusState === SYLLABUS_STATES.APPROVED ||
+    s.syllabusQaStatus === "APPROVED"
   );
 }
 
-export function isInstructionalPlanApproved(
-  planLike?: ArtifactWorkflowLike | NestedWorkflowStateLike | null,
-): boolean {
-  if (!planLike) {
-    return false;
-  }
-
-  const planState =
-    "plan_state" in planLike ? planLike.plan_state : planLike.state;
-  const instructionalPlan =
-    "instructional_plan" in planLike
-      ? planLike.instructional_plan
-      : undefined;
-  const finalStatus = instructionalPlan?.final_status ?? planLike.final_status;
-  const architectStatus =
-    instructionalPlan?.approvals?.architect_status ??
-    planLike.approvals?.architect_status;
-
+export function isInstructionalPlanApproved(s: WorkflowSnapshot): boolean {
   return (
-    planState === PLAN_STATES.APPROVED ||
-    finalStatus === "APPROVED_PHASE_1" ||
-    architectStatus === APPROVED_DECISION
+    s.planState === PLAN_STATES.APPROVED ||
+    s.planFinalStatus === "APPROVED_PHASE_1" ||
+    s.planArchitectStatus === "APPROVED"
   );
 }
 
-export function hasCurationStarted(
-  curationLike?: ArtifactWorkflowLike | NestedWorkflowStateLike | null,
-): boolean {
-  if (!curationLike) {
-    return false;
-  }
-
-  const curationState =
-    "curation_state" in curationLike ? curationLike.curation_state : curationLike.state;
-  const nestedCuration =
-    "curation" in curationLike ? curationLike.curation : undefined;
-
-  return Boolean(nestedCuration?.id || curationLike.id || curationState);
-}
-
-export function isCurationApproved(
-  curationLike?: ArtifactWorkflowLike | NestedWorkflowStateLike | null,
-): boolean {
-  if (!curationLike) {
-    return false;
-  }
-
-  const curationState =
-    "curation_state" in curationLike ? curationLike.curation_state : curationLike.state;
-  const nestedCuration =
-    "curation" in curationLike ? curationLike.curation : undefined;
-  const qaDecision =
-    getNestedQaDecision(nestedCuration) ?? getNestedQaDecision(curationLike);
-
+export function isCurationApprovedFromSnapshot(s: WorkflowSnapshot): boolean {
   return (
-    curationState === CURATION_STATES.APPROVED ||
-    qaDecision === APPROVED_DECISION
+    s.curationState === CURATION_STATES.APPROVED ||
+    s.curationQaDecision === "APPROVED"
   );
 }
 
-export function isCurationBlocked(
-  curationLike?: ArtifactWorkflowLike | NestedWorkflowStateLike | null,
-): boolean {
-  if (!curationLike) {
-    return false;
-  }
-
-  const curationState =
-    "curation_state" in curationLike ? curationLike.curation_state : curationLike.state;
-  const nestedCuration =
-    "curation" in curationLike ? curationLike.curation : undefined;
-  const qaDecision =
-    getNestedQaDecision(nestedCuration) ?? getNestedQaDecision(curationLike);
-
+export function isMaterialsApprovedFromSnapshot(s: WorkflowSnapshot): boolean {
   return (
-    curationState === CURATION_STATES.BLOCKED ||
-    qaDecision === "BLOCKED" ||
-    qaDecision === "REJECTED"
+    s.materialsState === MATERIALS_STATES.APPROVED ||
+    s.materialsQaDecision === "APPROVED"
   );
 }
 
-export function hasMaterialsStarted(
-  materialsLike?: ArtifactWorkflowLike | NestedWorkflowStateLike | null,
-): boolean {
-  if (!materialsLike) {
-    return false;
+// ---------------------------------------------------------------------------
+// Resolución de paso — completamente inline y trazable
+// ---------------------------------------------------------------------------
+
+export function getWorkflowStep(s: WorkflowSnapshot): number {
+  if (s.publicationStatus === "SENT" || s.publicationStatus === "APPROVED") {
+    return 7;
   }
 
-  const materialsState =
-    "materials_state" in materialsLike ? materialsLike.materials_state : materialsLike.state;
-  const nestedMaterials =
-    "materials" in materialsLike ? materialsLike.materials : undefined;
-
-  return Boolean(
-    nestedMaterials?.id ||
-      materialsLike.id ||
-      (materialsState && materialsState !== MATERIALS_STATES.DRAFT),
-  );
-}
-
-export function isMaterialsApproved(
-  materialsLike?: ArtifactWorkflowLike | NestedWorkflowStateLike | null,
-): boolean {
-  if (!materialsLike) {
-    return false;
+  if (s.hasPublicationRequest || s.productionComplete) {
+    return 7;
   }
 
-  const materialsState =
-    "materials_state" in materialsLike ? materialsLike.materials_state : materialsLike.state;
-  const nestedMaterials =
-    "materials" in materialsLike ? materialsLike.materials : undefined;
-  const qaDecision =
-    getNestedQaDecision(nestedMaterials) ?? getNestedQaDecision(materialsLike);
-
-  return (
-    materialsState === MATERIALS_STATES.APPROVED ||
-    qaDecision === APPROVED_DECISION
-  );
-}
-
-export function getArtifactWorkflowStep(
-  artifact: ArtifactWorkflowLike,
-  publicationRequest?: PublicationWorkflowLike | null,
-): number {
+  // Materials aprobado o iniciado → paso 6
   if (
-    publicationRequest?.status === "SENT" ||
-    publicationRequest?.status === "APPROVED"
+    s.materialsState === MATERIALS_STATES.APPROVED ||
+    s.materialsQaDecision === "APPROVED"
   ) {
-    return 7;
+    return 6;
   }
-
-  if (publicationRequest || artifact.production_complete) {
-    return 7;
-  }
-
-  if (isMaterialsApproved(artifact) || hasMaterialsStarted(artifact)) {
+  if (
+    s.materialsId ||
+    (s.materialsState && s.materialsState !== MATERIALS_STATES.DRAFT)
+  ) {
     return 6;
   }
 
-  if (isCurationApproved(artifact)) {
+  // Curation aprobada → paso 5
+  if (
+    s.curationState === CURATION_STATES.APPROVED ||
+    s.curationQaDecision === "APPROVED"
+  ) {
     return 5;
   }
 
-  if (hasCurationStarted(artifact) || isInstructionalPlanApproved(artifact)) {
+  // Curation iniciada o plan aprobado → paso 4
+  if (s.curationId || s.curationState) {
+    return 4;
+  }
+  if (
+    s.planState === PLAN_STATES.APPROVED ||
+    s.planFinalStatus === "APPROVED_PHASE_1" ||
+    s.planArchitectStatus === "APPROVED"
+  ) {
     return 4;
   }
 
-  if (isSyllabusApproved(artifact)) {
+  // Syllabus aprobado → paso 3
+  if (
+    s.syllabusState === SYLLABUS_STATES.APPROVED ||
+    s.syllabusQaStatus === "APPROVED"
+  ) {
     return 3;
   }
 
-  if (artifact.state === "APPROVED" || artifact.qa_status === "APPROVED") {
+  // Base aprobada → paso 2
+  if (s.baseState === "APPROVED" || s.baseQaStatus === "APPROVED") {
     return 2;
   }
 
   return 1;
+}
+
+// ---------------------------------------------------------------------------
+// Funciones para registros standalone (ej: row de tabla curation).
+// Usadas por SourcesCurationGenerationContainer que pasa un objeto
+// Curation directamente, NO el artifact completo.
+// ---------------------------------------------------------------------------
+
+interface CurationRecordLike {
+  state?: string | null;
+  qa_decision?: { decision?: string | null } | null;
+}
+
+export function isCurationApprovedFromRecord(
+  record: CurationRecordLike | null | undefined,
+): boolean {
+  if (!record) return false;
+  return (
+    record.state === CURATION_STATES.APPROVED ||
+    record.qa_decision?.decision === "APPROVED"
+  );
+}
+
+export function isCurationBlockedFromRecord(
+  record: CurationRecordLike | null | undefined,
+): boolean {
+  if (!record) return false;
+  const decision = record.qa_decision?.decision;
+  return (
+    record.state === CURATION_STATES.BLOCKED ||
+    decision === "BLOCKED" ||
+    decision === "REJECTED"
+  );
 }

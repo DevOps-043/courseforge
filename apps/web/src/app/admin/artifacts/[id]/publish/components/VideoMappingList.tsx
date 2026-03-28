@@ -36,14 +36,14 @@ export async function syncVideoDuration(
         if (!isNaN(durationRaw) && durationRaw > 0) {
           resolve(Math.round(durationRaw));
         } else {
-          reject(new Error('No se pudo leer la duraciÃ³n del archivo.'));
+          reject(new Error('No se pudo leer la duración del archivo.'));
         }
       };
 
       video.onerror = () => {
         reject(
           new Error(
-            'No se pudo obtener la duraciÃ³n del MP4. Verifica el enlace y bloqueadores (CORS).',
+            'No se pudo obtener la duración del MP4. Verifica el enlace y bloqueadores (CORS).',
           ),
         );
       };
@@ -205,17 +205,17 @@ export function VideoMappingList({
       );
       if (durationSec > 0) {
         handleUpdate(lessonId, 'duration', durationSec);
-        toast.success(`DuraciÃ³n actualizada: ${Math.floor(durationSec / 60).toString().padStart(2, '0')}:${(durationSec % 60).toString().padStart(2, '0')}`);
+        toast.success(`Duración actualizada: ${Math.floor(durationSec / 60).toString().padStart(2, '0')}:${(durationSec % 60).toString().padStart(2, '0')}`);
       } else {
         toast.error(
-          'No se pudo obtener la duraciÃ³n. Verifica que el video sea vÃ¡lido y pÃºblico.',
+          'No se pudo obtener la duración. Verifica que el video sea válido y público.',
         );
       }
     } catch (error: unknown) {
       const message =
         error instanceof Error
           ? error.message
-          : 'Error al sincronizar duraciÃ³n.';
+          : 'Error al sincronizar duración.';
       console.error(error);
       toast.error(message);
     } finally {
@@ -231,17 +231,17 @@ export function VideoMappingList({
     <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 shadow-sm">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-          2. AsignaciÃ³n de Videos y SelecciÃ³n para EnvÃ­o
+          2. Asignación de Videos y Selección para Envío
         </h3>
         <span className="text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">
-          {totalSelected}/{totalWithVideo} seleccionadas para envÃ­o
+          {totalSelected}/{totalWithVideo} seleccionadas para envío
         </span>
       </div>
 
       <div className="flex items-center gap-2 mb-5 text-xs text-gray-500 dark:text-gray-400">
         <Info size={14} className="shrink-0" />
         <span>
-          Marca las lecciones que deseas incluir en el envÃ­o a SofLIA. Solo las
+          Marca las lecciones que deseas incluir en el envío a SofLIA. Solo las
           lecciones con video asignado pueden seleccionarse.
         </span>
       </div>

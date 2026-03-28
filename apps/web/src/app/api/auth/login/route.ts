@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     if ("error" in result) {
       return NextResponse.json(
         { error: result.error },
-        { status: result.error === "OcurriÃ³ un error inesperado" ? 500 : 400 },
+        { status: result.error === "Ocurrió un error inesperado" ? 500 : 400 },
       );
     }
 
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Login API route error:", error);
     return NextResponse.json(
-      { error: "OcurriÃ³ un error inesperado" },
+      { error: "Ocurrió un error inesperado" },
       { status: 500 },
     );
   }

@@ -119,7 +119,7 @@ export function InstructionalPlanLessonCard({
 
                   return (
                     <span
-                      key={`${lesson.lesson_id}-badge-${componentIndex}`}
+                      key={`badge-${componentIndex}`}
                       className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${badge.color}`}
                     >
                       {badge.icon}
@@ -197,7 +197,7 @@ export function InstructionalPlanLessonCard({
 
                 {displayLesson.components.map((component, componentIndex) => (
                   <div
-                    key={`${displayLesson.lesson_id}-component-${componentIndex}`}
+                    key={`component-${componentIndex}`}
                     className="group/edit-card relative space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4 transition-colors hover:border-gray-300 dark:border-gray-700/50 dark:bg-[#151A21]/50 dark:hover:border-gray-600"
                   >
                     <div className="flex gap-4">
@@ -319,7 +319,7 @@ export function InstructionalPlanLessonCard({
 
                     return (
                       <div
-                        key={`${lesson.lesson_id}-detail-${componentIndex}`}
+                        key={`detail-${componentIndex}`}
                         className="flex gap-3 rounded-lg border border-gray-200 bg-white p-3 transition-colors hover:border-gray-300 dark:border-gray-800 dark:bg-[#161b22] dark:hover:border-gray-700"
                       >
                         <div

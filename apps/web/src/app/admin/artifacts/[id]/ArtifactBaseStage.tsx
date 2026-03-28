@@ -13,6 +13,7 @@ import {
   Target,
   X,
 } from "lucide-react";
+import { REVIEWER_ROLE_SET } from "@/lib/pipeline-constants";
 import type {
   ArtifactDisplayProfile,
   ArtifactEditedContent,
@@ -73,7 +74,7 @@ export function ArtifactBaseStage({
             onClick={() => setActiveTab(tab as "content" | "validation")}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === tab ? "bg-[#1F5AF6] text-white" : "bg-white dark:bg-[#151A21] text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-[#6C757D]/10"}`}
           >
-            {tab === "content" ? "Idea Central" : "ValidaciÃ³n"}
+            {tab === "content" ? "Idea Central" : "Validación"}
           </button>
         ))}
       </div>
@@ -179,7 +180,7 @@ export function ArtifactBaseStage({
           </SectionCard>
 
           <SectionCard
-            title="DescripciÃ³n"
+            title="Descripción"
             icon={<Layers size={18} className="text-[#1F5AF6]" />}
             action={
               editingSection === "descripcion" ? (
@@ -215,10 +216,10 @@ export function ArtifactBaseStage({
             )}
           </SectionCard>
 
-          {profile?.platform_role !== "CONSTRUCTOR" && (
+          {REVIEWER_ROLE_SET.has(profile?.platform_role || "") && (
             <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 mt-8">
               <h3 className="text-gray-900 dark:text-white font-bold mb-4 flex items-center gap-2">
-                <Edit3 size={18} /> RevisiÃ³n Fase 1 (QA)
+                <Edit3 size={18} /> Revisión Fase 1 (QA)
               </h3>
 
               <textarea
@@ -288,7 +289,7 @@ export function ArtifactBaseStage({
               <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-xl p-5">
                 <h3 className="text-gray-900 dark:text-white font-bold text-sm mb-3 flex items-center gap-2">
                   <Layers size={16} className="text-[#1F5AF6]" />
-                  BÃºsquedas de InvestigaciÃ³n
+                  Búsquedas de Investigación
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   {artifact.generation_metadata.search_queries.map(

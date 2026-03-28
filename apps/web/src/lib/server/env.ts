@@ -28,12 +28,36 @@ type ServerEnv = z.infer<typeof serverEnvSchema>;
 
 let cachedServerEnv: ServerEnv | null = null;
 
+function buildEnvObject(): Record<string, string | undefined> {
+  return {
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    SOFLIA_INBOX_SUPABASE_URL: process.env.SOFLIA_INBOX_SUPABASE_URL,
+    SOFLIA_INBOX_SUPABASE_KEY: process.env.SOFLIA_INBOX_SUPABASE_KEY,
+    SOFLIA_API_URL: process.env.SOFLIA_API_URL,
+    SOFLIA_API_KEY: process.env.SOFLIA_API_KEY,
+    COURSEFORGE_JWT_SECRET: process.env.COURSEFORGE_JWT_SECRET,
+    GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+    GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+    GEMINI_MODEL: process.env.GEMINI_MODEL,
+    GEMINI_SEARCH_MODEL: process.env.GEMINI_SEARCH_MODEL,
+    GEMINI_TEMPERATURE: process.env.GEMINI_TEMPERATURE,
+    GPT_SOURCES_API_KEY: process.env.GPT_SOURCES_API_KEY,
+    NETLIFY: process.env.NETLIFY,
+    URL: process.env.URL,
+    DEPLOY_URL: process.env.DEPLOY_URL,
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+    NODE_ENV: process.env.NODE_ENV,
+  };
+}
+
 function getParsedServerEnv() {
   if (cachedServerEnv) {
     return cachedServerEnv;
   }
 
-  cachedServerEnv = serverEnvSchema.parse(process.env);
+  cachedServerEnv = serverEnvSchema.parse(buildEnvObject());
   return cachedServerEnv;
 }
 

@@ -74,7 +74,7 @@ export function formatGammaContent(content: ProductionContent): string {
   let formatted = `${buildStoryOverview(content)}
 
 CONFIGURACION GAMMA:
-- Idioma: EspaÃƒÂ±ol Latinoamericano
+- Idioma: Espaұol Latinoamericano
 - IMAGENES: NO GENERAR (Usar solo texto y layouts solidos)
 - Estilo: Minimalista, fuentes limpias
 - Formato: Presentacion educativa

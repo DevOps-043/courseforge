@@ -78,7 +78,7 @@ export function buildConversationPrompt(
 
   if (payload.actionResult) {
     currentMessageParts.push(
-      `Resultado de la acciÃ³n anterior: ${payload.actionResult}`,
+      `Resultado de la acción anterior: ${payload.actionResult}`,
     );
   }
 
@@ -107,7 +107,7 @@ export function buildHallucinationOverrideResponse(
   searchTerm: string,
 ) {
   const searchFieldMatch = domMap.match(
-    /\[Campo: Buscar por tÃ­tulo\.\.\.\] â†’ type_at x=(\d+), y=(\d+)/,
+    /\[Campo: Buscar por título\.\.\.\] â†’ type_at x=(\d+), y=(\d+)/,
   );
 
   if (searchFieldMatch) {
@@ -128,7 +128,7 @@ export function buildHallucinationOverrideResponse(
     };
   }
 
-  if (domMap.toLowerCase().includes("hay mÃ¡s contenido abajo")) {
+  if (domMap.toLowerCase().includes("hay más contenido abajo")) {
     return {
       message: {
         role: "model",

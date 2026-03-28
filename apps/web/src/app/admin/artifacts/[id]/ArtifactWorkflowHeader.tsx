@@ -15,7 +15,7 @@ interface ArtifactWorkflowHeaderProps {
 
 function getArtifactTitle(title?: string | null) {
   return (title || "Artefacto sin nombre")
-    .replace(/(TEMA:|IDEA PRINCIPAL:|PÃƒÅ¡BLICO:|RESULTADOS:)/g, "")
+    .replace(/(TEMA:|IDEA PRINCIPAL:|PÒšBLICO:|RESULTADOS:)/g, "")
     .split(".")[0]
     .trim();
 }
@@ -47,7 +47,7 @@ export function ArtifactWorkflowHeader({
           </div>
         </div>
         <p className="text-gray-500 dark:text-[#6C757D] text-xs font-mono">
-          {artifact.courseId || artifact.id} • Creado hace{" "}
+          {artifact.courseId || artifact.id} " Creado hace{" "}
           {new Date(artifact.created_at).toLocaleDateString()}
         </p>
       </div>
