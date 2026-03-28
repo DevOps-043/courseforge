@@ -1,6 +1,11 @@
 "use server";
 
 import { getErrorMessage } from "@/lib/errors";
+import {
+  getAccessToken,
+  getAuthenticatedUser,
+  getServiceRoleClient,
+} from "@/lib/server/artifact-action-auth";
 import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import { createClient } from "@/utils/supabase/server";
@@ -131,29 +136,24 @@ function isProductionComplete(assets?: MaterialAssets | null) {
 
 async function getAuthorizedSupabase() {
   const supabase = await createClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
+  const authenticatedUser = await getAuthenticatedUser(supabase);
 
-  if (authError || !user) {
-    return { error: "Unauthorized", supabase, user: null };
+  if (!authenticatedUser) {
+    return { error: "Unauthorized" as const, supabase, user: null };
   }
 
-  return { error: null, supabase, user };
+  // Use service role for admin DB operations — consistent with admin pattern
+  // in artifact-action-auth.ts and required when Auth Bridge users have no GoTrue session
+  return { error: null, supabase: getServiceRoleClient(), user: authenticatedUser };
 }
 
 export async function generateVideoPromptsAction(
   componentId: string,
   storyboard: StoryboardItem[],
 ) {
-  const { error, supabase } = await getAuthorizedSupabase();
-  if (error) return { success: false, error };
-
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) return { success: false, error: "Unauthorized" };
+  const supabase = await createClient();
+  const userToken = await getAccessToken(supabase);
+  if (!userToken) return { success: false, error: "Unauthorized" };
 
   try {
     const data = await callBackgroundFunctionJson<{ prompts?: string }>(
@@ -161,7 +161,7 @@ export async function generateVideoPromptsAction(
       {
         componentId,
         storyboard,
-        userToken: session.access_token,
+        userToken,
       },
       {
         fallbackError: "No se pudieron generar los prompts de video",
@@ -337,7 +337,7 @@ export async function logPipelineEventAction(
     event_type: eventType,
     event_data: {
       ...eventData,
-      triggered_by: user.email || user.id,
+      triggered_by: user.email || user.userId,
       timestamp: new Date().toISOString(),
     },
     step_id: stepId || null,

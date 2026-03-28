@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { Loader2, Upload, Image as ImageIcon } from 'lucide-react';
 import { getErrorMessage } from '@/lib/errors';
-import { createClient } from '@/utils/supabase/client';
+import { uploadWithSignedUrl } from '@/lib/storage-upload';
 import { toast } from 'sonner';
 import {
     formatThumbnailUrl,
@@ -13,9 +13,10 @@ import type { PublicationCourseData } from '@/domains/publication/types/publicat
 interface CourseDataFormProps {
     initialData?: PublicationCourseData;
     onDataChange: (data: PublicationCourseData) => void;
+    lockedEmail?: string;
 }
 
-export function CourseDataForm({ initialData, onDataChange }: CourseDataFormProps) {
+export function CourseDataForm({ initialData, onDataChange, lockedEmail }: CourseDataFormProps) {
     const [formData, setFormData] = useState<PublicationCourseData>({
         category: initialData?.category || 'ia',
         level: initialData?.level || 'beginner',
@@ -38,22 +39,12 @@ export function CourseDataForm({ initialData, onDataChange }: CourseDataFormProp
         }
 
         setIsUploading(true);
-        const supabase = createClient();
 
         try {
             const fileExt = file.name.split('.').pop();
-            const fileName = `thumb-${Date.now()}.${fileExt}`;
-            const filePath = `${fileName}`;
+            const filePath = `thumb-${Date.now()}.${fileExt}`;
 
-            const { error: uploadError } = await supabase.storage
-                .from('thumbnails')
-                .upload(filePath, file);
-
-            if (uploadError) throw uploadError;
-
-            const { data: { publicUrl } } = supabase.storage
-                .from('thumbnails')
-                .getPublicUrl(filePath);
+            const { publicUrl } = await uploadWithSignedUrl('thumbnails', filePath, file);
 
             handleChange('thumbnail_url', publicUrl);
             toast.success("Imagen subida correctamente");
@@ -133,11 +124,22 @@ export function CourseDataForm({ initialData, onDataChange }: CourseDataFormProp
                     <input
                         type="email"
                         placeholder="instructor@soflia.com"
-                        className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl px-4 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#00D4B3]/20 focus:border-[#00D4B3] outline-none transition-all"
+                        readOnly={Boolean(lockedEmail)}
+                        className={`w-full border rounded-xl px-4 py-2.5 outline-none transition-all ${
+                            lockedEmail
+                                ? "bg-gray-100 dark:bg-[#0F1419]/60 border-gray-200 dark:border-[#6C757D]/10 text-gray-500 dark:text-gray-400 cursor-not-allowed select-none"
+                                : "bg-gray-50 dark:bg-[#0F1419] border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#00D4B3]/20 focus:border-[#00D4B3]"
+                        }`}
                         value={formData.instructor_email}
-                        onChange={(e) => handleChange('instructor_email', e.target.value)}
+                        onChange={(e) => {
+                            if (!lockedEmail) handleChange('instructor_email', e.target.value);
+                        }}
                     />
-                    <p className="text-xs text-gray-500">Debe coincidir con un usuario registrado en Soflia.</p>
+                    <p className="text-xs text-gray-500">
+                        {lockedEmail
+                            ? "Asociado a tu cuenta de Soflia."
+                            : "Debe coincidir con un usuario registrado en Soflia."}
+                    </p>
                 </div>
 
                 {/* Slug */}

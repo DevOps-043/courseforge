@@ -4,6 +4,10 @@ import { getPublicationData } from '@/app/admin/artifacts/[id]/publish/actions';
 import { buildPublicationPayload } from '@/domains/publication/lib/publication-payload';
 import { getSofliaInboxEnv } from '@/lib/server/env';
 import { createClient } from '@/utils/supabase/server';
+import {
+    getAuthenticatedUser,
+    getServiceRoleClient,
+} from '@/lib/server/artifact-action-auth';
 
 interface PublishRequestPayload {
     artifactId?: string;
@@ -22,22 +26,21 @@ export async function POST(request: Request) {
         }
 
         const supabase = await createClient();
-        const {
-            data: { user },
-        } = await supabase.auth.getUser();
+        const authenticatedUser = await getAuthenticatedUser(supabase);
 
-        if (!user) {
+        if (!authenticatedUser) {
             return NextResponse.json(
                 { error: 'No autorizado.' },
                 { status: 401 },
             );
         }
 
-        const { data: profile } = await supabase
+        const admin = getServiceRoleClient();
+        const { data: profile } = await admin
             .from('profiles')
             .select('platform_role')
-            .eq('id', user.id)
-            .single();
+            .eq('id', authenticatedUser.userId)
+            .maybeSingle();
 
         if (profile?.platform_role === 'CONSTRUCTOR') {
             return NextResponse.json(
@@ -90,7 +93,7 @@ export async function POST(request: Request) {
             );
         }
 
-        const { error: updateError } = await supabase
+        const { error: updateError } = await admin
             .from('publication_requests')
             .update({
                 status: 'SENT',

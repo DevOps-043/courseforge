@@ -2,16 +2,20 @@
 
 import { revalidatePath } from 'next/cache';
 import { getErrorMessage } from '@/lib/errors';
-import type { PublicationComponent } from '@/domains/publication/types/publication.types';
+import {
+    hasVideoComponent,
+    sortLessonsNaturally,
+} from '@/domains/publication/lib/publication-payload-builders';
 import type {
+    PublicationComponent,
     PublicationDataResult,
     PublicationDraftData,
     PublicationLesson,
     PublicationRequestRecord,
     PublicationVideoLesson,
 } from '@/domains/publication/types/publication.types';
+import { getServiceRoleClient } from '@/lib/server/artifact-action-auth';
 import { getActiveOrganizationId } from '@/utils/auth/session';
-import { createClient } from '@/utils/supabase/server';
 
 interface RawMaterialLessonRow {
     lesson_id: string;
@@ -30,6 +34,7 @@ interface RawArtifactRow {
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null;
 }
+
 
 function extractVideoMetadata(
     components: PublicationComponent[] | null | undefined,
@@ -115,10 +120,13 @@ function mapLessonToVideoLesson(
 export async function getPublicationData(
     artifactId: string,
 ): Promise<PublicationDataResult> {
-    const supabase = await createClient();
+    // Use service role client — Auth Bridge users have no GoTrue session,
+    // so the regular client fails RLS checks on all these tables.
+    // Access is scoped by artifactId + organization_id filter.
+    const admin = getServiceRoleClient();
     const activeOrgId = await getActiveOrganizationId();
 
-    let artifactQuery = supabase
+    let artifactQuery = admin
         .from('artifacts')
         .select('id, idea_central, generation_metadata, descripcion')
         .eq('id', artifactId);
@@ -133,7 +141,7 @@ export async function getPublicationData(
         throw new Error('Artifact not found');
     }
 
-    const { data: materials } = await supabase
+    const { data: materials } = await admin
         .from('materials')
         .select('id, package')
         .eq('artifact_id', artifactId)
@@ -142,7 +150,7 @@ export async function getPublicationData(
     let lessons: PublicationLesson[] = [];
 
     if (materials?.id) {
-        const { data: rawLessons } = await supabase
+        const { data: rawLessons } = await admin
             .from('material_lessons')
             .select(`
                 lesson_id,
@@ -155,16 +163,15 @@ export async function getPublicationData(
                     content
                 )
             `)
-            .eq('materials_id', materials.id)
-            .order('module_id', { ascending: true })
-            .order('lesson_id', { ascending: true });
+            .eq('materials_id', materials.id);
 
-        lessons = (rawLessons || []).map((lesson) =>
-            mapLessonToPublicationLesson(lesson as RawMaterialLessonRow),
-        );
+        const sorted = sortLessonsNaturally((rawLessons || []) as RawMaterialLessonRow[]);
+        lessons = sorted
+            .filter((lesson) => hasVideoComponent(lesson.material_components))
+            .map((lesson) => mapLessonToPublicationLesson(lesson));
     }
 
-    const { data: request } = await supabase
+    const { data: request } = await admin
         .from('publication_requests')
         .select('id, category, level, instructor_email, slug, price, thumbnail_url, lesson_videos, selected_lessons, upstream_dirty, upstream_dirty_source, status')
         .eq('artifact_id', artifactId)
@@ -186,10 +193,10 @@ export async function savePublicationDraft(
     artifactId: string,
     data: PublicationDraftData,
 ) {
-    const supabase = await createClient();
+    const admin = getServiceRoleClient();
 
     try {
-        const { data: existing } = await supabase
+        const { data: existing } = await admin
             .from('publication_requests')
             .select('id')
             .eq('artifact_id', artifactId)
@@ -209,7 +216,7 @@ export async function savePublicationDraft(
         };
 
         if (existing?.id) {
-            const { error } = await supabase
+            const { error } = await admin
                 .from('publication_requests')
                 .update(payload)
                 .eq('id', existing.id);
@@ -218,7 +225,7 @@ export async function savePublicationDraft(
                 throw error;
             }
         } else {
-            const { error } = await supabase
+            const { error } = await admin
                 .from('publication_requests')
                 .insert({
                     artifact_id: artifactId,
@@ -242,9 +249,9 @@ export async function savePublicationDraft(
 }
 
 export async function refreshProductionVideos(artifactId: string) {
-    const supabase = await createClient();
+    const admin = getServiceRoleClient();
 
-    const { data: materials } = await supabase
+    const { data: materials } = await admin
         .from('materials')
         .select('id')
         .eq('artifact_id', artifactId)
@@ -258,7 +265,7 @@ export async function refreshProductionVideos(artifactId: string) {
         };
     }
 
-    const { data: rawLessons, error } = await supabase
+    const { data: rawLessons, error } = await admin
         .from('material_lessons')
         .select(`
             lesson_id,
@@ -270,9 +277,7 @@ export async function refreshProductionVideos(artifactId: string) {
                 content
             )
         `)
-        .eq('materials_id', materials.id)
-        .order('module_id', { ascending: true })
-        .order('lesson_id', { ascending: true });
+        .eq('materials_id', materials.id);
 
     if (error) {
         return {
@@ -282,10 +287,11 @@ export async function refreshProductionVideos(artifactId: string) {
         };
     }
 
+    const sorted = sortLessonsNaturally((rawLessons || []) as RawMaterialLessonRow[]);
     return {
         success: true as const,
-        lessons: (rawLessons || []).map((lesson) =>
-            mapLessonToVideoLesson(lesson as RawMaterialLessonRow),
-        ),
+        lessons: sorted
+            .filter((lesson) => hasVideoComponent(lesson.material_components))
+            .map((lesson) => mapLessonToVideoLesson(lesson)),
     };
 }

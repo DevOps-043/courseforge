@@ -3,6 +3,7 @@
 import {
   AlertCircle,
   ChevronDown,
+  ExternalLink,
   Link as LinkIcon,
   Loader2,
   RefreshCw,
@@ -267,7 +268,8 @@ export function VideoMappingModuleSection({
                           rel="noopener noreferrer"
                           className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
                         >
-                          Probar enlace â†—
+                          <ExternalLink size={12} />
+                          Probar enlace
                         </a>
                       </>
                     )}

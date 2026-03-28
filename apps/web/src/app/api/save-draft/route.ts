@@ -3,6 +3,10 @@ import { createClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
 import type { PublicationDraftData } from '@/domains/publication/types/publication.types';
 import { getErrorMessage } from '@/lib/errors';
+import {
+    getAuthenticatedUser,
+    getServiceRoleClient,
+} from '@/lib/server/artifact-action-auth';
 
 interface SaveDraftRequestBody {
     artifactId?: string;
@@ -18,23 +22,29 @@ export async function POST(request: Request) {
         }
 
         const supabase = await createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
+        const authenticatedUser = await getAuthenticatedUser(supabase);
+        if (!authenticatedUser) {
             return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
         }
-        const { data: profile } = await supabase.from('profiles').select('platform_role').eq('id', user.id).single();
+
+        const admin = getServiceRoleClient();
+        const { data: profile } = await admin
+            .from('profiles')
+            .select('platform_role')
+            .eq('id', authenticatedUser.userId)
+            .maybeSingle();
         if (profile?.platform_role === 'CONSTRUCTOR') {
             return NextResponse.json({ error: 'Falta de permisos. Solo Arquitectos y Admins pueden guardar para publicación.' }, { status: 403 });
         }
 
-        const { data: existing } = await supabase
+        const { data: existing } = await admin
             .from('publication_requests')
             .select('id')
             .eq('artifact_id', artifactId)
-            .single();
+            .maybeSingle();
 
         if (existing) {
-            const { error } = await supabase
+            const { error } = await admin
                 .from('publication_requests')
                 .update({
                     category: data.category,
@@ -52,7 +62,7 @@ export async function POST(request: Request) {
 
             if (error) throw error;
         } else {
-            const { error } = await supabase
+            const { error } = await admin
                 .from('publication_requests')
                 .insert({
                     artifact_id: artifactId,

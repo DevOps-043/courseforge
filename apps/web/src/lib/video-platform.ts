@@ -86,6 +86,28 @@ function parseISODuration(duration: string): number {
   return hours * 3600 + minutes * 60 + seconds;
 }
 
+/**
+ * Client-safe version of fetchVideoMetadata.
+ * Proxies the request through /api/video-metadata to avoid CORS restrictions
+ * when called from the browser.
+ */
+export async function fetchVideoMetadataClient(
+    url: string,
+): Promise<{ duration: number; title: string }> {
+    if (!url) return { duration: 0, title: '' };
+
+    const response = await fetch(
+        `/api/video-metadata?url=${encodeURIComponent(url)}`,
+    );
+
+    if (!response.ok) {
+        return { duration: 0, title: '' };
+    }
+
+    return response.json() as Promise<{ duration: number; title: string }>;
+}
+
+/** Server-only: fetches video metadata directly from YouTube/Vimeo. Do not call from client components. */
 export async function fetchVideoMetadata(url: string) {
   if (!url) return { duration: 0, title: "" };
 
@@ -111,10 +133,20 @@ export async function fetchVideoMetadata(url: string) {
         },
       });
       const text = await response.text();
-      const metaMatch = text.match(/itemprop="duration" content="([^"]+)"/);
       const titleMatch = text.match(/<title>([^<]*)<\/title>/);
       const title = titleMatch ? titleMatch[1].replace(" - YouTube", "") : "";
 
+      // Most reliable pattern: lengthSeconds in ytInitialData JSON blob
+      const lengthMatch = text.match(/"lengthSeconds":"(\d+)"/);
+      if (lengthMatch?.[1]) {
+        return {
+          duration: parseInt(lengthMatch[1], 10),
+          title,
+        };
+      }
+
+      // Fallback: ISO 8601 duration in meta tag (older page versions)
+      const metaMatch = text.match(/itemprop="duration" content="([^"]+)"/);
       if (metaMatch?.[1]) {
         return {
           duration: parseISODuration(metaMatch[1]),
@@ -122,6 +154,7 @@ export async function fetchVideoMetadata(url: string) {
         };
       }
 
+      // Fallback: videoDurationSeconds in page JSON
       const jsonMatch = text.match(/"videoDurationSeconds":"(\d+)"/);
       if (jsonMatch?.[1]) {
         return {

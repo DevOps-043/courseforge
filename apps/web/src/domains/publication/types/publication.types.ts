@@ -38,6 +38,7 @@ export interface PublicationCourseData {
 }
 
 export interface PublicationProfile {
+  email?: string | null;
   platform_role?: string | null;
 }
 
@@ -100,7 +101,7 @@ export interface PublicationDataResult {
 export interface PublicationPayloadActivity {
   title: string;
   type: string;
-  data: Record<string, unknown>;
+  data: string | Record<string, unknown>;
 }
 
 export interface PublicationPayloadMaterial {

@@ -11,11 +11,29 @@ import type {
   PublicationRequestRecord,
 } from "@/domains/publication/types/publication.types";
 
-const VIDEO_COMPONENT_TYPES = new Set([
+export const VIDEO_COMPONENT_TYPES = new Set([
   "VIDEO_THEORETICAL",
   "VIDEO_DEMO",
   "VIDEO_GUIDE",
 ]);
+
+export function sortLessonsNaturally<T extends { lesson_id: string }>(lessons: T[]): T[] {
+  return [...lessons].sort((a, b) => {
+    const partsA = a.lesson_id.split(/\D+/).filter(Boolean).map(Number);
+    const partsB = b.lesson_id.split(/\D+/).filter(Boolean).map(Number);
+    for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+      const diff = (partsA[i] ?? 0) - (partsB[i] ?? 0);
+      if (diff !== 0) return diff;
+    }
+    return 0;
+  });
+}
+
+export function hasVideoComponent(
+  components: PublicationComponent[] | null | undefined,
+): boolean {
+  return (components || []).some((c) => VIDEO_COMPONENT_TYPES.has(c.type));
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -23,6 +41,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function getString(value: unknown) {
   return typeof value === "string" ? value : "";
+}
+
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function buildExercisePlainText(content: Record<string, unknown>): string {
+  const parts: string[] = [];
+
+  const body = stripHtml(getString(content.body_html));
+  if (body) parts.push(body);
+
+  const instructions = getString(content.instructions);
+  if (instructions) parts.push(`Instrucciones:\n${instructions}`);
+
+  const expectedOutcome = getString(content.expected_outcome);
+  if (expectedOutcome) parts.push(`Resultado esperado:\n${expectedOutcome}`);
+
+  return parts.join("\n\n");
 }
 
 function getNumber(value: unknown) {
@@ -199,7 +236,21 @@ function buildActivities(components: PublicationComponent[]) {
       continue;
     }
 
-    if (!["READING", "EXERCISE", "DEMO_GUIDE"].includes(component.type)) {
+    if (component.type === "EXERCISE") {
+      const plainText = buildExercisePlainText(content);
+      if (!plainText) {
+        continue;
+      }
+
+      activities.push({
+        title: getString(content.title) || "Ejercicio",
+        type: "exercise",
+        data: plainText,
+      });
+      continue;
+    }
+
+    if (!["READING", "DEMO_GUIDE"].includes(component.type)) {
       continue;
     }
 
@@ -227,7 +278,7 @@ function buildActivities(components: PublicationComponent[]) {
     activities.push({
       title:
         getString(content.title) ||
-        (component.type === "READING" ? "Lectura" : "Ejercicio"),
+        (component.type === "READING" ? "Lectura" : "Guía"),
       type: component.type === "READING" ? "reflection" : "exercise",
       data: { content: contentHtml },
     });

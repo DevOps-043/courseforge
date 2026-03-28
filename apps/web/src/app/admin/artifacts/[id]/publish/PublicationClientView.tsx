@@ -19,7 +19,7 @@ import type {
     PublicationVideoLesson,
 } from '@/domains/publication/types/publication.types';
 import { dismissUpstreamDirtyAction } from '@/lib/server/pipeline-dirty-actions';
-import { buildVideoUrl, fetchVideoMetadata } from '@/lib/video-platform';
+import { buildVideoUrl, fetchVideoMetadataClient } from '@/lib/video-platform';
 import { ConfirmationModal } from '@/shared/components/ConfirmationModal';
 import { UpstreamChangeAlert } from '@/shared/components/UpstreamChangeAlert';
 import { refreshProductionVideos } from './actions';
@@ -77,9 +77,14 @@ export default function PublicationClientView({
 }: PublicationClientViewProps) {
     const router = useRouter();
     const initialMappings = buildInitialVideoMappings(lessons, existingRequest);
-    const [courseData, setCourseData] = useState<PublicationCourseData>(() =>
-        getInitialCourseData(existingRequest),
-    );
+    const lockedEmail = profile?.email || null;
+    const [courseData, setCourseData] = useState<PublicationCourseData>(() => {
+        const initial = getInitialCourseData(existingRequest);
+        if (!initial.instructor_email && lockedEmail) {
+            return { ...initial, instructor_email: lockedEmail };
+        }
+        return initial;
+    });
     const [videoMappings, setVideoMappings] = useState<Record<string, LessonVideoData>>(
         initialMappings,
     );
@@ -137,7 +142,7 @@ export default function PublicationClientView({
                         mapping.video_provider === 'youtube' ||
                         mapping.video_provider === 'vimeo'
                     ) {
-                        const metadata = await fetchVideoMetadata(
+                        const metadata = await fetchVideoMetadataClient(
                             buildVideoUrl(
                                 mapping.video_provider,
                                 mapping.video_id,
@@ -310,6 +315,7 @@ export default function PublicationClientView({
                 <CourseDataForm
                     initialData={courseData}
                     onDataChange={setCourseData}
+                    lockedEmail={lockedEmail ?? undefined}
                 />
 
                 <VideoMappingList

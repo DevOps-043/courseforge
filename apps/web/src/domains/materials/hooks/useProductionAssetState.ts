@@ -2,10 +2,10 @@
 
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { createClient } from "@/utils/supabase/client";
 import { getErrorMessage } from "@/lib/errors";
+import { uploadWithSignedUrl } from "@/lib/storage-upload";
 import {
-  fetchVideoMetadata,
+  fetchVideoMetadataClient,
   getVideoProviderAndId,
   MAX_VIDEO_UPLOAD_SIZE_BYTES,
   PRODUCTION_VIDEOS_BUCKET,
@@ -170,25 +170,16 @@ export function useProductionAssetState({
     }
 
     setIsUploading(true);
-    const supabase = createClient();
 
     try {
       const fileExt = file.name.split(".").pop();
       const fileName = `${component.id}-${Date.now()}.${fileExt}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from(PRODUCTION_VIDEOS_BUCKET)
-        .upload(fileName, file);
-
-      if (uploadError) {
-        throw uploadError;
-      }
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage
-        .from(PRODUCTION_VIDEOS_BUCKET)
-        .getPublicUrl(fileName);
+      const { publicUrl } = await uploadWithSignedUrl(
+        PRODUCTION_VIDEOS_BUCKET,
+        fileName,
+        file,
+      );
 
       updateAsset("final_video_url", publicUrl, setFinalVideoUrl);
       setFinalVideoSource("upload");
@@ -233,7 +224,7 @@ export function useProductionAssetState({
           const duration =
             provider === "direct"
               ? await detectDirectVideoDuration(id)
-              : (await fetchVideoMetadata(finalVideoUrl)).duration || 0;
+              : (await fetchVideoMetadataClient(finalVideoUrl)).duration || 0;
 
           if (duration > 0) {
             assets.video_duration = duration;

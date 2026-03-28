@@ -7,11 +7,15 @@ import type {
   ArtifactTemarioRelation,
   ArtifactViewRecord,
 } from "@/app/admin/artifacts/[id]/artifact-view.types";
+import {
+  hasVideoComponent,
+  sortLessonsNaturally,
+} from "@/domains/publication/lib/publication-payload-builders";
 import type {
+  PublicationComponent,
   PublicationRequestRecord,
   PublicationVideoLesson,
 } from "@/domains/publication/types/publication.types";
-import type { MaterialAssets, VideoScript } from "@/domains/materials/types/materials.types";
 import type { SyllabusModule } from "@/domains/syllabus/types/syllabus.types";
 import { getSupabaseServiceRoleKey, getSupabaseUrl } from "@/lib/server/env";
 
@@ -39,19 +43,10 @@ interface PublicationLessonSection {
   duration_seconds?: number;
 }
 
-interface PublicationLessonComponentRow {
-  assets?: MaterialAssets | null;
-  content?: {
-    duration_estimate_minutes?: number;
-    script?: Pick<VideoScript, "sections">;
-  } | null;
-  type: string;
-}
-
 interface PublicationLessonRow {
   lesson_id: string;
   lesson_title: string;
-  material_components?: PublicationLessonComponentRow[] | null;
+  material_components?: PublicationComponent[] | null;
   module_title: string;
 }
 
@@ -137,22 +132,21 @@ async function loadPublicationLessons(
       )
     `,
     )
-    .eq("materials_id", materialsId)
-    .order("lesson_id");
+    .eq("materials_id", materialsId);
 
   if (!rawLessons) {
     return [];
   }
 
-  return (rawLessons as PublicationLessonRow[]).map((lesson) => {
-    let videoUrl = "";
-    let duration = 0;
+  const sorted = sortLessonsNaturally(rawLessons as PublicationLessonRow[]);
 
-    if (
-      lesson.material_components &&
-      Array.isArray(lesson.material_components)
-    ) {
-      const videoComponent = lesson.material_components.find(
+  return sorted
+    .filter((lesson) => hasVideoComponent(lesson.material_components))
+    .map((lesson) => {
+      let videoUrl = "";
+      let duration = 0;
+
+      const videoComponent = (lesson.material_components || []).find(
         (component) =>
           component.assets?.final_video_url ||
           component.assets?.video_url ||
@@ -165,30 +159,32 @@ async function loadPublicationLessons(
           videoComponent.assets?.video_url ||
           "";
 
-        if (videoComponent.content?.script?.sections) {
-          duration = videoComponent.content.script.sections.reduce(
+        const content = videoComponent.content as {
+          duration_estimate_minutes?: number;
+          script?: { sections?: PublicationLessonSection[] };
+        } | null;
+
+        if (content?.script?.sections) {
+          duration = content.script.sections.reduce(
             (total: number, section: PublicationLessonSection) =>
               total + (section.duration_seconds || 0),
             0,
           );
         }
 
-        if (duration === 0 && videoComponent.content?.duration_estimate_minutes) {
-          duration = Math.round(
-            videoComponent.content.duration_estimate_minutes * 60,
-          );
+        if (duration === 0 && content?.duration_estimate_minutes) {
+          duration = Math.round(content.duration_estimate_minutes * 60);
         }
       }
-    }
 
-    return {
-      id: lesson.lesson_id,
-      title: lesson.lesson_title,
-      module_title: lesson.module_title,
-      auto_video_url: videoUrl,
-      auto_duration: duration,
-    };
-  });
+      return {
+        id: lesson.lesson_id,
+        title: lesson.lesson_title,
+        module_title: lesson.module_title,
+        auto_video_url: videoUrl,
+        auto_duration: duration,
+      };
+    });
 }
 
 export async function loadArtifactDetailPageData(

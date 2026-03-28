@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import {
   buildVideoUrl,
   detectVideoProvider,
-  fetchVideoMetadata,
+  fetchVideoMetadataClient,
 } from '@/lib/video-platform';
 import type {
   LessonVideoData,
@@ -52,7 +52,7 @@ export async function syncVideoDuration(
     });
   }
 
-  const metadata = await fetchVideoMetadata(buildVideoUrl(provider, videoId));
+  const metadata = await fetchVideoMetadataClient(buildVideoUrl(provider, videoId));
   return metadata.duration || 0;
 }
 
