@@ -29,7 +29,9 @@ interface RequestBody {
   lessonId?: string;
   fixInstructions?: string;
   iterationNumber?: number;
-  mode?: "init" | "process-next" | "single-lesson";
+  mode?: "init" | "process-next" | "single-lesson" | "single-component";
+  /** Component types to regenerate. Required when mode is "single-component". */
+  componentTypes?: string[];
 }
 
 interface MaterialsLookupRecord {
@@ -115,6 +117,7 @@ async function processSingleLesson(params: {
   logPrefix: string;
   fixInstructions?: string;
   iterationNumber?: number;
+  componentTypes?: string[];
 }) {
   const {
     materialsId,
@@ -123,6 +126,7 @@ async function processSingleLesson(params: {
     logPrefix,
     fixInstructions,
     iterationNumber,
+    componentTypes,
   } = params;
   const genAI = createGeminiClient();
   const { supabase, lesson } = await loadSingleLesson(materialsId, lessonId);
@@ -133,6 +137,10 @@ async function processSingleLesson(params: {
 
   await setLessonState(supabase, lessonId, "GENERATING");
 
+  if (componentTypes && componentTypes.length > 0) {
+    console.log(`${logPrefix} Partial regen requested: ${componentTypes.join(", ")}`);
+  }
+
   const output = await generateLessonMaterials({
     supabase,
     genAI,
@@ -141,6 +149,7 @@ async function processSingleLesson(params: {
     fixInstructions,
     iterationNumber,
     logPrefix,
+    componentTypes,
   });
 
   return {
@@ -238,6 +247,7 @@ export const handler: Handler = async (event) => {
       fixInstructions,
       iterationNumber,
       mode = "init",
+      componentTypes,
     } = body;
 
     if (!materialsId) {
@@ -253,7 +263,7 @@ export const handler: Handler = async (event) => {
     const { materials } = await loadMaterialsRecord(materialsId);
     const targetArtifactId = artifactId || materials.artifact_id;
 
-    if (mode === "single-lesson" && lessonId) {
+    if ((mode === "single-lesson" || mode === "single-component") && lessonId) {
       return processSingleLesson({
         materialsId,
         lessonId,
@@ -261,6 +271,7 @@ export const handler: Handler = async (event) => {
         iterationNumber,
         artifactId: targetArtifactId,
         logPrefix,
+        componentTypes: mode === "single-component" ? componentTypes : undefined,
       });
     }
 

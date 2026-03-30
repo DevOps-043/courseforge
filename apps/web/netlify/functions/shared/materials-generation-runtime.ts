@@ -149,8 +149,9 @@ export async function processGenerationResult(params: {
   result: Awaited<ReturnType<typeof generateWithRetry>>;
   iterationNumber: number;
   logPrefix: string;
+  onlyTypes?: string[];
 }) {
-  const { supabase, lessonId, lessonTitle, result, iterationNumber, logPrefix } =
+  const { supabase, lessonId, lessonTitle, result, iterationNumber, logPrefix, onlyTypes } =
     params;
 
   if (result.success) {
@@ -160,6 +161,7 @@ export async function processGenerationResult(params: {
       result.content,
       iterationNumber,
       logPrefix,
+      onlyTypes,
     );
     await setLessonState(supabase, lessonId, "GENERATED");
     console.log(`${logPrefix} Generated ${lessonTitle}`);
@@ -184,6 +186,8 @@ export async function generateLessonMaterials(params: {
   logPrefix: string;
   fixInstructions?: string;
   iterationNumber?: number;
+  /** If set, only regenerate these component types (partial regen). */
+  componentTypes?: string[];
 }) {
   const {
     supabase,
@@ -193,6 +197,7 @@ export async function generateLessonMaterials(params: {
     logPrefix,
     fixInstructions,
     iterationNumber,
+    componentTypes,
   } = params;
 
   const lessonSources = findLessonSources(generationContext.lessonSources, lesson);
@@ -206,7 +211,16 @@ export async function generateLessonMaterials(params: {
     fixInstructions,
   });
 
-  const result = await generateWithRetry(genAI, input, logPrefix);
+  const isPartial = componentTypes && componentTypes.length > 0;
+  if (isPartial) {
+    // Restrict input.lesson.components to only the requested types for partial regen
+    input.lesson.components = input.lesson.components.filter(
+      (c) => componentTypes.includes(c.type as string),
+    );
+    console.log(`${logPrefix} Partial regen: ${componentTypes.join(", ")}`);
+  }
+
+  const result = await generateWithRetry(genAI, input, logPrefix, supabase, componentTypes);
   return processGenerationResult({
     supabase,
     lessonId: lesson.id,
@@ -214,5 +228,6 @@ export async function generateLessonMaterials(params: {
     result,
     iterationNumber: input.iteration_number,
     logPrefix,
+    onlyTypes: isPartial ? componentTypes : undefined,
   });
 }

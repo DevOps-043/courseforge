@@ -1,6 +1,10 @@
 import type { GoogleGenAI } from "@google/genai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { materialsGenerationPrompt } from "../../../src/shared/config/prompts/materials-generation.prompts";
+import {
+  resolvePrompts,
+  assemblePrompt,
+} from "../../../src/shared/config/prompts/prompt-resolver.service";
 import type {
   ComponentType,
   MaterialsGenerationInput,
@@ -136,6 +140,8 @@ export async function generateWithRetry(
   genAI: GoogleGenAI,
   input: MaterialsGenerationInput,
   logPrefix: string,
+  supabase?: SupabaseClient,
+  componentTypes?: string[],
 ) {
   for (let retry = 0; retry < 2; retry++) {
     for (const model of DEFAULT_MODELS) {
@@ -146,6 +152,8 @@ export async function generateWithRetry(
           model,
           input,
           logPrefix,
+          supabase,
+          componentTypes,
         );
         return { success: true as const, content };
       } catch (error) {
@@ -168,9 +176,29 @@ export async function generateMaterialsWithGemini(
   model: string,
   input: MaterialsGenerationInput,
   logPrefix: string,
+  supabase?: SupabaseClient,
+  componentTypes?: string[],
 ) {
+  let basePrompt: string;
+
+  // Derive component types from input when not explicitly provided (full-lesson generation)
+  const effectiveComponentTypes =
+    componentTypes && componentTypes.length > 0
+      ? componentTypes
+      : input.lesson.components.map((c) => c.type as string).filter(Boolean);
+
+  if (supabase && effectiveComponentTypes.length > 0) {
+    // Dynamic resolution: org-specific → global → hardcoded defaults
+    const resolved = await resolvePrompts(supabase, effectiveComponentTypes);
+    basePrompt = assemblePrompt(resolved, effectiveComponentTypes);
+    console.log(`${logPrefix} Using modular prompts for: ${effectiveComponentTypes.join(", ")}`);
+  } else {
+    // Fallback to legacy monolithic prompt (no supabase client or no components)
+    basePrompt = materialsGenerationPrompt;
+  }
+
   const prompt =
-    materialsGenerationPrompt +
+    basePrompt +
     `\n\n## DATOS DE ENTRADA\n\`\`\`json\n${JSON.stringify(input, null, 2)}\n\`\`\`\n\nResponde SOLO con JSON valido.`;
 
   console.log(`${logPrefix} Calling ${model}`);
@@ -252,15 +280,30 @@ export async function saveGeneratedComponents(
   content: MaterialsGenerationOutput,
   iteration: number,
   logPrefix: string,
+  onlyTypes?: string[],
 ) {
   const components = content.components || {};
   const refs = content.source_refs_used || [];
 
-  await supabase
-    .from("material_components")
-    .delete()
-    .eq("material_lesson_id", lessonId)
-    .eq("iteration_number", iteration);
+  if (onlyTypes && onlyTypes.length > 0) {
+    // Partial regeneration: only delete the specific component types being replaced
+    for (const type of onlyTypes) {
+      await supabase
+        .from("material_components")
+        .delete()
+        .eq("material_lesson_id", lessonId)
+        .eq("type", type)
+        .eq("iteration_number", iteration);
+    }
+    console.log(`${logPrefix} Deleted ${onlyTypes.length} component type(s) for partial regen`);
+  } else {
+    // Full regeneration: delete all components for this iteration
+    await supabase
+      .from("material_components")
+      .delete()
+      .eq("material_lesson_id", lessonId)
+      .eq("iteration_number", iteration);
+  }
 
   for (const [type, data] of Object.entries(components)) {
     if (!data) {
@@ -278,5 +321,7 @@ export async function saveGeneratedComponents(
     });
   }
 
-  console.log(`${logPrefix} Saved ${Object.keys(components).length} components`);
+  console.log(
+    `${logPrefix} Saved ${Object.keys(components).length} component(s)${onlyTypes ? " (partial)" : ""}`,
+  );
 }

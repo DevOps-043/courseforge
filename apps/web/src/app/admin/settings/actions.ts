@@ -33,22 +33,12 @@ export async function getSystemPromptsAction() {
   const activeOrgId = await getActiveOrganizationId();
   const supabaseAdmin = getAdminClient();
 
-  if (activeOrgId) {
-    const { data: orgData } = await supabaseAdmin
-      .from('system_prompts')
-      .select('id, code, version, content, description, is_active, created_at, updated_at')
-      .eq('organization_id', activeOrgId)
-      .order('code', { ascending: true });
+  const SELECT_FIELDS = 'id, code, version, content, description, is_active, created_at, updated_at';
 
-    if (orgData && orgData.length > 0) {
-      return { success: true, prompts: orgData as SystemPrompt[] };
-    }
-  }
-
-  // Fallback a los globales (null org_id) si no hay específicos de la org
-  const { data, error } = await supabaseAdmin
+  // Always fetch globals first
+  const { data: globalData, error } = await supabaseAdmin
     .from('system_prompts')
-    .select('id, code, version, content, description, is_active, created_at, updated_at')
+    .select(SELECT_FIELDS)
     .is('organization_id', null)
     .order('code', { ascending: true });
 
@@ -57,19 +47,90 @@ export async function getSystemPromptsAction() {
     return { success: false, error: error.message };
   }
 
-  return { success: true, prompts: data as SystemPrompt[] };
+  const globalPrompts = (globalData || []) as SystemPrompt[];
+
+  // If no active org, return globals only
+  if (!activeOrgId) {
+    return { success: true, prompts: globalPrompts };
+  }
+
+  // Fetch org-specific prompts and overlay them over globals by code
+  const { data: orgData } = await supabaseAdmin
+    .from('system_prompts')
+    .select(SELECT_FIELDS)
+    .eq('organization_id', activeOrgId)
+    .order('code', { ascending: true });
+
+  const orgPrompts = (orgData || []) as SystemPrompt[];
+  const orgByCode = new Map(orgPrompts.map((p) => [p.code, p]));
+
+  // Merge: org-specific overrides global for the same code; globals fill in the rest
+  const merged = globalPrompts.map((global) => {
+    const override = orgByCode.get(global.code);
+    return override ? { ...override, is_org_override: true } : global;
+  });
+
+  // Add any org-specific codes that don't exist as globals
+  for (const orgPrompt of orgPrompts) {
+    if (!merged.find((p) => p.code === orgPrompt.code)) {
+      merged.push({ ...orgPrompt, is_org_override: true });
+    }
+  }
+
+  merged.sort((a, b) => a.code.localeCompare(b.code));
+
+  return { success: true, prompts: merged };
 }
 
 export async function updateSystemPromptAction(prompt: UpdateSystemPromptDTO) {
     const user = await getAuthBridgeUser();
-  
+
     if (!user) {
       return { success: false, error: 'Unauthorized' };
     }
-  
+
     const activeOrgId = await getActiveOrganizationId();
     const supabaseAdmin = getAdminClient();
 
+    // Check if this row belongs to the current org or is a global prompt
+    const { data: existing } = await supabaseAdmin
+      .from('system_prompts')
+      .select('id, code, version, organization_id')
+      .eq('id', prompt.id)
+      .single();
+
+    const isOwnedByOrg = existing?.organization_id === activeOrgId;
+    const isGlobal = !existing?.organization_id;
+
+    if (activeOrgId && (isGlobal || !isOwnedByOrg)) {
+      // Editing a global prompt → create an org-specific override instead of mutating the global
+      const { data, error } = await supabaseAdmin
+        .from('system_prompts')
+        .upsert(
+          {
+            code: existing!.code,
+            version: existing!.version,
+            organization_id: activeOrgId,
+            content: prompt.content,
+            description: prompt.description,
+            is_active: prompt.is_active,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'code,version,organization_id' },
+        )
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error upserting org prompt override:', error);
+        return { success: false, error: error.message };
+      }
+
+      revalidatePath('/admin/settings');
+      return { success: true, prompt: data as SystemPrompt };
+    }
+
+    // Editing an org-specific row that already belongs to this org → update in place
     const { data, error } = await supabaseAdmin
       .from('system_prompts')
       .update({
@@ -77,7 +138,6 @@ export async function updateSystemPromptAction(prompt: UpdateSystemPromptDTO) {
           description: prompt.description,
           is_active: prompt.is_active,
           updated_at: new Date().toISOString(),
-          ...(activeOrgId ? { organization_id: activeOrgId } : {})
       })
       .eq('id', prompt.id)
       .select()
@@ -87,7 +147,7 @@ export async function updateSystemPromptAction(prompt: UpdateSystemPromptDTO) {
       console.error('Error updating prompt:', error);
       return { success: false, error: error.message };
     }
-  
+
     revalidatePath('/admin/settings');
     return { success: true, prompt: data as SystemPrompt };
 }
@@ -128,6 +188,40 @@ export async function getModelSettingsAction() {
   }
 
   return { success: true, settings: data as ModelSettingsRecord[] };
+}
+
+/**
+ * Deletes the org-specific override for a prompt code, restoring the global default.
+ * No-ops if the org has no override for that code.
+ */
+export async function resetPromptToDefaultAction(promptCode: string) {
+  const user = await getAuthBridgeUser();
+
+  if (!user) {
+    return { success: false, error: 'Unauthorized' };
+  }
+
+  const activeOrgId = await getActiveOrganizationId();
+
+  if (!activeOrgId) {
+    return { success: false, error: 'No hay organización activa' };
+  }
+
+  const supabaseAdmin = getAdminClient();
+
+  const { error } = await supabaseAdmin
+    .from('system_prompts')
+    .delete()
+    .eq('code', promptCode)
+    .eq('organization_id', activeOrgId);
+
+  if (error) {
+    console.error('Error resetting prompt to default:', error);
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath('/admin/settings');
+  return { success: true };
 }
 
 // Actualiza un batch completo de configuraciones de modelo

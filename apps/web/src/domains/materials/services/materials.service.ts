@@ -65,8 +65,8 @@ export const materialsService = {
     return startMaterialsGenerationAction(artifactId);
   },
 
-  async runFixIteration(lessonId: string, fixInstructions: string) {
-    return runMaterialsFixIterationAction(lessonId, fixInstructions);
+  async runFixIteration(lessonId: string, fixInstructions: string, componentTypes?: string[]) {
+    return runMaterialsFixIterationAction(lessonId, fixInstructions, componentTypes);
   },
 
   async validateMaterials(artifactId: string) {

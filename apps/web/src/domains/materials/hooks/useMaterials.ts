@@ -13,7 +13,7 @@ interface UseMaterialsReturn {
   loading: boolean;
   error: string | null;
   startGeneration: () => Promise<void>;
-  runFixIteration: (lessonId: string, fixInstructions: string) => Promise<void>;
+  runFixIteration: (lessonId: string, fixInstructions: string, componentTypes?: string[]) => Promise<void>;
   validateLesson: (lessonId: string) => Promise<void>;
   markLessonForFix: (lessonId: string) => Promise<void>;
   submitToQA: () => Promise<void>;
@@ -106,12 +106,13 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
   }, [artifactId, loadMaterials]);
 
   const runFixIteration = useCallback(
-    async (lessonId: string, fixInstructions: string) => {
+    async (lessonId: string, fixInstructions: string, componentTypes?: string[]) => {
       try {
         setError(null);
         const result = await materialsService.runFixIteration(
           lessonId,
           fixInstructions,
+          componentTypes,
         );
         if (!result.success) {
           setError(result.error || 'Error en iteracion dirigida');

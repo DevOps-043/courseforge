@@ -124,6 +124,7 @@ export async function startMaterialsGenerationAction(artifactId: string) {
 export async function runMaterialsFixIterationAction(
   lessonId: string,
   fixInstructions: string,
+  componentTypes?: string[],
 ) {
   const context = await getAuthorizedLessonMaterialsContext(lessonId);
   if (!context.ok) {
@@ -164,7 +165,8 @@ export async function runMaterialsFixIterationAction(
         lessonId,
         fixInstructions,
         iterationNumber: nextIteration,
-        mode: "single-lesson",
+        mode: componentTypes && componentTypes.length > 0 ? "single-component" : "single-lesson",
+        ...(componentTypes && componentTypes.length > 0 ? { componentTypes } : {}),
       },
       "Error al iniciar la iteracion dirigida",
       () => import("../../../../netlify/functions/materials-generation-background"),
