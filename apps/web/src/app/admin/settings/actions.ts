@@ -161,23 +161,12 @@ export async function getModelSettingsAction() {
   const activeOrgId = await getActiveOrganizationId();
   const supabaseAdmin = getAdminClient();
 
-  if (activeOrgId) {
-    const { data: orgData } = await supabaseAdmin
-      .from('model_settings')
-      .select('id, model_name, fallback_model, temperature, thinking_level, setting_type, is_active')
-      .eq('is_active', true)
-      .eq('organization_id', activeOrgId)
-      .order('id', { ascending: true });
+  const SELECT_FIELDS = 'id, model_name, fallback_model, temperature, thinking_level, setting_type, is_active';
 
-    if (orgData && orgData.length > 0) {
-      return { success: true, settings: orgData as ModelSettingsRecord[] };
-    }
-  }
-
-  // Fallback a globales
-  const { data, error } = await supabaseAdmin
+  // Fetch globals as baseline
+  const { data: globalData, error } = await supabaseAdmin
     .from('model_settings')
-    .select('id, model_name, fallback_model, temperature, thinking_level, setting_type, is_active')
+    .select(SELECT_FIELDS)
     .eq('is_active', true)
     .is('organization_id', null)
     .order('id', { ascending: true });
@@ -187,7 +176,34 @@ export async function getModelSettingsAction() {
     return { success: false, error: error.message };
   }
 
-  return { success: true, settings: data as ModelSettingsRecord[] };
+  const globalSettings = (globalData || []) as ModelSettingsRecord[];
+
+  if (!activeOrgId) {
+    return { success: true, settings: globalSettings };
+  }
+
+  // Fetch org-specific overrides
+  const { data: orgData } = await supabaseAdmin
+    .from('model_settings')
+    .select(SELECT_FIELDS)
+    .eq('is_active', true)
+    .eq('organization_id', activeOrgId)
+    .order('id', { ascending: true });
+
+  const orgSettings = (orgData || []) as ModelSettingsRecord[];
+  const orgByType = new Map(orgSettings.map((s) => [s.setting_type, s]));
+
+  // Merge: org-specific overrides global for the same setting_type; globals fill the rest
+  const merged = globalSettings.map((global) => orgByType.get(global.setting_type) ?? global);
+
+  // Add org-specific types that have no global counterpart
+  for (const orgSetting of orgSettings) {
+    if (!merged.find((s) => s.setting_type === orgSetting.setting_type)) {
+      merged.push(orgSetting);
+    }
+  }
+
+  return { success: true, settings: merged };
 }
 
 /**

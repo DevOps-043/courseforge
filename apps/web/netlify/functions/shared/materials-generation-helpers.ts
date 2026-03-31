@@ -55,7 +55,6 @@ export interface CurationRowRecord {
 const DEFAULT_MODELS = [
   "gemini-2.5-flash",
   "gemini-2.0-flash",
-  "gemini-1.5-flash",
 ];
 
 const DEFAULT_QUIZ_SPEC: QuizSpec = {
@@ -142,9 +141,11 @@ export async function generateWithRetry(
   logPrefix: string,
   supabase?: SupabaseClient,
   componentTypes?: string[],
+  models?: string[],
 ) {
+  const modelsToTry = models && models.length > 0 ? models : DEFAULT_MODELS;
   for (let retry = 0; retry < 2; retry++) {
-    for (const model of DEFAULT_MODELS) {
+    for (const model of modelsToTry) {
       try {
         console.log(`${logPrefix} Try ${retry + 1}, Model: ${model}`);
         const content = await generateMaterialsWithGemini(

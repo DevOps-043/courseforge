@@ -80,36 +80,61 @@ async function loadDisplayProfile(
   supabase: Awaited<ReturnType<typeof createClient>>,
   options: Pick<ArtifactDetailLoadOptions, "fallbackRole" | "fallbackName">,
 ): Promise<ArtifactDisplayProfile> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const bridgeUser = user ? null : await getAuthBridgeUser();
-  const userId = user?.id || bridgeUser?.id;
+  const admin = getServiceRoleClient();
 
-  if (userId) {
-    const admin = getServiceRoleClient();
+  // Auth Bridge es el método de autenticación primario de esta app.
+  // Se consulta primero para evitar que una sesión GoTrue residual
+  // (con un rol distinto, ej. CONSTRUCTOR) enmascare el perfil real del usuario.
+  const bridgeUser = await getAuthBridgeUser();
+  if (bridgeUser?.id) {
     const { data: profile } = await admin
       .from("profiles")
       .select("*")
-      .eq("id", userId)
+      .eq("id", bridgeUser.id)
       .maybeSingle();
 
     if (profile) {
       const typedProfile = profile as ProfileRow;
       return {
         first_name: typedProfile.first_name || typedProfile.username || null,
-        email: typedProfile.email || user?.email || bridgeUser?.email,
+        email: typedProfile.email || bridgeUser.email,
+        platform_role: typedProfile.platform_role || options.fallbackRole,
+      };
+    }
+
+    // Bridge user válido pero sin perfil en DB aún
+    return {
+      first_name: bridgeUser.first_name || bridgeUser.email?.split("@")[0] || options.fallbackName,
+      email: bridgeUser.email,
+      platform_role: options.fallbackRole,
+    };
+  }
+
+  // Fallback: sesión GoTrue (usuarios que no usan Auth Bridge)
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user?.id) {
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profile) {
+      const typedProfile = profile as ProfileRow;
+      return {
+        first_name: typedProfile.first_name || typedProfile.username || null,
+        email: typedProfile.email || user.email,
         platform_role: typedProfile.platform_role || options.fallbackRole,
       };
     }
   }
 
   return {
-    first_name:
-      bridgeUser?.first_name ||
-      user?.email?.split("@")[0] ||
-      options.fallbackName,
-    email: bridgeUser?.email || user?.email,
+    first_name: user?.email?.split("@")[0] || options.fallbackName,
+    email: user?.email,
     platform_role: options.fallbackRole,
   };
 }

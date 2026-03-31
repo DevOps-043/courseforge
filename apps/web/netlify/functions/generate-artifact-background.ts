@@ -5,8 +5,8 @@ import { z } from 'zod';
 import {
     createGeminiClient,
     createGoogleAIProvider,
-    getGeminiModel,
-    getGeminiSearchModel,
+    createServiceRoleClient,
+    resolveModelSetting,
     getSupabaseAnonKey,
     getSupabaseUrl,
 } from './shared/bootstrap';
@@ -89,9 +89,17 @@ export const handler: Handler = async (event) => {
             },
         });
 
+        const modelConfig = await resolveModelSetting(createServiceRoleClient(), "ARTIFACT_BASE", {
+            model: "gemini-2.5-flash",
+            fallbackModel: "gemini-2.0-flash",
+            temperature: 0.7,
+            thinkingLevel: "medium",
+        });
+        console.log(`[Background Job] Model config: ${modelConfig.model} / ${modelConfig.fallbackModel}`);
+
         let researchContext = "";
         let detectedSearchQueries: string[] = [];
-        const searchModels = [getGeminiSearchModel(), 'gemini-2.0-flash'].filter(Boolean) as string[];
+        const searchModels = [modelConfig.model, modelConfig.fallbackModel].filter(Boolean) as string[];
         let researchSuccess = false;
 
         const researchPrompt = `
@@ -141,7 +149,7 @@ export const handler: Handler = async (event) => {
             researchContext = "Research unavailable due to API errors.";
         }
 
-        const genModels = [getGeminiModel(), 'gemini-2.0-flash'].filter(Boolean) as string[];
+        const genModels = [modelConfig.model, modelConfig.fallbackModel].filter(Boolean) as string[];
         const systemPrompt = `
             Eres un Diseñador Instruccional Experto y Copywriter Senior.
             CONTEXTO RESEARCH: ${researchContext}

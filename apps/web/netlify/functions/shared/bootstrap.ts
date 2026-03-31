@@ -101,3 +101,35 @@ export function getFunctionsBaseUrl() {
 
   return candidate.startsWith("http") ? candidate : `https://${candidate}`;
 }
+
+export interface ModelSettingResult {
+  model: string;
+  fallbackModel: string;
+  temperature: number;
+  thinkingLevel: string;
+}
+
+/**
+ * Resuelve la configuración de modelo para un paso del pipeline desde model_settings.
+ * Si no hay fila activa para el setting_type, usa los defaults provistos.
+ * Patrón centralizado para todos los background jobs.
+ */
+export async function resolveModelSetting(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  settingType: string,
+  defaults: ModelSettingResult,
+): Promise<ModelSettingResult> {
+  const { data } = await supabase
+    .from("model_settings")
+    .select("model_name, fallback_model, temperature, thinking_level")
+    .eq("setting_type", settingType)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  return {
+    model: data?.model_name || defaults.model,
+    fallbackModel: data?.fallback_model || defaults.fallbackModel,
+    temperature: data?.temperature ?? defaults.temperature,
+    thinkingLevel: data?.thinking_level || defaults.thinkingLevel,
+  };
+}

@@ -2,9 +2,7 @@ import { Handler } from "@netlify/functions";
 import {
   createGeminiClient,
   createServiceRoleClient,
-  getGeminiModel,
-  getGeminiSearchModel,
-  getGeminiTemperature,
+  resolveModelSetting,
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
 import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
@@ -121,7 +119,15 @@ export const handler: Handler = async (event) => {
   const genAI = createGeminiClient();
 
   try {
-    const searchModelName = getGeminiSearchModel("gemini-2.0-flash");
+    const modelConfig = await resolveModelSetting(supabase, "SYLLABUS", {
+      model: "gemini-2.5-flash",
+      fallbackModel: "gemini-2.0-flash",
+      temperature: 0.7,
+      thinkingLevel: "medium",
+    });
+    console.log(`[Syllabus Background] Model config: ${modelConfig.model} / ${modelConfig.fallbackModel}`);
+
+    const searchModelName = modelConfig.model;
     let researchContext = "";
     let searchQueries: string[] = [];
 
@@ -160,7 +166,7 @@ export const handler: Handler = async (event) => {
         "Investigación no disponible por error técnico. Usar conocimiento base.";
     }
 
-    const mainModelName = getGeminiModel("gemini-1.5-pro");
+    const mainModelName = modelConfig.model;
     const basePrompt = buildSyllabusPrompt(
       ideaCentral,
       objetivos,
@@ -182,7 +188,7 @@ export const handler: Handler = async (event) => {
           model: mainModelName,
           contents: appendValidationFeedback(basePrompt, validationErrors),
           config: {
-            temperature: getGeminiTemperature(0.7),
+            temperature: modelConfig.temperature,
             responseMimeType: "application/json",
           },
         });

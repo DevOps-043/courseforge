@@ -5,10 +5,11 @@ import { z } from "zod";
 import { INSTRUCTIONAL_PLAN_SYSTEM_PROMPT } from "../../src/config/prompts/instructional-plan";
 import {
   createGoogleAIProvider,
-  getGeminiModel,
+  createServiceRoleClient,
   getSupabaseServiceKey,
   getSupabaseUrl,
   hasSupabaseServiceRoleKey,
+  resolveModelSetting,
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
 import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
@@ -194,8 +195,9 @@ async function generateModulePlans(params: {
   module: SyllabusModuleRecord;
   moduleIndex: number;
   modelName: string;
+  temperature: number;
 }) {
-  const { artifact, contextPromptTemplate, module, moduleIndex, modelName } =
+  const { artifact, contextPromptTemplate, module, moduleIndex, modelName, temperature } =
     params;
   const lessons = module.lessons || [];
   const lessonsText = renderLessonsText(lessons);
@@ -213,7 +215,7 @@ async function generateModulePlans(params: {
     model: googleAI(modelName),
     schema: GeneratedPlanSchema,
     prompt: `${INSTRUCTIONAL_PLAN_SYSTEM_PROMPT}\n\nMODULO ACTUAL: ${module.title}\n${finalContextPrompt}`,
-    temperature: 0.7,
+    temperature,
   });
 
   return result.object.lesson_plans.map((lessonPlan) => ({
@@ -288,7 +290,13 @@ export const handler: Handler = async (event) => {
 
     await upsertInstructionalPlanRecord(supabase, artifactId);
 
-    const modelName = getGeminiModel("gemini-1.5-flash");
+    const modelConfig = await resolveModelSetting(createServiceRoleClient(), "INSTRUCTIONAL_PLAN", {
+      model: "gemini-2.5-flash",
+      fallbackModel: "gemini-2.0-flash",
+      temperature: 0.7,
+      thinkingLevel: "medium",
+    });
+    const modelName = modelConfig.model;
     console.log(
       `[Background Job] Starting incremental generation with ${modelName}`,
     );
@@ -313,6 +321,7 @@ export const handler: Handler = async (event) => {
           module,
           moduleIndex,
           modelName,
+          temperature: modelConfig.temperature,
         });
 
         allGeneratedPlans = [...allGeneratedPlans, ...modulePlans];

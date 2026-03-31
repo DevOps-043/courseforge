@@ -188,6 +188,8 @@ export async function generateLessonMaterials(params: {
   iterationNumber?: number;
   /** If set, only regenerate these component types (partial regen). */
   componentTypes?: string[];
+  /** Models to use in order of preference. Falls back to DEFAULT_MODELS if not provided. */
+  models?: string[];
 }) {
   const {
     supabase,
@@ -198,6 +200,7 @@ export async function generateLessonMaterials(params: {
     fixInstructions,
     iterationNumber,
     componentTypes,
+    models,
   } = params;
 
   const lessonSources = findLessonSources(generationContext.lessonSources, lesson);
@@ -220,7 +223,7 @@ export async function generateLessonMaterials(params: {
     console.log(`${logPrefix} Partial regen: ${componentTypes.join(", ")}`);
   }
 
-  const result = await generateWithRetry(genAI, input, logPrefix, supabase, componentTypes);
+  const result = await generateWithRetry(genAI, input, logPrefix, supabase, componentTypes, models);
   return processGenerationResult({
     supabase,
     lessonId: lesson.id,

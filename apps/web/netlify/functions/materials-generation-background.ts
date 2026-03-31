@@ -2,6 +2,7 @@ import { Handler } from "@netlify/functions";
 import {
   createGeminiClient,
   createServiceRoleClient,
+  resolveModelSetting,
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
 import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
@@ -118,6 +119,7 @@ async function processSingleLesson(params: {
   fixInstructions?: string;
   iterationNumber?: number;
   componentTypes?: string[];
+  models: string[];
 }) {
   const {
     materialsId,
@@ -127,6 +129,7 @@ async function processSingleLesson(params: {
     fixInstructions,
     iterationNumber,
     componentTypes,
+    models,
   } = params;
   const genAI = createGeminiClient();
   const { supabase, lesson } = await loadSingleLesson(materialsId, lessonId);
@@ -150,6 +153,7 @@ async function processSingleLesson(params: {
     iterationNumber,
     logPrefix,
     componentTypes,
+    models,
   });
 
   return {
@@ -162,8 +166,9 @@ async function processNextPendingLesson(params: {
   materialsId: string;
   artifactId: string;
   logPrefix: string;
+  models: string[];
 }) {
-  const { materialsId, artifactId, logPrefix } = params;
+  const { materialsId, artifactId, logPrefix, models } = params;
   const supabase = createServiceRoleClient();
   const genAI = createGeminiClient();
 
@@ -219,6 +224,7 @@ async function processNextPendingLesson(params: {
     lesson,
     generationContext,
     logPrefix,
+    models,
   });
 
   console.log(`${logPrefix} Waiting ${PROCESS_NEXT_DELAY_MS}ms before next...`);
@@ -263,6 +269,17 @@ export const handler: Handler = async (event) => {
     const { materials } = await loadMaterialsRecord(materialsId);
     const targetArtifactId = artifactId || materials.artifact_id;
 
+    // Resolver modelo desde DB una sola vez por invocación
+    const supabaseForSettings = createServiceRoleClient();
+    const modelConfig = await resolveModelSetting(supabaseForSettings, "MATERIALS", {
+      model: "gemini-2.5-flash",
+      fallbackModel: "gemini-2.0-flash",
+      temperature: 0.7,
+      thinkingLevel: "medium",
+    });
+    const models = [modelConfig.model, modelConfig.fallbackModel].filter(Boolean);
+    console.log(`${logPrefix} Models: ${models.join(", ")}`);
+
     if ((mode === "single-lesson" || mode === "single-component") && lessonId) {
       return processSingleLesson({
         materialsId,
@@ -272,6 +289,7 @@ export const handler: Handler = async (event) => {
         artifactId: targetArtifactId,
         logPrefix,
         componentTypes: mode === "single-component" ? componentTypes : undefined,
+        models,
       });
     }
 
@@ -298,6 +316,7 @@ export const handler: Handler = async (event) => {
         materialsId,
         artifactId: targetArtifactId,
         logPrefix,
+        models,
       });
     }
 

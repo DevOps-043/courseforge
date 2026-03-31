@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Zap, BrainCircuit, Loader2, Save, Search, CheckCircle2, Box, Settings2, Monitor } from 'lucide-react';
+import { Zap, BrainCircuit, Loader2, Save, Search, CheckCircle2, Box, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PremiumSelect } from '@/shared/components/PremiumSelect';
 import { getModelSettingsAction, updateModelSettingsAction } from '@/app/admin/settings/actions';
@@ -9,30 +9,40 @@ import type { ModelSettingsRecord } from '@/app/admin/settings/actions';
 
 type CurationConfig = ModelSettingsRecord;
 
+// Tipos que ya no tienen sistema activo asociado — se omiten del render
+const OBSOLETE_SETTING_TYPES = new Set(['LIA MODEL', 'LIA_MODEL', 'COMPUTER']);
+
+const SETTING_ORDER = ['ARTIFACT_BASE', 'SYLLABUS', 'INSTRUCTIONAL_PLAN', 'CURATION', 'MATERIALS', 'SEARCH', 'DEFAULT'];
+
 const SETTING_METADATA: Record<string, { title: string; icon: React.ReactNode; isValidation: boolean }> = {
+    'ARTIFACT_BASE': {
+        title: 'Generación de Base del Curso (Fase 1)',
+        icon: <Zap size={16} />,
+        isValidation: false
+    },
+    'SYLLABUS': {
+        title: 'Generación de Syllabus (Fase 2)',
+        icon: <BrainCircuit size={16} />,
+        isValidation: false
+    },
+    'INSTRUCTIONAL_PLAN': {
+        title: 'Plan Instruccional (Fase 3)',
+        icon: <Settings2 size={16} />,
+        isValidation: false
+    },
     'CURATION': {
-        title: 'Modelos de Curaduría y Validación',
+        title: 'Curaduría y Validación de Fuentes (Fase 4)',
         icon: <CheckCircle2 size={16} />,
         isValidation: true
     },
     'MATERIALS': {
-        title: 'Generación de Materiales Educativos',
+        title: 'Generación de Materiales Educativos (Fase 5)',
         icon: <Box size={16} />,
         isValidation: false
     },
     'SEARCH': {
         title: 'Búsqueda y Recuperación',
         icon: <Search size={16} />,
-        isValidation: false
-    },
-    'LIA MODEL': {
-        title: 'Modelo de Razonamiento (Lia)',
-        icon: <BrainCircuit size={16} />,
-        isValidation: false
-    },
-    'COMPUTER': {
-        title: 'Uso de Computadora (Lia Visual)',
-        icon: <Monitor size={16} />,
         isValidation: false
     },
     'DEFAULT': {
@@ -53,7 +63,13 @@ export function CurationSettingsManager() {
          const res = await getModelSettingsAction();
 
          if (res.success && res.settings) {
-             setSettingsList(res.settings);
+             const filtered = res.settings.filter(s => !OBSOLETE_SETTING_TYPES.has(s.setting_type));
+             filtered.sort((a, b) => {
+                 const ai = SETTING_ORDER.indexOf(a.setting_type);
+                 const bi = SETTING_ORDER.indexOf(b.setting_type);
+                 return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+             });
+             setSettingsList(filtered);
          } else {
              console.error("Error loading settings:", res.error);
              toast.error("Error al cargar la configuración de modelos");
@@ -111,25 +127,15 @@ export function CurationSettingsManager() {
                     value={setting.model_name ?? ''}
                     onChange={(val) => handleUpdate(setting.id, 'model_name', val)}
                     options={[
-                        // Gemini 3.0 Series (Preview)
-                        { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro Preview', description: 'Next Gen Preview' },
-                        { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview', description: 'High Speed Preview' },
+                        // Gemini 3.x Series (actual)
+                        { value: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro', description: 'Ultra Reasoning' },
+                        { value: 'gemini-3-flash', label: 'Gemini 3 Flash', description: 'Alta Velocidad' },
+                        { value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite', description: 'Ultra Eficiente' },
 
-                        // Computer Use
-                        { value: 'computer-use-preview', label: 'Computer Use Preview', description: 'Agentic Capabilities' },
-
-                        // Gemini 2.5 Series
-                        { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', description: 'Advanced Reasoning' },
-                        { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', description: 'High Speed' },
-
-                        // Gemini 2.0 Series (Experimental)
-                        { value: 'gemini-2.0-pro-exp', label: 'Gemini 2.0 Pro Exp', description: 'SOTA Experimental' },
-                        { value: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash Exp', description: 'Fast Experimental' },
-                        
-                        // Gemini 1.5 Series (Stable)
-                        { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', description: 'Complex Reasoning' },
-                        { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', description: 'High Efficiency' },
-                        { value: 'gemini-1.0-pro', label: 'Gemini 1.0 Pro', description: 'Legacy Standard' }
+                        // Gemini 2.5 Series (estable)
+                        { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', description: 'Razonamiento Avanzado' },
+                        { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', description: 'Balance Costo/Velocidad' },
+                        { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite', description: 'Alta Escala / Económico' },
                     ]}
                 />
                 <PremiumSelect 
@@ -138,25 +144,15 @@ export function CurationSettingsManager() {
                     value={setting.fallback_model ?? ''}
                     onChange={(val) => handleUpdate(setting.id, 'fallback_model', val)}
                     options={[
-                        // Gemini 3.0 Series (Preview)
-                        { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro Preview', description: 'Next Gen Preview' },
-                        { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview', description: 'High Speed Preview' },
+                        // Gemini 3.x Series (actual)
+                        { value: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro', description: 'Ultra Reasoning' },
+                        { value: 'gemini-3-flash', label: 'Gemini 3 Flash', description: 'Alta Velocidad' },
+                        { value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite', description: 'Ultra Eficiente' },
 
-                        // Computer Use
-                        { value: 'computer-use-preview', label: 'Computer Use Preview', description: 'Agentic Capabilities' },
-
-                        // Gemini 2.5 Series
-                        { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', description: 'Advanced Reasoning' },
-                        { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', description: 'High Speed' },
-
-                        // Gemini 2.0 Series (Experimental)
-                        { value: 'gemini-2.0-pro-exp', label: 'Gemini 2.0 Pro Exp', description: 'SOTA Experimental' },
-                        { value: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash Exp', description: 'Fast Experimental' },
-                        
-                        // Gemini 1.5 Series (Stable)
-                        { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', description: 'Complex Reasoning' },
-                        { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', description: 'High Efficiency' },
-                        { value: 'gemini-1.0-pro', label: 'Gemini 1.0 Pro', description: 'Legacy Standard' }
+                        // Gemini 2.5 Series (estable)
+                        { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', description: 'Razonamiento Avanzado' },
+                        { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', description: 'Balance Costo/Velocidad' },
+                        { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite', description: 'Alta Escala / Económico' },
                     ]}
                 />
             </div>
