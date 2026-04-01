@@ -33,6 +33,18 @@ interface MaterialsRow {
   material_lessons?: MaterialLessonRow[] | null;
 }
 
+const ARTIFACTS_LIST_SELECT = `
+  id,
+  idea_central,
+  descripcion,
+  state,
+  created_at,
+  created_by,
+  production_complete,
+  syllabus(state),
+  instructional_plans(state)
+`;
+
 function getSingleStateRelation(
   relation?: ArtifactStateRelation[] | ArtifactStateRelation | null,
 ) {
@@ -105,7 +117,7 @@ export async function loadArtifactsPageData(options?: {
 
   let query = supabase
     .from("artifacts")
-    .select("*, syllabus(state), instructional_plans(state)")
+    .select(ARTIFACTS_LIST_SELECT)
     .order("created_at", { ascending: false });
 
   if (options?.onlyCurrentUser && currentUserId) {

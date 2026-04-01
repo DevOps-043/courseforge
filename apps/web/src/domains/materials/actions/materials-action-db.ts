@@ -15,13 +15,62 @@ interface LessonStateRow {
   state: string;
 }
 
+const MATERIALS_SNAPSHOT_SELECT = `
+  id,
+  artifact_id,
+  version,
+  prompt_version,
+  state,
+  qa_decision,
+  package,
+  lessons,
+  global_blockers,
+  dod,
+  created_at,
+  updated_at,
+  upstream_dirty,
+  upstream_dirty_source
+`;
+
+const MATERIAL_LESSONS_SNAPSHOT_SELECT = `
+  id,
+  materials_id,
+  lesson_id,
+  lesson_title,
+  module_id,
+  module_title,
+  oa_text,
+  expected_components,
+  quiz_spec,
+  requires_demo_guide,
+  dod,
+  state,
+  iteration_count,
+  max_iterations,
+  created_at,
+  updated_at
+`;
+
+const MATERIAL_COMPONENTS_SNAPSHOT_SELECT = `
+  id,
+  material_lesson_id,
+  type,
+  content,
+  source_refs,
+  validation_status,
+  validation_errors,
+  generated_at,
+  iteration_number,
+  assets
+`;
+
 export async function fetchMaterialsSnapshot(
   admin: SupabaseClient,
   artifactId: string,
 ) {
   const { data: materials, error: materialsError } = await admin
     .from("materials")
-    .select("*")
+    .select(MATERIALS_SNAPSHOT_SELECT)
     .eq("artifact_id", artifactId)
     .maybeSingle();
 
@@ -35,7 +84,7 @@ export async function fetchMaterialsSnapshot(
 
   const { data: lessons, error: lessonsError } = await admin
     .from("material_lessons")
-    .select("*")
+    .select(MATERIAL_LESSONS_SNAPSHOT_SELECT)
     .eq("materials_id", materials.id)
     .order("module_id", { ascending: true })
     .order("lesson_id", { ascending: true });
@@ -53,7 +102,7 @@ export async function fetchLessonComponentsSnapshot(
 ) {
   return admin
     .from("material_components")
-    .select("*")
+    .select(MATERIAL_COMPONENTS_SNAPSHOT_SELECT)
     .eq("material_lesson_id", lessonId)
     .order("iteration_number", { ascending: false });
 }

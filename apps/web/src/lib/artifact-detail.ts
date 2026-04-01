@@ -61,6 +61,69 @@ interface ArtifactRawRecord extends ArtifactViewRecord {
   syllabus?: SyllabusRelationRecord | SyllabusRelationRecord[] | null;
 }
 
+const PROFILE_SELECT = "id, username, first_name, email, platform_role";
+const ARTIFACT_DETAIL_SELECT = `
+  id,
+  course_id,
+  created_at,
+  descripcion,
+  generation_metadata,
+  idea_central,
+  nombres,
+  objetivos,
+  production_complete,
+  state,
+  validation_report,
+  syllabus(
+    id,
+    state,
+    qa,
+    modules
+  ),
+  instructional_plans(
+    id,
+    state,
+    approvals,
+    final_status
+  )
+`;
+const CURATION_DETAIL_SELECT = `
+  id,
+  state,
+  qa_decision,
+  upstream_dirty,
+  upstream_dirty_source
+`;
+const MATERIALS_DETAIL_SELECT = `
+  id,
+  state,
+  qa_decision,
+  upstream_dirty,
+  upstream_dirty_source
+`;
+const PUBLICATION_REQUEST_SELECT = `
+  id,
+  artifact_id,
+  category,
+  level,
+  instructor_email,
+  thumbnail_url,
+  slug,
+  price,
+  lesson_videos,
+  status,
+  soflia_course_id,
+  soflia_response,
+  sent_at,
+  response_at,
+  rejection_reason,
+  created_at,
+  updated_at,
+  selected_lessons,
+  upstream_dirty,
+  upstream_dirty_source
+`;
+
 function normalizeSingleRelation<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) {
     return value[0] ?? null;
@@ -89,7 +152,7 @@ async function loadDisplayProfile(
   if (bridgeUser?.id) {
     const { data: profile } = await admin
       .from("profiles")
-      .select("*")
+      .select(PROFILE_SELECT)
       .eq("id", bridgeUser.id)
       .maybeSingle();
 
@@ -118,7 +181,7 @@ async function loadDisplayProfile(
   if (user?.id) {
     const { data: profile } = await admin
       .from("profiles")
-      .select("*")
+      .select(PROFILE_SELECT)
       .eq("id", user.id)
       .maybeSingle();
 
@@ -225,7 +288,7 @@ export async function loadArtifactDetailPageData(
 
   let artifactQuery = admin
     .from("artifacts")
-    .select("*, syllabus(*), instructional_plans(*)")
+    .select(ARTIFACT_DETAIL_SELECT)
     .eq("id", options.artifactId);
 
   if (options.activeOrganizationId) {
@@ -246,17 +309,17 @@ export async function loadArtifactDetailPageData(
       loadDisplayProfile(supabase, options),
       admin
         .from("curation")
-        .select("*")
+        .select(CURATION_DETAIL_SELECT)
         .eq("artifact_id", options.artifactId)
         .maybeSingle(),
       admin
         .from("materials")
-        .select("*")
+        .select(MATERIALS_DETAIL_SELECT)
         .eq("artifact_id", options.artifactId)
         .maybeSingle(),
       admin
         .from("publication_requests")
-        .select("*")
+        .select(PUBLICATION_REQUEST_SELECT)
         .eq("artifact_id", options.artifactId)
         .maybeSingle(),
     ]);

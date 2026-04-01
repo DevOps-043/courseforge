@@ -14,13 +14,50 @@ interface InstructionalPlanSummary {
   lesson_plans: unknown;
 }
 
+const CURATION_SNAPSHOT_SELECT = `
+  id,
+  artifact_id,
+  attempt_number,
+  state,
+  qa_decision,
+  created_at,
+  updated_at,
+  upstream_dirty,
+  upstream_dirty_source
+`;
+
+const CURATION_ROWS_SNAPSHOT_SELECT = `
+  id,
+  curation_id,
+  lesson_id,
+  lesson_title,
+  component,
+  is_critical,
+  source_ref,
+  source_title,
+  source_rationale,
+  url_status,
+  http_status_code,
+  last_checked_at,
+  failure_reason,
+  apta,
+  motivo_no_apta,
+  cobertura_completa,
+  notes,
+  auto_evaluated,
+  auto_reason,
+  forbidden_override,
+  created_at,
+  updated_at
+`;
+
 export async function fetchCurationSnapshot(
   admin: ServiceRoleClient,
   artifactId: string,
 ) {
   const { data: curation, error: curationError } = await admin
     .from("curation")
-    .select("*")
+    .select(CURATION_SNAPSHOT_SELECT)
     .eq("artifact_id", artifactId)
     .maybeSingle();
 
@@ -37,7 +74,7 @@ export async function fetchCurationSnapshot(
 
   const { data: rows, error: rowsError } = await admin
     .from("curation_rows")
-    .select("*")
+    .select(CURATION_ROWS_SNAPSHOT_SELECT)
     .eq("curation_id", curation.id)
     .order("lesson_title", { ascending: true });
 
