@@ -9,6 +9,7 @@ import {
   artifactStatusConfig,
   formatArtifactCreatedAt,
   getArtifactDescription,
+  getArtifactDisplayState,
   getArtifactProgress,
   getArtifactTitle,
 } from "../artifacts-list.utils";
@@ -22,10 +23,14 @@ interface ArtifactCardProps {
   onDelete: (id: string) => void;
 }
 
-function StatusBadge({ artifact }: { artifact: Artifact }) {
-  const displayState = artifact.production_complete
-    ? "PRODUCTION_COMPLETE"
-    : artifact.state;
+function StatusBadge({
+  artifact,
+  normalizeReadyForQa,
+}: {
+  artifact: Artifact;
+  normalizeReadyForQa: boolean;
+}) {
+  const displayState = getArtifactDisplayState(artifact, normalizeReadyForQa);
   const status = artifactStatusConfig[displayState] || artifactStatusConfig.DRAFT;
   const StatusIcon = status.icon;
 
@@ -60,6 +65,7 @@ export function ArtifactCard({
   const [isDeleting, setIsDeleting] = useState(false);
 
   const progress = getArtifactProgress(artifact);
+  const normalizeReadyForQa = basePath === "/admin";
   const timeDisplay = formatArtifactCreatedAt(artifact.created_at);
   const description = getArtifactDescription(artifact.descripcion);
   const artifactTitle = getArtifactTitle(artifact.idea_central);
@@ -120,7 +126,10 @@ export function ArtifactCard({
               </div>
             </div>
 
-            <StatusBadge artifact={artifact} />
+            <StatusBadge
+              artifact={artifact}
+              normalizeReadyForQa={normalizeReadyForQa}
+            />
 
             <div className="text-xs text-gray-400 dark:text-[#6C757D] hidden md:block w-32 truncate text-right px-2 shrink-0">
               {artifact.profiles?.username || "Anon"}
@@ -162,7 +171,10 @@ export function ArtifactCard({
       <Link href={`${basePath}/artifacts/${artifact.id}`} className="block h-full">
         <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-5 hover:border-gray-300 dark:hover:border-[#6C757D]/30 transition-all group flex flex-col h-full cursor-pointer relative shadow-sm dark:shadow-none">
           <div className="flex items-start justify-between mb-4">
-            <StatusBadge artifact={artifact} />
+            <StatusBadge
+              artifact={artifact}
+              normalizeReadyForQa={normalizeReadyForQa}
+            />
             <button
               className="text-gray-400 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white z-20"
               onClick={handleMenuClick}

@@ -13,6 +13,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import { PRODUCTION_THEME } from "./production-asset-ui";
 
 interface ProductionAssetPromptsSectionProps {
   bRollPrompts: string;
@@ -31,7 +32,7 @@ export function ProductionAssetPromptsSection({
 }: ProductionAssetPromptsSectionProps) {
   return (
     <div className="space-y-3">
-      <h4 className="flex items-center gap-2 text-xs font-bold text-[#E9ECEF]">
+      <h4 className={`flex items-center gap-2 ${PRODUCTION_THEME.sectionTitle}`}>
         <Sparkles size={14} className="text-purple-400" /> AI B-ROLL PROMPTS
       </h4>
 
@@ -40,13 +41,13 @@ export function ProductionAssetPromptsSection({
           <textarea
             value={bRollPrompts}
             onChange={(event) => onPromptsChange(event.target.value)}
-            className="custom-scrollbar h-32 w-full resize-none rounded-lg border border-[#6C757D]/20 bg-[#0F1419] p-3 text-xs text-white focus:border-[#1F5AF6] focus:outline-none"
+            className={`custom-scrollbar h-32 w-full resize-none p-3 ${PRODUCTION_THEME.input}`}
           />
           <div className="flex justify-end gap-2">
             <button
               type="button"
               onClick={() => copyToClipboard(bRollPrompts)}
-              className="flex items-center gap-1 text-xs text-[#6C757D] hover:text-white"
+              className={`flex items-center gap-1 text-xs ${PRODUCTION_THEME.secondaryText} hover:text-gray-900 dark:hover:text-white`}
             >
               <Copy size={12} /> Copiar
             </button>
@@ -61,7 +62,7 @@ export function ProductionAssetPromptsSection({
             className={`flex w-full items-center justify-center gap-2 rounded-lg border py-3 text-xs font-bold transition-all ${
               isGenerating
                 ? "cursor-not-allowed border-purple-500/10 bg-purple-500/5 text-purple-400/50"
-                : "border-purple-500/20 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20"
+                : PRODUCTION_THEME.actionPurple
             }`}
           >
             {isGenerating ? (
@@ -112,11 +113,11 @@ export function ProductionAssetFinalVideoSection({
   urlError,
 }: ProductionAssetFinalVideoSectionProps) {
   return (
-    <div className="mt-4 space-y-3 border-t border-[#6C757D]/20 pt-4">
-      <h4 className="flex items-center gap-2 text-xs font-bold text-[#E9ECEF]">
+    <div className={`mt-4 space-y-3 border-t pt-4 ${PRODUCTION_THEME.divider}`}>
+      <h4 className={`flex items-center gap-2 ${PRODUCTION_THEME.sectionTitle}`}>
         <Play size={14} className="text-green-400" /> VIDEO FINAL (Post-Produccion)
         {finalVideoUrl && (
-          <span className="ml-auto flex items-center gap-1 text-xs text-green-400">
+          <span className="ml-auto flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
             <CheckCircle2 size={12} /> Completado
             {finalVideoSource === "upload" && " (subido)"}
             {finalVideoSource === "link" && " (enlace)"}
@@ -125,7 +126,7 @@ export function ProductionAssetFinalVideoSection({
       </h4>
 
       {!finalVideoUrl && (
-        <p className="text-[10px] text-[#6C757D]">
+        <p className={`text-[10px] ${PRODUCTION_THEME.secondaryText}`}>
           Pega un enlace o sube un archivo de video. Solo se permite una opcion.
         </p>
       )}
@@ -137,12 +138,12 @@ export function ProductionAssetFinalVideoSection({
           value={finalVideoUrl}
           onChange={(event) => onVideoUrlChange(event.target.value)}
           disabled={finalVideoSource === "upload"}
-          className={`w-full rounded-lg border p-2.5 pr-24 text-xs text-white transition-colors focus:outline-none ${
+          className={`w-full rounded-lg border p-2.5 pr-24 text-xs transition-colors focus:outline-none ${
             urlError
-              ? "border-red-500/50 bg-[#0F1419] focus:border-red-500"
+              ? "border-red-500/50 bg-white text-gray-900 focus:border-red-500 dark:bg-[#0F1419] dark:text-white"
               : finalVideoUrl
-                ? "border-green-500/30 bg-[#0F1419] focus:border-green-500"
-                : "border-[#6C757D]/20 bg-[#0F1419] focus:border-[#1F5AF6]"
+                ? "border-green-400 bg-white text-gray-900 focus:border-green-500 dark:border-green-500/30 dark:bg-[#0F1419] dark:text-white"
+                : "border-gray-300 bg-white text-gray-900 focus:border-[#1F5AF6] dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
           } ${finalVideoSource === "upload" ? "cursor-not-allowed opacity-70" : ""}`}
         />
 
@@ -150,7 +151,7 @@ export function ProductionAssetFinalVideoSection({
           <button
             type="button"
             onClick={onClearVideo}
-            className="absolute bottom-1 right-20 top-1 flex items-center rounded-md px-2 text-[#6C757D] transition-colors hover:text-red-400"
+            className={`absolute bottom-1 right-20 top-1 flex items-center rounded-md px-2 transition-colors ${PRODUCTION_THEME.secondaryText} hover:text-red-500 dark:hover:text-red-400`}
             title="Limpiar URL"
           >
             <X size={14} />
@@ -172,7 +173,7 @@ export function ProductionAssetFinalVideoSection({
           }
           className={`absolute bottom-1 right-1 top-1 flex items-center gap-2 rounded-md px-3 text-xs font-medium transition-colors ${
             finalVideoSource === "link" && finalVideoUrl
-              ? "cursor-not-allowed bg-[#6C757D]/10 text-[#6C757D]/50"
+              ? "cursor-not-allowed bg-gray-100 text-gray-400 dark:bg-[#6C757D]/10 dark:text-[#6C757D]/50"
               : "bg-[#1F5AF6]/10 text-[#1F5AF6] disabled:opacity-50 hover:bg-[#1F5AF6]/20"
           }`}
           title={
@@ -203,7 +204,7 @@ export function ProductionAssetFinalVideoSection({
           href={finalVideoUrl}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-2 text-xs text-green-400 hover:text-green-300"
+          className={`inline-flex items-center gap-2 text-xs ${PRODUCTION_THEME.successLink}`}
         >
           <ExternalLink size={12} /> Ver video final
         </a>
@@ -223,7 +224,7 @@ export function ProductionAssetScreencastSection({
 }: ProductionAssetScreencastSectionProps) {
   return (
     <div className="space-y-3">
-      <h4 className="flex items-center gap-2 text-xs font-bold text-[#E9ECEF]">
+      <h4 className={`flex items-center gap-2 ${PRODUCTION_THEME.sectionTitle}`}>
         <MonitorPlay size={14} /> SCREENCAST
       </h4>
       <input
@@ -231,7 +232,7 @@ export function ProductionAssetScreencastSection({
         placeholder="Paste Screencast URL here..."
         value={screencastUrl}
         onChange={(event) => onScreencastUrlChange(event.target.value)}
-        className="w-full rounded-lg border border-[#6C757D]/20 bg-[#0F1419] p-2.5 text-xs text-white focus:border-[#1F5AF6] focus:outline-none"
+        className={`w-full p-2.5 ${PRODUCTION_THEME.input}`}
       />
     </div>
   );

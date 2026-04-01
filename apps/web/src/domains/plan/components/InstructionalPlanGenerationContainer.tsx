@@ -125,6 +125,10 @@ export function InstructionalPlanGenerationContainer({
         lastKnownPlanStateRef.current = plan.state;
         lastKnownValidationRef.current = hasValidation;
 
+        if (plan.state === PLAN_STATES.PROCESSING && !isGenerating) {
+          setIsGenerating(true);
+        }
+
         if (planReachedTerminalState || (hasLessons && !isGenerating)) {
           setIsGenerating(false);
         }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { usePolling } from '@/shared/hooks/usePolling';
 import { materialsService } from '../services/materials.service';
 import {
   MaterialsPayload,
@@ -88,6 +89,12 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
       subscription.unsubscribe();
     };
   }, [materials?.id, loadMaterials]);
+
+  const isGenerating =
+    materials?.state === 'PHASE3_GENERATING' ||
+    Boolean(materials?.lessons?.some((lesson) => lesson.state === 'GENERATING'));
+
+  usePolling(loadMaterials, isGenerating, { intervalMs: 8000 });
 
   const startGeneration = useCallback(async () => {
     try {
@@ -252,10 +259,6 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
   const getLessonComponents = useCallback(async (lessonId: string) => {
     return materialsService.getLessonComponents(lessonId);
   }, []);
-
-  const isGenerating =
-    materials?.state === 'PHASE3_GENERATING' ||
-    materials?.lessons.some((lesson) => lesson.state === 'GENERATING');
 
   return {
     materials,

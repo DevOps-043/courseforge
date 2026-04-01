@@ -66,6 +66,26 @@ export const artifactStatusTabs = [
   { id: "ESCALATED", label: "Escalados" },
 ] as const;
 
+export function getArtifactDisplayState(
+  artifact: Artifact,
+  normalizeReadyForQa: boolean = false,
+) {
+  if (artifact.production_complete) {
+    return "PRODUCTION_COMPLETE";
+  }
+
+  if (
+    normalizeReadyForQa &&
+    artifact.state === "READY_FOR_QA" &&
+    (artifact.plan_state === "STEP_APPROVED" ||
+      artifact.syllabus_state === "STEP_APPROVED")
+  ) {
+    return "IN_PROCESS";
+  }
+
+  return artifact.state;
+}
+
 export function getArtifactProgress(artifact: Artifact) {
   if (artifact.state === "REJECTED") {
     return { percent: 100, color: "bg-red-500", animated: false };
@@ -75,15 +95,15 @@ export function getArtifactProgress(artifact: Artifact) {
     return { percent: 100, color: "bg-emerald-500", animated: false };
   }
 
+  if (artifact.plan_state === "STEP_APPROVED") {
+    return { percent: 60, color: "bg-indigo-500", animated: false };
+  }
+
+  if (artifact.syllabus_state === "STEP_APPROVED") {
+    return { percent: 40, color: "bg-blue-500", animated: false };
+  }
+
   if (artifact.state === "APPROVED") {
-    if (artifact.plan_state === "STEP_APPROVED") {
-      return { percent: 60, color: "bg-indigo-500", animated: false };
-    }
-
-    if (artifact.syllabus_state === "STEP_APPROVED") {
-      return { percent: 40, color: "bg-blue-500", animated: false };
-    }
-
     return { percent: 20, color: "bg-[#00D4B3]", animated: false };
   }
 

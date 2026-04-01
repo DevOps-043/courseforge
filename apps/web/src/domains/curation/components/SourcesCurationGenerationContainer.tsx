@@ -14,6 +14,7 @@ import {
 import { dismissUpstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import {
   CURATION_RUNNING_STATES,
+  CURATION_STATES,
   REVIEWER_ROLE_SET,
 } from "@/lib/pipeline-constants";
 import { useCurationValidation } from "../hooks/useCurationValidation";
@@ -55,6 +56,7 @@ export function SourcesCurationGenerationContainer({
     curation,
     rows,
     isGenerating,
+    isValidating: isValidatingFromDb,
     startCuration,
     updateRow,
     deleteRow,
@@ -70,10 +72,11 @@ export function SourcesCurationGenerationContainer({
     handleValidate,
     isHydrated,
     isValidating,
-    setIsValidating,
+    pendingValidationCount,
     validatedCount,
   } = useCurationValidation({
     artifactId,
+    curationState: curation?.state,
     rows,
     refresh,
   });
@@ -110,11 +113,12 @@ export function SourcesCurationGenerationContainer({
     curation,
     ideaCentral,
     isGenerating,
+    isValidating,
+    pendingValidationCount,
     refresh,
     rows,
     startCuration,
     clearGPTRows,
-    setIsValidating,
     temario,
   });
 
@@ -122,7 +126,9 @@ export function SourcesCurationGenerationContainer({
     if (!curation?.state) return;
 
     const previousState = lastKnownCurationStateRef.current;
-    const isTerminalState = !CURATION_RUNNING_STATES.has(curation.state);
+    const isTerminalState =
+      !CURATION_RUNNING_STATES.has(curation.state) &&
+      curation.state !== CURATION_STATES.VALIDATING;
 
     if (previousState && previousState !== curation.state && isTerminalState) {
       router.refresh();
@@ -180,7 +186,7 @@ export function SourcesCurationGenerationContainer({
         deleteRow={deleteRow}
         isGenerating={isGenerating}
         isLoadingModal={isLoadingModal}
-        isValidating={isValidating}
+        isValidating={isValidating || isValidatingFromDb}
         modalConfig={modalConfig}
         onApprove={handleApprove}
         onContinue={onNext}
@@ -199,6 +205,7 @@ export function SourcesCurationGenerationContainer({
         onResetStep={handleResetStep}
         onResume={handleResume}
         onValidate={handleValidate}
+        pendingValidationCount={pendingValidationCount}
         reviewNotes={reviewNotes}
         rows={rows}
         setReviewNotes={setReviewNotes}

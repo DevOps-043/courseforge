@@ -6,7 +6,7 @@ import {
   dismissUpstreamDirtyAction,
   markDownstreamDirtyAction,
 } from "@/lib/server/pipeline-dirty-actions";
-import { REVIEWER_ROLE_SET } from "@/lib/pipeline-constants";
+import { REVIEWER_ROLE_SET, SYLLABUS_STATES } from "@/lib/pipeline-constants";
 import { syllabusService } from "@/domains/syllabus/services/syllabus.service";
 import {
   Esp02Route,
@@ -219,6 +219,10 @@ export function SyllabusGenerationContainer({
         const data = await syllabusService.getSyllabus(artifactId);
         if (data?.modules?.length) {
           applyTemario(data);
+        } else if (data?.state === SYLLABUS_STATES.GENERATING) {
+          setStatus(SYLLABUS_STATES.GENERATING);
+        } else if (data?.state) {
+          setStatus(data.state);
         }
       } catch {
         // Ignorar error si el syllabus aún no existe.
@@ -240,6 +244,8 @@ export function SyllabusGenerationContainer({
         const data = await syllabusService.getSyllabus(artifactId);
         if (data?.modules?.length) {
           applyTemario(data);
+        } else if (data?.state && data.state !== SYLLABUS_STATES.GENERATING) {
+          setStatus(data.state);
         }
       } catch (pollingError) {
         console.error("Polling error (ignorable):", pollingError);

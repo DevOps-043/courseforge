@@ -18,6 +18,7 @@ import {
 import { Loader2, Clapperboard, CheckCircle2, Clock, AlertCircle, Save } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { PRODUCTION_COMPLETION_RECHECK_DELAY_MS } from '@/shared/constants/timing';
+import { PRODUCTION_THEME } from './production-asset-ui';
 
 interface VisualProductionContainerProps {
     artifactId: string;
@@ -220,20 +221,20 @@ export function VisualProductionContainer({ artifactId, productionComplete, onSt
 
     if (isLoading) {
         return (
-            <div className="flex flex-col items-center justify-center py-20 bg-[#151A21] rounded-2xl border border-[#6C757D]/10">
+            <div className={`flex flex-col items-center justify-center py-20 ${PRODUCTION_THEME.panel}`}>
                 <Loader2 className="animate-spin text-[#1F5AF6] mb-4" size={32} />
-                <p className="text-[#6C757D] font-medium">Cargando ítems de producción...</p>
+                <p className={`font-medium ${PRODUCTION_THEME.secondaryText}`}>Cargando items de produccion...</p>
             </div>
         );
     }
 
     if (productionItems.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center py-20 bg-[#151A21] rounded-2xl border border-[#6C757D]/10">
-                <Clapperboard className="text-[#6C757D] mb-4 opacity-50" size={48} />
-                <h3 className="text-white font-bold text-lg mb-2">No hay material visual para producir</h3>
-                <p className="text-[#6C757D] text-center max-w-md">
-                    No se encontraron componentes de video o guías de demostración en los materiales generados.
+            <div className={`flex flex-col items-center justify-center py-20 ${PRODUCTION_THEME.panel}`}>
+                <Clapperboard className={`mb-4 opacity-50 ${PRODUCTION_THEME.secondaryText}`} size={48} />
+                <h3 className={`text-lg font-bold mb-2 ${PRODUCTION_THEME.primaryText}`}>No hay material visual para producir</h3>
+                <p className={`text-center max-w-md ${PRODUCTION_THEME.secondaryText}`}>
+                    No se encontraron componentes de video o guias de demostracion en los materiales generados.
                 </p>
             </div>
         );
@@ -242,37 +243,37 @@ export function VisualProductionContainer({ artifactId, productionComplete, onSt
     return (
         <div className="space-y-8">
             {/* Header / Intro */}
-            <div className="bg-gradient-to-r from-[#151A21] to-[#1F5AF6]/10 p-6 rounded-2xl border border-[#6C757D]/10">
+            <div className="rounded-2xl border border-gray-200 bg-gradient-to-r from-white to-blue-50 p-6 dark:border-[#6C757D]/10 dark:from-[#151A21] dark:to-[#1F5AF6]/10">
                 <div className="flex justify-between items-start mb-4">
                     <div>
-                        <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-3">
+                        <h2 className={`text-xl font-bold mb-2 flex items-center gap-3 ${PRODUCTION_THEME.primaryText}`}>
                             {progressStats.percentage === 100 ? (
-                                <CheckCircle2 className="text-green-400" />
+                                <CheckCircle2 className="text-green-600 dark:text-green-400" />
                             ) : (
                                 <Clapperboard className="text-[#1F5AF6]" />
                             )}
-                            Producción Visual
+                            Produccion Visual
                         </h2>
-                        <p className="text-[#E9ECEF] text-sm max-w-2xl">
+                        <p className={`text-sm max-w-2xl ${PRODUCTION_THEME.secondaryText}`}>
                             Genera y gestiona los activos visuales finales (Slides, Videos, Screencasts).
                         </p>
                     </div>
                     {/* Progress Stats */}
-                    <div className="flex items-center gap-4 bg-[#0F1419]/50 px-4 py-2 rounded-xl border border-[#6C757D]/10">
+                    <div className="flex items-center gap-4 rounded-xl border border-gray-200 bg-white/80 px-4 py-2 dark:border-[#6C757D]/10 dark:bg-[#0F1419]/50">
                         <div className="flex items-center gap-2 text-sm">
-                            <CheckCircle2 size={16} className="text-green-400" />
-                            <span className="text-green-400 font-bold">{progressStats.completed}</span>
+                            <CheckCircle2 size={16} className="text-green-600 dark:text-green-400" />
+                            <span className="text-green-700 dark:text-green-400 font-bold">{progressStats.completed}</span>
                         </div>
                         <div className="flex items-center gap-2 text-sm">
-                            <Clock size={16} className="text-yellow-400" />
-                            <span className="text-yellow-400 font-bold">{progressStats.inProgress}</span>
+                            <Clock size={16} className="text-amber-600 dark:text-yellow-400" />
+                            <span className="text-amber-700 dark:text-yellow-400 font-bold">{progressStats.inProgress}</span>
                         </div>
                         <div className="flex items-center gap-2 text-sm">
-                            <AlertCircle size={16} className="text-gray-400" />
-                            <span className="text-gray-400 font-bold">{progressStats.pending}</span>
+                            <AlertCircle size={16} className="text-gray-500 dark:text-gray-400" />
+                            <span className="text-gray-600 dark:text-gray-400 font-bold">{progressStats.pending}</span>
                         </div>
-                        <div className="h-6 w-px bg-[#6C757D]/30" />
-                        <span className="text-white font-bold">{progressStats.percentage}%</span>
+                        <div className="h-6 w-px bg-gray-300 dark:bg-[#6C757D]/30" />
+                        <span className={`font-bold ${PRODUCTION_THEME.primaryText}`}>{progressStats.percentage}%</span>
                     </div>
                     <div className="flex gap-2">
                         {/* Partial Production Button */}
@@ -298,7 +299,7 @@ export function VisualProductionContainer({ artifactId, productionComplete, onSt
                             disabled={isSavingAll || !hasPendingChanges}
                             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${hasPendingChanges
                                 ? 'bg-[#1F5AF6] hover:bg-[#1a4bd6] text-white shadow-lg shadow-[#1F5AF6]/20'
-                                : 'bg-[#0F1419] text-[#6C757D] border border-[#6C757D]/20 cursor-not-allowed'
+                                : 'bg-gray-100 text-gray-500 border border-gray-300 cursor-not-allowed dark:bg-[#0F1419] dark:text-[#6C757D] dark:border-[#6C757D]/20'
                                 }`}
                         >
                             {isSavingAll ? (
@@ -312,7 +313,7 @@ export function VisualProductionContainer({ artifactId, productionComplete, onSt
                 </div>
 
                 {/* Progress Bar */}
-                <div className="relative h-2 bg-[#0F1419] rounded-full overflow-hidden">
+                <div className="relative h-2 bg-gray-200 dark:bg-[#0F1419] rounded-full overflow-hidden">
                     <div
                         className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-500 to-green-400 transition-all duration-500"
                         style={{ width: `${progressStats.percentage}%` }}
@@ -334,11 +335,11 @@ export function VisualProductionContainer({ artifactId, productionComplete, onSt
                 {productionItems.map((group) => (
                     <div key={group.lesson.id} className="space-y-4">
                         <div className="flex items-center gap-4">
-                            <div className="h-px flex-1 bg-[#6C757D]/20"></div>
-                            <h3 className="text-[#6C757D] font-mono text-xs uppercase tracking-wider bg-[#0F1419] px-4 py-1 rounded-full border border-[#6C757D]/20">
+                            <div className="h-px flex-1 bg-gray-200 dark:bg-[#6C757D]/20"></div>
+                            <h3 className="rounded-full border border-gray-200 bg-gray-50 px-4 py-1 font-mono text-xs uppercase tracking-wider text-gray-600 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-[#6C757D]">
                                 {group.lesson.lesson_title}
                             </h3>
-                            <div className="h-px flex-1 bg-[#6C757D]/20"></div>
+                            <div className="h-px flex-1 bg-gray-200 dark:bg-[#6C757D]/20"></div>
                         </div>
 
                         <div className="grid gap-6">

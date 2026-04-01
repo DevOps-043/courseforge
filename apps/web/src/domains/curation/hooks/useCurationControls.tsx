@@ -35,6 +35,8 @@ interface UseCurationControlsParams {
   curation: Curation | null;
   ideaCentral?: string;
   isGenerating: boolean;
+  isValidating: boolean;
+  pendingValidationCount: number;
   refresh: () => Promise<void>;
   rows: CurationRow[];
   startCuration: (
@@ -43,7 +45,6 @@ interface UseCurationControlsParams {
     resume?: boolean,
   ) => Promise<void>;
   clearGPTRows: () => Promise<void>;
-  setIsValidating: (value: boolean) => void;
   temario?: SyllabusModule[];
 }
 
@@ -61,11 +62,12 @@ export function useCurationControls({
   curation,
   ideaCentral,
   isGenerating,
+  isValidating,
+  pendingValidationCount,
   refresh,
   rows,
   startCuration,
   clearGPTRows,
-  setIsValidating,
   temario,
 }: UseCurationControlsParams) {
   const router = useRouter();
@@ -286,6 +288,20 @@ export function useCurationControls({
   };
 
   const handleApprove = async () => {
+    if (isValidating) {
+      toast.warning(
+        "La validacion de fuentes sigue en progreso. Espera a que termine antes de aprobar.",
+      );
+      return;
+    }
+
+    if (pendingValidationCount > 0) {
+      toast.warning(
+        `Aun faltan ${pendingValidationCount} fuentes por validar antes de aprobar la fase.`,
+      );
+      return;
+    }
+
     await updateCurationStatusAction(
       artifactId,
       CURATION_STATES.APPROVED,
@@ -318,7 +334,6 @@ export function useCurationControls({
 
     try {
       await deleteCurationAction(artifactId);
-      setIsValidating(false);
       setReviewNotes("");
       await refresh();
       router.refresh();

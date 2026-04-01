@@ -8,7 +8,7 @@ import {
   clearGPTCurationRowsAction,
 } from "../actions/curation.actions";
 import { toast } from "sonner";
-import { CURATION_RUNNING_STATES } from "@/lib/pipeline-constants";
+import { CURATION_RUNNING_STATES, CURATION_STATES } from "@/lib/pipeline-constants";
 import { usePolling } from "@/shared/hooks/usePolling";
 
 export function useCuration(artifactId: string) {
@@ -16,6 +16,7 @@ export function useCuration(artifactId: string) {
   const [rows, setRows] = useState<CurationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const isValidating = curation?.state === CURATION_STATES.VALIDATING;
 
   const fetchCurationData = useCallback(async () => {
     try {
@@ -44,7 +45,7 @@ export function useCuration(artifactId: string) {
     }
   }, [artifactId]);
 
-  usePolling(fetchCurationData, Boolean(isGenerating && curation?.id), {
+  usePolling(fetchCurationData, Boolean(curation?.id && (isGenerating || isValidating)), {
     intervalMs: 3000,
   });
 
@@ -126,6 +127,7 @@ export function useCuration(artifactId: string) {
     rows,
     loading,
     isGenerating,
+    isValidating,
     startCuration,
     updateRow,
     deleteRow,

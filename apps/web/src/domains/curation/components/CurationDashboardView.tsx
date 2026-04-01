@@ -40,6 +40,7 @@ interface CurationDashboardViewProps {
   onResetStep: () => void;
   onResume: () => Promise<void> | void;
   onValidate: () => Promise<void> | void;
+  pendingValidationCount: number;
   reviewNotes: string;
   rows: CurationRow[];
   setReviewNotes: (value: string) => void;
@@ -70,6 +71,7 @@ export function CurationDashboardView({
   onResetStep,
   onResume,
   onValidate,
+  pendingValidationCount,
   reviewNotes,
   rows,
   setReviewNotes,
@@ -140,6 +142,7 @@ export function CurationDashboardView({
         onRegenerate={onRegenerate}
         onReject={onReject}
         onValidate={onValidate}
+        pendingValidationCount={pendingValidationCount}
         reviewNotes={reviewNotes}
         setReviewNotes={setReviewNotes}
         rowsLength={rows.length}

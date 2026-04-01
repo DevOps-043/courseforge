@@ -20,6 +20,7 @@ interface CurationReviewPanelProps {
   onRegenerate: () => Promise<void> | void;
   onReject: () => Promise<void> | void;
   onValidate: () => Promise<void> | void;
+  pendingValidationCount: number;
   reviewNotes: string;
   setReviewNotes: (value: string) => void;
   rowsLength: number;
@@ -37,11 +38,15 @@ export function CurationReviewPanel({
   onRegenerate,
   onReject,
   onValidate,
+  pendingValidationCount,
   reviewNotes,
   rowsLength,
   setReviewNotes,
   validatedCount,
 }: CurationReviewPanelProps) {
+  const canApprove =
+    !isValidating && pendingValidationCount === 0 && rowsLength > 0;
+
   return (
     <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 mt-8">
       <h3 className="text-gray-900 dark:text-white font-bold mb-4 flex items-center gap-2">
@@ -55,6 +60,23 @@ export function CurationReviewPanel({
         onChange={(event) => setReviewNotes(event.target.value)}
         disabled={curationApproved}
       />
+
+      {(isValidating || pendingValidationCount > 0) && (
+        <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
+          {isValidating ? (
+            <p>
+              La validacion de fuentes esta en progreso. No se puede aprobar la
+              fase hasta que termine.
+            </p>
+          ) : (
+            <p>
+              Faltan {pendingValidationCount} fuentes por validar. Ejecuta la
+              validacion y espera a que todas se completen antes de aprobar la
+              fase.
+            </p>
+          )}
+        </div>
+      )}
 
       {isValidating && rowsLength > 0 && (
         <div className="mt-4 mb-2 p-4 bg-[#0A0D12] border border-[#1E2329] rounded-xl flex items-center justify-between">
@@ -126,16 +148,20 @@ export function CurationReviewPanel({
             </button>
             <button
               onClick={onApprove}
-              disabled={isValidating}
+              disabled={!canApprove}
               className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2
                 ${
-                  isValidating
+                  !canApprove
                     ? "bg-[#00D4B3]/5 text-[#00D4B3]/30 border border-[#00D4B3]/5 cursor-not-allowed"
                     : "bg-[#00D4B3]/10 hover:bg-[#00D4B3]/20 text-[#00D4B3] border border-[#00D4B3]/20"
                 }`}
             >
               <CheckCircle2 size={18} />
-              Aprobar Fase 4
+              {isValidating
+                ? "Esperando validacion..."
+                : pendingValidationCount > 0
+                  ? "Validacion requerida"
+                  : "Aprobar Fase 4"}
             </button>
             <button
               onClick={onReject}

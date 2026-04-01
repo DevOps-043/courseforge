@@ -3,6 +3,7 @@
 import { Copy, ExternalLink, FileText, Maximize2, Wand2, X } from "lucide-react";
 import type { MaterialComponent } from "../types/materials.types";
 import { formatGammaContent } from "../lib/production-formatters";
+import { PRODUCTION_THEME } from "./production-asset-ui";
 
 interface ProductionAssetGammaSectionProps {
   component: MaterialComponent;
@@ -30,10 +31,10 @@ export function ProductionAssetGammaSection({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h4 className="flex items-center gap-2 text-xs font-bold text-[#E9ECEF]">
+        <h4 className={`flex items-center gap-2 ${PRODUCTION_THEME.sectionTitle}`}>
           <FileText size={14} /> GAMMA SLIDES
           {copyFeedback && (
-            <span className="ml-auto animate-pulse text-xs font-normal text-green-400">
+            <span className="ml-auto animate-pulse text-xs font-normal text-green-600 dark:text-green-400">
               ✓ {copyFeedback}
             </span>
           )}
@@ -53,7 +54,7 @@ export function ProductionAssetGammaSection({
 
       {gammaEmbedUrl ? (
         <div className="space-y-2">
-          <div className="relative overflow-hidden rounded-lg border border-[#6C757D]/20 bg-[#0F1419]">
+          <div className={`relative overflow-hidden rounded-lg ${PRODUCTION_THEME.panel}`}>
             <iframe
               src={gammaEmbedUrl || undefined}
               className="h-48 w-full border-0"
@@ -87,7 +88,7 @@ export function ProductionAssetGammaSection({
               placeholder="URL del deck de Gamma..."
               value={slidesUrl}
               onChange={(event) => onSlidesUrlChange(event.target.value)}
-              className="flex-1 rounded-lg border border-[#6C757D]/20 bg-[#0F1419] p-2 text-xs text-white focus:border-[#1F5AF6] focus:outline-none"
+              className={`flex-1 p-2 ${PRODUCTION_THEME.input}`}
             />
             <button
               type="button"
@@ -104,15 +105,17 @@ export function ProductionAssetGammaSection({
           <button
             type="button"
             onClick={onOpenInGamma}
-            className="group flex w-full items-center justify-center gap-2 rounded-lg border border-purple-500/30 bg-gradient-to-r from-purple-500/20 to-blue-500/20 py-3 text-white transition-all hover:from-purple-500/30 hover:to-blue-500/30"
+            className={`group flex w-full items-center justify-center gap-2 rounded-lg border py-3 transition-all ${PRODUCTION_THEME.actionPurpleStrong}`}
           >
             <Wand2 size={16} className="text-purple-400 group-hover:animate-pulse" />
             <span className="font-bold">Crear en Gamma</span>
-            <span className="text-xs text-gray-400">(copia y abre)</span>
+            <span className={`text-xs ${PRODUCTION_THEME.actionPurpleMutedText}`}>
+              (copia y abre)
+            </span>
           </button>
 
           <div className="space-y-2">
-            <p className="text-[10px] text-[#6C757D]">Copiar estructura para Gamma:</p>
+            <p className={`text-[10px] ${PRODUCTION_THEME.secondaryText}`}>Copiar estructura para Gamma:</p>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -136,7 +139,7 @@ export function ProductionAssetGammaSection({
                   "JSON copiado",
                 )
               }
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#6C757D]/20 bg-[#2D333B] py-1.5 text-xs text-[#6C757D] transition-colors hover:bg-[#373E47]"
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-gray-100 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:border-[#6C757D]/20 dark:bg-[#2D333B] dark:text-[#6C757D] dark:hover:bg-[#373E47]"
               title="Copiar datos raw como JSON"
             >
               <Copy size={10} /> JSON Raw
@@ -148,7 +151,7 @@ export function ProductionAssetGammaSection({
             placeholder="Pega aqui la URL del deck de Gamma..."
             value={slidesUrl}
             onChange={(event) => onSlidesUrlChange(event.target.value)}
-            className="w-full rounded-lg border border-[#6C757D]/20 bg-[#0F1419] p-2.5 text-xs text-white placeholder-gray-500 focus:border-[#1F5AF6] focus:outline-none"
+            className={`w-full p-2.5 ${PRODUCTION_THEME.input}`}
           />
         </div>
       )}
@@ -173,13 +176,13 @@ export function ProductionAssetPreviewModal({
       onClick={onClose}
     >
       <div
-        className="relative h-[80vh] w-full max-w-6xl overflow-hidden rounded-2xl border border-[#6C757D]/20 bg-[#151A21]"
+        className={PRODUCTION_THEME.modal}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent p-4">
           <div className="flex items-center gap-3">
             <FileText size={20} className="text-purple-400" />
-            <span className="font-bold text-white">Vista Previa - Gamma Slides</span>
+            <span className={`font-bold ${PRODUCTION_THEME.primaryText}`}>Vista Previa - Gamma Slides</span>
           </div>
           <div className="flex items-center gap-2">
             <a

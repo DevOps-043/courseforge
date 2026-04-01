@@ -8,7 +8,11 @@ import type {
 } from "../types/materials.types";
 import { getGammaEmbedUrl as resolveGammaEmbedUrl } from "../lib/production-formatters";
 import { useProductionAssetState } from "../hooks/useProductionAssetState";
-import { getProductionRequirements, ProductionStoryboardViewer } from "./production-asset-ui";
+import {
+  getProductionRequirements,
+  ProductionStoryboardViewer,
+  PRODUCTION_THEME,
+} from "./production-asset-ui";
 import { ProductionAssetHeader } from "./ProductionAssetHeader";
 import {
   ProductionAssetFinalVideoSection,
@@ -92,10 +96,10 @@ export function ProductionAssetCard({
 
   return (
     <div
-      className={`overflow-hidden rounded-2xl border bg-[#151A21] ${
+      className={`${PRODUCTION_THEME.card} ${
         productionStatus === "COMPLETED"
-          ? "border-green-500/30"
-          : "border-[#6C757D]/10"
+          ? PRODUCTION_THEME.cardBorder.completed
+          : PRODUCTION_THEME.cardBorder.default
       }`}
     >
       <ProductionAssetHeader

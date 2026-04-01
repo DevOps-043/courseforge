@@ -11,6 +11,7 @@ interface ArtifactWorkflowHeaderProps {
     state: string;
   };
   currentStatusStyle: string;
+  displayState?: string;
 }
 
 function getArtifactTitle(title?: string | null) {
@@ -23,6 +24,7 @@ function getArtifactTitle(title?: string | null) {
 export function ArtifactWorkflowHeader({
   artifact,
   currentStatusStyle,
+  displayState = artifact.state,
 }: ArtifactWorkflowHeaderProps) {
   return (
     <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 relative overflow-hidden flex items-center justify-between gap-4">
@@ -38,12 +40,12 @@ export function ArtifactWorkflowHeader({
           <div
             className={`px-2 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 uppercase tracking-wider ${currentStatusStyle}`}
           >
-            {artifact.state === "READY_FOR_QA" ? (
+            {displayState === "READY_FOR_QA" ? (
               <CheckCircle2 size={10} />
             ) : (
               <AlertCircle size={10} />
             )}
-            {artifact.state.replace("_", " ")}
+            {displayState.replaceAll("_", " ")}
           </div>
         </div>
         <p className="text-gray-500 dark:text-[#6C757D] text-xs font-mono">

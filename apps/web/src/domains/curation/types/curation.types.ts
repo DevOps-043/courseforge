@@ -1,6 +1,7 @@
 export type CurationState =
   | "PHASE2_DRAFT"
   | "PHASE2_GENERATING"
+  | "PHASE2_VALIDATING"
   | "PHASE2_GENERATED"
   | "PHASE2_HITL_REVIEW"
   | "PHASE2_READY_FOR_QA"

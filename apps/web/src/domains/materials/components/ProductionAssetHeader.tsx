@@ -6,6 +6,7 @@ import {
   DodIndicator,
   getProductionComponentLabel,
   getProductionStatusBadge,
+  PRODUCTION_THEME,
 } from "./production-asset-ui";
 
 interface ProductionAssetHeaderProps {
@@ -43,7 +44,7 @@ export function ProductionAssetHeader({
   const StatusIcon = statusBadge.icon;
 
   return (
-    <div className="border-b border-[#6C757D]/10 bg-[#1A2027] px-6 py-4">
+    <div className={PRODUCTION_THEME.header}>
       <div className="mb-3 flex items-start justify-between">
         <div className="flex items-center gap-3">
           <div
@@ -60,10 +61,12 @@ export function ProductionAssetHeader({
             )}
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white">
+            <h3 className={`text-sm font-bold ${PRODUCTION_THEME.primaryText}`}>
               {getProductionComponentLabel(componentType)}
             </h3>
-            <p className="text-xs text-[#6C757D]">{lessonTitle}</p>
+            <p className={`text-xs ${PRODUCTION_THEME.secondaryText}`}>
+              {lessonTitle}
+            </p>
           </div>
         </div>
 
@@ -90,8 +93,10 @@ export function ProductionAssetHeader({
         </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-4 border-t border-[#6C757D]/10 pt-2">
-        <span className="text-xs font-medium text-[#6C757D]">Checklist:</span>
+      <div className={`mt-2 flex flex-wrap items-center gap-4 border-t pt-2 ${PRODUCTION_THEME.divider}`}>
+        <span className={`text-xs font-medium ${PRODUCTION_THEME.secondaryText}`}>
+          Checklist:
+        </span>
         <DodIndicator
           label="Slides"
           completed={Boolean(slidesUrl)}

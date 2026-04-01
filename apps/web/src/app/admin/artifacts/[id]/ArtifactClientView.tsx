@@ -15,6 +15,7 @@ import {
   isMaterialsApprovedFromSnapshot,
   isSyllabusApproved,
 } from "@/lib/artifact-workflow";
+import { getArtifactDisplayState } from "../artifacts-list.utils";
 import type {
   PublicationProfile,
   PublicationRequestRecord,
@@ -226,8 +227,26 @@ export default function ArtifactClientView({
     results: [],
     all_passed: false,
   } satisfies ArtifactValidationReport;
+  const displayState =
+    basePath === "/admin"
+      ? getArtifactDisplayState({
+          id: artifact.id,
+          idea_central: artifact.idea_central || "",
+          descripcion: artifact.descripcion,
+          state: artifact.state,
+          created_at: artifact.created_at,
+          created_by: "",
+          syllabus_state:
+            typeof artifact.syllabus_state === "string"
+              ? artifact.syllabus_state
+              : undefined,
+          plan_state:
+            typeof artifact.plan_state === "string" ? artifact.plan_state : undefined,
+          production_complete: Boolean(artifact.production_complete),
+        }, true)
+      : artifact.state;
   const currentStatusStyle =
-    STATUS_STYLES[artifact.state] || STATUS_STYLES.GENERATING;
+    STATUS_STYLES[displayState] || STATUS_STYLES.GENERATING;
 
   // Construir snapshot — extrae solo campos primitivos del artifact.
   // Elimina contaminación cruzada entre fases.
@@ -263,6 +282,7 @@ export default function ArtifactClientView({
       <ArtifactWorkflowHeader
         artifact={artifact}
         currentStatusStyle={currentStatusStyle}
+        displayState={displayState}
       />
 
       <ArtifactWorkflowStepper
