@@ -10,6 +10,7 @@ import {
 import { toast } from "sonner";
 import { CURATION_RUNNING_STATES, CURATION_STATES } from "@/lib/pipeline-constants";
 import { usePolling } from "@/shared/hooks/usePolling";
+import { isSystemGeneratedCurationRow } from "../lib/curation-row-rules";
 
 export function useCuration(artifactId: string) {
   const [curation, setCuration] = useState<Curation | null>(null);
@@ -109,9 +110,7 @@ export function useCuration(artifactId: string) {
   };
 
   const clearGPTRows = async () => {
-    setRows((current) =>
-      current.filter((r) => r.source_rationale !== "GPT_GENERATED"),
-    );
+    setRows((current) => current.filter((row) => !isSystemGeneratedCurationRow(row)));
 
     const result = await clearGPTCurationRowsAction(artifactId);
     if (!result.success) {

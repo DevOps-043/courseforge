@@ -18,6 +18,7 @@ export interface CurationModalConfig {
   message: ReactNode;
   variant: ModalVariant;
   confirmText?: string;
+  hideActions?: boolean;
   onConfirm: () => Promise<void> | void;
 }
 
@@ -158,6 +159,7 @@ export function CurationDashboardView({
         variant={modalConfig.variant}
         confirmText={modalConfig.confirmText}
         isLoading={isLoadingModal}
+        hideActions={modalConfig.hideActions}
       />
     </div>
   );

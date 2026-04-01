@@ -1,6 +1,7 @@
 import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { CURATION_STATES } from "@/lib/pipeline-constants";
 import type { Curation, CurationRow } from "../types/curation.types";
+import { SYSTEM_GENERATED_CURATION_ROW_FILTER } from "../lib/curation-row-rules";
 
 type ServiceRoleClient = ReturnType<typeof getServiceRoleClient>;
 
@@ -180,7 +181,7 @@ export async function clearGeneratedCurationRows(
     .from("curation_rows")
     .delete()
     .eq("curation_id", curationId)
-    .eq("source_rationale", "GPT_GENERATED");
+    .or(SYSTEM_GENERATED_CURATION_ROW_FILTER);
 
   if (error) {
     throw new Error(error.message);

@@ -151,10 +151,11 @@ export function buildImportedRows(
     source_ref: source.url,
     source_title: source.title,
     source_rationale: "GPT_GENERATED",
-    url_status: "VALID",
-    apta: source.validated ?? true,
-    auto_evaluated: true,
-    auto_reason: source.summary || "Importado manualmente desde GPT",
+    url_status: "PENDING",
+    apta: null,
+    auto_evaluated: false,
+    auto_reason: null,
+    notes: source.summary || "Importado manualmente desde GPT",
   }));
 }
 

@@ -53,6 +53,7 @@ const INITIAL_MODAL_CONFIG: CurationModalConfig = {
   title: "",
   message: null,
   variant: "info",
+  hideActions: false,
   onConfirm: () => {},
 };
 
@@ -136,7 +137,7 @@ export function useCurationControls({
         />
       ),
       variant: "info",
-      confirmText: "Cancelar",
+      hideActions: true,
       onConfirm: closeModal,
     });
   };

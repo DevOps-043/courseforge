@@ -171,6 +171,7 @@ export function SourcesCurationGenerationContainer({
           variant={modalConfig.variant}
           confirmText={modalConfig.confirmText}
           isLoading={isLoadingModal}
+          hideActions={modalConfig.hideActions}
         />
       </>
     );
