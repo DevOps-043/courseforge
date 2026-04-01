@@ -38,6 +38,7 @@ interface RequestBody {
 interface MaterialsLookupRecord {
   artifact_id: string;
   id: string;
+  organization_id: string | null;
 }
 
 function buildExecutionId(materialsId: string) {
@@ -48,7 +49,7 @@ async function loadMaterialsRecord(materialsId: string) {
   const supabase = createServiceRoleClient();
   const { data: materials, error } = await supabase
     .from("materials")
-    .select("id, artifact_id")
+    .select("id, artifact_id, artifacts!inner(organization_id)")
     .eq("id", materialsId)
     .single();
 
@@ -58,7 +59,13 @@ async function loadMaterialsRecord(materialsId: string) {
 
   return {
     supabase,
-    materials: materials as MaterialsLookupRecord,
+    materials: {
+      id: materials.id,
+      artifact_id: materials.artifact_id,
+      organization_id: Array.isArray((materials as { artifacts?: { organization_id?: string | null }[] }).artifacts)
+        ? (materials as { artifacts?: { organization_id?: string | null }[] }).artifacts?.[0]?.organization_id ?? null
+        : (materials as { artifacts?: { organization_id?: string | null } }).artifacts?.organization_id ?? null,
+    } satisfies MaterialsLookupRecord,
   };
 }
 
@@ -115,6 +122,7 @@ async function processSingleLesson(params: {
   materialsId: string;
   lessonId: string;
   artifactId: string;
+  organizationId?: string | null;
   logPrefix: string;
   fixInstructions?: string;
   iterationNumber?: number;
@@ -125,6 +133,7 @@ async function processSingleLesson(params: {
     materialsId,
     lessonId,
     artifactId,
+    organizationId,
     logPrefix,
     fixInstructions,
     iterationNumber,
@@ -153,6 +162,7 @@ async function processSingleLesson(params: {
     iterationNumber,
     logPrefix,
     componentTypes,
+    organizationId,
     models,
   });
 
@@ -165,10 +175,11 @@ async function processSingleLesson(params: {
 async function processNextPendingLesson(params: {
   materialsId: string;
   artifactId: string;
+  organizationId?: string | null;
   logPrefix: string;
   models: string[];
 }) {
-  const { materialsId, artifactId, logPrefix, models } = params;
+  const { materialsId, artifactId, organizationId, logPrefix, models } = params;
   const supabase = createServiceRoleClient();
   const genAI = createGeminiClient();
 
@@ -223,6 +234,7 @@ async function processNextPendingLesson(params: {
     genAI,
     lesson,
     generationContext,
+    organizationId,
     logPrefix,
     models,
   });
@@ -268,6 +280,7 @@ export const handler: Handler = async (event) => {
 
     const { materials } = await loadMaterialsRecord(materialsId);
     const targetArtifactId = artifactId || materials.artifact_id;
+    const targetOrganizationId = materials.organization_id;
 
     // Resolver modelo desde DB una sola vez por invocación
     const supabaseForSettings = createServiceRoleClient();
@@ -287,6 +300,7 @@ export const handler: Handler = async (event) => {
         fixInstructions,
         iterationNumber,
         artifactId: targetArtifactId,
+        organizationId: targetOrganizationId,
         logPrefix,
         componentTypes: mode === "single-component" ? componentTypes : undefined,
         models,
@@ -315,6 +329,7 @@ export const handler: Handler = async (event) => {
       return processNextPendingLesson({
         materialsId,
         artifactId: targetArtifactId,
+        organizationId: targetOrganizationId,
         logPrefix,
         models,
       });

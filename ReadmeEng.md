@@ -1,99 +1,99 @@
-# CourseForge - Plataforma de Ingeniería Instruccional con IA
+# 📘 Courseforge - Plataforma de Ingeniería Instruccional con IA
 
-> **Versión**: 1.1.0
+> **Versión**: 1.0.0
 > **Estado**: Producción (Beta)
-> **Stack**: Next.js 16, React 19, Supabase, Netlify Functions, Google Gemini
+> **Stack**: Next.js 16, Supabase, Netlify Functions, Google Gemini 2.5
 
-CourseForge es un **Sistema Operativo de Diseño Instruccional** que orquesta múltiples agentes de IA para investigar, estructurar, redactar y validar contenido educativo de alta calidad. Se integra con **SofLIA** como plataforma receptora de cursos publicados.
+Courseforge es mucho más que un "generador de cursos". Es un **Sistema Operativo de Diseño Instruccional** que orquesta múltiples agentes de IA para investigar, estructurar, redactar y validar contenido educativo de alta calidad.
 
 El sistema simula el flujo de trabajo de un equipo humano (Investigador + Diseñador Instruccional + Redactor + Editor), donde la salida de cada fase es rigurosamente validada antes de ser utilizada como entrada para la siguiente.
 
 ---
 
-## Tabla de Contenidos
+## 📑 Tabla de Contenidos
 
-1. [Filosofía del Sistema](#filosofía-del-sistema)
-2. [Arquitectura Técnica](#arquitectura-técnica)
-3. [Autenticación - Auth Bridge](#autenticación---auth-bridge)
-4. [El Pipeline de Creación (6 Fases)](#el-pipeline-de-creación-6-fases)
-5. [Lia - Asistente IA](#lia---asistente-ia)
-6. [Publicación a SofLIA](#publicación-a-soflia)
-7. [SCORM Import](#scorm-import)
-8. [Admin Dashboard](#admin-dashboard)
-9. [Modelo de Datos](#modelo-de-datos)
-10. [API Routes](#api-routes)
-11. [Guía de Desarrollo](#guía-de-desarrollo)
-
----
-
-## Filosofía del Sistema
-
-CourseForge se basa en tres principios no negociables:
-
-1. **NO A LA ALUCINACIÓN**: A diferencia de ChatGPT, CourseForge _no inventa_ hechos. Utiliza un motor de curaduría (Fase 4) que busca referencias reales, verifica que las URLs funcionen (HTTP 200) y valida que el contenido sea relevante antes de usarlo para escribir.
-2. **ESTRUCTURA PRIMERO, CONTENIDO DESPUÉS**: No se genera texto hasta que no haya un plan instruccional aprobado (Fase 3). Esto asegura coherencia pedagógica.
-3. **HUMAN-IN-THE-LOOP (HITL)**: El sistema se detiene entre fases críticas, permitiendo que un experto humano revise y apruebe el syllabus o las fuentes antes de continuar.
+1. [Filosofía del Sistema](#-filosofía-del-sistema)
+2. [Arquitectura Técnica](#-arquitectura-técnica)
+3. [El Pipeline "Lia" (Paso a Paso)](#-el-pipeline-lia)
+   - [Fase 1: Artefacto y Concepto](#fase-1-artefacto-y-concepto)
+   - [Fase 2: Syllabus y Estructura](#fase-2-syllabus-y-estructura)
+   - [Fase 3: Planificación Instruccional](#fase-3-planificación-instruccional)
+   - [Fase 4: Curaduría e Investigación Deep](#fase-4-curaduría-e-investigación-deep)
+   - [Fase 5: Generación de Materiales](#fase-5-generación-de-materiales)
+   - [Fase 6: Producción Visual](#fase-6-producción-visual)
+4. [Modelo de Datos (Supabase)](#-modelo-de-datos)
+5. [Lógica de Backend y Background Jobs](#-lógica-de-backend)
+6. [Guía de Desarrollo](#-guía-de-desarrollo)
 
 ---
 
-## Arquitectura Técnica
+## 🧠 Filosofía del Sistema
+
+Courseforge se basa en tres principios no negociables:
+
+1.  **NO A LA ALUCINACIÓN**: A diferencia de ChatGPT, CourseEngine _no inventa_ hechos. Utiliza un motor de curaduría (Fase 4) que busca referencias reales, verifica que las URLs funcionen (HTTP 200) y valida que el contenido sea relevante antes de usarlo para escribir.
+2.  **ESTRUCTURA PRIMERO, CONTENIDO DESPUÉS**: No se genera texto hasta que no haya un plan instruccional aprobado (Fase 3). Esto asegura coherencia pedagógica.
+3.  **HUMAN-IN-THE-LOOP (HITL)**: El sistema está diseñado para detenerse entre fases críticas, permitiendo que un experto humano revise y apruebe el syllabus o las fuentes antes de continuar.
+
+---
+
+## 🏗 Arquitectura Técnica
 
 El proyecto es un **Monorepo** gestionado con npm workspaces, implementando "Screaming Architecture" donde la estructura de carpetas refleja el dominio del negocio.
 
 ### Tecnologías Clave
 
-| Capa          | Tecnología                                                   |
-| ------------- | ------------------------------------------------------------ |
-| Frontend      | Next.js 16, React 19, TypeScript                             |
-| Estilos       | TailwindCSS 4.x, Framer Motion                               |
-| Estado        | Zustand                                                      |
-| Backend       | Express + Netlify Functions (Node.js 20+)                    |
-| Base de datos | Supabase (PostgreSQL 15)                                     |
-| Auth          | Auth Bridge JWT (HS256, `jose`) + Supabase GoTrue            |
-| IA Principal  | Google Gemini (`gemini-2.0-flash`, `gemini-3-flash-preview`) |
-| IA Secundaria | OpenAI (fallback)                                            |
-| Servicios     | Gamma API (slides), Google Search (grounding)                |
+| Capa          | Tecnología                                                               |
+| ------------- | ------------------------------------------------------------------------ |
+| Frontend      | Next.js 16, React 19, TypeScript                                         |
+| Estilos       | TailwindCSS 4.x, Framer Motion                                           |
+| Estado        | Zustand                                                                  |
+| Backend       | Express + Netlify Functions (Node.js 20+)                                |
+| Base de datos | Supabase (PostgreSQL 15)                                                 |
+| Auth          | Auth Bridge JWT (HS256, `jose`) + Supabase GoTrue                        |
+| IA Principal  | Google Gemini (`gemini-2.5-flash` fases 1-3, `gemini-2.5-pro` fases 4-5) |
+| IA Secundaria | OpenAI (fallback)                                                        |
+| Servicios     | Gamma API (slides), Google Search (grounding)                            |
 
 ### Estructura de Directorios
 
-```
+```bash
 courseforge/
 ├── apps/
-│   ├── web/                        # Frontend Next.js (App Router) + API routes
-│   │   ├── netlify/functions/      # Background jobs de IA
-│   │   └── src/
-│   │       ├── app/
-│   │       │   ├── admin/          # Dashboard administrativo
-│   │       │   ├── api/            # API routes (auth, lia, publish...)
-│   │       │   ├── login/          # Autenticación
-│   │       │   └── dashboard/      # Vista de usuario
-│   │       ├── domains/            # Lógica de negocio (syllabus, plan, curation, materials, scorm)
-│   │       ├── lib/                # Servicios Lia (dom-mapper, app-context, db-context)
-│   │       ├── utils/auth/         # Auth Bridge (session.ts)
-│   │       └── core/              # Stores Zustand + context
-│   └── api/                        # Backend Express (auth auxiliar)
+│   ├── web/                    # Frontend Next.js 16 (App Router)
+│   │   ├── netlify/functions/  # Backend Serverless (donde ocurre la magia)
+│   │   ├── src/
+│   │   │   ├── app/            # Rutas principales de la aplicación
+│   │   │   │   ├── builder/    # Área principal de creación de artefactos
+│   │   │   │   ├── admin/      # Configuración centralizada y gestión de usuarios
+│   │   │   │   └── api/        # Rutas de API internas
+│   │   │   ├── domains/        # Lógica de negocio encapsulada
+│   │   │   │   ├── curation/   # Componentes y hooks de curaduría
+│   │   │   │   ├── materials/  # Componentes de iteración de materiales
+│   │   │   │   └── ...
+│   │   │   └── core/           # Servicios base (Supabase, API Client, componentes Agnósticos)
+│   └── api/                    # API Express (Legacy/Auxiliar)
 ├── packages/
-│   ├── shared/                     # Tipos TypeScript compartidos
-│   └── ui/                         # Componentes UI reutilizables
-└── supabase/
-    └── migrations/                 # Migraciones SQL
+│   ├── shared/                 # Tipos TypeScript compartidos y utilidades
+│   └── ui/                     # Librería de componentes visuales compartidos
+└── supabase/                   # Migraciones y Seeds SQL
 ```
 
 ---
 
 ## Autenticación - Auth Bridge
 
-CourseForge implementa un sistema de autenticación personalizado que valida credenciales contra la BD de **SofLIA** y emite JWTs propios (HS256).
+Courseforge implementa un sistema de autenticación personalizado que valida credenciales contra la BD de **SofLIA** y emite JWTs propios (HS256).
 
 ### Flujo de Login
 
 1. Usuario envía `identifier` + `password` desde `/login`
 2. API valida contra BD de SofLIA (tabla `users`, campo `password_hash` con `bcryptjs`)
 3. Se obtienen las organizaciones del usuario (`organization_users`)
-4. Se firma un JWT HS256 con `COURSEFORGE_JWT_SECRET` usando `jose`
+4. Se firma un JWT HS256 con `COURSEENGINE_JWT_SECRET` usando `jose`
 5. JWT payload: `sub`, `email`, `app_metadata.organizations`, `user_metadata`
 6. Se establecen cookies: `cf_access_token`, `cf_active_org`, `cf_user_orgs`, `cf_remember_me`
-7. Se registra `login_history` y se hace upsert del perfil en CourseForge
+7. Se registra `login_history` y se hace upsert del perfil en CourseEngine
 
 ### Multi-tenancy
 
@@ -114,18 +114,13 @@ CourseForge implementa un sistema de autenticación personalizado que valida cre
 
 ---
 
-## El Pipeline de Creación (6 Fases)
+## 🔄 El Pipeline "Lia"
 
-Cada curso pasa por una secuencia estricta de 6 fases procesadas por Netlify Functions en background.
-
-```
-Idea → [F1] Base → [F2] Syllabus → [F3] Plan Instruccional
-     → [F4] Curación → [F5] Materiales → [F6] Producción Visual
-```
+Cada curso pasa por una secuencia estricta de 6 fases. A continuación se detalla la lógica interna de cada una.
 
 ### Fase 1: Artefacto y Concepto
 
-**Objetivo**: Transformar una intención vaga en una ficha técnica sólida.
+**Objetivo**: Transformar una intención vaga ("quiero un curso de ventas") en una ficha técnica sólida.
 
 **Proceso** (`generate-artifact-background.ts`):
 
@@ -155,7 +150,7 @@ Idea → [F1] Base → [F2] Syllabus → [F3] Plan Instruccional
 
 ### Fase 3: Planificación Instruccional
 
-**Objetivo**: Decidir CÓMO enseñar cada tema.
+**Objetivo**: El "Cerebro Pedagógico". Decide CÓMO enseñar cada tema.
 
 **Proceso** (`instructional-plan-background.ts`):
 Por cada lección asigna componentes según complejidad:
@@ -177,7 +172,7 @@ Por cada lección asigna componentes según complejidad:
 
 ### Fase 4: Curaduría e Investigación Deep
 
-**Objetivo**: Encontrar fuentes reales. **Esta es la fase más crítica.**
+**Objetivo**: Encontrar la verdad. **Esta es la fase más compleja y crítica.**
 
 **Proceso** (`unified-curation-logic.ts`):
 
@@ -197,12 +192,12 @@ Por cada lección asigna componentes según complejidad:
 
 ### Fase 5: Generación de Materiales
 
-**Objetivo**: Redacción final usando las fuentes validadas.
+**Objetivo**: Redacción final de los contenidos usando las fuentes validadas.
 
 **Proceso** (`materials-generation-background.ts`):
 
 - Patrón "Daisy Chain" recursivo para manejar timeouts de Netlify
-- Cascade de modelos: Gemini 3-flash → Gemini 2.0-flash → 1.5-pro
+- Modelo: `gemini-2.5-pro` (con fallback a `gemini-2.5-flash`), configurable por organización
 - Prompt masivo con: perfil del experto + OA exacto + contenido de fuentes curadas
 
 | Componente | Genera                                           |
@@ -236,24 +231,14 @@ Por cada lección asigna componentes según complejidad:
 
 ---
 
-## Lia - Asistente IA
+## SofLIA - Asistente IA
 
-Lia es el asistente IA integrado en toda la aplicación (`POST /api/lia`).
+SofLIA es la asistente IA integrada en toda la aplicación (`POST /api/lia`).
 
 ### Modo Conversacional
 
-- Gemini `gemini-2.0-flash` + Google Search grounding
+- Gemini `gemini-2.5-flash` + Google Search grounding
 - Temperatura 0.7 — responde en markdown con fuentes citadas
-
-### Modo Computer Use (Agéntico)
-
-- Recibe screenshot + mensaje del usuario
-- `lia-dom-mapper.ts` escanea el DOM, detecta elementos interactivos y coordenadas
-- `gemini-2.0-flash-exp`, temperatura 0.3
-- Responde con `{ message, action/actions, requiresFollowUp }`
-- Ejecuta en el navegador: `click_at`, `type_at`, `scroll`, `key_press`
-
-**Detección de alucinaciones**: Si el elemento no existe en el DOM, usa automáticamente la barra de búsqueda o hace scroll para encontrarlo.
 
 ---
 
@@ -261,197 +246,97 @@ Lia es el asistente IA integrado en toda la aplicación (`POST /api/lia`).
 
 Los cursos se publican a SofLIA desde `/admin/artifacts/[id]/publish`.
 
-### Vista de Publicación (`PublicationClientView.tsx`)
+### 1. `artifacts` (La tabla padre)
 
-**Video Mapping** (`VideoMappingList.tsx`):
+| Columna        | Tipo  | Descripción                                    |
+| -------------- | ----- | ---------------------------------------------- |
+| `id`           | uuid  | PK                                             |
+| `user_id`      | uuid  | Referencia al creador (FK a `public.profiles`) |
+| `idea_central` | text  | Input original del usuario                     |
+| `state`        | enum  | Estado global (`DRAFT`, `VALIDATED`, etc.)     |
+| `nombres`      | jsonb | Array de títulos sugeridos                     |
 
-- Asigna URL de video a cada lección
-- Detección automática de proveedor (YouTube, Vimeo, MP4) via regex
-- Sincronización de duración (cliente para MP4, API para YouTube/Vimeo)
-- Checkboxes con estado indeterminado por módulo
-- Publicación parcial: solo lecciones con video asignado
+### 2. `instructional_plans`
 
-**Metadata del curso** (`CourseDataForm.tsx`):
+| Columna        | Tipo  | Descripción                                    |
+| -------------- | ----- | ---------------------------------------------- |
+| `lesson_plans` | jsonb | Array masivo con la definición de cada lección |
+| `dod`          | jsonb | Definition of Done (Checks de calidad)         |
 
-- Slug, categoría, nivel, instructor, precio, thumbnail
+### 3. `curation_rows` (Fuentes)
 
-**Tracking**: Flag `upstream_dirty` se activa si el artefacto cambia después de guardar el draft
+| Columna            | Tipo    | Descripción                                 |
+| ------------------ | ------- | ------------------------------------------- |
+| `lesson_id`        | text    | ID lógico de la lección (e.g., "mod1-les2") |
+| `source_ref`       | text    | URL de la fuente                            |
+| `apta`             | boolean | Si pasó la validación automática            |
+| `url_status`       | text    | 'OK', 'FAILED', 'PENDING'                   |
+| `http_status_code` | int     | Código real (200, 404, etc.)                |
 
-**Estados**: `DRAFT` → `READY` → `SENT`
+### 4. `materials` & `material_lessons`
 
-### API de Publicación
+Relación Maestro-Detalle. `materials` trackea el estado global de la Fase 5, mientras que `material_lessons` trackea el progreso individual de cada lección para permitir el procesamiento paralelo/secuencial.
 
-| Ruta                   | Descripción                                      |
-| ---------------------- | ------------------------------------------------ |
-| `POST /api/save-draft` | Guarda/actualiza draft en `publication_requests` |
-| `POST /api/publish`    | Deposita curso en `courseengine_inbox` de SofLIA |
+### 5. `model_settings`
 
----
+Configuración modular de modelos IA **por fase de pipeline** y organización. Cada fase tiene su propio setting type (`ARTIFACT_BASE`, `SYLLABUS`, `INSTRUCTIONAL_PLAN`, `MATERIALS`, `CURATION`) con modelo, temperatura, thinking level y fallback independientes.
 
-## SCORM Import
+### 6. `system_prompts`
 
-Importa cursos existentes en formato SCORM y los transforma al formato CourseForge.
-
-**Flujo**:
-
-1. Upload del `.zip` desde `/admin/artifacts/new`
-2. `POST /api/admin/scorm/upload` — Extrae y almacena el paquete
-3. `POST /api/admin/scorm/process` — Parsea y enriquece con IA
-4. Crea artefacto + syllabus prellenado desde la estructura SCORM
-
----
-
-## Admin Dashboard
-
-| Ruta                            | Descripción                                                  |
-| ------------------------------- | ------------------------------------------------------------ |
-| `/admin`                        | Dashboard con stats y actividad reciente                     |
-| `/admin/artifacts`              | Lista de cursos, crear nuevo (scratch o SCORM)               |
-| `/admin/artifacts/[id]`         | Detalle del curso por fases                                  |
-| `/admin/artifacts/[id]/publish` | Video mapping + publicación a SofLIA                         |
-| `/admin/users`                  | Gestión de usuarios y roles (ADMIN, ARQUITECTO, CONSTRUCTOR) |
-| `/admin/library`                | Materiales por lección/componente                            |
-| `/admin/settings`               | Configuración de modelos IA (temperatura, thinking budget)   |
-| `/admin/profile`                | Perfil del usuario admin                                     |
+Prompts del sistema versionados por organización. Códigos: `CURATION_PLAN`, `INSTRUCTIONAL_PLAN`, `MATERIALS_GENERATION`. Permiten personalizar el comportamiento de IA por tenant.
 
 ---
 
-## Modelo de Datos
+## 🛠 Lógica de Backend
 
-### Tablas Principales
+El backend reside en `apps/web/netlify/functions`. No es una API REST tradicional, sino una colección de funciones "background" diseñadas para tareas largas.
 
-| Tabla                  | Contenido                                                       |
-| ---------------------- | --------------------------------------------------------------- |
-| `artifacts`            | Cursos: idea, objetivos, state, organization_id                 |
-| `profiles`             | Usuarios con `platform_role` (ADMIN, ARQUITECTO, CONSTRUCTOR)   |
-| `syllabus`             | Estructura de módulos y lecciones (JSONB)                       |
-| `instructional_plans`  | Componentes por lección + DoD checks                            |
-| `curation_rows`        | Fuentes: URL, validación, http_status, aptness                  |
-| `material_components`  | Contenido generado + assets de producción                       |
-| `publication_requests` | Drafts: lesson_videos JSONB, selected_lessons[], upstream_dirty |
-| `login_history`        | Auditoría de logins (IP, user agent, timestamp)                 |
-| `model_settings`       | Config de modelos IA por tipo                                   |
-| `pipeline_events`      | Log del pipeline                                                |
-| `scorm_packages`       | Paquetes SCORM importados                                       |
-| `scorm_lessons`        | Lecciones parseadas de SCORM                                    |
+### Patrón de Ejecución "Fire and Forget"
 
-### Detalle de tablas clave
+1. El Frontend llama a una función (e.g., `/generate-materials`).
+2. La función responde `200 OK` inmediatamente ("Recibido, empezando a trabajar").
+3. El proceso real continúa en segundo plano (hasta 10-15 minutos permitidos por Netlify en planes altos, o limitado a 10s en funciones estándar, por lo cual usamos el patrón de recursión en Fase 5).
 
-**`artifacts`**: `id` (uuid PK), `idea_central` (text), `state` (enum), `nombres` (jsonb), `objetivos` (jsonb), `organization_id` (uuid)
+### Gestión de Errores
 
-**`instructional_plans`**: `lesson_plans` (jsonb — array masivo con definición de cada lección), `dod` (jsonb — Definition of Done), `blockers` (jsonb)
+Todas las funciones implementan bloques `try/catch` robustos que:
 
-**`curation_rows`**: `lesson_id` (text), `source_ref` (text URL), `apta` (boolean), `url_status` (text), `http_status_code` (int)
-
-**`publication_requests`**: `artifact_id`, `lesson_videos` (jsonb — map lessonId→videoUrl), `selected_lessons` (text[]), `upstream_dirty` (boolean)
+1. Capturan el error.
+2. Lo loguean con prefijos identificables (e.g., `[Mat IDs-xyz]`).
+3. Actualizan el estado en base de datos a `NEEDS_FIX` o `ERROR` para que el usuario sepa que algo falló, en lugar de quedarse en un spinner infinito.
 
 ---
 
-## API Routes
+## 💻 Guía de Desarrollo
 
-### Autenticación
-
-| Ruta                 | Método | Descripción                      |
-| -------------------- | ------ | -------------------------------- |
-| `/api/auth/login`    | POST   | Login Auth Bridge (SofLIA → JWT) |
-| `/api/auth/sign-up`  | POST   | Registro                         |
-| `/api/auth/callback` | GET    | OAuth callback GoTrue            |
-
-### IA y Generación
-
-| Ruta            | Método | Descripción                                  |
-| --------------- | ------ | -------------------------------------------- |
-| `/api/lia`      | POST   | Chat con Lia (conversacional o Computer Use) |
-| `/api/syllabus` | POST   | Iniciar generación de syllabus               |
-
-### Admin
-
-| Ruta                       | Método | Descripción                       |
-| -------------------------- | ------ | --------------------------------- |
-| `/api/admin/users`         | POST   | Crear/actualizar perfiles con rol |
-| `/api/admin/scorm/upload`  | POST   | Subir paquete SCORM               |
-| `/api/admin/scorm/process` | POST   | Procesar SCORM con IA             |
-
-### Publicación
-
-| Ruta              | Método | Descripción                              |
-| ----------------- | ------ | ---------------------------------------- |
-| `/api/publish`    | POST   | Publicar a SofLIA (`courseengine_inbox`) |
-| `/api/save-draft` | POST   | Guardar draft de publicación             |
-
-### Netlify Functions (Background Jobs)
-
-| Función                           | Fase  | Descripción                                  |
-| --------------------------------- | ----- | -------------------------------------------- |
-| `generate-artifact-background`    | F1    | Research + objetivos + títulos               |
-| `syllabus-generation-background`  | F2    | Estructura módulos y lecciones               |
-| `instructional-plan-background`   | F3    | Componentes por lección                      |
-| `validate-plan-background`        | F3 QA | Validación del plan                          |
-| `curation-background`             | F4    | Búsqueda y validación de fuentes             |
-| `validate-curation-background`    | F4 QA | Revisión manual de fuentes                   |
-| `materials-generation-background` | F5    | Generación de contenido                      |
-| `validate-materials-background`   | F5 QA | Validación de materiales                     |
-| `video-prompts-generation`        | F6    | B-roll prompts                               |
-| `auth-sync`                       | —     | Sincronización de usuarios entre plataformas |
-
----
-
-## Guía de Desarrollo
-
-### Requisitos
+### Requisitos Previos
 
 - Node.js 20+
-- Cuenta en Supabase (CourseForge)
-- Acceso a Supabase de SofLIA
+- Cuenta en Supabase
 - API Key de Google AI Studio (Gemini)
 
 ### Instalación
 
 ```bash
-# 1. Clonar repositorio
+# 1. Clonar repo
 git clone [repo-url]
 
-# 2. Instalar dependencias (desde raíz del monorepo)
+# 2. Instalar dependencias (desde raíz)
 npm install
 
 # 3. Variables de entorno
-cp .env.example .env
-# Completar todas las variables requeridas
+cp .env.local.example .env.local
+# Rellenar: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GOOGLE_API_KEY
 ```
 
-### Variables de Entorno
-
-```env
-# Supabase (CourseForge)
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-
-# Auth Bridge
-COURSEFORGE_JWT_SECRET=          # Secreto HS256 para firmar JWTs
-
-# SofLIA (plataforma externa)
-SOFLIA_INBOX_SUPABASE_URL=
-SOFLIA_INBOX_SUPABASE_KEY=
-
-# Gemini AI
-GOOGLE_GENERATIVE_AI_API_KEY=
-GEMINI_MODEL=gemini-3-flash-preview
-GEMINI_SEARCH_MODEL=gemini-2.0-flash
-
-# OpenAI (fallback)
-OPENAI_API_KEY=
-
-# Gamma (slides)
-GAMMA_API_KEY=
-```
-
-### Desarrollo Local
+### Ejecutar Localmente
 
 ```bash
-# Inicia Frontend (:3000) y Backend (:4000) simultáneamente
+# Inicia Frontend y Backend simultáneamente
 npm run dev
 ```
+
+Acceder a `http://localhost:3000`.
 
 ### Debugging
 
@@ -475,4 +360,4 @@ Los errores actualizan el estado en BD a `NEEDS_FIX` o `ERROR` (no hay spinners 
 
 ---
 
-**CourseForge** — _Ingeniería Educativa Automatizada_
+**Courseforge** - _Ingeniería Educativa Automatizada_

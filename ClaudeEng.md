@@ -1,15 +1,14 @@
-# CourseEngine
+# Courseforge
 
-Plataforma de creación de cursos automatizada con IA. Transforma una idea en un curso completo con curriculum, planes de lección, fuentes curadas, materiales educativos y producción de video. Se integra con **SofLIA** como plataforma receptora de cursos publicados.
+Plataforma de creación de cursos automatizada con IA. Transforma una idea en un curso completo con curriculum, planes de lección, fuentes curadas, materiales educativos y producción de video. Soporta importación de SCORM y publicación directa a Soflia.
 
 ## Stack
 
-- **Frontend**: Next.js 16, React 19, TypeScript, TailwindCSS 4.x, Zustand, Framer Motion
+- **Frontend**: Next.js 16, React 19, TypeScript, TailwindCSS 4, Zustand
 - **Backend**: Express + Netlify Functions (background jobs)
-- **DB/Auth**: Supabase (PostgreSQL) + Auth Bridge JWT (HS256, `jose`)
+- **DB/Auth**: Supabase (PostgreSQL) con RLS y Auth Bridge (profiles)
 - **IA**: Google Gemini (primario), OpenAI (secundario)
-- **Servicios**: Gamma API (slides), Google Search (grounding)
-- **Utilidades**: `bcryptjs` (hash), `jose` (JWT), Zod (validación)
+- **Servicios**: Gamma API (slides), Google Search (grounding), Soflia API (publicación)
 
 ## Comandos
 
@@ -21,64 +20,40 @@ npm run build        # Build producción
 
 ---
 
-## Autenticación - Auth Bridge (Opción C)
+## Lia - Asistente IA
 
-CourseEngine usa un sistema JWT personalizado que actúa de puente entre **SofLIA** (plataforma externa) y CourseEngine.
+Lia es el asistente IA integrado en toda la app. Tiene dos modos:
 
-### Flujo de Login
-
-1. Usuario envía `identifier` (email/username) + `password`
-2. Se valida contra la BD de **SofLIA** (`users.password_hash` con `bcryptjs`)
-3. Se obtienen las organizaciones del usuario (`organization_users`)
-4. Se firma un JWT HS256 con `COURSEENGINE_JWT_SECRET` (via `jose`)
-5. JWT contiene: `sub`, `email`, `app_metadata.organizations`, `user_metadata`
-6. Se crean cookies: `cf_access_token`, `cf_active_org`, `cf_user_orgs`, `cf_remember_me`
-7. Se registra `login_history` en CourseEngine
-8. Se hace upsert del `profiles` del usuario en CourseEngine
-9. Si hay cuenta legacy, se migra automáticamente al ID de SofLIA
-
-### Verificación de Sesión
-
-- `getAuthBridgeUser()` en `utils/auth/session.ts` lee cookie `cf_access_token`
-- Verifica firma JWT y retorna payload con metadata
-- Fallback a Supabase GoTrue si no hay token Auth Bridge
-
-### Multi-tenancy
-
-- Usuario puede pertenecer a múltiples organizaciones
-- `cf_active_org` indica la organización activa
-- Los artefactos se filtran por `organization_id`
-
-### Archivos Clave de Auth
-
-| Archivo                          | Función                                  |
-| -------------------------------- | ---------------------------------------- |
-| `app/api/auth/login/route.ts`    | Login + firma JWT + cookies              |
-| `app/api/auth/callback/route.ts` | OAuth callback GoTrue                    |
-| `app/login/actions.ts`           | Server action del formulario de login    |
-| `app/login/page.tsx`             | Página de login                          |
-| `utils/auth/session.ts`          | `getAuthBridgeUser()` - verificación JWT |
-| `app/admin/layout.tsx`           | Verifica auth (GoTrue O Auth Bridge)     |
-
----
-
-## SofLIA - Asistente IA
-
-SofLIA es la asistente IA integrada en toda la app.
-
-### Modo Conversacional
+### Modo Estándar (Conversacional)
 
 - Usuario envía mensaje de texto
 - Llama a `/api/lia` con Gemini + Google Search grounding
-- Modelo: `gemini-2.0-flash`, temperatura 0.7
+- Modelo: `gemini-2.5-flash`, temperatura 0.7
 - Responde en markdown con fuentes citadas
 
-### Servicios de SofLIA
+### Modo Computer Use (Agéntico)
 
-| Archivo              | Función                                                                    |
-| -------------------- | -------------------------------------------------------------------------- |
-| `lia-app-context.ts` | Prompts del sistema y contexto de la app (páginas, menús, comportamiento)  |
-| `lia-db-context.ts`  | Obtiene contexto de Supabase (usuario, artefactos recientes, estadísticas) |
+- Usuario envía mensaje + screenshot de la página actual
+- `lia-dom-mapper.ts` escanea el DOM detectando elementos interactivos
+- Modelo: `gemini-2.5-flash`, temperatura 0.3
+- Responde con JSON: `{ message, action/actions, requiresFollowUp }`
+- Ejecuta acciones en el navegador (click, type, scroll, etc.)
+
+### Servicios de Lia
+
+| Archivo              | Función                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------- |
+| `lia-service.ts`     | Ejecuta acciones en el navegador (click_at, type_at, scroll, key_press) con feedback visual |
+| `lia-app-context.ts` | Prompts del sistema y contexto de la app (páginas, menús, comportamiento)                   |
+| `lia-db-context.ts`  | Obtiene contexto de Supabase (usuario, artefactos recientes, estadísticas)                  |
+| `lia-dom-mapper.ts`  | Escanea DOM, detecta elementos interactivos, retorna coordenadas                            |
+
+### Detección de Alucinaciones
+
+Si Lia intenta abrir un artefacto que no existe en el DOM, automáticamente:
+
+1. Busca en la barra de búsqueda
+2. Si no encuentra, hace scroll para buscar el elemento
 
 ---
 
@@ -239,52 +214,50 @@ Para cada lección genera:
 
 ---
 
-## Publicación de Cursos en SofLIA
+## Importación SCORM
 
-El flujo de publicación transforma un artefacto CourseEngine al schema de SofLIA y lo deposita en `courseengine_inbox`.
+Flujo alternativo para importar cursos existentes en formato SCORM y convertirlos al pipeline de Courseforge.
 
-### Vista de Publicación (`/admin/artifacts/[id]/publish`)
+**Proceso** (domain: `domains/scorm/`):
 
-**Componentes**:
+1. **Upload**: Sube paquete `.zip` SCORM → bucket `scorm-packages`
+2. **Parsing** (`scorm-parser.service.ts`): Extrae manifiesto, SCOs, recursos, HTML
+3. **Análisis**: Detecta componentes, quizzes, gaps de contenido
+4. **Enriquecimiento** (`scorm-enrichment.service.ts`): Gemini analiza y completa gaps
+5. **Transformación** (`scorm-transformation.service.ts`): Convierte a estructura Courseforge
 
-- `PublicationClientView.tsx` - Orquesta toda la vista
-- `VideoMappingList.tsx` - Lista de lecciones con asignación de videos:
-  - Checkboxes con estado indeterminado por módulo
-  - Detección automática de proveedor (YouTube, Vimeo, MP4 directo) vía regex
-  - Sincronización de duración (cliente para MP4, servidor para YT/Vimeo)
-  - Selección parcial: solo publicar lecciones con video asignado
-- `CourseDataForm.tsx` - Metadata del curso (slug, categoría, nivel, instructor, precio, thumbnail)
+**Estados**: `UPLOADED` → `PARSING` → `ANALYZED` → `ENRICHING` → `TRANSFORMING` → `COMPLETED` | `FAILED`
 
-**Estados de Publication Request**: `DRAFT` → `READY` → `SENT`
+**API**:
 
-**Tracking de cambios**: Flag `upstream_dirty` se activa si el artefacto cambia después de guardar el draft
+- `POST /api/admin/scorm/upload` - Sube y registra paquete
+- `POST /api/admin/scorm/process` - Inicia procesamiento
 
-### API Routes de Publicación
-
-| Ruta                   | Método | Descripción                                      |
-| ---------------------- | ------ | ------------------------------------------------ |
-| `/api/publish`         | POST   | Publica curso a `courseengine_inbox` de SofLIA   |
-| `/api/save-draft`      | POST   | Guarda/actualiza draft en `publication_requests` |
-| `/api/trigger-publish` | POST   | Webhook alternativo para trigger                 |
-| `/api/test-publish`    | POST   | Endpoint de debug para pruebas                   |
+**Tablas**: `scorm_imports`, `scorm_resources`
 
 ---
 
-## SCORM Import
+## Publicación a Soflia
 
-Permite importar cursos SCORM existentes y transformarlos al formato CourseEngine.
+Flujo para publicar un artefacto completado a la plataforma Soflia.
 
-### Flujo
+**Proceso** (`/admin/artifacts/[id]/publish`):
 
-1. Upload del archivo SCORM (`.zip`) desde `/admin/artifacts/new`
-2. POST `/api/admin/scorm/upload` - Almacena y extrae el paquete
-3. POST `/api/admin/scorm/process` - Parsea y enriquece el contenido con IA
-4. Crea artefacto + syllabus prellenado desde la estructura SCORM
+1. Admin completa datos del curso: categoría, nivel, instructor, thumbnail, slug, precio
+2. Mapea videos de producción a cada lección (`VideoMappingList`)
+3. Guarda borrador → `POST /api/save-draft`
+4. Publica a Soflia → `POST /api/publish`
 
-### Tablas
+**Estados** (`publication_requests.status`):
+`DRAFT` → `READY` → `SENT` → `APPROVED` | `REJECTED`
 
-- `scorm_packages` - Metadata del paquete SCORM
-- `scorm_lessons` - Estructura de lecciones parseadas
+**Campos de `publication_requests`**:
+
+- `category`, `level` (beginner|intermediate|advanced)
+- `instructor_email`, `thumbnail_url`, `slug`, `price`
+- `lesson_videos` (JSONB): mapeo video por lección con duración y proveedor
+- `selected_lessons` (JSONB): lecciones incluidas en la publicación
+- `soflia_course_id`, `soflia_response`
 
 ---
 
@@ -294,9 +267,7 @@ Permite importar cursos SCORM existentes y transformarlos al formato CourseEngin
 
 - `POST /api/auth/login` - Login con Auth Bridge (SofLIA credentials → JWT)
 - `POST /api/auth/sign-up` - Registro
-- `GET /api/auth/callback` - OAuth callback GoTrue
-
-### SofLIA
+- `GET /api/auth/callback` - OAuth callback
 
 - `POST /api/lia` - Chat con SofLIA (ambos modos)
 
@@ -304,99 +275,87 @@ Permite importar cursos SCORM existentes y transformarlos al formato CourseEngin
 
 - `POST /api/syllabus` - Inicia generación de syllabus
 
-### Admin
-
-- `POST /api/admin/users` - Crear/actualizar perfiles con roles
-- `POST /api/admin/scorm/upload` - Subir paquete SCORM
-- `POST /api/admin/scorm/process` - Procesar SCORM con IA
-
 ### Publicación
 
-- `POST /api/publish` - Publicar a SofLIA inbox
-- `POST /api/save-draft` - Guardar draft de publicación
+- `POST /api/publish` - Publica artefacto a Soflia
+- `POST /api/save-draft` - Guarda borrador de publicación
+
+### Admin
+
+- `POST /api/admin/users` - Gestión de usuarios
+- `POST /api/admin/scorm/upload` - Sube paquete SCORM
+- `POST /api/admin/scorm/process` - Procesa paquete SCORM
+
+### Debug / GPT
+
+- `GET /api/debug/soflia` - Debug integración Soflia
+- `GET /api/gpt/sources` - Fuentes para GPT
 
 ### Netlify Functions (Background)
 
-| Función                           | Descripción                                  |
-| --------------------------------- | -------------------------------------------- |
-| `generate-artifact-background`    | Fase 1 completa                              |
-| `syllabus-generation-background`  | Fase 2                                       |
-| `instructional-plan-background`   | Fase 3                                       |
-| `validate-plan-background`        | Validación Fase 3                            |
-| `curation-background`             | Fase 4                                       |
-| `validate-curation-background`    | Validación Fase 4                            |
-| `materials-generation-background` | Fase 5                                       |
-| `validate-materials-background`   | Validación Fase 5                            |
-| `video-prompts-generation`        | B-roll prompts Fase 6                        |
-| `auth-sync`                       | Sincronización de usuarios entre plataformas |
+| Función                           | Descripción       |
+| --------------------------------- | ----------------- |
+| `generate-artifact-background`    | Fase 1 completa   |
+| `syllabus-generation-background`  | Fase 2            |
+| `instructional-plan-background`   | Fase 3            |
+| `validate-plan-background`        | Validación Fase 3 |
+| `unified-curation-logic`          | Fase 4            |
+| `validate-curation-background`    | Validación Fase 4 |
+| `materials-generation-background` | Fase 5            |
+| `validate-materials-background`   | Validación Fase 5 |
+| `video-prompts-generation`        | B-roll prompts    |
 
 ---
 
-## Admin Dashboard
+## Dashboards
 
-### `/admin` - Dashboard Principal
+El sistema tiene tres dashboards con roles diferenciados:
 
-- Stats: usuarios totales, artefactos activos, en pipeline
-- Actividad reciente y quick actions
+### Admin Dashboard (`/admin`)
 
-### `/admin/artifacts`
+- `/admin/artifacts` - Lista y gestión de artefactos
+- `/admin/artifacts/new` - Crear artefacto (manual o importar SCORM)
+- `/admin/artifacts/[id]` - Detalle: navegar fases, aprobar/rechazar, regenerar
+- `/admin/artifacts/[id]/publish` - Publicar a Soflia (datos + video mapping)
+- `/admin/library` - Buscar y editar materiales por lección/componente
+- `/admin/settings` - Configurar modelos IA por fase del pipeline (ARTIFACT_BASE, SYLLABUS, INSTRUCTIONAL_PLAN, MATERIALS, CURATION), temperatura, thinking budget
+- `/admin/users` - Gestión de usuarios y roles
+- `/admin/profile` - Perfil del administrador
 
-- Lista de cursos con estados (DRAFT, GENERATING, VALIDATING, READY_FOR_QA, APPROVED, REJECTED)
-- Crear nuevo artefacto (desde cero o importar SCORM)
-- Ver detalle → navegar por fases
-- Aprobar/rechazar fases con notas
-- Regenerar con feedback
+### Builder Dashboard (`/builder`)
 
-### `/admin/artifacts/[id]/publish`
+- `/builder/artifacts` - Artefactos del builder
+- `/builder/artifacts/new` - Crear nuevo artefacto
+- `/builder/artifacts/[id]` - Detalle de artefacto
 
-- Vista de publicación con video mapping
-- Selección de lecciones a publicar
-- Metadata del curso (slug, nivel, precio, etc.)
-- Guardar draft / Publicar a SofLIA
+### Architect Dashboard (`/architect`)
 
-### `/admin/library`
-
-- Buscar materiales por lección/componente
-- Editar contenido
-- Marcar para revisión
-
-### `/admin/settings`
-
-- Configurar modelos IA (LIA_MODEL, COMPUTER)
-- Temperatura, thinking budget
-- Activar/desactivar configuraciones
-
-### `/admin/users`
-
-- Gestión de usuarios y roles (ADMIN, ARQUITECTO, CONSTRUCTOR)
-- Crear/editar perfiles
-- Asignar roles via modal
-
-### `/admin/profile`
-
-- Perfil personal del usuario admin
+- `/architect/artifacts` - Artefactos del architect
+- `/architect/artifacts/[id]` - Detalle de artefacto
 
 ---
 
 ## Base de Datos (Tablas Principales)
 
-| Tabla                  | Contenido                                                                     |
-| ---------------------- | ----------------------------------------------------------------------------- |
-| `artifacts`            | Curso base: idea_central, objetivos[], nombres[], state, organization_id      |
-| `profiles`             | Perfiles de usuario: platform_role (ADMIN, ARQUITECTO, CONSTRUCTOR)           |
-| `syllabus`             | Estructura: modules (JSONB), route, validation                                |
-| `instructional_plans`  | Planes: lesson_plans[], blockers, dod                                         |
-| `curation`             | Estado de curación, qa_decision                                               |
-| `curation_rows`        | Fuentes: URL, validación, aptness                                             |
-| `materials`            | Estado global de materiales                                                   |
-| `material_lessons`     | Componentes por lección                                                       |
-| `material_components`  | Contenido + assets (slides, b_roll, production_status)                        |
-| `publication_requests` | Draft de publicación: lesson_videos JSONB, selected_lessons[], upstream_dirty |
-| `login_history`        | Auditoría de logins (IP, user agent, timestamp)                               |
-| `model_settings`       | Configuración de modelos IA                                                   |
-| `pipeline_events`      | Log de eventos del pipeline                                                   |
-| `scorm_packages`       | Metadata de paquetes SCORM importados                                         |
-| `scorm_lessons`        | Estructura de lecciones parseadas de SCORM                                    |
+| Tabla                  | Contenido                                                                                                                          |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `profiles`             | Auth Bridge: datos de usuario (sustituye referencias directas a auth.users)                                                        |
+| `artifacts`            | Curso base: idea_central, objetivos[], nombres[], state, organization_id                                                           |
+| `syllabus`             | Estructura: modules (JSONB), route, validation                                                                                     |
+| `instructional_plans`  | Planes: lesson_plans[], blockers, dod, validation                                                                                  |
+| `curation`             | Estado de curación, qa_decision                                                                                                    |
+| `curation_rows`        | Fuentes: URL, validación, aptness                                                                                                  |
+| `materials`            | Estado global de materiales                                                                                                        |
+| `material_lessons`     | Componentes por lección                                                                                                            |
+| `material_components`  | Contenido + assets (slides, b_roll, production_status)                                                                             |
+| `publication_requests` | Publicación a Soflia: datos, video mapping, estado                                                                                 |
+| `scorm_imports`        | Paquetes SCORM: manifiesto, análisis, estado de procesamiento                                                                      |
+| `scorm_resources`      | Recursos SCORM: HTML, quizzes, mapeo a lecciones                                                                                   |
+| `model_settings`       | Configuración de modelos IA por fase de pipeline (ARTIFACT_BASE, SYLLABUS, INSTRUCTIONAL_PLAN, MATERIALS, CURATION) y organización |
+| `system_prompts`       | Prompts del sistema por organización (CURATION_PLAN, INSTRUCTIONAL_PLAN, MATERIALS_GENERATION)                                     |
+| `pipeline_events`      | Log de eventos del pipeline                                                                                                        |
+
+**Storage Buckets**: `scorm-packages`, `thumbnails`, `production-videos`
 
 ---
 
@@ -406,39 +365,32 @@ Permite importar cursos SCORM existentes y transformarlos al formato CourseEngin
 apps/
 ├── web/src/
 │   ├── app/
-│   │   ├── admin/                  # Dashboard admin
-│   │   │   ├── page.tsx            # Dashboard con stats
-│   │   │   ├── layout.tsx          # Auth check (GoTrue o Auth Bridge)
-│   │   │   ├── AdminLayoutClient.tsx # Sidebar, dark mode, menú
-│   │   │   ├── artifacts/          # CRUD de cursos + publicación
-│   │   │   ├── users/              # Gestión de usuarios
-│   │   │   ├── library/            # Materiales
-│   │   │   ├── settings/           # Configuración IA
-│   │   │   └── profile/            # Perfil admin
-│   │   ├── api/                    # API routes
-│   │   │   ├── auth/               # Login, callback, sign-up
-│   │   │   ├── lia/                # Chat + Computer Use
-│   │   │   ├── admin/              # users, scorm
-│   │   │   ├── publish/            # Publicación a SofLIA
-│   │   │   └── save-draft/         # Draft de publicación
-│   │   ├── login/                  # Página de login
-│   │   └── dashboard/              # Dashboard usuario
-│   ├── components/lia/             # LiaChat component
-│   ├── lib/                        # Servicios SofLIA (service, app-context, db-context, dom-mapper)
-│   ├── domains/                    # Lógica de negocio (syllabus, plan, curation, materials, scorm)
-│   ├── utils/
-│   │   ├── supabase/               # Clientes Supabase
-│   │   └── auth/                   # session.ts (Auth Bridge)
-│   ├── core/                       # Stores Zustand + context
-│   └── config/                     # Configuración global
-├── api/src/                        # Backend Express
-│   └── features/auth/              # Módulo auth Express
+│   │   ├── admin/          # Dashboard admin (artifacts, library, settings, users, profile)
+│   │   ├── builder/        # Dashboard builder (artifacts)
+│   │   ├── architect/      # Dashboard architect (artifacts)
+│   │   ├── dashboard/      # Dashboard usuario
+│   │   └── api/            # API routes (lia, auth, syllabus, publish, admin/*)
+│   ├── components/
+│   │   ├── lia/            # LiaChat, ChatWindow, ChatMessage
+│   │   └── layout/         # SharedSidebarLayout, UserMenu
+│   ├── lib/                # Servicios Lia (service, app-context, db-context, dom-mapper)
+│   ├── domains/            # Lógica de negocio
+│   │   ├── syllabus/       # service, types, validators, config
+│   │   ├── instructionalPlan/
+│   │   ├── materials/      # service, types, validators, hooks
+│   │   ├── curation/       # service, types, hooks
+│   │   ├── scorm/          # parser, transformation, enrichment services
+│   │   └── prompts/        # tipos de prompts IA
+│   └── utils/supabase/     # Clientes Supabase (client, server)
+├── api/src/                # Backend Express
+│   ├── features/auth/      # Módulo auth
+│   └── core/middleware/    # Error handler
 packages/
-├── shared/                         # Tipos compartidos
-└── ui/                             # Componentes UI
+├── shared/                 # Tipos compartidos (Zod schemas)
+└── ui/                     # Componentes UI
 supabase/
-└── migrations/                     # Migraciones DB
-netlify/functions/                  # Background jobs
+└── migrations/             # Migraciones DB
+netlify/functions/          # Background jobs
 ```
 
 ---
@@ -446,28 +398,18 @@ netlify/functions/                  # Background jobs
 ## Variables de Entorno
 
 ```env
-# Supabase (CourseEngine)
+# Supabase
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 
-# Auth Bridge
-COURSEENGINE_JWT_SECRET=          # Secreto HS256 para firmar JWTs
-
-# SofLIA (plataforma externa receptora)
-SOFLIA_INBOX_SUPABASE_URL=       # BD de SofLIA (para publicar cursos)
-SOFLIA_INBOX_SUPABASE_KEY=       # Service role key de SofLIA
-
 # Gemini
 GOOGLE_GENERATIVE_AI_API_KEY=
-GEMINI_MODEL=gemini-3-flash-preview
-GEMINI_SEARCH_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-2.5-flash
+GEMINI_SEARCH_MODEL=gemini-2.5-flash
 
 # OpenAI (fallback)
 OPENAI_API_KEY=
-
-# Fuentes secundarias
-GPT_SOURCES_API_KEY=
 
 # Gamma
 GAMMA_API_KEY=
@@ -477,12 +419,12 @@ GAMMA_API_KEY=
 
 ## Patrones Importantes
 
-- **Path aliases**: `@/*`, `@/features/*`, `@/shared/*`, `@/core/*`
+- **Path aliases**: `@/*`, `@/features/*`, `@/shared/*`, `@/core/*`, `@/domains/*`
 - **Estado**: Zustand para global, Supabase para persistente
-- **Estilos**: TailwindCSS 4.x + `cn()` para clases condicionales
+- **Estilos**: TailwindCSS 4 + `cn()` para clases condicionales
 - **Dark mode**: `darkMode: "class"` en Tailwind
 - **Validación**: Zod para schemas
 - **Componentes cliente**: `"use client"` al inicio
-- **Animaciones**: Framer Motion para transiciones y micro-interacciones
-- **JWT**: `jose` library (no `jsonwebtoken`) para compatibilidad con Edge runtime
-- **Passwords**: `bcryptjs` (no `bcrypt`) para compatibilidad con Node sin bindings nativos
+- **Server Actions**: Next.js server actions para mutaciones (archivos `actions.ts`)
+- **Auth Bridge**: Usar tabla `profiles` en lugar de `auth.users` directamente para FK constraints
+- **Multi-tenancy**: `organization_id` en artefactos, `model_settings` y `system_prompts` por organización

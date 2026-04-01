@@ -141,6 +141,7 @@ export async function generateWithRetry(
   logPrefix: string,
   supabase?: SupabaseClient,
   componentTypes?: string[],
+  organizationId?: string | null,
   models?: string[],
 ) {
   const modelsToTry = models && models.length > 0 ? models : DEFAULT_MODELS;
@@ -155,6 +156,7 @@ export async function generateWithRetry(
           logPrefix,
           supabase,
           componentTypes,
+          organizationId,
         );
         return { success: true as const, content };
       } catch (error) {
@@ -179,6 +181,7 @@ export async function generateMaterialsWithGemini(
   logPrefix: string,
   supabase?: SupabaseClient,
   componentTypes?: string[],
+  organizationId?: string | null,
 ) {
   let basePrompt: string;
 
@@ -190,7 +193,11 @@ export async function generateMaterialsWithGemini(
 
   if (supabase && effectiveComponentTypes.length > 0) {
     // Dynamic resolution: org-specific → global → hardcoded defaults
-    const resolved = await resolvePrompts(supabase, effectiveComponentTypes);
+    const resolved = await resolvePrompts(
+      supabase,
+      effectiveComponentTypes,
+      organizationId,
+    );
     basePrompt = assemblePrompt(resolved, effectiveComponentTypes);
     console.log(`${logPrefix} Using modular prompts for: ${effectiveComponentTypes.join(", ")}`);
   } else {

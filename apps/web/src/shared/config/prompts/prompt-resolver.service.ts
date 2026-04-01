@@ -300,6 +300,12 @@ export function assemblePrompt(resolved: ResolvedPrompts, componentTypes: string
 
     parts.push(resolved.systemPrompt);
     parts.push('\n---\n');
+    parts.push('## Prioridad de instrucciones\n');
+    parts.push('- El schema JSON define UNICAMENTE la forma de salida y los campos requeridos.\n');
+    parts.push('- El comportamiento pedagogico, tono, dinamica y estrategia de interaccion deben venir del prompt especifico del componente.\n');
+    parts.push('- Si el prompt del componente pide un estilo o dinamica particular y no contradice el schema, sigue el prompt del componente.\n');
+    parts.push('- No conviertas el schema en una guia de estilo ni en una plantilla rigida de redaccion.\n');
+    parts.push('\n---\n');
 
     parts.push('## Componentes a generar\n');
     for (const ct of componentTypes) {
@@ -311,7 +317,8 @@ export function assemblePrompt(resolved: ResolvedPrompts, componentTypes: string
     }
 
     parts.push('## Formato de salida JSON (OBLIGATORIO)\n');
-    parts.push('Responde **SOLO con JSON válido** usando esta estructura exacta:\n');
+    parts.push('Responde **SOLO con JSON válido** usando esta estructura exacta.\n');
+    parts.push('La siguiente estructura es un contrato de datos; no redefine el enfoque pedagogico ya indicado arriba.\n');
     parts.push('```json\n{\n  "components": {\n');
 
     const schemaFragments = componentTypes.map(ct => OUTPUT_SCHEMAS[ct]).filter(Boolean);

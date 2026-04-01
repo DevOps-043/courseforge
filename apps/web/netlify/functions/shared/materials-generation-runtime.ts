@@ -183,6 +183,7 @@ export async function generateLessonMaterials(params: {
   genAI: GoogleGenAI;
   lesson: MaterialLessonRecord;
   generationContext: MaterialsGenerationContext;
+  organizationId?: string | null;
   logPrefix: string;
   fixInstructions?: string;
   iterationNumber?: number;
@@ -196,6 +197,7 @@ export async function generateLessonMaterials(params: {
     genAI,
     lesson,
     generationContext,
+    organizationId,
     logPrefix,
     fixInstructions,
     iterationNumber,
@@ -223,7 +225,15 @@ export async function generateLessonMaterials(params: {
     console.log(`${logPrefix} Partial regen: ${componentTypes.join(", ")}`);
   }
 
-  const result = await generateWithRetry(genAI, input, logPrefix, supabase, componentTypes, models);
+  const result = await generateWithRetry(
+    genAI,
+    input,
+    logPrefix,
+    supabase,
+    componentTypes,
+    organizationId,
+    models,
+  );
   return processGenerationResult({
     supabase,
     lessonId: lesson.id,

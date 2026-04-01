@@ -1,10 +1,10 @@
-# 📘 CourseEngine - Plataforma de Ingeniería Instruccional con IA
+# 📘 Courseforge - Plataforma de Ingeniería Instruccional con IA
 
 > **Versión**: 1.0.0
 > **Estado**: Producción (Beta)
-> **Stack**: Next.js 16, Supabase, Netlify Functions, Google Gemini 2.0
+> **Stack**: Next.js 16, Supabase, Netlify Functions, Google Gemini 2.5
 
-CourseEngine es mucho más que un "generador de cursos". Es un **Sistema Operativo de Diseño Instruccional** que orquesta múltiples agentes de IA para investigar, estructurar, redactar y validar contenido educativo de alta calidad.
+Courseforge es mucho más que un "generador de cursos". Es un **Sistema Operativo de Diseño Instruccional** que orquesta múltiples agentes de IA para investigar, estructurar, redactar y validar contenido educativo de alta calidad.
 
 El sistema simula el flujo de trabajo de un equipo humano (Investigador + Diseñador Instruccional + Redactor + Editor), donde la salida de cada fase es rigurosamente validada antes de ser utilizada como entrada para la siguiente.
 
@@ -29,8 +29,7 @@ El sistema simula el flujo de trabajo de un equipo humano (Investigador + Diseñ
 
 ## 🧠 Filosofía del Sistema
 
-CourseEngine se basa en tres principios no negociables:
-CourseEngine se basa en tres principios no negociables:
+Courseforge se basa en tres principios no negociables:
 
 1.  **NO A LA ALUCINACIÓN**: A diferencia de ChatGPT, CourseEngine _no inventa_ hechos. Utiliza un motor de curaduría (Fase 4) que busca referencias reales, verifica que las URLs funcionen (HTTP 200) y valida que el contenido sea relevante antes de usarlo para escribir.
 2.  **ESTRUCTURA PRIMERO, CONTENIDO DESPUÉS**: No se genera texto hasta que no haya un plan instruccional aprobado (Fase 3). Esto asegura coherencia pedagógica.
@@ -44,22 +43,22 @@ El proyecto es un **Monorepo** gestionado con npm workspaces, implementando "Scr
 
 ### Tecnologías Clave
 
-| Capa          | Tecnología                                                   |
-| ------------- | ------------------------------------------------------------ |
-| Frontend      | Next.js 16, React 19, TypeScript                             |
-| Estilos       | TailwindCSS 4.x, Framer Motion                               |
-| Estado        | Zustand                                                      |
-| Backend       | Express + Netlify Functions (Node.js 20+)                    |
-| Base de datos | Supabase (PostgreSQL 15)                                     |
-| Auth          | Auth Bridge JWT (HS256, `jose`) + Supabase GoTrue            |
-| IA Principal  | Google Gemini (`gemini-2.0-flash`, `gemini-3-flash-preview`) |
-| IA Secundaria | OpenAI (fallback)                                            |
-| Servicios     | Gamma API (slides), Google Search (grounding)                |
+| Capa          | Tecnología                                                              |
+| ------------- | ----------------------------------------------------------------------- |
+| Frontend      | Next.js 16, React 19, TypeScript                                        |
+| Estilos       | TailwindCSS 4.x, Framer Motion                                          |
+| Estado        | Zustand                                                                 |
+| Backend       | Express + Netlify Functions (Node.js 20+)                               |
+| Base de datos | Supabase (PostgreSQL 15)                                                |
+| Auth          | Auth Bridge JWT (HS256, `jose`) + Supabase GoTrue                       |
+| IA Principal  | Google Gemini (`gemini-2.5-flash` fases 1-3, `gemini-2.5-pro` fases 4-5) |
+| IA Secundaria | OpenAI (fallback)                                                       |
+| Servicios     | Gamma API (slides), Google Search (grounding)                           |
 
 ### Estructura de Directorios
 
 ```bash
-courseengine/
+courseforge/
 ├── apps/
 │   ├── web/                    # Frontend Next.js 16 (App Router)
 │   │   ├── netlify/functions/  # Backend Serverless (donde ocurre la magia)
@@ -84,7 +83,7 @@ courseengine/
 
 ## Autenticación - Auth Bridge
 
-CourseEngine implementa un sistema de autenticación personalizado que valida credenciales contra la BD de **SofLIA** y emite JWTs propios (HS256).
+Courseforge implementa un sistema de autenticación personalizado que valida credenciales contra la BD de **SofLIA** y emite JWTs propios (HS256).
 
 ### Flujo de Login
 
@@ -198,7 +197,7 @@ Por cada lección asigna componentes según complejidad:
 **Proceso** (`materials-generation-background.ts`):
 
 - Patrón "Daisy Chain" recursivo para manejar timeouts de Netlify
-- Cascade de modelos: Gemini 3-flash → Gemini 2.0-flash → 1.5-pro
+- Modelo: `gemini-2.5-pro` (con fallback a `gemini-2.5-flash`), configurable por organización
 - Prompt masivo con: perfil del experto + OA exacto + contenido de fuentes curadas
 
 | Componente | Genera                                           |
@@ -238,7 +237,7 @@ SofLIA es la asistente IA integrada en toda la aplicación (`POST /api/lia`).
 
 ### Modo Conversacional
 
-- Gemini `gemini-2.0-flash` + Google Search grounding
+- Gemini `gemini-2.5-flash` + Google Search grounding
 - Temperatura 0.7 — responde en markdown con fuentes citadas
 
 ---
@@ -277,6 +276,14 @@ Los cursos se publican a SofLIA desde `/admin/artifacts/[id]/publish`.
 ### 4. `materials` & `material_lessons`
 
 Relación Maestro-Detalle. `materials` trackea el estado global de la Fase 5, mientras que `material_lessons` trackea el progreso individual de cada lección para permitir el procesamiento paralelo/secuencial.
+
+### 5. `model_settings`
+
+Configuración modular de modelos IA **por fase de pipeline** y organización. Cada fase tiene su propio setting type (`ARTIFACT_BASE`, `SYLLABUS`, `INSTRUCTIONAL_PLAN`, `MATERIALS`, `CURATION`) con modelo, temperatura, thinking level y fallback independientes.
+
+### 6. `system_prompts`
+
+Prompts del sistema versionados por organización. Códigos: `CURATION_PLAN`, `INSTRUCTIONAL_PLAN`, `MATERIALS_GENERATION`. Permiten personalizar el comportamiento de IA por tenant.
 
 ---
 
@@ -353,4 +360,4 @@ Los errores actualizan el estado en BD a `NEEDS_FIX` o `ERROR` (no hay spinners 
 
 ---
 
-**CourseEngine** - _Ingeniería Educativa Automatizada_
+**Courseforge** - _Ingeniería Educativa Automatizada_

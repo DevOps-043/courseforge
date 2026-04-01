@@ -28,14 +28,14 @@ Lia es el asistente IA integrado en toda la app. Tiene dos modos:
 
 - Usuario envía mensaje de texto
 - Llama a `/api/lia` con Gemini + Google Search grounding
-- Modelo: `gemini-2.0-flash`, temperatura 0.7
+- Modelo: `gemini-2.5-flash`, temperatura 0.7
 - Responde en markdown con fuentes citadas
 
 ### Modo Computer Use (Agéntico)
 
 - Usuario envía mensaje + screenshot de la página actual
 - `lia-dom-mapper.ts` escanea el DOM detectando elementos interactivos
-- Modelo: `gemini-2.0-flash-exp`, temperatura 0.3
+- Modelo: `gemini-2.5-flash`, temperatura 0.3
 - Responde con JSON: `{ message, action/actions, requiresFollowUp }`
 - Ejecuta acciones en el navegador (click, type, scroll, etc.)
 
@@ -318,7 +318,7 @@ El sistema tiene tres dashboards con roles diferenciados:
 - `/admin/artifacts/[id]` - Detalle: navegar fases, aprobar/rechazar, regenerar
 - `/admin/artifacts/[id]/publish` - Publicar a Soflia (datos + video mapping)
 - `/admin/library` - Buscar y editar materiales por lección/componente
-- `/admin/settings` - Configurar modelos IA (LIA_MODEL, COMPUTER), temperatura, thinking budget
+- `/admin/settings` - Configurar modelos IA por fase del pipeline (ARTIFACT_BASE, SYLLABUS, INSTRUCTIONAL_PLAN, MATERIALS, CURATION), temperatura, thinking budget
 - `/admin/users` - Gestión de usuarios y roles
 - `/admin/profile` - Perfil del administrador
 
@@ -351,7 +351,8 @@ El sistema tiene tres dashboards con roles diferenciados:
 | `publication_requests` | Publicación a Soflia: datos, video mapping, estado                          |
 | `scorm_imports`        | Paquetes SCORM: manifiesto, análisis, estado de procesamiento               |
 | `scorm_resources`      | Recursos SCORM: HTML, quizzes, mapeo a lecciones                            |
-| `model_settings`       | Configuración de modelos IA por organización                                |
+| `model_settings`       | Configuración de modelos IA por fase de pipeline (ARTIFACT_BASE, SYLLABUS, INSTRUCTIONAL_PLAN, MATERIALS, CURATION) y organización |
+| `system_prompts`       | Prompts del sistema por organización (CURATION_PLAN, INSTRUCTIONAL_PLAN, MATERIALS_GENERATION) |
 | `pipeline_events`      | Log de eventos del pipeline                                                 |
 
 **Storage Buckets**: `scorm-packages`, `thumbnails`, `production-videos`
@@ -404,8 +405,8 @@ SUPABASE_SERVICE_ROLE_KEY=
 
 # Gemini
 GOOGLE_GENERATIVE_AI_API_KEY=
-GEMINI_MODEL=gemini-2.0-flash
-GEMINI_SEARCH_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-2.5-flash
+GEMINI_SEARCH_MODEL=gemini-2.5-flash
 
 # OpenAI (fallback)
 OPENAI_API_KEY=

@@ -1,3 +1,8 @@
+-- TARGET SCHEMA: Estado objetivo post-migraciones pendientes
+-- Este archivo documenta los cambios que deben aplicarse sobre BD.sql (estado actual).
+-- NO ejecutar directamente — cada sección tiene su migración correspondiente.
+-- Generado: 2026-03-31
+
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
@@ -155,16 +160,22 @@ CREATE TABLE public.materials (
   CONSTRAINT materials_pkey PRIMARY KEY (id),
   CONSTRAINT materials_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id)
 );
+-- CHANGED vs BD.sql:
+--   model_name/fallback_model defaults: gemini-2.0-flash → gemini-2.5-flash
+--   temperature default: 0.20 → 0.70
+--   thinking_level default: minimal → medium
+--   setting_type: default SEARCH → ARTIFACT_BASE + CHECK constraint con valores válidos
+-- Migración pendiente: 20260331120000_modularize_pipeline_model_settings.sql
 CREATE TABLE public.model_settings (
   id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  model_name text NOT NULL DEFAULT 'gemini-2.0-flash'::text,
-  temperature numeric NOT NULL DEFAULT 0.20,
+  model_name text NOT NULL DEFAULT 'gemini-2.5-flash'::text,
+  temperature numeric NOT NULL DEFAULT 0.70,
   is_active boolean DEFAULT true,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
-  fallback_model text NOT NULL DEFAULT 'gemini-2.0-flash'::text,
-  thinking_level text NOT NULL DEFAULT 'minimal'::text CHECK (thinking_level = ANY (ARRAY['minimal'::text, 'low'::text, 'medium'::text, 'high'::text])),
-  setting_type text DEFAULT 'SEARCH'::text,
+  fallback_model text NOT NULL DEFAULT 'gemini-2.5-flash'::text,
+  thinking_level text NOT NULL DEFAULT 'medium'::text CHECK (thinking_level = ANY (ARRAY['minimal'::text, 'low'::text, 'medium'::text, 'high'::text])),
+  setting_type text DEFAULT 'ARTIFACT_BASE'::text CHECK (setting_type = ANY (ARRAY['ARTIFACT_BASE'::text, 'SYLLABUS'::text, 'INSTRUCTIONAL_PLAN'::text, 'MATERIALS'::text, 'CURATION'::text])),
   organization_id uuid,
   CONSTRAINT model_settings_pkey PRIMARY KEY (id),
   CONSTRAINT model_settings_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id)
@@ -178,6 +189,21 @@ CREATE TABLE public.organizations (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT organizations_pkey PRIMARY KEY (id)
+);
+-- NUEVA tabla — no existe en BD.sql.
+-- Estructura derivada de logPipelineEventAction() en production.actions.ts y artifact.actions.ts.
+-- Requiere migración nueva: crear tabla + FK + índice sobre artifact_id.
+CREATE TABLE public.pipeline_events (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  artifact_id uuid NOT NULL,
+  event_type text NOT NULL,
+  event_data jsonb NOT NULL DEFAULT '{}'::jsonb,
+  step_id text,
+  entity_id text,
+  entity_type text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT pipeline_events_pkey PRIMARY KEY (id),
+  CONSTRAINT pipeline_events_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id)
 );
 CREATE TABLE public.profiles (
   id uuid NOT NULL,
@@ -286,6 +312,10 @@ CREATE TABLE public.syllabus (
   CONSTRAINT syllabus_pkey PRIMARY KEY (id),
   CONSTRAINT syllabus_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id)
 );
+-- CHANGED vs BD.sql:
+--   Añadido UNIQUE (code, version, organization_id) para que el fallback chain
+--   de prompt-resolver.service.ts sea determinista (sin filas duplicadas por org).
+-- Migración: 20260307120000_add_org_to_settings_and_prompts.sql
 CREATE TABLE public.system_prompts (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   code text NOT NULL,
@@ -297,6 +327,7 @@ CREATE TABLE public.system_prompts (
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   organization_id uuid,
   CONSTRAINT system_prompts_pkey PRIMARY KEY (id),
+  CONSTRAINT system_prompts_code_version_org_key UNIQUE (code, version, organization_id),
   CONSTRAINT system_prompts_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id)
 );
 CREATE TABLE public.user_sessions (
