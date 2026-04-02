@@ -645,6 +645,65 @@ Sirve como red de seguridad en caso de errores de migración o corrupción de lo
 
 ---
 
+### 3.13 `VIDEO_BROLL_PROMPTS`
+
+**Fase del pipeline:** 6 — Producción visual
+**Background job:** `video-prompts-generation.ts`
+**Tabla de salida:** `material_components.assets.b_roll_prompts`
+
+#### ¿Qué hace?
+
+Convierte escenas de un storyboard previamente generado (Fase 3) en **prompts de video optimizados para Google Veo** (modelos BO2/BO3). Estos prompts son usados para generar B-roll visual en inglés, siguiendo la estructura jerárquica que Veo prioriza.
+
+#### Área que cubre
+
+- Prompt engineering para modelos de generación de video (Google Veo)
+- Traducción de descripciones de escenas al inglés
+- Estructura jerárquica de prompts visuales (shot type → subject → details → environment → mood)
+- Consistencia visual entre escenas del mismo curso
+
+#### Entrada
+
+```
+- Storyboard del componente de video (generado en Fase 3)
+- componentId del material_component
+```
+
+#### Salida (JSON)
+
+```json
+{
+  "prompts": [
+    {
+      "scene_index": 1,
+      "original_description": "Una persona escribiendo rápido en una oficina oscura.",
+      "generated_prompt": "Close-up cinematic shot. Hands typing rapidly on a mechanical keyboard. Fingers illuminated by soft blue monitor glow. In a dimly lit modern office workspace. High contrast, bokeh background, tech atmosphere, 4k resolution."
+    }
+  ]
+}
+```
+
+#### Reglas críticas
+
+- Los prompts generados **DEBEN estar en inglés** (Veo optimiza mejor con prompts en inglés)
+- Solo describir lo que está visible en el frame (no elementos fuera de cámara)
+- Mantener consistencia de rasgos del personaje entre escenas
+- Seguir la estructura jerárquica obligatoria de Veo (shot → subject → details → environment → mood)
+
+#### Resolución de prompt
+
+A diferencia de los prompts de materiales (Fase 3) que se ensamblan en conjunto con `assemblePrompt()`, este prompt se resuelve individualmente usando `resolveSinglePrompt()` con la misma cadena de fallback:
+
+```
+1. DB: organization_id = actual + is_active = true → Usa prompt custom de la org
+2. DB: organization_id IS NULL + is_active = true → Usa prompt global
+3. Hardcoded: videoBrollPromptsDefault en modular.ts → Fallback final
+```
+
+El `organization_id` se deriva automáticamente desde el `componentId` atravesando la cadena: `material_components → material_lessons → materials → artifacts.organization_id`.
+
+---
+
 ## 4. Pipeline de Activación por Fase
 
 ```
@@ -689,7 +748,8 @@ Artefacto creado
        ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ FASE 5: video-prompts-generation.ts                             │
-│ Prompts: (ninguno del catálogo — usa storyboards generados)     │
+│ Prompt: VIDEO_BROLL_PROMPTS (configurable por organización)     │
+│ Resolución: resolveSinglePrompt() (org → global → hardcoded)   │
 │ Salida: b_roll_prompts, production_assets                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -732,6 +792,7 @@ assemblePrompt(resolvedPrompts, componentTypes)
 | `VIDEO_GUIDE` | `MATERIALS_VIDEO_GUIDE` |
 | `DEMO_GUIDE` | `MATERIALS_DEMO_GUIDE` |
 | `EXERCISE` | `MATERIALS_EXERCISE` |
+| *(Fase 6)* B-Roll Prompts | `VIDEO_BROLL_PROMPTS` |
 
 ---
 

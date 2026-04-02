@@ -9,46 +9,12 @@ import {
     methodNotAllowedResponse,
     parseJsonBody,
 } from './shared/http';
+import { resolveSinglePrompt } from '../../src/shared/config/prompts/prompt-resolver.service';
+import { VIDEO_BROLL_PROMPT_CODE } from '../../src/shared/config/prompts/materials-generation.prompts.modular';
 
-const VIDEO_PROMPT_SYSTEM = `
-Eres un experto Prompt Engineer para Google VEO (Modelos BO2/BO3) y Director de Fotografía.
-Tu tarea es convertir escenas de un storyboard en PROMPTS DE VIDEO perfectos, optimizados para Veo.
-IMPORTANTE: Los prompts DEBEN estar en INGLÉS para que Veo capte mejor las indicaciones.
-
-ESTRUCTURA JERÁRQUICA OBLIGATORIA (Bestructura Veo):
-Debes seguir este orden estricto, ya que Veo da más peso al inicio del prompt:
-
-1. [Shot Type & Camera Movement]: Define composición y ángulo (e.g., "Extremely close shot, low-angle shot, tracking shot").
-2. [Subject & Action]: Personaje principal y qué hace. (e.g., "A young woman stands").
-3. [Subject Details]: Vestimenta, rasgos, expresión. (e.g., "wearing a white space suit, blue eyes").
-4. [Environment/Context]: Escenario, hora, clima. (e.g., "in a snowy desert, looking at camera").
-5. [Mood/Lighting/Visuals]: Atmósfera, luz, estilo. (e.g., "cinematic aspect, blurred background, cold blue tones, 4k").
-
-REGLAS DE ORO (Secretos de Experto):
-- SOLO EN INGLÉS: Traduce todo el contenido visual al inglés.
-- SOLO LO VISIBLE: Escribe solamente lo que está en el frame. Si es un close-up de la cara, NO describas los zapatos.
-- CONSISTENCIA: Mantén los mismos rasgos del personaje si aparecen en múltiples escenas.
-- FLUIDEZ: Describe movimiento natural.
-
-EJEMPLO PERFECTO:
-Original: "Una persona escribiendo rápido en una oficina oscura."
-Prompt Optimizado: "Close-up cinematic shot. Hands typing rapidly on a mechanical keyboard. Fingers illuminated by soft blue monitor glow. In a dimly lit modern office workspace. High contrast, bokeh background, tech atmosphere, 4k resolution."
-
-TU TAREA:
-Genera un prompt en INGLÉS optimizado para cada escena del storyboard recibido.
-
-FORMATO DE SALIDA:
-Devuelve un JSON válido con la siguiente estructura:
-{
-  "prompts": [
-    {
-      "scene_index": number,
-      "original_description": string,
-      "generated_prompt": string
-    }
-  ]
-}
-`;
+// --------------------------------------------------------------------------
+// Types
+// --------------------------------------------------------------------------
 
 interface VideoPromptResultItem {
     generated_prompt: string;
@@ -59,6 +25,55 @@ interface VideoPromptResultItem {
 interface VideoPromptResponsePayload {
     prompts: VideoPromptResultItem[];
 }
+
+// --------------------------------------------------------------------------
+// Helpers
+// --------------------------------------------------------------------------
+
+/**
+ * Derives the organization_id from a component ID by traversing
+ * material_components → material_lessons → materials → artifacts.
+ *
+ * Returns null if the chain cannot be resolved (safe fallback to global prompt).
+ */
+async function resolveOrganizationId(
+    supabase: ReturnType<typeof createServiceRoleClient>,
+    componentId: string,
+): Promise<string | null> {
+    const { data } = await supabase
+        .from('material_components')
+        .select(`
+            material_lessons (
+                materials (
+                    artifacts ( organization_id )
+                )
+            )
+        `)
+        .eq('id', componentId)
+        .single();
+
+    if (!data?.material_lessons) return null;
+
+    const lesson = Array.isArray(data.material_lessons)
+        ? data.material_lessons[0]
+        : data.material_lessons;
+    if (!lesson?.materials) return null;
+
+    const material = Array.isArray(lesson.materials)
+        ? lesson.materials[0]
+        : lesson.materials;
+    if (!material?.artifacts) return null;
+
+    const artifact = Array.isArray(material.artifacts)
+        ? material.artifacts[0]
+        : material.artifacts;
+
+    return (artifact?.organization_id as string) || null;
+}
+
+// --------------------------------------------------------------------------
+// Handler
+// --------------------------------------------------------------------------
 
 export const handler: Handler = async (event) => {
     if (event.httpMethod !== 'POST') {
@@ -81,12 +96,23 @@ export const handler: Handler = async (event) => {
         const genAI = createGeminiClient();
         console.log(`[Video Prompts] Generating for component: ${componentId}`);
 
-        // 1. Prepare Input for Gemini
-        const inputContext = JSON.stringify(storyboard, null, 2);
-        const fullPrompt = `${VIDEO_PROMPT_SYSTEM}\n\nSTORYBOARD INPUT:\n${inputContext}`;
+        // 1. Resolve organization for prompt personalization
+        const organizationId = await resolveOrganizationId(supabase, componentId);
+        console.log(`[Video Prompts] Organization: ${organizationId ?? 'global (no org)'}`);
 
-        // 2. Call Gemini
-        const model = 'gemini-2.0-flash'; // Fast and capable enough for prompts
+        // 2. Resolve prompt from DB (org → global → hardcoded default)
+        const systemPrompt = await resolveSinglePrompt(
+            supabase,
+            VIDEO_BROLL_PROMPT_CODE,
+            organizationId,
+        );
+
+        // 3. Prepare Input for Gemini
+        const inputContext = JSON.stringify(storyboard, null, 2);
+        const fullPrompt = `${systemPrompt}\n\nSTORYBOARD INPUT:\n${inputContext}`;
+
+        // 4. Call Gemini
+        const model = 'gemini-2.0-flash';
         const response = await genAI.models.generateContent({
             model: model,
             contents: fullPrompt,
@@ -105,8 +131,7 @@ export const handler: Handler = async (event) => {
 
         const result = JSON.parse(jsonMatch[0]) as VideoPromptResponsePayload;
 
-        // 3. Update Component Assets
-        // Fetch existing assets first
+        // 5. Update Component Assets
         const { data: component } = await supabase
             .from('material_components')
             .select('assets')
@@ -115,7 +140,6 @@ export const handler: Handler = async (event) => {
 
         const currentAssets = component?.assets || {};
 
-        // Format prompts as a readable string for the text area
         const promptsText = result.prompts.map((promptItem) =>
             `[Escena ${promptItem.scene_index}] ${promptItem.generated_prompt}`
         ).join('\n\n');

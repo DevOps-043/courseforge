@@ -385,3 +385,32 @@ async function fetchPromptsFromDb(
 
     return result;
 }
+
+// --------------------------------------------------------------------------
+// Single prompt resolution (for non-materials prompts like B-roll)
+// --------------------------------------------------------------------------
+
+/**
+ * Resolves a single prompt by code from DB with fallback to hardcoded default.
+ *
+ * Fallback chain:
+ *   1. Organization-specific (organization_id = current org)
+ *   2. Global (organization_id IS NULL)
+ *   3. Hardcoded default from DEFAULT_PROMPTS map
+ *
+ * Use this for standalone prompts that are NOT part of the assembled
+ * materials prompt (e.g., VIDEO_BROLL_PROMPTS for Phase 6 production).
+ *
+ * @param supabase - Supabase client (service role recommended)
+ * @param code - The prompt code to resolve (e.g., 'VIDEO_BROLL_PROMPTS')
+ * @param organizationId - Optional org ID for org-specific prompt
+ * @returns The resolved prompt content string
+ */
+export async function resolveSinglePrompt(
+    supabase: SupabaseClient,
+    code: string,
+    organizationId?: string | null,
+): Promise<string> {
+    const dbPrompts = await fetchPromptsFromDb(supabase, [code], organizationId);
+    return dbPrompts.get(code) ?? DEFAULT_PROMPTS[code] ?? '';
+}
