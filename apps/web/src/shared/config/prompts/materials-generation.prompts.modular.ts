@@ -81,25 +81,34 @@ Generar los **materiales finales** de una lección usando el **Prompt Maestro v2
 
 **IMPORTANTE FINAL:** Responde SOLO con el JSON, sin texto adicional. El sistema parseará directamente el JSON y validará la estructura.`;
 
-export const dialoguePromptDefault = `## Diálogo Interactivo (con SofLIA)
+export const dialoguePromptDefault = `## Diálogo Interactivo con SofLIA (Metaprompt — 3 flujos)
 
-**Cuándo:** Práctica reflexiva e iterativa con prompts guiados (actividad, no video).
-**Objetivos (Bloom):** Aplicar prompts; evaluar calidad; reflexionar/mejorar (≥ 2 iteraciones válidas).
+**Cuándo:** Práctica reflexiva con tres flujos adaptativos. SofLIA opera con: flujo normal (usuario llega solo a los criterios de éxito), flujo guiado (SofLIA usa las scenes como orientación socrática), flujo rescate (SofLIA entrega el contenido_de_rescate si el usuario está bloqueado).
 
-**Estructura (orientativa):**
-- 00:00–01:00 Instrucción inicial
-- 01:00–02:00 Escenario breve
-- 02:00–08:00 Práctica guiada (3–5 prompts)
-- 08:00–10:00 Cierre reflexivo
+**Instrucción dual — genera AMBAS partes en el JSON:**
 
-**Generación requerida:**
-- Actividad de 5–9 min
-- 3–5 prompts progresivos para que el usuario pregunte a SofLIA
-- Consigna de reflexión final
-- Registro de mejora (qué cambió y por qué entre iteraciones)
+### Parte A — mission_brief (datos estructurados para SofLIA)
+- **objetivo_acreditacion**: La competencia exacta que el estudiante debe demostrar al finalizar.
+- **verbo_bloom**: El verbo de Bloom del OA (Recordar | Comprender | Aplicar | Analizar | Evaluar | Crear).
+- **conceptos_ancla**: Exactamente 3 términos técnicos clave que el estudiante debe mencionar o usar para acreditar el aprendizaje.
+- **escenario_inicial**: Situación de negocio o práctica concreta (máx. 40 palabras). Empieza directo, sin frases como "Imagina que..." o "En este escenario...".
+- **criterios_de_exito**: Exactamente 2 hitos conversacionales observables que validan que el estudiante alcanzó el objetivo. Deben ser verificables por IA en la conversación.
+- **contenido_de_rescate**: Respuesta correcta sintetizada (máx. 80 palabras) que SofLIA usará si el estudiante está bloqueado. Solo uso interno de la IA.
+
+### Parte B — scenes (guión de referencia para el flujo guiado)
+Genera entre 5 y 9 mensajes que modelen cómo SofLIA orientaría a un estudiante que necesita ayuda (pero no está bloqueado). Usa preguntas socráticas progresivas. No es un script prescriptivo para el estudiante.
+
+**Estructura orientativa:**
+- 1–2 mensajes: SofLIA presenta el escenario_inicial
+- 3–6 mensajes: intercambio con preguntas de complejidad creciente
+- 1 mensaje: cierre con reflexión o refuerzo del logro
+
+**Campos adicionales:**
+- reflection_prompt: Consigna de reflexión post-diálogo para el estudiante.
+- improvement_log: Qué cambió y por qué entre iteraciones de mejora.
 
 **Personajes:** "SofLIA" (instructora virtual), "Usuario" (participante)
-**Tono:** Conversacional pero educativo`;
+**Tono:** Conversacional pero educativo. No revelar la respuesta en el flujo guiado.`;
 
 export const readingPromptDefault = `## Lectura (Refuerzo)
 

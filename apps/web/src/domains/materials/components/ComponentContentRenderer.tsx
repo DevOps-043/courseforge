@@ -18,6 +18,7 @@ import {
   Lightbulb,
   ChevronRight,
   ListOrdered,
+  Target,
 } from 'lucide-react';
 
 export function renderComponentContent(component: MaterialComponent) {
@@ -90,6 +91,62 @@ function DialogueViewer({ content }: { content: DialogueContent }) {
           </p>
           <p className="text-sm text-amber-800 dark:text-[#F59E0B]/90 leading-relaxed">{content.reflection_prompt}</p>
         </div>
+      )}
+
+      {content.mission_brief && (
+        <details className="mt-6 group border border-[#1F5AF6]/20 rounded-xl overflow-hidden">
+          <summary className="flex items-center gap-2 px-4 py-3 bg-[#1F5AF6]/5 cursor-pointer select-none text-sm font-semibold text-[#1F5AF6] hover:bg-[#1F5AF6]/10 transition-colors">
+            <Target className="w-4 h-4" />
+            Brief de Misión (SofLIA)
+          </summary>
+          <div className="p-4 space-y-3 text-sm">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Objetivo de acreditación</p>
+              <p className="text-gray-700 dark:text-gray-200">{content.mission_brief.objetivo_acreditacion}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Verbo Bloom:</p>
+              <span className="px-2 py-0.5 bg-[#1F5AF6]/10 text-[#1F5AF6] rounded text-xs font-bold border border-[#1F5AF6]/20">
+                {content.mission_brief.verbo_bloom}
+              </span>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Conceptos ancla</p>
+              <div className="flex flex-wrap gap-2">
+                {content.mission_brief.conceptos_ancla.map((c, i) => (
+                  <span key={i} className="px-2 py-0.5 bg-gray-100 dark:bg-white/5 rounded-full text-xs text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-white/10">
+                    {c}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Escenario inicial</p>
+              <p className="text-gray-700 dark:text-gray-200 italic">{content.mission_brief.escenario_inicial}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Criterios de éxito</p>
+              <ol className="space-y-1">
+                {content.mission_brief.criterios_de_exito.map((c, i) => (
+                  <li key={i} className="flex items-start gap-2 text-gray-700 dark:text-gray-200">
+                    <span className="w-5 h-5 rounded-full bg-[#00D4B3]/15 text-[#00D4B3] text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                      {i + 1}
+                    </span>
+                    {c}
+                  </li>
+                ))}
+              </ol>
+            </div>
+            <details className="mt-2">
+              <summary className="text-[10px] font-bold uppercase tracking-wider text-gray-400 cursor-pointer select-none hover:text-gray-600 transition-colors">
+                Contenido de rescate (uso interno IA)
+              </summary>
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-white/5 p-3 rounded-lg border border-gray-100 dark:border-white/5 italic">
+                {content.mission_brief.contenido_de_rescate}
+              </p>
+            </details>
+          </div>
+        </details>
       )}
     </div>
   );

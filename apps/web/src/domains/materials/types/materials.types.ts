@@ -226,6 +226,16 @@ export interface MaterialsGenerationOutput {
     source_refs_used: string[];
 }
 
+// Brief de misión para el enfoque metaprompt de SofLIA (3 flujos adaptativos)
+export interface MissionBrief {
+    objetivo_acreditacion: string;
+    verbo_bloom: 'Recordar' | 'Comprender' | 'Aplicar' | 'Analizar' | 'Evaluar' | 'Crear';
+    conceptos_ancla: [string, string, string]; // exactamente 3 términos técnicos
+    escenario_inicial: string;                 // máx. 40 palabras, sin preámbulos
+    criterios_de_exito: [string, string];      // exactamente 2 hitos conversacionales
+    contenido_de_rescate: string;              // respuesta sintetizada para uso interno de IA
+}
+
 // Contenido de Diálogo
 export interface DialogueContent {
     title: string;
@@ -241,6 +251,7 @@ export interface DialogueContent {
         description: string;
         fields: string[];
     };
+    mission_brief?: MissionBrief; // presente solo en generaciones nuevas
 }
 
 // Contenido de Lectura

@@ -53,6 +53,14 @@ const OUTPUT_SCHEMAS: Record<string, string> = {
       "improvement_log": {
         "description": "string",
         "fields": ["string"]
+      },
+      "mission_brief": {
+        "objetivo_acreditacion": "string — competencia exacta a demostrar",
+        "verbo_bloom": "Recordar | Comprender | Aplicar | Analizar | Evaluar | Crear",
+        "conceptos_ancla": ["término1", "término2", "término3"],
+        "escenario_inicial": "string — situación de negocio, máx. 40 palabras, sin preámbulos",
+        "criterios_de_exito": ["hito_conversacional_1", "hito_conversacional_2"],
+        "contenido_de_rescate": "string — respuesta correcta sintetizada para uso interno de la IA"
       }
     }`,
 
