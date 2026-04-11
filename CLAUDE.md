@@ -20,40 +20,25 @@ npm run build        # Build producción
 
 ---
 
-## Lia - Asistente IA
+## SofLIA - Asistente IA
 
-Lia es el asistente IA integrado en toda la app. Tiene dos modos:
+SofLIA es el asistente IA integrado en toda la app.
 
 ### Modo Estándar (Conversacional)
 
 - Usuario envía mensaje de texto
 - Llama a `/api/lia` con Gemini + Google Search grounding
-- Modelo: `gemini-2.5-flash`, temperatura 0.7
+- Modelo: `gemini-2.0-flash`, temperatura 0.7
 - Responde en markdown con fuentes citadas
 
-### Modo Computer Use (Agéntico)
-
-- Usuario envía mensaje + screenshot de la página actual
-- `lia-dom-mapper.ts` escanea el DOM detectando elementos interactivos
-- Modelo: `gemini-2.5-flash`, temperatura 0.3
-- Responde con JSON: `{ message, action/actions, requiresFollowUp }`
-- Ejecuta acciones en el navegador (click, type, scroll, etc.)
-
-### Servicios de Lia
+### Servicios de SofLIA
 
 | Archivo              | Función                                                                                     |
 | -------------------- | ------------------------------------------------------------------------------------------- |
-| `lia-service.ts`     | Ejecuta acciones en el navegador (click_at, type_at, scroll, key_press) con feedback visual |
 | `lia-app-context.ts` | Prompts del sistema y contexto de la app (páginas, menús, comportamiento)                   |
 | `lia-db-context.ts`  | Obtiene contexto de Supabase (usuario, artefactos recientes, estadísticas)                  |
-| `lia-dom-mapper.ts`  | Escanea DOM, detecta elementos interactivos, retorna coordenadas                            |
 
-### Detección de Alucinaciones
-
-Si Lia intenta abrir un artefacto que no existe en el DOM, automáticamente:
-
-1. Busca en la barra de búsqueda
-2. Si no encuentra, hace scroll para buscar el elemento
+---
 
 ---
 
@@ -124,7 +109,7 @@ Para cada lección genera:
 **Tipos de Componentes**:
 | Tipo | Descripción |
 |------|-------------|
-| `DIALOGUE` | Conversación entre Lia y estudiante |
+| `DIALOGUE` | Conversación entre SofLIA y estudiante |
 | `READING` | Artículo con puntos clave |
 | `QUIZ` | Preguntas de evaluación |
 | `DEMO_GUIDE` | Guía paso a paso con screenshots |
@@ -373,7 +358,7 @@ apps/
 │   ├── components/
 │   │   ├── lia/            # LiaChat, ChatWindow, ChatMessage
 │   │   └── layout/         # SharedSidebarLayout, UserMenu
-│   ├── lib/                # Servicios Lia (service, app-context, db-context, dom-mapper)
+│   ├── lib/                # Servicios SofLIA (service, app-context, db-context, dom-mapper)
 │   ├── domains/            # Lógica de negocio
 │   │   ├── syllabus/       # service, types, validators, config
 │   │   ├── instructionalPlan/
@@ -405,8 +390,8 @@ SUPABASE_SERVICE_ROLE_KEY=
 
 # Gemini
 GOOGLE_GENERATIVE_AI_API_KEY=
-GEMINI_MODEL=gemini-2.5-flash
-GEMINI_SEARCH_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-2.0-flash
+GEMINI_SEARCH_MODEL=gemini-2.0-flash
 
 # OpenAI (fallback)
 OPENAI_API_KEY=

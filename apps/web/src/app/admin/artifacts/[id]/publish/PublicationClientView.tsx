@@ -182,17 +182,26 @@ export default function PublicationClientView({
                 }
             }
 
-            setVideoMappings({ ...newMappings });
-            setSelectedLessons(
-                new Set(
-                    Object.keys(newMappings).filter(
-                        (lessonId) => !!newMappings[lessonId]?.video_id,
-                    ),
+            const syncedSelectedLessons = new Set(
+                Object.keys(newMappings).filter(
+                    (lessonId) => !!newMappings[lessonId]?.video_id,
                 ),
             );
 
+            setVideoMappings({ ...newMappings });
+            setSelectedLessons(syncedSelectedLessons);
+
+            await savePublicationDraftRequest(
+                artifactId,
+                courseData,
+                newMappings,
+                syncedSelectedLessons,
+                'DRAFT',
+            );
+            router.refresh();
+
             toast.success(
-                `Videos sincronizados (${lessonsWithVideo.length} videos, ${syncedCount} con duracion)`,
+                `Videos sincronizados y guardados (${lessonsWithVideo.length} videos, ${syncedCount} con duracion)`,
             );
         } catch (error) {
             console.error(error);
