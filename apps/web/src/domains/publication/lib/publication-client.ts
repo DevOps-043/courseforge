@@ -16,6 +16,21 @@ const DEFAULT_COURSE_DATA: PublicationCourseData = {
   thumbnail_url: "",
 };
 
+/**
+ * Generates a stable, URL-safe slug from a title.
+ * Strips accents, lowercases, replaces non-alphanumeric runs with hyphens.
+ * Never appends a timestamp — the result is deterministic and safe to reuse as the idempotency key on SofLIA.
+ */
+export function generateSlugFromTitle(title: string): string {
+  return title
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .slice(0, 80);
+}
+
 export function formatThumbnailUrl(url?: string) {
   if (!url) return "";
 
