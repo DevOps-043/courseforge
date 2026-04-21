@@ -16,6 +16,7 @@ import type {
   MaterialsPayload,
   MaterialLesson,
 } from "../types/materials.types";
+import { selectLatestComponentsByType } from "../lib/material-component-versions";
 
 export const materialsService = {
   async getMaterialsByArtifactId(
@@ -47,17 +48,8 @@ export const materialsService = {
       return [];
     }
 
-    const components = (result.components || []) as MaterialComponent[];
-    const uniqueComponents = new Map<string, MaterialComponent>();
-
-    for (const component of components) {
-      if (!uniqueComponents.has(component.type)) {
-        uniqueComponents.set(component.type, component);
-      }
-    }
-
-    return Array.from(uniqueComponents.values()).sort((a, b) =>
-      a.type.localeCompare(b.type),
+    return selectLatestComponentsByType(
+      (result.components || []) as MaterialComponent[],
     );
   },
 

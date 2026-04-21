@@ -1,4 +1,5 @@
 import type { PackageFile } from "@/domains/materials/types/materials.types";
+import { selectLatestComponentsByType } from "@/domains/materials/lib/material-component-versions";
 import type {
   LessonVideoData,
   PublicationArtifactRecord,
@@ -32,7 +33,9 @@ export function sortLessonsNaturally<T extends { lesson_id: string }>(lessons: T
 export function hasVideoComponent(
   components: PublicationComponent[] | null | undefined,
 ): boolean {
-  return (components || []).some((c) => VIDEO_COMPONENT_TYPES.has(c.type));
+  return selectLatestComponentsByType(components).some((component) =>
+    VIDEO_COMPONENT_TYPES.has(component.type),
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -183,9 +186,10 @@ function transformLiaContent(content: unknown) {
 }
 
 function buildTranscription(components: PublicationComponent[]) {
+  const latestComponents = selectLatestComponentsByType(components);
   let transcription = "";
 
-  for (const component of components) {
+  for (const component of latestComponents) {
     if (!VIDEO_COMPONENT_TYPES.has(component.type)) {
       continue;
     }
@@ -219,9 +223,10 @@ function buildTranscription(components: PublicationComponent[]) {
 }
 
 function buildActivities(components: PublicationComponent[]) {
+  const latestComponents = selectLatestComponentsByType(components);
   const activities: PublicationPayloadActivity[] = [];
 
-  for (const component of components) {
+  for (const component of latestComponents) {
     const content = component.content;
     if (!content || !isRecord(content)) {
       continue;
@@ -292,9 +297,10 @@ function buildMaterials(
   components: PublicationComponent[],
   files: PackageFile[],
 ) {
+  const latestComponents = selectLatestComponentsByType(components);
   const materials: PublicationPayloadMaterial[] = [];
 
-  for (const component of components) {
+  for (const component of latestComponents) {
     const content = component.content;
     if (component.type !== "QUIZ" || !content) {
       continue;
@@ -366,6 +372,7 @@ export function buildPublicationLesson(params: {
   }
 
   const duration = Math.round(Math.max(Number(mapping?.duration) || 0, 60));
+  const activeComponents = selectLatestComponentsByType(lesson.components || []);
   const payloadLesson: PublicationPayloadLesson = {
     title: lesson.title,
     order_index: orderIndex,
@@ -373,14 +380,14 @@ export function buildPublicationLesson(params: {
     duration,
     summary: lesson.summary || "",
     description: lesson.summary || "",
-    transcription: buildTranscription(lesson.components || []),
+    transcription: buildTranscription(activeComponents),
     video_url: videoUrl,
     video_provider: provider,
     video_provider_id: videoId,
     is_free: false,
     content_blocks: [],
-    activities: buildActivities(lesson.components || []),
-    materials: buildMaterials(lesson.id, lesson.components || [], files),
+    activities: buildActivities(activeComponents),
+    materials: buildMaterials(lesson.id, activeComponents, files),
   };
 
   return payloadLesson;
@@ -406,7 +413,8 @@ export function buildPreviewLesson(params: {
     order_index: orderIndex,
     video_provider: videoProvider,
     video_provider_id: videoProviderId,
-    has_transcription: buildTranscription(lesson.components || []).length > 0,
+    has_transcription:
+      buildTranscription(selectLatestComponentsByType(lesson.components || [])).length > 0,
   };
 
   return previewLesson;

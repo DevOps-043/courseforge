@@ -53,6 +53,7 @@ export type PublicationComponentContent =
 
 export interface PublicationComponent {
   type: ComponentType;
+  iteration_number?: number | null;
   assets?: MaterialAssets | null;
   content?: PublicationComponentContent | null;
 }

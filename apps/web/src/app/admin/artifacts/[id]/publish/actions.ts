@@ -6,6 +6,7 @@ import {
     hasVideoComponent,
     sortLessonsNaturally,
 } from '@/domains/publication/lib/publication-payload-builders';
+import { selectLatestComponentsByType } from '@/domains/materials/lib/material-component-versions';
 import type {
     PublicationComponent,
     PublicationDataResult,
@@ -42,11 +43,13 @@ function extractVideoMetadata(
     let videoUrl = '';
     let videoDuration = 0;
 
-    if (!Array.isArray(components)) {
+    const activeComponents = selectLatestComponentsByType(components);
+
+    if (activeComponents.length === 0) {
         return { videoUrl, videoDuration };
     }
 
-    const videoComponent = components.find(
+    const videoComponent = activeComponents.find(
         (component) =>
             component.assets?.final_video_url ||
             component.assets?.video_url ||
@@ -87,7 +90,9 @@ function extractVideoMetadata(
 function mapLessonToPublicationLesson(
     lesson: RawMaterialLessonRow,
 ): PublicationLesson {
-    const components = lesson.material_components || [];
+    const components = selectLatestComponentsByType(
+        lesson.material_components || [],
+    );
     const { videoUrl, videoDuration } = extractVideoMetadata(components);
 
     return {
@@ -105,7 +110,7 @@ function mapLessonToVideoLesson(
     lesson: RawMaterialLessonRow,
 ): PublicationVideoLesson {
     const { videoUrl, videoDuration } = extractVideoMetadata(
-        lesson.material_components,
+        selectLatestComponentsByType(lesson.material_components || []),
     );
 
     return {
@@ -159,6 +164,7 @@ export async function getPublicationData(
                 oa_text,
                 material_components(
                     type,
+                    iteration_number,
                     assets,
                     content
                 )
@@ -273,6 +279,7 @@ export async function refreshProductionVideos(artifactId: string) {
             module_title,
             material_components(
                 type,
+                iteration_number,
                 assets,
                 content
             )

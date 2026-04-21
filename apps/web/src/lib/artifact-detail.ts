@@ -11,6 +11,7 @@ import {
   hasVideoComponent,
   sortLessonsNaturally,
 } from "@/domains/publication/lib/publication-payload-builders";
+import { selectLatestComponentsByType } from "@/domains/materials/lib/material-component-versions";
 import type {
   PublicationComponent,
   PublicationRequestRecord,
@@ -215,6 +216,7 @@ async function loadPublicationLessons(
       module_title,
       material_components(
         type,
+        iteration_number,
         assets,
         content
       )
@@ -231,10 +233,13 @@ async function loadPublicationLessons(
   return sorted
     .filter((lesson) => hasVideoComponent(lesson.material_components))
     .map((lesson) => {
+      const activeComponents = selectLatestComponentsByType(
+        lesson.material_components,
+      );
       let videoUrl = "";
       let duration = 0;
 
-      const videoComponent = (lesson.material_components || []).find(
+      const videoComponent = activeComponents.find(
         (component) =>
           component.assets?.final_video_url ||
           component.assets?.video_url ||
