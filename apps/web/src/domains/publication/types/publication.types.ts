@@ -55,6 +55,7 @@ export interface PublicationComponent {
   type: ComponentType;
   assets?: MaterialAssets | null;
   content?: PublicationComponentContent | null;
+  iteration_number?: number | null;
 }
 
 export interface PublicationVideoLesson {
@@ -102,6 +103,10 @@ export interface PublicationPayloadActivity {
   title: string;
   type: string;
   data: string | Record<string, unknown>;
+  activity_schema_version?: number;
+  requires_soflia_validation?: boolean;
+  activity_config?: Record<string, unknown>;
+  external_tool_key?: string | null;
 }
 
 export interface PublicationPayloadMaterial {

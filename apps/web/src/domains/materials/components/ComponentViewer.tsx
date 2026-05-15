@@ -36,7 +36,7 @@ const COMPONENT_ICONS: Record<ComponentType, ReactNode> = {
 };
 
 const COMPONENT_LABELS: Record<ComponentType, string> = {
-  DIALOGUE: 'Diálogo con Lia',
+  DIALOGUE: 'Diálogo con SofLIA',
   READING: 'Lectura',
   QUIZ: 'Cuestionario',
   DEMO_GUIDE: 'Guía Demo',

@@ -84,10 +84,33 @@ function extractVideoMetadata(
     return { videoUrl, videoDuration };
 }
 
+function getComponentIteration(component: PublicationComponent) {
+    return typeof component.iteration_number === 'number' ? component.iteration_number : 0;
+}
+
+function keepLatestComponentPerType(
+    components: PublicationComponent[] | null | undefined,
+) {
+    if (!Array.isArray(components)) {
+        return [];
+    }
+
+    const latestByType = new Map<string, PublicationComponent>();
+
+    for (const component of components) {
+        const existing = latestByType.get(component.type);
+        if (!existing || getComponentIteration(component) > getComponentIteration(existing)) {
+            latestByType.set(component.type, component);
+        }
+    }
+
+    return Array.from(latestByType.values());
+}
+
 function mapLessonToPublicationLesson(
     lesson: RawMaterialLessonRow,
 ): PublicationLesson {
-    const components = lesson.material_components || [];
+    const components = keepLatestComponentPerType(lesson.material_components);
     const { videoUrl, videoDuration } = extractVideoMetadata(components);
 
     return {
@@ -105,7 +128,7 @@ function mapLessonToVideoLesson(
     lesson: RawMaterialLessonRow,
 ): PublicationVideoLesson {
     const { videoUrl, videoDuration } = extractVideoMetadata(
-        lesson.material_components,
+        keepLatestComponentPerType(lesson.material_components),
     );
 
     return {
@@ -160,14 +183,15 @@ export async function getPublicationData(
                 material_components(
                     type,
                     assets,
-                    content
+                    content,
+                    iteration_number
                 )
             `)
             .eq('materials_id', materials.id);
 
         const sorted = sortLessonsNaturally((rawLessons || []) as RawMaterialLessonRow[]);
         lessons = sorted
-            .filter((lesson) => hasVideoComponent(lesson.material_components))
+            .filter((lesson) => hasVideoComponent(keepLatestComponentPerType(lesson.material_components)))
             .map((lesson) => mapLessonToPublicationLesson(lesson));
     }
 
@@ -274,7 +298,8 @@ export async function refreshProductionVideos(artifactId: string) {
             material_components(
                 type,
                 assets,
-                content
+                content,
+                iteration_number
             )
         `)
         .eq('materials_id', materials.id);
@@ -291,7 +316,7 @@ export async function refreshProductionVideos(artifactId: string) {
     return {
         success: true as const,
         lessons: sorted
-            .filter((lesson) => hasVideoComponent(lesson.material_components))
+            .filter((lesson) => hasVideoComponent(keepLatestComponentPerType(lesson.material_components)))
             .map((lesson) => mapLessonToVideoLesson(lesson)),
     };
 }

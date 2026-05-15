@@ -10,6 +10,7 @@ import {
   validateNoExtraComponents,
   validateOAReflected,
   validateRequiredDemoGuide,
+  validateSofliaDialogueRuntime,
 } from "./materials-control3.validators";
 import {
   buildControl4Checks,
@@ -36,6 +37,7 @@ export {
   validateQuizQuantity,
   validateQuizTypes,
   validateRequiredDemoGuide,
+  validateSofliaDialogueRuntime,
   validateSourcesUsage,
 };
 

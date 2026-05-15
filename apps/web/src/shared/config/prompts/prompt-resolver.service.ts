@@ -260,6 +260,86 @@ const OUTPUT_SCHEMAS: Record<string, string> = {
     }`,
 };
 
+OUTPUT_SCHEMAS.DIALOGUE = `"DIALOGUE": {
+      "interactionType": "soflia_dialogue",
+      "runtimeType": "SOFLIA_DIALOGUE",
+      "schemaVersion": "1.0.0",
+      "title": "string",
+      "visibleGoal": "string",
+      "learningObjective": "string",
+      "scenario": "string",
+      "openingMessage": "string",
+      "studentRole": "string",
+      "sofliaRole": "string",
+      "successCriteria": [
+        {
+          "id": "stable_snake_case_id",
+          "label": "string",
+          "description": "string",
+          "required": true
+        }
+      ],
+      "expectedEvidence": ["string"],
+      "commonMistakes": ["string"],
+      "hintLadder": [
+        {
+          "id": "stable_snake_case_id",
+          "level": 1,
+          "targetCriterionId": "stable_snake_case_id",
+          "content": "string"
+        }
+      ],
+      "challengePrompts": ["string"],
+      "contextAdaptation": {
+        "enabled": true,
+        "instructions": "string",
+        "focus": ["role", "industry", "mission"]
+      },
+      "rescueContent": "string",
+      "rubric": [
+        {
+          "id": "stable_snake_case_id",
+          "label": "string",
+          "description": "string",
+          "weight": 25
+        }
+      ],
+      "policy": {
+        "approvalMinimum": 75,
+        "maxTurns": 8,
+        "maxHints": 3,
+        "rescueAfterLowEvidenceTurns": 2,
+        "allowRetry": true
+      },
+      "tutor": {
+        "tone": "direct_supportive",
+        "maxResponseSentences": 4
+      },
+      "evaluator": {
+        "promptVersion": "DIALOGUE_EVALUATOR_RUNTIME@1.0.0"
+      },
+      "analytics": {
+        "trackEvents": [
+          "dialogue_started",
+          "user_turn_submitted",
+          "evaluation_completed",
+          "criterion_met",
+          "hint_given",
+          "challenge_given",
+          "rescue_triggered",
+          "dialogue_completed",
+          "dialogue_failed",
+          "retry_started",
+          "injection_detected"
+        ]
+      },
+      "versioning": {
+        "materialVersion": "string",
+        "rubricVersion": "string",
+        "promptVersion": "SOFLIA_DIALOGUE_TUTOR@1.0.0"
+      }
+    }`;
+
 // --------------------------------------------------------------------------
 // Public API
 // --------------------------------------------------------------------------
@@ -313,6 +393,7 @@ export function assemblePrompt(resolved: ResolvedPrompts, componentTypes: string
     parts.push('- El comportamiento pedagogico, tono, dinamica y estrategia de interaccion deben venir del prompt especifico del componente.\n');
     parts.push('- Si el prompt del componente pide un estilo o dinamica particular y no contradice el schema, sigue el prompt del componente.\n');
     parts.push('- No conviertas el schema en una guia de estilo ni en una plantilla rigida de redaccion.\n');
+    parts.push('- Para DIALOGUE, genera configuracion evaluable para SOFLIA_DIALOGUE; no generes scenes, guiones rigidos ni respuestas esperadas palabra por palabra.\n');
     parts.push('\n---\n');
 
     parts.push('## Componentes a generar\n');

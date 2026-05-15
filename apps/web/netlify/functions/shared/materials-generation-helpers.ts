@@ -292,25 +292,29 @@ export async function saveGeneratedComponents(
 ) {
   const components = content.components || {};
   const refs = content.source_refs_used || [];
+  const componentTypesToReplace =
+    onlyTypes && onlyTypes.length > 0 ? onlyTypes : Object.keys(components);
 
-  if (onlyTypes && onlyTypes.length > 0) {
-    // Partial regeneration: only delete the specific component types being replaced
-    for (const type of onlyTypes) {
-      await supabase
-        .from("material_components")
-        .delete()
-        .eq("material_lesson_id", lessonId)
-        .eq("type", type)
-        .eq("iteration_number", iteration);
-    }
-    console.log(`${logPrefix} Deleted ${onlyTypes.length} component type(s) for partial regen`);
-  } else {
-    // Full regeneration: delete all components for this iteration
-    await supabase
+  if (!onlyTypes || componentTypesToReplace.length > 0) {
+    let deleteQuery = supabase
       .from("material_components")
       .delete()
-      .eq("material_lesson_id", lessonId)
-      .eq("iteration_number", iteration);
+      .eq("material_lesson_id", lessonId);
+
+    if (onlyTypes && onlyTypes.length > 0) {
+      deleteQuery = deleteQuery.in("type", componentTypesToReplace);
+    }
+
+    const { error: deleteError } = await deleteQuery;
+    if (deleteError) {
+      throw deleteError;
+    }
+
+    console.log(
+      `${logPrefix} Replaced existing component(s): ${
+        onlyTypes ? componentTypesToReplace.join(", ") : "all"
+      }`,
+    );
   }
 
   for (const [type, data] of Object.entries(components)) {
@@ -318,7 +322,7 @@ export async function saveGeneratedComponents(
       continue;
     }
 
-    await supabase.from("material_components").insert({
+    const { error: insertError } = await supabase.from("material_components").insert({
       material_lesson_id: lessonId,
       type,
       content: data,
@@ -327,6 +331,10 @@ export async function saveGeneratedComponents(
       validation_errors: [],
       iteration_number: iteration,
     });
+
+    if (insertError) {
+      throw insertError;
+    }
   }
 
   console.log(

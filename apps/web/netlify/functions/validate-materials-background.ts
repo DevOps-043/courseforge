@@ -31,13 +31,33 @@ interface QuizItem {
     explanation?: string | null;
 }
 
-interface MaterialComponentContent {
-    items?: QuizItem[] | null;
+interface MaterialComponentRecord {
+    content?: Record<string, unknown> | null;
+    type: string;
 }
 
-interface MaterialComponentRecord {
-    content?: MaterialComponentContent | null;
-    type: string;
+const STABLE_ID_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+}
+
+function isNonEmptyString(value: unknown) {
+    return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isStableId(value: unknown): value is string {
+    return typeof value === 'string' && STABLE_ID_PATTERN.test(value);
+}
+
+function getRecordArray(value: unknown) {
+    return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function getStringArray(value: unknown) {
+    return Array.isArray(value)
+        ? value.filter((entry): entry is string => typeof entry === 'string')
+        : [];
 }
 
 export const handler: Handler = async (event) => {
@@ -205,7 +225,9 @@ function runInlineValidation(
         errors.push('Se esperaba QUIZ pero no fue generado');
     } else if (quizComponent) {
         const content = quizComponent.content || {};
-        const items = content.items || [];
+        const items = Array.isArray(content.items)
+            ? (content.items as QuizItem[])
+            : [];
 
         const minQuestions = lesson.quiz_spec?.min_questions || 3;
         if (items.length < minQuestions) {
@@ -221,8 +243,14 @@ function runInlineValidation(
         }
     }
 
+    const dialogueErrors = validateSofliaDialogueRuntimeInline(
+        expectedTypes,
+        components,
+    );
+    errors.push(...dialogueErrors);
+
     // Determine control states
-    const hasCtrl3Error = missing.length > 0;
+    const hasCtrl3Error = missing.length > 0 || dialogueErrors.length > 0;
     const hasCtrl4Error = false; // Lenient for now
     const hasCtrl5Error = errors.some(e => e.includes('Quiz') || e.includes('QUIZ') || e.includes('pregunta'));
 
@@ -232,6 +260,142 @@ function runInlineValidation(
         control5_quiz: hasCtrl5Error ? 'FAIL' : 'PASS',
         errors,
     };
+}
+
+function validateSofliaDialogueRuntimeInline(
+    expectedTypes: string[],
+    components: MaterialComponentRecord[],
+) {
+    const errors: string[] = [];
+
+    if (!expectedTypes.includes('DIALOGUE')) {
+        return errors;
+    }
+
+    const dialogueComponent = components.find((component) => component.type === 'DIALOGUE');
+    if (!dialogueComponent) {
+        errors.push('Se esperaba DIALOGUE pero no fue generado');
+        return errors;
+    }
+
+    const content = dialogueComponent.content;
+    if (!isRecord(content)) {
+        errors.push('DIALOGUE debe ser un objeto JSON');
+        return errors;
+    }
+
+    if (
+        content.interactionType !== 'soflia_dialogue' ||
+        content.runtimeType !== 'SOFLIA_DIALOGUE'
+    ) {
+        errors.push('DIALOGUE usa formato legacy; regenera solo este componente para SOFLIA_DIALOGUE');
+        return errors;
+    }
+
+    const requiredStringFields = [
+        'schemaVersion',
+        'title',
+        'visibleGoal',
+        'learningObjective',
+        'scenario',
+        'openingMessage',
+        'studentRole',
+        'sofliaRole',
+        'rescueContent',
+    ];
+
+    for (const field of requiredStringFields) {
+        if (!isNonEmptyString(content[field])) {
+            errors.push(`${field} requerido`);
+        }
+    }
+
+    const criteria = getRecordArray(content.successCriteria);
+    if (criteria.length < 1) {
+        errors.push('successCriteria debe incluir al menos un criterio');
+    }
+
+    const criterionIds = new Set<string>();
+    for (const criterion of criteria) {
+        if (!isStableId(criterion.id)) {
+            errors.push('successCriteria contiene ids no estables');
+            break;
+        }
+        criterionIds.add(criterion.id);
+    }
+
+    if (getStringArray(content.expectedEvidence).length === 0) {
+        errors.push('expectedEvidence debe incluir al menos una evidencia');
+    }
+    if (getStringArray(content.commonMistakes).length === 0) {
+        errors.push('commonMistakes debe incluir al menos un error frecuente');
+    }
+
+    const hints = getRecordArray(content.hintLadder);
+    if (hints.length === 0) {
+        errors.push('hintLadder debe incluir pistas progresivas');
+    }
+    for (const hint of hints) {
+        if (!isStableId(hint.id)) {
+            errors.push('hintLadder contiene ids no estables');
+            break;
+        }
+        if (
+            typeof hint.targetCriterionId !== 'string' ||
+            !criterionIds.has(hint.targetCriterionId)
+        ) {
+            errors.push('hintLadder debe apuntar a criterios existentes');
+            break;
+        }
+    }
+
+    if (getStringArray(content.challengePrompts).length === 0) {
+        errors.push('challengePrompts debe incluir al menos un reto');
+    }
+
+    const rubric = getRecordArray(content.rubric);
+    const rubricWeight = rubric.reduce(
+        (total, item) =>
+            total + (typeof item.weight === 'number' && Number.isFinite(item.weight) ? item.weight : 0),
+        0,
+    );
+    if (rubric.length === 0 || rubricWeight !== 100) {
+        errors.push('rubric debe existir y sus pesos deben sumar 100');
+    }
+    for (const item of rubric) {
+        if (!isStableId(item.id)) {
+            errors.push('rubric contiene ids no estables');
+            break;
+        }
+    }
+
+    const policy = isRecord(content.policy) ? content.policy : {};
+    const approvalMinimum = Number(policy.approvalMinimum);
+    const maxTurns = Number(policy.maxTurns);
+    const maxHints = Number(policy.maxHints);
+
+    if (
+        !Number.isFinite(approvalMinimum) ||
+        approvalMinimum < 0 ||
+        approvalMinimum > 100
+    ) {
+        errors.push('policy.approvalMinimum debe estar entre 0 y 100');
+    }
+    if (!Number.isFinite(maxTurns) || maxTurns < 1 || maxTurns > 30) {
+        errors.push('policy.maxTurns debe estar entre 1 y 30');
+    }
+    if (!Number.isNaN(maxHints) && (maxHints < 0 || maxHints > 30)) {
+        errors.push('policy.maxHints debe estar entre 0 y 30');
+    }
+
+    const openingMessage = String(content.openingMessage || '').toLowerCase();
+    if (openingMessage.includes('rubrica') || openingMessage.includes('rúbrica')) {
+        errors.push('openingMessage no debe revelar la rubrica');
+    }
+
+    return errors.length > 0
+        ? [`Contrato SOFLIA_DIALOGUE invalido: ${errors.join('; ')}`]
+        : [];
 }
 
 // Single lesson validation

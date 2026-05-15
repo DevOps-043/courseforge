@@ -46,7 +46,17 @@ export function renderComponentContent(component: MaterialComponent) {
   }
 }
 
+function isSofliaDialogueContent(
+  content: DialogueContent,
+): content is Extract<DialogueContent, { runtimeType: 'SOFLIA_DIALOGUE' }> {
+  return 'runtimeType' in content && content.runtimeType === 'SOFLIA_DIALOGUE';
+}
+
 function DialogueViewer({ content }: { content: DialogueContent }) {
+  if (isSofliaDialogueContent(content)) {
+    return <SofliaDialogueViewer content={content} />;
+  }
+
   return (
     <div className="space-y-4">
       {content.title && <h4 className="font-semibold text-gray-900 dark:text-white text-lg">{content.title}</h4>}
@@ -61,14 +71,14 @@ function DialogueViewer({ content }: { content: DialogueContent }) {
           <div key={i} className={`flex gap-3 ${scene.character === 'Usuario' ? 'flex-row-reverse' : ''}`}>
             <div
               className={`w-8 h-8 rounded-xl flex items-center justify-center shadow-sm flex-shrink-0 ${
-                scene.character === 'Lia'
+                scene.character === 'SofLIA' || scene.character === 'Lia'
                   ? 'bg-[#00D4B3] text-[#0A2540]'
                   : scene.character === 'Usuario'
                     ? 'bg-[#0A2540] text-white'
                     : 'bg-gray-200 dark:bg-white/10 text-gray-600 dark:text-gray-300'
               }`}
             >
-              {scene.character === 'Lia' ? <Bot className="h-5 w-5" /> : <User className="h-4 w-4" />}
+              {scene.character === 'SofLIA' || scene.character === 'Lia' ? <Bot className="h-5 w-5" /> : <User className="h-4 w-4" />}
             </div>
             <div
               className={`max-w-[85%] p-4 rounded-2xl text-sm shadow-sm ${
@@ -148,6 +158,149 @@ function DialogueViewer({ content }: { content: DialogueContent }) {
           </div>
         </details>
       )}
+    </div>
+  );
+}
+
+function SofliaDialogueViewer({
+  content,
+}: {
+  content: Extract<DialogueContent, { runtimeType: 'SOFLIA_DIALOGUE' }>;
+}) {
+  const successCriteria = Array.isArray(content.successCriteria) ? content.successCriteria : [];
+  const expectedEvidence = Array.isArray(content.expectedEvidence) ? content.expectedEvidence : [];
+  const commonMistakes = Array.isArray(content.commonMistakes) ? content.commonMistakes : [];
+  const challengePrompts = Array.isArray(content.challengePrompts) ? content.challengePrompts : [];
+  const hintLadder = Array.isArray(content.hintLadder) ? content.hintLadder : [];
+  const rubric = Array.isArray(content.rubric) ? content.rubric : [];
+  const policy = content.policy || {
+    approvalMinimum: 0,
+    maxTurns: 0,
+    maxHints: 0,
+  };
+  const versioning = content.versioning || {
+    promptVersion: "sin_version",
+    rubricVersion: "sin_version",
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {content.title && <h4 className="font-semibold text-gray-900 dark:text-white text-lg">{content.title}</h4>}
+          <span className="px-2 py-0.5 bg-[#00D4B3]/10 text-[#00D4B3] rounded text-[10px] font-bold border border-[#00D4B3]/20">
+            {content.runtimeType}
+          </span>
+          <span className="px-2 py-0.5 bg-[#1F5AF6]/10 text-[#1F5AF6] rounded text-[10px] font-bold border border-[#1F5AF6]/20">
+            v{content.schemaVersion}
+          </span>
+        </div>
+        <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{content.visibleGoal}</p>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="p-4 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Escenario</p>
+          <p className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed">{content.scenario}</p>
+        </div>
+        <div className="p-4 bg-blue-50 dark:bg-[#1F5AF6]/10 border border-blue-100 dark:border-[#1F5AF6]/20 rounded-xl">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[#1F5AF6] mb-2">Opening message</p>
+          <p className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed">{content.openingMessage}</p>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-2">
+          <Target className="w-4 h-4" />
+          Criterios de exito
+        </p>
+        <div className="space-y-3">
+          {successCriteria.map((criterion) => (
+            <div key={criterion.id} className="p-4 bg-white dark:bg-[#131820] border border-gray-200 dark:border-white/5 rounded-xl">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <span className="text-sm font-semibold text-gray-900 dark:text-white">{criterion.label}</span>
+                {criterion.required && (
+                  <span className="px-2 py-0.5 bg-amber-50 dark:bg-[#F59E0B]/10 text-amber-700 dark:text-[#F59E0B] rounded text-[10px] font-bold border border-amber-100 dark:border-[#F59E0B]/20">
+                    requerido
+                  </span>
+                )}
+              </div>
+              <p className="text-xs font-mono text-gray-400 mb-2">{criterion.id}</p>
+              <p className="text-sm text-gray-700 dark:text-gray-300">{criterion.description}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <ListPanel title="Evidencia esperada" items={expectedEvidence} />
+        <ListPanel title="Errores comunes" items={commonMistakes} />
+        <ListPanel title="Retos" items={challengePrompts} />
+        <ListPanel
+          title="Pistas"
+          items={hintLadder.map((hint) => `${hint.level}. ${hint.content}`)}
+        />
+      </div>
+
+      <details className="group border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden">
+        <summary className="px-4 py-3 bg-gray-50 dark:bg-white/5 cursor-pointer select-none text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+          Politica, rubrica y versionado
+        </summary>
+        <div className="p-4 space-y-4 text-sm">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Metric label="Aprobacion" value={`${policy.approvalMinimum}%`} />
+            <Metric label="Turnos max." value={String(policy.maxTurns)} />
+            <Metric label="Pistas max." value={String(policy.maxHints)} />
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Rubrica</p>
+            <ul className="space-y-2">
+              {rubric.map((item) => (
+                <li key={item.id} className="flex items-start justify-between gap-3">
+                  <span className="text-gray-700 dark:text-gray-300">{item.label}</span>
+                  <span className="font-mono text-xs text-gray-500">{item.weight}%</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <details>
+            <summary className="text-[10px] font-bold uppercase tracking-wider text-gray-400 cursor-pointer select-none">
+              Rescue content interno
+            </summary>
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-white/5 p-3 rounded-lg border border-gray-100 dark:border-white/5 italic">
+              {content.rescueContent}
+            </p>
+          </details>
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            Prompt: {versioning.promptVersion} - Rubrica: {versioning.rubricVersion}
+          </div>
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function ListPanel({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="p-4 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3">{title}</p>
+      <ul className="space-y-2">
+        {items.map((item, index) => (
+          <li key={`${title}-${index}`} className="text-sm text-gray-700 dark:text-gray-300 flex gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#00D4B3] mt-2 flex-shrink-0" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-100 dark:border-white/5">
+      <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">{label}</p>
+      <p className="text-base font-semibold text-gray-900 dark:text-white">{value}</p>
     </div>
   );
 }

@@ -98,6 +98,7 @@ export function SystemPromptsManager() {
 
         setSaving(true);
         setMessage(null);
+        const promptBeforeSave = prompts.find(p => p.id === selectedPromptId);
 
         const updateDTO: UpdateSystemPromptDTO = {
             id: selectedPromptId,
@@ -107,7 +108,13 @@ export function SystemPromptsManager() {
         const res = await updateSystemPromptAction(updateDTO);
 
         if (res.success && res.prompt) {
-            setPrompts(prev => prev.map(p => p.id === selectedPromptId ? { ...res.prompt!, is_org_override: true } : p));
+            setPrompts(prev => prev.map(p => {
+                const isSavedPrompt = p.id === selectedPromptId
+                    || (promptBeforeSave && p.code === promptBeforeSave.code && p.version === promptBeforeSave.version);
+
+                return isSavedPrompt ? { ...res.prompt!, is_org_override: true } : p;
+            }));
+            setSelectedPromptId(res.prompt.id);
             setMessage({ type: 'success', text: 'Prompt actualizado correctamente.' });
             setTimeout(() => setMessage(null), STATUS_MESSAGE_DISMISS_DELAY_MS);
         } else {

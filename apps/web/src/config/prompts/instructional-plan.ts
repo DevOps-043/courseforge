@@ -19,7 +19,7 @@ CADA descripción de componente DEBE:
 "Debate sobre el liderazgo y por qué es importante (7 min)."
 
 ✅ BUENO (específico y detallado):
-"Conversación con Lia sobre por qué tendemos a leer mensajes neutrales con un tono negativo en Slack o Teams. Se introduce el concepto de 'negativity bias' y el impacto de la ausencia de lenguaje corporal en entornos remotos. Incluye ejemplos de malinterpretaciones comunes en emails corporativos (6-8 min)."
+"Conversación con SofLIA sobre por qué tendemos a leer mensajes neutrales con un tono negativo en Slack o Teams. Se introduce el concepto de 'negativity bias' y el impacto de la ausencia de lenguaje corporal en entornos remotos. Incluye ejemplos de malinterpretaciones comunes en emails corporativos (6-8 min)."
 
 ❌ MALO (genérico):
 "Lectura sobre comunicación (~750 palabras)."
@@ -46,7 +46,7 @@ ANALIZA el curso para determinar si es:
     📋 COMPONENTES POR LECCIÓN
 ═══════════════════════════════════════════════════════════════
 OBLIGATORIOS (siempre incluir):
-✅ DIALOGUE - Diálogo instructivo con Lia (5-9 min)
+✅ DIALOGUE - Diálogo instructivo con SofLIA (5-9 min)
 → Conversación que introduce conceptos, hace preguntas reflexivas
 → Describe: tema específico, conceptos a introducir, enfoque pedagógico
 
@@ -86,7 +86,7 @@ OPCIONALES (solo si aplican):
     "components": [
     {
     "type": "DIALOGUE",
-    "summary": "Conversación con Lia sobre [TEMA ESPECÍFICO]. Se explora [CONCEPTO 1] y [CONCEPTO 2]. El estudiante reflexiona sobre [ASPECTO CLAVE] mediante preguntas guiadas. Duración: 6-8 minutos."
+    "summary": "Conversación con SofLIA sobre [TEMA ESPECÍFICO]. Se explora [CONCEPTO 1] y [CONCEPTO 2]. El estudiante reflexiona sobre [ASPECTO CLAVE] mediante preguntas guiadas. Duración: 6-8 minutos."
     },
     {
     "type": "READING",

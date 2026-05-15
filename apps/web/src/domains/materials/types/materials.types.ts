@@ -226,7 +226,7 @@ export interface MaterialsGenerationOutput {
     source_refs_used: string[];
 }
 
-// Brief de misión para el enfoque metaprompt de SofLIA (3 flujos adaptativos)
+// Brief de misión para el enfoque metaprompt legacy de SofLIA (3 flujos adaptativos)
 export interface MissionBrief {
     objetivo_acreditacion: string;
     verbo_bloom: 'Recordar' | 'Comprender' | 'Aplicar' | 'Analizar' | 'Evaluar' | 'Crear';
@@ -236,12 +236,80 @@ export interface MissionBrief {
     contenido_de_rescate: string;              // respuesta sintetizada para uso interno de IA
 }
 
-// Contenido de Diálogo
-export interface DialogueContent {
+export interface SofliaDialogueCriterion {
+    id: string;
+    label: string;
+    description: string;
+    required: boolean;
+}
+
+export interface SofliaDialogueHint {
+    id: string;
+    level: number;
+    targetCriterionId: string;
+    content: string;
+}
+
+export interface SofliaDialogueRubricItem {
+    id: string;
+    label: string;
+    description: string;
+    weight: number;
+}
+
+export interface SofliaDialogueContent {
+    interactionType: 'soflia_dialogue';
+    runtimeType: 'SOFLIA_DIALOGUE';
+    schemaVersion: string;
+    title: string;
+    visibleGoal: string;
+    learningObjective: string;
+    scenario: string;
+    openingMessage: string;
+    studentRole: string;
+    sofliaRole: string;
+    successCriteria: SofliaDialogueCriterion[];
+    expectedEvidence: string[];
+    commonMistakes: string[];
+    hintLadder: SofliaDialogueHint[];
+    challengePrompts: string[];
+    contextAdaptation?: {
+        enabled: boolean;
+        instructions: string;
+        focus: string[];
+    };
+    rescueContent: string;
+    rubric: SofliaDialogueRubricItem[];
+    policy: {
+        approvalMinimum: number;
+        maxTurns: number;
+        maxHints: number;
+        rescueAfterLowEvidenceTurns: number;
+        allowRetry: boolean;
+    };
+    tutor: {
+        tone: string;
+        maxResponseSentences: number;
+    };
+    evaluator: {
+        promptVersion: string;
+    };
+    analytics: {
+        trackEvents: string[];
+    };
+    versioning: {
+        materialVersion: string;
+        rubricVersion: string;
+        promptVersion: string;
+    };
+}
+
+// Contenido de Diálogo legacy basado en scenes
+export interface LegacyDialogueContent {
     title: string;
     introduction?: string;
     scenes: {
-        character: 'Lia' | 'Usuario' | 'Narrador';
+        character: 'SofLIA' | 'Lia' | 'Usuario' | 'Narrador';
         message: string;
         emotion?: 'neutral' | 'happy' | 'thinking' | 'surprised';
     }[];
@@ -253,6 +321,9 @@ export interface DialogueContent {
     };
     mission_brief?: MissionBrief; // presente solo en generaciones nuevas
 }
+
+// Contenido de Diálogo: legacy para lectura y nuevo runtime para nuevas generaciones
+export type DialogueContent = LegacyDialogueContent | SofliaDialogueContent;
 
 // Contenido de Lectura
 export interface ReadingContent {

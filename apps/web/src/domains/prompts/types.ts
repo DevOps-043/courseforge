@@ -2,6 +2,7 @@ export interface SystemPrompt {
   id: string;
   code: string;
   version: string;
+  organization_id?: string | null;
   content: string;
   description: string | null;
   is_active: boolean;

@@ -10,6 +10,12 @@ import type {
   PublicationPreviewLesson,
   PublicationRequestRecord,
 } from "@/domains/publication/types/publication.types";
+import {
+  SOFLIA_DIALOGUE_ACTIVITY_SCHEMA_VERSION,
+  buildSofliaDialogueActivityData,
+  isSofliaDialogueRuntimeConfig,
+  validateSofliaDialogueRuntimeConfig,
+} from "./soflia-dialogue-runtime-contract";
 
 export const VIDEO_COMPONENT_TYPES = new Set([
   "VIDEO_THEORETICAL",
@@ -169,7 +175,10 @@ function transformLiaContent(content: unknown) {
     ? content.scenes
         .filter(isRecord)
         .map((scene) => ({
-          character: getString(scene.character),
+          character:
+            getString(scene.character) === "Lia"
+              ? "SofLIA"
+              : getString(scene.character),
           message: getString(scene.message),
           emotion: getString(scene.emotion) || "neutral",
         }))
@@ -228,8 +237,28 @@ function buildActivities(components: PublicationComponent[]) {
     }
 
     if (component.type === "DIALOGUE") {
+      if (isSofliaDialogueRuntimeConfig(content)) {
+        const validation = validateSofliaDialogueRuntimeConfig(content);
+        if (!validation.valid) {
+          throw new Error(
+            `No se puede publicar DIALOGUE SOFLIA_DIALOGUE invalido: ${validation.errors.join("; ")}`,
+          );
+        }
+
+        activities.push({
+          title: getString(content.title) || "Dialogo con SofLIA",
+          type: "ai_chat",
+          data: buildSofliaDialogueActivityData(content),
+          activity_schema_version: SOFLIA_DIALOGUE_ACTIVITY_SCHEMA_VERSION,
+          requires_soflia_validation: false,
+          activity_config: content,
+          external_tool_key: null,
+        });
+        continue;
+      }
+
       activities.push({
-        title: getString(content.title) || "Simulacion con LIA",
+        title: getString(content.title) || "Simulacion con SofLIA",
         type: "lia_script",
         data: transformLiaContent(content),
       });

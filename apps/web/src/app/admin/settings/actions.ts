@@ -19,9 +19,46 @@ export interface ModelSettingsRecord extends ModelSettingsUpdateInput {
   setting_type: string;
 }
 
+const SYSTEM_PROMPT_SELECT_FIELDS =
+  'id, code, version, organization_id, content, description, is_active, created_at, updated_at';
+
 // Helper for admin client that bypasses the RLS if the session token is not understood by PostgREST
 function getAdminClient() {
   return createAdminClient(getSupabaseUrl(), getSupabaseServiceRoleKey());
+}
+
+function getSystemPromptIdentity(prompt: Pick<SystemPrompt, 'code' | 'version'>) {
+  return `${prompt.code}::${prompt.version}`;
+}
+
+function isPreferredSystemPrompt(candidate: SystemPrompt, current: SystemPrompt) {
+  if (candidate.is_active !== current.is_active) {
+    return candidate.is_active;
+  }
+
+  const candidateUpdatedAt = new Date(candidate.updated_at).getTime();
+  const currentUpdatedAt = new Date(current.updated_at).getTime();
+
+  if (candidateUpdatedAt !== currentUpdatedAt) {
+    return candidateUpdatedAt > currentUpdatedAt;
+  }
+
+  return candidate.id.localeCompare(current.id) > 0;
+}
+
+function dedupeSystemPromptsByIdentity(prompts: SystemPrompt[]) {
+  const promptsByIdentity = new Map<string, SystemPrompt>();
+
+  for (const prompt of prompts) {
+    const identity = getSystemPromptIdentity(prompt);
+    const current = promptsByIdentity.get(identity);
+
+    if (!current || isPreferredSystemPrompt(prompt, current)) {
+      promptsByIdentity.set(identity, prompt);
+    }
+  }
+
+  return Array.from(promptsByIdentity.values());
 }
 
 export async function getSystemPromptsAction() {
@@ -33,21 +70,21 @@ export async function getSystemPromptsAction() {
   const activeOrgId = await getActiveOrganizationId();
   const supabaseAdmin = getAdminClient();
 
-  const SELECT_FIELDS = 'id, code, version, content, description, is_active, created_at, updated_at';
-
   // Always fetch globals first
   const { data: globalData, error } = await supabaseAdmin
     .from('system_prompts')
-    .select(SELECT_FIELDS)
+    .select(SYSTEM_PROMPT_SELECT_FIELDS)
     .is('organization_id', null)
-    .order('code', { ascending: true });
+    .order('code', { ascending: true })
+    .order('version', { ascending: true })
+    .order('updated_at', { ascending: false });
 
   if (error) {
     console.error('Error fetching prompts:', error);
     return { success: false, error: error.message };
   }
 
-  const globalPrompts = (globalData || []) as SystemPrompt[];
+  const globalPrompts = dedupeSystemPromptsByIdentity((globalData || []) as SystemPrompt[]);
 
   // If no active org, return globals only
   if (!activeOrgId) {
@@ -55,29 +92,43 @@ export async function getSystemPromptsAction() {
   }
 
   // Fetch org-specific prompts and overlay them over globals by code
-  const { data: orgData } = await supabaseAdmin
+  const { data: orgData, error: orgError } = await supabaseAdmin
     .from('system_prompts')
-    .select(SELECT_FIELDS)
+    .select(SYSTEM_PROMPT_SELECT_FIELDS)
     .eq('organization_id', activeOrgId)
-    .order('code', { ascending: true });
+    .order('code', { ascending: true })
+    .order('version', { ascending: true })
+    .order('updated_at', { ascending: false });
 
-  const orgPrompts = (orgData || []) as SystemPrompt[];
-  const orgByCode = new Map(orgPrompts.map((p) => [p.code, p]));
+  if (orgError) {
+    console.error('Error fetching organization prompts:', orgError);
+    return { success: false, error: orgError.message };
+  }
 
-  // Merge: org-specific overrides global for the same code; globals fill in the rest
+  const orgPrompts = dedupeSystemPromptsByIdentity((orgData || []) as SystemPrompt[]);
+  const orgByIdentity = new Map(orgPrompts.map((p) => [getSystemPromptIdentity(p), p]));
+
+  // Merge: org-specific overrides global for the same code+version; globals fill in the rest
   const merged = globalPrompts.map((global) => {
-    const override = orgByCode.get(global.code);
+    const override = orgByIdentity.get(getSystemPromptIdentity(global));
     return override ? { ...override, is_org_override: true } : global;
   });
 
   // Add any org-specific codes that don't exist as globals
   for (const orgPrompt of orgPrompts) {
-    if (!merged.find((p) => p.code === orgPrompt.code)) {
+    const existsInMerged = merged.some(
+      (prompt) => getSystemPromptIdentity(prompt) === getSystemPromptIdentity(orgPrompt),
+    );
+
+    if (!existsInMerged) {
       merged.push({ ...orgPrompt, is_org_override: true });
     }
   }
 
-  merged.sort((a, b) => a.code.localeCompare(b.code));
+  merged.sort((a, b) => {
+    const codeComparison = a.code.localeCompare(b.code);
+    return codeComparison || a.version.localeCompare(b.version);
+  });
 
   return { success: true, prompts: merged };
 }

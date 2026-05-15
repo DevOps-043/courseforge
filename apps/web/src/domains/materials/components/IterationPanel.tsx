@@ -51,7 +51,7 @@ export function IterationPanel({
     };
 
     const handleSubmit = async () => {
-        if (!instructions.trim() || !canIterate) return;
+        if (!canIterate || (!selectAll && selectedComponents.length === 0)) return;
 
         setIsSubmitting(true);
         try {
@@ -59,7 +59,7 @@ export function IterationPanel({
             const types = selectAll || selectedComponents.length === 0
                 ? undefined
                 : selectedComponents;
-            await onStartIteration(instructions, types);
+            await onStartIteration(instructions.trim(), types);
             setInstructions('');
             setSelectedComponents([]);
             setSelectAll(true);
@@ -148,13 +148,13 @@ export function IterationPanel({
             )}
 
             <p className="text-xs text-orange-700 dark:text-orange-400 mb-3">
-                Describe los problemas específicos que la IA debe corregir. Sé lo más específico posible.
+                Puedes agregar comentarios específicos para guiar la regeneración.
             </p>
 
             <textarea
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
-                placeholder="Ej: El quiz solo tiene 2 preguntas, necesita al menos 3. Faltan explicaciones en las opciones B y D."
+                placeholder="Opcional: El quiz necesita al menos 3 preguntas y explicaciones más claras."
                 className="w-full p-3 text-sm border border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-[#1E2329] text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none"
                 rows={3}
                 disabled={isSubmitting}
@@ -163,7 +163,7 @@ export function IterationPanel({
             <div className="flex justify-end mt-3">
                 <button
                     onClick={handleSubmit}
-                    disabled={!instructions.trim() || isSubmitting || (!selectAll && selectedComponents.length === 0)}
+                    disabled={isSubmitting || !canIterate || (!selectAll && selectedComponents.length === 0)}
                     className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                     {isSubmitting ? (

@@ -61,7 +61,7 @@ Recibirás un objeto con la siguiente estructura:
 2. **Componentes obligatorios**
 
    - SIEMPRE debes generar:
-     - **DIALOGUE** (Diálogo con Lia)
+     - **DIALOGUE** (Diálogo con SofLIA)
      - **READING** (Lectura de refuerzo, ~750 palabras)
      - **QUIZ** (Cuestionario formativo, 3-5 preguntas)
    - Los videos (Teórico, Demo, Guía) se generan según el plan instruccional:
@@ -161,7 +161,7 @@ Aplicar instrucciones; justificar decisiones; crear un resultado funcional.
 - Criterios de éxito visibles
 - Evita descargables obligatorios
 
-### 4) Diálogo Interactivo (con Lia)
+### 4) Diálogo Interactivo (con SofLIA)
 
 **Cuándo:**  
 Práctica reflexiva e iterativa con prompts guiados (actividad, no video).
@@ -179,7 +179,7 @@ Aplicar prompts; evaluar calidad; reflexionar/mejorar (≥ 2 iteraciones válida
 **Generación requerida:**
 
 - Actividad de 5–9 min
-- 3–5 prompts progresivos para que el usuario pregunte a Lia
+- 3–5 prompts progresivos para que el usuario pregunte a SofLIA
 - Consigna de reflexión final
 - Registro de mejora (qué cambió y por qué entre iteraciones)
 
@@ -264,19 +264,19 @@ El texto narrativo (\`narration_text\`) en el storyboard **DEBE SER EL GUIÓN EX
 - Las fuentes de Fase 2 (para ejemplos, casos, terminología)
 - NO copies texto de terceros de forma literal para material de lectura, pero el guion final en el storyboard sí debe ser el texto definitivo a locutar.
 
-### 3.2 Generar Diálogo Interactivo con Lia
+### 3.2 Generar Diálogo Interactivo con SofLIA
 
-Diseña una actividad de Diálogo con Lia de 5–9 minutos que incluya:
+Diseña una actividad de Diálogo con SofLIA de 5–9 minutos que incluya:
 
-- Instrucción inicial (qué hará la persona con Lia)
+- Instrucción inicial (qué hará la persona con SofLIA)
 - Escenario breve (contexto)
-- 3–5 prompts progresivos que el usuario usará para preguntarle a Lia
+- 3–5 prompts progresivos que el usuario usará para preguntarle a SofLIA
 - Una consigna de reflexión final
 - Un mini registro de mejora (qué cambió y por qué entre iteraciones)
 
 **Personajes:**
 
-- "Lia" (instructora virtual)
+- "SofLIA" (instructora virtual)
 - "Usuario" (participante)
 
 **Tono:** Conversacional pero educativo
@@ -315,7 +315,7 @@ Considera la Fase 3 terminada solo si:
 - Se generaron **todos los componentes previstos** en el plan:
 
   - Videos necesarios (según Bloom y plan)
-  - Diálogo con Lia (SIEMPRE)
+  - Diálogo con SofLIA (SIEMPRE)
   - Lectura (Refuerzo) (SIEMPRE)
   - Cuestionario Formativo (SIEMPRE)
 
@@ -349,7 +349,7 @@ Responde **SOLO con JSON válido** usando esta estructura exacta:
       "introduction": "string (opcional)",
       "scenes": [
         {
-          "character": "Lia | Usuario | Narrador",
+          "character": "SofLIA | Usuario | Narrador",
           "message": "string",
           "emotion": "neutral | happy | thinking | surprised (opcional)"
         }
