@@ -2,7 +2,7 @@
 
 > **Versión**: 1.0.0
 > **Estado**: Producción (Beta)
-> **Stack**: Next.js 16, Supabase, Netlify Functions, Google Gemini 2.5
+> **Stack**: Next.js 16, Supabase, Netlify Functions, Google Gemini 2.0
 
 Courseforge es mucho más que un "generador de cursos". Es un **Sistema Operativo de Diseño Instruccional** que orquesta múltiples agentes de IA para investigar, estructurar, redactar y validar contenido educativo de alta calidad.
 
@@ -14,7 +14,7 @@ El sistema simula el flujo de trabajo de un equipo humano (Investigador + Diseñ
 
 1. [Filosofía del Sistema](#-filosofía-del-sistema)
 2. [Arquitectura Técnica](#-arquitectura-técnica)
-3. [El Pipeline "Lia" (Paso a Paso)](#-el-pipeline-lia)
+3. [El Pipeline "SofLIA" (Paso a Paso)](#-el-pipeline-soflia)
    - [Fase 1: Artefacto y Concepto](#fase-1-artefacto-y-concepto)
    - [Fase 2: Syllabus y Estructura](#fase-2-syllabus-y-estructura)
    - [Fase 3: Planificación Instruccional](#fase-3-planificación-instruccional)
@@ -51,7 +51,7 @@ El proyecto es un **Monorepo** gestionado con npm workspaces, implementando "Scr
 | Backend       | Express + Netlify Functions (Node.js 20+)                               |
 | Base de datos | Supabase (PostgreSQL 15)                                                |
 | Auth          | Auth Bridge JWT (HS256, `jose`) + Supabase GoTrue                       |
-| IA Principal  | Google Gemini (`gemini-2.5-flash` fases 1-3, `gemini-2.5-pro` fases 4-5) |
+| IA Principal  | Google Gemini (`gemini-2.0-flash`)                                |
 | IA Secundaria | OpenAI (fallback)                                                       |
 | Servicios     | Gamma API (slides), Google Search (grounding)                           |
 
@@ -114,7 +114,7 @@ Courseforge implementa un sistema de autenticación personalizado que valida cre
 
 ---
 
-## 🔄 El Pipeline "Lia"
+## 🔄 El Pipeline "SofLIA"
 
 Cada curso pasa por una secuencia estricta de 6 fases. A continuación se detalla la lógica interna de cada una.
 
@@ -157,7 +157,7 @@ Por cada lección asigna componentes según complejidad:
 
 | Componente          | Cuándo usarlo                                      |
 | ------------------- | -------------------------------------------------- |
-| `DIALOGUE`          | Conversación guiada entre Lia y estudiante         |
+| `DIALOGUE`          | Conversación guiada entre SofLIA y estudiante         |
 | `READING`           | Concepto teórico con puntos clave                  |
 | `QUIZ`              | Verificación de comprensión (multiple choice, V/F) |
 | `DEMO_GUIDE`        | Proceso paso a paso con screenshots                |
@@ -197,7 +197,7 @@ Por cada lección asigna componentes según complejidad:
 **Proceso** (`materials-generation-background.ts`):
 
 - Patrón "Daisy Chain" recursivo para manejar timeouts de Netlify
-- Modelo: `gemini-2.5-pro` (con fallback a `gemini-2.5-flash`), configurable por organización
+- Modelo: `gemini-2.0-flash`, configurable por organización
 - Prompt masivo con: perfil del experto + OA exacto + contenido de fuentes curadas
 
 | Componente | Genera                                           |
@@ -237,7 +237,7 @@ SofLIA es la asistente IA integrada en toda la aplicación (`POST /api/lia`).
 
 ### Modo Conversacional
 
-- Gemini `gemini-2.5-flash` + Google Search grounding
+- Gemini `gemini-2.0-flash` + Google Search grounding
 - Temperatura 0.7 — responde en markdown con fuentes citadas
 
 ---

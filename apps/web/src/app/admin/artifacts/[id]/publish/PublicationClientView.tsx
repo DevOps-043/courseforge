@@ -8,6 +8,7 @@ import {
     buildInitialSelectedLessons,
     buildInitialVideoMappings,
     buildMappingsFromProductionLessons,
+    generateSlugFromTitle,
     getDirectVideoDuration,
     getInitialCourseData,
 } from '@/domains/publication/lib/publication-client';
@@ -81,7 +82,12 @@ export default function PublicationClientView({
     const [courseData, setCourseData] = useState<PublicationCourseData>(() => {
         const initial = getInitialCourseData(existingRequest);
         if (!initial.instructor_email && lockedEmail) {
-            return { ...initial, instructor_email: lockedEmail };
+            initial.instructor_email = lockedEmail;
+        }
+        // Auto-suggest a stable slug from the artifact title when none is saved yet.
+        // This slug must NOT include a timestamp — it is the idempotency key on SofLIA.
+        if (!initial.slug && artifactTitle) {
+            initial.slug = generateSlugFromTitle(artifactTitle);
         }
         return initial;
     });
@@ -106,11 +112,10 @@ export default function PublicationClientView({
     const selectableLessonsCount = lessons.filter(
         (lesson) => !!videoMappings[lesson.id]?.video_id,
     ).length;
-    const isMetadataComplete = Boolean(
-        courseData.instructor_email &&
-            courseData.slug &&
-            courseData.thumbnail_url,
-    );
+    const missingEmail = !courseData.instructor_email;
+    const missingSlug = !courseData.slug;
+    const missingThumbnail = !courseData.thumbnail_url;
+    const isMetadataComplete = !missingEmail && !missingSlug && !missingThumbnail;
     const isReady = isMetadataComplete;
 
     const handleConfirmReset = async () => {
@@ -182,17 +187,26 @@ export default function PublicationClientView({
                 }
             }
 
-            setVideoMappings({ ...newMappings });
-            setSelectedLessons(
-                new Set(
-                    Object.keys(newMappings).filter(
-                        (lessonId) => !!newMappings[lessonId]?.video_id,
-                    ),
+            const syncedSelectedLessons = new Set(
+                Object.keys(newMappings).filter(
+                    (lessonId) => !!newMappings[lessonId]?.video_id,
                 ),
             );
 
+            setVideoMappings({ ...newMappings });
+            setSelectedLessons(syncedSelectedLessons);
+
+            await savePublicationDraftRequest(
+                artifactId,
+                courseData,
+                newMappings,
+                syncedSelectedLessons,
+                'DRAFT',
+            );
+            router.refresh();
+
             toast.success(
-                `Videos sincronizados (${lessonsWithVideo.length} videos, ${syncedCount} con duracion)`,
+                `Videos sincronizados y guardados (${lessonsWithVideo.length} videos, ${syncedCount} con duracion)`,
             );
         } catch (error) {
             console.error(error);
@@ -305,7 +319,9 @@ export default function PublicationClientView({
             />
 
             <PublicationAlerts
-                isMetadataComplete={isMetadataComplete}
+                missingEmail={missingEmail}
+                missingSlug={missingSlug}
+                missingThumbnail={missingThumbnail}
                 missingVideos={missingVideos}
                 selectedLessonsCount={selectedLessons.size}
                 selectableLessonsCount={selectableLessonsCount}

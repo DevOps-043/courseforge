@@ -53,9 +53,9 @@ export type PublicationComponentContent =
 
 export interface PublicationComponent {
   type: ComponentType;
+  iteration_number?: number | null;
   assets?: MaterialAssets | null;
   content?: PublicationComponentContent | null;
-  iteration_number?: number | null;
 }
 
 export interface PublicationVideoLesson {

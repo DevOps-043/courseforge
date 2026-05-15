@@ -22,7 +22,7 @@ npm run build        # Build producción
 
 ## Lia - Asistente IA
 
-Lia es el asistente IA integrado en toda la app. Tiene dos modos:
+Lia es el asistente IA integrado en toda la app.
 
 ### Modo Estándar (Conversacional)
 
@@ -31,29 +31,16 @@ Lia es el asistente IA integrado en toda la app. Tiene dos modos:
 - Modelo: `gemini-2.0-flash`, temperatura 0.7
 - Responde en markdown con fuentes citadas
 
-### Modo Computer Use (Agéntico)
-
-- Usuario envía mensaje + screenshot de la página actual
-- `lia-dom-mapper.ts` escanea el DOM detectando elementos interactivos
-- Modelo: `gemini-2.0-flash-exp`, temperatura 0.3
-- Responde con JSON: `{ message, action/actions, requiresFollowUp }`
-- Ejecuta acciones en el navegador (click, type, scroll, etc.)
+---
 
 ### Servicios de Lia
 
 | Archivo              | Función                                                                                     |
 | -------------------- | ------------------------------------------------------------------------------------------- |
-| `lia-service.ts`     | Ejecuta acciones en el navegador (click_at, type_at, scroll, key_press) con feedback visual |
 | `lia-app-context.ts` | Prompts del sistema y contexto de la app (páginas, menús, comportamiento)                   |
 | `lia-db-context.ts`  | Obtiene contexto de Supabase (usuario, artefactos recientes, estadísticas)                  |
-| `lia-dom-mapper.ts`  | Escanea DOM, detecta elementos interactivos, retorna coordenadas                            |
 
-### Detección de Alucinaciones
-
-Si Lia intenta abrir un artefacto que no existe en el DOM, automáticamente:
-
-1. Busca en la barra de búsqueda
-2. Si no encuentra, hace scroll para buscar el elemento
+---
 
 ---
 
@@ -318,7 +305,7 @@ El sistema tiene tres dashboards con roles diferenciados:
 - `/admin/artifacts/[id]` - Detalle: navegar fases, aprobar/rechazar, regenerar
 - `/admin/artifacts/[id]/publish` - Publicar a Soflia (datos + video mapping)
 - `/admin/library` - Buscar y editar materiales por lección/componente
-- `/admin/settings` - Configurar modelos IA (LIA_MODEL, COMPUTER), temperatura, thinking budget
+- `/admin/settings` - Configurar modelos IA, temperatura, thinking budget
 - `/admin/users` - Gestión de usuarios y roles
 - `/admin/profile` - Perfil del administrador
 

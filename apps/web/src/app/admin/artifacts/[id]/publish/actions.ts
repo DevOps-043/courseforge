@@ -6,6 +6,7 @@ import {
     hasVideoComponent,
     sortLessonsNaturally,
 } from '@/domains/publication/lib/publication-payload-builders';
+import { selectLatestComponentsByType } from '@/domains/materials/lib/material-component-versions';
 import type {
     PublicationComponent,
     PublicationDataResult,
@@ -42,11 +43,13 @@ function extractVideoMetadata(
     let videoUrl = '';
     let videoDuration = 0;
 
-    if (!Array.isArray(components)) {
+    const activeComponents = selectLatestComponentsByType(components);
+
+    if (activeComponents.length === 0) {
         return { videoUrl, videoDuration };
     }
 
-    const videoComponent = components.find(
+    const videoComponent = activeComponents.find(
         (component) =>
             component.assets?.final_video_url ||
             component.assets?.video_url ||
@@ -84,33 +87,12 @@ function extractVideoMetadata(
     return { videoUrl, videoDuration };
 }
 
-function getComponentIteration(component: PublicationComponent) {
-    return typeof component.iteration_number === 'number' ? component.iteration_number : 0;
-}
-
-function keepLatestComponentPerType(
-    components: PublicationComponent[] | null | undefined,
-) {
-    if (!Array.isArray(components)) {
-        return [];
-    }
-
-    const latestByType = new Map<string, PublicationComponent>();
-
-    for (const component of components) {
-        const existing = latestByType.get(component.type);
-        if (!existing || getComponentIteration(component) > getComponentIteration(existing)) {
-            latestByType.set(component.type, component);
-        }
-    }
-
-    return Array.from(latestByType.values());
-}
-
 function mapLessonToPublicationLesson(
     lesson: RawMaterialLessonRow,
 ): PublicationLesson {
-    const components = keepLatestComponentPerType(lesson.material_components);
+    const components = selectLatestComponentsByType(
+        lesson.material_components || [],
+    );
     const { videoUrl, videoDuration } = extractVideoMetadata(components);
 
     return {
@@ -128,7 +110,7 @@ function mapLessonToVideoLesson(
     lesson: RawMaterialLessonRow,
 ): PublicationVideoLesson {
     const { videoUrl, videoDuration } = extractVideoMetadata(
-        keepLatestComponentPerType(lesson.material_components),
+        selectLatestComponentsByType(lesson.material_components || []),
     );
 
     return {
@@ -182,16 +164,16 @@ export async function getPublicationData(
                 oa_text,
                 material_components(
                     type,
+                    iteration_number,
                     assets,
-                    content,
-                    iteration_number
+                    content
                 )
             `)
             .eq('materials_id', materials.id);
 
         const sorted = sortLessonsNaturally((rawLessons || []) as RawMaterialLessonRow[]);
         lessons = sorted
-            .filter((lesson) => hasVideoComponent(keepLatestComponentPerType(lesson.material_components)))
+            .filter((lesson) => hasVideoComponent(selectLatestComponentsByType(lesson.material_components || [])))
             .map((lesson) => mapLessonToPublicationLesson(lesson));
     }
 
@@ -297,9 +279,9 @@ export async function refreshProductionVideos(artifactId: string) {
             module_title,
             material_components(
                 type,
+                iteration_number,
                 assets,
-                content,
-                iteration_number
+                content
             )
         `)
         .eq('materials_id', materials.id);
@@ -316,7 +298,7 @@ export async function refreshProductionVideos(artifactId: string) {
     return {
         success: true as const,
         lessons: sorted
-            .filter((lesson) => hasVideoComponent(keepLatestComponentPerType(lesson.material_components)))
+            .filter((lesson) => hasVideoComponent(selectLatestComponentsByType(lesson.material_components || [])))
             .map((lesson) => mapLessonToVideoLesson(lesson)),
     };
 }

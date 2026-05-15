@@ -64,6 +64,18 @@ export async function POST(request: Request) {
             );
         }
 
+        // Slug is the idempotency key on SofLIA: a missing or empty slug causes SofLIA
+        // to generate a timestamped slug on each import, creating a new course every time.
+        if (!publicationRequest.slug?.trim()) {
+            return NextResponse.json(
+                {
+                    error:
+                        'El slug del curso es obligatorio para publicar. Define un slug estable en el formulario antes de continuar.',
+                },
+                { status: 400 },
+            );
+        }
+
         const inboxEnv = getSofliaInboxEnv();
         const payloadToSend = buildPublicationPayload({
             artifactId,

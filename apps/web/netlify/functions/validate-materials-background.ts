@@ -2,6 +2,7 @@ import { Handler } from '@netlify/functions';
 import { createServiceRoleClient } from './shared/bootstrap';
 import { getErrorMessage } from './shared/errors';
 import { methodNotAllowedResponse, parseJsonBody } from './shared/http';
+import { selectLatestComponentsByType } from '../../src/domains/materials/lib/material-component-versions';
 
 interface LessonDod {
     control3_consistency: 'PASS' | 'FAIL' | 'PENDING';
@@ -33,6 +34,7 @@ interface QuizItem {
 
 interface MaterialComponentRecord {
     content?: Record<string, unknown> | null;
+    iteration_number?: number | null;
     type: string;
 }
 
@@ -137,13 +139,17 @@ export const handler: Handler = async (event) => {
             // Get components for this lesson
             const { data: components } = await supabase
                 .from('material_components')
-                .select('type, content')
+                .select('type, content, iteration_number')
                 .eq('material_lesson_id', lesson.id);
+
+            const activeComponents = selectLatestComponentsByType(
+                (components || []) as MaterialComponentRecord[],
+            );
 
             // Run inline validation
             const dod = runInlineValidation(
                 lesson,
-                (components || []) as MaterialComponentRecord[],
+                activeComponents,
             );
 
             // Determine new state
@@ -420,13 +426,17 @@ async function validateSingleLesson(lessonId: string) {
         // Fetch components
         const { data: components } = await supabase
             .from('material_components')
-            .select('type, content')
+            .select('type, content, iteration_number')
             .eq('material_lesson_id', lessonId);
+
+        const activeComponents = selectLatestComponentsByType(
+            (components || []) as MaterialComponentRecord[],
+        );
 
         // Run validation
         const dod = runInlineValidation(
             lesson as MaterialLessonRecord,
-            (components || []) as MaterialComponentRecord[],
+            activeComponents,
         );
         const hasErrors = dod.errors.length > 0;
         const newState = hasErrors ? 'NEEDS_FIX' : 'APPROVABLE';

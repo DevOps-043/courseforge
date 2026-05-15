@@ -8,6 +8,8 @@ import {
 } from "@/lib/server/artifact-action-auth";
 import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
+import { getVideoProviderAndId } from "@/lib/video-platform";
+import type { LessonVideoData } from "@/domains/publication/types/publication.types";
 import { createClient } from "@/utils/supabase/server";
 import type {
   MaterialAssets,
@@ -28,6 +30,7 @@ interface ProductionMaterialsRelation {
 interface ProductionLessonRelation {
   lesson_id: string;
   lesson_title: string;
+  module_title?: string | null;
   materials?: ProductionMaterialsRelation | ProductionMaterialsRelation[] | null;
   module_id?: string | null;
 }
@@ -177,6 +180,66 @@ export async function generateVideoPromptsAction(
   }
 }
 
+/**
+ * When a video is saved in the Production step, mirror it into publication_requests.lesson_videos
+ * so the Send step always has up-to-date video data without requiring manual sync.
+ * Fails silently to avoid blocking the production save.
+ */
+async function syncVideoToPublicationRequests(
+  supabase: ReturnType<typeof getServiceRoleClient>,
+  artifactId: string,
+  lesson: ProductionLessonRelation,
+  assets: MaterialAssets,
+) {
+  if (!assets.final_video_url) return;
+
+  try {
+    const { provider, id: videoId } = getVideoProviderAndId(assets.final_video_url);
+
+    const videoData: LessonVideoData = {
+      lesson_id: lesson.lesson_id,
+      lesson_title: lesson.lesson_title,
+      module_title: lesson.module_title || "",
+      video_provider: provider,
+      video_id: videoId,
+      duration: assets.video_duration || 0,
+    };
+
+    const { data: existingRequest } = await supabase
+      .from("publication_requests")
+      .select("id, lesson_videos")
+      .eq("artifact_id", artifactId)
+      .maybeSingle();
+
+    const currentLessonVideos =
+      (existingRequest?.lesson_videos as Record<string, LessonVideoData> | null) || {};
+
+    const updatedLessonVideos = {
+      ...currentLessonVideos,
+      [lesson.lesson_id]: videoData,
+    };
+
+    if (existingRequest?.id) {
+      await supabase
+        .from("publication_requests")
+        .update({
+          lesson_videos: updatedLessonVideos,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingRequest.id);
+    } else {
+      await supabase.from("publication_requests").insert({
+        artifact_id: artifactId,
+        lesson_videos: updatedLessonVideos,
+        status: "DRAFT",
+        updated_at: new Date().toISOString(),
+      });
+    }
+  } catch (error) {
+    console.error("[ProductionActions] Error syncing video to publication_requests:", error);
+  }
+}
+
 export async function saveMaterialAssetsAction(
   componentId: string,
   assets: Partial<MaterialAssets>,
@@ -190,7 +253,7 @@ export async function saveMaterialAssetsAction(
       `
         assets, type, material_lesson_id,
         material_lessons (
-          lesson_id, lesson_title, module_id,
+          lesson_id, lesson_title, module_title, module_id,
           materials (
             artifact_id,
             artifacts ( course_id )
@@ -233,7 +296,8 @@ export async function saveMaterialAssetsAction(
     return { success: false, error: updateError.message };
   }
 
-  if (artifactId) {
+  if (artifactId && lesson) {
+    await syncVideoToPublicationRequests(supabase, artifactId, lesson, finalAssets);
     await markDownstreamDirtyAction(
       artifactId,
       5,

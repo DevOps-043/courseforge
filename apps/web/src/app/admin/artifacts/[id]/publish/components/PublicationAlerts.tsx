@@ -3,18 +3,23 @@
 import { AlertTriangle } from 'lucide-react';
 
 interface PublicationAlertsProps {
-  isMetadataComplete: boolean;
+  missingEmail: boolean;
+  missingSlug: boolean;
+  missingThumbnail: boolean;
   missingVideos: number;
   selectedLessonsCount: number;
   selectableLessonsCount: number;
 }
 
 export function PublicationAlerts({
-  isMetadataComplete,
+  missingEmail,
+  missingSlug,
+  missingThumbnail,
   missingVideos,
   selectedLessonsCount,
   selectableLessonsCount,
 }: PublicationAlertsProps) {
+  const hasBlockers = missingEmail || missingSlug || missingThumbnail;
   const showPartialNotice =
     missingVideos > 0 ||
     (selectedLessonsCount > 0 &&
@@ -22,7 +27,7 @@ export function PublicationAlerts({
 
   return (
     <>
-      {!isMetadataComplete && (
+      {hasBlockers && (
         <div className="p-4 rounded-xl flex items-start gap-3 border bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800/50 dark:text-red-200">
           <AlertTriangle className="shrink-0 mt-0.5" size={18} />
           <div>
@@ -30,10 +35,14 @@ export function PublicationAlerts({
               Faltan datos requeridos para publicar:
             </p>
             <ul className="list-disc list-inside text-sm mt-1 space-y-0.5 opacity-90">
-              <li>
-                Completa el email del instructor, slug y thumbnail
-                (Requerido).
-              </li>
+              {missingEmail && <li>Email del instructor (requerido).</li>}
+              {missingSlug && (
+                <li>
+                  Slug URL (requerido). Es la clave de idempotencia — debe ser
+                  estable entre publicaciones del mismo curso.
+                </li>
+              )}
+              {missingThumbnail && <li>Imagen de portada (requerida).</li>}
             </ul>
           </div>
         </div>

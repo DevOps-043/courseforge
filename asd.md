@@ -82,7 +82,7 @@ Considera que el proyecto ya opera con:
 
 ## 3. Capacidades ya existentes que debes considerar
 
-El proyecto ya incorpora a **Lia** con dos modos:
+El proyecto ya incorpora a **SofLIA** con modo estándar:
 
 ### Modo estándar
 
@@ -90,19 +90,8 @@ El proyecto ya incorpora a **Lia** con dos modos:
 - grounding con búsqueda
 - respuestas con fuentes
 
-### Modo computer use / agéntico
-
-- recibe mensaje + screenshot
-- escanea DOM
-- detecta elementos interactivos
-- devuelve acciones estructuradas
-- ejecuta acciones en navegador como click, type, scroll, key press
-- incluye mecanismos de recuperación ante intentos fallidos o “alucinaciones operativas”
-
 También existe lógica relacionada con:
 
-- `lia-dom-mapper`
-- `lia-service`
 - app context
 - db context
 
@@ -129,7 +118,7 @@ La pregunta estratégica es:
 
 Genera una evaluación rigurosa para decidir si Playwright/Codex puede o no convertirse en una **pieza operativa útil, gobernable y justificable** dentro del stack del proyecto, especialmente en escenarios donde:
 
-- **Lia** sea interfaz conversacional o agentic de primer nivel
+- **SofLIA** sea interfaz conversacional o agentic de primer nivel
 - **Courseforge / CourseEngine** siga siendo el sistema estructurado por fases
 - **Soflia** opere como destino de publicación o sistema conectado
 - exista necesidad de:
@@ -196,13 +185,9 @@ Aclara también:
 
 Compara Playwright/Codex contra:
 
-### A. Lia actual
+### A. SofLIA actual
 
 - modo conversacional
-- modo computer use
-- `lia-dom-mapper`
-- `lia-service`
-- recuperación ante alucinaciones operativas
 
 ### B. API directa / integración nativa
 
@@ -242,7 +227,7 @@ Ubica Playwright/Codex dentro de la arquitectura como posible:
 
 Debes situarlo frente a:
 
-- Lia
+- SofLIA
 - LLMs
 - background jobs
 - Supabase
@@ -277,7 +262,7 @@ Para cada caso de uso incluye:
 - problema de negocio
 - estado actual / flujo actual
 - intervención concreta de Playwright/Codex
-- convivencia con Lia y con el pipeline
+- convivencia con SofLIA y con el pipeline
 - beneficios esperados
 - riesgos
 - complejidad técnica
@@ -289,11 +274,11 @@ Para cada caso de uso incluye:
 
 Diseña casos donde la combinación tenga sentido real, por ejemplo:
 
-- Lia detecta una necesidad → Playwright/Codex ejecuta → Supabase registra → evidencia queda disponible
+- SofLIA detecta una necesidad → Playwright/Codex ejecuta → Supabase registra → evidencia queda disponible
 - termina una fase del pipeline → corre validación Playwright → se guardan screenshots, logs y resultado en `pipeline_events`
 - antes de publicar a Soflia → corre checklist visual/funcional
 - después de publicar → verifica curso, lecciones, videos, metadatos y visibilidad
-- Lia propone corrección → humano aprueba → Playwright ejecuta
+- SofLIA propone corrección → humano aprueba → Playwright ejecuta
 - Playwright recolecta evidencia → Courseforge la asocia a `artifacts`, `material_components` o `publication_requests`
 - regresiones automáticas en rutas críticas tras una nueva versión
 
