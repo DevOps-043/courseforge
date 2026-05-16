@@ -169,31 +169,6 @@ function transformQuizContent(content: unknown) {
   };
 }
 
-function transformLiaContent(content: unknown) {
-  if (!isRecord(content)) {
-    return {};
-  }
-
-  const scenes = Array.isArray(content.scenes)
-    ? content.scenes
-        .filter(isRecord)
-        .map((scene) => ({
-          character:
-            getString(scene.character) === "Lia"
-              ? "SofLIA"
-              : getString(scene.character),
-          message: getString(scene.message),
-          emotion: getString(scene.emotion) || "neutral",
-        }))
-    : [];
-
-  return {
-    introduction: getString(content.introduction),
-    scenes,
-    conclusion: getString(content.conclusion),
-  };
-}
-
 function buildTranscription(components: PublicationComponent[]) {
   const latestComponents = selectLatestComponentsByType(components);
   let transcription = "";
@@ -262,12 +237,9 @@ function buildActivities(components: PublicationComponent[]) {
         continue;
       }
 
-      activities.push({
-        title: getString(content.title) || "Simulacion con SofLIA",
-        type: "lia_script",
-        data: transformLiaContent(content),
-      });
-      continue;
+      throw new Error(
+        "No se puede publicar DIALOGUE legacy. Regenera este componente para SOFLIA_DIALOGUE antes de publicar.",
+      );
     }
 
     if (component.type === "EXERCISE") {

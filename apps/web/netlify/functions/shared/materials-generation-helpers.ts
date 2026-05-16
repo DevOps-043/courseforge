@@ -1,10 +1,14 @@
 import type { GoogleGenAI } from "@google/genai";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { materialsGenerationPrompt } from "../../../src/shared/config/prompts/materials-generation.prompts";
 import {
   resolvePrompts,
   assemblePrompt,
 } from "../../../src/shared/config/prompts/prompt-resolver.service";
+import {
+  COMPONENT_PROMPT_CODES,
+  DEFAULT_PROMPTS,
+  SYSTEM_PROMPT_CODE,
+} from "../../../src/shared/config/prompts/materials-generation.prompts.modular";
 import type {
   ComponentType,
   MaterialsGenerationInput,
@@ -191,7 +195,11 @@ export async function generateMaterialsWithGemini(
       ? componentTypes
       : input.lesson.components.map((c) => c.type as string).filter(Boolean);
 
-  if (supabase && effectiveComponentTypes.length > 0) {
+  if (effectiveComponentTypes.length === 0) {
+    throw new Error("No component types available for materials generation");
+  }
+
+  if (supabase) {
     // Dynamic resolution: org-specific → global → hardcoded defaults
     const resolved = await resolvePrompts(
       supabase,
@@ -201,8 +209,21 @@ export async function generateMaterialsWithGemini(
     basePrompt = assemblePrompt(resolved, effectiveComponentTypes);
     console.log(`${logPrefix} Using modular prompts for: ${effectiveComponentTypes.join(", ")}`);
   } else {
-    // Fallback to legacy monolithic prompt (no supabase client or no components)
-    basePrompt = materialsGenerationPrompt;
+    const componentPrompts = Object.fromEntries(
+      effectiveComponentTypes.map((componentType) => {
+        const promptCode = COMPONENT_PROMPT_CODES[componentType];
+        return [componentType, promptCode ? DEFAULT_PROMPTS[promptCode] ?? "" : ""];
+      }),
+    );
+
+    basePrompt = assemblePrompt(
+      {
+        systemPrompt: DEFAULT_PROMPTS[SYSTEM_PROMPT_CODE] ?? "",
+        componentPrompts,
+      },
+      effectiveComponentTypes,
+    );
+    console.log(`${logPrefix} Using hardcoded modular prompts for: ${effectiveComponentTypes.join(", ")}`);
   }
 
   const prompt =
