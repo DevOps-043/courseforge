@@ -52,7 +52,7 @@ El objeto de contenido del quiz debe seguir esta estructura. Se prefiere el uso 
 | `id` | `string` | Identificador único (opcional en generación, recomendado). |
 | `question` | `string` | El texto de la pregunta. |
 | `questionType` | `string` | `multiple_choice`, `true_false`, o `short_answer`. |
-| `options` | `string[]` | Array de opciones de respuesta. Para `true_false`, debe ser `["Verdadero", "Falso"]`. |
+| `options` | `string[]` | Array de opciones de respuesta sin prefijos ni etiquetas (`A.`, `B)`, `1.`, bullets, etc.). Para `true_false`, debe ser `["Verdadero", "Falso"]`. |
 | `correctAnswer` | `string` | **IMPORTANTE**: La respuesta correcta exacta (debe coincidir textualmente con una de las opciones). Usar `camelCase`. |
 | `explanation` | `string` | (Opcional) Texto explicativo que se muestra tras responder. |
 | `points` | `number` | Puntos otorgados por la pregunta. |

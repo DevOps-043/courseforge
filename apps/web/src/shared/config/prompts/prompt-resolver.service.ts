@@ -83,7 +83,7 @@ const OUTPUT_SCHEMAS: Record<string, string> = {
           "id": "string",
           "question": "string",
           "type": "MULTIPLE_CHOICE | TRUE_FALSE | FILL_BLANK",
-          "options": ["A", "B", "C", "D"],
+          "options": ["Texto de opcion sin prefijo", "Otro texto de opcion sin prefijo"],
           "correct_answer": "number | string",
           "explanation": "string (REQUERIDO)",
           "difficulty": "EASY | MEDIUM | HARD",

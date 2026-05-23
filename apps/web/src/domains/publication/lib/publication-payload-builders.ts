@@ -1,5 +1,9 @@
 import type { PackageFile } from "@/domains/materials/types/materials.types";
 import { selectLatestComponentsByType } from "@/domains/materials/lib/material-component-versions";
+import {
+  resolveQuizCorrectAnswer,
+  stripQuizOptionPrefix,
+} from "@/domains/materials/lib/quiz-option-format";
 import type {
   LessonVideoData,
   PublicationArtifactRecord,
@@ -110,7 +114,7 @@ export function getArtifactDescription(artifact: PublicationArtifactRecord) {
   );
 }
 
-function transformQuizContent(content: unknown) {
+export function transformQuizContent(content: unknown) {
   if (!isRecord(content)) {
     return {};
   }
@@ -124,11 +128,12 @@ function transformQuizContent(content: unknown) {
   let totalPoints = 0;
   const questions = rawQuestions.map((rawQuestion, index) => {
     const question = isRecord(rawQuestion) ? rawQuestion : {};
-    const options = Array.isArray(question.options)
+    const rawOptions = Array.isArray(question.options)
       ? question.options.map((option) =>
           typeof option === "string" ? option : String(option),
         )
       : [];
+    const options = rawOptions.map(stripQuizOptionPrefix);
     const points = Number(question.points) || 10;
     totalPoints += points;
 
@@ -137,14 +142,11 @@ function transformQuizContent(content: unknown) {
         ? question.correctAnswer
         : question.correct_answer;
 
-    let correctAnswer = "";
-    if (typeof rawCorrect === "number") {
-      if (rawCorrect >= 0 && rawCorrect < options.length) {
-        correctAnswer = options[rawCorrect];
-      }
-    } else {
-      correctAnswer = String(rawCorrect || "");
-    }
+    const correctAnswer = resolveQuizCorrectAnswer({
+      rawCorrect,
+      rawOptions,
+      cleanOptions: options,
+    });
 
     return {
       id: getString(question.id) || `question-${index + 1}`,

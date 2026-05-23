@@ -4,6 +4,7 @@ import type {
   QuizSpec,
   ValidationCheck,
 } from "../types/materials.types";
+import { hasQuizOptionPrefix } from "../lib/quiz-option-format";
 
 function getQuizContent(quizComponent: MaterialComponent | undefined) {
   return (quizComponent?.content as QuizContent | undefined) || undefined;
@@ -198,6 +199,44 @@ export function validateQuizPassingScore(
   };
 }
 
+export function validateQuizOptionsAreUnlabeled(
+  quizComponent: MaterialComponent | undefined,
+): ValidationCheck {
+  if (!quizComponent) {
+    return {
+      code: "CTRL5_QUIZ_MISSING",
+      message: "No se encontro componente QUIZ",
+      pass: false,
+      severity: "error",
+    };
+  }
+
+  const content = getQuizContent(quizComponent);
+  const labeledOptions =
+    content?.items?.flatMap((item) =>
+      (item.options || []).filter((option) => hasQuizOptionPrefix(option)),
+    ) || [];
+
+  if (labeledOptions.length > 0) {
+    return {
+      code: "CTRL5_QUIZ_LABELED_OPTIONS",
+      component: "QUIZ",
+      message:
+        "Las opciones del quiz no deben incluir prefijos como A., B), C - o 1.; el frontend las rotula automaticamente",
+      pass: false,
+      severity: "error",
+    };
+  }
+
+  return {
+    code: "CTRL5_QUIZ_OPTIONS_UNLABELED",
+    component: "QUIZ",
+    message: "Las opciones del quiz no incluyen rotulos duplicados",
+    pass: true,
+    severity: "error",
+  };
+}
+
 export function buildControl5Checks(
   quizComponent: MaterialComponent | undefined,
   spec: QuizSpec | null,
@@ -208,5 +247,6 @@ export function buildControl5Checks(
     validateQuizDifficulty(quizComponent),
     validateQuizExplanations(quizComponent),
     validateQuizPassingScore(quizComponent),
+    validateQuizOptionsAreUnlabeled(quizComponent),
   ];
 }

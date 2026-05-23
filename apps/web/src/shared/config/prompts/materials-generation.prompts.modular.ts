@@ -122,7 +122,10 @@ export const quizPromptDefault = `## Cuestionario Formativo (Fin de lección)
 - Dificultad variada (EASY, MEDIUM, HARD)
 - Tipos permitidos según quiz_spec.types
 
-**Reglas críticas:** explanation es REQUERIDO para cada pregunta. passing_score debe ser 80.`;
+**Reglas críticas:**
+- explanation es REQUERIDO para cada pregunta.
+- passing_score debe ser 80.
+- Las opciones deben ser texto limpio. NO incluyas prefijos, letras, numeros, bullets ni etiquetas como "A.", "B)", "C -", "1." dentro de cada opcion; el frontend rotula las opciones.`;
 
 export const videoTheoreticalPromptDefault = `## Video Teórico (Explicativo)
 
