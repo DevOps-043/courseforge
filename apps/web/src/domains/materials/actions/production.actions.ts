@@ -10,6 +10,17 @@ import { callBackgroundFunctionJson } from "@/lib/server/background-function-cli
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import { getVideoProviderAndId } from "@/lib/video-platform";
 import type { LessonVideoData } from "@/domains/publication/types/publication.types";
+import {
+  buildBrollPromptJobInputSnapshot,
+  buildProductionIdempotencyKey,
+  createOrReuseProductionJob,
+  resolveProductionComponentContext,
+} from "@/domains/production/jobs/production-jobs.service";
+import {
+  PRODUCTION_JOB_STATUSES,
+  PRODUCTION_JOB_TYPES,
+  PRODUCTION_PROVIDERS,
+} from "@/domains/production/types/production.types";
 import { createClient } from "@/utils/supabase/server";
 import type {
   MaterialAssets,
@@ -159,10 +170,50 @@ export async function generateVideoPromptsAction(
   if (!userToken) return { success: false, error: "Unauthorized" };
 
   try {
+    const authenticatedUser = await getAuthenticatedUser(supabase);
+    if (!authenticatedUser) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const admin = getServiceRoleClient();
+    const context = await resolveProductionComponentContext({
+      componentId,
+      supabase: admin,
+    });
+    const inputSnapshot = buildBrollPromptJobInputSnapshot({
+      componentId,
+      storyboard,
+    });
+    const productionJob = await createOrReuseProductionJob(admin, {
+      context,
+      createdBy: authenticatedUser.userId,
+      idempotencyKey: buildProductionIdempotencyKey({
+        componentId,
+        input: inputSnapshot,
+        jobType: PRODUCTION_JOB_TYPES.BROLL_PROMPT_GENERATION,
+        provider: PRODUCTION_PROVIDERS.GEMINI,
+      }),
+      inputSnapshot,
+      jobType: PRODUCTION_JOB_TYPES.BROLL_PROMPT_GENERATION,
+      provider: PRODUCTION_PROVIDERS.GEMINI,
+      providerModel: "gemini-2.0-flash",
+    });
+
+    if (
+      productionJob.status === PRODUCTION_JOB_STATUSES.SUCCEEDED &&
+      typeof productionJob.output_snapshot?.prompts_text === "string"
+    ) {
+      return {
+        success: true,
+        prompts: productionJob.output_snapshot.prompts_text,
+      };
+    }
+
     const data = await callBackgroundFunctionJson<{ prompts?: string }>(
       "video-prompts-generation",
       {
         componentId,
+        productionJobId: productionJob.id,
         storyboard,
         userToken,
       },

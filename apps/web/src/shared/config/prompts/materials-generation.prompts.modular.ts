@@ -118,14 +118,16 @@ export const quizPromptDefault = `## Cuestionario Formativo (Fin de lección)
 **Generación requerida:**
 - 3–5 preguntas variadas (según quiz_spec)
 - Para CADA opción de respuesta: Feedback inmediato (por qué es correcta o incorrecta)
-- Umbral de aprobación: 80%
+- Umbral de aprobación: 60%
 - Dificultad variada (EASY, MEDIUM, HARD)
 - Tipos permitidos según quiz_spec.types
 
 **Reglas críticas:**
 - explanation es REQUERIDO para cada pregunta.
-- passing_score debe ser 80.
-- Las opciones deben ser texto limpio. NO incluyas prefijos, letras, numeros, bullets ni etiquetas como "A.", "B)", "C -", "1." dentro de cada opcion; el frontend rotula las opciones.`;
+- passing_score debe ser 60.
+- correct_answer es REQUERIDO para cada pregunta. En TRUE_FALSE debe ser exactamente "Verdadero" o "Falso", coherente con las opciones.
+- Las opciones deben ser texto limpio. NO incluyas prefijos, letras, numeros, bullets ni etiquetas como "A.", "B)", "C -", "1." dentro de cada opcion; el frontend rotula las opciones.
+- Cada opcion debe contener contenido pedagogico sustantivo. Nunca generes opciones que sean solo "A", "B", "C", "D", numeros, etiquetas vacias o placeholders.`;
 
 export const videoTheoreticalPromptDefault = `## Video Teórico (Explicativo)
 

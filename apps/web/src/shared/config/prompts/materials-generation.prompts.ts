@@ -224,7 +224,7 @@ Recordar conceptos; aplicar buenas prácticas; analizar salidas de IA.
 
 - 3–5 preguntas variadas
 - Feedback inmediato por opción (explicación requerida)
-- Umbral de aprobación 80%
+- Umbral de aprobación 60%
 - Dificultad variada (EASY, MEDIUM, HARD)
 - Tipos: MULTIPLE_CHOICE, TRUE_FALSE, FILL_BLANK
 
@@ -302,7 +302,7 @@ Diseña un Cuestionario Formativo para la lección, con:
 - Instrucción inicial
 - 3–5 preguntas variadas (según \`quiz_spec\`)
 - Para CADA opción de respuesta: Feedback inmediato (por qué es correcta o incorrecta)
-- Umbral de aprobación: 80%
+- Umbral de aprobación: 60%
 - Dificultad variada (EASY, MEDIUM, HARD)
 - Tipos permitidos según \`quiz_spec.types\`
 
@@ -327,7 +327,7 @@ Considera la Fase 3 terminada solo si:
 
   - Tiene 3–5 preguntas (según \`quiz_spec\`)
   - Incluye feedback inmediato por opción
-  - Refuerza un **corte de aprobación ≥80%**
+  - Refuerza un **corte de aprobación ≥60%**
 
 - Los guiones y storyboards:
   - Tienen timecodes coherentes
@@ -382,14 +382,14 @@ Responde **SOLO con JSON válido** usando esta estructura exacta:
           "id": "string",
           "question": "string",
           "type": "MULTIPLE_CHOICE | TRUE_FALSE | FILL_BLANK",
-          "options": ["A", "B", "C", "D"] (para MULTIPLE_CHOICE),
+          "options": ["Texto completo de la opcion 1", "Texto completo de la opcion 2", "Texto completo de la opcion 3", "Texto completo de la opcion 4"] (para MULTIPLE_CHOICE; nunca solo A/B/C/D),
           "correct_answer": number | string,
           "explanation": "string (REQUERIDO - feedback por opción)",
           "difficulty": "EASY | MEDIUM | HARD",
           "bloom_level": "REMEMBER | UNDERSTAND | APPLY | ANALYZE (opcional)"
         }
       ],
-      "passing_score": 80
+      "passing_score": 60
     },
     "DEMO_GUIDE": {
       "title": "string",
@@ -576,10 +576,11 @@ Responde **SOLO con JSON válido** usando esta estructura exacta:
 4. **storyboard** arrays deben tener timecodes coherentes y progresivos. El \`narration_text\` en CADA TOMA debe ser el guion EXACTO a locutar. NO hagas resúmenes. La suma de los \`narration_text\` del storyboard debe ser el script completo al 100%.
 5. **visual_content** debe describir EXACTAMENTE lo que se ve en pantalla (sin metáforas abstractas).
 6. **explanation** en QUIZ es REQUERIDO para cada pregunta (feedback por opción).
-7. **passing_score** en QUIZ debe ser 80.
-8. **body_html** en READING debe ser HTML válido (~750 palabras).
-9. **source_refs_used** debe listar los IDs de las fuentes realmente utilizadas.
-10. NO uses campos adicionales fuera de los especificados.
-11. NO incluyas texto fuera del JSON (ni explicaciones, ni Markdown, ni tablas).
+7. **passing_score** en QUIZ debe ser 60.
+8. **options** en QUIZ debe contener texto pedagogico sustantivo; nunca uses solo "A", "B", "C", "D", numeros o placeholders.
+9. **body_html** en READING debe ser HTML válido (~750 palabras).
+10. **source_refs_used** debe listar los IDs de las fuentes realmente utilizadas.
+11. NO uses campos adicionales fuera de los especificados.
+12. NO incluyas texto fuera del JSON (ni explicaciones, ni Markdown, ni tablas).
 
 **IMPORTANTE FINAL:** Responde SOLO con el JSON, sin texto adicional, sin Markdown, sin explicaciones fuera del JSON. El sistema parseará directamente el JSON y validará la estructura.`;

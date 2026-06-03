@@ -90,7 +90,7 @@ const OUTPUT_SCHEMAS: Record<string, string> = {
           "bloom_level": "REMEMBER | UNDERSTAND | APPLY | ANALYZE (opcional)"
         }
       ],
-      "passing_score": 80
+      "passing_score": 60
     }`,
 
     DEMO_GUIDE: `"DEMO_GUIDE": {

@@ -3,6 +3,11 @@ import { createServiceRoleClient } from './shared/bootstrap';
 import { getErrorMessage } from './shared/errors';
 import { methodNotAllowedResponse, parseJsonBody } from './shared/http';
 import { selectLatestComponentsByType } from '../../src/domains/materials/lib/material-component-versions';
+import {
+    hasSubstantiveQuizOptionText,
+    hasValidQuizCorrectAnswer,
+    stripQuizOptionPrefix,
+} from '../../src/domains/materials/lib/quiz-option-format';
 
 interface LessonDod {
     control3_consistency: 'PASS' | 'FAIL' | 'PENDING';
@@ -29,7 +34,10 @@ interface MaterialLessonRecord {
 }
 
 interface QuizItem {
+    correct_answer?: unknown;
     explanation?: string | null;
+    options?: string[];
+    type?: string;
 }
 
 interface MaterialComponentRecord {
@@ -246,6 +254,31 @@ function runInlineValidation(
         );
         if (withoutExplanation.length > 0) {
             errors.push(`${withoutExplanation.length} pregunta(s) sin explicación adecuada`);
+        }
+
+        const emptyOptions = items.flatMap((item) => {
+            const rawOptions = Array.isArray(item.options) ? item.options : [];
+            return rawOptions.filter((option) => !hasSubstantiveQuizOptionText(option));
+        });
+        if (emptyOptions.length > 0) {
+            errors.push(
+                `${emptyOptions.length} opcion(es) de quiz sin contenido real; no basta con A, B, C, D`,
+            );
+        }
+
+        const withoutCorrectAnswer = items.filter((item) => {
+            const rawOptions = Array.isArray(item.options) ? item.options : [];
+            const cleanOptions = rawOptions.map(stripQuizOptionPrefix);
+
+            return !hasValidQuizCorrectAnswer({
+                rawCorrect: item.correct_answer,
+                rawOptions,
+                cleanOptions,
+                questionType: item.type,
+            });
+        });
+        if (withoutCorrectAnswer.length > 0) {
+            errors.push(`${withoutCorrectAnswer.length} pregunta(s) sin correct_answer valido`);
         }
     }
 
