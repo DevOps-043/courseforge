@@ -49,6 +49,18 @@ export function getOptionalGeminiApiKey() {
   );
 }
 
+export function getGeminiApiKeySource() {
+  if (getOptionalEnv("GOOGLE_GENERATIVE_AI_API_KEY")) {
+    return "GOOGLE_GENERATIVE_AI_API_KEY";
+  }
+
+  if (getOptionalEnv("GOOGLE_API_KEY")) {
+    return "GOOGLE_API_KEY";
+  }
+
+  return "missing";
+}
+
 export function getGeminiModel(defaultModel = "gemini-1.5-flash") {
   return getOptionalEnv("GEMINI_MODEL") || defaultModel;
 }

@@ -2,6 +2,7 @@ import { Handler } from "@netlify/functions";
 import {
   createGeminiClient,
   createServiceRoleClient,
+  getGeminiApiKeySource,
   resolveModelSetting,
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
@@ -291,6 +292,7 @@ export const handler: Handler = async (event) => {
       thinkingLevel: "medium",
     });
     const models = [modelConfig.model, modelConfig.fallbackModel].filter(Boolean);
+    console.log(`${logPrefix} Gemini API key source: ${getGeminiApiKeySource()}`);
     console.log(`${logPrefix} Models: ${models.join(", ")}`);
 
     if ((mode === "single-lesson" || mode === "single-component") && lessonId) {

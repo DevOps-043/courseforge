@@ -71,6 +71,27 @@ function wait(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+function getGeminiBillingOrPermissionError(message: string) {
+  const normalizedMessage = message.toLowerCase();
+
+  if (
+    normalizedMessage.includes("lightning dunning decision is deny") ||
+    normalizedMessage.includes("dunning decision is deny")
+  ) {
+    return "Gemini rechazo la solicitud porque el proyecto de Google Cloud asociado a la API key esta bloqueado por billing/dunning. Revisa facturacion/estado del proyecto en Google Cloud o configura una API key de un proyecto activo y reinicia el servidor.";
+  }
+
+  if (
+    normalizedMessage.includes("permission_denied") ||
+    normalizedMessage.includes('"code":403') ||
+    normalizedMessage.includes("status code 403")
+  ) {
+    return "Gemini rechazo la solicitud con 403 PERMISSION_DENIED. Verifica que la API key tenga acceso a Gemini API/Generative Language API, que el proyecto este activo y que el modelo configurado este disponible para ese proyecto.";
+  }
+
+  return null;
+}
+
 export function matchesLesson(
   candidate: Pick<CurationRowRecord, "lesson_id" | "lesson_title">,
   lesson: Pick<MaterialLessonRecord, "lesson_id" | "lesson_title">,
@@ -149,6 +170,8 @@ export async function generateWithRetry(
   models?: string[],
 ) {
   const modelsToTry = models && models.length > 0 ? models : DEFAULT_MODELS;
+  let lastError = "All retries exhausted";
+
   for (let retry = 0; retry < 2; retry++) {
     for (const model of modelsToTry) {
       try {
@@ -165,7 +188,13 @@ export async function generateWithRetry(
         return { success: true as const, content };
       } catch (error) {
         const message = getErrorMessage(error, "");
+        lastError = message || lastError;
         console.warn(`${logPrefix} ${model} failed: ${message}`);
+
+        const permissionError = getGeminiBillingOrPermissionError(message);
+        if (permissionError) {
+          return { success: false as const, error: permissionError };
+        }
 
         if (message.includes("429") || message.includes("rate limit")) {
           await wait(MATERIALS_RETRY_BACKOFF_BASE_MS * (retry + 1));
@@ -175,7 +204,7 @@ export async function generateWithRetry(
     }
   }
 
-  return { success: false as const, error: "All retries exhausted" };
+  return { success: false as const, error: lastError };
 }
 
 export async function generateMaterialsWithGemini(
