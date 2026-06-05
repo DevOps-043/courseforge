@@ -27,7 +27,7 @@ import {
   formatBrollPromptsForAssets,
   parseBrollPromptResponse,
 } from "../../src/domains/production/validation/broll-prompts.schema";
-import { VIDEO_BROLL_PROMPT_CODE } from "../../src/shared/config/prompts/materials-generation.prompts.modular";
+import { CLIP_GENERATION_PROMPT_CODE } from "../../src/shared/config/prompts/materials-generation.prompts.modular";
 import { resolveSinglePrompt } from "../../src/shared/config/prompts/prompt-resolver.service";
 
 const BROLL_PROMPT_MODEL = "gemini-2.0-flash";
@@ -99,7 +99,7 @@ export const handler: Handler = async (event) => {
 
     const systemPrompt = await resolveSinglePrompt(
       supabase,
-      VIDEO_BROLL_PROMPT_CODE,
+      CLIP_GENERATION_PROMPT_CODE,
       context.organizationId,
     );
 

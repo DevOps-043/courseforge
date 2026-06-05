@@ -75,37 +75,45 @@ function buildDodChecklist(
 
 function resolveProductionStatus(
   componentType: string,
-  dodChecklist: ProductionDodChecklist,
+  assets: Partial<MaterialAssets> = {},
 ): ProductionStatus {
   const needsSlides =
     componentType === "VIDEO_THEORETICAL" || componentType === "VIDEO_GUIDE";
   const needsScreencast =
     componentType === "DEMO_GUIDE" || componentType === "VIDEO_GUIDE";
-  const needsVideo = componentType.includes("VIDEO");
-  const needsFinalVideo = componentType.includes("VIDEO");
+  const needsVoice = componentType.includes("VIDEO");
+  
+  // A talking head avatar is generally required for theoretical explanation videos
+  const needsAvatar = componentType === "VIDEO_THEORETICAL";
 
-  const hasRequiredSlides = !needsSlides || dodChecklist.has_slides_url;
-  const hasRequiredScreencast =
-    !needsScreencast || dodChecklist.has_screencast_url;
-  const hasRequiredVideo = !needsVideo || dodChecklist.has_video_url;
-  const hasRequiredFinalVideo =
-    !needsFinalVideo || dodChecklist.has_final_video_url;
+  const hasRequiredSlides = !needsSlides || Boolean(assets.slides?.images?.length || assets.slides_url);
+  const hasRequiredScreencast = !needsScreencast || Boolean(assets.screencast_url);
+  const hasRequiredVoice = !needsVoice || Boolean(
+    assets.voice_audio?.public_url || 
+    assets.avatar_video?.public_url || 
+    assets.video_url
+  );
+  const hasRequiredAvatar = !needsAvatar || Boolean(assets.avatar_video?.public_url);
+  
+  // Clips are ready if we have video clips uploaded or generated prompts for them
+  const hasRequiredClips = !needsVoice || Boolean(assets.b_roll_clips?.length || assets.b_roll_prompts);
 
   if (
-    (hasRequiredSlides &&
-      hasRequiredScreencast &&
-      hasRequiredVideo &&
-      hasRequiredFinalVideo) ||
-    dodChecklist.has_final_video_url
+    hasRequiredSlides &&
+    hasRequiredScreencast &&
+    hasRequiredVoice &&
+    hasRequiredAvatar &&
+    hasRequiredClips
   ) {
     return "COMPLETED";
   }
 
   if (
-    dodChecklist.has_slides_url ||
-    dodChecklist.has_video_url ||
-    dodChecklist.has_screencast_url ||
-    dodChecklist.has_b_roll_prompts
+    Boolean(assets.slides?.images?.length || assets.slides_url) ||
+    Boolean(assets.screencast_url) ||
+    Boolean(assets.voice_audio?.public_url || assets.video_url) ||
+    Boolean(assets.avatar_video?.public_url) ||
+    Boolean(assets.b_roll_clips?.length || assets.b_roll_prompts)
   ) {
     return "IN_PROGRESS";
   }
@@ -323,7 +331,7 @@ export async function saveMaterialAssetsAction(
   const materials = firstRelation(lesson?.materials);
   const artifactId = materials?.artifact_id || undefined;
   const dodChecklist = buildDodChecklist(mergedAssets);
-  const productionStatus = resolveProductionStatus(componentType, dodChecklist);
+  const productionStatus = resolveProductionStatus(componentType, mergedAssets);
 
   const finalAssets: MaterialAssets = {
     ...mergedAssets,
@@ -489,4 +497,99 @@ export async function updateProductionStatusAction(
   }
 
   return { success: true };
+}
+
+export async function assembleRemotionVideoAction(
+  componentId: string,
+  templateId: string,
+  variables: Record<string, unknown>,
+) {
+  const { error: authError, supabase } = await getAuthorizedSupabase();
+  if (authError) return { success: false, error: authError };
+
+  try {
+    const { data: rawComponent, error: fetchError } = await supabase
+      .from("material_components")
+      .select(
+        `
+          assets, type, material_lesson_id,
+          material_lessons (
+            lesson_id, lesson_title, module_title, module_id,
+            materials (
+              artifact_id
+            )
+          )
+        `,
+      )
+      .eq("id", componentId)
+      .single();
+
+    if (fetchError || !rawComponent) {
+      return { success: false, error: "No se encontró el componente" };
+    }
+
+    const component = (rawComponent || null) as ProductionComponentRecord | null;
+    const currentAssets = (component?.assets || {}) as MaterialAssets;
+    const lesson = firstRelation(component?.material_lessons);
+    const materials = firstRelation(lesson?.materials);
+    const artifactId = materials?.artifact_id || undefined;
+
+    // Simulate 3 seconds delay for Remotion render compilation
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    // Simulated local URL mapping the assembled variables
+    const finalVideoUrl = `https://www.w3schools.com/html/mov_bbb.mp4`; // Mock video for preview
+    
+    const updatedAssets: MaterialAssets = {
+      ...currentAssets,
+      final_video_url: finalVideoUrl,
+      final_video_source: "link",
+      video_duration: 10, // Mock duration
+      production_status: "COMPLETED",
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error: updateError } = await supabase
+      .from("material_components")
+      .update({ assets: updatedAssets })
+      .eq("id", componentId);
+
+    if (updateError) {
+      console.error("[ProductionActions] Error saving simulated Remotion assets:", updateError);
+      return { success: false, error: updateError.message };
+    }
+
+    if (artifactId && lesson) {
+      await syncVideoToPublicationRequests(supabase, artifactId, lesson, updatedAssets);
+      await markDownstreamDirtyAction(
+        artifactId,
+        6, // Phase 6 - Production updated
+        "Postproducción (Ensamblado Remotion simulado)",
+      );
+      await syncProductionStatusAction(artifactId);
+      await logPipelineEventAction(
+        artifactId,
+        "REMOTION_ASSEMBLY_COMPLETED",
+        {
+          component_id: componentId,
+          template_id: templateId,
+          variables,
+          final_video_url: finalVideoUrl,
+        },
+        "GO-OP-07", // Phase 7: Postproduction
+        componentId,
+        "material_component",
+      );
+    }
+
+    return { 
+      success: true, 
+      finalVideoUrl,
+      productionStatus: "COMPLETED" as ProductionStatus,
+    };
+
+  } catch (error: unknown) {
+    console.error("[ProductionActions] Error simulating Remotion assembly:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
 }

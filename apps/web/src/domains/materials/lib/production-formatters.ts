@@ -138,3 +138,32 @@ export function getGammaEmbedUrl(url: string): string | null {
 
   return url.includes("gamma.app/embed/") ? url : null;
 }
+
+export function formatOpenDesignContent(content: ProductionContent): string {
+  const sections = getScriptSections(content.script);
+  const storyboard = getStoryboardItems(content.storyboard);
+
+  if (sections.length === 0 && storyboard.length === 0) {
+    return "";
+  }
+
+  const slidesData = [];
+  const maxItems = Math.max(sections.length, storyboard.length);
+
+  for (let index = 0; index < maxItems; index += 1) {
+    const section = sections[index];
+    const storyItem = storyboard[index];
+
+    slidesData.push({
+      slide_index: index + 1,
+      on_screen_text: section?.on_screen_text || storyItem?.on_screen_text || "",
+      narration_text: section?.narration_text || storyItem?.narration_text || "",
+      visual_notes: section?.visual_notes || storyItem?.visual_content || "",
+    });
+  }
+
+  return JSON.stringify({
+    course_title: content.title || "Curso Courseforge",
+    slides: slidesData
+  }, null, 2);
+}

@@ -5,6 +5,7 @@ import { BookOpen, CheckCircle2, FileText, Layers, Target } from "lucide-react";
 interface ArtifactWorkflowStepperProps {
   canAccessMaterialsStep: boolean;
   canAccessProductionStep: boolean;
+  canAccessPostproductionStep: boolean;
   canAccessPublicationStep: boolean;
   canAccessSourcesStep: boolean;
   currentStep: number;
@@ -16,6 +17,7 @@ interface ArtifactWorkflowStepperProps {
     curationDone: boolean;
     materialsDone: boolean;
     productionDone: boolean;
+    postproductionDone: boolean;
     publicationDone: boolean;
   };
 }
@@ -83,6 +85,7 @@ function StepItem({
 export function ArtifactWorkflowStepper({
   canAccessMaterialsStep,
   canAccessProductionStep,
+  canAccessPostproductionStep,
   canAccessPublicationStep,
   canAccessSourcesStep,
   currentStep,
@@ -145,9 +148,18 @@ export function ArtifactWorkflowStepper({
       />
       <StepDivider done={stepStatus.productionDone} />
       <StepItem
-        label="Publicar"
+        label="Ensamble"
         active={currentStep === 7}
         onClick={() => onStepChange(7)}
+        icon={<Layers size={18} />}
+        disabled={!canAccessPostproductionStep}
+        done={stepStatus.postproductionDone}
+      />
+      <StepDivider done={stepStatus.postproductionDone} />
+      <StepItem
+        label="Publicar"
+        active={currentStep === 8}
+        onClick={() => onStepChange(8)}
         icon={<Target size={18} />}
         disabled={!canAccessPublicationStep}
         done={stepStatus.publicationDone}
