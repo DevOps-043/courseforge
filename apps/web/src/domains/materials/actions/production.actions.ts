@@ -507,6 +507,163 @@ export async function assembleRemotionVideoAction(
   const { error: authError, supabase } = await getAuthorizedSupabase();
   if (authError) return { success: false, error: authError };
 
+  const webSupabase = await createClient();
+  const token = await getAccessToken(webSupabase);
+  if (!token) return { success: false, error: "No se encontró un token de autenticación" };
+
+  let rawComponent: any = null;
+  try {
+    const { data, error: fetchError } = await supabase
+      .from("material_components")
+      .select(
+        `
+          assets, type, material_lesson_id,
+          material_lessons (
+            lesson_id, lesson_title, module_title, module_id,
+            materials (
+              artifact_id
+            )
+          )
+        `,
+      )
+      .eq("id", componentId)
+      .single();
+
+    if (fetchError || !data) {
+      return { success: false, error: "No se encontró el componente" };
+    }
+    rawComponent = data;
+  } catch (err: any) {
+    return { success: false, error: err.message || "Error al buscar el componente" };
+  }
+
+  const component = rawComponent as ProductionComponentRecord | null;
+  const currentAssets = (component?.assets || {}) as MaterialAssets;
+
+  try {
+    // Update component status to IN_PROGRESS
+    const updatedAssets: MaterialAssets = {
+      ...currentAssets,
+      production_status: "IN_PROGRESS",
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error: updateError } = await supabase
+      .from("material_components")
+      .update({ assets: updatedAssets })
+      .eq("id", componentId);
+
+    if (updateError) {
+      console.error("[ProductionActions] Error setting production_status to IN_PROGRESS:", updateError);
+      return { success: false, error: updateError.message };
+    }
+
+    // Call local Express API
+    const expressApiUrl = process.env.EXPRESS_API_URL || "http://localhost:4000";
+    console.log(`[ProductionActions] Triggering Remotion render via Express API: ${expressApiUrl}`);
+    
+    const response = await fetch(`${expressApiUrl}/api/v1/production/remotion/render`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        componentId,
+        templateId,
+        variables
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `HTTP Error ${response.status}`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.error || errorMessage;
+      } catch (_) {}
+
+      // Revert status to PENDING in case of request error
+      await supabase
+        .from("material_components")
+        .update({
+          assets: {
+            ...currentAssets,
+            production_status: "PENDING",
+            updated_at: new Date().toISOString()
+          }
+        })
+        .eq("id", componentId);
+
+      return { success: false, error: errorMessage };
+    }
+
+    const result = await response.json();
+    return {
+      success: true,
+      jobId: result.jobId,
+      status: result.status,
+      productionStatus: "IN_PROGRESS" as ProductionStatus
+    };
+
+  } catch (error: unknown) {
+    console.error("[ProductionActions] Error initiating Remotion assembly:", error);
+    
+    // Revert status to PENDING
+    try {
+      await supabase
+        .from("material_components")
+        .update({
+          assets: {
+            ...currentAssets,
+            production_status: "PENDING",
+            updated_at: new Date().toISOString()
+          }
+        })
+        .eq("id", componentId);
+    } catch (_) {}
+
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function getRemotionJobStatusAction(jobId: string) {
+  const { error: authError } = await getAuthorizedSupabase();
+  if (authError) return { success: false, error: authError };
+
+  const webSupabase = await createClient();
+  const token = await getAccessToken(webSupabase);
+  if (!token) return { success: false, error: "No se encontró un token de autenticación" };
+
+  try {
+    const expressApiUrl = process.env.EXPRESS_API_URL || "http://localhost:4000";
+    const response = await fetch(`${expressApiUrl}/api/v1/production/jobs/${jobId}/status`, {
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      return { success: false, error: `HTTP Error ${response.status}` };
+    }
+
+    const job = await response.json();
+    return {
+      success: true,
+      job
+    };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function completeRemotionAssemblyAction(
+  componentId: string,
+  finalVideoUrl: string,
+) {
+  const { error: authError, supabase } = await getAuthorizedSupabase();
+  if (authError) return { success: false, error: authError };
+
   try {
     const { data: rawComponent, error: fetchError } = await supabase
       .from("material_components")
@@ -529,42 +686,17 @@ export async function assembleRemotionVideoAction(
     }
 
     const component = (rawComponent || null) as ProductionComponentRecord | null;
-    const currentAssets = (component?.assets || {}) as MaterialAssets;
     const lesson = firstRelation(component?.material_lessons);
     const materials = firstRelation(lesson?.materials);
     const artifactId = materials?.artifact_id || undefined;
 
-    // Simulate 3 seconds delay for Remotion render compilation
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-
-    // Simulated local URL mapping the assembled variables
-    const finalVideoUrl = `https://www.w3schools.com/html/mov_bbb.mp4`; // Mock video for preview
-    
-    const updatedAssets: MaterialAssets = {
-      ...currentAssets,
-      final_video_url: finalVideoUrl,
-      final_video_source: "link",
-      video_duration: 10, // Mock duration
-      production_status: "COMPLETED",
-      updated_at: new Date().toISOString(),
-    };
-
-    const { error: updateError } = await supabase
-      .from("material_components")
-      .update({ assets: updatedAssets })
-      .eq("id", componentId);
-
-    if (updateError) {
-      console.error("[ProductionActions] Error saving simulated Remotion assets:", updateError);
-      return { success: false, error: updateError.message };
-    }
-
     if (artifactId && lesson) {
-      await syncVideoToPublicationRequests(supabase, artifactId, lesson, updatedAssets);
+      const assets = (component?.assets || {}) as MaterialAssets;
+      await syncVideoToPublicationRequests(supabase, artifactId, lesson, assets);
       await markDownstreamDirtyAction(
         artifactId,
         6, // Phase 6 - Production updated
-        "Postproducción (Ensamblado Remotion simulado)",
+        "Postproducción (Ensamblado Remotion local)",
       );
       await syncProductionStatusAction(artifactId);
       await logPipelineEventAction(
@@ -572,8 +704,6 @@ export async function assembleRemotionVideoAction(
         "REMOTION_ASSEMBLY_COMPLETED",
         {
           component_id: componentId,
-          template_id: templateId,
-          variables,
           final_video_url: finalVideoUrl,
         },
         "GO-OP-07", // Phase 7: Postproduction
@@ -582,14 +712,9 @@ export async function assembleRemotionVideoAction(
       );
     }
 
-    return { 
-      success: true, 
-      finalVideoUrl,
-      productionStatus: "COMPLETED" as ProductionStatus,
-    };
-
+    return { success: true };
   } catch (error: unknown) {
-    console.error("[ProductionActions] Error simulating Remotion assembly:", error);
+    console.error("[ProductionActions] Error completing Remotion assembly:", error);
     return { success: false, error: getErrorMessage(error) };
   }
 }

@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import { errorHandler } from './core/middleware/errorHandler';
 import { getApiPort } from './config/env';
 import { authRoutes } from './features/auth/auth.routes';
+import { productionRoutes } from './features/production/production.routes';
 
 dotenv.config();
 
@@ -22,6 +23,7 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/production', productionRoutes);
 
 app.use(errorHandler);
 

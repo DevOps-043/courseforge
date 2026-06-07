@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { LayoutDashboard, Users, FileCode, Settings } from 'lucide-react';
+import { LayoutDashboard, Users, FileCode, Settings, Video } from 'lucide-react';
 import SharedSidebarLayout, { NavItemConfig } from '@/components/layout/SharedSidebarLayout';
 import type { SidebarProfile } from '@/components/layout/layout.types';
 
@@ -21,6 +21,7 @@ export default function AdminLayoutClient({
         { href: '/admin/users', icon: <Users size={22} />, label: 'Usuarios' },
         { href: '/admin/artifacts', icon: <FileCode size={22} />, label: 'Artefactos' },
         { href: '/admin/library', icon: <FileCode size={22} />, label: 'Librería' },
+        { href: '/admin/templates', icon: <Video size={22} />, label: 'Plantillas' },
         { href: '/admin/settings', icon: <Settings size={22} />, label: 'Configuración' },
     ];
 

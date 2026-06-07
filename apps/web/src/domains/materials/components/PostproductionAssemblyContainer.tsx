@@ -2,10 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { useMaterials } from '../hooks/useMaterials';
-import { assembleRemotionVideoAction } from '../actions/production.actions';
+import { 
+    assembleRemotionVideoAction,
+    getRemotionJobStatusAction,
+    completeRemotionAssemblyAction
+} from '../actions/production.actions';
 import { Loader2, Sparkles, CheckCircle2, Play, RefreshCw, Layers, Film } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { PRODUCTION_THEME } from './production-asset-ui';
+import { getTemplatesAction, type RemotionTemplate } from '@/domains/production/actions/templates.actions';
 
 interface PostproductionAssemblyContainerProps {
     artifactId: string;
@@ -13,43 +18,37 @@ interface PostproductionAssemblyContainerProps {
     profile?: unknown;
 }
 
-interface TemplateOption {
-    id: string;
-    name: string;
-    description: string;
-    thumbnail: string;
-}
-
-const TEMPLATES: TemplateOption[] = [
-    {
-        id: 'split-screen-classic',
-        name: 'Presentación + Avatar (Dividida)',
-        description: 'Muestra las slides de Open Design al lado izquierdo y al avatar en la esquina derecha.',
-        thumbnail: '🎨',
-    },
-    {
-        id: 'full-presentation',
-        name: 'Presentación Completa (Diapositivas)',
-        description: 'Prioriza las diapositivas a pantalla completa con voz y música de fondo.',
-        thumbnail: '📊',
-    },
-    {
-        id: 'avatar-focus',
-        name: 'Avatar Enfocado (Talking Head)',
-        description: 'El avatar de Heygen ocupa el centro de la pantalla con soporte inferior de slides.',
-        thumbnail: '👤',
-    },
-];
-
 export function PostproductionAssemblyContainer({ artifactId, onNext }: PostproductionAssemblyContainerProps) {
     const router = useRouter();
     const { materials, getLessonComponents, refresh } = useMaterials(artifactId);
-    const [selectedTemplate, setSelectedTemplate] = useState(TEMPLATES[0].id);
+    const [templates, setTemplates] = useState<RemotionTemplate[]>([]);
+    const [selectedTemplate, setSelectedTemplate] = useState<string>('');
     const [isAssembling, setIsAssembling] = useState(false);
     const [progress, setProgress] = useState(0);
     const [assemblyResult, setAssemblyResult] = useState<{ finalVideoUrl?: string; success: boolean } | null>(null);
     const [loadingComponents, setLoadingComponents] = useState(true);
+    const [loadingTemplates, setLoadingTemplates] = useState(true);
     const [videoComponents, setVideoComponents] = useState<any[]>([]);
+
+    useEffect(() => {
+        const fetchTemplates = async () => {
+            setLoadingTemplates(true);
+            try {
+                const result = await getTemplatesAction();
+                if (result.success && result.templates) {
+                    setTemplates(result.templates);
+                    if (result.templates.length > 0) {
+                        setSelectedTemplate(result.templates[0].id);
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching templates:', err);
+            } finally {
+                setLoadingTemplates(false);
+            }
+        };
+        fetchTemplates();
+    }, []);
 
     useEffect(() => {
         const fetchVideoComponents = async () => {
@@ -71,49 +70,83 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
         fetchVideoComponents();
     }, [materials, getLessonComponents]);
 
-    // Simulate assembly progress
+    // Real assembly progress using Express API polling
     const handleAssemble = async () => {
         if (videoComponents.length === 0) return;
         setIsAssembling(true);
-        setProgress(5);
+        setProgress(0);
         setAssemblyResult(null);
 
-        // Progress animation
-        const interval = setInterval(() => {
-            setProgress(prev => {
-                if (prev >= 95) {
-                    clearInterval(interval);
-                    return 95;
-                }
-                return prev + Math.floor(Math.random() * 15) + 5;
-            });
-        }, 300);
-
         try {
-            // Pick first video component for mockup assembly
+            // Pick first video component for assembly
             const componentId = videoComponents[0].id;
             
-            const result = await assembleRemotionVideoAction(componentId, selectedTemplate, {
+            const triggerResult = await assembleRemotionVideoAction(componentId, selectedTemplate, {
                 template: selectedTemplate,
                 videoComponentsCount: videoComponents.length,
             });
 
-            clearInterval(interval);
-            setProgress(100);
-
-            if (result.success) {
-                setAssemblyResult({ finalVideoUrl: result.finalVideoUrl, success: true });
-                await refresh();
-                router.refresh();
-            } else {
+            if (!triggerResult.success || !triggerResult.jobId) {
+                setIsAssembling(false);
                 setAssemblyResult({ success: false });
-                alert('Ocurrió un error al ensamblar: ' + result.error);
+                alert('Ocurrió un error al iniciar el ensamblado: ' + (triggerResult.error || 'Error desconocido'));
+                return;
             }
+
+            const jobId = triggerResult.jobId;
+            setProgress(5); // Started
+
+            // Poll the job status every 1500ms
+            const pollInterval = setInterval(async () => {
+                try {
+                    const statusResult = await getRemotionJobStatusAction(jobId);
+                    if (!statusResult.success || !statusResult.job) {
+                        console.error('Error polling status:', statusResult.error);
+                        return;
+                    }
+
+                    const job = statusResult.job;
+                    
+                    // Extract progress percent from array if present
+                    if (Array.isArray(job.progress) && job.progress.length > 0) {
+                        const lastProgress = job.progress[job.progress.length - 1];
+                        if (typeof lastProgress?.percent === 'number') {
+                            setProgress(lastProgress.percent);
+                        }
+                    }
+
+                    if (job.status === 'SUCCEEDED') {
+                        clearInterval(pollInterval);
+                        setProgress(100);
+                        const finalVideoUrl = job.output_snapshot?.final_video_url || '';
+                        
+                        // Sync downstream pipeline events and publication requests
+                        await completeRemotionAssemblyAction(componentId, finalVideoUrl);
+                        
+                        setAssemblyResult({ finalVideoUrl, success: true });
+                        await refresh();
+                        router.refresh();
+                        setIsAssembling(false);
+                    } else if (job.status === 'FAILED') {
+                        clearInterval(pollInterval);
+                        setIsAssembling(false);
+                        setAssemblyResult({ success: false });
+                        const errorMsg = job.provider_error?.message || 'Error desconocido durante la renderización';
+                        alert('Error al ensamblar: ' + errorMsg);
+                    } else if (job.status === 'CANCELLED') {
+                        clearInterval(pollInterval);
+                        setIsAssembling(false);
+                        setAssemblyResult({ success: false });
+                        alert('El ensamblado fue cancelado.');
+                    }
+                } catch (pollErr) {
+                    console.error('Error in polling loop:', pollErr);
+                }
+            }, 1500);
+
         } catch (err) {
-            clearInterval(interval);
             console.error(err);
             setAssemblyResult({ success: false });
-        } finally {
             setIsAssembling(false);
         }
     };
@@ -121,11 +154,11 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const hasRequiredAssets = videoComponents.length > 0;
     const isCompleted = videoComponents.some(c => c.assets?.production_status === 'COMPLETED');
 
-    if (loadingComponents) {
+    if (loadingComponents || loadingTemplates) {
         return (
             <div className={`flex flex-col items-center justify-center py-20 ${PRODUCTION_THEME.panel}`}>
                 <Loader2 className="animate-spin text-[#1F5AF6] mb-4" size={32} />
-                <p className={`font-medium ${PRODUCTION_THEME.secondaryText}`}>Cargando estado de assets de video...</p>
+                <p className={`font-medium ${PRODUCTION_THEME.secondaryText}`}>Cargando datos del ensamblado...</p>
             </div>
         );
     }
@@ -163,7 +196,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                             Selecciona una Plantilla de Ensamble
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            {TEMPLATES.map((tpl) => (
+                            {templates.map((tpl) => (
                                 <button
                                     key={tpl.id}
                                     onClick={() => setSelectedTemplate(tpl.id)}
@@ -174,11 +207,16 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                             : 'border-gray-200 dark:border-[#6C757D]/10 bg-transparent'
                                     }`}
                                 >
-                                    <span className="text-2xl mb-2">{tpl.thumbnail}</span>
+                                    <span className="text-2xl mb-2">{tpl.thumbnail_url || '🎨'}</span>
                                     <span className="font-semibold text-sm text-gray-900 dark:text-white mb-1">{tpl.name}</span>
                                     <span className="text-xs text-gray-500 dark:text-gray-400 leading-snug">{tpl.description}</span>
                                 </button>
                             ))}
+                            {templates.length === 0 && (
+                                <div className="col-span-3 text-center py-4 text-sm text-gray-500">
+                                    No hay plantillas disponibles. Sube una en el Panel Administrativo.
+                                </div>
+                            )}
                         </div>
                     </div>
 

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import {
   Volume2,
   VolumeX,
@@ -7,13 +7,10 @@ import {
   FileVideo,
   Video,
   Upload,
-  Trash2,
   Wand2,
   Sparkles,
-  Link,
   CheckCircle2,
   Loader2,
-  Copy,
   ExternalLink,
   Search,
   X,
@@ -21,7 +18,9 @@ import {
   Pause,
   Download,
   HardDrive,
+  AlertTriangle,
 } from "lucide-react";
+import { toast } from "sonner";
 import type {
   VoiceAudio,
   BackgroundMusic,
@@ -30,7 +29,6 @@ import type {
   SlidesAsset,
 } from "../validators/assets.validators";
 import type { DriveFile } from "@/domains/production/providers/google-drive.service";
-import { PRODUCTION_THEME } from "./production-asset-ui";
 
 
 // ---------------------------------------------------------
@@ -41,6 +39,7 @@ interface VoiceAudioSectionProps {
   isUploading: boolean;
   fileRef: React.RefObject<HTMLInputElement | null>;
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onClear: () => void;
   
   // Drive props
   isSearchingDrive: boolean;
@@ -56,6 +55,7 @@ export function VoiceAudioSection({
   isUploading,
   fileRef,
   onUpload,
+  onClear,
   isSearchingDrive,
   isImportingDrive,
   driveSearchResults,
@@ -97,6 +97,13 @@ export function VoiceAudioSection({
                 className="px-2 py-1 rounded border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300 text-[10px] font-bold hover:bg-blue-100 transition-colors"
               >
                 Drive
+              </button>
+              <button
+                onClick={onClear}
+                className="p-1 text-red-500 hover:text-red-705 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition-colors cursor-pointer"
+                title="Eliminar audio de voz"
+              >
+                <X size={12} />
               </button>
             </div>
           ) : (
@@ -157,6 +164,7 @@ interface BackgroundMusicSectionProps {
   fileRef: React.RefObject<HTMLInputElement | null>;
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onVolumeChange: (vol: number) => void;
+  onClear: () => void;
   
   // Artlist props
   isSearchingArtlist: boolean;
@@ -181,6 +189,7 @@ export function BackgroundMusicSection({
   fileRef,
   onUpload,
   onVolumeChange,
+  onClear,
   isSearchingArtlist,
   isImportingArtlist,
   artlistSearchResults,
@@ -243,6 +252,13 @@ export function BackgroundMusicSection({
                 className="px-2 py-1 rounded border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300 text-[10px] font-bold hover:bg-blue-100 transition-colors"
               >
                 Drive
+              </button>
+              <button
+                onClick={onClear}
+                className="p-1 text-red-500 hover:text-red-705 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition-colors cursor-pointer"
+                title="Eliminar música"
+              >
+                <X size={12} />
               </button>
             </div>
           ) : (
@@ -342,6 +358,7 @@ interface OpenDesignSlidesSectionProps {
   fileRef: React.RefObject<HTMLInputElement | null>;
   onExport: () => void;
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onClear: () => void;
   
   // Drive props
   isSearchingDrive: boolean;
@@ -357,6 +374,7 @@ interface OpenDesignSlidesSectionProps {
   fileRef,
   onExport,
   onUpload,
+  onClear,
   isSearchingDrive,
   isImportingDrive,
   driveSearchResults,
@@ -425,6 +443,13 @@ interface OpenDesignSlidesSectionProps {
               <ExternalLink size={10} /> Ver Slides HTML
             </a>
           )}
+          <button
+            onClick={onClear}
+            className="inline-flex items-center gap-0.5 text-red-500 hover:text-red-700 ml-auto font-bold cursor-pointer"
+            title="Eliminar slides"
+          >
+            <X size={10} /> Eliminar
+          </button>
         </div>
       )}
 
@@ -617,6 +642,7 @@ interface AvatarVideoSectionProps {
   fileRef: React.RefObject<HTMLInputElement | null>;
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onHeygenSync: (videoId: string) => void;
+  onClear: () => void;
   
   // Drive props
   isSearchingDrive: boolean;
@@ -634,6 +660,7 @@ interface AvatarVideoSectionProps {
   fileRef,
   onUpload,
   onHeygenSync,
+  onClear,
   isSearchingDrive,
   isImportingDrive,
   driveSearchResults,
@@ -728,7 +755,7 @@ interface AvatarVideoSectionProps {
       )}
 
       {avatarVideo && (
-        <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-gray-100 dark:border-[#6C757D]/10 text-[10px]">
+        <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-gray-105 dark:border-[#6C757D]/10 text-[10px]">
           <span className="font-semibold text-gray-500 truncate max-w-[150px]" title={avatarVideo.storage_path.split("/").pop()}>
             {avatarVideo.storage_path.split("/").pop()}
           </span>
@@ -743,6 +770,13 @@ interface AvatarVideoSectionProps {
           >
             <ExternalLink size={10} /> Ver Avatar
           </a>
+          <button
+            onClick={onClear}
+            className="inline-flex items-center gap-0.5 text-red-500 hover:text-red-700 ml-auto font-bold cursor-pointer"
+            title="Eliminar avatar"
+          >
+            <X size={10} /> Eliminar
+          </button>
         </div>
       )}
 
@@ -1101,7 +1135,7 @@ interface GoogleDriveImportModalProps {
   isImporting: boolean;
   results: DriveFile[];
   onSearch: (query: string) => Promise<void>;
-  onImport: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides") => Promise<boolean>;
+  onImport: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string) => Promise<boolean>;
   onClearResults: () => void;
 }
 
@@ -1109,15 +1143,109 @@ export function GoogleDriveImportModal({
   isOpen,
   onClose,
   type,
-  isSearching,
   isImporting,
-  results,
-  onSearch,
   onImport,
-  onClearResults,
 }: GoogleDriveImportModalProps) {
   const [linkUrl, setLinkUrl] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [localIsImporting, setLocalIsImporting] = useState(false);
+  const [isPickerVisible, setIsPickerVisible] = useState(false);
+
+  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const developerKey = process.env.NEXT_PUBLIC_GOOGLE_DEVELOPER_KEY;
+  const configuredPickerAppId = process.env.NEXT_PUBLIC_GOOGLE_APP_ID;
+  const isDeveloperKeyLikelyApiKey = Boolean(developerKey?.startsWith("AIza"));
+  const isConfigured = Boolean(clientId && developerKey && isDeveloperKeyLikelyApiKey);
+  const driveReadonlyScope = "https://www.googleapis.com/auth/drive.readonly";
+  const driveTokenCacheKey = "courseforge.googleDrive.readonlyToken";
+
+  const getPickerAppId = (clientIdStr: string): string => {
+    if (configuredPickerAppId) return configuredPickerAppId;
+
+    const projectNumber = clientIdStr.split("-")[0];
+    return /^\d+$/.test(projectNumber) ? projectNumber : clientIdStr;
+  };
+
+  const getPickerSize = () => {
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    return {
+      width: Math.min(920, Math.max(720, viewportWidth - 96)),
+      height: Math.min(560, Math.max(420, viewportHeight - 180)),
+    };
+  };
+
+  const getAllowedDriveMimeTypes = () => {
+    switch (type) {
+      case "voice":
+      case "music":
+        return [
+          "audio/aac",
+          "audio/flac",
+          "audio/m4a",
+          "audio/mp4",
+          "audio/mpeg",
+          "audio/ogg",
+          "audio/wav",
+          "audio/webm",
+          "audio/x-m4a",
+          "audio/x-wav",
+        ];
+      case "broll":
+      case "avatar":
+        return [
+          "video/avi",
+          "video/mp4",
+          "video/mpeg",
+          "video/quicktime",
+          "video/webm",
+          "video/x-m4v",
+          "video/x-matroska",
+          "video/x-msvideo",
+        ];
+      case "slides":
+        return [
+          "application/zip",
+          "text/html",
+          "application/vnd.google-apps.presentation",
+          "application/vnd.ms-powerpoint",
+          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ];
+    }
+  };
+
+  const getCachedAccessToken = (): string | null => {
+    try {
+      const cachedToken = window.sessionStorage.getItem(driveTokenCacheKey);
+      if (!cachedToken) return null;
+
+      const parsed = JSON.parse(cachedToken) as { accessToken?: string; expiresAt?: number; scope?: string };
+      const expiresWithBuffer = (parsed.expiresAt ?? 0) - 60000;
+
+      if (parsed.accessToken && parsed.scope === driveReadonlyScope && Date.now() < expiresWithBuffer) {
+        return parsed.accessToken;
+      }
+
+      window.sessionStorage.removeItem(driveTokenCacheKey);
+      return null;
+    } catch {
+      window.sessionStorage.removeItem(driveTokenCacheKey);
+      return null;
+    }
+  };
+
+  const cacheAccessToken = (accessToken: string, expiresInSeconds?: number) => {
+    const expiresAt = Date.now() + Math.max(expiresInSeconds ?? 3600, 300) * 1000;
+    window.sessionStorage.setItem(
+      driveTokenCacheKey,
+      JSON.stringify({
+        accessToken,
+        expiresAt,
+        scope: driveReadonlyScope,
+      })
+    );
+  };
 
   const handleLinkSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1129,40 +1257,195 @@ export function GoogleDriveImportModal({
     }
   };
 
-  const handleSearchSubmit = (e?: React.FormEvent) => {
-    e?.preventDefault();
-    onSearch(searchQuery);
+  const loadGoogleScripts = (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if ((window as any).gapi && (window as any).google) {
+        resolve();
+        return;
+      }
+
+      const loadGis = () => {
+        if ((window as any).google) {
+          resolve();
+          return;
+        }
+        const gisScript = document.createElement("script");
+        gisScript.src = "https://accounts.google.com/gsi/client";
+        gisScript.async = true;
+        gisScript.defer = true;
+        gisScript.onload = () => resolve();
+        gisScript.onerror = () => reject(new Error("Failed to load Google GIS SDK"));
+        document.body.appendChild(gisScript);
+      };
+
+      if ((window as any).gapi) {
+        loadGis();
+      } else {
+        const gapiScript = document.createElement("script");
+        gapiScript.src = "https://apis.google.com/js/api.js";
+        gapiScript.async = true;
+        gapiScript.defer = true;
+        gapiScript.onload = () => loadGis();
+        gapiScript.onerror = () => reject(new Error("Failed to load Google GAPI SDK"));
+        document.body.appendChild(gapiScript);
+      }
+    });
   };
 
-  const handleFileClick = async (fileId: string) => {
-    const success = await onImport(fileId, type);
-    if (success) {
-      onClose();
+  const initGapi = (): Promise<void> => {
+    return new Promise((resolve) => {
+      (window as any).gapi.load("client:picker", () => {
+        resolve();
+      });
+    });
+  };
+
+  const requestAccessToken = (clientIdStr: string, prompt: "" | "consent" = "consent"): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      let didComplete = false;
+      const timeoutId = window.setTimeout(() => {
+        if (didComplete) return;
+        didComplete = true;
+        reject(new Error("Google no completó la autorización. Revisa la ventana emergente o vuelve a intentarlo."));
+      }, 120000);
+
+      const finishWithError = (message: string) => {
+        if (didComplete) return;
+        didComplete = true;
+        window.clearTimeout(timeoutId);
+        reject(new Error(message));
+      };
+
+      const finishWithToken = (accessToken: string) => {
+        if (didComplete) return;
+        didComplete = true;
+        window.clearTimeout(timeoutId);
+        resolve(accessToken);
+      };
+
+      try {
+        const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+          client_id: clientIdStr,
+          scope: driveReadonlyScope,
+          callback: (response: any) => {
+            if (response.error) {
+              finishWithError(response.error_description || response.error);
+              return;
+            }
+            if (response.access_token) {
+              cacheAccessToken(response.access_token, response.expires_in);
+              finishWithToken(response.access_token);
+            } else {
+              finishWithError("No se obtuvo token de acceso de Google.");
+            }
+          },
+          error_callback: (error: any) => {
+            const errorType = error?.type || error?.message || "popup_failed_to_open";
+            finishWithError(`No se pudo abrir o completar el login de Google (${errorType}).`);
+          },
+        });
+        tokenClient.requestAccessToken({ prompt });
+      } catch (err) {
+        window.clearTimeout(timeoutId);
+        reject(err);
+      }
+    });
+  };
+
+  const getAccessTokenForPicker = async (clientIdStr: string): Promise<string> => {
+    const cachedAccessToken = getCachedAccessToken();
+    if (cachedAccessToken) return cachedAccessToken;
+
+    try {
+      return await requestAccessToken(clientIdStr, "");
+    } catch {
+      return requestAccessToken(clientIdStr, "consent");
+    }
+  };
+
+  const handleOpenPicker = async () => {
+    if (!clientId || !developerKey) return;
+    setIsConnecting(true);
+
+    try {
+      // 1. Load scripts
+      await loadGoogleScripts();
+
+      // 2. Initialize GAPI client Picker
+      await initGapi();
+
+      // 3. Request Access Token from Google
+      const accessToken = await getAccessTokenForPicker(clientId);
+      setIsConnecting(false);
+
+      // 4. Build and display the Google Picker
+      const view = new (window as any).google.picker.DocsView((window as any).google.picker.ViewId.DOCS);
+      
+      const allowedMimes = getAllowedDriveMimeTypes();
+      view.setMimeTypes(allowedMimes.join(","));
+
+      const pickerSize = getPickerSize();
+      setIsPickerVisible(true);
+      const picker = new (window as any).google.picker.PickerBuilder()
+        .enableFeature((window as any).google.picker.Feature.NAV_HIDDEN)
+        .setDeveloperKey(developerKey)
+        .setAppId(getPickerAppId(clientId))
+        .setOrigin(window.location.origin)
+        .setSize(pickerSize.width, pickerSize.height)
+        .setOAuthToken(accessToken)
+        .addView(view)
+        .setCallback(async (data: any) => {
+          const action = data[(window as any).google.picker.Response.ACTION];
+          if (action === (window as any).google.picker.Action.CANCEL) {
+            setIsConnecting(false);
+            setLocalIsImporting(false);
+            setIsPickerVisible(false);
+            return;
+          }
+
+          if (action === (window as any).google.picker.Action.PICKED) {
+            const doc = data[(window as any).google.picker.Response.DOCUMENTS][0];
+            const fileId = doc[(window as any).google.picker.Document.ID];
+            
+            console.log("[GoogleDrivePicker] Picked file ID:", fileId);
+            setLocalIsImporting(true);
+            setIsPickerVisible(false);
+            
+            try {
+              const success = await onImport(fileId, type, accessToken);
+              if (success) {
+                onClose();
+              }
+            } catch (err) {
+              console.error("[GoogleDrivePicker] Import failed:", err);
+            } finally {
+              setLocalIsImporting(false);
+            }
+          }
+        })
+        .build();
+
+      picker.setVisible(true);
+
+    } catch (err: any) {
+      setIsConnecting(false);
+      setLocalIsImporting(false);
+      setIsPickerVisible(false);
+      console.error("[GoogleDrivePicker] Connection failed:", err);
+      toast.error(err.message || "Error al conectar con Google Drive. Verifica que tu navegador permita ventanas emergentes.");
     }
   };
 
   const handleClose = () => {
-    onClearResults();
     setLinkUrl("");
-    setSearchQuery("");
+    setIsConnecting(false);
+    setLocalIsImporting(false);
+    setIsPickerVisible(false);
     onClose();
   };
 
-  // Pre-load file list on mount or open
-  useEffect(() => {
-    if (isOpen) {
-      onSearch("");
-    }
-  }, [isOpen]);
-
   if (!isOpen) return null;
-
-  const getAssetIcon = (mime: string) => {
-    if (mime.includes("audio")) return <Mic className="text-blue-500" size={16} />;
-    if (mime.includes("video")) return <FileVideo className="text-[#00D4B3]" size={16} />;
-    if (mime.includes("zip") || mime.includes("html")) return <Wand2 className="text-purple-500" size={16} />;
-    return <HardDrive className="text-gray-400" size={16} />;
-  };
+  if (isPickerVisible) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
@@ -1177,7 +1460,7 @@ export function GoogleDriveImportModal({
                 Google Drive - Importar Recurso
               </h3>
               <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                Pega un enlace privado/compartido o navega por tus archivos
+                Pega un enlace compartido o vincula tu cuenta para buscar archivos
               </p>
             </div>
           </div>
@@ -1190,7 +1473,7 @@ export function GoogleDriveImportModal({
         </div>
 
         {/* Modal Content Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
           
           {/* Option A: Paste URL */}
           <div className="space-y-2">
@@ -1200,19 +1483,19 @@ export function GoogleDriveImportModal({
             <form onSubmit={handleLinkSubmit} className="flex gap-2">
               <input
                 type="text"
-                placeholder="https://drive.google.com/file/d/... o enlace directo"
+                placeholder="https://drive.google.com/file/d/... (Debe ser un enlace público)"
                 value={linkUrl}
                 onChange={(e) => setLinkUrl(e.target.value)}
-                disabled={isImporting}
+                disabled={isImporting || localIsImporting}
                 className="flex-1 p-2 text-xs rounded-lg border border-gray-305 bg-white text-gray-900 placeholder-gray-400 focus:border-[#1F5AF6] focus:outline-none dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
               />
               <button
                 type="submit"
-                disabled={isImporting || !linkUrl.trim()}
+                disabled={isImporting || localIsImporting || !linkUrl.trim()}
                 className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-550 rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50"
               >
-                {isImporting ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                Importar Enlace
+                {(isImporting || localIsImporting) ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                Importar
               </button>
             </form>
           </div>
@@ -1226,75 +1509,60 @@ export function GoogleDriveImportModal({
             </span>
           </div>
 
-          {/* Option B: Search in Account Drive files */}
+          {/* Option B: Search / Google Picker */}
           <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-                Opción B: Seleccionar de la Unidad de Drive
-              </label>
-              
-              {/* Mini Search input */}
-              <form onSubmit={handleSearchSubmit} className="flex gap-1.5">
-                <input
-                  type="text"
-                  placeholder="Buscar archivos..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="px-2.5 py-1 text-[11px] rounded-lg border border-gray-300 bg-white text-gray-900 placeholder-gray-400 focus:outline-none dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
-                />
+            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">
+              Opción B: Seleccionar de la Unidad de Drive
+            </label>
+
+            {!isConfigured ? (
+              // Warning card if variables are missing
+              <div className="p-4 rounded-xl border border-amber-200 bg-amber-500/5 dark:border-amber-500/20 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300 text-xs space-y-2">
+                <p className="font-bold flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
+                  <AlertTriangle size={14} />
+                  Google Drive no está completamente configurado
+                </p>
+                <p className="leading-relaxed">
+                  Para permitir a los usuarios vincular sus cuentas y explorar sus archivos privados de Google Drive directamente, debes configurar las siguientes variables de entorno en tu archivo <code className="bg-amber-100 dark:bg-amber-950/30 px-1 py-0.5 rounded font-mono text-[10px]">.env.local</code>:
+                </p>
+                <ul className="list-disc pl-4 space-y-0.5 font-mono text-[10px] text-amber-600 dark:text-amber-400">
+                  <li>NEXT_PUBLIC_GOOGLE_CLIENT_ID</li>
+                  <li>NEXT_PUBLIC_GOOGLE_DEVELOPER_KEY</li>
+                  <li>NEXT_PUBLIC_GOOGLE_APP_ID (opcional, recomendado para Picker)</li>
+                </ul>
+                {developerKey && !isDeveloperKeyLikelyApiKey && (
+                  <p className="pt-1 text-[10px] font-semibold text-red-600 dark:text-red-300 leading-normal">
+                    NEXT_PUBLIC_GOOGLE_DEVELOPER_KEY debe ser una API Key de navegador de Google Cloud, no un OAuth Client Secret.
+                  </p>
+                )}
+                <p className="pt-1 text-[10px] text-gray-500 dark:text-gray-400 leading-normal">
+                  * Nota: Aún puedes importar archivos de Drive usando la <strong>Opción A</strong> si configuras el enlace de tu archivo de Drive como público ("Cualquier persona con el enlace puede ver").
+                </p>
+              </div>
+            ) : (
+              // Connected button to open Picker
+              <div className="flex flex-col items-center justify-center p-6 border border-dashed border-gray-200 dark:border-[#6C757D]/20 rounded-xl space-y-4 bg-gray-50/50 dark:bg-[#0F1419]/10">
+                <HardDrive size={32} className="text-blue-500" />
+                <div className="text-center">
+                  <p className="text-xs font-semibold text-gray-900 dark:text-white">Explorar archivos de Google Drive</p>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Inicia sesión con tu cuenta de Google para buscar archivos de voz, música o video.</p>
+                </div>
+                
                 <button
-                  type="submit"
-                  disabled={isSearching}
-                  className="px-2.5 py-1 text-[10px] font-bold text-white bg-gray-800 hover:bg-gray-750 dark:bg-white/5 dark:hover:bg-white/10 border border-gray-300 dark:border-[#6C757D]/10 rounded-lg transition-colors"
+                  type="button"
+                  onClick={handleOpenPicker}
+                  disabled={isImporting || localIsImporting || isConnecting}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-550 text-white text-xs font-bold transition-all shadow-md shadow-blue-500/10 cursor-pointer disabled:opacity-50"
                 >
-                  {isSearching ? <Loader2 size={10} className="animate-spin" /> : "Buscar"}
+                  {(isConnecting || localIsImporting) ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <ExternalLink size={12} />
+                  )}
+                  <span>{isConnecting ? "Conectando..." : localIsImporting ? "Importando..." : "Vincular Cuenta y Buscar"}</span>
                 </button>
-              </form>
-            </div>
-
-            {/* List results */}
-            <div className="border border-gray-100 dark:border-[#6C757D]/10 rounded-xl overflow-hidden bg-gray-50/30 dark:bg-[#0F1419]/20">
-              {isSearching ? (
-                <div className="flex flex-col items-center justify-center py-12 text-gray-500 space-y-2">
-                  <Loader2 className="animate-spin text-blue-500" size={24} />
-                  <p className="text-xs">Buscando archivos en tu unidad...</p>
-                </div>
-              ) : results.length === 0 ? (
-                <div className="text-center py-12 text-xs text-gray-400">
-                  No se encontraron archivos en tu unidad de Drive.
-                </div>
-              ) : (
-                <div className="max-h-56 overflow-y-auto divide-y divide-gray-100 dark:divide-[#6C757D]/10 custom-scrollbar">
-                  {results.map((file) => (
-                    <div
-                      key={file.id}
-                      className="flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-xs text-left"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                        {getAssetIcon(file.mimeType)}
-                        <div className="min-w-0 flex-1">
-                          <p className="font-semibold text-gray-900 dark:text-white truncate" title={file.name}>
-                            {file.name}
-                          </p>
-                          <p className="text-[10px] text-gray-400">
-                            {file.mimeType.split("/").pop()} • {file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : "Unidad"}
-                          </p>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => handleFileClick(file.id)}
-                        disabled={isImporting}
-                        className="ml-3 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 dark:text-blue-300 transition-colors disabled:opacity-50 flex items-center gap-1"
-                      >
-                        {isImporting ? <Loader2 size={10} className="animate-spin" /> : <Download size={10} />}
-                        Seleccionar
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1302,7 +1570,7 @@ export function GoogleDriveImportModal({
         <div className="bg-gray-50 dark:bg-[#151A21] px-6 py-3 border-t border-gray-100 dark:border-[#6C757D]/10 flex justify-end">
           <button
             onClick={handleClose}
-            className="px-4 py-2 text-xs font-bold rounded-lg border border-gray-300 dark:border-[#6C757D]/20 text-gray-750 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+            className="px-4 py-2 text-xs font-bold rounded-lg border border-gray-305 dark:border-[#6C757D]/20 text-gray-750 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
           >
             Cancelar
           </button>
@@ -1311,4 +1579,3 @@ export function GoogleDriveImportModal({
     </div>
   );
 }
-

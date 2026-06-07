@@ -353,6 +353,31 @@ export function useProductionAssetState({
     toast.info('Clip de B-roll eliminado');
   };
 
+  const clearVoiceAudio = () => {
+    setVoiceAudio(null);
+    onAssetChange?.(component.id, { voice_audio: null as any });
+    toast.info("Audio de voz removido");
+  };
+
+  const clearBackgroundMusic = () => {
+    setBackgroundMusic(null);
+    onAssetChange?.(component.id, { background_music: null as any });
+    toast.info("Música de fondo removida");
+  };
+
+  const clearAvatarVideo = () => {
+    setAvatarVideo(null);
+    onAssetChange?.(component.id, { avatar_video: null as any });
+    toast.info("Video de avatar removido");
+  };
+
+  const clearSlidesAsset = () => {
+    setSlidesAsset(null);
+    setSlidesUrl("");
+    onAssetChange?.(component.id, { slides: null as any, slides_url: "" });
+    toast.info("Diapositivas removidas");
+  };
+
   // 5. Avatar Video Upload & Heygen Sync
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -584,11 +609,11 @@ export function useProductionAssetState({
         final_video_source: finalVideoSource || undefined,
 
         // Structured assets
-        voice_audio: voiceAudio || undefined,
-        background_music: backgroundMusic || undefined,
-        b_roll_clips: bRollClips.length > 0 ? bRollClips : undefined,
-        avatar_video: avatarVideo || undefined,
-        slides: slidesAsset || undefined,
+        voice_audio: voiceAudio || null as any,
+        background_music: backgroundMusic || null as any,
+        b_roll_clips: bRollClips.length > 0 ? bRollClips : null as any,
+        avatar_video: avatarVideo || null as any,
+        slides: slidesAsset || null as any,
       };
 
       if (finalVideoUrl) {
@@ -696,7 +721,8 @@ export function useProductionAssetState({
   // Google Drive Direct Import
   const importGoogleDriveAsset = async (
     urlOrId: string,
-    type: "voice" | "music" | "broll" | "avatar" | "slides"
+    type: "voice" | "music" | "broll" | "avatar" | "slides",
+    accessToken?: string
   ) => {
     setIsImportingGoogleDrive(true);
     try {
@@ -707,6 +733,7 @@ export function useProductionAssetState({
           urlOrId,
           type,
           componentId: component.id,
+          accessToken,
         }),
       });
       const data = await response.json();
@@ -821,6 +848,11 @@ export function useProductionAssetState({
     handleSlidesZipUpload,
     handleBrollClipUpload,
     removeBrollClip,
+    clearVoiceAudio,
+    clearBackgroundMusic,
+    clearAvatarVideo,
+    clearSlidesAsset,
+    handleAvatarUpload,
     // Artlist states and handlers
     isSearchingArtlist,
     isImportingArtlist,

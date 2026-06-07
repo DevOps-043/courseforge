@@ -1,5 +1,6 @@
 export const PRODUCTION_JOB_TYPES = {
   BROLL_PROMPT_GENERATION: "BROLL_PROMPT_GENERATION",
+  REMOTION_RENDER: "REMOTION_RENDER",
 } as const;
 
 export const PRODUCTION_ASSET_TYPES = {
@@ -9,6 +10,7 @@ export const PRODUCTION_ASSET_TYPES = {
 export const PRODUCTION_PROVIDERS = {
   GEMINI: "gemini",
   MANUAL: "manual",
+  REMOTION: "remotion",
 } as const;
 
 export const PRODUCTION_JOB_STATUSES = {

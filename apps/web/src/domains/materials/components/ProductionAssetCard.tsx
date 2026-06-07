@@ -60,7 +60,6 @@ export function ProductionAssetCard({
 }: ProductionAssetCardProps) {
   const {
     bRollPrompts,
-    copyFeedback,
     copyToClipboard,
     fileRef,
     finalVideoSource,
@@ -71,7 +70,6 @@ export function ProductionAssetCard({
     isGenerating,
     isSaving,
     isUploading,
-    openInGamma,
     screencastUrl,
     setFinalVideoSource,
     setBRollPrompts,
@@ -83,7 +81,6 @@ export function ProductionAssetCard({
     urlError,
     setFinalVideoUrl,
     setScreencastUrl,
-    setSlidesUrl,
     isValidHttpUrl,
 
     // Structured states & loaders
@@ -120,6 +117,10 @@ export function ProductionAssetCard({
     handleSlidesZipUpload,
     handleBrollClipUpload,
     removeBrollClip,
+    clearVoiceAudio,
+    clearBackgroundMusic,
+    clearAvatarVideo,
+    clearSlidesAsset,
     handleAvatarUpload,
 
     // Artlist integration
@@ -195,6 +196,7 @@ export function ProductionAssetCard({
                 isUploading={isUploadingVoice}
                 fileRef={voiceFileRef}
                 onUpload={handleVoiceUpload}
+                onClear={clearVoiceAudio}
                 isSearchingDrive={isSearchingGoogleDrive}
                 isImportingDrive={isImportingGoogleDrive}
                 driveSearchResults={googleDriveSearchResults}
@@ -209,6 +211,7 @@ export function ProductionAssetCard({
                 fileRef={musicFileRef}
                 onUpload={handleMusicUpload}
                 onVolumeChange={handleVolumeChange}
+                onClear={clearBackgroundMusic}
                 isSearchingArtlist={isSearchingArtlist}
                 isImportingArtlist={isImportingArtlist}
                 artlistSearchResults={artlistSearchResults}
@@ -230,6 +233,7 @@ export function ProductionAssetCard({
                 fileRef={slidesFileRef}
                 onExport={handleOpenDesignExport}
                 onUpload={handleSlidesZipUpload}
+                onClear={clearSlidesAsset}
                 isSearchingDrive={isSearchingGoogleDrive}
                 isImportingDrive={isImportingGoogleDrive}
                 driveSearchResults={googleDriveSearchResults}
@@ -268,6 +272,7 @@ export function ProductionAssetCard({
                 fileRef={avatarFileRef}
                 onUpload={handleAvatarUpload}
                 onHeygenSync={handleHeygenSync}
+                onClear={clearAvatarVideo}
                 isSearchingDrive={isSearchingGoogleDrive}
                 isImportingDrive={isImportingGoogleDrive}
                 driveSearchResults={googleDriveSearchResults}

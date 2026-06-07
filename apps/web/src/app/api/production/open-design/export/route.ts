@@ -52,7 +52,6 @@ export async function POST(request: Request) {
         }
 
         const content = (component.content || {}) as Record<string, any>;
-        const componentType = component.type || '';
 
         // Extract slides data from storyboard or script sections
         const slides: Array<{

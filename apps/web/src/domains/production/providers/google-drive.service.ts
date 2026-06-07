@@ -9,57 +9,7 @@ export interface DriveFile {
   public_url?: string;
 }
 
-const MOCK_DRIVE_FILES: DriveFile[] = [
-  {
-    id: "mock-drive-voice-1",
-    name: "Voiceover_Master_Locucion.mp3",
-    mimeType: "audio/mp3",
-    size: 1450000,
-    public_url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
-  },
-  {
-    id: "mock-drive-music-1",
-    name: "Lofi_Background_Chill.mp3",
-    mimeType: "audio/mp3",
-    size: 2120000,
-    public_url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3",
-  },
-  {
-    id: "mock-drive-music-2",
-    name: "Synthwave_Dreams_Track.mp3",
-    mimeType: "audio/mp3",
-    size: 3450000,
-    public_url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
-  },
-  {
-    id: "mock-drive-broll-1",
-    name: "Developer_Typing_Keyboard.mp4",
-    mimeType: "video/mp4",
-    size: 10400000,
-    public_url: "https://assets.mixkit.co/videos/preview/mixkit-hands-of-a-programmer-typing-on-a-keyboard-40040-large.mp4",
-  },
-  {
-    id: "mock-drive-broll-2",
-    name: "Office_Business_Meeting.mp4",
-    mimeType: "video/mp4",
-    size: 15800000,
-    public_url: "https://assets.mixkit.co/videos/preview/mixkit-business-people-meeting-in-a-modern-office-42774-large.mp4",
-  },
-  {
-    id: "mock-drive-avatar-1",
-    name: "IA_Presenter_Talking_Head.mp4",
-    mimeType: "video/mp4",
-    size: 25000000,
-    public_url: "https://assets.mixkit.co/videos/preview/mixkit-woman-working-on-a-laptop-in-a-coffee-shop-40294-large.mp4",
-  },
-  {
-    id: "mock-drive-slides-1",
-    name: "OpenDesign_Presentation_Slides.html",
-    mimeType: "text/html",
-    size: 89000,
-    public_url: "https://opendesign.dev/templates/slides-clean.html",
-  }
-];
+const MOCK_DRIVE_FILES: DriveFile[] = [];
 
 export class GoogleDriveService {
   private serviceAccountKey: string | null;
@@ -187,7 +137,8 @@ export class GoogleDriveService {
   async importFile(
     urlOrId: string,
     type: "voice" | "music" | "broll" | "avatar" | "slides",
-    componentId: string
+    componentId: string,
+    accessToken?: string
   ): Promise<{ publicUrl: string; storagePath: string; duration?: number }> {
     const fileId = this.parseFileId(urlOrId);
     let buffer: Buffer | null = null;
@@ -209,14 +160,13 @@ export class GoogleDriveService {
 
     // 2. Real Google Drive download if not mock
     if (!buffer) {
-      if (this.isConfigured()) {
+      const activeToken = accessToken || (this.isConfigured() ? await this.getAccessToken() : null);
+      if (activeToken) {
         try {
-          const accessToken = await this.getAccessToken();
-          
           // Get metadata
           const metadataUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=name,mimeType`;
           const metaRes = await fetch(metadataUrl, {
-            headers: { Authorization: `Bearer ${accessToken}` },
+            headers: { Authorization: `Bearer ${activeToken}` },
           });
           if (metaRes.ok) {
             const meta = await metaRes.json();
@@ -227,7 +177,7 @@ export class GoogleDriveService {
           // Get file content
           const downloadUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
           const downloadRes = await fetch(downloadUrl, {
-            headers: { Authorization: `Bearer ${accessToken}` },
+            headers: { Authorization: `Bearer ${activeToken}` },
           });
 
           if (!downloadRes.ok) {

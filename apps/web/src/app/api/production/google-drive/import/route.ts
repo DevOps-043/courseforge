@@ -7,11 +7,12 @@ interface ImportRequestBody {
   urlOrId?: string;
   type?: "voice" | "music" | "broll" | "avatar" | "slides";
   componentId?: string;
+  accessToken?: string;
 }
 
 export async function POST(request: Request) {
   try {
-    const { urlOrId, type, componentId } = (await request.json()) as ImportRequestBody;
+    const { urlOrId, type, componentId, accessToken } = (await request.json()) as ImportRequestBody;
 
     if (!urlOrId || !type || !componentId) {
       return NextResponse.json(
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
 
     // Call GoogleDriveService to download from Drive and upload to Storage
     const driveService = new GoogleDriveService();
-    const result = await driveService.importFile(urlOrId, type, componentId);
+    const result = await driveService.importFile(urlOrId, type, componentId, accessToken);
 
     // Fetch current component assets
     const { data: component, error: fetchError } = await admin
