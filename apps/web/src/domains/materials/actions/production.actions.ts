@@ -77,6 +77,12 @@ function resolveProductionStatus(
   componentType: string,
   assets: Partial<MaterialAssets> = {},
 ): ProductionStatus {
+  // Si ya existe el video final (subido o enlazado), el asset de producción
+  // se considera COMPLETADO directamente en tiempo real.
+  if (assets.final_video_url) {
+    return "COMPLETED";
+  }
+
   const needsSlides =
     componentType === "VIDEO_THEORETICAL" || componentType === "VIDEO_GUIDE";
   const needsScreencast =
@@ -152,9 +158,11 @@ function buildGammaDeckId(params: {
   return `${courseId}-${lessonNum}-${typeCode}-${suffix}`;
 }
 
-function isProductionComplete(assets?: MaterialAssets | null) {
-  return assets?.production_status === "COMPLETED";
+function isProductionComplete(componentType: string, assets?: MaterialAssets | null) {
+  const needsVideo = componentType.includes("VIDEO");
+  return assets?.production_status === "COMPLETED" && (!needsVideo || Boolean(assets?.final_video_url));
 }
+
 
 async function getAuthorizedSupabase() {
   const supabase = await createClient();
@@ -420,7 +428,7 @@ export async function syncProductionStatusAction(artifactId: string) {
 
   const total = produceable.length;
   const completed = produceable.filter((component) =>
-    isProductionComplete(component.assets),
+    isProductionComplete(component.type, component.assets),
   ).length;
   const isDone = total > 0 && total === completed;
 

@@ -421,15 +421,16 @@ export function useProductionAssetState({
     setIsSyncingHeygen(true);
     setHeygenSyncProgress(10);
     setHeygenError(null);
-
     try {
+      const isUrl = videoId.trim().startsWith('http://') || videoId.trim().startsWith('https://');
       const response = await fetch('/api/production/import-external', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider: 'heygen',
           componentId: component.id,
-          videoId: videoId.trim(),
+          videoId: isUrl ? undefined : videoId.trim(),
+          videoUrl: isUrl ? videoId.trim() : undefined,
         }),
       });
 

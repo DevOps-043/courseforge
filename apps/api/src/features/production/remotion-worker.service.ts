@@ -1,8 +1,47 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { spawn, execSync } from 'child_process';
 import { createClient } from '@supabase/supabase-js';
+import { bundle } from '@remotion/bundler';
+import { ensureBrowser, renderMedia, selectComposition } from '@remotion/renderer';
+
+/**
+ * FPS del ensamblado. DEBE coincidir con ASSEMBLY_FPS del contrato compartido
+ * en apps/web/src/remotion/types.ts (las <Composition> se registran con ese fps).
+ */
+const ASSEMBLY_FPS = 30;
+/** Duración fallback (segundos) cuando ningún asset reporta su duración. */
+const FALLBACK_DURATION_SECONDS = 10;
+/** Duración por defecto (segundos) de clips/slides sin metadato. */
+const DEFAULT_CLIP_SECONDS = 5;
+const DEFAULT_SLIDE_SECONDS = 5;
+/** Composición por defecto si la plantilla no especifica composition_id. */
+const DEFAULT_COMPOSITION_ID = 'full-slides';
+const VALID_COMPOSITION_IDS = new Set(['full-slides', 'split-avatar', 'avatar-focus']);
+
+/**
+ * Forma de inputProps que consumen las composiciones Remotion. Espejo del
+ * contrato `AssemblyInputProps` (apps/web/src/remotion/types.ts). Se mantiene
+ * local porque apps/api no puede importar apps/web (rootDir + split zod 3/4).
+ */
+interface AssemblyInputProps {
+  template: string;
+  fps: number;
+  totalDurationInFrames: number;
+  voiceAudioUrl?: string;
+  bgMusicUrl?: string;
+  bgMusicVolume: number;
+  avatarVideoUrl?: string;
+  slides: { index: number; url: string }[];
+  brollClips: { url: string; durationInFrames: number; order: number }[];
+  transitionType: 'fade' | 'slide' | 'none';
+}
+
+/**
+ * Bundle Remotion cacheado a nivel de módulo: empaquetar es costoso, así que se
+ * hace una sola vez por proceso y se reutiliza en todos los renders.
+ */
+let cachedBundlePromise: Promise<string> | null = null;
 
 export class RemotionWorkerService {
   private supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -39,23 +78,16 @@ export class RemotionWorkerService {
       return;
     }
 
-    // Update state to RUNNING
-    await supabase
-      .from('production_jobs')
-      .update({
-        status: 'RUNNING',
-        started_at: new Date().toISOString(),
-        progress: [{ percent: 0, message: 'Inicializando workspace', timestamp: new Date().toISOString() }]
-      })
-      .eq('id', jobId);
+    await this.updateProgress(supabase, jobId, 0, 'Inicializando render', { status: 'RUNNING', started_at: new Date().toISOString() });
 
     const componentId = job.material_component_id;
     const templateId = job.input_snapshot?.templateId;
-    const workspacePath = path.join(__dirname, '../../../../tmp', `remotion-build-${jobId}`);
+    const outputDir = path.join(os.tmpdir(), `remotion-out-${jobId}`);
+    const outputPath = path.join(outputDir, 'output.mp4');
     let assets: any = {};
 
     try {
-      // 2. Fetch component and template details
+      // 2. Fetch component and template
       const { data: component, error: compError } = await supabase
         .from('material_components')
         .select('*')
@@ -78,131 +110,61 @@ export class RemotionWorkerService {
 
       assets = component.assets || {};
 
-      // 3. Create Local Workspace
-      console.log(`[RemotionWorker] Creating workspace directory at: ${workspacePath}`);
-      fs.mkdirSync(path.join(workspacePath, 'assets'), { recursive: true });
-
-      // 4. Download assets locally
-      const inputProps: Record<string, any> = {
-        bgMusicVolume: assets.background_music?.volume_multiplier ?? 0.15,
-        transitionType: job.input_snapshot?.variables?.transitionType || 'fade',
-      };
-
-      await supabase.from('production_jobs').update({
-        progress: [{ percent: 20, message: 'Descargando recursos multimedia', timestamp: new Date().toISOString() }]
-      }).eq('id', jobId);
-
-      // Download Voice Audio
-      if (assets.voice_audio?.public_url) {
-        console.log(`[RemotionWorker] Downloading voice audio from ${assets.voice_audio.public_url}`);
-        const voicePath = path.join(workspacePath, 'assets/voice.mp3');
-        await this.downloadFile(assets.voice_audio.public_url, voicePath);
-        inputProps.voiceAudioUrl = './assets/voice.mp3';
-      }
-
-      // Download Background Music
-      if (assets.background_music?.public_url) {
-        console.log(`[RemotionWorker] Downloading background music from ${assets.background_music.public_url}`);
-        const musicPath = path.join(workspacePath, 'assets/bg_music.mp3');
-        await this.downloadFile(assets.background_music.public_url, musicPath);
-        inputProps.bgMusicUrl = './assets/bg_music.mp3';
-      }
-
-      // Download Avatar Video
-      if (assets.avatar_video?.public_url) {
-        console.log(`[RemotionWorker] Downloading avatar video from ${assets.avatar_video.public_url}`);
-        const avatarPath = path.join(workspacePath, 'assets/avatar.mp4');
-        await this.downloadFile(assets.avatar_video.public_url, avatarPath);
-        inputProps.avatarVideoUrl = './assets/avatar.mp4';
-      }
-
-      // Download Slides
-      if (assets.slides?.images && Array.isArray(assets.slides.images)) {
-        fs.mkdirSync(path.join(workspacePath, 'assets/slides'), { recursive: true });
-        const slidesList: string[] = [];
-        for (const slide of assets.slides.images) {
-          if (slide.public_url) {
-            const slideName = `slide_${slide.slide_index}.png`;
-            const slidePath = path.join(workspacePath, 'assets/slides', slideName);
-            console.log(`[RemotionWorker] Downloading slide ${slide.slide_index} to ${slidePath}`);
-            await this.downloadFile(slide.public_url, slidePath);
-            slidesList.push(`./assets/slides/${slideName}`);
-          }
-        }
-        inputProps.slides = slidesList;
-      }
-
-      // Download B-Roll Clips
-      if (assets.b_roll_clips && Array.isArray(assets.b_roll_clips)) {
-        fs.mkdirSync(path.join(workspacePath, 'assets/broll'), { recursive: true });
-        const brollList: any[] = [];
-        for (const clip of assets.b_roll_clips) {
-          if (clip.public_url) {
-            const clipName = `clip_${clip.order || clip.id}.mp4`;
-            const clipPath = path.join(workspacePath, 'assets/broll', clipName);
-            console.log(`[RemotionWorker] Downloading clip ${clip.id} to ${clipPath}`);
-            await this.downloadFile(clip.public_url, clipPath);
-            brollList.push({
-              path: `./assets/broll/${clipName}`,
-              duration: clip.duration || 5,
-              order: clip.order || 1,
-            });
-          }
-        }
-        inputProps.brollClips = brollList;
-      }
-
-      // 5. Download and Unzip Template Bundle
-      await supabase.from('production_jobs').update({
-        progress: [{ percent: 40, message: 'Extrayendo plantilla de video', timestamp: new Date().toISOString() }]
-      }).eq('id', jobId);
-
-      if (template.storage_path) {
-        console.log(`[RemotionWorker] Fetching template zip path: ${template.storage_path}`);
-        const { data: { publicUrl } } = supabase.storage
-          .from('production-assets')
-          .getPublicUrl(template.storage_path);
-
-        const zipPath = path.join(workspacePath, 'template.zip');
-        await this.downloadFile(publicUrl, zipPath);
-        
-        console.log('[RemotionWorker] Unzipping template...');
-        this.unzipFile(zipPath, workspacePath);
-      } else {
-        // Fallback for global seeded templates that don't have zip file:
-        // Create mock index.tsx and files to compile or simulate render CLI
-        console.log('[RemotionWorker] Global template has no storage zip. Setting up standard compile fallback.');
-        fs.writeFileSync(path.join(workspacePath, 'index.tsx'), 'export {}');
-      }
-
-      // 6. Write input-props.json
-      fs.writeFileSync(
-        path.join(workspacePath, 'input-props.json'),
-        JSON.stringify(inputProps, null, 2)
+      const compositionId = this.resolveCompositionId(template.composition_id);
+      const inputProps = this.buildInputProps(
+        assets,
+        compositionId,
+        job.input_snapshot?.variables?.transitionType,
       );
 
-      // 7. Execute Remotion render CLI
-      await supabase.from('production_jobs').update({
-        progress: [{ percent: 50, message: 'Compilando video con Remotion', timestamp: new Date().toISOString() }]
-      }).eq('id', jobId);
+      // 3. Ensure headless browser is available (downloads on first run if needed)
+      await this.updateProgress(supabase, jobId, 10, 'Preparando motor de render');
+      await ensureBrowser();
 
-      console.log('[RemotionWorker] Executing child_process Remotion render...');
-      await this.executeRemotionRender(workspacePath, template, jobId);
+      // 4. Bundle compositions (cached across jobs)
+      await this.updateProgress(supabase, jobId, 20, 'Compilando plantillas de video');
+      const serveUrl = await this.getBundle();
 
-      // 8. Upload compiled video to Supabase Storage
-      await supabase.from('production_jobs').update({
-        progress: [{ percent: 90, message: 'Guardando video en almacenamiento', timestamp: new Date().toISOString() }]
-      }).eq('id', jobId);
+      // 5. Resolve composition metadata (runs calculateMetadata -> duration/fps)
+      await this.updateProgress(supabase, jobId, 35, 'Resolviendo composición');
+      const composition = await selectComposition({
+        serveUrl,
+        id: compositionId,
+        inputProps: inputProps as unknown as Record<string, unknown>,
+      });
 
-      const outputPath = path.join(workspacePath, 'output.mp4');
+      // 6. Render to a temporary mp4, streaming progress 40% -> 90%
+      fs.mkdirSync(outputDir, { recursive: true });
+      let lastReportedPercent = 40;
+      await renderMedia({
+        composition,
+        serveUrl,
+        codec: 'h264',
+        outputLocation: outputPath,
+        inputProps: inputProps as unknown as Record<string, unknown>,
+        onProgress: ({ progress }) => {
+          const overall = Math.round(40 + progress * 50);
+          if (overall > lastReportedPercent) {
+            lastReportedPercent = overall;
+            void this.updateProgress(
+              supabase,
+              jobId,
+              overall,
+              `Renderizando fotogramas (${Math.round(progress * 100)}%)`,
+            );
+          }
+        },
+      });
+
       if (!fs.existsSync(outputPath)) {
         throw new Error('El renderizador de Remotion no generó el video output.mp4');
       }
 
+      // 7. Upload compiled video to Supabase Storage
+      await this.updateProgress(supabase, jobId, 92, 'Guardando video en almacenamiento');
       const fileBuffer = fs.readFileSync(outputPath);
       const outputStoragePath = `completed/${componentId}.mp4`;
 
-      console.log(`[RemotionWorker] Uploading video to storage production-videos completed/${componentId}.mp4`);
       const { error: uploadError } = await supabase.storage
         .from('production-videos')
         .upload(outputStoragePath, fileBuffer, {
@@ -218,13 +180,12 @@ export class RemotionWorkerService {
         .from('production-videos')
         .getPublicUrl(outputStoragePath);
 
-      // 9. Update materials assets record in DB
-      console.log('[RemotionWorker] Updating material component assets in DB...');
+      // 8. Update material component assets in DB
       const updatedAssets = {
         ...assets,
         final_video_url: publicUrl,
         final_video_source: 'upload',
-        video_duration: assets.voice_audio?.duration || 10,
+        video_duration: Math.round(composition.durationInFrames / composition.fps),
         production_status: 'COMPLETED',
         updated_at: new Date().toISOString(),
       };
@@ -238,17 +199,14 @@ export class RemotionWorkerService {
         throw dbUpdateError;
       }
 
-      // 10. Update job status to SUCCEEDED
+      // 9. Mark job SUCCEEDED
       await supabase
         .from('production_jobs')
         .update({
           status: 'SUCCEEDED',
           progress: [{ percent: 100, message: 'Ensamblado completado exitosamente', timestamp: new Date().toISOString() }],
           completed_at: new Date().toISOString(),
-          output_snapshot: {
-            final_video_url: publicUrl,
-            completed: true
-          }
+          output_snapshot: { final_video_url: publicUrl, completed: true },
         })
         .eq('id', jobId);
 
@@ -256,143 +214,145 @@ export class RemotionWorkerService {
 
     } catch (err: any) {
       console.error(`[RemotionWorker] Job ${jobId} failed:`, err);
-      
-      // Update job status to FAILED
+
       await supabase
         .from('production_jobs')
         .update({
           status: 'FAILED',
           failed_at: new Date().toISOString(),
-          provider_error: {
-            message: err.message || 'Error desconocido',
-            stack: err.stack,
-          }
+          provider_error: { message: err.message || 'Error desconocido', stack: err.stack },
         })
         .eq('id', jobId);
 
-      // Revert component status
       await supabase
         .from('material_components')
         .update({
-          assets: {
-            ...assets,
-            production_status: 'FAILED',
-            updated_at: new Date().toISOString()
-          }
+          assets: { ...assets, production_status: 'FAILED', updated_at: new Date().toISOString() },
         })
         .eq('id', componentId);
 
     } finally {
-      // 11. Strict Workspace Clean Up
-      console.log(`[RemotionWorker] Executing workspace cleanup at: ${workspacePath}`);
-      if (fs.existsSync(workspacePath)) {
+      // 10. Clean up temp output directory
+      if (fs.existsSync(outputDir)) {
         try {
-          fs.rmSync(workspacePath, { recursive: true, force: true });
-          console.log('[RemotionWorker] Cleanup finished.');
+          fs.rmSync(outputDir, { recursive: true, force: true });
         } catch (cleanError) {
-          console.error('[RemotionWorker] Error deleting workspace directory:', cleanError);
+          console.error('[RemotionWorker] Error deleting output directory:', cleanError);
         }
       }
     }
   }
 
-  private async downloadFile(url: string, destPath: string): Promise<void> {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Error de descarga [${res.status}]: ${res.statusText}`);
-    const arrayBuffer = await res.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    fs.writeFileSync(destPath, buffer);
-  }
-
-  private unzipFile(zipPath: string, destDir: string): void {
-    if (os.platform() === 'win32') {
-      const escapedZip = zipPath.replace(/'/g, "''");
-      const escapedDest = destDir.replace(/'/g, "''");
-      execSync(`powershell -Command "Expand-Archive -Path '${escapedZip}' -DestinationPath '${escapedDest}' -Force"`);
-    } else {
-      execSync(`unzip -o "${zipPath}" -d "${destDir}"`);
+  /** Bundles the Remotion entry once and reuses the serve URL across jobs. */
+  private getBundle(): Promise<string> {
+    if (!cachedBundlePromise) {
+      const entryPoint = this.resolveEntryPoint();
+      console.log(`[RemotionWorker] Bundling Remotion entry: ${entryPoint}`);
+      cachedBundlePromise = bundle({ entryPoint }).catch((err) => {
+        // Reset cache so a later job can retry bundling after a transient failure.
+        cachedBundlePromise = null;
+        throw err;
+      });
     }
+    return cachedBundlePromise;
   }
 
-  private async executeRemotionRender(
-    workspacePath: string,
-    template: any,
-    jobId: string
+  /**
+   * Resuelve la ruta al entry de las composiciones (apps/web). Configurable vía
+   * REMOTION_ENTRY_POINT; por defecto relativo al cwd de apps/api.
+   */
+  private resolveEntryPoint(): string {
+    const fromEnv = process.env.REMOTION_ENTRY_POINT;
+    const entryPoint = fromEnv
+      ? path.resolve(fromEnv)
+      : path.resolve(process.cwd(), '../web/src/remotion/index.ts');
+
+    if (!fs.existsSync(entryPoint)) {
+      throw new Error(
+        `No se encontró el entry de Remotion en "${entryPoint}". ` +
+          'Configura REMOTION_ENTRY_POINT con la ruta a apps/web/src/remotion/index.ts.',
+      );
+    }
+    return entryPoint;
+  }
+
+  private resolveCompositionId(rawCompositionId: unknown): string {
+    if (typeof rawCompositionId === 'string' && VALID_COMPOSITION_IDS.has(rawCompositionId)) {
+      return rawCompositionId;
+    }
+    return DEFAULT_COMPOSITION_ID;
+  }
+
+  /**
+   * Mapea `material_components.assets` al contrato de inputProps. Espejo de
+   * `buildAssemblyProps` (apps/web/src/remotion/buildAssemblyProps.ts): si una
+   * cambia, actualizar la otra.
+   */
+  private buildInputProps(
+    assets: any,
+    compositionId: string,
+    transitionType: unknown,
+  ): AssemblyInputProps {
+    const fps = ASSEMBLY_FPS;
+    const secondsToFrames = (seconds: number) => Math.max(1, Math.round(seconds * fps));
+
+    const slides: { index: number; url: string }[] = (assets.slides?.images ?? [])
+      .filter((img: any) => Boolean(img?.public_url))
+      .map((img: any) => ({ index: img.slide_index, url: img.public_url }));
+
+    const brollClips = (assets.b_roll_clips ?? [])
+      .filter((clip: any) => Boolean(clip?.public_url))
+      .map((clip: any, i: number) => ({
+        url: clip.public_url,
+        durationInFrames: secondsToFrames(clip.duration ?? DEFAULT_CLIP_SECONDS),
+        order: clip.order ?? i + 1,
+      }));
+
+    const brollTotalSeconds = brollClips.reduce(
+      (sum: number, clip: { durationInFrames: number }) => sum + clip.durationInFrames / fps,
+      0,
+    );
+
+    let totalSeconds = assets.voice_audio?.duration ?? assets.avatar_video?.duration ?? 0;
+    if (totalSeconds <= 0 && brollTotalSeconds > 0) totalSeconds = brollTotalSeconds;
+    if (totalSeconds <= 0 && slides.length > 0) totalSeconds = slides.length * DEFAULT_SLIDE_SECONDS;
+    if (totalSeconds <= 0) totalSeconds = FALLBACK_DURATION_SECONDS;
+
+    const transition =
+      transitionType === 'slide' || transitionType === 'none' ? transitionType : 'fade';
+
+    return {
+      template: compositionId,
+      fps,
+      totalDurationInFrames: secondsToFrames(totalSeconds),
+      voiceAudioUrl: assets.voice_audio?.public_url || undefined,
+      bgMusicUrl: assets.background_music?.public_url || undefined,
+      bgMusicVolume: assets.background_music?.volume_multiplier ?? 0.15,
+      avatarVideoUrl: assets.avatar_video?.public_url || undefined,
+      slides,
+      brollClips,
+      transitionType: transition,
+    };
+  }
+
+  /**
+   * Updates the job progress (and optionally other fields) in a single write.
+   * `supabase` se tipa laxo: el genérico de SupabaseClient es frágil y este es
+   * un helper interno (consistente con el resto del worker).
+   */
+  private async updateProgress(
+    supabase: any,
+    jobId: string,
+    percent: number,
+    message: string,
+    extraFields: Record<string, unknown> = {},
   ): Promise<void> {
-    const supabase = this.getSupabaseClient();
-    
-    // In local development, if template has no storage zip file, simulate render compilation
-    if (!template.storage_path) {
-      console.log('[RemotionWorker] Simulating render delay (no template code bundle).');
-      for (let i = 1; i <= 4; i++) {
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        const simulatedPercent = 50 + i * 10;
-        await supabase
-          .from('production_jobs')
-          .update({
-            progress: [{ percent: simulatedPercent, message: `Renderizando composición (${simulatedPercent}%)`, timestamp: new Date().toISOString() }]
-          })
-          .eq('id', jobId);
-      }
-      fs.writeFileSync(path.join(workspacePath, 'output.mp4'), 'Simulated Video Content');
-      return;
-    }
-
-    return new Promise((resolve, reject) => {
-      // CLI parameters
-      const entryPoint = template.entry_point || 'src/index.tsx';
-      const compositionId = 'MainComposition'; // Default Composition ID
-
-      console.log(`[RemotionWorker] Running render CLI inside ${workspacePath}: npx remotion render ${entryPoint} ${compositionId} output.mp4 --input-data=input-props.json --cores=2`);
-      
-      const renderProc = spawn('npx', [
-        'remotion',
-        'render',
-        entryPoint,
-        compositionId,
-        'output.mp4',
-        '--input-data=input-props.json',
-        '--cores=2',
-      ], { cwd: workspacePath, shell: true });
-
-      let stderrLog = '';
-
-      renderProc.stdout.on('data', async (data) => {
-        const output = data.toString();
-        // Parse Remotion output: "Rendering frame 15/100 (15%)"
-        const match = output.match(/Rendering frame \d+\/\d+ \((\d+)%\)/);
-        if (match) {
-          const progressPercent = parseInt(match[1], 10);
-          console.log(`[RemotionWorker] Render progress: ${progressPercent}%`);
-          // Scale Remotion's 0-100 to overall job progress 50-90%
-          const overallProgress = Math.round(50 + (progressPercent * 40) / 100);
-          
-          await supabase
-            .from('production_jobs')
-            .update({
-              progress: [{ percent: overallProgress, message: `Renderizando fotogramas (${progressPercent}%)`, timestamp: new Date().toISOString() }]
-            })
-            .eq('id', jobId);
-        }
-      });
-
-      renderProc.stderr.on('data', (data) => {
-        stderrLog += data.toString();
-      });
-
-      renderProc.on('close', (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`Remotion CLI finalizó con código ${code}. Error: ${stderrLog}`));
-        }
-      });
-
-      // Timeout safety: 5 minutes limit
-      setTimeout(() => {
-        renderProc.kill();
-        reject(new Error('Límite de tiempo agotado para la renderización de Remotion (5 minutos).'));
-      }, 5 * 60 * 1000);
-    });
+    await supabase
+      .from('production_jobs')
+      .update({
+        progress: [{ percent, message, timestamp: new Date().toISOString() }],
+        ...extraFields,
+      })
+      .eq('id', jobId);
   }
 }

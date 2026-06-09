@@ -21,6 +21,8 @@ export interface RemotionTemplate {
   name: string;
   description: string | null;
   entry_point: string;
+  /** Slug estable de la composición Remotion a renderizar (ver Root.tsx). */
+  composition_id: string | null;
   config_schema: Record<string, any>;
   is_public: boolean;
   storage_path: string | null;

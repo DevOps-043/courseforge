@@ -15,7 +15,7 @@ VALUES (
       'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime',
       'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/x-wav',
       'image/png', 'image/jpeg', 'image/webp',
-      'text/html', 'application/json', 'application/zip'
+      'text/html', 'application/json', 'application/zip', 'application/x-zip-compressed', 'application/octet-stream'
     ]
 )
 ON CONFLICT (id) DO UPDATE SET 
@@ -24,21 +24,26 @@ ON CONFLICT (id) DO UPDATE SET
     allowed_mime_types = EXCLUDED.allowed_mime_types;
 
 -- RLS Policies for 'production-assets'
+DROP POLICY IF EXISTS "Public can view production assets" ON storage.objects;
 CREATE POLICY "Public can view production assets" ON storage.objects
 FOR SELECT
 USING ( bucket_id = 'production-assets' );
 
+DROP POLICY IF EXISTS "Authenticated users can upload production assets" ON storage.objects;
 CREATE POLICY "Authenticated users can upload production assets" ON storage.objects
 FOR INSERT TO authenticated
 WITH CHECK ( bucket_id = 'production-assets' );
 
+DROP POLICY IF EXISTS "Users can update own production assets" ON storage.objects;
 CREATE POLICY "Users can update own production assets" ON storage.objects
 FOR UPDATE TO authenticated
 USING ( bucket_id = 'production-assets' AND owner = auth.uid() );
 
+DROP POLICY IF EXISTS "Users can delete own production assets" ON storage.objects;
 CREATE POLICY "Users can delete own production assets" ON storage.objects
 FOR DELETE TO authenticated
 USING ( bucket_id = 'production-assets' AND owner = auth.uid() );
+
 
 
 -- 2. Seed: CLIP_GENERATION_PROMPTS

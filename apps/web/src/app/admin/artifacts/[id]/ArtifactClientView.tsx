@@ -104,8 +104,13 @@ export default function ArtifactClientView({
   }, [artifact.production_complete]);
 
   useEffect(() => {
-    setCurrentStep(getWorkflowStep(buildWorkflowSnapshot(artifact, publicationRequest)));
+    const nextStep = getWorkflowStep(buildWorkflowSnapshot(artifact, publicationRequest));
+    // Reactive automatic step changes only apply to AI steps (1-5) to avoid hijacking human edits
+    if (currentStep < 6 || nextStep < 6) {
+      setCurrentStep(nextStep);
+    }
   }, [artifact, publicationRequest]);
+
 
   useEffect(() => {
     setEditedContent(buildEditedContent(artifact));

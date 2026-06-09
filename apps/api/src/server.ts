@@ -1,14 +1,19 @@
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load environment variables before any other imports are evaluated
+dotenv.config({ path: path.join(__dirname, '../../web/.env.local') });
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import dotenv from 'dotenv';
 import { errorHandler } from './core/middleware/errorHandler';
 import { getApiPort } from './config/env';
 import { authRoutes } from './features/auth/auth.routes';
 import { productionRoutes } from './features/production/production.routes';
 
-dotenv.config();
 
 const app = express();
 const PORT = getApiPort();

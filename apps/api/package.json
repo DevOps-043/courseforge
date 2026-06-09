@@ -9,12 +9,16 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@remotion/bundler": "^4.0.474",
+    "@remotion/renderer": "^4.0.474",
     "@supabase/supabase-js": "^2.107.0",
     "cors": "2.8.5",
     "dotenv": "16.4.1",
     "express": "4.18.2",
     "helmet": "7.1.0",
+    "jose": "^6.2.0",
     "morgan": "1.10.0",
+    "remotion": "^4.0.474",
     "zod": "3.25.76"
   },
   "devDependencies": {

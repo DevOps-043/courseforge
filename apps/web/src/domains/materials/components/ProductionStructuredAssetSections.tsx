@@ -241,12 +241,12 @@ export function BackgroundMusicSection({
               >
                 {isUploading ? <Loader2 size={10} className="animate-spin" /> : "Local"}
               </button>
-              <button
+              {/* <button
                 onClick={() => setIsModalOpen(true)}
                 className="px-2 py-1 rounded border border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300 text-[10px] font-bold hover:bg-indigo-100 transition-colors"
               >
                 Artlist
-              </button>
+              </button> */}
               <button
                 onClick={() => setIsDriveModalOpen(true)}
                 className="px-2 py-1 rounded border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300 text-[10px] font-bold hover:bg-blue-100 transition-colors"
@@ -275,13 +275,13 @@ export function BackgroundMusicSection({
                 )}
                 <span>Subir MP3</span>
               </button>
-              <button
+              {/* <button
                 onClick={() => setIsModalOpen(true)}
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100/70 text-indigo-700 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300 text-[10px] font-bold transition-all cursor-pointer"
               >
                 <Music size={10} />
                 <span>Artlist</span>
-              </button>
+              </button> */}
               <button
                 onClick={() => setIsDriveModalOpen(true)}
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50/50 hover:bg-blue-100/70 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300 text-[10px] font-bold transition-all cursor-pointer"
@@ -320,7 +320,7 @@ export function BackgroundMusicSection({
         accept="audio/mpeg,audio/mp3"
       />
 
-      <ArtlistSearchModal
+      {/* <ArtlistSearchModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         type="music"
@@ -331,7 +331,7 @@ export function BackgroundMusicSection({
         onSearch={searchArtlist}
         onImport={importArtlistAsset}
         onClearResults={clearArtlistSearchResults}
-      />
+      /> */}
 
       <GoogleDriveImportModal
         isOpen={isDriveModalOpen}
@@ -549,14 +549,14 @@ export function BRollClipsSection({
             <span>MP4</span>
           </button>
           
-          <button
+          {/* <button
             onClick={() => setIsModalOpen(true)}
             className="flex items-center gap-1 rounded-lg border border-[#00D4B3]/30 bg-[#00D4B3]/5 px-2.5 py-1.5 text-[10px] font-bold text-[#00D4B3] hover:bg-[#00D4B3]/10 transition-all cursor-pointer"
           >
             <Search size={10} />
             <span>Artlist</span>
-          </button>
-
+          </button> */}
+ 
           <button
             onClick={() => setIsDriveModalOpen(true)}
             className="flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/50 px-2.5 py-1.5 text-[10px] font-bold text-blue-700 hover:bg-blue-100/70 transition-all cursor-pointer"
@@ -566,7 +566,7 @@ export function BRollClipsSection({
           </button>
         </div>
       </div>
-
+ 
       {clips.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-gray-100 dark:border-[#6C757D]/10">
           {clips.map((clip) => (
@@ -593,7 +593,7 @@ export function BRollClipsSection({
           ))}
         </div>
       )}
-
+ 
       <input
         type="file"
         ref={fileRef}
@@ -601,8 +601,8 @@ export function BRollClipsSection({
         className="hidden"
         accept="video/mp4,video/quicktime,video/webm"
       />
-
-      <ArtlistSearchModal
+ 
+      {/* <ArtlistSearchModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         type="video"
@@ -613,8 +613,8 @@ export function BRollClipsSection({
         onSearch={searchArtlist}
         onImport={importArtlistAsset}
         onClearResults={clearArtlistSearchResults}
-      />
-
+      /> */}
+ 
       <GoogleDriveImportModal
         isOpen={isDriveModalOpen}
         onClose={() => setIsDriveModalOpen(false)}
@@ -710,7 +710,7 @@ interface AvatarVideoSectionProps {
         </div>
       </div>
 
-      {!avatarVideo && !isSyncing && (
+      {/* {!avatarVideo && !isSyncing && (
         <div className="flex gap-1.5 mt-2 pt-2 border-t border-gray-100 dark:border-[#6C757D]/10">
           <input
             type="text"
@@ -752,7 +752,7 @@ interface AvatarVideoSectionProps {
         <p className="text-[10px] text-red-500 font-medium mt-1.5 pl-1">
           ✗ Error: {syncError}
         </p>
-      )}
+      )} */}
 
       {avatarVideo && (
         <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-gray-105 dark:border-[#6C757D]/10 text-[10px]">

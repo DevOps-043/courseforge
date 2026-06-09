@@ -10,7 +10,7 @@ import type {
 
 const DEFAULT_SESSION_MAX_AGE = 60 * 60 * 24 * 7;
 const REMEMBER_ME_MAX_AGE = 60 * 60 * 24 * 365;
-const ACCESS_TOKEN_MAX_AGE = 60 * 60;
+const ACCESS_TOKEN_MAX_AGE = 60 * 60 * 24 * 7; // Increased from 1 hour to 7 days to avoid session expiration issues
 const REFRESH_TOKEN_MAX_AGE = 60 * 60 * 24 * 7;
 
 interface MutableCookieStore {

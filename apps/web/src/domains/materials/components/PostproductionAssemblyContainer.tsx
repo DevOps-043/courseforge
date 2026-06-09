@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMaterials } from '../hooks/useMaterials';
-import { 
+import {
     assembleRemotionVideoAction,
     getRemotionJobStatusAction,
     completeRemotionAssemblyAction
@@ -11,6 +11,8 @@ import { Loader2, Sparkles, CheckCircle2, Play, RefreshCw, Layers, Film } from '
 import { useRouter } from 'next/navigation';
 import { PRODUCTION_THEME } from './production-asset-ui';
 import { getTemplatesAction, type RemotionTemplate } from '@/domains/production/actions/templates.actions';
+import { RemotionPreviewPlayer } from './RemotionPreviewPlayer';
+import { hasPreviewableAssets } from '@/remotion/buildAssemblyProps';
 
 interface PostproductionAssemblyContainerProps {
     artifactId: string;
@@ -25,10 +27,32 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const [selectedTemplate, setSelectedTemplate] = useState<string>('');
     const [isAssembling, setIsAssembling] = useState(false);
     const [progress, setProgress] = useState(0);
-    const [assemblyResult, setAssemblyResult] = useState<{ finalVideoUrl?: string; success: boolean } | null>(null);
     const [loadingComponents, setLoadingComponents] = useState(true);
     const [loadingTemplates, setLoadingTemplates] = useState(true);
     const [videoComponents, setVideoComponents] = useState<any[]>([]);
+    const [activePreviewId, setActivePreviewId] = useState<string>('');
+    const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // Limpia el polling de estado si el componente se desmonta a mitad del render.
+    useEffect(() => {
+        return () => {
+            if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current);
+                pollIntervalRef.current = null;
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (videoComponents.length > 0 && !activePreviewId) {
+            const firstWithVideo = videoComponents.find(c => c.assets?.final_video_url);
+            if (firstWithVideo) {
+                setActivePreviewId(firstWithVideo.id);
+            } else {
+                setActivePreviewId(videoComponents[0].id);
+            }
+        }
+    }, [videoComponents, activePreviewId]);
 
     useEffect(() => {
         const fetchTemplates = async () => {
@@ -57,7 +81,10 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
             try {
                 const allCompPromises = materials.lessons.map(async (l) => {
                     const comps = await getLessonComponents(l.id);
-                    return comps.filter(c => c.type.includes('VIDEO'));
+                    return comps.filter(c => c.type.includes('VIDEO')).map(c => ({
+                        ...c,
+                        lessonTitle: l.lesson_title
+                    }));
                 });
                 const results = await Promise.all(allCompPromises);
                 setVideoComponents(results.flat());
@@ -72,23 +99,21 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
 
     // Real assembly progress using Express API polling
     const handleAssemble = async () => {
-        if (videoComponents.length === 0) return;
+        if (componentsToAssemble.length === 0) return;
         setIsAssembling(true);
         setProgress(0);
-        setAssemblyResult(null);
 
         try {
-            // Pick first video component for assembly
-            const componentId = videoComponents[0].id;
+            // Pick first video component that requires assembly
+            const componentId = componentsToAssemble[0].id;
             
             const triggerResult = await assembleRemotionVideoAction(componentId, selectedTemplate, {
                 template: selectedTemplate,
-                videoComponentsCount: videoComponents.length,
+                videoComponentsCount: componentsToAssemble.length,
             });
 
             if (!triggerResult.success || !triggerResult.jobId) {
                 setIsAssembling(false);
-                setAssemblyResult({ success: false });
                 alert('Ocurrió un error al iniciar el ensamblado: ' + (triggerResult.error || 'Error desconocido'));
                 return;
             }
@@ -97,6 +122,12 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
             setProgress(5); // Started
 
             // Poll the job status every 1500ms
+            const stopPolling = () => {
+                if (pollIntervalRef.current) {
+                    clearInterval(pollIntervalRef.current);
+                    pollIntervalRef.current = null;
+                }
+            };
             const pollInterval = setInterval(async () => {
                 try {
                     const statusResult = await getRemotionJobStatusAction(jobId);
@@ -116,43 +147,44 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                     }
 
                     if (job.status === 'SUCCEEDED') {
-                        clearInterval(pollInterval);
+                        stopPolling();
                         setProgress(100);
                         const finalVideoUrl = job.output_snapshot?.final_video_url || '';
                         
                         // Sync downstream pipeline events and publication requests
                         await completeRemotionAssemblyAction(componentId, finalVideoUrl);
                         
-                        setAssemblyResult({ finalVideoUrl, success: true });
                         await refresh();
                         router.refresh();
                         setIsAssembling(false);
                     } else if (job.status === 'FAILED') {
-                        clearInterval(pollInterval);
+                        stopPolling();
                         setIsAssembling(false);
-                        setAssemblyResult({ success: false });
                         const errorMsg = job.provider_error?.message || 'Error desconocido durante la renderización';
                         alert('Error al ensamblar: ' + errorMsg);
                     } else if (job.status === 'CANCELLED') {
-                        clearInterval(pollInterval);
+                        stopPolling();
                         setIsAssembling(false);
-                        setAssemblyResult({ success: false });
                         alert('El ensamblado fue cancelado.');
                     }
                 } catch (pollErr) {
                     console.error('Error in polling loop:', pollErr);
                 }
             }, 1500);
+            pollIntervalRef.current = pollInterval;
 
         } catch (err) {
             console.error(err);
-            setAssemblyResult({ success: false });
             setIsAssembling(false);
         }
     };
 
+    const componentsToAssemble = videoComponents.filter(c => !c.assets?.final_video_url);
+    const selectedTemplateSlug =
+        templates.find(t => t.id === selectedTemplate)?.composition_id ?? null;
     const hasRequiredAssets = videoComponents.length > 0;
-    const isCompleted = videoComponents.some(c => c.assets?.production_status === 'COMPLETED');
+    const hasComponentsToAssemble = componentsToAssemble.length > 0;
+    const isCompleted = videoComponents.length > 0 && componentsToAssemble.length === 0;
 
     if (loadingComponents || loadingTemplates) {
         return (
@@ -229,12 +261,26 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
 
                         {!hasRequiredAssets ? (
                             <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-sm">
-                                No se encontraron videos ni demostraciones que requieran ensamblado en esta lección.
+                                No se encontraron videos ni demostraciones en esta lección.
+                            </div>
+                        ) : !hasComponentsToAssemble ? (
+                            <div className="space-y-4">
+                                <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-600 dark:text-green-400 text-sm">
+                                    Todos los videos del curso ya cuentan con un video final (subido o vinculado) en la Fase 6. No es necesario realizar el ensamblado por Remotion.
+                                </div>
+                                {onNext && (
+                                    <button
+                                        onClick={onNext}
+                                        className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold bg-green-600 hover:bg-green-500 text-white transition-all shadow-lg shadow-green-500/25"
+                                    >
+                                        Avanzar a Publicación
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             <div className="space-y-4">
                                 <p className="text-sm text-gray-600 dark:text-gray-300">
-                                    El motor de Remotion compilará {videoComponents.length} componente(s) de video aplicando la plantilla elegida, inyectando las locuciones y unificando el B-roll correspondiente.
+                                    El motor de Remotion compilará {componentsToAssemble.length} de {videoComponents.length} componente(s) de video (aquellos sin video final) aplicando la plantilla elegida, inyectando las locuciones y unificando el B-roll correspondiente.
                                 </p>
 
                                 {isAssembling ? (
@@ -286,27 +332,69 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                             Previsualización
                         </h3>
 
-                        {isCompleted || (assemblyResult && assemblyResult.success) ? (
-                            <div className="flex-1 flex flex-col justify-between space-y-4">
-                                <div className="relative aspect-video bg-black rounded-xl overflow-hidden shadow-inner group">
-                                    <video
-                                        src={assemblyResult?.finalVideoUrl || videoComponents[0]?.assets?.final_video_url}
-                                        controls
-                                        className="w-full h-full object-cover"
-                                    />
-                                </div>
-                                <div className="text-xs text-gray-500 dark:text-gray-400 text-center leading-relaxed">
-                                    Video pre-visualizable en formato de prueba (1080p). Listo para envío final.
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 dark:border-[#6C757D]/20 rounded-xl p-8 text-center bg-gray-50/50 dark:bg-[#0F1419]/30">
-                                <Film className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-3" />
-                                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                    El reproductor de preview estará disponible tras compilar el video con Remotion.
-                                </p>
+                        {videoComponents.length > 1 && (
+                            <div className="space-y-1.5 mb-2">
+                                <label className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+                                    Seleccionar Video para Preview:
+                                </label>
+                                <select
+                                    value={activePreviewId}
+                                    onChange={(e) => setActivePreviewId(e.target.value)}
+                                    className="w-full text-sm rounded-xl border border-gray-200 bg-white p-2 dark:border-[#6C757D]/10 dark:bg-[#0F1419] dark:text-white"
+                                >
+                                    {videoComponents.map((c, idx) => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.lessonTitle || `Lección ${idx + 1}`} - {(c.content as any)?.title || 'Video'} ({c.assets?.final_video_url ? 'Disponible' : 'Sin Video'})
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
                         )}
+
+                        {(() => {
+                            const activePreview = videoComponents.find(c => c.id === activePreviewId) || videoComponents[0];
+                            const previewUrl = activePreview?.assets?.final_video_url;
+
+                            if (previewUrl) {
+                                return (
+                                    <div className="flex-1 flex flex-col justify-between space-y-4">
+                                        <div className="relative aspect-video bg-black rounded-xl overflow-hidden shadow-inner group">
+                                            <video
+                                                key={previewUrl}
+                                                src={previewUrl}
+                                                controls
+                                                className="w-full h-full object-contain"
+                                            />
+                                        </div>
+                                        <div className="text-xs text-gray-500 dark:text-gray-400 text-center leading-relaxed">
+                                            Video: {activePreview.lessonTitle || 'Lección'} - {(activePreview.content as any)?.title || 'Video'}. Listo para envío final.
+                                        </div>
+                                    </div>
+                                );
+                            } else if (activePreview && hasPreviewableAssets(activePreview.assets)) {
+                                return (
+                                    <div className="flex-1 flex flex-col justify-between space-y-4">
+                                        <RemotionPreviewPlayer
+                                            key={`${activePreview.id}-${selectedTemplateSlug ?? 'default'}`}
+                                            assets={activePreview.assets}
+                                            templateSlug={selectedTemplateSlug}
+                                        />
+                                        <div className="text-xs text-gray-500 dark:text-gray-400 text-center leading-relaxed">
+                                            Previsualización en vivo del ensamblado (aún no renderizado). El video final se generará al iniciar el ensamblado con Remotion.
+                                        </div>
+                                    </div>
+                                );
+                            } else {
+                                return (
+                                    <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 dark:border-[#6C757D]/20 rounded-xl p-8 text-center bg-gray-50/50 dark:bg-[#0F1419]/30">
+                                        <Film className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-3" />
+                                        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                                            Sube assets (voz, slides, avatar o B-roll) en la Fase 6 para ver aquí la previsualización del ensamblado.
+                                        </p>
+                                    </div>
+                                );
+                            }
+                        })()}
                     </div>
                 </div>
             </div>

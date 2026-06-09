@@ -173,6 +173,10 @@ export function ProductionAssetCard({
         bRollPrompts={bRollPrompts}
         screencastUrl={screencastUrl}
         finalVideoUrl={finalVideoUrl}
+        voiceAudio={voiceAudio}
+        backgroundMusic={backgroundMusic}
+        bRollClips={bRollClips}
+        avatarVideo={avatarVideo}
         onSave={handleSave}
       />
 

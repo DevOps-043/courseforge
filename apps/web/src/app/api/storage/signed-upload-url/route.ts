@@ -6,7 +6,7 @@ import {
 } from '@/lib/server/artifact-action-auth';
 
 // Only these buckets are allowed — prevents unauthorized access to other storage
-const ALLOWED_BUCKETS = new Set(['thumbnails', 'production-videos']);
+const ALLOWED_BUCKETS = new Set(['thumbnails', 'production-videos', 'production-assets']);
 
 interface SignedUploadUrlRequestBody {
     bucket?: string;
@@ -46,9 +46,10 @@ export async function POST(request: Request) {
         }
 
         const admin = getServiceRoleClient();
+        console.log('[API /storage/signed-upload-url] SUPABASE_SERVICE_ROLE_KEY present:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
         const { data, error } = await admin.storage
             .from(bucket)
-            .createSignedUploadUrl(filePath);
+            .createSignedUploadUrl(filePath, { upsert: true });
 
         if (error || !data) {
             console.error('[API /storage/signed-upload-url] Error:', error);

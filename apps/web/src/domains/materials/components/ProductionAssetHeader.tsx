@@ -22,6 +22,10 @@ interface ProductionAssetHeaderProps {
   bRollPrompts: string;
   screencastUrl: string;
   finalVideoUrl: string;
+  voiceAudio?: any;
+  backgroundMusic?: any;
+  bRollClips?: any[];
+  avatarVideo?: any;
   onSave: () => Promise<void>;
 }
 
@@ -38,6 +42,10 @@ export function ProductionAssetHeader({
   bRollPrompts,
   screencastUrl,
   finalVideoUrl,
+  voiceAudio,
+  backgroundMusic,
+  bRollClips,
+  avatarVideo,
   onSave,
 }: ProductionAssetHeaderProps) {
   const statusBadge = getProductionStatusBadge(productionStatus, finalVideoUrl);
@@ -97,6 +105,30 @@ export function ProductionAssetHeader({
         <span className={`text-xs font-medium ${PRODUCTION_THEME.secondaryText}`}>
           Checklist:
         </span>
+        {componentType.includes("VIDEO") && (
+          <>
+            <DodIndicator
+              label="Voz"
+              completed={Boolean(voiceAudio) || Boolean(avatarVideo)}
+              required={true}
+            />
+            <DodIndicator
+              label="Música"
+              completed={Boolean(backgroundMusic)}
+              required={true}
+            />
+            <DodIndicator
+              label="Avatar"
+              completed={Boolean(avatarVideo)}
+              required={true}
+            />
+            <DodIndicator
+              label="B-Roll Clips"
+              completed={Boolean(bRollClips && bRollClips.length > 0)}
+              required={true}
+            />
+          </>
+        )}
         <DodIndicator
           label="Slides"
           completed={Boolean(slidesUrl)}
@@ -107,11 +139,13 @@ export function ProductionAssetHeader({
           completed={Boolean(bRollPrompts)}
           required={needsVideo}
         />
-        <DodIndicator
-          label="Screencast"
-          completed={Boolean(screencastUrl)}
-          required={needsScreencast}
-        />
+        {needsScreencast && (
+          <DodIndicator
+            label="Screencast"
+            completed={Boolean(screencastUrl)}
+            required={needsScreencast}
+          />
+        )}
         <DodIndicator
           label="Video Final"
           completed={Boolean(finalVideoUrl)}

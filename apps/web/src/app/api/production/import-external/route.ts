@@ -38,7 +38,12 @@ export async function POST(request: Request) {
         // 1. Resolve source video URL (Heygen API or direct URL)
         let resolvedVideoUrl = videoUrl || '';
 
-        if (provider === 'heygen' && videoId) {
+        // If videoId is a direct URL, treat it as videoUrl
+        if (videoId && (videoId.startsWith('http://') || videoId.startsWith('https://'))) {
+            resolvedVideoUrl = videoId;
+        }
+
+        if (provider === 'heygen' && videoId && resolvedVideoUrl !== videoId) {
             const heygenApiKey = process.env.HEYGEN_API_KEY;
             if (!heygenApiKey) {
                 // If no API Key, we must rely on a direct videoUrl provided by frontend
