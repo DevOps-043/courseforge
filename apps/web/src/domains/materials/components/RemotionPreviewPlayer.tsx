@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Player } from "@remotion/player";
 import { AlertTriangle, Loader2 } from "lucide-react";
+import { getAssemblyAssetReadiness } from "@/remotion/assembly-assets.normalizer";
 import { buildAssemblyProps } from "@/remotion/buildAssemblyProps";
 import { getAssemblyComposition } from "@/remotion/compositions/registry";
-import { ASSEMBLY_HEIGHT, ASSEMBLY_WIDTH } from "@/remotion/types";
+import { ASSEMBLY_FPS, ASSEMBLY_HEIGHT, ASSEMBLY_WIDTH } from "@/remotion/types";
 import type { MaterialAssets } from "../types/materials.types";
 
 interface RemotionPreviewPlayerProps {
@@ -36,6 +37,11 @@ export function RemotionPreviewPlayer({
     setMounted(true);
   }, []);
 
+  const readiness = useMemo(
+    () => getAssemblyAssetReadiness(assets, ASSEMBLY_FPS),
+    [assets],
+  );
+
   const built = useMemo(() => {
     try {
       return { ok: true as const, props: buildAssemblyProps(assets, templateSlug) };
@@ -50,6 +56,17 @@ export function RemotionPreviewPlayer({
     return (
       <div className="flex-1 flex items-center justify-center aspect-video bg-black/90 rounded-xl">
         <Loader2 className="animate-spin text-purple-400" size={28} />
+      </div>
+    );
+  }
+
+  if (!readiness.hasRenderableAssets && readiness.warnings.length > 0) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-2 aspect-video bg-amber-500/10 border border-amber-500/20 rounded-xl p-6 text-center">
+        <AlertTriangle className="text-amber-500" size={24} />
+        <p className="text-xs text-amber-700 dark:text-amber-300">
+          {readiness.warnings[0].message}
+        </p>
       </div>
     );
   }

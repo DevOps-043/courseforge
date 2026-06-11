@@ -4,6 +4,21 @@ import { createClient } from "@/utils/supabase/server";
 import { getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { getActiveOrganizationId } from "@/utils/auth/session";
 
+const SUPPORTED_INTERNAL_COMPOSITIONS = new Set(["full-slides", "split-avatar", "avatar-focus"]);
+const DEFAULT_RENDER_COMPOSITION_ID = "full-slides";
+
+export type RemotionTemplateRenderMode =
+  | "SUPPORTED_INTERNAL"
+  | "INTERNAL_WITH_EXTERNAL_REFERENCE"
+  | "EXTERNAL_BUNDLE_PENDING"
+  | "FALLBACK_INTERNAL";
+
+function resolveSupportedCompositionId(compositionId: string | null | undefined) {
+  return compositionId && SUPPORTED_INTERNAL_COMPOSITIONS.has(compositionId)
+    ? compositionId
+    : DEFAULT_RENDER_COMPOSITION_ID;
+}
+
 async function getAuthorizedSupabase() {
   const supabase = await createClient();
   const authenticatedUser = await getAuthenticatedUser(supabase);
@@ -32,6 +47,44 @@ export interface RemotionTemplate {
   organization?: {
     name: string;
   } | null;
+  render_mode: RemotionTemplateRenderMode;
+  render_composition_id: string;
+  is_external_bundle_supported: boolean;
+  render_status_label: string;
+}
+
+function decorateTemplate(template: Omit<RemotionTemplate, "render_mode" | "render_composition_id" | "is_external_bundle_supported" | "render_status_label">): RemotionTemplate {
+  const hasSupportedComposition = Boolean(
+    template.composition_id && SUPPORTED_INTERNAL_COMPOSITIONS.has(template.composition_id),
+  );
+  const hasExternalBundle = Boolean(template.storage_path);
+  const renderCompositionId = hasSupportedComposition ? template.composition_id! : DEFAULT_RENDER_COMPOSITION_ID;
+
+  let renderMode: RemotionTemplateRenderMode = "FALLBACK_INTERNAL";
+  let renderStatusLabel = `Render interno: ${renderCompositionId}`;
+
+  if (hasSupportedComposition && hasExternalBundle) {
+    renderMode = "INTERNAL_WITH_EXTERNAL_REFERENCE";
+    renderStatusLabel = `Render interno: ${renderCompositionId} (ZIP guardado como referencia)`;
+  } else if (hasSupportedComposition) {
+    renderMode = "SUPPORTED_INTERNAL";
+    renderStatusLabel = `Render interno: ${renderCompositionId}`;
+  } else if (hasExternalBundle) {
+    renderMode = "EXTERNAL_BUNDLE_PENDING";
+    renderStatusLabel = `Bundle externo pendiente; se usara ${DEFAULT_RENDER_COMPOSITION_ID}`;
+  }
+
+  return {
+    ...template,
+    render_mode: renderMode,
+    render_composition_id: renderCompositionId,
+    is_external_bundle_supported: false,
+    render_status_label: renderStatusLabel,
+  };
+}
+
+function decorateTemplates(templates: Array<Omit<RemotionTemplate, "render_mode" | "render_composition_id" | "is_external_bundle_supported" | "render_status_label">>): RemotionTemplate[] {
+  return templates.map(decorateTemplate);
 }
 
 /**
@@ -81,7 +134,7 @@ export async function getTemplatesAction(): Promise<{
     }
 
     // Merge and de-duplicate by ID
-    const merged = [...(ownedTemplates || []), ...acquiredTemplates] as RemotionTemplate[];
+    const merged = decorateTemplates([...(ownedTemplates || []), ...acquiredTemplates]);
     const uniqueMap = new Map<string, RemotionTemplate>();
     merged.forEach((item) => {
       uniqueMap.set(item.id, item);
@@ -143,7 +196,7 @@ export async function getPublicTemplatesAction(): Promise<{
     const { data: publicTemplates, error } = await query;
     if (error) throw error;
 
-    return { success: true, templates: (publicTemplates || []) as RemotionTemplate[] };
+    return { success: true, templates: decorateTemplates(publicTemplates || []) };
   } catch (error: any) {
     console.error("[TemplatesActions] Error fetching public templates:", error);
     return { success: false, error: error.message || "Error al obtener plantillas públicas" };
@@ -157,6 +210,7 @@ export async function createTemplateAction(params: {
   name: string;
   description?: string;
   entryPoint?: string;
+  compositionId?: string;
   isPublic?: boolean;
   storagePath?: string;
   thumbnailUrl?: string;
@@ -181,6 +235,7 @@ export async function createTemplateAction(params: {
         name: params.name,
         description: params.description || null,
         entry_point: params.entryPoint || "src/index.tsx",
+        composition_id: resolveSupportedCompositionId(params.compositionId),
         is_public: params.isPublic || false,
         storage_path: params.storagePath || null,
         thumbnail_url: params.thumbnailUrl || null,
@@ -191,7 +246,7 @@ export async function createTemplateAction(params: {
 
     if (error) throw error;
 
-    return { success: true, template: data as RemotionTemplate };
+    return { success: true, template: decorateTemplate(data) };
   } catch (error: any) {
     console.error("[TemplatesActions] Error creating template:", error);
     return { success: false, error: error.message || "Error al crear la plantilla" };
@@ -207,6 +262,7 @@ export async function updateTemplateAction(
     name?: string;
     description?: string;
     entryPoint?: string;
+    compositionId?: string;
     isPublic?: boolean;
     storagePath?: string;
     thumbnailUrl?: string;
@@ -239,6 +295,7 @@ export async function updateTemplateAction(
         name: updates.name,
         description: updates.description,
         entry_point: updates.entryPoint,
+        composition_id: updates.compositionId ? resolveSupportedCompositionId(updates.compositionId) : undefined,
         is_public: updates.isPublic,
         storage_path: updates.storagePath,
         thumbnail_url: updates.thumbnailUrl,

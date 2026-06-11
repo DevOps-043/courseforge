@@ -1,7 +1,12 @@
 import { AbsoluteFill } from "remotion";
-import type { AssemblyBrollClip, AssemblySlide, AssemblyTransition } from "../types";
-import { SlideShow } from "./SlideShow";
+import type {
+  AssemblyBrollClip,
+  AssemblySlide,
+  AssemblyTransition,
+} from "../types";
 import { BrollLayer } from "./BrollLayer";
+import { BrollOverlayLayer } from "./BrollOverlayLayer";
+import { SlideShow } from "./SlideShow";
 
 interface PrimaryVisualProps {
   slides: AssemblySlide[];
@@ -10,7 +15,6 @@ interface PrimaryVisualProps {
   transitionType: AssemblyTransition;
 }
 
-/** Fondo neutro cuando no hay ningún recurso visual que mostrar. */
 function NeutralBackground() {
   return (
     <AbsoluteFill
@@ -21,13 +25,6 @@ function NeutralBackground() {
   );
 }
 
-/**
- * Resuelve el recurso visual principal con una prioridad estable:
- *   slides  ->  B-roll  ->  fondo neutro.
- *
- * Centraliza esa decisión para que las tres plantillas la compartan en lugar de
- * duplicar la lógica de fallback.
- */
 export function PrimaryVisual({
   slides,
   brollClips,
@@ -36,11 +33,17 @@ export function PrimaryVisual({
 }: PrimaryVisualProps) {
   if (slides.length > 0) {
     return (
-      <SlideShow
-        slides={slides}
-        durationInFrames={durationInFrames}
-        transitionType={transitionType}
-      />
+      <>
+        <SlideShow
+          slides={slides}
+          durationInFrames={durationInFrames}
+          transitionType={transitionType}
+        />
+        <BrollOverlayLayer
+          clips={brollClips}
+          durationInFrames={durationInFrames}
+        />
+      </>
     );
   }
 

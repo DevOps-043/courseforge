@@ -9,6 +9,7 @@ import {
 import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import { getVideoProviderAndId } from "@/lib/video-platform";
+import { normalizeAssemblyAssets } from "@/remotion/assembly-assets.normalizer";
 import type { LessonVideoData } from "@/domains/publication/types/publication.types";
 import {
   buildBrollPromptJobInputSnapshot,
@@ -547,6 +548,21 @@ export async function assembleRemotionVideoAction(
 
   const component = rawComponent as ProductionComponentRecord | null;
   const currentAssets = (component?.assets || {}) as MaterialAssets;
+  const normalizedAssets = normalizeAssemblyAssets(currentAssets, 30);
+  const hasPrimaryRenderableAssets = Boolean(
+    normalizedAssets.voiceAudioUrl ||
+      normalizedAssets.avatarVideoUrl ||
+      normalizedAssets.slides.length > 0 ||
+      normalizedAssets.brollClips.length > 0,
+  );
+
+  if (!hasPrimaryRenderableAssets) {
+    return {
+      success: false,
+      error:
+        "No hay assets renderizables para Remotion. Sube voz, avatar, slides renderizables o B-roll antes de ensamblar.",
+    };
+  }
 
   try {
     // Update component status to IN_PROGRESS

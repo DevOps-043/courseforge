@@ -190,12 +190,6 @@ export function BackgroundMusicSection({
   onUpload,
   onVolumeChange,
   onClear,
-  isSearchingArtlist,
-  isImportingArtlist,
-  artlistSearchResults,
-  searchArtlist,
-  importArtlistAsset,
-  clearArtlistSearchResults,
   isSearchingDrive,
   isImportingDrive,
   driveSearchResults,
@@ -204,7 +198,6 @@ export function BackgroundMusicSection({
   clearDriveSearchResults,
 }: BackgroundMusicSectionProps) {
   const [vol, setVol] = useState(backgroundMusic?.volume_multiplier ?? 0.15);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
 
   const handleVolSlide = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -212,8 +205,6 @@ export function BackgroundMusicSection({
     setVol(v);
     onVolumeChange(v);
   };
-
-  const musicSuggestions = ["Acoustic", "Synthwave", "Cinematic", "Lo-Fi", "Corporate"];
 
   return (
     <div className="p-3 rounded-xl border border-gray-200 dark:border-[#6C757D]/10 bg-gray-50/50 dark:bg-[#0F1419]/30">
@@ -383,6 +374,8 @@ interface OpenDesignSlidesSectionProps {
   clearDriveSearchResults,
 }: OpenDesignSlidesSectionProps) {
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
+  const renderableSlideCount = slides?.images?.length || 0;
+  const hasSourceReference = Boolean(slides?.html_public_url);
 
   return (
     <div className="p-3 rounded-xl border border-gray-200 dark:border-[#6C757D]/10 bg-gray-50/50 dark:bg-[#0F1419]/30">
@@ -390,11 +383,15 @@ interface OpenDesignSlidesSectionProps {
         <div className="flex items-center gap-2">
           <Wand2 size={14} className="text-purple-500" />
           <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Diapositivas (Open Design)</span>
-          {slides?.html_public_url && (
+          {renderableSlideCount > 0 ? (
             <span className="flex items-center gap-0.5 text-[10px] font-semibold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 px-1.5 py-0.5 rounded-full">
-              <CheckCircle2 size={10} /> Compilado
+              <CheckCircle2 size={10} /> {renderableSlideCount} renderizable(s)
             </span>
-          )}
+          ) : hasSourceReference ? (
+            <span className="flex items-center gap-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded-full">
+              Fuente cargada
+            </span>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -413,7 +410,7 @@ interface OpenDesignSlidesSectionProps {
             className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg border border-gray-300 bg-white dark:bg-[#151A21] hover:bg-gray-50 dark:hover:bg-white/5 text-gray-650 dark:text-gray-300 transition-colors"
           >
             {isUploading ? <Loader2 size={10} className="animate-spin" /> : <Upload size={10} />}
-            <span>Subir ZIP</span>
+            <span>Subir slides</span>
           </button>
 
           <button
@@ -426,11 +423,16 @@ interface OpenDesignSlidesSectionProps {
         </div>
       </div>
 
-      {(slides?.open_design_project_id || slides?.html_public_url) && (
+      {(slides?.open_design_project_id || slides?.html_public_url || renderableSlideCount > 0) && (
         <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-gray-100 dark:border-[#6C757D]/10 text-[10px]">
           {slides?.open_design_project_id && (
             <span className="font-mono text-gray-450 dark:text-gray-400 bg-gray-100 dark:bg-white/5 px-1.5 py-0.5 rounded">
               ID: {slides.open_design_project_id}
+            </span>
+          )}
+          {renderableSlideCount > 0 && (
+            <span className="font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-500/10 px-1.5 py-0.5 rounded">
+              {renderableSlideCount} imagen(es) listas para Remotion
             </span>
           )}
           {slides?.html_public_url && (
@@ -458,7 +460,8 @@ interface OpenDesignSlidesSectionProps {
         ref={fileRef}
         onChange={onUpload}
         className="hidden"
-        accept=".zip,text/html"
+        accept=".zip,.html,.htm,.pdf,.ppt,.pptx,image/png,image/jpeg,image/webp,image/svg+xml"
+        multiple
       />
 
       <GoogleDriveImportModal
@@ -510,13 +513,6 @@ export function BRollClipsSection({
   fileRef,
   onUpload,
   onDelete,
-  isSearchingArtlist,
-  isImportingArtlist,
-  artlistSearchResults,
-  searchArtlist,
-  importArtlistAsset,
-  clearArtlistSearchResults,
-  bRollPrompts,
   isSearchingDrive,
   isImportingDrive,
   driveSearchResults,
@@ -524,9 +520,7 @@ export function BRollClipsSection({
   importDriveAsset,
   clearDriveSearchResults,
 }: BRollClipsSectionProps) {
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
-  const videoSuggestions = parseBrollSuggestions(bRollPrompts);
 
   return (
     <div className="p-3 rounded-xl border border-gray-200 dark:border-[#6C757D]/10 bg-gray-50/50 dark:bg-[#0F1419]/30">
@@ -655,11 +649,8 @@ interface AvatarVideoSectionProps {
   avatarVideo,
   isUploading,
   isSyncing,
-  syncProgress,
-  syncError,
   fileRef,
   onUpload,
-  onHeygenSync,
   onClear,
   isSearchingDrive,
   isImportingDrive,
@@ -668,13 +659,7 @@ interface AvatarVideoSectionProps {
   importDriveAsset,
   clearDriveSearchResults,
 }: AvatarVideoSectionProps) {
-  const [heygenId, setHeygenId] = useState("");
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
-
-  const handleSyncSubmit = () => {
-    if (!heygenId) return;
-    onHeygenSync(heygenId);
-  };
 
   return (
     <div className="p-3 rounded-xl border border-gray-200 dark:border-[#6C757D]/10 bg-gray-50/50 dark:bg-[#0F1419]/30">
@@ -801,42 +786,6 @@ interface AvatarVideoSectionProps {
       />
     </div>
   );
-}
-
-// ---------------------------------------------------------
-// HELPER: PARSE B-ROLL CLIP SUGGESTIONS
-// ---------------------------------------------------------
-function parseBrollSuggestions(bRollPrompts: string | undefined): string[] {
-  if (!bRollPrompts) return ["workspace", "coding", "meeting", "ai", "design"];
-  try {
-    const parsed = JSON.parse(bRollPrompts);
-    const promptsList = parsed?.prompts || (Array.isArray(parsed) ? parsed : null);
-    if (Array.isArray(promptsList)) {
-      const allPrompts = promptsList
-        .map((p: any) => p.generated_prompt || p.prompt || p)
-        .filter(Boolean);
-      
-      const words = new Set<string>();
-      allPrompts.forEach((p: string) => {
-        const parts = p.split(/[,.]/);
-        parts.forEach((part: string) => {
-          const clean = part.replace(/cinematic|shot|4k|high quality|bokeh/gi, "").trim();
-          if (clean.length > 3 && clean.length < 25) {
-            words.add(clean.toLowerCase());
-          }
-        });
-      });
-      const list = Array.from(words);
-      return list.length > 0 ? list.slice(0, 6) : ["workspace", "coding", "meeting", "ai", "design"];
-    }
-  } catch (e) {
-    const lines = bRollPrompts
-      .split(/[\n,;]/)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 3 && s.length < 30);
-    if (lines.length > 0) return lines.slice(0, 6);
-  }
-  return ["workspace", "coding", "meeting", "ai", "design"];
 }
 
 // ---------------------------------------------------------

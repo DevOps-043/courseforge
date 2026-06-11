@@ -19,6 +19,146 @@ interface ScriptSection {
     visual_notes?: string;
 }
 
+interface RenderableSlideAsset {
+    slide_index: number;
+    storage_path: string;
+    public_url: string;
+}
+
+function escapeXml(value: string) {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+}
+
+function splitTextLines(value: string, maxLength: number, maxLines: number) {
+    const words = value.split(/\s+/).filter(Boolean);
+    const lines: string[] = [];
+    let current = '';
+
+    for (const word of words) {
+        const next = current ? `${current} ${word}` : word;
+        if (next.length > maxLength && current) {
+            lines.push(current);
+            current = word;
+        } else {
+            current = next;
+        }
+
+        if (lines.length >= maxLines) break;
+    }
+
+    if (current && lines.length < maxLines) {
+        lines.push(current);
+    }
+
+    return lines;
+}
+
+function buildSlideSvg(slide: {
+    index: number;
+    title: string;
+    bullets: string[];
+    visualNotes: string;
+}) {
+    const titleLines = splitTextLines(slide.title, 34, 2);
+    const bulletLines = slide.bullets
+        .flatMap((bullet) => splitTextLines(bullet, 54, 2))
+        .slice(0, 6);
+    const noteLines = splitTextLines(slide.visualNotes || '', 70, 2);
+
+    const titleSvg = titleLines
+        .map(
+            (line, index) =>
+                `<text x="120" y="${170 + index * 58}" fill="#F8FAFC" font-size="50" font-weight="800">${escapeXml(line)}</text>`,
+        )
+        .join('');
+    const bulletsSvg = bulletLines
+        .map(
+            (line, index) =>
+                `<text x="168" y="${370 + index * 56}" fill="#E2E8F0" font-size="34" font-weight="500">${escapeXml(line)}</text>`,
+        )
+        .join('');
+    const bulletsDotsSvg = bulletLines
+        .map(
+            (_line, index) =>
+                `<circle cx="130" cy="${358 + index * 56}" r="9" fill="#38BDF8" />`,
+        )
+        .join('');
+    const notesSvg = noteLines
+        .map(
+            (line, index) =>
+                `<text x="120" y="${900 + index * 34}" fill="#94A3B8" font-size="24">${escapeXml(line)}</text>`,
+        )
+        .join('');
+
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#1E293B"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <rect x="72" y="72" width="1776" height="936" rx="44" fill="#1E293B" stroke="#334155" stroke-width="2"/>
+  <rect x="72" y="72" width="14" height="936" rx="7" fill="url(#accent)"/>
+  <text x="120" y="118" fill="#38BDF8" font-size="24" font-weight="700" letter-spacing="3">COURSEFORGE</text>
+  <text x="1700" y="118" fill="#94A3B8" font-size="28" font-weight="700">${String(slide.index).padStart(2, '0')}</text>
+  ${titleSvg}
+  ${bulletsDotsSvg}
+  ${bulletsSvg}
+  ${notesSvg}
+</svg>`;
+}
+
+async function uploadRenderableSlideImages(params: {
+    admin: ReturnType<typeof getServiceRoleClient>;
+    componentId: string;
+    slides: Array<{
+        index: number;
+        title: string;
+        bullets: string[];
+        visualNotes: string;
+    }>;
+}) {
+    const images: RenderableSlideAsset[] = [];
+
+    for (const slide of params.slides) {
+        const svg = buildSlideSvg(slide);
+        const storagePath = `slides/${params.componentId}-slide-${String(slide.index).padStart(2, '0')}.svg`;
+        const { error } = await params.admin.storage
+            .from('production-assets')
+            .upload(storagePath, Buffer.from(svg, 'utf-8'), {
+                contentType: 'image/svg+xml',
+                upsert: true,
+            });
+
+        if (error) {
+            throw new Error(`No se pudo guardar la slide renderizable ${slide.index}: ${error.message}`);
+        }
+
+        const { data: { publicUrl } } = params.admin.storage
+            .from('production-assets')
+            .getPublicUrl(storagePath);
+
+        images.push({
+            slide_index: slide.index,
+            storage_path: `production-assets/${storagePath}`,
+            public_url: publicUrl,
+        });
+    }
+
+    return images;
+}
+
 export async function POST(request: Request) {
     try {
         const { componentId } = await request.json() as { componentId?: string };
@@ -322,6 +462,12 @@ export async function POST(request: Request) {
 </body>
 </html>`;
 
+        const slideImages = await uploadRenderableSlideImages({
+            admin,
+            componentId,
+            slides,
+        });
+
         // Update the component's assets record to store the open_design_project_id if not present
         const currentAssets = component.assets || {};
         const openDesignProjectId = currentAssets.slides?.open_design_project_id || `od-${componentId}-${Date.now().toString(36)}`;
@@ -333,6 +479,7 @@ export async function POST(request: Request) {
                 open_design_project_id: openDesignProjectId,
                 // We mock saving the html content path directly to storage path as reference
                 html_content_path: `production-assets/slides/${componentId}-slides.html`,
+                images: slideImages,
             },
             updated_at: new Date().toISOString(),
         };
@@ -368,6 +515,7 @@ export async function POST(request: Request) {
             html,
             openDesignProjectId,
             htmlPublicUrl: updatedAssets.slides.html_public_url || null,
+            slideImages,
         });
 
     } catch (error: unknown) {

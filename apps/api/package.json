@@ -6,7 +6,8 @@
     "dev": "ts-node-dev src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:remotion": "tsc -p tsconfig.remotion-test.json && node .tmp/remotion-tests/features/production/__tests__/remotion-assembly-props.service.test.js"
   },
   "dependencies": {
     "@remotion/bundler": "^4.0.474",

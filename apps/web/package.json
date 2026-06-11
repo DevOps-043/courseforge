@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:remotion": "tsc -p tsconfig.remotion-test.json && node .tmp/remotion-tests/remotion/__tests__/assembly-assets.normalizer.test.js"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",

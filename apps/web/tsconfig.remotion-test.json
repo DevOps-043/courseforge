@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "baseUrl": ".",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "outDir": ".tmp/remotion-tests",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": [
+    "src/domains/materials/types/materials.types.ts",
+    "src/remotion/assembly-assets.normalizer.ts",
+    "src/remotion/buildAssemblyProps.ts",
+    "src/remotion/types.ts",
+    "src/remotion/visual-timeline.ts",
+    "src/remotion/__tests__/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "src/remotion/**/*.tsx"
+  ]
+}

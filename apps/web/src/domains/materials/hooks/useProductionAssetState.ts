@@ -49,6 +49,42 @@ function isValidHttpUrl(url: string) {
   return url.startsWith("https://") || url.startsWith("http://");
 }
 
+function isRenderableSlideImage(file: File) {
+  const imageMimeTypes = new Set([
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/svg+xml",
+  ]);
+  const extension = file.name.split(".").pop()?.toLowerCase();
+
+  return (
+    imageMimeTypes.has(file.type) ||
+    extension === "png" ||
+    extension === "jpg" ||
+    extension === "jpeg" ||
+    extension === "webp" ||
+    extension === "svg"
+  );
+}
+
+function buildSingleUploadedSlideImage(params: {
+  file: File;
+  fileName: string;
+  publicUrl: string;
+  slideIndex?: number;
+}) {
+  if (!isRenderableSlideImage(params.file)) {
+    return null;
+  }
+
+  return {
+    slide_index: params.slideIndex ?? 1,
+    storage_path: `production-assets/${params.fileName}`,
+    public_url: params.publicUrl,
+  };
+}
+
 async function detectDirectVideoDuration(url: string) {
   return new Promise<number>((resolve) => {
     const video = document.createElement("video");
@@ -257,7 +293,9 @@ export function useProductionAssetState({
         open_design_project_id: data.openDesignProjectId,
         html_content_path: `production-assets/slides/${component.id}-slides.html`,
         html_public_url: data.htmlPublicUrl,
-        images: slidesAsset?.images || [],
+        images: Array.isArray(data.slideImages)
+          ? data.slideImages
+          : slidesAsset?.images || [],
       };
       setSlidesAsset(newSlides);
       setSlidesUrl(data.htmlPublicUrl || '');
@@ -278,26 +316,64 @@ export function useProductionAssetState({
   };
 
   const handleSlidesZipUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) return;
 
     setIsUploadingSlides(true);
     try {
-      const fileName = `slides/${component.id}-slides.${file.name.split('.').pop()}`;
-      const { publicUrl } = await uploadWithSignedUrl('production-assets', fileName, file);
+      const uploadedImages: NonNullable<SlidesAsset["images"]> = [];
+      let referenceUrl = "";
+      let referencePath = "";
+
+      for (const [index, file] of files.entries()) {
+        const extension = file.name.split(".").pop()?.toLowerCase() || "bin";
+        const safeName = file.name
+          .replace(/\.[^.]+$/, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")
+          .slice(0, 40) || `slide-${index + 1}`;
+        const fileName = isRenderableSlideImage(file)
+          ? `slides/${component.id}-slide-${String(index + 1).padStart(2, "0")}-${safeName}.${extension}`
+          : `slides/${component.id}-slides-source.${extension}`;
+        const { publicUrl } = await uploadWithSignedUrl('production-assets', fileName, file);
+
+        if (!referenceUrl) {
+          referenceUrl = publicUrl;
+          referencePath = `production-assets/${fileName}`;
+        }
+
+        const uploadedImage = buildSingleUploadedSlideImage({
+          file,
+          fileName,
+          publicUrl,
+          slideIndex: uploadedImages.length + 1,
+        });
+
+        if (uploadedImage) {
+          uploadedImages.push(uploadedImage);
+        }
+      }
 
       const newSlides: SlidesAsset = {
         ...slidesAsset,
-        html_public_url: publicUrl,
-        html_content_path: `production-assets/${fileName}`,
+        html_public_url: uploadedImages.length > 0 ? slidesAsset?.html_public_url : referenceUrl,
+        html_content_path: uploadedImages.length > 0 ? slidesAsset?.html_content_path : referencePath,
+        images: uploadedImages.length > 0
+          ? uploadedImages
+          : slidesAsset?.images || [],
       };
       setSlidesAsset(newSlides);
-      setSlidesUrl(publicUrl);
+      setSlidesUrl(referenceUrl);
       onAssetChange?.(component.id, {
         slides: newSlides,
-        slides_url: publicUrl,
+        slides_url: referenceUrl,
       });
-      toast.success('Slides subidas correctamente');
+      toast.success(
+        uploadedImages.length > 0
+          ? `${uploadedImages.length} slide(s) renderizable(s) subidas correctamente`
+          : 'Archivo de slides subido como referencia',
+      );
     } catch (err: any) {
       toast.error(`Error al subir slides: ${err.message}`);
     } finally {

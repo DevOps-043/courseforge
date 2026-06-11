@@ -10,6 +10,27 @@ interface ImportRequestBody {
   accessToken?: string;
 }
 
+function isRenderableSlideImage(params: {
+  mimeType?: string;
+  fileName?: string;
+  publicUrl: string;
+}) {
+  const mimeType = params.mimeType?.toLowerCase() || "";
+  const fileName = params.fileName?.toLowerCase() || params.publicUrl.toLowerCase();
+
+  return (
+    mimeType === "image/png" ||
+    mimeType === "image/jpeg" ||
+    mimeType === "image/webp" ||
+    mimeType === "image/svg+xml" ||
+    fileName.endsWith(".png") ||
+    fileName.endsWith(".jpg") ||
+    fileName.endsWith(".jpeg") ||
+    fileName.endsWith(".webp") ||
+    fileName.endsWith(".svg")
+  );
+}
+
 export async function POST(request: Request) {
   try {
     const { urlOrId, type, componentId, accessToken } = (await request.json()) as ImportRequestBody;
@@ -91,14 +112,36 @@ export async function POST(request: Request) {
           provider: "upload",
         };
         break;
-      case "slides":
+      case "slides": {
+        const currentImages = Array.isArray(currentAssets.slides?.images)
+          ? currentAssets.slides.images
+          : [];
+        const importedImages = isRenderableSlideImage({
+          mimeType: result.mimeType,
+          fileName: result.fileName,
+          publicUrl: result.publicUrl,
+        })
+          ? [
+              {
+                slide_index: currentImages.length + 1,
+                storage_path: result.storagePath,
+                public_url: result.publicUrl,
+              },
+            ]
+          : [];
+
         updatedAssets.slides = {
           ...currentAssets.slides,
           html_public_url: result.publicUrl,
           html_content_path: result.storagePath,
+          images:
+            importedImages.length > 0
+              ? [...currentImages, ...importedImages]
+              : currentImages,
         };
         updatedAssets.slides_url = result.publicUrl; // legacy fallback
         break;
+      }
     }
 
     updatedAssets.updated_at = new Date().toISOString();

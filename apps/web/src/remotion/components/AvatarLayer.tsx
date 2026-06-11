@@ -22,6 +22,12 @@ export function AvatarLayer({
       <OffthreadVideo
         src={url}
         muted={muted}
+        // En el Player (preview en navegador) un hipo de reproducción/decodificación
+        // del avatar lanzaría MediaPlaybackError y tumbaría todo el preview.
+        // Con onError, Remotion degrada con gracia: omite la capa en vez de romper.
+        onError={(err) => {
+          console.warn("[Remotion preview] Avatar no reproducible:", url, err);
+        }}
         style={{ width: "100%", height: "100%", objectFit }}
       />
     </AbsoluteFill>

@@ -139,7 +139,13 @@ export class GoogleDriveService {
     type: "voice" | "music" | "broll" | "avatar" | "slides",
     componentId: string,
     accessToken?: string
-  ): Promise<{ publicUrl: string; storagePath: string; duration?: number }> {
+  ): Promise<{
+    publicUrl: string;
+    storagePath: string;
+    duration?: number;
+    mimeType?: string;
+    fileName?: string;
+  }> {
     const fileId = this.parseFileId(urlOrId);
     let buffer: Buffer | null = null;
     let fileName = `drive-${fileId}`;
@@ -285,6 +291,8 @@ export class GoogleDriveService {
     return {
       publicUrl,
       storagePath: `production-assets/${storagePath}`,
+      mimeType: storageContentType,
+      fileName,
     };
   }
 }

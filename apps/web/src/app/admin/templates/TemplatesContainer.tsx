@@ -15,7 +15,9 @@ import {
   Building2, 
   Loader2,
   FileCode,
-  Bookmark
+  Bookmark,
+  AlertTriangle,
+  PlayCircle
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -48,6 +50,7 @@ export default function TemplatesContainer({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [entryPoint, setEntryPoint] = useState("src/index.tsx");
+  const [compositionId, setCompositionId] = useState("full-slides");
   const [isPublic, setIsPublic] = useState(false);
   const [selectedEmoji, setSelectedEmoji] = useState("🎨");
   
@@ -58,6 +61,12 @@ export default function TemplatesContainer({
   const [uploadError, setUploadError] = useState("");
 
   const emojis = ["🎨", "📊", "👤", "🎬", "📚", "🎮", "🌟", "💻"];
+
+  const compositionOptions = [
+    { id: "full-slides", label: "Slides completas" },
+    { id: "split-avatar", label: "Slides + avatar" },
+    { id: "avatar-focus", label: "Avatar protagonista" },
+  ];
 
   const handleRefresh = async () => {
     setLoading(true);
@@ -148,6 +157,7 @@ export default function TemplatesContainer({
         name,
         description,
         entryPoint,
+        compositionId,
         isPublic,
         storagePath: storagePath || undefined,
         thumbnailUrl: selectedEmoji,
@@ -161,6 +171,7 @@ export default function TemplatesContainer({
         setName("");
         setDescription("");
         setEntryPoint("src/index.tsx");
+        setCompositionId("full-slides");
         setIsPublic(false);
         setSelectedEmoji("🎨");
         setTemplateFile(null);
@@ -347,6 +358,27 @@ export default function TemplatesContainer({
 
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                    Composicion interna para render
+                  </label>
+                  <select
+                    value={compositionId}
+                    onChange={(event) => setCompositionId(event.target.value)}
+                    disabled={isUploading}
+                    className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl px-4 py-2.5 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 transition-colors"
+                  >
+                    {compositionOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label} ({option.id})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                    Esta es la plantilla que Remotion ejecuta hoy al ensamblar.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
                     Descripción
                   </label>
                   <textarea 
@@ -401,6 +433,12 @@ export default function TemplatesContainer({
                   <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
                     Código de la Plantilla (.zip)
                   </label>
+                  <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                    <span>
+                      Los ZIP se almacenan, pero todavia no se ejecutan como bundle Remotion dinamico. Esta plantilla renderizara con una composicion interna.
+                    </span>
+                  </div>
                   <div className="flex items-center justify-center w-full">
                     <label className={`flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 dark:border-[#6C757D]/25 rounded-xl cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-all ${templateFile ? "bg-green-500/5 border-green-500/30" : "bg-transparent"}`}>
                       <div className="flex flex-col items-center justify-center pt-5 pb-6">
@@ -522,6 +560,8 @@ function TemplateCard({
   onAcquire: () => void;
 }) {
   const isGlobal = tpl.organization_id === null;
+  const isExternalPending = tpl.render_mode === "EXTERNAL_BUNDLE_PENDING";
+  const hasExternalReference = tpl.render_mode === "INTERNAL_WITH_EXTERNAL_REFERENCE";
 
   return (
     <motion.div
@@ -570,6 +610,19 @@ function TemplateCard({
                 )}
               </span>
             )}
+            <span
+              className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                isExternalPending
+                  ? "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                  : hasExternalReference
+                    ? "border-blue-500/25 bg-blue-500/10 text-blue-700 dark:text-blue-300"
+                    : "border-green-500/25 bg-green-500/10 text-green-700 dark:text-green-300"
+              }`}
+              title={tpl.render_status_label}
+            >
+              {isExternalPending ? <AlertTriangle size={10} /> : <PlayCircle size={10} />}
+              {isExternalPending ? "Bundle pendiente" : "Render interno"}
+            </span>
           </div>
         </div>
 
@@ -586,6 +639,15 @@ function TemplateCard({
         <div className="flex items-center gap-1.5 text-[11px] text-gray-400 bg-gray-50 dark:bg-[#0F1419]/50 px-3 py-1.5 rounded-lg border border-gray-100 dark:border-[#6C757D]/5">
           <FileCode size={12} className="text-gray-500" />
           <span className="font-medium text-gray-500 truncate">Entry: {tpl.entry_point}</span>
+        </div>
+
+        <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed ${
+          isExternalPending
+            ? "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+            : "border-gray-100 bg-gray-50 text-gray-500 dark:border-[#6C757D]/5 dark:bg-[#0F1419]/50 dark:text-gray-400"
+        }`}>
+          {isExternalPending ? <AlertTriangle size={13} className="mt-0.5 shrink-0" /> : <PlayCircle size={13} className="mt-0.5 shrink-0" />}
+          <span>{tpl.render_status_label}</span>
         </div>
       </div>
 
