@@ -1,5 +1,15 @@
-import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import * as jose from "jose";
+import { encrypt, decrypt } from "@/lib/server/crypto";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error("Missing Supabase URL or Service Role Key in environment variables");
+  }
+  return createSupabaseClient(supabaseUrl, supabaseServiceKey);
+}
 
 export interface DriveFile {
   id: string;
@@ -271,7 +281,7 @@ export class GoogleDriveService {
     const storagePath = `${folder}/${componentId}-${cleanFileName}.${ext}`;
 
     // 4. Upload to Supabase Storage
-    const admin = getServiceRoleClient();
+    const admin = getAdminClient();
     const { error: uploadError } = await admin.storage
       .from("production-assets")
       .upload(storagePath, buffer, {
@@ -295,4 +305,152 @@ export class GoogleDriveService {
       fileName,
     };
   }
+
+  /**
+   * Asegura un access_token válido descifrando y renovando si es necesario
+   */
+  async refreshUserAccessToken(userId: string): Promise<string> {
+    const admin = getAdminClient();
+    const { data: creds, error } = await admin
+      .from("user_google_credentials")
+      .select("refresh_token, expires_at, access_token")
+      .eq("user_id", userId)
+      .single();
+
+    if (error || !creds) {
+      throw new Error("No hay cuenta de Google vinculada para este usuario.");
+    }
+
+    const decryptedAccessToken = decrypt(creds.access_token);
+
+    // Retorna el actual si aún es válido (más de 1 minuto de holgura)
+    if (new Date(creds.expires_at).getTime() > Date.now() + 60000) {
+      return decryptedAccessToken;
+    }
+
+    const decryptedRefreshToken = decrypt(creds.refresh_token);
+
+    // Solicitar renovación del access_token
+    const response = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: process.env.GOOGLE_CLIENT_ID || "",
+        client_secret: process.env.GOOGLE_CLIENT_SECRET || "",
+        refresh_token: decryptedRefreshToken,
+        grant_type: "refresh_token",
+      }).toString(),
+    });
+
+    if (!response.ok) {
+      throw new Error("La renovación del token de Google falló. El usuario debe reconectar.");
+    }
+
+    const tokenData = await response.json();
+    const nextExpires = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
+
+    const encryptedNewAccess = encrypt(tokenData.access_token);
+
+    await admin
+      .from("user_google_credentials")
+      .update({
+        access_token: encryptedNewAccess,
+        expires_at: nextExpires,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId);
+
+    return tokenData.access_token;
+  }
+
+  /**
+   * Crea una carpeta en Google Drive y retorna su ID
+   */
+  async createFolder(name: string, parentId: string | null, accessToken: string): Promise<string> {
+    const metadata: Record<string, any> = {
+      name,
+      mimeType: "application/vnd.google-apps.folder",
+    };
+    if (parentId) {
+      metadata.parents = [parentId];
+    }
+
+    const response = await fetch("https://www.googleapis.com/drive/v3/files", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(metadata),
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(`Error de Google Drive API al crear carpeta: ${err.error?.message || response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.id;
+  }
+
+  /**
+   * Crea el árbol de carpetas organizado para un taller/artefacto
+   */
+  async setupArtifactFolderTree(
+    artifactId: string,
+    artifactName: string,
+    userId: string
+  ): Promise<{ rootFolderId: string; folderUrl: string }> {
+    try {
+      const token = await this.refreshUserAccessToken(userId);
+
+      // 1. Crear carpeta raíz del taller
+      const rootFolderName = `Courseforge - ${artifactName}`;
+      const rootFolderId = await this.createFolder(rootFolderName, null, token);
+
+      // 2. Crear subcarpetas estructuradas
+      const foldersToCreate = [
+        "01 - Syllabus",
+        "02 - Curacion",
+        "03 - Materiales (Audios y Slides)",
+        "04 - Produccion Final"
+      ];
+
+      const folderMappings: Record<string, string> = {};
+      for (const folderName of foldersToCreate) {
+        const subFolderId = await this.createFolder(folderName, rootFolderId, token);
+        folderMappings[folderName.toLowerCase().replace(/[^a-z0-9]/g, "_")] = subFolderId;
+      }
+
+      const folderUrl = `https://drive.google.com/drive/folders/${rootFolderId}`;
+
+      // 3. Registrar los IDs en la metadata del artefacto
+      const admin = getAdminClient();
+      const { data: artifact } = await admin
+        .from("artifacts")
+        .select("generation_metadata")
+        .eq("id", artifactId)
+        .single();
+
+      const metadata = artifact?.generation_metadata || {};
+      metadata.google_drive = {
+        enabled: true,
+        root_folder_id: rootFolderId,
+        folder_url: folderUrl,
+        subfolders: folderMappings,
+        created_at: new Date().toISOString(),
+      };
+
+      await admin
+        .from("artifacts")
+        .update({ generation_metadata: metadata })
+        .eq("id", artifactId);
+
+      return { rootFolderId, folderUrl };
+    } catch (error: any) {
+      console.error("[GoogleDriveService] Error creando árbol de carpetas:", error);
+      throw error;
+    }
+  }
 }
+

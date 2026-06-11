@@ -12,6 +12,7 @@ import {
 } from './shared/bootstrap';
 import { getErrorMessage } from './shared/errors';
 import { methodNotAllowedResponse, parseJsonBody } from './shared/http';
+import { GoogleDriveService } from '../../src/domains/production/providers/google-drive.service';
 
 const BLOOM_VERBS = [
   "comprender", "aplicar", "analizar", "evaluar", "crear",
@@ -44,6 +45,7 @@ interface GenerateArtifactRequestBody {
   feedback?: string;
   formData?: GenerateArtifactFormData;
   userToken?: string;
+  useGoogleDrive?: boolean;
 }
 
 interface ResearchCandidate {
@@ -73,7 +75,7 @@ export const handler: Handler = async (event) => {
 
     try {
         const body = parseJsonBody<GenerateArtifactRequestBody>(event);
-        const { artifactId, formData, userToken, feedback } = body;
+        const { artifactId, formData, userToken, feedback, useGoogleDrive } = body;
 
         if (!artifactId || !formData || !userToken) {
             return { statusCode: 400, body: 'Missing required fields' };
@@ -88,6 +90,23 @@ export const handler: Handler = async (event) => {
                 headers: { Authorization: `Bearer ${userToken}` },
             },
         });
+
+        // Aprovisionamiento opcional de Google Drive
+        if (useGoogleDrive) {
+            try {
+                const { data: { user }, error: authError } = await supabase.auth.getUser();
+                if (authError || !user) {
+                    console.warn("[Background Job] No se pudo obtener el usuario autenticado para crear carpetas en Google Drive:", authError?.message);
+                } else {
+                    console.log(`[Background Job] Aprovisionando árbol de carpetas en Google Drive para el usuario ${user.id}...`);
+                    const driveService = new GoogleDriveService();
+                    const folderTree = await driveService.setupArtifactFolderTree(artifactId, formData.title || "Taller", user.id);
+                    console.log(`[Background Job] Carpeta de Google Drive creada: ${folderTree.folderUrl}`);
+                }
+            } catch (driveErr: any) {
+                console.warn("[Background Job] Error no crítico al aprovisionar Google Drive:", driveErr.message);
+            }
+        }
 
         const modelConfig = await resolveModelSetting(createServiceRoleClient(), "ARTIFACT_BASE", {
             model: "gemini-2.5-flash",

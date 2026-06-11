@@ -19,6 +19,7 @@ export async function generateArtifactAction(formData: {
   targetAudience: string;
   expectedResults: string;
   courseId?: string;
+  useGoogleDrive?: boolean;
 }) {
   const supabase = await createClient();
   const authUser = await getAuthenticatedUser(supabase);
@@ -70,6 +71,7 @@ export async function generateArtifactAction(formData: {
         artifactId: artifact.id,
         formData,
         userToken: accessToken,
+        useGoogleDrive: formData.useGoogleDrive,
       },
       {
         fallbackError: "Error al iniciar la generacion del artefacto",

@@ -20,6 +20,15 @@ export default async function ProfilePage() {
     .eq('id', user.id)
     .single();
 
+  const { data: googleCreds } = await supabase
+    .from('user_google_credentials')
+    .select('google_email')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  const googleConnected = Boolean(googleCreds);
+  const googleEmail = googleCreds?.google_email || null;
+
   let artifactCountQuery = supabase
     .from('artifacts')
     .select('id', { count: 'exact', head: true })
@@ -35,7 +44,13 @@ export default async function ProfilePage() {
       </div>
       
       <div>
-         <ProfileForm user={user} profile={profile} artifactCount={artifactCount || 0} />
+         <ProfileForm 
+           user={user} 
+           profile={profile} 
+           artifactCount={artifactCount || 0} 
+           googleConnected={googleConnected}
+           googleEmail={googleEmail}
+         />
       </div>
     </div>
   );

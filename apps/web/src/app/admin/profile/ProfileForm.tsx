@@ -2,13 +2,14 @@
 
 import { useState, useRef } from 'react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
-import { User, Shield, Camera, Save, Loader2, Lock, Eye, EyeOff, Calendar, CheckCircle2, FileCode, Key } from 'lucide-react';
+import { User, Shield, Camera, Save, Loader2, Lock, Eye, EyeOff, Calendar, CheckCircle2, FileCode, Key, HardDrive } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { createClient } from '@/utils/supabase/client';
 import { updateProfile, updatePassword, updateAvatar } from './actions';
+import { disconnectGoogleAction } from '@/domains/production/actions/google-drive.actions';
 
 interface ProfileFormProfile {
   avatar_url?: string | null;
@@ -23,6 +24,8 @@ interface ProfileFormProps {
   artifactCount: number;
   profile: ProfileFormProfile | null;
   user: Pick<SupabaseUser, 'created_at' | 'email' | 'id'>;
+  googleConnected: boolean;
+  googleEmail: string | null;
 }
 
 interface BoxInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -31,11 +34,13 @@ interface BoxInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   readOnly?: boolean;
 }
 
-export default function ProfileForm({ user, profile, artifactCount }: ProfileFormProps) {
+export default function ProfileForm({ user, profile, artifactCount, googleConnected, googleEmail }: ProfileFormProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [activeSection, setActiveSection] = useState<'general' | 'security'>('general');
+  const [activeSection, setActiveSection] = useState<'general' | 'security' | 'integrations'>('general');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url);
+  const [isGoogleConnected, setIsGoogleConnected] = useState(googleConnected);
+  const [googleEmailAddress, setGoogleEmailAddress] = useState(googleEmail);
 
   // Profile State
   const [formData, setFormData] = useState({
@@ -92,6 +97,24 @@ export default function ProfileForm({ user, profile, artifactCount }: ProfileFor
     } else {
         setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
         toast.success("Contraseña actualizada correctamente");
+    }
+  };
+
+  const handleDisconnectGoogle = async () => {
+    setIsLoading(true);
+    try {
+      const res = await disconnectGoogleAction();
+      if (res.success) {
+        setIsGoogleConnected(false);
+        setGoogleEmailAddress(null);
+        toast.success("Cuenta de Google Drive desvinculada correctamente");
+      } else {
+        toast.error(res.error || "Error al desvincular Google Drive");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Error al desvincular Google Drive");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -237,12 +260,19 @@ export default function ProfileForm({ user, profile, artifactCount }: ProfileFor
              >
                 <Shield size={16} /> Seguridad
              </button>
+             <button 
+                onClick={() => setActiveSection('integrations')}
+                className={`px-6 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 border ${activeSection === 'integrations' ? 'bg-[#00D4B3]/10 text-[#00D4B3] border-[#00D4B3]/20' : 'bg-transparent border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-slate-500 dark:hover:text-white dark:hover:bg-white/5'}`}
+             >
+                <HardDrive size={16} /> Integraciones
+             </button>
         </div>
 
         {/* CONTENT AREA */}
         <AnimatePresence mode='wait'>
-            {activeSection === 'general' ? (
+            {activeSection === 'general' && (
                  <motion.form 
+                    key="general"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
@@ -270,14 +300,16 @@ export default function ProfileForm({ user, profile, artifactCount }: ProfileFor
                     </div>
 
                  </motion.form>
-            ) : (
-                <motion.div
+            )}
+
+            {activeSection === 'security' && (
+                 <motion.div
                     key="security"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
                     className="w-full"
-                >
+                 >
                      <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-white/5 rounded-3xl p-8 backdrop-blur-sm relative overflow-hidden shadow-sm">
                         
                         <div className="flex items-start justify-between mb-8 relative z-10">
@@ -335,7 +367,70 @@ export default function ProfileForm({ user, profile, artifactCount }: ProfileFor
                             </div>
                          </form>
                      </div>
-                </motion.div>
+                 </motion.div>
+            )}
+
+            {activeSection === 'integrations' && (
+                 <motion.div
+                    key="integrations"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="w-full"
+                 >
+                      <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-white/5 rounded-3xl p-8 backdrop-blur-sm relative overflow-hidden shadow-sm">
+                         
+                         <div className="flex items-start justify-between mb-8 relative z-10">
+                             <div>
+                                 <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Integraciones de Terceros</h3>
+                                 <p className="text-sm text-gray-500 dark:text-slate-400">Conecta herramientas externas para potenciar tu flujo de creación.</p>
+                             </div>
+                             <div className="p-3 bg-gray-100 dark:bg-white/5 text-[#00D4B3] rounded-xl">
+                                 <HardDrive size={24} />
+                             </div>
+                         </div>
+
+                         <div className="border border-gray-150 dark:border-white/5 rounded-2xl p-6 bg-gray-50/50 dark:bg-[#1A2029]/40 relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 transition-all hover:border-[#00D4B3]/20">
+                             <div className="flex items-start gap-4">
+                                 <div className="w-12 h-12 rounded-xl bg-[#00D4B3]/10 flex items-center justify-center text-[#00D4B3] shrink-0">
+                                     <HardDrive size={24} />
+                                 </div>
+                                 <div>
+                                     <h4 className="text-gray-900 dark:text-white font-bold text-base">Google Drive</h4>
+                                     <p className="text-xs text-gray-500 dark:text-slate-400 mt-1 max-w-md">
+                                         Permite a Courseforge crear carpetas organizadas y estructuradas para tus talleres y leer tus recursos de forma directa.
+                                     </p>
+                                     {isGoogleConnected && (
+                                         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-500 mt-2 border border-emerald-500/25">
+                                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                             Conectado como {googleEmailAddress}
+                                         </span>
+                                     )}
+                                 </div>
+                             </div>
+                             
+                             <div className="shrink-0">
+                                 {isGoogleConnected ? (
+                                     <button
+                                         type="button"
+                                         onClick={handleDisconnectGoogle}
+                                         disabled={isLoading}
+                                         className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-red-500/30 text-red-500 hover:bg-red-500/5 dark:hover:bg-red-500/10 transition-colors font-medium text-sm cursor-pointer"
+                                     >
+                                         Desvincular
+                                     </button>
+                                 ) : (
+                                     <a
+                                         href="/api/auth/google/login"
+                                         className="inline-flex justify-center items-center w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#00D4B3] hover:bg-[#00bda0] text-white dark:text-black font-bold text-sm transition-colors shadow-lg shadow-[#00D4B3]/15 text-center cursor-pointer"
+                                     >
+                                         Vincular Cuenta
+                                     </a>
+                                 )}
+                             </div>
+                         </div>
+                      </div>
+                 </motion.div>
             )}
         </AnimatePresence>
       </div>
