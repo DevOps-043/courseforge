@@ -3,7 +3,7 @@ import { createClient } from "@/utils/supabase/server";
 import { getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { decrypt } from "@/lib/server/crypto";
 
-export async function POST(request: Request) {
+export async function POST() {
   try {
     const supabase = await createClient();
     const user = await getAuthenticatedUser(supabase);

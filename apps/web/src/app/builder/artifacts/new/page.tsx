@@ -212,7 +212,7 @@ export default function ConstructorNewArtifactPage() {
                                                 />
                                             </div>
 
-                                            {isGoogleDriveConnected && (
+                                            {isGoogleDriveConnected ? (
                                                 <div className="flex items-center gap-3 pt-3 border-t border-gray-100 dark:border-white/5">
                                                     <input
                                                         type="checkbox"
@@ -225,6 +225,19 @@ export default function ConstructorNewArtifactPage() {
                                                         <HardDrive size={14} className="text-[#00D4B3]" />
                                                         Crear árbol de carpetas en Google Drive
                                                     </label>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center justify-between gap-3 pt-3 border-t border-gray-100 dark:border-white/5">
+                                                    <span className="text-xs text-gray-500 dark:text-slate-400 flex items-center gap-1.5 select-none">
+                                                        <HardDrive size={14} className="text-gray-400" />
+                                                        Google Drive no está conectado
+                                                    </span>
+                                                    <a
+                                                        href="/api/auth/google/login"
+                                                        className="text-xs text-[#00D4B3] hover:underline font-semibold"
+                                                    >
+                                                        Conectar ahora
+                                                    </a>
                                                 </div>
                                             )}
                                         </motion.div>

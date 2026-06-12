@@ -248,11 +248,19 @@ export const handler: Handler = async (event) => {
 
         const allPassed = validationReport.every((result) => result.passed);
 
+        // Fetch current artifact to preserve metadata updates (e.g. google_drive config)
+        const { data: currentArtifact } = await supabase
+            .from('artifacts')
+            .select('generation_metadata')
+            .eq('id', artifactId)
+            .single();
+
         const { error } = await supabase.from('artifacts').update({
             nombres: content.nombres,
             objetivos: content.objetivos,
             descripcion: content.descripcion,
             generation_metadata: {
+                ...(currentArtifact?.generation_metadata || {}),
                 research_summary: researchContext.slice(0, 2000),
                 search_queries: detectedSearchQueries,
                 model_used: genModelUsed,
