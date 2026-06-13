@@ -6,6 +6,7 @@ import { InstructionalPlanGenerationContainer } from "@/domains/plan/components/
 import { SourcesCurationGenerationContainer } from "@/domains/curation/components/SourcesCurationGenerationContainer";
 import { MaterialsForm } from "@/domains/materials/components/MaterialsForm";
 import { VisualProductionContainer } from "@/domains/materials/components/VisualProductionContainer";
+import { PostproductionAssemblyContainer } from "@/domains/materials/components/PostproductionAssemblyContainer";
 import type {
   PublicationProfile,
   PublicationRequestRecord,
@@ -36,7 +37,7 @@ interface ArtifactStageContentProps {
   onRegenerate: () => Promise<void>;
   onSaveContent: () => Promise<void>;
   profile?: PublicationProfile;
-  productionComplete: boolean;
+  assetsComplete: boolean;
   publicationLessons?: PublicationVideoLesson[];
   publicationRequest?: PublicationRequestRecord | null;
   reviewState: "pending" | "approved" | "rejected";
@@ -66,7 +67,7 @@ export function ArtifactStageContent({
   onRegenerate,
   onSaveContent,
   profile,
-  productionComplete,
+  assetsComplete,
   publicationLessons,
   publicationRequest,
   reviewState,
@@ -157,7 +158,7 @@ export function ArtifactStageContent({
       <div className={STAGE_WRAPPER}>
         <VisualProductionContainer
           artifactId={artifact.id}
-          productionComplete={productionComplete}
+          assetsComplete={assetsComplete}
           onStatusChange={onLocalProductionStatusChange}
           profile={profile}
         />
@@ -166,6 +167,18 @@ export function ArtifactStageContent({
   }
 
   if (currentStep === 7) {
+    return (
+      <div className={STAGE_WRAPPER}>
+        <PostproductionAssemblyContainer
+          artifactId={artifact.id}
+          onNext={() => setCurrentStep(8)}
+          profile={profile}
+        />
+      </div>
+    );
+  }
+
+  if (currentStep === 8) {
     return (
       <div className={STAGE_WRAPPER}>
         <PublicationClientView

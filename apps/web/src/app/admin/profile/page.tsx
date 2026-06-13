@@ -20,6 +20,19 @@ export default async function ProfilePage() {
     .eq('id', user.id)
     .single();
 
+  const { data: cloudCreds } = await supabase
+    .from('user_cloud_storage_credentials')
+    .select('provider, account_email')
+    .eq('user_id', user.id)
+    .in('provider', ['google_drive', 'onedrive']);
+
+  const googleCreds = cloudCreds?.find((cred) => cred.provider === 'google_drive');
+  const oneDriveCreds = cloudCreds?.find((cred) => cred.provider === 'onedrive');
+  const googleConnected = Boolean(googleCreds);
+  const googleEmail = googleCreds?.account_email || null;
+  const oneDriveConnected = Boolean(oneDriveCreds);
+  const oneDriveEmail = oneDriveCreds?.account_email || null;
+
   let artifactCountQuery = supabase
     .from('artifacts')
     .select('id', { count: 'exact', head: true })
@@ -35,7 +48,15 @@ export default async function ProfilePage() {
       </div>
       
       <div>
-         <ProfileForm user={user} profile={profile} artifactCount={artifactCount || 0} />
+         <ProfileForm 
+           user={user} 
+           profile={profile} 
+           artifactCount={artifactCount || 0} 
+           googleConnected={googleConnected}
+           googleEmail={googleEmail}
+           oneDriveConnected={oneDriveConnected}
+           oneDriveEmail={oneDriveEmail}
+         />
       </div>
     </div>
   );

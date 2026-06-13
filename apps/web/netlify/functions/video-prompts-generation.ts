@@ -1,167 +1,162 @@
-import { Handler } from '@netlify/functions';
+import { Handler } from "@netlify/functions";
 import {
-    createGeminiClient,
-    createServiceRoleClient,
-} from './shared/bootstrap';
-import { getErrorMessage } from './shared/errors';
+  createGeminiClient,
+  createServiceRoleClient,
+} from "./shared/bootstrap";
+import { getErrorMessage } from "./shared/errors";
 import {
-    jsonResponse,
-    methodNotAllowedResponse,
-    parseJsonBody,
-} from './shared/http';
-import { resolveSinglePrompt } from '../../src/shared/config/prompts/prompt-resolver.service';
-import { VIDEO_BROLL_PROMPT_CODE } from '../../src/shared/config/prompts/materials-generation.prompts.modular';
+  jsonResponse,
+  methodNotAllowedResponse,
+  parseJsonBody,
+} from "./shared/http";
+import { syncBrollPromptsToMaterialComponent } from "../../src/domains/production/assets/production-asset-sync.service";
+import {
+  buildBrollPromptJobInputSnapshot,
+  buildProductionIdempotencyKey,
+  completeBrollPromptProductionJob,
+  createOrReuseProductionJob,
+  failProductionJob,
+  markProductionJobRunning,
+  resolveProductionComponentContext,
+} from "../../src/domains/production/jobs/production-jobs.service";
+import {
+  PRODUCTION_JOB_TYPES,
+  PRODUCTION_PROVIDERS,
+} from "../../src/domains/production/types/production.types";
+import {
+  formatBrollPromptsForAssets,
+  parseBrollPromptResponse,
+} from "../../src/domains/production/validation/broll-prompts.schema";
+import { CLIP_GENERATION_PROMPT_CODE } from "../../src/shared/config/prompts/materials-generation.prompts.modular";
+import { resolveSinglePrompt } from "../../src/shared/config/prompts/prompt-resolver.service";
 
-// --------------------------------------------------------------------------
-// Types
-// --------------------------------------------------------------------------
+const BROLL_PROMPT_MODEL = "gemini-2.0-flash";
 
-interface VideoPromptResultItem {
-    generated_prompt: string;
-    original_description: string;
-    scene_index: number;
+interface VideoPromptsRequestBody {
+  componentId?: string;
+  productionJobId?: string;
+  storyboard?: unknown;
+  userToken?: string;
 }
-
-interface VideoPromptResponsePayload {
-    prompts: VideoPromptResultItem[];
-}
-
-// --------------------------------------------------------------------------
-// Helpers
-// --------------------------------------------------------------------------
-
-/**
- * Derives the organization_id from a component ID by traversing
- * material_components → material_lessons → materials → artifacts.
- *
- * Returns null if the chain cannot be resolved (safe fallback to global prompt).
- */
-async function resolveOrganizationId(
-    supabase: ReturnType<typeof createServiceRoleClient>,
-    componentId: string,
-): Promise<string | null> {
-    const { data } = await supabase
-        .from('material_components')
-        .select(`
-            material_lessons (
-                materials (
-                    artifacts ( organization_id )
-                )
-            )
-        `)
-        .eq('id', componentId)
-        .single();
-
-    if (!data?.material_lessons) return null;
-
-    const lesson = Array.isArray(data.material_lessons)
-        ? data.material_lessons[0]
-        : data.material_lessons;
-    if (!lesson?.materials) return null;
-
-    const material = Array.isArray(lesson.materials)
-        ? lesson.materials[0]
-        : lesson.materials;
-    if (!material?.artifacts) return null;
-
-    const artifact = Array.isArray(material.artifacts)
-        ? material.artifacts[0]
-        : material.artifacts;
-
-    return (artifact?.organization_id as string) || null;
-}
-
-// --------------------------------------------------------------------------
-// Handler
-// --------------------------------------------------------------------------
 
 export const handler: Handler = async (event) => {
-    if (event.httpMethod !== 'POST') {
-        return methodNotAllowedResponse();
+  if (event.httpMethod !== "POST") {
+    return methodNotAllowedResponse();
+  }
+
+  let requestBody: VideoPromptsRequestBody = {};
+  let activeProductionJobId: string | null = null;
+  let productionJobCompleted = false;
+
+  try {
+    requestBody = parseJsonBody<VideoPromptsRequestBody>(event);
+    activeProductionJobId = requestBody.productionJobId || null;
+    const { componentId, productionJobId, storyboard } = requestBody;
+
+    if (!componentId || !storyboard) {
+      return { statusCode: 400, body: "Missing required fields" };
     }
 
-    try {
-        const body = parseJsonBody<{
-            componentId?: string;
-            storyboard?: unknown;
-            userToken?: string;
-        }>(event);
-        const { componentId, storyboard } = body;
+    const supabase = createServiceRoleClient();
+    const genAI = createGeminiClient();
+    console.log(`[Video Prompts] Generating for component: ${componentId}`);
 
-        if (!componentId || !storyboard) {
-            return { statusCode: 400, body: 'Missing required fields' };
-        }
-
-        const supabase = createServiceRoleClient();
-        const genAI = createGeminiClient();
-        console.log(`[Video Prompts] Generating for component: ${componentId}`);
-
-        // 1. Resolve organization for prompt personalization
-        const organizationId = await resolveOrganizationId(supabase, componentId);
-        console.log(`[Video Prompts] Organization: ${organizationId ?? 'global (no org)'}`);
-
-        // 2. Resolve prompt from DB (org → global → hardcoded default)
-        const systemPrompt = await resolveSinglePrompt(
-            supabase,
-            VIDEO_BROLL_PROMPT_CODE,
-            organizationId,
-        );
-
-        // 3. Prepare Input for Gemini
-        const inputContext = JSON.stringify(storyboard, null, 2);
-        const fullPrompt = `${systemPrompt}\n\nSTORYBOARD INPUT:\n${inputContext}`;
-
-        // 4. Call Gemini
-        const model = 'gemini-2.0-flash';
-        const response = await genAI.models.generateContent({
-            model: model,
-            contents: fullPrompt,
-            config: {
-                temperature: 0.7,
-                responseModalities: ['TEXT'],
-            },
+    const context = await resolveProductionComponentContext({
+      componentId,
+      supabase,
+    });
+    const inputSnapshot = buildBrollPromptJobInputSnapshot({
+      componentId,
+      storyboard,
+    });
+    const productionJob = productionJobId
+      ? { id: productionJobId }
+      : await createOrReuseProductionJob(supabase, {
+          context,
+          idempotencyKey: buildProductionIdempotencyKey({
+            componentId,
+            input: inputSnapshot,
+            jobType: PRODUCTION_JOB_TYPES.BROLL_PROMPT_GENERATION,
+            provider: PRODUCTION_PROVIDERS.GEMINI,
+          }),
+          inputSnapshot,
+          jobType: PRODUCTION_JOB_TYPES.BROLL_PROMPT_GENERATION,
+          provider: PRODUCTION_PROVIDERS.GEMINI,
+          providerModel: BROLL_PROMPT_MODEL,
         });
+    activeProductionJobId = productionJob.id;
 
-        const responseText = response.text || '';
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    await markProductionJobRunning({
+      jobId: productionJob.id,
+      supabase,
+    });
 
-        if (!jsonMatch) {
-            throw new Error('No valid JSON in response');
-        }
+    console.log(
+      `[Video Prompts] Organization: ${
+        context.organizationId ?? "global (no org)"
+      }`,
+    );
 
-        const result = JSON.parse(jsonMatch[0]) as VideoPromptResponsePayload;
+    const systemPrompt = await resolveSinglePrompt(
+      supabase,
+      CLIP_GENERATION_PROMPT_CODE,
+      context.organizationId,
+    );
 
-        // 5. Update Component Assets
-        const { data: component } = await supabase
-            .from('material_components')
-            .select('assets')
-            .eq('id', componentId)
-            .single();
+    const inputContext = JSON.stringify(storyboard, null, 2);
+    const fullPrompt = `${systemPrompt}\n\nSTORYBOARD INPUT:\n${inputContext}`;
 
-        const currentAssets = component?.assets || {};
+    const response = await genAI.models.generateContent({
+      model: BROLL_PROMPT_MODEL,
+      contents: fullPrompt,
+      config: {
+        temperature: 0.7,
+        responseModalities: ["TEXT"],
+      },
+    });
 
-        const promptsText = result.prompts.map((promptItem) =>
-            `[Escena ${promptItem.scene_index}] ${promptItem.generated_prompt}`
-        ).join('\n\n');
+    const responseText = response.text || "";
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
 
-        const newAssets = {
-            ...currentAssets,
-            b_roll_prompts: promptsText
-        };
-
-        const { error: updateError } = await supabase
-            .from('material_components')
-            .update({ assets: newAssets })
-            .eq('id', componentId);
-
-        if (updateError) throw updateError;
-
-        console.log(`[Video Prompts] Assets updated for ${componentId}`);
-
-        return jsonResponse({ success: true, prompts: promptsText });
-
-    } catch (error: unknown) {
-        console.error('[Video Prompts] Error:', error);
-        return jsonResponse({ success: false, error: getErrorMessage(error) }, 500);
+    if (!jsonMatch) {
+      throw new Error("No valid JSON in response");
     }
+
+    const result = parseBrollPromptResponse(JSON.parse(jsonMatch[0]));
+    const promptsText = formatBrollPromptsForAssets(result.prompts);
+
+    await completeBrollPromptProductionJob(supabase, {
+      context,
+      jobId: productionJob.id,
+      model: BROLL_PROMPT_MODEL,
+      promptItems: result.prompts,
+      promptsText,
+    });
+    productionJobCompleted = true;
+
+    await syncBrollPromptsToMaterialComponent({
+      componentId,
+      promptsText,
+      supabase,
+    });
+
+    console.log(`[Video Prompts] Assets updated for ${componentId}`);
+
+    return jsonResponse({ success: true, prompts: promptsText });
+  } catch (error: unknown) {
+    console.error("[Video Prompts] Error:", error);
+
+    if (activeProductionJobId && !productionJobCompleted) {
+      const supabase = createServiceRoleClient();
+      await failProductionJob({
+        error,
+        jobId: activeProductionJobId,
+        supabase,
+      }).catch((jobError) => {
+        console.error("[Video Prompts] Error marking job failed:", jobError);
+      });
+    }
+
+    return jsonResponse({ success: false, error: getErrorMessage(error) }, 500);
+  }
 };

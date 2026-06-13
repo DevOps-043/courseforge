@@ -45,6 +45,8 @@ export interface WorkflowSnapshot {
 
   /** Boolean(artifact.production_complete) */
   productionComplete: boolean;
+  /** Boolean(artifact.generation_metadata?.assets_complete) */
+  assetsComplete: boolean;
   /** Boolean(publicationRequest) */
   hasPublicationRequest: boolean;
   /** publicationRequest?.status */
@@ -80,6 +82,7 @@ interface SnapshotSourceArtifact {
     id?: string | null;
     qa_decision?: { decision?: string | null } | null;
   } | null;
+  generation_metadata?: Record<string, unknown> | null;
 }
 
 interface SnapshotSourcePublication {
@@ -118,6 +121,7 @@ export function buildWorkflowSnapshot(
     materialsQaDecision: artifact.materials?.qa_decision?.decision ?? null,
 
     productionComplete: Boolean(artifact.production_complete),
+    assetsComplete: Boolean((artifact.generation_metadata as Record<string, unknown> | undefined)?.assets_complete),
     hasPublicationRequest: Boolean(publicationRequest),
     publicationStatus: publicationRequest?.status ?? null,
   };
@@ -162,14 +166,19 @@ export function isMaterialsApprovedFromSnapshot(s: WorkflowSnapshot): boolean {
 
 export function getWorkflowStep(s: WorkflowSnapshot): number {
   if (s.publicationStatus === "SENT" || s.publicationStatus === "APPROVED") {
-    return 7;
+    return 8;
   }
 
   if (s.hasPublicationRequest || s.productionComplete) {
+    return 8;
+  }
+
+  // Assets completos -> Paso 7 (Postproducción / Ensamblado Remotion)
+  if (s.assetsComplete) {
     return 7;
   }
 
-  // Materials aprobado o iniciado → paso 6
+  // Materials aprobado o iniciado -> Paso 6 (Producción de Assets)
   if (
     s.materialsState === MATERIALS_STATES.APPROVED ||
     s.materialsQaDecision === "APPROVED"
@@ -183,7 +192,7 @@ export function getWorkflowStep(s: WorkflowSnapshot): number {
     return 6;
   }
 
-  // Curation aprobada → paso 5
+  // Curation aprobada -> Paso 5
   if (
     s.curationState === CURATION_STATES.APPROVED ||
     s.curationQaDecision === "APPROVED"
@@ -191,7 +200,7 @@ export function getWorkflowStep(s: WorkflowSnapshot): number {
     return 5;
   }
 
-  // Curation iniciada o plan aprobado → paso 4
+  // Curation iniciada o plan aprobado -> Paso 4
   if (s.curationId || s.curationState) {
     return 4;
   }
@@ -203,7 +212,7 @@ export function getWorkflowStep(s: WorkflowSnapshot): number {
     return 4;
   }
 
-  // Syllabus aprobado → paso 3
+  // Syllabus aprobado -> Paso 3
   if (
     s.syllabusState === SYLLABUS_STATES.APPROVED ||
     s.syllabusQaStatus === "APPROVED"
@@ -211,7 +220,7 @@ export function getWorkflowStep(s: WorkflowSnapshot): number {
     return 3;
   }
 
-  // Base aprobada → paso 2
+  // Base aprobada -> Paso 2
   if (s.baseState === "APPROVED" || s.baseQaStatus === "APPROVED") {
     return 2;
   }

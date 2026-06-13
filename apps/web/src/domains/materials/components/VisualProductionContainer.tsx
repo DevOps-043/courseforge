@@ -6,8 +6,8 @@ import { ProductionAssetCard } from './ProductionAssetCard';
 import {
     generateVideoPromptsAction,
     saveMaterialAssetsAction,
-    updateProductionStatusAction,
 } from '../actions/production.actions';
+import { updateArtifactAssetsCompleteAction } from '@/domains/artifacts/actions/artifact.actions';
 import {
     MaterialAssets,
     MaterialComponent,
@@ -22,7 +22,7 @@ import { PRODUCTION_THEME } from './production-asset-ui';
 
 interface VisualProductionContainerProps {
     artifactId: string;
-    productionComplete?: boolean;
+    assetsComplete?: boolean;
     onStatusChange?: (isComplete: boolean) => void;
     profile?: unknown;
 }
@@ -37,7 +37,7 @@ interface PendingAssets {
     [componentId: string]: Partial<MaterialAssets>;
 }
 
-export function VisualProductionContainer({ artifactId, productionComplete, onStatusChange }: VisualProductionContainerProps) {
+export function VisualProductionContainer({ artifactId, assetsComplete, onStatusChange }: VisualProductionContainerProps) {
     const router = useRouter();
     const { materials, getLessonComponents, refresh } = useMaterials(artifactId);
     const [productionItems, setProductionItems] = useState<ProductionGroup[]>([]);
@@ -182,13 +182,13 @@ export function VisualProductionContainer({ artifactId, productionComplete, onSt
             // Guard: don't run while still loading or with no items
             if (isLoading || productionItems.length === 0) return;
 
-            console.log(`[Production] Completion Check: ${progressStats.percentage}% (DB: ${productionComplete})`);
+            console.log(`[Production] Assets Completion Check: ${progressStats.percentage}% (DB: ${assetsComplete})`);
 
             // If 100% and not marked complete -> Mark complete
-            if (progressStats.percentage === 100 && !productionComplete) {
-                console.log('[Production] Reached 100%. Updating DB...');
+            if (progressStats.percentage === 100 && !assetsComplete) {
+                console.log('[Production] Reached 100% of assets. Updating DB...');
 
-                const result = await updateProductionStatusAction(artifactId, true);
+                const result = await updateArtifactAssetsCompleteAction(artifactId, true);
                 if (result.success) {
                     console.log('[Production] DB updated successfully. Refreshing...');
                     // Notify parent ONLY after DB confirms success
@@ -196,14 +196,13 @@ export function VisualProductionContainer({ artifactId, productionComplete, onSt
                     router.refresh();
                 } else {
                     console.error('[Production] DB update failed:', result.error);
-                    // Do NOT set optimistic UI — the DB didn't persist
                 }
             }
             // If not 100% but marked complete -> Unmark (revert)
-            else if (progressStats.percentage < 100 && productionComplete) {
+            else if (progressStats.percentage < 100 && assetsComplete) {
                 console.log(`[Production] Percentage dropped to ${progressStats.percentage}%. Reverting completion...`);
 
-                const result = await updateProductionStatusAction(artifactId, false);
+                const result = await updateArtifactAssetsCompleteAction(artifactId, false);
                 if (result.success) {
                     if (onStatusChange) onStatusChange(false);
                     router.refresh();
@@ -217,7 +216,7 @@ export function VisualProductionContainer({ artifactId, productionComplete, onSt
             PRODUCTION_COMPLETION_RECHECK_DELAY_MS,
         );
         return () => clearTimeout(timer);
-    }, [progressStats.percentage, productionComplete, artifactId, router, productionItems.length, onStatusChange, isLoading]);
+    }, [progressStats.percentage, assetsComplete, artifactId, router, productionItems.length, onStatusChange, isLoading]);
 
     if (isLoading) {
         return (
@@ -277,11 +276,11 @@ export function VisualProductionContainer({ artifactId, productionComplete, onSt
                     </div>
                     <div className="flex gap-2">
                         {/* Partial Production Button */}
-                        {progressStats.percentage > 0 && progressStats.percentage < 100 && !productionComplete && (
+                        {progressStats.percentage > 0 && progressStats.percentage < 100 && !assetsComplete && (
                             <button
                                 onClick={async () => {
                                     if(confirm('¿Estás seguro de marcar la producción como completa aunque falten videos? Esto te permitirá avanzar a la publicación parcial.')) {
-                                        const result = await updateProductionStatusAction(artifactId, true);
+                                        const result = await updateArtifactAssetsCompleteAction(artifactId, true);
                                         if (result.success) {
                                             if (onStatusChange) onStatusChange(true);
                                             router.refresh();

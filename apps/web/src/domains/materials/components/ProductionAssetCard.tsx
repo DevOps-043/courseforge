@@ -16,11 +16,17 @@ import {
 import { ProductionAssetHeader } from "./ProductionAssetHeader";
 import {
   ProductionAssetFinalVideoSection,
-  ProductionAssetGammaSection,
   ProductionAssetPreviewModal,
   ProductionAssetPromptsSection,
   ProductionAssetScreencastSection,
 } from "./ProductionAssetSections";
+import {
+  VoiceAudioSection,
+  BackgroundMusicSection,
+  OpenDesignSlidesSection,
+  BRollClipsSection,
+  AvatarVideoSection,
+} from "./ProductionStructuredAssetSections";
 
 interface ProductionAssetCardProps {
   component: MaterialComponent;
@@ -54,7 +60,6 @@ export function ProductionAssetCard({
 }: ProductionAssetCardProps) {
   const {
     bRollPrompts,
-    copyFeedback,
     copyToClipboard,
     fileRef,
     finalVideoSource,
@@ -65,7 +70,6 @@ export function ProductionAssetCard({
     isGenerating,
     isSaving,
     isUploading,
-    openInGamma,
     screencastUrl,
     setFinalVideoSource,
     setBRollPrompts,
@@ -77,8 +81,63 @@ export function ProductionAssetCard({
     urlError,
     setFinalVideoUrl,
     setScreencastUrl,
-    setSlidesUrl,
     isValidHttpUrl,
+
+    // Structured states & loaders
+    voiceAudio,
+    backgroundMusic,
+    bRollClips,
+    avatarVideo,
+    slidesAsset,
+    isUploadingVoice,
+    isUploadingMusic,
+    isUploadingBroll,
+    isUploadingAvatar,
+    isUploadingSlides,
+    isExportingOpenDesign,
+
+    // Refs
+    voiceFileRef,
+    musicFileRef,
+    brollFileRef,
+    avatarFileRef,
+    slidesFileRef,
+
+    // Heygen sync
+    isSyncingHeygen,
+    heygenSyncProgress,
+    heygenError,
+    handleHeygenSync,
+
+    // Sub-handlers
+    handleVoiceUpload,
+    handleMusicUpload,
+    handleVolumeChange,
+    handleOpenDesignExport,
+    handleSlidesZipUpload,
+    handleBrollClipUpload,
+    removeBrollClip,
+    clearVoiceAudio,
+    clearBackgroundMusic,
+    clearAvatarVideo,
+    clearSlidesAsset,
+    handleAvatarUpload,
+
+    // Artlist integration
+    isSearchingArtlist,
+    isImportingArtlist,
+    artlistSearchResults,
+    searchArtlist,
+    importArtlistAsset,
+    setArtlistSearchResults,
+
+    // Google Drive integration
+    isSearchingGoogleDrive,
+    isImportingGoogleDrive,
+    googleDriveSearchResults,
+    searchGoogleDrive,
+    importGoogleDriveAsset,
+    setGoogleDriveSearchResults,
   } = useProductionAssetState({
     component,
     onAssetChange,
@@ -91,7 +150,6 @@ export function ProductionAssetCard({
   const gammaEmbedUrl = resolveGammaEmbedUrl(slidesUrl);
   const { needsFinalVideo, needsScreencast, needsSlides, needsVideo } =
     getProductionRequirements(component.type);
-  const requiresGamma = VIDEO_SECTION_TYPES.has(component.type);
   const requiresPrompts = VIDEO_SECTION_TYPES.has(component.type);
 
   return (
@@ -115,6 +173,10 @@ export function ProductionAssetCard({
         bRollPrompts={bRollPrompts}
         screencastUrl={screencastUrl}
         finalVideoUrl={finalVideoUrl}
+        voiceAudio={voiceAudio}
+        backgroundMusic={backgroundMusic}
+        bRollClips={bRollClips}
+        avatarVideo={avatarVideo}
         onSave={handleSave}
       />
 
@@ -126,19 +188,103 @@ export function ProductionAssetCard({
         </div>
 
         <div className="space-y-6">
-          {requiresGamma && (
-            <ProductionAssetGammaSection
-              component={component}
-              copyFeedback={copyFeedback}
-              copyToClipboard={copyToClipboard}
-              gammaEmbedUrl={gammaEmbedUrl}
-              onOpenInGamma={openInGamma}
-              onOpenPreview={() => setShowPreview(true)}
-              onSlidesUrlChange={(value) =>
-                updateAsset("slides_url", value, setSlidesUrl)
-              }
-              slidesUrl={slidesUrl}
-            />
+          {/* Structured Asset Form for Video Components */}
+          {component.type.includes("VIDEO") && (
+            <div className="space-y-4 border-b pb-4 dark:border-[#6C757D]/10">
+              <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                Recursos del Video
+              </h4>
+              
+              <VoiceAudioSection
+                voiceAudio={voiceAudio}
+                isUploading={isUploadingVoice}
+                fileRef={voiceFileRef}
+                onUpload={handleVoiceUpload}
+                onClear={clearVoiceAudio}
+                isSearchingDrive={isSearchingGoogleDrive}
+                isImportingDrive={isImportingGoogleDrive}
+                driveSearchResults={googleDriveSearchResults}
+                searchDrive={searchGoogleDrive}
+                importDriveAsset={importGoogleDriveAsset}
+                clearDriveSearchResults={() => setGoogleDriveSearchResults([])}
+              />
+              
+              <BackgroundMusicSection
+                backgroundMusic={backgroundMusic}
+                isUploading={isUploadingMusic}
+                fileRef={musicFileRef}
+                onUpload={handleMusicUpload}
+                onVolumeChange={handleVolumeChange}
+                onClear={clearBackgroundMusic}
+                isSearchingArtlist={isSearchingArtlist}
+                isImportingArtlist={isImportingArtlist}
+                artlistSearchResults={artlistSearchResults}
+                searchArtlist={searchArtlist}
+                importArtlistAsset={importArtlistAsset}
+                clearArtlistSearchResults={() => setArtlistSearchResults([])}
+                isSearchingDrive={isSearchingGoogleDrive}
+                isImportingDrive={isImportingGoogleDrive}
+                driveSearchResults={googleDriveSearchResults}
+                searchDrive={searchGoogleDrive}
+                importDriveAsset={importGoogleDriveAsset}
+                clearDriveSearchResults={() => setGoogleDriveSearchResults([])}
+              />
+              
+              <OpenDesignSlidesSection
+                slides={slidesAsset}
+                isExporting={isExportingOpenDesign}
+                isUploading={isUploadingSlides}
+                fileRef={slidesFileRef}
+                onExport={handleOpenDesignExport}
+                onUpload={handleSlidesZipUpload}
+                onClear={clearSlidesAsset}
+                isSearchingDrive={isSearchingGoogleDrive}
+                isImportingDrive={isImportingGoogleDrive}
+                driveSearchResults={googleDriveSearchResults}
+                searchDrive={searchGoogleDrive}
+                importDriveAsset={importGoogleDriveAsset}
+                clearDriveSearchResults={() => setGoogleDriveSearchResults([])}
+              />
+              
+              <BRollClipsSection
+                clips={bRollClips}
+                isUploading={isUploadingBroll}
+                fileRef={brollFileRef}
+                onUpload={handleBrollClipUpload}
+                onDelete={removeBrollClip}
+                isSearchingArtlist={isSearchingArtlist}
+                isImportingArtlist={isImportingArtlist}
+                artlistSearchResults={artlistSearchResults}
+                searchArtlist={searchArtlist}
+                importArtlistAsset={importArtlistAsset}
+                clearArtlistSearchResults={() => setArtlistSearchResults([])}
+                bRollPrompts={bRollPrompts}
+                isSearchingDrive={isSearchingGoogleDrive}
+                isImportingDrive={isImportingGoogleDrive}
+                driveSearchResults={googleDriveSearchResults}
+                searchDrive={searchGoogleDrive}
+                importDriveAsset={importGoogleDriveAsset}
+                clearDriveSearchResults={() => setGoogleDriveSearchResults([])}
+              />
+              
+              <AvatarVideoSection
+                avatarVideo={avatarVideo}
+                isUploading={isUploadingAvatar}
+                isSyncing={isSyncingHeygen}
+                syncProgress={heygenSyncProgress}
+                syncError={heygenError}
+                fileRef={avatarFileRef}
+                onUpload={handleAvatarUpload}
+                onHeygenSync={handleHeygenSync}
+                onClear={clearAvatarVideo}
+                isSearchingDrive={isSearchingGoogleDrive}
+                isImportingDrive={isImportingGoogleDrive}
+                driveSearchResults={googleDriveSearchResults}
+                searchDrive={searchGoogleDrive}
+                importDriveAsset={importGoogleDriveAsset}
+                clearDriveSearchResults={() => setGoogleDriveSearchResults([])}
+              />
+            </div>
           )}
 
           {requiresPrompts && (

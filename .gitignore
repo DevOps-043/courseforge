@@ -23,6 +23,7 @@ yarn-error.log*
 
 # Testing
 coverage/
+.tmp/
 
 # TypeScript
 *.tsbuildinfo

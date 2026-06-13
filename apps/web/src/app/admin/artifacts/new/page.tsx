@@ -1,13 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Sparkles, Upload, ArrowRight, BookOpen, Users, Target, Settings, ChevronDown, CheckCircle2 } from 'lucide-react';
+import { Sparkles, Upload, ArrowRight, BookOpen, Users, Target, Settings, ChevronDown, CheckCircle2, HardDrive } from 'lucide-react';
 
 import { generateArtifactAction } from '@/domains/artifacts/actions/artifact.actions';
 import { ScormImportFlow } from './components/ScormImportFlow';
+import { CloudStorageProviderSelector } from './components/CloudStorageProviderSelector';
 import { toast } from 'sonner';
+import type { CloudStorageProvider } from '@/domains/production/cloud-storage/types';
 
 interface ArtifactIdeaFormData {
     courseId: string;
@@ -35,6 +37,9 @@ export default function NewArtifactPage() {
     const [mode, setMode] = useState<'ai' | 'import'>('ai');
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [cloudStorageProvider, setCloudStorageProvider] = useState<CloudStorageProvider | null>(null);
+    const useGoogleDrive = false;
+    const setUseGoogleDrive = (_checked: boolean) => {};
 
     // Form State
     const [formData, setFormData] = useState<ArtifactIdeaFormData>({
@@ -47,6 +52,10 @@ export default function NewArtifactPage() {
 
     const router = useRouter();
 
+    const handleCloudStorageProviderChange = useCallback((provider: CloudStorageProvider | null) => {
+        setCloudStorageProvider(provider);
+    }, []);
+
     const handleGenerate = async () => {
         setIsLoading(true);
         try {
@@ -55,7 +64,8 @@ export default function NewArtifactPage() {
                 description: formData.description,
                 targetAudience: formData.targetAudience,
                 expectedResults: formData.expectedResults,
-                courseId: formData.courseId
+                courseId: formData.courseId,
+                cloudStorageProvider
             });
 
             if (result.success) {
@@ -207,7 +217,7 @@ export default function NewArtifactPage() {
                                         <motion.div
                                             initial={{ height: 0, opacity: 0 }}
                                             animate={{ height: 'auto', opacity: 1 }}
-                                            className="pt-4"
+                                            className="pt-4 space-y-4"
                                         >
                                             <div className="space-y-2">
                                                 <label className="text-xs uppercase tracking-wider text-gray-500 dark:text-[#6C757D] font-bold">ID del Curso (Opcional)</label>
@@ -222,6 +232,37 @@ export default function NewArtifactPage() {
                                                     }}
                                                 />
                                             </div>
+
+                                            <CloudStorageProviderSelector onProviderChange={handleCloudStorageProviderChange} />
+                                            {false ? (
+                                                <div className="flex items-center gap-3 pt-3 border-t border-gray-100 dark:border-white/5">
+                                                    <input
+                                                        type="checkbox"
+                                                        id="useGoogleDrive"
+                                                        className="h-4.5 w-4.5 rounded border-gray-300 dark:border-slate-700 text-[#00D4B3] focus:ring-[#00D4B3] dark:bg-[#0F1419] cursor-pointer"
+                                                        checked={useGoogleDrive}
+                                                        onChange={e => setUseGoogleDrive(e.target.checked)}
+                                                    />
+                                                    <label htmlFor="useGoogleDrive" className="text-sm text-gray-700 dark:text-slate-300 font-medium cursor-pointer flex items-center gap-1.5 select-none">
+                                                        <HardDrive size={14} className="text-[#00D4B3]" />
+                                                        Crear árbol de carpetas en Google Drive
+                                                    </label>
+                                                </div>
+                                            ) : null}
+                                            {false ? (
+                                                <div className="flex items-center justify-between gap-3 pt-3 border-t border-gray-100 dark:border-white/5">
+                                                    <span className="text-xs text-gray-500 dark:text-slate-400 flex items-center gap-1.5 select-none">
+                                                        <HardDrive size={14} className="text-gray-400" />
+                                                        Google Drive no está conectado
+                                                    </span>
+                                                    <a
+                                                        href="/api/auth/google/login"
+                                                        className="text-xs text-[#00D4B3] hover:underline font-semibold"
+                                                    >
+                                                        Conectar ahora
+                                                    </a>
+                                                </div>
+                                            ) : null}
                                         </motion.div>
                                     )}
                                 </div>

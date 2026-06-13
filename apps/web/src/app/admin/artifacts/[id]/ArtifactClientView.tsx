@@ -104,8 +104,13 @@ export default function ArtifactClientView({
   }, [artifact.production_complete]);
 
   useEffect(() => {
-    setCurrentStep(getWorkflowStep(buildWorkflowSnapshot(artifact, publicationRequest)));
+    const nextStep = getWorkflowStep(buildWorkflowSnapshot(artifact, publicationRequest));
+    // Reactive automatic step changes only apply to AI steps (1-5) to avoid hijacking human edits
+    if (currentStep < 6 || nextStep < 6) {
+      setCurrentStep(nextStep);
+    }
   }, [artifact, publicationRequest]);
+
 
   useEffect(() => {
     setEditedContent(buildEditedContent(artifact));
@@ -253,6 +258,7 @@ export default function ArtifactClientView({
   const snapshot = buildWorkflowSnapshot(artifact, publicationRequest);
   const productionComplete =
     localProductionComplete || snapshot.productionComplete;
+  const assetsComplete = snapshot.assetsComplete;
   const syllabusApproved = isSyllabusApproved(snapshot);
   const planApproved = isInstructionalPlanApproved(snapshot);
   const curationApproved = isCurationApprovedFromSnapshot(snapshot);
@@ -264,13 +270,15 @@ export default function ArtifactClientView({
   const planDone = planApproved;
   const curationDone = curationApproved;
   const materialsDone = materialsApproved;
-  const productionDone = productionComplete;
+  const productionDone = assetsComplete || productionComplete;
+  const postproductionDone = productionComplete;
 
   // Progresión lineal estricta: cada paso requiere que su predecesor esté done
   const canAccessSourcesStep = planDone;
   const canAccessMaterialsStep = curationDone;
   const canAccessProductionStep = materialsDone;
-  const canAccessPublicationStep = productionDone;
+  const canAccessPostproductionStep = productionDone;
+  const canAccessPublicationStep = postproductionDone;
 
   return (
     <div className="space-y-8 relative">
@@ -288,6 +296,7 @@ export default function ArtifactClientView({
       <ArtifactWorkflowStepper
         canAccessMaterialsStep={canAccessMaterialsStep}
         canAccessProductionStep={canAccessProductionStep}
+        canAccessPostproductionStep={canAccessPostproductionStep}
         canAccessPublicationStep={canAccessPublicationStep}
         canAccessSourcesStep={canAccessSourcesStep}
         currentStep={currentStep}
@@ -299,6 +308,7 @@ export default function ArtifactClientView({
           curationDone,
           materialsDone,
           productionDone,
+          postproductionDone,
           publicationDone:
             publicationRequest?.status === "SENT" ||
             publicationRequest?.status === "APPROVED",
@@ -321,7 +331,7 @@ export default function ArtifactClientView({
         onRegenerate={handleRegenerate}
         onSaveContent={handleSaveContent}
         profile={profile}
-        productionComplete={productionComplete}
+        assetsComplete={assetsComplete}
         publicationLessons={publicationLessons}
         publicationRequest={publicationRequest}
         reviewState={reviewState}

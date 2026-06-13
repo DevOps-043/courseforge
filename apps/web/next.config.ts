@@ -9,6 +9,19 @@ const nextConfig: NextConfig = {
     serverActions: {
       allowedOrigins: ["soflia-coursegen.netlify.app", "*.netlify.app", "localhost:3000"]
     }
+  },
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "Cross-Origin-Opener-Policy",
+            value: "same-origin-allow-popups",
+          },
+        ],
+      },
+    ];
   }
 };
 

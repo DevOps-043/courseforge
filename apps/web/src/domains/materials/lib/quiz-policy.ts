@@ -1,0 +1,1 @@
+export const DEFAULT_QUIZ_PASSING_SCORE = 60;

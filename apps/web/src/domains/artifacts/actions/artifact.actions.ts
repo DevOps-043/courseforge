@@ -12,6 +12,7 @@ import {
   getAuthorizedArtifactAdmin,
 } from "@/lib/server/artifact-action-auth";
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
+import type { CloudStorageProvider } from "@/domains/production/cloud-storage/types";
 
 export async function generateArtifactAction(formData: {
   title: string;
@@ -19,6 +20,8 @@ export async function generateArtifactAction(formData: {
   targetAudience: string;
   expectedResults: string;
   courseId?: string;
+  cloudStorageProvider?: CloudStorageProvider | null;
+  useGoogleDrive?: boolean;
 }) {
   const supabase = await createClient();
   const authUser = await getAuthenticatedUser(supabase);
@@ -69,8 +72,12 @@ export async function generateArtifactAction(formData: {
       {
         artifactId: artifact.id,
         formData,
+        userId: authUser.userId,
         userToken: accessToken,
-      },
+          cloudStorageProvider:
+            formData.cloudStorageProvider ||
+            (formData.useGoogleDrive ? "google_drive" : null),
+        },
       {
         fallbackError: "Error al iniciar la generacion del artefacto",
         localHandlerLoader: () =>
@@ -345,5 +352,52 @@ export async function deleteArtifactAction(artifactId: string) {
       success: false,
       error: getErrorMessage(error, "Error deleting artifact"),
     };
+  }
+}
+
+export async function updateArtifactAssetsCompleteAction(
+  artifactId: string,
+  isComplete: boolean,
+) {
+  const supabase = await createClient();
+  const authUser = await getAuthenticatedUser(supabase);
+  if (!authUser) return { success: false, error: "Unauthorized" };
+
+  try {
+    const activeOrgId = await getActiveOrganizationId();
+    let query = supabase.from("artifacts").select("generation_metadata").eq("id", artifactId);
+    if (activeOrgId) {
+      query = query.eq("organization_id", activeOrgId);
+    }
+    
+    const { data: artifact, error: fetchError } = await query.single();
+    if (fetchError || !artifact) {
+      return { success: false, error: "Artifact not found" };
+    }
+
+    const currentMetadata = artifact.generation_metadata || {};
+    const updatedMetadata = {
+      ...currentMetadata,
+      assets_complete: isComplete,
+    };
+
+    let updateQuery = supabase
+      .from("artifacts")
+      .update({ generation_metadata: updatedMetadata })
+      .eq("id", artifactId);
+
+    if (activeOrgId) {
+      updateQuery = updateQuery.eq("organization_id", activeOrgId);
+    }
+
+    const { error: updateError } = await updateQuery;
+    if (updateError) {
+      return { success: false, error: updateError.message };
+    }
+
+    return { success: true };
+  } catch (error: unknown) {
+    console.error("[ArtifactActions] Error updating assets complete status:", error);
+    return { success: false, error: getErrorMessage(error) };
   }
 }

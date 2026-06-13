@@ -110,11 +110,11 @@ export function InstructionalPlanResultsView({
       )}
 
       <div className="space-y-8">
-        {modules.map((module) => (
+        {modules.map((module, modulePosition) => (
           <div key={module.index} className="space-y-4">
             <div className="flex items-center gap-3 border-b border-gray-200 py-4 dark:border-gray-800/50">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 text-sm font-bold text-blue-500 dark:text-blue-400">
-                {module.index}
+                {modulePosition + 1}
               </div>
               <h3 className="text-lg font-bold text-gray-900 dark:text-gray-200">
                 {module.title}

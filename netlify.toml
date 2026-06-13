@@ -17,3 +17,8 @@
     # Las variables sensibles se cargan desde .env.local automáticamente
     # pero las funciones background a veces no las leen correctamente
 
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cross-Origin-Opener-Policy = "same-origin-allow-popups"
+

@@ -54,7 +54,7 @@ OBLIGATORIOS (siempre incluir):
 → Texto que profundiza en el tema con explicaciones y ejemplos
 → Describe: temas cubiertos, tipo de contenido, ejemplos incluidos
 
-✅ QUIZ - Cuestionario final (3-5 preguntas, 80% para aprobar)
+✅ QUIZ - Cuestionario final (3-5 preguntas, 60% para aprobar)
 → Evaluación de comprensión
 → Describe: tipo de preguntas, escenarios evaluados
 
@@ -98,7 +98,7 @@ OPCIONALES (solo si aplican):
     },
     {
     "type": "QUIZ",
-    "summary": "Evaluación con 4 preguntas de opción múltiple basadas en [ESCENARIOS]. Evalúa comprensión de [CONCEPTO 1] y [CONCEPTO 2]. Requiere 80% para aprobar. Feedback inmediato sobre cada respuesta."
+    "summary": "Evaluación con 4 preguntas de opción múltiple basadas en [ESCENARIOS]. Evalúa comprensión de [CONCEPTO 1] y [CONCEPTO 2]. Requiere 60% para aprobar. Feedback inmediato sobre cada respuesta."
     }
     ],
     "alignment_notes": "Justificación de por qué estos componentes son adecuados para el nivel Bloom y tipo de curso."

@@ -37,6 +37,9 @@ export const SYSTEM_PROMPT_CODE = 'MATERIALS_SYSTEM';
 /** Prompt code for video B-roll prompt generation (Phase 6 — Production) */
 export const VIDEO_BROLL_PROMPT_CODE = 'VIDEO_BROLL_PROMPTS';
 
+/** Prompt code for new external video clip generator prompts (Phase 6 — Production) */
+export const CLIP_GENERATION_PROMPT_CODE = 'CLIP_GENERATION_PROMPTS';
+
 // --------------------------------------------------------------------------
 // DEFAULT PROMPTS (used as fallback when not found in DB)
 // --------------------------------------------------------------------------
@@ -118,14 +121,16 @@ export const quizPromptDefault = `## Cuestionario Formativo (Fin de lección)
 **Generación requerida:**
 - 3–5 preguntas variadas (según quiz_spec)
 - Para CADA opción de respuesta: Feedback inmediato (por qué es correcta o incorrecta)
-- Umbral de aprobación: 80%
+- Umbral de aprobación: 60%
 - Dificultad variada (EASY, MEDIUM, HARD)
 - Tipos permitidos según quiz_spec.types
 
 **Reglas críticas:**
 - explanation es REQUERIDO para cada pregunta.
-- passing_score debe ser 80.
-- Las opciones deben ser texto limpio. NO incluyas prefijos, letras, numeros, bullets ni etiquetas como "A.", "B)", "C -", "1." dentro de cada opcion; el frontend rotula las opciones.`;
+- passing_score debe ser 60.
+- correct_answer es REQUERIDO para cada pregunta. En TRUE_FALSE debe ser exactamente "Verdadero" o "Falso", coherente con las opciones.
+- Las opciones deben ser texto limpio. NO incluyas prefijos, letras, numeros, bullets ni etiquetas como "A.", "B)", "C -", "1." dentro de cada opcion; el frontend rotula las opciones.
+- Cada opcion debe contener contenido pedagogico sustantivo. Nunca generes opciones que sean solo "A", "B", "C", "D", numeros, etiquetas vacias o placeholders.`;
 
 export const videoTheoreticalPromptDefault = `## Video Teórico (Explicativo)
 
@@ -220,6 +225,30 @@ export const exercisePromptDefault = `## Ejercicio Práctico
 // PHASE 6 — PRODUCTION: Video B-Roll Prompt Generation
 // --------------------------------------------------------------------------
 
+export const clipGenerationPromptsDefault = `Eres un experto Director de Fotografía y Curador de Contenido Audiovisual para catálogos de stock (como Artlist).
+Tu tarea es convertir descripciones del guion y del storyboard en palabras clave, términos de búsqueda y estados de ánimo (keywords, search terms, and moods) en inglés altamente efectivos para buscar clips de B-roll en una biblioteca de stock.
+
+ESTRUCTURA DEL STRING DE BÚSQUEDA ESPERADO (para "generated_prompt"):
+- Una frase corta o lista de 3-5 palabras clave separadas por comas, optimizadas para motores de búsqueda de stock (ej: "office developer typing, close-up keyboard, dark workspace" o "network digital abstract glowing nodes").
+- Manténlo conciso, simple y descriptivo del sujeto principal y el ambiente.
+
+REGLAS DE ORO:
+- IDIOMA: Las palabras clave generadas en "generated_prompt" deben estar única y exclusivamente en inglés.
+- RELEVANCIA PEDAGÓGICA: El término de búsqueda debe capturar la esencia visual y conceptual de la escena.
+- SIN TEXTO ADICIONAL: Devuelve exclusivamente un JSON con la estructura indicada a continuación.
+
+FORMATO DE SALIDA:
+Devuelve un JSON válido con la siguiente estructura:
+{
+  "prompts": [
+    {
+      "scene_index": number,
+      "original_description": string,
+      "generated_prompt": string
+    }
+  ]
+}`;
+
 export const videoBrollPromptsDefault = `Eres un experto Prompt Engineer para Google VEO (Modelos BO2/BO3) y Director de Fotografía.
 Tu tarea es convertir escenas de un storyboard en PROMPTS DE VIDEO perfectos, optimizados para Veo.
 IMPORTANTE: Los prompts DEBEN estar en INGLÉS para que Veo capte mejor las indicaciones.
@@ -304,6 +333,7 @@ export const DEFAULT_PROMPTS: Record<string, string> = {
     MATERIALS_DEMO_GUIDE: demoGuidePromptDefault,
     MATERIALS_EXERCISE: exercisePromptDefault,
     VIDEO_BROLL_PROMPTS: videoBrollPromptsDefault,
+    CLIP_GENERATION_PROMPTS: clipGenerationPromptsDefault,
 };
 
 // --------------------------------------------------------------------------

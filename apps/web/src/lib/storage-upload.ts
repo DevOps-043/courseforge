@@ -36,7 +36,7 @@ export async function uploadWithSignedUrl(
     const supabase = createClient();
     const { error: uploadError } = await supabase.storage
         .from(bucket)
-        .uploadToSignedUrl(path, token, file);
+        .uploadToSignedUrl(path, token, file, { upsert: true });
 
     if (uploadError) {
         throw uploadError;

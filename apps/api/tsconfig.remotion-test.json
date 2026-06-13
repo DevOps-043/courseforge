@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".tmp/remotion-tests",
+    "types": ["node"]
+  },
+  "include": [
+    "src/features/production/remotion-assembly-props.service.ts",
+    "src/features/production/__tests__/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

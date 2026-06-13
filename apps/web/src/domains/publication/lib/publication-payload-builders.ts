@@ -1,9 +1,11 @@
 import type { PackageFile } from "@/domains/materials/types/materials.types";
 import { selectLatestComponentsByType } from "@/domains/materials/lib/material-component-versions";
 import {
+  hasSubstantiveQuizOptionText,
   resolveQuizCorrectAnswer,
   stripQuizOptionPrefix,
 } from "@/domains/materials/lib/quiz-option-format";
+import { DEFAULT_QUIZ_PASSING_SCORE } from "@/domains/materials/lib/quiz-policy";
 import type {
   LessonVideoData,
   PublicationArtifactRecord,
@@ -136,24 +138,39 @@ export function transformQuizContent(content: unknown) {
     const options = rawOptions.map(stripQuizOptionPrefix);
     const points = Number(question.points) || 10;
     totalPoints += points;
+    const questionId = getString(question.id) || `question-${index + 1}`;
+
+    if (rawOptions.some((option) => !hasSubstantiveQuizOptionText(option))) {
+      throw new Error(
+        `No se puede publicar QUIZ: la pregunta ${questionId} tiene opciones sin contenido real.`,
+      );
+    }
 
     const rawCorrect =
       question.correctAnswer !== undefined
         ? question.correctAnswer
         : question.correct_answer;
+    const questionType =
+      getString(question.questionType || question.question_type || question.type)
+        .toLowerCase() || "multiple_choice";
 
     const correctAnswer = resolveQuizCorrectAnswer({
       rawCorrect,
       rawOptions,
       cleanOptions: options,
+      questionType,
     });
+
+    if (!correctAnswer) {
+      throw new Error(
+        `No se puede publicar QUIZ: la pregunta ${questionId} no tiene correct_answer valido.`,
+      );
+    }
 
     return {
       id: getString(question.id) || `question-${index + 1}`,
       question: getString(question.question) || getString(question.questionText),
-      questionType:
-        getString(question.questionType || question.question_type || question.type)
-          .toLowerCase() || "multiple_choice",
+      questionType,
       options,
       correctAnswer,
       explanation: getString(question.explanation),
@@ -162,7 +179,7 @@ export function transformQuizContent(content: unknown) {
   });
 
   return {
-    passing_score: Number(content.passing_score) || 80,
+    passing_score: Number(content.passing_score) || DEFAULT_QUIZ_PASSING_SCORE,
     totalPoints:
       totalPoints > 0
         ? totalPoints

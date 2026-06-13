@@ -4,7 +4,13 @@ import type {
   QuizSpec,
   ValidationCheck,
 } from "../types/materials.types";
-import { hasQuizOptionPrefix } from "../lib/quiz-option-format";
+import {
+  hasQuizOptionPrefix,
+  hasSubstantiveQuizOptionText,
+  hasValidQuizCorrectAnswer,
+  stripQuizOptionPrefix,
+} from "../lib/quiz-option-format";
+import { DEFAULT_QUIZ_PASSING_SCORE } from "../lib/quiz-policy";
 
 function getQuizContent(quizComponent: MaterialComponent | undefined) {
   return (quizComponent?.content as QuizContent | undefined) || undefined;
@@ -180,11 +186,11 @@ export function validateQuizPassingScore(
 
   const content = getQuizContent(quizComponent);
 
-  if (content?.passing_score !== 80) {
+  if (content?.passing_score !== DEFAULT_QUIZ_PASSING_SCORE) {
     return {
       code: "CTRL5_QUIZ_WRONG_PASSING_SCORE",
       component: "QUIZ",
-      message: `passing_score es ${content?.passing_score}, debe ser 80`,
+      message: `passing_score es ${content?.passing_score}, debe ser ${DEFAULT_QUIZ_PASSING_SCORE}`,
       pass: false,
       severity: "error",
     };
@@ -193,7 +199,7 @@ export function validateQuizPassingScore(
   return {
     code: "CTRL5_QUIZ_PASSING_SCORE_OK",
     component: "QUIZ",
-    message: "passing_score = 80 correcto",
+    message: `passing_score = ${DEFAULT_QUIZ_PASSING_SCORE} correcto`,
     pass: true,
     severity: "error",
   };
@@ -237,6 +243,89 @@ export function validateQuizOptionsAreUnlabeled(
   };
 }
 
+export function validateQuizOptionsHaveContent(
+  quizComponent: MaterialComponent | undefined,
+): ValidationCheck {
+  if (!quizComponent) {
+    return {
+      code: "CTRL5_QUIZ_MISSING",
+      message: "No se encontro componente QUIZ",
+      pass: false,
+      severity: "error",
+    };
+  }
+
+  const content = getQuizContent(quizComponent);
+  const invalidOptions =
+    content?.items?.flatMap((item) =>
+      (item.options || []).filter((option) => !hasSubstantiveQuizOptionText(option)),
+    ) || [];
+
+  if (invalidOptions.length > 0) {
+    return {
+      code: "CTRL5_QUIZ_EMPTY_OPTIONS",
+      component: "QUIZ",
+      message:
+        `${invalidOptions.length} opcion(es) sin contenido real; no basta con A, B, C, D o etiquetas vacias`,
+      pass: false,
+      severity: "error",
+    };
+  }
+
+  return {
+    code: "CTRL5_QUIZ_OPTIONS_WITH_CONTENT",
+    component: "QUIZ",
+    message: "Todas las opciones del quiz tienen contenido real",
+    pass: true,
+    severity: "error",
+  };
+}
+
+export function validateQuizCorrectAnswers(
+  quizComponent: MaterialComponent | undefined,
+): ValidationCheck {
+  if (!quizComponent) {
+    return {
+      code: "CTRL5_QUIZ_MISSING",
+      message: "No se encontro componente QUIZ",
+      pass: false,
+      severity: "error",
+    };
+  }
+
+  const content = getQuizContent(quizComponent);
+  const invalidItems =
+    content?.items?.filter((item) => {
+      const rawOptions = item.options || [];
+      const cleanOptions = rawOptions.map(stripQuizOptionPrefix);
+
+      return !hasValidQuizCorrectAnswer({
+        rawCorrect: item.correct_answer,
+        rawOptions,
+        cleanOptions,
+        questionType: item.type,
+      });
+    }) || [];
+
+  if (invalidItems.length > 0) {
+    return {
+      code: "CTRL5_QUIZ_MISSING_CORRECT_ANSWERS",
+      component: "QUIZ",
+      message: `${invalidItems.length} pregunta(s) sin correct_answer valido`,
+      pass: false,
+      severity: "error",
+    };
+  }
+
+  return {
+    code: "CTRL5_QUIZ_CORRECT_ANSWERS_OK",
+    component: "QUIZ",
+    message: "Todas las preguntas tienen correct_answer valido",
+    pass: true,
+    severity: "error",
+  };
+}
+
 export function buildControl5Checks(
   quizComponent: MaterialComponent | undefined,
   spec: QuizSpec | null,
@@ -248,5 +337,7 @@ export function buildControl5Checks(
     validateQuizExplanations(quizComponent),
     validateQuizPassingScore(quizComponent),
     validateQuizOptionsAreUnlabeled(quizComponent),
+    validateQuizOptionsHaveContent(quizComponent),
+    validateQuizCorrectAnswers(quizComponent),
   ];
 }

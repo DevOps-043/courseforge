@@ -138,6 +138,47 @@ export interface MaterialAssets {
     png_export_path?: string;
     dod_checklist?: ProductionDodChecklist;
     updated_at?: string;
+
+    // Nuevos campos estructurados de assets crudos
+    voice_audio?: {
+        storage_path: string;
+        public_url: string;
+        duration?: number;
+        provider?: string;
+        last_uploaded_at?: string;
+    };
+    background_music?: {
+        storage_path: string;
+        public_url: string;
+        duration?: number;
+        volume_multiplier?: number;
+    };
+    b_roll_clips?: {
+        id: string;
+        storage_path: string;
+        public_url: string;
+        duration?: number;
+        prompt_used?: string;
+        order: number;
+    }[];
+    avatar_video?: {
+        storage_path: string;
+        public_url: string;
+        duration?: number;
+        provider?: string;
+        external_id?: string;
+        sync_status?: 'SYNCING' | 'COMPLETED' | 'FAILED';
+    };
+    slides?: {
+        open_design_project_id?: string;
+        html_content_path?: string;
+        html_public_url?: string;
+        images?: {
+            slide_index: number;
+            storage_path: string;
+            public_url: string;
+        }[];
+    };
 }
 
 // Lección con materiales

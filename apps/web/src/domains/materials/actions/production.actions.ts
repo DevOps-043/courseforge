@@ -9,7 +9,19 @@ import {
 import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import { getVideoProviderAndId } from "@/lib/video-platform";
+import { normalizeAssemblyAssets } from "@/remotion/assembly-assets.normalizer";
 import type { LessonVideoData } from "@/domains/publication/types/publication.types";
+import {
+  buildBrollPromptJobInputSnapshot,
+  buildProductionIdempotencyKey,
+  createOrReuseProductionJob,
+  resolveProductionComponentContext,
+} from "@/domains/production/jobs/production-jobs.service";
+import {
+  PRODUCTION_JOB_STATUSES,
+  PRODUCTION_JOB_TYPES,
+  PRODUCTION_PROVIDERS,
+} from "@/domains/production/types/production.types";
 import { createClient } from "@/utils/supabase/server";
 import type {
   MaterialAssets,
@@ -64,37 +76,51 @@ function buildDodChecklist(
 
 function resolveProductionStatus(
   componentType: string,
-  dodChecklist: ProductionDodChecklist,
+  assets: Partial<MaterialAssets> = {},
 ): ProductionStatus {
+  // Si ya existe el video final (subido o enlazado), el asset de producción
+  // se considera COMPLETADO directamente en tiempo real.
+  if (assets.final_video_url) {
+    return "COMPLETED";
+  }
+
   const needsSlides =
     componentType === "VIDEO_THEORETICAL" || componentType === "VIDEO_GUIDE";
   const needsScreencast =
     componentType === "DEMO_GUIDE" || componentType === "VIDEO_GUIDE";
-  const needsVideo = componentType.includes("VIDEO");
-  const needsFinalVideo = componentType.includes("VIDEO");
+  const needsVoice = componentType.includes("VIDEO");
+  
+  // A talking head avatar is generally required for theoretical explanation videos
+  const needsAvatar = componentType === "VIDEO_THEORETICAL";
 
-  const hasRequiredSlides = !needsSlides || dodChecklist.has_slides_url;
-  const hasRequiredScreencast =
-    !needsScreencast || dodChecklist.has_screencast_url;
-  const hasRequiredVideo = !needsVideo || dodChecklist.has_video_url;
-  const hasRequiredFinalVideo =
-    !needsFinalVideo || dodChecklist.has_final_video_url;
+  const hasRequiredSlides = !needsSlides || Boolean(assets.slides?.images?.length || assets.slides_url);
+  const hasRequiredScreencast = !needsScreencast || Boolean(assets.screencast_url);
+  const hasRequiredVoice = !needsVoice || Boolean(
+    assets.voice_audio?.public_url || 
+    assets.avatar_video?.public_url || 
+    assets.video_url
+  );
+  const hasRequiredAvatar = !needsAvatar || Boolean(assets.avatar_video?.public_url);
+  
+  // Clips are ready if we have video clips uploaded or generated prompts for them
+  const hasRequiredClips = !needsVoice || Boolean(assets.b_roll_clips?.length || assets.b_roll_prompts);
 
   if (
-    (hasRequiredSlides &&
-      hasRequiredScreencast &&
-      hasRequiredVideo &&
-      hasRequiredFinalVideo) ||
-    dodChecklist.has_final_video_url
+    hasRequiredSlides &&
+    hasRequiredScreencast &&
+    hasRequiredVoice &&
+    hasRequiredAvatar &&
+    hasRequiredClips
   ) {
     return "COMPLETED";
   }
 
   if (
-    dodChecklist.has_slides_url ||
-    dodChecklist.has_video_url ||
-    dodChecklist.has_screencast_url ||
-    dodChecklist.has_b_roll_prompts
+    Boolean(assets.slides?.images?.length || assets.slides_url) ||
+    Boolean(assets.screencast_url) ||
+    Boolean(assets.voice_audio?.public_url || assets.video_url) ||
+    Boolean(assets.avatar_video?.public_url) ||
+    Boolean(assets.b_roll_clips?.length || assets.b_roll_prompts)
   ) {
     return "IN_PROGRESS";
   }
@@ -133,9 +159,11 @@ function buildGammaDeckId(params: {
   return `${courseId}-${lessonNum}-${typeCode}-${suffix}`;
 }
 
-function isProductionComplete(assets?: MaterialAssets | null) {
-  return assets?.production_status === "COMPLETED";
+function isProductionComplete(componentType: string, assets?: MaterialAssets | null) {
+  const needsVideo = componentType.includes("VIDEO");
+  return assets?.production_status === "COMPLETED" && (!needsVideo || Boolean(assets?.final_video_url));
 }
+
 
 async function getAuthorizedSupabase() {
   const supabase = await createClient();
@@ -159,10 +187,50 @@ export async function generateVideoPromptsAction(
   if (!userToken) return { success: false, error: "Unauthorized" };
 
   try {
+    const authenticatedUser = await getAuthenticatedUser(supabase);
+    if (!authenticatedUser) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const admin = getServiceRoleClient();
+    const context = await resolveProductionComponentContext({
+      componentId,
+      supabase: admin,
+    });
+    const inputSnapshot = buildBrollPromptJobInputSnapshot({
+      componentId,
+      storyboard,
+    });
+    const productionJob = await createOrReuseProductionJob(admin, {
+      context,
+      createdBy: authenticatedUser.userId,
+      idempotencyKey: buildProductionIdempotencyKey({
+        componentId,
+        input: inputSnapshot,
+        jobType: PRODUCTION_JOB_TYPES.BROLL_PROMPT_GENERATION,
+        provider: PRODUCTION_PROVIDERS.GEMINI,
+      }),
+      inputSnapshot,
+      jobType: PRODUCTION_JOB_TYPES.BROLL_PROMPT_GENERATION,
+      provider: PRODUCTION_PROVIDERS.GEMINI,
+      providerModel: "gemini-2.0-flash",
+    });
+
+    if (
+      productionJob.status === PRODUCTION_JOB_STATUSES.SUCCEEDED &&
+      typeof productionJob.output_snapshot?.prompts_text === "string"
+    ) {
+      return {
+        success: true,
+        prompts: productionJob.output_snapshot.prompts_text,
+      };
+    }
+
     const data = await callBackgroundFunctionJson<{ prompts?: string }>(
       "video-prompts-generation",
       {
         componentId,
+        productionJobId: productionJob.id,
         storyboard,
         userToken,
       },
@@ -272,7 +340,7 @@ export async function saveMaterialAssetsAction(
   const materials = firstRelation(lesson?.materials);
   const artifactId = materials?.artifact_id || undefined;
   const dodChecklist = buildDodChecklist(mergedAssets);
-  const productionStatus = resolveProductionStatus(componentType, dodChecklist);
+  const productionStatus = resolveProductionStatus(componentType, mergedAssets);
 
   const finalAssets: MaterialAssets = {
     ...mergedAssets,
@@ -361,7 +429,7 @@ export async function syncProductionStatusAction(artifactId: string) {
 
   const total = produceable.length;
   const completed = produceable.filter((component) =>
-    isProductionComplete(component.assets),
+    isProductionComplete(component.type, component.assets),
   ).length;
   const isDone = total > 0 && total === completed;
 
@@ -438,4 +506,239 @@ export async function updateProductionStatusAction(
   }
 
   return { success: true };
+}
+
+export async function assembleRemotionVideoAction(
+  componentId: string,
+  templateId: string,
+  variables: Record<string, unknown>,
+) {
+  const { error: authError, supabase } = await getAuthorizedSupabase();
+  if (authError) return { success: false, error: authError };
+
+  const webSupabase = await createClient();
+  const token = await getAccessToken(webSupabase);
+  if (!token) return { success: false, error: "No se encontró un token de autenticación" };
+
+  let rawComponent: any = null;
+  try {
+    const { data, error: fetchError } = await supabase
+      .from("material_components")
+      .select(
+        `
+          assets, type, material_lesson_id,
+          material_lessons (
+            lesson_id, lesson_title, module_title, module_id,
+            materials (
+              artifact_id
+            )
+          )
+        `,
+      )
+      .eq("id", componentId)
+      .single();
+
+    if (fetchError || !data) {
+      return { success: false, error: "No se encontró el componente" };
+    }
+    rawComponent = data;
+  } catch (err: any) {
+    return { success: false, error: err.message || "Error al buscar el componente" };
+  }
+
+  const component = rawComponent as ProductionComponentRecord | null;
+  const currentAssets = (component?.assets || {}) as MaterialAssets;
+  const normalizedAssets = normalizeAssemblyAssets(currentAssets, 30);
+  const hasPrimaryRenderableAssets = Boolean(
+    normalizedAssets.voiceAudioUrl ||
+      normalizedAssets.avatarVideoUrl ||
+      normalizedAssets.slides.length > 0 ||
+      normalizedAssets.brollClips.length > 0,
+  );
+
+  if (!hasPrimaryRenderableAssets) {
+    return {
+      success: false,
+      error:
+        "No hay assets renderizables para Remotion. Sube voz, avatar, slides renderizables o B-roll antes de ensamblar.",
+    };
+  }
+
+  try {
+    // Update component status to IN_PROGRESS
+    const updatedAssets: MaterialAssets = {
+      ...currentAssets,
+      production_status: "IN_PROGRESS",
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error: updateError } = await supabase
+      .from("material_components")
+      .update({ assets: updatedAssets })
+      .eq("id", componentId);
+
+    if (updateError) {
+      console.error("[ProductionActions] Error setting production_status to IN_PROGRESS:", updateError);
+      return { success: false, error: updateError.message };
+    }
+
+    // Call local Express API
+    const expressApiUrl = process.env.EXPRESS_API_URL || "http://localhost:4000";
+    console.log(`[ProductionActions] Triggering Remotion render via Express API: ${expressApiUrl}`);
+    
+    const response = await fetch(`${expressApiUrl}/api/v1/production/remotion/render`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        componentId,
+        templateId,
+        variables
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `HTTP Error ${response.status}`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.error || errorMessage;
+      } catch (_) {}
+
+      // Revert status to PENDING in case of request error
+      await supabase
+        .from("material_components")
+        .update({
+          assets: {
+            ...currentAssets,
+            production_status: "PENDING",
+            updated_at: new Date().toISOString()
+          }
+        })
+        .eq("id", componentId);
+
+      return { success: false, error: errorMessage };
+    }
+
+    const result = await response.json();
+    return {
+      success: true,
+      jobId: result.jobId,
+      status: result.status,
+      productionStatus: "IN_PROGRESS" as ProductionStatus
+    };
+
+  } catch (error: unknown) {
+    console.error("[ProductionActions] Error initiating Remotion assembly:", error);
+    
+    // Revert status to PENDING
+    try {
+      await supabase
+        .from("material_components")
+        .update({
+          assets: {
+            ...currentAssets,
+            production_status: "PENDING",
+            updated_at: new Date().toISOString()
+          }
+        })
+        .eq("id", componentId);
+    } catch (_) {}
+
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function getRemotionJobStatusAction(jobId: string) {
+  const { error: authError } = await getAuthorizedSupabase();
+  if (authError) return { success: false, error: authError };
+
+  const webSupabase = await createClient();
+  const token = await getAccessToken(webSupabase);
+  if (!token) return { success: false, error: "No se encontró un token de autenticación" };
+
+  try {
+    const expressApiUrl = process.env.EXPRESS_API_URL || "http://localhost:4000";
+    const response = await fetch(`${expressApiUrl}/api/v1/production/jobs/${jobId}/status`, {
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      return { success: false, error: `HTTP Error ${response.status}` };
+    }
+
+    const job = await response.json();
+    return {
+      success: true,
+      job
+    };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function completeRemotionAssemblyAction(
+  componentId: string,
+  finalVideoUrl: string,
+) {
+  const { error: authError, supabase } = await getAuthorizedSupabase();
+  if (authError) return { success: false, error: authError };
+
+  try {
+    const { data: rawComponent, error: fetchError } = await supabase
+      .from("material_components")
+      .select(
+        `
+          assets, type, material_lesson_id,
+          material_lessons (
+            lesson_id, lesson_title, module_title, module_id,
+            materials (
+              artifact_id
+            )
+          )
+        `,
+      )
+      .eq("id", componentId)
+      .single();
+
+    if (fetchError || !rawComponent) {
+      return { success: false, error: "No se encontró el componente" };
+    }
+
+    const component = (rawComponent || null) as ProductionComponentRecord | null;
+    const lesson = firstRelation(component?.material_lessons);
+    const materials = firstRelation(lesson?.materials);
+    const artifactId = materials?.artifact_id || undefined;
+
+    if (artifactId && lesson) {
+      const assets = (component?.assets || {}) as MaterialAssets;
+      await syncVideoToPublicationRequests(supabase, artifactId, lesson, assets);
+      await markDownstreamDirtyAction(
+        artifactId,
+        6, // Phase 6 - Production updated
+        "Postproducción (Ensamblado Remotion local)",
+      );
+      await syncProductionStatusAction(artifactId);
+      await logPipelineEventAction(
+        artifactId,
+        "REMOTION_ASSEMBLY_COMPLETED",
+        {
+          component_id: componentId,
+          final_video_url: finalVideoUrl,
+        },
+        "GO-OP-07", // Phase 7: Postproduction
+        componentId,
+        "material_component",
+      );
+    }
+
+    return { success: true };
+  } catch (error: unknown) {
+    console.error("[ProductionActions] Error completing Remotion assembly:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
 }
