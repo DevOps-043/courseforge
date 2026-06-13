@@ -75,7 +75,7 @@ Para que todo funcione, tu sección de Google Drive debe verse así:
 ```env
 # GOOGLE DRIVE Integration
 NEXT_PUBLIC_GOOGLE_CLIENT_ID=973141986001-gle8h19mt8gf3g37uakp3rmbpd6b1emi.apps.googleusercontent.com
-NEXT_PUBLIC_GOOGLE_DEVELOPER_KEY=AIzaSyBSYFgs1lUzUcBvi6vHlkZFrcv8sgRyqfo
+NEXT_PUBLIC_GOOGLE_DEVELOPER_KEY=TU_GOOGLE_BROWSER_API_KEY
 NEXT_PUBLIC_GOOGLE_APP_ID=973141986001
 
 # OAuth backend keys (servidor)
