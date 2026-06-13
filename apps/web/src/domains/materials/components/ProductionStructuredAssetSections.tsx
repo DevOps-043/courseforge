@@ -29,6 +29,7 @@ import type {
   SlidesAsset,
 } from "../validators/assets.validators";
 import type { DriveFile } from "@/domains/production/providers/google-drive.service";
+import type { CloudStorageProvider } from "@/domains/production/cloud-storage/types";
 
 
 // ---------------------------------------------------------
@@ -46,7 +47,7 @@ interface VoiceAudioSectionProps {
   isImportingDrive: boolean;
   driveSearchResults: any[];
   searchDrive: (query: string) => Promise<void>;
-  importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides") => Promise<boolean>;
+  importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   clearDriveSearchResults: () => void;
 }
 
@@ -179,7 +180,7 @@ interface BackgroundMusicSectionProps {
   isImportingDrive: boolean;
   driveSearchResults: any[];
   searchDrive: (query: string) => Promise<void>;
-  importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides") => Promise<boolean>;
+  importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   clearDriveSearchResults: () => void;
 }
 
@@ -356,7 +357,7 @@ interface OpenDesignSlidesSectionProps {
   isImportingDrive: boolean;
   driveSearchResults: any[];
   searchDrive: (query: string) => Promise<void>;
-  importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides") => Promise<boolean>;
+  importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   clearDriveSearchResults: () => void;
 }export function OpenDesignSlidesSection({
   slides,
@@ -503,7 +504,7 @@ interface BRollClipsSectionProps {
   isImportingDrive: boolean;
   driveSearchResults: any[];
   searchDrive: (query: string) => Promise<void>;
-  importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides") => Promise<boolean>;
+  importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   clearDriveSearchResults: () => void;
 }
 
@@ -643,7 +644,7 @@ interface AvatarVideoSectionProps {
   isImportingDrive: boolean;
   driveSearchResults: any[];
   searchDrive: (query: string) => Promise<void>;
-  importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides") => Promise<boolean>;
+  importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   clearDriveSearchResults: () => void;
 }export function AvatarVideoSection({
   avatarVideo,
@@ -1084,7 +1085,7 @@ interface GoogleDriveImportModalProps {
   isImporting: boolean;
   results: DriveFile[];
   onSearch: (query: string) => Promise<void>;
-  onImport: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string) => Promise<boolean>;
+  onImport: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   onClearResults: () => void;
 }
 
@@ -1099,6 +1100,7 @@ export function GoogleDriveImportModal({
   const [isConnecting, setIsConnecting] = useState(false);
   const [localIsImporting, setLocalIsImporting] = useState(false);
   const [isPickerVisible, setIsPickerVisible] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState<CloudStorageProvider>("google_drive");
 
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
   const developerKey = process.env.NEXT_PUBLIC_GOOGLE_DEVELOPER_KEY;
@@ -1199,7 +1201,7 @@ export function GoogleDriveImportModal({
   const handleLinkSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!linkUrl.trim()) return;
-    const success = await onImport(linkUrl.trim(), type);
+    const success = await onImport(linkUrl.trim(), type, undefined, selectedProvider);
     if (success) {
       setLinkUrl("");
       onClose();
@@ -1361,7 +1363,7 @@ export function GoogleDriveImportModal({
             setIsPickerVisible(false);
             
             try {
-              const success = await onImport(fileId, type, accessToken);
+              const success = await onImport(fileId, type, accessToken, "google_drive");
               if (success) {
                 onClose();
               }
@@ -1423,6 +1425,19 @@ export function GoogleDriveImportModal({
 
         {/* Modal Content Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+          <div className="space-y-2">
+            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">
+              Proveedor
+            </label>
+            <select
+              value={selectedProvider}
+              onChange={(event) => setSelectedProvider(event.target.value as CloudStorageProvider)}
+              className="w-full p-2 text-xs rounded-lg border border-gray-305 bg-white text-gray-900 focus:border-[#1F5AF6] focus:outline-none dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
+            >
+              <option value="google_drive">Google Drive</option>
+              <option value="onedrive">OneDrive</option>
+            </select>
+          </div>
           
           {/* Option A: Paste URL */}
           <div className="space-y-2">
@@ -1449,6 +1464,7 @@ export function GoogleDriveImportModal({
             </form>
           </div>
 
+          {selectedProvider === "google_drive" && (
           <div className="relative flex items-center justify-center py-1">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-gray-100 dark:border-[#6C757D]/10"></div>
@@ -1457,8 +1473,10 @@ export function GoogleDriveImportModal({
               O
             </span>
           </div>
+          )}
 
           {/* Option B: Search / Google Picker */}
+          {selectedProvider === "google_drive" && (
           <div className="space-y-3">
             <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">
               Opción B: Seleccionar de la Unidad de Drive
@@ -1513,6 +1531,7 @@ export function GoogleDriveImportModal({
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* Footer */}

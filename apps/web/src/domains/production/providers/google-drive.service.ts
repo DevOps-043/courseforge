@@ -1,15 +1,25 @@
 import * as jose from "jose";
-import { encrypt, decrypt } from "@/lib/server/crypto";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-
-function getAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error("Missing Supabase URL or Service Role Key in environment variables");
-  }
-  return createSupabaseClient(supabaseUrl, supabaseServiceKey);
-}
+import {
+  ARTIFACT_FOLDER_NAMES,
+  MATERIAL_ASSET_FOLDER_NAMES,
+  buildArtifactRootFolderName,
+  buildLessonFolderName,
+  buildFolderMappingKey,
+  saveArtifactCloudStorageMetadata,
+  saveMaterialsCloudStorageMetadata,
+} from "@/domains/production/cloud-storage/artifact-folders";
+import {
+  decryptCredentialToken,
+  getCloudStorageCredentials,
+  updateCloudStorageAccessToken,
+} from "@/domains/production/cloud-storage/credentials.repository";
+import { uploadImportedAssetToStorage } from "@/domains/production/cloud-storage/storage-import.service";
+import type {
+  CloudStorageLessonInput,
+  CloudStorageMaterialsLesson,
+  ProductionAssetType,
+} from "@/domains/production/cloud-storage/types";
+import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 
 export interface DriveFile {
   id: string;
@@ -69,7 +79,7 @@ export class GoogleDriveService {
       const privateKey = await jose.importPKCS8(credentials.private_key, "RS256");
 
       const jwt = await new jose.SignJWT({
-        scope: "https://www.googleapis.com/auth/drive.readonly",
+        scope: "https://www.googleapis.com/auth/drive.file",
       })
         .setProtectedHeader({ alg: "RS256" })
         .setIssuer(credentials.client_email)
@@ -103,12 +113,12 @@ export class GoogleDriveService {
   /**
    * Search / List Drive Files
    */
-  async listFiles(query: string = ""): Promise<DriveFile[]> {
+  async listFiles(query: string = "", accessTokenOverride?: string): Promise<DriveFile[]> {
     const cleanQuery = query.toLowerCase().trim();
 
     if (this.isConfigured()) {
       try {
-        const accessToken = await this.getAccessToken();
+        const accessToken = accessTokenOverride || await this.getAccessToken();
         let searchString = "mimeType != 'application/vnd.google-apps.folder'";
         if (cleanQuery) {
           searchString += ` and name contains '${query}'`;
@@ -146,9 +156,10 @@ export class GoogleDriveService {
    */
   async importFile(
     urlOrId: string,
-    type: "voice" | "music" | "broll" | "avatar" | "slides",
+    type: ProductionAssetType,
     componentId: string,
-    accessToken?: string
+    accessToken?: string,
+    userId?: string
   ): Promise<{
     publicUrl: string;
     storagePath: string;
@@ -176,7 +187,10 @@ export class GoogleDriveService {
 
     // 2. Real Google Drive download if not mock
     if (!buffer) {
-      const activeToken = accessToken || (this.isConfigured() ? await this.getAccessToken() : null);
+      const activeToken =
+        accessToken ||
+        (userId ? await this.refreshUserAccessToken(userId) : null) ||
+        (this.isConfigured() ? await this.getAccessToken() : null);
       if (activeToken) {
         try {
           // Get metadata
@@ -239,96 +253,33 @@ export class GoogleDriveService {
       throw new Error("El archivo no se pudo descargar de Google Drive.");
     }
 
-    // 3. Setup folders and file extension
-    let folder = "";
-    let defaultExt = "";
-    let storageContentType = mimeType;
-
-    switch (type) {
-      case "voice":
-        folder = "voices";
-        defaultExt = "mp3";
-        storageContentType = storageContentType || "audio/mp3";
-        break;
-      case "music":
-        folder = "music";
-        defaultExt = "mp3";
-        storageContentType = storageContentType || "audio/mp3";
-        break;
-      case "broll":
-        folder = "broll";
-        defaultExt = "mp4";
-        storageContentType = storageContentType || "video/mp4";
-        break;
-      case "avatar":
-        folder = "avatars";
-        defaultExt = "mp4";
-        storageContentType = storageContentType || "video/mp4";
-        break;
-      case "slides":
-        folder = "slides";
-        defaultExt = fileName.endsWith(".zip") ? "zip" : "html";
-        storageContentType = storageContentType || (defaultExt === "zip" ? "application/zip" : "text/html");
-        break;
-    }
-
-    const ext = fileName.includes(".") ? fileName.split(".").pop() : defaultExt;
-    const cleanFileName = fileName
-      .toLowerCase()
-      .replace(/[^a-z0-9]/gi, "-")
-      .substring(0, 50);
-
-    const storagePath = `${folder}/${componentId}-${cleanFileName}.${ext}`;
-
-    // 4. Upload to Supabase Storage
-    const admin = getAdminClient();
-    const { error: uploadError } = await admin.storage
-      .from("production-assets")
-      .upload(storagePath, buffer, {
-        contentType: storageContentType,
-        upsert: true,
-      });
-
-    if (uploadError) {
-      throw new Error(`Error subiendo el archivo de Drive a Supabase Storage: ${uploadError.message}`);
-    }
-
-    // 5. Get Public URL
-    const { data: { publicUrl } } = admin.storage
-      .from("production-assets")
-      .getPublicUrl(storagePath);
-
-    return {
-      publicUrl,
-      storagePath: `production-assets/${storagePath}`,
-      mimeType: storageContentType,
+    return uploadImportedAssetToStorage({
+      buffer,
+      componentId,
       fileName,
-    };
+      mimeType,
+      sourcePrefix: "drive",
+      type,
+    });
   }
 
   /**
    * Asegura un access_token válido descifrando y renovando si es necesario
    */
   async refreshUserAccessToken(userId: string): Promise<string> {
-    const admin = getAdminClient();
-    const { data: creds, error } = await admin
-      .from("user_google_credentials")
-      .select("refresh_token, expires_at, access_token")
-      .eq("user_id", userId)
-      .single();
-
-    if (error || !creds) {
+    const creds = await getCloudStorageCredentials(userId, "google_drive");
+    if (!creds) {
       throw new Error("No hay cuenta de Google vinculada para este usuario.");
     }
 
-    const decryptedAccessToken = decrypt(creds.access_token);
+    const decryptedAccessToken = decryptCredentialToken(creds.access_token);
 
     // Retorna el actual si aún es válido (más de 1 minuto de holgura)
     if (new Date(creds.expires_at).getTime() > Date.now() + 60000) {
       return decryptedAccessToken;
     }
 
-    const decryptedRefreshToken = decrypt(creds.refresh_token);
+    const decryptedRefreshToken = decryptCredentialToken(creds.refresh_token);
 
     // Solicitar renovación del access_token
     const response = await fetch("https://oauth2.googleapis.com/token", {
@@ -349,16 +300,12 @@ export class GoogleDriveService {
     const tokenData = await response.json();
     const nextExpires = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
 
-    const encryptedNewAccess = encrypt(tokenData.access_token);
-
-    await admin
-      .from("user_google_credentials")
-      .update({
-        access_token: encryptedNewAccess,
-        expires_at: nextExpires,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("user_id", userId);
+    await updateCloudStorageAccessToken({
+      accessToken: tokenData.access_token,
+      expiresAt: nextExpires,
+      provider: "google_drive",
+      userId,
+    });
 
     return tokenData.access_token;
   }
@@ -405,46 +352,25 @@ export class GoogleDriveService {
       const token = await this.refreshUserAccessToken(userId);
 
       // 1. Crear carpeta raíz del taller
-      const rootFolderName = `Courseforge - ${artifactName}`;
+      const rootFolderName = buildArtifactRootFolderName(artifactName);
       const rootFolderId = await this.createFolder(rootFolderName, null, token);
 
       // 2. Crear subcarpetas estructuradas
-      const foldersToCreate = [
-        "01 - Syllabus",
-        "02 - Curacion",
-        "03 - Materiales (Audios y Slides)",
-        "04 - Produccion Final"
-      ];
-
       const folderMappings: Record<string, string> = {};
-      for (const folderName of foldersToCreate) {
+      for (const folderName of ARTIFACT_FOLDER_NAMES) {
         const subFolderId = await this.createFolder(folderName, rootFolderId, token);
-        folderMappings[folderName.toLowerCase().replace(/[^a-z0-9]/g, "_")] = subFolderId;
+        folderMappings[buildFolderMappingKey(folderName)] = subFolderId;
       }
 
       const folderUrl = `https://drive.google.com/drive/folders/${rootFolderId}`;
 
-      // 3. Registrar los IDs en la metadata del artefacto
-      const admin = getAdminClient();
-      const { data: artifact } = await admin
-        .from("artifacts")
-        .select("generation_metadata")
-        .eq("id", artifactId)
-        .single();
-
-      const metadata = artifact?.generation_metadata || {};
-      metadata.google_drive = {
-        enabled: true,
-        root_folder_id: rootFolderId,
-        folder_url: folderUrl,
+      await saveArtifactCloudStorageMetadata({
+        artifactId,
+        folderUrl,
+        provider: "google_drive",
+        rootFolderId,
         subfolders: folderMappings,
-        created_at: new Date().toISOString(),
-      };
-
-      await admin
-        .from("artifacts")
-        .update({ generation_metadata: metadata })
-        .eq("id", artifactId);
+      });
 
       return { rootFolderId, folderUrl };
     } catch (error: any) {
@@ -452,5 +378,63 @@ export class GoogleDriveService {
       throw error;
     }
   }
-}
 
+  async setupMaterialsFolderTree(
+    artifactId: string,
+    userId: string,
+    lessons: CloudStorageLessonInput[],
+  ): Promise<CloudStorageMaterialsLesson[]> {
+    const admin = getServiceRoleClient();
+    const { data: artifact, error } = await admin
+      .from("artifacts")
+      .select("generation_metadata")
+      .eq("id", artifactId)
+      .single();
+
+    if (error) {
+      throw new Error(`No se pudo leer metadata cloud del artefacto: ${error.message}`);
+    }
+
+    const cloudStorage = artifact?.generation_metadata?.cloud_storage || {};
+    const materialsFolderId = cloudStorage?.subfolders?.materiales as string | undefined;
+    if (!materialsFolderId) {
+      throw new Error("El artefacto no tiene carpeta Materiales configurada en Google Drive.");
+    }
+
+    const token = await this.refreshUserAccessToken(userId);
+    const syncedLessons: CloudStorageMaterialsLesson[] = [];
+
+    for (const lesson of lessons) {
+      const lessonFolderId = await this.createFolder(
+        buildLessonFolderName({
+          lessonOrder: lesson.lessonOrder,
+          lessonTitle: lesson.lessonTitle,
+        }),
+        materialsFolderId,
+        token,
+      );
+
+      const assetFolders: Record<string, string> = {};
+      for (const folderName of MATERIAL_ASSET_FOLDER_NAMES) {
+        const assetFolderId = await this.createFolder(folderName, lessonFolderId, token);
+        assetFolders[buildFolderMappingKey(folderName)] = assetFolderId;
+      }
+
+      syncedLessons.push({
+        asset_folders: assetFolders,
+        folder_id: lessonFolderId,
+        lesson_id: lesson.lessonId,
+        lesson_title: lesson.lessonTitle,
+      });
+    }
+
+    await saveMaterialsCloudStorageMetadata({
+      artifactId,
+      lessons: syncedLessons,
+      materialsFolderId,
+      provider: "google_drive",
+    });
+
+    return syncedLessons;
+  }
+}

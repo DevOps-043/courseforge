@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Sparkles, Upload, ArrowRight, BookOpen, Users, Target, Settings, ChevronDown, CheckCircle2, HardDrive } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { generateArtifactAction } from '@/domains/artifacts/actions/artifact.actions';
-import { checkGoogleConnectionAction } from '@/domains/production/actions/google-drive.actions';
 import { ScormImportFlow } from '@/app/admin/artifacts/new/components/ScormImportFlow';
+import { CloudStorageProviderSelector } from '@/app/admin/artifacts/new/components/CloudStorageProviderSelector';
+import type { CloudStorageProvider } from '@/domains/production/cloud-storage/types';
 
 interface ArtifactIdeaFormData {
     courseId: string;
@@ -36,8 +37,9 @@ export default function ConstructorNewArtifactPage() {
     const [mode, setMode] = useState<'ai' | 'import'>('ai');
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-    const [isGoogleDriveConnected, setIsGoogleDriveConnected] = useState(false);
-    const [useGoogleDrive, setUseGoogleDrive] = useState(false);
+    const [cloudStorageProvider, setCloudStorageProvider] = useState<CloudStorageProvider | null>(null);
+    const useGoogleDrive = false;
+    const setUseGoogleDrive = (_checked: boolean) => {};
 
     // Form State
     const [formData, setFormData] = useState<ArtifactIdeaFormData>({
@@ -50,15 +52,8 @@ export default function ConstructorNewArtifactPage() {
 
     const router = useRouter();
 
-    useEffect(() => {
-        async function fetchGoogleConnection() {
-            const res = await checkGoogleConnectionAction();
-            if (res.connected) {
-                setIsGoogleDriveConnected(true);
-                setUseGoogleDrive(true);
-            }
-        }
-        fetchGoogleConnection();
+    const handleCloudStorageProviderChange = useCallback((provider: CloudStorageProvider | null) => {
+        setCloudStorageProvider(provider);
     }, []);
 
     const handleGenerate = async () => {
@@ -70,7 +65,7 @@ export default function ConstructorNewArtifactPage() {
                 targetAudience: formData.targetAudience,
                 expectedResults: formData.expectedResults,
                 courseId: formData.courseId,
-                useGoogleDrive: isGoogleDriveConnected && useGoogleDrive
+                cloudStorageProvider
             });
 
             if (result.success) {
@@ -212,7 +207,8 @@ export default function ConstructorNewArtifactPage() {
                                                 />
                                             </div>
 
-                                            {isGoogleDriveConnected ? (
+                                            <CloudStorageProviderSelector onProviderChange={handleCloudStorageProviderChange} />
+                                            {false ? (
                                                 <div className="flex items-center gap-3 pt-3 border-t border-gray-100 dark:border-white/5">
                                                     <input
                                                         type="checkbox"
@@ -226,7 +222,8 @@ export default function ConstructorNewArtifactPage() {
                                                         Crear árbol de carpetas en Google Drive
                                                     </label>
                                                 </div>
-                                            ) : (
+                                            ) : null}
+                                            {false ? (
                                                 <div className="flex items-center justify-between gap-3 pt-3 border-t border-gray-100 dark:border-white/5">
                                                     <span className="text-xs text-gray-500 dark:text-slate-400 flex items-center gap-1.5 select-none">
                                                         <HardDrive size={14} className="text-gray-400" />
@@ -239,7 +236,7 @@ export default function ConstructorNewArtifactPage() {
                                                         Conectar ahora
                                                     </a>
                                                 </div>
-                                            )}
+                                            ) : null}
                                         </motion.div>
                                     )}
                                 </div>

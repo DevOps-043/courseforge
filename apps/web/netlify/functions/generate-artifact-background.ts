@@ -12,7 +12,8 @@ import {
 } from './shared/bootstrap';
 import { getErrorMessage } from './shared/errors';
 import { methodNotAllowedResponse, parseJsonBody } from './shared/http';
-import { GoogleDriveService } from '../../src/domains/production/providers/google-drive.service';
+import { getCloudStorageService } from '../../src/domains/production/cloud-storage/cloud-storage.service';
+import { isCloudStorageProvider, type CloudStorageProvider } from '../../src/domains/production/cloud-storage/types';
 
 const BLOOM_VERBS = [
   "comprender", "aplicar", "analizar", "evaluar", "crear",
@@ -44,7 +45,9 @@ interface GenerateArtifactRequestBody {
   artifactId?: string;
   feedback?: string;
   formData?: GenerateArtifactFormData;
+  userId?: string;
   userToken?: string;
+  cloudStorageProvider?: CloudStorageProvider | null;
   useGoogleDrive?: boolean;
 }
 
@@ -75,7 +78,12 @@ export const handler: Handler = async (event) => {
 
     try {
         const body = parseJsonBody<GenerateArtifactRequestBody>(event);
-        const { artifactId, formData, userToken, feedback, useGoogleDrive } = body;
+        const { artifactId, formData, userId, userToken, feedback, useGoogleDrive } = body;
+        const cloudStorageProvider = isCloudStorageProvider(body.cloudStorageProvider)
+            ? body.cloudStorageProvider
+            : useGoogleDrive
+              ? "google_drive"
+              : null;
 
         if (!artifactId || !formData || !userToken) {
             return { statusCode: 400, body: 'Missing required fields' };
@@ -92,15 +100,22 @@ export const handler: Handler = async (event) => {
         });
 
         // Aprovisionamiento opcional de Google Drive
-        if (useGoogleDrive) {
+        if (cloudStorageProvider) {
             try {
-                const { data: { user }, error: authError } = await supabase.auth.getUser();
-                if (authError || !user) {
+                let { data: { user }, error: authError } = await supabase.auth.getUser();
+                const creatorUserId = userId || user?.id;
+                if (!user && creatorUserId) {
+                    user = { id: creatorUserId } as NonNullable<typeof user>;
+                }
+                if (!creatorUserId) {
                     console.warn("[Background Job] No se pudo obtener el usuario autenticado para crear carpetas en Google Drive:", authError?.message);
                 } else {
+                    if (!user) {
+                        throw new Error("No se pudo resolver user para logging de carpetas cloud.");
+                    }
                     console.log(`[Background Job] Aprovisionando árbol de carpetas en Google Drive para el usuario ${user.id}...`);
-                    const driveService = new GoogleDriveService();
-                    const folderTree = await driveService.setupArtifactFolderTree(artifactId, formData.title || "Taller", user.id);
+                    const cloudStorageService = getCloudStorageService(cloudStorageProvider);
+                    const folderTree = await cloudStorageService.setupArtifactFolderTree(artifactId, formData.title || "Taller", creatorUserId);
                     console.log(`[Background Job] Carpeta de Google Drive creada: ${folderTree.folderUrl}`);
                 }
             } catch (driveErr: any) {

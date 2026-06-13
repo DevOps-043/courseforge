@@ -12,6 +12,7 @@ import {
   getAuthorizedArtifactAdmin,
 } from "@/lib/server/artifact-action-auth";
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
+import type { CloudStorageProvider } from "@/domains/production/cloud-storage/types";
 
 export async function generateArtifactAction(formData: {
   title: string;
@@ -19,6 +20,7 @@ export async function generateArtifactAction(formData: {
   targetAudience: string;
   expectedResults: string;
   courseId?: string;
+  cloudStorageProvider?: CloudStorageProvider | null;
   useGoogleDrive?: boolean;
 }) {
   const supabase = await createClient();
@@ -70,9 +72,12 @@ export async function generateArtifactAction(formData: {
       {
         artifactId: artifact.id,
         formData,
+        userId: authUser.userId,
         userToken: accessToken,
-        useGoogleDrive: formData.useGoogleDrive,
-      },
+          cloudStorageProvider:
+            formData.cloudStorageProvider ||
+            (formData.useGoogleDrive ? "google_drive" : null),
+        },
       {
         fallbackError: "Error al iniciar la generacion del artefacto",
         localHandlerLoader: () =>

@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { getErrorMessage } from "@/lib/errors";
 import { uploadWithSignedUrl } from "@/lib/storage-upload";
+import type { CloudStorageProvider } from "@/domains/production/cloud-storage/types";
 import {
   fetchVideoMetadataClient,
   getVideoProviderAndId,
@@ -799,15 +800,17 @@ export function useProductionAssetState({
   const importGoogleDriveAsset = async (
     urlOrId: string,
     type: "voice" | "music" | "broll" | "avatar" | "slides",
-    accessToken?: string
+    accessToken?: string,
+    provider: CloudStorageProvider = "google_drive"
   ) => {
     setIsImportingGoogleDrive(true);
     try {
-      const response = await fetch("/api/production/google-drive/import", {
+      const response = await fetch("/api/production/cloud-storage/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          urlOrId,
+          fileIdOrUrl: urlOrId,
+          provider,
           type,
           componentId: component.id,
           accessToken,

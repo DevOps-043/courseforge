@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
-import { GoogleDriveService } from "@/domains/production/providers/google-drive.service";
+import { getCloudStorageService } from "@/domains/production/cloud-storage/cloud-storage.service";
+import {
+  isCloudStorageProvider,
+  type ProductionAssetType,
+} from "@/domains/production/cloud-storage/types";
 
 interface ImportRequestBody {
-  urlOrId?: string;
-  type?: "voice" | "music" | "broll" | "avatar" | "slides";
-  componentId?: string;
   accessToken?: string;
+  componentId?: string;
+  fileIdOrUrl?: string;
+  provider?: unknown;
+  type?: ProductionAssetType;
+  urlOrId?: string;
 }
 
 function isRenderableSlideImage(params: {
@@ -33,24 +39,26 @@ function isRenderableSlideImage(params: {
 
 export async function POST(request: Request) {
   try {
-    const { urlOrId, type, componentId, accessToken } = (await request.json()) as ImportRequestBody;
+    const body = (await request.json()) as ImportRequestBody;
+    const fileIdOrUrl = body.fileIdOrUrl || body.urlOrId;
+    const { type, componentId, accessToken } = body;
 
-    if (!urlOrId || !type || !componentId) {
+    if (!isCloudStorageProvider(body.provider)) {
+      return NextResponse.json({ error: "Proveedor cloud invalido" }, { status: 400 });
+    }
+
+    if (!fileIdOrUrl || !type || !componentId) {
       return NextResponse.json(
-        { error: "Faltan parámetros: urlOrId, type y componentId son requeridos" },
-        { status: 400 }
+        { error: "Faltan parametros: fileIdOrUrl, type y componentId son requeridos" },
+        { status: 400 },
       );
     }
 
     const allowedTypes = new Set(["voice", "music", "broll", "avatar", "slides"]);
     if (!allowedTypes.has(type)) {
-      return NextResponse.json(
-        { error: "El tipo de activo provisto no es válido" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "El tipo de activo provisto no es valido" }, { status: 400 });
     }
 
-    // Authenticate User
     const supabase = await createClient();
     const authenticatedUser = await getAuthenticatedUser(supabase);
     if (!authenticatedUser) {
@@ -58,12 +66,14 @@ export async function POST(request: Request) {
     }
 
     const admin = getServiceRoleClient();
+    const result = await getCloudStorageService(body.provider).importFile(
+      fileIdOrUrl,
+      type,
+      componentId,
+      authenticatedUser.userId,
+      accessToken,
+    );
 
-    // Call GoogleDriveService to download from Drive and upload to Storage
-    const driveService = new GoogleDriveService();
-    const result = await driveService.importFile(urlOrId, type, componentId, accessToken, authenticatedUser.userId);
-
-    // Fetch current component assets
     const { data: component, error: fetchError } = await admin
       .from("material_components")
       .select("assets")
@@ -77,7 +87,6 @@ export async function POST(request: Request) {
     const currentAssets = component.assets || {};
     const updatedAssets = { ...currentAssets };
 
-    // Update assets JSON structure depending on the asset type
     switch (type) {
       case "voice":
         updatedAssets.voice_audio = {
@@ -95,14 +104,18 @@ export async function POST(request: Request) {
         };
         break;
       case "broll": {
-        const currentClips = Array.isArray(currentAssets.b_roll_clips) ? currentAssets.b_roll_clips : [];
-        const newClip = {
-          id: `drive-${Date.now()}`,
-          storage_path: result.storagePath,
-          public_url: result.publicUrl,
-          order: currentClips.length + 1,
-        };
-        updatedAssets.b_roll_clips = [...currentClips, newClip];
+        const currentClips = Array.isArray(currentAssets.b_roll_clips)
+          ? currentAssets.b_roll_clips
+          : [];
+        updatedAssets.b_roll_clips = [
+          ...currentClips,
+          {
+            id: `${body.provider}-${Date.now()}`,
+            storage_path: result.storagePath,
+            public_url: result.publicUrl,
+            order: currentClips.length + 1,
+          },
+        ];
         break;
       }
       case "avatar":
@@ -134,29 +147,25 @@ export async function POST(request: Request) {
           ...currentAssets.slides,
           html_public_url: result.publicUrl,
           html_content_path: result.storagePath,
-          images:
-            importedImages.length > 0
-              ? [...currentImages, ...importedImages]
-              : currentImages,
+          images: importedImages.length > 0 ? [...currentImages, ...importedImages] : currentImages,
         };
-        updatedAssets.slides_url = result.publicUrl; // legacy fallback
+        updatedAssets.slides_url = result.publicUrl;
         break;
       }
     }
 
     updatedAssets.updated_at = new Date().toISOString();
 
-    // Update component assets in Supabase DB
     const { error: updateError } = await admin
       .from("material_components")
       .update({ assets: updatedAssets })
       .eq("id", componentId);
 
     if (updateError) {
-      console.error("[API /google-drive/import] DB update error:", updateError);
+      console.error("[API /cloud-storage/import] DB update error:", updateError);
       return NextResponse.json(
         { error: "No se pudo actualizar el registro del componente en la base de datos" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -167,10 +176,10 @@ export async function POST(request: Request) {
       assets: updatedAssets,
     });
   } catch (error: unknown) {
-    console.error("[API /google-drive/import] Unexpected error:", error);
+    console.error("[API /cloud-storage/import] Unexpected error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Error interno al importar de Google Drive" },
-      { status: 500 }
+      { error: error instanceof Error ? error.message : "Error interno al importar del proveedor cloud" },
+      { status: 500 },
     );
   }
 }

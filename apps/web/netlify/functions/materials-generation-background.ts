@@ -23,6 +23,11 @@ import {
   triggerNextLesson,
   wait,
 } from "./shared/materials-generation-runtime";
+import { getCloudStorageService } from "../../src/domains/production/cloud-storage/cloud-storage.service";
+import {
+  isCloudStorageProvider,
+  type CloudStorageProvider,
+} from "../../src/domains/production/cloud-storage/types";
 
 interface RequestBody {
   artifactId?: string;
@@ -37,6 +42,8 @@ interface RequestBody {
 
 interface MaterialsLookupRecord {
   artifact_id: string;
+  cloud_storage_provider?: CloudStorageProvider | null;
+  created_by?: string | null;
   id: string;
   organization_id: string | null;
 }
@@ -45,11 +52,23 @@ function buildExecutionId(materialsId: string) {
   return `${materialsId.substring(0, 8)}-${Date.now().toString(36)}`;
 }
 
+function firstRelationRecord(value: unknown): Record<string, unknown> | null {
+  if (Array.isArray(value)) {
+    return (value[0] as Record<string, unknown> | undefined) || null;
+  }
+
+  if (value && typeof value === "object") {
+    return value as Record<string, unknown>;
+  }
+
+  return null;
+}
+
 async function loadMaterialsRecord(materialsId: string) {
   const supabase = createServiceRoleClient();
   const { data: materials, error } = await supabase
     .from("materials")
-    .select("id, artifact_id, artifacts!inner(organization_id)")
+    .select("id, artifact_id, artifacts!inner(created_by, generation_metadata, organization_id)")
     .eq("id", materialsId)
     .single();
 
@@ -57,15 +76,22 @@ async function loadMaterialsRecord(materialsId: string) {
     throw new Error(`Materials not found: ${error?.message}`);
   }
 
+  const artifact = firstRelationRecord((materials as { artifacts?: unknown }).artifacts);
+  const metadata = artifact?.generation_metadata as Record<string, unknown> | undefined;
+  const cloudStorage = metadata?.cloud_storage as Record<string, unknown> | undefined;
+  const materialsRecord = {
+    id: materials.id,
+    artifact_id: materials.artifact_id,
+    cloud_storage_provider: isCloudStorageProvider(cloudStorage?.provider)
+      ? cloudStorage.provider
+      : null,
+    created_by: typeof artifact?.created_by === "string" ? artifact.created_by : null,
+    organization_id: typeof artifact?.organization_id === "string" ? artifact.organization_id : null,
+  } satisfies MaterialsLookupRecord;
+
   return {
     supabase,
-    materials: {
-      id: materials.id,
-      artifact_id: materials.artifact_id,
-      organization_id: Array.isArray((materials as { artifacts?: { organization_id?: string | null }[] }).artifacts)
-        ? (materials as { artifacts?: { organization_id?: string | null }[] }).artifacts?.[0]?.organization_id ?? null
-        : (materials as { artifacts?: { organization_id?: string | null } }).artifacts?.organization_id ?? null,
-    } satisfies MaterialsLookupRecord,
+    materials: materialsRecord,
   };
 }
 
@@ -105,17 +131,48 @@ async function setupMaterialsLessons(params: {
   }
 
   console.log(`${logPrefix} Creating ${lessonPlans.length} lesson records`);
+  const materialLessons: MaterialLessonRecord[] = [];
   for (let index = 0; index < lessonPlans.length; index++) {
-    await findOrCreateMaterialLesson(
+    const lesson = await findOrCreateMaterialLesson(
       supabase,
       materialsId,
       lessonPlans[index],
       index + 1,
       logPrefix,
-    );
+    ) as MaterialLessonRecord;
+    materialLessons.push(lesson);
   }
 
-  return lessonPlans.length;
+  return materialLessons;
+}
+
+async function syncCloudStorageMaterialFolders(params: {
+  artifactId: string;
+  lessons: MaterialLessonRecord[];
+  logPrefix: string;
+  provider?: CloudStorageProvider | null;
+  userId?: string | null;
+}) {
+  const { artifactId, lessons, logPrefix, provider, userId } = params;
+  if (!provider || !userId || lessons.length === 0) {
+    return;
+  }
+
+  try {
+    const syncedLessons = await getCloudStorageService(provider).setupMaterialsFolderTree(
+      artifactId,
+      userId,
+      lessons.map((lesson, index) => ({
+        expectedComponents: lesson.expected_components,
+        lessonId: lesson.lesson_id,
+        lessonOrder: index + 1,
+        lessonTitle: lesson.lesson_title,
+      })),
+    );
+    console.log(`${logPrefix} Synced ${syncedLessons.length} cloud material lesson folders`);
+  } catch (error) {
+    console.warn(`${logPrefix} Cloud material folders sync skipped:`, getErrorMessage(error));
+  }
 }
 
 async function processSingleLesson(params: {
@@ -309,10 +366,17 @@ export const handler: Handler = async (event) => {
 
     if (mode === "init") {
       console.log(`${logPrefix} INIT: Setting up lessons`);
-      const totalLessons = await setupMaterialsLessons({
+      const lessons = await setupMaterialsLessons({
         materialsId,
         artifactId: targetArtifactId,
         logPrefix,
+      });
+      await syncCloudStorageMaterialFolders({
+        artifactId: targetArtifactId,
+        lessons,
+        logPrefix,
+        provider: materials.cloud_storage_provider,
+        userId: materials.created_by,
       });
 
       await triggerNextLesson(materialsId, targetArtifactId, logPrefix);
@@ -320,7 +384,7 @@ export const handler: Handler = async (event) => {
         statusCode: 200,
         body: JSON.stringify({
           success: true,
-          totalLessons,
+          totalLessons: lessons.length,
         }),
       };
     }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { getAuthenticatedUser } from "@/lib/server/artifact-action-auth";
+import { createOAuthState } from "@/lib/server/oauth-state";
 
 export async function GET(request: Request) {
   try {
@@ -14,7 +15,13 @@ export async function GET(request: Request) {
     const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
     const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${baseUrl}/api/auth/google/callback`;
 
-    const rootUrl = "https://accounts.google.com/o/oauth2/v2/auth";
+    const redirectResponse = NextResponse.redirect("https://accounts.google.com/o/oauth2/v2/auth");
+    const state = createOAuthState({
+      provider: "google_drive",
+      response: redirectResponse,
+      userId: user.userId,
+    });
+
     const options = {
       redirect_uri: redirectUri,
       client_id: process.env.GOOGLE_CLIENT_ID || "",
@@ -24,13 +31,14 @@ export async function GET(request: Request) {
       scope: [
         "openid",
         "https://www.googleapis.com/auth/userinfo.email",
-        "https://www.googleapis.com/auth/drive.readonly"
+        "https://www.googleapis.com/auth/drive.file",
       ].join(" "),
-      state: user.userId
+      state,
     };
 
     const qs = new URLSearchParams(options).toString();
-    return NextResponse.redirect(`${rootUrl}?${qs}`);
+    redirectResponse.headers.set("Location", `https://accounts.google.com/o/oauth2/v2/auth?${qs}`);
+    return redirectResponse;
   } catch (error: any) {
     console.error("[Google OAuth Login Error]:", error);
     return NextResponse.json({ error: "Error iniciando flujo OAuth" }, { status: 500 });

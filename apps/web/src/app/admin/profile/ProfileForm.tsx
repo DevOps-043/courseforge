@@ -9,7 +9,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 import { createClient } from '@/utils/supabase/client';
 import { updateProfile, updatePassword, updateAvatar } from './actions';
-import { disconnectGoogleAction } from '@/domains/production/actions/google-drive.actions';
+import { disconnectCloudStorageAction } from '@/domains/production/actions/cloud-storage.actions';
+import { CloudStorageConnectButton } from '@/app/admin/artifacts/new/components/CloudStorageConnectButton';
 
 interface ProfileFormProfile {
   avatar_url?: string | null;
@@ -26,6 +27,8 @@ interface ProfileFormProps {
   user: Pick<SupabaseUser, 'created_at' | 'email' | 'id'>;
   googleConnected: boolean;
   googleEmail: string | null;
+  oneDriveConnected: boolean;
+  oneDriveEmail: string | null;
 }
 
 interface BoxInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -34,13 +37,23 @@ interface BoxInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   readOnly?: boolean;
 }
 
-export default function ProfileForm({ user, profile, artifactCount, googleConnected, googleEmail }: ProfileFormProps) {
+export default function ProfileForm({
+  user,
+  profile,
+  artifactCount,
+  googleConnected,
+  googleEmail,
+  oneDriveConnected,
+  oneDriveEmail,
+}: ProfileFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [activeSection, setActiveSection] = useState<'general' | 'security' | 'integrations'>('general');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url);
   const [isGoogleConnected, setIsGoogleConnected] = useState(googleConnected);
   const [googleEmailAddress, setGoogleEmailAddress] = useState(googleEmail);
+  const [isOneDriveConnected, setIsOneDriveConnected] = useState(oneDriveConnected);
+  const [oneDriveEmailAddress, setOneDriveEmailAddress] = useState(oneDriveEmail);
 
   // Profile State
   const [formData, setFormData] = useState({
@@ -103,7 +116,7 @@ export default function ProfileForm({ user, profile, artifactCount, googleConnec
   const handleDisconnectGoogle = async () => {
     setIsLoading(true);
     try {
-      const res = await disconnectGoogleAction();
+      const res = await disconnectCloudStorageAction("google_drive");
       if (res.success) {
         setIsGoogleConnected(false);
         setGoogleEmailAddress(null);
@@ -113,6 +126,24 @@ export default function ProfileForm({ user, profile, artifactCount, googleConnec
       }
     } catch (err: any) {
       toast.error(err.message || "Error al desvincular Google Drive");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDisconnectOneDrive = async () => {
+    setIsLoading(true);
+    try {
+      const res = await disconnectCloudStorageAction("onedrive");
+      if (res.success) {
+        setIsOneDriveConnected(false);
+        setOneDriveEmailAddress(null);
+        toast.success("Cuenta de OneDrive desvinculada correctamente");
+      } else {
+        toast.error(res.error || "Error al desvincular OneDrive");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Error al desvincular OneDrive");
     } finally {
       setIsLoading(false);
     }
@@ -420,12 +451,52 @@ export default function ProfileForm({ user, profile, artifactCount, googleConnec
                                          Desvincular
                                      </button>
                                  ) : (
-                                     <a
-                                         href="/api/auth/google/login"
+                                     <CloudStorageConnectButton
+                                         provider="google_drive"
                                          className="inline-flex justify-center items-center w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#00D4B3] hover:bg-[#00bda0] text-white dark:text-black font-bold text-sm transition-colors shadow-lg shadow-[#00D4B3]/15 text-center cursor-pointer"
                                      >
                                          Vincular Cuenta
-                                     </a>
+                                     </CloudStorageConnectButton>
+                                 )}
+                             </div>
+                         </div>
+
+                         <div className="mt-4 border border-gray-150 dark:border-white/5 rounded-2xl p-6 bg-gray-50/50 dark:bg-[#1A2029]/40 relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 transition-all hover:border-[#00D4B3]/20">
+                             <div className="flex items-start gap-4">
+                                 <div className="w-12 h-12 rounded-xl bg-[#00D4B3]/10 flex items-center justify-center text-[#00D4B3] shrink-0">
+                                     <HardDrive size={24} />
+                                 </div>
+                                 <div>
+                                     <h4 className="text-gray-900 dark:text-white font-bold text-base">OneDrive</h4>
+                                     <p className="text-xs text-gray-500 dark:text-slate-400 mt-1 max-w-md">
+                                         Permite crear carpetas de trabajo en OneDrive e importar assets hacia el almacenamiento principal de Courseforge.
+                                     </p>
+                                     {isOneDriveConnected && (
+                                         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-500 mt-2 border border-emerald-500/25">
+                                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                             Conectado como {oneDriveEmailAddress}
+                                         </span>
+                                     )}
+                                 </div>
+                             </div>
+
+                             <div className="shrink-0">
+                                 {isOneDriveConnected ? (
+                                     <button
+                                         type="button"
+                                         onClick={handleDisconnectOneDrive}
+                                         disabled={isLoading}
+                                         className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-red-500/30 text-red-500 hover:bg-red-500/5 dark:hover:bg-red-500/10 transition-colors font-medium text-sm cursor-pointer"
+                                     >
+                                         Desvincular
+                                     </button>
+                                 ) : (
+                                     <CloudStorageConnectButton
+                                         provider="onedrive"
+                                         className="inline-flex justify-center items-center w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#00D4B3] hover:bg-[#00bda0] text-white dark:text-black font-bold text-sm transition-colors shadow-lg shadow-[#00D4B3]/15 text-center cursor-pointer"
+                                     >
+                                         Vincular Cuenta
+                                     </CloudStorageConnectButton>
                                  )}
                              </div>
                          </div>
