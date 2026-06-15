@@ -1,3 +1,8 @@
+import {
+  type TemplateRenderConfig,
+  parseTemplateRenderConfig,
+} from './template-render-config.service';
+
 export const ASSEMBLY_FPS = 30;
 export const FALLBACK_DURATION_SECONDS = 10;
 export const DEFAULT_CLIP_SECONDS = 5;
@@ -18,6 +23,7 @@ export interface AssemblyInputProps {
   slides: { index: number; url: string }[];
   brollClips: { url: string; durationInFrames: number; order: number }[];
   transitionType: 'fade' | 'slide' | 'none';
+  templateConfig: TemplateRenderConfig;
 }
 
 interface NormalizedAssemblyAssets {
@@ -121,10 +127,12 @@ export function buildAssemblyInputProps(params: {
   assets: any;
   compositionId: string;
   transitionType: unknown;
+  templateConfig?: unknown;
   fps?: number;
 }): AssemblyInputProps {
   const fps = params.fps ?? ASSEMBLY_FPS;
   const normalized = normalizeAssemblyAssets(params.assets, fps);
+  const templateConfig = parseTemplateRenderConfig(params.templateConfig);
   const hasPrimaryAssets = Boolean(
     normalized.voiceAudioUrl ||
       normalized.avatarVideoUrl ||
@@ -145,7 +153,7 @@ export function buildAssemblyInputProps(params: {
   const transition =
     params.transitionType === 'slide' || params.transitionType === 'none'
       ? params.transitionType
-      : 'fade';
+      : templateConfig.transitionType;
 
   return {
     template: params.compositionId,
@@ -158,5 +166,9 @@ export function buildAssemblyInputProps(params: {
     slides: normalized.slides,
     brollClips: normalized.brollClips,
     transitionType: transition,
+    templateConfig: {
+      ...templateConfig,
+      transitionType: transition,
+    },
   };
 }

@@ -9,6 +9,7 @@ import {
   buildAssemblyInputProps,
   resolveCompositionId,
 } from './remotion-assembly-props.service';
+import { mergeTemplateRenderConfigs } from './template-render-config.service';
 
 let cachedBundlePromise: Promise<string> | null = null;
 
@@ -82,10 +83,15 @@ export class RemotionWorkerService {
 
       assets = component.assets || {};
       const compositionId = resolveCompositionId(template.composition_id);
+      const templateConfig = mergeTemplateRenderConfigs(
+        template.default_config,
+        job.input_snapshot?.variables?.templateConfig,
+      );
       const inputProps = buildAssemblyInputProps({
         assets,
         compositionId,
         transitionType: job.input_snapshot?.variables?.transitionType,
+        templateConfig,
       });
 
       await this.updateProgress(supabase, jobId, 10, 'Preparando motor de render');

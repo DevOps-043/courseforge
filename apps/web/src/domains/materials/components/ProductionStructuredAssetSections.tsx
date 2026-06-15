@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Volume2,
   VolumeX,
@@ -28,8 +28,13 @@ import type {
   AvatarVideo,
   SlidesAsset,
 } from "../validators/assets.validators";
-import type { DriveFile } from "@/domains/production/providers/google-drive.service";
-import type { CloudStorageProvider } from "@/domains/production/cloud-storage/types";
+import { CloudStorageConnectButton } from "@/app/admin/artifacts/new/components/CloudStorageConnectButton";
+import { getCloudStorageConnectionsAction } from "@/domains/production/actions/cloud-storage.actions";
+import type {
+  CloudStorageConnection,
+  CloudStorageFile,
+  CloudStorageProvider,
+} from "@/domains/production/cloud-storage/types";
 
 
 // ---------------------------------------------------------
@@ -736,7 +741,7 @@ interface AvatarVideoSectionProps {
 
       {syncError && (
         <p className="text-[10px] text-red-500 font-medium mt-1.5 pl-1">
-          ✗ Error: {syncError}
+          Error: {syncError}
         </p>
       )} */}
 
@@ -979,7 +984,7 @@ export function ArtlistSearchModal({
                       </button>
                       <div>
                         <p className="font-semibold text-gray-905 dark:text-white">{track.title}</p>
-                        <p className="text-[10px] text-gray-550">{track.artist} • {track.genre} • {track.mood}</p>
+                        <p className="text-[10px] text-gray-550">{track.artist} - {track.genre} - {track.mood}</p>
                       </div>
                     </div>
                     
@@ -1083,8 +1088,8 @@ interface GoogleDriveImportModalProps {
   type: "voice" | "music" | "broll" | "avatar" | "slides";
   isSearching: boolean;
   isImporting: boolean;
-  results: DriveFile[];
-  onSearch: (query: string) => Promise<void>;
+  results: CloudStorageFile[];
+  onSearch: (query: string, provider?: CloudStorageProvider) => Promise<void>;
   onImport: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   onClearResults: () => void;
 }
@@ -1093,14 +1098,21 @@ export function GoogleDriveImportModal({
   isOpen,
   onClose,
   type,
+  isSearching,
   isImporting,
+  results,
+  onSearch,
   onImport,
+  onClearResults,
 }: GoogleDriveImportModalProps) {
   const [linkUrl, setLinkUrl] = useState("");
+  const [query, setQuery] = useState("");
+  const [connections, setConnections] = useState<CloudStorageConnection[]>([]);
+  const [isLoadingConnections, setIsLoadingConnections] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [localIsImporting, setLocalIsImporting] = useState(false);
   const [isPickerVisible, setIsPickerVisible] = useState(false);
-  const [selectedProvider, setSelectedProvider] = useState<CloudStorageProvider>("google_drive");
+  const [selectedProvider, setSelectedProvider] = useState<CloudStorageProvider | null>(null);
 
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
   const developerKey = process.env.NEXT_PUBLIC_GOOGLE_DEVELOPER_KEY;
@@ -1109,6 +1121,52 @@ export function GoogleDriveImportModal({
   const isConfigured = Boolean(clientId && developerKey && isDeveloperKeyLikelyApiKey);
   const driveReadonlyScope = "https://www.googleapis.com/auth/drive.readonly";
   const driveTokenCacheKey = "courseforge.googleDrive.readonlyToken";
+
+  const connectedProviders = useMemo(
+    () => connections.filter((connection) => connection.connected),
+    [connections],
+  );
+  const selectedProviderLabel =
+    selectedProvider === "google_drive"
+      ? "Google Drive"
+      : selectedProvider === "onedrive"
+        ? "OneDrive"
+        : "Cloud";
+
+  const loadConnections = async () => {
+    setIsLoadingConnections(true);
+    try {
+      const response = await getCloudStorageConnectionsAction();
+      const nextConnections = response.connections;
+      setConnections(nextConnections);
+
+      const firstConnected = nextConnections.find((connection) => connection.connected)?.provider || null;
+      setSelectedProvider((currentProvider) => {
+        if (
+          currentProvider &&
+          nextConnections.some((connection) => connection.provider === currentProvider && connection.connected)
+        ) {
+          return currentProvider;
+        }
+
+        return firstConnected;
+      });
+    } finally {
+      setIsLoadingConnections(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    loadConnections();
+  }, [isOpen]);
+
+  const handleProviderSelect = (provider: CloudStorageProvider) => {
+    setSelectedProvider(provider);
+    setQuery("");
+    setLinkUrl("");
+    onClearResults();
+  };
 
   const getPickerAppId = (clientIdStr: string): string => {
     if (configuredPickerAppId) return configuredPickerAppId;
@@ -1200,10 +1258,25 @@ export function GoogleDriveImportModal({
 
   const handleLinkSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!linkUrl.trim()) return;
+    if (!linkUrl.trim() || !selectedProvider) return;
     const success = await onImport(linkUrl.trim(), type, undefined, selectedProvider);
     if (success) {
       setLinkUrl("");
+      onClose();
+    }
+  };
+
+  const handleSearchSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProvider) return;
+    await onSearch(query.trim(), selectedProvider);
+  };
+
+  const handleImportCloudFile = async (fileId: string) => {
+    if (!selectedProvider) return;
+    const success = await onImport(fileId, type, undefined, selectedProvider);
+    if (success) {
+      onClearResults();
       onClose();
     }
   };
@@ -1389,9 +1462,11 @@ export function GoogleDriveImportModal({
 
   const handleClose = () => {
     setLinkUrl("");
+    setQuery("");
     setIsConnecting(false);
     setLocalIsImporting(false);
     setIsPickerVisible(false);
+    onClearResults();
     onClose();
   };
 
@@ -1408,10 +1483,10 @@ export function GoogleDriveImportModal({
             <HardDrive className="text-blue-500 animate-pulse" size={20} />
             <div>
               <h3 className="text-sm font-bold text-gray-950 dark:text-white">
-                Google Drive - Importar Recurso
+                Importar recurso desde cloud
               </h3>
               <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                Pega un enlace compartido o vincula tu cuenta para buscar archivos
+                Usa la cuenta vinculada para copiar assets hacia CourseGen
               </p>
             </div>
           </div>
@@ -1425,113 +1500,29 @@ export function GoogleDriveImportModal({
 
         {/* Modal Content Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-          <div className="space-y-2">
-            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">
-              Proveedor
-            </label>
-            <select
-              value={selectedProvider}
-              onChange={(event) => setSelectedProvider(event.target.value as CloudStorageProvider)}
-              className="w-full p-2 text-xs rounded-lg border border-gray-305 bg-white text-gray-900 focus:border-[#1F5AF6] focus:outline-none dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
-            >
-              <option value="google_drive">Google Drive</option>
-              <option value="onedrive">OneDrive</option>
-            </select>
-          </div>
-          
-          {/* Option A: Paste URL */}
-          <div className="space-y-2">
-            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">
-              Opción A: Pegar Enlace de Google Drive
-            </label>
-            <form onSubmit={handleLinkSubmit} className="flex gap-2">
-              <input
-                type="text"
-                placeholder="https://drive.google.com/file/d/... (Debe ser un enlace público)"
-                value={linkUrl}
-                onChange={(e) => setLinkUrl(e.target.value)}
-                disabled={isImporting || localIsImporting}
-                className="flex-1 p-2 text-xs rounded-lg border border-gray-305 bg-white text-gray-900 placeholder-gray-400 focus:border-[#1F5AF6] focus:outline-none dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
-              />
-              <button
-                type="submit"
-                disabled={isImporting || localIsImporting || !linkUrl.trim()}
-                className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-550 rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50"
-              >
-                {(isImporting || localIsImporting) ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                Importar
-              </button>
-            </form>
-          </div>
-
-          {selectedProvider === "google_drive" && (
-          <div className="relative flex items-center justify-center py-1">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-100 dark:border-[#6C757D]/10"></div>
-            </div>
-            <span className="relative px-3 bg-white dark:bg-[#151A21] text-[10px] font-bold text-gray-400 uppercase">
-              O
-            </span>
-          </div>
-          )}
-
-          {/* Option B: Search / Google Picker */}
-          {selectedProvider === "google_drive" && (
-          <div className="space-y-3">
-            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">
-              Opción B: Seleccionar de la Unidad de Drive
-            </label>
-
-            {!isConfigured ? (
-              // Warning card if variables are missing
-              <div className="p-4 rounded-xl border border-amber-200 bg-amber-500/5 dark:border-amber-500/20 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300 text-xs space-y-2">
-                <p className="font-bold flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
-                  <AlertTriangle size={14} />
-                  Google Drive no está completamente configurado
-                </p>
-                <p className="leading-relaxed">
-                  Para permitir a los usuarios vincular sus cuentas y explorar sus archivos privados de Google Drive directamente, debes configurar las siguientes variables de entorno en tu archivo <code className="bg-amber-100 dark:bg-amber-950/30 px-1 py-0.5 rounded font-mono text-[10px]">.env.local</code>:
-                </p>
-                <ul className="list-disc pl-4 space-y-0.5 font-mono text-[10px] text-amber-600 dark:text-amber-400">
-                  <li>NEXT_PUBLIC_GOOGLE_CLIENT_ID</li>
-                  <li>NEXT_PUBLIC_GOOGLE_DEVELOPER_KEY</li>
-                  <li>NEXT_PUBLIC_GOOGLE_APP_ID (opcional, recomendado para Picker)</li>
-                </ul>
-                {developerKey && !isDeveloperKeyLikelyApiKey && (
-                  <p className="pt-1 text-[10px] font-semibold text-red-600 dark:text-red-300 leading-normal">
-                    NEXT_PUBLIC_GOOGLE_DEVELOPER_KEY debe ser una API Key de navegador de Google Cloud, no un OAuth Client Secret.
-                  </p>
-                )}
-                <p className="pt-1 text-[10px] text-gray-500 dark:text-gray-400 leading-normal">
-                  * Nota: Aún puedes importar archivos de Drive usando la <strong>Opción A</strong> si configuras el enlace de tu archivo de Drive como público ("Cualquier persona con el enlace puede ver").
-                </p>
-              </div>
-            ) : (
-              // Connected button to open Picker
-              <div className="flex flex-col items-center justify-center p-6 border border-dashed border-gray-200 dark:border-[#6C757D]/20 rounded-xl space-y-4 bg-gray-50/50 dark:bg-[#0F1419]/10">
-                <HardDrive size={32} className="text-blue-500" />
-                <div className="text-center">
-                  <p className="text-xs font-semibold text-gray-900 dark:text-white">Explorar archivos de Google Drive</p>
-                  <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Inicia sesión con tu cuenta de Google para buscar archivos de voz, música o video.</p>
-                </div>
-                
-                <button
-                  type="button"
-                  onClick={handleOpenPicker}
-                  disabled={isImporting || localIsImporting || isConnecting}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-550 text-white text-xs font-bold transition-all shadow-md shadow-blue-500/10 cursor-pointer disabled:opacity-50"
-                >
-                  {(isConnecting || localIsImporting) ? (
-                    <Loader2 size={12} className="animate-spin" />
-                  ) : (
-                    <ExternalLink size={12} />
-                  )}
-                  <span>{isConnecting ? "Conectando..." : localIsImporting ? "Importando..." : "Vincular Cuenta y Buscar"}</span>
-                </button>
-              </div>
-            )}
-          </div>
-          )}
+          <CloudStorageImportBody
+            connectedProviders={connectedProviders}
+            isConfigured={isConfigured}
+            isConnecting={isConnecting}
+            isImporting={isImporting}
+            isLoadingConnections={isLoadingConnections}
+            isPickerDeveloperKeyInvalid={Boolean(developerKey && !isDeveloperKeyLikelyApiKey)}
+            isSearching={isSearching}
+            linkUrl={linkUrl}
+            localIsImporting={localIsImporting}
+            onConnectRefresh={loadConnections}
+            onImportFile={handleImportCloudFile}
+            onLinkSubmit={handleLinkSubmit}
+            onOpenPicker={handleOpenPicker}
+            onProviderSelect={handleProviderSelect}
+            onQueryChange={setQuery}
+            onSearchSubmit={handleSearchSubmit}
+            query={query}
+            results={results}
+            selectedProvider={selectedProvider}
+            selectedProviderLabel={selectedProviderLabel}
+            setLinkUrl={setLinkUrl}
+          />
         </div>
 
         {/* Footer */}
@@ -1545,5 +1536,262 @@ export function GoogleDriveImportModal({
         </div>
       </div>
     </div>
+  );
+}
+
+interface CloudStorageImportBodyProps {
+  connectedProviders: CloudStorageConnection[];
+  isConfigured: boolean;
+  isConnecting: boolean;
+  isImporting: boolean;
+  isLoadingConnections: boolean;
+  isPickerDeveloperKeyInvalid: boolean;
+  isSearching: boolean;
+  linkUrl: string;
+  localIsImporting: boolean;
+  onConnectRefresh: () => void;
+  onImportFile: (fileId: string) => Promise<void>;
+  onLinkSubmit: (event: React.FormEvent) => void;
+  onOpenPicker: () => void;
+  onProviderSelect: (provider: CloudStorageProvider) => void;
+  onQueryChange: (value: string) => void;
+  onSearchSubmit: (event: React.FormEvent) => void;
+  query: string;
+  results: CloudStorageFile[];
+  selectedProvider: CloudStorageProvider | null;
+  selectedProviderLabel: string;
+  setLinkUrl: (value: string) => void;
+}
+
+function CloudStorageImportBody({
+  connectedProviders,
+  isConfigured,
+  isConnecting,
+  isImporting,
+  isLoadingConnections,
+  isPickerDeveloperKeyInvalid,
+  isSearching,
+  linkUrl,
+  localIsImporting,
+  onConnectRefresh,
+  onImportFile,
+  onLinkSubmit,
+  onOpenPicker,
+  onProviderSelect,
+  onQueryChange,
+  onSearchSubmit,
+  query,
+  results,
+  selectedProvider,
+  selectedProviderLabel,
+  setLinkUrl,
+}: CloudStorageImportBodyProps) {
+  if (isLoadingConnections) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-gray-500 dark:text-gray-400">
+        <Loader2 className="mb-3 animate-spin text-[#1F5AF6]" size={28} />
+        <p className="text-xs">Revisando cuentas vinculadas...</p>
+      </div>
+    );
+  }
+
+  if (connectedProviders.length === 0) {
+    return (
+      <div className="space-y-4 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 p-5 text-center dark:border-[#6C757D]/20 dark:bg-[#0F1419]/30">
+        <HardDrive size={32} className="mx-auto text-gray-400" />
+        <div>
+          <p className="text-sm font-bold text-gray-900 dark:text-white">No hay cuentas cloud vinculadas</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Vincula Google Drive u OneDrive para importar assets directamente a CourseGen.
+          </p>
+        </div>
+        <div className="flex flex-wrap justify-center gap-3">
+          <CloudStorageConnectButton provider="google_drive" className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+            Vincular Google Drive
+          </CloudStorageConnectButton>
+          <CloudStorageConnectButton provider="onedrive" className="rounded-lg border border-[#00D4B3]/30 bg-[#00D4B3]/10 px-3 py-2 text-xs font-bold text-[#008F7A] hover:bg-[#00D4B3]/15 dark:text-[#00D4B3]">
+            Vincular OneDrive
+          </CloudStorageConnectButton>
+          <button
+            type="button"
+            onClick={onConnectRefresh}
+            className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-white dark:border-[#6C757D]/20 dark:text-gray-300 dark:hover:bg-white/5"
+          >
+            Actualizar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="space-y-2">
+        <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">
+          Cuenta vinculada
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {connectedProviders.map((connection) => {
+            const label = connection.provider === "google_drive" ? "Google Drive" : "OneDrive";
+            return (
+              <button
+                key={connection.provider}
+                type="button"
+                onClick={() => onProviderSelect(connection.provider)}
+                className={`rounded-lg border px-3 py-2 text-left text-xs font-bold transition-colors ${
+                  selectedProvider === connection.provider
+                    ? "border-[#1F5AF6] bg-blue-50 text-[#1F5AF6] dark:bg-blue-500/10"
+                    : "border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-[#6C757D]/20 dark:text-gray-300 dark:hover:bg-white/5"
+                }`}
+              >
+                <span className="block">{label}</span>
+                {connection.email && (
+                  <span className="block max-w-[180px] truncate text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                    {connection.email}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">
+          Buscar archivo en {selectedProviderLabel}
+        </label>
+        <form onSubmit={onSearchSubmit} className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-450" />
+            <input
+              type="text"
+              placeholder="Buscar por nombre o dejar vacio para ver recientes"
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              disabled={!selectedProvider || isSearching}
+              className="w-full rounded-lg border border-gray-305 bg-white py-2 pl-9 pr-4 text-xs text-gray-900 placeholder-gray-400 focus:border-[#1F5AF6] focus:outline-none dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={!selectedProvider || isSearching}
+            className="flex items-center gap-1 rounded-lg bg-[#1F5AF6] px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-[#1A4ED4] disabled:opacity-50"
+          >
+            {isSearching ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+            Buscar
+          </button>
+        </form>
+      </div>
+
+      <div className="space-y-2">
+        {isSearching ? (
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 py-10 text-gray-500 dark:border-[#6C757D]/15 dark:text-gray-400">
+            <Loader2 className="mb-3 animate-spin text-[#1F5AF6]" size={28} />
+            <p className="text-xs">Consultando {selectedProviderLabel}...</p>
+          </div>
+        ) : results.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-gray-200 py-8 text-center text-xs text-gray-500 dark:border-[#6C757D]/15 dark:text-gray-400">
+            Busca archivos para importar desde {selectedProviderLabel}.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {results.map((file) => (
+              <div
+                key={file.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/50 p-3 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419]/30"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-gray-900 dark:text-white">{file.name}</p>
+                  <p className="truncate text-[10px] text-gray-500 dark:text-gray-400">
+                    {file.mimeType || "archivo"}{file.size ? ` - ${Math.round(file.size / 1024)} KB` : ""}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onImportFile(file.id)}
+                  disabled={isImporting || localIsImporting}
+                  className="flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-bold text-gray-700 transition-colors hover:bg-white disabled:opacity-50 dark:border-[#6C757D]/20 dark:text-gray-300 dark:hover:bg-white/5"
+                >
+                  {(isImporting || localIsImporting) ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                  Importar
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">
+          Importar por ID o enlace
+        </label>
+        <form onSubmit={onLinkSubmit} className="flex gap-2">
+          <input
+            type="text"
+            placeholder={selectedProvider === "onedrive" ? "ID del item de OneDrive" : "ID o enlace de Google Drive"}
+            value={linkUrl}
+            onChange={(event) => setLinkUrl(event.target.value)}
+            disabled={!selectedProvider || isImporting || localIsImporting}
+            className="flex-1 rounded-lg border border-gray-305 bg-white p-2 text-xs text-gray-900 placeholder-gray-400 focus:border-[#1F5AF6] focus:outline-none dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
+          />
+          <button
+            type="submit"
+            disabled={!selectedProvider || isImporting || localIsImporting || !linkUrl.trim()}
+            className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-550 disabled:opacity-50"
+          >
+            {(isImporting || localIsImporting) ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+            Importar
+          </button>
+        </form>
+        {selectedProvider === "onedrive" && (
+          <p className="text-[10px] leading-relaxed text-gray-500 dark:text-gray-400">
+            OneDrive importa por itemId; los enlaces compartidos quedan para una mejora posterior.
+          </p>
+        )}
+      </div>
+
+      {selectedProvider === "google_drive" && (
+        <div className="space-y-3">
+          {!isConfigured ? (
+            <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-500/5 p-4 text-xs text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+              <p className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-400">
+                <AlertTriangle size={14} />
+                Google Picker no esta completamente configurado
+              </p>
+              <p className="leading-relaxed">
+                La busqueda por cuenta vinculada sigue disponible. Para abrir Picker configura NEXT_PUBLIC_GOOGLE_CLIENT_ID, NEXT_PUBLIC_GOOGLE_DEVELOPER_KEY y NEXT_PUBLIC_GOOGLE_APP_ID.
+              </p>
+              {isPickerDeveloperKeyInvalid && (
+                <p className="pt-1 text-[10px] font-semibold text-red-600 dark:text-red-300 leading-normal">
+                  NEXT_PUBLIC_GOOGLE_DEVELOPER_KEY debe ser una API Key de navegador de Google Cloud.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-gray-200 bg-gray-50/50 p-4 dark:border-[#6C757D]/20 dark:bg-[#0F1419]/10">
+              <div>
+                <p className="text-xs font-semibold text-gray-900 dark:text-white">Abrir Google Picker</p>
+                <p className="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400">
+                  Usa el selector nativo de Google como alternativa a la busqueda.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onOpenPicker}
+                disabled={isImporting || localIsImporting || isConnecting}
+                className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-blue-500/10 transition-all hover:bg-blue-550 disabled:opacity-50"
+              >
+                {(isConnecting || localIsImporting) ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <ExternalLink size={12} />
+                )}
+                <span>{isConnecting ? "Conectando..." : localIsImporting ? "Importando..." : "Abrir Picker"}</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </>
   );
 }

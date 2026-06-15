@@ -777,26 +777,32 @@ export function useProductionAssetState({
     }
   };
 
-  // Google Drive search
-  const searchGoogleDrive = async (query: string) => {
+  // Cloud storage search
+  const searchGoogleDrive = async (
+    query: string,
+    provider: CloudStorageProvider = "google_drive",
+  ) => {
     setIsSearchingGoogleDrive(true);
+    const providerLabel = provider === "google_drive" ? "Google Drive" : "OneDrive";
     try {
-      const response = await fetch(`/api/production/google-drive/list?q=${encodeURIComponent(query)}`);
+      const response = await fetch(
+        `/api/production/cloud-storage/list?q=${encodeURIComponent(query)}&provider=${provider}`,
+      );
       const data = await response.json();
       if (response.ok && data.success) {
         setGoogleDriveSearchResults(data.files || []);
       } else {
-        toast.error(data.error || "Error al buscar en Google Drive");
+        toast.error(data.error || `Error al buscar en ${providerLabel}`);
       }
     } catch (e) {
       console.error(e);
-      toast.error("Error al conectar con el servidor de Google Drive");
+      toast.error(`Error al conectar con ${providerLabel}`);
     } finally {
       setIsSearchingGoogleDrive(false);
     }
   };
 
-  // Google Drive Direct Import
+  // Cloud storage direct import
   const importGoogleDriveAsset = async (
     urlOrId: string,
     type: "voice" | "music" | "broll" | "avatar" | "slides",
@@ -804,6 +810,7 @@ export function useProductionAssetState({
     provider: CloudStorageProvider = "google_drive"
   ) => {
     setIsImportingGoogleDrive(true);
+    const providerLabel = provider === "google_drive" ? "Google Drive" : "OneDrive";
     try {
       const response = await fetch("/api/production/cloud-storage/import", {
         method: "POST",
@@ -823,22 +830,22 @@ export function useProductionAssetState({
           case "voice":
             setVoiceAudio(data.assets.voice_audio);
             onAssetChange?.(component.id, { voice_audio: data.assets.voice_audio });
-            toast.success("Voz importada exitosamente de Google Drive");
+            toast.success(`Voz importada exitosamente de ${providerLabel}`);
             break;
           case "music":
             setBackgroundMusic(data.assets.background_music);
             onAssetChange?.(component.id, { background_music: data.assets.background_music });
-            toast.success("Música importada exitosamente de Google Drive");
+            toast.success(`Musica importada exitosamente de ${providerLabel}`);
             break;
           case "broll":
             setBRollClips(data.assets.b_roll_clips);
             onAssetChange?.(component.id, { b_roll_clips: data.assets.b_roll_clips });
-            toast.success("Clip de B-roll importado exitosamente de Google Drive");
+            toast.success(`Clip de B-roll importado exitosamente de ${providerLabel}`);
             break;
           case "avatar":
             setAvatarVideo(data.assets.avatar_video);
             onAssetChange?.(component.id, { avatar_video: data.assets.avatar_video });
-            toast.success("Avatar importado exitosamente de Google Drive");
+            toast.success(`Avatar importado exitosamente de ${providerLabel}`);
             break;
           case "slides":
             setSlidesAsset(data.assets.slides);
@@ -847,17 +854,17 @@ export function useProductionAssetState({
               slides: data.assets.slides,
               slides_url: data.assets.slides_url || "",
             });
-            toast.success("Diapositivas importadas exitosamente de Google Drive");
+            toast.success(`Diapositivas importadas exitosamente de ${providerLabel}`);
             break;
         }
         return true;
       } else {
-        toast.error(data.error || "Error al importar el archivo de Drive");
+        toast.error(data.error || `Error al importar el archivo de ${providerLabel}`);
         return false;
       }
     } catch (e) {
       console.error(e);
-      toast.error("Error de conexión durante la importación de Drive");
+      toast.error(`Error de conexion durante la importacion de ${providerLabel}`);
       return false;
     } finally {
       setIsImportingGoogleDrive(false);

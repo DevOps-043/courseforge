@@ -3,6 +3,7 @@ import type { AssemblyInputProps } from "../types";
 import { PrimaryVisual } from "../components/PrimaryVisual";
 import { AvatarLayer } from "../components/AvatarLayer";
 import { AudioTracks } from "../components/AudioTracks";
+import { parseTemplateRenderConfig } from "../template-config";
 
 /**
  * Plantilla "Avatar Enfocado": el avatar ocupa el centro de la pantalla y, si
@@ -14,11 +15,12 @@ import { AudioTracks } from "../components/AudioTracks";
 export function AvatarFocus(props: AssemblyInputProps) {
   const { durationInFrames } = useVideoConfig();
   const hasVoice = Boolean(props.voiceAudioUrl);
+  const templateConfig = parseTemplateRenderConfig(props.templateConfig);
   const hasSupportVisual =
     props.slides.length > 0 || props.brollClips.length > 0;
 
   return (
-    <AbsoluteFill style={{ backgroundColor: "#000" }}>
+    <AbsoluteFill style={{ backgroundColor: templateConfig.backgroundColor }}>
       {props.avatarVideoUrl ? (
         <AvatarLayer
           url={props.avatarVideoUrl}
@@ -31,6 +33,7 @@ export function AvatarFocus(props: AssemblyInputProps) {
           brollClips={props.brollClips}
           durationInFrames={durationInFrames}
           transitionType={props.transitionType}
+          templateConfig={templateConfig}
         />
       )}
 
@@ -41,8 +44,9 @@ export function AvatarFocus(props: AssemblyInputProps) {
             left: 0,
             right: 0,
             bottom: 0,
-            height: "22%",
+            height: `${templateConfig.supportStripHeight * 100}%`,
             overflow: "hidden",
+            borderTop: `3px solid ${templateConfig.accentColor}`,
             boxShadow: "0 -8px 24px rgba(0,0,0,0.4)",
           }}
         >
@@ -51,6 +55,7 @@ export function AvatarFocus(props: AssemblyInputProps) {
             brollClips={props.brollClips}
             durationInFrames={durationInFrames}
             transitionType={props.transitionType}
+            templateConfig={templateConfig}
           />
         </div>
       ) : null}

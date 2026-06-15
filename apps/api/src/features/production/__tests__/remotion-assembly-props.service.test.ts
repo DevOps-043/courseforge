@@ -117,6 +117,7 @@ describe('remotion assembly props contract', () => {
 
     assert.equal(props.template, 'split-avatar');
     assert.equal(props.transitionType, 'none');
+    assert.equal(props.templateConfig.transitionType, 'none');
     assert.equal(props.totalDurationInFrames, 12 * ASSEMBLY_FPS);
     assert.equal(props.voiceAudioUrl, AUDIO_URL);
     assert.equal(props.avatarVideoUrl, VIDEO_URL);
@@ -152,5 +153,53 @@ describe('remotion assembly props contract', () => {
     assert.equal(props.totalDurationInFrames, 10 * ASSEMBLY_FPS);
     assert.deepEqual(props.slides, []);
     assert.deepEqual(props.brollClips, []);
+  });
+
+  it('combines template config with assembly props', () => {
+    const props = buildAssemblyInputProps({
+      compositionId: 'full-slides',
+      transitionType: undefined,
+      templateConfig: {
+        accentColor: '#ff00aa',
+        backgroundColor: '#101010',
+        transitionType: 'slide',
+        avatarScale: 0.3,
+      },
+      assets: {
+        voice_audio: {
+          storage_path: 'production-assets/voice.mp3',
+          public_url: AUDIO_URL,
+          duration: 10,
+        },
+      },
+    });
+
+    assert.equal(props.transitionType, 'slide');
+    assert.equal(props.templateConfig.accentColor, '#ff00aa');
+    assert.equal(props.templateConfig.backgroundColor, '#101010');
+    assert.equal(props.templateConfig.avatarScale, 0.3);
+  });
+
+  it('falls back from invalid template config values', () => {
+    const props = buildAssemblyInputProps({
+      compositionId: 'full-slides',
+      transitionType: undefined,
+      templateConfig: {
+        accentColor: 'red',
+        transitionType: 'zoom',
+        avatarScale: 99,
+      },
+      assets: {
+        voice_audio: {
+          storage_path: 'production-assets/voice.mp3',
+          public_url: AUDIO_URL,
+          duration: 10,
+        },
+      },
+    });
+
+    assert.equal(props.transitionType, 'fade');
+    assert.equal(props.templateConfig.accentColor, '#00D4B3');
+    assert.equal(props.templateConfig.avatarScale, 0.24);
   });
 });

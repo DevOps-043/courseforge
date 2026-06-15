@@ -6,6 +6,7 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 import { getAssemblyAssetReadiness } from "@/remotion/assembly-assets.normalizer";
 import { buildAssemblyProps } from "@/remotion/buildAssemblyProps";
 import { getAssemblyComposition } from "@/remotion/compositions/registry";
+import type { TemplateRenderConfigInput } from "@/remotion/template-config";
 import { ASSEMBLY_FPS, ASSEMBLY_HEIGHT, ASSEMBLY_WIDTH } from "@/remotion/types";
 import type { MaterialAssets } from "../types/materials.types";
 
@@ -13,6 +14,7 @@ interface RemotionPreviewPlayerProps {
   assets: MaterialAssets | null | undefined;
   /** Slug de composición (remotion_templates.composition_id). */
   templateSlug: string | null | undefined;
+  templateConfig?: TemplateRenderConfigInput;
 }
 
 /**
@@ -30,6 +32,7 @@ interface RemotionPreviewPlayerProps {
 export function RemotionPreviewPlayer({
   assets,
   templateSlug,
+  templateConfig,
 }: RemotionPreviewPlayerProps) {
   const [mounted, setMounted] = useState(false);
 
@@ -44,13 +47,13 @@ export function RemotionPreviewPlayer({
 
   const built = useMemo(() => {
     try {
-      return { ok: true as const, props: buildAssemblyProps(assets, templateSlug) };
+      return { ok: true as const, props: buildAssemblyProps(assets, templateSlug, templateConfig) };
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Assets inválidos para preview";
       return { ok: false as const, error: message };
     }
-  }, [assets, templateSlug]);
+  }, [assets, templateSlug, templateConfig]);
 
   if (!mounted) {
     return (

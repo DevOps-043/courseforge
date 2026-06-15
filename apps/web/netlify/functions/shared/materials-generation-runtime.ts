@@ -90,8 +90,42 @@ export async function triggerNextLesson(
       body: JSON.stringify({ materialsId, artifactId, mode: "process-next" }),
     });
     console.log(`${logPrefix} Trigger response: ${response.status}`);
-  } catch (error) {
+  } catch (error: any) {
     console.error(`${logPrefix} Trigger failed:`, error);
+
+    // Fallback local execution when not running Netlify CLI locally (ECONNREFUSED on port 8888)
+    if (
+      process.env.NODE_ENV !== "production" &&
+      (error?.code === "ECONNREFUSED" || error?.message?.includes("fetch failed"))
+    ) {
+      console.log(`${logPrefix} Local fallback: Running next step in-process...`);
+      try {
+        const { handler } = await import("../materials-generation-background");
+        if (handler) {
+          setTimeout(async () => {
+            try {
+              console.log(`${logPrefix} [Fallback] Starting process-next execution...`);
+              await handler(
+                {
+                  body: JSON.stringify({
+                    materialsId,
+                    artifactId,
+                    mode: "process-next",
+                  }),
+                  headers: { "Content-Type": "application/json" },
+                  httpMethod: "POST",
+                } as any,
+                {} as any,
+              );
+            } catch (fallbackErr) {
+              console.error(`${logPrefix} [Fallback] Execution failed:`, fallbackErr);
+            }
+          }, 100);
+        }
+      } catch (importErr) {
+        console.error(`${logPrefix} [Fallback] Failed to import background handler:`, importErr);
+      }
+    }
   }
 }
 

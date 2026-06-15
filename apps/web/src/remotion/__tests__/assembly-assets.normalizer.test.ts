@@ -5,7 +5,8 @@ import {
   getAssemblyAssetReadiness,
   normalizeAssemblyAssets,
 } from "../assembly-assets.normalizer";
-import { ASSEMBLY_FPS } from "../types";
+import { ASSEMBLY_FPS, safeParseAssemblyInputProps } from "../types";
+import { DEFAULT_TEMPLATE_RENDER_CONFIG } from "../template-config";
 import { buildBrollTimeline } from "../visual-timeline";
 import type { MaterialAssets } from "../../domains/materials/types/materials.types";
 
@@ -167,6 +168,7 @@ describe("normalizeAssemblyAssets", () => {
     const props = buildAssemblyProps(assets, "split-avatar");
 
     assert.equal(props.template, "split-avatar");
+    assert.deepEqual(props.templateConfig, DEFAULT_TEMPLATE_RENDER_CONFIG);
     assert.equal(props.totalDurationInFrames, 12 * ASSEMBLY_FPS);
     assert.equal(props.voiceAudioUrl, AUDIO_URL);
     assert.equal(props.avatarVideoUrl, VIDEO_URL);
@@ -179,6 +181,48 @@ describe("normalizeAssemblyAssets", () => {
     assert.equal(props.totalDurationInFrames, 10 * ASSEMBLY_FPS);
     assert.deepEqual(props.slides, []);
     assert.deepEqual(props.brollClips, []);
+  });
+
+  it("applies safe template config to preview props", () => {
+    const props = buildAssemblyProps(
+      {
+        voice_audio: {
+          storage_path: "production-assets/voice.mp3",
+          public_url: AUDIO_URL,
+          duration: 8,
+        },
+      },
+      "full-slides",
+      {
+        accentColor: "#ff00aa",
+        backgroundColor: "#101010",
+        transitionType: "slide",
+        avatarScale: 0.3,
+      },
+    );
+
+    assert.equal(props.transitionType, "slide");
+    assert.equal(props.templateConfig.accentColor, "#ff00aa");
+    assert.equal(props.templateConfig.backgroundColor, "#101010");
+    assert.equal(props.templateConfig.avatarScale, 0.3);
+  });
+
+  it("falls back from invalid template config values", () => {
+    const parsed = safeParseAssemblyInputProps({
+      template: "full-slides",
+      fps: ASSEMBLY_FPS,
+      totalDurationInFrames: 30,
+      bgMusicVolume: 0.15,
+      slides: [],
+      brollClips: [],
+      transitionType: "fade",
+      templateConfig: {
+        accentColor: "red",
+        avatarScale: 99,
+      },
+    });
+
+    assert.equal(parsed.success, false);
   });
 });
 

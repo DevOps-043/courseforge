@@ -62,7 +62,7 @@ export function CurationReviewPanel({
       />
 
       {(isValidating || pendingValidationCount > 0) && (
-        <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
+        <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-100">
           {isValidating ? (
             <p>
               La validacion de fuentes esta en progreso. No se puede aprobar la
@@ -79,14 +79,14 @@ export function CurationReviewPanel({
       )}
 
       {isValidating && rowsLength > 0 && (
-        <div className="mt-4 mb-2 p-4 bg-[#0A0D12] border border-[#1E2329] rounded-xl flex items-center justify-between">
+        <div className="mt-4 mb-2 p-4 bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl flex items-center justify-between">
           <div className="flex items-center gap-3">
             <RefreshCw size={20} className="text-[#00D4B3] animate-spin" />
             <div>
-              <p className="text-white font-medium text-sm">
+              <p className="text-gray-900 dark:text-white font-medium text-sm">
                 Validando fuentes en segundo plano...
               </p>
-              <p className="text-[#6C757D] text-xs">
+              <p className="text-gray-500 dark:text-[#6C757D] text-xs">
                 Manten esta pagina abierta o cierrala, el proceso continuara.
               </p>
             </div>
@@ -95,9 +95,9 @@ export function CurationReviewPanel({
             <div className="text-right">
               <p className="text-[#00D4B3] font-bold text-lg leading-none">
                 {validatedCount}{" "}
-                <span className="text-[#6C757D] text-sm">/ {rowsLength}</span>
+                <span className="text-gray-500 dark:text-[#6C757D] text-sm">/ {rowsLength}</span>
               </p>
-              <p className="text-[#6C757D] text-[10px] uppercase tracking-wider font-semibold mt-1">
+              <p className="text-gray-500 dark:text-[#6C757D] text-[10px] uppercase tracking-wider font-semibold mt-1">
                 Validadas
               </p>
             </div>
@@ -107,7 +107,7 @@ export function CurationReviewPanel({
                 className="w-full h-full circular-chart inline-block"
               >
                 <path
-                  className="text-[#1E2329] stroke-current"
+                  className="text-gray-200 dark:text-[#1E2329] stroke-current"
                   fill="none"
                   strokeWidth="3"
                   strokeDasharray="100, 100"

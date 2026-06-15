@@ -17,11 +17,13 @@ import {
   FileCode,
   Bookmark,
   AlertTriangle,
-  PlayCircle
+  PlayCircle,
+  Pencil
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   createTemplateAction, 
+  updateTemplateAction,
   acquireTemplateAction, 
   deleteTemplateAction,
   getTemplatesAction,
@@ -29,6 +31,12 @@ import {
   type RemotionTemplate 
 } from "@/domains/production/actions/templates.actions";
 import { uploadWithSignedUrl } from "@/lib/storage-upload";
+import {
+  DEFAULT_TEMPLATE_RENDER_CONFIG,
+  createTemplateConfigSchemaDefinition,
+  parseTemplateRenderConfig,
+  type TemplateRenderConfig,
+} from "@/remotion/template-config";
 
 interface TemplatesContainerProps {
   initialTemplates: RemotionTemplate[];
@@ -45,6 +53,7 @@ export default function TemplatesContainer({
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<RemotionTemplate | null>(null);
   
   // Form state
   const [name, setName] = useState("");
@@ -53,6 +62,7 @@ export default function TemplatesContainer({
   const [compositionId, setCompositionId] = useState("full-slides");
   const [isPublic, setIsPublic] = useState(false);
   const [selectedEmoji, setSelectedEmoji] = useState("🎨");
+  const [templateConfig, setTemplateConfig] = useState<TemplateRenderConfig>(DEFAULT_TEMPLATE_RENDER_CONFIG);
   
   // File upload state
   const [templateFile, setTemplateFile] = useState<File | null>(null);
@@ -61,12 +71,74 @@ export default function TemplatesContainer({
   const [uploadError, setUploadError] = useState("");
 
   const emojis = ["🎨", "📊", "👤", "🎬", "📚", "🎮", "🌟", "💻"];
+  const isEditing = Boolean(editingTemplate);
 
   const compositionOptions = [
-    { id: "full-slides", label: "Slides completas" },
-    { id: "split-avatar", label: "Slides + avatar" },
-    { id: "avatar-focus", label: "Avatar protagonista" },
+    {
+      id: "full-slides",
+      label: "Slides completas",
+      description: "El visual principal ocupa toda la pantalla; el avatar aparece como apoyo si existe.",
+    },
+    {
+      id: "split-avatar",
+      label: "Slides + avatar",
+      description: "Divide la pantalla entre el material visual y el avatar.",
+    },
+    {
+      id: "avatar-focus",
+      label: "Avatar protagonista",
+      description: "Prioriza el avatar y usa slides o B-roll como contexto visual.",
+    },
   ];
+
+  const resetTemplateForm = () => {
+    setName("");
+    setDescription("");
+    setEntryPoint("src/index.tsx");
+    setCompositionId("full-slides");
+    setIsPublic(false);
+    setSelectedEmoji("🎨");
+    setTemplateConfig(DEFAULT_TEMPLATE_RENDER_CONFIG);
+    setTemplateFile(null);
+    setUploadError("");
+    setUploadProgress(0);
+    setEditingTemplate(null);
+  };
+
+  const openCreateModal = () => {
+    resetTemplateForm();
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (template: RemotionTemplate) => {
+    setEditingTemplate(template);
+    setName(template.name);
+    setDescription(template.description || "");
+    setEntryPoint(template.entry_point || "src/index.tsx");
+    setCompositionId(template.render_composition_id || template.composition_id || "full-slides");
+    setIsPublic(template.is_public);
+    setSelectedEmoji(template.thumbnail_url || "🎨");
+    setTemplateConfig(parseTemplateRenderConfig(template.default_config));
+    setTemplateFile(null);
+    setUploadError("");
+    setUploadProgress(0);
+    setIsModalOpen(true);
+  };
+
+  const updateTemplateConfigField = <K extends keyof TemplateRenderConfig>(
+    key: K,
+    value: TemplateRenderConfig[K],
+  ) => {
+    setTemplateConfig((current) => parseTemplateRenderConfig({ ...current, [key]: value }));
+  };
+
+  const getTemplateSaveErrorMessage = (error?: string) => {
+    if (!error) return "Error al registrar la plantilla";
+    if (error === "Unauthorized" || error === "No autorizado") {
+      return "Tu sesion expiro o no esta disponible. Recarga la pagina e inicia sesion de nuevo si el problema continua.";
+    }
+    return error;
+  };
 
   const handleRefresh = async () => {
     setLoading(true);
@@ -123,7 +195,7 @@ export default function TemplatesContainer({
     }
   };
 
-  const handleCreateTemplate = async (e: React.FormEvent) => {
+  const handleSaveTemplate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
@@ -153,31 +225,30 @@ export default function TemplatesContainer({
 
       setUploadProgress(90);
 
-      const result = await createTemplateAction({
+      const templatePayload = {
         name,
         description,
         entryPoint,
         compositionId,
         isPublic,
-        storagePath: storagePath || undefined,
+        defaultConfig: templateConfig,
+        configSchema: createTemplateConfigSchemaDefinition(),
+        storagePath: storagePath || editingTemplate?.storage_path || undefined,
         thumbnailUrl: selectedEmoji,
-      });
+      };
+
+      const result = editingTemplate
+        ? await updateTemplateAction(editingTemplate.id, templatePayload)
+        : await createTemplateAction(templatePayload);
 
       setUploadProgress(100);
 
       if (result.success) {
         setIsModalOpen(false);
-        // Reset form
-        setName("");
-        setDescription("");
-        setEntryPoint("src/index.tsx");
-        setCompositionId("full-slides");
-        setIsPublic(false);
-        setSelectedEmoji("🎨");
-        setTemplateFile(null);
+        resetTemplateForm();
         await handleRefresh();
       } else {
-        setUploadError(result.error || "Error al registrar la plantilla");
+        setUploadError(getTemplateSaveErrorMessage(result.error));
       }
     } catch (err: any) {
       console.error(err);
@@ -197,6 +268,7 @@ export default function TemplatesContainer({
     t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     t.description?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+  const selectedComposition = compositionOptions.find((option) => option.id === compositionId);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
@@ -212,11 +284,11 @@ export default function TemplatesContainer({
           </p>
         </div>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={openCreateModal}
           className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#00D4B3] to-[#009688] hover:from-[#00E5C1] hover:to-[#00A896] text-white font-semibold rounded-xl shadow-lg shadow-[#00D4B3]/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
         >
           <Plus size={20} />
-          Subir Plantilla
+          Crear Plantilla
         </button>
       </div>
 
@@ -275,6 +347,7 @@ export default function TemplatesContainer({
                   tpl={tpl}
                   isMine={true}
                   onDelete={() => handleDelete(tpl.id)}
+                  onEdit={() => openEditModal(tpl)}
                   onAcquire={() => {}}
                 />
               ))
@@ -285,6 +358,7 @@ export default function TemplatesContainer({
                   tpl={tpl}
                   isMine={false}
                   onDelete={() => {}}
+                  onEdit={() => {}}
                   onAcquire={() => handleAcquire(tpl.id)}
                 />
               ))
@@ -323,12 +397,12 @@ export default function TemplatesContainer({
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/25 rounded-2xl shadow-2xl z-50 overflow-hidden"
+              className="fixed inset-x-3 top-3 bottom-3 z-50 mx-auto flex w-auto max-w-2xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-[#6C757D]/25 dark:bg-[#151A21] sm:inset-x-6 sm:top-6 sm:bottom-6"
             >
-              <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-[#6C757D]/10 bg-gray-50/50 dark:bg-[#0F1419]/50">
+              <div className="flex shrink-0 items-center justify-between gap-4 border-b border-gray-100 bg-gray-50/50 p-5 dark:border-[#6C757D]/10 dark:bg-[#0F1419]/50 sm:p-6">
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                   <CloudUpload className="text-[#00D4B3]" size={20} />
-                  Subir Plantilla de Remotion
+                  {isEditing ? "Editar Plantilla de Remotion" : "Crear Plantilla de Remotion"}
                 </h3>
                 <button 
                   type="button" 
@@ -340,7 +414,18 @@ export default function TemplatesContainer({
                 </button>
               </div>
 
-              <form onSubmit={handleCreateTemplate} className="p-6 space-y-5">
+              <form onSubmit={handleSaveTemplate} className="flex min-h-0 flex-1 flex-col">
+                <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5 sm:p-6">
+                  <div className="flex items-start gap-3 rounded-xl border border-[#00D4B3]/20 bg-[#00D4B3]/10 p-4 text-sm text-gray-700 dark:text-slate-200">
+                    <PlayCircle size={18} className="mt-0.5 shrink-0 text-[#00D4B3]" />
+                    <div className="space-y-1">
+                      <p className="font-semibold text-gray-900 dark:text-white">Como funciona hoy</p>
+                      <p className="text-xs leading-relaxed text-gray-600 dark:text-slate-300">
+                        Configura un preset dinamico seguro sobre composiciones internas. Si adjuntas un ZIP, quedara guardado como referencia/versionado y no se ejecutara hasta la fase de bundles externos aprobados.
+                      </p>
+                    </div>
+                  </div>
+
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
                     Nombre de la plantilla *
@@ -373,7 +458,7 @@ export default function TemplatesContainer({
                     ))}
                   </select>
                   <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                    Esta es la plantilla que Remotion ejecuta hoy al ensamblar.
+                    {selectedComposition?.description || "Esta es la plantilla que Remotion ejecuta hoy al ensamblar."}
                   </p>
                 </div>
 
@@ -391,20 +476,71 @@ export default function TemplatesContainer({
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-4 rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-[#6C757D]/10 dark:bg-[#0F1419]/40">
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
-                      Punto de Entrada
-                    </label>
-                    <input 
-                      type="text"
-                      required 
-                      value={entryPoint}
-                      onChange={(e) => setEntryPoint(e.target.value)}
-                      disabled={isUploading}
-                      className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl px-4 py-2.5 text-gray-900 dark:text-white text-sm focus:outline-none"
-                    />
+                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                      Configuracion visual dinamica
+                    </p>
+                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                      Estos valores se aplican tanto en la previsualizacion como en el render final.
+                    </p>
                   </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <label className="space-y-1.5 text-xs font-semibold text-gray-600 dark:text-slate-300">
+                      Acento
+                      <input type="color" value={templateConfig.accentColor} onChange={(event) => updateTemplateConfigField("accentColor", event.target.value)} disabled={isUploading} className="h-10 w-full rounded-lg border border-gray-200 bg-white p-1 dark:border-[#6C757D]/20 dark:bg-[#151A21]" />
+                    </label>
+                    <label className="space-y-1.5 text-xs font-semibold text-gray-600 dark:text-slate-300">
+                      Fondo
+                      <input type="color" value={templateConfig.backgroundColor} onChange={(event) => updateTemplateConfigField("backgroundColor", event.target.value)} disabled={isUploading} className="h-10 w-full rounded-lg border border-gray-200 bg-white p-1 dark:border-[#6C757D]/20 dark:bg-[#151A21]" />
+                    </label>
+                    <label className="space-y-1.5 text-xs font-semibold text-gray-600 dark:text-slate-300">
+                      Superficie
+                      <input type="color" value={templateConfig.surfaceColor} onChange={(event) => updateTemplateConfigField("surfaceColor", event.target.value)} disabled={isUploading} className="h-10 w-full rounded-lg border border-gray-200 bg-white p-1 dark:border-[#6C757D]/20 dark:bg-[#151A21]" />
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <label className="space-y-1.5 text-xs font-semibold text-gray-600 dark:text-slate-300">
+                      Transicion
+                      <select value={templateConfig.transitionType} onChange={(event) => updateTemplateConfigField("transitionType", event.target.value as TemplateRenderConfig["transitionType"])} disabled={isUploading} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-[#6C757D]/20 dark:bg-[#151A21] dark:text-white">
+                        <option value="fade">Fade</option>
+                        <option value="slide">Slide</option>
+                        <option value="none">Sin transicion</option>
+                      </select>
+                    </label>
+                    <label className="space-y-1.5 text-xs font-semibold text-gray-600 dark:text-slate-300">
+                      Posicion avatar
+                      <select value={templateConfig.avatarPosition} onChange={(event) => updateTemplateConfigField("avatarPosition", event.target.value as TemplateRenderConfig["avatarPosition"])} disabled={isUploading} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-[#6C757D]/20 dark:bg-[#151A21] dark:text-white">
+                        <option value="bottom-right">Abajo derecha</option>
+                        <option value="bottom-left">Abajo izquierda</option>
+                        <option value="top-right">Arriba derecha</option>
+                        <option value="top-left">Arriba izquierda</option>
+                      </select>
+                    </label>
+                    <label className="space-y-1.5 text-xs font-semibold text-gray-600 dark:text-slate-300">
+                      Fondo sin assets
+                      <select value={templateConfig.backgroundStyle} onChange={(event) => updateTemplateConfigField("backgroundStyle", event.target.value as TemplateRenderConfig["backgroundStyle"])} disabled={isUploading} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-[#6C757D]/20 dark:bg-[#151A21] dark:text-white">
+                        <option value="gradient">Gradiente</option>
+                        <option value="solid">Solido</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <label className="space-y-1.5 text-xs font-semibold text-gray-600 dark:text-slate-300">
+                      Tamano avatar ({Math.round(templateConfig.avatarScale * 100)}%)
+                      <input type="range" min="0.16" max="0.36" step="0.01" value={templateConfig.avatarScale} onChange={(event) => updateTemplateConfigField("avatarScale", Number(event.target.value))} disabled={isUploading} className="w-full accent-[#00D4B3]" />
+                    </label>
+                    <label className="space-y-1.5 text-xs font-semibold text-gray-600 dark:text-slate-300">
+                      Apoyo visual ({Math.round(templateConfig.supportStripHeight * 100)}%)
+                      <input type="range" min="0.16" max="0.34" step="0.01" value={templateConfig.supportStripHeight} onChange={(event) => updateTemplateConfigField("supportStripHeight", Number(event.target.value))} disabled={isUploading} className="w-full accent-[#00D4B3]" />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
                       Icono Pre-determinado
@@ -429,6 +565,7 @@ export default function TemplatesContainer({
                   </div>
                 </div>
 
+                {false && (
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
                     Código de la Plantilla (.zip)
@@ -436,7 +573,7 @@ export default function TemplatesContainer({
                   <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
                     <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                     <span>
-                      Los ZIP se almacenan, pero todavia no se ejecutan como bundle Remotion dinamico. Esta plantilla renderizara con una composicion interna.
+                      ZIP opcional como referencia avanzada. No se ejecuta codigo externo en esta fase; el render usa la composicion interna seleccionada.
                     </span>
                   </div>
                   <div className="flex items-center justify-center w-full">
@@ -445,7 +582,7 @@ export default function TemplatesContainer({
                         {templateFile ? (
                           <>
                             <FileCode className="w-8 h-8 text-green-500 mb-2" />
-                            <p className="text-xs text-green-600 dark:text-green-400 font-semibold">{templateFile.name}</p>
+                            <p className="text-xs text-green-600 dark:text-green-400 font-semibold">{templateFile?.name}</p>
                             <p className="text-[10px] text-gray-500">Haz clic para cambiar de archivo</p>
                           </>
                         ) : (
@@ -466,6 +603,7 @@ export default function TemplatesContainer({
                     </label>
                   </div>
                 </div>
+                )}
 
                 {/* Share Option */}
                 <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#0F1419]/50 border border-gray-100 dark:border-[#6C757D]/10 rounded-xl">
@@ -510,9 +648,10 @@ export default function TemplatesContainer({
                     </div>
                   </div>
                 )}
+                </div>
 
                 {/* Footer Buttons */}
-                <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 dark:border-[#6C757D]/10">
+                <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-gray-100 bg-white p-4 dark:border-[#6C757D]/10 dark:bg-[#151A21] sm:flex-row sm:justify-end sm:px-6">
                   <button
                     type="button"
                     disabled={isUploading}
@@ -524,7 +663,7 @@ export default function TemplatesContainer({
                   <button
                     type="submit"
                     disabled={isUploading}
-                    className="flex items-center gap-1.5 px-5 py-2 bg-[#00D4B3] hover:bg-[#00E5C1] disabled:bg-[#00D4B3]/40 disabled:cursor-not-allowed text-white font-semibold rounded-xl text-sm transition-all"
+                    className="flex items-center justify-center gap-1.5 px-5 py-2 bg-[#00D4B3] hover:bg-[#00E5C1] disabled:bg-[#00D4B3]/40 disabled:cursor-not-allowed text-white font-semibold rounded-xl text-sm transition-all"
                   >
                     {isUploading ? (
                       <>
@@ -534,7 +673,7 @@ export default function TemplatesContainer({
                     ) : (
                       <>
                         <CheckCircle2 size={14} />
-                        Crear Plantilla
+                        {isEditing ? "Guardar Cambios" : "Crear Plantilla"}
                       </>
                     )}
                   </button>
@@ -544,6 +683,7 @@ export default function TemplatesContainer({
           </>
         )}
       </AnimatePresence>
+
     </div>
   );
 }
@@ -552,11 +692,13 @@ function TemplateCard({
   tpl, 
   isMine, 
   onDelete, 
+  onEdit,
   onAcquire 
 }: { 
   tpl: RemotionTemplate; 
   isMine: boolean; 
   onDelete: () => void; 
+  onEdit: () => void;
   onAcquire: () => void;
 }) {
   const isGlobal = tpl.organization_id === null;
@@ -621,7 +763,7 @@ function TemplateCard({
               title={tpl.render_status_label}
             >
               {isExternalPending ? <AlertTriangle size={10} /> : <PlayCircle size={10} />}
-              {isExternalPending ? "Bundle pendiente" : "Render interno"}
+              {tpl.storage_path ? "ZIP referencia" : "Renderizable ahora"}
             </span>
           </div>
         </div>
@@ -655,6 +797,15 @@ function TemplateCard({
       <div className="px-6 py-4 bg-gray-50/50 dark:bg-[#1E2329]/20 border-t border-gray-100 dark:border-[#6C757D]/5 flex justify-end items-center gap-2">
         {isMine ? (
           <>
+            {!isGlobal && (
+              <button
+                onClick={onEdit}
+                className="p-2 text-gray-400 hover:text-[#00D4B3] hover:bg-[#00D4B3]/10 rounded-lg transition-all"
+                title="Editar plantilla"
+              >
+                <Pencil size={16} />
+              </button>
+            )}
             {!isGlobal && (
               <button
                 onClick={onDelete}

@@ -4,6 +4,10 @@ import type {
   AssemblySlide,
   AssemblyTransition,
 } from "../types";
+import {
+  DEFAULT_TEMPLATE_RENDER_CONFIG,
+  type TemplateRenderConfig,
+} from "../template-config";
 import { BrollLayer } from "./BrollLayer";
 import { BrollOverlayLayer } from "./BrollOverlayLayer";
 import { SlideShow } from "./SlideShow";
@@ -13,13 +17,23 @@ interface PrimaryVisualProps {
   brollClips: AssemblyBrollClip[];
   durationInFrames: number;
   transitionType: AssemblyTransition;
+  templateConfig?: TemplateRenderConfig;
 }
 
-function NeutralBackground() {
+function NeutralBackground({
+  templateConfig = DEFAULT_TEMPLATE_RENDER_CONFIG,
+}: {
+  templateConfig?: TemplateRenderConfig;
+}) {
+  const background =
+    templateConfig.backgroundStyle === "solid"
+      ? templateConfig.backgroundColor
+      : `linear-gradient(135deg, ${templateConfig.surfaceColor} 0%, ${templateConfig.backgroundColor} 100%)`;
+
   return (
     <AbsoluteFill
       style={{
-        background: "linear-gradient(135deg, #151A21 0%, #0b0b0f 100%)",
+        background,
       }}
     />
   );
@@ -30,6 +44,7 @@ export function PrimaryVisual({
   brollClips,
   durationInFrames,
   transitionType,
+  templateConfig = DEFAULT_TEMPLATE_RENDER_CONFIG,
 }: PrimaryVisualProps) {
   if (slides.length > 0) {
     return (
@@ -51,5 +66,5 @@ export function PrimaryVisual({
     return <BrollLayer clips={brollClips} />;
   }
 
-  return <NeutralBackground />;
+  return <NeutralBackground templateConfig={templateConfig} />;
 }

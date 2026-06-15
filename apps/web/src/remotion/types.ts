@@ -15,6 +15,10 @@
  */
 
 import { z } from "zod";
+import {
+  DEFAULT_TEMPLATE_RENDER_CONFIG,
+  templateRenderConfigSchema,
+} from "./template-config";
 
 // --- Constantes de composición (sin magic numbers dispersos) ---------------
 
@@ -112,6 +116,11 @@ export const assemblyInputPropsSchema = z.object({
 
   /** Transición entre slides/secuencias. */
   transitionType: assemblyTransitionSchema.default("fade"),
+
+  /** Configuracion visual validada de la plantilla dinamica. */
+  templateConfig: templateRenderConfigSchema.default(
+    DEFAULT_TEMPLATE_RENDER_CONFIG,
+  ),
 });
 
 /**
@@ -158,5 +167,6 @@ export function createDefaultAssemblyProps(
     slides: [],
     brollClips: [],
     transitionType: "fade",
+    templateConfig: DEFAULT_TEMPLATE_RENDER_CONFIG,
   };
 }

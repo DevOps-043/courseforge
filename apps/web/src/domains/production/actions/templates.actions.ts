@@ -3,6 +3,11 @@
 import { createClient } from "@/utils/supabase/server";
 import { getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { getActiveOrganizationId } from "@/utils/auth/session";
+import {
+  createTemplateConfigSchemaDefinition,
+  parseTemplateRenderConfig,
+  type TemplateRenderConfigInput,
+} from "@/remotion/template-config";
 
 const SUPPORTED_INTERNAL_COMPOSITIONS = new Set(["full-slides", "split-avatar", "avatar-focus"]);
 const DEFAULT_RENDER_COMPOSITION_ID = "full-slides";
@@ -12,6 +17,13 @@ export type RemotionTemplateRenderMode =
   | "INTERNAL_WITH_EXTERNAL_REFERENCE"
   | "EXTERNAL_BUNDLE_PENDING"
   | "FALLBACK_INTERNAL";
+
+export type RemotionTemplateBundleStatus =
+  | "NOT_APPLICABLE"
+  | "STORED_REFERENCE"
+  | "PENDING_REVIEW"
+  | "APPROVED"
+  | "REJECTED";
 
 function resolveSupportedCompositionId(compositionId: string | null | undefined) {
   return compositionId && SUPPORTED_INTERNAL_COMPOSITIONS.has(compositionId)
@@ -39,6 +51,8 @@ export interface RemotionTemplate {
   /** Slug estable de la composición Remotion a renderizar (ver Root.tsx). */
   composition_id: string | null;
   config_schema: Record<string, any>;
+  default_config: Record<string, any>;
+  bundle_status: RemotionTemplateBundleStatus | null;
   is_public: boolean;
   storage_path: string | null;
   thumbnail_url: string | null;
@@ -59,23 +73,27 @@ function decorateTemplate(template: Omit<RemotionTemplate, "render_mode" | "rend
   );
   const hasExternalBundle = Boolean(template.storage_path);
   const renderCompositionId = hasSupportedComposition ? template.composition_id! : DEFAULT_RENDER_COMPOSITION_ID;
+  const bundleStatus = template.bundle_status || (hasExternalBundle ? "STORED_REFERENCE" : "NOT_APPLICABLE");
 
   let renderMode: RemotionTemplateRenderMode = "FALLBACK_INTERNAL";
   let renderStatusLabel = `Render interno: ${renderCompositionId}`;
 
   if (hasSupportedComposition && hasExternalBundle) {
     renderMode = "INTERNAL_WITH_EXTERNAL_REFERENCE";
-    renderStatusLabel = `Render interno: ${renderCompositionId} (ZIP guardado como referencia)`;
+    renderStatusLabel = `Renderizable ahora: ${renderCompositionId}. ZIP guardado como referencia (${bundleStatus})`;
   } else if (hasSupportedComposition) {
     renderMode = "SUPPORTED_INTERNAL";
-    renderStatusLabel = `Render interno: ${renderCompositionId}`;
+    renderStatusLabel = `Renderizable ahora: ${renderCompositionId}`;
   } else if (hasExternalBundle) {
     renderMode = "EXTERNAL_BUNDLE_PENDING";
-    renderStatusLabel = `Bundle externo pendiente; se usara ${DEFAULT_RENDER_COMPOSITION_ID}`;
+    renderStatusLabel = `ZIP guardado como referencia; se usara ${DEFAULT_RENDER_COMPOSITION_ID}`;
   }
 
   return {
     ...template,
+    config_schema: template.config_schema || createTemplateConfigSchemaDefinition(),
+    default_config: parseTemplateRenderConfig(template.default_config),
+    bundle_status: bundleStatus,
     render_mode: renderMode,
     render_composition_id: renderCompositionId,
     is_external_bundle_supported: false,
@@ -212,8 +230,10 @@ export async function createTemplateAction(params: {
   entryPoint?: string;
   compositionId?: string;
   isPublic?: boolean;
-  storagePath?: string;
+  storagePath?: string | null;
   thumbnailUrl?: string;
+  configSchema?: Record<string, any>;
+  defaultConfig?: TemplateRenderConfigInput;
 }): Promise<{
   success: boolean;
   template?: RemotionTemplate;
@@ -239,7 +259,9 @@ export async function createTemplateAction(params: {
         is_public: params.isPublic || false,
         storage_path: params.storagePath || null,
         thumbnail_url: params.thumbnailUrl || null,
-        config_schema: {},
+        config_schema: params.configSchema || createTemplateConfigSchemaDefinition(),
+        default_config: parseTemplateRenderConfig(params.defaultConfig),
+        bundle_status: params.storagePath ? "STORED_REFERENCE" : "NOT_APPLICABLE",
       })
       .select("*, organization:organizations!remotion_templates_organization_id_fkey(name)")
       .single();
@@ -264,8 +286,10 @@ export async function updateTemplateAction(
     entryPoint?: string;
     compositionId?: string;
     isPublic?: boolean;
-    storagePath?: string;
+    storagePath?: string | null;
     thumbnailUrl?: string;
+    configSchema?: Record<string, any>;
+    defaultConfig?: TemplateRenderConfigInput;
   }
 ): Promise<{ success: boolean; error?: string }> {
   const { error: authError, user } = await getAuthorizedSupabase();
@@ -299,6 +323,13 @@ export async function updateTemplateAction(
         is_public: updates.isPublic,
         storage_path: updates.storagePath,
         thumbnail_url: updates.thumbnailUrl,
+        config_schema: updates.configSchema,
+        default_config: updates.defaultConfig ? parseTemplateRenderConfig(updates.defaultConfig) : undefined,
+        bundle_status: updates.storagePath
+          ? "STORED_REFERENCE"
+          : updates.storagePath === null
+            ? "NOT_APPLICABLE"
+            : undefined,
         updated_at: new Date().toISOString(),
       })
       .eq("id", templateId);

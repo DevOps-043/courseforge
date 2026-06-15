@@ -3,6 +3,7 @@ import type { AssemblyInputProps } from "../types";
 import { PrimaryVisual } from "../components/PrimaryVisual";
 import { AvatarLayer } from "../components/AvatarLayer";
 import { AudioTracks } from "../components/AudioTracks";
+import { parseTemplateRenderConfig } from "../template-config";
 
 /**
  * Plantilla "Presentación + Avatar (Dividida)": recurso visual a la izquierda,
@@ -11,15 +12,23 @@ import { AudioTracks } from "../components/AudioTracks";
 export function SplitAvatar(props: AssemblyInputProps) {
   const { durationInFrames } = useVideoConfig();
   const hasVoice = Boolean(props.voiceAudioUrl);
+  const templateConfig = parseTemplateRenderConfig(props.templateConfig);
+  const fallbackBackground =
+    templateConfig.backgroundStyle === "solid"
+      ? templateConfig.backgroundColor
+      : `linear-gradient(135deg, ${templateConfig.surfaceColor} 0%, ${templateConfig.backgroundColor} 100%)`;
 
   return (
-    <AbsoluteFill style={{ backgroundColor: "#0b0b0f", flexDirection: "row" }}>
+    <AbsoluteFill
+      style={{ backgroundColor: templateConfig.backgroundColor, flexDirection: "row" }}
+    >
       <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
         <PrimaryVisual
           slides={props.slides}
           brollClips={props.brollClips}
           durationInFrames={durationInFrames}
           transitionType={props.transitionType}
+          templateConfig={templateConfig}
         />
       </div>
 
@@ -29,7 +38,7 @@ export function SplitAvatar(props: AssemblyInputProps) {
         ) : (
           <AbsoluteFill
             style={{
-              background: "linear-gradient(135deg, #151A21 0%, #0b0b0f 100%)",
+              background: fallbackBackground,
             }}
           />
         )}

@@ -14,6 +14,7 @@
     "src/domains/materials/types/materials.types.ts",
     "src/remotion/assembly-assets.normalizer.ts",
     "src/remotion/buildAssemblyProps.ts",
+    "src/remotion/template-config.ts",
     "src/remotion/types.ts",
     "src/remotion/visual-timeline.ts",
     "src/remotion/__tests__/**/*.ts"

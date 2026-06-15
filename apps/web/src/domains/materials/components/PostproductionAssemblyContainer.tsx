@@ -251,6 +251,8 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                     template: selectedTemplate,
                     videoComponentsCount: targets.length,
                     componentTitle: getComponentLabel(component),
+                    templateConfig: selectedTemplateConfig?.default_config || {},
+                    transitionType: selectedTemplateConfig?.default_config?.transitionType,
                 });
 
                 if (!triggerResult.success || !triggerResult.jobId) {
@@ -374,7 +376,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                         }`}
                                     >
                                         {tpl.render_mode === 'EXTERNAL_BUNDLE_PENDING' ? <AlertTriangle size={10} /> : <Play size={10} />}
-                                        {tpl.render_mode === 'EXTERNAL_BUNDLE_PENDING' ? 'Bundle pendiente' : tpl.render_composition_id}
+                                        {tpl.storage_path ? 'ZIP referencia' : tpl.render_composition_id}
                                     </span>
                                 </button>
                             ))}
@@ -388,7 +390,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                             <div className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
                                 <AlertTriangle size={15} className="mt-0.5 shrink-0" />
                                 <span>
-                                    Esta plantilla tiene un ZIP externo guardado, pero el render actual no ejecuta bundles dinamicos. El worker usara la composicion interna {selectedTemplateConfig.render_composition_id}.
+                                    Esta plantilla tiene un ZIP guardado como referencia. Por seguridad, el render actual usa la composicion interna {selectedTemplateConfig.render_composition_id}.
                                 </span>
                             </div>
                         )}
@@ -553,6 +555,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                             key={`${activePreview.id}-${selectedTemplateSlug ?? 'default'}`}
                                             assets={activePreview.assets}
                                             templateSlug={selectedTemplateSlug}
+                                            templateConfig={selectedTemplateConfig?.default_config}
                                         />
                                         <div className="text-xs text-gray-500 dark:text-gray-400 text-center leading-relaxed">
                                             Previsualizacion en vivo del ensamblado. El video final se generara al iniciar Remotion.

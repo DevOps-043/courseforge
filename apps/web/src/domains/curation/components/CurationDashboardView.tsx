@@ -85,20 +85,20 @@ export function CurationDashboardView({
     <div className="max-w-4xl mx-auto space-y-8 pb-20 animate-in fade-in duration-500">
       <div className="space-y-2 flex justify-between items-start">
         <div>
-          <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-[#0A0D12] border border-[#1E2329] text-[#00D4B3]">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-gray-50 dark:bg-[#0A0D12] border border-gray-200 dark:border-[#1E2329] text-[#00D4B3]">
               <BookOpen size={24} />
             </div>
             Paso 4: Curaduria de Fuentes (Fase 2)
           </h2>
-          <p className="text-[#6C757D] text-base ml-12">
+          <p className="text-gray-500 dark:text-[#6C757D] text-base ml-12">
             Fuentes de calidad encontradas para cada leccion.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={onResetStep}
-            className="px-3 py-1.5 rounded-lg border border-[#1E2329] text-[#6C757D] text-xs hover:border-[#6C757D] hover:text-white hover:bg-[#1E2329] transition-colors flex items-center gap-2"
+            className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-[#1E2329] text-gray-500 dark:text-[#6C757D] text-xs hover:border-gray-400 dark:hover:border-[#6C757D] hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-[#1E2329] transition-colors flex items-center gap-2"
           >
             <RefreshCw size={14} />
             Reiniciar este paso

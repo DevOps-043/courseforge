@@ -20,6 +20,7 @@ import {
   type AssemblyInputProps,
   type AssemblyTemplate,
 } from "./types";
+import { parseTemplateRenderConfig } from "./template-config";
 
 const VALID_TEMPLATE_SLUGS = new Set<string>(Object.values(ASSEMBLY_TEMPLATES));
 
@@ -38,9 +39,11 @@ function resolveTemplate(slug: string | null | undefined): AssemblyTemplate {
 export function buildAssemblyProps(
   assets: MaterialAssets | null | undefined,
   templateSlug: string | null | undefined,
+  templateConfigInput: unknown = {},
   fps: number = ASSEMBLY_FPS,
 ): AssemblyInputProps {
   const normalized = normalizeAssemblyAssets(assets, fps);
+  const templateConfig = parseTemplateRenderConfig(templateConfigInput);
   const totalSeconds =
     normalized.totalDurationSeconds > 0
       ? normalized.totalDurationSeconds
@@ -56,7 +59,8 @@ export function buildAssemblyProps(
     avatarVideoUrl: normalized.avatarVideoUrl,
     slides: normalized.slides,
     brollClips: normalized.brollClips,
-    transitionType: "fade",
+    transitionType: templateConfig.transitionType,
+    templateConfig,
   });
 }
 
