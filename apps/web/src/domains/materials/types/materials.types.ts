@@ -132,6 +132,7 @@ export interface MaterialAssets {
     final_video_url?: string;
     final_video_source?: 'upload' | 'link'; // Tracks how the final video was provided
     video_duration?: number;
+    assembly_target_duration_seconds?: number;
     // Campos de producción visual (Fase 6)
     production_status?: ProductionStatus;
     gamma_deck_id?: string;

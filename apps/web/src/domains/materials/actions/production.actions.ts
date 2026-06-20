@@ -10,6 +10,10 @@ import { callBackgroundFunctionJson } from "@/lib/server/background-function-cli
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import { getVideoProviderAndId } from "@/lib/video-platform";
 import { normalizeAssemblyAssets } from "@/remotion/assembly-assets.normalizer";
+import {
+  deriveAssemblyTargetDurationSeconds,
+  withAssemblyTargetDuration,
+} from "@/remotion/assembly-duration";
 import type { LessonVideoData } from "@/domains/publication/types/publication.types";
 import {
   buildBrollPromptJobInputSnapshot,
@@ -49,6 +53,7 @@ interface ProductionLessonRelation {
 
 interface ProductionComponentRecord {
   assets?: MaterialAssets | null;
+  content?: Record<string, unknown> | null;
   material_lesson_id?: string | null;
   material_lessons?: ProductionLessonRelation | ProductionLessonRelation[] | null;
   type: string;
@@ -526,7 +531,7 @@ export async function assembleRemotionVideoAction(
       .from("material_components")
       .select(
         `
-          assets, type, material_lesson_id,
+          assets, content, type, material_lesson_id,
           material_lessons (
             lesson_id, lesson_title, module_title, module_id,
             materials (
@@ -548,7 +553,9 @@ export async function assembleRemotionVideoAction(
 
   const component = rawComponent as ProductionComponentRecord | null;
   const currentAssets = (component?.assets || {}) as MaterialAssets;
-  const normalizedAssets = normalizeAssemblyAssets(currentAssets, 30);
+  const targetDurationSeconds = deriveAssemblyTargetDurationSeconds(component?.content);
+  const renderAssets = withAssemblyTargetDuration(currentAssets, targetDurationSeconds);
+  const normalizedAssets = normalizeAssemblyAssets(renderAssets, 30);
   const hasPrimaryRenderableAssets = Boolean(
     normalizedAssets.voiceAudioUrl ||
       normalizedAssets.avatarVideoUrl ||
@@ -567,7 +574,7 @@ export async function assembleRemotionVideoAction(
   try {
     // Update component status to IN_PROGRESS
     const updatedAssets: MaterialAssets = {
-      ...currentAssets,
+      ...renderAssets,
       production_status: "IN_PROGRESS",
       updated_at: new Date().toISOString(),
     };
@@ -586,6 +593,11 @@ export async function assembleRemotionVideoAction(
     const expressApiUrl = process.env.EXPRESS_API_URL || "http://localhost:4000";
     console.log(`[ProductionActions] Triggering Remotion render via Express API: ${expressApiUrl}`);
     
+    const renderVariables = {
+      ...variables,
+      assemblyTargetDurationSeconds: targetDurationSeconds ?? null,
+    };
+
     const response = await fetch(`${expressApiUrl}/api/v1/production/remotion/render`, {
       method: "POST",
       headers: {
@@ -595,7 +607,7 @@ export async function assembleRemotionVideoAction(
       body: JSON.stringify({
         componentId,
         templateId,
-        variables
+        variables: renderVariables
       })
     });
 

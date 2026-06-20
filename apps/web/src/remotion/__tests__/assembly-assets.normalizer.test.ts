@@ -8,6 +8,7 @@ import {
 import { ASSEMBLY_FPS, safeParseAssemblyInputProps } from "../types";
 import { DEFAULT_TEMPLATE_RENDER_CONFIG } from "../template-config";
 import { buildBrollTimeline } from "../visual-timeline";
+import { deriveAssemblyTargetDurationSeconds } from "../assembly-duration";
 import type { MaterialAssets } from "../../domains/materials/types/materials.types";
 
 const VIDEO_URL = "https://cdn.example.com/video.mp4";
@@ -172,6 +173,51 @@ describe("normalizeAssemblyAssets", () => {
     assert.equal(props.totalDurationInFrames, 12 * ASSEMBLY_FPS);
     assert.equal(props.voiceAudioUrl, AUDIO_URL);
     assert.equal(props.avatarVideoUrl, VIDEO_URL);
+  });
+
+  it("uses assembly target duration as a floor over shorter voice assets", () => {
+    const props = buildAssemblyProps(
+      {
+        assembly_target_duration_seconds: 170,
+        voice_audio: {
+          storage_path: "production-assets/voice.mp3",
+          public_url: AUDIO_URL,
+          duration: 51,
+        },
+      },
+      "full-slides",
+    );
+
+    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
+  });
+
+  it("uses assembly target duration over long visual-only B-roll assets", () => {
+    const props = buildAssemblyProps(
+      {
+        assembly_target_duration_seconds: 170,
+        b_roll_clips: [baseClip({ duration: 31 * 60 })],
+      },
+      "full-slides",
+    );
+
+    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
+  });
+
+  it("derives target duration from generated video content hierarchy", () => {
+    const duration = deriveAssemblyTargetDurationSeconds({
+      duration_estimate_minutes: 2.5,
+      script: {
+        sections: [
+          { duration_seconds: 40, timecode_start: "00:00", timecode_end: "00:40" },
+          { duration_seconds: 50, timecode_start: "00:40", timecode_end: "01:30" },
+        ],
+      },
+      storyboard: [
+        { timecode_start: "00:00", timecode_end: "02:50" },
+      ],
+    });
+
+    assert.equal(duration, 170);
   });
 
   it("falls back to the default template and duration for empty assets", () => {

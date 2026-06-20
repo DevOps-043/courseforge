@@ -15,10 +15,16 @@ import {
   Building2, 
   Loader2,
   FileCode,
-  Bookmark,
   AlertTriangle,
   PlayCircle,
-  Pencil
+  Pencil,
+  History,
+  Check,
+  Ban,
+  Calendar,
+  User,
+  ShieldCheck,
+  FileText
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -28,7 +34,14 @@ import {
   deleteTemplateAction,
   getTemplatesAction,
   getPublicTemplatesAction,
-  type RemotionTemplate 
+  getTemplateVersionsAction,
+  approveTemplateVersionAction,
+  approveTemplateVersionForSandboxAction,
+  rejectTemplateVersionAction,
+  createTemplateVersionAction,
+  createTemplateBundleUploadPathAction,
+  type RemotionTemplate,
+  type RemotionTemplateVersion
 } from "@/domains/production/actions/templates.actions";
 import { uploadWithSignedUrl } from "@/lib/storage-upload";
 import {
@@ -41,11 +54,13 @@ import {
 interface TemplatesContainerProps {
   initialTemplates: RemotionTemplate[];
   initialPublicTemplates: RemotionTemplate[];
+  initialUserRole?: string | null;
 }
 
-export default function TemplatesContainer({ 
-  initialTemplates, 
-  initialPublicTemplates 
+export default function TemplatesContainer({
+  initialTemplates,
+  initialPublicTemplates,
+  initialUserRole = null,
 }: TemplatesContainerProps) {
   const [activeTab, setActiveTab] = useState<"mine" | "public">("mine");
   const [templates, setTemplates] = useState<RemotionTemplate[]>(initialTemplates);
@@ -69,6 +84,176 @@ export default function TemplatesContainer({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+
+  const [userRole] = useState<string | null>(initialUserRole);
+
+  // Versions state
+  const [selectedVersionTemplate, setSelectedVersionTemplate] = useState<RemotionTemplate | null>(null);
+  const [versions, setVersions] = useState<RemotionTemplateVersion[]>([]);
+  const [isVersionsModalOpen, setIsVersionsModalOpen] = useState(false);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [rejectingVersionId, setRejectingVersionId] = useState<string | null>(null);
+  const [newVersionFile, setNewVersionFile] = useState<File | null>(null);
+  const [isUploadingNewVersion, setIsUploadingNewVersion] = useState(false);
+  const [uploadingNewVersionProgress, setUploadingNewVersionProgress] = useState(0);
+  const [uploadingNewVersionError, setUploadingNewVersionError] = useState("");
+
+  const handleViewVersions = async (template: RemotionTemplate) => {
+    setSelectedVersionTemplate(template);
+    setIsVersionsModalOpen(true);
+    setLoadingVersions(true);
+    try {
+      const res = await getTemplateVersionsAction(template.id);
+      if (res.success && res.versions) {
+        setVersions(res.versions);
+      } else {
+        alert("Error al cargar versiones: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+
+  const refreshVersions = async (templateId: string) => {
+    setLoadingVersions(true);
+    try {
+      const res = await getTemplateVersionsAction(templateId);
+      if (res.success && res.versions) {
+        setVersions(res.versions);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+
+  const handleApproveVersion = async (versionId: string) => {
+    if (!confirm("¿Estás seguro de que deseas aprobar esta versión como artefacto auditable? El ZIP no se ejecutará hasta habilitar una aprobación de sandbox separada.")) return;
+    setLoadingVersions(true);
+    try {
+      const res = await approveTemplateVersionAction(versionId);
+      if (res.success) {
+        alert("Versión aprobada como artefacto auditable.");
+        if (selectedVersionTemplate) {
+          await refreshVersions(selectedVersionTemplate.id);
+          await handleRefresh();
+        }
+      } else {
+        alert("Error al aprobar versión: " + res.error);
+      }
+    } catch (err: any) {
+      alert(err.message || "Error");
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+
+  const handleRejectVersion = async (versionId: string) => {
+    if (!rejectionReason.trim()) {
+      alert("Por favor, especifica un motivo de rechazo.");
+      return;
+    }
+    setLoadingVersions(true);
+    try {
+      const res = await rejectTemplateVersionAction(versionId, rejectionReason);
+      if (res.success) {
+        alert("Versión rechazada.");
+        setRejectingVersionId(null);
+        setRejectionReason("");
+        if (selectedVersionTemplate) {
+          await refreshVersions(selectedVersionTemplate.id);
+          await handleRefresh();
+        }
+      } else {
+        alert("Error al rechazar versión: " + res.error);
+      }
+    } catch (err: any) {
+      alert(err.message || "Error");
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+
+  const handleEnableSandboxVersion = async (versionId: string) => {
+    if (!confirm("¿Habilitar esta versión para ejecución en sandbox? Solo tendrá efecto si el runner externo está configurado y EXTERNAL_TEMPLATE_SANDBOX_ENABLED está activo.")) return;
+    setLoadingVersions(true);
+    try {
+      const res = await approveTemplateVersionForSandboxAction(versionId);
+      if (res.success) {
+        alert("Versión habilitada para sandbox.");
+        if (selectedVersionTemplate) {
+          await refreshVersions(selectedVersionTemplate.id);
+          await handleRefresh();
+        }
+      } else {
+        alert("Error al habilitar sandbox: " + res.error);
+      }
+    } catch (err: any) {
+      alert(err.message || "Error");
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+
+  const handleUploadNewVersion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newVersionFile || !selectedVersionTemplate) return;
+
+    setIsUploadingNewVersion(true);
+    setUploadingNewVersionProgress(20);
+    setUploadingNewVersionError("");
+
+    try {
+      const uploadPath = await createTemplateBundleUploadPathAction({
+        templateId: selectedVersionTemplate.id,
+        fileName: newVersionFile.name,
+      });
+
+      if (!uploadPath.success || !uploadPath.bucket || !uploadPath.path) {
+        throw new Error(uploadPath.error || "No se pudo preparar la ruta segura del bundle");
+      }
+      
+      const uploadResult = await uploadWithSignedUrl(
+        uploadPath.bucket,
+        uploadPath.path,
+        newVersionFile,
+        {
+          purpose: "template-bundle",
+          contentType: newVersionFile.type,
+          fileSizeBytes: newVersionFile.size,
+          upsert: false,
+        },
+      );
+      
+      setUploadingNewVersionProgress(60);
+      
+      const res = await createTemplateVersionAction(
+        selectedVersionTemplate.id,
+        `${uploadPath.bucket}/${uploadResult.path}`,
+        newVersionFile.name
+      );
+
+      setUploadingNewVersionProgress(100);
+
+      if (res.success) {
+        setNewVersionFile(null);
+        await refreshVersions(selectedVersionTemplate.id);
+        await handleRefresh();
+      } else {
+        setUploadingNewVersionError(res.error || "Error al subir versión");
+      }
+    } catch (err: any) {
+      console.error(err);
+      setUploadingNewVersionError(err.message || "Error al subir versión");
+    } finally {
+      setIsUploadingNewVersion(false);
+      setUploadingNewVersionProgress(0);
+    }
+  };
 
   const emojis = ["🎨", "📊", "👤", "🎬", "📚", "🎮", "🌟", "💻"];
   const isEditing = Boolean(editingTemplate);
@@ -209,18 +394,28 @@ export default function TemplatesContainer({
       // Simulate file upload progress if zip uploaded
       if (templateFile) {
         setUploadProgress(30);
-        // Clean special characters from name
-        const cleanName = name.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
-        const path = `templates/${Date.now()}_${cleanName}.zip`;
+        const uploadPath = await createTemplateBundleUploadPathAction({
+          fileName: templateFile.name,
+        });
+
+        if (!uploadPath.success || !uploadPath.bucket || !uploadPath.path) {
+          throw new Error(uploadPath.error || "No se pudo preparar la ruta segura del bundle");
+        }
         
         const uploadResult = await uploadWithSignedUrl(
-          "production-assets",
-          path,
-          templateFile
+          uploadPath.bucket,
+          uploadPath.path,
+          templateFile,
+          {
+            purpose: "template-bundle",
+            contentType: templateFile.type,
+            fileSizeBytes: templateFile.size,
+            upsert: false,
+          },
         );
         
         setUploadProgress(70);
-        storagePath = uploadResult.publicUrl;
+        storagePath = `${uploadPath.bucket}/${uploadResult.path}`;
       }
 
       setUploadProgress(90);
@@ -234,6 +429,7 @@ export default function TemplatesContainer({
         defaultConfig: templateConfig,
         configSchema: createTemplateConfigSchemaDefinition(),
         storagePath: storagePath || editingTemplate?.storage_path || undefined,
+        originalFileName: templateFile ? templateFile.name : undefined,
         thumbnailUrl: selectedEmoji,
       };
 
@@ -349,6 +545,7 @@ export default function TemplatesContainer({
                   onDelete={() => handleDelete(tpl.id)}
                   onEdit={() => openEditModal(tpl)}
                   onAcquire={() => {}}
+                  onViewVersions={() => handleViewVersions(tpl)}
                 />
               ))
             ) : (
@@ -360,11 +557,11 @@ export default function TemplatesContainer({
                   onDelete={() => {}}
                   onEdit={() => {}}
                   onAcquire={() => handleAcquire(tpl.id)}
+                  onViewVersions={() => {}}
                 />
               ))
             )}
           </AnimatePresence>
-
           {((activeTab === "mine" && filteredMine.length === 0) || 
             (activeTab === "public" && filteredPublic.length === 0)) && (
             <div className="col-span-full flex flex-col items-center justify-center py-20 bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 border-dashed rounded-2xl">
@@ -565,7 +762,7 @@ export default function TemplatesContainer({
                   </div>
                 </div>
 
-                {false && (
+                {true && (
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
                     Código de la Plantilla (.zip)
@@ -684,6 +881,410 @@ export default function TemplatesContainer({
         )}
       </AnimatePresence>
 
+      {/* Versions Modal */}
+      <AnimatePresence>
+        {isVersionsModalOpen && selectedVersionTemplate && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50" 
+              onClick={() => !isUploadingNewVersion && setIsVersionsModalOpen(false)}
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="fixed inset-x-3 top-3 bottom-3 z-50 mx-auto flex w-auto max-w-4xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-[#6C757D]/25 dark:bg-[#151A21] sm:inset-x-6 sm:top-6 sm:bottom-6"
+            >
+              {/* Header */}
+              <div className="flex shrink-0 items-center justify-between gap-4 border-b border-gray-100 bg-gray-50/50 p-5 dark:border-[#6C757D]/10 dark:bg-[#0F1419]/50 sm:p-6">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <History className="text-[#00D4B3]" size={20} />
+                    Versiones de {selectedVersionTemplate.name}
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-[#94A3B8] mt-1">
+                    Sube y administra los bundles ZIP de Remotion. Los revisores autorizados pueden auditar y aprobar versiones.
+                  </p>
+                </div>
+                <button 
+                  type="button" 
+                  disabled={isUploadingNewVersion}
+                  onClick={() => setIsVersionsModalOpen(false)}
+                  className="p-1 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-700 dark:hover:text-white transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
+                
+                {/* Upload New Version Form */}
+                <form onSubmit={handleUploadNewVersion} className="bg-gray-50 dark:bg-[#0F1419]/40 border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-4 space-y-4">
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                    <CloudUpload size={16} className="text-[#00D4B3]" />
+                    Subir nueva versión (.zip)
+                  </h4>
+                  <div className="flex flex-col sm:flex-row gap-4 items-end">
+                    <div className="flex-1 w-full">
+                      <label className={`flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-300 dark:border-[#6C757D]/25 rounded-xl cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition-all ${newVersionFile ? "bg-green-500/5 border-green-500/30" : "bg-transparent"}`}>
+                        <div className="flex flex-col items-center justify-center pt-4 pb-4">
+                          {newVersionFile ? (
+                            <>
+                              <FileCode className="w-6 h-6 text-green-500 mb-1" />
+                              <p className="text-xs text-green-600 dark:text-green-400 font-semibold truncate max-w-xs">{newVersionFile.name}</p>
+                              <p className="text-[10px] text-gray-500">{(newVersionFile.size / (1024 * 1024)).toFixed(2)} MB - Clic para cambiar</p>
+                            </>
+                          ) : (
+                            <>
+                              <CloudUpload className="w-6 h-6 text-gray-400 mb-1" />
+                              <p className="text-xs text-gray-500"><span className="font-semibold">Seleccionar ZIP</span> o arrastra aquí</p>
+                            </>
+                          )}
+                        </div>
+                        <input 
+                          type="file" 
+                          accept=".zip" 
+                          className="hidden" 
+                          disabled={isUploadingNewVersion}
+                          onChange={(e) => {
+                            setNewVersionFile(e.target.files?.[0] || null);
+                            setUploadingNewVersionError("");
+                          }}
+                        />
+                      </label>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={!newVersionFile || isUploadingNewVersion}
+                      className="w-full sm:w-auto h-12 flex items-center justify-center gap-2 px-6 bg-gradient-to-r from-[#00D4B3] to-[#009688] hover:from-[#00E5C1] hover:to-[#00A896] disabled:from-gray-100 disabled:to-gray-150 dark:disabled:from-gray-800 dark:disabled:to-gray-850 disabled:text-gray-500 disabled:cursor-not-allowed text-white font-semibold rounded-xl text-sm transition-all"
+                    >
+                      {isUploadingNewVersion ? (
+                        <>
+                          <Loader2 className="animate-spin" size={16} />
+                          {uploadingNewVersionProgress}%
+                        </>
+                      ) : (
+                        "Subir Versión"
+                      )}
+                    </button>
+                  </div>
+
+                  {uploadingNewVersionError && (
+                    <div className="p-3 text-xs bg-red-500/10 border border-red-500/25 text-red-500 rounded-lg">
+                      {uploadingNewVersionError}
+                    </div>
+                  )}
+                </form>
+
+                {/* Versions List */}
+                <div className="space-y-4">
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                    <History size={16} className="text-gray-500" />
+                    Historial de Versiones
+                  </h4>
+
+                  {loadingVersions ? (
+                    <div className="flex flex-col items-center justify-center py-10">
+                      <Loader2 className="animate-spin text-[#00D4B3] mb-2" size={24} />
+                      <p className="text-xs text-gray-500">Cargando historial...</p>
+                    </div>
+                  ) : versions.length === 0 ? (
+                    <div className="text-center py-10 border border-dashed border-gray-200 dark:border-[#6C757D]/10 rounded-2xl">
+                      <p className="text-sm text-gray-500">No hay versiones registradas aún para esta plantilla.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {versions.map((version) => {
+                        const report = version.validation_report || {};
+                        const hasErrors = Array.isArray(report.errors) && report.errors.length > 0;
+                        const hasWarnings = Array.isArray(report.warnings) && report.warnings.length > 0;
+                        const fileCount = report.info?.fileCount || 0;
+                        const unzippedSize = report.info?.unzippedSize || 0;
+                        const dependencies = report.info?.dependencies || {};
+                        const dependencyKeys = Object.keys(dependencies);
+
+                        const canReview = userRole !== null && ["ADMIN", "ARQUITECTO", "SUPERADMIN"].includes(userRole);
+                        const isActive = selectedVersionTemplate.storage_path === version.storage_path;
+
+                        return (
+                          <div 
+                            key={version.id} 
+                            className={`flex flex-col gap-4 p-5 rounded-2xl border transition-all duration-200 ${
+                              isActive
+                                ? "bg-[#00D4B3]/5 dark:bg-[#00D4B3]/3 border-[#00D4B3]/30 shadow-md shadow-[#00D4B3]/2"
+                                : version.status === "APPROVED" 
+                                  ? "bg-green-500/5 dark:bg-green-500/3 border-green-500/10" 
+                                  : version.status === "REJECTED"
+                                    ? "bg-red-500/5 dark:bg-red-500/3 border-red-500/10"
+                                    : "bg-white dark:bg-[#1A202C]/40 border-gray-150 dark:border-[#6C757D]/10"
+                            }`}
+                          >
+                            {/* Version Header */}
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-bold text-gray-900 dark:text-white text-base">
+                                    Versión {version.version_number}
+                                  </span>
+                                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase border ${
+                                    version.status === "APPROVED"
+                                      ? "bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400 border-green-200 dark:border-green-500/20"
+                                      : version.status === "REJECTED"
+                                        ? "bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400 border-red-200 dark:border-red-500/20"
+                                        : "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 border-amber-200 dark:border-amber-500/20"
+                                  }`}>
+                                    {version.status === "APPROVED" ? "Aprobada" : version.status === "REJECTED" ? "Rechazada" : "Pendiente"}
+                                  </span>
+                                  {isActive && (
+                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase bg-[#00D4B3]/15 text-[#00D4B3] border border-[#00D4B3]/35 flex items-center gap-1 animate-pulse">
+                                      <CheckCircle2 size={10} />
+                                      Activa
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-gray-400 font-mono truncate max-w-sm sm:max-w-md md:max-w-lg" title={version.bundle_hash || ""}>
+                                  SHA-256: {version.bundle_hash || "No disponible"}
+                                </p>
+                              </div>
+
+                              <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-[#94A3B8]">
+                                <span className="flex items-center gap-1.5">
+                                  <Calendar size={13} />
+                                  {new Date(version.created_at).toLocaleDateString()}
+                                </span>
+                                <span className="flex items-center gap-1.5" title={version.created_by_profile?.email || ""}>
+                                  <User size={13} />
+                                  {version.created_by_profile?.first_name || version.created_by_profile?.username || version.created_by_profile?.email || "Sistema"}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Validation / Audit Info */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50/70 dark:bg-[#0F1419]/30 p-4 rounded-xl border border-gray-200/50 dark:border-[#6C757D]/5 text-xs">
+                              <div>
+                                <h5 className="font-semibold text-gray-700 dark:text-slate-300 mb-2 flex items-center gap-1.5">
+                                  <FileText size={13} className="text-[#00D4B3]" />
+                                  Detalles del Bundle
+                                </h5>
+                                <ul className="space-y-1 text-gray-600 dark:text-slate-400 font-mono text-[11px]">
+                                  <li className="truncate">Nombre: {version.original_file_name || "Desconocido"}</li>
+                                  <li>Tamaño: {(unzippedSize / (1024 * 1024)).toFixed(2)} MB (descomprimido)</li>
+                                  <li>Archivos: {fileCount}</li>
+                                  <li>Punto de entrada: {version.entry_point || "No especificado"}</li>
+                                </ul>
+                              </div>
+
+                              <div>
+                                <h5 className="font-semibold text-gray-700 dark:text-slate-300 mb-2 flex items-center gap-1.5">
+                                  <ShieldCheck size={13} className="text-[#00D4B3]" />
+                                  Auditoría Estática
+                                </h5>
+                                <div className="space-y-2">
+                                  {hasErrors ? (
+                                    <div className="text-red-500 flex items-start gap-1.5">
+                                      <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                                      <div className="flex-1 font-mono text-[10px] max-h-24 overflow-y-auto space-y-1">
+                                        {report.errors.map((err: string, i: number) => <div key={i} className="leading-tight">• {err}</div>)}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="text-green-500 flex items-center gap-1.5">
+                                      <CheckCircle2 size={14} />
+                                      <span>Sin errores de seguridad</span>
+                                    </div>
+                                  )}
+
+                                  {hasWarnings && (
+                                    <div className="text-amber-500 flex items-start gap-1.5 mt-1 border-t border-gray-200/40 dark:border-gray-800/40 pt-1">
+                                      <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                                      <div className="flex-1 font-mono text-[10px] max-h-24 overflow-y-auto space-y-1">
+                                        {report.warnings.map((warn: string, i: number) => <div key={i} className="leading-tight">• {warn}</div>)}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Dependencies & Manifest Expandable Details */}
+                              <div className="col-span-1 md:col-span-2 pt-3 border-t border-gray-200/60 dark:border-gray-800/60">
+                                <details className="group">
+                                  <summary className="cursor-pointer text-[11px] font-semibold text-gray-500 dark:text-gray-400 hover:text-[#00D4B3] dark:hover:text-[#00D4B3] select-none flex items-center gap-1 outline-none">
+                                    <span className="transition-transform duration-200 group-open:rotate-90 text-[9px]">▶</span>
+                                    Ver Manifiesto y Dependencias
+                                  </summary>
+                                  <div className="mt-3 pl-3 border-l-2 border-gray-200 dark:border-gray-800 space-y-3">
+                                    {version.manifest ? (
+                                      <div>
+                                        <p className="font-semibold text-gray-700 dark:text-slate-300 text-[10px] mb-1">Manifiesto (courseforge-remotion-template.json):</p>
+                                        <pre className="p-2 bg-gray-100 dark:bg-[#0F1419] rounded-lg text-[10px] text-gray-600 dark:text-slate-400 overflow-x-auto max-w-full font-mono">
+                                          {JSON.stringify(version.manifest, null, 2)}
+                                        </pre>
+                                      </div>
+                                    ) : (
+                                      <p className="text-gray-400 italic text-[10px]">Manifiesto no disponible.</p>
+                                    )}
+
+                                    <div>
+                                      <p className="font-semibold text-gray-700 dark:text-slate-300 text-[10px] mb-1">
+                                        Dependencias detectadas ({dependencyKeys.length}):
+                                      </p>
+                                      {dependencyKeys.length > 0 ? (
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 p-2 bg-gray-100 dark:bg-[#0F1419] rounded-lg text-[10px] font-mono text-gray-600 dark:text-slate-400">
+                                          {dependencyKeys.map((dep) => (
+                                            <div key={dep} className="truncate" title={`${dep}: ${dependencies[dep]}`}>
+                                              <span className="text-gray-400">#</span> {dep} <span className="text-[#00D4B3]">{dependencies[dep]}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <p className="text-gray-400 italic text-[10px]">Ninguna dependencia declarada en package.json.</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </details>
+                              </div>
+                            </div>
+
+                            {/* Rejection Details */}
+                            {version.status === "REJECTED" && (
+                              <div className="p-3.5 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-700 dark:text-red-400 space-y-1 animate-in fade-in duration-200">
+                                <p className="font-bold flex items-center gap-1.5">
+                                  <Ban size={14} />
+                                  Rechazada por {version.rejected_by_profile?.first_name || version.rejected_by_profile?.username || version.rejected_by_profile?.email || "Revisor"}
+                                </p>
+                                {version.rejection_reason && (
+                                  <p className="italic pl-5 leading-normal">Motivo: "{version.rejection_reason}"</p>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Approval Details */}
+                            {version.status === "APPROVED" && (
+                              <div className="space-y-2">
+                                <div className="p-3.5 bg-green-500/10 border border-green-500/20 rounded-xl text-xs text-green-700 dark:text-green-400 flex items-center gap-1.5 animate-in fade-in duration-200">
+                                  <Check size={14} className="shrink-0" />
+                                  <span className="font-medium">
+                                    Aprobada para auditoria por {version.approved_by_profile?.first_name || version.approved_by_profile?.username || version.approved_by_profile?.email || "Revisor"}
+                                  </span>
+                                </div>
+                                {canReview && (
+                                  <div className="flex justify-end">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleEnableSandboxVersion(version.id)}
+                                      className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold border border-purple-500/30 text-purple-600 hover:bg-purple-500/10 rounded-lg transition-all"
+                                      title="Habilita esta version para que el worker pueda intentar el runner sandbox externo cuando el feature flag este activo"
+                                    >
+                                      <ShieldCheck size={13} />
+                                      Habilitar sandbox
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {version.status === "APPROVED_FOR_SANDBOX" && (
+                              <div className="p-3.5 bg-purple-500/10 border border-purple-500/20 rounded-xl text-xs text-purple-700 dark:text-purple-300 flex items-center gap-1.5 animate-in fade-in duration-200">
+                                <ShieldCheck size={14} className="shrink-0" />
+                                <span className="font-medium">
+                                  Habilitada para sandbox externo. El render solo usara esta ruta si el feature flag esta activo.
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Review Action Controls */}
+                            {version.status === "PENDING_REVIEW" && (
+                              <div className="flex flex-col gap-3 pt-2 border-t border-gray-100 dark:border-gray-800/40">
+                                {canReview ? (
+                                  <>
+                                    {rejectingVersionId === version.id ? (
+                                      <div className="space-y-3 animate-in slide-in-from-top-2 duration-200">
+                                        <label className="block text-[11px] font-semibold text-red-500 uppercase tracking-wider">
+                                          Motivo de rechazo *
+                                        </label>
+                                        <textarea
+                                          value={rejectionReason}
+                                          onChange={(e) => setRejectionReason(e.target.value)}
+                                          placeholder="Especifica detalladamente la razón del rechazo para informar al equipo de desarrollo..."
+                                          className="w-full text-xs p-3 bg-gray-50 dark:bg-[#0F1419] border border-red-500/30 rounded-xl focus:outline-none focus:border-red-500/60 dark:text-white resize-none h-20"
+                                        />
+                                        <div className="flex justify-end gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setRejectingVersionId(null);
+                                              setRejectionReason("");
+                                            }}
+                                            className="px-4 py-2 text-xs border border-gray-200 dark:border-[#6C757D]/25 rounded-lg text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/5 transition-all font-semibold"
+                                          >
+                                            Cancelar
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRejectVersion(version.id)}
+                                            className="px-4 py-2 text-xs bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg transition-all"
+                                          >
+                                            Confirmar Rechazo
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="flex justify-end gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => setRejectingVersionId(version.id)}
+                                          className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold border border-red-500/30 text-red-600 hover:bg-red-500/10 rounded-lg transition-all"
+                                        >
+                                          <Ban size={13} />
+                                          Rechazar
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={hasErrors}
+                                          onClick={() => handleApproveVersion(version.id)}
+                                          className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-[#00D4B3] hover:bg-[#00E5C1] disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed text-white rounded-lg transition-all"
+                                          title={hasErrors ? "No se puede aprobar una versión con errores de validación" : "Aprobar versión como artefacto auditable; no habilita ejecución externa"}
+                                        >
+                                          <Check size={13} />
+                                          Aprobar revisión
+                                        </button>
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <div className="text-[11px] text-gray-400 italic bg-gray-50/55 dark:bg-[#0F1419]/20 p-2 rounded-lg text-center">
+                                    Esperando revisión por un administrador o arquitecto.
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex shrink-0 justify-end border-t border-gray-100 bg-white p-4 dark:border-[#6C757D]/10 dark:bg-[#151A21] sm:px-6">
+                <button
+                  type="button"
+                  onClick={() => setIsVersionsModalOpen(false)}
+                  className="px-5 py-2.5 border border-gray-200 dark:border-[#6C757D]/20 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl font-semibold text-sm text-gray-600 dark:text-slate-300 transition-colors"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }
@@ -693,13 +1294,15 @@ function TemplateCard({
   isMine, 
   onDelete, 
   onEdit,
-  onAcquire 
+  onAcquire,
+  onViewVersions 
 }: { 
   tpl: RemotionTemplate; 
   isMine: boolean; 
   onDelete: () => void; 
   onEdit: () => void;
   onAcquire: () => void;
+  onViewVersions: () => void;
 }) {
   const isGlobal = tpl.organization_id === null;
   const isExternalPending = tpl.render_mode === "EXTERNAL_BUNDLE_PENDING";
@@ -799,6 +1402,15 @@ function TemplateCard({
           <>
             {!isGlobal && (
               <button
+                onClick={onViewVersions}
+                className="p-2 text-gray-400 hover:text-[#00D4B3] hover:bg-[#00D4B3]/10 rounded-lg transition-all"
+                title="Administrar versiones y bundles"
+              >
+                <Layers size={16} />
+              </button>
+            )}
+            {!isGlobal && (
+              <button
                 onClick={onEdit}
                 className="p-2 text-gray-400 hover:text-[#00D4B3] hover:bg-[#00D4B3]/10 rounded-lg transition-all"
                 title="Editar plantilla"
@@ -814,12 +1426,6 @@ function TemplateCard({
               >
                 <Trash2 size={16} />
               </button>
-            )}
-            {isGlobal && (
-              <span className="text-[10px] text-gray-400 flex items-center gap-1 py-1 px-2">
-                <Bookmark size={12} />
-                Disponible
-              </span>
             )}
           </>
         ) : (

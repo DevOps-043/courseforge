@@ -15,6 +15,7 @@ interface RemotionPreviewPlayerProps {
   /** Slug de composición (remotion_templates.composition_id). */
   templateSlug: string | null | undefined;
   templateConfig?: TemplateRenderConfigInput;
+  targetDurationSeconds?: number;
 }
 
 /**
@@ -33,6 +34,7 @@ export function RemotionPreviewPlayer({
   assets,
   templateSlug,
   templateConfig,
+  targetDurationSeconds,
 }: RemotionPreviewPlayerProps) {
   const [mounted, setMounted] = useState(false);
 
@@ -40,20 +42,28 @@ export function RemotionPreviewPlayer({
     setMounted(true);
   }, []);
 
+  const assetsWithTarget = useMemo(
+    () =>
+      targetDurationSeconds
+        ? { ...(assets ?? {}), assembly_target_duration_seconds: targetDurationSeconds }
+        : assets,
+    [assets, targetDurationSeconds],
+  );
+
   const readiness = useMemo(
-    () => getAssemblyAssetReadiness(assets, ASSEMBLY_FPS),
-    [assets],
+    () => getAssemblyAssetReadiness(assetsWithTarget, ASSEMBLY_FPS),
+    [assetsWithTarget],
   );
 
   const built = useMemo(() => {
     try {
-      return { ok: true as const, props: buildAssemblyProps(assets, templateSlug, templateConfig) };
+      return { ok: true as const, props: buildAssemblyProps(assetsWithTarget, templateSlug, templateConfig) };
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Assets inválidos para preview";
       return { ok: false as const, error: message };
     }
-  }, [assets, templateSlug, templateConfig]);
+  }, [assetsWithTarget, templateSlug, templateConfig]);
 
   if (!mounted) {
     return (

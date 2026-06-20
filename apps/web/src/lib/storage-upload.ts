@@ -2,6 +2,14 @@ import { createClient } from '@/utils/supabase/client';
 
 interface SignedUploadResult {
     publicUrl: string;
+    path: string;
+}
+
+interface SignedUploadOptions {
+    purpose?: 'template-bundle' | 'production-asset' | 'thumbnail' | 'production-video';
+    contentType?: string;
+    fileSizeBytes?: number;
+    upsert?: boolean;
 }
 
 /**
@@ -13,12 +21,20 @@ export async function uploadWithSignedUrl(
     bucket: string,
     filePath: string,
     file: File,
+    options: SignedUploadOptions = {},
 ): Promise<SignedUploadResult> {
     // 1. Request a signed upload URL from the server (auth handled server-side)
     const response = await fetch('/api/storage/signed-upload-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bucket, filePath }),
+        body: JSON.stringify({
+            bucket,
+            filePath,
+            purpose: options.purpose,
+            contentType: options.contentType || file.type || undefined,
+            fileSizeBytes: options.fileSizeBytes ?? file.size,
+            upsert: options.upsert,
+        }),
     });
 
     if (!response.ok) {
@@ -36,7 +52,7 @@ export async function uploadWithSignedUrl(
     const supabase = createClient();
     const { error: uploadError } = await supabase.storage
         .from(bucket)
-        .uploadToSignedUrl(path, token, file, { upsert: true });
+        .uploadToSignedUrl(path, token, file, { upsert: options.upsert ?? true });
 
     if (uploadError) {
         throw uploadError;
@@ -47,5 +63,5 @@ export async function uploadWithSignedUrl(
         .from(bucket)
         .getPublicUrl(path);
 
-    return { publicUrl };
+    return { publicUrl, path };
 }

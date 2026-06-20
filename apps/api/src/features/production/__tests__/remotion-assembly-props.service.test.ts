@@ -123,6 +123,36 @@ describe('remotion assembly props contract', () => {
     assert.equal(props.avatarVideoUrl, VIDEO_URL);
   });
 
+  it('uses assembly target duration as a floor over shorter voice assets', () => {
+    const props = buildAssemblyInputProps({
+      compositionId: 'full-slides',
+      transitionType: undefined,
+      assets: {
+        assembly_target_duration_seconds: 170,
+        voice_audio: {
+          storage_path: 'production-assets/voice.mp3',
+          public_url: AUDIO_URL,
+          duration: 51,
+        },
+      },
+    });
+
+    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
+  });
+
+  it('uses assembly target duration over long visual-only B-roll assets', () => {
+    const props = buildAssemblyInputProps({
+      compositionId: 'full-slides',
+      transitionType: undefined,
+      assets: {
+        assembly_target_duration_seconds: 170,
+        b_roll_clips: [baseClip({ duration: 31 * 60 })],
+      },
+    });
+
+    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
+  });
+
   it('rejects empty assets instead of producing a blank fallback video', () => {
     assert.equal(hasPrimaryRenderableAssemblyAssets({}), false);
     assert.throws(

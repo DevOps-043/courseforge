@@ -1,0 +1,114 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import JSZip from "jszip";
+import { validateRemotionBundle } from "../bundle-validator";
+
+function manifest(overrides: Record<string, unknown> = {}) {
+  return {
+    name: "Secure Template",
+    entryPoint: "src/index.tsx",
+    compositionId: "secure-template",
+    remotionVersion: "4.0.474",
+    ...overrides,
+  };
+}
+
+async function zipBuffer(files: Record<string, string | Uint8Array>) {
+  const zip = new JSZip();
+  for (const [name, content] of Object.entries(files)) {
+    zip.file(name, content);
+  }
+  return zip.generateAsync({ type: "arraybuffer" });
+}
+
+describe("validateRemotionBundle", () => {
+  it("accepts a minimal valid Remotion template bundle", async () => {
+    const buffer = await zipBuffer({
+      "courseforge-remotion-template.json": JSON.stringify(manifest()),
+      "src/index.tsx": "export const Template = () => null;",
+      "package.json": JSON.stringify({
+        dependencies: {
+          react: "^19.0.0",
+          remotion: "^4.0.474",
+        },
+      }),
+    });
+
+    const result = await validateRemotionBundle(buffer, "valid.zip");
+
+    assert.equal(result.isValid, true);
+    assert.equal(result.errors.length, 0);
+    assert.equal(result.info.manifest?.entryPoint, "src/index.tsx");
+    assert.match(result.info.hash, /^[a-f0-9]{64}$/);
+  });
+
+  it("rejects bundles without the required manifest", async () => {
+    const buffer = await zipBuffer({
+      "src/index.tsx": "export const Template = () => null;",
+    });
+
+    const result = await validateRemotionBundle(buffer, "missing-manifest.zip");
+
+    assert.equal(result.isValid, false);
+    assert.ok(result.errors.some((error) => error.includes("manifiesto obligatorio")));
+  });
+
+  it("rejects path traversal", async () => {
+    const buffer = await zipBuffer({
+      "courseforge-remotion-template.json": JSON.stringify(manifest()),
+      "src/index.tsx": "export const Template = () => null;",
+      "../escape.ts": "export const bad = true;",
+    });
+
+    const result = await validateRemotionBundle(buffer, "traversal.zip");
+
+    assert.equal(result.isValid, false);
+    assert.ok(result.errors.some((error) => error.includes("Ruta de archivo no permitida")));
+  });
+
+  it("rejects package lifecycle scripts", async () => {
+    const buffer = await zipBuffer({
+      "courseforge-remotion-template.json": JSON.stringify(manifest()),
+      "src/index.tsx": "export const Template = () => null;",
+      "package.json": JSON.stringify({
+        scripts: {
+          postinstall: "node steal-secrets.js",
+        },
+      }),
+    });
+
+    const result = await validateRemotionBundle(buffer, "scripts.zip");
+
+    assert.equal(result.isValid, false);
+    assert.ok(result.errors.some((error) => error.includes("scripts no permitidos")));
+  });
+
+  it("rejects non-allowlisted dependencies", async () => {
+    const buffer = await zipBuffer({
+      "courseforge-remotion-template.json": JSON.stringify(manifest()),
+      "src/index.tsx": "export const Template = () => null;",
+      "package.json": JSON.stringify({
+        dependencies: {
+          "left-pad": "^1.3.0",
+        },
+      }),
+    });
+
+    const result = await validateRemotionBundle(buffer, "deps.zip");
+
+    assert.equal(result.isValid, false);
+    assert.ok(result.errors.some((error) => error.includes("Dependencias no permitidas")));
+  });
+
+  it("rejects invalid manifest contracts", async () => {
+    const buffer = await zipBuffer({
+      "courseforge-remotion-template.json": JSON.stringify(manifest({ entryPoint: "" })),
+      "src/index.tsx": "export const Template = () => null;",
+    });
+
+    const result = await validateRemotionBundle(buffer, "invalid-manifest.zip");
+
+    assert.equal(result.isValid, false);
+    assert.ok(result.errors.some((error) => error.includes("no cumple el contrato")));
+  });
+});

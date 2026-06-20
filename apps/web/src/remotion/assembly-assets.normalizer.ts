@@ -110,17 +110,25 @@ export function normalizeAssemblyAssets(
     0,
   );
 
-  let totalDurationSeconds = isPositiveNumber(a.voice_audio?.duration)
+  const primaryMediaDurationSeconds = isPositiveNumber(a.voice_audio?.duration)
     ? a.voice_audio.duration
     : isPositiveNumber(a.avatar_video?.duration)
       ? a.avatar_video.duration
       : 0;
+  const targetDurationSeconds = isPositiveNumber(a.assembly_target_duration_seconds)
+    ? a.assembly_target_duration_seconds
+    : 0;
 
-  if (totalDurationSeconds <= 0 && brollTotalSeconds > 0) {
+  let totalDurationSeconds = primaryMediaDurationSeconds;
+
+  if (targetDurationSeconds > 0) {
+    totalDurationSeconds =
+      primaryMediaDurationSeconds > 0
+        ? Math.max(primaryMediaDurationSeconds, targetDurationSeconds)
+        : targetDurationSeconds;
+  } else if (totalDurationSeconds <= 0 && brollTotalSeconds > 0) {
     totalDurationSeconds = brollTotalSeconds;
-  }
-
-  if (totalDurationSeconds <= 0 && slides.length > 0) {
+  } else if (totalDurationSeconds <= 0 && slides.length > 0) {
     totalDurationSeconds = slides.length * DEFAULT_SLIDE_SECONDS;
   }
 

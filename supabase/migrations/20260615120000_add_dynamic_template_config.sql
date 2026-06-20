@@ -18,6 +18,7 @@ ALTER TABLE public.remotion_templates
   CHECK (
     bundle_status IN (
       'NOT_APPLICABLE',
+      'VALIDATING',
       'STORED_REFERENCE',
       'PENDING_REVIEW',
       'APPROVED',

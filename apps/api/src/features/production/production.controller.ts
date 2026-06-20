@@ -2,10 +2,41 @@ import { Request, Response, NextFunction } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { RemotionQueueService } from './remotion-queue.service';
 import { jwtVerify } from 'jose';
+import crypto from 'crypto';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const queueService = RemotionQueueService.getInstance();
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(',')}]`;
+  }
+
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+    .join(',')}}`;
+}
+
+function buildRemotionRenderIdempotencyKey(params: {
+  componentId: string;
+  templateId: string;
+  templateVersionId?: string | null;
+  variables: unknown;
+}) {
+  const hash = crypto
+    .createHash('sha256')
+    .update(stableStringify(params))
+    .digest('hex')
+    .slice(0, 32);
+  return `remotion-render-${params.componentId}-${hash}`;
+}
 
 export class ProductionController {
   async renderRemotion(req: Request, res: Response, next: NextFunction) {
@@ -157,8 +188,57 @@ export class ProductionController {
         return res.status(400).json({ error: 'Component has no associated artifact' });
       }
 
-      // Generate idempotency key for this job to prevent duplicate jobs
-      const idempotencyKey = `remotion-render-${componentId}-${Date.now()}`;
+      const { data: sandboxVersion } = await serviceClient
+        .from('remotion_template_versions')
+        .select('id, bundle_hash')
+        .eq('template_id', templateId)
+        .eq('status', 'APPROVED_FOR_SANDBOX')
+        .order('version_number', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const renderMode = sandboxVersion ? 'EXTERNAL_SANDBOX_CANDIDATE' : 'INTERNAL_COMPOSITION';
+      const inputSnapshot = {
+        templateId,
+        templateVersionId: sandboxVersion?.id || null,
+        bundleHash: sandboxVersion?.bundle_hash || null,
+        renderMode,
+        variables,
+      };
+      const idempotencyKey = buildRemotionRenderIdempotencyKey({
+        componentId,
+        templateId,
+        templateVersionId: sandboxVersion?.id || null,
+        variables,
+      });
+
+      let existingJobQuery = serviceClient
+        .from('production_jobs')
+        .select('*')
+        .eq('idempotency_key', idempotencyKey);
+
+      existingJobQuery = organizationId
+        ? existingJobQuery.eq('organization_id', organizationId)
+        : existingJobQuery.is('organization_id', null);
+
+      const { data: existingJob, error: existingJobError } = await existingJobQuery.maybeSingle();
+
+      if (existingJobError) {
+        console.warn('[ProductionController] Error checking existing production job:', existingJobError);
+      }
+
+      if (existingJob) {
+        if (existingJob.status === 'PENDING' || existingJob.status === 'QUEUED') {
+          queueService.enqueue(existingJob.id);
+        }
+
+        return res.json({
+          success: true,
+          jobId: existingJob.id,
+          status: existingJob.status,
+          message: 'Rendering job reused by idempotency key',
+        });
+      }
 
       // 3. Create production job using serviceClient (with system permissions to write to production_jobs)
       const { data: job, error: jobError } = await serviceClient
@@ -174,7 +254,7 @@ export class ProductionController {
           provider: 'remotion',
           status: 'PENDING',
           idempotency_key: idempotencyKey,
-          input_snapshot: { templateId, variables },
+          input_snapshot: inputSnapshot,
           created_by: user.id,
           progress: [{ percent: 0, message: 'Encolado en cola local', timestamp: new Date().toISOString() }]
         })

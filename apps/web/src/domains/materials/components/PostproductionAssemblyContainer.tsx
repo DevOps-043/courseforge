@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, CheckCircle2, Film, Layers, Loader2, Play, RefreshCw, Sparkles } from 'lucide-react';
 import { hasPreviewableAssets } from '@/remotion/buildAssemblyProps';
+import { deriveAssemblyTargetDurationSeconds } from '@/remotion/assembly-duration';
 import { getTemplatesAction, type RemotionTemplate } from '@/domains/production/actions/templates.actions';
 import {
     assembleRemotionVideoAction,
@@ -298,6 +299,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const selectedTemplateUsesExternalBundle = selectedTemplateConfig?.render_mode === 'EXTERNAL_BUNDLE_PENDING'
         || selectedTemplateConfig?.render_mode === 'INTERNAL_WITH_EXTERNAL_REFERENCE';
     const activePreview = videoComponents.find((component) => component.id === activePreviewId) || videoComponents[0];
+    const activePreviewTargetDurationSeconds = deriveAssemblyTargetDurationSeconds(activePreview?.content);
     const activePreviewPending = Boolean(activePreview && !activePreview.assets?.final_video_url);
     const hasRequiredAssets = videoComponents.length > 0;
     const hasComponentsToAssemble = componentsToAssemble.length > 0;
@@ -411,6 +413,16 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                 <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-600 dark:text-green-400 text-sm">
                                     Todos los videos del curso ya cuentan con video final. No es necesario ensamblar por Remotion.
                                 </div>
+                                {activePreview && (
+                                    <button
+                                        onClick={() => startAssemblyForComponents([activePreview])}
+                                        disabled={isAssembling}
+                                        className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold border border-purple-500/40 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                    >
+                                        <RefreshCw className="w-4 h-4" />
+                                        Reensamblar seleccionado
+                                    </button>
+                                )}
                                 {onNext && (
                                     <button
                                         onClick={onNext}
@@ -556,6 +568,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                             assets={activePreview.assets}
                                             templateSlug={selectedTemplateSlug}
                                             templateConfig={selectedTemplateConfig?.default_config}
+                                            targetDurationSeconds={activePreviewTargetDurationSeconds}
                                         />
                                         <div className="text-xs text-gray-500 dark:text-gray-400 text-center leading-relaxed">
                                             Previsualizacion en vivo del ensamblado. El video final se generara al iniciar Remotion.
