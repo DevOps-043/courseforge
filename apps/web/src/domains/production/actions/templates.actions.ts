@@ -114,6 +114,7 @@ const TEMPLATE_BUNDLE_BUCKET = "template-bundles";
 export type RemotionTemplateRenderMode =
   | "SUPPORTED_INTERNAL"
   | "INTERNAL_WITH_EXTERNAL_REFERENCE"
+  | "EXTERNAL_SANDBOX_READY"
   | "EXTERNAL_BUNDLE_PENDING"
   | "FALLBACK_INTERNAL";
 
@@ -191,13 +192,17 @@ function decorateTemplate(template: Omit<RemotionTemplate, "render_mode" | "rend
     template.composition_id && SUPPORTED_INTERNAL_COMPOSITIONS.has(template.composition_id),
   );
   const hasExternalBundle = Boolean(template.storage_path);
+  const isSandboxReady = template.bundle_status === "APPROVED_FOR_SANDBOX";
   const renderCompositionId = hasSupportedComposition ? template.composition_id! : DEFAULT_RENDER_COMPOSITION_ID;
   const bundleStatus = template.bundle_status || (hasExternalBundle ? "STORED_REFERENCE" : "NOT_APPLICABLE");
 
   let renderMode: RemotionTemplateRenderMode = "FALLBACK_INTERNAL";
   let renderStatusLabel = `Render interno: ${renderCompositionId}`;
 
-  if (hasSupportedComposition && hasExternalBundle) {
+  if (hasExternalBundle && isSandboxReady) {
+    renderMode = "EXTERNAL_SANDBOX_READY";
+    renderStatusLabel = `Sandbox externo habilitado: ${template.composition_id || renderCompositionId}`;
+  } else if (hasSupportedComposition && hasExternalBundle) {
     renderMode = "INTERNAL_WITH_EXTERNAL_REFERENCE";
     renderStatusLabel = `Renderizable ahora: ${renderCompositionId}. ZIP guardado como referencia (${bundleStatus})`;
   } else if (hasSupportedComposition) {
@@ -215,7 +220,7 @@ function decorateTemplate(template: Omit<RemotionTemplate, "render_mode" | "rend
     bundle_status: bundleStatus,
     render_mode: renderMode,
     render_composition_id: renderCompositionId,
-    is_external_bundle_supported: false,
+    is_external_bundle_supported: isSandboxReady,
     render_status_label: renderStatusLabel,
   };
 }

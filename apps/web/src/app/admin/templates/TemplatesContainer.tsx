@@ -1307,6 +1307,7 @@ function TemplateCard({
   const isGlobal = tpl.organization_id === null;
   const isExternalPending = tpl.render_mode === "EXTERNAL_BUNDLE_PENDING";
   const hasExternalReference = tpl.render_mode === "INTERNAL_WITH_EXTERNAL_REFERENCE";
+  const isSandboxReady = tpl.render_mode === "EXTERNAL_SANDBOX_READY";
 
   return (
     <motion.div
@@ -1357,7 +1358,9 @@ function TemplateCard({
             )}
             <span
               className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                isExternalPending
+                isSandboxReady
+                  ? "border-green-500/25 bg-green-500/10 text-green-700 dark:text-green-300"
+                  : isExternalPending
                   ? "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300"
                   : hasExternalReference
                     ? "border-blue-500/25 bg-blue-500/10 text-blue-700 dark:text-blue-300"
@@ -1366,7 +1369,7 @@ function TemplateCard({
               title={tpl.render_status_label}
             >
               {isExternalPending ? <AlertTriangle size={10} /> : <PlayCircle size={10} />}
-              {tpl.storage_path ? "ZIP referencia" : "Renderizable ahora"}
+              {isSandboxReady ? "Sandbox habilitado" : tpl.storage_path ? "ZIP referencia" : "Renderizable ahora"}
             </span>
           </div>
         </div>
@@ -1387,7 +1390,9 @@ function TemplateCard({
         </div>
 
         <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed ${
-          isExternalPending
+          isSandboxReady
+            ? "border-green-500/20 bg-green-500/10 text-green-700 dark:text-green-300"
+            : isExternalPending
             ? "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300"
             : "border-gray-100 bg-gray-50 text-gray-500 dark:border-[#6C757D]/5 dark:bg-[#0F1419]/50 dark:text-gray-400"
         }`}>

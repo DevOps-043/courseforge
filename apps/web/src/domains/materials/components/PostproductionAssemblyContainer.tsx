@@ -298,6 +298,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const selectedTemplateSlug = selectedTemplateConfig?.render_composition_id ?? selectedTemplateConfig?.composition_id ?? null;
     const selectedTemplateUsesExternalBundle = selectedTemplateConfig?.render_mode === 'EXTERNAL_BUNDLE_PENDING'
         || selectedTemplateConfig?.render_mode === 'INTERNAL_WITH_EXTERNAL_REFERENCE';
+    const selectedTemplateUsesSandbox = selectedTemplateConfig?.render_mode === 'EXTERNAL_SANDBOX_READY';
     const activePreview = videoComponents.find((component) => component.id === activePreviewId) || videoComponents[0];
     const activePreviewTargetDurationSeconds = deriveAssemblyTargetDurationSeconds(activePreview?.content);
     const activePreviewPending = Boolean(activePreview && !activePreview.assets?.final_video_url);
@@ -374,11 +375,13 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                         className={`mt-3 inline-flex w-fit items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
                                             tpl.render_mode === 'EXTERNAL_BUNDLE_PENDING'
                                                 ? 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                                                : tpl.render_mode === 'EXTERNAL_SANDBOX_READY'
+                                                    ? 'border-green-500/25 bg-green-500/10 text-green-700 dark:text-green-300'
                                                 : 'border-green-500/25 bg-green-500/10 text-green-700 dark:text-green-300'
                                         }`}
                                     >
                                         {tpl.render_mode === 'EXTERNAL_BUNDLE_PENDING' ? <AlertTriangle size={10} /> : <Play size={10} />}
-                                        {tpl.storage_path ? 'ZIP referencia' : tpl.render_composition_id}
+                                        {tpl.render_mode === 'EXTERNAL_SANDBOX_READY' ? 'Sandbox externo' : tpl.storage_path ? 'ZIP referencia' : tpl.render_composition_id}
                                     </span>
                                 </button>
                             ))}
@@ -393,6 +396,14 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                 <AlertTriangle size={15} className="mt-0.5 shrink-0" />
                                 <span>
                                     Esta plantilla tiene un ZIP guardado como referencia. Por seguridad, el render actual usa la composicion interna {selectedTemplateConfig.render_composition_id}.
+                                </span>
+                            </div>
+                        )}
+                        {selectedTemplateConfig && selectedTemplateUsesSandbox && (
+                            <div className="flex items-start gap-2 rounded-xl border border-green-500/20 bg-green-500/10 p-3 text-xs leading-relaxed text-green-700 dark:text-green-300">
+                                <Play size={15} className="mt-0.5 shrink-0" />
+                                <span>
+                                    Esta plantilla tiene un ZIP habilitado para sandbox externo. El render final usara {selectedTemplateConfig.composition_id}.
                                 </span>
                             </div>
                         )}
