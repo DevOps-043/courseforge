@@ -5,6 +5,7 @@ export interface ExternalTemplateSandboxRequest {
   jobId: string;
   templateVersionId: string;
   bundleHash: string;
+  bundleZipPath: string;
   entryPoint: string;
   compositionId: string;
   inputProps: unknown;
@@ -62,11 +63,22 @@ function buildSandboxEnv() {
 }
 
 function parseRunnerOutput(stdout: string): { outputPath?: string; error?: string } {
-  if (!stdout.trim()) {
+  const trimmed = stdout.trim();
+  if (!trimmed) {
     return {};
   }
 
-  const parsed = JSON.parse(stdout);
+  let parsed: any;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    const lastJsonObject = trimmed.match(/\{[\s\S]*\}\s*$/);
+    if (!lastJsonObject) {
+      throw new Error('Sandbox runner did not return valid JSON.');
+    }
+    parsed = JSON.parse(lastJsonObject[0]);
+  }
+
   return {
     outputPath: typeof parsed.outputPath === 'string' ? path.resolve(parsed.outputPath) : undefined,
     error: typeof parsed.error === 'string' ? parsed.error : undefined,

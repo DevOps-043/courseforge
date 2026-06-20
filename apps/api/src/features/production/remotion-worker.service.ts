@@ -26,6 +26,7 @@ interface ApprovedSandboxVersion {
   id: string;
   bundle_hash: string | null;
   entry_point: string | null;
+  storage_path: string;
 }
 
 export class RemotionWorkerService {
@@ -117,11 +118,13 @@ export class RemotionWorkerService {
         templateVersionId = sandboxVersion.id;
         bundleHash = sandboxVersion.bundle_hash;
         await this.updateProgress(supabase, jobId, 15, 'Enviando render a sandbox externo');
+        const bundleZipPath = await this.downloadSandboxBundle(supabase, sandboxVersion, outputDir);
 
         const sandboxResult = await sandboxRunner.render({
           jobId,
           templateVersionId: sandboxVersion.id,
           bundleHash: sandboxVersion.bundle_hash || '',
+          bundleZipPath,
           entryPoint: sandboxVersion.entry_point || template.entry_point || 'src/index.tsx',
           compositionId: template.composition_id || compositionId,
           inputProps,
@@ -340,7 +343,7 @@ export class RemotionWorkerService {
   private async getApprovedSandboxVersion(supabase: any, templateId: string): Promise<ApprovedSandboxVersion | null> {
     const { data, error } = await supabase
       .from('remotion_template_versions')
-      .select('id, bundle_hash, entry_point')
+      .select('id, bundle_hash, entry_point, storage_path')
       .eq('template_id', templateId)
       .eq('status', 'APPROVED_FOR_SANDBOX')
       .order('version_number', { ascending: false })
@@ -353,6 +356,38 @@ export class RemotionWorkerService {
     }
 
     return data;
+  }
+
+  private resolveBundleStorageLocation(storagePath: string): { bucket: string; path: string } {
+    const normalized = storagePath.replace(/\\/g, '/').replace(/^\/+/, '');
+    const separatorIndex = normalized.indexOf('/');
+
+    if (separatorIndex === -1) {
+      return { bucket: 'template-bundles', path: normalized };
+    }
+
+    const bucket = normalized.slice(0, separatorIndex);
+    const objectPath = normalized.slice(separatorIndex + 1);
+    return { bucket, path: objectPath };
+  }
+
+  private async downloadSandboxBundle(
+    supabase: any,
+    version: ApprovedSandboxVersion,
+    outputDir: string,
+  ): Promise<string> {
+    const { bucket, path: objectPath } = this.resolveBundleStorageLocation(version.storage_path);
+    const { data, error } = await supabase.storage.from(bucket).download(objectPath);
+
+    if (error || !data) {
+      throw new Error(`No se pudo descargar el bundle aprobado para sandbox: ${error?.message || 'archivo no encontrado'}`);
+    }
+
+    fs.mkdirSync(outputDir, { recursive: true });
+    const bundleZipPath = path.join(outputDir, `template-${version.id}.zip`);
+    const buffer = Buffer.from(await data.arrayBuffer());
+    await fsp.writeFile(bundleZipPath, buffer);
+    return bundleZipPath;
   }
 
   private collectAssetUrls(value: unknown): string[] {

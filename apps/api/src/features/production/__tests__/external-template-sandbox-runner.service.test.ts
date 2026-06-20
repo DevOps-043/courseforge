@@ -15,6 +15,7 @@ describe('ExternalTemplateSandboxRunner', () => {
         jobId: 'job-1',
         templateVersionId: 'version-1',
         bundleHash: 'hash',
+        bundleZipPath: 'bundle.zip',
         entryPoint: 'src/index.tsx',
         compositionId: 'composition',
         inputProps: {},
