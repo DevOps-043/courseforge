@@ -175,7 +175,7 @@ describe("normalizeAssemblyAssets", () => {
     assert.equal(props.avatarVideoUrl, VIDEO_URL);
   });
 
-  it("uses assembly target duration as a floor over shorter voice assets", () => {
+  it("prioritizes voice duration over assembly target duration", () => {
     const props = buildAssemblyProps(
       {
         assembly_target_duration_seconds: 170,
@@ -188,14 +188,29 @@ describe("normalizeAssemblyAssets", () => {
       "full-slides",
     );
 
-    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
+    assert.equal(props.totalDurationInFrames, 51 * ASSEMBLY_FPS);
   });
 
-  it("uses assembly target duration over long visual-only B-roll assets", () => {
+  it("prioritizes visual asset duration over assembly target duration", () => {
     const props = buildAssemblyProps(
       {
         assembly_target_duration_seconds: 170,
         b_roll_clips: [baseClip({ duration: 31 * 60 })],
+      },
+      "full-slides",
+    );
+
+    assert.equal(props.totalDurationInFrames, 31 * 60 * ASSEMBLY_FPS);
+  });
+
+  it("uses assembly target duration only when assets have no measurable duration", () => {
+    const props = buildAssemblyProps(
+      {
+        assembly_target_duration_seconds: 170,
+        background_music: {
+          storage_path: "production-assets/music.mp3",
+          public_url: AUDIO_URL,
+        },
       },
       "full-slides",
     );

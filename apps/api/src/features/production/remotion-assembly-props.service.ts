@@ -98,15 +98,12 @@ export function normalizeAssemblyAssets(
 
   let totalDurationSeconds = primaryMediaDurationSeconds;
 
-  if (targetDurationSeconds > 0) {
-    totalDurationSeconds =
-      primaryMediaDurationSeconds > 0
-        ? Math.max(primaryMediaDurationSeconds, targetDurationSeconds)
-        : targetDurationSeconds;
-  } else if (totalDurationSeconds <= 0 && brollTotalSeconds > 0) {
+  if (totalDurationSeconds <= 0 && brollTotalSeconds > 0) {
     totalDurationSeconds = brollTotalSeconds;
   } else if (totalDurationSeconds <= 0 && slides.length > 0) {
     totalDurationSeconds = slides.length * DEFAULT_SLIDE_SECONDS;
+  } else if (totalDurationSeconds <= 0 && targetDurationSeconds > 0) {
+    totalDurationSeconds = targetDurationSeconds;
   }
 
   return {

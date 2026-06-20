@@ -123,7 +123,7 @@ describe('remotion assembly props contract', () => {
     assert.equal(props.avatarVideoUrl, VIDEO_URL);
   });
 
-  it('uses assembly target duration as a floor over shorter voice assets', () => {
+  it('prioritizes voice duration over assembly target duration', () => {
     const props = buildAssemblyInputProps({
       compositionId: 'full-slides',
       transitionType: undefined,
@@ -137,16 +137,32 @@ describe('remotion assembly props contract', () => {
       },
     });
 
-    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
+    assert.equal(props.totalDurationInFrames, 51 * ASSEMBLY_FPS);
   });
 
-  it('uses assembly target duration over long visual-only B-roll assets', () => {
+  it('prioritizes visual asset duration over assembly target duration', () => {
     const props = buildAssemblyInputProps({
       compositionId: 'full-slides',
       transitionType: undefined,
       assets: {
         assembly_target_duration_seconds: 170,
         b_roll_clips: [baseClip({ duration: 31 * 60 })],
+      },
+    });
+
+    assert.equal(props.totalDurationInFrames, 31 * 60 * ASSEMBLY_FPS);
+  });
+
+  it('uses assembly target duration only when assets have no measurable duration', () => {
+    const props = buildAssemblyInputProps({
+      compositionId: 'full-slides',
+      transitionType: undefined,
+      assets: {
+        assembly_target_duration_seconds: 170,
+        avatar_video: {
+          storage_path: 'production-assets/avatar.mp4',
+          public_url: VIDEO_URL,
+        },
       },
     });
 

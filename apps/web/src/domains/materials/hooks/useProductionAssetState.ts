@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import JSZip from "jszip";
 import { toast } from "sonner";
 import { getErrorMessage } from "@/lib/errors";
 import { uploadWithSignedUrl } from "@/lib/storage-upload";
@@ -67,6 +68,55 @@ function isRenderableSlideImage(file: File) {
     extension === "webp" ||
     extension === "svg"
   );
+}
+
+function getMimeTypeFromExtension(fileName: string) {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+  if (extension === "png") return "image/png";
+  if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+  if (extension === "webp") return "image/webp";
+  if (extension === "svg") return "image/svg+xml";
+  return "application/octet-stream";
+}
+
+function naturalSlideNameCompare(left: string, right: string) {
+  return left.localeCompare(right, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+async function expandSlideInputFiles(files: File[]) {
+  const expanded: File[] = [];
+
+  for (const file of files) {
+    const isZip =
+      file.type === "application/zip" ||
+      file.type === "application/x-zip-compressed" ||
+      file.name.toLowerCase().endsWith(".zip");
+
+    if (!isZip) {
+      expanded.push(file);
+      continue;
+    }
+
+    const zip = await JSZip.loadAsync(file);
+    const imageEntries = Object.values(zip.files)
+      .filter((entry) => !entry.dir && isRenderableSlideImage(new File([], entry.name)))
+      .sort((left, right) => naturalSlideNameCompare(left.name, right.name));
+
+    for (const entry of imageEntries) {
+      const blob = await entry.async("blob");
+      const fileName = entry.name.split("/").pop() || entry.name;
+      expanded.push(
+        new File([blob], fileName, {
+          type: getMimeTypeFromExtension(fileName),
+        }),
+      );
+    }
+  }
+
+  return expanded;
 }
 
 function buildSingleUploadedSlideImage(params: {
@@ -317,11 +367,16 @@ export function useProductionAssetState({
   };
 
   const handleSlidesZipUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
-    if (files.length === 0) return;
+    const selectedFiles = Array.from(event.target.files ?? []);
+    if (selectedFiles.length === 0) return;
 
     setIsUploadingSlides(true);
     try {
+      const files = await expandSlideInputFiles(selectedFiles);
+      if (files.length === 0) {
+        throw new Error("El ZIP no contiene imagenes renderizables (.png, .jpg, .jpeg, .webp o .svg).");
+      }
+
       const uploadedImages: NonNullable<SlidesAsset["images"]> = [];
       let referenceUrl = "";
       let referencePath = "";
