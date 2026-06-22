@@ -6,8 +6,10 @@ import { getSofliaInboxEnv } from '@/lib/server/env';
 import { createClient } from '@/utils/supabase/server';
 import {
     getAuthenticatedUser,
+    getAuthorizedArtifactAdminForTenant,
     getServiceRoleClient,
 } from '@/lib/server/artifact-action-auth';
+import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 
 interface PublishRequestPayload {
     artifactId?: string;
@@ -36,13 +38,26 @@ export async function POST(request: Request) {
         }
 
         const admin = getServiceRoleClient();
-        const { data: profile } = await admin
-            .from('profiles')
-            .select('platform_role')
-            .eq('id', authenticatedUser.userId)
-            .maybeSingle();
+        const tenant = await resolveActiveTenantContext();
+        if (!tenant) {
+            return NextResponse.json(
+                { error: 'Empresa no valida o no autorizada.' },
+                { status: 403 },
+            );
+        }
 
-        if (profile?.platform_role === 'CONSTRUCTOR') {
+        const authorized = await getAuthorizedArtifactAdminForTenant(
+            artifactId,
+            tenant,
+        );
+        if (!authorized) {
+            return NextResponse.json(
+                { error: 'Artefacto no encontrado para esta empresa.' },
+                { status: 404 },
+            );
+        }
+
+        if (tenant.platformRole === 'CONSTRUCTOR') {
             return NextResponse.json(
                 {
                     error: 'Falta de permisos. Solo Arquitectos y Admins pueden publicar.',
@@ -52,7 +67,7 @@ export async function POST(request: Request) {
         }
 
         const { request: publicationRequest, lessons, artifact, materialsPackage } =
-            await getPublicationData(artifactId);
+            await getPublicationData(artifactId, tenant.organizationId);
 
         if (!publicationRequest || publicationRequest.status !== 'READY') {
             return NextResponse.json(

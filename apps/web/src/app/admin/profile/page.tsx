@@ -1,29 +1,34 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/utils/supabase/server';
 import { getActiveOrganizationId } from '@/utils/auth/session';
+import { getAuthenticatedUser } from '@/lib/server/artifact-action-auth';
 import ProfileForm from './ProfileForm';
 
-export default async function ProfilePage() {
+export default async function ProfilePage({
+  organizationId,
+}: {
+  organizationId?: string | null;
+}) {
   const supabase = await createClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const authUser = await getAuthenticatedUser(supabase);
 
-  if (!user) {
+  if (!authUser) {
     redirect('/login');
   }
 
-  const activeOrgId = await getActiveOrganizationId();
+  const activeOrgId = organizationId ?? (await getActiveOrganizationId());
 
   const { data: profile } = await supabase
     .from('profiles')
     .select('avatar_url, first_name, last_name_father, last_name_mother, username, platform_role')
-    .eq('id', user.id)
+    .eq('id', authUser.userId)
     .single();
 
   const { data: cloudCreds } = await supabase
     .from('user_cloud_storage_credentials')
     .select('provider, account_email')
-    .eq('user_id', user.id)
+    .eq('user_id', authUser.userId)
     .in('provider', ['google_drive', 'onedrive']);
 
   const googleCreds = cloudCreds?.find((cred) => cred.provider === 'google_drive');
@@ -36,7 +41,7 @@ export default async function ProfilePage() {
   let artifactCountQuery = supabase
     .from('artifacts')
     .select('id', { count: 'exact', head: true })
-    .eq('created_by', user.id);
+    .eq('created_by', authUser.userId);
   if (activeOrgId) artifactCountQuery = artifactCountQuery.eq('organization_id', activeOrgId);
   const { count: artifactCount } = await artifactCountQuery;
 
@@ -49,7 +54,11 @@ export default async function ProfilePage() {
       
       <div>
          <ProfileForm 
-           user={user} 
+           user={{
+             id: authUser.userId,
+             email: authUser.email || undefined,
+             created_at: '',
+           }} 
            profile={profile} 
            artifactCount={artifactCount || 0} 
            googleConnected={googleConnected}

@@ -35,7 +35,7 @@ interface SyllabusModuleSummary {
 
 export class ScormTransformationService {
 
-    async processImport(importId: string, userId: string) {
+    async processImport(importId: string, userId: string, organizationId: string) {
         const supabase = await createClient();
 
         // 1. Get Import Record
@@ -43,6 +43,7 @@ export class ScormTransformationService {
             .from('scorm_imports')
             .select('id, manifest_raw, storage_path')
             .eq('id', importId)
+            .eq('organization_id', organizationId)
             .single();
 
         if (error || !importRecord) throw new Error('Import not found');
@@ -95,7 +96,8 @@ export class ScormTransformationService {
                 target_audience: enrichment.targetAudience,
                 objetivos: enrichment.objectives,
                 state: 'DRAFT', // Start as DRAFT
-                created_by: userId
+                created_by: userId,
+                organization_id: organizationId
             })
             .select('id')
             .single();

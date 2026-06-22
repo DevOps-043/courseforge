@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, Check, Loader2, Building2 } from 'lucide-react';
 import { useOrganizationStore, type UserOrganization } from '@/core/stores/organizationStore';
@@ -29,6 +30,8 @@ export default function OrganizationSwitcher({ collapsed = false, onSwitch }: Or
   const [showOverlay, setShowOverlay] = useState(false);
   const [switchingToName, setSwitchingToName] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+  const router = useRouter();
 
   const activeOrg = getActiveOrganization();
   const hasMultiple = canSwitch();
@@ -71,6 +74,19 @@ export default function OrganizationSwitcher({ collapsed = false, onSwitch }: Or
     const success = await switchOrganization(org.id);
     if (success) {
       onSwitch?.();
+      const segments = pathname.split('/').filter(Boolean);
+      const isTenantRoute =
+        segments.length >= 2 &&
+        organizations.some((candidate) => candidate.slug === segments[0]) &&
+        ['admin', 'architect', 'builder'].includes(segments[1]);
+
+      if (isTenantRoute) {
+        segments[0] = org.slug;
+        router.push(`/${segments.join('/')}`);
+        router.refresh();
+        return;
+      }
+
       window.location.reload();
     } else {
       setShowOverlay(false);

@@ -50,7 +50,10 @@ const ARTIFACT_STATES = {
   ERROR: 'Error'
 };
 
-export async function getLiaDBContext(supabase: SupabaseClient): Promise<LiaDBContext> {
+export async function getLiaDBContext(
+  supabase: SupabaseClient,
+  organizationId?: string | null,
+): Promise<LiaDBContext> {
   // 1. Get current user
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -72,7 +75,7 @@ export async function getLiaDBContext(supabase: SupabaseClient): Promise<LiaDBCo
   }
 
   // 2. Get recent artifacts (last 20)
-  const { data: artifacts } = await supabase
+  let artifactsQuery = supabase
     .from('artifacts')
     .select(`
       id,
@@ -85,6 +88,12 @@ export async function getLiaDBContext(supabase: SupabaseClient): Promise<LiaDBCo
     `)
     .order('created_at', { ascending: false })
     .limit(20);
+
+  if (organizationId) {
+    artifactsQuery = artifactsQuery.eq('organization_id', organizationId);
+  }
+
+  const { data: artifacts } = await artifactsQuery;
 
   const artifactsList = ((artifacts || []) as ArtifactRow[]).map((art) => ({
     id: art.id,

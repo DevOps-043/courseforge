@@ -19,6 +19,7 @@ import type {
 } from "@/domains/publication/types/publication.types";
 import type { SyllabusModule } from "@/domains/syllabus/types/syllabus.types";
 import { getSupabaseServiceRoleKey, getSupabaseUrl } from "@/lib/server/env";
+import { getOrganizationPlatformRole } from "@/lib/server/tenant-context";
 
 type PlatformRole = "ADMIN" | "CONSTRUCTOR" | "ARQUITECTO";
 
@@ -142,7 +143,10 @@ function getServiceRoleClient() {
 
 async function loadDisplayProfile(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  options: Pick<ArtifactDetailLoadOptions, "fallbackRole" | "fallbackName">,
+  options: Pick<
+    ArtifactDetailLoadOptions,
+    "activeOrganizationId" | "fallbackRole" | "fallbackName"
+  >,
 ): Promise<ArtifactDisplayProfile> {
   const admin = getServiceRoleClient();
 
@@ -159,10 +163,13 @@ async function loadDisplayProfile(
 
     if (profile) {
       const typedProfile = profile as ProfileRow;
+      const organizationRole = options.activeOrganizationId
+        ? await getOrganizationPlatformRole(bridgeUser.id, options.activeOrganizationId)
+        : null;
       return {
         first_name: typedProfile.first_name || typedProfile.username || null,
         email: typedProfile.email || bridgeUser.email,
-        platform_role: typedProfile.platform_role || options.fallbackRole,
+        platform_role: organizationRole || typedProfile.platform_role || options.fallbackRole,
       };
     }
 
@@ -188,10 +195,13 @@ async function loadDisplayProfile(
 
     if (profile) {
       const typedProfile = profile as ProfileRow;
+      const organizationRole = options.activeOrganizationId
+        ? await getOrganizationPlatformRole(user.id, options.activeOrganizationId)
+        : null;
       return {
         first_name: typedProfile.first_name || typedProfile.username || null,
         email: typedProfile.email || user.email,
-        platform_role: typedProfile.platform_role || options.fallbackRole,
+        platform_role: organizationRole || typedProfile.platform_role || options.fallbackRole,
       };
     }
   }

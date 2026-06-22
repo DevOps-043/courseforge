@@ -4,6 +4,7 @@ import { callBackgroundFunctionJson } from "@/lib/server/background-function-cli
 import { getErrorMessage } from "@/lib/errors";
 import { createClient } from "@/utils/supabase/server";
 import { getActiveOrganizationId } from "@/utils/auth/session";
+import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import type { ArtifactContentUpdates } from "@/app/admin/artifacts/[id]/artifact-view.types";
 import {
   canReviewContent,
@@ -30,7 +31,8 @@ export async function generateArtifactAction(formData: {
   const accessToken = await getAccessToken(supabase);
   if (!accessToken) return { success: false, error: "Unauthorized (No Token)" };
 
-  const activeOrgId = await getActiveOrganizationId();
+  const tenant = await resolveActiveTenantContext();
+  const activeOrgId = tenant?.organizationId ?? (await getActiveOrganizationId());
 
   try {
     let finalCourseId = formData.courseId?.trim();
@@ -146,7 +148,8 @@ export async function regenerateArtifactAction(
   } = await supabase.auth.getSession();
   if (!session) return { success: false, error: "Unauthorized" };
 
-  const activeOrgId = await getActiveOrganizationId();
+  const tenant = await resolveActiveTenantContext();
+  const activeOrgId = tenant?.organizationId ?? (await getActiveOrganizationId());
   let artifactQuery = supabase
     .from("artifacts")
     .select("generation_metadata")
@@ -221,7 +224,8 @@ export async function updateArtifactContentAction(
   const authUser = await getAuthenticatedUser(supabase);
   if (!authUser) return { success: false, error: "Unauthorized" };
 
-  const activeOrgId = await getActiveOrganizationId();
+  const tenant = await resolveActiveTenantContext();
+  const activeOrgId = tenant?.organizationId ?? (await getActiveOrganizationId());
   let query = supabase.from("artifacts").update(updates).eq("id", artifactId);
   if (activeOrgId) {
     query = query.eq("organization_id", activeOrgId);
@@ -364,7 +368,8 @@ export async function updateArtifactAssetsCompleteAction(
   if (!authUser) return { success: false, error: "Unauthorized" };
 
   try {
-    const activeOrgId = await getActiveOrganizationId();
+    const tenant = await resolveActiveTenantContext();
+    const activeOrgId = tenant?.organizationId ?? (await getActiveOrganizationId());
     let query = supabase.from("artifacts").select("generation_metadata").eq("id", artifactId);
     if (activeOrgId) {
       query = query.eq("organization_id", activeOrgId);

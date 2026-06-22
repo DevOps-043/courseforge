@@ -233,7 +233,7 @@ export default function ArtifactClientView({
     all_passed: false,
   } satisfies ArtifactValidationReport;
   const displayState =
-    basePath === "/admin"
+    basePath === "/admin" || basePath.endsWith("/admin")
       ? getArtifactDisplayState({
           id: artifact.id,
           idea_central: artifact.idea_central || "",

@@ -65,7 +65,7 @@ export function ArtifactCard({
   const [isDeleting, setIsDeleting] = useState(false);
 
   const progress = getArtifactProgress(artifact);
-  const normalizeReadyForQa = basePath === "/admin";
+  const normalizeReadyForQa = basePath === "/admin" || basePath.endsWith("/admin");
   const timeDisplay = formatArtifactCreatedAt(artifact.created_at);
   const description = getArtifactDescription(artifact.descripcion);
   const artifactTitle = getArtifactTitle(artifact.idea_central);

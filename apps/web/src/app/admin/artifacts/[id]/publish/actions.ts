@@ -124,12 +124,13 @@ function mapLessonToVideoLesson(
 
 export async function getPublicationData(
     artifactId: string,
+    organizationId?: string | null,
 ): Promise<PublicationDataResult> {
     // Use service role client — Auth Bridge users have no GoTrue session,
     // so the regular client fails RLS checks on all these tables.
     // Access is scoped by artifactId + organization_id filter.
     const admin = getServiceRoleClient();
-    const activeOrgId = await getActiveOrganizationId();
+    const activeOrgId = organizationId ?? (await getActiveOrganizationId());
 
     let artifactQuery = admin
         .from('artifacts')

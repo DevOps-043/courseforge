@@ -4,6 +4,11 @@ import {
   getActiveOrganizationId,
   getAuthBridgeUser,
 } from "@/utils/auth/session";
+import type { TenantContext } from "@/lib/server/tenant-context";
+import {
+  getOrganizationPlatformRole,
+  resolveActiveTenantContext,
+} from "@/lib/server/tenant-context";
 import { REVIEWER_ROLE_SET } from "@/lib/pipeline-constants";
 import {
   getAppUrl,
@@ -64,6 +69,17 @@ export function getServiceRoleClient() {
 }
 
 export async function canReviewContent(userId: string) {
+  const tenant = await resolveActiveTenantContext();
+  if (tenant?.organizationId) {
+    const organizationRole = await getOrganizationPlatformRole(
+      userId,
+      tenant.organizationId,
+    );
+    if (organizationRole) {
+      return REVIEWER_ROLE_SET.has(organizationRole);
+    }
+  }
+
   const admin = getServiceRoleClient();
   const { data } = await admin
     .from("profiles")
@@ -104,23 +120,28 @@ export function getBackgroundFunctionsBaseUrl() {
 export async function assertArtifactOrgAccess(
   artifactId: string,
   activeOrgId: string | null,
+  tenantContext?: Pick<TenantContext, "organizationId"> | null,
 ) {
   const admin = getServiceRoleClient();
   const bridgeUser = await getAuthBridgeUser();
   const organizationIds = new Set<string>();
 
-  if (activeOrgId) {
-    organizationIds.add(activeOrgId);
-  }
-  if (bridgeUser?.active_organization_id) {
-    organizationIds.add(bridgeUser.active_organization_id);
-  }
-  if (Array.isArray(bridgeUser?.organization_ids)) {
-    bridgeUser.organization_ids.forEach((orgId) => {
-      if (orgId) {
-        organizationIds.add(orgId);
-      }
-    });
+  if (tenantContext?.organizationId) {
+    organizationIds.add(tenantContext.organizationId);
+  } else {
+    if (activeOrgId) {
+      organizationIds.add(activeOrgId);
+    }
+    if (bridgeUser?.active_organization_id) {
+      organizationIds.add(bridgeUser.active_organization_id);
+    }
+    if (Array.isArray(bridgeUser?.organization_ids)) {
+      bridgeUser.organization_ids.forEach((orgId) => {
+        if (orgId) {
+          organizationIds.add(orgId);
+        }
+      });
+    }
   }
 
   let query = admin
@@ -144,8 +165,33 @@ export async function assertArtifactOrgAccess(
 }
 
 export async function getAuthorizedArtifactAdmin(artifactId: string) {
-  const activeOrgId = await getActiveOrganizationId();
-  const artifact = await assertArtifactOrgAccess(artifactId, activeOrgId);
+  const tenantContext = await resolveActiveTenantContext();
+  const activeOrgId = tenantContext?.organizationId ?? (await getActiveOrganizationId());
+  const artifact = await assertArtifactOrgAccess(
+    artifactId,
+    activeOrgId,
+    tenantContext,
+  );
+
+  if (!artifact) {
+    return null;
+  }
+
+  return {
+    admin: getServiceRoleClient(),
+    artifact,
+  };
+}
+
+export async function getAuthorizedArtifactAdminForTenant(
+  artifactId: string,
+  tenantContext: Pick<TenantContext, "organizationId">,
+) {
+  const artifact = await assertArtifactOrgAccess(
+    artifactId,
+    tenantContext.organizationId,
+    tenantContext,
+  );
 
   if (!artifact) {
     return null;

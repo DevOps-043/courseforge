@@ -23,6 +23,7 @@ import {
   getGeminiApiKey,
   getOptionalServerEnvValue,
 } from "@/lib/server/env";
+import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,7 +33,9 @@ export async function POST(req: NextRequest) {
     const activeOrgId = getActiveOrgIdFromCookieHeader(
       req.headers.get("cookie") || "",
     );
-    const settings = await getLiaSettings(supabase, useComputerUse, activeOrgId);
+    const tenant = await resolveActiveTenantContext();
+    const organizationId = tenant?.organizationId || activeOrgId;
+    const settings = await getLiaSettings(supabase, useComputerUse, organizationId);
     const modelName = settings.model_name;
     const config = buildLiaConfig(settings, useComputerUse);
     const primaryGeminiApiKey = getOptionalServerEnvValue(
@@ -58,7 +61,7 @@ export async function POST(req: NextRequest) {
     let dbContextSummary = "";
     if (useComputerUse) {
       try {
-        const dbContext = await getLiaDBContext(supabase);
+        const dbContext = await getLiaDBContext(supabase, organizationId);
         dbContextSummary = generateDBContextSummary(dbContext);
         console.log("Lia API - DB Context loaded:", dbContext.stats);
       } catch (error) {

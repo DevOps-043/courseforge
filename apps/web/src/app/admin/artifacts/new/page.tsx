@@ -33,7 +33,11 @@ interface TemplateCardProps {
     title: string;
 }
 
-export default function NewArtifactPage() {
+export default function NewArtifactPage({
+    basePath = '/admin',
+}: {
+    basePath?: string;
+}) {
     const [mode, setMode] = useState<'ai' | 'import'>('ai');
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -69,7 +73,7 @@ export default function NewArtifactPage() {
             });
 
             if (result.success) {
-                router.push('/admin/artifacts');
+                router.push(`${basePath}/artifacts`);
             } else {
                 console.error(result.error);
                 alert('Error generando el artefacto: ' + result.error);
@@ -305,7 +309,7 @@ export default function NewArtifactPage() {
                             <ScormImportFlow
                                 onComplete={(artifactId) => {
                                     toast.success('Importación completada');
-                                    router.push(`/admin/artifacts/${artifactId}`);
+                                    router.push(`${basePath}/artifacts/${artifactId}`);
                                 }}
                             />
                         )}

@@ -2,6 +2,7 @@ import { getTemplatesAction, getPublicTemplatesAction } from "@/domains/producti
 import TemplatesContainer from "./TemplatesContainer";
 import { createClient } from "@/utils/supabase/server";
 import { getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
+import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 
 export const dynamic = "force-dynamic";
 
@@ -16,9 +17,14 @@ export default async function TemplatesPage() {
 
   let initialUserRole: string | null = null;
   try {
+    const tenant = await resolveActiveTenantContext();
+    if (tenant?.platformRole) {
+      initialUserRole = tenant.platformRole;
+    }
+
     const supabase = await createClient();
     const user = await getAuthenticatedUser(supabase);
-    if (user) {
+    if (user && !initialUserRole) {
       const admin = getServiceRoleClient();
       const { data: profile } = await admin
         .from("profiles")

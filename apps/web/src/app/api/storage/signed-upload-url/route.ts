@@ -6,6 +6,7 @@ import {
     getUserOrganizations,
 } from '@/utils/auth/session';
 import { createClient } from '@/utils/supabase/server';
+import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 
 const ALLOWED_BUCKETS = new Set(['thumbnails', 'production-videos', 'production-assets', 'template-bundles']);
 const TEMPLATE_BUNDLE_MAX_BYTES = 10 * 1024 * 1024;
@@ -59,6 +60,9 @@ async function ensureTemplateBundlesBucket(admin: ReturnType<typeof getServiceRo
 }
 
 async function resolveActiveUploadOrganizationId() {
+    const tenant = await resolveActiveTenantContext();
+    if (tenant?.organizationId) return tenant.organizationId;
+
     const activeOrgId = await getActiveOrganizationId();
     if (activeOrgId) return activeOrgId;
 

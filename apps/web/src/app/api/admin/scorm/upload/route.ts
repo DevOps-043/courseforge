@@ -4,15 +4,21 @@ import { ScormParserService } from '@/domains/scorm/services/scorm-parser.servic
 import type { ScormManifest } from '@/domains/scorm/types';
 import { randomUUID } from 'crypto';
 import { getErrorMessage } from '@/lib/errors';
+import { getAuthenticatedUser } from '@/lib/server/artifact-action-auth';
+import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 
 export async function POST(req: NextRequest) {
     try {
         const supabase = await createClient();
 
-        // 1. Auth Check
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
-        if (authError || !user) {
+        // 1. Auth + tenant check
+        const authenticatedUser = await getAuthenticatedUser(supabase);
+        if (!authenticatedUser) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+        const tenant = await resolveActiveTenantContext();
+        if (!tenant) {
+            return NextResponse.json({ error: 'Empresa no valida o no autorizada.' }, { status: 403 });
         }
 
         // 2. Parse FormData
@@ -30,7 +36,7 @@ export async function POST(req: NextRequest) {
         const buffer = Buffer.from(await file.arrayBuffer());
 
         // 3. Upload to Storage
-        const storagePath = `uploads/${user.id}/${randomUUID()}-${file.name}`;
+        const storagePath = `organizations/${tenant.organizationId}/uploads/${authenticatedUser.userId}/${randomUUID()}-${file.name}`;
         const { error: uploadError } = await supabase.storage
             .from('scorm-packages')
             .upload(storagePath, file, {
@@ -50,7 +56,8 @@ export async function POST(req: NextRequest) {
                 original_filename: file.name,
                 storage_path: storagePath,
                 status: 'SCORM_UPLOADED',
-                created_by: user.id
+                created_by: authenticatedUser.userId,
+                organization_id: tenant.organizationId
             })
             .select()
             .single();

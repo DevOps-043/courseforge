@@ -5,8 +5,10 @@ import type { PublicationDraftData } from '@/domains/publication/types/publicati
 import { getErrorMessage } from '@/lib/errors';
 import {
     getAuthenticatedUser,
+    getAuthorizedArtifactAdminForTenant,
     getServiceRoleClient,
 } from '@/lib/server/artifact-action-auth';
+import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 
 interface SaveDraftRequestBody {
     artifactId?: string;
@@ -28,12 +30,17 @@ export async function POST(request: Request) {
         }
 
         const admin = getServiceRoleClient();
-        const { data: profile } = await admin
-            .from('profiles')
-            .select('platform_role')
-            .eq('id', authenticatedUser.userId)
-            .maybeSingle();
-        if (profile?.platform_role === 'CONSTRUCTOR') {
+        const tenant = await resolveActiveTenantContext();
+        if (!tenant) {
+            return NextResponse.json({ error: 'Empresa no valida o no autorizada.' }, { status: 403 });
+        }
+
+        const authorized = await getAuthorizedArtifactAdminForTenant(artifactId, tenant);
+        if (!authorized) {
+            return NextResponse.json({ error: 'Artefacto no encontrado para esta empresa.' }, { status: 404 });
+        }
+
+        if (tenant.platformRole === 'CONSTRUCTOR') {
             return NextResponse.json({ error: 'Falta de permisos. Solo Arquitectos y Admins pueden guardar para publicación.' }, { status: 403 });
         }
 

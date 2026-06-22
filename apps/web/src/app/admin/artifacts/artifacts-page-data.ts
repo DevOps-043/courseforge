@@ -104,10 +104,12 @@ function mergeArtifactsWithProfiles(
 }
 
 export async function loadArtifactsPageData(options?: {
+  activeOrganizationId?: string | null;
   onlyCurrentUser?: boolean;
 }) {
   const supabase = await createClient();
-  const activeOrgId = await getActiveOrganizationId();
+  const activeOrgId =
+    options?.activeOrganizationId ?? (await getActiveOrganizationId());
 
   const {
     data: { user },

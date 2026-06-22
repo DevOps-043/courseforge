@@ -9,20 +9,22 @@ export default function AdminLayoutClient({
     children,
     userEmail,
     logoutAction,
-    profile
+    profile,
+    basePath = '/admin'
 }: {
     children: React.ReactNode;
     userEmail?: string;
     logoutAction: () => void;
     profile?: SidebarProfile | null;
+    basePath?: string;
 }) {
     const navItems: NavItemConfig[] = [
-        { href: '/admin', icon: <LayoutDashboard size={22} />, label: 'Dashboard' },
-        { href: '/admin/users', icon: <Users size={22} />, label: 'Usuarios' },
-        { href: '/admin/artifacts', icon: <FileCode size={22} />, label: 'Artefactos' },
-        { href: '/admin/library', icon: <FileCode size={22} />, label: 'Librería' },
-        { href: '/admin/templates', icon: <Video size={22} />, label: 'Plantillas' },
-        { href: '/admin/settings', icon: <Settings size={22} />, label: 'Configuración' },
+        { href: basePath, icon: <LayoutDashboard size={22} />, label: 'Dashboard' },
+        { href: `${basePath}/users`, icon: <Users size={22} />, label: 'Usuarios' },
+        { href: `${basePath}/artifacts`, icon: <FileCode size={22} />, label: 'Artefactos' },
+        { href: `${basePath}/library`, icon: <FileCode size={22} />, label: 'Librería' },
+        { href: `${basePath}/templates`, icon: <Video size={22} />, label: 'Plantillas' },
+        { href: `${basePath}/settings`, icon: <Settings size={22} />, label: 'Configuración' },
     ];
 
     return (
@@ -31,7 +33,7 @@ export default function AdminLayoutClient({
             logoutAction={logoutAction}
             profile={profile}
             navItems={navItems}
-            basePath="/admin"
+            basePath={basePath}
             title={
                 <>
                     Admin<span className="text-[#00D4B3]">Panel</span>

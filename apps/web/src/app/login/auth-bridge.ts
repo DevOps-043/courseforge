@@ -29,6 +29,10 @@ import {
   isProductionEnvironment,
 } from "@/lib/server/env";
 import { getErrorMessage } from "@/lib/errors";
+import {
+  getOrganizationPlatformRole,
+  upsertOrganizationPlatformRole,
+} from "@/lib/server/tenant-context";
 
 async function syncOrganizations(
   courseforgeAdmin: SupabaseClient,
@@ -102,6 +106,54 @@ async function syncProfileAndResolveRedirect(
     console.error("Error sincronizando el perfil o verificando roles:", error);
     return "/builder";
   }
+}
+
+function mapSofliaOrganizationRoleToPlatformRole(role: string | null) {
+  if (role === "owner" || role === "admin") return "ADMIN";
+  return "CONSTRUCTOR";
+}
+
+async function syncOrganizationRoles(
+  organizations: ReturnType<typeof mapOrganizations>,
+  userId: string,
+) {
+  await Promise.all(
+    organizations.map((organization) =>
+      upsertOrganizationPlatformRole({
+        organizationId: organization.id,
+        platformRole: mapSofliaOrganizationRoleToPlatformRole(organization.role),
+        source: "soflia",
+        userId,
+      }),
+    ),
+  );
+}
+
+async function resolveOrganizationRedirect(
+  courseforgeAdmin: SupabaseClient,
+  organizations: ReturnType<typeof mapOrganizations>,
+  user: SofliaUserRecord,
+  activeOrgId: string | null,
+) {
+  const legacyRedirect = await syncProfileAndResolveRedirect(courseforgeAdmin, user);
+  await syncOrganizationRoles(organizations, user.id);
+
+  if (!activeOrgId) return legacyRedirect;
+
+  const organizationRole = await getOrganizationPlatformRole(user.id, activeOrgId);
+  if (organizationRole === "ADMIN" || organizationRole === "SUPERADMIN") {
+    return "/admin";
+  }
+
+  if (organizationRole === "ARQUITECTO") {
+    return "/architect";
+  }
+
+  if (organizationRole === "CONSTRUCTOR") {
+    return "/builder";
+  }
+
+  return legacyRedirect;
 }
 
 export async function completeAuthBridgeLogin(
@@ -225,7 +277,12 @@ export async function completeAuthBridgeLogin(
 
     await logLoginSession(courseforgeAdmin, user.id);
 
-    const redirectTo = await syncProfileAndResolveRedirect(courseforgeAdmin, user);
+    const redirectTo = await resolveOrganizationRedirect(
+      courseforgeAdmin,
+      organizations,
+      user,
+      activeOrgId,
+    );
     return { success: true, redirectTo };
   } catch (error) {
     console.error("completeAuthBridgeLogin error:", error);

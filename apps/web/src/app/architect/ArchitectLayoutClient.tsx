@@ -9,16 +9,18 @@ export default function ArchitectLayoutClient({
     children,
     userEmail,
     logoutAction,
-    profile
+    profile,
+    basePath = '/architect'
 }: {
     children: React.ReactNode;
     userEmail?: string;
     logoutAction: () => void;
     profile?: SidebarProfile | null;
+    basePath?: string;
 }) {
     const navItems: NavItemConfig[] = [
-        { href: '/architect', icon: <LayoutDashboard size={22} />, label: 'Dashboard' },
-        { href: '/architect/artifacts', icon: <ShieldCheck size={22} />, label: 'Control de Calidad' },
+        { href: basePath, icon: <LayoutDashboard size={22} />, label: 'Dashboard' },
+        { href: `${basePath}/artifacts`, icon: <ShieldCheck size={22} />, label: 'Control de Calidad' },
     ];
 
     return (
@@ -27,7 +29,7 @@ export default function ArchitectLayoutClient({
             logoutAction={logoutAction}
             profile={profile}
             navItems={navItems}
-            basePath="/architect"
+            basePath={basePath}
             title={
                 <>
                     Arqui<span className="text-[#00D4B3]">tecto</span>

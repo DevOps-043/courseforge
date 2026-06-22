@@ -9,16 +9,18 @@ export default function BuilderLayoutClient({
     children,
     userEmail,
     logoutAction,
-    profile
+    profile,
+    basePath = '/builder'
 }: {
     children: React.ReactNode;
     userEmail?: string;
     logoutAction: () => void;
     profile?: SidebarProfile | null;
+    basePath?: string;
 }) {
     const navItems: NavItemConfig[] = [
-        { href: '/builder', icon: <LayoutDashboard size={22} />, label: 'Mi Espacio' },
-        { href: '/builder/artifacts', icon: <FileArchive size={22} />, label: 'Mis Asignaciones' },
+        { href: basePath, icon: <LayoutDashboard size={22} />, label: 'Mi Espacio' },
+        { href: `${basePath}/artifacts`, icon: <FileArchive size={22} />, label: 'Mis Asignaciones' },
     ];
 
     return (
@@ -27,7 +29,7 @@ export default function BuilderLayoutClient({
             logoutAction={logoutAction}
             profile={profile}
             navItems={navItems}
-            basePath="/builder"
+            basePath={basePath}
             title={
                 <>
                     Buil<span className="text-[#00D4B3]">der</span>

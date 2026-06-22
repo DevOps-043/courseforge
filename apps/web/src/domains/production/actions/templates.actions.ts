@@ -2,11 +2,8 @@
 
 import { createClient } from "@/utils/supabase/server";
 import { getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
-import {
-  getActiveOrganizationId,
-  getAuthBridgeUser,
-  getUserOrganizations,
-} from "@/utils/auth/session";
+import { getAuthBridgeUser, getUserOrganizations } from "@/utils/auth/session";
+import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import {
   createTemplateConfigSchemaDefinition,
   parseTemplateRenderConfig,
@@ -146,7 +143,10 @@ async function getAuthorizedSupabase() {
 }
 
 async function resolveActiveTemplateOrganizationId(): Promise<string | null> {
-  const activeOrgId = await getActiveOrganizationId();
+  const tenant = await resolveActiveTenantContext();
+  if (tenant?.organizationId) return tenant.organizationId;
+
+  const activeOrgId = await resolveActiveTemplateOrganizationId();
   if (activeOrgId) return activeOrgId;
 
   const bridgeUser = await getAuthBridgeUser();
@@ -763,19 +763,8 @@ export async function approveTemplateVersionAction(
   const admin = getServiceRoleClient();
 
   try {
-    // 1. Verify role
-    const { data: requesterProfile, error: profileError } = await admin
-      .from("profiles")
-      .select("platform_role")
-      .eq("id", user.userId)
-      .single();
-
-    if (profileError || !requesterProfile) {
-      throw new Error("No se pudo verificar el rol del usuario.");
-    }
-
     const REVIEWER_ROLES = new Set(["ADMIN", "ARQUITECTO", "SUPERADMIN"]);
-    if (!REVIEWER_ROLES.has(requesterProfile.platform_role)) {
+    if (!REVIEWER_ROLES.has((await resolveActiveTenantContext())?.platformRole || "")) {
       throw new Error("No tienes permisos de revisor para aprobar bundles.");
     }
 
@@ -853,18 +842,8 @@ export async function approveTemplateVersionForSandboxAction(
   const admin = getServiceRoleClient();
 
   try {
-    const { data: requesterProfile, error: profileError } = await admin
-      .from("profiles")
-      .select("platform_role")
-      .eq("id", user.userId)
-      .single();
-
-    if (profileError || !requesterProfile) {
-      throw new Error("No se pudo verificar el rol del usuario.");
-    }
-
     const REVIEWER_ROLES = new Set(["ADMIN", "ARQUITECTO", "SUPERADMIN"]);
-    if (!REVIEWER_ROLES.has(requesterProfile.platform_role)) {
+    if (!REVIEWER_ROLES.has((await resolveActiveTenantContext())?.platformRole || "")) {
       throw new Error("No tienes permisos de revisor para habilitar bundles en sandbox.");
     }
 
@@ -934,25 +913,14 @@ export async function rejectTemplateVersionAction(
   const { error: authError, user } = await getAuthorizedSupabase();
   if (authError || !user) return { success: false, error: authError || "No autorizado" };
 
-  const activeOrgId = await getActiveOrganizationId();
+  const activeOrgId = await resolveActiveTemplateOrganizationId();
   if (!activeOrgId) return { success: false, error: "No se encontró organización activa" };
 
   const admin = getServiceRoleClient();
 
   try {
-    // 1. Verify role
-    const { data: requesterProfile, error: profileError } = await admin
-      .from("profiles")
-      .select("platform_role")
-      .eq("id", user.userId)
-      .single();
-
-    if (profileError || !requesterProfile) {
-      throw new Error("No se pudo verificar el rol del usuario.");
-    }
-
     const REVIEWER_ROLES = new Set(["ADMIN", "ARQUITECTO", "SUPERADMIN"]);
-    if (!REVIEWER_ROLES.has(requesterProfile.platform_role)) {
+    if (!REVIEWER_ROLES.has((await resolveActiveTenantContext())?.platformRole || "")) {
       throw new Error("No tienes permisos de revisor para rechazar bundles.");
     }
 
