@@ -441,9 +441,11 @@ interface OpenDesignSlidesSectionProps {
               {renderableSlideCount} imagen(es) listas para Remotion
             </span>
           )}
-          {slides?.html_public_url && (
+          {slides?.html_content_path?.endsWith(".html") && (
             <a
-              href={slides.html_public_url}
+              href={`/api/admin/slides/html-preview?path=${encodeURIComponent(
+                slides.html_content_path.replace(/^production-assets\//, "")
+              )}`}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-0.5 text-purple-600 hover:text-purple-550 dark:text-purple-400 dark:hover:text-purple-300 font-bold"
