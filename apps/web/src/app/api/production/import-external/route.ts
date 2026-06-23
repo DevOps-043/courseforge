@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import {
     getAuthenticatedUser,
-    getServiceRoleClient,
+    getAuthorizedMaterialComponentAdmin,
 } from '@/lib/server/artifact-action-auth';
 
 // Limit file sizes imported externally to 150MB to avoid server memory issues in serverless runtimes
@@ -33,7 +33,15 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
         }
 
-        const admin = getServiceRoleClient();
+        const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
+        if (!authorizedComponent) {
+            return NextResponse.json(
+                { error: 'Componente no encontrado para esta empresa' },
+                { status: 404 },
+            );
+        }
+
+        const admin = authorizedComponent.admin;
 
         // 1. Resolve source video URL (Heygen API or direct URL)
         let resolvedVideoUrl = videoUrl || '';
@@ -148,20 +156,7 @@ export async function POST(request: Request) {
             .getPublicUrl(storagePath);
 
         // 4. Update the material component database record
-        const { data: component, error: fetchError } = await admin
-            .from('material_components')
-            .select('assets')
-            .eq('id', componentId)
-            .single();
-
-        if (fetchError || !component) {
-            return NextResponse.json(
-                { error: 'No se encontró el componente de material correspondiente' },
-                { status: 404 },
-            );
-        }
-
-        const currentAssets = component.assets || {};
+        const currentAssets = authorizedComponent.component.assets || {};
         const updatedAssets = {
             ...currentAssets,
             avatar_video: {

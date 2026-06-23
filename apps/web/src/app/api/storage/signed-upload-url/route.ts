@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getAuthenticatedUser, getServiceRoleClient } from '@/lib/server/artifact-action-auth';
+import {
+    getAuthenticatedUser,
+    getAuthorizedMaterialComponentAdmin,
+    getServiceRoleClient,
+} from '@/lib/server/artifact-action-auth';
 import {
     getActiveOrganizationId,
     getAuthBridgeUser,
@@ -16,6 +20,7 @@ type UploadPurpose = 'template-bundle' | 'production-asset' | 'thumbnail' | 'pro
 
 interface SignedUploadUrlRequestBody {
     bucket?: string;
+    componentId?: string;
     filePath?: string;
     purpose?: UploadPurpose;
     contentType?: string;
@@ -83,6 +88,7 @@ export async function POST(request: Request) {
     try {
         const {
             bucket,
+            componentId,
             filePath,
             purpose = 'production-asset',
             contentType,
@@ -161,6 +167,31 @@ export async function POST(request: Request) {
                 { error: 'El bucket template-bundles solo acepta uploads con purpose template-bundle' },
                 { status: 400 },
             );
+        }
+
+        if (bucket === 'production-assets') {
+            if (!componentId) {
+                return NextResponse.json(
+                    { error: 'componentId es requerido para subir activos de produccion' },
+                    { status: 400 },
+                );
+            }
+
+            const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
+            if (!authorizedComponent) {
+                return NextResponse.json(
+                    { error: 'Componente no encontrado para esta empresa' },
+                    { status: 404 },
+                );
+            }
+
+            const expectedPathFragment = `${componentId}`;
+            if (!filePath.includes(expectedPathFragment)) {
+                return NextResponse.json(
+                    { error: 'La ruta del activo no corresponde al componente autorizado' },
+                    { status: 400 },
+                );
+            }
         }
 
         const admin = getServiceRoleClient();

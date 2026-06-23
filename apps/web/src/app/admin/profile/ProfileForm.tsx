@@ -25,10 +25,10 @@ interface ProfileFormProps {
   artifactCount: number;
   profile: ProfileFormProfile | null;
   user: Pick<SupabaseUser, 'created_at' | 'email' | 'id'>;
-  googleConnected: boolean;
-  googleEmail: string | null;
-  oneDriveConnected: boolean;
-  oneDriveEmail: string | null;
+  googleConnected?: boolean;
+  googleEmail?: string | null;
+  oneDriveConnected?: boolean;
+  oneDriveEmail?: string | null;
 }
 
 interface BoxInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -290,12 +290,6 @@ export default function ProfileForm({
                 className={`px-6 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 border ${activeSection === 'security' ? 'bg-[#00D4B3]/10 text-[#00D4B3] border-[#00D4B3]/20' : 'bg-transparent border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-slate-500 dark:hover:text-white dark:hover:bg-white/5'}`}
              >
                 <Shield size={16} /> Seguridad
-             </button>
-             <button 
-                onClick={() => setActiveSection('integrations')}
-                className={`px-6 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 border ${activeSection === 'integrations' ? 'bg-[#00D4B3]/10 text-[#00D4B3] border-[#00D4B3]/20' : 'bg-transparent border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-slate-500 dark:hover:text-white dark:hover:bg-white/5'}`}
-             >
-                <HardDrive size={16} /> Integraciones
              </button>
         </div>
 

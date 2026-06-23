@@ -4,14 +4,11 @@ import type { PlanLessonItem } from "@/domains/plan/components/plan-view.types";
 import { getErrorMessage } from "@/lib/errors";
 import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { createClient } from "@/utils/supabase/server";
-import { getActiveOrganizationId } from "@/utils/auth/session";
 import {
-  assertArtifactOrgAccess,
   canReviewContent,
   getAccessToken,
   getAuthenticatedUser,
   getAuthorizedArtifactAdmin,
-  getServiceRoleClient,
 } from "@/lib/server/artifact-action-auth";
 
 export async function generateInstructionalPlanAction(
@@ -193,13 +190,12 @@ export async function getInstructionalPlanSnapshotAction(artifactId: string) {
   const authUser = await getAuthenticatedUser(supabase);
   if (!authUser) return { success: false, error: "Unauthorized" };
 
-  const activeOrgId = await getActiveOrganizationId();
-  const artifact = await assertArtifactOrgAccess(artifactId, activeOrgId);
-  if (!artifact) {
+  const authorized = await getAuthorizedArtifactAdmin(artifactId);
+  if (!authorized) {
     return { success: false, error: "Artifact not found or inaccessible" };
   }
 
-  const admin = getServiceRoleClient();
+  const { admin } = authorized;
   const { data, error } = await admin
     .from("instructional_plans")
     .select("*")

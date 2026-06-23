@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { revalidatePath } from 'next/cache';
 import { getPublicationData } from '@/app/admin/artifacts/[id]/publish/actions';
 import { buildPublicationPayload } from '@/domains/publication/lib/publication-payload';
 import { getSofliaInboxEnv } from '@/lib/server/env';
@@ -134,6 +135,9 @@ export async function POST(request: Request) {
                 updateError,
             );
         }
+
+        revalidatePath(`/admin/artifacts/${artifactId}/publish`);
+        revalidatePath(`/${tenant.organizationSlug}/admin/artifacts/${artifactId}/publish`);
 
         return NextResponse.json({
             success: true,

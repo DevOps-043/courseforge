@@ -8,6 +8,7 @@ export interface CloudStorageCredentialRecord {
   access_token: string;
   account_email: string;
   expires_at: string;
+  organization_id: string | null;
   provider: CloudStorageProvider;
   refresh_token: string;
   scopes: string[] | null;
@@ -17,6 +18,7 @@ export interface CloudStorageCredentialRecord {
 export interface CloudStorageConnection {
   connected: boolean;
   email: string | null;
+  needsReconnect?: boolean;
   provider: CloudStorageProvider;
 }
 

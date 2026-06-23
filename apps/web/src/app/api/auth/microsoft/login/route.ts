@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { getAuthenticatedUser } from "@/lib/server/artifact-action-auth";
 import { createOAuthState } from "@/lib/server/oauth-state";
+import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 
 export async function GET(request: Request) {
   try {
@@ -11,11 +12,18 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 });
     }
 
+    const tenant = await resolveActiveTenantContext();
+    if (!tenant) {
+      return NextResponse.json({ error: "Empresa no valida o no autorizada" }, { status: 403 });
+    }
+
     const requestUrl = new URL(request.url);
     const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
     const redirectUri = process.env.MICROSOFT_REDIRECT_URI || `${baseUrl}/api/auth/microsoft/callback`;
     const response = NextResponse.redirect("https://login.microsoftonline.com/common/oauth2/v2.0/authorize");
     const state = createOAuthState({
+      organizationId: tenant.organizationId,
+      organizationSlug: tenant.organizationSlug,
       provider: "onedrive",
       response,
       userId: user.userId,

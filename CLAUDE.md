@@ -1,6 +1,6 @@
-# Courseforge
+# SofLIA - Engine
 
-Plataforma de creación de cursos automatizada con IA. Transforma una idea en un curso completo con curriculum, planes de lección, fuentes curadas, materiales educativos y producción de video. Soporta importación de SCORM y publicación directa a Soflia.
+Plataforma de creación de cursos automatizada con IA. Transforma una idea en un curso completo con curriculum, planes de lección, fuentes curadas, materiales educativos y producción de video. Soporta importación de SCORM y publicación directa a SofLIA.
 
 ## Stack
 
@@ -8,7 +8,7 @@ Plataforma de creación de cursos automatizada con IA. Transforma una idea en un
 - **Backend**: Express + Netlify Functions (background jobs)
 - **DB/Auth**: Supabase (PostgreSQL) con RLS y Auth Bridge (profiles)
 - **IA**: Google Gemini (primario), OpenAI (secundario)
-- **Servicios**: Gamma API (slides), Google Search (grounding), Soflia API (publicación)
+- **Servicios**: Gamma API (slides), Google Search (grounding), SofLIA API (publicación)
 
 ## Comandos
 
@@ -201,7 +201,7 @@ Para cada lección genera:
 
 ## Importación SCORM
 
-Flujo alternativo para importar cursos existentes en formato SCORM y convertirlos al pipeline de Courseforge.
+Flujo alternativo para importar cursos existentes en formato SCORM y convertirlos al pipeline de SofLIA - Engine.
 
 **Proceso** (domain: `domains/scorm/`):
 
@@ -209,7 +209,7 @@ Flujo alternativo para importar cursos existentes en formato SCORM y convertirlo
 2. **Parsing** (`scorm-parser.service.ts`): Extrae manifiesto, SCOs, recursos, HTML
 3. **Análisis**: Detecta componentes, quizzes, gaps de contenido
 4. **Enriquecimiento** (`scorm-enrichment.service.ts`): Gemini analiza y completa gaps
-5. **Transformación** (`scorm-transformation.service.ts`): Convierte a estructura Courseforge
+5. **Transformación** (`scorm-transformation.service.ts`): Convierte a estructura SofLIA - Engine
 
 **Estados**: `UPLOADED` → `PARSING` → `ANALYZED` → `ENRICHING` → `TRANSFORMING` → `COMPLETED` | `FAILED`
 
@@ -222,16 +222,16 @@ Flujo alternativo para importar cursos existentes en formato SCORM y convertirlo
 
 ---
 
-## Publicación a Soflia
+## Publicación a SofLIA
 
-Flujo para publicar un artefacto completado a la plataforma Soflia.
+Flujo para publicar un artefacto completado a la plataforma SofLIA.
 
 **Proceso** (`/admin/artifacts/[id]/publish`):
 
 1. Admin completa datos del curso: categoría, nivel, instructor, thumbnail, slug, precio
 2. Mapea videos de producción a cada lección (`VideoMappingList`)
 3. Guarda borrador → `POST /api/save-draft`
-4. Publica a Soflia → `POST /api/publish`
+4. Publica a SofLIA → `POST /api/publish`
 
 **Estados** (`publication_requests.status`):
 `DRAFT` → `READY` → `SENT` → `APPROVED` | `REJECTED`
@@ -262,7 +262,7 @@ Flujo para publicar un artefacto completado a la plataforma Soflia.
 
 ### Publicación
 
-- `POST /api/publish` - Publica artefacto a Soflia
+- `POST /api/publish` - Publica artefacto a SofLIA
 - `POST /api/save-draft` - Guarda borrador de publicación
 
 ### Admin
@@ -273,7 +273,7 @@ Flujo para publicar un artefacto completado a la plataforma Soflia.
 
 ### Debug / GPT
 
-- `GET /api/debug/soflia` - Debug integración Soflia
+- `GET /api/debug/soflia` - Debug integración SofLIA
 - `GET /api/gpt/sources` - Fuentes para GPT
 
 ### Netlify Functions (Background)
@@ -301,7 +301,7 @@ El sistema tiene tres dashboards con roles diferenciados:
 - `/admin/artifacts` - Lista y gestión de artefactos
 - `/admin/artifacts/new` - Crear artefacto (manual o importar SCORM)
 - `/admin/artifacts/[id]` - Detalle: navegar fases, aprobar/rechazar, regenerar
-- `/admin/artifacts/[id]/publish` - Publicar a Soflia (datos + video mapping)
+- `/admin/artifacts/[id]/publish` - Publicar a SofLIA (datos + video mapping)
 - `/admin/library` - Buscar y editar materiales por lección/componente
 - `/admin/settings` - Configurar modelos IA por fase del pipeline (ARTIFACT_BASE, SYLLABUS, INSTRUCTIONAL_PLAN, MATERIALS, CURATION), temperatura, thinking budget
 - `/admin/users` - Gestión de usuarios y roles
@@ -333,7 +333,7 @@ El sistema tiene tres dashboards con roles diferenciados:
 | `materials`            | Estado global de materiales                                                 |
 | `material_lessons`     | Componentes por lección                                                     |
 | `material_components`  | Contenido + assets (slides, b_roll, production_status)                      |
-| `publication_requests` | Publicación a Soflia: datos, video mapping, estado                          |
+| `publication_requests` | Publicación a SofLIA: datos, video mapping, estado                          |
 | `scorm_imports`        | Paquetes SCORM: manifiesto, análisis, estado de procesamiento               |
 | `scorm_resources`      | Recursos SCORM: HTML, quizzes, mapeo a lecciones                            |
 | `model_settings`       | Configuración de modelos IA por fase de pipeline (ARTIFACT_BASE, SYLLABUS, INSTRUCTIONAL_PLAN, MATERIALS, CURATION) y organización |

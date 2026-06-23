@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { LogOut, Sun, Moon, User, ChevronUp, Monitor } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, LogOut, Monitor, Moon, Sun, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from 'next-themes';
 import OrganizationSwitcher from '@/components/OrganizationSwitcher';
@@ -24,7 +24,7 @@ interface SharedSidebarLayoutProps {
     profile?: SidebarProfile | null;
     navItems: NavItemConfig[];
     basePath: string; // The root path to match exactly, e.g. '/admin', '/architect'
-    title: React.ReactNode; // e.g., Admin<span className="text-[#00D4B3]">Panel</span>
+    title: React.ReactNode;
 }
 
 interface SidebarNavItemProps extends NavItemConfig {
@@ -114,36 +114,30 @@ export default function SharedSidebarLayout({
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                 onMouseEnter={() => !isPinned && setIsHovered(true)}
                 onMouseLeave={() => !isPinned && setIsHovered(false)}
-                onClick={(e) => {
-                    e.stopPropagation();
-                    if (!isPinned) setIsPinned(true);
-                }}
-                onDoubleClick={() => setIsPinned(false)}
-                className={`fixed left-0 top-0 h-full z-40 border-r border-gray-200 dark:border-white/5 backdrop-blur-3xl flex flex-col ${!isPinned ? 'cursor-pointer hover:shadow-[0_0_40px_rgba(0,0,0,0.5)]' : ''} bg-white dark:bg-[#151A21]/80 transition-colors duration-300`}
+                className="fixed left-0 top-0 h-full z-40 border-r border-gray-200 dark:border-white/5 backdrop-blur-3xl flex flex-col bg-white dark:bg-[#151A21]/80 transition-colors duration-300"
             >
                 <div className="absolute inset-0 bg-gradient-to-b from-white/[0.05] to-transparent pointer-events-none" />
 
-                <div className={`h-20 flex items-center ${isOpen ? 'px-6' : 'justify-center px-0'} overflow-hidden transition-all duration-300 border-b border-gray-100 dark:border-white/5 relative`}>
+                <div className={`h-20 flex items-center ${isOpen ? 'px-6' : 'justify-center px-0'} overflow-visible transition-all duration-300 border-b border-gray-100 dark:border-white/5 relative`}>
                     <AnimatePresence mode='wait'>
                         {isOpen ? (
                             <motion.div
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
-                                className="flex items-center gap-3 w-full"
+                                className="flex items-center gap-3 w-full pr-10"
                             >
-                                <div className="w-8 h-8 relative shrink-0">
+                                <div className="w-9 h-9 relative shrink-0 rounded-xl bg-[#00D4B3]/10 p-1.5 ring-1 ring-[#00D4B3]/20">
                                     <Image src="/Logo.png" alt="Logo" fill className="object-contain" />
                                 </div>
-                                <span className="font-bold text-xl tracking-wide text-gray-900 dark:text-white">
-                                    {title}
-                                </span>
-
-                                {!isPinned && (
-                                    <div className="absolute right-4 text-xs text-[#00D4B3] animate-pulse">
-                                        Click to Pin
-                                    </div>
-                                )}
+                                <div className="min-w-0">
+                                    <p className="font-bold text-lg leading-5 tracking-wide text-gray-900 dark:text-white">
+                                        SofLIA <span className="text-[#00D4B3]">Engine</span>
+                                    </p>
+                                    <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-gray-400 dark:text-slate-500">
+                                        {title}
+                                    </p>
+                                </div>
                             </motion.div>
                         ) : (
                             <motion.div
@@ -152,12 +146,26 @@ export default function SharedSidebarLayout({
                                 exit={{ opacity: 0 }}
                                 className="w-full h-full flex items-center justify-center p-4"
                             >
-                                <div className="w-8 h-8 relative shrink-0">
+                                <div className="w-9 h-9 relative shrink-0 rounded-xl bg-[#00D4B3]/10 p-1.5 ring-1 ring-[#00D4B3]/20">
                                     <Image src="/Logo.png" alt="Logo" fill className="object-contain" />
                                 </div>
                             </motion.div>
                         )}
                     </AnimatePresence>
+
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setIsPinned((current) => !current);
+                            setIsHovered(false);
+                        }}
+                        aria-label={isPinned ? 'Contraer menu lateral' : 'Expandir menu lateral'}
+                        title={isPinned ? 'Contraer menu lateral' : 'Expandir menu lateral'}
+                        className={`absolute z-50 -translate-y-1/2 rounded-full border border-gray-200 bg-white p-1.5 text-gray-500 shadow-sm transition hover:border-[#00D4B3]/50 hover:text-[#00A98F] dark:border-white/10 dark:bg-[#1A1F26] dark:text-slate-400 dark:hover:text-[#00D4B3] ${isOpen ? 'right-4 top-1/2' : '-right-3 top-[68px]'}`}
+                    >
+                        {isPinned ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+                    </button>
                 </div>
 
                 <div className={`py-2 ${isOpen ? 'border-b border-gray-100 dark:border-white/5' : ''}`}>
@@ -262,16 +270,16 @@ export default function SharedSidebarLayout({
                         )}
                     </motion.div>
 
-                    {isPinned && !isUserMenuOpen && (
+                    {isOpen && !isUserMenuOpen && (
                         <p className="text-[9px] text-center text-gray-400 dark:text-slate-600 mt-3 select-none">
-                            Double click to unpin sidebar
+                            Usa el boton superior para contraer el menu
                         </p>
                     )}
                 </div>
             </motion.aside>
 
             <motion.main
-                animate={{ marginLeft: isOpen ? 280 : 0, paddingLeft: isOpen ? 32 : 96 }}
+                animate={{ marginLeft: isOpen ? 280 : 64, paddingLeft: 32 }}
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                 className="flex-1 py-8 pr-8 min-h-screen"
                 onClick={() => setIsUserMenuOpen(false)}

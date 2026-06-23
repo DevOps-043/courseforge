@@ -88,6 +88,7 @@ export async function POST(request: Request) {
         }
 
         revalidatePath(`/admin/artifacts/${artifactId}/publish`);
+        revalidatePath(`/${tenant.organizationSlug}/admin/artifacts/${artifactId}/publish`);
         return NextResponse.json({ success: true });
     } catch (error: unknown) {
         console.error('[API /save-draft] Error:', error);

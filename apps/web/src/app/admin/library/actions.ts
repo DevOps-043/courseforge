@@ -2,8 +2,9 @@
 
 import type { MaterialAssets } from '@/domains/materials/types/materials.types';
 import { createClient } from '@/utils/supabase/server';
-import { getActiveOrganizationId, getAuthBridgeUser } from '@/utils/auth/session';
+import { getAuthBridgeUser } from '@/utils/auth/session';
 import { getErrorMessage } from '@/lib/errors';
+import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 
 export type SearchFilters = {
     type?: string;
@@ -207,7 +208,8 @@ export async function searchMaterialsAction(query: string, filters: SearchFilter
         return { success: false, error: 'Unauthorized' };
     }
 
-    const activeOrgId = await getActiveOrganizationId();
+    const tenant = await resolveActiveTenantContext();
+    const activeOrgId = tenant?.organizationId ?? null;
 
     try {
         const searchTerm = query?.trim() || '';

@@ -79,6 +79,7 @@ export async function generateArtifactAction(formData: {
           cloudStorageProvider:
             formData.cloudStorageProvider ||
             (formData.useGoogleDrive ? "google_drive" : null),
+          organizationId: activeOrgId,
         },
       {
         fallbackError: "Error al iniciar la generacion del artefacto",

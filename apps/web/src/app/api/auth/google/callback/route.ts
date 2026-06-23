@@ -1,5 +1,5 @@
 import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
-import { decrypt, encrypt } from "@/lib/server/crypto";
+import { decrypt } from "@/lib/server/crypto";
 import { validateOAuthState } from "@/lib/server/oauth-state";
 import { oauthPopupResponse } from "@/lib/server/oauth-popup-response";
 import { upsertCloudStorageCredentials } from "@/domains/production/cloud-storage/credentials.repository";
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
       state: searchParams.get("state"),
     });
 
-    if (error || !code || !state?.userId) {
+    if (error || !code || !state?.userId || !state?.organizationId || !state?.organizationSlug) {
       console.error("[Google OAuth Callback Error] Params missing or state invalid:", { error });
       return oauthPopupResponse({
         provider: "google_drive",
@@ -67,6 +67,7 @@ export async function GET(request: Request) {
         .from("user_cloud_storage_credentials")
         .select("refresh_token")
         .eq("user_id", state.userId)
+        .eq("organization_id", state.organizationId)
         .eq("provider", "google_drive")
         .maybeSingle();
 
@@ -80,39 +81,21 @@ export async function GET(request: Request) {
       throw new Error("No se pudo resolver refresh_token de Google.");
     }
 
-    const encryptedRefreshToken = encrypt(refreshToken);
     await upsertCloudStorageCredentials({
       accessToken: tokenData.access_token,
       accountEmail,
       expiresAt,
+      organizationId: state.organizationId,
       provider: "google_drive",
       refreshToken,
       scopes: ["openid", "email", "profile", "https://www.googleapis.com/auth/drive.file"],
       userId: state.userId,
     });
 
-    const { error: legacyGoogleError } = await adminClient
-      .from("user_google_credentials")
-      .upsert(
-        {
-          user_id: state.userId,
-          google_email: accountEmail,
-          access_token: encrypt(tokenData.access_token),
-          refresh_token: encryptedRefreshToken,
-          expires_at: expiresAt,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" },
-      );
-
-    if (legacyGoogleError) {
-      console.warn("[Google OAuth Callback] Legacy user_google_credentials sync skipped:", legacyGoogleError.message);
-    }
-
     return oauthPopupResponse({
       provider: "google_drive",
       status: "success",
-      redirectPath: "/admin/profile?google_connected=true",
+      redirectPath: `/${state.organizationSlug}/admin/integrations?google_connected=true`,
     });
   } catch (err: any) {
     console.error("[Google OAuth Callback Error]:", err);

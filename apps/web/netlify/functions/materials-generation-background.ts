@@ -151,11 +151,12 @@ async function syncCloudStorageMaterialFolders(params: {
   artifactId: string;
   lessons: MaterialLessonRecord[];
   logPrefix: string;
+  organizationId?: string | null;
   provider?: CloudStorageProvider | null;
   userId?: string | null;
 }) {
-  const { artifactId, lessons, logPrefix, provider, userId } = params;
-  if (!provider || !userId || lessons.length === 0) {
+  const { artifactId, lessons, logPrefix, organizationId, provider, userId } = params;
+  if (!provider || !userId || !organizationId || lessons.length === 0) {
     return;
   }
 
@@ -163,6 +164,7 @@ async function syncCloudStorageMaterialFolders(params: {
     const syncedLessons = await getCloudStorageService(provider).setupMaterialsFolderTree(
       artifactId,
       userId,
+      organizationId,
       lessons.map((lesson, index) => ({
         expectedComponents: lesson.expected_components,
         lessonId: lesson.lesson_id,
@@ -377,6 +379,7 @@ export const handler: Handler = async (event) => {
         artifactId: targetArtifactId,
         lessons,
         logPrefix,
+        organizationId: targetOrganizationId,
         provider: materials.cloud_storage_provider,
         userId: materials.created_by,
       });

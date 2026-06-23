@@ -7,7 +7,7 @@ import { Providers } from './providers';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'CourseGen',
+  title: 'SofLIA - Engine',
   description: 'Plataforma educativa con IA',
 };
 

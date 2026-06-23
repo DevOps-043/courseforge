@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
-import { getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
+import {
+  getAuthenticatedUser,
+  getAuthorizedMaterialComponentAdmin,
+} from "@/lib/server/artifact-action-auth";
 import { GoogleDriveService } from "@/domains/production/providers/google-drive.service";
+import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 
 interface ImportRequestBody {
   urlOrId?: string;
@@ -57,24 +61,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No autorizado." }, { status: 401 });
     }
 
-    const admin = getServiceRoleClient();
+    const tenant = await resolveActiveTenantContext();
+    if (!tenant) {
+      return NextResponse.json({ error: "Empresa no valida o no autorizada." }, { status: 403 });
+    }
+
+    const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
+    if (!authorizedComponent) {
+      return NextResponse.json({ error: "Componente no encontrado para esta empresa" }, { status: 404 });
+    }
+
+    const admin = authorizedComponent.admin;
 
     // Call GoogleDriveService to download from Drive and upload to Storage
     const driveService = new GoogleDriveService();
-    const result = await driveService.importFile(urlOrId, type, componentId, accessToken, authenticatedUser.userId);
+    const result = await driveService.importFile(
+      urlOrId,
+      type,
+      componentId,
+      accessToken,
+      authenticatedUser.userId,
+      tenant.organizationId,
+    );
 
-    // Fetch current component assets
-    const { data: component, error: fetchError } = await admin
-      .from("material_components")
-      .select("assets")
-      .eq("id", componentId)
-      .single();
-
-    if (fetchError || !component) {
-      return NextResponse.json({ error: "Componente no encontrado" }, { status: 404 });
-    }
-
-    const currentAssets = component.assets || {};
+    const currentAssets = authorizedComponent.component.assets || {};
     const updatedAssets = { ...currentAssets };
 
     // Update assets JSON structure depending on the asset type

@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
+import { createClient } from '@/utils/supabase/server';
+import { getAuthenticatedUser } from '@/lib/server/artifact-action-auth';
 import { getErrorDetails, getErrorMessage } from '@/lib/errors';
 import { getOptionalServerEnvValue } from '@/lib/server/env';
+import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 import { API_ABORT_TIMEOUT_MS } from '@/shared/constants/timing';
 
 export const dynamic = 'force-dynamic'; // Ensure this doesn't get statically cached
+const DEBUG_ALLOWED_ROLES = new Set(['ADMIN', 'SUPERADMIN']);
 
 interface ConnectivityResult {
     details: unknown;
@@ -12,6 +16,17 @@ interface ConnectivityResult {
 }
 
 export async function GET() {
+    const supabase = await createClient();
+    const authenticatedUser = await getAuthenticatedUser(supabase);
+    if (!authenticatedUser) {
+        return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
+    }
+
+    const tenant = await resolveActiveTenantContext();
+    if (!tenant || !DEBUG_ALLOWED_ROLES.has(tenant.platformRole || '')) {
+        return NextResponse.json({ error: 'Falta de permisos.' }, { status: 403 });
+    }
+
     const API_URL = getOptionalServerEnvValue('SOFLIA_API_URL');
     const API_KEY = getOptionalServerEnvValue('SOFLIA_API_KEY');
 

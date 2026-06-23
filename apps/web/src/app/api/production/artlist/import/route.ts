@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
-import { getAuthenticatedUser, getServiceRoleClient } from '@/lib/server/artifact-action-auth';
+import {
+    getAuthenticatedUser,
+    getAuthorizedMaterialComponentAdmin,
+} from '@/lib/server/artifact-action-auth';
 import { ArtlistService } from '@/domains/production/providers/artlist.service';
 
 interface ImportRequestBody {
@@ -34,27 +37,21 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
         }
 
-        const admin = getServiceRoleClient();
+        const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
+        if (!authorizedComponent) {
+            return NextResponse.json(
+                { error: 'Componente no encontrado para esta empresa' },
+                { status: 404 },
+            );
+        }
+
+        const admin = authorizedComponent.admin;
 
         // Call Artlist Service to download and upload file
         const artlistService = new ArtlistService();
         const result = await artlistService.importAsset(assetId, type, componentId);
 
-        // Fetch current component assets
-        const { data: component, error: fetchError } = await admin
-            .from('material_components')
-            .select('assets')
-            .eq('id', componentId)
-            .single();
-
-        if (fetchError || !component) {
-            return NextResponse.json(
-                { error: 'Componente no encontrado' },
-                { status: 404 },
-            );
-        }
-
-        const currentAssets = component.assets || {};
+        const currentAssets = authorizedComponent.component.assets || {};
         const updatedAssets = { ...currentAssets };
 
         if (type === 'music') {

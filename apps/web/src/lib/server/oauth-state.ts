@@ -8,6 +8,8 @@ const STATE_TTL_SECONDS = 10 * 60;
 
 interface OAuthStatePayload {
   nonce: string;
+  organizationId: string;
+  organizationSlug: string;
   provider: CloudStorageProvider;
   userId: string;
 }
@@ -25,6 +27,8 @@ function decodeState(state: string): OAuthStatePayload | null {
     const parsed = JSON.parse(Buffer.from(state, "base64url").toString("utf8"));
     if (
       typeof parsed?.nonce === "string" &&
+      typeof parsed?.organizationId === "string" &&
+      typeof parsed?.organizationSlug === "string" &&
       typeof parsed?.provider === "string" &&
       typeof parsed?.userId === "string"
     ) {
@@ -38,12 +42,16 @@ function decodeState(state: string): OAuthStatePayload | null {
 }
 
 export function createOAuthState(params: {
+  organizationId: string;
+  organizationSlug: string;
   provider: CloudStorageProvider;
   response: NextResponse;
   userId: string;
 }) {
   const payload: OAuthStatePayload = {
     nonce: crypto.randomBytes(24).toString("base64url"),
+    organizationId: params.organizationId,
+    organizationSlug: params.organizationSlug,
     provider: params.provider,
     userId: params.userId,
   };

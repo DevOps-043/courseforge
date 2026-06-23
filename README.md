@@ -1,10 +1,10 @@
-# 📘 Courseforge - Plataforma de Ingeniería Instruccional con IA
+# 📘 SofLIA - Engine - Plataforma de Ingeniería Instruccional con IA
 
 > **Versión**: 1.0.0
 > **Estado**: Producción (Beta)
 > **Stack**: Next.js 16, Supabase, Netlify Functions, Google Gemini 2.0
 
-Courseforge es mucho más que un "generador de cursos". Es un **Sistema Operativo de Diseño Instruccional** que orquesta múltiples agentes de IA para investigar, estructurar, redactar y validar contenido educativo de alta calidad.
+SofLIA - Engine es mucho más que un "generador de cursos". Es un **Sistema Operativo de Diseño Instruccional** que orquesta múltiples agentes de IA para investigar, estructurar, redactar y validar contenido educativo de alta calidad.
 
 El sistema simula el flujo de trabajo de un equipo humano (Investigador + Diseñador Instruccional + Redactor + Editor), donde la salida de cada fase es rigurosamente validada antes de ser utilizada como entrada para la siguiente.
 
@@ -29,9 +29,9 @@ El sistema simula el flujo de trabajo de un equipo humano (Investigador + Diseñ
 
 ## 🧠 Filosofía del Sistema
 
-Courseforge se basa en tres principios no negociables:
+SofLIA - Engine se basa en tres principios no negociables:
 
-1.  **NO A LA ALUCINACIÓN**: A diferencia de ChatGPT, CourseEngine _no inventa_ hechos. Utiliza un motor de curaduría (Fase 4) que busca referencias reales, verifica que las URLs funcionen (HTTP 200) y valida que el contenido sea relevante antes de usarlo para escribir.
+1.  **NO A LA ALUCINACIÓN**: A diferencia de ChatGPT, SofLIA - Engine _no inventa_ hechos. Utiliza un motor de curaduría (Fase 4) que busca referencias reales, verifica que las URLs funcionen (HTTP 200) y valida que el contenido sea relevante antes de usarlo para escribir.
 2.  **ESTRUCTURA PRIMERO, CONTENIDO DESPUÉS**: No se genera texto hasta que no haya un plan instruccional aprobado (Fase 3). Esto asegura coherencia pedagógica.
 3.  **HUMAN-IN-THE-LOOP (HITL)**: El sistema está diseñado para detenerse entre fases críticas, permitiendo que un experto humano revise y apruebe el syllabus o las fuentes antes de continuar.
 
@@ -58,7 +58,7 @@ El proyecto es un **Monorepo** gestionado con npm workspaces, implementando "Scr
 ### Estructura de Directorios
 
 ```bash
-courseforge/
+soflia-engine/
 ├── apps/
 │   ├── web/                    # Frontend Next.js 16 (App Router)
 │   │   ├── netlify/functions/  # Backend Serverless (donde ocurre la magia)
@@ -83,17 +83,17 @@ courseforge/
 
 ## Autenticación - Auth Bridge
 
-Courseforge implementa un sistema de autenticación personalizado que valida credenciales contra la BD de **SofLIA** y emite JWTs propios (HS256).
+SofLIA - Engine implementa un sistema de autenticación personalizado que valida credenciales contra la BD de **SofLIA** y emite JWTs propios (HS256).
 
 ### Flujo de Login
 
 1. Usuario envía `identifier` + `password` desde `/login`
 2. API valida contra BD de SofLIA (tabla `users`, campo `password_hash` con `bcryptjs`)
 3. Se obtienen las organizaciones del usuario (`organization_users`)
-4. Se firma un JWT HS256 con `COURSEENGINE_JWT_SECRET` usando `jose`
+4. Se firma un JWT HS256 con el secreto de la aplicación usando `jose`
 5. JWT payload: `sub`, `email`, `app_metadata.organizations`, `user_metadata`
 6. Se establecen cookies: `cf_access_token`, `cf_active_org`, `cf_user_orgs`, `cf_remember_me`
-7. Se registra `login_history` y se hace upsert del perfil en CourseEngine
+7. Se registra `login_history` y se hace upsert del perfil en SofLIA - Engine
 
 ### Multi-tenancy
 
@@ -360,4 +360,4 @@ Los errores actualizan el estado en BD a `NEEDS_FIX` o `ERROR` (no hay spinners 
 
 ---
 
-**Courseforge** - _Ingeniería Educativa Automatizada_
+**SofLIA - Engine** - _Ingeniería Educativa Automatizada_

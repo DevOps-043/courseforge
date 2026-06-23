@@ -32,7 +32,7 @@ export default function ArchitectLayoutClient({
             basePath={basePath}
             title={
                 <>
-                    Arqui<span className="text-[#00D4B3]">tecto</span>
+                    Arquitecto
                 </>
             }
         >

@@ -261,7 +261,9 @@ export function useProductionAssetState({
     setIsUploadingVoice(true);
     try {
       const fileName = `voices/${component.id}-voice.${file.name.split('.').pop()}`;
-      const { publicUrl } = await uploadWithSignedUrl('production-assets', fileName, file);
+      const { publicUrl } = await uploadWithSignedUrl('production-assets', fileName, file, {
+        componentId: component.id,
+      });
 
       // Estimate duration roughly (fallback) or detect via direct metadata
       let duration = 0;
@@ -297,7 +299,9 @@ export function useProductionAssetState({
     setIsUploadingMusic(true);
     try {
       const fileName = `music/${component.id}-bg.${file.name.split('.').pop()}`;
-      const { publicUrl } = await uploadWithSignedUrl('production-assets', fileName, file);
+      const { publicUrl } = await uploadWithSignedUrl('production-assets', fileName, file, {
+        componentId: component.id,
+      });
 
       const newMusic: BackgroundMusic = {
         storage_path: `production-assets/${fileName}`,
@@ -392,7 +396,9 @@ export function useProductionAssetState({
         const fileName = isRenderableSlideImage(file)
           ? `slides/${component.id}-slide-${String(index + 1).padStart(2, "0")}-${safeName}.${extension}`
           : `slides/${component.id}-slides-source.${extension}`;
-        const { publicUrl } = await uploadWithSignedUrl('production-assets', fileName, file);
+        const { publicUrl } = await uploadWithSignedUrl('production-assets', fileName, file, {
+          componentId: component.id,
+        });
 
         if (!referenceUrl) {
           referenceUrl = publicUrl;
@@ -447,7 +453,9 @@ export function useProductionAssetState({
     try {
       const clipId = `clip-${Date.now()}`;
       const fileName = `broll/${component.id}-${clipId}.${file.name.split('.').pop()}`;
-      const { publicUrl } = await uploadWithSignedUrl('production-assets', fileName, file);
+      const { publicUrl } = await uploadWithSignedUrl('production-assets', fileName, file, {
+        componentId: component.id,
+      });
 
       let duration = 0;
       try {
@@ -518,7 +526,9 @@ export function useProductionAssetState({
     setIsUploadingAvatar(true);
     try {
       const fileName = `avatars/${component.id}-avatar.${file.name.split('.').pop()}`;
-      const { publicUrl } = await uploadWithSignedUrl('production-assets', fileName, file);
+      const { publicUrl } = await uploadWithSignedUrl('production-assets', fileName, file, {
+        componentId: component.id,
+      });
 
       let duration = 0;
       try {
@@ -704,7 +714,9 @@ export function useProductionAssetState({
       const fileExt = file.name.split(".").pop();
       const fileName = `${component.id}-${Date.now()}.${fileExt}`;
 
-      const { publicUrl } = await uploadWithSignedUrl("production-assets", `videos/${fileName}`, file);
+      const { publicUrl } = await uploadWithSignedUrl("production-assets", `videos/${fileName}`, file, {
+        componentId: component.id,
+      });
 
       updateAsset("final_video_url", publicUrl, setFinalVideoUrl);
       setFinalVideoSource("upload");

@@ -158,7 +158,9 @@ Buscarías 1–2 fuentes por lección, verificarías acceso completo (sin login/
 ## Acciones
 
 - Clave API: x-api-key
-- Esquema:
+- Esquema valido para ChatGPT Actions: usar `docs/soflia-gpt-sources.openapi.yaml`.
+- No pegar el bloque historico de abajo si aparece en notas antiguas; no tiene indentacion OpenAPI valida.
+- Esquema historico:
   openapi: 3.1.0
   info:
   title: SOFLIA Sources API
@@ -175,7 +177,7 @@ Buscarías 1–2 fuentes por lección, verificarías acceso completo (sin login/
     description: |
     Recibe las fuentes encontradas y validadas por el usuario.
     Cada fuente debe tener URL, título, tipo y el tema al que aplica.
-    Se debe enviar course_id O artifact_id para identificar el artefacto.
+    Se debe enviar organization_slug u organization_id para identificar la empresa, y course_id O artifact_id para identificar el artefacto.
     requestBody:
     required: true
     content:
@@ -214,8 +216,15 @@ Buscarías 1–2 fuentes por lección, verificarías acceso completo (sin login/
     schemas:
     SourcesPayload:
     type: object
-    required: - sources
+    required: - organization_slug - sources
     properties:
+    organization_slug:
+    type: string
+    description: Slug de la empresa/tenant en CourseForge. Requerido salvo que se envie organization_id.
+    organization_id:
+    type: string
+    format: uuid
+    description: UUID de la empresa/tenant. Alternativa a organization_slug.
     course_id:
     type: string
     description: ID del curso (ej. LA-3096). Usar este O artifact_id.

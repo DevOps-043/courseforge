@@ -39,8 +39,8 @@ interface GraphDriveItem {
 }
 
 export class OneDriveService {
-  async refreshUserAccessToken(userId: string) {
-    const creds = await getCloudStorageCredentials(userId, "onedrive");
+  async refreshUserAccessToken(userId: string, organizationId: string) {
+    const creds = await getCloudStorageCredentials(userId, organizationId, "onedrive");
     if (!creds) {
       throw new Error("No hay cuenta de OneDrive vinculada para este usuario.");
     }
@@ -73,6 +73,7 @@ export class OneDriveService {
     await updateCloudStorageAccessToken({
       accessToken: tokenData.access_token,
       expiresAt,
+      organizationId,
       provider: "onedrive",
       refreshToken: tokenData.refresh_token,
       userId,
@@ -111,8 +112,9 @@ export class OneDriveService {
     artifactId: string,
     artifactName: string,
     userId: string,
+    organizationId: string,
   ): Promise<CloudStorageFolderTree> {
-    const token = await this.refreshUserAccessToken(userId);
+    const token = await this.refreshUserAccessToken(userId, organizationId);
     const rootFolder = await this.createFolder(buildArtifactRootFolderName(artifactName), null, token);
 
     const subfolders: Record<string, string> = {};
@@ -141,6 +143,7 @@ export class OneDriveService {
   async setupMaterialsFolderTree(
     artifactId: string,
     userId: string,
+    organizationId: string,
     lessons: CloudStorageLessonInput[],
   ): Promise<CloudStorageMaterialsLesson[]> {
     const admin = getServiceRoleClient();
@@ -160,7 +163,7 @@ export class OneDriveService {
       throw new Error("El artefacto no tiene carpeta Materiales configurada en OneDrive.");
     }
 
-    const token = await this.refreshUserAccessToken(userId);
+    const token = await this.refreshUserAccessToken(userId, organizationId);
     const syncedLessons: CloudStorageMaterialsLesson[] = [];
 
     for (const lesson of lessons) {
@@ -197,8 +200,8 @@ export class OneDriveService {
     return syncedLessons;
   }
 
-  async listFiles(userId: string, query = ""): Promise<CloudStorageFile[]> {
-    const token = await this.refreshUserAccessToken(userId);
+  async listFiles(userId: string, organizationId: string, query = ""): Promise<CloudStorageFile[]> {
+    const token = await this.refreshUserAccessToken(userId, organizationId);
     const escapedQuery = query.trim().replace(/'/g, "''");
     const endpoint = query.trim()
       ? `https://graph.microsoft.com/v1.0/me/drive/root/search(q='${encodeURIComponent(escapedQuery)}')?$top=20`
@@ -229,8 +232,9 @@ export class OneDriveService {
     type: ProductionAssetType,
     componentId: string,
     userId: string,
+    organizationId: string,
   ): Promise<ImportedCloudAsset> {
-    const token = await this.refreshUserAccessToken(userId);
+    const token = await this.refreshUserAccessToken(userId, organizationId);
     const encodedItemId = encodeURIComponent(itemId.trim());
 
     const metadataResponse = await fetch(

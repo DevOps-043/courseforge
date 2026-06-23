@@ -15,8 +15,12 @@ import type {
     PublicationRequestRecord,
     PublicationVideoLesson,
 } from '@/domains/publication/types/publication.types';
-import { getServiceRoleClient } from '@/lib/server/artifact-action-auth';
+import {
+    getAuthorizedArtifactAdminForTenant,
+    getServiceRoleClient,
+} from '@/lib/server/artifact-action-auth';
 import { getActiveOrganizationId } from '@/utils/auth/session';
+import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 
 interface RawMaterialLessonRow {
     lesson_id: string;
@@ -200,9 +204,24 @@ export async function savePublicationDraft(
     artifactId: string,
     data: PublicationDraftData,
 ) {
-    const admin = getServiceRoleClient();
-
     try {
+        const tenant = await resolveActiveTenantContext();
+        if (!tenant) {
+            return {
+                success: false as const,
+                error: 'Empresa no valida o no autorizada',
+            };
+        }
+
+        const authorized = await getAuthorizedArtifactAdminForTenant(artifactId, tenant);
+        if (!authorized) {
+            return {
+                success: false as const,
+                error: 'Artifact not found or inaccessible',
+            };
+        }
+
+        const { admin } = authorized;
         const { data: existing } = await admin
             .from('publication_requests')
             .select('id')
@@ -245,6 +264,7 @@ export async function savePublicationDraft(
         }
 
         revalidatePath(`/admin/artifacts/${artifactId}/publish`);
+        revalidatePath(`/${tenant.organizationSlug}/admin/artifacts/${artifactId}/publish`);
         return { success: true as const };
     } catch (error: unknown) {
         console.error('Save Draft Error:', error);

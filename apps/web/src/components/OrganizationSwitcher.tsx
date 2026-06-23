@@ -33,7 +33,12 @@ export default function OrganizationSwitcher({ collapsed = false, onSwitch }: Or
   const pathname = usePathname();
   const router = useRouter();
 
-  const activeOrg = getActiveOrganization();
+  const pathSegments = pathname.split('/').filter(Boolean);
+  const routeOrg = pathSegments.length >= 2 && ['admin', 'architect', 'builder'].includes(pathSegments[1])
+    ? organizations.find((org) => org.slug === pathSegments[0])
+    : null;
+  const activeOrg = routeOrg || getActiveOrganization();
+  const effectiveActiveOrganizationId = activeOrg?.id ?? activeOrganizationId;
   const hasMultiple = canSwitch();
 
   // Autonomous initialization if not already loaded from layout
@@ -45,10 +50,10 @@ export default function OrganizationSwitcher({ collapsed = false, onSwitch }: Or
 
   // Persist last active org to localStorage
   useEffect(() => {
-    if (activeOrganizationId) {
-      try { localStorage.setItem(LS_KEY, activeOrganizationId); } catch {}
+    if (effectiveActiveOrganizationId) {
+      try { localStorage.setItem(LS_KEY, effectiveActiveOrganizationId); } catch {}
     }
-  }, [activeOrganizationId]);
+  }, [effectiveActiveOrganizationId]);
 
   // Close on click outside
   useEffect(() => {
@@ -66,7 +71,7 @@ export default function OrganizationSwitcher({ collapsed = false, onSwitch }: Or
   if (!activeOrg) return null;
 
   const handleSwitch = async (org: UserOrganization) => {
-    if (org.id === activeOrganizationId || isSwitching) return;
+    if (org.id === effectiveActiveOrganizationId || isSwitching) return;
     setIsOpen(false);
     setSwitchingToName(org.name);
     setShowOverlay(true);
@@ -182,7 +187,7 @@ export default function OrganizationSwitcher({ collapsed = false, onSwitch }: Or
 
               <div className="p-1 max-h-[200px] overflow-y-auto">
                 {organizations.map((org) => {
-                  const isActive = org.id === activeOrganizationId;
+                  const isActive = org.id === effectiveActiveOrganizationId;
                   return (
                     <button
                       key={org.id}

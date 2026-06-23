@@ -2,6 +2,16 @@
 
 import { createClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
+import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
+
+async function revalidateProfilePaths() {
+  revalidatePath('/admin/profile');
+  const tenant = await resolveActiveTenantContext();
+  if (tenant?.organizationSlug) {
+    revalidatePath(`/${tenant.organizationSlug}/admin/profile`);
+    revalidatePath(`/${tenant.organizationSlug}/admin`);
+  }
+}
 
 export async function updateProfile(formData: {
   firstName: string;
@@ -32,7 +42,7 @@ export async function updateProfile(formData: {
     return { error: 'Error al actualizar el perfil' };
   }
 
-  revalidatePath('/admin/profile');
+  await revalidateProfilePaths();
   return { success: true };
 }
 
@@ -86,7 +96,7 @@ export async function updatePassword(data: {
   }
 
 
-  revalidatePath('/admin/profile');
+  await revalidateProfilePaths();
   return { success: true };
 }
 
@@ -111,8 +121,8 @@ export async function updateAvatar(url: string) {
     return { error: 'Error al actualizar el avatar' };
   }
 
-  revalidatePath('/admin/layout'); 
-  revalidatePath('/admin/profile');
+  revalidatePath('/admin/layout');
+  await revalidateProfilePaths();
   return { success: true };
 }
 

@@ -2,6 +2,7 @@
 
 import { createClient } from "@/utils/supabase/server";
 import { getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
+import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import {
   deleteCloudStorageCredentials,
   decryptCredentialToken,
@@ -11,6 +12,45 @@ import type {
   CloudStorageConnection,
   CloudStorageProvider,
 } from "@/domains/production/cloud-storage/types";
+
+export async function getCloudStorageConnectionsForTenant(params: {
+  organizationId: string;
+  userId: string;
+}): Promise<CloudStorageConnection[]> {
+  const admin = getServiceRoleClient();
+  const { data, error } = await admin
+    .from("user_cloud_storage_credentials")
+    .select("provider, account_email, organization_id")
+    .eq("user_id", params.userId)
+    .or(`organization_id.eq.${params.organizationId},organization_id.is.null`);
+
+  if (error) {
+    console.error("[CloudStorageConnections] Error:", error);
+    return [];
+  }
+
+  const scopedConnections = (data || []).filter(
+    (row: any) => row.organization_id === params.organizationId,
+  );
+  const legacyConnections = new Set(
+    (data || [])
+      .filter((row: any) => !row.organization_id)
+      .map((row: any) => row.provider as CloudStorageProvider),
+  );
+  const connectedByProvider = new Map(
+    scopedConnections.map((row: any) => [
+      row.provider as CloudStorageProvider,
+      row.account_email as string,
+    ]),
+  );
+
+  return (["google_drive", "onedrive"] as CloudStorageProvider[]).map((provider) => ({
+    connected: connectedByProvider.has(provider),
+    email: connectedByProvider.get(provider) || null,
+    needsReconnect: !connectedByProvider.has(provider) && legacyConnections.has(provider),
+    provider,
+  }));
+}
 
 export async function getCloudStorageConnectionsAction(): Promise<{
   connections: CloudStorageConnection[];
@@ -22,30 +62,16 @@ export async function getCloudStorageConnectionsAction(): Promise<{
       return { connections: [] };
     }
 
-    const admin = getServiceRoleClient();
-    const { data, error } = await admin
-      .from("user_cloud_storage_credentials")
-      .select("provider, account_email")
-      .eq("user_id", user.userId);
-
-    if (error) {
-      console.error("[CloudStorageConnections] Error:", error);
+    const tenant = await resolveActiveTenantContext();
+    if (!tenant) {
       return { connections: [] };
     }
 
-    const connectedByProvider = new Map(
-      (data || []).map((row: any) => [
-        row.provider as CloudStorageProvider,
-        row.account_email as string,
-      ]),
-    );
-
     return {
-      connections: (["google_drive", "onedrive"] as CloudStorageProvider[]).map((provider) => ({
-        connected: connectedByProvider.has(provider),
-        email: connectedByProvider.get(provider) || null,
-        provider,
-      })),
+      connections: await getCloudStorageConnectionsForTenant({
+        organizationId: tenant.organizationId,
+        userId: user.userId,
+      }),
     };
   } catch (error) {
     console.error("[CloudStorageConnections] Unexpected error:", error);
@@ -59,7 +85,10 @@ export async function disconnectCloudStorageAction(provider: CloudStorageProvide
     const user = await getAuthenticatedUser(supabase);
     if (!user) return { success: false, error: "No autorizado" };
 
-    const creds = await getCloudStorageCredentials(user.userId, provider);
+    const tenant = await resolveActiveTenantContext();
+    if (!tenant) return { success: false, error: "Empresa no valida o no autorizada" };
+
+    const creds = await getCloudStorageCredentials(user.userId, tenant.organizationId, provider);
     if (creds) {
       const tokenToRevoke = decryptCredentialToken(creds.refresh_token || creds.access_token);
       try {
@@ -73,14 +102,8 @@ export async function disconnectCloudStorageAction(provider: CloudStorageProvide
         console.warn("[CloudStorageDisconnect] Token revocation failed:", revokeErr);
       }
 
-      await deleteCloudStorageCredentials(user.userId, provider);
+      await deleteCloudStorageCredentials(user.userId, tenant.organizationId, provider);
 
-      if (provider === "google_drive") {
-        await getServiceRoleClient()
-          .from("user_google_credentials")
-          .delete()
-          .eq("user_id", user.userId);
-      }
     }
 
     return { success: true };

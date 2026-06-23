@@ -1,0 +1,130 @@
+openapi: 3.1.0
+info:
+  title: SOFLIA Sources API
+  description: API para recibir fuentes bibliograficas validadas desde el GPT
+  version: 1.2.0
+servers:
+  - url: https://soflia-coursegen.netlify.app
+    description: Production server
+paths:
+  /api/gpt/sources:
+    post:
+      operationId: submitSources
+      summary: Envia las fuentes bibliograficas validadas al taller
+      description: |
+        Recibe las fuentes encontradas y validadas por el usuario.
+        Cada fuente debe tener URL, titulo, tipo y el tema al que aplica.
+        Se debe enviar organization_slug u organization_id para identificar la empresa,
+        y course_id o artifact_id para identificar el artefacto.
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SourcesPayload"
+      responses:
+        "200":
+          description: Fuentes recibidas exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  sources_saved:
+                    type: integer
+                  artifact_title:
+                    type: string
+                  organization_slug:
+                    type: string
+        "400":
+          description: Payload invalido
+        "401":
+          description: API Key invalida
+        "404":
+          description: Artifact no encontrado para la empresa indicada
+components:
+  securitySchemes:
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+  schemas:
+    SourcesPayload:
+      type: object
+      required:
+        - organization_slug
+        - sources
+      properties:
+        organization_slug:
+          type: string
+          description: Slug de la empresa tenant en CourseForge. Requerido salvo que se envie organization_id.
+        organization_id:
+          type: string
+          format: uuid
+          description: UUID de la empresa tenant. Alternativa a organization_slug.
+        course_id:
+          type: string
+          description: ID del curso. Usar este o artifact_id.
+        artifact_id:
+          type: string
+          format: uuid
+          description: UUID del artefacto. Alternativa a course_id cuando no hay course_id asignado.
+        sources:
+          type: array
+          minItems: 1
+          description: Lista de fuentes encontradas.
+          items:
+            $ref: "#/components/schemas/Source"
+        metadata:
+          type: object
+          properties:
+            total_lessons:
+              type: integer
+            search_timestamp:
+              type: string
+              format: date-time
+    Source:
+      type: object
+      required:
+        - title
+        - url
+        - type
+        - lesson_id
+        - lesson_title
+      properties:
+        title:
+          type: string
+          description: Titulo de la fuente bibliografica
+        url:
+          type: string
+          format: uri
+          description: URL completa y accesible de la fuente
+        type:
+          type: string
+          enum:
+            - article
+            - book
+            - video
+            - website
+            - documentation
+            - tutorial
+          description: Tipo de fuente
+        lesson_id:
+          type: string
+          description: ID de la leccion a la que aplica
+        lesson_title:
+          type: string
+          description: Titulo de la leccion
+        summary:
+          type: string
+          description: Breve resumen de por que es relevante
+        validated:
+          type: boolean
+          default: true
+          description: Si el usuario confirmo esta fuente

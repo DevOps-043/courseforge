@@ -48,6 +48,7 @@ interface GenerateArtifactRequestBody {
   userId?: string;
   userToken?: string;
   cloudStorageProvider?: CloudStorageProvider | null;
+  organizationId?: string | null;
   useGoogleDrive?: boolean;
 }
 
@@ -78,7 +79,7 @@ export const handler: Handler = async (event) => {
 
     try {
         const body = parseJsonBody<GenerateArtifactRequestBody>(event);
-        const { artifactId, formData, userId, userToken, feedback, useGoogleDrive } = body;
+        const { artifactId, formData, userId, userToken, feedback, useGoogleDrive, organizationId } = body;
         const cloudStorageProvider = isCloudStorageProvider(body.cloudStorageProvider)
             ? body.cloudStorageProvider
             : useGoogleDrive
@@ -107,7 +108,7 @@ export const handler: Handler = async (event) => {
                 if (!user && creatorUserId) {
                     user = { id: creatorUserId } as NonNullable<typeof user>;
                 }
-                if (!creatorUserId) {
+                if (!creatorUserId || !organizationId) {
                     console.warn("[Background Job] No se pudo obtener el usuario autenticado para crear carpetas en Google Drive:", authError?.message);
                 } else {
                     if (!user) {
@@ -115,7 +116,12 @@ export const handler: Handler = async (event) => {
                     }
                     console.log(`[Background Job] Aprovisionando árbol de carpetas en Google Drive para el usuario ${user.id}...`);
                     const cloudStorageService = getCloudStorageService(cloudStorageProvider);
-                    const folderTree = await cloudStorageService.setupArtifactFolderTree(artifactId, formData.title || "Taller", creatorUserId);
+                    const folderTree = await cloudStorageService.setupArtifactFolderTree(
+                        artifactId,
+                        formData.title || "Taller",
+                        creatorUserId,
+                        organizationId,
+                    );
                     console.log(`[Background Job] Carpeta de Google Drive creada: ${folderTree.folderUrl}`);
                 }
             } catch (driveErr: any) {

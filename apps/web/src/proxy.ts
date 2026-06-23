@@ -41,7 +41,7 @@ function getActiveOrganization(
   );
 }
 
-function shouldSkipMiddleware(pathname: string) {
+function shouldSkipProxy(pathname: string) {
   return (
     pathname.startsWith("/api") ||
     pathname.startsWith("/_next") ||
@@ -53,10 +53,10 @@ function shouldSkipMiddleware(pathname: string) {
   );
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (shouldSkipMiddleware(pathname)) {
+  if (shouldSkipProxy(pathname)) {
     return NextResponse.next();
   }
 

@@ -20,6 +20,12 @@ import {
   getGeminiTemperature,
   isNetlifyDeployment,
 } from "@/lib/server/env";
+import { createClient } from "@/utils/supabase/server";
+import {
+  getAuthenticatedUser,
+  getAuthorizedArtifactAdminForTenant,
+} from "@/lib/server/artifact-action-auth";
+import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 
 interface SyllabusRequestBody {
   objetivos?: string[];
@@ -61,6 +67,33 @@ export async function POST(request: NextRequest) {
         { error: "objetivos e ideaCentral son requeridos" },
         { status: 400 },
       );
+    }
+
+    if (artifactId) {
+      const supabase = await createClient();
+      const authenticatedUser = await getAuthenticatedUser(supabase);
+      if (!authenticatedUser) {
+        return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+      }
+
+      const tenant = await resolveActiveTenantContext();
+      if (!tenant) {
+        return NextResponse.json(
+          { error: "Empresa no valida o no autorizada." },
+          { status: 403 },
+        );
+      }
+
+      const authorized = await getAuthorizedArtifactAdminForTenant(
+        artifactId,
+        tenant,
+      );
+      if (!authorized) {
+        return NextResponse.json(
+          { error: "Artefacto no encontrado para esta empresa." },
+          { status: 404 },
+        );
+      }
     }
 
     if (isNetlifyDeployment()) {

@@ -159,7 +159,8 @@ export class GoogleDriveService {
     type: ProductionAssetType,
     componentId: string,
     accessToken?: string,
-    userId?: string
+    userId?: string,
+    organizationId?: string,
   ): Promise<{
     publicUrl: string;
     storagePath: string;
@@ -189,7 +190,7 @@ export class GoogleDriveService {
     if (!buffer) {
       const activeToken =
         accessToken ||
-        (userId ? await this.refreshUserAccessToken(userId) : null) ||
+        (userId && organizationId ? await this.refreshUserAccessToken(userId, organizationId) : null) ||
         (this.isConfigured() ? await this.getAccessToken() : null);
       if (activeToken) {
         try {
@@ -266,8 +267,8 @@ export class GoogleDriveService {
   /**
    * Asegura un access_token válido descifrando y renovando si es necesario
    */
-  async refreshUserAccessToken(userId: string): Promise<string> {
-    const creds = await getCloudStorageCredentials(userId, "google_drive");
+  async refreshUserAccessToken(userId: string, organizationId: string): Promise<string> {
+    const creds = await getCloudStorageCredentials(userId, organizationId, "google_drive");
     if (!creds) {
       throw new Error("No hay cuenta de Google vinculada para este usuario.");
     }
@@ -303,6 +304,7 @@ export class GoogleDriveService {
     await updateCloudStorageAccessToken({
       accessToken: tokenData.access_token,
       expiresAt: nextExpires,
+      organizationId,
       provider: "google_drive",
       userId,
     });
@@ -346,10 +348,11 @@ export class GoogleDriveService {
   async setupArtifactFolderTree(
     artifactId: string,
     artifactName: string,
-    userId: string
+    userId: string,
+    organizationId: string,
   ): Promise<{ rootFolderId: string; folderUrl: string }> {
     try {
-      const token = await this.refreshUserAccessToken(userId);
+      const token = await this.refreshUserAccessToken(userId, organizationId);
 
       // 1. Crear carpeta raíz del taller
       const rootFolderName = buildArtifactRootFolderName(artifactName);
@@ -382,6 +385,7 @@ export class GoogleDriveService {
   async setupMaterialsFolderTree(
     artifactId: string,
     userId: string,
+    organizationId: string,
     lessons: CloudStorageLessonInput[],
   ): Promise<CloudStorageMaterialsLesson[]> {
     const admin = getServiceRoleClient();
@@ -401,7 +405,7 @@ export class GoogleDriveService {
       throw new Error("El artefacto no tiene carpeta Materiales configurada en Google Drive.");
     }
 
-    const token = await this.refreshUserAccessToken(userId);
+    const token = await this.refreshUserAccessToken(userId, organizationId);
     const syncedLessons: CloudStorageMaterialsLesson[] = [];
 
     for (const lesson of lessons) {

@@ -6,6 +6,7 @@ interface SignedUploadResult {
 }
 
 interface SignedUploadOptions {
+    componentId?: string;
     purpose?: 'template-bundle' | 'production-asset' | 'thumbnail' | 'production-video';
     contentType?: string;
     fileSizeBytes?: number;
@@ -30,6 +31,7 @@ export async function uploadWithSignedUrl(
         body: JSON.stringify({
             bucket,
             filePath,
+            componentId: options.componentId,
             purpose: options.purpose,
             contentType: options.contentType || file.type || undefined,
             fileSizeBytes: options.fileSizeBytes ?? file.size,

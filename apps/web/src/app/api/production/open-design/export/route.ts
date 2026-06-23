@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import {
     getAuthenticatedUser,
+    getAuthorizedMaterialComponentAdmin,
     getServiceRoleClient,
 } from '@/lib/server/artifact-action-auth';
 
@@ -176,21 +177,16 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
         }
 
-        const admin = getServiceRoleClient();
-
-        const { data: component, error: fetchError } = await admin
-            .from('material_components')
-            .select('id, type, content, assets')
-            .eq('id', componentId)
-            .single();
-
-        if (fetchError || !component) {
+        const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
+        if (!authorizedComponent) {
             return NextResponse.json(
-                { error: 'Componente no encontrado' },
+                { error: 'Componente no encontrado para esta empresa' },
                 { status: 404 },
             );
         }
 
+        const admin = authorizedComponent.admin;
+        const component = authorizedComponent.component;
         const content = (component.content || {}) as Record<string, any>;
 
         // Extract slides data from storyboard or script sections

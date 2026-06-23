@@ -8,15 +8,16 @@ interface SofliaOrgUserRow {
   role?: string | null;
   status?: string | null;
   user_id: string;
-  users?: {
-    created_at?: string | null;
-    email?: string | null;
-    first_name?: string | null;
-    id: string;
-    is_banned?: boolean | null;
-    last_name?: string | null;
-    username?: string | null;
-  } | null;
+}
+
+interface SofliaUserRow {
+  created_at?: string | null;
+  email?: string | null;
+  first_name?: string | null;
+  id: string;
+  is_banned?: boolean | null;
+  last_name?: string | null;
+  username?: string | null;
 }
 
 interface LocalProfileRoleRow {
@@ -53,23 +54,7 @@ export async function loadUsersPageData(options?: {
 
   const { data: rawMembers, error: membersError } = await sofliaAdmin
     .from("organization_users")
-    .select(
-      `
-      user_id,
-      role,
-      status,
-      created_at,
-      users (
-        id,
-        username,
-        email,
-        first_name,
-        last_name,
-        is_banned,
-        created_at
-      )
-    `,
-    )
+    .select("user_id, role, status, created_at")
     .eq("organization_id", options.organizationId)
     .in("status", ["active", "invited"])
     .order("created_at", { ascending: false });
@@ -82,6 +67,22 @@ export async function loadUsersPageData(options?: {
   const members = (rawMembers || []) as unknown as SofliaOrgUserRow[];
   const memberIds = members.map((member) => member.user_id).filter(Boolean);
   const localRoleByUserId = new Map<string, PlatformRole | null>();
+  const sofliaUserById = new Map<string, SofliaUserRow>();
+
+  if (memberIds.length > 0) {
+    const { data: sofliaUsers, error: usersError } = await sofliaAdmin
+      .from("users")
+      .select("id, username, email, first_name, last_name, is_banned, created_at")
+      .in("id", memberIds);
+
+    if (usersError) {
+      console.error("[UsersPage] Error fetching SofLIA users:", usersError.message);
+    }
+
+    ((sofliaUsers || []) as SofliaUserRow[]).forEach((user) => {
+      sofliaUserById.set(user.id, user);
+    });
+  }
 
   if (memberIds.length > 0) {
     const local = getServiceRoleClient();
@@ -101,9 +102,9 @@ export async function loadUsersPageData(options?: {
   }
 
   return members
-    .filter((member) => member.users?.id)
+    .filter((member) => sofliaUserById.has(member.user_id))
     .map((member) => {
-      const user = member.users!;
+      const user = sofliaUserById.get(member.user_id)!;
       return {
         id: user.id,
         username: user.username || null,

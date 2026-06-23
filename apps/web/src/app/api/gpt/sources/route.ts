@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { getErrorMessage } from '@/lib/errors';
 import { getGptSourcesApiKey, getSupabaseServiceRoleKey, getSupabaseUrl } from '@/lib/server/env';
 
@@ -10,7 +10,7 @@ const supabaseServiceKey = getSupabaseServiceRoleKey();
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, x-api-key',
+    'Access-Control-Allow-Headers': 'Content-Type, x-api-key, x-organization-id, x-organization-slug',
 };
 
 interface Source {
@@ -26,11 +26,60 @@ interface Source {
 interface SourcesPayload {
     course_id?: string;
     artifact_id?: string; // Add support for GPT sending artifact_id
+    organization_id?: string;
+    organization_slug?: string;
     sources: Source[];
     metadata?: {
         total_lessons?: number;
         search_timestamp?: string;
     };
+}
+
+interface OrganizationContext {
+    id: string;
+    slug: string;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function normalizeSlug(value: string | null | undefined) {
+    return value?.trim().toLowerCase() || null;
+}
+
+async function resolveOrganizationContext(
+    supabase: SupabaseClient<any>,
+    request: NextRequest,
+    payload: SourcesPayload,
+): Promise<OrganizationContext | null> {
+    const organizationId =
+        payload.organization_id?.trim() ||
+        request.headers.get('x-organization-id')?.trim() ||
+        null;
+    const organizationSlug =
+        normalizeSlug(payload.organization_slug) ||
+        normalizeSlug(request.headers.get('x-organization-slug'));
+
+    if (!organizationId && !organizationSlug) {
+        return null;
+    }
+
+    let query = supabase
+        .from('organizations')
+        .select('id, slug');
+
+    if (organizationId) {
+        query = query.eq('id', organizationId);
+    } else if (organizationSlug) {
+        query = query.eq('slug', organizationSlug);
+    }
+
+    const { data, error } = await query.maybeSingle();
+    if (error) {
+        console.error('[GPT Sources API] Organization lookup error:', error);
+        return null;
+    }
+
+    return data as OrganizationContext | null;
 }
 
 export async function POST(request: NextRequest) {
@@ -68,14 +117,25 @@ export async function POST(request: NextRequest) {
 
         // 3. Initialize Supabase with service role (server-side)
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
+        const organization = await resolveOrganizationContext(supabase, request, payload);
+        if (!organization) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: 'organization_id or organization_slug is required and must reference a valid organization',
+                },
+                { status: 400, headers: corsHeaders },
+            );
+        }
 
         // 4. Verify artifact exists using course_id OR id (fallback)
         // CHECK: If lookupId is NOT a valid UUID, searching 'id' (uuid column) will cause a Postgres error (22P02).
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lookupId);
+        const isUuid = UUID_PATTERN.test(lookupId);
 
         let query = supabase
             .from('artifacts')
-            .select('id, idea_central')
+            .select('id, idea_central, organization_id')
+            .eq('organization_id', organization.id);
 
         if (isUuid) {
             query = query.or(`course_id.eq.${lookupId},id.eq.${lookupId}`);
@@ -87,7 +147,10 @@ export async function POST(request: NextRequest) {
         const { data: artifact, error: artifactError } = await query.single();
 
         if (artifactError || !artifact) {
-            console.error(`[GPT Sources API] Artifact not found for lookupId: ${lookupId} (isUuid: ${isUuid})`, artifactError);
+            console.error(
+                `[GPT Sources API] Artifact not found for lookupId: ${lookupId}, organization: ${organization.id} (isUuid: ${isUuid})`,
+                artifactError,
+            );
             return NextResponse.json(
                 { success: false, error: 'Course/Artifact not found' },
                 { status: 404, headers: corsHeaders }
@@ -175,7 +238,8 @@ export async function POST(request: NextRequest) {
             success: true,
             message: 'Sources received and saved successfully',
             sources_saved: payload.sources.length,
-            artifact_title: artifact.idea_central
+            artifact_title: artifact.idea_central,
+            organization_slug: organization.slug
         }, { headers: corsHeaders });
 
     } catch (error: unknown) {

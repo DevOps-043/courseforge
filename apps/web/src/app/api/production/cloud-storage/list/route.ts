@@ -3,6 +3,7 @@ import { createClient } from "@/utils/supabase/server";
 import { getAuthenticatedUser } from "@/lib/server/artifact-action-auth";
 import { getCloudStorageService } from "@/domains/production/cloud-storage/cloud-storage.service";
 import { isCloudStorageProvider } from "@/domains/production/cloud-storage/types";
+import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 
 export async function GET(request: Request) {
   try {
@@ -20,7 +21,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No autorizado." }, { status: 401 });
     }
 
-    const files = await getCloudStorageService(provider).listFiles(authenticatedUser.userId, query);
+    const tenant = await resolveActiveTenantContext();
+    if (!tenant) {
+      return NextResponse.json({ error: "Empresa no valida o no autorizada." }, { status: 403 });
+    }
+
+    const files = await getCloudStorageService(provider).listFiles(
+      authenticatedUser.userId,
+      tenant.organizationId,
+      query,
+    );
 
     return NextResponse.json({
       success: true,

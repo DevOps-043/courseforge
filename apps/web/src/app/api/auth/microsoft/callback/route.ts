@@ -15,7 +15,7 @@ export async function GET(request: Request) {
       state: searchParams.get("state"),
     });
 
-    if (error || !code || !state?.userId) {
+    if (error || !code || !state?.userId || !state?.organizationId || !state?.organizationSlug) {
       return oauthPopupResponse({
         provider: "onedrive",
         status: "error",
@@ -65,6 +65,7 @@ export async function GET(request: Request) {
       accessToken: tokenData.access_token,
       accountEmail,
       expiresAt: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
+      organizationId: state.organizationId,
       provider: "onedrive",
       refreshToken: tokenData.refresh_token,
       scopes: ["openid", "email", "profile", "offline_access", "User.Read", "Files.ReadWrite"],
@@ -74,7 +75,7 @@ export async function GET(request: Request) {
     return oauthPopupResponse({
       provider: "onedrive",
       status: "success",
-      redirectPath: "/admin/profile?onedrive_connected=true",
+      redirectPath: `/${state.organizationSlug}/admin/integrations?onedrive_connected=true`,
     });
   } catch (error: any) {
     console.error("[Microsoft OAuth Callback Error]:", error);

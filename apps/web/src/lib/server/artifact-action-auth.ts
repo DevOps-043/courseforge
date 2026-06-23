@@ -246,3 +246,92 @@ export async function getAuthorizedCurationRowAdmin(rowId: string) {
     artifactId: curation.artifact_id,
   };
 }
+
+interface MaterialComponentAdminRow {
+  assets?: Record<string, any> | null;
+  content?: unknown;
+  id: string;
+  material_lesson_id?: string | null;
+  material_lessons?:
+    | {
+        materials?:
+          | {
+              artifact_id?: string | null;
+            }
+          | Array<{
+              artifact_id?: string | null;
+            }>
+          | null;
+      }
+    | Array<{
+        materials?:
+          | {
+              artifact_id?: string | null;
+            }
+          | Array<{
+              artifact_id?: string | null;
+            }>
+          | null;
+      }>
+    | null;
+  type?: string | null;
+}
+
+function getArtifactIdFromComponent(component: MaterialComponentAdminRow) {
+  const lessonRelation = Array.isArray(component.material_lessons)
+    ? component.material_lessons[0]
+    : component.material_lessons;
+  const materialsRelation = Array.isArray(lessonRelation?.materials)
+    ? lessonRelation.materials[0]
+    : lessonRelation?.materials;
+
+  return materialsRelation?.artifact_id || null;
+}
+
+export async function getAuthorizedMaterialComponentAdmin(componentId: string) {
+  const admin = getServiceRoleClient();
+  const { data: component, error } = await admin
+    .from("material_components")
+    .select(
+      `
+        id,
+        type,
+        content,
+        assets,
+        material_lesson_id,
+        material_lessons!inner (
+          materials!inner (
+            artifact_id
+          )
+        )
+      `,
+    )
+    .eq("id", componentId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[MaterialComponentAccess] Error loading component:", error);
+    return null;
+  }
+
+  const normalizedComponent = component as MaterialComponentAdminRow | null;
+  if (!normalizedComponent) {
+    return null;
+  }
+
+  const artifactId = getArtifactIdFromComponent(normalizedComponent);
+  if (!artifactId) {
+    return null;
+  }
+
+  const authorized = await getAuthorizedArtifactAdmin(artifactId);
+  if (!authorized) {
+    return null;
+  }
+
+  return {
+    admin,
+    artifactId,
+    component: normalizedComponent,
+  };
+}

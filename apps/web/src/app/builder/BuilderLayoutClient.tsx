@@ -32,7 +32,7 @@ export default function BuilderLayoutClient({
             basePath={basePath}
             title={
                 <>
-                    Buil<span className="text-[#00D4B3]">der</span>
+                    Builder
                 </>
             }
         >

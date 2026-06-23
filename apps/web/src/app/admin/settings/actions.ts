@@ -5,11 +5,13 @@ import { SystemPrompt, UpdateSystemPromptDTO } from '@/domains/prompts/types';
 import { revalidatePath } from 'next/cache';
 import { getActiveOrganizationId, getAuthBridgeUser } from '@/utils/auth/session';
 import { getSupabaseServiceRoleKey, getSupabaseUrl } from '@/lib/server/env';
+import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 
 interface ModelSettingsUpdateInput {
   fallback_model?: string | null;
   id: number;
   model_name: string;
+  setting_type: string;
   temperature?: number | null;
   thinking_level?: string | null;
 }
@@ -21,6 +23,57 @@ export interface ModelSettingsRecord extends ModelSettingsUpdateInput {
 
 const SYSTEM_PROMPT_SELECT_FIELDS =
   'id, code, version, organization_id, content, description, is_active, created_at, updated_at';
+const MODEL_SETTINGS_SELECT_FIELDS =
+  'id, model_name, fallback_model, temperature, thinking_level, setting_type, is_active';
+const MODEL_SETTING_TYPES = [
+  'ARTIFACT_BASE',
+  'SYLLABUS',
+  'INSTRUCTIONAL_PLAN',
+  'CURATION',
+  'MATERIALS',
+] as const;
+const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number], Omit<ModelSettingsRecord, 'id'>> = {
+  ARTIFACT_BASE: {
+    model_name: 'gemini-2.5-flash',
+    fallback_model: 'gemini-2.5-flash',
+    temperature: 0.7,
+    thinking_level: 'medium',
+    setting_type: 'ARTIFACT_BASE',
+    is_active: true,
+  },
+  SYLLABUS: {
+    model_name: 'gemini-2.5-flash',
+    fallback_model: 'gemini-2.5-flash',
+    temperature: 0.7,
+    thinking_level: 'medium',
+    setting_type: 'SYLLABUS',
+    is_active: true,
+  },
+  INSTRUCTIONAL_PLAN: {
+    model_name: 'gemini-2.5-flash',
+    fallback_model: 'gemini-2.5-flash',
+    temperature: 0.7,
+    thinking_level: 'medium',
+    setting_type: 'INSTRUCTIONAL_PLAN',
+    is_active: true,
+  },
+  CURATION: {
+    model_name: 'gemini-2.5-pro',
+    fallback_model: 'gemini-2.5-flash',
+    temperature: 0.1,
+    thinking_level: 'high',
+    setting_type: 'CURATION',
+    is_active: true,
+  },
+  MATERIALS: {
+    model_name: 'gemini-2.5-pro',
+    fallback_model: 'gemini-2.5-flash',
+    temperature: 0.7,
+    thinking_level: 'minimal',
+    setting_type: 'MATERIALS',
+    is_active: true,
+  },
+};
 
 // Helper for admin client that bypasses the RLS if the session token is not understood by PostgREST
 function getAdminClient() {
@@ -61,13 +114,45 @@ function dedupeSystemPromptsByIdentity(prompts: SystemPrompt[]) {
   return Array.from(promptsByIdentity.values());
 }
 
+async function getResolvedActiveOrgId() {
+  const tenant = await resolveActiveTenantContext();
+  return tenant?.organizationId ?? (await getActiveOrganizationId());
+}
+
+async function revalidateSettingsPaths() {
+  revalidatePath('/admin/settings');
+  const tenant = await resolveActiveTenantContext();
+  if (tenant?.organizationSlug) {
+    revalidatePath(`/${tenant.organizationSlug}/admin/settings`);
+  }
+}
+
+function getPreferredModelSetting(candidate: ModelSettingsRecord, current?: ModelSettingsRecord) {
+  if (!current) return candidate;
+  if (candidate.is_active !== current.is_active) {
+    return candidate.is_active ? candidate : current;
+  }
+  return candidate.id > current.id ? candidate : current;
+}
+
+function mapSettingsByType(settings: ModelSettingsRecord[]) {
+  const byType = new Map<string, ModelSettingsRecord>();
+  settings.forEach((setting) => {
+    byType.set(
+      setting.setting_type,
+      getPreferredModelSetting(setting, byType.get(setting.setting_type)),
+    );
+  });
+  return byType;
+}
+
 export async function getSystemPromptsAction() {
   const user = await getAuthBridgeUser();
 
   if (!user) {
     return { success: false, error: 'Unauthorized' };
   }
-  const activeOrgId = await getActiveOrganizationId();
+  const activeOrgId = await getResolvedActiveOrgId();
   const supabaseAdmin = getAdminClient();
 
   // Always fetch globals first
@@ -140,7 +225,7 @@ export async function updateSystemPromptAction(prompt: UpdateSystemPromptDTO) {
       return { success: false, error: 'Unauthorized' };
     }
 
-    const activeOrgId = await getActiveOrganizationId();
+    const activeOrgId = await getResolvedActiveOrgId();
     const supabaseAdmin = getAdminClient();
 
     // Check if this row belongs to the current org or is a global prompt
@@ -177,7 +262,7 @@ export async function updateSystemPromptAction(prompt: UpdateSystemPromptDTO) {
         return { success: false, error: error.message };
       }
 
-      revalidatePath('/admin/settings');
+      await revalidateSettingsPaths();
       return { success: true, prompt: data as SystemPrompt };
     }
 
@@ -199,7 +284,7 @@ export async function updateSystemPromptAction(prompt: UpdateSystemPromptDTO) {
       return { success: false, error: error.message };
     }
 
-    revalidatePath('/admin/settings');
+    await revalidateSettingsPaths();
     return { success: true, prompt: data as SystemPrompt };
 }
 
@@ -209,15 +294,13 @@ export async function getModelSettingsAction() {
   if (!user) {
     return { success: false, error: 'Unauthorized' };
   }
-  const activeOrgId = await getActiveOrganizationId();
+  const activeOrgId = await getResolvedActiveOrgId();
   const supabaseAdmin = getAdminClient();
-
-  const SELECT_FIELDS = 'id, model_name, fallback_model, temperature, thinking_level, setting_type, is_active';
 
   // Fetch globals as baseline
   const { data: globalData, error } = await supabaseAdmin
     .from('model_settings')
-    .select(SELECT_FIELDS)
+    .select(MODEL_SETTINGS_SELECT_FIELDS)
     .eq('is_active', true)
     .is('organization_id', null)
     .order('id', { ascending: true });
@@ -227,32 +310,30 @@ export async function getModelSettingsAction() {
     return { success: false, error: error.message };
   }
 
-  const globalSettings = (globalData || []) as ModelSettingsRecord[];
+  const globalByType = mapSettingsByType((globalData || []) as ModelSettingsRecord[]);
+  const baselineSettings = MODEL_SETTING_TYPES.map((settingType, index) => {
+    const global = globalByType.get(settingType);
+    return global ?? {
+      id: -(index + 1),
+      ...DEFAULT_MODEL_SETTINGS_BY_TYPE[settingType],
+    };
+  });
 
   if (!activeOrgId) {
-    return { success: true, settings: globalSettings };
+    return { success: true, settings: baselineSettings };
   }
 
   // Fetch org-specific overrides
   const { data: orgData } = await supabaseAdmin
     .from('model_settings')
-    .select(SELECT_FIELDS)
+    .select(MODEL_SETTINGS_SELECT_FIELDS)
     .eq('is_active', true)
     .eq('organization_id', activeOrgId)
     .order('id', { ascending: true });
 
   const orgSettings = (orgData || []) as ModelSettingsRecord[];
-  const orgByType = new Map(orgSettings.map((s) => [s.setting_type, s]));
-
-  // Merge: org-specific overrides global for the same setting_type; globals fill the rest
-  const merged = globalSettings.map((global) => orgByType.get(global.setting_type) ?? global);
-
-  // Add org-specific types that have no global counterpart
-  for (const orgSetting of orgSettings) {
-    if (!merged.find((s) => s.setting_type === orgSetting.setting_type)) {
-      merged.push(orgSetting);
-    }
-  }
+  const orgByType = mapSettingsByType(orgSettings);
+  const merged = baselineSettings.map((setting) => orgByType.get(setting.setting_type) ?? setting);
 
   return { success: true, settings: merged };
 }
@@ -268,7 +349,7 @@ export async function resetPromptToDefaultAction(promptCode: string) {
     return { success: false, error: 'Unauthorized' };
   }
 
-  const activeOrgId = await getActiveOrganizationId();
+  const activeOrgId = await getResolvedActiveOrgId();
 
   if (!activeOrgId) {
     return { success: false, error: 'No hay organización activa' };
@@ -287,7 +368,7 @@ export async function resetPromptToDefaultAction(promptCode: string) {
     return { success: false, error: error.message };
   }
 
-  revalidatePath('/admin/settings');
+  await revalidateSettingsPaths();
   return { success: true };
 }
 
@@ -299,27 +380,55 @@ export async function updateModelSettingsAction(settings: ModelSettingsUpdateInp
     return { success: false, error: 'Unauthorized' };
   }
 
-  const activeOrgId = await getActiveOrganizationId();
+  const activeOrgId = await getResolvedActiveOrgId();
   const supabaseAdmin = getAdminClient();
   
-  const updates = settings.map(setting => 
-    supabaseAdmin.from('model_settings').update({
-        model_name: setting.model_name,
-        fallback_model: setting.fallback_model,
-        temperature: setting.temperature,
-        thinking_level: setting.thinking_level,
-        ...(activeOrgId ? { organization_id: activeOrgId } : {})
-    }).eq('id', setting.id)
-  );
+  const updates = settings.map(async (setting) => {
+    const payload = {
+      model_name: setting.model_name,
+      fallback_model: setting.fallback_model,
+      temperature: setting.temperature,
+      thinking_level: setting.thinking_level,
+      is_active: true,
+      setting_type: setting.setting_type,
+      organization_id: activeOrgId || null,
+    };
+
+    if (!activeOrgId && setting.id > 0) {
+      return supabaseAdmin.from('model_settings').update(payload).eq('id', setting.id);
+    }
+
+    if (activeOrgId) {
+      const { data: existing, error: existingError } = await supabaseAdmin
+        .from('model_settings')
+        .select('id')
+        .eq('organization_id', activeOrgId)
+        .eq('setting_type', setting.setting_type)
+        .eq('is_active', true)
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingError) {
+        return { error: existingError };
+      }
+
+      if (existing?.id) {
+        return supabaseAdmin.from('model_settings').update(payload).eq('id', existing.id);
+      }
+    }
+
+    return supabaseAdmin.from('model_settings').insert(payload);
+  });
 
   const results = await Promise.all(updates);
-  const errors = results.filter(r => r.error);
+  const errors = results.filter((result) => result.error);
 
   if (errors.length > 0) {
     console.error('Model settings update errors:', errors);
     return { success: false, error: 'Algunas configuraciones fallaron al guardarse' };
   }
 
-  revalidatePath('/admin/settings');
+  await revalidateSettingsPaths();
   return { success: true };
 }

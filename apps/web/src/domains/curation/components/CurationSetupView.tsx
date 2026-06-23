@@ -213,7 +213,7 @@ export function CurationSetupView({
                       ? "border-[#00D4B3]/50 focus:border-[#00D4B3]"
                       : "border-gray-300 dark:border-[#6C757D]/30 focus:border-[#8B5CF6]"
                 } text-gray-900 dark:text-gray-300`}
-                placeholder='{\n  "course_id": "IA-3269",\n  "sources": [\n    {\n      "title": "...",\n      "url": "https://...",\n      "type": "documentation",\n      "lesson_id": "les-1-1",\n      "lesson_title": "...",\n      "summary": "...",\n      "validated": true\n    }\n  ]\n}'
+                placeholder='{\n  "organization_slug": "mi-empresa",\n  "course_id": "IA-3269",\n  "sources": [\n    {\n      "title": "...",\n      "url": "https://...",\n      "type": "documentation",\n      "lesson_id": "les-1-1",\n      "lesson_title": "...",\n      "summary": "...",\n      "validated": true\n    }\n  ]\n}'
                 disabled={isProcessingJson}
               />
             </div>
