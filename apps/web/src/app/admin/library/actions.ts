@@ -9,6 +9,8 @@ import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 export type SearchFilters = {
     type?: string;
     status?: string | 'ALL';
+    /** Filter by which production asset is present on the component. */
+    assetPresence?: 'ALL' | 'has_slides' | 'has_broll' | 'has_avatar' | 'has_audio' | 'has_video';
 };
 
 export type MaterialSearchResult = {
@@ -159,6 +161,27 @@ async function fetchLibraryRowsByLessonIds(
     return (data || []) as LibraryMaterialComponentRow[];
 }
 
+function assetPresenceCheck(assets: MaterialAssets | null | undefined, assetPresence: string): boolean {
+    if (!assetPresence || assetPresence === 'ALL') return true;
+    const a = assets ?? {};
+    switch (assetPresence) {
+        case 'has_slides':
+            return Boolean(
+                (a.slides?.images?.length ?? 0) > 0 || a.slides?.html_public_url || a.slides_url,
+            );
+        case 'has_broll':
+            return (a.b_roll_clips?.length ?? 0) > 0;
+        case 'has_avatar':
+            return Boolean(a.avatar_video?.public_url);
+        case 'has_audio':
+            return Boolean(a.voice_audio?.public_url);
+        case 'has_video':
+            return Boolean(a.final_video_url || a.video_url || a.screencast_url);
+        default:
+            return true;
+    }
+}
+
 function applyClientFilters(
     rows: LibraryMaterialComponentRow[],
     filters: SearchFilters,
@@ -174,6 +197,12 @@ function applyClientFilters(
             row.assets?.production_status !== filters.status
         ) {
             return false;
+        }
+
+        if (filters.assetPresence && filters.assetPresence !== 'ALL') {
+            if (!assetPresenceCheck(row.assets, filters.assetPresence)) {
+                return false;
+            }
         }
 
         return true;
@@ -255,9 +284,14 @@ export async function searchMaterialsAction(query: string, filters: SearchFilter
                 return { success: false, error: error.message };
             }
 
+            const rows = applyClientFilters(
+                (data || []) as LibraryMaterialComponentRow[],
+                { assetPresence: filters.assetPresence },
+            );
+
             return {
                 success: true,
-                results: transformResults((data || []) as LibraryMaterialComponentRow[]),
+                results: transformResults(rows),
             };
         }
 

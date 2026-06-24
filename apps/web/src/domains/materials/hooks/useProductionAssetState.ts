@@ -327,6 +327,45 @@ export function useProductionAssetState({
     onAssetChange?.(component.id, { background_music: newMusic });
   };
 
+  // Helper: calls Open Design Export to generate SVG slides from component storyboard.
+  // Used automatically when uploaded/imported slides contain no renderable images.
+  const autoGenerateSlidesFromStoryboard = async (
+    preferredHtmlUrl?: string,
+    preferredHtmlPath?: string,
+  ): Promise<boolean> => {
+    try {
+      const exportResponse = await fetch('/api/production/open-design/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ componentId: component.id }),
+      });
+
+      if (!exportResponse.ok) return false;
+
+      const exportData = await exportResponse.json();
+      if (!exportData.success || !Array.isArray(exportData.slideImages) || exportData.slideImages.length === 0) {
+        return false;
+      }
+
+      const newSlides: SlidesAsset = {
+        open_design_project_id: exportData.openDesignProjectId,
+        // Prefer the user's uploaded file as the HTML reference; fall back to OD-generated HTML
+        html_content_path: preferredHtmlPath || `production-assets/slides/${component.id}-slides.html`,
+        html_public_url: preferredHtmlUrl || exportData.htmlPublicUrl,
+        images: exportData.slideImages,
+      };
+      setSlidesAsset(newSlides);
+      setSlidesUrl(newSlides.html_public_url || '');
+      onAssetChange?.(component.id, {
+        slides: newSlides,
+        slides_url: newSlides.html_public_url || '',
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   // 3. Open Design HTML export & Upload ZIP/HTML
   const handleOpenDesignExport = async () => {
     setIsExportingOpenDesign(true);
@@ -378,7 +417,15 @@ export function useProductionAssetState({
     try {
       const files = await expandSlideInputFiles(selectedFiles);
       if (files.length === 0) {
-        throw new Error("El ZIP no contiene imagenes renderizables (.png, .jpg, .jpeg, .webp o .svg).");
+        // ZIP contained no renderable images — auto-generate SVGs from the component storyboard
+        toast.info("El ZIP no contiene imágenes. Generando slides desde el storyboard...");
+        const generated = await autoGenerateSlidesFromStoryboard();
+        toast.success(
+          generated
+            ? "Slides generadas automáticamente para Remotion"
+            : 'No se pudieron generar slides. Usa el botón "Exportar" manualmente.',
+        );
+        return;
       }
 
       const uploadedImages: NonNullable<SlidesAsset["images"]> = [];
@@ -417,13 +464,31 @@ export function useProductionAssetState({
         }
       }
 
+      if (uploadedImages.length === 0) {
+        // Non-renderable file (e.g. HTML) uploaded as reference — also generate SVGs for Remotion
+        const refSlides: SlidesAsset = {
+          ...slidesAsset,
+          html_public_url: referenceUrl,
+          html_content_path: referencePath,
+          images: slidesAsset?.images || [],
+        };
+        setSlidesAsset(refSlides);
+        setSlidesUrl(referenceUrl);
+        onAssetChange?.(component.id, { slides: refSlides, slides_url: referenceUrl });
+
+        toast.info("Generando slides para Remotion desde el storyboard...");
+        const generated = await autoGenerateSlidesFromStoryboard(referenceUrl, referencePath);
+        toast.success(
+          generated
+            ? "Slides guardadas y generadas para Remotion"
+            : 'Archivo guardado como referencia. Usa "Exportar" para generar slides renderizables.',
+        );
+        return;
+      }
+
       const newSlides: SlidesAsset = {
         ...slidesAsset,
-        html_public_url: uploadedImages.length > 0 ? slidesAsset?.html_public_url : referenceUrl,
-        html_content_path: uploadedImages.length > 0 ? slidesAsset?.html_content_path : referencePath,
-        images: uploadedImages.length > 0
-          ? uploadedImages
-          : slidesAsset?.images || [],
+        images: uploadedImages,
       };
       setSlidesAsset(newSlides);
       setSlidesUrl(referenceUrl);
@@ -431,11 +496,7 @@ export function useProductionAssetState({
         slides: newSlides,
         slides_url: referenceUrl,
       });
-      toast.success(
-        uploadedImages.length > 0
-          ? `${uploadedImages.length} slide(s) renderizable(s) subidas correctamente`
-          : 'Archivo de slides subido como referencia',
-      );
+      toast.success(`${uploadedImages.length} slide(s) renderizable(s) subidas correctamente`);
     } catch (err: any) {
       toast.error(`Error al subir slides: ${err.message}`);
     } finally {
@@ -914,15 +975,29 @@ export function useProductionAssetState({
             onAssetChange?.(component.id, { avatar_video: data.assets.avatar_video });
             toast.success(`Avatar importado exitosamente de ${providerLabel}`);
             break;
-          case "slides":
-            setSlidesAsset(data.assets.slides);
+          case "slides": {
+            const importedSlides: SlidesAsset = data.assets.slides;
+            setSlidesAsset(importedSlides);
             setSlidesUrl(data.assets.slides_url || "");
             onAssetChange?.(component.id, {
-              slides: data.assets.slides,
+              slides: importedSlides,
               slides_url: data.assets.slides_url || "",
             });
             toast.success(`Diapositivas importadas exitosamente de ${providerLabel}`);
+
+            // If no renderable images were imported (e.g. HTML file), auto-generate SVGs
+            if (!importedSlides?.images?.length) {
+              toast.info("Generando slides para Remotion desde el storyboard...");
+              const generated = await autoGenerateSlidesFromStoryboard(
+                importedSlides?.html_public_url,
+                importedSlides?.html_content_path,
+              );
+              if (generated) {
+                toast.success("Slides generadas automáticamente para Remotion");
+              }
+            }
             break;
+          }
         }
         return true;
       } else {

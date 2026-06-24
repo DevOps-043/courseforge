@@ -4,6 +4,7 @@ import { createClient } from "@/utils/supabase/server";
 import { getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { getAuthBridgeUser, getUserOrganizations } from "@/utils/auth/session";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
+import { getSupabaseUrl, getSupabaseServiceRoleKey } from "@/lib/server/env";
 import {
   createTemplateConfigSchemaDefinition,
   parseTemplateRenderConfig,
@@ -635,17 +636,30 @@ export async function createTemplateVersionAction(
     }
 
     // 2. Fetch the ZIP from storage
+    // We use a direct fetch with cache: "no-store" because @supabase/storage-js does not
+    // pass this flag, and Next.js throws "fetch failed" when trying to cache binary files > 2MB.
     const bundleLocation = resolveBundleStorageLocation(storagePath);
-    const { data: fileData, error: downloadError } = await admin.storage
-      .from(bundleLocation.bucket)
-      .download(bundleLocation.path);
+    const downloadUrl = `${getSupabaseUrl()}/storage/v1/object/${bundleLocation.bucket}/${bundleLocation.path}`;
+    
+    let arrayBuffer: ArrayBuffer;
+    try {
+      const response = await fetch(downloadUrl, {
+        headers: {
+          Authorization: `Bearer ${getSupabaseServiceRoleKey()}`,
+        },
+        cache: "no-store",
+      });
 
-    if (downloadError || !fileData) {
-      throw new Error(`Error al descargar el bundle de almacenamiento: ${downloadError?.message || 'Archivo no encontrado'}`);
+      if (!response.ok) {
+        const errText = await response.text().catch(() => "Unknown error");
+        throw new Error(`HTTP ${response.status}: ${errText}`);
+      }
+
+      arrayBuffer = await response.arrayBuffer();
+    } catch (downloadError: any) {
+      console.error(`[TemplatesActions] Download failed for ${bundleLocation.bucket}/${bundleLocation.path}:`, downloadError);
+      throw new Error(`Error al descargar el bundle de almacenamiento: ${downloadError?.message || 'Archivo no encontrado'} (Ruta: ${bundleLocation.bucket}/${bundleLocation.path})`);
     }
-
-    // Convert Blob to ArrayBuffer
-    const arrayBuffer = await fileData.arrayBuffer();
 
     // 3. Run validation
     const report = await validateRemotionBundle(arrayBuffer, originalFileName);

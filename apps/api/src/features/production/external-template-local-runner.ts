@@ -150,6 +150,14 @@ if (!Component) {
   throw new Error("El bundle debe exportar MyComposition, Template o default.");
 }
 
+// Use calculateMetadata exported by the template if present.
+// This lets templates derive their duration from the actual avatar video length
+// instead of relying on the static defaultDurationInFrames.
+const templateCalculateMetadata =
+  typeof (TemplateModule as any).calculateMetadata === 'function'
+    ? (TemplateModule as any).calculateMetadata
+    : undefined;
+
 const inputProps = ${JSON.stringify(params.inputProps ?? {})};
 
 const RemotionRoot = () => (
@@ -161,6 +169,7 @@ const RemotionRoot = () => (
     fps={${fps}}
     durationInFrames={${totalDurationInFrames}}
     defaultProps={inputProps}
+    calculateMetadata={templateCalculateMetadata}
   />
 );
 

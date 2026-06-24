@@ -1,0 +1,10 @@
+{
+  "name": "Plantilla Remotion Avanzada v2",
+  "entryPoint": "src/index.tsx",
+  "compositionId": "advanced-multi-scene-v2",
+  "remotionVersion": "4.0.474",
+  "defaultDurationInFrames": 600,
+  "defaultFps": 30,
+  "defaultWidth": 1920,
+  "defaultHeight": 1080
+}

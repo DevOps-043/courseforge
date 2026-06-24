@@ -602,7 +602,8 @@ export async function assembleRemotionVideoAction(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
+        "Authorization": `Bearer ${token}`,
+        "ngrok-skip-browser-warning": "true",
       },
       body: JSON.stringify({
         componentId,
@@ -675,7 +676,8 @@ export async function getRemotionJobStatusAction(jobId: string) {
     const expressApiUrl = process.env.EXPRESS_API_URL || "http://localhost:4000";
     const response = await fetch(`${expressApiUrl}/api/v1/production/jobs/${jobId}/status`, {
       headers: {
-        "Authorization": `Bearer ${token}`
+        "Authorization": `Bearer ${token}`,
+        "ngrok-skip-browser-warning": "true",
       }
     });
 

@@ -1,10 +1,40 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Search, Filter, Loader2, Library as LibraryIcon, X } from 'lucide-react';
 import { searchMaterialsAction, MaterialSearchResult } from './actions';
 import { MaterialResultCard } from './components/MaterialResultCard';
 import { toast } from 'sonner';
+
+const COMPONENT_TYPES = [
+    { value: 'ALL', label: 'Todos los tipos' },
+    { value: 'VIDEO_THEORETICAL', label: 'Video Teórico' },
+    { value: 'VIDEO_GUIDE', label: 'Video Guía' },
+    { value: 'VIDEO_DEMO', label: 'Video Demo' },
+    { value: 'DEMO_GUIDE', label: 'Guía Interactiva' },
+    { value: 'DIALOGUE', label: 'Diálogo' },
+    { value: 'READING', label: 'Lectura' },
+    { value: 'QUIZ', label: 'Quiz' },
+    { value: 'EXERCISE', label: 'Ejercicio' },
+];
+
+const PRODUCTION_STATUSES = [
+    { value: 'ALL', label: 'Todos los estados' },
+    { value: 'PENDING', label: 'Pendiente' },
+    { value: 'IN_PROGRESS', label: 'En Progreso' },
+    { value: 'DECK_READY', label: 'Deck Listo' },
+    { value: 'EXPORTED', label: 'Exportado' },
+    { value: 'COMPLETED', label: 'Completado' },
+];
+
+const ASSET_PRESENCE = [
+    { value: 'ALL', label: 'Cualquier asset' },
+    { value: 'has_slides', label: 'Tiene Slides' },
+    { value: 'has_video', label: 'Tiene Video' },
+    { value: 'has_avatar', label: 'Tiene Avatar' },
+    { value: 'has_audio', label: 'Tiene Audio' },
+    { value: 'has_broll', label: 'Tiene B-Roll' },
+];
 
 export default function LibraryPage() {
     const [query, setQuery] = useState('');
@@ -12,51 +42,52 @@ export default function LibraryPage() {
     const [isSearching, setIsSearching] = useState(false);
     const [hasSearched, setHasSearched] = useState(false);
 
-    // Filters
     const [showFilters, setShowFilters] = useState(false);
     const [selectedType, setSelectedType] = useState('ALL');
     const [selectedStatus, setSelectedStatus] = useState('ALL');
+    const [selectedAssetPresence, setSelectedAssetPresence] = useState('ALL');
 
-    const handleSearch = async (e?: React.FormEvent) => {
-        if (e) e.preventDefault();
+    const filtersActive =
+        selectedType !== 'ALL' || selectedStatus !== 'ALL' || selectedAssetPresence !== 'ALL';
 
-        if (!query.trim() && selectedType === 'ALL' && selectedStatus === 'ALL') {
-            // Avoid empty heavy queries if possible, or show recent
-            // For now, allow empty query to "Show All" if users want browse
-        }
-
+    const runSearch = async (q: string, type: string, status: string, assetPresence: string) => {
         setIsSearching(true);
         setHasSearched(true);
-        setResults([]); // Clear previous
-
+        setResults([]);
         try {
-            const response = await searchMaterialsAction(query, {
-                type: selectedType,
-                status: selectedStatus
-            });
-
+            const response = await searchMaterialsAction(q, { type, status, assetPresence: assetPresence as any });
             if (response.success && response.results) {
                 setResults(response.results);
-                if (response.results.length === 0) {
-                    toast('No se encontraron materiales');
+                if (response.results.length === 0 && (q || filtersActive)) {
+                    toast('No se encontraron materiales con esos criterios');
                 }
             } else {
                 toast.error('Error al buscar materiales');
             }
-        } catch (error) {
-            console.error(error);
-            toast.error('Error inesperado');
+        } catch {
+            toast.error('Error inesperado al buscar');
         } finally {
             setIsSearching(false);
         }
     };
 
+    // Auto-load on mount
+    useEffect(() => {
+        runSearch('', 'ALL', 'ALL', 'ALL');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const handleSearch = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        runSearch(query, selectedType, selectedStatus, selectedAssetPresence);
+    };
+
     const clearFilters = () => {
         setSelectedType('ALL');
         setSelectedStatus('ALL');
+        setSelectedAssetPresence('ALL');
         setQuery('');
-        setResults([]);
-        setHasSearched(false);
+        runSearch('', 'ALL', 'ALL', 'ALL');
     };
 
     return (
@@ -66,12 +97,17 @@ export default function LibraryPage() {
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                         <LibraryIcon className="text-[#00D4B3]" />
-                        Librería de Materiales
+                        Librería de Assets
                     </h1>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Busca y gestiona los activos de producción (Decks, Videos, Guías)
+                        Busca y explora todos los assets de producción: slides, videos, avatar, audio y b-roll
                     </p>
                 </div>
+                {hasSearched && !isSearching && (
+                    <span className="text-xs text-gray-400 whitespace-nowrap">
+                        {results.length} resultado{results.length !== 1 ? 's' : ''}
+                    </span>
+                )}
             </div>
 
             {/* Search Bar & Filters */}
@@ -81,7 +117,7 @@ export default function LibraryPage() {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                         <input
                             type="text"
-                            placeholder="Buscar por ID, Código o Nombre del Taller..."
+                            placeholder="Buscar por nombre de lección, curso o ID..."
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-[#00D4B3] transition-colors"
@@ -99,12 +135,18 @@ export default function LibraryPage() {
                     <button
                         type="button"
                         onClick={() => setShowFilters(!showFilters)}
-                        className={`px-4 py-3 rounded-xl border flex items-center gap-2 transition-colors ${showFilters || selectedType !== 'ALL' || selectedStatus !== 'ALL'
-                            ? 'bg-[#00D4B3]/10 border-[#00D4B3]/30 text-[#00D4B3]'
-                            : 'bg-gray-50 dark:bg-[#0F1419] border-gray-200 dark:border-[#6C757D]/20 text-gray-500'
-                            }`}
+                        className={`px-4 py-3 rounded-xl border flex items-center gap-2 transition-colors ${
+                            showFilters || filtersActive
+                                ? 'bg-[#00D4B3]/10 border-[#00D4B3]/30 text-[#00D4B3]'
+                                : 'bg-gray-50 dark:bg-[#0F1419] border-gray-200 dark:border-[#6C757D]/20 text-gray-500'
+                        }`}
                     >
                         <Filter size={18} />
+                        {filtersActive && (
+                            <span className="text-xs font-bold">
+                                {[selectedType, selectedStatus, selectedAssetPresence].filter(v => v !== 'ALL').length}
+                            </span>
+                        )}
                     </button>
                     <button
                         type="submit"
@@ -117,20 +159,30 @@ export default function LibraryPage() {
                 </form>
 
                 {/* Filters Panel */}
-                {(showFilters || selectedType !== 'ALL' || selectedStatus !== 'ALL') && (
-                    <div className="pt-4 border-t border-gray-100 dark:border-[#6C757D]/10 grid grid-cols-1 md:grid-cols-3 gap-4 animate-in slide-in-from-top-2">
+                {(showFilters || filtersActive) && (
+                    <div className="pt-4 border-t border-gray-100 dark:border-[#6C757D]/10 grid grid-cols-1 md:grid-cols-4 gap-4 animate-in slide-in-from-top-2">
                         <div className="space-y-1">
-                            <label className="text-xs font-medium text-gray-500 uppercase">Tipo de Contenido</label>
+                            <label className="text-xs font-medium text-gray-500 uppercase">Tipo de Componente</label>
                             <select
                                 value={selectedType}
                                 onChange={(e) => setSelectedType(e.target.value)}
                                 className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-lg p-2 text-sm focus:border-[#00D4B3] outline-none"
                             >
-                                <option value="ALL">Todos</option>
-                                <option value="VIDEO_THEORETICAL">Video Teórico</option>
-                                <option value="VIDEO_GUIDE">Video Guía</option>
-                                <option value="VIDEO_DEMO">Video Demo</option>
-                                <option value="DEMO_GUIDE">Guía Interactiva</option>
+                                {COMPONENT_TYPES.map(t => (
+                                    <option key={t.value} value={t.value}>{t.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-gray-500 uppercase">Asset Presente</label>
+                            <select
+                                value={selectedAssetPresence}
+                                onChange={(e) => setSelectedAssetPresence(e.target.value)}
+                                className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-lg p-2 text-sm focus:border-[#00D4B3] outline-none"
+                            >
+                                {ASSET_PRESENCE.map(a => (
+                                    <option key={a.value} value={a.value}>{a.label}</option>
+                                ))}
                             </select>
                         </div>
                         <div className="space-y-1">
@@ -140,18 +192,17 @@ export default function LibraryPage() {
                                 onChange={(e) => setSelectedStatus(e.target.value)}
                                 className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-lg p-2 text-sm focus:border-[#00D4B3] outline-none"
                             >
-                                <option value="ALL">Todos</option>
-                                <option value="PENDING">Pendiente</option>
-                                <option value="IN_PROGRESS">En Progreso</option>
-                                <option value="COMPLETED">Completado</option>
+                                {PRODUCTION_STATUSES.map(s => (
+                                    <option key={s.value} value={s.value}>{s.label}</option>
+                                ))}
                             </select>
                         </div>
                         <div className="flex items-end">
                             <button
                                 onClick={clearFilters}
-                                className="text-xs text-red-500 hover:text-red-400 p-2"
+                                className="text-xs text-red-500 hover:text-red-400 p-2 flex items-center gap-1"
                             >
-                                Limpiar Filtros
+                                <X size={12} /> Limpiar filtros
                             </button>
                         </div>
                     </div>
@@ -162,8 +213,8 @@ export default function LibraryPage() {
             <div className="min-h-[300px]">
                 {isSearching ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {[1, 2, 3].map(i => (
-                            <div key={i} className="h-40 bg-gray-100 dark:bg-[#151A21] rounded-xl animate-pulse" />
+                        {[1, 2, 3, 4, 5, 6].map(i => (
+                            <div key={i} className="h-44 bg-gray-100 dark:bg-[#151A21] rounded-xl animate-pulse" />
                         ))}
                     </div>
                 ) : results.length > 0 ? (
@@ -175,18 +226,10 @@ export default function LibraryPage() {
                 ) : hasSearched ? (
                     <div className="flex flex-col items-center justify-center py-20 text-center opacity-50">
                         <Search size={48} className="mb-4 text-gray-600" />
-                        <h3 className="text-lg font-medium text-white">No se encontraron resultados</h3>
-                        <p className="text-sm text-gray-500">Intenta con otros términos o filtros</p>
+                        <h3 className="text-lg font-medium text-white">Sin resultados</h3>
+                        <p className="text-sm text-gray-500">Intenta con otros términos o ajusta los filtros</p>
                     </div>
-                ) : (
-                    <div className="flex flex-col items-center justify-center py-20 text-center opacity-30">
-                        <LibraryIcon size={64} className="mb-6 text-gray-600" />
-                        <h3 className="text-xl font-medium text-white">Librería Vacía</h3>
-                        <p className="text-sm text-gray-500 max-w-sm mx-auto mt-2">
-                            Ingresa un término de búsqueda para encontrar assets o utiliza los filtros para explorar el contenido disponible.
-                        </p>
-                    </div>
-                )}
+                ) : null}
             </div>
         </div>
     );
