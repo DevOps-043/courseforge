@@ -144,6 +144,7 @@ export interface MaterialAssets {
     voice_audio?: {
         storage_path: string;
         public_url: string;
+        file_name?: string;
         duration?: number;
         provider?: string;
         last_uploaded_at?: string;
@@ -151,6 +152,7 @@ export interface MaterialAssets {
     background_music?: {
         storage_path: string;
         public_url: string;
+        file_name?: string;
         duration?: number;
         volume_multiplier?: number;
     };
@@ -158,6 +160,7 @@ export interface MaterialAssets {
         id: string;
         storage_path: string;
         public_url: string;
+        file_name?: string;
         duration?: number;
         prompt_used?: string;
         order: number;
@@ -165,6 +168,7 @@ export interface MaterialAssets {
     avatar_video?: {
         storage_path: string;
         public_url: string;
+        file_name?: string;
         duration?: number;
         provider?: string;
         external_id?: string;
@@ -178,6 +182,7 @@ export interface MaterialAssets {
             slide_index: number;
             storage_path: string;
             public_url: string;
+            file_name?: string;
         }[];
     };
 }

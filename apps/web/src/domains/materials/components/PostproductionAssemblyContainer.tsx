@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, CheckCircle2, Film, Layers, Loader2, Play, RefreshCw, Sparkles } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Film, Layers, Loader2, Play, RefreshCw, Search, Sparkles } from 'lucide-react';
 import { hasPreviewableAssets } from '@/remotion/buildAssemblyProps';
 import { deriveAssemblyTargetDurationSeconds } from '@/remotion/assembly-duration';
 import { getTemplatesAction, type RemotionTemplate } from '@/domains/production/actions/templates.actions';
@@ -13,6 +13,7 @@ import {
 } from '../actions/production.actions';
 import { useMaterials } from '../hooks/useMaterials';
 import { PRODUCTION_THEME } from './production-asset-ui';
+import { RemotionExternalPreviewPlayer } from './RemotionExternalPreviewPlayer';
 import { RemotionPreviewPlayer } from './RemotionPreviewPlayer';
 
 interface PostproductionAssemblyContainerProps {
@@ -54,6 +55,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const [loadingTemplates, setLoadingTemplates] = useState(true);
     const [videoComponents, setVideoComponents] = useState<any[]>([]);
     const [activePreviewId, setActivePreviewId] = useState<string>('');
+    const [templateSearch, setTemplateSearch] = useState('');
     const [assemblyJobs, setAssemblyJobs] = useState<AssemblyJobTracker[]>([]);
     const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const pollingInFlightRef = useRef(false);
@@ -305,6 +307,47 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const hasRequiredAssets = videoComponents.length > 0;
     const hasComponentsToAssemble = componentsToAssemble.length > 0;
     const isCompleted = videoComponents.length > 0 && componentsToAssemble.length === 0;
+    const filteredTemplates = useMemo(() => {
+        const search = templateSearch.trim().toLowerCase();
+
+        return templates.filter((tpl) => {
+            if (!search) return true;
+
+            const searchableText = [
+                tpl.name,
+                tpl.description,
+                tpl.composition_id,
+                tpl.render_composition_id,
+                tpl.render_status_label,
+                tpl.bundle_status,
+            ]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase();
+
+            return searchableText.includes(search);
+        });
+    }, [templates, templateSearch]);
+    const basicTemplates = filteredTemplates.filter((tpl) => !tpl.storage_path && !tpl.is_external_bundle_supported);
+    const advancedTemplates = filteredTemplates.filter((tpl) => tpl.storage_path || tpl.is_external_bundle_supported);
+    const hasFilteredTemplates = filteredTemplates.length > 0;
+    const externalPreviewVariables = useMemo(() => {
+        if (!activePreview || !selectedTemplateUsesSandbox) {
+            return {};
+        }
+
+        return {
+            template: selectedTemplate,
+            componentTitle: getComponentLabel(activePreview),
+            templateConfig: selectedTemplateConfig?.default_config || {},
+            transitionType: selectedTemplateConfig?.default_config?.transitionType,
+        };
+    }, [
+        activePreview,
+        selectedTemplate,
+        selectedTemplateConfig?.default_config,
+        selectedTemplateUsesSandbox,
+    ]);
 
     const handleAssembleSelected = async () => {
         if (!activePreview || !activePreviewPending) {
@@ -317,6 +360,53 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const handleAssembleAll = async () => {
         await startAssemblyForComponents(componentsToAssemble);
     };
+
+    const renderTemplateCard = (tpl: RemotionTemplate) => (
+        <button
+            key={tpl.id}
+            onClick={() => setSelectedTemplate(tpl.id)}
+            disabled={isAssembling}
+            className={`flex min-h-[132px] flex-col rounded-xl border p-4 text-left transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-white/5 ${
+                selectedTemplate === tpl.id
+                    ? 'border-purple-500 bg-purple-500/5 ring-1 ring-purple-500/30'
+                    : 'border-gray-200 bg-transparent dark:border-[#6C757D]/10'
+            }`}
+        >
+            <span className="mb-2 text-2xl">{tpl.thumbnail_url || 'Template'}</span>
+            <span className="mb-1 line-clamp-2 text-sm font-semibold text-gray-900 dark:text-white">{tpl.name}</span>
+            <span className="line-clamp-3 text-xs leading-snug text-gray-500 dark:text-gray-400">{tpl.description}</span>
+            <span
+                className={`mt-auto inline-flex w-fit items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                    tpl.render_mode === 'EXTERNAL_BUNDLE_PENDING'
+                        ? 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                        : 'border-green-500/25 bg-green-500/10 text-green-700 dark:text-green-300'
+                }`}
+            >
+                {tpl.render_mode === 'EXTERNAL_BUNDLE_PENDING' ? <AlertTriangle size={10} /> : <Play size={10} />}
+                {tpl.render_mode === 'EXTERNAL_SANDBOX_READY' ? 'Sandbox externo' : tpl.storage_path ? 'ZIP referencia' : tpl.render_composition_id}
+            </span>
+        </button>
+    );
+
+    const renderTemplateGroup = (title: string, items: RemotionTemplate[]) => (
+        <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+                <h4 className="text-xs font-bold uppercase tracking-normal text-gray-500 dark:text-gray-400">{title}</h4>
+                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-500 dark:bg-white/10 dark:text-gray-300">
+                    {items.length}
+                </span>
+            </div>
+            {items.length > 0 ? (
+                <div className="grid grid-cols-1 gap-3">
+                    {items.map(renderTemplateCard)}
+                </div>
+            ) : (
+                <div className="rounded-xl border border-dashed border-gray-200 p-4 text-center text-xs text-gray-500 dark:border-[#6C757D]/20 dark:text-gray-400">
+                    No hay plantillas en esta categoria.
+                </div>
+            )}
+        </div>
+    );
 
     if (loadingComponents || loadingTemplates) {
         return (
@@ -349,64 +439,98 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 space-y-6">
+            <div className="grid grid-cols-1 gap-8 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
+                <div className="space-y-6">
                     <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 space-y-4 shadow-sm">
-                        <h3 className="text-md font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                            <Layers className="text-[#1F5AF6]" size={18} />
-                            Selecciona una Plantilla de Ensamble
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            {templates.map((tpl) => (
-                                <button
-                                    key={tpl.id}
-                                    onClick={() => setSelectedTemplate(tpl.id)}
-                                    disabled={isAssembling}
-                                    className={`flex flex-col text-left p-4 rounded-xl border transition-all hover:bg-gray-50 dark:hover:bg-white/5 ${
-                                        selectedTemplate === tpl.id
-                                            ? 'border-purple-500 bg-purple-500/5 ring-1 ring-purple-500/30'
-                                            : 'border-gray-200 dark:border-[#6C757D]/10 bg-transparent'
-                                    }`}
-                                >
-                                    <span className="text-2xl mb-2">{tpl.thumbnail_url || 'Template'}</span>
-                                    <span className="font-semibold text-sm text-gray-900 dark:text-white mb-1">{tpl.name}</span>
-                                    <span className="text-xs text-gray-500 dark:text-gray-400 leading-snug">{tpl.description}</span>
-                                    <span
-                                        className={`mt-3 inline-flex w-fit items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                                            tpl.render_mode === 'EXTERNAL_BUNDLE_PENDING'
-                                                ? 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                                                : tpl.render_mode === 'EXTERNAL_SANDBOX_READY'
-                                                    ? 'border-green-500/25 bg-green-500/10 text-green-700 dark:text-green-300'
-                                                : 'border-green-500/25 bg-green-500/10 text-green-700 dark:text-green-300'
-                                        }`}
+                        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                            <h3 className="text-md font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                <Play className="text-purple-500" size={18} />
+                                Previsualizacion
+                            </h3>
+
+                            {videoComponents.length > 1 && (
+                                <div className="w-full space-y-1.5 xl:max-w-md">
+                                    <label className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+                                        Seleccionar Video para Preview:
+                                    </label>
+                                    <select
+                                        value={activePreviewId}
+                                        onChange={(event) => setActivePreviewId(event.target.value)}
+                                        className="w-full text-sm rounded-xl border border-gray-200 bg-white p-2 dark:border-[#6C757D]/10 dark:bg-[#0F1419] dark:text-white"
                                     >
-                                        {tpl.render_mode === 'EXTERNAL_BUNDLE_PENDING' ? <AlertTriangle size={10} /> : <Play size={10} />}
-                                        {tpl.render_mode === 'EXTERNAL_SANDBOX_READY' ? 'Sandbox externo' : tpl.storage_path ? 'ZIP referencia' : tpl.render_composition_id}
-                                    </span>
-                                </button>
-                            ))}
-                            {templates.length === 0 && (
-                                <div className="col-span-3 text-center py-4 text-sm text-gray-500">
-                                    No hay plantillas disponibles. Sube una en el Panel Administrativo.
+                                        {videoComponents.map((component, index) => (
+                                            <option key={component.id} value={component.id}>
+                                                {component.lessonTitle || `Leccion ${index + 1}`} - {(component.content as any)?.title || 'Video'} ({component.assets?.final_video_url ? 'Disponible' : 'Pendiente'})
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
                             )}
                         </div>
-                        {selectedTemplateConfig && selectedTemplateUsesExternalBundle && (
-                            <div className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
-                                <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-                                <span>
-                                    Esta plantilla tiene un ZIP guardado como referencia. Por seguridad, el render actual usa la composicion interna {selectedTemplateConfig.render_composition_id}.
-                                </span>
-                            </div>
-                        )}
-                        {selectedTemplateConfig && selectedTemplateUsesSandbox && (
-                            <div className="flex items-start gap-2 rounded-xl border border-green-500/20 bg-green-500/10 p-3 text-xs leading-relaxed text-green-700 dark:text-green-300">
-                                <Play size={15} className="mt-0.5 shrink-0" />
-                                <span>
-                                    Esta plantilla tiene un ZIP habilitado para sandbox externo. El render final usara {selectedTemplateConfig.composition_id}.
-                                </span>
-                            </div>
-                        )}
+
+                        {(() => {
+                            const previewUrl = activePreview?.assets?.final_video_url;
+
+                            if (previewUrl) {
+                                return (
+                                    <div className="space-y-4">
+                                        <div className="relative aspect-video bg-black rounded-xl overflow-hidden shadow-inner group">
+                                            <video
+                                                key={previewUrl}
+                                                src={previewUrl}
+                                                controls
+                                                className="w-full h-full object-contain"
+                                            />
+                                        </div>
+                                        <div className="text-xs text-gray-500 dark:text-gray-400 text-center leading-relaxed">
+                                            Video: {activePreview.lessonTitle || 'Leccion'} - {(activePreview.content as any)?.title || 'Video'}. Listo para envio final.
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            if (activePreview && selectedTemplateUsesSandbox) {
+                                return (
+                                    <div className="space-y-4">
+                                        <RemotionExternalPreviewPlayer
+                                            key={`${activePreview.id}-${selectedTemplate}-external`}
+                                            templateId={selectedTemplate}
+                                            componentId={hasPreviewableAssets(activePreview.assets) ? activePreview.id : null}
+                                            variables={externalPreviewVariables}
+                                        />
+                                        <div className="text-xs text-gray-500 dark:text-gray-400 text-center leading-relaxed">
+                                            Preview del bundle externo habilitado para sandbox. El render final usara la misma version aprobada.
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            if (activePreview && hasPreviewableAssets(activePreview.assets)) {
+                                return (
+                                    <div className="space-y-4">
+                                        <RemotionPreviewPlayer
+                                            key={`${activePreview.id}-${selectedTemplateSlug ?? 'default'}`}
+                                            assets={activePreview.assets}
+                                            templateSlug={selectedTemplateSlug}
+                                            templateConfig={selectedTemplateConfig?.default_config}
+                                            targetDurationSeconds={activePreviewTargetDurationSeconds}
+                                        />
+                                        <div className="text-xs text-gray-500 dark:text-gray-400 text-center leading-relaxed">
+                                            Previsualizacion en vivo del ensamblado. El video final se generara al iniciar Remotion.
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            return (
+                                <div className="flex min-h-[360px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 p-8 text-center dark:border-[#6C757D]/20 dark:bg-[#0F1419]/30">
+                                    <Film className="mb-3 h-12 w-12 text-gray-300 dark:text-gray-600" />
+                                    <p className="max-w-md text-sm font-medium text-gray-500 dark:text-gray-400">
+                                        Sube assets (voz, slides, avatar o B-roll) en la Fase 6 para ver aqui la previsualizacion.
+                                    </p>
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 space-y-6 shadow-sm">
@@ -524,79 +648,62 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                     </div>
                 </div>
 
-                <div className="space-y-6">
-                    <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 space-y-4 shadow-sm flex flex-col min-h-[300px]">
-                        <h3 className="text-md font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                            <Play className="text-purple-500" size={18} />
-                            Previsualizacion
-                        </h3>
+                <div className="min-h-0">
+                    <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl shadow-sm lg:sticky lg:top-6 lg:max-h-[calc(100vh-7rem)] flex min-h-[420px] flex-col overflow-hidden">
+                        <div className="space-y-4 border-b border-gray-200 p-5 dark:border-[#6C757D]/10">
+                            <h3 className="text-md font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                <Layers className="text-[#1F5AF6]" size={18} />
+                                Plantillas de Ensamble
+                            </h3>
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                                <input
+                                    type="search"
+                                    value={templateSearch}
+                                    onChange={(event) => setTemplateSearch(event.target.value)}
+                                    placeholder="Buscar plantillas"
+                                    className="w-full rounded-xl border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 dark:border-[#6C757D]/10 dark:bg-[#0F1419] dark:text-white"
+                                />
+                            </div>
+                        </div>
 
-                        {videoComponents.length > 1 && (
-                            <div className="space-y-1.5 mb-2">
-                                <label className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-                                    Seleccionar Video para Preview:
-                                </label>
-                                <select
-                                    value={activePreviewId}
-                                    onChange={(event) => setActivePreviewId(event.target.value)}
-                                    className="w-full text-sm rounded-xl border border-gray-200 bg-white p-2 dark:border-[#6C757D]/10 dark:bg-[#0F1419] dark:text-white"
-                                >
-                                    {videoComponents.map((component, index) => (
-                                        <option key={component.id} value={component.id}>
-                                            {component.lessonTitle || `Leccion ${index + 1}`} - {(component.content as any)?.title || 'Video'} ({component.assets?.final_video_url ? 'Disponible' : 'Pendiente'})
-                                        </option>
-                                    ))}
-                                </select>
+                        <div className="flex-1 space-y-6 overflow-y-auto p-5">
+                            {templates.length === 0 ? (
+                                <div className="rounded-xl border border-dashed border-gray-200 p-4 text-center text-sm text-gray-500 dark:border-[#6C757D]/20">
+                                    No hay plantillas disponibles. Sube una en el Panel Administrativo.
+                                </div>
+                            ) : !hasFilteredTemplates ? (
+                                <div className="rounded-xl border border-dashed border-gray-200 p-4 text-center text-sm text-gray-500 dark:border-[#6C757D]/20">
+                                    No encontramos plantillas con esa busqueda.
+                                </div>
+                            ) : (
+                                <>
+                                    {renderTemplateGroup('Basicas', basicTemplates)}
+                                    {renderTemplateGroup('Avanzadas', advancedTemplates)}
+                                </>
+                            )}
+                        </div>
+
+                        {(selectedTemplateConfig && (selectedTemplateUsesExternalBundle || selectedTemplateUsesSandbox)) && (
+                            <div className="border-t border-gray-200 p-5 dark:border-[#6C757D]/10">
+                                {selectedTemplateUsesExternalBundle && (
+                                    <div className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+                                        <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+                                        <span>
+                                            Esta plantilla tiene un ZIP guardado como referencia. Por seguridad, el render actual usa la composicion interna {selectedTemplateConfig.render_composition_id}.
+                                        </span>
+                                    </div>
+                                )}
+                                {selectedTemplateUsesSandbox && (
+                                    <div className="flex items-start gap-2 rounded-xl border border-green-500/20 bg-green-500/10 p-3 text-xs leading-relaxed text-green-700 dark:text-green-300">
+                                        <Play size={15} className="mt-0.5 shrink-0" />
+                                        <span>
+                                            Esta plantilla tiene un ZIP habilitado para sandbox externo. El render final usara {selectedTemplateConfig.composition_id}.
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         )}
-
-                        {(() => {
-                            const previewUrl = activePreview?.assets?.final_video_url;
-
-                            if (previewUrl) {
-                                return (
-                                    <div className="flex-1 flex flex-col justify-between space-y-4">
-                                        <div className="relative aspect-video bg-black rounded-xl overflow-hidden shadow-inner group">
-                                            <video
-                                                key={previewUrl}
-                                                src={previewUrl}
-                                                controls
-                                                className="w-full h-full object-contain"
-                                            />
-                                        </div>
-                                        <div className="text-xs text-gray-500 dark:text-gray-400 text-center leading-relaxed">
-                                            Video: {activePreview.lessonTitle || 'Leccion'} - {(activePreview.content as any)?.title || 'Video'}. Listo para envio final.
-                                        </div>
-                                    </div>
-                                );
-                            }
-
-                            if (activePreview && hasPreviewableAssets(activePreview.assets)) {
-                                return (
-                                    <div className="flex-1 flex flex-col justify-between space-y-4">
-                                        <RemotionPreviewPlayer
-                                            key={`${activePreview.id}-${selectedTemplateSlug ?? 'default'}`}
-                                            assets={activePreview.assets}
-                                            templateSlug={selectedTemplateSlug}
-                                            templateConfig={selectedTemplateConfig?.default_config}
-                                            targetDurationSeconds={activePreviewTargetDurationSeconds}
-                                        />
-                                        <div className="text-xs text-gray-500 dark:text-gray-400 text-center leading-relaxed">
-                                            Previsualizacion en vivo del ensamblado. El video final se generara al iniciar Remotion.
-                                        </div>
-                                    </div>
-                                );
-                            }
-
-                            return (
-                                <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 dark:border-[#6C757D]/20 rounded-xl p-8 text-center bg-gray-50/50 dark:bg-[#0F1419]/30">
-                                    <Film className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-3" />
-                                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                        Sube assets (voz, slides, avatar o B-roll) en la Fase 6 para ver aqui la previsualizacion.
-                                    </p>
-                                </div>
-                            );
-                        })()}
                     </div>
                 </div>
             </div>

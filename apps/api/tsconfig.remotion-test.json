@@ -8,6 +8,8 @@
   "include": [
     "src/features/production/remotion-assembly-props.service.ts",
     "src/features/production/external-template-sandbox-runner.service.ts",
+    "src/features/production/resolved-props.service.ts",
+    "src/features/production/sandbox-runner/**/*.ts",
     "src/features/production/template-render-config.service.ts",
     "src/features/production/__tests__/**/*.ts"
   ],

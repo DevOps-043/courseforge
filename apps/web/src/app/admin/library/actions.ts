@@ -1,87 +1,54 @@
 'use server';
 
-import type { MaterialAssets } from '@/domains/materials/types/materials.types';
 import { createClient } from '@/utils/supabase/server';
 import { getAuthBridgeUser } from '@/utils/auth/session';
 import { getErrorMessage } from '@/lib/errors';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
+import { searchLibrary } from '@/domains/library/library-search.service';
+import type {
+    LibraryAssetType,
+    LibraryContentCategory,
+    LibrarySearchFilters,
+    LibrarySearchResult,
+} from '@/domains/library/types';
+import type { ComponentType, ProductionStatus } from '@/domains/materials/types/materials.types';
 
-export type SearchFilters = {
-    type?: string;
-    status?: string | 'ALL';
-    /** Filter by which production asset is present on the component. */
-    assetPresence?: 'ALL' | 'has_slides' | 'has_broll' | 'has_avatar' | 'has_audio' | 'has_video';
+export type MaterialSearchResult = LibrarySearchResult;
+export type SearchFilters = LibrarySearchFilters & {
+    assetPresence?: never;
+    type?: ComponentType | 'ALL';
 };
 
-export type MaterialSearchResult = {
-    id: string;
-    type: string;
-    gamma_deck_id?: string;
-    production_status: string;
-    updated_at: string;
-    lesson_title: string;
-    lesson_id: string;
-    course_name: string;
-    course_code: string;
-    assets: MaterialAssets | null;
-};
-
-interface ArtifactIdRow {
-    id: string;
-}
-
-interface MaterialIdRow {
-    id: string;
-}
-
-interface MaterialLessonIdRow {
-    id: string;
-}
-
-interface LibraryArtifactRelation {
-    course_id?: string | null;
-    idea_central?: string | null;
-}
-
-interface LibraryMaterialsRelation {
-    artifacts?: LibraryArtifactRelation | LibraryArtifactRelation[] | null;
-}
-
-interface LibraryLessonRelation {
-    lesson_id?: string | null;
-    lesson_title?: string | null;
-    materials?: LibraryMaterialsRelation | LibraryMaterialsRelation[] | null;
-}
-
-interface LibraryMaterialComponentRow {
-    assets?: MaterialAssets | null;
-    generated_at: string;
-    id: string;
-    material_lessons?: LibraryLessonRelation | LibraryLessonRelation[] | null;
-    type: string;
-}
-
-function firstRelation<T>(value: T | T[] | null | undefined): T | null {
-    if (Array.isArray(value)) {
-        return value[0] ?? null;
-    }
-
-    return value ?? null;
-}
-
-function buildMaterialComponentsQuery(
-    supabase: Awaited<ReturnType<typeof createClient>>,
-) {
-    return supabase
-        .from('material_components')
-        .select(`
-            id, type, assets, generated_at,
-            material_lessons!inner (
-                lesson_id, lesson_title,
-                materials!inner ( artifacts!inner ( course_id, idea_central ) )
-            )
-        `);
-}
+const VALID_CATEGORIES = new Set<LibraryContentCategory>(['ALL', 'MATERIALS', 'ASSETS']);
+const VALID_ASSET_TYPES = new Set<LibraryAssetType>([
+    'ALL',
+    'voice',
+    'music',
+    'broll',
+    'avatar',
+    'slides',
+    'video_final',
+    'screencast',
+]);
+const VALID_COMPONENT_TYPES = new Set<ComponentType | 'ALL'>([
+    'ALL',
+    'DIALOGUE',
+    'READING',
+    'QUIZ',
+    'DEMO_GUIDE',
+    'EXERCISE',
+    'VIDEO_THEORETICAL',
+    'VIDEO_DEMO',
+    'VIDEO_GUIDE',
+]);
+const VALID_STATUSES = new Set<ProductionStatus | 'ALL'>([
+    'ALL',
+    'PENDING',
+    'IN_PROGRESS',
+    'DECK_READY',
+    'EXPORTED',
+    'COMPLETED',
+]);
 
 async function ensureAuthorizedLibraryAccess(
     supabase: Awaited<ReturnType<typeof createClient>>,
@@ -98,136 +65,23 @@ async function ensureAuthorizedLibraryAccess(
     return Boolean(bridgeUser);
 }
 
-async function fetchArtifactIdsForOrganization(
-    supabase: Awaited<ReturnType<typeof createClient>>,
-    organizationId?: string | null,
-) {
-    if (!organizationId) {
-        return null;
-    }
+function sanitizeFilters(filters: SearchFilters): LibrarySearchFilters {
+    const category = VALID_CATEGORIES.has(filters.category || 'ALL') ? filters.category : 'ALL';
+    const assetType = VALID_ASSET_TYPES.has(filters.assetType || 'ALL') ? filters.assetType : 'ALL';
+    const componentTypeCandidate = filters.componentType || filters.type || 'ALL';
+    const componentType = VALID_COMPONENT_TYPES.has(componentTypeCandidate)
+        ? componentTypeCandidate
+        : 'ALL';
+    const status = VALID_STATUSES.has(filters.status || 'ALL') ? filters.status : 'ALL';
 
-    const { data } = await supabase
-        .from('artifacts')
-        .select('id')
-        .eq('organization_id', organizationId);
-
-    return (data || []) as ArtifactIdRow[];
-}
-
-async function fetchMaterialIdsForArtifacts(
-    supabase: Awaited<ReturnType<typeof createClient>>,
-    artifactIds: string[],
-) {
-    if (artifactIds.length === 0) {
-        return [];
-    }
-
-    const { data } = await supabase
-        .from('materials')
-        .select('id')
-        .in('artifact_id', artifactIds);
-
-    return (data || []) as MaterialIdRow[];
-}
-
-async function fetchLessonIdsForMaterials(
-    supabase: Awaited<ReturnType<typeof createClient>>,
-    materialIds: string[],
-) {
-    if (materialIds.length === 0) {
-        return [];
-    }
-
-    const { data } = await supabase
-        .from('material_lessons')
-        .select('id')
-        .in('materials_id', materialIds);
-
-    return (data || []) as MaterialLessonIdRow[];
-}
-
-async function fetchLibraryRowsByLessonIds(
-    supabase: Awaited<ReturnType<typeof createClient>>,
-    lessonIds: string[],
-) {
-    if (lessonIds.length === 0) {
-        return [];
-    }
-
-    const { data } = await buildMaterialComponentsQuery(supabase)
-        .in('material_lesson_id', lessonIds.slice(0, 100))
-        .limit(100);
-
-    return (data || []) as LibraryMaterialComponentRow[];
-}
-
-function assetPresenceCheck(assets: MaterialAssets | null | undefined, assetPresence: string): boolean {
-    if (!assetPresence || assetPresence === 'ALL') return true;
-    const a = assets ?? {};
-    switch (assetPresence) {
-        case 'has_slides':
-            return Boolean(
-                (a.slides?.images?.length ?? 0) > 0 || a.slides?.html_public_url || a.slides_url,
-            );
-        case 'has_broll':
-            return (a.b_roll_clips?.length ?? 0) > 0;
-        case 'has_avatar':
-            return Boolean(a.avatar_video?.public_url);
-        case 'has_audio':
-            return Boolean(a.voice_audio?.public_url);
-        case 'has_video':
-            return Boolean(a.final_video_url || a.video_url || a.screencast_url);
-        default:
-            return true;
-    }
-}
-
-function applyClientFilters(
-    rows: LibraryMaterialComponentRow[],
-    filters: SearchFilters,
-) {
-    return rows.filter((row) => {
-        if (filters.type && filters.type !== 'ALL' && row.type !== filters.type) {
-            return false;
-        }
-
-        if (
-            filters.status &&
-            filters.status !== 'ALL' &&
-            row.assets?.production_status !== filters.status
-        ) {
-            return false;
-        }
-
-        if (filters.assetPresence && filters.assetPresence !== 'ALL') {
-            if (!assetPresenceCheck(row.assets, filters.assetPresence)) {
-                return false;
-            }
-        }
-
-        return true;
-    });
-}
-
-function transformResults(data: LibraryMaterialComponentRow[]): MaterialSearchResult[] {
-    return data.map((item) => {
-        const lesson = firstRelation(item.material_lessons);
-        const materials = firstRelation(lesson?.materials);
-        const artifact = firstRelation(materials?.artifacts);
-
-        return {
-            id: item.id,
-            type: item.type,
-            gamma_deck_id: item.assets?.gamma_deck_id,
-            production_status: item.assets?.production_status || 'PENDING',
-            updated_at: item.generated_at,
-            lesson_title: lesson?.lesson_title || 'Untitled',
-            lesson_id: lesson?.lesson_id || '?',
-            course_name: artifact?.idea_central || 'Untitled Course',
-            course_code: artifact?.course_id || 'UNK',
-            assets: item.assets || null,
-        };
-    });
+    return {
+        assetType,
+        category,
+        componentType,
+        page: filters.page,
+        pageSize: filters.pageSize,
+        status,
+    };
 }
 
 export async function searchMaterialsAction(query: string, filters: SearchFilters = {}) {
@@ -238,133 +92,22 @@ export async function searchMaterialsAction(query: string, filters: SearchFilter
     }
 
     const tenant = await resolveActiveTenantContext();
-    const activeOrgId = tenant?.organizationId ?? null;
+    if (!tenant?.organizationId) {
+        return { success: false, error: 'Empresa no valida o no autorizada.' };
+    }
 
     try {
-        const searchTerm = query?.trim() || '';
-        const orgArtifacts = await fetchArtifactIdsForOrganization(supabase, activeOrgId);
+        const response = await searchLibrary({
+            filters: sanitizeFilters(filters),
+            organizationId: tenant.organizationId,
+            organizationName: tenant.organizationSlug || 'Empresa activa',
+            query: query?.trim() || '',
+            supabase,
+        });
 
-        if (orgArtifacts && orgArtifacts.length === 0) {
-            return { success: true, results: [] as MaterialSearchResult[] };
-        }
-
-        if (searchTerm.length === 0) {
-            const artifactIds = orgArtifacts?.map((artifact) => artifact.id) || [];
-            const materialIds = await fetchMaterialIdsForArtifacts(supabase, artifactIds);
-            const lessonIds = await fetchLessonIdsForMaterials(
-                supabase,
-                materialIds.map((material) => material.id),
-            );
-
-            if (activeOrgId && lessonIds.length === 0) {
-                return { success: true, results: [] as MaterialSearchResult[] };
-            }
-
-            let queryBuilder = buildMaterialComponentsQuery(supabase)
-                .limit(100)
-                .order('generated_at', { ascending: false });
-
-            if (lessonIds.length > 0) {
-                queryBuilder = queryBuilder.in(
-                    'material_lesson_id',
-                    lessonIds.map((lesson) => lesson.id).slice(0, 100),
-                );
-            }
-
-            if (filters.type && filters.type !== 'ALL') {
-                queryBuilder = queryBuilder.eq('type', filters.type);
-            }
-
-            if (filters.status && filters.status !== 'ALL') {
-                queryBuilder = queryBuilder.eq('assets->>production_status', filters.status);
-            }
-
-            const { data, error } = await queryBuilder;
-            if (error) {
-                return { success: false, error: error.message };
-            }
-
-            const rows = applyClientFilters(
-                (data || []) as LibraryMaterialComponentRow[],
-                { assetPresence: filters.assetPresence },
-            );
-
-            return {
-                success: true,
-                results: transformResults(rows),
-            };
-        }
-
-        const likeTerm = `%${searchTerm}%`;
-        const [artifactsResult, lessonsByTitleResult] = await Promise.all([
-            (async () => {
-                let artifactQuery = supabase
-                    .from('artifacts')
-                    .select('id')
-                    .or(`idea_central.ilike.${likeTerm},course_id.ilike.${likeTerm}`)
-                    .limit(50);
-
-                if (activeOrgId) {
-                    artifactQuery = artifactQuery.eq('organization_id', activeOrgId);
-                }
-
-                const { data } = await artifactQuery;
-                return (data || []) as ArtifactIdRow[];
-            })(),
-            (async () => {
-                const { data } = await supabase
-                    .from('material_lessons')
-                    .select('id')
-                    .ilike('lesson_title', likeTerm)
-                    .limit(50);
-
-                return (data || []) as MaterialLessonIdRow[];
-            })(),
-        ]);
-
-        const relevantLessonIds = new Set(
-            lessonsByTitleResult.map((lesson) => lesson.id),
-        );
-
-        const artifactIds = artifactsResult.map((artifact) => artifact.id);
-        if (artifactIds.length > 0) {
-            const materialIds = await fetchMaterialIdsForArtifacts(supabase, artifactIds);
-            const lessonsByArtifact = await fetchLessonIdsForMaterials(
-                supabase,
-                materialIds.map((material) => material.id),
-            );
-
-            lessonsByArtifact.forEach((lesson) => relevantLessonIds.add(lesson.id));
-        }
-
-        const [directMatchesResult, lessonMatches] = await Promise.all([
-            buildMaterialComponentsQuery(supabase)
-                .ilike('assets->>gamma_deck_id', likeTerm)
-                .limit(50),
-            fetchLibraryRowsByLessonIds(supabase, Array.from(relevantLessonIds)),
-        ]);
-
-        const directMatches = ((directMatchesResult.data || []) as LibraryMaterialComponentRow[]);
-        const uniqueRows = new Map<string, LibraryMaterialComponentRow>();
-
-        for (const row of [...directMatches, ...lessonMatches]) {
-            if (!uniqueRows.has(row.id)) {
-                uniqueRows.set(row.id, row);
-            }
-        }
-
-        const sortedRows = applyClientFilters(
-            Array.from(uniqueRows.values()),
-            filters,
-        ).sort(
-            (left, right) =>
-                new Date(right.generated_at).getTime() -
-                new Date(left.generated_at).getTime(),
-        );
-
-        return { success: true, results: transformResults(sortedRows) };
+        return { success: true, ...response };
     } catch (error: unknown) {
-        console.error('Search Exception:', error);
+        console.error('[Library] Search exception:', error);
         return { success: false, error: getErrorMessage(error) };
     }
 }

@@ -7,7 +7,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "lint": "tsc --noEmit",
-    "test:remotion": "tsc -p tsconfig.remotion-test.json && node .tmp/remotion-tests/features/production/__tests__/remotion-assembly-props.service.test.js && node .tmp/remotion-tests/features/production/__tests__/external-template-sandbox-runner.service.test.js"
+    "test:remotion": "tsc -p tsconfig.remotion-test.json && node .tmp/remotion-tests/features/production/__tests__/remotion-assembly-props.service.test.js && node .tmp/remotion-tests/features/production/__tests__/resolved-props.service.test.js && node .tmp/remotion-tests/features/production/__tests__/template-manifest.service.test.js && node .tmp/remotion-tests/features/production/__tests__/external-template-sandbox-runner.service.test.js && node .tmp/remotion-tests/features/production/__tests__/sandbox-runner.test.js"
   },
   "dependencies": {
     "@remotion/bundler": "^4.0.474",

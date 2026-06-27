@@ -10,7 +10,9 @@ export const DEFAULT_SLIDE_SECONDS = 5;
 export const DEFAULT_BG_MUSIC_VOLUME = 0.15;
 export const DEFAULT_COMPOSITION_ID = 'full-slides';
 
-const VALID_COMPOSITION_IDS = new Set(['full-slides', 'split-avatar', 'avatar-focus']);
+// Only compositions registered by the internal Remotion root are accepted here.
+// External sandbox templates may provide different composition IDs.
+const INTERNAL_COMPOSITION_IDS = new Set(['full-slides', 'split-avatar', 'avatar-focus']);
 
 export interface AssemblyInputProps {
   template: string;
@@ -44,12 +46,29 @@ function isPositiveNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
-export function resolveCompositionId(rawCompositionId: unknown): string {
-  if (typeof rawCompositionId === 'string' && VALID_COMPOSITION_IDS.has(rawCompositionId)) {
+export function resolveInternalCompositionId(rawCompositionId: unknown): string {
+  if (typeof rawCompositionId === 'string' && INTERNAL_COMPOSITION_IDS.has(rawCompositionId)) {
     return rawCompositionId;
   }
 
   return DEFAULT_COMPOSITION_ID;
+}
+
+export const resolveCompositionId = resolveInternalCompositionId;
+
+export function resolveExternalCompositionId(
+  rawCompositionId: unknown,
+  fallback: string = DEFAULT_COMPOSITION_ID,
+): string {
+  if (
+    typeof rawCompositionId === 'string' &&
+    rawCompositionId.trim().length > 0 &&
+    rawCompositionId.length <= 128
+  ) {
+    return rawCompositionId.trim();
+  }
+
+  return fallback;
 }
 
 export function normalizeAssemblyAssets(

@@ -4,6 +4,7 @@ import { z } from "zod";
 export const voiceAudioSchema = z.object({
   storage_path: z.string().trim(),
   public_url: z.string().url(),
+  file_name: z.string().trim().optional(),
   duration: z.number().positive().optional(),
   provider: z.string().trim().optional(),
   last_uploaded_at: z.string().datetime().optional(),
@@ -13,6 +14,7 @@ export const voiceAudioSchema = z.object({
 export const backgroundMusicSchema = z.object({
   storage_path: z.string().trim(),
   public_url: z.string().url(),
+  file_name: z.string().trim().optional(),
   duration: z.number().positive().optional(),
   volume_multiplier: z.number().min(0).max(1).default(0.15),
 });
@@ -22,6 +24,7 @@ export const bRollClipSchema = z.object({
   id: z.string().trim(),
   storage_path: z.string().trim(),
   public_url: z.string().url(),
+  file_name: z.string().trim().optional(),
   duration: z.number().positive().optional(),
   prompt_used: z.string().trim().optional(),
   order: z.number().int().min(1),
@@ -31,6 +34,7 @@ export const bRollClipSchema = z.object({
 export const avatarVideoSchema = z.object({
   storage_path: z.string().trim(),
   public_url: z.string().url(),
+  file_name: z.string().trim().optional(),
   duration: z.number().positive().optional(),
   provider: z.string().trim().optional(),
   external_id: z.string().trim().optional(),
@@ -42,6 +46,7 @@ export const slideImageSchema = z.object({
   slide_index: z.number().int().min(0),
   storage_path: z.string().trim(),
   public_url: z.string().url(),
+  file_name: z.string().trim().optional(),
 });
 
 // Schema for Slides asset group

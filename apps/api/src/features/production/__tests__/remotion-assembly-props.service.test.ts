@@ -5,7 +5,9 @@ import {
   buildAssemblyInputProps,
   hasPrimaryRenderableAssemblyAssets,
   normalizeAssemblyAssets,
+  resolveExternalCompositionId,
   resolveCompositionId,
+  resolveInternalCompositionId,
 } from '../remotion-assembly-props.service';
 
 const VIDEO_URL = 'https://cdn.example.com/video.mp4';
@@ -24,6 +26,18 @@ function baseClip(params: Record<string, unknown>) {
 }
 
 describe('remotion assembly props contract', () => {
+  it('keeps internal composition resolution scoped to known built-in IDs', () => {
+    assert.equal(resolveInternalCompositionId('split-avatar'), 'split-avatar');
+    assert.equal(resolveInternalCompositionId('CustomBundleSmokeTest'), 'full-slides');
+    assert.equal(resolveCompositionId('CustomBundleSmokeTest'), 'full-slides');
+  });
+
+  it('preserves non-empty external sandbox composition IDs', () => {
+    assert.equal(resolveExternalCompositionId('CustomBundleSmokeTest'), 'CustomBundleSmokeTest');
+    assert.equal(resolveExternalCompositionId('  CustomBundleSmokeTest  '), 'CustomBundleSmokeTest');
+    assert.equal(resolveExternalCompositionId('', 'split-avatar'), 'split-avatar');
+  });
+
   it('sorts slide images by slide_index', () => {
     const normalized = normalizeAssemblyAssets({
       slides: {

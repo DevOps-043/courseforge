@@ -1,0 +1,12 @@
+{
+  "entryPoint": "src/index.tsx",
+  "compositionId": "CustomBundleSmokeTest",
+  "exportMode": "component",
+  "defaultDurationFrames": 90,
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "defaultProps": {
+    "label": "CUSTOM_BUNDLE_RENDERED"
+  }
+}

@@ -8,14 +8,18 @@ import { createClient } from '@supabase/supabase-js';
 import { ExternalTemplateSandboxRunner } from './external-template-sandbox-runner.service';
 import {
   buildAssemblyInputProps,
-  resolveCompositionId,
+  resolveExternalCompositionId,
+  resolveInternalCompositionId,
   type AssemblyInputProps,
 } from './remotion-assembly-props.service';
+import { buildResolvedProps } from './resolved-props.service';
+import { SandboxBuildService } from './sandbox-build.service';
 import { mergeTemplateRenderConfigs } from './template-render-config.service';
 
 let cachedBundlePromise: Promise<string> | null = null;
 
 export const SHARED_BUNDLE_DIR = path.join(os.tmpdir(), 'courseforge-remotion-bundle');
+const DEFAULT_RENDER_TIMEOUT_MS = 180 * 1000;
 
 type RenderMode =
   | 'INTERNAL_COMPOSITION'
@@ -24,9 +28,28 @@ type RenderMode =
 
 interface ApprovedSandboxVersion {
   id: string;
+  organization_id?: string | null;
   bundle_hash: string | null;
+  build_hash?: string | null;
   entry_point: string | null;
   storage_path: string;
+  template_type?: 'simple' | 'custom_bundle' | null;
+  export_mode?: 'component' | 'root' | null;
+  composition_id?: string | null;
+  default_props?: Record<string, unknown> | null;
+  default_duration_frames?: number | null;
+  default_fps?: number | null;
+  default_width?: number | null;
+  default_height?: number | null;
+}
+
+interface ResolvedSandboxBuild {
+  buildId: string | null;
+  serveUrl: string;
+  buildHash: string | null;
+  compositionId: string;
+  exportMode: 'component' | 'root';
+  cacheHit: boolean;
 }
 
 export class RemotionWorkerService {
@@ -76,6 +99,8 @@ export class RemotionWorkerService {
     let renderMode: RenderMode = 'INTERNAL_COMPOSITION';
     let templateVersionId: string | null = job.input_snapshot?.templateVersionId || null;
     let bundleHash: string | null = job.input_snapshot?.bundleHash || null;
+    let buildHash: string | null = job.input_snapshot?.buildHash || null;
+    let propsHash: string | null = null;
 
     try {
       const { data: component, error: compError } = await supabase
@@ -99,41 +124,131 @@ export class RemotionWorkerService {
       }
 
       assets = component.assets || {};
-      const compositionId = resolveCompositionId(template.composition_id);
+      const internalCompositionId = resolveInternalCompositionId(template.composition_id);
       const templateConfig = mergeTemplateRenderConfigs(
         template.default_config,
         job.input_snapshot?.variables?.templateConfig,
       );
       const inputProps = buildAssemblyInputProps({
         assets,
-        compositionId,
+        compositionId: internalCompositionId,
         transitionType: job.input_snapshot?.variables?.transitionType,
         templateConfig,
       });
-
       const sandboxVersion = await this.getApprovedSandboxVersion(supabase, template.id);
-      const sandboxRunner = new ExternalTemplateSandboxRunner();
+      const sandboxCompositionId = sandboxVersion
+        ? resolveExternalCompositionId(
+            sandboxVersion.composition_id || template.composition_id,
+            internalCompositionId,
+          )
+        : internalCompositionId;
 
-      if (sandboxVersion && sandboxRunner.isEnabled()) {
+      console.log('[RemotionWorker] Render configuration resolved.', {
+        jobId,
+        templateId,
+        rawTemplateCompositionId: template.composition_id,
+        internalCompositionId,
+        sandboxCompositionId,
+        inputPropsTemplate: inputProps.template,
+        slidesCount: inputProps.slides.length,
+        brollClipsCount: inputProps.brollClips.length,
+        hasAvatarVideo: Boolean(inputProps.avatarVideoUrl),
+        hasVoiceAudio: Boolean(inputProps.voiceAudioUrl),
+        totalDurationInFrames: inputProps.totalDurationInFrames,
+        fps: inputProps.fps,
+      });
+
+      const sandboxRunner = new ExternalTemplateSandboxRunner();
+      const sandboxEnabled = sandboxRunner.isEnabled();
+
+      console.log('[RemotionWorker] External sandbox decision.', {
+        jobId,
+        templateId,
+        sandboxEnabled,
+        hasApprovedSandboxVersion: Boolean(sandboxVersion),
+        sandboxVersionId: sandboxVersion?.id || null,
+        sandboxBundleHash: sandboxVersion?.bundle_hash || null,
+        sandboxEntryPoint: sandboxVersion?.entry_point || template.entry_point || 'src/index.tsx',
+        sandboxCommandConfigured: Boolean(process.env.EXTERNAL_TEMPLATE_SANDBOX_COMMAND),
+        fallbackInternal: process.env.EXTERNAL_TEMPLATE_SANDBOX_FALLBACK_INTERNAL === 'true',
+      });
+
+      if (sandboxVersion && sandboxEnabled) {
         templateVersionId = sandboxVersion.id;
         bundleHash = sandboxVersion.bundle_hash;
         await this.updateProgress(supabase, jobId, 15, 'Enviando render a sandbox externo');
-        const bundleZipPath = await this.downloadSandboxBundle(supabase, sandboxVersion, outputDir);
+        const resolvedBuild = await this.getOrCreateSandboxBuild(supabase, {
+          sandboxVersion,
+          fallbackCompositionId: sandboxCompositionId,
+          organizationId: sandboxVersion.organization_id || job.organization_id,
+        });
+        buildHash = resolvedBuild.buildHash;
+        const usesResolvedProps = sandboxVersion.template_type !== 'simple';
+        const resolvedPropsResult = usesResolvedProps
+          ? buildResolvedProps({
+              bundleDefaultProps: sandboxVersion.default_props,
+              courseProps: inputProps as unknown as Record<string, unknown>,
+              userOverrides: this.extractExternalTemplateOverrides(job.input_snapshot?.variables),
+            })
+          : null;
+        const sandboxInputProps = resolvedPropsResult?.resolvedProps ?? inputProps;
+        propsHash = resolvedPropsResult?.propsHash ?? null;
+
+        if (resolvedPropsResult) {
+          await this.updateJobInputSnapshot(supabase, jobId, job.input_snapshot, {
+            templateVersionId,
+            bundleHash,
+            buildHash,
+            compositionId: resolvedBuild.compositionId,
+            exportMode: resolvedBuild.exportMode,
+            propsHash,
+            resolvedProps: sandboxInputProps,
+          });
+        }
+
+        console.log('[RemotionWorker] Sandbox build resolved.', {
+          jobId,
+          templateId,
+          templateVersionId,
+          bundleHash,
+          buildId: resolvedBuild.buildId,
+          buildHash,
+          serveUrl: resolvedBuild.serveUrl,
+          sandboxCompositionId: resolvedBuild.compositionId,
+          buildCacheHit: resolvedBuild.cacheHit,
+          propsMode: usesResolvedProps ? 'resolved' : 'assembly',
+          propsHash,
+        });
 
         const sandboxResult = await sandboxRunner.render({
           jobId,
           templateVersionId: sandboxVersion.id,
           bundleHash: sandboxVersion.bundle_hash || '',
-          bundleZipPath,
-          entryPoint: sandboxVersion.entry_point || template.entry_point || 'src/index.tsx',
-          compositionId: template.composition_id || compositionId,
-          inputProps,
-          assetAllowlist: this.collectAssetUrls(inputProps),
+          serveUrl: resolvedBuild.serveUrl,
+          compositionId: resolvedBuild.compositionId,
+          exportMode: resolvedBuild.exportMode,
+          defaultDurationInFrames: sandboxVersion.default_duration_frames || undefined,
+          defaultFps: sandboxVersion.default_fps || undefined,
+          defaultWidth: sandboxVersion.default_width || undefined,
+          defaultHeight: sandboxVersion.default_height || undefined,
+          propsMode: usesResolvedProps ? 'resolved' : 'assembly',
+          inputProps: sandboxInputProps,
+          assetAllowlist: this.collectAssetUrls(sandboxInputProps),
         });
 
         if (sandboxResult.success && sandboxResult.outputPath) {
           renderMode = 'EXTERNAL_SANDBOX';
           outputPath = sandboxResult.outputPath;
+          console.log('[RemotionWorker] Sandbox render selected as final output.', {
+            jobId,
+            templateId,
+            templateVersionId,
+            bundleHash,
+            buildHash,
+            outputPath,
+            metrics: sandboxResult.metrics,
+            propsHash,
+          });
           await this.updateProgress(supabase, jobId, 90, 'Sandbox externo genero el video');
         } else if (process.env.EXTERNAL_TEMPLATE_SANDBOX_FALLBACK_INTERNAL === 'true') {
           renderMode = 'EXTERNAL_SANDBOX_FALLBACK_INTERNAL';
@@ -142,6 +257,8 @@ export class RemotionWorkerService {
             templateId,
             templateVersionId,
             reason: sandboxResult.error,
+            buildHash,
+            propsHash,
           });
           await this.renderInternalComposition({
             supabase,
@@ -149,7 +266,7 @@ export class RemotionWorkerService {
             outputDir,
             outputPath,
             serveUrlOverride,
-            compositionId,
+            compositionId: internalCompositionId,
             inputProps,
           });
         } else {
@@ -164,6 +281,13 @@ export class RemotionWorkerService {
             templateId,
             templateVersionId,
           });
+        } else {
+          console.log('[RemotionWorker] No approved sandbox version found; using internal composition.', {
+            jobId,
+            templateId,
+            rawTemplateCompositionId: template.composition_id,
+            internalCompositionId,
+          });
         }
 
         await this.renderInternalComposition({
@@ -172,7 +296,7 @@ export class RemotionWorkerService {
           outputDir,
           outputPath,
           serveUrlOverride,
-          compositionId,
+          compositionId: internalCompositionId,
           inputProps,
         });
       }
@@ -230,6 +354,8 @@ export class RemotionWorkerService {
             renderMode,
             templateVersionId,
             bundleHash,
+            buildHash,
+            propsHash,
           },
         })
         .eq('id', jobId);
@@ -254,6 +380,8 @@ export class RemotionWorkerService {
             renderMode,
             templateVersionId,
             bundleHash,
+            buildHash,
+            propsHash,
           },
         })
         .eq('id', jobId);
@@ -309,10 +437,23 @@ export class RemotionWorkerService {
     const serveUrl = serveUrlOverride || (await this.getBundle());
 
     await this.updateProgress(supabase, jobId, 35, 'Resolviendo composicion');
+    const timeoutInMilliseconds = Number(
+      process.env.REMOTION_RENDER_TIMEOUT_MS ||
+        process.env.EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS ||
+        DEFAULT_RENDER_TIMEOUT_MS,
+    );
     const composition = await selectComposition({
       serveUrl,
       id: compositionId,
       inputProps: inputProps as unknown as Record<string, unknown>,
+      timeoutInMilliseconds,
+    });
+    console.log('[RemotionWorker] Internal composition selected.', {
+      jobId,
+      compositionId,
+      timeoutInMilliseconds,
+      durationInFrames: composition.durationInFrames,
+      fps: composition.fps,
     });
 
     fs.mkdirSync(outputDir, { recursive: true });
@@ -323,6 +464,7 @@ export class RemotionWorkerService {
       codec: 'h264',
       outputLocation: outputPath,
       inputProps: inputProps as unknown as Record<string, unknown>,
+      timeoutInMilliseconds,
       onProgress: ({ progress }) => {
         const overall = Math.round(40 + progress * 50);
         if (overall > lastReportedPercent) {
@@ -343,7 +485,9 @@ export class RemotionWorkerService {
   private async getApprovedSandboxVersion(supabase: any, templateId: string): Promise<ApprovedSandboxVersion | null> {
     const { data, error } = await supabase
       .from('remotion_template_versions')
-      .select('id, bundle_hash, entry_point, storage_path')
+      .select(
+        'id, organization_id, bundle_hash, build_hash, entry_point, storage_path, template_type, export_mode, composition_id, default_props, default_duration_frames, default_fps, default_width, default_height',
+      )
       .eq('template_id', templateId)
       .eq('status', 'APPROVED_FOR_SANDBOX')
       .order('version_number', { ascending: false })
@@ -356,6 +500,100 @@ export class RemotionWorkerService {
     }
 
     return data;
+  }
+
+  private async getOrCreateSandboxBuild(
+    supabase: any,
+    params: {
+      sandboxVersion: ApprovedSandboxVersion;
+      fallbackCompositionId: string;
+      organizationId: string | null;
+    },
+  ): Promise<ResolvedSandboxBuild> {
+    const { sandboxVersion, fallbackCompositionId, organizationId } = params;
+    const bundleHash = sandboxVersion.bundle_hash || '';
+    const compositionId = resolveExternalCompositionId(
+      sandboxVersion.composition_id,
+      fallbackCompositionId,
+    );
+    const exportMode = sandboxVersion.export_mode || 'component';
+
+    if (!bundleHash) {
+      throw new Error('La version sandbox aprobada no tiene bundle_hash.');
+    }
+
+    if (!organizationId) {
+      throw new Error('No se pudo resolver organization_id para registrar el build sandbox.');
+    }
+
+    const { data: existingBuild, error: existingBuildError } = await supabase
+      .from('remotion_template_builds')
+      .select('id, serve_url, build_hash, composition_id, export_mode')
+      .eq('template_version_id', sandboxVersion.id)
+      .eq('bundle_hash', bundleHash)
+      .eq('composition_id', compositionId)
+      .eq('export_mode', exportMode)
+      .eq('status', 'BUILT')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingBuildError) {
+      console.warn('[RemotionWorker] No se pudo consultar build sandbox existente:', existingBuildError);
+    }
+
+    if (
+      existingBuild?.serve_url &&
+      (existingBuild.serve_url.startsWith('http') || fs.existsSync(existingBuild.serve_url))
+    ) {
+      return {
+        buildId: existingBuild.id,
+        serveUrl: existingBuild.serve_url,
+        buildHash: existingBuild.build_hash || sandboxVersion.build_hash || null,
+        compositionId: existingBuild.composition_id || compositionId,
+        exportMode: existingBuild.export_mode === 'root' ? 'root' : 'component',
+        cacheHit: true,
+      };
+    }
+
+    const buildService = new SandboxBuildService(supabase);
+    const buildResult = await buildService.buildFromZip({
+      templateVersionId: sandboxVersion.id,
+      bundleZipPath: sandboxVersion.storage_path,
+      bundleHash,
+      organizationId,
+    });
+
+    if (!buildResult.success || !buildResult.serveUrl) {
+      throw new Error(`Build del bundle fallo: ${buildResult.error || 'error desconocido'}`);
+    }
+
+    return {
+      buildId: buildResult.buildId || null,
+      serveUrl: buildResult.serveUrl,
+      buildHash: buildResult.buildHash || null,
+      compositionId: buildResult.compositionId || compositionId,
+      exportMode: buildResult.exportMode || exportMode,
+      cacheHit: false,
+    };
+  }
+
+  private extractExternalTemplateOverrides(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    const variables = value as Record<string, unknown>;
+    const candidate =
+      variables.resolvedProps ??
+      variables.customTemplateProps ??
+      variables.templateProps;
+
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+      return null;
+    }
+
+    return candidate as Record<string, unknown>;
   }
 
   private resolveBundleStorageLocation(storagePath: string): { bucket: string; path: string } {
@@ -462,6 +700,28 @@ export class RemotionWorkerService {
       .update({
         progress: [{ percent, message, timestamp: new Date().toISOString() }],
         ...extraFields,
+      })
+      .eq('id', jobId);
+  }
+
+  private async updateJobInputSnapshot(
+    supabase: any,
+    jobId: string,
+    currentInputSnapshot: unknown,
+    updates: Record<string, unknown>,
+  ): Promise<void> {
+    const inputSnapshot =
+      currentInputSnapshot && typeof currentInputSnapshot === 'object' && !Array.isArray(currentInputSnapshot)
+        ? { ...(currentInputSnapshot as Record<string, unknown>) }
+        : {};
+
+    await supabase
+      .from('production_jobs')
+      .update({
+        input_snapshot: {
+          ...inputSnapshot,
+          ...updates,
+        },
       })
       .eq('id', jobId);
   }

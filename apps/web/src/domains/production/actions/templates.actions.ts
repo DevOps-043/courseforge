@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/utils/supabase/server";
-import { getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
+import { getAccessToken, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { getAuthBridgeUser, getUserOrganizations } from "@/utils/auth/session";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { getSupabaseUrl, getSupabaseServiceRoleKey } from "@/lib/server/env";
@@ -32,6 +32,20 @@ export interface RemotionTemplateVersion {
   bundle_hash: string | null;
   entry_point: string | null;
   manifest: Record<string, any> | null;
+  template_type: "simple" | "custom_bundle";
+  export_mode: "component" | "root";
+  composition_id: string | null;
+  composition_ids: string[] | null;
+  props_schema: Record<string, any> | null;
+  default_props: Record<string, any> | null;
+  default_duration_frames: number | null;
+  default_fps: number | null;
+  default_width: number | null;
+  default_height: number | null;
+  build_status: "PENDING" | "BUILDING" | "BUILT" | "BUILD_FAILED";
+  build_hash: string | null;
+  build_output_path: string | null;
+  built_at: string | null;
   validation_report: {
     isValid: boolean;
     errors: string[];
@@ -224,6 +238,131 @@ function decorateTemplate(template: Omit<RemotionTemplate, "render_mode" | "rend
     is_external_bundle_supported: isSandboxReady,
     render_status_label: renderStatusLabel,
   };
+}
+
+export async function getExternalBundlePreviewDataAction(params: {
+  templateId: string;
+  componentId?: string | null;
+  variables?: Record<string, unknown>;
+}): Promise<{ success: true; data: ExternalBundlePreviewData } | { success: false; error: string }> {
+  const supabase = await createClient();
+  const token = await getAccessToken(supabase);
+
+  if (!token) {
+    return { success: false, error: "No se encontro un token de autenticacion" };
+  }
+
+  if (!params.templateId) {
+    return { success: false, error: "templateId es requerido" };
+  }
+
+  try {
+    const expressApiUrl = process.env.EXPRESS_INTERNAL_API_URL || "http://localhost:4000";
+    const response = await fetch(`${expressApiUrl}/api/v1/production/remotion/external-preview`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        "ngrok-skip-browser-warning": "true",
+      },
+      body: JSON.stringify({
+        templateId: params.templateId,
+        componentId: params.componentId || undefined,
+        variables: params.variables || {},
+      }),
+      cache: "no-store",
+    });
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.success) {
+      return {
+        success: false,
+        error: formatExternalPreviewError(payload?.error ?? payload, `HTTP ${response.status}`),
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        serveUrl: payload.serveUrl,
+        compositionId: payload.compositionId,
+        exportMode: payload.exportMode === "root" ? "root" : "component",
+        resolvedProps: payload.resolvedProps || {},
+        propsHash: payload.propsHash,
+        buildHash: payload.buildHash || null,
+        buildId: payload.buildId || null,
+        templateVersionId: payload.templateVersionId,
+        bundleHash: payload.bundleHash || null,
+        previewVideoUrl: payload.previewVideoUrl || null,
+        previewPosterUrl: payload.previewPosterUrl || null,
+        previewDurationSeconds: typeof payload.previewDurationSeconds === "number" ? payload.previewDurationSeconds : null,
+        previewFrames: typeof payload.previewFrames === "number" ? payload.previewFrames : null,
+        compositionDurationSeconds: typeof payload.compositionDurationSeconds === "number" ? payload.compositionDurationSeconds : null,
+        compositionFrames: typeof payload.compositionFrames === "number" ? payload.compositionFrames : null,
+      },
+    };
+  } catch (error: any) {
+    console.error("[TemplatesActions] Error fetching external preview data:", error);
+    return {
+      success: false,
+      error: formatExternalPreviewError(error, "No se pudo obtener el preview externo"),
+    };
+  }
+}
+
+export interface ExternalBundlePreviewData {
+  serveUrl: string;
+  compositionId: string;
+  exportMode: "component" | "root";
+  resolvedProps: Record<string, unknown>;
+  propsHash: string;
+  buildHash: string | null;
+  buildId: string | null;
+  templateVersionId: string;
+  bundleHash: string | null;
+  previewVideoUrl: string | null;
+  previewPosterUrl: string | null;
+  previewDurationSeconds: number | null;
+  previewFrames: number | null;
+  compositionDurationSeconds: number | null;
+  compositionFrames: number | null;
+}
+
+function formatExternalPreviewError(value: unknown, fallback: string): string {
+  if (!value) return fallback;
+
+  if (value instanceof Error) {
+    return value.message || fallback;
+  }
+
+  if (typeof value === "string") {
+    return value || fallback;
+  }
+
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const directMessage = record.message || record.error || record.detail || record.details;
+
+    if (typeof directMessage === "string" && directMessage.trim()) {
+      return directMessage;
+    }
+
+    if (directMessage && typeof directMessage === "object") {
+      return formatExternalPreviewError(directMessage, fallback);
+    }
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return fallback;
+    }
+  }
+
+  return String(value) || fallback;
+}
+
+function logTemplateRuntimeState(message: string, meta: Record<string, unknown>) {
+  console.log(`[TemplatesActions] ${message}`, meta);
 }
 
 function decorateTemplates(templates: Array<Omit<RemotionTemplate, "render_mode" | "render_composition_id" | "is_external_bundle_supported" | "render_status_label">>): RemotionTemplate[] {
@@ -663,6 +802,18 @@ export async function createTemplateVersionAction(
 
     // 3. Run validation
     const report = await validateRemotionBundle(arrayBuffer, originalFileName);
+    logTemplateRuntimeState("Bundle validation completed.", {
+      templateId,
+      originalFileName,
+      isValid: report.isValid,
+      errorsCount: report.errors.length,
+      warningsCount: report.warnings.length,
+      manifestEntryPoint: report.info.manifest?.entryPoint || null,
+      manifestCompositionId: report.info.manifest?.compositionId || null,
+      manifestExportMode: report.info.manifest?.exportMode || null,
+      hash: report.info.hash,
+      dependencies: Object.keys(report.info.dependencies || {}),
+    });
 
     // 4. Determine next version number
     const { data: latest } = await admin
@@ -675,6 +826,10 @@ export async function createTemplateVersionAction(
 
     const nextVersionNumber = latest ? latest.version_number + 1 : 1;
     const status = report.isValid ? "PENDING_REVIEW" : "VALIDATION_FAILED";
+    const manifest = report.info.manifest;
+    const compositionIds = manifest
+      ? Array.from(new Set([manifest.compositionId, ...(manifest.compositionIds || [])]))
+      : null;
 
     // 5. Create version record
     const { data: version, error: insertError } = await admin
@@ -684,11 +839,22 @@ export async function createTemplateVersionAction(
         organization_id: activeOrgId,
         version_number: nextVersionNumber,
         status,
+        template_type: "custom_bundle",
         storage_path: `${bundleLocation.bucket}/${bundleLocation.path}`,
         original_file_name: originalFileName,
         bundle_hash: report.info.hash,
-        entry_point: report.info.manifest?.entryPoint || null,
-        manifest: report.info.manifest || null,
+        entry_point: manifest?.entryPoint || null,
+        manifest: manifest || null,
+        export_mode: manifest?.exportMode || "component",
+        composition_id: manifest?.compositionId || null,
+        composition_ids: compositionIds,
+        props_schema: manifest?.propsSchema || null,
+        default_props: manifest?.defaultProps || null,
+        default_duration_frames: manifest?.defaultDurationFrames || null,
+        default_fps: manifest?.fps || null,
+        default_width: manifest?.width || null,
+        default_height: manifest?.height || null,
+        build_status: "PENDING",
         validation_report: {
           isValid: report.isValid,
           errors: report.errors,
@@ -711,6 +877,17 @@ export async function createTemplateVersionAction(
       .single();
 
     if (insertError) throw insertError;
+    logTemplateRuntimeState("Template version created.", {
+      templateId,
+      versionId: version.id,
+      versionNumber: version.version_number,
+      status,
+      storagePath: `${bundleLocation.bucket}/${bundleLocation.path}`,
+      entryPoint: report.info.manifest?.entryPoint || null,
+      compositionId: report.info.manifest?.compositionId || null,
+      exportMode: report.info.manifest?.exportMode || null,
+      bundleHash: report.info.hash,
+    });
 
     // 6. Update template bundle_status
     const newTemplateStatus = report.isValid ? "PENDING_REVIEW" : "REJECTED";
@@ -722,6 +899,11 @@ export async function createTemplateVersionAction(
         updated_at: new Date().toISOString(),
       })
       .eq("id", templateId);
+    logTemplateRuntimeState("Parent template updated after version creation.", {
+      templateId,
+      bundleStatus: newTemplateStatus,
+      storagePath: `${bundleLocation.bucket}/${bundleLocation.path}`,
+    });
 
     return { success: true, version: version as any };
   } catch (error: any) {
@@ -797,6 +979,15 @@ export async function approveTemplateVersionAction(
       throw new Error(`La versión no se puede aprobar en su estado actual: ${version.status}`);
     }
 
+    logTemplateRuntimeState("Approving template version for audit.", {
+      versionId,
+      templateId: version.template_id,
+      currentStatus: version.status,
+      manifestCompositionId: version.manifest?.compositionId || null,
+      entryPoint: version.entry_point || null,
+      bundleHash: version.bundle_hash || null,
+    });
+
     // 3. Deprecate previous audit-approved versions. Sandbox-enabled versions
     // are demoted explicitly by approveTemplateVersionForSandboxAction.
     await admin
@@ -819,18 +1010,27 @@ export async function approveTemplateVersionAction(
 
     // 5. Update parent template config
     const manifest = version.manifest || {};
+    const compositionId = version.composition_id || manifest.compositionId || "full-slides";
     const { error: updateTemplateError } = await admin
       .from("remotion_templates")
       .update({
         bundle_status: "APPROVED",
         storage_path: version.storage_path,
         entry_point: version.entry_point || "src/index.tsx",
-        composition_id: manifest.compositionId || "full-slides",
+        composition_id: compositionId,
         updated_at: new Date().toISOString(),
       })
       .eq("id", version.template_id);
 
     if (updateTemplateError) throw updateTemplateError;
+    logTemplateRuntimeState("Template version approved for audit.", {
+      versionId,
+      templateId: version.template_id,
+      newVersionStatus: "APPROVED",
+      templateBundleStatus: "APPROVED",
+      templateCompositionId: compositionId,
+      templateEntryPoint: version.entry_point || "src/index.tsx",
+    });
 
     return { success: true };
   } catch (error: any) {
@@ -879,6 +1079,17 @@ export async function approveTemplateVersionForSandboxAction(
       throw new Error(`La versiÃ³n debe estar APPROVED antes de habilitar sandbox. Estado actual: ${version.status}`);
     }
 
+    logTemplateRuntimeState("Enabling template version for sandbox.", {
+      versionId,
+      templateId: version.template_id,
+      currentStatus: version.status,
+      manifestCompositionId: version.manifest?.compositionId || null,
+      entryPoint: version.entry_point || null,
+      bundleHash: version.bundle_hash || null,
+      sandboxEnabledEnv: process.env.EXTERNAL_TEMPLATE_SANDBOX_ENABLED === "true",
+      sandboxCommandConfigured: Boolean(process.env.EXTERNAL_TEMPLATE_SANDBOX_COMMAND),
+    });
+
     await admin
       .from("remotion_template_versions")
       .update({ status: "APPROVED" })
@@ -897,18 +1108,27 @@ export async function approveTemplateVersionForSandboxAction(
     if (approveError) throw approveError;
 
     const manifest = version.manifest || {};
+    const compositionId = version.composition_id || manifest.compositionId || "full-slides";
     const { error: updateTemplateError } = await admin
       .from("remotion_templates")
       .update({
         bundle_status: "APPROVED_FOR_SANDBOX",
         storage_path: version.storage_path,
         entry_point: version.entry_point || "src/index.tsx",
-        composition_id: manifest.compositionId || "full-slides",
+        composition_id: compositionId,
         updated_at: new Date().toISOString(),
       })
       .eq("id", version.template_id);
 
     if (updateTemplateError) throw updateTemplateError;
+    logTemplateRuntimeState("Template version enabled for sandbox.", {
+      versionId,
+      templateId: version.template_id,
+      newVersionStatus: "APPROVED_FOR_SANDBOX",
+      templateBundleStatus: "APPROVED_FOR_SANDBOX",
+      templateCompositionId: compositionId,
+      templateEntryPoint: version.entry_point || "src/index.tsx",
+    });
 
     return { success: true };
   } catch (error: any) {

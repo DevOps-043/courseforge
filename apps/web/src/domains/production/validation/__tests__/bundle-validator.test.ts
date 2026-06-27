@@ -24,7 +24,11 @@ async function zipBuffer(files: Record<string, string | Uint8Array>) {
 describe("validateRemotionBundle", () => {
   it("accepts a minimal valid Remotion template bundle", async () => {
     const buffer = await zipBuffer({
-      "courseforge-remotion-template.json": JSON.stringify(manifest()),
+      "courseforge-remotion-template.json": JSON.stringify({
+        entryPoint: "src/index.tsx",
+        compositionId: "secure-template",
+        exportMode: "component",
+      }),
       "src/index.tsx": "export const Template = () => null;",
       "package.json": JSON.stringify({
         dependencies: {
@@ -39,7 +43,45 @@ describe("validateRemotionBundle", () => {
     assert.equal(result.isValid, true);
     assert.equal(result.errors.length, 0);
     assert.equal(result.info.manifest?.entryPoint, "src/index.tsx");
+    assert.equal(result.info.manifest?.exportMode, "component");
     assert.match(result.info.hash, /^[a-f0-9]{64}$/);
+  });
+
+  it("accepts custom bundle manifest metadata for render contracts", async () => {
+    const propsSchema = {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+      },
+    };
+    const defaultProps = { title: "Courseforge" };
+    const buffer = await zipBuffer({
+      "courseforge-remotion-template.json": JSON.stringify(
+        manifest({
+          exportMode: "root",
+          compositionIds: ["secure-template", "alternate-template"],
+          defaultDurationFrames: 90,
+          fps: 30,
+          width: 1920,
+          height: 1080,
+          propsSchema,
+          defaultProps,
+        }),
+      ),
+      "src/index.tsx": "export const Root = () => null;",
+    });
+
+    const result = await validateRemotionBundle(buffer, "metadata.zip");
+
+    assert.equal(result.isValid, true);
+    assert.equal(result.info.manifest?.exportMode, "root");
+    assert.deepEqual(result.info.manifest?.compositionIds, ["secure-template", "alternate-template"]);
+    assert.equal(result.info.manifest?.defaultDurationFrames, 90);
+    assert.equal(result.info.manifest?.fps, 30);
+    assert.equal(result.info.manifest?.width, 1920);
+    assert.equal(result.info.manifest?.height, 1080);
+    assert.deepEqual(result.info.manifest?.propsSchema, propsSchema);
+    assert.deepEqual(result.info.manifest?.defaultProps, defaultProps);
   });
 
   it("rejects bundles without the required manifest", async () => {

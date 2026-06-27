@@ -12,6 +12,10 @@
   },
   "include": [
     "src/domains/materials/types/materials.types.ts",
+    "src/domains/library/library-grouping.ts",
+    "src/domains/library/library-normalizer.ts",
+    "src/domains/library/types.ts",
+    "src/domains/library/__tests__/**/*.ts",
     "src/remotion/assembly-assets.normalizer.ts",
     "src/remotion/buildAssemblyProps.ts",
     "src/remotion/template-config.ts",

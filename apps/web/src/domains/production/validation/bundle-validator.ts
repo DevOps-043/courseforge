@@ -4,6 +4,7 @@ import { z } from "zod";
 
 const MAX_ZIP_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_UNZIPPED_SIZE_BYTES = 50 * 1024 * 1024;
+const MAX_MANIFEST_BYTES = 64 * 1024;
 const MAX_FILE_COUNT = 1000;
 const MANIFEST_PATH = "courseforge-remotion-template.json";
 const ALLOWED_ENTRY_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"];
@@ -46,10 +47,21 @@ const ALLOWED_DEPENDENCIES = new Set([
   "zustand",
 ]);
 
+const positiveIntegerSchema = z.number().int().positive();
+const jsonObjectSchema = z.record(z.string(), z.unknown());
+
 const manifestSchema = z.object({
-  name: z.string().trim().min(1).max(120),
+  name: z.string().trim().min(1).max(120).optional(),
   entryPoint: z.string().trim().min(1).max(240),
   compositionId: z.string().trim().min(1).max(120),
+  compositionIds: z.array(z.string().trim().min(1).max(120)).max(100).optional(),
+  exportMode: z.enum(["component", "root"]).default("component"),
+  defaultDurationFrames: positiveIntegerSchema.optional(),
+  fps: positiveIntegerSchema.optional(),
+  width: positiveIntegerSchema.optional(),
+  height: positiveIntegerSchema.optional(),
+  propsSchema: jsonObjectSchema.optional(),
+  defaultProps: jsonObjectSchema.optional(),
   remotionVersion: z.string().trim().min(1).max(40).optional(),
 });
 
@@ -190,7 +202,13 @@ export async function validateRemotionBundle(
 
       if (name === MANIFEST_PATH) {
         try {
-          const parsed = manifestSchema.safeParse(JSON.parse(await file.async("text")));
+          const manifestBytes = await file.async("uint8array");
+          if (manifestBytes.byteLength > MAX_MANIFEST_BYTES) {
+            errors.push(`El manifiesto ${MANIFEST_PATH} supera el limite de 64KB.`);
+            continue;
+          }
+
+          const parsed = manifestSchema.safeParse(JSON.parse(Buffer.from(manifestBytes).toString("utf8")));
           if (!parsed.success) {
             errors.push(`El manifiesto ${MANIFEST_PATH} no cumple el contrato requerido.`);
           } else {

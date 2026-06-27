@@ -1,0 +1,9 @@
+{
+  "name": "remotion-template-alternating",
+  "private": true,
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.474"
+  }
+}

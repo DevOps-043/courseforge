@@ -591,7 +591,19 @@ export async function assembleRemotionVideoAction(
 
     // Call local Express API
     const expressApiUrl = process.env.EXPRESS_API_URL || "http://localhost:4000";
-    console.log(`[ProductionActions] Triggering Remotion render via Express API: ${expressApiUrl}`);
+    console.log("[ProductionActions] Triggering Remotion render via Express API.", {
+      expressApiUrl,
+      componentId,
+      templateId,
+      normalizedAssets: {
+        slidesCount: normalizedAssets.slides.length,
+        brollClipsCount: normalizedAssets.brollClips.length,
+        hasAvatarVideo: Boolean(normalizedAssets.avatarVideoUrl),
+        hasVoiceAudio: Boolean(normalizedAssets.voiceAudioUrl),
+        totalDurationSeconds: normalizedAssets.totalDurationSeconds,
+      },
+      variablesKeys: Object.keys(variables || {}),
+    });
     
     const renderVariables = {
       ...variables,
