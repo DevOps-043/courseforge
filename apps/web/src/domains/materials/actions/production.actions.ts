@@ -9,6 +9,7 @@ import {
 import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import { getVideoProviderAndId } from "@/lib/video-platform";
+import { getProductionApiBaseUrl } from "@/lib/server/production-api-url";
 import { normalizeAssemblyAssets } from "@/remotion/assembly-assets.normalizer";
 import {
   deriveAssemblyTargetDurationSeconds,
@@ -589,8 +590,7 @@ export async function assembleRemotionVideoAction(
       return { success: false, error: updateError.message };
     }
 
-    // Call local Express API
-    const expressApiUrl = process.env.EXPRESS_API_URL || "http://localhost:4000";
+    const expressApiUrl = getProductionApiBaseUrl();
     console.log("[ProductionActions] Triggering Remotion render via Express API.", {
       expressApiUrl,
       componentId,
@@ -615,7 +615,6 @@ export async function assembleRemotionVideoAction(
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`,
-        "ngrok-skip-browser-warning": "true",
       },
       body: JSON.stringify({
         componentId,
@@ -685,11 +684,10 @@ export async function getRemotionJobStatusAction(jobId: string) {
   if (!token) return { success: false, error: "No se encontró un token de autenticación" };
 
   try {
-    const expressApiUrl = process.env.EXPRESS_API_URL || "http://localhost:4000";
+    const expressApiUrl = getProductionApiBaseUrl();
     const response = await fetch(`${expressApiUrl}/api/v1/production/jobs/${jobId}/status`, {
       headers: {
         "Authorization": `Bearer ${token}`,
-        "ngrok-skip-browser-warning": "true",
       }
     });
 

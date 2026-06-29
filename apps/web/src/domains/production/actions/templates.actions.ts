@@ -5,6 +5,7 @@ import { getAccessToken, getAuthenticatedUser, getServiceRoleClient } from "@/li
 import { getAuthBridgeUser, getUserOrganizations } from "@/utils/auth/session";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { getSupabaseUrl, getSupabaseServiceRoleKey } from "@/lib/server/env";
+import { getProductionApiBaseUrl } from "@/lib/server/production-api-url";
 import {
   createTemplateConfigSchemaDefinition,
   parseTemplateRenderConfig,
@@ -257,13 +258,12 @@ export async function getExternalBundlePreviewDataAction(params: {
   }
 
   try {
-    const expressApiUrl = process.env.EXPRESS_INTERNAL_API_URL || "http://localhost:4000";
+    const expressApiUrl = getProductionApiBaseUrl();
     const response = await fetch(`${expressApiUrl}/api/v1/production/remotion/external-preview`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
-        "ngrok-skip-browser-warning": "true",
       },
       body: JSON.stringify({
         templateId: params.templateId,

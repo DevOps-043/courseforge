@@ -2,7 +2,6 @@ import { Request, Response, NextFunction } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import * as fs from 'fs';
 import * as path from 'path';
-import { RemotionQueueService } from './remotion-queue.service';
 import { jwtVerify } from 'jose';
 import crypto from 'crypto';
 import {
@@ -20,10 +19,14 @@ import {
   getExternalPreviewRenderRoot,
   renderExternalPreviewVideo,
 } from './external-preview-render.service';
+import { RemotionLambdaProgressService } from './remotion-lambda-progress.service';
+import { RemotionRenderOrchestratorService } from './remotion-render-orchestrator.service';
+import { getRemotionRenderReadiness } from './remotion-render.config';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const queueService = RemotionQueueService.getInstance();
+const renderOrchestrator = new RemotionRenderOrchestratorService();
+const lambdaProgressService = new RemotionLambdaProgressService();
 
 type SupabaseAnyClient = any;
 
@@ -394,6 +397,20 @@ export class ProductionController {
     }
   }
 
+  async getRemotionReadiness(req: Request, res: Response, next: NextFunction) {
+    try {
+      const authContext = await this.authenticateRequest(req);
+      if (!authContext) {
+        return res.status(401).json({ error: 'Invalid or expired token' });
+      }
+
+      const readiness = getRemotionRenderReadiness();
+      return res.status(readiness.ok ? 200 : 503).json(readiness);
+    } catch (err) {
+      return next(err);
+    }
+  }
+
   async serveExternalPreviewBundle(req: Request, res: Response, next: NextFunction) {
     try {
       const buildId = req.params.buildId;
@@ -657,6 +674,7 @@ export class ProductionController {
         compositionId: sandboxVersion?.composition_id || null,
         exportMode: sandboxVersion?.export_mode || 'component',
         renderMode,
+        renderProvider: renderOrchestrator.providerName,
         propsHash: null,
         resolvedProps: null,
         variables,
@@ -731,13 +749,14 @@ export class ProductionController {
             });
           }
 
-          queueService.enqueue(resetJob.id);
-          console.log('[ProductionController] Failed Remotion job reset and re-enqueued.', {
+          const dispatchResult = await renderOrchestrator.dispatch(resetJob.id);
+          console.log('[ProductionController] Failed Remotion job reset and dispatched.', {
             componentId,
             templateId,
             jobId: resetJob.id,
             previousStatus: existingJob.status,
             renderMode,
+            renderProvider: dispatchResult.provider,
             templateVersionId: sandboxVersion?.id || null,
             bundleHash: sandboxVersion?.bundle_hash || null,
             buildHash: sandboxVersion?.build_hash || null,
@@ -748,13 +767,21 @@ export class ProductionController {
           return res.json({
             success: true,
             jobId: resetJob.id,
-            status: resetJob.status,
-            message: 'Failed rendering job reset and queued again',
+            status: dispatchResult.status,
+            renderProvider: dispatchResult.provider,
+            message: 'Failed rendering job reset and dispatched again',
           });
         }
 
         if (existingJob.status === 'PENDING' || existingJob.status === 'QUEUED') {
-          queueService.enqueue(existingJob.id);
+          const dispatchResult = await renderOrchestrator.dispatch(existingJob.id);
+          return res.json({
+            success: true,
+            jobId: existingJob.id,
+            status: dispatchResult.status,
+            renderProvider: dispatchResult.provider,
+            message: 'Rendering job reused and dispatched by idempotency key',
+          });
         }
 
         return res.json({
@@ -781,7 +808,7 @@ export class ProductionController {
           idempotency_key: idempotencyKey,
           input_snapshot: inputSnapshot,
           created_by: user.id,
-          progress: [{ percent: 0, message: 'Encolado en cola local', timestamp: new Date().toISOString() }]
+          progress: [{ percent: 0, message: 'Job de render creado', timestamp: new Date().toISOString() }]
         })
         .select('*')
         .single();
@@ -791,21 +818,23 @@ export class ProductionController {
         return res.status(500).json({ error: 'Failed to create production job: ' + (jobError?.message || 'Unknown error') });
       }
 
-      // 4. Enqueue the job in our sequential worker
-      queueService.enqueue(job.id);
-      console.log('[ProductionController] Remotion job created and enqueued.', {
+      // 4. Dispatch the job through the configured provider.
+      const dispatchResult = await renderOrchestrator.dispatch(job.id);
+      console.log('[ProductionController] Remotion job created and dispatched.', {
         componentId,
         templateId,
         jobId: job.id,
         renderMode,
+        renderProvider: dispatchResult.provider,
         templateVersionId: sandboxVersion?.id || null,
       });
 
       return res.json({
         success: true,
         jobId: job.id,
-        status: job.status,
-        message: 'Rendering job queued successfully'
+        status: dispatchResult.status,
+        renderProvider: dispatchResult.provider,
+        message: dispatchResult.message
       });
 
     } catch (err: any) {
@@ -903,6 +932,22 @@ export class ProductionController {
       if (jobError || !job) {
         console.error('[ProductionController] Job not found or access denied:', jobError);
         return res.status(404).json({ error: 'Job not found or access denied' });
+      }
+
+      if (job.status === 'WAITING_PROVIDER' && job.input_snapshot?.renderProvider === 'lambda') {
+        try {
+          await lambdaProgressService.syncJobProgress(serviceClient, job);
+          const { data: refreshedJob } = await serviceClient
+            .from('production_jobs')
+            .select('*')
+            .eq('id', jobId)
+            .single();
+          if (refreshedJob) {
+            job = refreshedJob;
+          }
+        } catch (progressError) {
+          console.warn('[ProductionController] Could not sync Lambda render progress:', progressError);
+        }
       }
 
       return res.json({

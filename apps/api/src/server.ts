@@ -14,6 +14,7 @@ import { getApiPort } from './config/env';
 import { authRoutes } from './features/auth/auth.routes';
 import { productionRoutes } from './features/production/production.routes';
 import { RemotionQueueService } from './features/production/remotion-queue.service';
+import { getRemotionRenderConfig } from './features/production/remotion-render.config';
 
 // Guardas globales: una excepción/rechazo no manejado durante un render de Remotion
 // no debe tumbar silenciosamente toda la API (lo que se manifiesta como "fetch failed"
@@ -47,7 +48,11 @@ app.listen(PORT, () => {
 
   // Pre-calienta el bundle de Remotion fuera de la ruta de petición para que el
   // primer ensamblado no sature el event-loop ni provoque fallos de polling.
-  RemotionQueueService.getInstance()
-    .prewarm()
-    .catch((err) => console.warn('[API] Fallo al pre-calentar Remotion:', err));
+  if (getRemotionRenderConfig().provider === 'local') {
+    RemotionQueueService.getInstance()
+      .prewarm()
+      .catch((err) => console.warn('[API] Fallo al pre-calentar Remotion:', err));
+  } else {
+    console.log('[API] Remotion Lambda provider enabled; local bundle prewarm skipped.');
+  }
 });
