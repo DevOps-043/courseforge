@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { UpstreamChangeAlert } from "@/shared/components/UpstreamChangeAlert";
 import {
   dismissUpstreamDirtyAction,
@@ -8,6 +9,7 @@ import {
 } from "@/lib/server/pipeline-dirty-actions";
 import { REVIEWER_ROLE_SET, SYLLABUS_STATES } from "@/lib/pipeline-constants";
 import { syllabusService } from "@/domains/syllabus/services/syllabus.service";
+import { updateSyllabusStatusAction } from "../actions/syllabus.actions";
 import {
   Esp02Route,
   Esp02StepState,
@@ -164,11 +166,17 @@ export function SyllabusGenerationContainer({
 
   const handleApprove = async () => {
     try {
-      await syllabusService.updateStatus(
+      const result = await updateSyllabusStatusAction(
         artifactId,
         "STEP_APPROVED",
         reviewNotes,
       );
+
+      if (!result.success) {
+        toast.error(result.error || "No se pudo aprobar el temario.");
+        return;
+      }
+
       setStatus("STEP_APPROVED");
       router.refresh();
     } catch (approveError) {
@@ -178,11 +186,17 @@ export function SyllabusGenerationContainer({
 
   const handleReject = async () => {
     try {
-      await syllabusService.updateStatus(
+      const result = await updateSyllabusStatusAction(
         artifactId,
         "STEP_REJECTED",
         reviewNotes,
       );
+
+      if (!result.success) {
+        toast.error(result.error || "No se pudo rechazar el temario.");
+        return;
+      }
+
       setStatus("STEP_REJECTED");
       router.refresh();
     } catch (rejectError) {

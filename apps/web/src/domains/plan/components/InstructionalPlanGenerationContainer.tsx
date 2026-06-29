@@ -244,12 +244,23 @@ export function InstructionalPlanGenerationContainer({
   }, [artifactId]);
 
   const handleApprove = useCallback(async () => {
-    await updateInstructionalPlanStatusAction(
+    const result = await updateInstructionalPlanStatusAction(
       artifactId,
       PLAN_STATES.APPROVED,
       reviewNotes,
     );
-    await updateArtifactStatusAction(artifactId, "READY_FOR_QA");
+
+    if (!result.success) {
+      toast.error(result.error || "No se pudo aprobar el plan instruccional.");
+      return;
+    }
+
+    const artifactResult = await updateArtifactStatusAction(artifactId, "READY_FOR_QA");
+    if (!artifactResult.success) {
+      toast.error(artifactResult.error || "No se pudo actualizar el estado del artefacto.");
+      return;
+    }
+
     setExistingPlan((currentPlan) =>
       currentPlan
         ? {

@@ -19,6 +19,7 @@ import {
     getAuthorizedArtifactAdminForTenant,
     getServiceRoleClient,
 } from '@/lib/server/artifact-action-auth';
+import { assertPipelinePhaseAllowed } from '@/lib/server/pipeline-validation.server';
 import { getActiveOrganizationId } from '@/utils/auth/session';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 
@@ -222,6 +223,20 @@ export async function savePublicationDraft(
         }
 
         const { admin } = authorized;
+        if (data.status === 'READY') {
+            try {
+                await assertPipelinePhaseAllowed(admin, artifactId, 'PRODUCTION');
+            } catch (error) {
+                return {
+                    success: false as const,
+                    error: getErrorMessage(
+                        error,
+                        'La produccion no cumple los requisitos para preparar la publicacion',
+                    ),
+                };
+            }
+        }
+
         const { data: existing } = await admin
             .from('publication_requests')
             .select('id')

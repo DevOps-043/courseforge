@@ -10,6 +10,7 @@ import {
   getAuthenticatedUser,
   getAuthorizedArtifactAdmin,
 } from "@/lib/server/artifact-action-auth";
+import { assertPipelinePhaseAllowed } from "@/lib/server/pipeline-validation.server";
 
 export async function generateInstructionalPlanAction(
   artifactId: string,
@@ -110,6 +111,20 @@ export async function updateInstructionalPlanStatusAction(
   }
 
   const { admin } = authorized;
+  if (status === "STEP_APPROVED") {
+    try {
+      await assertPipelinePhaseAllowed(admin, artifactId, "INSTRUCTIONAL_PLAN");
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(
+          error,
+          "El plan instruccional no cumple los requisitos para aprobar.",
+        ),
+      };
+    }
+  }
+
   const { error } = await admin
     .from("instructional_plans")
     .update({

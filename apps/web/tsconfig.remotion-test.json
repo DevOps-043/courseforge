@@ -12,6 +12,9 @@
   },
   "include": [
     "src/domains/materials/types/materials.types.ts",
+    "src/lib/pipeline-constants.ts",
+    "src/lib/pipeline-validation.ts",
+    "src/lib/__tests__/**/*.ts",
     "src/domains/library/library-grouping.ts",
     "src/domains/library/library-normalizer.ts",
     "src/domains/library/types.ts",

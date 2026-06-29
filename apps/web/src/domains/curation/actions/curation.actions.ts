@@ -2,6 +2,7 @@
 
 import { getErrorMessage } from "@/lib/errors";
 import { CURATION_STATES } from "@/lib/pipeline-constants";
+import { assertPipelinePhaseAllowed } from "@/lib/server/pipeline-validation.server";
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import {
   buildImportedRows,
@@ -55,6 +56,8 @@ export async function startCurationAction(
       admin,
       artifactId,
     );
+
+    await assertPipelinePhaseAllowed(admin, artifactId, "INSTRUCTIONAL_PLAN");
 
     if (
       !plan.lesson_plans ||
@@ -211,6 +214,11 @@ export async function updateCurationStatusAction(
       requireReviewer: true,
     });
     const { finalStatus, decision } = mapCurationStatus(status);
+
+    if (decision === "APPROVED") {
+      await assertPipelinePhaseAllowed(admin, artifactId, "CURATION");
+    }
+
     const { error } = await admin
       .from("curation")
       .update({

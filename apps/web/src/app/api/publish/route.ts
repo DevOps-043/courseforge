@@ -10,6 +10,7 @@ import {
     getAuthorizedArtifactAdminForTenant,
     getServiceRoleClient,
 } from '@/lib/server/artifact-action-auth';
+import { assertPipelinePhaseAllowed } from '@/lib/server/pipeline-validation.server';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 
 interface PublishRequestPayload {
@@ -75,6 +76,20 @@ export async function POST(request: Request) {
                 {
                     error:
                         "El curso no esta en estado 'READY' para publicar. Guarda el borrador primero.",
+                },
+                { status: 400 },
+            );
+        }
+
+        try {
+            await assertPipelinePhaseAllowed(admin, artifactId, 'PUBLICATION');
+        } catch (error) {
+            return NextResponse.json(
+                {
+                    error:
+                        error instanceof Error
+                            ? error.message
+                            : 'La publicacion no cumple los requisitos del pipeline.',
                 },
                 { status: 400 },
             );

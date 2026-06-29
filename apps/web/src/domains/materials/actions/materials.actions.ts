@@ -1,6 +1,7 @@
 "use server";
 
 import { getErrorMessage } from "@/lib/errors";
+import { assertPipelinePhaseAllowed } from "@/lib/server/pipeline-validation.server";
 import type { Esp05StepState, QADecision } from "../types/materials.types";
 import {
   createMaterialsActionError,
@@ -89,6 +90,17 @@ export async function startMaterialsGenerationAction(artifactId: string) {
   ) {
     return createMaterialsActionError(
       "Ya existe un proceso de materiales en curso",
+    );
+  }
+
+  try {
+    await assertPipelinePhaseAllowed(context.admin, artifactId, "CURATION");
+  } catch (error) {
+    return createMaterialsActionError(
+      getErrorMessage(
+        error,
+        "La curacion debe estar aprobada antes de generar materiales.",
+      ),
     );
   }
 
@@ -264,6 +276,17 @@ export async function submitMaterialsToQaAction(materialsId: string) {
     );
   }
 
+  try {
+    await assertPipelinePhaseAllowed(context.admin, context.artifactId, "CURATION");
+  } catch (error) {
+    return createMaterialsActionError(
+      getErrorMessage(
+        error,
+        "La curacion debe estar aprobada antes de enviar materiales a QA.",
+      ),
+    );
+  }
+
   const { error: updateError } = await updateMaterialsState(
     context.admin,
     materialsId,
@@ -297,6 +320,19 @@ export async function applyMaterialsQaDecisionAction(
     reviewed_by: context.authUser.email || context.authUser.userId,
     reviewed_at: new Date().toISOString(),
   };
+
+  if (decision === "APPROVED") {
+    try {
+      await assertPipelinePhaseAllowed(context.admin, context.artifactId, "MATERIALS");
+    } catch (error) {
+      return createMaterialsActionError(
+        getErrorMessage(
+          error,
+          "Los materiales no cumplen los requisitos para aprobar.",
+        ),
+      );
+    }
+  }
 
   const { error } = await updateMaterialsState(
     context.admin,

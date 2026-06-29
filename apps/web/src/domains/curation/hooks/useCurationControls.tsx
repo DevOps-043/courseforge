@@ -303,11 +303,16 @@ export function useCurationControls({
       return;
     }
 
-    await updateCurationStatusAction(
+    const result = await updateCurationStatusAction(
       artifactId,
       CURATION_STATES.APPROVED,
       reviewNotes,
     );
+    if (!result.success) {
+      toast.error(result.error || "No se pudo aprobar la curaduria.");
+      return;
+    }
+
     toast.success("Fase 4 aprobada exitosamente");
     await refresh();
     router.refresh();

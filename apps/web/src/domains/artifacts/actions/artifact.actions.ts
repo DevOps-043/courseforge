@@ -12,6 +12,7 @@ import {
   getAuthenticatedUser,
   getAuthorizedArtifactAdmin,
 } from "@/lib/server/artifact-action-auth";
+import { assertPipelinePhaseAllowed } from "@/lib/server/pipeline-validation.server";
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import type { CloudStorageProvider } from "@/domains/production/cloud-storage/types";
 
@@ -120,6 +121,17 @@ export async function updateArtifactStatusAction(
   }
 
   const { admin } = authorized;
+  if (status === "APPROVED") {
+    try {
+      await assertPipelinePhaseAllowed(admin, artifactId, "BASE");
+    } catch (error) {
+      return {
+        success: false,
+        error: getErrorMessage(error, "La fase BASE no cumple los requisitos para aprobar."),
+      };
+    }
+  }
+
   const { error } = await admin
     .from("artifacts")
     .update({ state: status })
@@ -379,6 +391,25 @@ export async function updateArtifactAssetsCompleteAction(
     const { data: artifact, error: fetchError } = await query.single();
     if (fetchError || !artifact) {
       return { success: false, error: "Artifact not found" };
+    }
+
+    if (isComplete) {
+      const authorized = await getAuthorizedArtifactAdmin(artifactId);
+      if (!authorized) {
+        return { success: false, error: "Artifact not found or inaccessible" };
+      }
+
+      const validation = await assertPipelinePhaseAllowed(
+        authorized.admin,
+        artifactId,
+        "MATERIALS",
+      );
+      if (!validation.allowed) {
+        return {
+          success: false,
+          error: "Los materiales no cumplen los requisitos para iniciar o cerrar produccion visual.",
+        };
+      }
     }
 
     const currentMetadata = artifact.generation_metadata || {};
