@@ -41,6 +41,9 @@ describe('getRemotionRenderConfig', () => {
     }, () => {
       const config = getRemotionRenderConfig();
       assert.equal(config.provider, 'local');
+      assert.equal(config.lambda.concurrency, 1);
+      assert.equal(config.lambda.framesPerLambda, null);
+      assert.equal(config.lambda.concurrencyPerLambda, 1);
     });
   });
 
@@ -76,6 +79,38 @@ describe('getRemotionRenderConfig', () => {
 
       assert.equal(readiness.provider, 'lambda');
       assert.equal(checkNames.includes('REMOTION_LAMBDA_BUCKET'), true);
+    });
+  });
+
+  it('allows Lambda concurrency tuning through environment variables', () => {
+    withEnv({
+      RENDER_PROVIDER: 'lambda',
+      REMOTION_LAMBDA_REGION: 'us-east-1',
+      REMOTION_LAMBDA_FUNCTION_NAME: 'remotion-render',
+      REMOTION_LAMBDA_SERVE_URL: 'https://example.com/sites/courseforge',
+      REMOTION_LAMBDA_BUCKET: 'courseforge-renders',
+      REMOTION_LAMBDA_CONCURRENCY: '2',
+      REMOTION_LAMBDA_FRAMES_PER_LAMBDA: '240',
+      REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA: '1',
+    }, () => {
+      const config = getRemotionRenderConfig();
+
+      assert.equal(config.lambda.concurrency, 2);
+      assert.equal(config.lambda.framesPerLambda, 240);
+      assert.equal(config.lambda.concurrencyPerLambda, 1);
+    });
+  });
+
+  it('rejects invalid Lambda concurrency tuning values', () => {
+    withEnv({
+      RENDER_PROVIDER: 'lambda',
+      REMOTION_LAMBDA_REGION: 'us-east-1',
+      REMOTION_LAMBDA_FUNCTION_NAME: 'remotion-render',
+      REMOTION_LAMBDA_SERVE_URL: 'https://example.com/sites/courseforge',
+      REMOTION_LAMBDA_BUCKET: 'courseforge-renders',
+      REMOTION_LAMBDA_CONCURRENCY: '0',
+    }, () => {
+      assert.throws(() => getRemotionRenderConfig(), /REMOTION_LAMBDA_CONCURRENCY/);
     });
   });
 });

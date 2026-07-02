@@ -44,17 +44,8 @@ export const PRODUCTION_THEME = {
 
 export function getProductionStatusBadge(
   productionStatus: ProductionStatus,
-  finalVideoUrl: string,
+  _finalVideoUrl: string,
 ) {
-  if (finalVideoUrl) {
-    return {
-      label: "Completado",
-      color:
-        "border-green-300 bg-green-50 text-green-700 dark:border-green-500/30 dark:bg-green-500/20 dark:text-green-400",
-      icon: CheckCircle2,
-    };
-  }
-
   switch (productionStatus) {
     case "COMPLETED":
       return {
@@ -103,7 +94,7 @@ export function getProductionRequirements(componentType: string) {
     needsScreencast:
       componentType === "DEMO_GUIDE" || componentType === "VIDEO_GUIDE",
     needsVideo: componentType.includes("VIDEO"),
-    needsFinalVideo: componentType.includes("VIDEO"),
+    needsFinalVideo: false,
   };
 }
 

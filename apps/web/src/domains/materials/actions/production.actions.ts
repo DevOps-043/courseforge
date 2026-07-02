@@ -165,9 +165,8 @@ function buildGammaDeckId(params: {
   return `${courseId}-${lessonNum}-${typeCode}-${suffix}`;
 }
 
-function isProductionComplete(componentType: string, assets?: MaterialAssets | null) {
-  const needsVideo = componentType.includes("VIDEO");
-  return assets?.production_status === "COMPLETED" && (!needsVideo || Boolean(assets?.final_video_url));
+function isProductionComplete(_componentType: string, assets?: MaterialAssets | null) {
+  return assets?.production_status === "COMPLETED";
 }
 
 
@@ -371,7 +370,6 @@ export async function saveMaterialAssetsAction(
   }
 
   if (artifactId && lesson) {
-    await syncVideoToPublicationRequests(supabase, artifactId, lesson, finalAssets);
     await markDownstreamDirtyAction(
       artifactId,
       5,
@@ -626,9 +624,11 @@ export async function assembleRemotionVideoAction(
     if (!response.ok) {
       const errorText = await response.text();
       let errorMessage = `HTTP Error ${response.status}`;
+      let errorCode: string | undefined;
       try {
         const errorJson = JSON.parse(errorText);
         errorMessage = errorJson.error || errorMessage;
+        errorCode = typeof errorJson.code === "string" ? errorJson.code : undefined;
       } catch (_) {}
 
       // Revert status to PENDING in case of request error
@@ -643,10 +643,29 @@ export async function assembleRemotionVideoAction(
         })
         .eq("id", componentId);
 
-      return { success: false, error: errorMessage };
+      return { success: false, error: errorMessage, code: errorCode };
     }
 
     const result = await response.json();
+    if (result.status === "FAILED") {
+      await supabase
+        .from("material_components")
+        .update({
+          assets: {
+            ...currentAssets,
+            production_status: "PENDING",
+            updated_at: new Date().toISOString()
+          }
+        })
+        .eq("id", componentId);
+
+      return {
+        success: false,
+        error: result.message || "El render fue rechazado por el proveedor",
+        code: result.code,
+      };
+    }
+
     return {
       success: true,
       jobId: result.jobId,
@@ -701,6 +720,106 @@ export async function getRemotionJobStatusAction(jobId: string) {
       job
     };
   } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function deleteFinalVideoForPublicationAction(componentId: string) {
+  const { error: authError, supabase } = await getAuthorizedSupabase();
+  if (authError) return { success: false, error: authError };
+
+  try {
+    const { data: rawComponent, error: fetchError } = await supabase
+      .from("material_components")
+      .select(
+        `
+          assets, type, material_lesson_id,
+          material_lessons (
+            lesson_id, lesson_title, module_title, module_id,
+            materials (
+              artifact_id
+            )
+          )
+        `,
+      )
+      .eq("id", componentId)
+      .single();
+
+    if (fetchError || !rawComponent) {
+      return { success: false, error: "No se encontro el componente" };
+    }
+
+    const component = (rawComponent || null) as ProductionComponentRecord | null;
+    const lesson = firstRelation(component?.material_lessons);
+    const materials = firstRelation(lesson?.materials);
+    const artifactId = materials?.artifact_id || undefined;
+    const cleanedAssets = { ...((component?.assets || {}) as MaterialAssets) };
+
+    delete (cleanedAssets as any).final_video_url;
+    delete (cleanedAssets as any).final_video_source;
+    delete (cleanedAssets as any).final_video_storage_provider;
+    delete (cleanedAssets as any).final_video_storage_path;
+    delete (cleanedAssets as any).final_video_source_storage_path;
+    delete (cleanedAssets as any).final_video_url_expires_at;
+
+    const productionStatus = resolveProductionStatus(component?.type || "", cleanedAssets);
+    cleanedAssets.production_status = productionStatus;
+    cleanedAssets.dod_checklist = buildDodChecklist(cleanedAssets);
+    cleanedAssets.updated_at = new Date().toISOString();
+
+    const { error: updateError } = await supabase
+      .from("material_components")
+      .update({ assets: cleanedAssets })
+      .eq("id", componentId);
+
+    if (updateError) {
+      return { success: false, error: updateError.message };
+    }
+
+    if (artifactId && lesson?.lesson_id) {
+      const { data: existingRequest } = await supabase
+        .from("publication_requests")
+        .select("id, lesson_videos")
+        .eq("artifact_id", artifactId)
+        .maybeSingle();
+
+      if (existingRequest?.id) {
+        const currentLessonVideos =
+          (existingRequest.lesson_videos as Record<string, LessonVideoData> | null) || {};
+        const nextLessonVideos = { ...currentLessonVideos };
+        delete nextLessonVideos[lesson.lesson_id];
+
+        await supabase
+          .from("publication_requests")
+          .update({
+            lesson_videos: nextLessonVideos,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingRequest.id);
+      }
+
+      await markDownstreamDirtyAction(
+        artifactId,
+        7,
+        "Postproduccion (video final eliminado)",
+      );
+      await syncProductionStatusAction(artifactId);
+      await logPipelineEventAction(
+        artifactId,
+        "REMOTION_ASSEMBLY_VIDEO_DELETED",
+        {
+          component_id: componentId,
+          lesson_id: lesson.lesson_id,
+        },
+        "GO-OP-07",
+        componentId,
+        "material_component",
+      );
+    }
+
+    return { success: true, productionStatus };
+  } catch (error: unknown) {
+    console.error("[ProductionActions] Error deleting final video:", error);
     return { success: false, error: getErrorMessage(error) };
   }
 }

@@ -81,6 +81,7 @@ export interface RemotionTemplateVersion {
     first_name: string | null;
     email: string | null;
   } | null;
+  cloud_builds?: RemotionTemplateCloudBuild[];
 }
 
 function getPathFromPublicUrl(publicUrl: string, bucket: string = "production-assets"): string {
@@ -127,6 +128,9 @@ const TEMPLATE_BUNDLE_BUCKET = "template-bundles";
 export type RemotionTemplateRenderMode =
   | "SUPPORTED_INTERNAL"
   | "INTERNAL_WITH_EXTERNAL_REFERENCE"
+  | "EXTERNAL_LAMBDA_SITE_READY"
+  | "EXTERNAL_CLOUD_BUILD_READY"
+  | "EXTERNAL_CLOUD_BUILD_FAILED"
   | "EXTERNAL_SANDBOX_READY"
   | "EXTERNAL_BUNDLE_PENDING"
   | "FALLBACK_INTERNAL";
@@ -201,6 +205,20 @@ export interface RemotionTemplate {
   render_composition_id: string;
   is_external_bundle_supported: boolean;
   render_status_label: string;
+  cloud_build_id?: string | null;
+  cloud_build_status?: "BUILDING" | "BUILT" | "BUILD_FAILED" | null;
+  cloud_build_serve_url?: string | null;
+}
+
+interface RemotionTemplateCloudBuild {
+  id: string;
+  template_version_id: string;
+  status: "BUILDING" | "BUILT" | "BUILD_FAILED";
+  serve_url: string | null;
+  build_error?: string | null;
+  provider_status?: string | null;
+  provider_status_detail?: string | null;
+  created_at?: string;
 }
 
 function decorateTemplate(template: Omit<RemotionTemplate, "render_mode" | "render_composition_id" | "is_external_bundle_supported" | "render_status_label">): RemotionTemplate {
@@ -209,15 +227,27 @@ function decorateTemplate(template: Omit<RemotionTemplate, "render_mode" | "rend
   );
   const hasExternalBundle = Boolean(template.storage_path);
   const isSandboxReady = template.bundle_status === "APPROVED_FOR_SANDBOX";
+  const hasCloudBuild = template.cloud_build_status === "BUILT" && Boolean(template.cloud_build_serve_url);
+  const hasCloudBuildFailure = template.cloud_build_status === "BUILD_FAILED";
+  const hasCloudBuildRunning = template.cloud_build_status === "BUILDING";
   const renderCompositionId = hasSupportedComposition ? template.composition_id! : DEFAULT_RENDER_COMPOSITION_ID;
   const bundleStatus = template.bundle_status || (hasExternalBundle ? "STORED_REFERENCE" : "NOT_APPLICABLE");
 
   let renderMode: RemotionTemplateRenderMode = "FALLBACK_INTERNAL";
   let renderStatusLabel = `Render interno: ${renderCompositionId}`;
 
-  if (hasExternalBundle && isSandboxReady) {
-    renderMode = "EXTERNAL_SANDBOX_READY";
-    renderStatusLabel = `Sandbox externo habilitado: ${template.composition_id || renderCompositionId}`;
+  if (hasExternalBundle && hasCloudBuild) {
+    renderMode = "EXTERNAL_LAMBDA_SITE_READY";
+    renderStatusLabel = `Bundle cloud listo: ${template.composition_id || renderCompositionId}`;
+  } else if (hasExternalBundle && hasCloudBuildRunning) {
+    renderMode = "EXTERNAL_CLOUD_BUILD_READY";
+    renderStatusLabel = "Build cloud en progreso";
+  } else if (hasExternalBundle && hasCloudBuildFailure) {
+    renderMode = "EXTERNAL_CLOUD_BUILD_FAILED";
+    renderStatusLabel = "Build cloud fallido";
+  } else if (hasExternalBundle && isSandboxReady) {
+    renderMode = "EXTERNAL_CLOUD_BUILD_READY";
+    renderStatusLabel = "Requiere construir para cloud antes del render final";
   } else if (hasSupportedComposition && hasExternalBundle) {
     renderMode = "INTERNAL_WITH_EXTERNAL_REFERENCE";
     renderStatusLabel = `Renderizable ahora: ${renderCompositionId}. ZIP guardado como referencia (${bundleStatus})`;
@@ -236,7 +266,7 @@ function decorateTemplate(template: Omit<RemotionTemplate, "render_mode" | "rend
     bundle_status: bundleStatus,
     render_mode: renderMode,
     render_composition_id: renderCompositionId,
-    is_external_bundle_supported: isSandboxReady,
+    is_external_bundle_supported: hasCloudBuild,
     render_status_label: renderStatusLabel,
   };
 }
@@ -328,6 +358,80 @@ export interface ExternalBundlePreviewData {
   compositionFrames: number | null;
 }
 
+export async function startTemplateCloudBuildAction(
+  templateVersionId: string,
+): Promise<{ success: boolean; buildId?: string; status?: string; providerBuildId?: string | null; serveUrl?: string | null; error?: string }> {
+  const supabase = await createClient();
+  const token = await getAccessToken(supabase);
+  if (!token) return { success: false, error: "No se encontro un token de autenticacion" };
+
+  try {
+    const expressApiUrl = getProductionApiBaseUrl();
+    const response = await fetch(`${expressApiUrl}/api/v1/production/remotion/template-builds`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ templateVersionId }),
+      cache: "no-store",
+    });
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.success) {
+      return { success: false, error: formatExternalPreviewError(payload?.error ?? payload, `HTTP ${response.status}`) };
+    }
+
+    return {
+      success: true,
+      buildId: payload.buildId,
+      status: payload.status,
+      providerBuildId: payload.providerBuildId || null,
+      serveUrl: payload.serveUrl || null,
+    };
+  } catch (error: any) {
+    console.error("[TemplatesActions] Error starting cloud build:", error);
+    return { success: false, error: formatExternalPreviewError(error, "No se pudo iniciar el build cloud") };
+  }
+}
+
+export async function getTemplateCloudBuildStatusAction(
+  buildId: string,
+): Promise<{ success: boolean; build?: RemotionTemplateCloudBuild & { providerBuildId?: string | null; providerStatusDetail?: string | null }; error?: string }> {
+  const supabase = await createClient();
+  const token = await getAccessToken(supabase);
+  if (!token) return { success: false, error: "No se encontro un token de autenticacion" };
+
+  try {
+    const expressApiUrl = getProductionApiBaseUrl();
+    const response = await fetch(`${expressApiUrl}/api/v1/production/remotion/template-builds/${encodeURIComponent(buildId)}/status`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.success) {
+      return { success: false, error: formatExternalPreviewError(payload?.error ?? payload, `HTTP ${response.status}`) };
+    }
+
+    return {
+      success: true,
+      build: {
+        id: payload.buildId,
+        template_version_id: "",
+        status: payload.status,
+        serve_url: payload.serveUrl || null,
+        provider_status: payload.providerStatus || null,
+        provider_status_detail: payload.providerStatusDetail || null,
+        providerBuildId: payload.providerBuildId || null,
+        providerStatusDetail: payload.providerStatusDetail || null,
+      },
+    };
+  } catch (error: any) {
+    console.error("[TemplatesActions] Error getting cloud build status:", error);
+    return { success: false, error: formatExternalPreviewError(error, "No se pudo consultar el build cloud") };
+  }
+}
+
 function formatExternalPreviewError(value: unknown, fallback: string): string {
   if (!value) return fallback;
 
@@ -367,6 +471,60 @@ function logTemplateRuntimeState(message: string, meta: Record<string, unknown>)
 
 function decorateTemplates(templates: Array<Omit<RemotionTemplate, "render_mode" | "render_composition_id" | "is_external_bundle_supported" | "render_status_label">>): RemotionTemplate[] {
   return templates.map(decorateTemplate);
+}
+
+async function attachLatestCloudBuilds(
+  admin: ReturnType<typeof getServiceRoleClient>,
+  templates: any[],
+): Promise<any[]> {
+  const templateIds = templates.map((template) => template?.id).filter(Boolean);
+  if (templateIds.length === 0) {
+    return templates;
+  }
+
+  const { data: versions } = await admin
+    .from("remotion_template_versions")
+    .select("id, template_id")
+    .in("template_id", templateIds)
+    .in("status", ["APPROVED_FOR_SANDBOX", "APPROVED"])
+    .order("version_number", { ascending: false });
+
+  const latestVersionByTemplate = new Map<string, string>();
+  for (const version of versions || []) {
+    if (!latestVersionByTemplate.has(version.template_id)) {
+      latestVersionByTemplate.set(version.template_id, version.id);
+    }
+  }
+
+  const versionIds = Array.from(latestVersionByTemplate.values());
+  if (versionIds.length === 0) {
+    return templates;
+  }
+
+  const { data: builds } = await admin
+    .from("remotion_template_builds")
+    .select("id, template_version_id, status, serve_url, build_error, provider_status, provider_status_detail, created_at")
+    .in("template_version_id", versionIds)
+    .in("status", ["BUILDING", "BUILT", "BUILD_FAILED"])
+    .order("created_at", { ascending: false });
+
+  const latestBuildByVersion = new Map<string, RemotionTemplateCloudBuild>();
+  for (const build of (builds || []) as RemotionTemplateCloudBuild[]) {
+    if (!latestBuildByVersion.has(build.template_version_id)) {
+      latestBuildByVersion.set(build.template_version_id, build);
+    }
+  }
+
+  return templates.map((template) => {
+    const versionId = latestVersionByTemplate.get(template.id);
+    const build = versionId ? latestBuildByVersion.get(versionId) : null;
+    return {
+      ...template,
+      cloud_build_id: build?.id || null,
+      cloud_build_status: build?.status || null,
+      cloud_build_serve_url: build?.serve_url || null,
+    };
+  });
 }
 
 function sanitizeBundleFileSegment(value: string) {
@@ -447,7 +605,8 @@ export async function getTemplatesAction(): Promise<{
     }
 
     // Merge and de-duplicate by ID
-    const merged = decorateTemplates([...(ownedTemplates || []), ...acquiredTemplates]);
+    const templatesWithBuilds = await attachLatestCloudBuilds(admin, [...(ownedTemplates || []), ...acquiredTemplates]);
+    const merged = decorateTemplates(templatesWithBuilds);
     const uniqueMap = new Map<string, RemotionTemplate>();
     merged.forEach((item) => {
       uniqueMap.set(item.id, item);
@@ -509,7 +668,8 @@ export async function getPublicTemplatesAction(): Promise<{
     const { data: publicTemplates, error } = await query;
     if (error) throw error;
 
-    return { success: true, templates: decorateTemplates(publicTemplates || []) };
+    const templatesWithBuilds = await attachLatestCloudBuilds(admin, publicTemplates || []);
+    return { success: true, templates: decorateTemplates(templatesWithBuilds) };
   } catch (error: any) {
     console.error("[TemplatesActions] Error fetching public templates:", error);
     return { success: false, error: error.message || "Error al obtener plantillas públicas" };
@@ -937,7 +1097,29 @@ export async function getTemplateVersionsAction(
 
     if (error) throw error;
 
-    return { success: true, versions: versions as any[] };
+    const versionIds = (versions || []).map((version: any) => version.id);
+    const { data: builds } = versionIds.length > 0
+      ? await admin
+          .from("remotion_template_builds")
+          .select("id, template_version_id, status, serve_url, build_error, provider_status, provider_status_detail, created_at")
+          .in("template_version_id", versionIds)
+          .order("created_at", { ascending: false })
+      : { data: [] };
+
+    const buildsByVersion = new Map<string, RemotionTemplateCloudBuild[]>();
+    for (const build of (builds || []) as RemotionTemplateCloudBuild[]) {
+      const current = buildsByVersion.get(build.template_version_id) || [];
+      current.push(build);
+      buildsByVersion.set(build.template_version_id, current);
+    }
+
+    return {
+      success: true,
+      versions: (versions || []).map((version: any) => ({
+        ...version,
+        cloud_builds: buildsByVersion.get(version.id) || [],
+      })) as any[],
+    };
   } catch (error: any) {
     console.error("[TemplatesActions] Error fetching template versions:", error);
     return { success: false, error: error.message || "Error al obtener versiones de la plantilla" };

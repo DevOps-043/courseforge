@@ -1,0 +1,56 @@
+version: 0.2
+
+env:
+  shell: bash
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+    commands:
+      - set -euo pipefail
+      - node --version
+      - npm --version
+      - apt-get update -y
+      - apt-get install -y unzip
+  pre_build:
+    commands:
+      - test -n "${COURSEFORGE_SOURCE_STORAGE_PATH:-}"
+      - test -n "${COURSEFORGE_BUNDLE_HASH:-}"
+      - test -n "${COURSEFORGE_BUILD_OUTPUT_STORAGE_PATH:-}"
+      - aws s3 cp "$COURSEFORGE_SOURCE_STORAGE_PATH" source.zip
+      - ACTUAL_HASH="$(node -e "const fs=require('fs');const crypto=require('crypto');process.stdout.write(crypto.createHash('sha256').update(fs.readFileSync('source.zip')).digest('hex'))")"
+      - test "$ACTUAL_HASH" = "$COURSEFORGE_BUNDLE_HASH"
+      - mkdir -p source build-output
+      - unzip -q source.zip -d source
+      - test -f source/courseforge-remotion-template.json
+      - ENTRY_POINT="$(node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('source/courseforge-remotion-template.json','utf8'));if(!m.entryPoint) throw new Error('entryPoint is required');process.stdout.write(m.entryPoint)")"
+      - test -f "source/$ENTRY_POINT"
+  build:
+    commands:
+      - cd source
+      - |
+        if [ -f package-lock.json ]; then
+          npm ci --no-audit --no-fund
+        elif [ -f package.json ]; then
+          npm install --no-audit --no-fund
+        else
+          npm init -y
+          npm install --no-audit --no-fund react@19 react-dom@19 remotion@4.0.484 @remotion/bundler@4.0.484 @remotion/renderer@4.0.484
+        fi
+      - npx remotion bundle "$ENTRY_POINT" --out ../build-output
+      - cd ..
+  post_build:
+    commands:
+      - test -f build-output/index.html
+      - aws s3 sync build-output "$COURSEFORGE_BUILD_OUTPUT_STORAGE_PATH/" --delete --cache-control "public,max-age=31536000,immutable"
+      - aws s3 cp build-output/index.html "$COURSEFORGE_BUILD_OUTPUT_STORAGE_PATH/index.html" --cache-control "no-cache"
+      - |
+        if [ -n "${COURSEFORGE_BUILD_LOG_STORAGE_PATH:-}" ]; then
+          printf "buildId=%s\nsource=%s\noutput=%s\nhash=%s\n" \
+            "${COURSEFORGE_TEMPLATE_BUILD_ID:-}" \
+            "$COURSEFORGE_SOURCE_STORAGE_PATH" \
+            "$COURSEFORGE_BUILD_OUTPUT_STORAGE_PATH" \
+            "$COURSEFORGE_BUNDLE_HASH" > build-summary.log
+          aws s3 cp build-summary.log "$COURSEFORGE_BUILD_LOG_STORAGE_PATH"
+        fi

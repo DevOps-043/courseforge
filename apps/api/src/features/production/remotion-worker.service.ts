@@ -342,6 +342,14 @@ export class RemotionWorkerService {
         throw dbUpdateError;
       }
 
+      await this.syncFinalVideoToPublicationRequest(supabase, {
+        artifactId: job.artifact_id || null,
+        materialLessonId: job.material_lesson_id || null,
+        lessonId: job.lesson_id || null,
+        finalVideoUrl: publicUrl,
+        duration: Math.round(inputProps.totalDurationInFrames / inputProps.fps),
+      });
+
       await supabase
         .from('production_jobs')
         .update({
@@ -686,6 +694,73 @@ export class RemotionWorkerService {
       );
     }
     return entryPoint;
+  }
+
+  private async syncFinalVideoToPublicationRequest(
+    supabase: any,
+    params: {
+      artifactId: string | null;
+      materialLessonId: string | null;
+      lessonId: string | null;
+      finalVideoUrl: string;
+      duration: number;
+    },
+  ): Promise<void> {
+    if (!params.artifactId || !params.lessonId || !params.finalVideoUrl) return;
+
+    let lessonTitle = params.lessonId;
+    let moduleTitle = '';
+
+    if (params.materialLessonId) {
+      const { data: lesson } = await supabase
+        .from('material_lessons')
+        .select('lesson_id, lesson_title, module_title')
+        .eq('id', params.materialLessonId)
+        .maybeSingle();
+
+      lessonTitle = lesson?.lesson_title || lessonTitle;
+      moduleTitle = lesson?.module_title || '';
+    }
+
+    const { data: existingRequest } = await supabase
+      .from('publication_requests')
+      .select('id, lesson_videos')
+      .eq('artifact_id', params.artifactId)
+      .maybeSingle();
+
+    const currentLessonVideos =
+      (existingRequest?.lesson_videos as Record<string, unknown> | null) || {};
+    const nextLessonVideos = {
+      ...currentLessonVideos,
+      [params.lessonId]: {
+        lesson_id: params.lessonId,
+        lesson_title: lessonTitle,
+        module_title: moduleTitle,
+        video_provider: 'direct',
+        video_id: params.finalVideoUrl,
+        duration: params.duration,
+      },
+    };
+
+    if (existingRequest?.id) {
+      await supabase
+        .from('publication_requests')
+        .update({
+          lesson_videos: nextLessonVideos,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existingRequest.id);
+      return;
+    }
+
+    await supabase
+      .from('publication_requests')
+      .insert({
+        artifact_id: params.artifactId,
+        lesson_videos: nextLessonVideos,
+        status: 'DRAFT',
+        updated_at: new Date().toISOString(),
+      });
   }
 
   private async updateProgress(

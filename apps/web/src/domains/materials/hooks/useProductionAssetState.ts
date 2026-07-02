@@ -7,8 +7,6 @@ import { getErrorMessage } from "@/lib/errors";
 import { uploadWithSignedUrl } from "@/lib/storage-upload";
 import type { CloudStorageProvider } from "@/domains/production/cloud-storage/types";
 import {
-  fetchVideoMetadataClient,
-  getVideoProviderAndId,
   MAX_VIDEO_UPLOAD_SIZE_BYTES,
 } from "@/lib/video-platform";
 import {
@@ -651,14 +649,9 @@ export function useProductionAssetState({
 
       setHeygenSyncProgress(100);
       setAvatarVideo(data.assets.avatar_video);
-      // Synchronize back to direct final URL
-      setFinalVideoUrl(data.publicUrl);
-      setFinalVideoSource('upload');
       
       onAssetChange?.(component.id, {
         avatar_video: data.assets.avatar_video,
-        final_video_url: data.publicUrl,
-        final_video_source: 'upload',
       });
       
       toast.success('Video de Heygen transferido e importado correctamente');
@@ -698,13 +691,9 @@ export function useProductionAssetState({
           clearInterval(interval);
           setHeygenSyncProgress(100);
           setAvatarVideo(data.assets.avatar_video);
-          setFinalVideoUrl(data.publicUrl);
-          setFinalVideoSource('upload');
           
           onAssetChange?.(component.id, {
             avatar_video: data.assets.avatar_video,
-            final_video_url: data.publicUrl,
-            final_video_source: 'upload',
           });
           
           setIsSyncingHeygen(false);
@@ -796,12 +785,6 @@ export function useProductionAssetState({
 
   // General save action that submits all structured data to backend
   const handleSave = async () => {
-    if (finalVideoUrl && !isValidHttpUrl(finalVideoUrl)) {
-      setUrlError("La URL debe comenzar con https:// o http://");
-      toast.error("URL del video final no es valida");
-      return;
-    }
-
     setIsSaving(true);
 
     try {
@@ -811,8 +794,6 @@ export function useProductionAssetState({
         video_url: videoUrl || undefined,
         screencast_url: screencastUrl || undefined,
         b_roll_prompts: bRollPrompts || undefined,
-        final_video_url: finalVideoUrl || undefined,
-        final_video_source: finalVideoSource || undefined,
 
         // Structured assets
         voice_audio: voiceAudio || null as any,
@@ -821,22 +802,6 @@ export function useProductionAssetState({
         avatar_video: avatarVideo || null as any,
         slides: slidesAsset || null as any,
       };
-
-      if (finalVideoUrl) {
-        try {
-          const { provider, id } = getVideoProviderAndId(finalVideoUrl);
-          const duration =
-            provider === "direct"
-              ? await detectDirectVideoDuration(id)
-              : (await fetchVideoMetadataClient(finalVideoUrl)).duration || 0;
-
-          if (duration > 0) {
-            assets.video_duration = duration;
-          }
-        } catch (durationError) {
-          console.error("Error auto-detecting duration:", durationError);
-        }
-      }
 
       await onSaveAssets(component.id, assets);
       toast.success("Assets guardados correctamente");

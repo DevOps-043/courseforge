@@ -24,7 +24,7 @@ Referencias oficiales:
 ## Decisiones de arquitectura
 
 - Ambiente inicial: staging.
-- Region sugerida: `us-east-1`, salvo que Supabase/API/usuarios principales esten en otra region.
+- Region inicial configurada: `us-east-2` (Ohio).
 - Backend publico: App Runner o ECS Fargate con HTTPS.
 - Render engine: Remotion Lambda.
 - Storage: bucket S3 creado/gestionado para Remotion Lambda.
@@ -77,8 +77,8 @@ No guardar `AWS_ACCESS_KEY_ID` ni `AWS_SECRET_ACCESS_KEY` en el repo. Usar secre
 Valores sugeridos:
 
 ```env
-AWS_REGION=us-east-1
-REMOTION_LAMBDA_BUCKET=courseforge-remotion-staging
+AWS_REGION=us-east-2
+REMOTION_LAMBDA_BUCKET=remotionlambda-courseforge-staging-535166420267-us-east-2
 REMOTION_LAMBDA_SITE_NAME=courseforge-staging
 REMOTION_LAMBDA_OUTPUT_PRIVACY=private
 ```
@@ -91,7 +91,16 @@ REMOTION_LAMBDA_FUNCTION_NAME=
 
 ## Paso 2: desplegar funcion Lambda
 
-Opcion recomendada: usar `deployFunction()` desde un script temporal o una consola Node controlada.
+Opcion recomendada: usar los scripts versionados del repo:
+
+```bash
+npm run aws:ensure-remotion-role
+npm run aws:bootstrap-remotion
+```
+
+El primer comando crea o actualiza el rol IAM `remotion-lambda-role` con trust policy para Lambda y la policy recomendada por Remotion. El segundo comando despliega la funcion Lambda, crea el bucket S3 privado si falta y publica el site Remotion.
+
+Referencia equivalente con `deployFunction()`:
 
 Parametros sugeridos para staging:
 
@@ -99,8 +108,8 @@ Parametros sugeridos para staging:
 import { deployFunction } from "@remotion/lambda";
 
 const { functionName } = await deployFunction({
-  region: "us-east-1",
-  timeoutInSeconds: 120,
+  region: "us-east-2",
+  timeoutInSeconds: 900,
   memorySizeInMb: 2048,
   diskSizeInMb: 2048,
   createCloudWatchLogGroup: true,
@@ -114,18 +123,18 @@ Guardar el resultado en:
 
 ```env
 REMOTION_LAMBDA_FUNCTION_NAME=<functionName>
-REMOTION_LAMBDA_REGION=us-east-1
+REMOTION_LAMBDA_REGION=us-east-2
 ```
 
 Notas:
 
 - Remotion recomienda CloudWatch Logs habilitado.
-- Lambda tiene limite maximo de 900 segundos por invocacion; para videos largos se debe preferir concurrencia y particionamiento antes que subir timeouts sin control.
+- Lambda tiene limite maximo de 900 segundos por invocacion. Para staging se usa 900s para evitar fallos tempranos durante renders reales; para produccion se debe medir duracion/costo y ajustar con cuidado.
 - Si staging necesita mas memoria o disco, aumentar gradualmente y medir costo/duracion.
 
 ## Paso 3: crear/confirmar bucket S3
 
-Remotion Lambda requiere un bucket compatible con su runtime. Si se usa la CLI o APIs de Remotion, preferir el bucket creado por Remotion.
+Remotion Lambda requiere un bucket compatible con su runtime. El nombre debe iniciar con `remotionlambda-`. Para este staging se uso:
 
 Guardar el nombre final en:
 
@@ -135,8 +144,9 @@ REMOTION_LAMBDA_BUCKET=<bucket>
 
 Politica inicial recomendada:
 
-- Bucket privado por defecto.
-- Bloquear public access salvo decision explicita.
+- Bucket privado por defecto para outputs.
+- Permitir lectura publica solo del prefijo `sites/*`, porque Remotion Lambda carga el bundle desde `REMOTION_LAMBDA_SERVE_URL` con un navegador headless.
+- Mantener `remotion-renders/*` privado.
 - Encriptacion server-side habilitada.
 - Lifecycle policy para limpiar renders temporales de staging.
 - Prefijo usado por Courseforge:
@@ -162,10 +172,11 @@ import path from "path";
 import { deploySite } from "@remotion/lambda";
 
 const { serveUrl } = await deploySite({
-  region: "us-east-1",
-  bucketName: "courseforge-remotion-staging",
+  region: "us-east-2",
+  bucketName: "remotionlambda-courseforge-staging-535166420267-us-east-2",
   siteName: "courseforge-staging",
   entryPoint: path.resolve(process.cwd(), "apps/web/src/remotion/index.ts"),
+  privacy: "no-acl",
   options: {
     onBundleProgress: (progress) => console.log(`Bundle: ${progress}%`),
     onUploadProgress: ({ filesUploaded, totalFiles }) =>
@@ -187,6 +198,7 @@ Importante:
 
 - Si cambia el codigo Remotion, redeploy del site.
 - Mantener `siteName` estable en staging para evitar proliferacion de sites.
+- Si `REMOTION_LAMBDA_SERVE_URL` devuelve XML `AccessDenied`, revisar que el bucket permita `s3:GetObject` publico sobre `sites/*`.
 - Validar que las composiciones internas esperadas sigan disponibles: `full-slides`, `split-avatar`, `avatar-focus`.
 
 ## Paso 5: configurar backend Courseforge
@@ -201,12 +213,14 @@ API_PUBLIC_URL=https://api-staging.tu-dominio.com
 EXPRESS_PUBLIC_URL=https://api-staging.tu-dominio.com
 EXPRESS_INTERNAL_API_URL=https://api-staging.tu-dominio.com
 
-REMOTION_LAMBDA_REGION=us-east-1
+REMOTION_LAMBDA_REGION=us-east-2
 REMOTION_LAMBDA_FUNCTION_NAME=<functionName>
 REMOTION_LAMBDA_SERVE_URL=<serveUrl>
 REMOTION_LAMBDA_SITE_NAME=courseforge-staging
-REMOTION_LAMBDA_BUCKET=courseforge-remotion-staging
+REMOTION_LAMBDA_BUCKET=remotionlambda-courseforge-staging-535166420267-us-east-2
 REMOTION_LAMBDA_OUTPUT_PRIVACY=private
+REMOTION_LAMBDA_CONCURRENCY=1
+REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA=1
 
 NEXT_PUBLIC_SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
@@ -273,6 +287,17 @@ curl -H "Authorization: Bearer <TOKEN>" \
 - `output_snapshot.renderProvider = "lambda"`
 - `output_snapshot.outputStoragePath` presente
 - `material_components.assets.final_video_url` actualizado cuando termine bien
+
+Para staging, mantener concurrencia conservadora mientras se validan cuotas:
+
+```env
+REMOTION_LAMBDA_CONCURRENCY=1
+REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA=1
+```
+
+No configurar `REMOTION_LAMBDA_CONCURRENCY` y `REMOTION_LAMBDA_FRAMES_PER_LAMBDA` al mismo tiempo. Remotion acepta solo una estrategia de particionamiento.
+
+Si AWS devuelve `Concurrency limit reached` o `Rate Exceeded`, esperar a que terminen renders activos y reintentar con estos valores. Si el problema persiste con un solo render activo, revisar cuotas Lambda o solicitar aumento de concurrencia en AWS.
 
 ## Paso 8: observabilidad
 
@@ -346,6 +371,19 @@ Revisar:
 - Permisos S3 del bucket.
 - Que `GET /jobs/:jobId/status` se este llamando; este endpoint reconcilia progreso por REST.
 
+### Render falla con `Concurrency limit reached`
+
+La cuenta o region alcanzo el limite de concurrencia/rate de AWS Lambda. En staging usar:
+
+```env
+REMOTION_LAMBDA_CONCURRENCY=1
+REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA=1
+```
+
+No combinar `REMOTION_LAMBDA_CONCURRENCY` con `REMOTION_LAMBDA_FRAMES_PER_LAMBDA`; si ambas existen, el backend prioriza `concurrency` y omite `framesPerLambda`.
+
+Luego reintentar cuando no haya renders activos. Para produccion, medir uso real y pedir aumento de cuota Lambda si la carga lo requiere.
+
 ### Job termina pero no hay `final_video_url`
 
 Revisar si `getRenderProgress()` esta devolviendo `outputFile`, `outputUrl` u `outputStoragePath`. Si no, ajustar el mapeo en `remotion-lambda-progress.service.ts` contra la respuesta real de staging.
@@ -355,6 +393,7 @@ Revisar si `getRenderProgress()` esta devolviendo `outputFile`, `outputUrl` u `o
 - Nunca guardar credenciales AWS en el repo.
 - Usar roles/secret manager del proveedor de despliegue.
 - Mantener bucket privado por defecto.
+- Permitir publico solo el bundle del site Remotion (`sites/*`); no publicar outputs ni assets sensibles.
 - Evitar URLs publicas permanentes para assets internos si no son necesarias.
 - No registrar `SUPABASE_SERVICE_ROLE_KEY`, AWS secret keys ni tokens en logs.
 - Separar staging y produccion por bucket/site/function.

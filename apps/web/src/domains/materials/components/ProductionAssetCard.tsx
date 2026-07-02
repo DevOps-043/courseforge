@@ -15,7 +15,6 @@ import {
 } from "./production-asset-ui";
 import { ProductionAssetHeader } from "./ProductionAssetHeader";
 import {
-  ProductionAssetFinalVideoSection,
   ProductionAssetPreviewModal,
   ProductionAssetPromptsSection,
   ProductionAssetScreencastSection,
@@ -61,27 +60,18 @@ export function ProductionAssetCard({
   const {
     bRollPrompts,
     copyToClipboard,
-    fileRef,
-    finalVideoSource,
     finalVideoUrl,
     handleGeneratePrompts,
     handleSave,
-    handleVideoUpload,
     isGenerating,
     isSaving,
-    isUploading,
     screencastUrl,
-    setFinalVideoSource,
     setBRollPrompts,
     setShowPreview,
-    setUrlError,
     showPreview,
     slidesUrl,
     updateAsset,
-    urlError,
-    setFinalVideoUrl,
     setScreencastUrl,
-    isValidHttpUrl,
 
     // Structured states & loaders
     voiceAudio,
@@ -305,32 +295,6 @@ export function ProductionAssetCard({
               onScreencastUrlChange={(value) =>
                 updateAsset("screencast_url", value, setScreencastUrl)
               }
-            />
-          )}
-
-          {component.type.includes("VIDEO") && (
-            <ProductionAssetFinalVideoSection
-              fileRef={fileRef}
-              finalVideoSource={finalVideoSource}
-              finalVideoUrl={finalVideoUrl}
-              isSaving={isSaving}
-              isUploading={isUploading}
-              isValidUrl={isValidHttpUrl}
-              onClearVideo={() => {
-                updateAsset("final_video_url", "", setFinalVideoUrl);
-                setFinalVideoSource(null);
-                setUrlError(null);
-              }}
-              onTriggerFilePicker={() => fileRef.current?.click()}
-              onUploadVideo={handleVideoUpload}
-              onVideoUrlChange={(value) => {
-                updateAsset("final_video_url", value, setFinalVideoUrl);
-                setFinalVideoSource(value ? "link" : null);
-                if (urlError) {
-                  setUrlError(null);
-                }
-              }}
-              urlError={urlError}
             />
           )}
         </div>

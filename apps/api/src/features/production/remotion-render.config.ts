@@ -9,6 +9,9 @@ export interface RemotionLambdaConfig {
   siteName: string | null;
   bucketName: string;
   outputPrivacy: 'public' | 'private';
+  concurrency: number | null;
+  framesPerLambda: number | null;
+  concurrencyPerLambda: number;
 }
 
 export interface RemotionRenderConfig {
@@ -54,6 +57,26 @@ function requiredForLambda(name: string): string {
   return value.trim();
 }
 
+function optionalPositiveInteger(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw?.trim()) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+  return parsed;
+}
+
+function optionalPositiveIntegerOrNull(name: string): number | null {
+  const raw = process.env[name];
+  if (!raw?.trim()) return null;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+  return parsed;
+}
+
 export function getRemotionRenderConfig(): RemotionRenderConfig {
   const provider = normalizeProvider(process.env.RENDER_PROVIDER);
   const apiPublicUrl = optionalUrl(process.env.API_PUBLIC_URL || process.env.EXPRESS_PUBLIC_URL);
@@ -65,6 +88,9 @@ export function getRemotionRenderConfig(): RemotionRenderConfig {
     siteName: process.env.REMOTION_LAMBDA_SITE_NAME || null,
     bucketName: provider === 'lambda' ? requiredForLambda('REMOTION_LAMBDA_BUCKET') : process.env.REMOTION_LAMBDA_BUCKET || '',
     outputPrivacy: process.env.REMOTION_LAMBDA_OUTPUT_PRIVACY === 'public' ? 'public' : 'private',
+    concurrency: optionalPositiveIntegerOrNull('REMOTION_LAMBDA_CONCURRENCY') || 1,
+    framesPerLambda: optionalPositiveIntegerOrNull('REMOTION_LAMBDA_FRAMES_PER_LAMBDA'),
+    concurrencyPerLambda: optionalPositiveInteger('REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA', 1),
   };
 
   return { provider, apiPublicUrl, lambda };

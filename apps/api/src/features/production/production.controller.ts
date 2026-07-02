@@ -21,7 +21,8 @@ import {
 } from './external-preview-render.service';
 import { RemotionLambdaProgressService } from './remotion-lambda-progress.service';
 import { RemotionRenderOrchestratorService } from './remotion-render-orchestrator.service';
-import { getRemotionRenderReadiness } from './remotion-render.config';
+import { getRemotionRenderConfig, getRemotionRenderReadiness } from './remotion-render.config';
+import { TemplateCloudBuildService } from './template-cloud-build.service';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -72,6 +73,32 @@ function buildRemotionRenderIdempotencyKey(params: {
     .digest('hex')
     .slice(0, 32);
   return `remotion-render-${params.componentId}-${hash}`;
+}
+
+function buildProgressEntry(params: {
+  percent: number;
+  message: string;
+  stage: string;
+  provider?: string | null;
+}) {
+  return {
+    percent: params.percent,
+    message: params.message,
+    stage: params.stage,
+    provider: params.provider || null,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function hasCompletedRenderOutput(job: any, component: any): boolean {
+  return Boolean(
+    job?.output_snapshot?.final_video_url &&
+    component?.assets?.final_video_url
+  );
+}
+
+function isUuid(value: string | undefined): value is string {
+  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
 }
 
 export class ProductionController {
@@ -411,6 +438,76 @@ export class ProductionController {
     }
   }
 
+  async startTemplateCloudBuild(req: Request, res: Response, next: NextFunction) {
+    try {
+      const authContext = await this.authenticateRequest(req);
+      if (!authContext) {
+        return res.status(401).json({ error: 'Invalid or expired token' });
+      }
+
+      const templateVersionId = typeof req.body?.templateVersionId === 'string'
+        ? req.body.templateVersionId
+        : req.params.templateVersionId;
+      if (!isUuid(templateVersionId)) {
+        return res.status(400).json({ error: 'templateVersionId is required.', code: 'INVALID_TEMPLATE_VERSION_ID' });
+      }
+
+      const { data: version, error } = await authContext.serviceClient
+        .from('remotion_template_versions')
+        .select('id, organization_id, status')
+        .eq('id', templateVersionId)
+        .maybeSingle();
+
+      if (error || !version) {
+        return res.status(404).json({ error: 'Template version not found.', code: 'TEMPLATE_VERSION_NOT_FOUND' });
+      }
+
+      if (version.organization_id && !authContext.organizationIds.includes(version.organization_id)) {
+        return res.status(403).json({ error: 'Forbidden.', code: 'ORG_FORBIDDEN' });
+      }
+
+      const service = new TemplateCloudBuildService(authContext.serviceClient);
+      const result = await service.startBuild(templateVersionId);
+      return res.status(result.success ? 202 : 400).json(result);
+    } catch (err) {
+      return next(err);
+    }
+  }
+
+  async getTemplateCloudBuildStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      const authContext = await this.authenticateRequest(req);
+      if (!authContext) {
+        return res.status(401).json({ error: 'Invalid or expired token' });
+      }
+
+      const buildId = req.params.buildId;
+      if (!isUuid(buildId)) {
+        return res.status(400).json({ error: 'buildId is invalid.', code: 'INVALID_BUILD_ID' });
+      }
+
+      const { data: build, error } = await authContext.serviceClient
+        .from('remotion_template_builds')
+        .select('id, organization_id')
+        .eq('id', buildId)
+        .maybeSingle();
+
+      if (error || !build) {
+        return res.status(404).json({ error: 'Cloud build not found.', code: 'CLOUD_BUILD_NOT_FOUND' });
+      }
+
+      if (build.organization_id && !authContext.organizationIds.includes(build.organization_id)) {
+        return res.status(403).json({ error: 'Forbidden.', code: 'ORG_FORBIDDEN' });
+      }
+
+      const service = new TemplateCloudBuildService(authContext.serviceClient);
+      const result = await service.getBuildStatus(buildId);
+      return res.status(result.success ? 200 : 404).json(result);
+    } catch (err) {
+      return next(err);
+    }
+  }
+
   async serveExternalPreviewBundle(req: Request, res: Response, next: NextFunction) {
     try {
       const buildId = req.params.buildId;
@@ -563,6 +660,7 @@ export class ProductionController {
           .from('material_components')
           .select(`
             id,
+            assets,
             material_lesson_id,
             material_lessons (
               id,
@@ -604,6 +702,7 @@ export class ProductionController {
           .from('material_components')
           .select(`
             id,
+            assets,
             material_lesson_id,
             material_lessons (
               id,
@@ -647,34 +746,88 @@ export class ProductionController {
         return res.status(400).json({ error: 'Component has no associated artifact' });
       }
 
-      const { data: sandboxVersion } = await serviceClient
-        .from('remotion_template_versions')
-        .select('id, bundle_hash, build_hash, composition_id, export_mode')
-        .eq('template_id', templateId)
-        .eq('status', 'APPROVED_FOR_SANDBOX')
-        .order('version_number', { ascending: false })
-        .limit(1)
+      const { data: templateRecord } = await serviceClient
+        .from('remotion_templates')
+        .select('id, storage_path, bundle_status, composition_id')
+        .eq('id', templateId)
         .maybeSingle();
 
-      const renderMode = sandboxVersion ? 'EXTERNAL_SANDBOX_CANDIDATE' : 'INTERNAL_COMPOSITION';
+      const hasExternalBundle = Boolean(templateRecord?.storage_path);
+      const { data: cloudVersion } = hasExternalBundle
+        ? await serviceClient
+            .from('remotion_template_versions')
+            .select('id, bundle_hash, build_hash, composition_id, export_mode, status')
+            .eq('template_id', templateId)
+            .in('status', ['APPROVED_FOR_SANDBOX', 'APPROVED'])
+            .order('version_number', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : { data: null };
+
+      const { data: cloudBuild } = cloudVersion?.id
+        ? await serviceClient
+            .from('remotion_template_builds')
+            .select('id, build_hash, serve_url, composition_id, export_mode, status, cloud_provider')
+            .eq('template_version_id', cloudVersion.id)
+            .eq('bundle_hash', cloudVersion.bundle_hash || '')
+            .eq('status', 'BUILT')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : { data: null };
+
+      const renderProvider = renderOrchestrator.providerName;
+      const renderMode = cloudBuild?.serve_url && renderProvider === 'lambda'
+        ? 'EXTERNAL_LAMBDA_SITE_READY'
+        : cloudVersion
+          ? 'EXTERNAL_CLOUD_BUILD_READY'
+          : renderProvider === 'lambda'
+          ? 'INTERNAL_LAMBDA'
+          : 'INTERNAL_COMPOSITION';
       console.log('[ProductionController] Remotion render mode resolved.', {
         componentId,
         templateId,
         organizationId,
         artifactId,
-        sandboxVersionId: sandboxVersion?.id || null,
-        sandboxBundleHash: sandboxVersion?.bundle_hash || null,
+        templateHasExternalBundle: hasExternalBundle,
+        cloudVersionId: cloudVersion?.id || null,
+        cloudBuildId: cloudBuild?.id || null,
+        cloudBundleHash: cloudVersion?.bundle_hash || null,
         renderMode,
+        renderProvider,
       });
+
+      if (hasExternalBundle && renderProvider === 'lambda' && (!cloudVersion || !cloudBuild?.serve_url)) {
+        console.warn('[ProductionController] External bundle render blocked; cloud build is not Lambda-ready.', {
+          componentId,
+          templateId,
+          organizationId,
+          cloudVersionId: cloudVersion?.id || null,
+          cloudBuildId: cloudBuild?.id || null,
+          renderMode,
+          renderProvider,
+        });
+        return res.status(409).json({
+          error:
+            'Esta plantilla externa aun no tiene un build cloud listo para Remotion Lambda. Ejecuta "Construir para cloud" antes de ensamblar el video final.',
+          code: cloudVersion ? 'EXTERNAL_CLOUD_BUILD_REQUIRED' : 'EXTERNAL_BUNDLE_NOT_APPROVED',
+          renderMode,
+          renderProvider,
+        });
+      }
+
       const inputSnapshot = {
         templateId,
-        templateVersionId: sandboxVersion?.id || null,
-        bundleHash: sandboxVersion?.bundle_hash || null,
-        buildHash: sandboxVersion?.build_hash || null,
-        compositionId: sandboxVersion?.composition_id || null,
-        exportMode: sandboxVersion?.export_mode || 'component',
+        templateVersionId: cloudVersion?.id || null,
+        bundleHash: cloudVersion?.bundle_hash || null,
+        buildId: cloudBuild?.id || null,
+        buildHash: cloudBuild?.build_hash || cloudVersion?.build_hash || null,
+        compositionId: cloudBuild?.composition_id || cloudVersion?.composition_id || null,
+        exportMode: cloudBuild?.export_mode || cloudVersion?.export_mode || 'component',
+        externalServeUrl: cloudBuild?.serve_url || null,
+        cloudProvider: cloudBuild?.cloud_provider || null,
         renderMode,
-        renderProvider: renderOrchestrator.providerName,
+        renderProvider,
         propsHash: null,
         resolvedProps: null,
         variables,
@@ -682,11 +835,11 @@ export class ProductionController {
       const idempotencyKey = buildRemotionRenderIdempotencyKey({
         componentId,
         templateId,
-        templateVersionId: sandboxVersion?.id || null,
-        bundleHash: sandboxVersion?.bundle_hash || null,
-        buildHash: sandboxVersion?.build_hash || null,
-        compositionId: sandboxVersion?.composition_id || null,
-        exportMode: sandboxVersion?.export_mode || 'component',
+        templateVersionId: cloudVersion?.id || null,
+        bundleHash: cloudVersion?.bundle_hash || null,
+        buildHash: cloudBuild?.build_hash || cloudVersion?.build_hash || null,
+        compositionId: cloudBuild?.composition_id || cloudVersion?.composition_id || null,
+        exportMode: cloudBuild?.export_mode || cloudVersion?.export_mode || 'component',
         variables,
       });
 
@@ -715,23 +868,36 @@ export class ProductionController {
           templateVersionId: existingJob.input_snapshot?.templateVersionId || null,
         });
 
-        if (existingJob.status === 'FAILED' || existingJob.status === 'CANCELLED') {
+        const shouldRedispatchExistingJob =
+          existingJob.status === 'FAILED' ||
+          existingJob.status === 'CANCELLED' ||
+          (existingJob.status === 'SUCCEEDED' && !hasCompletedRenderOutput(existingJob, component));
+
+        if (shouldRedispatchExistingJob) {
           const { data: resetJob, error: resetJobError } = await serviceClient
             .from('production_jobs')
             .update({
               status: 'PENDING',
-              progress: [{ percent: 0, message: 'Reintentando render tras fallo previo', timestamp: new Date().toISOString() }],
+              progress: [buildProgressEntry({
+                percent: 0,
+                message: existingJob.status === 'SUCCEEDED'
+                  ? 'Reintentando render: el job anterior decia completado pero no tenia video final persistido'
+                  : 'Reintentando render tras fallo previo',
+                stage: 'job_reset',
+                provider: renderProvider,
+              })],
               provider_error: null,
               output_snapshot: {
                 completed: false,
                 retryOfFailedJob: true,
                 resetAt: new Date().toISOString(),
                 renderMode,
-                templateVersionId: sandboxVersion?.id || null,
-                bundleHash: sandboxVersion?.bundle_hash || null,
-                buildHash: sandboxVersion?.build_hash || null,
-                compositionId: sandboxVersion?.composition_id || null,
-                exportMode: sandboxVersion?.export_mode || 'component',
+                templateVersionId: cloudVersion?.id || null,
+                bundleHash: cloudVersion?.bundle_hash || null,
+                buildId: cloudBuild?.id || null,
+                buildHash: cloudBuild?.build_hash || cloudVersion?.build_hash || null,
+                compositionId: cloudBuild?.composition_id || cloudVersion?.composition_id || null,
+                exportMode: cloudBuild?.export_mode || cloudVersion?.export_mode || 'component',
               },
               started_at: null,
               completed_at: null,
@@ -755,13 +921,15 @@ export class ProductionController {
             templateId,
             jobId: resetJob.id,
             previousStatus: existingJob.status,
+            redispatchReason: existingJob.status === 'SUCCEEDED' ? 'missing_final_video_url' : 'terminal_failure',
             renderMode,
             renderProvider: dispatchResult.provider,
-            templateVersionId: sandboxVersion?.id || null,
-            bundleHash: sandboxVersion?.bundle_hash || null,
-            buildHash: sandboxVersion?.build_hash || null,
-            compositionId: sandboxVersion?.composition_id || null,
-            exportMode: sandboxVersion?.export_mode || 'component',
+            templateVersionId: cloudVersion?.id || null,
+            bundleHash: cloudVersion?.bundle_hash || null,
+            buildId: cloudBuild?.id || null,
+            buildHash: cloudBuild?.build_hash || cloudVersion?.build_hash || null,
+            compositionId: cloudBuild?.composition_id || cloudVersion?.composition_id || null,
+            exportMode: cloudBuild?.export_mode || cloudVersion?.export_mode || 'component',
           });
 
           return res.json({
@@ -769,7 +937,9 @@ export class ProductionController {
             jobId: resetJob.id,
             status: dispatchResult.status,
             renderProvider: dispatchResult.provider,
-            message: 'Failed rendering job reset and dispatched again',
+            message: existingJob.status === 'SUCCEEDED'
+              ? 'Incomplete succeeded rendering job reset and dispatched again'
+              : 'Failed rendering job reset and dispatched again',
           });
         }
 
@@ -808,7 +978,12 @@ export class ProductionController {
           idempotency_key: idempotencyKey,
           input_snapshot: inputSnapshot,
           created_by: user.id,
-          progress: [{ percent: 0, message: 'Job de render creado', timestamp: new Date().toISOString() }]
+          progress: [buildProgressEntry({
+            percent: 0,
+            message: 'Job de render creado',
+            stage: 'job_created',
+            provider: renderProvider,
+          })]
         })
         .select('*')
         .single();
@@ -826,7 +1001,8 @@ export class ProductionController {
         jobId: job.id,
         renderMode,
         renderProvider: dispatchResult.provider,
-        templateVersionId: sandboxVersion?.id || null,
+        templateVersionId: cloudVersion?.id || null,
+        buildId: cloudBuild?.id || null,
       });
 
       return res.json({
@@ -934,7 +1110,10 @@ export class ProductionController {
         return res.status(404).json({ error: 'Job not found or access denied' });
       }
 
-      if (job.status === 'WAITING_PROVIDER' && job.input_snapshot?.renderProvider === 'lambda') {
+      if (
+        (job.status === 'WAITING_PROVIDER' || job.status === 'RUNNING') &&
+        job.input_snapshot?.renderProvider === 'lambda'
+      ) {
         try {
           await lambdaProgressService.syncJobProgress(serviceClient, job);
           const { data: refreshedJob } = await serviceClient

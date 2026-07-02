@@ -8,7 +8,9 @@
   "scripts": {
     "dev": "concurrently --names \"FRONTEND,BACKEND\" --prefix-colors \"cyan,magenta\" \"npm run dev -w apps/web\" \"npm run dev -w apps/api\"",
     "build": "npm run build --workspaces",
-    "lint": "npm run lint --workspaces"
+    "lint": "npm run lint --workspaces",
+    "aws:ensure-remotion-role": "node scripts/ensure-remotion-lambda-role.mjs",
+    "aws:bootstrap-remotion": "node scripts/bootstrap-remotion-lambda.mjs"
   },
   "devDependencies": {
     "@netlify/functions": "^5.1.2",
