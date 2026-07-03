@@ -12,6 +12,7 @@ export interface RemotionLambdaConfig {
   concurrency: number | null;
   framesPerLambda: number | null;
   concurrencyPerLambda: number;
+  timeoutInMilliseconds: number;
 }
 
 export interface RemotionRenderConfig {
@@ -77,9 +78,27 @@ function optionalPositiveIntegerOrNull(name: string): number | null {
   return parsed;
 }
 
+function optionalBoundedPositiveInteger(name: string, fallback: number, max: number): number {
+  const raw = process.env[name];
+  if (!raw?.trim()) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > max) {
+    throw new Error(`${name} must be a positive integer between 1 and ${max}.`);
+  }
+  return parsed;
+}
+
 export function getRemotionRenderConfig(): RemotionRenderConfig {
   const provider = normalizeProvider(process.env.RENDER_PROVIDER);
   const apiPublicUrl = optionalUrl(process.env.API_PUBLIC_URL || process.env.EXPRESS_PUBLIC_URL);
+  const lambdaConcurrency = optionalPositiveIntegerOrNull('REMOTION_LAMBDA_CONCURRENCY');
+  const lambdaFramesPerLambda = optionalPositiveIntegerOrNull('REMOTION_LAMBDA_FRAMES_PER_LAMBDA');
+
+  if (lambdaConcurrency && lambdaFramesPerLambda) {
+    throw new Error(
+      'Configure only one of REMOTION_LAMBDA_CONCURRENCY or REMOTION_LAMBDA_FRAMES_PER_LAMBDA.',
+    );
+  }
 
   const lambda: RemotionLambdaConfig = {
     region: provider === 'lambda' ? requiredForLambda('REMOTION_LAMBDA_REGION') : process.env.REMOTION_LAMBDA_REGION || '',
@@ -88,9 +107,14 @@ export function getRemotionRenderConfig(): RemotionRenderConfig {
     siteName: process.env.REMOTION_LAMBDA_SITE_NAME || null,
     bucketName: provider === 'lambda' ? requiredForLambda('REMOTION_LAMBDA_BUCKET') : process.env.REMOTION_LAMBDA_BUCKET || '',
     outputPrivacy: process.env.REMOTION_LAMBDA_OUTPUT_PRIVACY === 'public' ? 'public' : 'private',
-    concurrency: optionalPositiveIntegerOrNull('REMOTION_LAMBDA_CONCURRENCY') || 1,
-    framesPerLambda: optionalPositiveIntegerOrNull('REMOTION_LAMBDA_FRAMES_PER_LAMBDA'),
+    concurrency: lambdaConcurrency,
+    framesPerLambda: lambdaFramesPerLambda || (lambdaConcurrency ? null : 600),
     concurrencyPerLambda: optionalPositiveInteger('REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA', 1),
+    timeoutInMilliseconds: optionalBoundedPositiveInteger(
+      'REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS',
+      600_000,
+      870_000,
+    ),
   };
 
   return { provider, apiPublicUrl, lambda };

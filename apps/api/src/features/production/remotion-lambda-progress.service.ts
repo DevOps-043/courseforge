@@ -48,10 +48,16 @@ export class RemotionLambdaProgressService {
     });
 
     if (progress.fatalErrorEncountered || this.hasErrors(progress.errors)) {
+      const extractedError = this.extractError(progress) || 'Remotion Lambda render failed while polling progress';
+      if (this.isThrottleError(extractedError) && this.throttleRetryCount(job) < 3) {
+        await this.deferThrottledLambdaJob(supabase, job, extractedError);
+        return;
+      }
+
       await this.failLambdaJob(
         supabase,
         job,
-        this.extractError(progress) || 'Remotion Lambda render failed while polling progress',
+        extractedError,
       );
       return;
     }
@@ -71,23 +77,22 @@ export class RemotionLambdaProgressService {
       return;
     }
 
-    const overallProgress = typeof progress.overallProgress === 'number'
-      ? progress.overallProgress
-      : typeof progress.progress === 'number'
-        ? progress.progress
-        : null;
-    if (overallProgress === null) return;
+    const overallProgress = this.readNumber(progress.overallProgress) ?? this.readNumber(progress.progress);
+    const providerActivity = this.describeProviderActivity(progress);
+    if (overallProgress === null && !providerActivity.isActive) return;
 
-    const percent = Math.min(95, Math.max(20, Math.round(20 + overallProgress * 75)));
+    const percent = overallProgress === null
+      ? providerActivity.fallbackPercent
+      : Math.min(95, Math.max(providerActivity.fallbackPercent, Math.round(20 + overallProgress * 75)));
     await supabase
       .from('production_jobs')
       .update({
-        status: 'WAITING_PROVIDER',
+        status: providerActivity.isActive ? 'RUNNING' : 'WAITING_PROVIDER',
         progress: this.appendProgress(job.progress, {
           percent,
-          message: 'Render en progreso en Remotion Lambda',
+          message: providerActivity.message,
           timestamp: new Date().toISOString(),
-          stage: 'polling_progress',
+          stage: providerActivity.stage,
           provider: 'lambda',
           renderId,
         }),
@@ -98,6 +103,13 @@ export class RemotionLambdaProgressService {
           bucketName,
           lastPolledAt: new Date().toISOString(),
           overallProgress,
+          framesRendered: this.readNumber(progress.framesRendered),
+          combinedFrames: this.readNumber(progress.combinedFrames),
+          lambdasInvoked: this.readNumber(progress.lambdasInvoked),
+          chunks: this.readNumber(progress.chunks),
+          serveUrlOpened: this.readNumber(progress.serveUrlOpened),
+          compositionValidated: this.readNumber(progress.compositionValidated),
+          timeToFinish: this.readNumber(progress.timeToFinish),
         },
       })
       .eq('id', job.id);
@@ -311,6 +323,42 @@ export class RemotionLambdaProgressService {
     );
   }
 
+  private async deferThrottledLambdaJob(supabase: any, job: any, message: string): Promise<void> {
+    const safeMessage = this.sanitizeError(message);
+    const nextRetryCount = this.throttleRetryCount(job) + 1;
+    const renderId = this.readString(job.input_snapshot?.renderId) || this.readString(job.output_snapshot?.renderId);
+
+    await supabase
+      .from('production_jobs')
+      .update({
+        status: 'WAITING_PROVIDER',
+        provider_error: {
+          code: 'LAMBDA_THROTTLED',
+          message: safeMessage,
+          renderProvider: 'lambda',
+          stage: 'polling_retry',
+          retryCount: nextRetryCount,
+          occurredAt: new Date().toISOString(),
+        },
+        progress: this.appendProgress(job.progress, {
+          percent: 25,
+          message: `AWS limito temporalmente la concurrencia del render. Reintentando polling (${nextRetryCount}/3).`,
+          timestamp: new Date().toISOString(),
+          stage: 'lambda_throttled_retry',
+          provider: 'lambda',
+          renderId,
+        }),
+        output_snapshot: {
+          ...(job.output_snapshot || {}),
+          renderProvider: 'lambda',
+          renderId,
+          throttleRetryCount: nextRetryCount,
+          lastThrottleAt: new Date().toISOString(),
+        },
+      })
+      .eq('id', job.id);
+  }
+
   private loadLambdaClient(): LambdaClientModule {
     try {
       // Loaded lazily so local mode can run without Lambda tooling installed.
@@ -323,6 +371,19 @@ export class RemotionLambdaProgressService {
 
   private hasErrors(errors: unknown): boolean {
     return Array.isArray(errors) && errors.length > 0;
+  }
+
+  private throttleRetryCount(job: any): number {
+    const raw = this.readNumber(job.output_snapshot?.throttleRetryCount);
+    return raw === null ? 0 : raw;
+  }
+
+  private isThrottleError(message: string): boolean {
+    const normalized = message.toLowerCase();
+    return normalized.includes('throttl') ||
+      normalized.includes('rate exceeded') ||
+      normalized.includes('concurrency') ||
+      normalized.includes('too many requests');
   }
 
   private extractError(progress: Record<string, unknown>): string | null {
@@ -339,6 +400,75 @@ export class RemotionLambdaProgressService {
 
   private readString(value: unknown): string | null {
     return typeof value === 'string' && value.trim() ? value.trim() : null;
+  }
+
+  private readNumber(value: unknown): number | null {
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
+  }
+
+  private describeProviderActivity(progress: Record<string, unknown>): {
+    isActive: boolean;
+    fallbackPercent: number;
+    message: string;
+    stage: string;
+  } {
+    const framesRendered = this.readNumber(progress.framesRendered) || 0;
+    const combinedFrames = this.readNumber(progress.combinedFrames) || 0;
+    const lambdasInvoked = this.readNumber(progress.lambdasInvoked) || 0;
+    const compositionValidated = this.readNumber(progress.compositionValidated);
+    const serveUrlOpened = this.readNumber(progress.serveUrlOpened);
+
+    if (combinedFrames > 0) {
+      return {
+        isActive: true,
+        fallbackPercent: 90,
+        message: 'Render combinando video final en Remotion Lambda',
+        stage: 'lambda_combining',
+      };
+    }
+
+    if (framesRendered > 0) {
+      return {
+        isActive: true,
+        fallbackPercent: 35,
+        message: 'Renderizando frames en Remotion Lambda',
+        stage: 'lambda_rendering_frames',
+      };
+    }
+
+    if (lambdasInvoked > 0) {
+      return {
+        isActive: true,
+        fallbackPercent: 25,
+        message: 'Remotion Lambda invoco workers de render',
+        stage: 'lambda_workers_invoked',
+      };
+    }
+
+    if (compositionValidated !== null) {
+      return {
+        isActive: true,
+        fallbackPercent: 23,
+        message: 'Composicion validada por Remotion Lambda',
+        stage: 'lambda_composition_validated',
+      };
+    }
+
+    if (serveUrlOpened !== null) {
+      return {
+        isActive: true,
+        fallbackPercent: 22,
+        message: 'Bundle abierto por Remotion Lambda',
+        stage: 'lambda_serve_url_opened',
+      };
+    }
+
+    return {
+      isActive: false,
+      fallbackPercent: 20,
+      message: 'Render aceptado; esperando progreso de Remotion Lambda',
+      stage: 'lambda_waiting_provider',
+    };
   }
 
   private async resolvePlayableOutputUrl(params: {

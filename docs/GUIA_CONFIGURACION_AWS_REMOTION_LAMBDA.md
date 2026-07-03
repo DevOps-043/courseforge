@@ -129,6 +129,7 @@ REMOTION_LAMBDA_REGION=us-east-2
 Notas:
 
 - Remotion recomienda CloudWatch Logs habilitado.
+- `REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS` controla el timeout de render/browser que Remotion envia a `renderMediaOnLambda()`. Mantenerlo por debajo del limite AWS de 900s; `840000` deja margen para cierre, subida de archivos y escritura de progreso.
 - Lambda tiene limite maximo de 900 segundos por invocacion. Para staging se usa 900s para evitar fallos tempranos durante renders reales; para produccion se debe medir duracion/costo y ajustar con cuidado.
 - Si staging necesita mas memoria o disco, aumentar gradualmente y medir costo/duracion.
 
@@ -219,8 +220,9 @@ REMOTION_LAMBDA_SERVE_URL=<serveUrl>
 REMOTION_LAMBDA_SITE_NAME=courseforge-staging
 REMOTION_LAMBDA_BUCKET=remotionlambda-courseforge-staging-535166420267-us-east-2
 REMOTION_LAMBDA_OUTPUT_PRIVACY=private
-REMOTION_LAMBDA_CONCURRENCY=1
+REMOTION_LAMBDA_FRAMES_PER_LAMBDA=600
 REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA=1
+REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS=840000
 
 NEXT_PUBLIC_SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
@@ -288,16 +290,16 @@ curl -H "Authorization: Bearer <TOKEN>" \
 - `output_snapshot.outputStoragePath` presente
 - `material_components.assets.final_video_url` actualizado cuando termine bien
 
-Para staging, mantener concurrencia conservadora mientras se validan cuotas:
+Para staging, partir renders largos en chunks pequenos mientras se validan cuotas:
 
 ```env
-REMOTION_LAMBDA_CONCURRENCY=1
+REMOTION_LAMBDA_FRAMES_PER_LAMBDA=600
 REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA=1
 ```
 
 No configurar `REMOTION_LAMBDA_CONCURRENCY` y `REMOTION_LAMBDA_FRAMES_PER_LAMBDA` al mismo tiempo. Remotion acepta solo una estrategia de particionamiento.
 
-Si AWS devuelve `Concurrency limit reached` o `Rate Exceeded`, esperar a que terminen renders activos y reintentar con estos valores. Si el problema persiste con un solo render activo, revisar cuotas Lambda o solicitar aumento de concurrencia en AWS.
+Si AWS devuelve `Concurrency limit reached` o `Rate Exceeded`, esperar a que terminen renders activos y reintentar con `REMOTION_LAMBDA_FRAMES_PER_LAMBDA=900` para reducir la cantidad de Lambdas por render. Si el problema persiste con un solo render activo, revisar cuotas Lambda o solicitar aumento de concurrencia en AWS.
 
 ## Paso 8: observabilidad
 
@@ -376,11 +378,11 @@ Revisar:
 La cuenta o region alcanzo el limite de concurrencia/rate de AWS Lambda. En staging usar:
 
 ```env
-REMOTION_LAMBDA_CONCURRENCY=1
+REMOTION_LAMBDA_FRAMES_PER_LAMBDA=900
 REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA=1
 ```
 
-No combinar `REMOTION_LAMBDA_CONCURRENCY` con `REMOTION_LAMBDA_FRAMES_PER_LAMBDA`; si ambas existen, el backend prioriza `concurrency` y omite `framesPerLambda`.
+No combinar `REMOTION_LAMBDA_CONCURRENCY` con `REMOTION_LAMBDA_FRAMES_PER_LAMBDA`; si ambas existen, el backend falla al arrancar para evitar renders con tuning ambiguo.
 
 Luego reintentar cuando no haya renders activos. Para produccion, medir uso real y pedir aumento de cuota Lambda si la carga lo requiere.
 

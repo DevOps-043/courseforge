@@ -79,6 +79,7 @@ describe('TemplateCloudBuildService', () => {
         status: 'BUILT',
         serve_url: 'https://cdn.example.com/build-1/index.html',
         provider_build_id: 'codebuild:build-1',
+        build_log: 'Cloud build completed and validated successfully. remotionVersion=4.0.484',
       },
     });
 
@@ -87,6 +88,38 @@ describe('TemplateCloudBuildService', () => {
     assert.equal(result.success, true);
     assert.equal(result.status, 'BUILT');
     assert.equal(result.serveUrl, 'https://cdn.example.com/build-1/index.html');
+  });
+
+  it('does not reuse legacy BUILT builds that were never validated as Remotion bundles', async () => {
+    const { supabase, inserts } = createSupabaseMock({
+      version: {
+        id: 'version-legacy',
+        template_id: 'template-legacy',
+        organization_id: 'org-legacy',
+        status: 'APPROVED',
+        storage_path: 'template-bundles/source.zip',
+        bundle_hash: 'legacy123',
+        composition_id: 'custom-main',
+        export_mode: 'component',
+      },
+      existingBuild: {
+        id: 'legacy-build',
+        status: 'BUILT',
+        serve_url: 'https://cdn.example.com/legacy-build/index.html',
+        provider_build_id: 'codebuild:legacy-build',
+        build_log: 'Cloud build completed successfully.',
+      },
+    });
+    const previousProject = process.env.REMOTION_TEMPLATE_CODEBUILD_PROJECT;
+    delete process.env.REMOTION_TEMPLATE_CODEBUILD_PROJECT;
+    delete process.env.AWS_CODEBUILD_PROJECT_NAME;
+
+    const result = await new TemplateCloudBuildService(supabase).startBuild('version-legacy');
+
+    process.env.REMOTION_TEMPLATE_CODEBUILD_PROJECT = previousProject;
+    assert.equal(result.success, false);
+    assert.equal(result.status, 'BUILD_FAILED');
+    assert.equal(inserts.some((entry) => entry.table === 'remotion_template_builds'), true);
   });
 
   it('fails fast when CodeBuild is not configured for a new cloud build', async () => {

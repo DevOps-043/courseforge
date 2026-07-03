@@ -403,6 +403,8 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const selectedTemplateUsesExternalBundle = selectedTemplateConfig?.render_mode === 'EXTERNAL_BUNDLE_PENDING'
         || selectedTemplateConfig?.render_mode === 'INTERNAL_WITH_EXTERNAL_REFERENCE';
     const selectedTemplateUsesSandbox = selectedTemplateConfig?.render_mode === 'EXTERNAL_SANDBOX_READY';
+    const selectedTemplateUsesCloudBundle = selectedTemplateConfig?.render_mode === 'EXTERNAL_LAMBDA_SITE_READY';
+    const selectedTemplateUsesExternalPreview = selectedTemplateUsesSandbox || selectedTemplateUsesCloudBundle;
     const selectedTemplateNeedsCloudBuild = selectedTemplateConfig?.render_mode === 'EXTERNAL_CLOUD_BUILD_READY'
         || selectedTemplateConfig?.render_mode === 'EXTERNAL_CLOUD_BUILD_FAILED'
         || selectedTemplateUsesSandbox;
@@ -443,7 +445,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const advancedTemplates = filteredTemplates.filter((tpl) => tpl.storage_path || tpl.is_external_bundle_supported);
     const hasFilteredTemplates = filteredTemplates.length > 0;
     const externalPreviewVariables = useMemo(() => {
-        if (!activePreview || !selectedTemplateUsesSandbox) {
+        if (!activePreview || !selectedTemplateUsesExternalPreview) {
             return {};
         }
 
@@ -457,7 +459,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
         activePreview,
         selectedTemplate,
         selectedTemplateConfig?.default_config,
-        selectedTemplateUsesSandbox,
+        selectedTemplateUsesExternalPreview,
     ]);
 
     const handleAssembleSelected = async () => {
@@ -679,7 +681,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                 );
                             }
 
-                            if (activePreview && selectedTemplateUsesSandbox) {
+                            if (activePreview && selectedTemplateUsesExternalPreview) {
                                 return (
                                     <div className="space-y-4">
                                         <RemotionExternalPreviewPlayer
@@ -689,7 +691,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                             variables={externalPreviewVariables}
                                         />
                                         <div className="text-xs text-gray-500 dark:text-gray-400 text-center leading-relaxed">
-                                            Preview del bundle externo. El render final requiere que la plantilla tenga build cloud listo para Lambda.
+                                            Preview del bundle externo usando el build cloud aprobado para Remotion Lambda.
                                         </div>
                                     </div>
                                 );

@@ -30,15 +30,159 @@ phases:
     commands:
       - cd source
       - |
+        node - <<'NODE' > /tmp/courseforge-template-env
+        const fs = require('fs');
+        const manifest = JSON.parse(fs.readFileSync('courseforge-remotion-template.json', 'utf8'));
+        const shellString = (value) => JSON.stringify(String(value ?? ''));
+        const writeEnv = (name, value) => {
+          console.log(`export ${name}=${shellString(value)}`);
+        };
+
+        if (!manifest.entryPoint) {
+          throw new Error('entryPoint is required');
+        }
+
+        writeEnv('MANIFEST_JSON', JSON.stringify(manifest));
+        writeEnv('ENTRY_POINT', manifest.entryPoint);
+        writeEnv('EXPORT_MODE', manifest.exportMode === 'root' ? 'root' : 'component');
+        writeEnv('COMPOSITION_ID', manifest.compositionId || process.env.COURSEFORGE_COMPOSITION_ID || 'external-template');
+        const platformRemotionVersion = process.env.COURSEFORGE_REMOTION_VERSION || '4.0.484';
+        if (manifest.remotionVersion && manifest.remotionVersion !== platformRemotionVersion) {
+          console.warn(`Manifest remotionVersion ${manifest.remotionVersion} differs from Courseforge runtime ${platformRemotionVersion}. Building with runtime version for Lambda compatibility.`);
+        }
+        writeEnv('REMOTION_VERSION', platformRemotionVersion);
+        writeEnv('MANIFEST_REMOTION_VERSION', manifest.remotionVersion || '');
+        writeEnv('DURATION_FRAMES', manifest.defaultDurationFrames || 150);
+        writeEnv('FPS', manifest.fps || 30);
+        writeEnv('WIDTH', manifest.width || 1920);
+        writeEnv('HEIGHT', manifest.height || 1080);
+        NODE
+        . /tmp/courseforge-template-env
+      - |
         if [ -f package-lock.json ]; then
           npm ci --no-audit --no-fund
         elif [ -f package.json ]; then
           npm install --no-audit --no-fund
         else
           npm init -y
-          npm install --no-audit --no-fund react@19 react-dom@19 remotion@4.0.484 @remotion/bundler@4.0.484 @remotion/renderer@4.0.484
+          npm install --no-audit --no-fund react@19 react-dom@19 remotion@4.0.484 @remotion/cli@4.0.484 @remotion/bundler@4.0.484 @remotion/renderer@4.0.484
         fi
-      - npx remotion bundle "$ENTRY_POINT" --out ../build-output
+      - npm install --no-save --no-audit --no-fund "remotion@$REMOTION_VERSION" "@remotion/cli@$REMOTION_VERSION" "@remotion/bundler@$REMOTION_VERSION" "@remotion/renderer@$REMOTION_VERSION" "@remotion/media-utils@$REMOTION_VERSION" "@remotion/transitions@$REMOTION_VERSION" "@remotion/noise@$REMOTION_VERSION"
+      - |
+        if [ "$EXPORT_MODE" = "component" ]; then
+          node - <<'NODE'
+        const fs = require('fs');
+        const path = require('path');
+        const manifest = JSON.parse(process.env.MANIFEST_JSON);
+        const entryPoint = process.env.ENTRY_POINT;
+        const importPath = './' + entryPoint.replace(/\.(tsx|ts|jsx|js)$/i, '');
+        const compositionId = process.env.COMPOSITION_ID;
+        const durationFrames = Number(process.env.DURATION_FRAMES || 150);
+        const fps = Number(process.env.FPS || 30);
+        const width = Number(process.env.WIDTH || 1920);
+        const height = Number(process.env.HEIGHT || 1080);
+        const defaultProps = JSON.stringify(manifest.defaultProps || {});
+        const wrapper = `
+        import React from "react";
+        import { Composition, registerRoot } from "remotion";
+        import * as TemplateModule from "${importPath}";
+
+        const TemplateComponent =
+          TemplateModule.default ||
+          TemplateModule.MyComposition ||
+          TemplateModule.Template ||
+          TemplateModule.Composition ||
+          TemplateModule.RemotionTemplate ||
+          TemplateModule.AlternatingFocus;
+
+        if (!TemplateComponent) {
+          throw new Error("No exported Remotion component found. Export default, MyComposition, Template, Composition, RemotionTemplate or AlternatingFocus.");
+        }
+
+        const Root = () => (
+          <Composition
+            id=${JSON.stringify(compositionId)}
+            component={TemplateComponent}
+            durationInFrames={${JSON.stringify(durationFrames)}}
+            fps={${JSON.stringify(fps)}}
+            width={${JSON.stringify(width)}}
+            height={${JSON.stringify(height)}}
+            defaultProps={${defaultProps}}
+            calculateMetadata={TemplateModule.calculateMetadata}
+          />
+        );
+
+        registerRoot(Root);
+        `;
+        fs.writeFileSync(path.join(process.cwd(), 'courseforge-cloud-entry.tsx'), wrapper);
+        NODE
+        fi
+      - |
+        mkdir -p ../build-output
+        set +e
+        if [ "$EXPORT_MODE" = "root" ]; then
+          npx remotion bundle "$ENTRY_POINT" ../build-output 2>&1 | tee ../build-output/remotion-bundle.log
+          BUNDLE_STATUS=${PIPESTATUS[0]}
+        else
+          npx remotion bundle courseforge-cloud-entry.tsx ../build-output 2>&1 | tee ../build-output/remotion-bundle.log
+          BUNDLE_STATUS=${PIPESTATUS[0]}
+        fi
+        set -e
+        {
+          echo "---- build-output files ----"
+          if [ ! -f ../build-output/index.html ] && [ -f build/index.html ]; then
+            cp -R build/. ../build-output/
+          fi
+          find ../build-output -maxdepth 4 -type f | sort || true
+        } | tee -a ../build-output/remotion-bundle.log
+        if [ -n "${COURSEFORGE_BUILD_LOG_STORAGE_PATH:-}" ]; then
+          aws s3 cp ../build-output/remotion-bundle.log "$COURSEFORGE_BUILD_LOG_STORAGE_PATH" || true
+        fi
+        if [ "$BUNDLE_STATUS" -ne 0 ]; then
+          exit "$BUNDLE_STATUS"
+        fi
+      - |
+        node - <<'NODE'
+        const fs = require('fs');
+        const path = require('path');
+        const indexPath = path.resolve('../build-output/index.html');
+        if (!fs.existsSync(indexPath)) {
+          throw new Error('Remotion bundle did not produce build-output/index.html');
+        }
+
+        let html = fs.readFileSync(indexPath, 'utf8');
+        html = html
+          .replace(/\b(src|href)=(["'])\/(?!\/)([^"']*)\2/g, (_match, attr, quote, assetPath) => {
+            return `${attr}=${quote}./${assetPath}${quote}`;
+          })
+          .replace(/window\.remotion_staticBase\s*=\s*["']\/public["']/g, 'window.remotion_staticBase = "./public"')
+          .replace(/window\.remotion_publicPath\s*=\s*["']\/["']/g, 'window.remotion_publicPath = "./"');
+        fs.writeFileSync(indexPath, html);
+        NODE
+      - |
+        node - <<'NODE'
+        const path = require('path');
+        const {selectComposition} = require('@remotion/renderer');
+        const manifest = JSON.parse(process.env.MANIFEST_JSON);
+        const compositionId = process.env.COMPOSITION_ID;
+        const serveUrl = path.resolve('../build-output');
+
+        selectComposition({
+          serveUrl,
+          id: compositionId,
+          inputProps: manifest.defaultProps || {},
+          timeoutInMilliseconds: 90000,
+        }).then((composition) => {
+          if (!composition || composition.id !== compositionId) {
+            throw new Error(`Unexpected composition resolved: ${composition && composition.id}`);
+          }
+          console.log(`Validated Remotion cloud bundle composition ${composition.id} (${composition.width}x${composition.height}, ${composition.fps}fps, ${composition.durationInFrames} frames). remotionVersion=${process.env.REMOTION_VERSION}`);
+        }).catch((error) => {
+          console.error('Remotion cloud bundle validation failed.');
+          console.error(error && error.stack ? error.stack : error);
+          process.exit(1);
+        });
+        NODE
       - cd ..
   post_build:
     commands:
@@ -47,10 +191,12 @@ phases:
       - aws s3 cp build-output/index.html "$COURSEFORGE_BUILD_OUTPUT_STORAGE_PATH/index.html" --cache-control "no-cache"
       - |
         if [ -n "${COURSEFORGE_BUILD_LOG_STORAGE_PATH:-}" ]; then
-          printf "buildId=%s\nsource=%s\noutput=%s\nhash=%s\n" \
+          printf "buildId=%s\nsource=%s\noutput=%s\nhash=%s\nremotionVersion=%s\nmanifestRemotionVersion=%s\n" \
             "${COURSEFORGE_TEMPLATE_BUILD_ID:-}" \
             "$COURSEFORGE_SOURCE_STORAGE_PATH" \
             "$COURSEFORGE_BUILD_OUTPUT_STORAGE_PATH" \
-            "$COURSEFORGE_BUNDLE_HASH" > build-summary.log
-          aws s3 cp build-summary.log "$COURSEFORGE_BUILD_LOG_STORAGE_PATH"
+            "$COURSEFORGE_BUNDLE_HASH" \
+            "$REMOTION_VERSION" \
+            "${MANIFEST_REMOTION_VERSION:-}" >> build-output/remotion-bundle.log
+          aws s3 cp build-output/remotion-bundle.log "$COURSEFORGE_BUILD_LOG_STORAGE_PATH"
         fi

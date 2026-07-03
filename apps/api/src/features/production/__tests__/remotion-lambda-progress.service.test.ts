@@ -56,6 +56,74 @@ function createSupabaseMock(options: { componentAssets?: Record<string, unknown>
 }
 
 describe('RemotionLambdaProgressService', () => {
+  it('moves accepted Lambda jobs to RUNNING when provider activity is detected', async () => {
+    const service = new RemotionLambdaProgressService();
+    (service as any).loadLambdaClient = () => ({
+      getRenderProgress() {
+        return Promise.resolve({
+          done: false,
+          fatalErrorEncountered: false,
+          errors: [],
+          renderId: 'render-running',
+          overallProgress: 0,
+          serveUrlOpened: Date.now(),
+          compositionValidated: Date.now(),
+          lambdasInvoked: 1,
+          framesRendered: 12,
+          chunks: 1,
+        });
+      },
+    });
+
+    const { supabase, updates } = createSupabaseMock();
+    const job = {
+      id: 'job-running',
+      status: 'WAITING_PROVIDER',
+      progress: [{ percent: 20, message: 'Render aceptado', timestamp: '2026-06-30T00:00:00.000Z' }],
+      input_snapshot: { renderProvider: 'lambda', renderId: 'render-running', bucketName: 'bucket-a' },
+      output_snapshot: { renderProvider: 'lambda', renderId: 'render-running', bucketName: 'bucket-a' },
+    };
+
+    await service.syncJobProgress(supabase, job);
+
+    const jobUpdate = updates.find((entry) => entry.table === 'production_jobs')?.payload;
+
+    assert.equal(jobUpdate?.status, 'RUNNING');
+    assert.equal((jobUpdate?.output_snapshot as any).framesRendered, 12);
+    assert.equal((jobUpdate?.progress as any[])[1].stage, 'lambda_rendering_frames');
+  });
+
+  it('keeps throttled Lambda jobs waiting for a bounded retry window', async () => {
+    const service = new RemotionLambdaProgressService();
+    (service as any).loadLambdaClient = () => ({
+      getRenderProgress() {
+        return Promise.resolve({
+          done: false,
+          fatalErrorEncountered: true,
+          errors: [{ message: 'AWS Concurrency limit reached (Original Error: Rate Exceeded.)' }],
+        });
+      },
+    });
+
+    const { supabase, updates } = createSupabaseMock();
+    const job = {
+      id: 'job-throttled',
+      status: 'WAITING_PROVIDER',
+      progress: [{ percent: 20, message: 'Render aceptado', timestamp: '2026-06-30T00:00:00.000Z' }],
+      input_snapshot: { renderProvider: 'lambda', renderId: 'render-throttled', bucketName: 'bucket-a' },
+      output_snapshot: { renderProvider: 'lambda', renderId: 'render-throttled', bucketName: 'bucket-a' },
+    };
+
+    await service.syncJobProgress(supabase, job);
+
+    const jobUpdate = updates.find((entry) => entry.table === 'production_jobs')?.payload;
+
+    assert.equal(jobUpdate?.status, 'WAITING_PROVIDER');
+    assert.equal((jobUpdate?.provider_error as any).code, 'LAMBDA_THROTTLED');
+    assert.equal((jobUpdate?.output_snapshot as any).throttleRetryCount, 1);
+    assert.equal((jobUpdate?.progress as any[])[1].stage, 'lambda_throttled_retry');
+  });
+
   it('completes Lambda jobs with a browser-playable URL and preserved progress history', async () => {
     const service = new RemotionLambdaProgressService();
     const { supabase, updates } = createSupabaseMock({ componentAssets: { existing: true } });

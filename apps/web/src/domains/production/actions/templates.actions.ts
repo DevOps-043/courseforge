@@ -123,6 +123,14 @@ function resolveBundleStorageLocation(storagePath: string) {
 
 const SUPPORTED_INTERNAL_COMPOSITIONS = new Set(["full-slides", "split-avatar", "avatar-focus"]);
 const DEFAULT_RENDER_COMPOSITION_ID = "full-slides";
+const COURSEFORGE_REMOTION_VERSION = "4.0.484";
+
+function isValidatedCloudBuildLog(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const normalized = value.toLowerCase();
+  return normalized.includes("validated") &&
+    normalized.includes(`remotionversion=${COURSEFORGE_REMOTION_VERSION.toLowerCase()}`);
+}
 const TEMPLATE_BUNDLE_BUCKET = "template-bundles";
 
 export type RemotionTemplateRenderMode =
@@ -208,6 +216,8 @@ export interface RemotionTemplate {
   cloud_build_id?: string | null;
   cloud_build_status?: "BUILDING" | "BUILT" | "BUILD_FAILED" | null;
   cloud_build_serve_url?: string | null;
+  cloud_build_composition_id?: string | null;
+  cloud_build_validated?: boolean;
 }
 
 interface RemotionTemplateCloudBuild {
@@ -215,6 +225,8 @@ interface RemotionTemplateCloudBuild {
   template_version_id: string;
   status: "BUILDING" | "BUILT" | "BUILD_FAILED";
   serve_url: string | null;
+  composition_id: string | null;
+  build_log?: string | null;
   build_error?: string | null;
   provider_status?: string | null;
   provider_status_detail?: string | null;
@@ -227,7 +239,11 @@ function decorateTemplate(template: Omit<RemotionTemplate, "render_mode" | "rend
   );
   const hasExternalBundle = Boolean(template.storage_path);
   const isSandboxReady = template.bundle_status === "APPROVED_FOR_SANDBOX";
-  const hasCloudBuild = template.cloud_build_status === "BUILT" && Boolean(template.cloud_build_serve_url);
+  const cloudCompositionId = template.cloud_build_composition_id || template.composition_id;
+  const hasCloudBuild = template.cloud_build_status === "BUILT" &&
+    Boolean(template.cloud_build_serve_url) &&
+    Boolean(cloudCompositionId) &&
+    template.cloud_build_validated === true;
   const hasCloudBuildFailure = template.cloud_build_status === "BUILD_FAILED";
   const hasCloudBuildRunning = template.cloud_build_status === "BUILDING";
   const renderCompositionId = hasSupportedComposition ? template.composition_id! : DEFAULT_RENDER_COMPOSITION_ID;
@@ -238,7 +254,7 @@ function decorateTemplate(template: Omit<RemotionTemplate, "render_mode" | "rend
 
   if (hasExternalBundle && hasCloudBuild) {
     renderMode = "EXTERNAL_LAMBDA_SITE_READY";
-    renderStatusLabel = `Bundle cloud listo: ${template.composition_id || renderCompositionId}`;
+    renderStatusLabel = `Bundle cloud listo: ${cloudCompositionId}`;
   } else if (hasExternalBundle && hasCloudBuildRunning) {
     renderMode = "EXTERNAL_CLOUD_BUILD_READY";
     renderStatusLabel = "Build cloud en progreso";
@@ -420,6 +436,7 @@ export async function getTemplateCloudBuildStatusAction(
         template_version_id: "",
         status: payload.status,
         serve_url: payload.serveUrl || null,
+        composition_id: null,
         provider_status: payload.providerStatus || null,
         provider_status_detail: payload.providerStatusDetail || null,
         providerBuildId: payload.providerBuildId || null,
@@ -503,7 +520,7 @@ async function attachLatestCloudBuilds(
 
   const { data: builds } = await admin
     .from("remotion_template_builds")
-    .select("id, template_version_id, status, serve_url, build_error, provider_status, provider_status_detail, created_at")
+    .select("id, template_version_id, status, serve_url, composition_id, build_log, build_error, provider_status, provider_status_detail, created_at")
     .in("template_version_id", versionIds)
     .in("status", ["BUILDING", "BUILT", "BUILD_FAILED"])
     .order("created_at", { ascending: false });
@@ -523,6 +540,8 @@ async function attachLatestCloudBuilds(
       cloud_build_id: build?.id || null,
       cloud_build_status: build?.status || null,
       cloud_build_serve_url: build?.serve_url || null,
+      cloud_build_composition_id: build?.composition_id || null,
+      cloud_build_validated: isValidatedCloudBuildLog(build?.build_log),
     };
   });
 }

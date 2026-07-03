@@ -41,9 +41,10 @@ describe('getRemotionRenderConfig', () => {
     }, () => {
       const config = getRemotionRenderConfig();
       assert.equal(config.provider, 'local');
-      assert.equal(config.lambda.concurrency, 1);
-      assert.equal(config.lambda.framesPerLambda, null);
+      assert.equal(config.lambda.concurrency, null);
+      assert.equal(config.lambda.framesPerLambda, 600);
       assert.equal(config.lambda.concurrencyPerLambda, 1);
+      assert.equal(config.lambda.timeoutInMilliseconds, 600000);
     });
   });
 
@@ -82,7 +83,46 @@ describe('getRemotionRenderConfig', () => {
     });
   });
 
-  it('allows Lambda concurrency tuning through environment variables', () => {
+  it('uses framesPerLambda by default for Lambda render chunking', () => {
+    withEnv({
+      RENDER_PROVIDER: 'lambda',
+      REMOTION_LAMBDA_REGION: 'us-east-1',
+      REMOTION_LAMBDA_FUNCTION_NAME: 'remotion-render',
+      REMOTION_LAMBDA_SERVE_URL: 'https://example.com/sites/courseforge',
+      REMOTION_LAMBDA_BUCKET: 'courseforge-renders',
+      REMOTION_LAMBDA_CONCURRENCY: undefined,
+      REMOTION_LAMBDA_FRAMES_PER_LAMBDA: undefined,
+      REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA: '1',
+    }, () => {
+      const config = getRemotionRenderConfig();
+
+      assert.equal(config.lambda.concurrency, null);
+      assert.equal(config.lambda.framesPerLambda, 600);
+      assert.equal(config.lambda.concurrencyPerLambda, 1);
+    });
+  });
+
+  it('allows Lambda framesPerLambda tuning through environment variables', () => {
+    withEnv({
+      RENDER_PROVIDER: 'lambda',
+      REMOTION_LAMBDA_REGION: 'us-east-1',
+      REMOTION_LAMBDA_FUNCTION_NAME: 'remotion-render',
+      REMOTION_LAMBDA_SERVE_URL: 'https://example.com/sites/courseforge',
+      REMOTION_LAMBDA_BUCKET: 'courseforge-renders',
+      REMOTION_LAMBDA_CONCURRENCY: undefined,
+      REMOTION_LAMBDA_FRAMES_PER_LAMBDA: '90',
+      REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA: '1',
+    }, () => {
+      const config = getRemotionRenderConfig();
+
+      assert.equal(config.lambda.concurrency, null);
+      assert.equal(config.lambda.framesPerLambda, 90);
+      assert.equal(config.lambda.concurrencyPerLambda, 1);
+      assert.equal(config.lambda.timeoutInMilliseconds, 600000);
+    });
+  });
+
+  it('allows Lambda concurrency tuning only when framesPerLambda is absent', () => {
     withEnv({
       RENDER_PROVIDER: 'lambda',
       REMOTION_LAMBDA_REGION: 'us-east-1',
@@ -90,14 +130,31 @@ describe('getRemotionRenderConfig', () => {
       REMOTION_LAMBDA_SERVE_URL: 'https://example.com/sites/courseforge',
       REMOTION_LAMBDA_BUCKET: 'courseforge-renders',
       REMOTION_LAMBDA_CONCURRENCY: '2',
-      REMOTION_LAMBDA_FRAMES_PER_LAMBDA: '240',
+      REMOTION_LAMBDA_FRAMES_PER_LAMBDA: undefined,
       REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA: '1',
     }, () => {
       const config = getRemotionRenderConfig();
 
       assert.equal(config.lambda.concurrency, 2);
-      assert.equal(config.lambda.framesPerLambda, 240);
+      assert.equal(config.lambda.framesPerLambda, null);
       assert.equal(config.lambda.concurrencyPerLambda, 1);
+    });
+  });
+
+  it('rejects mixed Lambda chunking strategies', () => {
+    withEnv({
+      RENDER_PROVIDER: 'lambda',
+      REMOTION_LAMBDA_REGION: 'us-east-1',
+      REMOTION_LAMBDA_FUNCTION_NAME: 'remotion-render',
+      REMOTION_LAMBDA_SERVE_URL: 'https://example.com/sites/courseforge',
+      REMOTION_LAMBDA_BUCKET: 'courseforge-renders',
+      REMOTION_LAMBDA_CONCURRENCY: '2',
+      REMOTION_LAMBDA_FRAMES_PER_LAMBDA: '120',
+    }, () => {
+      assert.throws(
+        () => getRemotionRenderConfig(),
+        /REMOTION_LAMBDA_CONCURRENCY.*REMOTION_LAMBDA_FRAMES_PER_LAMBDA/,
+      );
     });
   });
 
@@ -111,6 +168,34 @@ describe('getRemotionRenderConfig', () => {
       REMOTION_LAMBDA_CONCURRENCY: '0',
     }, () => {
       assert.throws(() => getRemotionRenderConfig(), /REMOTION_LAMBDA_CONCURRENCY/);
+    });
+  });
+
+  it('allows a bounded Lambda render timeout override', () => {
+    withEnv({
+      RENDER_PROVIDER: 'lambda',
+      REMOTION_LAMBDA_REGION: 'us-east-1',
+      REMOTION_LAMBDA_FUNCTION_NAME: 'remotion-render',
+      REMOTION_LAMBDA_SERVE_URL: 'https://example.com/sites/courseforge',
+      REMOTION_LAMBDA_BUCKET: 'courseforge-renders',
+      REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS: '840000',
+    }, () => {
+      const config = getRemotionRenderConfig();
+
+      assert.equal(config.lambda.timeoutInMilliseconds, 840000);
+    });
+  });
+
+  it('rejects Lambda render timeouts that exceed the function safety window', () => {
+    withEnv({
+      RENDER_PROVIDER: 'lambda',
+      REMOTION_LAMBDA_REGION: 'us-east-1',
+      REMOTION_LAMBDA_FUNCTION_NAME: 'remotion-render',
+      REMOTION_LAMBDA_SERVE_URL: 'https://example.com/sites/courseforge',
+      REMOTION_LAMBDA_BUCKET: 'courseforge-renders',
+      REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS: '900001',
+    }, () => {
+      assert.throws(() => getRemotionRenderConfig(), /REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS/);
     });
   });
 });

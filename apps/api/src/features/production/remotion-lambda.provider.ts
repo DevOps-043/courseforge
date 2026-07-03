@@ -1,14 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 import {
   buildAssemblyInputProps,
-  resolveExternalCompositionId,
   resolveInternalCompositionId,
   type AssemblyInputProps,
 } from './remotion-assembly-props.service';
-import { buildResolvedProps } from './resolved-props.service';
 import { buildStableHash, getRemotionRenderConfig, type RemotionLambdaConfig } from './remotion-render.config';
 import { mergeTemplateRenderConfigs } from './template-render-config.service';
 import type { RenderDispatchResult, RenderProvider } from './render-provider.types';
+import { resolveExternalLambdaRenderTarget } from './external-lambda-render-target.service';
+import { buildExternalTemplateProps } from './external-template-props.service';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -40,6 +40,8 @@ interface ResolvedLambdaRenderInput {
   buildHash?: string | null;
   exportMode?: 'component' | 'root';
   renderMode: string;
+  propsSource?: string | null;
+  propKeys?: string[];
 }
 
 export class RemotionLambdaProvider implements RenderProvider {
@@ -55,10 +57,17 @@ export class RemotionLambdaProvider implements RenderProvider {
 
     try {
       const resolvedInput = await this.resolveRenderInput(supabase, jobId, config);
-      await this.updateProgress(supabase, jobId, 10, 'Enviando render a Remotion Lambda', {
-        status: 'RUNNING',
-        started_at: new Date().toISOString(),
-      });
+      await this.updateProgress(
+        supabase,
+        jobId,
+        10,
+        'Target de render resuelto para Remotion Lambda',
+        'render_target_resolved',
+        {
+          status: 'RUNNING',
+          started_at: new Date().toISOString(),
+        },
+      );
 
       const lambdaClient = this.loadLambdaClient();
       const tuning = this.resolveLambdaTuning(config);
@@ -70,6 +79,7 @@ export class RemotionLambdaProvider implements RenderProvider {
         inputProps: resolvedInput.inputProps as unknown as Record<string, unknown>,
         codec: 'h264',
         privacy: config.outputPrivacy,
+        timeoutInMilliseconds: config.timeoutInMilliseconds,
         overwrite: true,
         ...tuning,
         concurrencyPerLambda: config.concurrencyPerLambda,
@@ -90,36 +100,51 @@ export class RemotionLambdaProvider implements RenderProvider {
         buildId: resolvedInput.buildId || null,
         bucketName: config.bucketName,
         outputKey: resolvedInput.outputKey,
+        serveUrl: resolvedInput.serveUrl,
+        propsHash: resolvedInput.propsHash,
+        propKeys: resolvedInput.propKeys || null,
         overwrite: true,
+        timeoutInMilliseconds: config.timeoutInMilliseconds,
         tuning,
         concurrencyPerLambda: config.concurrencyPerLambda,
       });
 
-      await this.updateProgress(supabase, jobId, 15, 'Render Lambda preparado; enviando solicitud al proveedor', {
-        provider_error: null,
-        input_snapshot: {
-          ...(resolvedInput.job.input_snapshot || {}),
-          renderProvider: this.name,
-          region: config.region,
-          siteName: config.siteName,
-          serveUrl: resolvedInput.serveUrl,
-          renderMode: resolvedInput.renderMode,
-          templateVersionId: resolvedInput.templateVersionId || null,
-          buildId: resolvedInput.buildId || null,
-          buildHash: resolvedInput.buildHash || null,
-          compositionId: resolvedInput.compositionId,
-          exportMode: resolvedInput.exportMode || 'component',
-          propsHash: resolvedInput.propsHash,
-          outputStoragePath: `s3://${config.bucketName}/${resolvedInput.outputKey}`,
-          lambdaRenderOptions: {
-            overwrite: true,
-          },
-          lambdaTuning: {
-            ...tuning,
-            concurrencyPerLambda: config.concurrencyPerLambda,
+      await this.updateProgress(
+        supabase,
+        jobId,
+        15,
+        'Props externos resueltos; enviando solicitud al proveedor',
+        'external_props_resolved',
+        {
+          provider_error: null,
+          input_snapshot: {
+            ...(resolvedInput.job.input_snapshot || {}),
+            renderProvider: this.name,
+            region: config.region,
+            siteName: config.siteName,
+            serveUrl: resolvedInput.serveUrl,
+            renderMode: resolvedInput.renderMode,
+            templateVersionId: resolvedInput.templateVersionId || null,
+            buildId: resolvedInput.buildId || null,
+            buildHash: resolvedInput.buildHash || null,
+            compositionId: resolvedInput.compositionId,
+            exportMode: resolvedInput.exportMode || 'component',
+            propsHash: resolvedInput.propsHash,
+            propsSource: resolvedInput.propsSource || null,
+            resolvedProps: resolvedInput.inputProps,
+            propKeys: resolvedInput.propKeys || [],
+            outputStoragePath: `s3://${config.bucketName}/${resolvedInput.outputKey}`,
+            lambdaRenderOptions: {
+              overwrite: true,
+              timeoutInMilliseconds: config.timeoutInMilliseconds,
+            },
+            lambdaTuning: {
+              ...tuning,
+              concurrencyPerLambda: config.concurrencyPerLambda,
+            },
           },
         },
-      });
+      );
 
       const result = await lambdaClient.renderMediaOnLambda(renderRequest);
 
@@ -144,7 +169,7 @@ export class RemotionLambdaProvider implements RenderProvider {
             percent: 20,
             message: 'Render aceptado por Remotion Lambda',
             timestamp: new Date().toISOString(),
-            stage: 'accepted',
+            stage: 'lambda_dispatch_accepted',
             provider: this.name,
             renderId,
           }),
@@ -164,9 +189,13 @@ export class RemotionLambdaProvider implements RenderProvider {
             compositionId: resolvedInput.compositionId,
             exportMode: resolvedInput.exportMode || 'component',
             propsHash: resolvedInput.propsHash,
+            propsSource: resolvedInput.propsSource || null,
+            resolvedProps: resolvedInput.inputProps,
+            propKeys: resolvedInput.propKeys || [],
             outputStoragePath,
             lambdaRenderOptions: {
               overwrite: true,
+              timeoutInMilliseconds: config.timeoutInMilliseconds,
             },
             lambdaTuning: {
               ...tuning,
@@ -194,6 +223,9 @@ export class RemotionLambdaProvider implements RenderProvider {
         templateId: resolvedInput.job.input_snapshot?.templateId,
         renderId,
         providerJobId,
+        renderMode: resolvedInput.renderMode,
+        compositionId: resolvedInput.compositionId,
+        serveUrl: resolvedInput.serveUrl,
       });
 
       return {
@@ -373,26 +405,19 @@ export class RemotionLambdaProvider implements RenderProvider {
     if (buildError || !build) {
       throw new Error(`Template cloud build not found: ${buildError?.message || 'unknown error'}`);
     }
-    if (build.status !== 'BUILT' || !this.isHttpsUrl(build.serve_url)) {
-      throw new Error('EXTERNAL_CLOUD_BUILD_REQUIRED: Template cloud build is not Lambda-ready.');
-    }
 
-    const fallbackCompositionId = resolveInternalCompositionId(params.template.composition_id);
-    const compositionId = resolveExternalCompositionId(
-      build.composition_id || version.composition_id || params.job.input_snapshot?.compositionId,
-      fallbackCompositionId,
-    );
-    const exportMode = build.export_mode === 'root' ? 'root' : 'component';
-    const internalInputProps = buildAssemblyInputProps({
-      assets: params.component.assets || {},
-      compositionId: fallbackCompositionId,
-      transitionType: params.variables.transitionType as string | undefined,
-      templateConfig: mergeTemplateRenderConfigs(params.template.default_config, params.variables.templateConfig),
+    const target = resolveExternalLambdaRenderTarget({
+      jobSnapshot: params.job.input_snapshot,
+      version,
+      build,
     });
-    const resolvedPropsResult = buildResolvedProps({
+    const propsResult = buildExternalTemplateProps({
+      assets: params.component.assets || {},
+      compositionId: target.compositionId,
+      templateDefaultConfig: params.template.default_config,
+      variables: params.variables,
       bundleDefaultProps: version.default_props,
-      courseProps: internalInputProps as unknown as Record<string, unknown>,
-      userOverrides: this.extractExternalTemplateOverrides(params.variables),
+      propsSchema: version.props_schema,
     });
     const outputKey = this.buildOutputKey(params.job.id, params.job.organization_id);
 
@@ -400,16 +425,18 @@ export class RemotionLambdaProvider implements RenderProvider {
       job: params.job,
       component: params.component,
       template: params.template,
-      compositionId,
-      inputProps: resolvedPropsResult.resolvedProps,
-      propsHash: resolvedPropsResult.propsHash,
+      compositionId: target.compositionId,
+      inputProps: propsResult.resolvedProps,
+      propsHash: propsResult.propsHash,
       outputKey,
-      serveUrl: build.serve_url,
-      templateVersionId,
-      buildId,
-      buildHash: build.build_hash || version.build_hash || null,
-      exportMode,
+      serveUrl: target.serveUrl,
+      templateVersionId: target.templateVersionId,
+      buildId: target.buildId,
+      buildHash: target.buildHash,
+      exportMode: target.exportMode,
       renderMode: 'EXTERNAL_LAMBDA_SITE_READY',
+      propsSource: propsResult.propsSource,
+      propKeys: propsResult.propKeys,
     };
   }
 
@@ -421,21 +448,6 @@ export class RemotionLambdaProvider implements RenderProvider {
       orgSegment,
       `${jobId}.mp4`,
     ].join('/');
-  }
-
-  private extractExternalTemplateOverrides(value: unknown): Record<string, unknown> | null {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return null;
-    }
-    const variables = value as Record<string, unknown>;
-    const candidate = variables.resolvedProps ?? variables.customTemplateProps ?? variables.templateProps;
-    return candidate && typeof candidate === 'object' && !Array.isArray(candidate)
-      ? candidate as Record<string, unknown>
-      : null;
-  }
-
-  private isHttpsUrl(value: unknown): value is string {
-    return typeof value === 'string' && /^https:\/\//i.test(value);
   }
 
   private loadLambdaClient(): LambdaClientModule {
@@ -452,12 +464,8 @@ export class RemotionLambdaProvider implements RenderProvider {
 
   private resolveLambdaTuning(config: RemotionLambdaConfig): Record<string, number> {
     if (config.concurrency && config.framesPerLambda) {
-      console.warn(
-        '[RemotionLambdaProvider] Both concurrency and framesPerLambda configured; using concurrency and omitting framesPerLambda.',
-        {
-          concurrency: config.concurrency,
-          framesPerLambda: config.framesPerLambda,
-        },
+      throw new Error(
+        'Invalid Remotion Lambda tuning: configure only one of REMOTION_LAMBDA_CONCURRENCY or REMOTION_LAMBDA_FRAMES_PER_LAMBDA.',
       );
     }
 
@@ -469,7 +477,7 @@ export class RemotionLambdaProvider implements RenderProvider {
       return { framesPerLambda: config.framesPerLambda };
     }
 
-    return { concurrency: 1 };
+    return { framesPerLambda: 600 };
   }
 
   private async updateProgress(
@@ -477,6 +485,7 @@ export class RemotionLambdaProvider implements RenderProvider {
     jobId: string,
     percent: number,
     message: string,
+    stage: string,
     extraFields: Record<string, unknown> = {},
   ): Promise<void> {
     const { data: currentJob } = await supabase
@@ -492,7 +501,7 @@ export class RemotionLambdaProvider implements RenderProvider {
           percent,
           message,
           timestamp: new Date().toISOString(),
-          stage: 'dispatch',
+          stage,
           provider: this.name,
         }),
         ...extraFields,
@@ -530,6 +539,21 @@ export class RemotionLambdaProvider implements RenderProvider {
     }
     if (normalized.includes('external_cloud_build_required')) {
       return 'EXTERNAL_CLOUD_BUILD_REQUIRED';
+    }
+    if (normalized.includes('external_build_not_ready')) {
+      return 'EXTERNAL_BUILD_NOT_READY';
+    }
+    if (normalized.includes('external_render_target_incomplete')) {
+      return 'EXTERNAL_RENDER_TARGET_INCOMPLETE';
+    }
+    if (normalized.includes('external_composition_id_missing')) {
+      return 'EXTERNAL_COMPOSITION_ID_MISSING';
+    }
+    if (normalized.includes('external_props_invalid')) {
+      return 'EXTERNAL_PROPS_INVALID';
+    }
+    if (normalized.includes('external_serve_url_mismatch')) {
+      return 'EXTERNAL_SERVE_URL_MISMATCH';
     }
     if (normalized.includes('timed out') || normalized.includes('timeout')) {
       return 'LAMBDA_TIMEOUT';

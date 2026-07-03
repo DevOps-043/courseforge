@@ -53,6 +53,7 @@ interface TemplateVersionRecord {
 }
 
 const CLOUD_PROVIDER = 'aws-codebuild';
+const COURSEFORGE_REMOTION_VERSION = '4.0.484';
 const SECURITY_PROFILE = {
   isolation: 'codebuild-ephemeral',
   secrets: 'none-from-courseforge',
@@ -89,7 +90,7 @@ export class TemplateCloudBuildService {
       exportMode: version.export_mode === 'root' ? 'root' : 'component',
     });
 
-    if (reusableBuild?.status === 'BUILT' && reusableBuild.serve_url) {
+    if (this.isValidatedReusableBuild(reusableBuild)) {
       return {
         success: true,
         buildId: reusableBuild.id,
@@ -297,6 +298,7 @@ export class TemplateCloudBuildService {
         { name: 'COURSEFORGE_BUILD_OUTPUT_STORAGE_PATH', value: buildOutputStoragePath, type: 'PLAINTEXT' },
         { name: 'COURSEFORGE_BUILD_LOG_STORAGE_PATH', value: buildLogStoragePath, type: 'PLAINTEXT' },
         { name: 'COURSEFORGE_BUILD_PUBLIC_BASE_URL', value: publicBaseUrl, type: 'PLAINTEXT' },
+        { name: 'COURSEFORGE_REMOTION_VERSION', value: COURSEFORGE_REMOTION_VERSION, type: 'PLAINTEXT' },
       ],
     });
 
@@ -431,7 +433,7 @@ export class TemplateCloudBuildService {
         serve_url: serveUrl,
         build_hash: buildHash,
         built_at: builtAt,
-        build_log: 'Cloud build completed successfully.',
+        build_log: this.buildValidatedLog(),
         updated_at: builtAt,
       })
       .eq('id', build.id)
@@ -512,6 +514,25 @@ export class TemplateCloudBuildService {
     }
 
     return `${baseUrl.replace(/\/+$/, '')}/${encodeURIComponent(build.id)}/index.html`;
+  }
+
+  private isValidatedReusableBuild(build: any | null | undefined): boolean {
+    if (!build || build.status !== 'BUILT' || typeof build.serve_url !== 'string' || !build.serve_url.startsWith('https://')) {
+      return false;
+    }
+
+    return this.isValidatedLog(build.build_log);
+  }
+
+  private buildValidatedLog(): string {
+    return `Cloud build completed and validated successfully. remotionVersion=${COURSEFORGE_REMOTION_VERSION}`;
+  }
+
+  private isValidatedLog(value: unknown): boolean {
+    if (typeof value !== 'string') return false;
+    const normalized = value.toLowerCase();
+    return normalized.includes('validated') &&
+      normalized.includes(`remotionversion=${COURSEFORGE_REMOTION_VERSION.toLowerCase()}`);
   }
 
   private buildSourceStoragePath(templateVersionId: string, bundleHash: string): string {

@@ -23,6 +23,12 @@ import { RemotionLambdaProgressService } from './remotion-lambda-progress.servic
 import { RemotionRenderOrchestratorService } from './remotion-render-orchestrator.service';
 import { getRemotionRenderConfig, getRemotionRenderReadiness } from './remotion-render.config';
 import { TemplateCloudBuildService } from './template-cloud-build.service';
+import {
+  getExternalLambdaReadiness,
+  isExternalLambdaReadyBuild,
+  resolveExternalLambdaRenderTarget,
+} from './external-lambda-render-target.service';
+import { buildExternalTemplateProps } from './external-template-props.service';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -63,6 +69,9 @@ function buildRemotionRenderIdempotencyKey(params: {
   templateVersionId?: string | null;
   bundleHash?: string | null;
   buildHash?: string | null;
+  buildId?: string | null;
+  serveUrl?: string | null;
+  propsHash?: string | null;
   compositionId?: string | null;
   exportMode?: string | null;
   variables: unknown;
@@ -317,6 +326,41 @@ export class ProductionController {
     }) as unknown as Record<string, unknown>;
   }
 
+  private async getAuthorizedPreviewComponent(
+    serviceClient: SupabaseAnyClient,
+    params: {
+      componentId: string;
+      organizationIds: string[];
+    },
+  ): Promise<any> {
+    const { data: component, error } = await serviceClient
+      .from('material_components')
+      .select(`
+        *,
+        material_lessons (
+          materials (
+            artifacts (
+              organization_id
+            )
+          )
+        )
+      `)
+      .eq('id', params.componentId)
+      .single();
+
+    const componentRecord = component as any;
+    if (error || !componentRecord) {
+      throw new Error('Componente no encontrado para preview.');
+    }
+
+    const organizationId = componentRecord.material_lessons?.materials?.artifacts?.organization_id || null;
+    if (organizationId && !params.organizationIds.includes(organizationId)) {
+      throw new Error('Forbidden: You do not have access to this component');
+    }
+
+    return componentRecord;
+  }
+
   async getExternalBundlePreview(req: Request, res: Response, next: NextFunction) {
     try {
       const { templateId, componentId, variables = {} } = req.body || {};
@@ -345,13 +389,13 @@ export class ProductionController {
         return res.status(403).json({ error: 'Forbidden: You do not have access to this template' });
       }
 
-      const { data: rawSandboxVersion, error: versionError } = await serviceClient
+      const { data: rawVersion, error: versionError } = await serviceClient
         .from('remotion_template_versions')
         .select(
-          'id, organization_id, bundle_hash, build_hash, entry_point, storage_path, template_type, export_mode, composition_id, default_props, default_duration_frames, default_fps, default_width, default_height',
+          'id, organization_id, bundle_hash, build_hash, entry_point, storage_path, template_type, export_mode, composition_id, default_props, props_schema, default_duration_frames, default_fps, default_width, default_height, status',
         )
         .eq('template_id', templateId)
-        .eq('status', 'APPROVED_FOR_SANDBOX')
+        .in('status', ['APPROVED_FOR_SANDBOX', 'APPROVED'])
         .order('version_number', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -359,20 +403,108 @@ export class ProductionController {
       if (versionError) {
         throw versionError;
       }
-      const sandboxVersion = rawSandboxVersion as any;
-      if (!sandboxVersion) {
-        return res.status(404).json({ error: 'No APPROVED_FOR_SANDBOX template version found' });
+      const templateVersion = rawVersion as any;
+      if (!templateVersion) {
+        return res.status(404).json({ error: 'No approved template version found' });
+      }
+
+      const { data: rawCloudBuild } = await serviceClient
+        .from('remotion_template_builds')
+        .select('*')
+        .eq('template_version_id', templateVersion.id)
+        .eq('bundle_hash', templateVersion.bundle_hash || '')
+        .eq('status', 'BUILT')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const cloudBuild = rawCloudBuild as any;
+      if (isExternalLambdaReadyBuild(cloudBuild)) {
+        const target = resolveExternalLambdaRenderTarget({
+          jobSnapshot: {
+            templateVersionId: templateVersion.id,
+            buildId: cloudBuild.id,
+            bundleHash: templateVersion.bundle_hash || null,
+            externalServeUrl: cloudBuild.serve_url || null,
+            cloudProvider: cloudBuild.cloud_provider || null,
+          },
+          version: templateVersion,
+          build: cloudBuild,
+        });
+        const componentRecord = typeof componentId === 'string' && componentId.trim()
+          ? await this.getAuthorizedPreviewComponent(serviceClient, {
+              componentId,
+              organizationIds,
+            })
+          : null;
+        const propsResult = componentRecord
+          ? buildExternalTemplateProps({
+              assets: componentRecord.assets || {},
+              compositionId: target.compositionId,
+              templateDefaultConfig: template.default_config,
+              variables: variables && typeof variables === 'object' ? variables as Record<string, unknown> : {},
+              bundleDefaultProps: templateVersion.default_props,
+              propsSchema: templateVersion.props_schema,
+            })
+          : {
+              resolvedProps: templateVersion.default_props || {},
+              propsHash: buildRemotionRenderIdempotencyKey({
+                componentId: 'preview-default-props',
+                templateId,
+                templateVersionId: target.templateVersionId,
+                buildId: target.buildId,
+                serveUrl: target.serveUrl,
+                compositionId: target.compositionId,
+                exportMode: target.exportMode,
+                variables: templateVersion.default_props || {},
+              }),
+            };
+        const previewRender = componentRecord
+          ? await renderExternalPreviewVideo({
+              buildId: target.buildId,
+              serveUrl: target.serveUrl,
+              compositionId: target.compositionId,
+              inputProps: propsResult.resolvedProps,
+              propsHash: propsResult.propsHash,
+            })
+          : null;
+
+        return res.json({
+          success: true,
+          serveUrl: target.serveUrl,
+          compositionId: target.compositionId,
+          exportMode: target.exportMode,
+          resolvedProps: propsResult.resolvedProps,
+          propsHash: propsResult.propsHash,
+          buildHash: target.buildHash,
+          buildId: target.buildId,
+          templateVersionId: target.templateVersionId,
+          bundleHash: target.bundleHash,
+          previewVideoUrl: previewRender ? this.buildBrowserPreviewVideoUrl(req, previewRender.fileName) : null,
+          previewPosterUrl: previewRender ? this.buildBrowserPreviewVideoUrl(req, previewRender.posterFileName) : null,
+          previewDurationSeconds: previewRender?.previewDurationSeconds ?? null,
+          previewFrames: previewRender?.previewFrames ?? null,
+          compositionDurationSeconds: previewRender?.compositionDurationSeconds ?? null,
+          compositionFrames: previewRender?.compositionFrames ?? null,
+        });
+      }
+
+      if (templateVersion.status !== 'APPROVED_FOR_SANDBOX') {
+        return res.status(409).json({
+          error: 'La plantilla aprobada no tiene build cloud listo para preview y no esta habilitada para sandbox legacy.',
+          code: 'EXTERNAL_BUILD_NOT_READY',
+        });
       }
 
       const internalCompositionId = resolveInternalCompositionId(template.composition_id);
       const compositionId = resolveExternalCompositionId(
-        sandboxVersion.composition_id || template.composition_id,
+        templateVersion.composition_id || template.composition_id,
         internalCompositionId,
       );
       const build = await this.getOrCreatePreviewBuild(serviceClient, {
-        sandboxVersion,
+        sandboxVersion: templateVersion,
         compositionId,
-        organizationId: sandboxVersion.organization_id || template.organization_id,
+        organizationId: templateVersion.organization_id || template.organization_id,
       });
       const courseProps = typeof componentId === 'string' && componentId.trim()
         ? await this.buildPreviewCourseProps(serviceClient, {
@@ -384,7 +516,7 @@ export class ProductionController {
           })
         : {};
       const resolvedProps = buildResolvedProps({
-        bundleDefaultProps: sandboxVersion.default_props,
+        bundleDefaultProps: templateVersion.default_props,
         courseProps,
         userOverrides: this.extractExternalTemplateOverrides(variables),
       });
@@ -410,8 +542,8 @@ export class ProductionController {
         propsHash: resolvedProps.propsHash,
         buildHash: build.buildHash,
         buildId: build.buildId,
-        templateVersionId: sandboxVersion.id,
-        bundleHash: sandboxVersion.bundle_hash,
+        templateVersionId: templateVersion.id,
+        bundleHash: templateVersion.bundle_hash,
         previewVideoUrl: previewRender ? this.buildBrowserPreviewVideoUrl(req, previewRender.fileName) : null,
         previewPosterUrl: previewRender ? this.buildBrowserPreviewVideoUrl(req, previewRender.posterFileName) : null,
         previewDurationSeconds: previewRender?.previewDurationSeconds ?? null,
@@ -748,7 +880,7 @@ export class ProductionController {
 
       const { data: templateRecord } = await serviceClient
         .from('remotion_templates')
-        .select('id, storage_path, bundle_status, composition_id')
+        .select('id, storage_path, bundle_status, composition_id, default_config')
         .eq('id', templateId)
         .maybeSingle();
 
@@ -756,7 +888,7 @@ export class ProductionController {
       const { data: cloudVersion } = hasExternalBundle
         ? await serviceClient
             .from('remotion_template_versions')
-            .select('id, bundle_hash, build_hash, composition_id, export_mode, status')
+            .select('id, bundle_hash, build_hash, composition_id, export_mode, status, default_props, props_schema')
             .eq('template_id', templateId)
             .in('status', ['APPROVED_FOR_SANDBOX', 'APPROVED'])
             .order('version_number', { ascending: false })
@@ -767,7 +899,7 @@ export class ProductionController {
       const { data: cloudBuild } = cloudVersion?.id
         ? await serviceClient
             .from('remotion_template_builds')
-            .select('id, build_hash, serve_url, composition_id, export_mode, status, cloud_provider')
+            .select('id, bundle_hash, build_hash, serve_url, composition_id, export_mode, status, cloud_provider, build_log, build_error, provider_status, provider_status_detail')
             .eq('template_version_id', cloudVersion.id)
             .eq('bundle_hash', cloudVersion.bundle_hash || '')
             .eq('status', 'BUILT')
@@ -777,7 +909,9 @@ export class ProductionController {
         : { data: null };
 
       const renderProvider = renderOrchestrator.providerName;
-      const renderMode = cloudBuild?.serve_url && renderProvider === 'lambda'
+      const cloudBuildReadiness = getExternalLambdaReadiness(cloudBuild);
+      const cloudBuildIsLambdaReady = cloudBuildReadiness.ready;
+      const renderMode = cloudBuildIsLambdaReady && renderProvider === 'lambda'
         ? 'EXTERNAL_LAMBDA_SITE_READY'
         : cloudVersion
           ? 'EXTERNAL_CLOUD_BUILD_READY'
@@ -797,49 +931,103 @@ export class ProductionController {
         renderProvider,
       });
 
-      if (hasExternalBundle && renderProvider === 'lambda' && (!cloudVersion || !cloudBuild?.serve_url)) {
+      if (hasExternalBundle && renderProvider === 'lambda' && (!cloudVersion || !cloudBuildIsLambdaReady)) {
         console.warn('[ProductionController] External bundle render blocked; cloud build is not Lambda-ready.', {
           componentId,
           templateId,
           organizationId,
           cloudVersionId: cloudVersion?.id || null,
           cloudBuildId: cloudBuild?.id || null,
+          cloudBuildStatus: cloudBuild?.status || null,
+          cloudBuildHasServeUrl: Boolean(cloudBuild?.serve_url),
+          cloudBuildCompositionId: cloudBuild?.composition_id || null,
+          cloudBuildReadinessReason: cloudBuildReadiness.reason,
+          cloudBuildProviderStatus: cloudBuild?.provider_status || null,
           renderMode,
           renderProvider,
         });
         return res.status(409).json({
           error:
-            'Esta plantilla externa aun no tiene un build cloud listo para Remotion Lambda. Ejecuta "Construir para cloud" antes de ensamblar el video final.',
-          code: cloudVersion ? 'EXTERNAL_CLOUD_BUILD_REQUIRED' : 'EXTERNAL_BUNDLE_NOT_APPROVED',
+            'Esta plantilla externa aun no tiene un build cloud completo para Remotion Lambda. Ejecuta "Construir para cloud" y verifica que tenga serve_url HTTPS y composition_id.',
+          code: cloudVersion ? 'EXTERNAL_BUILD_NOT_READY' : 'EXTERNAL_BUNDLE_NOT_APPROVED',
+          reason: cloudBuildReadiness.reason,
           renderMode,
           renderProvider,
         });
       }
 
+      let externalRenderTarget: ReturnType<typeof resolveExternalLambdaRenderTarget> | null = null;
+      let externalPropsResult: ReturnType<typeof buildExternalTemplateProps> | null = null;
+      if (renderMode === 'EXTERNAL_LAMBDA_SITE_READY') {
+        try {
+          externalRenderTarget = resolveExternalLambdaRenderTarget({
+            jobSnapshot: {
+              templateVersionId: cloudVersion?.id || null,
+              buildId: cloudBuild?.id || null,
+              bundleHash: cloudVersion?.bundle_hash || null,
+              externalServeUrl: cloudBuild?.serve_url || null,
+              cloudProvider: cloudBuild?.cloud_provider || null,
+            },
+            version: cloudVersion,
+            build: cloudBuild,
+          });
+          externalPropsResult = buildExternalTemplateProps({
+            assets: component.assets || {},
+            compositionId: externalRenderTarget.compositionId,
+            templateDefaultConfig: templateRecord?.default_config,
+            variables,
+            bundleDefaultProps: cloudVersion?.default_props,
+            propsSchema: cloudVersion?.props_schema,
+          });
+        } catch (contractError) {
+          const message = contractError instanceof Error ? contractError.message : String(contractError);
+          const code = message.split(':')[0] || 'EXTERNAL_RENDER_TARGET_INCOMPLETE';
+          console.warn('[ProductionController] External Lambda render contract rejected.', {
+            componentId,
+            templateId,
+            organizationId,
+            cloudVersionId: cloudVersion?.id || null,
+            cloudBuildId: cloudBuild?.id || null,
+            code,
+          });
+          return res.status(409).json({
+            error: message,
+            code,
+            renderMode,
+            renderProvider,
+          });
+        }
+      }
+
       const inputSnapshot = {
         templateId,
-        templateVersionId: cloudVersion?.id || null,
+        templateVersionId: externalRenderTarget?.templateVersionId || cloudVersion?.id || null,
         bundleHash: cloudVersion?.bundle_hash || null,
-        buildId: cloudBuild?.id || null,
-        buildHash: cloudBuild?.build_hash || cloudVersion?.build_hash || null,
-        compositionId: cloudBuild?.composition_id || cloudVersion?.composition_id || null,
-        exportMode: cloudBuild?.export_mode || cloudVersion?.export_mode || 'component',
-        externalServeUrl: cloudBuild?.serve_url || null,
+        buildId: externalRenderTarget?.buildId || cloudBuild?.id || null,
+        buildHash: externalRenderTarget?.buildHash || cloudBuild?.build_hash || cloudVersion?.build_hash || null,
+        compositionId: externalRenderTarget?.compositionId || cloudBuild?.composition_id || cloudVersion?.composition_id || null,
+        exportMode: externalRenderTarget?.exportMode || cloudBuild?.export_mode || cloudVersion?.export_mode || 'component',
+        externalServeUrl: externalRenderTarget?.serveUrl || cloudBuild?.serve_url || null,
         cloudProvider: cloudBuild?.cloud_provider || null,
         renderMode,
         renderProvider,
-        propsHash: null,
-        resolvedProps: null,
+        propsHash: externalPropsResult?.propsHash || null,
+        propsSource: externalPropsResult?.propsSource || null,
+        resolvedProps: externalPropsResult?.resolvedProps || null,
+        propKeys: externalPropsResult?.propKeys || [],
         variables,
       };
       const idempotencyKey = buildRemotionRenderIdempotencyKey({
         componentId,
         templateId,
-        templateVersionId: cloudVersion?.id || null,
+        templateVersionId: externalRenderTarget?.templateVersionId || cloudVersion?.id || null,
         bundleHash: cloudVersion?.bundle_hash || null,
-        buildHash: cloudBuild?.build_hash || cloudVersion?.build_hash || null,
-        compositionId: cloudBuild?.composition_id || cloudVersion?.composition_id || null,
-        exportMode: cloudBuild?.export_mode || cloudVersion?.export_mode || 'component',
+        buildId: externalRenderTarget?.buildId || cloudBuild?.id || null,
+        buildHash: externalRenderTarget?.buildHash || cloudBuild?.build_hash || cloudVersion?.build_hash || null,
+        serveUrl: externalRenderTarget?.serveUrl || cloudBuild?.serve_url || null,
+        propsHash: externalPropsResult?.propsHash || null,
+        compositionId: externalRenderTarget?.compositionId || cloudBuild?.composition_id || cloudVersion?.composition_id || null,
+        exportMode: externalRenderTarget?.exportMode || cloudBuild?.export_mode || cloudVersion?.export_mode || 'component',
         variables,
       });
 
