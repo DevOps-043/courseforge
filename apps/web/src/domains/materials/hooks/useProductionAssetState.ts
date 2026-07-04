@@ -325,7 +325,7 @@ export function useProductionAssetState({
     onAssetChange?.(component.id, { background_music: newMusic });
   };
 
-  // Helper: calls Open Design Export to generate SVG slides from component storyboard.
+  // Helper: generates renderable slide images from the component storyboard.
   // Used automatically when uploaded/imported slides contain no renderable images.
   const autoGenerateSlidesFromStoryboard = async (
     preferredHtmlUrl?: string,
@@ -346,8 +346,8 @@ export function useProductionAssetState({
       }
 
       const newSlides: SlidesAsset = {
-        open_design_project_id: exportData.openDesignProjectId,
-        // Prefer the user's uploaded file as the HTML reference; fall back to OD-generated HTML
+        open_design_project_id: exportData.generatedSlidesId || exportData.openDesignProjectId,
+        // Prefer the user's uploaded file as the HTML reference; fall back to generated HTML
         html_content_path: preferredHtmlPath || `production-assets/slides/${component.id}-slides.html`,
         html_public_url: preferredHtmlUrl || exportData.htmlPublicUrl,
         images: exportData.slideImages,
@@ -364,7 +364,7 @@ export function useProductionAssetState({
     }
   };
 
-  // 3. Open Design HTML export & Upload ZIP/HTML
+  // 3. Generated HTML export & Upload ZIP/HTML
   const handleOpenDesignExport = async () => {
     setIsExportingOpenDesign(true);
     try {
@@ -376,13 +376,13 @@ export function useProductionAssetState({
 
       const data = await response.json();
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Error al exportar a Open Design');
+        throw new Error(data.error || 'Error al exportar slides');
       }
 
       copyToClipboard(data.html, 'HTML Copiado');
 
       const newSlides: SlidesAsset = {
-        open_design_project_id: data.openDesignProjectId,
+        open_design_project_id: data.generatedSlidesId || data.openDesignProjectId,
         html_content_path: `production-assets/slides/${component.id}-slides.html`,
         html_public_url: data.htmlPublicUrl,
         images: Array.isArray(data.slideImages)
@@ -397,9 +397,6 @@ export function useProductionAssetState({
       });
       toast.success('Slides exportadas y copiadas al portapapeles');
 
-      // Open mock Open Design Project Web Editor
-      const openDesignUrl = process.env.NEXT_PUBLIC_OPEN_DESIGN_URL || 'https://opendesign.dev/editor';
-      window.open(`${openDesignUrl}?project=${data.openDesignProjectId}`, '_blank');
     } catch (err: any) {
       toast.error(`Error al exportar slides: ${err.message}`);
     } finally {

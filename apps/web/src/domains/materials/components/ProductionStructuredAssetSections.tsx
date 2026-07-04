@@ -388,7 +388,7 @@ interface OpenDesignSlidesSectionProps {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Wand2 size={14} className="text-purple-500" />
-          <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Diapositivas (Open Design)</span>
+          <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Diapositivas generadas</span>
           {renderableSlideCount > 0 ? (
             <span className="flex items-center gap-0.5 text-[10px] font-semibold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 px-1.5 py-0.5 rounded-full">
               <CheckCircle2 size={10} /> {renderableSlideCount} renderizable(s)

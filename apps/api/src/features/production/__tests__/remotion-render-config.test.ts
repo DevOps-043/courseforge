@@ -5,6 +5,7 @@ import {
   getRemotionRenderConfig,
   getRemotionRenderReadiness,
 } from '../remotion-render.config';
+import { ensureAwsCredentialsEnv } from '../aws-credentials-env';
 
 function withEnv(updates: Record<string, string | undefined>, fn: () => void) {
   const previous = new Map<string, string | undefined>();
@@ -196,6 +197,23 @@ describe('getRemotionRenderConfig', () => {
       REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS: '900001',
     }, () => {
       assert.throws(() => getRemotionRenderConfig(), /REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS/);
+    });
+  });
+
+  it('maps Netlify-safe AWS credential aliases to the AWS SDK environment names', () => {
+    withEnv({
+      AWS_ACCESS_KEY_ID: undefined,
+      AWS_SECRET_ACCESS_KEY: undefined,
+      AWS_SESSION_TOKEN: undefined,
+      SOFLIA_AWS_ACCESS_KEY_ID: 'alias-access-key',
+      SOFLIA_AWS_SECRET_ACCESS_KEY: 'alias-secret-key',
+      SOFLIA_AWS_SESSION_TOKEN: 'alias-session-token',
+    }, () => {
+      ensureAwsCredentialsEnv();
+
+      assert.equal(process.env.AWS_ACCESS_KEY_ID, 'alias-access-key');
+      assert.equal(process.env.AWS_SECRET_ACCESS_KEY, 'alias-secret-key');
+      assert.equal(process.env.AWS_SESSION_TOKEN, 'alias-session-token');
     });
   });
 });

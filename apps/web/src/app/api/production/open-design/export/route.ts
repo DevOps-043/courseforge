@@ -24,6 +24,17 @@ interface RenderableSlideAsset {
     slide_index: number;
     storage_path: string;
     public_url: string;
+    content_type?: string;
+}
+
+async function rasterizeSlideSvgToPng(svg: string): Promise<Buffer> {
+    const sharp = (await import('sharp')).default;
+    return sharp(Buffer.from(svg, 'utf-8'), {
+        density: 144,
+    })
+        .resize(1920, 1080, { fit: 'cover' })
+        .png()
+        .toBuffer();
 }
 
 function escapeXml(value: string) {
@@ -134,11 +145,12 @@ async function uploadRenderableSlideImages(params: {
 
     for (const slide of params.slides) {
         const svg = buildSlideSvg(slide);
-        const storagePath = `slides/${params.componentId}-slide-${String(slide.index).padStart(2, '0')}.svg`;
+        const png = await rasterizeSlideSvgToPng(svg);
+        const storagePath = `slides/${params.componentId}-slide-${String(slide.index).padStart(2, '0')}.png`;
         const { error } = await params.admin.storage
             .from('production-assets')
-            .upload(storagePath, Buffer.from(svg, 'utf-8'), {
-                contentType: 'image/svg+xml',
+            .upload(storagePath, png, {
+                contentType: 'image/png',
                 upsert: true,
             });
 
@@ -154,6 +166,7 @@ async function uploadRenderableSlideImages(params: {
             slide_index: slide.index,
             storage_path: `production-assets/${storagePath}`,
             public_url: publicUrl,
+            content_type: 'image/png',
         });
     }
 
@@ -248,7 +261,7 @@ export async function POST(request: Request) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Presentación Open Design - Export</title>
+  <title>Presentación generada - Export</title>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Plus+Jakarta+Sans:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -424,7 +437,7 @@ export async function POST(request: Request) {
 <body>
   <div class="presentation-container">
     <div class="header-bar">
-      <h1 class="header-title">Open Design Presentation</h1>
+      <h1 class="header-title">Presentación generada</h1>
       <span class="slide-count">${slides.length} diapositivas</span>
     </div>
 
@@ -440,7 +453,7 @@ export async function POST(request: Request) {
         </ul>
       </div>
       <div class="slide-footer">
-        <span>Courseforge Builder</span>
+        <span>SofLIA - Engine</span>
         <span>Plantilla Corporativa</span>
       </div>
     </div>
@@ -464,15 +477,15 @@ export async function POST(request: Request) {
             slides,
         });
 
-        // Update the component's assets record to store the open_design_project_id if not present
+        // Keep the legacy storage field for compatibility with existing assets.
         const currentAssets = component.assets || {};
-        const openDesignProjectId = currentAssets.slides?.open_design_project_id || `od-${componentId}-${Date.now().toString(36)}`;
+        const generatedSlidesId = currentAssets.slides?.open_design_project_id || `slides-${componentId}-${Date.now().toString(36)}`;
         
         const updatedAssets = {
             ...currentAssets,
             slides: {
                 ...currentAssets.slides,
-                open_design_project_id: openDesignProjectId,
+                open_design_project_id: generatedSlidesId,
                 // We mock saving the html content path directly to storage path as reference
                 html_content_path: `production-assets/slides/${componentId}-slides.html`,
                 images: slideImages,
@@ -509,7 +522,8 @@ export async function POST(request: Request) {
         return NextResponse.json({
             success: true,
             html,
-            openDesignProjectId,
+            generatedSlidesId,
+            openDesignProjectId: generatedSlidesId,
             htmlPublicUrl: updatedAssets.slides.html_public_url || null,
             slideImages,
         });

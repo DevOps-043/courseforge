@@ -72,6 +72,19 @@ Despues del bootstrap, reducir privilegios y operar con un rol dedicado. Como mi
 
 No guardar `AWS_ACCESS_KEY_ID` ni `AWS_SECRET_ACCESS_KEY` en el repo. Usar secretos del proveedor de despliegue, AWS Secrets Manager o SSM Parameter Store.
 
+En Netlify, `AWS_ACCESS_KEY_ID` es una variable reservada. Configurar estos alias propios en su lugar:
+
+```env
+SOFLIA_AWS_ACCESS_KEY_ID=<access-key>
+SOFLIA_AWS_SECRET_ACCESS_KEY=<secret-key>
+```
+
+El backend los mapea internamente a los nombres esperados por AWS SDK y Remotion Lambda. Si se usan credenciales temporales, agregar tambien:
+
+```env
+SOFLIA_AWS_SESSION_TOKEN=<session-token>
+```
+
 ## Paso 1: elegir nombres de staging
 
 Valores sugeridos:

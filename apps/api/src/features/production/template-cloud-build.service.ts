@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'crypto';
+import { ensureAwsCredentialsEnv } from './aws-credentials-env';
 
 type SupabaseClientLike = any;
 
@@ -321,6 +322,7 @@ export class TemplateCloudBuildService {
 
   private loadCodeBuildModule(): CodeBuildModule {
     try {
+      ensureAwsCredentialsEnv();
       // Optional dependency. Production cloud build runtimes should install
       // @aws-sdk/client-codebuild; local render/dev can still run without it.
       // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -340,6 +342,7 @@ export class TemplateCloudBuildService {
 
   private loadS3ClientModule(): S3ClientModule {
     try {
+      ensureAwsCredentialsEnv();
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       return require('@aws-sdk/client-s3') as S3ClientModule;
     } catch {

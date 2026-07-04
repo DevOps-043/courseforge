@@ -1,3 +1,4 @@
+import { ensureAwsCredentialsEnv } from './aws-credentials-env';
 import { getRemotionRenderConfig } from './remotion-render.config';
 
 interface LambdaClientModule {
@@ -361,6 +362,7 @@ export class RemotionLambdaProgressService {
 
   private loadLambdaClient(): LambdaClientModule {
     try {
+      ensureAwsCredentialsEnv();
       // Loaded lazily so local mode can run without Lambda tooling installed.
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       return require('@remotion/lambda/client') as LambdaClientModule;
@@ -699,6 +701,7 @@ export class RemotionLambdaProgressService {
 
   private loadS3Client(): S3ClientModule {
     try {
+      ensureAwsCredentialsEnv();
       // Loaded lazily so local mode and tests can run without direct AWS setup.
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       return require('@aws-sdk/client-s3') as S3ClientModule;

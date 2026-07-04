@@ -22,7 +22,7 @@ import {
 const BUCKET = "production-assets";
 
 // Solo se permiten paths dentro de la carpeta slides/ con extensión .html.
-// Cubre tanto el formato open-design ("{id}-slides.html") como el del import
+// Cubre tanto el formato generado ("{id}-slides.html") como el del import
 // desde cloud ("{id}-{prefix}-{name}.html"). Evita path traversal.
 const ALLOWED_PATH_RE = /^slides\/[a-zA-Z0-9_-]+\.html$/;
 

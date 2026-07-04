@@ -9,6 +9,7 @@ import { mergeTemplateRenderConfigs } from './template-render-config.service';
 import type { RenderDispatchResult, RenderProvider } from './render-provider.types';
 import { resolveExternalLambdaRenderTarget } from './external-lambda-render-target.service';
 import { buildExternalTemplateProps } from './external-template-props.service';
+import { ensureAwsCredentialsEnv } from './aws-credentials-env';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -452,6 +453,7 @@ export class RemotionLambdaProvider implements RenderProvider {
 
   private loadLambdaClient(): LambdaClientModule {
     try {
+      ensureAwsCredentialsEnv();
       // Loaded lazily so local development and tests do not require AWS Lambda tooling.
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       return require('@remotion/lambda/client') as LambdaClientModule;
