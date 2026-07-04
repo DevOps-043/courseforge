@@ -118,7 +118,7 @@ function readPackageDependencies(packageJson: any) {
  * Validates a Remotion ZIP bundle statically in memory without execution.
  *
  * This validation is intentionally stricter than a generic ZIP check because a
- * passing bundle can later be reviewed for sandbox execution. Static validation
+ * passing bundle can later be reviewed and built in cloud. Static validation
  * is not treated as sufficient runtime isolation.
  */
 export async function validateRemotionBundle(

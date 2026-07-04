@@ -61,25 +61,6 @@ export function getGeminiApiKeySource() {
   return "missing";
 }
 
-export function getGeminiModel(defaultModel = "gemini-1.5-flash") {
-  return getOptionalEnv("GEMINI_MODEL") || defaultModel;
-}
-
-export function getGeminiSearchModel(defaultModel = "gemini-2.0-flash") {
-  return getOptionalEnv("GEMINI_SEARCH_MODEL") || defaultModel;
-}
-
-export function getGeminiTemperature(defaultTemperature = 0.7) {
-  const rawValue = getOptionalEnv("GEMINI_TEMPERATURE");
-
-  if (!rawValue) {
-    return defaultTemperature;
-  }
-
-  const parsedValue = Number.parseFloat(rawValue);
-  return Number.isNaN(parsedValue) ? defaultTemperature : parsedValue;
-}
-
 export function getSofliaInboxEnv() {
   return {
     key: getRequiredEnv("SOFLIA_INBOX_SUPABASE_KEY"),
@@ -130,13 +111,26 @@ export async function resolveModelSetting(
   supabase: ReturnType<typeof createServiceRoleClient>,
   settingType: string,
   defaults: ModelSettingResult,
+  organizationId?: string | null,
 ): Promise<ModelSettingResult> {
-  const { data } = await supabase
-    .from("model_settings")
-    .select("model_name, fallback_model, temperature, thinking_level")
-    .eq("setting_type", settingType)
-    .eq("is_active", true)
-    .maybeSingle();
+  const selectActiveSetting = (orgId?: string | null) => {
+    let query = supabase
+      .from("model_settings")
+      .select("model_name, fallback_model, temperature, thinking_level")
+      .eq("setting_type", settingType)
+      .eq("is_active", true)
+      .order("id", { ascending: false })
+      .limit(1);
+
+    return orgId ? query.eq("organization_id", orgId) : query.is("organization_id", null);
+  };
+
+  const { data: orgData } = organizationId
+    ? await selectActiveSetting(organizationId).maybeSingle()
+    : { data: null };
+
+  const { data: globalData } = await selectActiveSetting(null).maybeSingle();
+  const data = orgData || globalData;
 
   return {
     model: data?.model_name || defaults.model,

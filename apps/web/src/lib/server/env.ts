@@ -12,9 +12,6 @@ const serverEnvSchema = z
     COURSEFORGE_JWT_SECRET: z.string().min(1).optional(),
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
     GOOGLE_API_KEY: z.string().min(1).optional(),
-    GEMINI_MODEL: z.string().min(1).optional(),
-    GEMINI_SEARCH_MODEL: z.string().min(1).optional(),
-    GEMINI_TEMPERATURE: z.string().min(1).optional(),
     GPT_SOURCES_API_KEY: z.string().min(1).optional(),
     NETLIFY: z.string().min(1).optional(),
     URL: z.string().min(1).optional(),
@@ -40,9 +37,6 @@ function buildEnvObject(): Record<string, string | undefined> {
     COURSEFORGE_JWT_SECRET: process.env.COURSEFORGE_JWT_SECRET,
     GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
     GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
-    GEMINI_MODEL: process.env.GEMINI_MODEL,
-    GEMINI_SEARCH_MODEL: process.env.GEMINI_SEARCH_MODEL,
-    GEMINI_TEMPERATURE: process.env.GEMINI_TEMPERATURE,
     GPT_SOURCES_API_KEY: process.env.GPT_SOURCES_API_KEY,
     NETLIFY: process.env.NETLIFY,
     URL: process.env.URL,
@@ -137,31 +131,6 @@ export function getGeminiApiKey() {
 export function getOptionalGeminiApiKey() {
   const env = getParsedServerEnv();
   return env.GOOGLE_GENERATIVE_AI_API_KEY || env.GOOGLE_API_KEY || null;
-}
-
-export function getGeminiModel() {
-  const env = getParsedServerEnv();
-
-  if (!env.GEMINI_MODEL) {
-    throw new Error("Configuracion incompleta: falta GEMINI_MODEL");
-  }
-
-  return env.GEMINI_MODEL;
-}
-
-export function getGeminiSearchModel(defaultModel = "gemini-2.0-flash") {
-  return getParsedServerEnv().GEMINI_SEARCH_MODEL || defaultModel;
-}
-
-export function getGeminiTemperature(defaultTemperature = 0.7) {
-  const rawValue = getParsedServerEnv().GEMINI_TEMPERATURE;
-
-  if (!rawValue) {
-    return defaultTemperature;
-  }
-
-  const parsedValue = Number.parseFloat(rawValue);
-  return Number.isNaN(parsedValue) ? defaultTemperature : parsedValue;
 }
 
 export function getGptSourcesApiKey() {

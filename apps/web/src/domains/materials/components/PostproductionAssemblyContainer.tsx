@@ -47,9 +47,6 @@ function getComponentLabel(component: any) {
 }
 
 function getAssemblyFailureMessage(job: AssemblyJobTracker) {
-    if (job.errorCode === 'EXTERNAL_SANDBOX_NOT_SUPPORTED_IN_LAMBDA') {
-        return 'Esta plantilla solo permite preview externo por ahora. Usa una plantilla basica interna para el render final.';
-    }
     if (job.errorCode === 'OUTPUT_NOT_ACCESSIBLE') {
         return 'El render termino, pero el video final no quedo disponible como URL HTTPS reproducible.';
     }
@@ -331,23 +328,6 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
         setAssemblyJobs([]);
 
         try {
-            if (selectedTemplateUsesSandbox) {
-                const blockedJobs: AssemblyJobTracker[] = targets.map((component) => ({
-                    componentId: component.id,
-                    jobId: `blocked-sandbox-${component.id}`,
-                    label: getComponentLabel(component),
-                    status: 'FAILED',
-                    progress: 0,
-                    errorCode: 'EXTERNAL_SANDBOX_NOT_SUPPORTED_IN_LAMBDA',
-                    error: 'La plantilla sandbox externa solo esta habilitada para preview.',
-                }));
-
-                setTrackedJobs(() => blockedJobs);
-                setIsAssembling(false);
-                alert('La plantilla seleccionada solo permite preview externo por ahora. Selecciona una plantilla basica interna para ensamblar el video final.');
-                return;
-            }
-
             const startedJobs: AssemblyJobTracker[] = [];
 
             for (const component of targets) {
@@ -402,12 +382,10 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const selectedTemplateSlug = selectedTemplateConfig?.render_composition_id ?? selectedTemplateConfig?.composition_id ?? null;
     const selectedTemplateUsesExternalBundle = selectedTemplateConfig?.render_mode === 'EXTERNAL_BUNDLE_PENDING'
         || selectedTemplateConfig?.render_mode === 'INTERNAL_WITH_EXTERNAL_REFERENCE';
-    const selectedTemplateUsesSandbox = selectedTemplateConfig?.render_mode === 'EXTERNAL_SANDBOX_READY';
     const selectedTemplateUsesCloudBundle = selectedTemplateConfig?.render_mode === 'EXTERNAL_LAMBDA_SITE_READY';
-    const selectedTemplateUsesExternalPreview = selectedTemplateUsesSandbox || selectedTemplateUsesCloudBundle;
+    const selectedTemplateUsesExternalPreview = selectedTemplateUsesCloudBundle;
     const selectedTemplateNeedsCloudBuild = selectedTemplateConfig?.render_mode === 'EXTERNAL_CLOUD_BUILD_READY'
-        || selectedTemplateConfig?.render_mode === 'EXTERNAL_CLOUD_BUILD_FAILED'
-        || selectedTemplateUsesSandbox;
+        || selectedTemplateConfig?.render_mode === 'EXTERNAL_CLOUD_BUILD_FAILED';
     const selectedTemplateBlocksFinalRender = selectedTemplateNeedsCloudBuild;
     const activePreview = videoComponents.find((component) => component.id === activePreviewId) || videoComponents[0];
     const activePreviewTargetDurationSeconds = deriveAssemblyTargetDurationSeconds(activePreview?.content);

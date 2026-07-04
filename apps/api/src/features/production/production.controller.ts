@@ -5,16 +5,6 @@ import * as path from 'path';
 import { jwtVerify } from 'jose';
 import crypto from 'crypto';
 import {
-  buildAssemblyInputProps,
-  resolveExternalCompositionId,
-  resolveInternalCompositionId,
-} from './remotion-assembly-props.service';
-import { buildResolvedProps } from './resolved-props.service';
-import { SandboxBuildService } from './sandbox-build.service';
-import { sandboxBundleCacheInternals } from './sandbox-runner/bundle-cache';
-import { mergeTemplateRenderConfigs } from './template-render-config.service';
-import { rewritePreviewHtmlAssetPaths } from './preview-html.service';
-import {
   getExternalPreviewRenderPath,
   getExternalPreviewRenderRoot,
   renderExternalPreviewVideo,
@@ -36,10 +26,6 @@ const renderOrchestrator = new RemotionRenderOrchestratorService();
 const lambdaProgressService = new RemotionLambdaProgressService();
 
 type SupabaseAnyClient = any;
-
-function isHttpUrl(value: string | null | undefined): value is string {
-  return typeof value === 'string' && /^https?:\/\//i.test(value);
-}
 
 function isInsideDirectory(rootDir: string, candidatePath: string): boolean {
   const resolvedRoot = path.resolve(rootDir);
@@ -182,148 +168,9 @@ export class ProductionController {
     };
   }
 
-  private extractExternalTemplateOverrides(value: unknown): Record<string, unknown> | null {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return null;
-    }
-
-    const variables = value as Record<string, unknown>;
-    const candidate = variables.resolvedProps ?? variables.customTemplateProps ?? variables.templateProps;
-    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
-      return null;
-    }
-
-    return candidate as Record<string, unknown>;
-  }
-
-  private async getOrCreatePreviewBuild(
-    serviceClient: SupabaseAnyClient,
-    params: {
-      sandboxVersion: any;
-      compositionId: string;
-      organizationId: string | null;
-    },
-  ): Promise<{
-    buildId: string | null;
-    serveUrl: string;
-    buildHash: string | null;
-    compositionId: string;
-    exportMode: 'component' | 'root';
-  }> {
-    const exportMode = params.sandboxVersion.export_mode === 'root' ? 'root' : 'component';
-    const bundleHash = params.sandboxVersion.bundle_hash || '';
-    if (!bundleHash) {
-      throw new Error('La version sandbox aprobada no tiene bundle_hash.');
-    }
-    if (!params.organizationId) {
-      throw new Error('No se pudo resolver organization_id para construir preview.');
-    }
-
-    const { data: existingBuild } = await serviceClient
-      .from('remotion_template_builds')
-      .select('id, serve_url, build_hash, composition_id, export_mode')
-      .eq('template_version_id', params.sandboxVersion.id)
-      .eq('bundle_hash', bundleHash)
-      .eq('composition_id', params.compositionId)
-      .eq('export_mode', exportMode)
-      .eq('status', 'BUILT')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const reusableBuild = existingBuild as any;
-    if (reusableBuild?.serve_url) {
-      return {
-        buildId: reusableBuild.id,
-        serveUrl: reusableBuild.serve_url,
-        buildHash: reusableBuild.build_hash || params.sandboxVersion.build_hash || null,
-        compositionId: reusableBuild.composition_id || params.compositionId,
-        exportMode: reusableBuild.export_mode === 'root' ? 'root' : 'component',
-      };
-    }
-
-    const buildService = new SandboxBuildService(serviceClient);
-    const buildResult = await buildService.buildFromZip({
-      templateVersionId: params.sandboxVersion.id,
-      bundleZipPath: params.sandboxVersion.storage_path,
-      bundleHash,
-      organizationId: params.organizationId,
-    });
-
-    if (!buildResult.success || !buildResult.serveUrl) {
-      throw new Error(`Build de preview fallo: ${buildResult.error || 'error desconocido'}`);
-    }
-
-    return {
-      buildId: buildResult.buildId || null,
-      serveUrl: buildResult.serveUrl,
-      buildHash: buildResult.buildHash || null,
-      compositionId: buildResult.compositionId || params.compositionId,
-      exportMode: buildResult.exportMode || exportMode,
-    };
-  }
-
-  private buildBrowserPreviewServeUrl(req: Request, build: { buildId: string | null; serveUrl: string }): string {
-    if (isHttpUrl(build.serveUrl) || !build.buildId) {
-      return build.serveUrl;
-    }
-
-    const publicBaseUrl = process.env.EXPRESS_PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
-    return `${publicBaseUrl.replace(/\/+$/, '')}/api/v1/production/remotion/external-preview-bundles/${encodeURIComponent(build.buildId)}/index.html`;
-  }
-
   private buildBrowserPreviewVideoUrl(req: Request, fileName: string): string {
     const publicBaseUrl = process.env.EXPRESS_PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
     return `${publicBaseUrl.replace(/\/+$/, '')}/api/v1/production/remotion/external-preview-renders/${encodeURIComponent(fileName)}`;
-  }
-
-  private async buildPreviewCourseProps(
-    serviceClient: SupabaseAnyClient,
-    params: {
-      componentId: string;
-      template: any;
-      organizationIds: string[];
-      variables: unknown;
-      internalCompositionId: string;
-    },
-  ): Promise<Record<string, unknown>> {
-    const { data: component, error } = await serviceClient
-      .from('material_components')
-      .select(`
-        *,
-        material_lessons (
-          materials (
-            artifacts (
-              organization_id
-            )
-          )
-        )
-      `)
-      .eq('id', params.componentId)
-      .single();
-
-    const componentRecord = component as any;
-    if (error || !componentRecord) {
-      throw new Error('Componente no encontrado para preview.');
-    }
-
-    const organizationId = componentRecord.material_lessons?.materials?.artifacts?.organization_id || null;
-    if (organizationId && !params.organizationIds.includes(organizationId)) {
-      throw new Error('Forbidden: You do not have access to this component');
-    }
-
-    const variables = params.variables && typeof params.variables === 'object' ? params.variables as Record<string, unknown> : {};
-    const templateConfig = mergeTemplateRenderConfigs(
-      params.template.default_config,
-      variables.templateConfig,
-    );
-
-    return buildAssemblyInputProps({
-      assets: componentRecord.assets || {},
-      compositionId: params.internalCompositionId,
-      transitionType: variables.transitionType,
-      templateConfig,
-    }) as unknown as Record<string, unknown>;
   }
 
   private async getAuthorizedPreviewComponent(
@@ -489,67 +336,11 @@ export class ProductionController {
         });
       }
 
-      if (templateVersion.status !== 'APPROVED_FOR_SANDBOX') {
-        return res.status(409).json({
-          error: 'La plantilla aprobada no tiene build cloud listo para preview y no esta habilitada para sandbox legacy.',
-          code: 'EXTERNAL_BUILD_NOT_READY',
-        });
-      }
-
-      const internalCompositionId = resolveInternalCompositionId(template.composition_id);
-      const compositionId = resolveExternalCompositionId(
-        templateVersion.composition_id || template.composition_id,
-        internalCompositionId,
-      );
-      const build = await this.getOrCreatePreviewBuild(serviceClient, {
-        sandboxVersion: templateVersion,
-        compositionId,
-        organizationId: templateVersion.organization_id || template.organization_id,
-      });
-      const courseProps = typeof componentId === 'string' && componentId.trim()
-        ? await this.buildPreviewCourseProps(serviceClient, {
-            componentId,
-            template,
-            organizationIds,
-            variables,
-            internalCompositionId,
-          })
-        : {};
-      const resolvedProps = buildResolvedProps({
-        bundleDefaultProps: templateVersion.default_props,
-        courseProps,
-        userOverrides: this.extractExternalTemplateOverrides(variables),
-      });
-      const previewRender = build.buildId
-        ? await renderExternalPreviewVideo({
-            buildId: build.buildId,
-            serveUrl: build.serveUrl,
-            compositionId: build.compositionId,
-            inputProps: resolvedProps.resolvedProps,
-            propsHash: resolvedProps.propsHash,
-          })
-        : null;
-
-      return res.json({
-        success: true,
-        serveUrl: this.buildBrowserPreviewServeUrl(req, {
-          buildId: build.buildId,
-          serveUrl: build.serveUrl,
-        }),
-        compositionId: build.compositionId,
-        exportMode: build.exportMode,
-        resolvedProps: resolvedProps.resolvedProps,
-        propsHash: resolvedProps.propsHash,
-        buildHash: build.buildHash,
-        buildId: build.buildId,
+      return res.status(409).json({
+        error: 'La plantilla aprobada necesita un build cloud listo para preview y render final.',
+        code: 'EXTERNAL_BUILD_NOT_READY',
         templateVersionId: templateVersion.id,
-        bundleHash: templateVersion.bundle_hash,
-        previewVideoUrl: previewRender ? this.buildBrowserPreviewVideoUrl(req, previewRender.fileName) : null,
-        previewPosterUrl: previewRender ? this.buildBrowserPreviewVideoUrl(req, previewRender.posterFileName) : null,
-        previewDurationSeconds: previewRender?.previewDurationSeconds ?? null,
-        previewFrames: previewRender?.previewFrames ?? null,
-        compositionDurationSeconds: previewRender?.compositionDurationSeconds ?? null,
-        compositionFrames: previewRender?.compositionFrames ?? null,
+        buildStatus: cloudBuild?.status || null,
       });
     } catch (err) {
       return next(err);
@@ -635,67 +426,6 @@ export class ProductionController {
       const service = new TemplateCloudBuildService(authContext.serviceClient);
       const result = await service.getBuildStatus(buildId);
       return res.status(result.success ? 200 : 404).json(result);
-    } catch (err) {
-      return next(err);
-    }
-  }
-
-  async serveExternalPreviewBundle(req: Request, res: Response, next: NextFunction) {
-    try {
-      const buildId = req.params.buildId;
-      if (!buildId || !/^[a-zA-Z0-9-]{8,80}$/.test(buildId)) {
-        return res.status(400).send('Invalid build id');
-      }
-
-      const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
-      const { data: rawBuild, error } = await serviceClient
-        .from('remotion_template_builds')
-        .select('id, status, serve_url, composition_id')
-        .eq('id', buildId)
-        .single();
-
-      const build = rawBuild as any;
-      if (error || !build) {
-        return res.status(404).send('Preview build not found');
-      }
-
-      if (build.status !== 'BUILT' || !build.serve_url || isHttpUrl(build.serve_url)) {
-        return res.status(404).send('Preview bundle is not available as a local build');
-      }
-
-      const bundleRoot = path.resolve(build.serve_url);
-      if (
-        !path.isAbsolute(bundleRoot) ||
-        !isInsideDirectory(sandboxBundleCacheInternals.CACHE_ROOT, bundleRoot)
-      ) {
-        return res.status(403).send('Preview bundle path is not allowed');
-      }
-
-      const rawAssetPath = typeof req.params[0] === 'string' && req.params[0].trim()
-        ? req.params[0]
-        : 'index.html';
-      const normalizedAssetPath = rawAssetPath.replace(/\\/g, '/');
-      const requestedPath = sandboxBundleCacheInternals.resolveInsideDirectory(bundleRoot, normalizedAssetPath);
-      const filePath = fs.existsSync(requestedPath) && fs.statSync(requestedPath).isDirectory()
-        ? path.join(requestedPath, 'index.html')
-        : requestedPath;
-
-      if (!isInsideDirectory(bundleRoot, filePath) || !fs.existsSync(filePath)) {
-        return res.status(404).send('Preview asset not found');
-      }
-
-      res.removeHeader('X-Frame-Options');
-      res.setHeader(
-        'Content-Security-Policy',
-        "default-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data:; img-src 'self' data: blob: https: http:; media-src 'self' data: blob: https: http:; connect-src 'self' https: http: blob:; frame-ancestors 'self' http://localhost:3000 http://127.0.0.1:3000",
-      );
-      res.setHeader('Cache-Control', 'private, max-age=300');
-      if (path.extname(filePath).toLowerCase() === '.html') {
-        const html = await fs.promises.readFile(filePath, 'utf8');
-        return res.type('html').send(rewritePreviewHtmlAssetPaths(html, buildId, build.composition_id));
-      }
-
-      return res.sendFile(filePath);
     } catch (err) {
       return next(err);
     }

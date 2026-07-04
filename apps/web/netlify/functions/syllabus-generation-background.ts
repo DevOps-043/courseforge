@@ -119,15 +119,21 @@ export const handler: Handler = async (event) => {
   const genAI = createGeminiClient();
 
   try {
+    const { data: artifactScope } = await supabase
+      .from("artifacts")
+      .select("organization_id")
+      .eq("id", artifactId)
+      .maybeSingle();
+
     const modelConfig = await resolveModelSetting(supabase, "SYLLABUS", {
       model: "gemini-2.5-flash",
       fallbackModel: "gemini-2.0-flash",
       temperature: 0.7,
       thinkingLevel: "medium",
-    });
+    }, artifactScope?.organization_id || null);
     console.log(`[Syllabus Background] Model config: ${modelConfig.model} / ${modelConfig.fallbackModel}`);
 
-    const searchModelName = modelConfig.model;
+    const searchModelName = modelConfig.fallbackModel || modelConfig.model;
     let researchContext = "";
     let searchQueries: string[] = [];
 

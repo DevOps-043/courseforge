@@ -139,7 +139,6 @@ export type RemotionTemplateRenderMode =
   | "EXTERNAL_LAMBDA_SITE_READY"
   | "EXTERNAL_CLOUD_BUILD_READY"
   | "EXTERNAL_CLOUD_BUILD_FAILED"
-  | "EXTERNAL_SANDBOX_READY"
   | "EXTERNAL_BUNDLE_PENDING"
   | "FALLBACK_INTERNAL";
 
@@ -238,7 +237,7 @@ function decorateTemplate(template: Omit<RemotionTemplate, "render_mode" | "rend
     template.composition_id && SUPPORTED_INTERNAL_COMPOSITIONS.has(template.composition_id),
   );
   const hasExternalBundle = Boolean(template.storage_path);
-  const isSandboxReady = template.bundle_status === "APPROVED_FOR_SANDBOX";
+  const hasLegacySandboxApproval = template.bundle_status === "APPROVED_FOR_SANDBOX";
   const cloudCompositionId = template.cloud_build_composition_id || template.composition_id;
   const hasCloudBuild = template.cloud_build_status === "BUILT" &&
     Boolean(template.cloud_build_serve_url) &&
@@ -261,9 +260,9 @@ function decorateTemplate(template: Omit<RemotionTemplate, "render_mode" | "rend
   } else if (hasExternalBundle && hasCloudBuildFailure) {
     renderMode = "EXTERNAL_CLOUD_BUILD_FAILED";
     renderStatusLabel = "Build cloud fallido";
-  } else if (hasExternalBundle && isSandboxReady) {
+  } else if (hasExternalBundle && hasLegacySandboxApproval) {
     renderMode = "EXTERNAL_CLOUD_BUILD_READY";
-    renderStatusLabel = "Requiere construir para cloud antes del render final";
+    renderStatusLabel = "ZIP aprobado historico; requiere construir para cloud";
   } else if (hasSupportedComposition && hasExternalBundle) {
     renderMode = "INTERNAL_WITH_EXTERNAL_REFERENCE";
     renderStatusLabel = `Renderizable ahora: ${renderCompositionId}. ZIP guardado como referencia (${bundleStatus})`;
@@ -1189,8 +1188,8 @@ export async function approveTemplateVersionAction(
       bundleHash: version.bundle_hash || null,
     });
 
-    // 3. Deprecate previous audit-approved versions. Sandbox-enabled versions
-    // are demoted explicitly by approveTemplateVersionForSandboxAction.
+    // 3. Deprecate previous audit-approved versions. Legacy runtime-approved
+    // records are kept for compatibility but new approvals use cloud builds.
     await admin
       .from("remotion_template_versions")
       .update({ status: "DEPRECATED" })
@@ -1237,104 +1236,6 @@ export async function approveTemplateVersionAction(
   } catch (error: any) {
     console.error("[TemplatesActions] Error approving version:", error);
     return { success: false, error: error.message || "Error al aprobar la versión" };
-  }
-}
-
-/**
- * Enables a previously approved version for sandbox execution. This is separate
- * from audit approval so static validation + human review never imply runtime
- * execution permission.
- */
-export async function approveTemplateVersionForSandboxAction(
-  versionId: string
-): Promise<{ success: boolean; error?: string }> {
-  const { error: authError, user } = await getAuthorizedSupabase();
-  if (authError || !user) return { success: false, error: authError || "No autorizado" };
-
-  const activeOrgId = await resolveActiveTemplateOrganizationId();
-  if (!activeOrgId) return { success: false, error: "No se encontrÃ³ organizaciÃ³n activa" };
-
-  const admin = getServiceRoleClient();
-
-  try {
-    const REVIEWER_ROLES = new Set(["ADMIN", "ARQUITECTO", "SUPERADMIN"]);
-    if (!REVIEWER_ROLES.has((await resolveActiveTenantContext())?.platformRole || "")) {
-      throw new Error("No tienes permisos de revisor para habilitar bundles en sandbox.");
-    }
-
-    const { data: version, error: fetchVersionError } = await admin
-      .from("remotion_template_versions")
-      .select("*")
-      .eq("id", versionId)
-      .single();
-
-    if (fetchVersionError || !version) {
-      throw new Error("VersiÃ³n de plantilla no encontrada.");
-    }
-
-    if (version.organization_id !== activeOrgId) {
-      throw new Error("No tienes permiso para habilitar esta versiÃ³n.");
-    }
-
-    if (version.status !== "APPROVED") {
-      throw new Error(`La versiÃ³n debe estar APPROVED antes de habilitar sandbox. Estado actual: ${version.status}`);
-    }
-
-    logTemplateRuntimeState("Enabling template version for sandbox.", {
-      versionId,
-      templateId: version.template_id,
-      currentStatus: version.status,
-      manifestCompositionId: version.manifest?.compositionId || null,
-      entryPoint: version.entry_point || null,
-      bundleHash: version.bundle_hash || null,
-      sandboxEnabledEnv: process.env.EXTERNAL_TEMPLATE_SANDBOX_ENABLED === "true",
-      sandboxCommandConfigured: Boolean(process.env.EXTERNAL_TEMPLATE_SANDBOX_COMMAND),
-    });
-
-    await admin
-      .from("remotion_template_versions")
-      .update({ status: "APPROVED" })
-      .eq("template_id", version.template_id)
-      .eq("status", "APPROVED_FOR_SANDBOX");
-
-    const { error: approveError } = await admin
-      .from("remotion_template_versions")
-      .update({
-        status: "APPROVED_FOR_SANDBOX",
-        approved_at: new Date().toISOString(),
-        approved_by: user.userId,
-      })
-      .eq("id", versionId);
-
-    if (approveError) throw approveError;
-
-    const manifest = version.manifest || {};
-    const compositionId = version.composition_id || manifest.compositionId || "full-slides";
-    const { error: updateTemplateError } = await admin
-      .from("remotion_templates")
-      .update({
-        bundle_status: "APPROVED_FOR_SANDBOX",
-        storage_path: version.storage_path,
-        entry_point: version.entry_point || "src/index.tsx",
-        composition_id: compositionId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", version.template_id);
-
-    if (updateTemplateError) throw updateTemplateError;
-    logTemplateRuntimeState("Template version enabled for sandbox.", {
-      versionId,
-      templateId: version.template_id,
-      newVersionStatus: "APPROVED_FOR_SANDBOX",
-      templateBundleStatus: "APPROVED_FOR_SANDBOX",
-      templateCompositionId: compositionId,
-      templateEntryPoint: version.entry_point || "src/index.tsx",
-    });
-
-    return { success: true };
-  } catch (error: any) {
-    console.error("[TemplatesActions] Error enabling sandbox version:", error);
-    return { success: false, error: error.message || "Error al habilitar la versiÃ³n para sandbox" };
   }
 }
 

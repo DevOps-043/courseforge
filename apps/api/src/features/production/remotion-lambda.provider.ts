@@ -318,7 +318,7 @@ export class RemotionLambdaProvider implements RenderProvider {
       : {};
     if (job.input_snapshot?.renderMode === 'EXTERNAL_SANDBOX_PREVIEW_ONLY') {
       throw new Error(
-        'EXTERNAL_SANDBOX_NOT_SUPPORTED_IN_LAMBDA: Las plantillas ZIP/sandbox externo solo estan habilitadas para preview en Lambda. Selecciona una plantilla interna para el render final.',
+        'EXTERNAL_CLOUD_BUILD_REQUIRED: La plantilla externa necesita un build cloud BUILT con serveUrl HTTPS antes del render final en Lambda.',
       );
     }
     if (job.input_snapshot?.renderMode === 'EXTERNAL_CLOUD_BUILD_READY') {
@@ -536,9 +536,6 @@ export class RemotionLambdaProvider implements RenderProvider {
 
   private classifyError(message: string): string {
     const normalized = message.toLowerCase();
-    if (normalized.includes('external_sandbox_not_supported_in_lambda')) {
-      return 'EXTERNAL_SANDBOX_NOT_SUPPORTED_IN_LAMBDA';
-    }
     if (normalized.includes('external_cloud_build_required')) {
       return 'EXTERNAL_CLOUD_BUILD_REQUIRED';
     }

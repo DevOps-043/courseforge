@@ -32,7 +32,7 @@ describe('remotion assembly props contract', () => {
     assert.equal(resolveCompositionId('CustomBundleSmokeTest'), 'full-slides');
   });
 
-  it('preserves non-empty external sandbox composition IDs', () => {
+  it('preserves non-empty external bundle composition IDs', () => {
     assert.equal(resolveExternalCompositionId('CustomBundleSmokeTest'), 'CustomBundleSmokeTest');
     assert.equal(resolveExternalCompositionId('  CustomBundleSmokeTest  '), 'CustomBundleSmokeTest');
     assert.equal(resolveExternalCompositionId('', 'split-avatar'), 'split-avatar');

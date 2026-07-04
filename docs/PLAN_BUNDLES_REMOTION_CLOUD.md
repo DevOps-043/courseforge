@@ -2,7 +2,7 @@
 
 ## Resumen
 
-El flujo productivo para bundles externos pasa de sandbox/local a build aislado en cloud:
+El flujo productivo para bundles externos usa build aislado en cloud:
 
 `ZIP aprobado -> AWS CodeBuild -> build durable en S3/site Lambda -> renderMediaOnLambda -> production-videos -> BD/publicacion`
 
@@ -70,7 +70,7 @@ REMOTION_LAMBDA_SERVE_URL=
 - El build recibe solo identificadores, rutas de storage, hash esperado y paths de salida.
 - IAM de CodeBuild debe ser de minimo privilegio: leer source ZIP, escribir output/logs y, si aplica, publicar site Lambda.
 - Los errores se sanitizan para no exponer credenciales.
-- El sandbox local queda como preview/desarrollo, no como dependencia productiva.
+- El runner local legacy queda retirado. Preview y render final de bundles externos dependen de build cloud listo.
 
 ## Checklist de rollout
 

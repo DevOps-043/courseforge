@@ -11,7 +11,7 @@ export const DEFAULT_BG_MUSIC_VOLUME = 0.15;
 export const DEFAULT_COMPOSITION_ID = 'full-slides';
 
 // Only compositions registered by the internal Remotion root are accepted here.
-// External sandbox templates may provide different composition IDs.
+// External cloud bundles may provide different composition IDs.
 const INTERNAL_COMPOSITION_IDS = new Set(['full-slides', 'split-avatar', 'avatar-focus']);
 
 export interface AssemblyInputProps {

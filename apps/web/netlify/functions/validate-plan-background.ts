@@ -6,7 +6,8 @@ import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import {
     createGoogleAIProvider,
-    getGeminiModel,
+    createServiceRoleClient,
+    resolveModelSetting,
     getSupabaseAnonKey,
     getSupabaseUrl,
 } from './shared/bootstrap';
@@ -153,7 +154,7 @@ export const handler: Handler = async (event) => {
         // Get the Artifact for context (Title, Idea Central)
         const { data: artifact } = await supabase
             .from('artifacts')
-            .select('idea_central, nombres, audiencia_objetivo')
+            .select('idea_central, nombres, audiencia_objetivo, organization_id')
             .eq('id', artifactId)
             .single();
 
@@ -173,15 +174,25 @@ export const handler: Handler = async (event) => {
         `;
 
         // --- STEP 3: RUN VALIDATION AGENTS ---
-        // modelName: Use env var to match project config (e.g. gemini-3-flash-preview or gemini-2.0-flash)
-        const modelName = getGeminiModel('gemini-1.5-flash');
+        const modelSettings = await resolveModelSetting(
+            createServiceRoleClient(),
+            'INSTRUCTIONAL_PLAN',
+            {
+                model: 'gemini-2.5-flash',
+                fallbackModel: 'gemini-2.5-flash',
+                temperature: 0.2,
+                thinkingLevel: 'medium',
+            },
+            artifact?.organization_id || null,
+        );
+        const modelName = modelSettings.model;
         console.log(`[Validation Job] Validating with ${modelName}...`);
 
         const result = await generateObject({
             model: googleAI(modelName),
             schema: ValidationResultSchema,
             prompt: `${INSTRUCTIONAL_PLAN_VALIDATION_PROMPT}\n\n${validationContext}`,
-            temperature: 0.2, // Low temp for strict analysis
+            temperature: modelSettings.temperature,
         });
 
         const validationOutput = result.object;

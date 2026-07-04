@@ -26,7 +26,7 @@ Hallazgos actuales:
 - `apps/api/src/features/production/production.controller.ts` crea `production_jobs`, pero antes siempre delegaba a `RemotionQueueService`.
 - `apps/api/src/features/production/remotion-queue.service.ts` ejecuta una cola local con `child_process.fork()`, util para desarrollo pero no suficiente como runtime productivo.
 - `apps/api/src/features/production/remotion-worker.service.ts` persiste el resultado final en Supabase Storage y actualiza `material_components.assets.final_video_url`.
-- Las plantillas ZIP aprobadas pasan por `APPROVED_FOR_SANDBOX` y por el sandbox externo, pero el preview interno y el render final todavia tienen rutas que pueden divergir.
+- Las plantillas ZIP historicas pueden conservar `APPROVED_FOR_SANDBOX` por compatibilidad, pero la ruta productiva actual exige `APPROVED` + build cloud `BUILT` en `remotion_template_builds`.
 
 Riesgo principal: si se migra "por parche", se puede terminar con API cloud, render local, storage mixto y secretos dispersos. Por eso la implementacion se separa en contratos y providers.
 

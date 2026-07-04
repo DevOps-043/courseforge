@@ -15,11 +15,9 @@ import { SyllabusGenerationMetadata } from "@/domains/syllabus/types/syllabus.ty
 import {
   getDeploymentSiteUrl,
   getGeminiApiKey,
-  getGeminiModel,
-  getGeminiSearchModel,
-  getGeminiTemperature,
   isNetlifyDeployment,
 } from "@/lib/server/env";
+import { getPipelineModelSettings } from "@/lib/server/model-settings";
 import { createClient } from "@/utils/supabase/server";
 import {
   getAuthenticatedUser,
@@ -130,8 +128,13 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const tenant = await resolveActiveTenantContext();
+    const syllabusSettings = await getPipelineModelSettings(
+      "SYLLABUS",
+      tenant?.organizationId,
+    );
     const genAI = new GoogleGenAI({ apiKey: getGeminiApiKey() });
-    const searchModelName = getGeminiSearchModel();
+    const searchModelName = syllabusSettings.fallback_model || syllabusSettings.model_name;
     const researchPrompt = buildSyllabusResearchPrompt(ideaCentral, objetivos);
 
     let researchContext = "";
@@ -163,7 +166,7 @@ export async function POST(request: NextRequest) {
       researchContext = "No se pudo realizar investigación previa.";
     }
 
-    const mainModelName = getGeminiModel();
+    const mainModelName = syllabusSettings.model_name;
     const finalPrompt = buildLocalPrompt(
       ideaCentral,
       objetivos,
@@ -175,7 +178,7 @@ export async function POST(request: NextRequest) {
       model: mainModelName,
       contents: finalPrompt,
       config: {
-        temperature: getGeminiTemperature(),
+        temperature: syllabusSettings.temperature,
         responseMimeType: "application/json",
       },
     });

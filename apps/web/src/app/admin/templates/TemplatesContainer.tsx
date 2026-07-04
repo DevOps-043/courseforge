@@ -37,7 +37,6 @@ import {
   getPublicTemplatesAction,
   getTemplateVersionsAction,
   approveTemplateVersionAction,
-  approveTemplateVersionForSandboxAction,
   rejectTemplateVersionAction,
   startTemplateCloudBuildAction,
   getTemplateCloudBuildStatusAction,
@@ -137,7 +136,7 @@ export default function TemplatesContainer({
   };
 
   const handleApproveVersion = async (versionId: string) => {
-    if (!confirm("¿Estás seguro de que deseas aprobar esta versión como artefacto auditable? El ZIP no se ejecutará hasta habilitar una aprobación de sandbox separada.")) return;
+    if (!confirm("¿Aprobar esta versión como ZIP revisado? Para render final deberá pasar por Construir para cloud.")) return;
     setLoadingVersions(true);
     try {
       const res = await approveTemplateVersionAction(versionId);
@@ -175,27 +174,6 @@ export default function TemplatesContainer({
         }
       } else {
         alert("Error al rechazar versión: " + res.error);
-      }
-    } catch (err: any) {
-      alert(err.message || "Error");
-    } finally {
-      setLoadingVersions(false);
-    }
-  };
-
-  const handleEnableSandboxVersion = async (versionId: string) => {
-    if (!confirm("¿Habilitar esta versión para ejecución en sandbox? Solo tendrá efecto si el runner externo está configurado y EXTERNAL_TEMPLATE_SANDBOX_ENABLED está activo.")) return;
-    setLoadingVersions(true);
-    try {
-      const res = await approveTemplateVersionForSandboxAction(versionId);
-      if (res.success) {
-        alert("Versión habilitada para sandbox.");
-        if (selectedVersionTemplate) {
-          await refreshVersions(selectedVersionTemplate.id);
-          await handleRefresh();
-        }
-      } else {
-        alert("Error al habilitar sandbox: " + res.error);
       }
     } catch (err: any) {
       alert(err.message || "Error");
@@ -1222,19 +1200,6 @@ export default function TemplatesContainer({
                                     Aprobada para auditoria por {version.approved_by_profile?.first_name || version.approved_by_profile?.username || version.approved_by_profile?.email || "Revisor"}
                                   </span>
                                 </div>
-                                {canReview && (
-                                  <div className="flex justify-end">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleEnableSandboxVersion(version.id)}
-                                      className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold border border-purple-500/30 text-purple-600 hover:bg-purple-500/10 rounded-lg transition-all"
-                                      title="Habilita esta version para que el worker pueda intentar el runner sandbox externo cuando el feature flag este activo"
-                                    >
-                                      <ShieldCheck size={13} />
-                                      Habilitar sandbox
-                                    </button>
-                                  </div>
-                                )}
                               </div>
                             )}
 
@@ -1298,10 +1263,10 @@ export default function TemplatesContainer({
                             )}
 
                             {version.status === "APPROVED_FOR_SANDBOX" && (
-                              <div className="p-3.5 bg-purple-500/10 border border-purple-500/20 rounded-xl text-xs text-purple-700 dark:text-purple-300 flex items-center gap-1.5 animate-in fade-in duration-200">
+                              <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-700 dark:text-amber-300 flex items-center gap-1.5 animate-in fade-in duration-200">
                                 <ShieldCheck size={14} className="shrink-0" />
                                 <span className="font-medium">
-                                  Habilitada para preview/sandbox legacy. El render final productivo requiere build cloud listo.
+                                  Aprobacion historica detectada. Para render final, construye este ZIP en cloud.
                                 </span>
                               </div>
                             )}
@@ -1417,7 +1382,8 @@ function TemplateCard({
   const isGlobal = tpl.organization_id === null;
   const isExternalPending = tpl.render_mode === "EXTERNAL_BUNDLE_PENDING";
   const hasExternalReference = tpl.render_mode === "INTERNAL_WITH_EXTERNAL_REFERENCE";
-  const isSandboxReady = tpl.render_mode === "EXTERNAL_SANDBOX_READY";
+  const isCloudReady = tpl.render_mode === "EXTERNAL_LAMBDA_SITE_READY";
+  const needsCloudBuild = tpl.render_mode === "EXTERNAL_CLOUD_BUILD_READY" || tpl.render_mode === "EXTERNAL_CLOUD_BUILD_FAILED";
 
   return (
     <motion.div
@@ -1468,9 +1434,9 @@ function TemplateCard({
             )}
             <span
               className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                isSandboxReady
+                isCloudReady
                   ? "border-green-500/25 bg-green-500/10 text-green-700 dark:text-green-300"
-                  : isExternalPending
+                  : isExternalPending || needsCloudBuild
                   ? "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300"
                   : hasExternalReference
                     ? "border-blue-500/25 bg-blue-500/10 text-blue-700 dark:text-blue-300"
@@ -1478,8 +1444,8 @@ function TemplateCard({
               }`}
               title={tpl.render_status_label}
             >
-              {isExternalPending ? <AlertTriangle size={10} /> : <PlayCircle size={10} />}
-              {isSandboxReady ? "Sandbox habilitado" : tpl.storage_path ? "ZIP referencia" : "Renderizable ahora"}
+              {isExternalPending || needsCloudBuild ? <AlertTriangle size={10} /> : <PlayCircle size={10} />}
+              {isCloudReady ? "Bundle cloud listo" : needsCloudBuild ? "Build cloud pendiente" : tpl.storage_path ? "ZIP referencia" : "Renderizable ahora"}
             </span>
           </div>
         </div>
@@ -1500,13 +1466,13 @@ function TemplateCard({
         </div>
 
         <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed ${
-          isSandboxReady
+          isCloudReady
             ? "border-green-500/20 bg-green-500/10 text-green-700 dark:text-green-300"
-            : isExternalPending
+            : isExternalPending || needsCloudBuild
             ? "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300"
             : "border-gray-100 bg-gray-50 text-gray-500 dark:border-[#6C757D]/5 dark:bg-[#0F1419]/50 dark:text-gray-400"
         }`}>
-          {isExternalPending ? <AlertTriangle size={13} className="mt-0.5 shrink-0" /> : <PlayCircle size={13} className="mt-0.5 shrink-0" />}
+          {isExternalPending || needsCloudBuild ? <AlertTriangle size={13} className="mt-0.5 shrink-0" /> : <PlayCircle size={13} className="mt-0.5 shrink-0" />}
           <span>{tpl.render_status_label}</span>
         </div>
       </div>
