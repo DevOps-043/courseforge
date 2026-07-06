@@ -10,6 +10,7 @@ import {
 interface RemotionExternalPreviewPlayerProps {
   templateId: string;
   componentId?: string | null;
+  initialPreviewData?: ExternalBundlePreviewData | null;
   variables?: Record<string, unknown>;
 }
 
@@ -100,6 +101,7 @@ function parsePreviewVariables(variablesKey: string): Record<string, unknown> {
 export function RemotionExternalPreviewPlayer({
   templateId,
   componentId,
+  initialPreviewData = null,
   variables = {},
 }: RemotionExternalPreviewPlayerProps) {
   const [previewData, setPreviewData] = useState<ExternalBundlePreviewData | null>(null);
@@ -120,6 +122,12 @@ export function RemotionExternalPreviewPlayer({
       setVideoError(null);
       setVideoStatus("idle");
       setHasVideoStarted(false);
+
+      if (initialPreviewData?.serveUrl && initialPreviewData.compositionId) {
+        setPreviewData(initialPreviewData);
+        setIsLoading(false);
+        return;
+      }
 
       const requestVariables = parsePreviewVariables(variablesKey);
       console.info("[RemotionExternalPreviewPlayer] Solicitando preview externo", {
@@ -168,7 +176,7 @@ export function RemotionExternalPreviewPlayer({
     return () => {
       cancelled = true;
     };
-  }, [templateId, componentId, variablesKey]);
+  }, [templateId, componentId, initialPreviewData, variablesKey]);
 
   if (isLoading) {
     return (

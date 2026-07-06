@@ -366,7 +366,12 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
 
             if (!hasRunnableJobs) {
                 setIsAssembling(false);
-                alert('No se pudo iniciar ningun ensamblado.');
+                const firstError = startedJobs.find((job) => job.error)?.error;
+                alert(
+                    firstError
+                        ? `No se pudo iniciar ningun ensamblado. ${firstError}`
+                        : 'No se pudo iniciar ningun ensamblado.',
+                );
                 return;
             }
 
@@ -384,6 +389,45 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
         || selectedTemplateConfig?.render_mode === 'INTERNAL_WITH_EXTERNAL_REFERENCE';
     const selectedTemplateUsesCloudBundle = selectedTemplateConfig?.render_mode === 'EXTERNAL_LAMBDA_SITE_READY';
     const selectedTemplateUsesExternalPreview = selectedTemplateUsesCloudBundle;
+    const selectedCloudPreviewData = useMemo(() => {
+        if (!selectedTemplateUsesCloudBundle || !selectedTemplateConfig?.cloud_build_serve_url) {
+            return null;
+        }
+
+        const compositionId = selectedTemplateConfig.cloud_build_composition_id
+            || selectedTemplateConfig.render_composition_id
+            || selectedTemplateConfig.composition_id;
+
+        if (!compositionId) {
+            return null;
+        }
+
+        return {
+            serveUrl: selectedTemplateConfig.cloud_build_serve_url,
+            compositionId,
+            exportMode: 'component' as const,
+            resolvedProps: {},
+            propsHash: selectedTemplateConfig.cloud_build_id || `${selectedTemplateConfig.id}:${compositionId}`,
+            buildHash: null,
+            buildId: selectedTemplateConfig.cloud_build_id || null,
+            templateVersionId: selectedTemplateConfig.cloud_build_id || selectedTemplateConfig.id,
+            bundleHash: null,
+            previewVideoUrl: null,
+            previewPosterUrl: null,
+            previewDurationSeconds: null,
+            previewFrames: null,
+            compositionDurationSeconds: null,
+            compositionFrames: null,
+        };
+    }, [
+        selectedTemplateConfig?.cloud_build_composition_id,
+        selectedTemplateConfig?.cloud_build_id,
+        selectedTemplateConfig?.cloud_build_serve_url,
+        selectedTemplateConfig?.composition_id,
+        selectedTemplateConfig?.id,
+        selectedTemplateConfig?.render_composition_id,
+        selectedTemplateUsesCloudBundle,
+    ]);
     const selectedTemplateNeedsCloudBuild = selectedTemplateConfig?.render_mode === 'EXTERNAL_CLOUD_BUILD_READY'
         || selectedTemplateConfig?.render_mode === 'EXTERNAL_CLOUD_BUILD_FAILED';
     const selectedTemplateBlocksFinalRender = selectedTemplateNeedsCloudBuild;
@@ -666,6 +710,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                             key={`${activePreview.id}-${selectedTemplate}-external`}
                                             templateId={selectedTemplate}
                                             componentId={hasPreviewableAssets(activePreview.assets) ? activePreview.id : null}
+                                            initialPreviewData={selectedCloudPreviewData}
                                             variables={externalPreviewVariables}
                                         />
                                         <div className="text-xs text-gray-500 dark:text-gray-400 text-center leading-relaxed">

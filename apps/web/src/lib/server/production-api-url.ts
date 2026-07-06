@@ -5,9 +5,10 @@ function normalizeBaseUrl(value: string | undefined): string | null {
 
 export function getProductionApiBaseUrl(): string {
   const configured =
+    normalizeBaseUrl(process.env.PRODUCTION_API_URL) ||
     normalizeBaseUrl(process.env.EXPRESS_INTERNAL_API_URL) ||
-    normalizeBaseUrl(process.env.EXPRESS_API_URL) ||
-    normalizeBaseUrl(process.env.API_PUBLIC_URL);
+    normalizeBaseUrl(process.env.API_PUBLIC_URL) ||
+    normalizeBaseUrl(process.env.EXPRESS_API_URL);
 
   if (configured) {
     return configured;
@@ -18,7 +19,7 @@ export function getProductionApiBaseUrl(): string {
   }
 
   throw new Error(
-    "Missing production API URL. Configure EXPRESS_INTERNAL_API_URL, EXPRESS_API_URL, or API_PUBLIC_URL.",
+    "Missing production API URL. Configure API_PUBLIC_URL or PRODUCTION_API_URL with the public HTTPS URL of the render API.",
   );
 }
 

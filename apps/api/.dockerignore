@@ -1,0 +1,8 @@
+node_modules
+dist
+.tmp
+.netlify
+npm-debug.log*
+.env
+.env.*
+!.env.example

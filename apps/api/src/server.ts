@@ -15,6 +15,7 @@ import { authRoutes } from './features/auth/auth.routes';
 import { productionRoutes } from './features/production/production.routes';
 import { RemotionQueueService } from './features/production/remotion-queue.service';
 import { getRemotionRenderConfig } from './features/production/remotion-render.config';
+import { getCorsOptions } from './config/cors';
 
 // Guardas globales: una excepción/rechazo no manejado durante un render de Remotion
 // no debe tumbar silenciosamente toda la API (lo que se manifiesta como "fetch failed"
@@ -30,7 +31,7 @@ const app = express();
 const PORT = getApiPort();
 
 app.use(helmet());
-app.use(cors());
+app.use(cors(getCorsOptions()));
 app.use(morgan('dev'));
 app.use(express.json());
 
