@@ -1,9 +1,9 @@
-import { createClient } from '@supabase/supabase-js';
 import {
   buildAssemblyInputProps,
   resolveInternalCompositionId,
   type AssemblyInputProps,
 } from './remotion-assembly-props.service';
+import { createNodeSupabaseClient } from '../../core/supabase-client';
 import { buildStableHash, getRemotionRenderConfig, type RemotionLambdaConfig } from './remotion-render.config';
 import { mergeTemplateRenderConfigs } from './template-render-config.service';
 import type { RenderDispatchResult, RenderProvider } from './render-provider.types';
@@ -49,7 +49,7 @@ export class RemotionLambdaProvider implements RenderProvider {
   readonly name = 'lambda' as const;
 
   private getSupabaseClient() {
-    return createClient(supabaseUrl, supabaseServiceKey);
+    return createNodeSupabaseClient(supabaseUrl, supabaseServiceKey);
   }
 
   async dispatch(jobId: string): Promise<RenderDispatchResult> {

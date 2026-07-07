@@ -18,7 +18,6 @@ COPY apps/web/src/remotion apps/web/src/remotion
 COPY apps/web/src/domains/materials/types apps/web/src/domains/materials/types
 COPY apps/web/tsconfig.json apps/web/tsconfig.json
 RUN npm run build --workspace=apps/api
-RUN npm prune --omit=dev
 
 FROM base AS runtime
 RUN apt-get update \
@@ -34,11 +33,13 @@ RUN apt-get update \
 COPY --from=build /app/package.json /app/package-lock.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/api/package.json apps/api/package.json
+COPY --from=build /app/apps/api/node_modules apps/api/node_modules
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/apps/web/src/remotion apps/web/src/remotion
 COPY --from=build /app/apps/web/src/domains/materials/types apps/web/src/domains/materials/types
 COPY --from=build /app/apps/web/tsconfig.json apps/web/tsconfig.json
 
 WORKDIR /app/apps/api
+RUN node -e "for (const pkg of ['express','cors','helmet','morgan','@supabase/supabase-js','@remotion/lambda/client']) require.resolve(pkg); console.log('Runtime dependencies resolved')"
 EXPOSE 8080
 CMD ["node", "dist/server.js"]

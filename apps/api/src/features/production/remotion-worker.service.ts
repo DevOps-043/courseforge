@@ -4,12 +4,12 @@ import * as os from 'os';
 import * as path from 'path';
 import { bundle } from '@remotion/bundler';
 import { ensureBrowser, renderMedia, selectComposition } from '@remotion/renderer';
-import { createClient } from '@supabase/supabase-js';
 import {
   buildAssemblyInputProps,
   resolveInternalCompositionId,
   type AssemblyInputProps,
 } from './remotion-assembly-props.service';
+import { createNodeSupabaseClient } from '../../core/supabase-client';
 import { mergeTemplateRenderConfigs } from './template-render-config.service';
 
 let cachedBundlePromise: Promise<string> | null = null;
@@ -31,7 +31,7 @@ export class RemotionWorkerService {
   }
 
   private getSupabaseClient() {
-    return createClient(this.supabaseUrl, this.supabaseServiceKey);
+    return createNodeSupabaseClient(this.supabaseUrl, this.supabaseServiceKey);
   }
 
   public async runRenderJob(jobId: string, serveUrlOverride?: string): Promise<void> {

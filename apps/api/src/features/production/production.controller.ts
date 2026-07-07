@@ -1,9 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
-import { createClient } from '@supabase/supabase-js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { jwtVerify } from 'jose';
 import crypto from 'crypto';
+import { createNodeSupabaseClient } from '../../core/supabase-client';
 import {
   getExternalPreviewRenderPath,
   getExternalPreviewRenderRoot,
@@ -108,7 +108,7 @@ export class ProductionController {
       return null;
     }
 
-    const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
+    const serviceClient = createNodeSupabaseClient(supabaseUrl, supabaseServiceKey);
     const jwtSecret = process.env.COURSEFORGE_JWT_SECRET;
 
     if (jwtSecret) {
@@ -475,7 +475,7 @@ export class ProductionController {
       }
 
       // 1. Authenticate user (Auth Bridge fallback support)
-      const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
+      const serviceClient = createNodeSupabaseClient(supabaseUrl, supabaseServiceKey);
       let isAuthBridge = false;
       let payload: any = null;
       let user: { id: string; email?: string } | null = null;
@@ -556,7 +556,7 @@ export class ProductionController {
           }
         }
       } else {
-        const userClient = createClient(supabaseUrl, supabaseServiceKey, {
+        const userClient = createNodeSupabaseClient(supabaseUrl, supabaseServiceKey, {
           global: { headers: { Authorization: `Bearer ${token}` } }
         });
 
@@ -954,7 +954,7 @@ export class ProductionController {
       }
 
       // Use Auth Bridge fallback strategy to authenticate the request
-      const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
+      const serviceClient = createNodeSupabaseClient(supabaseUrl, supabaseServiceKey);
       let isAuthBridge = false;
       let payload: any = null;
       let user: { id: string; email?: string } | null = null;
@@ -1009,7 +1009,7 @@ export class ProductionController {
           }
         }
       } else {
-        const userClient = createClient(supabaseUrl, supabaseServiceKey, {
+        const userClient = createNodeSupabaseClient(supabaseUrl, supabaseServiceKey, {
           global: { headers: { Authorization: `Bearer ${token}` } }
         });
 

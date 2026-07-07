@@ -1,7 +1,7 @@
 import { fork } from 'child_process';
 import * as path from 'path';
 import { RemotionWorkerService } from './remotion-worker.service';
-import { createClient } from '@supabase/supabase-js';
+import { createNodeSupabaseClient } from '../../core/supabase-client';
 
 /** Estados terminales: si el job ya está en uno, no lo tocamos como "huérfano". */
 const TERMINAL_JOB_STATUSES = ['SUCCEEDED', 'FAILED', 'CANCELLED'];
@@ -39,7 +39,7 @@ export class RemotionQueueService {
   }
 
   private getSupabaseClient() {
-    return createClient(this.supabaseUrl, this.supabaseServiceKey);
+    return createNodeSupabaseClient(this.supabaseUrl, this.supabaseServiceKey);
   }
 
   private async initQueue() {
