@@ -21,6 +21,12 @@
     "src/remotion/template-config.ts",
     "src/domains/production/validation/bundle-validator.ts",
     "src/domains/production/validation/__tests__/**/*.ts",
+    "src/domains/production/bundle-agent/types.ts",
+    "src/domains/production/bundle-agent/redaction.service.ts",
+    "src/domains/production/bundle-agent/spec.service.ts",
+    "src/domains/production/bundle-agent/generation.service.ts",
+    "src/domains/production/bundle-agent/security-validator.ts",
+    "src/domains/production/bundle-agent/__tests__/**/*.ts",
     "src/remotion/types.ts",
     "src/remotion/visual-timeline.ts",
     "src/remotion/__tests__/**/*.ts"

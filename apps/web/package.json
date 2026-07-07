@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:remotion": "tsc -p tsconfig.remotion-test.json && node .tmp/remotion-tests/remotion/__tests__/assembly-assets.normalizer.test.js && node .tmp/remotion-tests/domains/production/validation/__tests__/bundle-validator.test.js && node .tmp/remotion-tests/domains/library/__tests__/library-normalizer.test.js"
+    "test:remotion": "tsc -p tsconfig.remotion-test.json && node .tmp/remotion-tests/remotion/__tests__/assembly-assets.normalizer.test.js && node .tmp/remotion-tests/domains/production/validation/__tests__/bundle-validator.test.js && node .tmp/remotion-tests/domains/production/bundle-agent/__tests__/bundle-agent-services.test.js && node .tmp/remotion-tests/domains/library/__tests__/library-normalizer.test.js"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",

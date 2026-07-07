@@ -4,14 +4,13 @@ import { createClient } from "@/utils/supabase/server";
 import { getAccessToken, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { getAuthBridgeUser, getUserOrganizations } from "@/utils/auth/session";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
-import { getSupabaseUrl, getSupabaseServiceRoleKey } from "@/lib/server/env";
 import { getProductionApiBaseUrl } from "@/lib/server/production-api-url";
 import {
   createTemplateConfigSchemaDefinition,
   parseTemplateRenderConfig,
   type TemplateRenderConfigInput,
 } from "@/remotion/template-config";
-import { validateRemotionBundle } from "@/domains/production/validation/bundle-validator";
+import { createTemplateVersionRecord } from "@/domains/production/templates/template-version.service";
 
 export interface RemotionTemplateVersion {
   id: string;
@@ -84,43 +83,6 @@ export interface RemotionTemplateVersion {
   cloud_builds?: RemotionTemplateCloudBuild[];
 }
 
-function getPathFromPublicUrl(publicUrl: string, bucket: string = "production-assets"): string {
-  if (!publicUrl.startsWith("http")) return publicUrl;
-  const marker = `/${bucket}/`;
-  const index = publicUrl.indexOf(marker);
-  if (index !== -1) {
-    return publicUrl.substring(index + marker.length);
-  }
-  return publicUrl;
-}
-
-function resolveBundleStorageLocation(storagePath: string) {
-  if (storagePath.startsWith("production-assets/")) {
-    return { bucket: "production-assets", path: storagePath.substring("production-assets/".length) };
-  }
-
-  if (storagePath.startsWith(`${TEMPLATE_BUNDLE_BUCKET}/`)) {
-    return {
-      bucket: TEMPLATE_BUNDLE_BUCKET,
-      path: storagePath.substring(`${TEMPLATE_BUNDLE_BUCKET}/`.length),
-    };
-  }
-
-  if (storagePath.startsWith("http")) {
-    const templateBundlePath = getPathFromPublicUrl(storagePath, TEMPLATE_BUNDLE_BUCKET);
-    if (templateBundlePath !== storagePath) {
-      return { bucket: TEMPLATE_BUNDLE_BUCKET, path: templateBundlePath };
-    }
-
-    return {
-      bucket: "production-assets",
-      path: getPathFromPublicUrl(storagePath, "production-assets"),
-    };
-  }
-
-  return { bucket: TEMPLATE_BUNDLE_BUCKET, path: storagePath };
-}
-
 const SUPPORTED_INTERNAL_COMPOSITIONS = new Set(["full-slides", "split-avatar", "avatar-focus"]);
 const DEFAULT_RENDER_COMPOSITION_ID = "full-slides";
 const COURSEFORGE_REMOTION_VERSION = "4.0.484";
@@ -182,9 +144,6 @@ async function getAuthorizedSupabase() {
 async function resolveActiveTemplateOrganizationId(): Promise<string | null> {
   const tenant = await resolveActiveTenantContext();
   if (tenant?.organizationId) return tenant.organizationId;
-
-  const activeOrgId = await resolveActiveTemplateOrganizationId();
-  if (activeOrgId) return activeOrgId;
 
   const bridgeUser = await getAuthBridgeUser();
   if (bridgeUser?.active_organization_id) {
@@ -963,46 +922,15 @@ export async function createTemplateVersionAction(
   const admin = getServiceRoleClient();
 
   try {
-    // 1. Get template to ensure ownership/existence
-    const { data: template, error: fetchError } = await admin
-      .from("remotion_templates")
-      .select("organization_id, bundle_status")
-      .eq("id", templateId)
-      .single();
+    const { version, report, normalizedStoragePath } = await createTemplateVersionRecord({
+      admin,
+      activeOrgId,
+      userId: user.userId,
+      templateId,
+      storagePath,
+      originalFileName,
+    });
 
-    if (fetchError || !template) throw new Error("Plantilla no encontrada");
-    if (template.organization_id !== activeOrgId) {
-      throw new Error("No tienes permiso para modificar esta plantilla");
-    }
-
-    // 2. Fetch the ZIP from storage
-    // We use a direct fetch with cache: "no-store" because @supabase/storage-js does not
-    // pass this flag, and Next.js throws "fetch failed" when trying to cache binary files > 2MB.
-    const bundleLocation = resolveBundleStorageLocation(storagePath);
-    const downloadUrl = `${getSupabaseUrl()}/storage/v1/object/${bundleLocation.bucket}/${bundleLocation.path}`;
-    
-    let arrayBuffer: ArrayBuffer;
-    try {
-      const response = await fetch(downloadUrl, {
-        headers: {
-          Authorization: `Bearer ${getSupabaseServiceRoleKey()}`,
-        },
-        cache: "no-store",
-      });
-
-      if (!response.ok) {
-        const errText = await response.text().catch(() => "Unknown error");
-        throw new Error(`HTTP ${response.status}: ${errText}`);
-      }
-
-      arrayBuffer = await response.arrayBuffer();
-    } catch (downloadError: any) {
-      console.error(`[TemplatesActions] Download failed for ${bundleLocation.bucket}/${bundleLocation.path}:`, downloadError);
-      throw new Error(`Error al descargar el bundle de almacenamiento: ${downloadError?.message || 'Archivo no encontrado'} (Ruta: ${bundleLocation.bucket}/${bundleLocation.path})`);
-    }
-
-    // 3. Run validation
-    const report = await validateRemotionBundle(arrayBuffer, originalFileName);
     logTemplateRuntimeState("Bundle validation completed.", {
       templateId,
       originalFileName,
@@ -1015,95 +943,21 @@ export async function createTemplateVersionAction(
       hash: report.info.hash,
       dependencies: Object.keys(report.info.dependencies || {}),
     });
-
-    // 4. Determine next version number
-    const { data: latest } = await admin
-      .from("remotion_template_versions")
-      .select("version_number")
-      .eq("template_id", templateId)
-      .order("version_number", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const nextVersionNumber = latest ? latest.version_number + 1 : 1;
-    const status = report.isValid ? "PENDING_REVIEW" : "VALIDATION_FAILED";
-    const manifest = report.info.manifest;
-    const compositionIds = manifest
-      ? Array.from(new Set([manifest.compositionId, ...(manifest.compositionIds || [])]))
-      : null;
-
-    // 5. Create version record
-    const { data: version, error: insertError } = await admin
-      .from("remotion_template_versions")
-      .insert({
-        template_id: templateId,
-        organization_id: activeOrgId,
-        version_number: nextVersionNumber,
-        status,
-        template_type: "custom_bundle",
-        storage_path: `${bundleLocation.bucket}/${bundleLocation.path}`,
-        original_file_name: originalFileName,
-        bundle_hash: report.info.hash,
-        entry_point: manifest?.entryPoint || null,
-        manifest: manifest || null,
-        export_mode: manifest?.exportMode || "component",
-        composition_id: manifest?.compositionId || null,
-        composition_ids: compositionIds,
-        props_schema: manifest?.propsSchema || null,
-        default_props: manifest?.defaultProps || null,
-        default_duration_frames: manifest?.defaultDurationFrames || null,
-        default_fps: manifest?.fps || null,
-        default_width: manifest?.width || null,
-        default_height: manifest?.height || null,
-        build_status: "PENDING",
-        validation_report: {
-          isValid: report.isValid,
-          errors: report.errors,
-          warnings: report.warnings,
-          info: {
-            fileCount: report.info.fileCount,
-            unzippedSize: report.info.unzippedSize,
-            dependencies: report.info.dependencies || {},
-          }
-        },
-        validated_at: new Date().toISOString(),
-        created_by: user.userId,
-      })
-      .select(`
-        *,
-        created_by_profile:profiles!created_by(username, first_name, email),
-        approved_by_profile:profiles!approved_by(username, first_name, email),
-        rejected_by_profile:profiles!rejected_by(username, first_name, email)
-      `)
-      .single();
-
-    if (insertError) throw insertError;
     logTemplateRuntimeState("Template version created.", {
       templateId,
       versionId: version.id,
       versionNumber: version.version_number,
       status,
-      storagePath: `${bundleLocation.bucket}/${bundleLocation.path}`,
+      storagePath: normalizedStoragePath,
       entryPoint: report.info.manifest?.entryPoint || null,
       compositionId: report.info.manifest?.compositionId || null,
       exportMode: report.info.manifest?.exportMode || null,
       bundleHash: report.info.hash,
     });
-
-    // 6. Update template bundle_status
-    const newTemplateStatus = report.isValid ? "PENDING_REVIEW" : "REJECTED";
-    await admin
-      .from("remotion_templates")
-      .update({
-        bundle_status: newTemplateStatus,
-        storage_path: `${bundleLocation.bucket}/${bundleLocation.path}`,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", templateId);
     logTemplateRuntimeState("Parent template updated after version creation.", {
       templateId,
-      bundleStatus: newTemplateStatus,
-      storagePath: `${bundleLocation.bucket}/${bundleLocation.path}`,
+      bundleStatus: report.isValid ? "PENDING_REVIEW" : "REJECTED",
+      storagePath: normalizedStoragePath,
     });
 
     return { success: true, version: version as any };
