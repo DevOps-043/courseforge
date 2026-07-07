@@ -640,7 +640,26 @@ export class ProductionController {
 
       const renderProvider = renderOrchestrator.providerName;
       const cloudBuildReadiness = getExternalLambdaReadiness(cloudBuild);
-      const cloudBuildIsLambdaReady = cloudBuildReadiness.ready;
+      let externalRenderTarget: ReturnType<typeof resolveExternalLambdaRenderTarget> | null = null;
+      let externalRenderTargetError: Error | null = null;
+      if (hasExternalBundle && cloudVersion && cloudBuild && renderProvider === 'lambda') {
+        try {
+          externalRenderTarget = resolveExternalLambdaRenderTarget({
+            jobSnapshot: {
+              templateVersionId: cloudVersion.id || null,
+              buildId: cloudBuild.id || null,
+              bundleHash: cloudVersion.bundle_hash || null,
+              externalServeUrl: cloudBuild.serve_url || null,
+              cloudProvider: cloudBuild.cloud_provider || null,
+            },
+            version: cloudVersion,
+            build: cloudBuild,
+          });
+        } catch (error) {
+          externalRenderTargetError = error instanceof Error ? error : new Error(String(error));
+        }
+      }
+      const cloudBuildIsLambdaReady = Boolean(externalRenderTarget);
       const renderMode = cloudBuildIsLambdaReady && renderProvider === 'lambda'
         ? 'EXTERNAL_LAMBDA_SITE_READY'
         : cloudVersion
@@ -672,6 +691,7 @@ export class ProductionController {
           cloudBuildHasServeUrl: Boolean(cloudBuild?.serve_url),
           cloudBuildCompositionId: cloudBuild?.composition_id || null,
           cloudBuildReadinessReason: cloudBuildReadiness.reason,
+          externalRenderTargetError: externalRenderTargetError?.message || null,
           cloudBuildProviderStatus: cloudBuild?.provider_status || null,
           renderMode,
           renderProvider,
@@ -680,27 +700,18 @@ export class ProductionController {
           error:
             'Esta plantilla externa aun no tiene un build cloud completo para Remotion Lambda. Ejecuta "Construir para cloud" y verifica que tenga serve_url HTTPS y composition_id.',
           code: cloudVersion ? 'EXTERNAL_BUILD_NOT_READY' : 'EXTERNAL_BUNDLE_NOT_APPROVED',
-          reason: cloudBuildReadiness.reason,
+          reason: externalRenderTargetError?.message || cloudBuildReadiness.reason,
           renderMode,
           renderProvider,
         });
       }
 
-      let externalRenderTarget: ReturnType<typeof resolveExternalLambdaRenderTarget> | null = null;
       let externalPropsResult: ReturnType<typeof buildExternalTemplateProps> | null = null;
       if (renderMode === 'EXTERNAL_LAMBDA_SITE_READY') {
         try {
-          externalRenderTarget = resolveExternalLambdaRenderTarget({
-            jobSnapshot: {
-              templateVersionId: cloudVersion?.id || null,
-              buildId: cloudBuild?.id || null,
-              bundleHash: cloudVersion?.bundle_hash || null,
-              externalServeUrl: cloudBuild?.serve_url || null,
-              cloudProvider: cloudBuild?.cloud_provider || null,
-            },
-            version: cloudVersion,
-            build: cloudBuild,
-          });
+          if (!externalRenderTarget) {
+            throw new Error('EXTERNAL_RENDER_TARGET_INCOMPLETE: no se pudo resolver el target externo.');
+          }
           externalPropsResult = buildExternalTemplateProps({
             assets: component.assets || {},
             compositionId: externalRenderTarget.compositionId,
@@ -814,8 +825,8 @@ export class ProductionController {
                 bundleHash: cloudVersion?.bundle_hash || null,
                 buildId: cloudBuild?.id || null,
                 buildHash: cloudBuild?.build_hash || cloudVersion?.build_hash || null,
-                compositionId: cloudBuild?.composition_id || cloudVersion?.composition_id || null,
-                exportMode: cloudBuild?.export_mode || cloudVersion?.export_mode || 'component',
+                compositionId: externalRenderTarget?.compositionId || cloudVersion?.composition_id || null,
+                exportMode: externalRenderTarget?.exportMode || cloudBuild?.export_mode || cloudVersion?.export_mode || 'component',
               },
               started_at: null,
               completed_at: null,
@@ -846,8 +857,8 @@ export class ProductionController {
             bundleHash: cloudVersion?.bundle_hash || null,
             buildId: cloudBuild?.id || null,
             buildHash: cloudBuild?.build_hash || cloudVersion?.build_hash || null,
-            compositionId: cloudBuild?.composition_id || cloudVersion?.composition_id || null,
-            exportMode: cloudBuild?.export_mode || cloudVersion?.export_mode || 'component',
+            compositionId: externalRenderTarget?.compositionId || cloudVersion?.composition_id || null,
+            exportMode: externalRenderTarget?.exportMode || cloudBuild?.export_mode || cloudVersion?.export_mode || 'component',
           });
 
           return res.json({

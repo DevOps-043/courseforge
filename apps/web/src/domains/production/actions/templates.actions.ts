@@ -125,6 +125,16 @@ const SUPPORTED_INTERNAL_COMPOSITIONS = new Set(["full-slides", "split-avatar", 
 const DEFAULT_RENDER_COMPOSITION_ID = "full-slides";
 const COURSEFORGE_REMOTION_VERSION = "4.0.484";
 
+function isValidExternalCompositionId(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const normalized = value.trim();
+  if (!normalized) return false;
+  if (/^https?:\/\//i.test(normalized)) return false;
+  if (normalized.includes("/") || normalized.includes("\\")) return false;
+  if (/\.html?$/i.test(normalized)) return false;
+  return /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(normalized);
+}
+
 function isValidatedCloudBuildLog(value: unknown): boolean {
   if (typeof value !== "string") return false;
   const normalized = value.toLowerCase();
@@ -238,7 +248,11 @@ function decorateTemplate(template: Omit<RemotionTemplate, "render_mode" | "rend
   );
   const hasExternalBundle = Boolean(template.storage_path);
   const hasLegacySandboxApproval = template.bundle_status === "APPROVED_FOR_SANDBOX";
-  const cloudCompositionId = template.cloud_build_composition_id || template.composition_id;
+  const cloudCompositionId = isValidExternalCompositionId(template.cloud_build_composition_id)
+    ? template.cloud_build_composition_id
+    : isValidExternalCompositionId(template.composition_id)
+      ? template.composition_id
+      : null;
   const hasCloudBuild = template.cloud_build_status === "BUILT" &&
     Boolean(template.cloud_build_serve_url) &&
     Boolean(cloudCompositionId) &&
@@ -500,19 +514,22 @@ async function attachLatestCloudBuilds(
 
   const { data: versions } = await admin
     .from("remotion_template_versions")
-    .select("id, template_id")
+    .select("id, template_id, composition_id")
     .in("template_id", templateIds)
     .in("status", ["APPROVED_FOR_SANDBOX", "APPROVED"])
     .order("version_number", { ascending: false });
 
-  const latestVersionByTemplate = new Map<string, string>();
+  const latestVersionByTemplate = new Map<string, { id: string; compositionId: string | null }>();
   for (const version of versions || []) {
     if (!latestVersionByTemplate.has(version.template_id)) {
-      latestVersionByTemplate.set(version.template_id, version.id);
+      latestVersionByTemplate.set(version.template_id, {
+        id: version.id,
+        compositionId: isValidExternalCompositionId(version.composition_id) ? version.composition_id : null,
+      });
     }
   }
 
-  const versionIds = Array.from(latestVersionByTemplate.values());
+  const versionIds = Array.from(latestVersionByTemplate.values()).map((version) => version.id);
   if (versionIds.length === 0) {
     return templates;
   }
@@ -532,14 +549,20 @@ async function attachLatestCloudBuilds(
   }
 
   return templates.map((template) => {
-    const versionId = latestVersionByTemplate.get(template.id);
-    const build = versionId ? latestBuildByVersion.get(versionId) : null;
+    const version = latestVersionByTemplate.get(template.id);
+    const build = version ? latestBuildByVersion.get(version.id) : null;
+    const buildCompositionId = isValidExternalCompositionId(build?.composition_id)
+      ? build?.composition_id
+      : null;
+    const templateCompositionId = isValidExternalCompositionId(template.composition_id)
+      ? template.composition_id
+      : null;
     return {
       ...template,
       cloud_build_id: build?.id || null,
       cloud_build_status: build?.status || null,
       cloud_build_serve_url: build?.serve_url || null,
-      cloud_build_composition_id: build?.composition_id || null,
+      cloud_build_composition_id: buildCompositionId || version?.compositionId || templateCompositionId,
       cloud_build_validated: isValidatedCloudBuildLog(build?.build_log),
     };
   });

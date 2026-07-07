@@ -55,6 +55,40 @@ describe('external lambda render target', () => {
     );
   });
 
+  it('does not treat a built site path as a composition id', () => {
+    const target = resolveExternalLambdaRenderTarget({
+      jobSnapshot: {
+        templateVersionId: 'version-1',
+        buildId: 'build-1',
+      },
+      version: {
+        id: 'version-1',
+        composition_id: 'external-main',
+      },
+      build: {
+        id: 'build-1',
+        status: 'BUILT',
+        serve_url: 'https://cdn.example.com/template/index.html',
+        composition_id: 'template-sites/build-1/index.html',
+        build_log: 'Cloud build completed and validated successfully. remotionVersion=4.0.484',
+      },
+    });
+
+    assert.equal(target.compositionId, 'external-main');
+  });
+
+  it('marks a build with a site path composition as not Lambda-ready', () => {
+    assert.deepEqual(getExternalLambdaReadiness({
+      status: 'BUILT',
+      serve_url: 'https://cdn.example.com/template/index.html',
+      composition_id: 'template-sites/build-1/index.html',
+      build_log: 'Cloud build completed and validated successfully. remotionVersion=4.0.484',
+    }), {
+      ready: false,
+      reason: 'COMPOSITION_ID_INVALID',
+    });
+  });
+
   it('requires a Lambda-ready build before external render', () => {
     assert.equal(isExternalLambdaReadyBuild({
       status: 'BUILT',

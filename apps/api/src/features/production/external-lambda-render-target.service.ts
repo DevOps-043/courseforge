@@ -39,10 +39,12 @@ export function resolveExternalLambdaRenderTarget(
     throw new Error('EXTERNAL_RENDER_TARGET_INCOMPLETE: el build cloud no tiene serve_url HTTPS.');
   }
 
-  const compositionId =
-    readNonEmptyString(build.composition_id) ||
-    readNonEmptyString(version.composition_id) ||
-    readNonEmptyString(snapshot.compositionId);
+  const rawCompositionCandidates = [
+    readNonEmptyString(build.composition_id),
+    readNonEmptyString(version.composition_id),
+    readNonEmptyString(snapshot.compositionId),
+  ];
+  const compositionId = rawCompositionCandidates.find(isValidCompositionId);
   if (!compositionId) {
     throw new Error('EXTERNAL_COMPOSITION_ID_MISSING: el bundle cloud no declaro composition_id.');
   }
@@ -82,8 +84,13 @@ export function getExternalLambdaReadiness(build: unknown): {
     return { ready: false, reason: 'SERVE_URL_NOT_HTTPS' };
   }
 
-  if (!readNonEmptyString(record.composition_id)) {
+  const compositionId = readNonEmptyString(record.composition_id);
+  if (!compositionId) {
     return { ready: false, reason: 'COMPOSITION_ID_MISSING' };
+  }
+
+  if (!isValidCompositionId(compositionId)) {
+    return { ready: false, reason: 'COMPOSITION_ID_INVALID' };
   }
 
   if (!isValidatedBuildLog(record.build_log)) {
@@ -103,6 +110,16 @@ function readNonEmptyString(value: unknown): string | null {
 
 function isHttpsUrl(value: unknown): value is string {
   return typeof value === 'string' && /^https:\/\//i.test(value);
+}
+
+function isValidCompositionId(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const normalized = value.trim();
+  if (!normalized) return false;
+  if (/^https?:\/\//i.test(normalized)) return false;
+  if (normalized.includes('/') || normalized.includes('\\')) return false;
+  if (/\.html?$/i.test(normalized)) return false;
+  return /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(normalized);
 }
 
 function isValidatedBuildLog(value: unknown): boolean {
