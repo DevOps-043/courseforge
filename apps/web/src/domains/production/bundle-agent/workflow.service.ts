@@ -1,8 +1,9 @@
 import { buildControlledBundleZip } from "./generation.service";
 import { sanitizeErrorMessage } from "./redaction.service";
-import { buildSpecFromConversation, computeSpecHash, stableJsonHash } from "./spec.service";
+import { computeSpecHash, stableJsonHash } from "./spec.service";
 import { validateGeneratedRemotionBundle } from "./security-validator";
 import { bundleAgentSpecSchema, type BundleAgentAuthContext, type BundleAgentSpec } from "./types";
+import { generateBundleSpecWithAi } from "./ai-spec.service";
 import { createTemplateVersionRecord } from "@/domains/production/templates/template-version.service";
 import {
   createTemplateConfigSchemaDefinition,
@@ -24,10 +25,14 @@ export class BundleAgentWorkflowService {
       .eq("organization_id", this.context.organizationId)
       .order("created_at", { ascending: true });
 
-    const spec = buildSpecFromConversation({
+    const generated = await generateBundleSpecWithAi({
+      organizationId: this.context.organizationId,
       title: conversation.title,
       messages: messages || [],
-      overrides,
+    });
+    const spec = bundleAgentSpecSchema.parse({
+      ...generated.spec,
+      ...(overrides && typeof overrides === "object" ? overrides : {}),
     });
     const specHash = computeSpecHash(spec);
     const { data: latest } = await this.context.admin
@@ -52,6 +57,27 @@ export class BundleAgentWorkflowService {
       .single();
 
     if (error) throw error;
+
+    await this.context.admin
+      .from("soflia_bundle_messages")
+      .insert({
+        conversation_id: conversationId,
+        organization_id: this.context.organizationId,
+        role: "TOOL",
+        content_redacted: generated.source === "openai"
+          ? "Spec estructurada generada por SofLIA con OpenAI y validada por contrato."
+          : generated.source === "gemini"
+            ? "Spec estructurada generada por SofLIA con Gemini y validada por contrato."
+            : "Spec estructurada generada con fallback deterministico y validada por contrato.",
+        metadata: {
+          source: generated.source,
+          model: generated.model,
+          warning: generated.warning,
+          specId: data.id,
+          specHash,
+        },
+        created_by: this.context.userId,
+      });
 
     await this.context.admin
       .from("soflia_bundle_conversations")
@@ -125,7 +151,6 @@ export class BundleAgentWorkflowService {
         .from("soflia_bundle_conversations")
         .update({
           status: validationReport.isValid ? "VERSION_PENDING_REVIEW" : "FAILED",
-          template_id: templateId,
           updated_at: new Date().toISOString(),
         })
         .eq("id", conversationId)

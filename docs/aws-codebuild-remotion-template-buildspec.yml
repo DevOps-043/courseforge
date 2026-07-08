@@ -69,8 +69,7 @@ phases:
         fi
       - npm install --no-save --no-audit --no-fund "remotion@$REMOTION_VERSION" "@remotion/cli@$REMOTION_VERSION" "@remotion/bundler@$REMOTION_VERSION" "@remotion/renderer@$REMOTION_VERSION" "@remotion/media-utils@$REMOTION_VERSION" "@remotion/transitions@$REMOTION_VERSION" "@remotion/noise@$REMOTION_VERSION"
       - |
-        if [ "$EXPORT_MODE" = "component" ]; then
-          node - <<'NODE'
+        node - <<'NODE'
         const fs = require('fs');
         const path = require('path');
         const manifest = JSON.parse(process.env.MANIFEST_JSON);
@@ -116,17 +115,11 @@ phases:
         `;
         fs.writeFileSync(path.join(process.cwd(), 'courseforge-cloud-entry.tsx'), wrapper);
         NODE
-        fi
       - |
         mkdir -p ../build-output
         set +e
-        if [ "$EXPORT_MODE" = "root" ]; then
-          npx remotion bundle "$ENTRY_POINT" ../build-output 2>&1 | tee ../build-output/remotion-bundle.log
-          BUNDLE_STATUS=${PIPESTATUS[0]}
-        else
-          npx remotion bundle courseforge-cloud-entry.tsx ../build-output 2>&1 | tee ../build-output/remotion-bundle.log
-          BUNDLE_STATUS=${PIPESTATUS[0]}
-        fi
+        npx remotion bundle courseforge-cloud-entry.tsx ../build-output 2>&1 | tee ../build-output/remotion-bundle.log
+        BUNDLE_STATUS=${PIPESTATUS[0]}
         set -e
         {
           echo "---- build-output files ----"

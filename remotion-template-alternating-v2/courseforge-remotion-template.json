@@ -1,6 +1,0 @@
-{
-  "name": "Avatar Alternante (5s)",
-  "entryPoint": "src/index.tsx",
-  "compositionId": "alternating-focus-v1",
-  "remotionVersion": "4.0.474"
-}

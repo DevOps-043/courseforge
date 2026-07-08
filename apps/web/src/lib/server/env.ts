@@ -10,6 +10,7 @@ const serverEnvSchema = z
     SOFLIA_API_URL: z.string().min(1).optional(),
     SOFLIA_API_KEY: z.string().min(1).optional(),
     COURSEFORGE_JWT_SECRET: z.string().min(1).optional(),
+    OPENAI_API_KEY: z.string().min(1).optional(),
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
     GOOGLE_API_KEY: z.string().min(1).optional(),
     GPT_SOURCES_API_KEY: z.string().min(1).optional(),
@@ -35,6 +36,7 @@ function buildEnvObject(): Record<string, string | undefined> {
     SOFLIA_API_URL: process.env.SOFLIA_API_URL,
     SOFLIA_API_KEY: process.env.SOFLIA_API_KEY,
     COURSEFORGE_JWT_SECRET: process.env.COURSEFORGE_JWT_SECRET,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
     GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
     GPT_SOURCES_API_KEY: process.env.GPT_SOURCES_API_KEY,
@@ -131,6 +133,10 @@ export function getGeminiApiKey() {
 export function getOptionalGeminiApiKey() {
   const env = getParsedServerEnv();
   return env.GOOGLE_GENERATIVE_AI_API_KEY || env.GOOGLE_API_KEY || null;
+}
+
+export function getOptionalOpenAIApiKey() {
+  return getParsedServerEnv().OPENAI_API_KEY || null;
 }
 
 export function getGptSourcesApiKey() {

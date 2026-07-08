@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { 
   Plus, 
   Search, 
@@ -25,7 +27,9 @@ import {
   User,
   ShieldCheck,
   FileText,
-  Cloud
+  Cloud,
+  Sparkles,
+  Download
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -64,6 +68,7 @@ export default function TemplatesContainer({
   initialPublicTemplates,
   initialUserRole = null,
 }: TemplatesContainerProps) {
+  const params = useParams<{ empresaSlug?: string }>();
   const [activeTab, setActiveTab] = useState<"mine" | "public">("mine");
   const [templates, setTemplates] = useState<RemotionTemplate[]>(initialTemplates);
   const [publicTemplates, setPublicTemplates] = useState<RemotionTemplate[]>(initialPublicTemplates);
@@ -490,6 +495,19 @@ export default function TemplatesContainer({
     t.description?.toLowerCase().includes(searchTerm.toLowerCase())
   );
   const selectedComposition = compositionOptions.find((option) => option.id === compositionId);
+  const bundleAgentHref = params?.empresaSlug
+    ? `/${params.empresaSlug}/admin/remotion/bundle-agent`
+    : "/admin/remotion/bundle-agent";
+  const baseBundleDownloadHref = "/api/admin/remotion/bundle-agent/base-bundle";
+  const currentTemplateVersion = selectedVersionTemplate
+    ? versions.find((version) => selectedVersionTemplate.storage_path && version.storage_path === selectedVersionTemplate.storage_path) ||
+      versions.find((version) => version.status === "APPROVED") ||
+      versions[0] ||
+      null
+    : null;
+  const currentTemplateBundleDownloadHref = currentTemplateVersion
+    ? `/api/admin/remotion/template-versions/${currentTemplateVersion.id}/download`
+    : null;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
@@ -504,13 +522,29 @@ export default function TemplatesContainer({
             Gestiona las plantillas de Remotion para tu empresa o explora plantillas públicas de otras empresas.
           </p>
         </div>
-        <button 
-          onClick={openCreateModal}
-          className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#00D4B3] to-[#009688] hover:from-[#00E5C1] hover:to-[#00A896] text-white font-semibold rounded-xl shadow-lg shadow-[#00D4B3]/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
-        >
-          <Plus size={20} />
-          Crear Plantilla
-        </button>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <a
+            href={baseBundleDownloadHref}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/20 text-gray-700 dark:text-slate-300 font-semibold rounded-xl shadow-sm transition-all hover:border-[#00D4B3]/40 hover:text-[#009688] dark:hover:text-[#00D4B3] hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <Download size={20} />
+            Descargar base ZIP
+          </a>
+          <Link
+            href={bundleAgentHref}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-white dark:bg-[#151A21] border border-[#00D4B3]/40 text-[#009688] dark:text-[#00D4B3] font-semibold rounded-xl shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <Sparkles size={20} />
+            Crear con SofLIA
+          </Link>
+          <button
+            onClick={openCreateModal}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#00D4B3] to-[#009688] hover:from-[#00E5C1] hover:to-[#00A896] text-white font-semibold rounded-xl shadow-lg shadow-[#00D4B3]/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <Plus size={20} />
+            Crear Plantilla
+          </button>
+        </div>
       </div>
 
       {/* Tabs and Search */}
@@ -571,6 +605,7 @@ export default function TemplatesContainer({
                   onEdit={() => openEditModal(tpl)}
                   onAcquire={() => {}}
                   onViewVersions={() => handleViewVersions(tpl)}
+                  bundleAgentHref={`${bundleAgentHref}?templateId=${encodeURIComponent(tpl.id)}`}
                 />
               ))
             ) : (
@@ -583,6 +618,7 @@ export default function TemplatesContainer({
                   onEdit={() => {}}
                   onAcquire={() => handleAcquire(tpl.id)}
                   onViewVersions={() => {}}
+                  bundleAgentHref={null}
                 />
               ))
             )}
@@ -934,14 +970,26 @@ export default function TemplatesContainer({
                     Sube y administra los bundles ZIP de Remotion. Los revisores autorizados pueden auditar y aprobar versiones.
                   </p>
                 </div>
-                <button 
-                  type="button" 
-                  disabled={isUploadingNewVersion}
-                  onClick={() => setIsVersionsModalOpen(false)}
-                  className="p-1 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-700 dark:hover:text-white transition-colors"
-                >
-                  <X size={18} />
-                </button>
+                <div className="flex items-center gap-2">
+                  {currentTemplateBundleDownloadHref ? (
+                    <a
+                      href={currentTemplateBundleDownloadHref}
+                      className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-[#00D4B3]/30 bg-[#00D4B3]/5 px-3 py-2 text-xs font-semibold text-[#00796B] transition hover:bg-[#00D4B3]/10 dark:text-[#00D4B3]"
+                      title="Descarga el bundle existente de esta plantilla. Si hay build cloud, se conserva el ZIP fuente versionado previo a compilar."
+                    >
+                      <Download size={14} />
+                      Descargar bundle actual
+                    </a>
+                  ) : null}
+                  <button 
+                    type="button" 
+                    disabled={isUploadingNewVersion}
+                    onClick={() => setIsVersionsModalOpen(false)}
+                    className="p-1 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-700 dark:hover:text-white transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
 
               {/* Content */}
@@ -1035,6 +1083,7 @@ export default function TemplatesContainer({
                         const cloudBuildReady = latestCloudBuild?.status === "BUILT" && Boolean(latestCloudBuild.serve_url);
                         const cloudBuildRunning = latestCloudBuild?.status === "BUILDING";
                         const cloudBuildFailed = latestCloudBuild?.status === "BUILD_FAILED";
+                        const versionDownloadHref = `/api/admin/remotion/template-versions/${version.id}/download`;
 
                         const canReview = userRole !== null && ["ADMIN", "ARQUITECTO", "SUPERADMIN"].includes(userRole);
                         const isActive = selectedVersionTemplate.storage_path === version.storage_path;
@@ -1080,7 +1129,14 @@ export default function TemplatesContainer({
                                 </p>
                               </div>
 
-                              <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-[#94A3B8]">
+                              <div className="flex flex-wrap items-center justify-end gap-3 text-xs text-gray-500 dark:text-[#94A3B8]">
+                                <a
+                                  href={versionDownloadHref}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 font-semibold text-gray-700 transition hover:border-[#00D4B3]/45 hover:text-[#00796B] dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-slate-300 dark:hover:text-[#00D4B3]"
+                                >
+                                  <Download size={13} />
+                                  Descargar ZIP
+                                </a>
                                 <span className="flex items-center gap-1.5">
                                   <Calendar size={13} />
                                   {new Date(version.created_at).toLocaleDateString()}
@@ -1370,7 +1426,8 @@ function TemplateCard({
   onDelete, 
   onEdit,
   onAcquire,
-  onViewVersions 
+  onViewVersions,
+  bundleAgentHref,
 }: { 
   tpl: RemotionTemplate; 
   isMine: boolean; 
@@ -1378,6 +1435,7 @@ function TemplateCard({
   onEdit: () => void;
   onAcquire: () => void;
   onViewVersions: () => void;
+  bundleAgentHref?: string | null;
 }) {
   const isGlobal = tpl.organization_id === null;
   const isExternalPending = tpl.render_mode === "EXTERNAL_BUNDLE_PENDING";
@@ -1481,6 +1539,16 @@ function TemplateCard({
       <div className="px-6 py-4 bg-gray-50/50 dark:bg-[#1E2329]/20 border-t border-gray-100 dark:border-[#6C757D]/5 flex justify-end items-center gap-2">
         {isMine ? (
           <>
+            {!isGlobal && (
+              <Link
+                href={bundleAgentHref || "#"}
+                className="p-2 text-gray-400 hover:text-[#7C3AED] hover:bg-[#7C3AED]/10 rounded-lg transition-all"
+                title="Editar con SofLIA"
+                aria-disabled={!bundleAgentHref}
+              >
+                <Sparkles size={16} />
+              </Link>
+            )}
             {!isGlobal && (
               <button
                 onClick={onViewVersions}
