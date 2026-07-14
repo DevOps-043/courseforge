@@ -6,9 +6,13 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "concurrently --names \"FRONTEND,BACKEND\" --prefix-colors \"cyan,magenta\" \"npm run dev -w apps/web\" \"npm run dev -w apps/api\"",
-    "build": "npm run build --workspaces",
-    "lint": "npm run lint --workspaces",
+    "dev": "npm run dev -w apps/web",
+    "dev:legacy-api": "npm run dev -w apps/api",
+    "dev:all": "concurrently --names \"FRONTEND,LEGACY_API\" --prefix-colors \"cyan,magenta\" \"npm run dev -w apps/web\" \"npm run dev -w apps/api\"",
+    "build": "npm run build -w apps/web",
+    "build:legacy-api": "npm run build -w apps/api",
+    "lint": "npm run lint -w apps/web",
+    "lint:legacy-api": "npm run lint -w apps/api",
     "aws:ensure-remotion-role": "node scripts/ensure-remotion-lambda-role.mjs",
     "aws:bootstrap-remotion": "node scripts/bootstrap-remotion-lambda.mjs"
   },

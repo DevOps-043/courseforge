@@ -7,7 +7,7 @@ SofLIA - Engine es una plataforma multi-tenant para crear, validar, producir y p
 - **Monorepo npm workspaces**: `apps/web` y `apps/api`.
 - **Frontend**: Next.js 16, React 19, TypeScript, TailwindCSS 4, Zustand, Remotion Player.
 - **Backend web**: Next.js API routes y Netlify Functions para jobs largos del pipeline.
-- **Backend de produccion**: Express en `apps/api`, usado para render Remotion local, Lambda o worker de escritorio.
+- **Backend de produccion**: Next.js API routes para `desktop_worker`; Express en `apps/api` queda como camino legacy para render local/Lambda.
 - **DB/Auth**: Supabase PostgreSQL con RLS, tabla `profiles`, Auth Bridge JWT HS256 y soporte multi-organizacion.
 - **IA**: Google Gemini como proveedor principal; OpenAI como fallback y para el bundle agent de Remotion.
 - **Servicios**: Gamma API, Google Search grounding, SofLIA API, Google Drive, Microsoft Graph/OneDrive, Artlist, AWS Remotion Lambda, S3, CodeBuild y CloudFront para templates externos.
@@ -25,7 +25,8 @@ npm run test:remotion --workspace=apps/api
 
 Notas:
 
-- `npm run dev` levanta `apps/web` en `:3000` y `apps/api` en `:4000`.
+- `npm run dev` levanta `apps/web` en `:3000`.
+- `npm run dev:legacy-api` levanta `apps/api` en `:4000` solo para diagnosticar el camino Express.
 - En `apps/web`, `npm run lint` sigue usando `next lint`; para validacion confiable de TypeScript usa `npx tsc -p apps/web/tsconfig.json --noEmit`.
 - Para cambios de Remotion o produccion visual, ejecuta los tests Remotion del workspace afectado.
 
@@ -42,7 +43,7 @@ apps/
     netlify/functions/       Background jobs del pipeline educativo
   api/
     src/features/auth/       Auth auxiliar
-    src/features/production/ API Express para render, previews, workers y builds
+    src/features/production/ API Express legacy para render, previews y builds
 packages/
   shared/
   ui/
@@ -167,24 +168,26 @@ Incluye:
 - Templates Remotion versionados y validados
 - Bundle agent para generar specs/bundles desde conversacion
 - Preview externo de bundles aprobados
-- Render final mediante API Express
+- Render final mediante worker de escritorio y rutas Next.js
 
 ## Remotion y Produccion
 
-`apps/api` expone `/api/v1/production` con endpoints para:
+El control plane activo vive en `apps/web` bajo `/api/v1/production` y expone:
 
 - `POST /remotion/render`
 - `GET /remotion/readiness`
-- `POST /remotion/external-preview`
-- `POST /remotion/template-builds`
-- `GET /remotion/template-builds/:buildId/status`
-- `POST /remotion/workers/register`
+- `GET /remotion/workers`
+- `POST /remotion/workers/link-codes`
+- `POST /remotion/workers/link`
 - `POST /remotion/workers/heartbeat`
+- `POST /remotion/workers/jobs/claim-next`
 - `POST /remotion/workers/jobs/:jobId/claim`
 - `POST /remotion/workers/jobs/:jobId/progress`
 - `POST /remotion/workers/jobs/:jobId/complete`
 - `POST /remotion/workers/jobs/:jobId/fail`
 - `GET /jobs/:jobId/status`
+
+`apps/api` conserva endpoints legacy para render local/Lambda, previews externos y builds cloud.
 
 Proveedores de render:
 
@@ -338,36 +341,25 @@ Produccion y assets:
 API/Remotion:
 
 - `PRODUCTION_API_URL`
+- `RENDER_PROVIDER`
+- `REMOTION_DESKTOP_WORKER_TOKEN_PEPPER`
+- `REMOTION_DESKTOP_WORKER_LINK_CODE_PEPPER`
+
+API/Remotion legacy, solo si se usa `apps/api`:
+
 - `EXPRESS_INTERNAL_API_URL`
 - `EXPRESS_PUBLIC_URL`
 - `API_PUBLIC_URL`
 - `ALLOWED_ORIGINS`
-- `RENDER_PROVIDER`
 - `REMOTION_ENTRY_POINT`
 - `REMOTION_RENDER_TIMEOUT_MS`
 - `EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS`
 - `EXTERNAL_TEMPLATE_PREVIEW_RENDER_TIMEOUT_MS`
-- `REMOTION_LAMBDA_REGION`
-- `REMOTION_LAMBDA_FUNCTION_NAME`
-- `REMOTION_LAMBDA_SERVE_URL`
-- `REMOTION_LAMBDA_SITE_NAME`
-- `REMOTION_LAMBDA_BUCKET`
-- `REMOTION_LAMBDA_OUTPUT_PRIVACY`
-- `REMOTION_LAMBDA_FRAMES_PER_LAMBDA`
-- `REMOTION_LAMBDA_CONCURRENCY`
-- `REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA`
-- `REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS`
-- `REMOTION_TEMPLATE_CODEBUILD_PROJECT`
-- `REMOTION_TEMPLATE_CODEBUILD_REGION`
-- `REMOTION_TEMPLATE_SOURCE_BUCKET`
-- `REMOTION_TEMPLATE_BUILD_BUCKET`
-- `REMOTION_TEMPLATE_BUILD_LOG_BUCKET`
-- `REMOTION_TEMPLATE_BUILD_PUBLIC_BASE_URL`
-- `REMOTION_DESKTOP_WORKER_BUNDLE_BUCKET`
-- `REMOTION_DESKTOP_WORKER_TOKEN_PEPPER`
-- `AWS_ACCESS_KEY_ID` o `SOFLIA_AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY` o `SOFLIA_AWS_SECRET_ACCESS_KEY`
-- `AWS_SESSION_TOKEN` o `SOFLIA_AWS_SESSION_TOKEN`
+- `REMOTION_LAMBDA_*`
+- `REMOTION_TEMPLATE_CODEBUILD_*`
+- `AWS_ACCESS_KEY_ID` / `SOFLIA_AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY` / `SOFLIA_AWS_SECRET_ACCESS_KEY`
+- `AWS_SESSION_TOKEN` / `SOFLIA_AWS_SESSION_TOKEN`
 
 ## Patrones Importantes
 

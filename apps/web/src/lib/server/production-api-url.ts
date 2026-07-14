@@ -6,7 +6,9 @@ function normalizeBaseUrl(value: string | undefined): string | null {
 }
 
 export function getProductionApiBaseUrl(): string {
-  if (process.env.RENDER_PROVIDER === "desktop_worker") {
+  const renderProvider = process.env.RENDER_PROVIDER || "desktop_worker";
+
+  if (renderProvider === "desktop_worker") {
     const desktopWorkerBaseUrl =
       normalizeBaseUrl(process.env.PRODUCTION_API_URL) ||
       normalizeBaseUrl(process.env.SOFLIA_ENGINE_WEB_URL) ||
@@ -30,7 +32,7 @@ export function getProductionApiBaseUrl(): string {
   }
 
   if (process.env.NODE_ENV !== "production") {
-    return "http://localhost:4000";
+    return "http://localhost:3000";
   }
 
   const netlifyWebUrl = normalizeBaseUrl(getAppUrl() || getDeploymentSiteUrl());

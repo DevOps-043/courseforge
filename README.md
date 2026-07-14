@@ -30,7 +30,7 @@ El producto ya no es solo un generador de cursos. Es un flujo operativo con apro
 | UI | TailwindCSS 4, Framer Motion, lucide-react, Sonner |
 | Estado | Zustand |
 | Backend web | Next.js API routes + Netlify Functions |
-| Backend produccion | Express en `apps/api` |
+| Backend produccion | Next.js API routes para `desktop_worker`; Express en `apps/api` solo legado |
 | DB/Auth | Supabase PostgreSQL, RLS, Auth Bridge JWT HS256 |
 | IA | Google Gemini principal, OpenAI fallback/bundle agent |
 | Video | Remotion 4.0.484, Remotion Player, Remotion Lambda |
@@ -48,9 +48,9 @@ apps/
     src/remotion/            Composiciones internas Remotion
     netlify/functions/       Jobs background del pipeline
   api/
-    src/server.ts            API Express
-    src/features/auth/       Auth auxiliar
-    src/features/production/ Render Remotion, templates, workers, Lambda
+    src/server.ts            API Express legado
+    src/features/auth/       Auth auxiliar legado
+    src/features/production/ Render Remotion legacy, previews, Lambda
 packages/
   shared/
   ui/
@@ -87,7 +87,6 @@ npm run dev
 `npm run dev` levanta:
 
 - `apps/web`: Next.js en `http://localhost:3000`
-- `apps/api`: Express en `http://localhost:4000`
 
 Comandos utiles:
 
@@ -96,9 +95,8 @@ npm run build
 npm run lint
 npx tsc -p apps/web/tsconfig.json --noEmit
 npm run test:remotion --workspace=apps/web
+npm run dev:legacy-api
 npm run test:remotion --workspace=apps/api
-npm run aws:ensure-remotion-role
-npm run aws:bootstrap-remotion
 ```
 
 Nota: el lint de `apps/web` aun depende de `next lint`; para validar TypeScript del frontend usa `npx tsc -p apps/web/tsconfig.json --noEmit`.
@@ -107,10 +105,10 @@ Nota: el lint de `apps/web` aun depende de `next lint`; para validar TypeScript 
 
 ## Arquitectura Actual
 
-SofLIA - Engine funciona como dos aplicaciones coordinadas:
+SofLIA - Engine funciona principalmente desde `apps/web`:
 
-1. **`apps/web`**: interfaz, dashboards, API routes, Auth Bridge, pipeline educativo, importaciones, publicacion, validaciones de templates y preview con Remotion Player.
-2. **`apps/api`**: API Express para produccion visual pesada: render Remotion, readiness, previews externos, builds cloud, Lambda, cola de jobs y workers de escritorio.
+1. **`apps/web`**: interfaz, dashboards, API routes, Auth Bridge, pipeline educativo, importaciones, publicacion, validaciones de templates, preview con Remotion Player y control plane del worker de escritorio.
+2. **`apps/api`**: API Express legado para render local/Lambda, previews externos y builds cloud. No es requisito para el flujo activo con `desktop_worker`.
 
 El sistema esta organizado alrededor de dominios de negocio. La regla en `apps/web/src/domains` es crear carpetas por capacidad solo cuando hacen falta:
 
@@ -201,39 +199,42 @@ Incluye:
 - Importacion de archivos desde Google Drive, OneDrive/cloud storage y Artlist
 - Templates Remotion internos y externos
 - Preview con Remotion Player
-- Render final en `apps/api`
+- Render final con worker de escritorio mediante rutas Next.js
 
 ---
 
 ## Produccion Visual y Remotion
 
-El sistema tiene tres caminos de render:
+El sistema activo usa `desktop_worker`. Los caminos `local` y `lambda` quedan como legado en `apps/api`.
 
-- `local`
-- `lambda`
 - `desktop_worker`
+- `local` legacy
+- `lambda` legacy
 
 Se controlan con `RENDER_PROVIDER`.
 
-### API Express
+### Control Plane Next.js
 
-Base local: `http://localhost:4000/api/v1/production`
+Base local: `http://localhost:3000/api/v1/production`
 
 Endpoints principales:
 
 - `POST /remotion/render`
 - `GET /remotion/readiness`
-- `POST /remotion/external-preview`
-- `POST /remotion/template-builds`
-- `GET /remotion/template-builds/:buildId/status`
-- `GET /remotion/external-preview-renders/:fileName`
-- `POST /remotion/workers/register`
+- `GET /remotion/workers`
+- `POST /remotion/workers/link-codes`
+- `POST /remotion/workers/link`
 - `POST /remotion/workers/heartbeat`
+- `POST /remotion/workers/jobs/claim-next`
 - `POST /remotion/workers/jobs/:jobId/claim`
 - `POST /remotion/workers/jobs/:jobId/progress`
 - `POST /remotion/workers/jobs/:jobId/complete`
 - `POST /remotion/workers/jobs/:jobId/fail`
 - `GET /jobs/:jobId/status`
+
+### API Express Legacy
+
+`apps/api` conserva endpoints para render local/Lambda, preview externo y builds cloud. Usar `npm run dev:legacy-api` solo cuando se necesite diagnosticar ese camino.
 
 ### Templates Remotion
 
@@ -411,36 +412,25 @@ Integraciones:
 Produccion:
 
 - `PRODUCTION_API_URL`
+- `RENDER_PROVIDER`
+- `REMOTION_DESKTOP_WORKER_TOKEN_PEPPER`
+- `REMOTION_DESKTOP_WORKER_LINK_CODE_PEPPER`
+
+Legacy Express/Lambda, solo si se usa `apps/api`:
+
 - `EXPRESS_INTERNAL_API_URL`
 - `EXPRESS_PUBLIC_URL`
 - `API_PUBLIC_URL`
 - `ALLOWED_ORIGINS`
-- `RENDER_PROVIDER`
 - `REMOTION_ENTRY_POINT`
 - `REMOTION_RENDER_TIMEOUT_MS`
 - `EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS`
 - `EXTERNAL_TEMPLATE_PREVIEW_RENDER_TIMEOUT_MS`
-- `REMOTION_LAMBDA_REGION`
-- `REMOTION_LAMBDA_FUNCTION_NAME`
-- `REMOTION_LAMBDA_SERVE_URL`
-- `REMOTION_LAMBDA_SITE_NAME`
-- `REMOTION_LAMBDA_BUCKET`
-- `REMOTION_LAMBDA_OUTPUT_PRIVACY`
-- `REMOTION_LAMBDA_FRAMES_PER_LAMBDA`
-- `REMOTION_LAMBDA_CONCURRENCY`
-- `REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA`
-- `REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS`
-- `REMOTION_TEMPLATE_CODEBUILD_PROJECT`
-- `REMOTION_TEMPLATE_CODEBUILD_REGION`
-- `REMOTION_TEMPLATE_SOURCE_BUCKET`
-- `REMOTION_TEMPLATE_BUILD_BUCKET`
-- `REMOTION_TEMPLATE_BUILD_LOG_BUCKET`
-- `REMOTION_TEMPLATE_BUILD_PUBLIC_BASE_URL`
-- `REMOTION_DESKTOP_WORKER_BUNDLE_BUCKET`
-- `REMOTION_DESKTOP_WORKER_TOKEN_PEPPER`
-- `AWS_ACCESS_KEY_ID` o `SOFLIA_AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY` o `SOFLIA_AWS_SECRET_ACCESS_KEY`
-- `AWS_SESSION_TOKEN` o `SOFLIA_AWS_SESSION_TOKEN`
+- `REMOTION_LAMBDA_*`
+- `REMOTION_TEMPLATE_CODEBUILD_*`
+- `AWS_ACCESS_KEY_ID` / `SOFLIA_AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY` / `SOFLIA_AWS_SECRET_ACCESS_KEY`
+- `AWS_SESSION_TOKEN` / `SOFLIA_AWS_SESSION_TOKEN`
 
 ---
 
@@ -458,17 +448,17 @@ Para Remotion/frontend:
 npm run test:remotion --workspace=apps/web
 ```
 
-Para Remotion/API:
+Para Remotion/API legacy:
 
 ```bash
 npm run test:remotion --workspace=apps/api
 npm run lint --workspace=apps/api
 ```
 
-Para verificar readiness del render API:
+Para verificar readiness del control plane activo:
 
 ```bash
-curl http://localhost:4000/api/v1/production/remotion/readiness
+curl http://localhost:3000/api/v1/production/remotion/readiness
 ```
 
 ---

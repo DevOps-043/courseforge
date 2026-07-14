@@ -798,6 +798,30 @@ export class DesktopWorkerControlPlane {
     return this.claimJob(worker, nextJob.id);
   }
 
+  async getJobStatus(jobId: string, organizationIds: string[]) {
+    const { data: job, error } = await this.supabase
+      .from("production_jobs")
+      .select("id, status, progress, output_snapshot, provider_error, started_at, completed_at, failed_at, organization_id")
+      .eq("id", jobId)
+      .maybeSingle();
+
+    if (error || !job) throw new Error("JOB_NOT_FOUND");
+    if (job.organization_id && !organizationIds.includes(job.organization_id)) {
+      throw new Error("FORBIDDEN: You do not have access to this job");
+    }
+
+    return {
+      id: job.id,
+      status: job.status,
+      progress: job.progress,
+      output_snapshot: job.output_snapshot,
+      provider_error: job.provider_error,
+      started_at: job.started_at,
+      completed_at: job.completed_at,
+      failed_at: job.failed_at,
+    };
+  }
+
   async claimJob(worker: WorkerAuthContext, jobId: string) {
     const { data: job, error: jobError } = await this.supabase
       .from("production_jobs")
