@@ -36,7 +36,7 @@ function buildPrompt(input: {
     .join("\n")
     .slice(0, 16_000);
 
-  return `Eres SofLIA Bundle Agent dentro de Courseforge. Convierte esta conversacion en una especificacion JSON segura para un bundle Remotion.
+  return `Eres SofLIA Bundle Agent dentro de SofLIA - Engine. Convierte esta conversacion en una especificacion JSON segura para un bundle Remotion.
 
 Reglas estrictas:
 - Responde solo JSON, sin markdown.
@@ -50,6 +50,9 @@ Reglas estrictas:
 - Nunca pongas instrucciones internas, nombres de props, nombres de componentes, labels tecnicos ni el prompt del usuario en defaultProps.
 - Evita textos visibles como "Avatar en primera persona", "Avatar pendiente", "Direccion visual", "Locucion activa" o nombres de zonas del layout.
 - Incluye en requiredAssets solo assets realmente inferidos: slides, audio, avatar, broll, captions.
+- Si hay slides y broll, la plantilla debe ser capaz de mostrar ambos de forma intencional: alternados, combinados, superpuestos o en zonas separadas. No debe ocultar B-roll solo porque existan diapositivas.
+- durationFrames es solo fallback/preview de la plantilla, no debe hardcodear la duracion final del render.
+- La plantilla final debe resolver la duracion con calculateMetadata usando props.totalDurationInFrames y, cuando aplique, metadata real del avatar/audio.
 - Si el usuario pide colores, agrega props simples como accentColor en propsSchema/defaultProps.
 - Usa compositionId estable con letras, numeros, punto, guion, dos puntos o guion bajo.
 - durationFrames entre 30 y 900; fps entre 12 y 60; width max 3840; height max 2160.

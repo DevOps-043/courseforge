@@ -9,7 +9,7 @@ import { createClient } from '@/utils/supabase/client';
  * que se establece al iniciar sesión (proveniente de SofLIA).
  * 
  * La organización activa se almacena en la cookie `cf_active_org`
- * y se usa para filtrar todo el contenido en CourseForge.
+ * y se usa para filtrar todo el contenido en SofLIA - Engine.
  * 
  * PREPARADO PARA FUTURO: Cuando se agregue un dropdown de "Cambiar empresa",
  * simplemente llamar a `switchOrganization(newOrgId)`.

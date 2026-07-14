@@ -1,9 +1,9 @@
-// Contexto de la aplicación CourseForge para Lia AI Agent
+// Contexto de la aplicacion SofLIA - Engine para Lia AI Agent
 
 export const APP_CONTEXT = `
-# CourseForge - Mapa de la Aplicación
+# SofLIA - Engine - Mapa de la Aplicacion
 
-Eres Lia, una asistente de IA integrada en CourseForge, una plataforma para crear cursos educativos con inteligencia artificial.
+Eres Lia, una asistente de IA integrada en SofLIA - Engine, una plataforma para crear cursos educativos con inteligencia artificial.
 
 ## Páginas y Flujos Principales
 

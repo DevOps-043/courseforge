@@ -9,6 +9,7 @@ function escapeString(value: string): string {
 function buildTemplateSource(spec: BundleAgentSpec): string {
   return `import React from "react";
 import { AbsoluteFill, Audio, Img, Video, interpolate, useCurrentFrame, useVideoConfig, type CalculateMetadataFunction } from "remotion";
+import { getVideoMetadata } from "@remotion/media-utils";
 
 type SlideAsset = {
   index?: number;
@@ -33,6 +34,10 @@ type TemplateProps = {
   totalDurationInFrames?: number;
   voiceAudioUrl?: string;
 };
+
+type SupportVisual =
+  | { type: "slide"; slide: SlideAsset }
+  | { type: "broll"; clip: BrollClip };
 
 const defaultAccentColor = ${escapeString(String(spec.defaultProps.accentColor || "#5B21B6"))};
 const defaultSubtitle = ${escapeString(String(spec.defaultProps.subtitle || "Video educativo con ritmo visual claro."))};
@@ -78,34 +83,61 @@ function orderedBrollClips(clips: BrollClip[] = []) {
     .sort((left, right) => (left.order ?? 0) - (right.order ?? 0));
 }
 
-function getActiveSlide(frame: number, slides: SlideAsset[], durationInFrames: number) {
-  if (slides.length === 0) return null;
-  const framesPerSlide = Math.max(1, Math.floor(durationInFrames / slides.length));
-  const index = Math.min(slides.length - 1, Math.floor(frame / framesPerSlide));
-  return slides[index];
-}
+function buildSupportVisualSequence(slides: SlideAsset[], clips: BrollClip[]) {
+  const visuals: SupportVisual[] = [];
+  const maxLength = Math.max(slides.length, clips.length);
 
-function getActiveBrollClip(frame: number, clips: BrollClip[]) {
-  if (clips.length === 0) return null;
-  let cursor = 0;
-  for (const clip of clips) {
-    const duration = Math.max(1, Math.round(clip.durationInFrames || 90));
-    if (frame >= cursor && frame < cursor + duration) {
-      return clip;
+  for (let index = 0; index < maxLength; index += 1) {
+    if (slides[index]) {
+      visuals.push({ type: "slide", slide: slides[index] });
     }
-    cursor += duration;
+    if (clips[index]) {
+      visuals.push({ type: "broll", clip: clips[index] });
+    }
   }
-  return clips[clips.length - 1];
+
+  return visuals;
 }
 
-export const calculateMetadata: CalculateMetadataFunction<TemplateProps> = ({ props }) => {
-  const resolvedDuration = typeof props.totalDurationInFrames === "number" && Number.isFinite(props.totalDurationInFrames)
+function getActiveSupportVisual(frame: number, visuals: SupportVisual[], durationInFrames: number) {
+  if (visuals.length === 0) return null;
+  const framesPerVisual = Math.max(1, Math.floor(durationInFrames / visuals.length));
+  const index = Math.min(visuals.length - 1, Math.floor(frame / framesPerVisual));
+  return visuals[index];
+}
+
+async function resolveVideoDurationInFrames(url: string | undefined, fps: number) {
+  if (!url) return null;
+
+  try {
+    const metadata = await getVideoMetadata(url);
+    const durationInSeconds = Number(metadata.durationInSeconds);
+    if (Number.isFinite(durationInSeconds) && durationInSeconds > 0) {
+      return Math.max(1, Math.ceil(durationInSeconds * fps));
+    }
+  } catch (error) {
+    console.warn("No se pudo leer metadata real del video; usando duracion de SofLIA - Engine/fallback.", error);
+  }
+
+  return null;
+}
+
+export const calculateMetadata: CalculateMetadataFunction<TemplateProps> = async ({ props }) => {
+  const fps = typeof fallbackFps === "number" && Number.isFinite(fallbackFps) && fallbackFps > 0
+    ? fallbackFps
+    : 30;
+  const propsDuration = typeof props.totalDurationInFrames === "number" && Number.isFinite(props.totalDurationInFrames)
     ? Math.max(1, Math.round(props.totalDurationInFrames))
-    : fallbackDurationInFrames;
+    : null;
+  const shouldTrustAvatarDuration = !props.voiceAudioUrl && typeof props.avatarVideoUrl === "string";
+  const avatarDuration = shouldTrustAvatarDuration
+    ? await resolveVideoDurationInFrames(props.avatarVideoUrl, fps)
+    : null;
+  const resolvedDuration = avatarDuration || propsDuration || fallbackDurationInFrames;
 
   return {
     durationInFrames: resolvedDuration,
-    fps: fallbackFps,
+    fps,
     props,
   };
 };
@@ -122,8 +154,10 @@ export default function SofliaGeneratedTemplate(props: TemplateProps) {
   const accentColor = props.accentColor || defaultAccentColor;
   const slides = orderedSlides(props.slides);
   const brollClips = orderedBrollClips(props.brollClips);
-  const activeSlide = getActiveSlide(frame, slides, durationInFrames);
-  const activeBroll = slides.length > 0 ? null : getActiveBrollClip(frame, brollClips);
+  const supportVisuals = buildSupportVisualSequence(slides, brollClips);
+  const activeVisual = getActiveSupportVisual(frame, supportVisuals, durationInFrames);
+  const activeSlide = activeVisual?.type === "slide" ? activeVisual.slide : null;
+  const activeBroll = activeVisual?.type === "broll" ? activeVisual.clip : null;
   const hasAvatar = typeof props.avatarVideoUrl === "string" && props.avatarVideoUrl.length > 0;
   const hasVoice = typeof props.voiceAudioUrl === "string" && props.voiceAudioUrl.length > 0;
   const hasSupportVisual = Boolean(activeSlide || activeBroll);
@@ -257,8 +291,8 @@ function mergeCanonicalPropsSchema(spec: BundleAgentSpec) {
       avatarVideoUrl: { type: "string", description: "URL publica del video de avatar/talking head." },
       bgMusicUrl: { type: "string", description: "URL publica de musica de fondo." },
       bgMusicVolume: { type: "number", description: "Volumen relativo de musica de fondo entre 0 y 1." },
-      brollClips: { type: "array", description: "Clips B-roll normalizados por Courseforge." },
-      slides: { type: "array", description: "Slides renderizables normalizadas por Courseforge." },
+      brollClips: { type: "array", description: "Clips B-roll normalizados por SofLIA - Engine." },
+      slides: { type: "array", description: "Slides renderizables normalizadas por SofLIA - Engine." },
       subtitle: { type: "string", description: "Subtitulo o texto narrativo corto en pantalla." },
       title: { type: "string", description: "Titulo principal de la leccion o composicion." },
       totalDurationInFrames: { type: "integer", description: "Duracion total resuelta para el render." },
@@ -294,8 +328,8 @@ function buildManifest(spec: BundleAgentSpec) {
 
 export function buildBaseBundleSpec(): BundleAgentSpec {
   return {
-    title: "Courseforge Remotion Template Base",
-    description: "Base segura para crear un bundle Remotion externo compatible con Courseforge.",
+    title: "SofLIA - Engine Remotion Template Base",
+    description: "Base segura para crear un bundle Remotion externo compatible con SofLIA - Engine.",
     visualStyle: "estructura base con avatar, contenido lateral, subtitulos blancos y acentos configurables",
     compositionId: "courseforge-template-base",
     durationFrames: 150,
@@ -313,7 +347,7 @@ export function buildBaseBundleSpec(): BundleAgentSpec {
       },
     },
     defaultProps: {
-      title: "Courseforge Remotion Template Base",
+      title: "SofLIA - Engine Remotion Template Base",
       subtitle: "Reemplaza este texto con el contenido de tu leccion.",
       accentColor: "#5B21B6",
     },
@@ -334,6 +368,7 @@ export async function buildControlledBundleZip(spec: BundleAgentSpec): Promise<{
     dependencies: {
       react: "19.2.3",
       "react-dom": "19.2.3",
+      "@remotion/media-utils": "4.0.484",
       remotion: "4.0.484",
     },
   }, null, 2));
@@ -363,12 +398,13 @@ export async function buildExternalAuthorBundleBaseZip(): Promise<{
     dependencies: {
       react: "19.2.3",
       "react-dom": "19.2.3",
+      "@remotion/media-utils": "4.0.484",
       remotion: "4.0.484",
     },
   }, null, 2));
-  zip.file("README.md", `# Courseforge Remotion Template Base
+  zip.file("README.md", `# SofLIA - Engine Remotion Template Base
 
-Este ZIP contiene la estructura minima aceptada por Courseforge para un bundle Remotion externo.
+Este ZIP contiene la estructura minima aceptada por SofLIA - Engine para un bundle Remotion externo.
 
 Archivos obligatorios:
 - courseforge-remotion-template.json
@@ -378,7 +414,7 @@ Archivos obligatorios:
 Reglas importantes:
 - No agregues node_modules al ZIP.
 - No agregues scripts lifecycle en package.json.
-- Usa solo dependencias permitidas por Courseforge.
+- Usa solo dependencias permitidas por SofLIA - Engine.
 - No uses fs, path, child_process, process, eval, Function, fetch, XMLHttpRequest ni WebSocket.
 - No incluyas secretos, tokens, credenciales ni URLs remotas hardcodeadas.
 - Todo bundle subido debe pasar validacion, revision humana y build cloud antes de preview/render productivo.

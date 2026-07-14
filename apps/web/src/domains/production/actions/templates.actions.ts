@@ -276,8 +276,8 @@ export async function getExternalBundlePreviewDataAction(params: {
   }
 
   try {
-    const expressApiUrl = getProductionApiBaseUrl();
-    const response = await fetch(`${expressApiUrl}/api/v1/production/remotion/external-preview`, {
+    const productionApiUrl = getProductionApiBaseUrl();
+    const response = await fetch(`${productionApiUrl}/api/v1/production/remotion/external-preview`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -354,8 +354,8 @@ export async function startTemplateCloudBuildAction(
   if (!token) return { success: false, error: "No se encontro un token de autenticacion" };
 
   try {
-    const expressApiUrl = getProductionApiBaseUrl();
-    const response = await fetch(`${expressApiUrl}/api/v1/production/remotion/template-builds`, {
+    const productionApiUrl = getProductionApiBaseUrl();
+    const response = await fetch(`${productionApiUrl}/api/v1/production/remotion/template-builds`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -391,8 +391,8 @@ export async function getTemplateCloudBuildStatusAction(
   if (!token) return { success: false, error: "No se encontro un token de autenticacion" };
 
   try {
-    const expressApiUrl = getProductionApiBaseUrl();
-    const response = await fetch(`${expressApiUrl}/api/v1/production/remotion/template-builds/${encodeURIComponent(buildId)}/status`, {
+    const productionApiUrl = getProductionApiBaseUrl();
+    const response = await fetch(`${productionApiUrl}/api/v1/production/remotion/template-builds/${encodeURIComponent(buildId)}/status`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
     });

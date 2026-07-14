@@ -54,7 +54,7 @@ describe("validateRemotionBundle", () => {
         title: { type: "string" },
       },
     };
-    const defaultProps = { title: "Courseforge" };
+    const defaultProps = { title: "SofLIA - Engine" };
     const buffer = await zipBuffer({
       "courseforge-remotion-template.json": JSON.stringify(
         manifest({

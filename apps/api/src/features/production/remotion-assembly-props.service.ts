@@ -101,28 +101,41 @@ export function normalizeAssemblyAssets(
     )
     .map(({ originalIndex: _originalIndex, ...clip }: { originalIndex: number; url: string; durationInFrames: number; order: number }) => clip);
 
-  const brollTotalSeconds = brollClips.reduce(
+  const explicitBrollTotalSeconds = (source.b_roll_clips ?? [])
+    .filter((clip: any) => Boolean(clip?.public_url) && isPositiveNumber(clip?.duration))
+    .reduce(
+      (sum: number, clip: any) => sum + clip.duration,
+      0,
+    );
+  const fallbackBrollTotalSeconds = brollClips.reduce(
     (sum: number, clip: { durationInFrames: number }) => sum + clip.durationInFrames / fps,
     0,
   );
 
-  const primaryMediaDurationSeconds = isPositiveNumber(source.voice_audio?.duration)
+  const voiceDurationSeconds = isPositiveNumber(source.voice_audio?.duration)
     ? source.voice_audio.duration
-    : isPositiveNumber(source.avatar_video?.duration)
-      ? source.avatar_video.duration
-      : 0;
+    : 0;
+  const avatarDurationSeconds = isPositiveNumber(source.avatar_video?.duration)
+    ? source.avatar_video.duration
+    : 0;
   const targetDurationSeconds = isPositiveNumber(source.assembly_target_duration_seconds)
     ? source.assembly_target_duration_seconds
     : 0;
 
-  let totalDurationSeconds = primaryMediaDurationSeconds;
+  let totalDurationSeconds = voiceDurationSeconds;
 
-  if (totalDurationSeconds <= 0 && brollTotalSeconds > 0) {
-    totalDurationSeconds = brollTotalSeconds;
+  if (totalDurationSeconds <= 0 && targetDurationSeconds > 0) {
+    totalDurationSeconds = Math.max(
+      targetDurationSeconds,
+      avatarDurationSeconds,
+      explicitBrollTotalSeconds,
+    );
+  } else if (totalDurationSeconds <= 0 && avatarDurationSeconds > 0) {
+    totalDurationSeconds = avatarDurationSeconds;
+  } else if (totalDurationSeconds <= 0 && fallbackBrollTotalSeconds > 0) {
+    totalDurationSeconds = fallbackBrollTotalSeconds;
   } else if (totalDurationSeconds <= 0 && slides.length > 0) {
     totalDurationSeconds = slides.length * DEFAULT_SLIDE_SECONDS;
-  } else if (totalDurationSeconds <= 0 && targetDurationSeconds > 0) {
-    totalDurationSeconds = targetDurationSeconds;
   }
 
   return {

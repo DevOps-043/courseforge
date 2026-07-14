@@ -105,6 +105,11 @@ describe("SofLIA Bundle Agent services", () => {
     assert.match(source, /brollClips/);
     assert.match(source, /export const calculateMetadata/);
     assert.match(source, /props\.totalDurationInFrames/);
+    assert.match(source, /@remotion\/media-utils/);
+    assert.match(source, /getVideoMetadata/);
+    assert.match(source, /buildSupportVisualSequence/);
+    assert.match(source, /activeVisual\?\.type === "broll"/);
+    assert.doesNotMatch(source, /slides\.length > 0 \? null :/);
     assert.doesNotMatch(source, /<Composition/);
     assert.match(source, /<Video/);
     assert.match(source, /<Img/);

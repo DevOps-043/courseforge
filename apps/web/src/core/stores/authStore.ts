@@ -10,7 +10,7 @@ import { createClient } from '@/utils/supabase/client';
  * loginAction que autentica contra SofLIA (Master).
  * 
  * El user.id aquí corresponde al UUID de SofLIA, ya que el JWT
- * fue generado por el auth de SofLIA y aceptado por CourseForge
+ * fue generado por el auth de SofLIA y aceptado por SofLIA - Engine
  * gracias al JWT_SECRET compartido.
  */
 

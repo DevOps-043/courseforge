@@ -218,6 +218,59 @@ describe("normalizeAssemblyAssets", () => {
     assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
   });
 
+  it("uses assembly target duration before slide-count fallback", () => {
+    const props = buildAssemblyProps(
+      {
+        assembly_target_duration_seconds: 170,
+        slides: {
+          images: [
+            { slide_index: 1, storage_path: "slides/1.png", public_url: IMAGE_URL },
+            { slide_index: 2, storage_path: "slides/2.png", public_url: IMAGE_URL },
+            { slide_index: 3, storage_path: "slides/3.png", public_url: IMAGE_URL },
+          ],
+        },
+      },
+      "full-slides",
+    );
+
+    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
+  });
+
+  it("uses assembly target duration instead of a shorter avatar duration", () => {
+    const props = buildAssemblyProps(
+      {
+        assembly_target_duration_seconds: 170,
+        avatar_video: {
+          storage_path: "production-assets/avatar.mp4",
+          public_url: VIDEO_URL,
+          duration: 51,
+        },
+        slides: {
+          images: Array.from({ length: 26 }, (_, index) => ({
+            slide_index: index + 1,
+            storage_path: `slides/${index + 1}.png`,
+            public_url: IMAGE_URL,
+          })),
+        },
+      },
+      "full-slides",
+    );
+
+    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
+  });
+
+  it("uses assembly target duration before default B-roll fallback durations", () => {
+    const props = buildAssemblyProps(
+      {
+        assembly_target_duration_seconds: 170,
+        b_roll_clips: [baseClip({ duration: undefined })],
+      },
+      "full-slides",
+    );
+
+    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
+  });
+
   it("derives target duration from generated video content hierarchy", () => {
     const duration = deriveAssemblyTargetDurationSeconds({
       duration_estimate_minutes: 2.5,

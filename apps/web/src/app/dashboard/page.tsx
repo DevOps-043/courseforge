@@ -24,7 +24,7 @@ export default async function DashboardPage() {
   const userId = user?.id || bridgeUser?.id
   const userEmail = user?.email || bridgeUser?.email
 
-  // Obtener perfil (puede no existir en CourseForge para usuarios nuevos de SofLIA)
+  // Obtener perfil (puede no existir en SofLIA - Engine para usuarios nuevos de SofLIA)
   const { data: profile } = await supabase
     .from('profiles')
     .select('avatar_url, first_name, last_name_father')
@@ -43,7 +43,7 @@ export default async function DashboardPage() {
           {/* Logo area */}
           <div className="flex items-center gap-2">
             <div className="relative w-8 h-8">
-              <Image src="/Logo.png" alt="CourseForge" fill className="object-contain" />
+              <Image src="/Logo.png" alt="SofLIA - Engine" fill className="object-contain" />
             </div>
             <span className="font-bold text-lg tracking-tight">Course<span className="text-[#00D4B3]">Forge</span></span>
           </div>

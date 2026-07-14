@@ -1,4 +1,5 @@
 import { getRemotionRenderConfig } from './remotion-render.config';
+import { DesktopWorkerProvider } from './desktop-worker.provider';
 import { LocalRemotionProvider } from './local-remotion.provider';
 import { RemotionLambdaProvider } from './remotion-lambda.provider';
 import type { RenderDispatchResult, RenderProvider } from './render-provider.types';
@@ -8,9 +9,13 @@ export class RemotionRenderOrchestratorService {
 
   constructor() {
     const config = getRemotionRenderConfig();
-    this.provider = config.provider === 'lambda'
-      ? new RemotionLambdaProvider()
-      : new LocalRemotionProvider();
+    if (config.provider === 'lambda') {
+      this.provider = new RemotionLambdaProvider();
+    } else if (config.provider === 'desktop_worker') {
+      this.provider = new DesktopWorkerProvider();
+    } else {
+      this.provider = new LocalRemotionProvider();
+    }
   }
 
   get providerName() {

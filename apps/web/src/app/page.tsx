@@ -36,13 +36,13 @@ export default function Home() {
             <div className="relative w-12 h-12">
               <Image
                 src="/Logo.png"
-                alt="CourseGen"
+                alt="SofLIA - Engine"
                 fill
                 className="object-contain"
               />
             </div>
             <span className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-              CourseGen
+              SofLIA - Engine
             </span>
           </div>
 
@@ -102,7 +102,7 @@ export default function Home() {
 
               <p className="text-lg text-gray-600 dark:text-[#94A3B8] max-w-xl mx-auto lg:mx-0 leading-relaxed">
                 Transforma tu conocimiento en experiencias educativas
-                estructuradas. CourseGen utiliza inteligencia artificial
+                estructuradas. SofLIA - Engine utiliza inteligencia artificial
                 avanzada para diseñar, desarrollar y optimizar tus cursos en
                 minutos.
               </p>

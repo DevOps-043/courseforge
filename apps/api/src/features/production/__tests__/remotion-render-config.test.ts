@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  DEFAULT_LAMBDA_RENDER_TIMEOUT_MS,
   buildStableHash,
   getRemotionRenderConfig,
   getRemotionRenderReadiness,
+  resolveExternalPreviewRenderTimeoutMs,
+  resolveLocalRenderTimeoutMs,
 } from '../remotion-render.config';
 import { ensureAwsCredentialsEnv } from '../aws-credentials-env';
 
@@ -45,7 +48,23 @@ describe('getRemotionRenderConfig', () => {
       assert.equal(config.lambda.concurrency, null);
       assert.equal(config.lambda.framesPerLambda, 600);
       assert.equal(config.lambda.concurrencyPerLambda, 1);
-      assert.equal(config.lambda.timeoutInMilliseconds, 600000);
+      assert.equal(config.lambda.timeoutInMilliseconds, DEFAULT_LAMBDA_RENDER_TIMEOUT_MS);
+    });
+  });
+
+  it('accepts desktop_worker without requiring Lambda config', () => {
+    withEnv({
+      RENDER_PROVIDER: 'desktop_worker',
+      REMOTION_LAMBDA_REGION: undefined,
+      REMOTION_LAMBDA_FUNCTION_NAME: undefined,
+      REMOTION_LAMBDA_SERVE_URL: undefined,
+      REMOTION_LAMBDA_BUCKET: undefined,
+    }, () => {
+      const config = getRemotionRenderConfig();
+      const readiness = getRemotionRenderReadiness();
+
+      assert.equal(config.provider, 'desktop_worker');
+      assert.equal(readiness.provider, 'desktop_worker');
     });
   });
 
@@ -81,6 +100,7 @@ describe('getRemotionRenderConfig', () => {
 
       assert.equal(readiness.provider, 'lambda');
       assert.equal(checkNames.includes('REMOTION_LAMBDA_BUCKET'), true);
+      assert.equal(readiness.tuning.lambdaTimeoutInMilliseconds, DEFAULT_LAMBDA_RENDER_TIMEOUT_MS);
     });
   });
 
@@ -119,7 +139,39 @@ describe('getRemotionRenderConfig', () => {
       assert.equal(config.lambda.concurrency, null);
       assert.equal(config.lambda.framesPerLambda, 90);
       assert.equal(config.lambda.concurrencyPerLambda, 1);
-      assert.equal(config.lambda.timeoutInMilliseconds, 600000);
+      assert.equal(config.lambda.timeoutInMilliseconds, DEFAULT_LAMBDA_RENDER_TIMEOUT_MS);
+    });
+  });
+
+  it('resolves local and preview render timeouts from the right environment variables', () => {
+    withEnv({
+      REMOTION_RENDER_TIMEOUT_MS: undefined,
+      EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS: '1800000',
+      EXTERNAL_TEMPLATE_PREVIEW_RENDER_TIMEOUT_MS: '240000',
+    }, () => {
+      assert.equal(resolveLocalRenderTimeoutMs(), 1800000);
+      assert.equal(resolveExternalPreviewRenderTimeoutMs(), 240000);
+    });
+  });
+
+  it('flags production local renders without Cloud Run timeout parity', () => {
+    withEnv({
+      NODE_ENV: 'production',
+      RENDER_PROVIDER: 'local',
+      NEXT_PUBLIC_SUPABASE_URL: 'https://supabase.example.com',
+      SUPABASE_SERVICE_ROLE_KEY: 'service-role',
+      API_PUBLIC_URL: 'https://api.example.com',
+      EXPRESS_PUBLIC_URL: undefined,
+      REMOTION_RENDER_TIMEOUT_MS: undefined,
+      EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS: undefined,
+    }, () => {
+      const readiness = getRemotionRenderReadiness();
+      const renderTimeoutCheck = readiness.checks.find((check) => check.name === 'REMOTION_RENDER_TIMEOUT_MS');
+      const externalTimeoutCheck = readiness.checks.find((check) => check.name === 'EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS');
+
+      assert.equal(readiness.ok, false);
+      assert.equal(renderTimeoutCheck?.ok, false);
+      assert.equal(externalTimeoutCheck?.ok, false);
     });
   });
 
@@ -184,6 +236,28 @@ describe('getRemotionRenderConfig', () => {
       const config = getRemotionRenderConfig();
 
       assert.equal(config.lambda.timeoutInMilliseconds, 840000);
+    });
+  });
+
+  it('flags undersized production Lambda timeout overrides in readiness', () => {
+    withEnv({
+      NODE_ENV: 'production',
+      RENDER_PROVIDER: 'lambda',
+      NEXT_PUBLIC_SUPABASE_URL: 'https://supabase.example.com',
+      SUPABASE_SERVICE_ROLE_KEY: 'service-role',
+      API_PUBLIC_URL: 'https://api.example.com',
+      REMOTION_LAMBDA_REGION: 'us-east-1',
+      REMOTION_LAMBDA_FUNCTION_NAME: 'remotion-render',
+      REMOTION_LAMBDA_SERVE_URL: 'https://example.com/sites/courseforge',
+      REMOTION_LAMBDA_BUCKET: 'courseforge-renders',
+      REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS: '600000',
+    }, () => {
+      const readiness = getRemotionRenderReadiness();
+      const timeoutCheck = readiness.checks.find(
+        (check) => check.name === 'REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS',
+      );
+
+      assert.equal(timeoutCheck?.ok, false);
     });
   });
 

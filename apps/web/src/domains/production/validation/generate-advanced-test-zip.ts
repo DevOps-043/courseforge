@@ -408,18 +408,18 @@ export const MyComposition = AdvancedAvatarSubtitles;
 
 const readmeContent = `# Remotion advanced example
 
-Bundle de ejemplo para validar plantillas externas de Courseforge.
+Bundle de ejemplo para validar plantillas externas de SofLIA - Engine.
 
 Incluye:
 
-- Manifest requerido por Courseforge.
+- Manifest requerido por SofLIA - Engine.
 - Composicion React/Remotion autocontenida.
 - Subtitulos temporizados.
 - Cambios de posicion de avatar por escena.
 - Placeholder visual para B-roll y progreso narrativo.
 
 Este ZIP esta pensado para validacion estatica y revision humana. En la V1 de
-bundles externos Courseforge no ejecuta codigo del ZIP.
+bundles externos SofLIA - Engine no ejecuta codigo del ZIP.
 `;
 
 async function generateZip() {

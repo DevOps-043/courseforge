@@ -218,7 +218,7 @@ export default function LoginForm() {
           >
             <Image
               src="/Logo.png"
-              alt="CourseGen Network"
+              alt="SofLIA - Engine Network"
               fill
               className="object-contain drop-shadow-2xl"
               priority

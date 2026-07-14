@@ -43,10 +43,10 @@ export default function PrivacyPolicyPage() {
 
           <section>
             <h2 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">
-              4. Transferencia de Fuentes al Taller (CourseForge)
+              4. Transferencia de Fuentes al Taller (SofLIA - Engine)
             </h2>
             <p>
-              Una vez que el usuario valida y confirma las fuentes bibliográficas encontradas, el GPT cuenta con una acción específica que permite el envío de esta información validada hacia la API de la plataforma <strong>CourseForge</strong> <code>(soflia-coursegen.netlify.app/api/gpt/sources)</code>. 
+              Una vez que el usuario valida y confirma las fuentes bibliográficas encontradas, el GPT cuenta con una acción específica que permite el envío de esta información validada hacia la API de la plataforma <strong>SofLIA - Engine</strong> <code>(soflia-coursegen.netlify.app/api/gpt/sources)</code>. 
               <br/><br/>
               Durante este proceso <strong>únicamente</strong> se transfiere:
             </p>

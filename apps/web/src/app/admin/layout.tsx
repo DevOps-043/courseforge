@@ -27,7 +27,7 @@ export default async function AdminLayout({
   const userId = user?.id || bridgeUser?.id;
   const userEmail = user?.email || bridgeUser?.email;
 
-  // 2. Verificar Rol de Admin local de CourseForge
+  // 2. Verificar Rol de Admin local de SofLIA - Engine
   let { data: profile } = await supabase
     .from('profiles')
     .select('avatar_url, first_name, last_name_father, platform_role')

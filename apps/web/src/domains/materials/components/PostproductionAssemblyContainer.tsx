@@ -2,14 +2,19 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, CheckCircle2, Film, Layers, Loader2, Play, RefreshCw, Search, Sparkles } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, Copy, Download, Film, Layers, Link2, Loader2, Monitor, Play, RefreshCw, Search, Sparkles, Square, Unlink } from 'lucide-react';
 import { hasPreviewableAssets } from '@/remotion/buildAssemblyProps';
 import { deriveAssemblyTargetDurationSeconds } from '@/remotion/assembly-duration';
 import { getTemplatesAction, type RemotionTemplate } from '@/domains/production/actions/templates.actions';
 import {
     assembleRemotionVideoAction,
+    cancelRemotionAssemblyJobsAction,
+    createRenderWorkerLinkCodeAction,
     deleteFinalVideoForPublicationAction,
     getRemotionJobStatusAction,
+    getRenderWorkerStatusAction,
+    revokeRenderWorkerAction,
+    type RenderWorkerStatusView,
 } from '../actions/production.actions';
 import { useMaterials } from '../hooks/useMaterials';
 import { PRODUCTION_THEME } from './production-asset-ui';
@@ -36,6 +41,19 @@ interface AssemblyJobTracker {
     errorCode?: string;
     lastLog?: string;
     completedSynced?: boolean;
+}
+
+interface RenderWorkerStatusState {
+    apiUrl?: string;
+    renderProvider?: string | null;
+    requiresDesktopWorker: boolean;
+    workers: RenderWorkerStatusView[];
+}
+
+interface WorkerLinkCodeState {
+    code: string;
+    apiUrl?: string;
+    expiresAt?: string;
 }
 
 function isTerminalStatus(status: AssemblyJobStatus) {
@@ -75,6 +93,14 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const [templateSearch, setTemplateSearch] = useState('');
     const [assemblyJobs, setAssemblyJobs] = useState<AssemblyJobTracker[]>([]);
     const [deletingVideoId, setDeletingVideoId] = useState<string | null>(null);
+    const [stoppingAssembly, setStoppingAssembly] = useState(false);
+    const [workerStatus, setWorkerStatus] = useState<RenderWorkerStatusState | null>(null);
+    const [workerStatusError, setWorkerStatusError] = useState<string | null>(null);
+    const [loadingWorkerStatus, setLoadingWorkerStatus] = useState(true);
+    const [workerLinkCode, setWorkerLinkCode] = useState<WorkerLinkCodeState | null>(null);
+    const [creatingWorkerLink, setCreatingWorkerLink] = useState(false);
+    const [revokingWorkerId, setRevokingWorkerId] = useState<string | null>(null);
+    const [copiedWorkerCode, setCopiedWorkerCode] = useState(false);
     const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const pollingInFlightRef = useRef(false);
     const pollFailuresRef = useRef(0);
@@ -82,6 +108,8 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const hydratedAssemblyJobsRef = useRef(false);
     const POLL_INTERVAL_MS = 1500;
     const MAX_CONSECUTIVE_POLL_FAILURES = 40;
+    const workerDownloadUrl = process.env.NEXT_PUBLIC_SOFLIA_WORKER_DOWNLOAD_URL || '';
+    const workerDownloadHref = workerDownloadUrl || '/downloads';
 
     const persistTrackedJobs = (jobs: AssemblyJobTracker[]) => {
         if (typeof window === 'undefined') return;
@@ -126,6 +154,107 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
         if (typeof window === 'undefined') return;
         window.sessionStorage.removeItem(assemblyJobsStorageKey);
     };
+
+    const loadWorkerStatus = async () => {
+        setLoadingWorkerStatus(true);
+        const result = await getRenderWorkerStatusAction(artifactId);
+        if (result.success) {
+            setWorkerStatus({
+                apiUrl: result.apiUrl,
+                renderProvider: result.renderProvider,
+                requiresDesktopWorker: Boolean(result.requiresDesktopWorker),
+                workers: result.workers || [],
+            });
+            setWorkerStatusError(null);
+        } else {
+            setWorkerStatusError(result.error || 'No se pudo consultar el worker local.');
+        }
+        setLoadingWorkerStatus(false);
+    };
+
+    const handleCreateWorkerLinkCode = async () => {
+        setCreatingWorkerLink(true);
+        const result = await createRenderWorkerLinkCodeAction(artifactId);
+        if (result.success && result.code) {
+            setWorkerLinkCode({
+                code: result.code,
+                apiUrl: result.apiUrl,
+                expiresAt: result.expiresAt,
+            });
+            setWorkerStatusError(null);
+        } else {
+            setWorkerStatusError(result.error || 'No se pudo crear el codigo de vinculacion.');
+        }
+        setCreatingWorkerLink(false);
+    };
+
+    const handleRevokeWorker = async (workerId: string) => {
+        setRevokingWorkerId(workerId);
+        const result = await revokeRenderWorkerAction(artifactId, workerId);
+        if (result.success) {
+            setWorkerStatusError(null);
+            await loadWorkerStatus();
+        } else {
+            setWorkerStatusError(result.error || 'No se pudo desvincular el worker.');
+        }
+        setRevokingWorkerId(null);
+    };
+
+    const handleCopyWorkerCode = async () => {
+        if (!workerLinkCode?.code) return;
+        try {
+            await navigator.clipboard.writeText(workerLinkCode.code);
+            setCopiedWorkerCode(true);
+            setTimeout(() => setCopiedWorkerCode(false), 1800);
+        } catch {
+            setWorkerStatusError('No se pudo copiar el codigo. Seleccionalo manualmente.');
+        }
+    };
+
+    const handleStopAssembly = async () => {
+        const activeJobIds = assemblyJobsRef.current
+            .filter((job) => !isTerminalStatus(job.status) && !job.jobId.startsWith('failed-trigger-'))
+            .map((job) => job.jobId);
+
+        if (activeJobIds.length === 0) {
+            stopPolling();
+            setIsAssembling(false);
+            return;
+        }
+
+        setStoppingAssembly(true);
+        const result = await cancelRemotionAssemblyJobsAction(artifactId, activeJobIds);
+        if (result.success) {
+            stopPolling();
+            setIsAssembling(false);
+            setProgress(0);
+            setTrackedJobs((jobs) =>
+                jobs.map((job) =>
+                    activeJobIds.includes(job.jobId)
+                        ? {
+                            ...job,
+                            status: 'CANCELLED',
+                            error: 'El ensamblado fue detenido desde SofLIA - Engine.',
+                            errorCode: 'USER_CANCELLED',
+                        }
+                        : job,
+                ),
+            );
+            await refresh();
+            router.refresh();
+        } else {
+            setWorkerStatusError(result.error || 'No se pudo detener el ensamblado.');
+        }
+        setStoppingAssembly(false);
+    };
+
+    useEffect(() => {
+        void loadWorkerStatus();
+        const interval = setInterval(() => {
+            void loadWorkerStatus();
+        }, 15000);
+        return () => clearInterval(interval);
+    }, [artifactId]);
 
     useEffect(() => {
         return () => {
@@ -317,8 +446,18 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
         }
     }, [artifactId, assemblyJobsStorageKey, loadingComponents, videoComponents]);
 
+    const availableDesktopWorkers = workerStatus?.workers.filter((worker) =>
+        worker.status === 'ONLINE' || worker.status === 'BUSY',
+    ) || [];
+    const workerGateBlocked = Boolean(workerStatus?.requiresDesktopWorker && availableDesktopWorkers.length === 0);
+    const workerGateMessage = 'Vincula y enciende un worker local antes de ensamblar con desktop_worker.';
+
     const startAssemblyForComponents = async (targets: any[]) => {
         if (targets.length === 0) return;
+        if (workerGateBlocked) {
+            alert(workerGateMessage);
+            return;
+        }
         setIsAssembling(true);
         setProgress(0);
         setIsReconnecting(false);
@@ -597,7 +736,18 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                 Ensamblando {currentAssemblyLabel} con Remotion
                             </span>
                         </div>
-                        <span className="text-sm font-bold text-purple-700 dark:text-purple-300">{progress}%</span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-purple-700 dark:text-purple-300">{progress}%</span>
+                            <button
+                                type="button"
+                                onClick={() => void handleStopAssembly()}
+                                disabled={stoppingAssembly}
+                                className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-500/30 dark:text-red-300 dark:hover:bg-red-500/10"
+                            >
+                                {stoppingAssembly ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3" />}
+                                Detener
+                            </button>
+                        </div>
                     </div>
                     <div className="relative h-2.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
                         <div
@@ -714,7 +864,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                             variables={externalPreviewVariables}
                                         />
                                         <div className="text-xs text-gray-500 dark:text-gray-400 text-center leading-relaxed">
-                                            Preview del bundle externo usando el build cloud aprobado para Remotion Lambda.
+                                            Preview del bundle externo usando el build cloud aprobado.
                                         </div>
                                     </div>
                                 );
@@ -754,6 +904,143 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                             Motor de Render Remotion
                         </h3>
 
+                        <div className="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-[#6C757D]/10 dark:bg-[#0F1419]/50">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div className="min-w-0 space-y-1">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                                        <Monitor className="h-4 w-4 text-[#1F5AF6]" />
+                                        Worker local
+                                    </div>
+                                    {loadingWorkerStatus ? (
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">Consultando estado...</p>
+                                    ) : workerStatusError ? (
+                                        <p className="text-xs text-red-600 dark:text-red-400">{workerStatusError}</p>
+                                    ) : workerStatus?.requiresDesktopWorker ? (
+                                        availableDesktopWorkers.length > 0 ? (
+                                            <p className="text-xs text-green-700 dark:text-green-400">
+                                                Vinculado: {availableDesktopWorkers[0].device_name || 'SofLIA Render Worker'} · {availableDesktopWorkers[0].status}
+                                            </p>
+                                        ) : (
+                                            <p className="text-xs text-amber-700 dark:text-amber-400">
+                                                Worker local no vinculado o sin heartbeat reciente.
+                                            </p>
+                                        )
+                                    ) : (
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                                            Provider activo: {workerStatus?.renderProvider || 'no detectado'}.
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <a
+                                        href={workerDownloadHref}
+                                        className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 transition hover:bg-white dark:border-[#6C757D]/20 dark:text-gray-200 dark:hover:bg-[#151A21]"
+                                    >
+                                        <Download className="h-3.5 w-3.5" />
+                                        Descargar app
+                                    </a>
+                                    <button
+                                        type="button"
+                                        onClick={() => void loadWorkerStatus()}
+                                        disabled={loadingWorkerStatus}
+                                        className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#6C757D]/20 dark:text-gray-200 dark:hover:bg-[#151A21]"
+                                    >
+                                        <RefreshCw className={`h-3.5 w-3.5 ${loadingWorkerStatus ? 'animate-spin' : ''}`} />
+                                        Actualizar
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleCreateWorkerLinkCode}
+                                        disabled={creatingWorkerLink}
+                                        className="inline-flex items-center gap-2 rounded-lg bg-[#1F5AF6] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#1647C8] disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        {creatingWorkerLink ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+                                        Vincular worker
+                                    </button>
+                                </div>
+                            </div>
+
+                            {workerStatus?.workers?.length ? (
+                                <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                                    {workerStatus.workers.slice(0, 4).map((worker) => (
+                                        <div key={worker.id} className="rounded-lg border border-gray-200 bg-white p-2 dark:border-[#6C757D]/10 dark:bg-[#151A21]">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="truncate font-semibold text-gray-800 dark:text-gray-100">
+                                                    {worker.device_name || 'SofLIA Render Worker'}
+                                                </span>
+                                                <span className="shrink-0 font-bold text-gray-500 dark:text-gray-400">{worker.status}</span>
+                                            </div>
+                                            <p className="mt-1 text-gray-500 dark:text-gray-400">
+                                                {[worker.platform, worker.arch, worker.app_version].filter(Boolean).join(' · ') || 'Sin metadata'} · heartbeat {worker.last_heartbeat_at ? new Date(worker.last_heartbeat_at).toLocaleString() : 'pendiente'}
+                                            </p>
+                                            {worker.status !== 'REVOKED' ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void handleRevokeWorker(worker.id)}
+                                                    disabled={revokingWorkerId === worker.id}
+                                                    className="mt-2 inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-500/30 dark:text-red-300 dark:hover:bg-red-500/10"
+                                                >
+                                                    {revokingWorkerId === worker.id ? (
+                                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                                    ) : (
+                                                        <Unlink className="h-3 w-3" />
+                                                    )}
+                                                    Desvincular
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : null}
+
+                            {workerLinkCode && (
+                                <div className="mt-4 rounded-lg border border-blue-500/20 bg-blue-500/10 p-3 text-xs text-blue-900 dark:text-blue-100">
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                        <div className="min-w-0">
+                                            <div className="font-semibold">Codigo temporal</div>
+                                            <div className="mt-1 inline-flex items-center gap-2 rounded-md bg-white/80 px-2 py-1 font-mono text-sm font-bold tracking-wide text-gray-950 dark:bg-[#0F1419] dark:text-white">
+                                                <span>{workerLinkCode.code}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleCopyWorkerCode}
+                                                    className="inline-flex items-center gap-1 rounded border border-blue-500/20 px-2 py-1 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-500/10 dark:text-blue-200"
+                                                >
+                                                    {copiedWorkerCode ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                                                    {copiedWorkerCode ? 'Copiado' : 'Copiar'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                        {workerLinkCode.expiresAt && (
+                                            <span className="shrink-0">Expira {new Date(workerLinkCode.expiresAt).toLocaleTimeString()}</span>
+                                        )}
+                                    </div>
+                                    <div className="mt-3 rounded-md bg-white/80 p-2 text-[11px] leading-relaxed text-gray-900 dark:bg-[#0F1419] dark:text-gray-100">
+                                        <>
+                                            No tienes el worker?{' '}
+                                            <a
+                                                href={workerDownloadHref}
+                                                className="font-semibold text-blue-700 underline underline-offset-2 dark:text-blue-300"
+                                            >
+                                                Descargalo aqui
+                                            </a>
+                                            . Luego abre la app, pega el codigo y dejala encendida para renderizar desde esta computadora.
+                                        </>
+                                        {workerLinkCode.apiUrl ? (
+                                            <div className="mt-1 text-gray-500 dark:text-gray-400">
+                                                API URL: {workerLinkCode.apiUrl}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            )}
+
+                            {workerGateBlocked && (
+                                <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-xs font-medium text-amber-700 dark:text-amber-300">
+                                    {workerGateMessage}
+                                </div>
+                            )}
+                        </div>
+
                         {!hasRequiredAssets ? (
                             <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-sm">
                                 No se encontraron componentes de video para ensamblar.
@@ -766,7 +1053,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                 {activePreview && (
                                     <button
                                         onClick={() => startAssemblyForComponents([activePreview])}
-                                        disabled={isAssembling}
+                                        disabled={isAssembling || workerGateBlocked}
                                         className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold border border-purple-500/40 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                                     >
                                         <RefreshCw className="w-4 h-4" />
@@ -806,6 +1093,15 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                                     style={{ width: `${progress}%` }}
                                                 />
                                             </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => void handleStopAssembly()}
+                                                disabled={stoppingAssembly}
+                                                className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-500/30 dark:text-red-300 dark:hover:bg-red-500/10"
+                                            >
+                                                {stoppingAssembly ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3.5 w-3.5" />}
+                                                Detener ensamblado
+                                            </button>
                                         </div>
 
                                         {assemblyJobs.length > 0 && (
@@ -848,7 +1144,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                     <div className="flex flex-wrap gap-4">
                                         <button
                                             onClick={handleAssembleSelected}
-                                            disabled={!activePreviewPending || selectedTemplateBlocksFinalRender}
+                                            disabled={!activePreviewPending || selectedTemplateBlocksFinalRender || workerGateBlocked}
                                             className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-purple-500/25 transition-all active:scale-[0.98]"
                                         >
                                             <RefreshCw className="w-4 h-4" />
@@ -856,7 +1152,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                         </button>
                                         <button
                                             onClick={handleAssembleAll}
-                                            disabled={selectedTemplateBlocksFinalRender}
+                                            disabled={selectedTemplateBlocksFinalRender || workerGateBlocked}
                                             className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold border border-purple-500/40 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                                         >
                                             <RefreshCw className="w-4 h-4" />
@@ -919,7 +1215,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                     <div className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
                                         <AlertTriangle size={15} className="mt-0.5 shrink-0" />
                                         <span>
-                                            Esta plantilla externa necesita un build cloud listo antes de ensamblar el video final con Lambda.
+                                            Esta plantilla externa necesita un build cloud validado antes de ensamblar el video final.
                                         </span>
                                     </div>
                                 )}
@@ -927,7 +1223,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                     <div className="flex items-start gap-2 rounded-xl border border-green-500/20 bg-green-500/10 p-3 text-xs leading-relaxed text-green-700 dark:text-green-300">
                                         <CheckCircle2 size={15} className="mt-0.5 shrink-0" />
                                         <span>
-                                            Bundle cloud listo. El render final usara el site aprobado en Remotion Lambda.
+                                            Bundle cloud listo. El render final usara el site aprobado con el provider activo.
                                         </span>
                                     </div>
                                 )}

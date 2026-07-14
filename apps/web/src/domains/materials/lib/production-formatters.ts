@@ -163,7 +163,7 @@ export function formatOpenDesignContent(content: ProductionContent): string {
   }
 
   return JSON.stringify({
-    course_title: content.title || "Curso Courseforge",
+    course_title: content.title || "Curso SofLIA - Engine",
     slides: slidesData
   }, null, 2);
 }

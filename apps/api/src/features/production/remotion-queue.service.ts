@@ -2,6 +2,7 @@ import { fork } from 'child_process';
 import * as path from 'path';
 import { RemotionWorkerService } from './remotion-worker.service';
 import { createNodeSupabaseClient } from '../../core/supabase-client';
+import { classifyRemotionFailure } from './remotion-render-diagnostics.service';
 
 /** Estados terminales: si el job ya está en uno, no lo tocamos como "huérfano". */
 const TERMINAL_JOB_STATUSES = ['SUCCEEDED', 'FAILED', 'CANCELLED'];
@@ -213,7 +214,12 @@ export class RemotionQueueService {
         .update({
           status: 'FAILED',
           failed_at: new Date().toISOString(),
-          provider_error: { message },
+          provider_error: {
+            code: classifyRemotionFailure(message, { provider: 'local', stage: 'process' }),
+            message,
+            renderProvider: 'local',
+            stage: 'process',
+          },
         })
         .eq('id', jobId);
     } catch (err) {

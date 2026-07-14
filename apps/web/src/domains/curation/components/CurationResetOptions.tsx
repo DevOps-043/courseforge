@@ -52,7 +52,7 @@ export function CurationResetOptions({
                 Reiniciar busqueda automatica
               </div>
               <div className="text-xs text-gray-500 dark:text-[#6C757D]">
-                Inicia de nuevo el proceso de busqueda interna de CourseForge.
+                Inicia de nuevo el proceso de busqueda interna de SofLIA - Engine.
               </div>
             </div>
           </div>

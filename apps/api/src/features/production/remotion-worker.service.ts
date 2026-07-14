@@ -11,11 +11,15 @@ import {
 } from './remotion-assembly-props.service';
 import { createNodeSupabaseClient } from '../../core/supabase-client';
 import { mergeTemplateRenderConfigs } from './template-render-config.service';
+import { buildStableHash, resolveLocalRenderTimeoutMs } from './remotion-render.config';
+import {
+  buildRenderDiagnosticsSnapshot,
+  classifyRemotionFailure,
+} from './remotion-render-diagnostics.service';
 
 let cachedBundlePromise: Promise<string> | null = null;
 
 export const SHARED_BUNDLE_DIR = path.join(os.tmpdir(), 'courseforge-remotion-bundle');
-const DEFAULT_RENDER_TIMEOUT_MS = 180 * 1000;
 
 type RenderMode =
   | 'INTERNAL_COMPOSITION';
@@ -102,6 +106,29 @@ export class RemotionWorkerService {
         compositionId: internalCompositionId,
         transitionType: job.input_snapshot?.variables?.transitionType,
         templateConfig,
+      });
+      propsHash = buildStableHash(inputProps);
+      const timeoutInMilliseconds = resolveLocalRenderTimeoutMs();
+      const renderDiagnostics = buildRenderDiagnosticsSnapshot({
+        renderProvider: 'local',
+        renderMode,
+        inputProps,
+        rawAssets: assets,
+        templateId,
+        templateVersionId,
+        bundleHash,
+        buildHash,
+        compositionId: internalCompositionId,
+        propsHash,
+        timeoutInMilliseconds,
+      });
+
+      await this.updateJobInputSnapshot(supabase, jobId, job.input_snapshot, {
+        renderProvider: 'local',
+        renderMode,
+        compositionId: internalCompositionId,
+        propsHash,
+        renderDiagnostics,
       });
 
       console.log('[RemotionWorker] Render configuration resolved.', {
@@ -218,7 +245,9 @@ export class RemotionWorkerService {
           status: 'FAILED',
           failed_at: new Date().toISOString(),
           provider_error: {
+            code: classifyRemotionFailure(safeError, { provider: 'local', stage: 'render' }),
             message: safeError,
+            renderProvider: 'local',
             renderMode,
             templateVersionId,
             bundleHash,
@@ -279,11 +308,7 @@ export class RemotionWorkerService {
     const serveUrl = serveUrlOverride || (await this.getBundle());
 
     await this.updateProgress(supabase, jobId, 35, 'Resolviendo composicion');
-    const timeoutInMilliseconds = Number(
-      process.env.REMOTION_RENDER_TIMEOUT_MS ||
-        process.env.EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS ||
-        DEFAULT_RENDER_TIMEOUT_MS,
-    );
+    const timeoutInMilliseconds = resolveLocalRenderTimeoutMs();
     const composition = await selectComposition({
       serveUrl,
       id: compositionId,

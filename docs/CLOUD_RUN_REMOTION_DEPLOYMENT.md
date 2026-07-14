@@ -51,6 +51,7 @@ EXPRESS_PUBLIC_URL=https://<cloud-run-url>
 REMOTION_ENTRY_POINT=/app/apps/web/src/remotion/index.ts
 REMOTION_RENDER_TIMEOUT_MS=1800000
 EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS=1800000
+EXTERNAL_TEMPLATE_PREVIEW_RENDER_TIMEOUT_MS=240000
 ALLOWED_ORIGINS=https://<netlify-prod-domain>,https://<netlify-staging-domain>
 NEXT_PUBLIC_SUPABASE_URL=<supabase-url>
 ```
@@ -85,7 +86,7 @@ gcloud run deploy courseforge-remotion-api \
   --min-instances 1 \
   --max-instances 1 \
   --no-cpu-throttling \
-  --set-env-vars NODE_ENV=production,RENDER_PROVIDER=local,REMOTION_ENTRY_POINT=/app/apps/web/src/remotion/index.ts,REMOTION_RENDER_TIMEOUT_MS=1800000,EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS=1800000,NEXT_PUBLIC_SUPABASE_URL=<supabase-url>,ALLOWED_ORIGINS=https://<netlify-prod-domain> \
+  --set-env-vars NODE_ENV=production,RENDER_PROVIDER=local,REMOTION_ENTRY_POINT=/app/apps/web/src/remotion/index.ts,REMOTION_RENDER_TIMEOUT_MS=1800000,EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS=1800000,EXTERNAL_TEMPLATE_PREVIEW_RENDER_TIMEOUT_MS=240000,NEXT_PUBLIC_SUPABASE_URL=<supabase-url>,ALLOWED_ORIGINS=https://<netlify-prod-domain> \
   --set-secrets SUPABASE_SERVICE_ROLE_KEY=courseforge-supabase-service-role-key:latest
 ```
 

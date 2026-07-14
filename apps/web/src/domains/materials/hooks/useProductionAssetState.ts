@@ -152,6 +152,16 @@ async function detectDirectVideoDuration(url: string) {
   });
 }
 
+async function detectLocalMediaDuration(file: File) {
+  const objectUrl = URL.createObjectURL(file);
+
+  try {
+    return await detectDirectVideoDuration(objectUrl);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 export function useProductionAssetState({
   component,
   onAssetChange,
@@ -263,12 +273,18 @@ export function useProductionAssetState({
         componentId: component.id,
       });
 
-      // Estimate duration roughly (fallback) or detect via direct metadata
       let duration = 0;
       try {
-        duration = await detectDirectVideoDuration(publicUrl);
+        duration = await detectLocalMediaDuration(file);
       } catch (e) {
-        console.warn('Could not auto-detect voice duration:', e);
+        console.warn('Could not auto-detect local voice duration:', e);
+      }
+      if (!duration) {
+        try {
+          duration = await detectDirectVideoDuration(publicUrl);
+        } catch (e) {
+          console.warn('Could not auto-detect uploaded voice duration:', e);
+        }
       }
 
       const newVoice: VoiceAudio = {
@@ -515,9 +531,16 @@ export function useProductionAssetState({
 
       let duration = 0;
       try {
-        duration = await detectDirectVideoDuration(publicUrl);
+        duration = await detectLocalMediaDuration(file);
       } catch (e) {
-        console.warn('Could not detect clip duration:', e);
+        console.warn('Could not detect local clip duration:', e);
+      }
+      if (!duration) {
+        try {
+          duration = await detectDirectVideoDuration(publicUrl);
+        } catch (e) {
+          console.warn('Could not detect uploaded clip duration:', e);
+        }
       }
 
       const newClip: BRollClip = {
@@ -588,9 +611,16 @@ export function useProductionAssetState({
 
       let duration = 0;
       try {
-        duration = await detectDirectVideoDuration(publicUrl);
+        duration = await detectLocalMediaDuration(file);
       } catch (e) {
-        console.warn('Could not detect avatar duration:', e);
+        console.warn('Could not detect local avatar duration:', e);
+      }
+      if (!duration) {
+        try {
+          duration = await detectDirectVideoDuration(publicUrl);
+        } catch (e) {
+          console.warn('Could not detect uploaded avatar duration:', e);
+        }
       }
 
       const newAvatar: AvatarVideo = {

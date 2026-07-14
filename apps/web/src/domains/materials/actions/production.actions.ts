@@ -4,12 +4,14 @@ import { getErrorMessage } from "@/lib/errors";
 import {
   getAccessToken,
   getAuthenticatedUser,
+  getAuthorizedArtifactAdmin,
   getServiceRoleClient,
 } from "@/lib/server/artifact-action-auth";
 import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import { getVideoProviderAndId } from "@/lib/video-platform";
 import { getProductionApiBaseUrl } from "@/lib/server/production-api-url";
+import { DesktopWorkerControlPlane } from "@/lib/server/desktop-worker-control-plane";
 import { normalizeAssemblyAssets } from "@/remotion/assembly-assets.normalizer";
 import {
   deriveAssemblyTargetDurationSeconds,
@@ -588,9 +590,9 @@ export async function assembleRemotionVideoAction(
       return { success: false, error: updateError.message };
     }
 
-    const expressApiUrl = getProductionApiBaseUrl();
-    console.log("[ProductionActions] Triggering Remotion render via Express API.", {
-      expressApiUrl,
+    const productionApiUrl = getProductionApiBaseUrl();
+    console.log("[ProductionActions] Triggering Remotion render via production API.", {
+      productionApiUrl,
       componentId,
       templateId,
       normalizedAssets: {
@@ -599,6 +601,13 @@ export async function assembleRemotionVideoAction(
         hasAvatarVideo: Boolean(normalizedAssets.avatarVideoUrl),
         hasVoiceAudio: Boolean(normalizedAssets.voiceAudioUrl),
         totalDurationSeconds: normalizedAssets.totalDurationSeconds,
+        assemblyTargetDurationSeconds: targetDurationSeconds ?? null,
+        avatarDurationSeconds: typeof renderAssets.avatar_video?.duration === "number"
+          ? renderAssets.avatar_video.duration
+          : null,
+        voiceDurationSeconds: typeof renderAssets.voice_audio?.duration === "number"
+          ? renderAssets.voice_audio.duration
+          : null,
       },
       variablesKeys: Object.keys(variables || {}),
     });
@@ -608,7 +617,7 @@ export async function assembleRemotionVideoAction(
       assemblyTargetDurationSeconds: targetDurationSeconds ?? null,
     };
 
-    const response = await fetch(`${expressApiUrl}/api/v1/production/remotion/render`, {
+    const response = await fetch(`${productionApiUrl}/api/v1/production/remotion/render`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -703,8 +712,8 @@ export async function getRemotionJobStatusAction(jobId: string) {
   if (!token) return { success: false, error: "No se encontró un token de autenticación" };
 
   try {
-    const expressApiUrl = getProductionApiBaseUrl();
-    const response = await fetch(`${expressApiUrl}/api/v1/production/jobs/${jobId}/status`, {
+    const productionApiUrl = getProductionApiBaseUrl();
+    const response = await fetch(`${productionApiUrl}/api/v1/production/jobs/${jobId}/status`, {
       headers: {
         "Authorization": `Bearer ${token}`,
       }
@@ -719,6 +728,213 @@ export async function getRemotionJobStatusAction(jobId: string) {
       success: true,
       job
     };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function cancelRemotionAssemblyJobsAction(artifactId: string, jobIds: string[]) {
+  const authorized = await getAuthorizedArtifactAdmin(artifactId);
+  if (!authorized?.artifact?.organization_id) {
+    return { success: false, error: "No se encontro la organizacion del artefacto" };
+  }
+
+  const validJobIds = jobIds.filter((jobId) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId),
+  );
+
+  if (validJobIds.length === 0) {
+    return { success: true, cancelledCount: 0 };
+  }
+
+  try {
+    const now = new Date().toISOString();
+    const { data: jobs, error: fetchError } = await authorized.admin
+      .from("production_jobs")
+      .select("id, material_component_id")
+      .eq("artifact_id", artifactId)
+      .eq("organization_id", authorized.artifact.organization_id)
+      .in("id", validJobIds)
+      .not("status", "in", "(SUCCEEDED,FAILED,CANCELLED)");
+
+    if (fetchError) {
+      return { success: false, error: fetchError.message };
+    }
+
+    const cancellableJobs = jobs || [];
+    if (cancellableJobs.length === 0) {
+      return { success: true, cancelledCount: 0 };
+    }
+
+    const cancellableIds = cancellableJobs.map((job) => job.id);
+    const { error: updateError } = await authorized.admin
+      .from("production_jobs")
+      .update({
+        status: "CANCELLED",
+        failed_at: now,
+        worker_heartbeat_at: now,
+        provider_error: {
+          code: "USER_CANCELLED",
+          message: "El ensamblado fue detenido desde SofLIA - Engine.",
+          stage: "user_cancelled",
+        },
+      })
+      .in("id", cancellableIds);
+
+    if (updateError) {
+      return { success: false, error: updateError.message };
+    }
+
+    const componentIds = cancellableJobs
+      .map((job) => job.material_component_id)
+      .filter((componentId): componentId is string => typeof componentId === "string");
+
+    if (componentIds.length > 0) {
+      const { data: components } = await authorized.admin
+        .from("material_components")
+        .select("id, assets")
+        .in("id", componentIds);
+
+      for (const component of components || []) {
+        await authorized.admin
+          .from("material_components")
+          .update({
+            assets: {
+              ...(component.assets || {}),
+              production_status: "PENDING",
+              updated_at: now,
+            },
+          })
+          .eq("id", component.id);
+      }
+    }
+
+    return { success: true, cancelledCount: cancellableIds.length };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export interface RenderWorkerStatusView {
+  id: string;
+  device_name?: string | null;
+  platform?: string | null;
+  arch?: string | null;
+  app_version?: string | null;
+  status: "LINKED" | "ONLINE" | "BUSY" | "OFFLINE" | "REVOKED" | string;
+  last_heartbeat_at?: string | null;
+  token_last4?: string | null;
+  created_at?: string | null;
+}
+
+async function getArtifactOrganizationId(artifactId: string) {
+  const authorized = await getAuthorizedArtifactAdmin(artifactId);
+  return authorized?.artifact?.organization_id || null;
+}
+
+async function getProductionApiToken() {
+  const webSupabase = await createClient();
+  return getAccessToken(webSupabase);
+}
+
+export async function getRenderWorkerStatusAction(artifactId: string) {
+  const organizationId = await getArtifactOrganizationId(artifactId);
+  if (!organizationId) {
+    return { success: false, error: "No se encontro la organizacion del artefacto" };
+  }
+
+  const token = await getProductionApiToken();
+  if (!token) {
+    return { success: false, error: "No se encontro un token de autenticacion" };
+  }
+
+  try {
+    const productionApiUrl = getProductionApiBaseUrl();
+    const [readinessResponse, workersResponse] = await Promise.all([
+      fetch(`${productionApiUrl}/api/v1/production/remotion/readiness`, {
+        headers: { "Authorization": `Bearer ${token}` },
+      }),
+      fetch(
+        `${productionApiUrl}/api/v1/production/remotion/workers?organizationId=${encodeURIComponent(organizationId)}`,
+        {
+          headers: { "Authorization": `Bearer ${token}` },
+        },
+      ),
+    ]);
+
+    const readiness = await readinessResponse.json().catch(() => ({}));
+    if (!workersResponse.ok) {
+      return { success: false, error: `HTTP Error ${workersResponse.status}` };
+    }
+
+    const workerPayload = await workersResponse.json();
+    const renderProvider =
+      typeof readiness?.config?.provider === "string"
+        ? readiness.config.provider
+        : typeof readiness?.provider === "string"
+          ? readiness.provider
+          : null;
+
+    return {
+      success: true,
+      apiUrl: productionApiUrl,
+      renderProvider,
+      requiresDesktopWorker: renderProvider === "desktop_worker",
+      workers: (workerPayload.workers || []) as RenderWorkerStatusView[],
+    };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function createRenderWorkerLinkCodeAction(artifactId: string) {
+  const organizationId = await getArtifactOrganizationId(artifactId);
+  if (!organizationId) {
+    return { success: false, error: "No se encontro la organizacion del artefacto" };
+  }
+
+  const token = await getProductionApiToken();
+  if (!token) {
+    return { success: false, error: "No se encontro un token de autenticacion" };
+  }
+
+  try {
+    const productionApiUrl = getProductionApiBaseUrl();
+    const response = await fetch(`${productionApiUrl}/api/v1/production/remotion/workers/link-codes`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({ organizationId }),
+    });
+
+    if (!response.ok) {
+      return { success: false, error: `HTTP Error ${response.status}` };
+    }
+
+    const result = await response.json();
+    return {
+      success: true,
+      apiUrl: productionApiUrl,
+      code: result.code as string,
+      expiresAt: result.linkCode?.expires_at as string | undefined,
+    };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function revokeRenderWorkerAction(artifactId: string, workerId: string) {
+  const organizationId = await getArtifactOrganizationId(artifactId);
+  if (!organizationId) {
+    return { success: false, error: "No se encontro la organizacion del artefacto" };
+  }
+
+  try {
+    const service = new DesktopWorkerControlPlane(getServiceRoleClient());
+    await service.revokeWorker(workerId, organizationId);
+    return { success: true };
   } catch (error: unknown) {
     return { success: false, error: getErrorMessage(error) };
   }

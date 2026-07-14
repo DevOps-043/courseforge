@@ -35,7 +35,7 @@ export function oauthPopupResponse({
 <html lang="es">
   <head>
     <meta charset="utf-8" />
-    <title>Courseforge OAuth</title>
+    <title>SofLIA - Engine OAuth</title>
     <style>
       body {
         align-items: center;
@@ -70,9 +70,9 @@ export function oauthPopupResponse({
   <body>
     <main>
       <h1>${status === "success" ? "Conexion completada" : "No se pudo completar la conexion"}</h1>
-      <p>${status === "success" ? "Esta ventana se cerrara automaticamente." : "Corrige la configuracion y vuelve a intentarlo desde Courseforge."}</p>
+      <p>${status === "success" ? "Esta ventana se cerrara automaticamente." : "Corrige la configuracion y vuelve a intentarlo desde SofLIA - Engine."}</p>
       ${visibleMessage ? `<code>${visibleMessage}</code>` : ""}
-      <p><a href="${redirectPath}">Volver a Courseforge</a></p>
+      <p><a href="${redirectPath}">Volver a SofLIA - Engine</a></p>
     </main>
     <script>
       const payload = {

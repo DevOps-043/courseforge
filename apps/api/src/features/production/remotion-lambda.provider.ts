@@ -10,6 +10,10 @@ import type { RenderDispatchResult, RenderProvider } from './render-provider.typ
 import { resolveExternalLambdaRenderTarget } from './external-lambda-render-target.service';
 import { buildExternalTemplateProps } from './external-template-props.service';
 import { ensureAwsCredentialsEnv } from './aws-credentials-env';
+import {
+  buildRenderDiagnosticsSnapshot,
+  classifyRemotionFailure,
+} from './remotion-render-diagnostics.service';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -72,6 +76,24 @@ export class RemotionLambdaProvider implements RenderProvider {
 
       const lambdaClient = this.loadLambdaClient();
       const tuning = this.resolveLambdaTuning(config);
+      const lambdaTuning = {
+        ...tuning,
+        concurrencyPerLambda: config.concurrencyPerLambda,
+      };
+      const renderDiagnostics = buildRenderDiagnosticsSnapshot({
+        renderProvider: this.name,
+        renderMode: resolvedInput.renderMode,
+        inputProps: resolvedInput.inputProps,
+        rawAssets: resolvedInput.component.assets || {},
+        templateId: resolvedInput.job.input_snapshot?.templateId || null,
+        templateVersionId: resolvedInput.templateVersionId || null,
+        buildId: resolvedInput.buildId || null,
+        buildHash: resolvedInput.buildHash || null,
+        compositionId: resolvedInput.compositionId,
+        propsHash: resolvedInput.propsHash,
+        timeoutInMilliseconds: config.timeoutInMilliseconds,
+        lambdaTuning,
+      });
       const renderRequest = {
         region: config.region,
         functionName: config.functionName,
@@ -139,10 +161,8 @@ export class RemotionLambdaProvider implements RenderProvider {
               overwrite: true,
               timeoutInMilliseconds: config.timeoutInMilliseconds,
             },
-            lambdaTuning: {
-              ...tuning,
-              concurrencyPerLambda: config.concurrencyPerLambda,
-            },
+            lambdaTuning,
+            renderDiagnostics,
           },
         },
       );
@@ -198,10 +218,8 @@ export class RemotionLambdaProvider implements RenderProvider {
               overwrite: true,
               timeoutInMilliseconds: config.timeoutInMilliseconds,
             },
-            lambdaTuning: {
-              ...tuning,
-              concurrencyPerLambda: config.concurrencyPerLambda,
-            },
+            lambdaTuning,
+            renderDiagnostics,
           },
           output_snapshot: {
             ...(resolvedInput.job.output_snapshot || {}),
@@ -249,7 +267,7 @@ export class RemotionLambdaProvider implements RenderProvider {
           status: 'FAILED',
           failed_at: new Date().toISOString(),
           provider_error: {
-            code: this.classifyError(safeMessage),
+            code: classifyRemotionFailure(safeMessage, { provider: 'lambda', stage: 'dispatch' }),
             message: safeMessage,
             renderProvider: this.name,
             stage: 'dispatch',
@@ -534,35 +552,4 @@ export class RemotionLambdaProvider implements RenderProvider {
     return [...previous, entry].slice(-50);
   }
 
-  private classifyError(message: string): string {
-    const normalized = message.toLowerCase();
-    if (normalized.includes('external_cloud_build_required')) {
-      return 'EXTERNAL_CLOUD_BUILD_REQUIRED';
-    }
-    if (normalized.includes('external_build_not_ready')) {
-      return 'EXTERNAL_BUILD_NOT_READY';
-    }
-    if (normalized.includes('external_render_target_incomplete')) {
-      return 'EXTERNAL_RENDER_TARGET_INCOMPLETE';
-    }
-    if (normalized.includes('external_composition_id_missing')) {
-      return 'EXTERNAL_COMPOSITION_ID_MISSING';
-    }
-    if (normalized.includes('external_props_invalid')) {
-      return 'EXTERNAL_PROPS_INVALID';
-    }
-    if (normalized.includes('external_serve_url_mismatch')) {
-      return 'EXTERNAL_SERVE_URL_MISMATCH';
-    }
-    if (normalized.includes('timed out') || normalized.includes('timeout')) {
-      return 'LAMBDA_TIMEOUT';
-    }
-    if (normalized.includes('throttl') || normalized.includes('rate exceeded') || normalized.includes('concurrency')) {
-      return 'LAMBDA_THROTTLED';
-    }
-    if (normalized.includes('props') || normalized.includes('asset')) {
-      return 'INVALID_RENDER_PROPS';
-    }
-    return 'LAMBDA_RENDER_FAILED';
-  }
 }

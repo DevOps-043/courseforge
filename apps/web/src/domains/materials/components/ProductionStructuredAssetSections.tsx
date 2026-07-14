@@ -1488,7 +1488,7 @@ export function GoogleDriveImportModal({
                 Importar recurso desde cloud
               </h3>
               <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                Usa la cuenta vinculada para copiar assets hacia CourseGen
+                Usa la cuenta vinculada para copiar assets hacia SofLIA - Engine
               </p>
             </div>
           </div>
@@ -1604,7 +1604,7 @@ function CloudStorageImportBody({
         <div>
           <p className="text-sm font-bold text-gray-900 dark:text-white">No hay cuentas cloud vinculadas</p>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Vincula Google Drive u OneDrive para importar assets directamente a CourseGen.
+            Vincula Google Drive u OneDrive para importar assets directamente a SofLIA - Engine.
           </p>
         </div>
         <div className="flex flex-wrap justify-center gap-3">

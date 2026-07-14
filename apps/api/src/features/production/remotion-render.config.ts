@@ -1,6 +1,14 @@
 import crypto from 'crypto';
 
-export type RemotionRenderProviderSetting = 'local' | 'lambda';
+export type RemotionRenderProviderSetting = 'local' | 'lambda' | 'desktop_worker';
+
+export const DEFAULT_LOCAL_RENDER_TIMEOUT_MS = 180_000;
+export const DEFAULT_EXTERNAL_TEMPLATE_PREVIEW_RENDER_TIMEOUT_MS = 90_000;
+export const DEFAULT_LAMBDA_FRAMES_PER_LAMBDA = 600;
+export const DEFAULT_LAMBDA_CONCURRENCY_PER_LAMBDA = 1;
+export const DEFAULT_LAMBDA_RENDER_TIMEOUT_MS = 840_000;
+export const MAX_LAMBDA_RENDER_TIMEOUT_MS = 870_000;
+export const RECOMMENDED_CLOUD_RUN_RENDER_TIMEOUT_MS = 1_800_000;
 
 export interface RemotionLambdaConfig {
   region: string;
@@ -21,6 +29,16 @@ export interface RemotionRenderConfig {
   lambda: RemotionLambdaConfig;
 }
 
+export interface RemotionRenderTuningSnapshot {
+  localRenderTimeoutMs: number;
+  externalTemplateRenderTimeoutMs: number;
+  externalPreviewRenderTimeoutMs: number;
+  lambdaTimeoutInMilliseconds: number;
+  lambdaFramesPerLambda: number | null;
+  lambdaConcurrency: number | null;
+  lambdaConcurrencyPerLambda: number;
+}
+
 export interface RemotionRenderReadinessCheck {
   name: string;
   ok: boolean;
@@ -31,9 +49,11 @@ export interface RemotionRenderReadiness {
   ok: boolean;
   provider: RemotionRenderProviderSetting;
   checks: RemotionRenderReadinessCheck[];
+  tuning: RemotionRenderTuningSnapshot;
 }
 
 function normalizeProvider(value: string | undefined): RemotionRenderProviderSetting {
+  if (value?.toLowerCase() === 'desktop_worker') return 'desktop_worker';
   return value?.toLowerCase() === 'lambda' ? 'lambda' : 'local';
 }
 
@@ -66,6 +86,17 @@ function optionalPositiveInteger(name: string, fallback: number): number {
     throw new Error(`${name} must be a positive integer.`);
   }
   return parsed;
+}
+
+function optionalPositiveIntegerFromEnv(
+  name: string,
+  fallback: number,
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const raw = env[name];
+  if (!raw?.trim()) return fallback;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function optionalPositiveIntegerOrNull(name: string): number | null {
@@ -108,12 +139,15 @@ export function getRemotionRenderConfig(): RemotionRenderConfig {
     bucketName: provider === 'lambda' ? requiredForLambda('REMOTION_LAMBDA_BUCKET') : process.env.REMOTION_LAMBDA_BUCKET || '',
     outputPrivacy: process.env.REMOTION_LAMBDA_OUTPUT_PRIVACY === 'public' ? 'public' : 'private',
     concurrency: lambdaConcurrency,
-    framesPerLambda: lambdaFramesPerLambda || (lambdaConcurrency ? null : 600),
-    concurrencyPerLambda: optionalPositiveInteger('REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA', 1),
+    framesPerLambda: lambdaFramesPerLambda || (lambdaConcurrency ? null : DEFAULT_LAMBDA_FRAMES_PER_LAMBDA),
+    concurrencyPerLambda: optionalPositiveInteger(
+      'REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA',
+      DEFAULT_LAMBDA_CONCURRENCY_PER_LAMBDA,
+    ),
     timeoutInMilliseconds: optionalBoundedPositiveInteger(
       'REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS',
-      600_000,
-      870_000,
+      DEFAULT_LAMBDA_RENDER_TIMEOUT_MS,
+      MAX_LAMBDA_RENDER_TIMEOUT_MS,
     ),
   };
 
@@ -123,6 +157,7 @@ export function getRemotionRenderConfig(): RemotionRenderConfig {
 export function getRemotionRenderReadiness(): RemotionRenderReadiness {
   const provider = normalizeProvider(process.env.RENDER_PROVIDER);
   const checks: RemotionRenderReadinessCheck[] = [];
+  const tuning = getRemotionRenderTuningSnapshot();
 
   checks.push(requiredEnvCheck('NEXT_PUBLIC_SUPABASE_URL'));
   checks.push(requiredEnvCheck('SUPABASE_SERVICE_ROLE_KEY'));
@@ -134,6 +169,18 @@ export function getRemotionRenderReadiness(): RemotionRenderReadiness {
     checks.push(requiredEnvCheck('REMOTION_LAMBDA_BUCKET'));
     checks.push(lambdaPackageCheck());
     checks.push(httpsUrlCheck('REMOTION_LAMBDA_SERVE_URL', process.env.REMOTION_LAMBDA_SERVE_URL));
+    checks.push(lambdaTimeoutCheck());
+  }
+
+  if (provider === 'local' && process.env.NODE_ENV === 'production') {
+    checks.push(requiredIntegerAtLeastCheck(
+      'REMOTION_RENDER_TIMEOUT_MS',
+      RECOMMENDED_CLOUD_RUN_RENDER_TIMEOUT_MS,
+    ));
+    checks.push(requiredIntegerAtLeastCheck(
+      'EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS',
+      RECOMMENDED_CLOUD_RUN_RENDER_TIMEOUT_MS,
+    ));
   }
 
   if (process.env.NODE_ENV === 'production') {
@@ -144,11 +191,66 @@ export function getRemotionRenderReadiness(): RemotionRenderReadiness {
     ok: checks.every((check) => check.ok),
     provider,
     checks,
+    tuning,
   };
 }
 
 export function buildStableHash(value: unknown): string {
   return crypto.createHash('sha256').update(stableStringify(value)).digest('hex');
+}
+
+export function resolveLocalRenderTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  return optionalPositiveIntegerFromEnv(
+    'REMOTION_RENDER_TIMEOUT_MS',
+    optionalPositiveIntegerFromEnv(
+      'EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS',
+      DEFAULT_LOCAL_RENDER_TIMEOUT_MS,
+      env,
+    ),
+    env,
+  );
+}
+
+export function resolveExternalPreviewRenderTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  return optionalPositiveIntegerFromEnv(
+    'EXTERNAL_TEMPLATE_PREVIEW_RENDER_TIMEOUT_MS',
+    optionalPositiveIntegerFromEnv(
+      'EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS',
+      DEFAULT_EXTERNAL_TEMPLATE_PREVIEW_RENDER_TIMEOUT_MS,
+      env,
+    ),
+    env,
+  );
+}
+
+export function getRemotionRenderTuningSnapshot(
+  env: NodeJS.ProcessEnv = process.env,
+): RemotionRenderTuningSnapshot {
+  const lambdaConcurrency = optionalPositiveIntegerOrNullFromEnv('REMOTION_LAMBDA_CONCURRENCY', env);
+  const lambdaFramesPerLambda = optionalPositiveIntegerOrNullFromEnv('REMOTION_LAMBDA_FRAMES_PER_LAMBDA', env);
+
+  return {
+    localRenderTimeoutMs: resolveLocalRenderTimeoutMs(env),
+    externalTemplateRenderTimeoutMs: optionalPositiveIntegerFromEnv(
+      'EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS',
+      DEFAULT_LOCAL_RENDER_TIMEOUT_MS,
+      env,
+    ),
+    externalPreviewRenderTimeoutMs: resolveExternalPreviewRenderTimeoutMs(env),
+    lambdaTimeoutInMilliseconds: optionalBoundedPositiveIntegerFromEnv(
+      'REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS',
+      DEFAULT_LAMBDA_RENDER_TIMEOUT_MS,
+      MAX_LAMBDA_RENDER_TIMEOUT_MS,
+      env,
+    ),
+    lambdaFramesPerLambda: lambdaFramesPerLambda || (lambdaConcurrency ? null : DEFAULT_LAMBDA_FRAMES_PER_LAMBDA),
+    lambdaConcurrency,
+    lambdaConcurrencyPerLambda: optionalPositiveIntegerFromEnv(
+      'REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA',
+      DEFAULT_LAMBDA_CONCURRENCY_PER_LAMBDA,
+      env,
+    ),
+  };
 }
 
 function requiredEnvCheck(name: string): RemotionRenderReadinessCheck {
@@ -168,6 +270,42 @@ function requiredAnyEnvCheck(names: string[]): RemotionRenderReadinessCheck {
     message: configuredName
       ? `${configuredName} is configured.`
       : `One of ${names.join(', ')} is required in production.`,
+  };
+}
+
+function requiredIntegerAtLeastCheck(name: string, minimum: number): RemotionRenderReadinessCheck {
+  const raw = process.env[name];
+  const parsed = raw?.trim() ? Number(raw) : NaN;
+  const ok = Number.isInteger(parsed) && parsed >= minimum;
+
+  return {
+    name,
+    ok,
+    message: ok
+      ? `${name} is configured for long-running Cloud Run renders.`
+      : `${name} must be an integer >= ${minimum} for production local renders.`,
+  };
+}
+
+function lambdaTimeoutCheck(): RemotionRenderReadinessCheck {
+  const raw = process.env.REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS;
+  if (!raw?.trim()) {
+    return {
+      name: 'REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS',
+      ok: true,
+      message: `Using default Lambda timeout ${DEFAULT_LAMBDA_RENDER_TIMEOUT_MS}ms.`,
+    };
+  }
+
+  const parsed = Number(raw);
+  const minimum = process.env.NODE_ENV === 'production' ? DEFAULT_LAMBDA_RENDER_TIMEOUT_MS : 1;
+  const ok = Number.isInteger(parsed) && parsed >= minimum && parsed <= MAX_LAMBDA_RENDER_TIMEOUT_MS;
+  return {
+    name: 'REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS',
+    ok,
+    message: ok
+      ? 'REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS is within the Lambda safety window.'
+      : `REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS must be between ${minimum} and ${MAX_LAMBDA_RENDER_TIMEOUT_MS}.`,
   };
 }
 
@@ -208,6 +346,28 @@ function httpsUrlCheck(name: string, value: string | undefined): RemotionRenderR
       message: `${name} is not a valid URL.`,
     };
   }
+}
+
+function optionalPositiveIntegerOrNullFromEnv(
+  name: string,
+  env: NodeJS.ProcessEnv = process.env,
+): number | null {
+  const raw = env[name];
+  if (!raw?.trim()) return null;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function optionalBoundedPositiveIntegerFromEnv(
+  name: string,
+  fallback: number,
+  max: number,
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const raw = env[name];
+  if (!raw?.trim()) return fallback;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 && parsed <= max ? parsed : fallback;
 }
 
 function stableStringify(value: unknown): string {

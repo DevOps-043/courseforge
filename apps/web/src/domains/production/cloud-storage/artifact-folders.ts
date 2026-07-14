@@ -13,7 +13,7 @@ export const MATERIAL_ASSET_FOLDER_NAMES = [
 ] as const;
 
 export function buildArtifactRootFolderName(artifactName: string) {
-  return `CourseGen - ${artifactName}`;
+  return `SofLIA - Engine - ${artifactName}`;
 }
 
 export function buildFolderMappingKey(folderName: string) {

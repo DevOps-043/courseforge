@@ -35,7 +35,7 @@ export const bundleAgentSpecSchema = z.object({
         title: { type: "string", description: "Course or lesson title" },
       },
     }),
-  defaultProps: z.record(z.string(), z.unknown()).default({ title: "Courseforge" }),
+  defaultProps: z.record(z.string(), z.unknown()).default({ title: "SofLIA - Engine" }),
   changeSummary: z.string().trim().max(1000).default("Initial SofLIA generated bundle draft."),
 });
 

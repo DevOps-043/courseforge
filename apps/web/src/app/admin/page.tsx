@@ -93,7 +93,7 @@ export default async function AdminPage() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Visión General</h1>
-        <p className="text-gray-600 dark:text-[#94A3B8]">Bienvenido al centro de control de CourseGen.</p>
+        <p className="text-gray-600 dark:text-[#94A3B8]">Bienvenido al centro de control de SofLIA - Engine.</p>
       </div>
 
       {/* Stats Grid */}

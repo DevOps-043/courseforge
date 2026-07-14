@@ -11,7 +11,16 @@ import {
 } from './external-preview-render.service';
 import { RemotionLambdaProgressService } from './remotion-lambda-progress.service';
 import { RemotionRenderOrchestratorService } from './remotion-render-orchestrator.service';
-import { getRemotionRenderConfig, getRemotionRenderReadiness } from './remotion-render.config';
+import {
+  buildAssemblyInputProps,
+  resolveInternalCompositionId,
+} from './remotion-assembly-props.service';
+import {
+  getRemotionRenderConfig,
+  getRemotionRenderReadiness,
+  resolveLocalRenderTimeoutMs,
+  buildStableHash,
+} from './remotion-render.config';
 import { TemplateCloudBuildService } from './template-cloud-build.service';
 import {
   getExternalLambdaReadiness,
@@ -19,6 +28,9 @@ import {
   resolveExternalLambdaRenderTarget,
 } from './external-lambda-render-target.service';
 import { buildExternalTemplateProps } from './external-template-props.service';
+import { DesktopWorkerService } from './desktop-worker.service';
+import { buildRenderDiagnosticsSnapshot } from './remotion-render-diagnostics.service';
+import { mergeTemplateRenderConfigs } from './template-render-config.service';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -639,10 +651,11 @@ export class ProductionController {
         : { data: null };
 
       const renderProvider = renderOrchestrator.providerName;
+      const renderConfig = getRemotionRenderConfig();
       const cloudBuildReadiness = getExternalLambdaReadiness(cloudBuild);
       let externalRenderTarget: ReturnType<typeof resolveExternalLambdaRenderTarget> | null = null;
       let externalRenderTargetError: Error | null = null;
-      if (hasExternalBundle && cloudVersion && cloudBuild && renderProvider === 'lambda') {
+      if (hasExternalBundle && cloudVersion && cloudBuild && (renderProvider === 'lambda' || renderProvider === 'desktop_worker')) {
         try {
           externalRenderTarget = resolveExternalLambdaRenderTarget({
             jobSnapshot: {
@@ -659,9 +672,11 @@ export class ProductionController {
           externalRenderTargetError = error instanceof Error ? error : new Error(String(error));
         }
       }
-      const cloudBuildIsLambdaReady = Boolean(externalRenderTarget);
-      const renderMode = cloudBuildIsLambdaReady && renderProvider === 'lambda'
+      const externalBuildIsReady = Boolean(externalRenderTarget);
+      const renderMode = externalBuildIsReady && renderProvider === 'lambda'
         ? 'EXTERNAL_LAMBDA_SITE_READY'
+        : externalBuildIsReady && renderProvider === 'desktop_worker'
+          ? 'EXTERNAL_DESKTOP_SITE_READY'
         : cloudVersion
           ? 'EXTERNAL_CLOUD_BUILD_READY'
           : renderProvider === 'lambda'
@@ -680,7 +695,11 @@ export class ProductionController {
         renderProvider,
       });
 
-      if (hasExternalBundle && renderProvider === 'lambda' && (!cloudVersion || !cloudBuildIsLambdaReady)) {
+      if (
+        hasExternalBundle &&
+        (renderProvider === 'lambda' || renderProvider === 'desktop_worker') &&
+        (!cloudVersion || !externalBuildIsReady)
+      ) {
         console.warn('[ProductionController] External bundle render blocked; cloud build is not Lambda-ready.', {
           componentId,
           templateId,
@@ -698,7 +717,7 @@ export class ProductionController {
         });
         return res.status(409).json({
           error:
-            'Esta plantilla externa aun no tiene un build cloud completo para Remotion Lambda. Ejecuta "Construir para cloud" y verifica que tenga serve_url HTTPS y composition_id.',
+            'Esta plantilla externa aun no tiene un build cloud validado. Ejecuta "Construir para cloud" y verifica que tenga serve_url HTTPS, composition_id y validacion aprobada.',
           code: cloudVersion ? 'EXTERNAL_BUILD_NOT_READY' : 'EXTERNAL_BUNDLE_NOT_APPROVED',
           reason: externalRenderTargetError?.message || cloudBuildReadiness.reason,
           renderMode,
@@ -707,7 +726,7 @@ export class ProductionController {
       }
 
       let externalPropsResult: ReturnType<typeof buildExternalTemplateProps> | null = null;
-      if (renderMode === 'EXTERNAL_LAMBDA_SITE_READY') {
+      if (renderMode === 'EXTERNAL_LAMBDA_SITE_READY' || renderMode === 'EXTERNAL_DESKTOP_SITE_READY') {
         try {
           if (!externalRenderTarget) {
             throw new Error('EXTERNAL_RENDER_TARGET_INCOMPLETE: no se pudo resolver el target externo.');
@@ -740,6 +759,58 @@ export class ProductionController {
         }
       }
 
+      let desktopWorkerPropsResult: {
+        compositionId: string;
+        resolvedProps: ReturnType<typeof buildAssemblyInputProps>;
+        propsHash: string;
+      } | null = null;
+      if (renderProvider === 'desktop_worker' && !externalRenderTarget) {
+        const internalCompositionId = resolveInternalCompositionId(templateRecord?.composition_id);
+        const templateConfig = mergeTemplateRenderConfigs(
+          templateRecord?.default_config,
+          variables?.templateConfig,
+        );
+        const resolvedProps = buildAssemblyInputProps({
+          assets: component.assets || {},
+          compositionId: internalCompositionId,
+          transitionType: variables?.transitionType,
+          templateConfig,
+        });
+        desktopWorkerPropsResult = {
+          compositionId: internalCompositionId,
+          resolvedProps,
+          propsHash: buildStableHash(resolvedProps),
+        };
+      }
+
+      const renderTimeoutInMilliseconds =
+        renderProvider === 'lambda'
+          ? renderConfig.lambda.timeoutInMilliseconds
+          : resolveLocalRenderTimeoutMs();
+      const lambdaTuning = renderProvider === 'lambda'
+        ? {
+            concurrency: renderConfig.lambda.concurrency,
+            framesPerLambda: renderConfig.lambda.framesPerLambda,
+            concurrencyPerLambda: renderConfig.lambda.concurrencyPerLambda,
+          }
+        : null;
+      const renderDiagnostics = buildRenderDiagnosticsSnapshot({
+        renderProvider,
+        renderMode,
+        inputProps: desktopWorkerPropsResult?.resolvedProps || externalPropsResult?.resolvedProps || null,
+        rawAssets: component.assets || {},
+        templateId,
+        templateVersionId: externalRenderTarget?.templateVersionId || cloudVersion?.id || null,
+        buildId: externalRenderTarget?.buildId || cloudBuild?.id || null,
+        bundleHash: cloudVersion?.bundle_hash || null,
+        buildHash: externalRenderTarget?.buildHash || cloudBuild?.build_hash || cloudVersion?.build_hash || null,
+        compositionId: desktopWorkerPropsResult?.compositionId || externalRenderTarget?.compositionId || cloudBuild?.composition_id || cloudVersion?.composition_id || null,
+        propsHash: desktopWorkerPropsResult?.propsHash || externalPropsResult?.propsHash || null,
+        timeoutInMilliseconds: renderTimeoutInMilliseconds,
+        lambdaTuning,
+        cloudBuildReadinessReason: cloudBuildReadiness.reason,
+      });
+
       const inputSnapshot = {
         templateId,
         templateVersionId: externalRenderTarget?.templateVersionId || cloudVersion?.id || null,
@@ -752,10 +823,13 @@ export class ProductionController {
         cloudProvider: cloudBuild?.cloud_provider || null,
         renderMode,
         renderProvider,
-        propsHash: externalPropsResult?.propsHash || null,
+        propsHash: desktopWorkerPropsResult?.propsHash || externalPropsResult?.propsHash || null,
         propsSource: externalPropsResult?.propsSource || null,
-        resolvedProps: externalPropsResult?.resolvedProps || null,
-        propKeys: externalPropsResult?.propKeys || [],
+        resolvedProps: desktopWorkerPropsResult?.resolvedProps || externalPropsResult?.resolvedProps || null,
+        propKeys: desktopWorkerPropsResult?.resolvedProps
+          ? Object.keys(desktopWorkerPropsResult.resolvedProps)
+          : externalPropsResult?.propKeys || [],
+        renderDiagnostics,
         variables,
       };
       const idempotencyKey = buildRemotionRenderIdempotencyKey({
@@ -766,8 +840,8 @@ export class ProductionController {
         buildId: externalRenderTarget?.buildId || cloudBuild?.id || null,
         buildHash: externalRenderTarget?.buildHash || cloudBuild?.build_hash || cloudVersion?.build_hash || null,
         serveUrl: externalRenderTarget?.serveUrl || cloudBuild?.serve_url || null,
-        propsHash: externalPropsResult?.propsHash || null,
-        compositionId: externalRenderTarget?.compositionId || cloudBuild?.composition_id || cloudVersion?.composition_id || null,
+        propsHash: desktopWorkerPropsResult?.propsHash || externalPropsResult?.propsHash || null,
+        compositionId: desktopWorkerPropsResult?.compositionId || externalRenderTarget?.compositionId || cloudBuild?.composition_id || cloudVersion?.composition_id || null,
         exportMode: externalRenderTarget?.exportMode || cloudBuild?.export_mode || cloudVersion?.export_mode || 'component',
         variables,
       });
@@ -943,6 +1017,266 @@ export class ProductionController {
       });
 
     } catch (err: any) {
+      return next(err);
+    }
+  }
+
+  private getDesktopWorkerService(serviceClient?: SupabaseAnyClient) {
+    return new DesktopWorkerService(serviceClient || createNodeSupabaseClient(supabaseUrl, supabaseServiceKey));
+  }
+
+  private async authenticateDesktopWorker(req: Request) {
+    const token = req.headers.authorization?.split(' ')[1];
+    const service = this.getDesktopWorkerService();
+    const worker = await service.authenticateWorkerToken(token);
+    return worker ? { service, worker } : null;
+  }
+
+  async registerDesktopWorker(req: Request, res: Response, next: NextFunction) {
+    try {
+      const auth = await this.authenticateRequest(req);
+      if (!auth) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const organizationId = String(req.body?.organizationId || '');
+      if (!isUuid(organizationId)) {
+        return res.status(400).json({ error: 'organizationId must be a valid UUID' });
+      }
+      if (!auth.organizationIds.includes(organizationId)) {
+        return res.status(403).json({ error: 'Forbidden: You do not have access to this organization' });
+      }
+
+      const service = this.getDesktopWorkerService(auth.serviceClient);
+      const result = await service.registerWorker({
+        organizationId,
+        userId: auth.user.id,
+        deviceName: req.body?.deviceName,
+        platform: req.body?.platform,
+        arch: req.body?.arch,
+        appVersion: req.body?.appVersion,
+      });
+
+      return res.status(201).json({
+        success: true,
+        worker: result.worker,
+        workerToken: result.workerToken,
+      });
+    } catch (err) {
+      return next(err);
+    }
+  }
+
+  async listDesktopWorkers(req: Request, res: Response, next: NextFunction) {
+    try {
+      const auth = await this.authenticateRequest(req);
+      if (!auth) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const organizationId = String(req.query?.organizationId || req.body?.organizationId || '');
+      if (!isUuid(organizationId)) {
+        return res.status(400).json({ error: 'organizationId must be a valid UUID' });
+      }
+      if (!auth.organizationIds.includes(organizationId)) {
+        return res.status(403).json({ error: 'Forbidden: You do not have access to this organization' });
+      }
+
+      const workers = await this.getDesktopWorkerService(auth.serviceClient).listWorkers(organizationId);
+      return res.json({ success: true, workers });
+    } catch (err) {
+      return next(err);
+    }
+  }
+
+  async createDesktopWorkerLinkCode(req: Request, res: Response, next: NextFunction) {
+    try {
+      const auth = await this.authenticateRequest(req);
+      if (!auth) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const organizationId = String(req.body?.organizationId || '');
+      if (!isUuid(organizationId)) {
+        return res.status(400).json({ error: 'organizationId must be a valid UUID' });
+      }
+      if (!auth.organizationIds.includes(organizationId)) {
+        return res.status(403).json({ error: 'Forbidden: You do not have access to this organization' });
+      }
+
+      const result = await this.getDesktopWorkerService(auth.serviceClient).createLinkCode({
+        organizationId,
+        userId: auth.user.id,
+        deviceName: req.body?.deviceName,
+        platform: req.body?.platform,
+        arch: req.body?.arch,
+        appVersion: req.body?.appVersion,
+      });
+
+      return res.status(201).json({
+        success: true,
+        code: result.code,
+        linkCode: result.linkCode,
+      });
+    } catch (err) {
+      return next(err);
+    }
+  }
+
+  async linkDesktopWorker(req: Request, res: Response, next: NextFunction) {
+    try {
+      const code = String(req.body?.code || '');
+      if (!code.trim()) {
+        return res.status(400).json({ error: 'code is required' });
+      }
+
+      const result = await this.getDesktopWorkerService().consumeLinkCode({
+        code,
+        deviceName: req.body?.deviceName,
+        platform: req.body?.platform,
+        arch: req.body?.arch,
+        appVersion: req.body?.appVersion,
+      });
+
+      return res.status(201).json({
+        success: true,
+        worker: result.worker,
+        workerToken: result.workerToken,
+      });
+    } catch (err: any) {
+      const message = String(err?.message || '');
+      if (message.includes('INVALID_LINK_CODE')) {
+        return res.status(400).json({ error: 'Invalid link code' });
+      }
+      if (message.includes('NOT_FOUND')) {
+        return res.status(404).json({ error: 'Link code not found' });
+      }
+      if (message.includes('EXPIRED') || message.includes('CONSUMED')) {
+        return res.status(409).json({ error: message });
+      }
+      return next(err);
+    }
+  }
+
+  async desktopWorkerHeartbeat(req: Request, res: Response, next: NextFunction) {
+    try {
+      const auth = await this.authenticateDesktopWorker(req);
+      if (!auth) {
+        return res.status(401).json({ error: 'Invalid or revoked worker token' });
+      }
+
+      const worker = await auth.service.heartbeat(auth.worker, req.body || {});
+      return res.json({ success: true, worker });
+    } catch (err) {
+      return next(err);
+    }
+  }
+
+  async claimDesktopWorkerJob(req: Request, res: Response, next: NextFunction) {
+    try {
+      const auth = await this.authenticateDesktopWorker(req);
+      if (!auth) {
+        return res.status(401).json({ error: 'Invalid or revoked worker token' });
+      }
+      const { jobId } = req.params;
+      if (!isUuid(jobId)) {
+        return res.status(400).json({ error: 'jobId must be a valid UUID' });
+      }
+
+      const job = await auth.service.claimJob(auth.worker, jobId);
+      return res.json({ success: true, job });
+    } catch (err: any) {
+      if (String(err?.message || '').includes('FORBIDDEN')) {
+        return res.status(403).json({ error: err.message });
+      }
+      if (String(err?.message || '').includes('NOT_FOUND')) {
+        return res.status(404).json({ error: err.message });
+      }
+      if (String(err?.message || '').includes('NOT_CLAIMABLE') || String(err?.message || '').includes('NOT_DESKTOP_WORKER')) {
+        return res.status(409).json({ error: err.message });
+      }
+      return next(err);
+    }
+  }
+
+  async claimNextDesktopWorkerJob(req: Request, res: Response, next: NextFunction) {
+    try {
+      const auth = await this.authenticateDesktopWorker(req);
+      if (!auth) {
+        return res.status(401).json({ error: 'Invalid or revoked worker token' });
+      }
+
+      const job = await auth.service.claimNextJob(auth.worker);
+      return res.json({ success: true, job });
+    } catch (err: any) {
+      if (String(err?.message || '').includes('FORBIDDEN')) {
+        return res.status(403).json({ error: err.message });
+      }
+      if (String(err?.message || '').includes('NOT_FOUND')) {
+        return res.status(404).json({ error: err.message });
+      }
+      if (String(err?.message || '').includes('NOT_CLAIMABLE') || String(err?.message || '').includes('NOT_DESKTOP_WORKER')) {
+        return res.status(409).json({ error: err.message });
+      }
+      return next(err);
+    }
+  }
+
+  async reportDesktopWorkerProgress(req: Request, res: Response, next: NextFunction) {
+    try {
+      const auth = await this.authenticateDesktopWorker(req);
+      if (!auth) {
+        return res.status(401).json({ error: 'Invalid or revoked worker token' });
+      }
+      const { jobId } = req.params;
+      if (!isUuid(jobId)) {
+        return res.status(400).json({ error: 'jobId must be a valid UUID' });
+      }
+
+      const result = await auth.service.reportProgress(auth.worker, jobId, req.body || {});
+      return res.json({ success: true, ...result });
+    } catch (err) {
+      return next(err);
+    }
+  }
+
+  async completeDesktopWorkerJob(req: Request, res: Response, next: NextFunction) {
+    try {
+      const auth = await this.authenticateDesktopWorker(req);
+      if (!auth) {
+        return res.status(401).json({ error: 'Invalid or revoked worker token' });
+      }
+      const { jobId } = req.params;
+      if (!isUuid(jobId)) {
+        return res.status(400).json({ error: 'jobId must be a valid UUID' });
+      }
+
+      const result = await auth.service.completeJob(auth.worker, jobId, {
+        outputStoragePath: req.body?.outputStoragePath,
+        checksum: req.body?.checksum,
+        durationSeconds: req.body?.durationSeconds,
+        logsRef: req.body?.logsRef,
+      });
+      return res.json({ success: true, ...result });
+    } catch (err) {
+      return next(err);
+    }
+  }
+
+  async failDesktopWorkerJob(req: Request, res: Response, next: NextFunction) {
+    try {
+      const auth = await this.authenticateDesktopWorker(req);
+      if (!auth) {
+        return res.status(401).json({ error: 'Invalid or revoked worker token' });
+      }
+      const { jobId } = req.params;
+      if (!isUuid(jobId)) {
+        return res.status(400).json({ error: 'jobId must be a valid UUID' });
+      }
+
+      const result = await auth.service.failJob(auth.worker, jobId, req.body || {});
+      return res.json({ success: true, ...result });
+    } catch (err) {
       return next(err);
     }
   }

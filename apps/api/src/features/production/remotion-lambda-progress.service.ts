@@ -1,5 +1,6 @@
 import { ensureAwsCredentialsEnv } from './aws-credentials-env';
 import { getRemotionRenderConfig } from './remotion-render.config';
+import { classifyRemotionFailure } from './remotion-render-diagnostics.service';
 
 interface LambdaClientModule {
   getRenderProgress: (params: Record<string, unknown>) => Promise<Record<string, unknown>>;
@@ -280,7 +281,7 @@ export class RemotionLambdaProgressService {
         status: 'FAILED',
         failed_at: new Date().toISOString(),
         provider_error: {
-          code: code || this.classifyError(safeMessage),
+          code: code || classifyRemotionFailure(safeMessage, { provider: 'lambda', stage: 'polling' }),
           message: safeMessage,
           renderProvider: 'lambda',
           stage: 'polling',
@@ -725,19 +726,6 @@ export class RemotionLambdaProgressService {
       : [];
 
     return [...previous, entry].slice(-50);
-  }
-
-  private classifyError(message: string): string {
-    const normalized = message.toLowerCase();
-    if (normalized.includes('timed out') || normalized.includes('timeout')) return 'LAMBDA_TIMEOUT';
-    if (normalized.includes('throttl') || normalized.includes('rate exceeded') || normalized.includes('concurrency')) {
-      return 'LAMBDA_THROTTLED';
-    }
-    if (normalized.includes('output') || normalized.includes('url') || normalized.includes('s3://')) {
-      return 'OUTPUT_NOT_ACCESSIBLE';
-    }
-    if (normalized.includes('props') || normalized.includes('asset')) return 'INVALID_RENDER_PROPS';
-    return 'LAMBDA_RENDER_FAILED';
   }
 
   private sanitizeError(message: string): string {

@@ -3,10 +3,10 @@ import * as fsp from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import { ensureBrowser, renderMedia, renderStill, selectComposition } from '@remotion/renderer';
+import { resolveExternalPreviewRenderTimeoutMs } from './remotion-render.config';
 
 const PREVIEW_RENDER_ROOT = path.join(os.tmpdir(), 'courseforge-external-preview-renders');
 const DEFAULT_PREVIEW_MAX_SECONDS = 6;
-const DEFAULT_PREVIEW_TIMEOUT_MS = 90 * 1000;
 
 export interface ExternalPreviewRenderInput {
   buildId: string;
@@ -72,11 +72,7 @@ export function getExternalPreviewRenderPath(fileName: string): string {
 export async function renderExternalPreviewVideo(
   input: ExternalPreviewRenderInput,
 ): Promise<ExternalPreviewRenderResult> {
-  const timeoutInMilliseconds = Number(
-    process.env.EXTERNAL_TEMPLATE_PREVIEW_RENDER_TIMEOUT_MS ||
-      process.env.EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS ||
-      DEFAULT_PREVIEW_TIMEOUT_MS,
-  );
+  const timeoutInMilliseconds = resolveExternalPreviewRenderTimeoutMs();
 
   await fsp.mkdir(PREVIEW_RENDER_ROOT, { recursive: true });
   await ensureBrowser();

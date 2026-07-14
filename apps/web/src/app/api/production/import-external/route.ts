@@ -145,7 +145,7 @@ export async function POST(request: Request) {
         if (uploadError) {
             console.error('[API /production/import-external] Storage upload error:', uploadError);
             return NextResponse.json(
-                { error: 'No se pudo subir el archivo al almacenamiento de Courseforge' },
+                { error: 'No se pudo subir el archivo al almacenamiento de SofLIA - Engine' },
                 { status: 500 },
             );
         }

@@ -1,363 +1,483 @@
-# 📘 SofLIA - Engine - Plataforma de Ingeniería Instruccional con IA
+# SofLIA - Engine
 
-> **Versión**: 1.0.0
-> **Estado**: Producción (Beta)
-> **Stack**: Next.js 16, Supabase, Netlify Functions, Google Gemini 2.0
+> Plataforma multi-tenant de ingenieria instruccional con IA.
 
-SofLIA - Engine es mucho más que un "generador de cursos". Es un **Sistema Operativo de Diseño Instruccional** que orquesta múltiples agentes de IA para investigar, estructurar, redactar y validar contenido educativo de alta calidad.
+SofLIA - Engine crea cursos completos a partir de una idea o de un paquete SCORM: investiga, estructura, planifica, cura fuentes, genera materiales, produce assets visuales, ensambla videos con Remotion y publica el resultado hacia SofLIA.
 
-El sistema simula el flujo de trabajo de un equipo humano (Investigador + Diseñador Instruccional + Redactor + Editor), donde la salida de cada fase es rigurosamente validada antes de ser utilizada como entrada para la siguiente.
+El producto ya no es solo un generador de cursos. Es un flujo operativo con aprobaciones humanas, contratos de datos, configuracion por organizacion, importacion de assets externos y una capa de produccion visual que puede renderizar localmente, en AWS Lambda o mediante worker de escritorio.
 
----
+## Tabla De Contenidos
 
-## 📑 Tabla de Contenidos
-
-1. [Filosofía del Sistema](#-filosofía-del-sistema)
-2. [Arquitectura Técnica](#-arquitectura-técnica)
-3. [El Pipeline "SofLIA" (Paso a Paso)](#-el-pipeline-soflia)
-   - [Fase 1: Artefacto y Concepto](#fase-1-artefacto-y-concepto)
-   - [Fase 2: Syllabus y Estructura](#fase-2-syllabus-y-estructura)
-   - [Fase 3: Planificación Instruccional](#fase-3-planificación-instruccional)
-   - [Fase 4: Curaduría e Investigación Deep](#fase-4-curaduría-e-investigación-deep)
-   - [Fase 5: Generación de Materiales](#fase-5-generación-de-materiales)
-   - [Fase 6: Producción Visual](#fase-6-producción-visual)
-4. [Modelo de Datos (Supabase)](#-modelo-de-datos)
-5. [Lógica de Backend y Background Jobs](#-lógica-de-backend)
-6. [Guía de Desarrollo](#-guía-de-desarrollo)
+1. [Stack](#stack)
+2. [Estructura Del Repo](#estructura-del-repo)
+3. [Como Correrlo](#como-correrlo)
+4. [Arquitectura Actual](#arquitectura-actual)
+5. [Pipeline Educativo](#pipeline-educativo)
+6. [Produccion Visual y Remotion](#produccion-visual-y-remotion)
+7. [Auth, Tenancy y Publicacion](#auth-tenancy-y-publicacion)
+8. [APIs y Jobs](#apis-y-jobs)
+9. [Datos y Storage](#datos-y-storage)
+10. [Variables De Entorno](#variables-de-entorno)
+11. [Validacion](#validacion)
 
 ---
 
-## 🧠 Filosofía del Sistema
+## Stack
 
-SofLIA - Engine se basa en tres principios no negociables:
-
-1.  **NO A LA ALUCINACIÓN**: A diferencia de ChatGPT, SofLIA - Engine _no inventa_ hechos. Utiliza un motor de curaduría (Fase 4) que busca referencias reales, verifica que las URLs funcionen (HTTP 200) y valida que el contenido sea relevante antes de usarlo para escribir.
-2.  **ESTRUCTURA PRIMERO, CONTENIDO DESPUÉS**: No se genera texto hasta que no haya un plan instruccional aprobado (Fase 3). Esto asegura coherencia pedagógica.
-3.  **HUMAN-IN-THE-LOOP (HITL)**: El sistema está diseñado para detenerse entre fases críticas, permitiendo que un experto humano revise y apruebe el syllabus o las fuentes antes de continuar.
+| Capa | Tecnologia |
+| --- | --- |
+| Frontend | Next.js 16, React 19, TypeScript |
+| UI | TailwindCSS 4, Framer Motion, lucide-react, Sonner |
+| Estado | Zustand |
+| Backend web | Next.js API routes + Netlify Functions |
+| Backend produccion | Express en `apps/api` |
+| DB/Auth | Supabase PostgreSQL, RLS, Auth Bridge JWT HS256 |
+| IA | Google Gemini principal, OpenAI fallback/bundle agent |
+| Video | Remotion 4.0.484, Remotion Player, Remotion Lambda |
+| Integraciones | SofLIA API, Gamma, Google Search, Google Drive, Microsoft Graph, Artlist, AWS S3/CodeBuild/CloudFront |
 
 ---
 
-## 🏗 Arquitectura Técnica
+## Estructura Del Repo
 
-El proyecto es un **Monorepo** gestionado con npm workspaces, implementando "Screaming Architecture" donde la estructura de carpetas refleja el dominio del negocio.
-
-### Tecnologías Clave
-
-| Capa          | Tecnología                                                              |
-| ------------- | ----------------------------------------------------------------------- |
-| Frontend      | Next.js 16, React 19, TypeScript                                        |
-| Estilos       | TailwindCSS 4.x, Framer Motion                                          |
-| Estado        | Zustand                                                                 |
-| Backend       | Express + Netlify Functions (Node.js 20+)                               |
-| Base de datos | Supabase (PostgreSQL 15)                                                |
-| Auth          | Auth Bridge JWT (HS256, `jose`) + Supabase GoTrue                       |
-| IA Principal  | Google Gemini (`gemini-2.0-flash`)                                |
-| IA Secundaria | OpenAI (fallback)                                                       |
-| Servicios     | Gamma API (slides), Google Search (grounding)                           |
-
-### Estructura de Directorios
-
-```bash
-soflia-engine/
-├── apps/
-│   ├── web/                    # Frontend Next.js 16 (App Router)
-│   │   ├── netlify/functions/  # Backend Serverless (donde ocurre la magia)
-│   │   ├── src/
-│   │   │   ├── app/            # Rutas principales de la aplicación
-│   │   │   │   ├── builder/    # Área principal de creación de artefactos
-│   │   │   │   ├── admin/      # Configuración centralizada y gestión de usuarios
-│   │   │   │   └── api/        # Rutas de API internas
-│   │   │   ├── domains/        # Lógica de negocio encapsulada
-│   │   │   │   ├── curation/   # Componentes y hooks de curaduría
-│   │   │   │   ├── materials/  # Componentes de iteración de materiales
-│   │   │   │   └── ...
-│   │   │   └── core/           # Servicios base (Supabase, API Client, componentes Agnósticos)
-│   └── api/                    # API Express (Legacy/Auxiliar)
-├── packages/
-│   ├── shared/                 # Tipos TypeScript compartidos y utilidades
-│   └── ui/                     # Librería de componentes visuales compartidos
-└── supabase/                   # Migraciones y Seeds SQL
+```text
+apps/
+  web/
+    src/app/                 App Router, dashboards, API routes
+    src/domains/             Logica de negocio por dominio
+    src/remotion/            Composiciones internas Remotion
+    netlify/functions/       Jobs background del pipeline
+  api/
+    src/server.ts            API Express
+    src/features/auth/       Auth auxiliar
+    src/features/production/ Render Remotion, templates, workers, Lambda
+packages/
+  shared/
+  ui/
+supabase/
+  migrations/
+  Scripts/
+docs/
+reportes/
+scripts/
 ```
 
----
+Dominios principales en `apps/web/src/domains`:
 
-## Autenticación - Auth Bridge
-
-SofLIA - Engine implementa un sistema de autenticación personalizado que valida credenciales contra la BD de **SofLIA** y emite JWTs propios (HS256).
-
-### Flujo de Login
-
-1. Usuario envía `identifier` + `password` desde `/login`
-2. API valida contra BD de SofLIA (tabla `users`, campo `password_hash` con `bcryptjs`)
-3. Se obtienen las organizaciones del usuario (`organization_users`)
-4. Se firma un JWT HS256 con el secreto de la aplicación usando `jose`
-5. JWT payload: `sub`, `email`, `app_metadata.organizations`, `user_metadata`
-6. Se establecen cookies: `cf_access_token`, `cf_active_org`, `cf_user_orgs`, `cf_remember_me`
-7. Se registra `login_history` y se hace upsert del perfil en SofLIA - Engine
-
-### Multi-tenancy
-
-- Usuario puede pertenecer a múltiples organizaciones
-- `cf_active_org` cookie indica la organización activa
-- Artefactos filtrados por `organization_id`
-- Migración automática de cuentas legacy al ID de SofLIA
-
-### Archivos Clave
-
-| Archivo                          | Función                                  |
-| -------------------------------- | ---------------------------------------- |
-| `app/api/auth/login/route.ts`    | Emisión del JWT + cookies                |
-| `app/api/auth/callback/route.ts` | OAuth callback GoTrue                    |
-| `app/login/actions.ts`           | Server action del formulario             |
-| `utils/auth/session.ts`          | `getAuthBridgeUser()` - verificación JWT |
-| `app/admin/layout.tsx`           | Guard de autenticación                   |
+- `artifacts`
+- `syllabus`
+- `plan`
+- `curation`
+- `materials`
+- `production`
+- `publication`
+- `scorm`
+- `library`
+- `prompts`
 
 ---
 
-## 🔄 El Pipeline "SofLIA"
-
-Cada curso pasa por una secuencia estricta de 6 fases. A continuación se detalla la lógica interna de cada una.
-
-### Fase 1: Artefacto y Concepto
-
-**Objetivo**: Transformar una intención vaga ("quiero un curso de ventas") en una ficha técnica sólida.
-
-**Proceso** (`generate-artifact-background.ts`):
-
-1. Analiza la intención del usuario con Gemini + Google Search grounding
-2. Genera 3-5 variantes de títulos comerciales
-3. Define público objetivo y prerrequisitos
-4. Redacta objetivos de aprendizaje usando verbos de la Taxonomía de Bloom
-
-**Salida**: Artefacto con `objetivos[]`, `nombres[]`, `generation_metadata`
-**Estado**: `GENERATING` → `STEP_APPROVED`
-
----
-
-### Fase 2: Syllabus y Estructura
-
-**Objetivo**: Crear el esqueleto jerárquico del curso.
-
-**Proceso** (`syllabus-generation-background.ts`):
-
-- Genera estructura JSON de módulos y lecciones (3-10 módulos, 2-5 lecciones c/u)
-- Valida cobertura de niveles Bloom
-- Selecciona ruta: `A_WITH_SOURCE` (fuentes externas) o `B_NO_SOURCE` (solo IA)
-
-**Estado**: `STEP_READY_FOR_QA` (requiere aprobación manual)
-
----
-
-### Fase 3: Planificación Instruccional
-
-**Objetivo**: El "Cerebro Pedagógico". Decide CÓMO enseñar cada tema.
-
-**Proceso** (`instructional-plan-background.ts`):
-Por cada lección asigna componentes según complejidad:
-
-| Componente          | Cuándo usarlo                                      |
-| ------------------- | -------------------------------------------------- |
-| `DIALOGUE`          | Conversación guiada entre SofLIA y estudiante         |
-| `READING`           | Concepto teórico con puntos clave                  |
-| `QUIZ`              | Verificación de comprensión (multiple choice, V/F) |
-| `DEMO_GUIDE`        | Proceso paso a paso con screenshots                |
-| `EXERCISE`          | Tarea práctica con resultado esperado              |
-| `VIDEO_THEORETICAL` | Explicación teórica en video                       |
-| `VIDEO_DEMO`        | Demostración en video                              |
-| `VIDEO_GUIDE`       | Video guía interactivo                             |
-
-**Estado**: `STEP_APPROVED` o `STEP_WITH_BLOCKERS`
-
----
-
-### Fase 4: Curaduría e Investigación Deep
-
-**Objetivo**: Encontrar la verdad. **Esta es la fase más compleja y crítica.**
-
-**Proceso** (`unified-curation-logic.ts`):
-
-1. Batch processing: 2 lecciones por vez (5s delay entre batches)
-2. Google Grounding en Gemini para encontrar URLs candidatas
-3. Validación exhaustiva de cada URL:
-   - Check de conectividad (HEAD/GET)
-   - Detección de "soft 404" (200 pero con "Page not found")
-   - Detección de paywalls ("Subscribe to read")
-   - Longitud mínima: 500+ caracteres de contenido educativo
-   - Blacklist: Reddit, Twitter, Facebook, TikTok, Quora, etc.
-
-**QA Manual**: Admin revisa y aprueba/rechaza cada fuente
-**Estado**: `PHASE2_READY_FOR_QA`
-
----
-
-### Fase 5: Generación de Materiales
-
-**Objetivo**: Redacción final de los contenidos usando las fuentes validadas.
-
-**Proceso** (`materials-generation-background.ts`):
-
-- Patrón "Daisy Chain" recursivo para manejar timeouts de Netlify
-- Modelo: `gemini-2.0-flash`, configurable por organización
-- Prompt masivo con: perfil del experto + OA exacto + contenido de fuentes curadas
-
-| Componente | Genera                                           |
-| ---------- | ------------------------------------------------ |
-| DIALOGUE   | Escenas con emociones, preguntas, reflexiones    |
-| READING    | Artículo HTML con secciones y tiempo de lectura  |
-| QUIZ       | Preguntas con explicaciones y nivel Bloom        |
-| VIDEO\_\*  | Script con timecodes, storyboard, B-roll prompts |
-| DEMO_GUIDE | Pasos, screenshots, tips, warnings, video script |
-| EXERCISE   | Descripción, instrucciones, resultados esperados |
-
-**Estado**: `PHASE3_READY_FOR_QA`
-
----
-
-### Fase 6: Producción Visual
-
-**Objetivo**: Preparar activos multimedia.
-
-**B-Roll Prompts** (`video-prompts-generation.ts`):
-
-- Descripciones detalladas de secuencias visuales con timecodes
-- Ejemplo: "0:05-0:10: Mostrar escritorio con IDE Python, usuario escribiendo código"
-
-**Integración Gamma**:
-
-- Genera estructura de slides (exportables a Gamma.app)
-- `gamma_deck_id`, `slides_url`, `png_export_path`
-
-**Estados**: `PENDING` → `IN_PROGRESS` → `DECK_READY` → `EXPORTED` → `COMPLETED`
-
----
-
-## SofLIA - Asistente IA
-
-SofLIA es la asistente IA integrada en toda la aplicación (`POST /api/lia`).
-
-### Modo Conversacional
-
-- Gemini `gemini-2.0-flash` + Google Search grounding
-- Temperatura 0.7 — responde en markdown con fuentes citadas
-
----
-
-## Publicación a SofLIA
-
-Los cursos se publican a SofLIA desde `/admin/artifacts/[id]/publish`.
-
-### 1. `artifacts` (La tabla padre)
-
-| Columna        | Tipo  | Descripción                                    |
-| -------------- | ----- | ---------------------------------------------- |
-| `id`           | uuid  | PK                                             |
-| `user_id`      | uuid  | Referencia al creador (FK a `public.profiles`) |
-| `idea_central` | text  | Input original del usuario                     |
-| `state`        | enum  | Estado global (`DRAFT`, `VALIDATED`, etc.)     |
-| `nombres`      | jsonb | Array de títulos sugeridos                     |
-
-### 2. `instructional_plans`
-
-| Columna        | Tipo  | Descripción                                    |
-| -------------- | ----- | ---------------------------------------------- |
-| `lesson_plans` | jsonb | Array masivo con la definición de cada lección |
-| `dod`          | jsonb | Definition of Done (Checks de calidad)         |
-
-### 3. `curation_rows` (Fuentes)
-
-| Columna            | Tipo    | Descripción                                 |
-| ------------------ | ------- | ------------------------------------------- |
-| `lesson_id`        | text    | ID lógico de la lección (e.g., "mod1-les2") |
-| `source_ref`       | text    | URL de la fuente                            |
-| `apta`             | boolean | Si pasó la validación automática            |
-| `url_status`       | text    | 'OK', 'FAILED', 'PENDING'                   |
-| `http_status_code` | int     | Código real (200, 404, etc.)                |
-
-### 4. `materials` & `material_lessons`
-
-Relación Maestro-Detalle. `materials` trackea el estado global de la Fase 5, mientras que `material_lessons` trackea el progreso individual de cada lección para permitir el procesamiento paralelo/secuencial.
-
-### 5. `model_settings`
-
-Configuración modular de modelos IA **por fase de pipeline** y organización. Cada fase tiene su propio setting type (`ARTIFACT_BASE`, `SYLLABUS`, `INSTRUCTIONAL_PLAN`, `MATERIALS`, `CURATION`) con modelo, temperatura, thinking level y fallback independientes.
-
-### 6. `system_prompts`
-
-Prompts del sistema versionados por organización. Códigos: `CURATION_PLAN`, `INSTRUCTIONAL_PLAN`, `MATERIALS_GENERATION`. Permiten personalizar el comportamiento de IA por tenant.
-
----
-
-## 🛠 Lógica de Backend
-
-El backend reside en `apps/web/netlify/functions`. No es una API REST tradicional, sino una colección de funciones "background" diseñadas para tareas largas.
-
-### Patrón de Ejecución "Fire and Forget"
-
-1. El Frontend llama a una función (e.g., `/generate-materials`).
-2. La función responde `200 OK` inmediatamente ("Recibido, empezando a trabajar").
-3. El proceso real continúa en segundo plano (hasta 10-15 minutos permitidos por Netlify en planes altos, o limitado a 10s en funciones estándar, por lo cual usamos el patrón de recursión en Fase 5).
-
-### Gestión de Errores
-
-Todas las funciones implementan bloques `try/catch` robustos que:
-
-1. Capturan el error.
-2. Lo loguean con prefijos identificables (e.g., `[Mat IDs-xyz]`).
-3. Actualizan el estado en base de datos a `NEEDS_FIX` o `ERROR` para que el usuario sepa que algo falló, en lugar de quedarse en un spinner infinito.
-
----
-
-## 💻 Guía de Desarrollo
-
-### Requisitos Previos
-
-- Node.js 20+
-- Cuenta en Supabase
-- API Key de Google AI Studio (Gemini)
-
-### Instalación
+## Como Correrlo
 
 ```bash
-# 1. Clonar repo
-git clone [repo-url]
-
-# 2. Instalar dependencias (desde raíz)
 npm install
-
-# 3. Variables de entorno
-cp .env.local.example .env.local
-# Rellenar: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GOOGLE_API_KEY
-```
-
-### Ejecutar Localmente
-
-```bash
-# Inicia Frontend y Backend simultáneamente
 npm run dev
 ```
 
-Acceder a `http://localhost:3000`.
+`npm run dev` levanta:
 
-### Debugging
+- `apps/web`: Next.js en `http://localhost:3000`
+- `apps/api`: Express en `http://localhost:4000`
 
-Los logs del backend usan prefijos identificables:
+Comandos utiles:
 
-- `[Lesson Curation]` — Fase 4
-- `[Mat IDs-xyz]` — Fase 5
-- `✓` éxito, `✗` fallo de validación
+```bash
+npm run build
+npm run lint
+npx tsc -p apps/web/tsconfig.json --noEmit
+npm run test:remotion --workspace=apps/web
+npm run test:remotion --workspace=apps/api
+npm run aws:ensure-remotion-role
+npm run aws:bootstrap-remotion
+```
 
-Los errores actualizan el estado en BD a `NEEDS_FIX` o `ERROR` (no hay spinners infinitos).
-
-### Patrones de Código
-
-- **Path aliases**: `@/*`, `@/features/*`, `@/shared/*`, `@/core/*`
-- **Componentes cliente**: `"use client"` al inicio del archivo
-- **Estilos condicionales**: `cn()` helper de TailwindCSS
-- **Dark mode**: `darkMode: "class"` en Tailwind
-- **Validación de schemas**: Zod
-- **JWT**: `jose` library (compatible con Edge runtime, no `jsonwebtoken`)
-- **Passwords**: `bcryptjs` (sin bindings nativos, compatible con Netlify)
+Nota: el lint de `apps/web` aun depende de `next lint`; para validar TypeScript del frontend usa `npx tsc -p apps/web/tsconfig.json --noEmit`.
 
 ---
 
-**SofLIA - Engine** - _Ingeniería Educativa Automatizada_
+## Arquitectura Actual
+
+SofLIA - Engine funciona como dos aplicaciones coordinadas:
+
+1. **`apps/web`**: interfaz, dashboards, API routes, Auth Bridge, pipeline educativo, importaciones, publicacion, validaciones de templates y preview con Remotion Player.
+2. **`apps/api`**: API Express para produccion visual pesada: render Remotion, readiness, previews externos, builds cloud, Lambda, cola de jobs y workers de escritorio.
+
+El sistema esta organizado alrededor de dominios de negocio. La regla en `apps/web/src/domains` es crear carpetas por capacidad solo cuando hacen falta:
+
+- `actions`
+- `components`
+- `config`
+- `hooks`
+- `lib`
+- `services`
+- `types`
+- `validators`
+
+---
+
+## Pipeline Educativo
+
+### Fase 1: BASE
+
+Convierte la idea inicial en una ficha de curso con objetivos y nombres sugeridos.
+
+Job: `apps/web/netlify/functions/generate-artifact-background.ts`
+
+Salida principal:
+
+- `objetivos[]`
+- `nombres[]`
+- `generation_metadata`
+- estado `GENERATING` -> `STEP_APPROVED`
+
+### Fase 2: SYLLABUS
+
+Genera la estructura de modulos y lecciones, valida rangos y decide si el curso requiere fuentes externas.
+
+Job: `syllabus-generation-background.ts`
+
+Estado esperado: `STEP_READY_FOR_QA`
+
+### Fase 3: PLAN INSTRUCCIONAL
+
+Define como se va a ensenar cada leccion.
+
+Job: `instructional-plan-background.ts`
+
+Componentes soportados:
+
+- `DIALOGUE`
+- `READING`
+- `QUIZ`
+- `DEMO_GUIDE`
+- `EXERCISE`
+- `VIDEO_THEORETICAL`
+- `VIDEO_DEMO`
+- `VIDEO_GUIDE`
+
+Los dialogos modernos usan el contrato `SOFLIA_DIALOGUE`. La publicacion bloquea dialogos legacy que no cumplan ese runtime.
+
+### Fase 4: CURACION
+
+Busca y valida fuentes educativas antes de generar materiales.
+
+Jobs:
+
+- `curation-background.ts`
+- `unified-curation-logic.ts`
+- `validate-curation-background.ts`
+
+Valida conectividad, soft 404, paywalls, duplicados, longitud minima y calidad educativa. Admin aprueba o rechaza fuentes en QA.
+
+### Fase 5: MATERIALES
+
+Genera lecturas, quizzes, dialogos, ejercicios, guias, scripts y storyboards usando el plan y las fuentes aprobadas.
+
+Jobs:
+
+- `materials-generation-background.ts`
+- `validate-materials-background.ts`
+
+La configuracion de modelos y prompts es modular por organizacion mediante `model_settings` y `system_prompts`.
+
+### Fase 6: PRODUCCION VISUAL
+
+Convierte componentes de video en assets, prompts, slides y ensamblados.
+
+Incluye:
+
+- B-roll prompts (`video-prompts-generation.ts`)
+- Slides y Gamma
+- Importacion de archivos desde Google Drive, OneDrive/cloud storage y Artlist
+- Templates Remotion internos y externos
+- Preview con Remotion Player
+- Render final en `apps/api`
+
+---
+
+## Produccion Visual y Remotion
+
+El sistema tiene tres caminos de render:
+
+- `local`
+- `lambda`
+- `desktop_worker`
+
+Se controlan con `RENDER_PROVIDER`.
+
+### API Express
+
+Base local: `http://localhost:4000/api/v1/production`
+
+Endpoints principales:
+
+- `POST /remotion/render`
+- `GET /remotion/readiness`
+- `POST /remotion/external-preview`
+- `POST /remotion/template-builds`
+- `GET /remotion/template-builds/:buildId/status`
+- `GET /remotion/external-preview-renders/:fileName`
+- `POST /remotion/workers/register`
+- `POST /remotion/workers/heartbeat`
+- `POST /remotion/workers/jobs/:jobId/claim`
+- `POST /remotion/workers/jobs/:jobId/progress`
+- `POST /remotion/workers/jobs/:jobId/complete`
+- `POST /remotion/workers/jobs/:jobId/fail`
+- `GET /jobs/:jobId/status`
+
+### Templates Remotion
+
+El sistema soporta:
+
+- `remotion_templates`
+- `remotion_template_versions`
+- `remotion_template_builds`
+- validacion estatica de ZIPs
+- aprobacion para sandbox
+- builds cloud via AWS CodeBuild
+- compatibilidad con Lambda y Remotion `4.0.484`
+- bundle agent conversacional en `/admin/remotion/bundle-agent`
+
+Los ZIPs subidos no deben tratarse como codigo confiable. Pasan por validacion, versionado, aprobacion, build aislado y diagnosticos antes de renderizarse.
+
+### Worker De Escritorio
+
+La API ya contiene endpoints y tablas para registrar workers, reclamar jobs, reportar progreso y completar/fallar renders. Esto permite sacar el computo pesado del servidor principal cuando el flujo usa `desktop_worker`.
+
+---
+
+## Auth, Tenancy y Publicacion
+
+SofLIA - Engine usa un Auth Bridge:
+
+1. El usuario inicia sesion con credenciales SofLIA.
+2. El sistema valida contra SofLIA.
+3. Emite JWT HS256 con `jose`.
+4. Guarda cookies como `cf_access_token`, `cf_active_org`, `cf_user_orgs` y `cf_remember_me`.
+5. Sincroniza perfil local en `profiles`.
+
+El sistema es multi-tenant:
+
+- rutas globales: `/admin`, `/builder`, `/architect`
+- rutas por empresa: `/[empresaSlug]/admin`, `/[empresaSlug]/builder`, `/[empresaSlug]/architect`
+- `organization_id` filtra artefactos, settings, prompts, credenciales e importaciones
+
+Publicacion:
+
+- UI: `/admin/artifacts/[id]/publish`
+- borrador: `POST /api/save-draft`
+- envio: `POST /api/publish`
+- tabla: `publication_requests`
+- destino: SofLIA
+
+---
+
+## APIs y Jobs
+
+### Next.js API Routes
+
+- `POST /api/auth/login`
+- `POST /api/auth/sign-up`
+- `GET /api/auth/callback`
+- `POST /api/auth/switch-organization`
+- `GET /api/auth/google/login`
+- `GET /api/auth/google/callback`
+- `GET /api/auth/microsoft/login`
+- `GET /api/auth/microsoft/callback`
+- `POST /api/lia`
+- `POST /api/syllabus`
+- `POST /api/save-draft`
+- `POST /api/publish`
+- `POST /api/admin/users`
+- `POST /api/admin/scorm/upload`
+- `POST /api/admin/scorm/process`
+- `POST /api/gpt/sources`
+- `GET /api/debug/soflia`
+- `POST /api/production/cloud-storage/import`
+- `GET /api/production/cloud-storage/list`
+- `POST /api/production/google-drive/import`
+- `GET /api/production/google-drive/list`
+- `POST /api/production/artlist/import`
+- `GET /api/production/artlist/search`
+- `POST /api/admin/remotion/bundle-agent/...`
+
+### Netlify Functions
+
+- `auth-sync.ts`
+- `generate-artifact-background.ts`
+- `syllabus-generation-background.ts`
+- `instructional-plan-background.ts`
+- `validate-plan-background.ts`
+- `curation-background.ts`
+- `unified-curation-logic.ts`
+- `validate-curation-background.ts`
+- `materials-generation-background.ts`
+- `validate-materials-background.ts`
+- `video-prompts-generation.ts`
+
+---
+
+## Datos y Storage
+
+Tablas clave:
+
+- `profiles`
+- `artifacts`
+- `syllabus`
+- `instructional_plans`
+- `curation`
+- `curation_rows`
+- `materials`
+- `material_lessons`
+- `material_components`
+- `publication_requests`
+- `scorm_imports`
+- `scorm_resources`
+- `model_settings`
+- `system_prompts`
+- `pipeline_events`
+- `remotion_templates`
+- `remotion_template_versions`
+- `remotion_template_builds`
+- `production_jobs`
+- `production_evidence`
+- `render_workers`
+- `user_cloud_storage_credentials`
+- `user_google_credentials`
+- `organization_user_roles`
+
+Storage:
+
+- `scorm-packages`
+- `thumbnails`
+- `production-videos`
+- buckets AWS/S3 para Remotion Lambda y builds de templates
+
+---
+
+## Variables De Entorno
+
+No versionar valores reales.
+
+Base:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `COURSEFORGE_JWT_SECRET`
+- `NEXT_PUBLIC_APP_URL`
+- `SOFLIA_API_URL`
+- `SOFLIA_API_KEY`
+- `SOFLIA_INBOX_SUPABASE_URL`
+- `SOFLIA_INBOX_SUPABASE_KEY`
+
+IA:
+
+- `GOOGLE_GENERATIVE_AI_API_KEY`
+- `GOOGLE_API_KEY`
+- `OPENAI_API_KEY`
+- `OPENAI_BUNDLE_AGENT_MODEL`
+
+Integraciones:
+
+- `GAMMA_API_KEY`
+- `GPT_SOURCES_API_KEY`
+- `HEYGEN_API_KEY`
+- `ARTLIST_CLIENT_ID`
+- `ARTLIST_CLIENT_SECRET`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_REDIRECT_URI`
+- `GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY`
+- `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
+- `NEXT_PUBLIC_GOOGLE_DEVELOPER_KEY`
+- `NEXT_PUBLIC_GOOGLE_APP_ID`
+- `MICROSOFT_CLIENT_ID`
+- `MICROSOFT_CLIENT_SECRET`
+- `MICROSOFT_REDIRECT_URI`
+- `OAUTH_TOKEN_CRYPTO_SECRET`
+- `GOOGLE_OAUTH_CRYPTO_SECRET`
+
+Produccion:
+
+- `PRODUCTION_API_URL`
+- `EXPRESS_INTERNAL_API_URL`
+- `EXPRESS_PUBLIC_URL`
+- `API_PUBLIC_URL`
+- `ALLOWED_ORIGINS`
+- `RENDER_PROVIDER`
+- `REMOTION_ENTRY_POINT`
+- `REMOTION_RENDER_TIMEOUT_MS`
+- `EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS`
+- `EXTERNAL_TEMPLATE_PREVIEW_RENDER_TIMEOUT_MS`
+- `REMOTION_LAMBDA_REGION`
+- `REMOTION_LAMBDA_FUNCTION_NAME`
+- `REMOTION_LAMBDA_SERVE_URL`
+- `REMOTION_LAMBDA_SITE_NAME`
+- `REMOTION_LAMBDA_BUCKET`
+- `REMOTION_LAMBDA_OUTPUT_PRIVACY`
+- `REMOTION_LAMBDA_FRAMES_PER_LAMBDA`
+- `REMOTION_LAMBDA_CONCURRENCY`
+- `REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA`
+- `REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS`
+- `REMOTION_TEMPLATE_CODEBUILD_PROJECT`
+- `REMOTION_TEMPLATE_CODEBUILD_REGION`
+- `REMOTION_TEMPLATE_SOURCE_BUCKET`
+- `REMOTION_TEMPLATE_BUILD_BUCKET`
+- `REMOTION_TEMPLATE_BUILD_LOG_BUCKET`
+- `REMOTION_TEMPLATE_BUILD_PUBLIC_BASE_URL`
+- `REMOTION_DESKTOP_WORKER_BUNDLE_BUCKET`
+- `REMOTION_DESKTOP_WORKER_TOKEN_PEPPER`
+- `AWS_ACCESS_KEY_ID` o `SOFLIA_AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY` o `SOFLIA_AWS_SECRET_ACCESS_KEY`
+- `AWS_SESSION_TOKEN` o `SOFLIA_AWS_SESSION_TOKEN`
+
+---
+
+## Validacion
+
+Para cambios generales de frontend:
+
+```bash
+npx tsc -p apps/web/tsconfig.json --noEmit
+```
+
+Para Remotion/frontend:
+
+```bash
+npm run test:remotion --workspace=apps/web
+```
+
+Para Remotion/API:
+
+```bash
+npm run test:remotion --workspace=apps/api
+npm run lint --workspace=apps/api
+```
+
+Para verificar readiness del render API:
+
+```bash
+curl http://localhost:4000/api/v1/production/remotion/readiness
+```
+
+---
+
+## Reglas De Mantenimiento
+
+- Mantener `SofLIA - Engine` como nombre principal del producto.
+- No renombrar variables legacy que aun existen en codigo, como `COURSEFORGE_JWT_SECRET`.
+- No asumir que un template Remotion subido se ejecuta directamente: debe pasar por validacion, aprobacion y build cuando aplique.
+- Propagar `organization_id` en rutas, acciones, OAuth state, credenciales y jobs.
+- Mantener los contratos publicables de `SOFLIA_DIALOGUE`.
+- Separar preview interno, preview externo sandbox y render final al diagnosticar produccion visual.
