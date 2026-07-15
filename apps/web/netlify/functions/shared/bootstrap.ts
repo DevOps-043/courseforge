@@ -68,6 +68,10 @@ export function getSofliaInboxEnv() {
   };
 }
 
+export function getSofliaAuthSupabaseAnonKey() {
+  return getRequiredEnv("SOFLIA_AUTH_SUPABASE_ANON_KEY");
+}
+
 export function getCourseforgeJwtSecret() {
   return getRequiredEnv("COURSEFORGE_JWT_SECRET");
 }

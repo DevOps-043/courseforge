@@ -7,6 +7,7 @@ const serverEnvSchema = z
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
     SOFLIA_INBOX_SUPABASE_URL: z.string().min(1).optional(),
     SOFLIA_INBOX_SUPABASE_KEY: z.string().min(1).optional(),
+    SOFLIA_AUTH_SUPABASE_ANON_KEY: z.string().min(1).optional(),
     SOFLIA_API_URL: z.string().min(1).optional(),
     SOFLIA_API_KEY: z.string().min(1).optional(),
     COURSEFORGE_JWT_SECRET: z.string().min(1).optional(),
@@ -33,6 +34,7 @@ function buildEnvObject(): Record<string, string | undefined> {
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     SOFLIA_INBOX_SUPABASE_URL: process.env.SOFLIA_INBOX_SUPABASE_URL,
     SOFLIA_INBOX_SUPABASE_KEY: process.env.SOFLIA_INBOX_SUPABASE_KEY,
+    SOFLIA_AUTH_SUPABASE_ANON_KEY: process.env.SOFLIA_AUTH_SUPABASE_ANON_KEY,
     SOFLIA_API_URL: process.env.SOFLIA_API_URL,
     SOFLIA_API_KEY: process.env.SOFLIA_API_KEY,
     COURSEFORGE_JWT_SECRET: process.env.COURSEFORGE_JWT_SECRET,
@@ -103,6 +105,18 @@ export function getSofliaInboxEnv() {
     url: env.SOFLIA_INBOX_SUPABASE_URL,
     key: env.SOFLIA_INBOX_SUPABASE_KEY,
   };
+}
+
+export function getSofliaAuthSupabaseAnonKey() {
+  const env = getParsedServerEnv();
+
+  if (!env.SOFLIA_AUTH_SUPABASE_ANON_KEY) {
+    throw new Error(
+      "Configuracion incompleta: falta SOFLIA_AUTH_SUPABASE_ANON_KEY",
+    );
+  }
+
+  return env.SOFLIA_AUTH_SUPABASE_ANON_KEY;
 }
 
 export function getCourseforgeJwtSecret() {

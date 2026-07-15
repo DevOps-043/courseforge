@@ -88,7 +88,8 @@ export async function createAuthBridgeTokens(params: {
       last_name: user.last_name,
       display_name: user.display_name,
       avatar_url: user.profile_picture_url,
-      cargo_rol: user.cargo_rol,
+      platform_role: user.platform_role,
+      cargo_rol: user.platform_role,
     },
   })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })

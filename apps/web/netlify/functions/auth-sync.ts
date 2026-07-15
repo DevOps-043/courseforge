@@ -1,24 +1,24 @@
 /**
  * Netlify Function: auth-sync
  *
- * Microservicio de autenticación que actúa como puente (Option C):
- * 1. Valida credenciales contra la tabla `public.users` de SofLIA (bcrypt)
- * 2. Obtiene las organizaciones del usuario
- * 3. Firma un JWT nuevo usando el JWT_SECRET de CourseForge
- * 4. Retorna el token compatible para que CourseForge lo use nativamente
- *
- * SofLIA usa auth personalizado (NO Supabase Auth), por lo que
- * debemos verificar el password_hash (bcrypt) directamente.
+ * Auth Bridge for Engine:
+ * 1. Resolves the Learning profile from public.users.
+ * 2. Validates credentials against Learning Supabase Auth.
+ * 3. Loads active Learning organizations.
+ * 4. Signs CourseForge-compatible bridge tokens.
  *
  * Endpoint: POST /.netlify/functions/auth-sync
  * Body: { identifier: string, password: string }
  */
 
-import { createClient } from '@supabase/supabase-js';
-import bcrypt from 'bcryptjs';
-import { SignJWT } from 'jose';
 import type { HandlerEvent } from '@netlify/functions';
-import { getCourseforgeJwtSecret, getSofliaInboxEnv } from './shared/bootstrap';
+import { createClient } from '@supabase/supabase-js';
+import { SignJWT } from 'jose';
+import {
+  getCourseforgeJwtSecret,
+  getSofliaAuthSupabaseAnonKey,
+  getSofliaInboxEnv,
+} from './shared/bootstrap';
 import { getErrorMessage } from './shared/errors';
 
 interface AuthSyncRequest {
@@ -27,14 +27,13 @@ interface AuthSyncRequest {
 }
 
 interface SofliaUserRecord {
-  cargo_rol?: string | null;
   display_name?: string | null;
   email: string;
   first_name?: string | null;
   id: string;
   is_banned?: boolean | null;
   last_name?: string | null;
-  password_hash?: string | null;
+  platform_role?: string | null;
   profile_picture_url?: string | null;
   username?: string | null;
 }
@@ -54,12 +53,53 @@ interface OrganizationUserRow {
 
 type AuthSyncEvent = Pick<HandlerEvent, 'body' | 'httpMethod'>;
 
+function jsonResponse(status: number, body: Record<string, unknown>) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function mapSofliaAuthError(message: string) {
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes('invalid login credentials') ||
+    normalized.includes('invalid_credentials')
+  ) {
+    return { error: 'Credenciales invalidas', status: 401 };
+  }
+
+  if (
+    normalized.includes('rate limit') ||
+    normalized.includes('too many requests') ||
+    normalized.includes('over_request_rate_limit')
+  ) {
+    return {
+      error:
+        'Demasiados intentos de inicio de sesion. Espera unos minutos e intenta de nuevo.',
+      status: 429,
+    };
+  }
+
+  if (normalized.includes('email not confirmed')) {
+    return {
+      error:
+        'Tu correo aun no esta confirmado. Revisa tu bandeja de entrada para activarlo.',
+      status: 403,
+    };
+  }
+
+  return {
+    error:
+      'No se pudo iniciar sesion en este momento. Por favor, intenta de nuevo en unos minutos.',
+    status: 503,
+  };
+}
+
 export default async function handler(req: AuthSyncEvent) {
   if (req.httpMethod !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse(405, { error: 'Method not allowed' });
   }
 
   try {
@@ -67,69 +107,65 @@ export default async function handler(req: AuthSyncEvent) {
     const { identifier, password } = body;
 
     if (!identifier || !password) {
-      return new Response(
-        JSON.stringify({ error: 'Credenciales requeridas' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(400, { error: 'Credenciales requeridas' });
     }
 
     const { url: sofliaUrl, key: sofliaKey } = getSofliaInboxEnv();
     const courseforgeJwtSecret = getCourseforgeJwtSecret();
-
-    if (!sofliaUrl || !sofliaKey || !courseforgeJwtSecret) {
-      console.error('Missing env vars: SOFLIA_INBOX_SUPABASE_URL, SOFLIA_INBOX_SUPABASE_KEY, or COURSEFORGE_JWT_SECRET');
-      return new Response(
-        JSON.stringify({ error: 'Configuración del servidor incompleta' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
+    const sofliaAuthAnonKey = getSofliaAuthSupabaseAnonKey();
 
     const sofliaAdmin = createClient(sofliaUrl, sofliaKey);
+    const sofliaAuth = createClient(sofliaUrl, sofliaAuthAnonKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
 
-    const isEmail = identifier.includes('@');
-    const column = isEmail ? 'email' : 'username';
-
+    const column = identifier.includes('@') ? 'email' : 'username';
     const { data: user, error: userError } = await sofliaAdmin
       .from('users')
-      .select('id, email, username, first_name, last_name, display_name, profile_picture_url, cargo_rol, is_banned, password_hash')
+      .select(
+        'id, email, username, first_name, last_name, display_name, profile_picture_url, platform_role, is_banned',
+      )
       .ilike(column, identifier)
       .single();
 
     const typedUser = user as SofliaUserRecord | null;
 
     if (userError || !typedUser) {
-      return new Response(
-        JSON.stringify({ error: 'Usuario no encontrado' }),
-        { status: 404, headers: { 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(404, { error: 'Usuario no encontrado' });
     }
 
     if (typedUser.is_banned) {
-      return new Response(
-        JSON.stringify({ error: 'Tu cuenta ha sido suspendida. Contacta al administrador.' }),
-        { status: 403, headers: { 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(403, {
+        error: 'Tu cuenta ha sido suspendida. Contacta al administrador.',
+      });
     }
 
-    if (!typedUser.password_hash) {
-      return new Response(
-        JSON.stringify({ error: 'Esta cuenta usa un método de autenticación externo (OAuth). Por favor, inicia sesión con tu proveedor.' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+    const authResult = await sofliaAuth.auth.signInWithPassword({
+      email: typedUser.email,
+      password,
+    });
+
+    if (authResult.error || !authResult.data.user) {
+      const mapped = mapSofliaAuthError(
+        authResult.error?.message || 'AUTH_SIGNIN_FAILED',
       );
+      return jsonResponse(mapped.status, { error: mapped.error });
     }
 
-    const passwordValid = await bcrypt.compare(password, typedUser.password_hash);
-
-    if (!passwordValid) {
-      return new Response(
-        JSON.stringify({ error: 'Contraseña incorrecta' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
-      );
+    if (authResult.data.user.id !== typedUser.id) {
+      return jsonResponse(403, {
+        error:
+          'Error en la configuracion de la cuenta. Por favor, contacta al soporte.',
+      });
     }
 
     const { data: orgUsers } = await sofliaAdmin
       .from('organization_users')
-      .select(`
+      .select(
+        `
         role,
         organization_id,
         organizations (
@@ -138,21 +174,23 @@ export default async function handler(req: AuthSyncEvent) {
           slug,
           logo_url
         )
-      `)
+      `,
+      )
       .eq('user_id', typedUser.id)
       .eq('status', 'active');
 
-    const organizations = ((orgUsers || []) as OrganizationUserRow[]).map((organizationUser) => ({
-      id: organizationUser.organizations?.id || organizationUser.organization_id,
-      name: organizationUser.organizations?.name || '',
-      slug: organizationUser.organizations?.slug || '',
-      role: organizationUser.role,
-      logo_url: organizationUser.organizations?.logo_url || null,
-    }));
+    const organizations = ((orgUsers || []) as OrganizationUserRow[]).map(
+      (organizationUser) => ({
+        id: organizationUser.organizations?.id || organizationUser.organization_id,
+        name: organizationUser.organizations?.name || '',
+        slug: organizationUser.organizations?.slug || '',
+        role: organizationUser.role,
+        logo_url: organizationUser.organizations?.logo_url || null,
+      }),
+    );
 
-    const activeOrganizationId = organizations.length > 0
-      ? organizations[0].id
-      : null;
+    const activeOrganizationId =
+      organizations.length > 0 ? organizations[0].id : null;
 
     await sofliaAdmin
       .from('users')
@@ -179,7 +217,8 @@ export default async function handler(req: AuthSyncEvent) {
         last_name: typedUser.last_name,
         display_name: typedUser.display_name,
         avatar_url: typedUser.profile_picture_url,
-        cargo_rol: typedUser.cargo_rol,
+        platform_role: typedUser.platform_role,
+        cargo_rol: typedUser.platform_role,
       },
     })
       .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
@@ -198,11 +237,9 @@ export default async function handler(req: AuthSyncEvent) {
       .setExpirationTime(now + 604800)
       .sign(secret);
 
-    const { password_hash: _, ...safeUser } = typedUser;
-
-    return new Response(JSON.stringify({
+    return jsonResponse(200, {
       success: true,
-      user: safeUser,
+      user: typedUser,
       session: {
         access_token: accessToken,
         refresh_token: refreshToken,
@@ -212,19 +249,15 @@ export default async function handler(req: AuthSyncEvent) {
       },
       organizations,
       activeOrganizationId,
-    }), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store',
-      },
     });
-
   } catch (error: unknown) {
     console.error('auth-sync error:', getErrorMessage(error));
-    return new Response(
-      JSON.stringify({ error: 'Error interno del servidor' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    if (getErrorMessage(error).includes('SOFLIA_AUTH_SUPABASE_ANON_KEY')) {
+      return jsonResponse(500, {
+        error: 'Configuracion incompleta: falta SOFLIA_AUTH_SUPABASE_ANON_KEY',
+      });
+    }
+
+    return jsonResponse(500, { error: 'Error interno del servidor' });
   }
 }

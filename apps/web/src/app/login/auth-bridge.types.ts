@@ -10,9 +10,8 @@ export interface SofliaUserRecord {
   last_name: string | null;
   display_name: string | null;
   profile_picture_url: string | null;
-  cargo_rol: string | null;
+  platform_role: string | null;
   is_banned: boolean;
-  password_hash: string | null;
 }
 
 export interface OrganizationRecord {

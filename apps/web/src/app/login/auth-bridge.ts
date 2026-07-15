@@ -3,8 +3,11 @@ import {
   createClient as createAdminClient,
   type SupabaseClient,
 } from "@supabase/supabase-js";
-import bcrypt from "bcryptjs";
 import { cookies, headers } from "next/headers";
+import {
+  authenticateSofliaPassword,
+  SOFLIA_USER_SELECT,
+} from "./auth-bridge-contract";
 import {
   buildOrganizationsUpsert,
   buildProfileUpsert,
@@ -22,6 +25,7 @@ import type {
 } from "./auth-bridge.types";
 import {
   getCourseforgeJwtSecret,
+  getSofliaAuthSupabaseAnonKey,
   getSofliaInboxEnv,
   getSupabaseAnonKey,
   getSupabaseServiceRoleKey,
@@ -172,9 +176,16 @@ export async function completeAuthBridgeLogin(
     const supabaseAnonKey = getSupabaseAnonKey();
     const supabaseServiceRoleKey = getSupabaseServiceRoleKey();
     const jwtSecret = getCourseforgeJwtSecret();
+    const sofliaAuthAnonKey = getSofliaAuthSupabaseAnonKey();
     const secureCookies = isProductionEnvironment();
 
     const sofliaAdmin = createAdminClient(sofliaUrl, sofliaKey);
+    const sofliaAuth = createAdminClient(sofliaUrl, sofliaAuthAnonKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
     const courseforgeAdmin = createAdminClient(
       supabaseUrl,
       supabaseServiceRoleKey,
@@ -183,9 +194,7 @@ export async function completeAuthBridgeLogin(
 
     const { data: rawUser, error: userError } = await sofliaAdmin
       .from("users")
-      .select(
-        "id, email, username, first_name, last_name, display_name, profile_picture_url, cargo_rol, is_banned, password_hash",
-      )
+      .select(SOFLIA_USER_SELECT)
       .ilike(identifierColumn, identifier)
       .single();
 
@@ -200,16 +209,18 @@ export async function completeAuthBridgeLogin(
       };
     }
 
-    if (!user.password_hash) {
-      return {
-        error:
-          "Esta cuenta usa autenticacion externa (OAuth). Inicia sesion con tu proveedor.",
-      };
-    }
-
-    const passwordValid = await bcrypt.compare(password, user.password_hash);
-    if (!passwordValid) {
-      return { error: "Contrasena incorrecta" };
+    const authResult = await authenticateSofliaPassword({
+      authClient: sofliaAuth,
+      email: user.email,
+      expectedUserId: user.id,
+      password,
+    });
+    if (!authResult.success) {
+      console.warn("Learning Auth rejected Engine bridge login", {
+        code: authResult.failure.code,
+        userId: user.id,
+      });
+      return { error: authResult.failure.message };
     }
 
     const { data: rawOrganizationUsers } = await sofliaAdmin

@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "baseUrl": ".",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "outDir": ".tmp/auth-bridge-tests",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": [
+    "src/app/login/auth-bridge-contract.ts",
+    "src/app/login/__tests__/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}

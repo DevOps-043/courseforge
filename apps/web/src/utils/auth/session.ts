@@ -21,6 +21,7 @@ export interface AuthBridgeUser {
   display_name?: string
   avatar_url?: string
   cargo_rol?: string
+  platform_role?: string
   organization_ids?: string[]
   active_organization_id?: string | null
 }
@@ -36,6 +37,7 @@ interface AuthBridgeJwtUserMetadata {
   display_name?: string
   first_name?: string
   last_name?: string
+  platform_role?: string
   username?: string
 }
 
@@ -85,7 +87,8 @@ export async function getAuthBridgeUser(): Promise<AuthBridgeUser | null> {
       last_name: userMetadata.last_name,
       display_name: userMetadata.display_name,
       avatar_url: userMetadata.avatar_url,
-      cargo_rol: userMetadata.cargo_rol,
+      cargo_rol: userMetadata.cargo_rol || userMetadata.platform_role,
+      platform_role: userMetadata.platform_role || userMetadata.cargo_rol,
       organization_ids: appMetadata.organization_ids || [],
       active_organization_id: appMetadata.active_organization_id || null,
     }
