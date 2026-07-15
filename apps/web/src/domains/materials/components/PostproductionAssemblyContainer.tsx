@@ -449,6 +449,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const availableDesktopWorkers = workerStatus?.workers.filter((worker) =>
         worker.status === 'ONLINE' || worker.status === 'BUSY',
     ) || [];
+    const visibleDesktopWorkers = workerStatus?.workers.filter((worker) => worker.status !== 'REVOKED') || [];
     const workerGateBlocked = Boolean(workerStatus?.requiresDesktopWorker && availableDesktopWorkers.length === 0);
     const workerGateMessage = 'Vincula y enciende un worker local antes de ensamblar con desktop_worker.';
 
@@ -960,9 +961,9 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                 </div>
                             </div>
 
-                            {workerStatus?.workers?.length ? (
+                            {visibleDesktopWorkers.length ? (
                                 <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
-                                    {workerStatus.workers.slice(0, 4).map((worker) => (
+                                    {visibleDesktopWorkers.slice(0, 4).map((worker) => (
                                         <div key={worker.id} className="rounded-lg border border-gray-200 bg-white p-2 dark:border-[#6C757D]/10 dark:bg-[#151A21]">
                                             <div className="flex items-center justify-between gap-2">
                                                 <span className="truncate font-semibold text-gray-800 dark:text-gray-100">
@@ -973,21 +974,19 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                             <p className="mt-1 text-gray-500 dark:text-gray-400">
                                                 {[worker.platform, worker.arch, worker.app_version].filter(Boolean).join(' · ') || 'Sin metadata'} · heartbeat {worker.last_heartbeat_at ? new Date(worker.last_heartbeat_at).toLocaleString() : 'pendiente'}
                                             </p>
-                                            {worker.status !== 'REVOKED' ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => void handleRevokeWorker(worker.id)}
-                                                    disabled={revokingWorkerId === worker.id}
-                                                    className="mt-2 inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-500/30 dark:text-red-300 dark:hover:bg-red-500/10"
-                                                >
-                                                    {revokingWorkerId === worker.id ? (
-                                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                                    ) : (
-                                                        <Unlink className="h-3 w-3" />
-                                                    )}
-                                                    Desvincular
-                                                </button>
-                                            ) : null}
+                                            <button
+                                                type="button"
+                                                onClick={() => void handleRevokeWorker(worker.id)}
+                                                disabled={revokingWorkerId === worker.id}
+                                                className="mt-2 inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-500/30 dark:text-red-300 dark:hover:bg-red-500/10"
+                                            >
+                                                {revokingWorkerId === worker.id ? (
+                                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                                ) : (
+                                                    <Unlink className="h-3 w-3" />
+                                                )}
+                                                Desvincular
+                                            </button>
                                         </div>
                                     ))}
                                 </div>
