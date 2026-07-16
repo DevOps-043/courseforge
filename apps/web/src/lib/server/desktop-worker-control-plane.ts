@@ -165,6 +165,10 @@ function isStaleJobAssignment(job: any, worker: any | null) {
   return Date.now() - new Date(heartbeatAt).getTime() > WORKER_JOB_STALE_MS;
 }
 
+function hasUsableFinalVideoUrl(value: unknown): boolean {
+  return typeof value === "string" && /^https?:\/\//i.test(value.trim());
+}
+
 function deriveDurationFromJob(job: any): number {
   const props = job.input_snapshot?.resolvedProps;
   const frames = Number(props?.totalDurationInFrames);
@@ -689,6 +693,9 @@ export class DesktopWorkerControlPlane {
     const { data: existingJob } = organizationId
       ? await existingJobQuery.eq("organization_id", organizationId).maybeSingle()
       : await existingJobQuery.is("organization_id", null).maybeSingle();
+    const existingJobHasFinalVideo =
+      hasUsableFinalVideoUrl(existingJob?.output_snapshot?.final_video_url) ||
+      hasUsableFinalVideoUrl(component.assets?.final_video_url);
 
     if (existingJob && !["FAILED", "CANCELLED", "SUCCEEDED"].includes(existingJob.status)) {
       const assignedWorker = existingJob.worker_id
@@ -703,6 +710,16 @@ export class DesktopWorkerControlPlane {
           message: "Stale desktop worker job reset",
         };
       }
+    }
+
+    if (existingJob?.status === "SUCCEEDED" && !existingJobHasFinalVideo) {
+      const resetJob = await this.resetDesktopJob(existingJob.id, inputSnapshot, "Reintentando render: el job anterior termino sin video final");
+      return {
+        jobId: resetJob.id,
+        status: resetJob.status,
+        renderProvider: "desktop_worker",
+        message: "Completed desktop worker job without final video reset",
+      };
     }
 
     if (existingJob && !["FAILED", "CANCELLED"].includes(existingJob.status)) {

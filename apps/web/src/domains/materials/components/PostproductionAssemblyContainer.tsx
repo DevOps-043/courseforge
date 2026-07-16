@@ -362,7 +362,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                     setIsReconnecting(false);
 
                     const job = statusResult.job;
-                    const status = job.status as AssemblyJobStatus;
+                    const rawStatus = job.status as AssemblyJobStatus;
                     let jobProgress = trackedJob.progress;
                     if (Array.isArray(job.progress) && job.progress.length > 0) {
                         const lastProgress = job.progress[job.progress.length - 1];
@@ -375,14 +375,20 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                         : trackedJob.lastLog;
 
                     const finalVideoUrl = job.output_snapshot?.final_video_url || trackedJob.finalVideoUrl;
+                    const completedWithoutVideo = rawStatus === 'SUCCEEDED' && !finalVideoUrl;
+                    const status = completedWithoutVideo ? 'FAILED' : rawStatus;
                     nextJobs[index] = {
                         ...trackedJob,
                         status,
                         progress: status === 'SUCCEEDED' ? 100 : jobProgress,
                         finalVideoUrl,
                         lastLog: typeof lastLog === 'string' ? lastLog : trackedJob.lastLog,
-                        error: job.provider_error?.message || trackedJob.error,
-                        errorCode: job.provider_error?.code || trackedJob.errorCode,
+                        error: completedWithoutVideo
+                            ? 'El job termino, pero no genero una URL de video final.'
+                            : job.provider_error?.message || trackedJob.error,
+                        errorCode: completedWithoutVideo
+                            ? 'OUTPUT_NOT_ACCESSIBLE'
+                            : job.provider_error?.code || trackedJob.errorCode,
                     };
                 }
 
