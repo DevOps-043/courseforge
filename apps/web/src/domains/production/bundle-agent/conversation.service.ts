@@ -1,4 +1,8 @@
-import { bundleAgentMessageRoleSchema, type BundleAgentAuthContext } from "./types";
+import {
+  bundleAgentMessageMetadataSchema,
+  bundleAgentMessageRoleSchema,
+  type BundleAgentAuthContext,
+} from "./types";
 import { redactSensitiveText } from "./redaction.service";
 
 const ACTIVE_CONVERSATION_LIMIT = 25;
@@ -66,6 +70,7 @@ export class BundleAgentConversationService {
 
   async addMessage(input: { conversationId: string; role: string; content: string; metadata?: Record<string, unknown> }) {
     const role = bundleAgentMessageRoleSchema.parse(input.role);
+    const metadata = bundleAgentMessageMetadataSchema.parse(input.metadata || {});
     await this.assertConversationAccess(input.conversationId);
 
     const { data, error } = await this.context.admin
@@ -75,7 +80,7 @@ export class BundleAgentConversationService {
         organization_id: this.context.organizationId,
         role,
         content_redacted: redactSensitiveText(input.content).slice(0, 12_000),
-        metadata: input.metadata || {},
+        metadata,
         created_by: this.context.userId,
       })
       .select("*")

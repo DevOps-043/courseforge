@@ -5,6 +5,7 @@ import { buildControlledBundleZip, buildExternalAuthorBundleBaseZip } from "../g
 import { redactSensitiveText, sanitizeErrorMessage } from "../redaction.service";
 import { buildSpecFromConversation, computeSpecHash } from "../spec.service";
 import { validateGeneratedRemotionBundle } from "../security-validator";
+import { bundleAgentMessageMetadataSchema } from "../types";
 
 async function zipBuffer(files: Record<string, string>) {
   const zip = new JSZip();
@@ -36,6 +37,39 @@ describe("SofLIA Bundle Agent services", () => {
     assert.equal(message.includes("[object Object]"), false);
     assert.match(message, /soflia_bundle_conversations/);
     assert.match(message, /20260707120000_create_soflia_bundle_agent/);
+  });
+
+  it("accepts bounded visual references in message metadata", () => {
+    const metadata = bundleAgentMessageMetadataSchema.parse({
+      visualReferences: [
+        {
+          id: "reference-1",
+          type: "image",
+          fileName: "layout-reference.png",
+          mimeType: "image/png",
+          sizeBytes: 128_000,
+          storagePath: "organizations/org-1/bundle-agent-references/reference-1/layout-reference.png",
+          publicUrl: "https://example.com/layout-reference.png",
+          note: "Usar como referencia de composicion y contraste.",
+        },
+      ],
+    });
+
+    assert.equal(metadata.visualReferences?.[0]?.type, "image");
+    assert.equal(metadata.visualReferences?.[0]?.note, "Usar como referencia de composicion y contraste.");
+  });
+
+  it("rejects oversized visual reference metadata payloads", () => {
+    assert.throws(() => bundleAgentMessageMetadataSchema.parse({
+      visualReferences: Array.from({ length: 7 }, (_, index) => ({
+        id: `reference-${index}`,
+        type: "image",
+        fileName: `reference-${index}.png`,
+        mimeType: "image/png",
+        sizeBytes: 1000,
+        storagePath: `organizations/org-1/bundle-agent-references/reference-${index}/reference.png`,
+      })),
+    }));
   });
 
   it("builds a deterministic structured spec from conversation messages", () => {

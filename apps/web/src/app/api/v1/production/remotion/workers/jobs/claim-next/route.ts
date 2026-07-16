@@ -11,10 +11,14 @@ export async function POST(request: Request) {
     const auth = await authenticateWorkerRoute(request);
     if (!auth) return NextResponse.json({ error: "Invalid or revoked worker token" }, { status: 401 });
 
-    const job = await auth.service.claimNextJob(auth.worker);
-    return NextResponse.json({ success: true, job });
+    const result = await auth.service.claimNextJob(auth.worker);
+    if (result && typeof result === "object" && "jobs" in result) {
+      const jobs = Array.isArray((result as { jobs?: unknown }).jobs) ? (result as { jobs: unknown[] }).jobs : [];
+      return NextResponse.json({ success: true, job: jobs[0] || null, jobs });
+    }
+
+    return NextResponse.json({ success: true, job: result, jobs: result ? [result] : [] });
   } catch (error) {
     return mapWorkerError(error);
   }
 }
-

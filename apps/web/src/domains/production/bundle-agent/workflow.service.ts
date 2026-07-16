@@ -20,7 +20,7 @@ export class BundleAgentWorkflowService {
     const conversation = await this.getConversation(conversationId);
     const { data: messages } = await this.context.admin
       .from("soflia_bundle_messages")
-      .select("role, content_redacted")
+      .select("role, content_redacted, metadata")
       .eq("conversation_id", conversationId)
       .eq("organization_id", this.context.organizationId)
       .order("created_at", { ascending: true });

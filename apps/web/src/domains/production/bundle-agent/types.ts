@@ -2,6 +2,26 @@ import { z } from "zod";
 
 export const bundleAgentMessageRoleSchema = z.enum(["USER", "ASSISTANT", "SYSTEM", "TOOL"]);
 
+export const BUNDLE_AGENT_VISUAL_REFERENCE_LIMIT = 6;
+
+export const bundleAgentVisualReferenceSchema = z.object({
+  id: z.string().trim().min(1).max(120),
+  type: z.enum(["image", "video"]),
+  fileName: z.string().trim().min(1).max(240),
+  mimeType: z.string().trim().min(1).max(120),
+  sizeBytes: z.number().int().min(1).max(75 * 1024 * 1024),
+  storagePath: z.string().trim().min(1).max(1000),
+  publicUrl: z.string().trim().url().max(2000).optional(),
+  note: z.string().trim().max(500).optional(),
+});
+
+export const bundleAgentMessageMetadataSchema = z.object({
+  visualReferences: z
+    .array(bundleAgentVisualReferenceSchema)
+    .max(BUNDLE_AGENT_VISUAL_REFERENCE_LIMIT)
+    .optional(),
+});
+
 export const bundleAgentSpecSchema = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(1000).default(""),
@@ -40,6 +60,8 @@ export const bundleAgentSpecSchema = z.object({
 });
 
 export type BundleAgentMessageRole = z.infer<typeof bundleAgentMessageRoleSchema>;
+export type BundleAgentVisualReference = z.infer<typeof bundleAgentVisualReferenceSchema>;
+export type BundleAgentMessageMetadata = z.infer<typeof bundleAgentMessageMetadataSchema>;
 export type BundleAgentSpec = z.infer<typeof bundleAgentSpecSchema>;
 
 export interface BundleAgentAuthContext {

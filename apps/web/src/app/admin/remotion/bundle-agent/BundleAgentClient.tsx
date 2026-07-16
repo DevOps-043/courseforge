@@ -3,11 +3,19 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowLeft, Bot, CheckCircle2, Download, ExternalLink, FileCode2, Loader2, PackageCheck, Send, Sparkles, User } from "lucide-react";
+import { ArrowLeft, Bot, CheckCircle2, Download, ExternalLink, FileCode2, ImagePlus, Loader2, PackageCheck, Send, Sparkles, Trash2, User } from "lucide-react";
+import { uploadWithSignedUrl } from "@/lib/storage-upload";
+import type { BundleAgentVisualReference } from "@/domains/production/bundle-agent/types";
 
 interface ConversationState {
   conversation: { id: string; title: string; status: string; template_id: string | null } | null;
-  messages: Array<{ id: string; role: string; content_redacted: string; created_at: string }>;
+  messages: Array<{
+    id: string;
+    role: string;
+    content_redacted: string;
+    metadata?: { visualReferences?: BundleAgentVisualReference[] } | null;
+    created_at: string;
+  }>;
   specs: Array<{ id: string; version_number: number; spec_json: Record<string, unknown>; spec_hash: string }>;
   generationRuns: Array<{ id: string; status: string; bundle_storage_path: string | null; error_sanitized: string | null }>;
   versionLinks: Array<{ id: string; change_summary: string | null; template_version?: { id: string; status: string; build_status: string } }>;
@@ -26,6 +34,9 @@ const QUICK_PROMPTS = [
   "Necesito un template dinamico para cursos corporativos, con portada, progreso y cierre.",
   "Disena una plantilla sobria para videos teoricos con texto grande, fondo limpio y ritmo pausado.",
 ];
+
+const VISUAL_REFERENCE_LIMIT = 6;
+const VISUAL_REFERENCE_MAX_BYTES = 75 * 1024 * 1024;
 
 async function readJson(response: Response) {
   const payload = await response.json().catch(() => null);
@@ -69,6 +80,27 @@ function formatSpecSummary(spec: Record<string, unknown> | undefined) {
   ].filter(Boolean).join(" - ");
 }
 
+function getReferenceType(file: File): BundleAgentVisualReference["type"] | null {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("video/")) return "video";
+  return null;
+}
+
+function sanitizeUploadFileName(fileName: string) {
+  const safeName = fileName
+    .normalize("NFKD")
+    .replace(/[^A-Za-z0-9._-]/g, "_")
+    .replace(/^[._-]+/, "")
+    .slice(0, 140);
+
+  return safeName || "visual-reference";
+}
+
+function formatFileSize(sizeBytes: number) {
+  if (sizeBytes >= 1024 * 1024) return `${Math.round(sizeBytes / (1024 * 1024))} MB`;
+  return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`;
+}
+
 export function BundleAgentClient({ initialTemplateId = null }: { initialTemplateId?: string | null }) {
   const pathname = usePathname();
   const templateId = initialTemplateId;
@@ -76,8 +108,11 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
   const [title, setTitle] = useState("Nuevo bundle Remotion");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [uploadingReferences, setUploadingReferences] = useState(false);
+  const [visualReferences, setVisualReferences] = useState<BundleAgentVisualReference[]>([]);
   const [error, setError] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const latestSpec = state.specs[0];
   const latestRun = state.generationRuns[0];
   const latestVersion = state.versionLinks[0]?.template_version;
@@ -158,16 +193,21 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
   async function sendCurrentMessage(event?: FormEvent) {
     event?.preventDefault();
     const trimmed = message.trim();
-    if (!trimmed || busy) return;
+    if ((!trimmed && visualReferences.length === 0) || busy || uploadingReferences) return;
 
     await run(async () => {
       const conversationId = await ensureConversation();
       await readJson(await fetch(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: "USER", content: trimmed }),
+        body: JSON.stringify({
+          role: "USER",
+          content: trimmed || "Adjunto referencias visuales para orientar el estilo del bundle.",
+          metadata: visualReferences.length > 0 ? { visualReferences } : {},
+        }),
       }));
       setMessage("");
+      setVisualReferences([]);
       await refresh(conversationId);
     });
   }
@@ -191,6 +231,74 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
   function useQuickPrompt(prompt: string) {
     setMessage(prompt);
     composerRef.current?.focus();
+  }
+
+  async function uploadSelectedReferences(files: FileList | null) {
+    if (!files || files.length === 0) return;
+
+    setUploadingReferences(true);
+    setError(null);
+    try {
+      const availableSlots = VISUAL_REFERENCE_LIMIT - visualReferences.length;
+      if (availableSlots <= 0) {
+        throw new Error(`Puedes adjuntar hasta ${VISUAL_REFERENCE_LIMIT} referencias visuales por mensaje.`);
+      }
+
+      const selectedFiles = Array.from(files).slice(0, availableSlots);
+      const uploadedReferences: BundleAgentVisualReference[] = [];
+
+      for (const file of selectedFiles) {
+        const referenceType = getReferenceType(file);
+        if (!referenceType) {
+          throw new Error(`Formato no permitido: ${file.name}. Usa imagenes o videos.`);
+        }
+
+        if (file.size <= 0 || file.size > VISUAL_REFERENCE_MAX_BYTES) {
+          throw new Error(`"${file.name}" supera el limite de 75 MB.`);
+        }
+
+        const id = crypto.randomUUID();
+        const safeFileName = sanitizeUploadFileName(file.name);
+        const uploaded = await uploadWithSignedUrl(
+          "production-assets",
+          `bundle-agent-references/${id}/${safeFileName}`,
+          file,
+          {
+            purpose: "bundle-agent-reference",
+            contentType: file.type,
+            fileSizeBytes: file.size,
+            upsert: false,
+          },
+        );
+
+        uploadedReferences.push({
+          id,
+          type: referenceType,
+          fileName: file.name,
+          mimeType: file.type,
+          sizeBytes: file.size,
+          storagePath: uploaded.path,
+          publicUrl: uploaded.publicUrl,
+        });
+      }
+
+      setVisualReferences((current) => [...current, ...uploadedReferences].slice(0, VISUAL_REFERENCE_LIMIT));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUploadingReferences(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  function updateReferenceNote(referenceId: string, note: string) {
+    setVisualReferences((current) => current.map((reference) => (
+      reference.id === referenceId ? { ...reference, note: note.slice(0, 500) } : reference
+    )));
+  }
+
+  function removeReference(referenceId: string) {
+    setVisualReferences((current) => current.filter((reference) => reference.id !== referenceId));
   }
 
   return (
@@ -275,6 +383,15 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
                       <div className={`max-w-[78%] rounded-2xl px-4 py-3 text-sm shadow-sm ${isUser ? "bg-blue-600 text-white" : isTool ? "border border-slate-200 bg-white text-slate-700" : "border border-slate-100 bg-white text-slate-800"}`}>
                         <p className={`mb-1 text-xs font-semibold ${isUser ? "text-blue-100" : "text-slate-500"}`}>{roleLabel(item.role)}</p>
                         <p className="whitespace-pre-wrap leading-6">{item.content_redacted}</p>
+                        {item.metadata?.visualReferences?.length ? (
+                          <div className={`mt-3 grid gap-1 text-xs ${isUser ? "text-blue-100" : "text-slate-500"}`}>
+                            {item.metadata.visualReferences.map((reference) => (
+                              <span key={reference.id} className="truncate">
+                                {reference.type === "image" ? "Imagen" : "Video"}: {reference.fileName}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                       {isUser ? (
                         <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700">
@@ -295,7 +412,54 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
           </div>
 
           <form onSubmit={sendCurrentMessage} className="border-t border-slate-100 bg-white p-4">
+            {visualReferences.length > 0 ? (
+              <div className="mb-3 grid gap-2">
+                {visualReferences.map((reference) => (
+                  <div key={reference.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-900">{reference.fileName}</p>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {reference.type === "image" ? "Imagen" : "Video"} - {formatFileSize(reference.sizeBytes)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeReference(reference.id)}
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-white hover:text-red-600"
+                        title="Quitar referencia"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                    <input
+                      className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none transition focus:border-[#00D4B3]"
+                      value={reference.note || ""}
+                      onChange={(event) => updateReferenceNote(reference.id, event.target.value)}
+                      placeholder="Nota opcional: que debe observar SofLIA de esta referencia"
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <div className="flex gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-2 focus-within:border-[#00D4B3]">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*"
+                multiple
+                className="hidden"
+                onChange={(event) => void uploadSelectedReferences(event.target.files)}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={busy || uploadingReferences || visualReferences.length >= VISUAL_REFERENCE_LIMIT}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-[#00D4B3]/60 hover:text-[#009688] disabled:cursor-not-allowed disabled:opacity-50"
+                title="Adjuntar imagen o video de referencia"
+              >
+                {uploadingReferences ? <Loader2 className="animate-spin" size={18} /> : <ImagePlus size={18} />}
+              </button>
               <textarea
                 ref={composerRef}
                 className="max-h-36 min-h-12 flex-1 resize-none bg-transparent px-3 py-2 text-sm outline-none"
@@ -311,7 +475,7 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
               />
               <button
                 type="submit"
-                disabled={busy || !message.trim()}
+                disabled={busy || uploadingReferences || (!message.trim() && visualReferences.length === 0)}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#00D4B3] text-white transition hover:bg-[#00BFA5] disabled:cursor-not-allowed disabled:bg-slate-300"
                 title="Enviar"
               >

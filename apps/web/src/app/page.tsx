@@ -2,7 +2,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Image from "next/image";
 import { motion } from "framer-motion";
 import { CheckCircle2, Sun, Moon, Monitor } from "lucide-react";
 import Link from "next/link";
@@ -31,16 +30,8 @@ export default function Home() {
       {/* Navbar */}
       <nav className="fixed w-full z-50 top-0 left-0 border-b border-gray-200 dark:border-white/5 bg-white/80 dark:bg-[#0F1419]/80 backdrop-blur-md transition-colors duration-300">
         <div className="w-full px-8 lg:px-12 h-20 flex justify-between items-center">
-          {/* Logo */}
+          {/* Brand */}
           <div className="flex items-center gap-3">
-            <div className="relative w-12 h-12">
-              <Image
-                src="/Logo.png"
-                alt="SofLIA - Engine"
-                fill
-                className="object-contain"
-              />
-            </div>
             <span className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
               SofLIA - Engine
             </span>
@@ -126,27 +117,6 @@ export default function Home() {
             </motion.div>
           </div>
 
-          {/* Right Visual (3D Graphic) */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8 }}
-            className="flex-1 w-full max-w-[600px]"
-          >
-            <div className="relative aspect-square animate-float-slow">
-              {/* Main 3D Image */}
-              <div className="relative z-10 w-full h-full flex items-center justify-center">
-                {/* Fallback visual if image fails */}
-                <Image
-                  src="/Logo.png"
-                  alt="AI Network"
-                  fill
-                  className="object-contain drop-shadow-2xl"
-                  priority
-                />
-              </div>
-            </div>
-          </motion.div>
         </div>
       </main>
     </div>

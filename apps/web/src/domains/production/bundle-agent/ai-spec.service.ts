@@ -1,13 +1,19 @@
 import { GoogleGenAI } from "@google/genai";
 import { getOptionalGeminiApiKey, getOptionalOpenAIApiKey } from "@/lib/server/env";
 import { getPipelineModelSettings } from "@/lib/server/model-settings";
-import { bundleAgentSpecSchema, type BundleAgentSpec } from "./types";
+import {
+  bundleAgentMessageMetadataSchema,
+  bundleAgentSpecSchema,
+  type BundleAgentSpec,
+  type BundleAgentVisualReference,
+} from "./types";
 import { buildSpecFromConversation, normalizeBundleAgentSpecForRendering } from "./spec.service";
 import { sanitizeErrorMessage } from "./redaction.service";
 
 interface MessageForSpec {
   role: string;
   content_redacted: string;
+  metadata?: unknown;
 }
 
 export interface AiSpecGenerationResult {
@@ -27,6 +33,47 @@ interface OpenAIResponsesPayload {
   output_text?: string;
 }
 
+function getVisualReferencesFromMessage(message: MessageForSpec): BundleAgentVisualReference[] {
+  const parsed = bundleAgentMessageMetadataSchema.safeParse(message.metadata || {});
+  return parsed.success ? parsed.data.visualReferences || [] : [];
+}
+
+function formatBytes(sizeBytes: number) {
+  if (sizeBytes >= 1024 * 1024) return `${Math.round(sizeBytes / (1024 * 1024))} MB`;
+  return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`;
+}
+
+function buildVisualReferenceContext(messages: MessageForSpec[]) {
+  const references = messages.flatMap((message) => getVisualReferencesFromMessage(message));
+
+  if (references.length === 0) {
+    return "Sin referencias visuales adjuntas.";
+  }
+
+  return references
+    .map((reference, index) => {
+      const note = reference.note ? ` Nota del usuario: ${reference.note}` : "";
+      return `${index + 1}. ${reference.type.toUpperCase()} "${reference.fileName}" (${reference.mimeType}, ${formatBytes(reference.sizeBytes)}).${note}`;
+    })
+    .join("\n");
+}
+
+function buildFallbackMessagesWithVisualContext(messages: MessageForSpec[]): MessageForSpec[] {
+  const visualContext = buildVisualReferenceContext(messages);
+
+  if (visualContext === "Sin referencias visuales adjuntas.") {
+    return messages;
+  }
+
+  return [
+    ...messages,
+    {
+      role: "USER",
+      content_redacted: `Referencias visuales adjuntas para orientar estilo, layout, ritmo o atmosfera:\n${visualContext}`,
+    },
+  ];
+}
+
 function buildPrompt(input: {
   title?: string | null;
   messages: MessageForSpec[];
@@ -35,6 +82,7 @@ function buildPrompt(input: {
     .map((message) => `${message.role}: ${message.content_redacted}`)
     .join("\n")
     .slice(0, 16_000);
+  const visualReferences = buildVisualReferenceContext(input.messages).slice(0, 4_000);
 
   return `Eres SofLIA Bundle Agent dentro de SofLIA - Engine. Convierte esta conversacion en una especificacion JSON segura para un bundle Remotion.
 
@@ -51,6 +99,8 @@ Reglas estrictas:
 - Evita textos visibles como "Avatar en primera persona", "Avatar pendiente", "Direccion visual", "Locucion activa" o nombres de zonas del layout.
 - Incluye en requiredAssets solo assets realmente inferidos: slides, audio, avatar, broll, captions.
 - Si hay slides y broll, la plantilla debe ser capaz de mostrar ambos de forma intencional: alternados, combinados, superpuestos o en zonas separadas. No debe ocultar B-roll solo porque existan diapositivas.
+- Usa las referencias visuales adjuntas como inspiracion de estilo, composicion, ritmo, motion, colores o atmosfera; no las trates como assets finales del render.
+- No copies rutas internas, URLs de storage, nombres privados de archivo ni metadatos tecnicos dentro de defaultProps.
 - durationFrames es solo fallback/preview de la plantilla, no debe hardcodear la duracion final del render.
 - La plantilla final debe resolver la duracion con calculateMetadata usando props.totalDurationInFrames y, cuando aplique, metadata real del avatar/audio.
 - Si el usuario pide colores, agrega props simples como accentColor en propsSchema/defaultProps.
@@ -82,6 +132,9 @@ Contrato exacto:
 }
 
 Titulo sugerido: ${input.title || "SofLIA Remotion bundle"}
+
+Referencias visuales adjuntas:
+${visualReferences}
 
 Conversacion:
 ${conversation}`;
@@ -125,7 +178,10 @@ function getOpenAIOutputText(payload: OpenAIResponsesPayload) {
 
 function fallbackSpec(input: { title?: string | null; messages: MessageForSpec[] }, warning: string | null): AiSpecGenerationResult {
   return {
-    spec: buildSpecFromConversation(input),
+    spec: buildSpecFromConversation({
+      ...input,
+      messages: buildFallbackMessagesWithVisualContext(input.messages),
+    }),
     model: "courseforge-deterministic-fallback",
     source: "deterministic_fallback",
     warning,

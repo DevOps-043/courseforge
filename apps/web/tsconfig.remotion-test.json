@@ -27,6 +27,8 @@
     "src/domains/production/bundle-agent/generation.service.ts",
     "src/domains/production/bundle-agent/security-validator.ts",
     "src/domains/production/bundle-agent/__tests__/**/*.ts",
+    "src/domains/production/render-batches/render-batch.types.ts",
+    "src/domains/production/render-batches/__tests__/**/*.ts",
     "src/remotion/types.ts",
     "src/remotion/visual-timeline.ts",
     "src/remotion/__tests__/**/*.ts"

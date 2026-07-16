@@ -14,9 +14,10 @@ import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 
 const ALLOWED_BUCKETS = new Set(['thumbnails', 'production-videos', 'production-assets', 'template-bundles']);
 const TEMPLATE_BUNDLE_MAX_BYTES = 10 * 1024 * 1024;
+const BUNDLE_AGENT_REFERENCE_MAX_BYTES = 75 * 1024 * 1024;
 const GENERAL_UPLOAD_MAX_BYTES = 500 * 1024 * 1024;
 
-type UploadPurpose = 'template-bundle' | 'production-asset' | 'thumbnail' | 'production-video';
+type UploadPurpose = 'template-bundle' | 'production-asset' | 'thumbnail' | 'production-video' | 'bundle-agent-reference';
 
 interface SignedUploadUrlRequestBody {
     bucket?: string;
@@ -41,6 +42,11 @@ function hasUnsafePathSegment(filePath: string) {
 function isZipContentType(contentType: string | undefined) {
     if (!contentType) return true;
     return ['application/zip', 'application/x-zip-compressed', 'application/octet-stream'].includes(contentType);
+}
+
+function isBundleAgentReferenceContentType(contentType: string | undefined) {
+    if (!contentType) return false;
+    return contentType.startsWith('image/') || contentType.startsWith('video/');
 }
 
 async function ensureTemplateBundlesBucket(admin: ReturnType<typeof getServiceRoleClient>) {
@@ -126,6 +132,8 @@ export async function POST(request: Request) {
 
         const activeOrgId = await resolveActiveUploadOrganizationId();
 
+        let authorizedFilePath = filePath;
+
         if (purpose === 'template-bundle') {
             if (bucket !== 'template-bundles') {
                 return NextResponse.json(
@@ -162,6 +170,39 @@ export async function POST(request: Request) {
                     { status: 400 },
                 );
             }
+        } else if (purpose === 'bundle-agent-reference') {
+            if (bucket !== 'production-assets') {
+                return NextResponse.json(
+                    { error: 'Las referencias visuales del Bundle Agent deben subirse a production-assets' },
+                    { status: 400 },
+                );
+            }
+
+            if (!activeOrgId) {
+                return NextResponse.json(
+                    { error: 'No se encontro organizacion activa para subir la referencia visual' },
+                    { status: 400 },
+                );
+            }
+
+            if (!isBundleAgentReferenceContentType(contentType)) {
+                return NextResponse.json(
+                    { error: 'La referencia visual debe ser una imagen o video valido' },
+                    { status: 400 },
+                );
+            }
+
+            if (typeof fileSizeBytes !== 'number' || fileSizeBytes <= 0 || fileSizeBytes > BUNDLE_AGENT_REFERENCE_MAX_BYTES) {
+                return NextResponse.json(
+                    { error: 'La referencia visual debe pesar entre 1 byte y 75 MB' },
+                    { status: 400 },
+                );
+            }
+
+            const safeRelativePath = filePath
+                .replace(/^organizations\/[^/]+\/bundle-agent-references\//, '')
+                .replace(/^bundle-agent-references\//, '');
+            authorizedFilePath = `organizations/${activeOrgId}/bundle-agent-references/${safeRelativePath}`;
         } else if (bucket === 'template-bundles') {
             return NextResponse.json(
                 { error: 'El bucket template-bundles solo acepta uploads con purpose template-bundle' },
@@ -169,7 +210,7 @@ export async function POST(request: Request) {
             );
         }
 
-        if (bucket === 'production-assets') {
+        if (bucket === 'production-assets' && purpose !== 'bundle-agent-reference') {
             if (!componentId) {
                 return NextResponse.json(
                     { error: 'componentId es requerido para subir activos de produccion' },
@@ -201,7 +242,7 @@ export async function POST(request: Request) {
 
         const { data, error } = await admin.storage
             .from(bucket)
-            .createSignedUploadUrl(filePath, { upsert: purpose === 'template-bundle' ? false : upsert ?? true });
+            .createSignedUploadUrl(authorizedFilePath, { upsert: purpose === 'template-bundle' ? false : upsert ?? true });
 
         if (error || !data) {
             console.error('[API /storage/signed-upload-url] Error:', error);

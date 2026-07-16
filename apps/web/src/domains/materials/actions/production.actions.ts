@@ -12,6 +12,12 @@ import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import { getVideoProviderAndId } from "@/lib/video-platform";
 import { getProductionApiBaseUrl } from "@/lib/server/production-api-url";
 import { DesktopWorkerControlPlane } from "@/lib/server/desktop-worker-control-plane";
+import { RenderBatchService } from "@/domains/production/render-batches/render-batch.service";
+import {
+  renderBatchRequestSchema,
+  type RenderBatchRequest,
+  type RenderBatchStatusView,
+} from "@/domains/production/render-batches/render-batch.types";
 import { normalizeAssemblyAssets } from "@/remotion/assembly-assets.normalizer";
 import {
   deriveAssemblyTargetDurationSeconds,
@@ -703,6 +709,55 @@ export async function assembleRemotionVideoAction(
   }
 }
 
+export async function createRemotionAssemblyBatchAction(input: RenderBatchRequest) {
+  const parsed = renderBatchRequestSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: "Solicitud de batch invalida" };
+  }
+
+  const auth = await getAuthorizedSupabase();
+  if (auth.error || !auth.user) return { success: false, error: auth.error || "Unauthorized" };
+
+  const authorized = await getAuthorizedArtifactAdmin(parsed.data.artifactId);
+  if (!authorized?.artifact?.organization_id) {
+    return { success: false, error: "No autorizado para ensamblar este artefacto" };
+  }
+
+  try {
+    const organizationIds = await getAuthenticatedOrganizationIds(
+      auth.user.userId,
+      authorized.artifact.organization_id,
+    )(authorized.admin);
+    const service = new RenderBatchService(authorized.admin);
+    const batch = await service.createBatch(parsed.data, {
+      userId: auth.user.userId,
+      organizationIds,
+    });
+
+    return { success: true, ...batch };
+  } catch (error: unknown) {
+    console.error("[ProductionActions] Error creating Remotion assembly batch:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function getRemotionAssemblyBatchStatusAction(batchId: string): Promise<
+  | { success: true; batch: RenderBatchStatusView }
+  | { success: false; error: string }
+> {
+  const { error: authError, supabase, user } = await getAuthorizedSupabase();
+  if (authError || !user) return { success: false, error: authError || "Unauthorized" };
+
+  try {
+    const organizationIds = await getAuthenticatedOrganizationIds(user.userId)(supabase);
+    const service = new RenderBatchService(supabase);
+    const batch = await service.getBatchStatus(batchId, organizationIds);
+    return { success: true, batch };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
 export async function getRemotionJobStatusAction(jobId: string) {
   const { error: authError } = await getAuthorizedSupabase();
   if (authError) return { success: false, error: authError };
@@ -824,7 +879,37 @@ export interface RenderWorkerStatusView {
   status: "LINKED" | "ONLINE" | "BUSY" | "OFFLINE" | "REVOKED" | string;
   last_heartbeat_at?: string | null;
   token_last4?: string | null;
+  max_concurrent_jobs?: number | null;
+  running_jobs?: number | null;
+  available_slots?: number | null;
+  capabilities?: Record<string, unknown> | null;
+  last_capacity_report?: Record<string, unknown> | null;
+  capacity_updated_at?: string | null;
   created_at?: string | null;
+}
+
+function getAuthenticatedOrganizationIds(userId: string, fallbackOrganizationId?: string | null) {
+  return async (supabase: ReturnType<typeof getServiceRoleClient>) => {
+    const organizationIds = new Set<string>();
+    if (fallbackOrganizationId) organizationIds.add(fallbackOrganizationId);
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("organization_id")
+      .eq("id", userId)
+      .maybeSingle();
+    if (typeof profile?.organization_id === "string") organizationIds.add(profile.organization_id);
+
+    const { data: roleRows } = await supabase
+      .from("organization_user_roles")
+      .select("organization_id")
+      .eq("user_id", userId);
+    for (const row of roleRows || []) {
+      if (typeof row.organization_id === "string") organizationIds.add(row.organization_id);
+    }
+
+    return Array.from(organizationIds);
+  };
 }
 
 async function getArtifactOrganizationId(artifactId: string) {

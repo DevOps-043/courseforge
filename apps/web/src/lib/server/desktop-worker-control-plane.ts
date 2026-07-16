@@ -10,6 +10,7 @@ const LINK_CODE_TTL_MS = 10 * 60 * 1000;
 const VIDEO_BUCKET = "production-videos";
 const WORKER_ONLINE_TTL_MS = 60 * 1000;
 const WORKER_JOB_STALE_MS = 2 * 60 * 1000;
+const WORKER_JOB_LEASE_SECONDS = 180;
 const ASSEMBLY_FPS = 30;
 const FALLBACK_DURATION_SECONDS = 10;
 
@@ -21,11 +22,48 @@ export interface WorkerAuthContext {
   status: string;
 }
 
+export interface ClaimedDesktopWorkerJob {
+  jobId: string;
+  compositionId: string;
+  resolvedProps: Record<string, unknown>;
+  propsHash: string;
+  bundleUrl: string;
+  bundleHash: string;
+  bundleType: "serve_url";
+  outputUploadUrl: string;
+  outputStoragePath: string;
+  timeoutInMilliseconds: number;
+}
+
 export interface WorkerJobCompleteInput {
   outputStoragePath: string;
   checksum?: string;
   durationSeconds?: number;
   logsRef?: string;
+}
+
+function normalizeMaxConcurrentJobs(value: unknown) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 1;
+  return Math.max(1, Math.min(8, Math.round(numeric)));
+}
+
+function readWorkerCapacity(input: Record<string, unknown>) {
+  const rawCapacity = input.capacity && typeof input.capacity === "object" && !Array.isArray(input.capacity)
+    ? input.capacity as Record<string, unknown>
+    : {};
+  const maxConcurrentJobs = normalizeMaxConcurrentJobs(input.maxConcurrentJobs ?? rawCapacity.maxConcurrentJobs);
+
+  return {
+    maxConcurrentJobs,
+    report: {
+      maxConcurrentJobs,
+      runningJobs: Math.max(0, Math.min(8, Math.round(Number(input.runningJobs ?? rawCapacity.runningJobs ?? 0) || 0))),
+      cpuCount: Number(input.cpuCount ?? rawCapacity.cpuCount) || null,
+      memoryGb: Number(input.memoryGb ?? rawCapacity.memoryGb) || null,
+      source: typeof input.maxConcurrentJobs === "number" || typeof rawCapacity.maxConcurrentJobs === "number" ? "AUTO" : "UNKNOWN",
+    },
+  };
 }
 
 function sanitizeText(value: unknown, fallback = ""): string {
@@ -335,6 +373,9 @@ function assertWorkerCanAccessJob(worker: WorkerAuthContext, job: any) {
   if (job.worker_id && job.worker_id !== worker.id) {
     throw new Error("JOB_ALREADY_CLAIMED_BY_ANOTHER_WORKER");
   }
+  if (job.preferred_worker_id && job.preferred_worker_id !== worker.id) {
+    throw new Error("JOB_RESERVED_FOR_ANOTHER_WORKER");
+  }
 }
 
 function resolveWorkerRenderInput(snapshot: Record<string, any>) {
@@ -392,15 +433,21 @@ export class DesktopWorkerControlPlane {
   async listWorkers(organizationId: string) {
     const { data, error } = await this.supabase
       .from("render_workers")
-      .select("id, organization_id, device_name, platform, arch, app_version, status, last_heartbeat_at, token_last4, created_at, updated_at")
+      .select("id, organization_id, device_name, platform, arch, app_version, status, last_heartbeat_at, token_last4, max_concurrent_jobs, capabilities, last_capacity_report, capacity_updated_at, created_at, updated_at")
       .eq("organization_id", organizationId)
       .order("created_at", { ascending: false });
 
     if (error) throw new Error(`WORKER_LIST_FAILED: ${error.message}`);
 
-    return (data || []).map((worker: any) => ({
+    const workers = data || [];
+    const runningCounts = await this.countRunningJobsByWorker(workers.map((worker: any) => worker.id));
+
+    return workers.map((worker: any) => ({
       ...worker,
       status: resolveComputedWorkerStatus(worker),
+      max_concurrent_jobs: normalizeMaxConcurrentJobs(worker.max_concurrent_jobs),
+      running_jobs: runningCounts.get(worker.id) || 0,
+      available_slots: Math.max(0, normalizeMaxConcurrentJobs(worker.max_concurrent_jobs) - (runningCounts.get(worker.id) || 0)),
     }));
   }
 
@@ -513,6 +560,10 @@ export class DesktopWorkerControlPlane {
   async heartbeat(worker: WorkerAuthContext, input: Record<string, unknown>) {
     const requestedStatus = input.status === "BUSY" ? "BUSY" : input.status === "OFFLINE" ? "OFFLINE" : "ONLINE";
     const now = new Date().toISOString();
+    const capacity = readWorkerCapacity(input);
+    const activeJobIds = Array.isArray(input.activeJobIds)
+      ? input.activeJobIds.filter((jobId): jobId is string => typeof jobId === "string")
+      : [];
     const { data, error } = await this.supabase
       .from("render_workers")
       .update({
@@ -520,6 +571,9 @@ export class DesktopWorkerControlPlane {
         platform: sanitizeText(input.platform, ""),
         arch: sanitizeText(input.arch, ""),
         app_version: sanitizeText(input.appVersion, ""),
+        max_concurrent_jobs: capacity.maxConcurrentJobs,
+        last_capacity_report: capacity.report,
+        capacity_updated_at: now,
         last_heartbeat_at: requestedStatus === "OFFLINE" ? null : now,
         updated_at: now,
       })
@@ -530,6 +584,18 @@ export class DesktopWorkerControlPlane {
 
     if (error || !data) {
       throw new Error(`WORKER_HEARTBEAT_FAILED: ${error?.message || "Unknown error"}`);
+    }
+
+    if (activeJobIds.length > 0 && requestedStatus !== "OFFLINE") {
+      await this.supabase
+        .from("production_jobs")
+        .update({
+          worker_heartbeat_at: now,
+          lease_expires_at: new Date(Date.now() + WORKER_JOB_LEASE_SECONDS * 1000).toISOString(),
+        })
+        .eq("worker_id", worker.id)
+        .in("id", activeJobIds)
+        .in("status", ["RUNNING"]);
     }
 
     return { ...data, status: resolveComputedWorkerStatus(data) };
@@ -559,6 +625,9 @@ export class DesktopWorkerControlPlane {
     variables: Record<string, unknown>;
     userId: string;
     organizationIds: string[];
+    renderBatchId?: string | null;
+    preferredWorkerId?: string | null;
+    assignedStrategy?: "AUTO" | "MANUAL" | "LEGACY";
   }) {
     const { data: component, error: componentError } = await this.supabase
       .from("material_components")
@@ -671,6 +740,8 @@ export class DesktopWorkerControlPlane {
         propsHash: propsResult.propsHash,
       }),
       variables: input.variables,
+      renderBatchId: input.renderBatchId || null,
+      preferredWorkerId: input.preferredWorkerId || null,
     };
     const idempotencyKey = buildRenderIdempotencyKey({
       componentId: input.componentId,
@@ -753,6 +824,9 @@ export class DesktopWorkerControlPlane {
         status: "WAITING_PROVIDER",
         idempotency_key: idempotencyKey,
         input_snapshot: inputSnapshot,
+        preferred_worker_id: input.preferredWorkerId || null,
+        assigned_strategy: input.assignedStrategy || (input.preferredWorkerId ? "MANUAL" : "AUTO"),
+        render_batch_id: input.renderBatchId || null,
         created_by: input.userId,
         progress: [
           {
@@ -777,40 +851,21 @@ export class DesktopWorkerControlPlane {
   }
 
   async claimNextJob(worker: WorkerAuthContext) {
-    const { data: jobs, error } = await this.supabase
-      .from("production_jobs")
-      .select("*")
-      .eq("organization_id", worker.organizationId)
-      .eq("job_type", "REMOTION_RENDER")
-      .in("status", ["PENDING", "QUEUED", "WAITING_PROVIDER"])
-      .order("created_at", { ascending: true })
-      .limit(20);
+    const claimLimit = await this.getWorkerAvailableClaimSlots(worker.id);
+    if (claimLimit <= 0) {
+      await this.heartbeat(worker, { status: "BUSY" });
+      return null;
+    }
 
-    if (error) throw new Error(`JOB_NEXT_LOOKUP_FAILED: ${error.message}`);
-
-    const desktopJobs = (jobs || []).filter(
-      (job: any) => job.input_snapshot?.renderProvider === "desktop_worker",
-    );
-    const workerIds = Array.from(new Set(
-      desktopJobs
-        .map((job: any) => job.worker_id)
-        .filter((workerId: unknown): workerId is string => typeof workerId === "string" && workerId.length > 0),
-    ));
-    const workersById = await this.getWorkersById(workerIds);
-    const nextJob = desktopJobs.find((job: any) => {
-      if (!job.worker_id || job.worker_id === worker.id) return true;
-      return isStaleJobAssignment(job, workersById.get(job.worker_id) || null);
-    });
-
-    if (!nextJob) {
+    const claimedJobs = await this.claimJobsAtomically(worker, claimLimit);
+    if (claimedJobs.length === 0) {
       await this.heartbeat(worker, { status: "ONLINE" });
       return null;
     }
 
-    if (nextJob.worker_id && nextJob.worker_id !== worker.id) {
-      await this.releaseWorkerJobs(nextJob.worker_id, [nextJob.id]);
-    }
-    return this.claimJob(worker, nextJob.id);
+    const payloads = await Promise.all(claimedJobs.map((job: any) => this.buildClaimedJobPayload(worker, job)));
+    await this.heartbeat(worker, { status: "BUSY", activeJobIds: payloads.map((job) => job.jobId) });
+    return payloads.length === 1 ? payloads[0] : { jobs: payloads };
   }
 
   async getJobStatus(jobId: string, organizationIds: string[]) {
@@ -864,6 +919,7 @@ export class DesktopWorkerControlPlane {
         worker_id: worker.id,
         claimed_at: new Date().toISOString(),
         worker_heartbeat_at: new Date().toISOString(),
+        lease_expires_at: new Date(Date.now() + WORKER_JOB_LEASE_SECONDS * 1000).toISOString(),
         started_at: job.started_at || new Date().toISOString(),
         input_snapshot: {
           ...snapshot,
@@ -897,10 +953,95 @@ export class DesktopWorkerControlPlane {
       throw new Error(`JOB_CLAIM_FAILED: ${updateError?.message || "Unknown error"}`);
     }
 
-    await this.heartbeat(worker, { status: "BUSY" });
+    await this.heartbeat(worker, { status: "BUSY", activeJobIds: [jobId] });
 
     return {
       jobId,
+      compositionId: resolved.compositionId,
+      resolvedProps: resolved.resolvedProps,
+      propsHash: resolved.propsHash,
+      bundleUrl: resolved.bundle.signedUrl,
+      bundleHash: resolved.bundle.bundleHash,
+      bundleType: resolved.bundle.bundleType,
+      outputUploadUrl: signedUpload.signedUrl,
+      outputStoragePath,
+      timeoutInMilliseconds: Number(process.env.REMOTION_LOCAL_RENDER_TIMEOUT_MS || 900000),
+    };
+  }
+
+  private async countRunningJobsByWorker(workerIds: string[]) {
+    if (workerIds.length === 0) return new Map<string, number>();
+    const { data } = await this.supabase
+      .from("production_jobs")
+      .select("worker_id")
+      .in("worker_id", workerIds)
+      .eq("job_type", "REMOTION_RENDER")
+      .eq("status", "RUNNING");
+
+    const counts = new Map<string, number>();
+    for (const row of data || []) {
+      if (row.worker_id) counts.set(row.worker_id, (counts.get(row.worker_id) || 0) + 1);
+    }
+    return counts;
+  }
+
+  private async getWorkerAvailableClaimSlots(workerId: string) {
+    const { data: worker } = await this.supabase
+      .from("render_workers")
+      .select("id, max_concurrent_jobs")
+      .eq("id", workerId)
+      .maybeSingle();
+    const maxConcurrentJobs = normalizeMaxConcurrentJobs(worker?.max_concurrent_jobs);
+    const runningCounts = await this.countRunningJobsByWorker([workerId]);
+    return Math.max(0, maxConcurrentJobs - (runningCounts.get(workerId) || 0));
+  }
+
+  private async claimJobsAtomically(worker: WorkerAuthContext, limit: number) {
+    const { data, error } = await this.supabase.rpc("claim_desktop_render_jobs", {
+      p_worker_id: worker.id,
+      p_organization_id: worker.organizationId,
+      p_limit: limit,
+      p_lease_seconds: WORKER_JOB_LEASE_SECONDS,
+    });
+
+    if (error) throw new Error(`JOB_NEXT_LOOKUP_FAILED: ${error.message}`);
+    return data || [];
+  }
+
+  private async buildClaimedJobPayload(worker: WorkerAuthContext, job: any) {
+    const snapshot = job.input_snapshot || {};
+    const resolved = resolveWorkerRenderInput(snapshot);
+    const outputStoragePath = `completed/${job.material_component_id || job.id}/${job.id}-${worker.id}-${Date.now()}.mp4`;
+    const { data: signedUpload, error: signedUploadError } = await this.supabase.storage
+      .from(VIDEO_BUCKET)
+      .createSignedUploadUrl(outputStoragePath, { upsert: false });
+
+    if (signedUploadError || !signedUpload?.signedUrl) {
+      throw new Error(`OUTPUT_UPLOAD_URL_FAILED: ${signedUploadError?.message || "Unknown error"}`);
+    }
+
+    await this.supabase
+      .from("production_jobs")
+      .update({
+        input_snapshot: {
+          ...snapshot,
+          renderProvider: "desktop_worker",
+          renderMode: resolved.renderMode,
+          compositionId: resolved.compositionId,
+          propsHash: resolved.propsHash,
+          resolvedProps: resolved.resolvedProps,
+          desktopBundleHash: resolved.bundle.bundleHash,
+          desktopBundleStoragePath: resolved.bundle.storagePath,
+          desktopBundleType: resolved.bundle.bundleType,
+          externalServeUrl: resolved.bundle.signedUrl,
+          renderDiagnostics: resolved.renderDiagnostics,
+        },
+      })
+      .eq("id", job.id)
+      .eq("worker_id", worker.id);
+
+    return {
+      jobId: job.id,
       compositionId: resolved.compositionId,
       resolvedProps: resolved.resolvedProps,
       propsHash: resolved.propsHash,
@@ -931,6 +1072,7 @@ export class DesktopWorkerControlPlane {
       .update({
         progress,
         worker_heartbeat_at: new Date().toISOString(),
+        lease_expires_at: new Date(Date.now() + WORKER_JOB_LEASE_SECONDS * 1000).toISOString(),
       })
       .eq("id", jobId);
 
@@ -1010,6 +1152,7 @@ export class DesktopWorkerControlPlane {
         ],
         completed_at: new Date().toISOString(),
         worker_heartbeat_at: new Date().toISOString(),
+        lease_expires_at: null,
         output_checksum: outputSnapshot.outputChecksum || null,
         logs_ref: outputSnapshot.logsRef || null,
         output_snapshot: outputSnapshot,
@@ -1017,6 +1160,7 @@ export class DesktopWorkerControlPlane {
       .eq("id", jobId);
 
     if (error) throw new Error(`JOB_COMPLETE_FAILED: ${error.message}`);
+    await this.updateBatchItemFromJob(job.id, "SUCCEEDED");
     await this.heartbeat(worker, { status: "ONLINE" });
     return { finalVideoUrl: publicUrl, durationSeconds: duration };
   }
@@ -1032,6 +1176,7 @@ export class DesktopWorkerControlPlane {
         status: "FAILED",
         failed_at: new Date().toISOString(),
         worker_heartbeat_at: new Date().toISOString(),
+        lease_expires_at: null,
         provider_error: {
           code,
           message,
@@ -1060,6 +1205,7 @@ export class DesktopWorkerControlPlane {
         .eq("id", job.material_component_id);
     }
 
+    await this.updateBatchItemFromJob(job.id, "FAILED", message);
     await this.heartbeat(worker, { status: "ONLINE" });
     return { ok: true };
   }
@@ -1076,6 +1222,50 @@ export class DesktopWorkerControlPlane {
     return job;
   }
 
+  private async updateBatchItemFromJob(jobId: string, status: string, errorSanitized?: string) {
+    await this.supabase
+      .from("production_render_batch_items")
+      .update({
+        status,
+        error_sanitized: errorSanitized ? sanitizeText(errorSanitized) : null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("production_job_id", jobId);
+
+    const { data: item } = await this.supabase
+      .from("production_render_batch_items")
+      .select("batch_id")
+      .eq("production_job_id", jobId)
+      .maybeSingle();
+    if (!item?.batch_id) return;
+
+    const { data: items } = await this.supabase
+      .from("production_render_batch_items")
+      .select("status")
+      .eq("batch_id", item.batch_id);
+    const rows = items || [];
+    const completedItems = rows.filter((row: any) => row.status === "SUCCEEDED").length;
+    const failedItems = rows.filter((row: any) => row.status === "FAILED").length;
+    const terminalItems = rows.filter((row: any) => ["SUCCEEDED", "FAILED", "CANCELLED"].includes(row.status)).length;
+    const nextStatus = terminalItems < rows.length
+      ? "RUNNING"
+      : failedItems > 0 && completedItems > 0
+        ? "PARTIAL_FAILED"
+        : failedItems > 0
+          ? "FAILED"
+          : "SUCCEEDED";
+
+    await this.supabase
+      .from("production_render_batches")
+      .update({
+        status: nextStatus,
+        completed_items: completedItems,
+        failed_items: failedItems,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", item.batch_id);
+  }
+
   private async getWorkerById(workerId: string) {
     const { data } = await this.supabase
       .from("render_workers")
@@ -1083,15 +1273,6 @@ export class DesktopWorkerControlPlane {
       .eq("id", workerId)
       .maybeSingle();
     return data || null;
-  }
-
-  private async getWorkersById(workerIds: string[]) {
-    if (workerIds.length === 0) return new Map<string, any>();
-    const { data } = await this.supabase
-      .from("render_workers")
-      .select("id, status, last_heartbeat_at")
-      .in("id", workerIds);
-    return new Map((data || []).map((worker: any) => [worker.id, worker]));
   }
 
   private async resetDesktopJob(jobId: string, inputSnapshot: Record<string, unknown>, message: string) {
@@ -1116,6 +1297,9 @@ export class DesktopWorkerControlPlane {
         worker_id: null,
         claimed_at: null,
         worker_heartbeat_at: null,
+        lease_expires_at: null,
+        preferred_worker_id: typeof inputSnapshot.preferredWorkerId === "string" ? inputSnapshot.preferredWorkerId : null,
+        assigned_strategy: typeof inputSnapshot.preferredWorkerId === "string" ? "MANUAL" : "AUTO",
         input_snapshot: inputSnapshot,
       })
       .eq("id", jobId)
@@ -1136,6 +1320,7 @@ export class DesktopWorkerControlPlane {
         worker_id: null,
         claimed_at: null,
         worker_heartbeat_at: null,
+        lease_expires_at: null,
         started_at: null,
         provider_error: null,
       })

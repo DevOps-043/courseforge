@@ -7,7 +7,7 @@ interface SignedUploadResult {
 
 interface SignedUploadOptions {
     componentId?: string;
-    purpose?: 'template-bundle' | 'production-asset' | 'thumbnail' | 'production-video';
+    purpose?: 'template-bundle' | 'production-asset' | 'thumbnail' | 'production-video' | 'bundle-agent-reference';
     contentType?: string;
     fileSizeBytes?: number;
     upsert?: boolean;

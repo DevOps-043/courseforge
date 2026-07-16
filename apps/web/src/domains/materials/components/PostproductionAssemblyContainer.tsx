@@ -7,8 +7,8 @@ import { hasPreviewableAssets } from '@/remotion/buildAssemblyProps';
 import { deriveAssemblyTargetDurationSeconds } from '@/remotion/assembly-duration';
 import { getTemplatesAction, type RemotionTemplate } from '@/domains/production/actions/templates.actions';
 import {
-    assembleRemotionVideoAction,
     cancelRemotionAssemblyJobsAction,
+    createRemotionAssemblyBatchAction,
     createRenderWorkerLinkCodeAction,
     deleteFinalVideoForPublicationAction,
     getRemotionJobStatusAction,
@@ -103,6 +103,9 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const [creatingWorkerLink, setCreatingWorkerLink] = useState(false);
     const [revokingWorkerId, setRevokingWorkerId] = useState<string | null>(null);
     const [copiedWorkerCode, setCopiedWorkerCode] = useState(false);
+    const [selectedBatchComponentIds, setSelectedBatchComponentIds] = useState<string[]>([]);
+    const [templateOverrides, setTemplateOverrides] = useState<Record<string, string>>({});
+    const [workerOverrides, setWorkerOverrides] = useState<Record<string, string>>({});
     const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const pollingInFlightRef = useRef(false);
     const pollFailuresRef = useRef(0);
@@ -273,6 +276,16 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
             setActivePreviewId(firstWithVideo?.id || videoComponents[0].id);
         }
     }, [videoComponents, activePreviewId]);
+
+    useEffect(() => {
+        const pendingIds = videoComponents
+            .filter((component) => !component.assets?.final_video_url)
+            .map((component) => component.id);
+        setSelectedBatchComponentIds((current) => {
+            const retained = current.filter((componentId) => pendingIds.includes(componentId));
+            return retained.length > 0 ? retained : pendingIds;
+        });
+    }, [videoComponents]);
 
     useEffect(() => {
         const fetchTemplates = async () => {
@@ -479,38 +492,46 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
         setAssemblyJobs([]);
 
         try {
-            const startedJobs: AssemblyJobTracker[] = [];
+            const triggerResult = await createRemotionAssemblyBatchAction({
+                artifactId,
+                defaultTemplateId: selectedTemplate,
+                assignmentMode: Object.values(workerOverrides).some(Boolean) ? 'MIXED' : 'AUTO',
+                items: targets.map((component) => {
+                    const templateId = templateOverrides[component.id] || selectedTemplate;
+                    const templateConfig = templates.find((template) => template.id === templateId)?.default_config || {};
 
-            for (const component of targets) {
-                const triggerResult = await assembleRemotionVideoAction(component.id, selectedTemplate, {
-                    template: selectedTemplate,
-                    videoComponentsCount: targets.length,
-                    componentTitle: getComponentLabel(component),
-                    templateConfig: selectedTemplateConfig?.default_config || {},
-                    transitionType: selectedTemplateConfig?.default_config?.transitionType,
-                });
-
-                if (!triggerResult.success || !triggerResult.jobId) {
-                    startedJobs.push({
+                    return {
                         componentId: component.id,
-                        jobId: `failed-trigger-${component.id}`,
-                        label: getComponentLabel(component),
-                        status: 'FAILED',
-                        progress: 0,
-                        error: triggerResult.error || 'Error desconocido al iniciar el job',
-                        errorCode: (triggerResult as any).code,
-                    });
-                    continue;
-                }
+                        templateId,
+                        preferredWorkerId: workerOverrides[component.id] || null,
+                        variables: {
+                            template: templateId,
+                            videoComponentsCount: targets.length,
+                            componentTitle: getComponentLabel(component),
+                            templateConfig,
+                            transitionType: (templateConfig as any)?.transitionType,
+                        },
+                    };
+                }),
+            });
 
-                startedJobs.push({
+            const startedJobs: AssemblyJobTracker[] = triggerResult.success && "items" in triggerResult
+                ? triggerResult.items.map((item: any) => ({
+                    componentId: item.componentId,
+                    jobId: item.jobId,
+                    label: item.label,
+                    status: (item.status as AssemblyJobStatus) || 'WAITING_PROVIDER',
+                    progress: item.progress || 5,
+                    lastLog: item.preferredWorkerId ? `Asignado a worker ${item.preferredWorkerId}` : 'Asignacion automatica',
+                }))
+                : targets.map((component) => ({
                     componentId: component.id,
-                    jobId: triggerResult.jobId,
+                    jobId: `failed-trigger-${component.id}`,
                     label: getComponentLabel(component),
-                    status: (triggerResult.status as AssemblyJobStatus) || 'PENDING',
-                    progress: 5,
-                });
-            }
+                    status: 'FAILED' as AssemblyJobStatus,
+                    progress: 0,
+                    error: triggerResult.error || 'Error desconocido al iniciar el batch',
+                }));
 
             setTrackedJobs(() => startedJobs);
             const hasRunnableJobs = startedJobs.some((job) => !job.jobId.startsWith('failed-trigger-'));
@@ -652,7 +673,20 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
             alert('Esta plantilla solo permite preview externo por ahora. Selecciona una plantilla basica interna para ensamblar videos finales.');
             return;
         }
-        await startAssemblyForComponents(componentsToAssemble);
+        const selectedTargets = componentsToAssemble.filter((component) => selectedBatchComponentIds.includes(component.id));
+        await startAssemblyForComponents(selectedTargets.length > 0 ? selectedTargets : componentsToAssemble);
+    };
+
+    const toggleBatchComponent = (componentId: string) => {
+        setSelectedBatchComponentIds((current) => (
+            current.includes(componentId)
+                ? current.filter((id) => id !== componentId)
+                : [...current, componentId]
+        ));
+    };
+
+    const selectAllPendingBatchComponents = () => {
+        setSelectedBatchComponentIds(componentsToAssemble.map((component) => component.id));
     };
 
     const handleDeleteFinalVideo = async (component: any) => {
@@ -1043,6 +1077,71 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                     </div>
                                 </div>
                             )}
+
+                            {componentsToAssemble.length > 0 ? (
+                                <div className="mt-4 rounded-xl border border-gray-200 bg-white p-3 text-xs dark:border-[#6C757D]/10 dark:bg-[#151A21]">
+                                    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                        <div>
+                                            <p className="font-bold text-gray-900 dark:text-white">Ensamblado masivo</p>
+                                            <p className="text-gray-500 dark:text-gray-400">Selecciona videos, plantilla y worker preferido.</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={selectAllPendingBatchComponents}
+                                            className="inline-flex items-center justify-center rounded-md border border-gray-200 px-2 py-1 font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-[#6C757D]/20 dark:text-gray-200 dark:hover:bg-[#0F1419]"
+                                        >
+                                            Seleccionar pendientes
+                                        </button>
+                                    </div>
+                                    <div className="grid gap-2">
+                                        {componentsToAssemble.map((component) => {
+                                            const isSelected = selectedBatchComponentIds.includes(component.id);
+                                            return (
+                                                <div key={component.id} className="grid gap-2 rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-[#6C757D]/10 dark:bg-[#0F1419] lg:grid-cols-[minmax(0,1.2fr)_minmax(150px,0.8fr)_minmax(150px,0.8fr)]">
+                                                    <label className="flex min-w-0 items-center gap-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            onChange={() => toggleBatchComponent(component.id)}
+                                                            className="h-4 w-4 rounded border-gray-300"
+                                                        />
+                                                        <span className="truncate font-semibold text-gray-800 dark:text-gray-100">
+                                                            {getComponentLabel(component)}
+                                                        </span>
+                                                    </label>
+                                                    <select
+                                                        value={templateOverrides[component.id] || selectedTemplate}
+                                                        onChange={(event) => setTemplateOverrides((current) => ({
+                                                            ...current,
+                                                            [component.id]: event.target.value,
+                                                        }))}
+                                                        className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs dark:border-[#6C757D]/10 dark:bg-[#151A21] dark:text-white"
+                                                    >
+                                                        {templates.map((template) => (
+                                                            <option key={template.id} value={template.id}>{template.name}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select
+                                                        value={workerOverrides[component.id] || ""}
+                                                        onChange={(event) => setWorkerOverrides((current) => ({
+                                                            ...current,
+                                                            [component.id]: event.target.value,
+                                                        }))}
+                                                        className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs dark:border-[#6C757D]/10 dark:bg-[#151A21] dark:text-white"
+                                                    >
+                                                        <option value="">Worker automatico</option>
+                                                        {availableDesktopWorkers.map((worker) => (
+                                                            <option key={worker.id} value={worker.id}>
+                                                                {worker.device_name || 'Render Worker'} ({worker.running_jobs ?? 0}/{worker.max_concurrent_jobs ?? 1})
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ) : null}
 
                             {workerGateBlocked && (
                                 <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-xs font-medium text-amber-700 dark:text-amber-300">
