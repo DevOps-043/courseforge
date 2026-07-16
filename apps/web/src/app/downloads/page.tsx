@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import {
   WorkerDownloadPanel,
   type WorkerDownloadOption,
@@ -43,10 +44,12 @@ export default function DownloadsPage() {
   ];
 
   return (
-    <WorkerDownloadPanel
-      fallbackDownloadUrl={fallbackDownloadUrl}
-      options={options}
-      version={version}
-    />
+    <Suspense>
+      <WorkerDownloadPanel
+        fallbackDownloadUrl={fallbackDownloadUrl}
+        options={options}
+        version={version}
+      />
+    </Suspense>
   );
 }

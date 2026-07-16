@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   Apple,
+  ArrowLeft,
   CheckCircle2,
   Download,
   Laptop,
@@ -46,6 +48,8 @@ export function WorkerDownloadPanel({
   options,
   version,
 }: WorkerDownloadPanelProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [suggestedPlatform, setSuggestedPlatform] = useState<WorkerDownloadOption["id"] | null>(null);
 
   useEffect(() => {
@@ -62,6 +66,25 @@ export function WorkerDownloadPanel({
   );
 
   const hasAnyDownload = resolvedOptions.some((option) => option.href);
+  const returnTo = useMemo(() => {
+    const candidate = searchParams.get("returnTo");
+    if (!candidate || !candidate.startsWith("/") || candidate.startsWith("//")) return null;
+    return candidate;
+  }, [searchParams]);
+
+  const handleGoBack = () => {
+    if (returnTo) {
+      router.push(returnTo);
+      return;
+    }
+
+    if (window.history.length > 1) {
+      router.back();
+      return;
+    }
+
+    router.push("/");
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-950 selection:bg-[#00D4B3]/30 dark:bg-[#0F1419] dark:text-white">
@@ -78,12 +101,16 @@ export function WorkerDownloadPanel({
               <p className="text-lg font-bold">Render Worker</p>
             </div>
           </Link>
-          <Link
-            href="/login"
+          <button
+            type="button"
+            onClick={handleGoBack}
             className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:border-[#00D4B3]/50 hover:text-[#008B78] dark:border-white/10 dark:text-slate-200 dark:hover:text-[#00D4B3]"
           >
-            Iniciar sesion
-          </Link>
+            <span className="inline-flex items-center gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Regresar
+            </span>
+          </button>
         </div>
       </header>
 

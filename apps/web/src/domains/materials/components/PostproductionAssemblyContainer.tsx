@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle, Check, CheckCircle2, Copy, Download, Film, Layers, Link2, Loader2, Monitor, Play, RefreshCw, Search, Sparkles, Square, Unlink } from 'lucide-react';
 import { hasPreviewableAssets } from '@/remotion/buildAssemblyProps';
 import { deriveAssemblyTargetDurationSeconds } from '@/remotion/assembly-duration';
@@ -79,6 +79,8 @@ function getAssemblyFailureMessage(job: AssemblyJobTracker) {
 
 export function PostproductionAssemblyContainer({ artifactId, onNext }: PostproductionAssemblyContainerProps) {
     const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
     const { materials, getLessonComponents, refresh } = useMaterials(artifactId);
     const assemblyJobsStorageKey = `${ASSEMBLY_JOBS_STORAGE_PREFIX}:${artifactId}`;
     const [templates, setTemplates] = useState<RemotionTemplate[]>([]);
@@ -108,8 +110,11 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const hydratedAssemblyJobsRef = useRef(false);
     const POLL_INTERVAL_MS = 1500;
     const MAX_CONSECUTIVE_POLL_FAILURES = 40;
-    const workerDownloadUrl = process.env.NEXT_PUBLIC_SOFLIA_WORKER_DOWNLOAD_URL || '';
-    const workerDownloadHref = workerDownloadUrl || '/downloads';
+    const workerDownloadHref = useMemo(() => {
+        const query = searchParams.toString();
+        const returnTo = `${pathname}${query ? `?${query}` : ''}`;
+        return `/downloads?returnTo=${encodeURIComponent(returnTo)}`;
+    }, [pathname, searchParams]);
 
     const persistTrackedJobs = (jobs: AssemblyJobTracker[]) => {
         if (typeof window === 'undefined') return;
@@ -451,7 +456,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     ) || [];
     const visibleDesktopWorkers = workerStatus?.workers.filter((worker) => worker.status !== 'REVOKED') || [];
     const workerGateBlocked = Boolean(workerStatus?.requiresDesktopWorker && availableDesktopWorkers.length === 0);
-    const workerGateMessage = 'Vincula y enciende un worker local antes de ensamblar con desktop_worker.';
+    const workerGateMessage = 'Vincula y enciende un worker local antes de ensamblar.';
 
     const startAssemblyForComponents = async (targets: any[]) => {
         if (targets.length === 0) return;
