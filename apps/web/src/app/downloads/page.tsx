@@ -18,7 +18,7 @@ function readPublicEnv(name: string) {
 
 export default function DownloadsPage() {
   const fallbackDownloadUrl = readPublicEnv("NEXT_PUBLIC_SOFLIA_WORKER_DOWNLOAD_URL");
-  const version = readPublicEnv("NEXT_PUBLIC_SOFLIA_WORKER_VERSION") || "0.1.11";
+  const version = readPublicEnv("NEXT_PUBLIC_SOFLIA_WORKER_VERSION") || "0.1.12";
   const options: WorkerDownloadOption[] = [
     {
       id: "windows",
