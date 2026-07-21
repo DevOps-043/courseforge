@@ -1,6 +1,12 @@
 import crypto from "node:crypto";
+import * as fs from "node:fs";
+import * as fsp from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import JSZip from "jszip";
 import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { normalizeAssemblyAssets } from "@/remotion/assembly-assets.normalizer";
+import { parseLayoutOverrideManifests } from "@/remotion/layout-overrides";
 import { mergeTemplateRenderConfigs } from "@/remotion/template-config";
 
 const WORKER_TOKEN_PREFIX = "swk_";
@@ -8,13 +14,24 @@ const LINK_CODE_PREFIX = "SLIA-";
 const TOKEN_BYTES = 32;
 const LINK_CODE_TTL_MS = 10 * 60 * 1000;
 const VIDEO_BUCKET = "production-videos";
+const TEMPLATE_BUNDLE_BUCKET = "template-bundles";
 const WORKER_ONLINE_TTL_MS = 60 * 1000;
 const WORKER_JOB_STALE_MS = 2 * 60 * 1000;
 const WORKER_JOB_LEASE_SECONDS = 180;
 const ASSEMBLY_FPS = 30;
 const FALLBACK_DURATION_SECONDS = 10;
+const SIGNED_URL_TTL_SECONDS = 60 * 60;
+const INTERNAL_COMPOSITION_IDS = ["full-slides", "split-avatar", "avatar-focus"] as const;
+const DEFAULT_INTERNAL_COMPOSITION_ID = "full-slides";
 
 type SupabaseAnyClient = ReturnType<typeof getServiceRoleClient>;
+
+let internalBundlePromise: Promise<{
+  bundleHash: string;
+  storagePath: string;
+  signedUrl: string;
+  bundleType: "zip";
+}> | null = null;
 
 export interface WorkerAuthContext {
   id: string;
@@ -23,15 +40,49 @@ export interface WorkerAuthContext {
 }
 
 export interface ClaimedDesktopWorkerJob {
+  jobType: "render";
   jobId: string;
   compositionId: string;
   resolvedProps: Record<string, unknown>;
   propsHash: string;
   bundleUrl: string;
   bundleHash: string;
-  bundleType: "serve_url";
+  bundleType: "serve_url" | "zip";
   outputUploadUrl: string;
   outputStoragePath: string;
+  timeoutInMilliseconds: number;
+}
+
+export interface ClaimedDesktopWorkerTemplateBuildJob {
+  jobType: "template_build";
+  jobId: string;
+  buildId: string;
+  templateVersionId: string;
+  compositionId: string;
+  exportMode: "component" | "root";
+  bundleUrl: string;
+  bundleHash: string;
+  outputUploadUrl: string;
+  outputStoragePath: string;
+  timeoutInMilliseconds: number;
+}
+
+export interface ClaimedDesktopWorkerTemplatePreviewJob {
+  jobType: "template_preview";
+  jobId: string;
+  previewId: string;
+  templateId: string;
+  templateVersionId: string;
+  buildId: string;
+  compositionId: string;
+  resolvedProps: Record<string, unknown>;
+  propsHash: string;
+  bundleUrl: string;
+  bundleHash: string;
+  bundleType: "zip";
+  posterUploadUrl: string;
+  posterStoragePath: string;
+  previewFrame: number;
   timeoutInMilliseconds: number;
 }
 
@@ -40,6 +91,31 @@ export interface WorkerJobCompleteInput {
   checksum?: string;
   durationSeconds?: number;
   logsRef?: string;
+  buildHash?: string;
+  buildLog?: string;
+}
+
+export interface ExternalTemplatePreviewData {
+  serveUrl: string | null;
+  compositionId: string;
+  exportMode: "component" | "root";
+  resolvedProps: Record<string, unknown>;
+  propsHash: string;
+  propsSource: string;
+  propKeys: string[];
+  buildHash: string | null;
+  buildId: string;
+  templateVersionId: string;
+  bundleHash: string | null;
+  previewId: string | null;
+  previewStatus: "READY" | "MISSING" | "QUEUED" | "RUNNING" | "FAILED" | "STALE";
+  previewError: string | null;
+  previewVideoUrl: string | null;
+  previewPosterUrl: string | null;
+  previewDurationSeconds: number | null;
+  previewFrames: number | null;
+  compositionDurationSeconds: number | null;
+  compositionFrames: number | null;
 }
 
 function normalizeMaxConcurrentJobs(value: unknown) {
@@ -120,6 +196,34 @@ function buildStableHash(value: unknown): string {
   return crypto.createHash("sha256").update(stableStringify(value)).digest("hex");
 }
 
+async function addDirectoryToZip(zip: JSZip, rootDir: string, currentDir = rootDir): Promise<void> {
+  const entries = await fsp.readdir(currentDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(currentDir, entry.name);
+    const relativePath = path.relative(rootDir, fullPath).replace(/\\/g, "/");
+    if (entry.isDirectory()) {
+      await addDirectoryToZip(zip, rootDir, fullPath);
+    } else if (entry.isFile()) {
+      zip.file(relativePath, await fsp.readFile(fullPath));
+    }
+  }
+}
+
+function sha256Buffer(buffer: Buffer): string {
+  return crypto.createHash("sha256").update(buffer).digest("hex");
+}
+
+function hasUnsafeZipPath(name: string) {
+  const normalized = name.endsWith("/") ? name.slice(0, -1) : name;
+  return (
+    normalized.includes("..") ||
+    normalized.includes("\\") ||
+    normalized.startsWith("/") ||
+    /^[a-zA-Z]:/.test(normalized) ||
+    normalized.split("/").some((segment) => segment.length === 0 || segment === "." || segment.startsWith("."))
+  );
+}
+
 function safeJobProgressEntry(params: {
   percent: number;
   message: string;
@@ -154,6 +258,18 @@ function readNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function normalizeStoragePath(value: string): { bucket: string; path: string } {
+  const normalized = value.replace(/\\/g, "/").replace(/^\/+/, "");
+  const separatorIndex = normalized.indexOf("/");
+  if (separatorIndex === -1) {
+    return { bucket: TEMPLATE_BUNDLE_BUCKET, path: normalized };
+  }
+  return {
+    bucket: normalized.slice(0, separatorIndex),
+    path: normalized.slice(separatorIndex + 1),
+  };
+}
+
 function isValidCompositionId(value: unknown): value is string {
   if (typeof value !== "string") return false;
   const normalized = value.trim();
@@ -169,8 +285,12 @@ function resolveExternalDesktopRenderTarget(params: {
   build: Record<string, unknown>;
 }) {
   const serveUrl = readNonEmptyString(params.build.serve_url);
-  if (!serveUrl || !/^https:\/\//i.test(serveUrl)) {
-    throw new Error("EXTERNAL_RENDER_TARGET_INCOMPLETE: el build cloud no tiene serve_url HTTPS.");
+  const buildOutputStoragePath = readNonEmptyString(params.build.build_output_storage_path);
+  const hasServeUrl = Boolean(serveUrl && /^https:\/\//i.test(serveUrl));
+  const hasCompiledZip = Boolean(buildOutputStoragePath);
+
+  if (!hasServeUrl && !hasCompiledZip) {
+    throw new Error("EXTERNAL_RENDER_TARGET_INCOMPLETE: el build no tiene serve_url HTTPS ni ZIP compilado.");
   }
 
   const compositionId = [
@@ -179,20 +299,30 @@ function resolveExternalDesktopRenderTarget(params: {
   ].find(isValidCompositionId);
 
   if (!compositionId) {
-    throw new Error("EXTERNAL_COMPOSITION_ID_MISSING: el bundle cloud no declaro composition_id valido.");
+    throw new Error("EXTERNAL_COMPOSITION_ID_MISSING: el bundle compilado no declaro composition_id valido.");
   }
 
   return {
-    serveUrl,
+    serveUrl: hasServeUrl ? serveUrl : null,
+    buildOutputStoragePath: hasCompiledZip ? buildOutputStoragePath : null,
     compositionId,
     exportMode:
       params.build.export_mode === "root" || params.version.export_mode === "root"
-        ? "root"
-        : "component",
+        ? ("root" as const)
+        : ("component" as const),
     buildHash: readNonEmptyString(params.build.build_hash) || readNonEmptyString(params.version.build_hash),
-    bundleHash: readNonEmptyString(params.build.bundle_hash) || readNonEmptyString(params.version.bundle_hash),
+    bundleHash:
+      readNonEmptyString(params.build.build_hash) ||
+      readNonEmptyString(params.build.bundle_hash) ||
+      readNonEmptyString(params.version.bundle_hash),
     cloudProvider: readNonEmptyString(params.build.cloud_provider),
   };
+}
+
+function resolveInternalCompositionId(value: unknown): string {
+  return INTERNAL_COMPOSITION_IDS.includes(value as (typeof INTERNAL_COMPOSITION_IDS)[number])
+    ? String(value)
+    : DEFAULT_INTERNAL_COMPOSITION_ID;
 }
 
 function isStaleJobAssignment(job: any, worker: any | null) {
@@ -226,9 +356,11 @@ function buildAssemblyInputProps(params: {
   compositionId: string;
   transitionType: unknown;
   templateConfig?: unknown;
+  layoutOverrides?: unknown;
 }) {
   const normalized = normalizeAssemblyAssets(params.assets, ASSEMBLY_FPS);
   const templateConfig = mergeTemplateRenderConfigs(params.templateConfig, null);
+  const layoutOverrides = parseLayoutOverrideManifests(params.layoutOverrides);
   const totalSeconds =
     normalized.totalDurationSeconds > 0
       ? normalized.totalDurationSeconds
@@ -253,6 +385,7 @@ function buildAssemblyInputProps(params: {
       ...templateConfig,
       transitionType: transition,
     },
+    layoutOverrides,
   };
 }
 
@@ -288,17 +421,26 @@ function buildExternalTemplateProps(input: {
   propsSchema?: Record<string, unknown> | null;
 }) {
   const variables = input.variables ?? {};
+  const hasTemplateConfigInput = Boolean(input.templateDefaultConfig || variables.templateConfig);
   const templateConfig = mergeTemplateRenderConfigs(input.templateDefaultConfig, variables.templateConfig);
   const courseProps = buildAssemblyInputProps({
     assets: input.assets,
     compositionId: input.compositionId,
     transitionType: variables.transitionType,
     templateConfig,
+    layoutOverrides: variables.layoutOverrides,
   });
   const overrides = extractExternalTemplateOverrides(variables);
   const resolvedProps = {
     ...(input.bundleDefaultProps || {}),
     ...(courseProps as Record<string, unknown>),
+    ...(hasTemplateConfigInput
+      ? {
+          accentColor: templateConfig.accentColor,
+          backgroundColor: templateConfig.backgroundColor,
+          surfaceColor: templateConfig.surfaceColor,
+        }
+      : {}),
     ...(overrides || {}),
   };
   validatePropsSchema(resolvedProps, input.propsSchema);
@@ -308,6 +450,55 @@ function buildExternalTemplateProps(input: {
     propsSource: "courseforge-canonical-v1",
     propKeys: Object.keys(resolvedProps).sort(),
   };
+}
+
+function deriveCompositionTiming(props: Record<string, unknown>) {
+  const totalFrames = Number(props.totalDurationInFrames);
+  const fps = Number(props.fps);
+  const hasValidFrames = Number.isFinite(totalFrames) && totalFrames > 0;
+  const hasValidFps = Number.isFinite(fps) && fps > 0;
+
+  return {
+    compositionFrames: hasValidFrames ? Math.round(totalFrames) : null,
+    compositionDurationSeconds: hasValidFrames && hasValidFps ? totalFrames / fps : null,
+  };
+}
+
+function derivePreviewFrame(props: Record<string, unknown>) {
+  const totalFrames = Number(props.totalDurationInFrames);
+  if (!Number.isFinite(totalFrames) || totalFrames <= 1) return 0;
+  return Math.max(0, Math.min(Math.round(totalFrames) - 1, Math.round(totalFrames * 0.18)));
+}
+
+function deriveLayoutOverridesHash(props: Record<string, unknown>) {
+  return buildStableHash(props.layoutOverrides ?? []);
+}
+
+function buildTemplatePreviewCacheKey(params: {
+  templateBuildId: string;
+  materialComponentId?: string | null;
+  propsHash: string;
+  layoutOverridesHash: string;
+  previewFrame: number;
+}) {
+  return buildStableHash({
+    templateBuildId: params.templateBuildId,
+    materialComponentId: params.materialComponentId || null,
+    propsHash: params.propsHash,
+    layoutOverridesHash: params.layoutOverridesHash || "",
+    previewFrame: Math.max(0, Math.round(params.previewFrame)),
+  });
+}
+
+function isMissingPreviewCacheKeyColumn(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const record = error as Record<string, unknown>;
+  const message = String(record.message || "");
+  const code = String(record.code || "");
+  return code === "42703" || (
+    message.includes("remotion_template_previews.preview_cache_key") &&
+    message.includes("does not exist")
+  );
 }
 
 function buildRenderIdempotencyKey(params: {
@@ -380,15 +571,19 @@ function assertWorkerCanAccessJob(worker: WorkerAuthContext, job: any) {
 
 function resolveWorkerRenderInput(snapshot: Record<string, any>) {
   const externalServeUrl = typeof snapshot.externalServeUrl === "string" ? snapshot.externalServeUrl.trim() : "";
-  const isExternalDesktopRender =
+  const externalBuildStoragePath = typeof snapshot.externalBuildStoragePath === "string" ? snapshot.externalBuildStoragePath.trim() : "";
+  const isInternalDesktopRender = snapshot.renderMode === "INTERNAL_COMPOSITION";
+  const isDesktopRender =
+    isInternalDesktopRender ||
     snapshot.renderMode === "EXTERNAL_DESKTOP_SITE_READY" ||
-    (externalServeUrl && /^https:\/\//i.test(externalServeUrl));
+    (externalServeUrl && /^https:\/\//i.test(externalServeUrl)) ||
+    Boolean(externalBuildStoragePath);
 
-  if (!isExternalDesktopRender) {
-    throw new Error("DESKTOP_WORKER_NETLIFY_REQUIRES_PUBLISHED_SERVE_URL");
+  if (!isDesktopRender) {
+    throw new Error("DESKTOP_WORKER_REQUIRES_TEMPLATE_BUILD");
   }
-  if (!/^https:\/\//i.test(externalServeUrl)) {
-    throw new Error("EXTERNAL_DESKTOP_SERVE_URL_INVALID");
+  if (!/^https:\/\//i.test(externalServeUrl) && !externalBuildStoragePath) {
+    throw new Error("DESKTOP_WORKER_BUNDLE_TARGET_INVALID");
   }
   if (typeof snapshot.compositionId !== "string" || !snapshot.compositionId.trim()) {
     throw new Error("EXTERNAL_DESKTOP_COMPOSITION_ID_MISSING");
@@ -406,15 +601,15 @@ function resolveWorkerRenderInput(snapshot: Record<string, any>) {
       : buildStableHash(snapshot.resolvedProps);
 
   return {
-    renderMode: "EXTERNAL_DESKTOP_SITE_READY",
+    renderMode: isInternalDesktopRender ? "INTERNAL_COMPOSITION" : "EXTERNAL_DESKTOP_SITE_READY",
     compositionId: snapshot.compositionId,
     resolvedProps: snapshot.resolvedProps,
     propsHash,
     bundle: {
-      signedUrl: externalServeUrl,
+      signedUrl: externalServeUrl || externalBuildStoragePath,
       bundleHash: snapshot.bundleHash || snapshot.buildHash || snapshot.buildId || "external-desktop-site",
-      storagePath: externalServeUrl,
-      bundleType: "serve_url" as const,
+      storagePath: externalBuildStoragePath || externalServeUrl,
+      bundleType: externalBuildStoragePath ? "zip" as const : "serve_url" as const,
     },
     renderDiagnostics:
       snapshot.renderDiagnostics || {
@@ -429,6 +624,401 @@ function resolveWorkerRenderInput(snapshot: Record<string, any>) {
 
 export class DesktopWorkerControlPlane {
   constructor(private readonly supabase: SupabaseAnyClient = getServiceRoleClient()) {}
+
+  private async publishInternalBundle() {
+    if (!internalBundlePromise) {
+      internalBundlePromise = this.createAndUploadInternalBundle().catch((error) => {
+        internalBundlePromise = null;
+        throw error;
+      });
+    }
+
+    const current = await internalBundlePromise;
+    const { data: signed, error } = await this.supabase.storage
+      .from(TEMPLATE_BUNDLE_BUCKET)
+      .createSignedUrl(current.storagePath, SIGNED_URL_TTL_SECONDS);
+
+    if (error || !signed?.signedUrl) {
+      throw new Error(`INTERNAL_BUNDLE_SIGNED_URL_FAILED: ${error?.message || "Unknown error"}`);
+    }
+
+    return { ...current, signedUrl: signed.signedUrl, bundleType: "zip" as const };
+  }
+
+  private async createAndUploadInternalBundle() {
+    const outDir = path.join(os.tmpdir(), `courseforge-internal-remotion-bundle-${process.pid}`);
+    const entryPoint = this.resolveInternalRemotionEntryPoint();
+    const { bundle } = await import("@remotion/bundler");
+    await fsp.rm(outDir, { recursive: true, force: true });
+    await bundle({ entryPoint, outDir });
+
+    const indexPath = path.join(outDir, "index.html");
+    if (!fs.existsSync(indexPath)) {
+      throw new Error("INTERNAL_BUNDLE_INVALID: Remotion no genero index.html para el bundle interno.");
+    }
+
+    const zip = new JSZip();
+    zip.file("courseforge-internal-bundle.json", JSON.stringify({
+      kind: "courseforge-internal-remotion-bundle",
+      compositionIds: INTERNAL_COMPOSITION_IDS,
+    }, null, 2));
+    await addDirectoryToZip(zip, outDir);
+    const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+    const bundleHash = sha256Buffer(zipBuffer);
+    const storagePath = `remotion-bundles/internal/${bundleHash}.zip`;
+
+    const { error } = await this.supabase.storage
+      .from(TEMPLATE_BUNDLE_BUCKET)
+      .upload(storagePath, zipBuffer, {
+        contentType: "application/zip",
+        upsert: true,
+      });
+
+    if (error) {
+      throw new Error(`INTERNAL_BUNDLE_UPLOAD_FAILED: ${error.message}`);
+    }
+
+    await fsp.rm(outDir, { recursive: true, force: true });
+    return { bundleHash, storagePath, signedUrl: "", bundleType: "zip" as const };
+  }
+
+  private resolveInternalRemotionEntryPoint(): string {
+    const candidates = [
+      process.env.REMOTION_ENTRY_POINT ? path.resolve(process.env.REMOTION_ENTRY_POINT) : null,
+      path.resolve(process.cwd(), "src/remotion/index.ts"),
+      path.resolve(process.cwd(), "apps/web/src/remotion/index.ts"),
+    ].filter((candidate): candidate is string => Boolean(candidate));
+    const entryPoint = candidates.find((candidate) => fs.existsSync(candidate));
+
+    if (!entryPoint) {
+      throw new Error(
+        `REMOTION_ENTRY_POINT_NOT_FOUND: configura REMOTION_ENTRY_POINT con apps/web/src/remotion/index.ts. Se intento "${candidates.join(", ")}".`,
+      );
+    }
+
+    return entryPoint;
+  }
+
+  async getExternalTemplatePreviewData(input: {
+    templateId: string;
+    componentId?: string | null;
+    variables: Record<string, unknown>;
+    organizationIds: string[];
+  }): Promise<ExternalTemplatePreviewData> {
+    const { data: templateRecord, error: templateError } = await this.supabase
+      .from("remotion_templates")
+      .select("id, organization_id, storage_path, composition_id, default_config")
+      .eq("id", input.templateId)
+      .maybeSingle();
+
+    if (templateError || !templateRecord) throw new Error("TEMPLATE_NOT_FOUND");
+    if (templateRecord.organization_id && !input.organizationIds.includes(templateRecord.organization_id)) {
+      throw new Error("FORBIDDEN_TEMPLATE_ORGANIZATION");
+    }
+    if (!templateRecord.storage_path) {
+      throw new Error("DESKTOP_WORKER_NETLIFY_REQUIRES_CUSTOM_TEMPLATE_BUILD");
+    }
+
+    const { data: cloudVersion } = await this.supabase
+      .from("remotion_template_versions")
+      .select("id, bundle_hash, build_hash, composition_id, export_mode, status, default_props, props_schema")
+      .eq("template_id", input.templateId)
+      .in("status", ["APPROVED_FOR_SANDBOX", "APPROVED"])
+      .order("version_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const { data: cloudBuild } = cloudVersion?.id
+      ? await this.supabase
+          .from("remotion_template_builds")
+          .select("id, bundle_hash, build_hash, serve_url, build_output_storage_path, composition_id, export_mode, status, cloud_provider")
+          .eq("template_version_id", cloudVersion.id)
+          .eq("bundle_hash", cloudVersion.bundle_hash || "")
+          .eq("status", "BUILT")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+
+    if (!cloudVersion || !cloudBuild) {
+      throw new Error("EXTERNAL_BUILD_NOT_READY");
+    }
+
+    let componentAssets: unknown = {};
+    if (input.componentId) {
+      const { data: component, error: componentError } = await this.supabase
+        .from("material_components")
+        .select(
+          `
+            id, assets,
+            material_lessons (
+              materials (
+                artifacts ( organization_id )
+              )
+            )
+          `,
+        )
+        .eq("id", input.componentId)
+        .maybeSingle();
+
+      if (componentError || !component) throw new Error("COMPONENT_NOT_FOUND");
+      const lesson = Array.isArray(component.material_lessons)
+        ? component.material_lessons[0]
+        : component.material_lessons;
+      const material = Array.isArray(lesson?.materials) ? lesson.materials[0] : lesson?.materials;
+      const artifact = Array.isArray(material?.artifacts) ? material.artifacts[0] : material?.artifacts;
+      const organizationId = artifact?.organization_id || null;
+      if (organizationId && !input.organizationIds.includes(organizationId)) {
+        throw new Error("FORBIDDEN_COMPONENT_ORGANIZATION");
+      }
+      componentAssets = component.assets || {};
+    }
+
+    const externalTarget = resolveExternalDesktopRenderTarget({
+      version: cloudVersion,
+      build: cloudBuild,
+    });
+    const propsResult = buildExternalTemplateProps({
+      assets: componentAssets,
+      compositionId: externalTarget.compositionId,
+      templateDefaultConfig: templateRecord.default_config,
+      variables: input.variables,
+      bundleDefaultProps: cloudVersion.default_props,
+      propsSchema: cloudVersion.props_schema,
+    });
+    const timing = deriveCompositionTiming(propsResult.resolvedProps);
+    const layoutOverridesHash = deriveLayoutOverridesHash(propsResult.resolvedProps);
+    let previewQuery = this.supabase
+      .from("remotion_template_previews")
+      .select("id, status, preview_poster_storage_path, preview_video_storage_path, preview_duration_seconds, preview_frames, error_message, updated_at, props_hash, layout_overrides_hash")
+      .eq("template_build_id", cloudBuild.id);
+    previewQuery = input.componentId
+      ? previewQuery.eq("material_component_id", input.componentId)
+      : previewQuery.is("material_component_id", null);
+    const { data: previews } = await previewQuery
+      .order("created_at", { ascending: false })
+      .limit(5);
+    const exactPreview = (previews || []).find((preview: any) =>
+      preview.props_hash === propsResult.propsHash &&
+      (preview.layout_overrides_hash || "") === layoutOverridesHash,
+    );
+    const latestSuccessfulPreview = (previews || []).find((preview: any) => preview.status === "SUCCEEDED") || null;
+    const preview = exactPreview || null;
+    const visualPreview = preview?.status === "SUCCEEDED" ? preview : latestSuccessfulPreview;
+    const previewPosterPath = visualPreview ? readNonEmptyString(visualPreview.preview_poster_storage_path) : null;
+    const previewVideoPath = visualPreview ? readNonEmptyString(visualPreview.preview_video_storage_path) : null;
+    const previewPosterUrl = previewPosterPath
+      ? this.supabase.storage.from(VIDEO_BUCKET).getPublicUrl(previewPosterPath).data.publicUrl
+      : null;
+    const previewVideoUrl = previewVideoPath
+      ? this.supabase.storage.from(VIDEO_BUCKET).getPublicUrl(previewVideoPath).data.publicUrl
+      : null;
+    const previewStatus = preview?.status === "SUCCEEDED"
+      ? "READY"
+      : preview?.status === "QUEUED"
+        ? "QUEUED"
+        : preview?.status === "RUNNING"
+          ? "RUNNING"
+          : preview?.status === "FAILED"
+            ? "FAILED"
+            : latestSuccessfulPreview
+              ? "STALE"
+              : "MISSING";
+
+    return {
+      serveUrl: externalTarget.serveUrl,
+      compositionId: externalTarget.compositionId,
+      exportMode: externalTarget.exportMode,
+      resolvedProps: propsResult.resolvedProps,
+      propsHash: propsResult.propsHash,
+      propsSource: propsResult.propsSource,
+      propKeys: propsResult.propKeys,
+      buildHash: externalTarget.buildHash || null,
+      buildId: cloudBuild.id,
+      templateVersionId: cloudVersion.id,
+      bundleHash: externalTarget.bundleHash || null,
+      previewId: preview?.id || null,
+      previewStatus,
+      previewError: preview?.status === "FAILED"
+        ? sanitizeText(preview.error_message, "Preview fallido")
+        : previewStatus === "STALE" && latestSuccessfulPreview
+          ? "Mostrando el ultimo preview disponible mientras se genera la version actualizada."
+          : null,
+      previewVideoUrl,
+      previewPosterUrl,
+      previewDurationSeconds: visualPreview && Number.isFinite(visualPreview.preview_duration_seconds) ? Number(visualPreview.preview_duration_seconds) : null,
+      previewFrames: visualPreview && Number.isFinite(visualPreview.preview_frames) ? Number(visualPreview.preview_frames) : null,
+      compositionDurationSeconds: timing.compositionDurationSeconds,
+      compositionFrames: timing.compositionFrames,
+    };
+  }
+
+  async requestExternalTemplatePreview(input: {
+    templateId: string;
+    componentId?: string | null;
+    variables: Record<string, unknown>;
+    organizationIds: string[];
+    userId?: string | null;
+  }) {
+    const previewData = await this.getExternalTemplatePreviewData(input);
+    if (
+      previewData.previewId &&
+      ["READY", "QUEUED", "RUNNING"].includes(previewData.previewStatus)
+    ) {
+      return {
+        previewId: previewData.previewId,
+        status: previewData.previewStatus,
+        data: previewData,
+      };
+    }
+
+    const { data: build, error: buildError } = await this.supabase
+      .from("remotion_template_builds")
+      .select("id, organization_id, template_version_id, bundle_hash, build_hash")
+      .eq("id", previewData.buildId)
+      .maybeSingle();
+
+    if (buildError || !build) throw new Error("TEMPLATE_BUILD_NOT_FOUND");
+    if (!input.organizationIds.includes(build.organization_id)) {
+      throw new Error("FORBIDDEN_TEMPLATE_ORGANIZATION");
+    }
+
+    const now = new Date().toISOString();
+    const layoutOverridesHash = deriveLayoutOverridesHash(previewData.resolvedProps);
+    const previewFrame = derivePreviewFrame(previewData.resolvedProps);
+    const previewCacheKey = buildTemplatePreviewCacheKey({
+      templateBuildId: previewData.buildId,
+      materialComponentId: input.componentId || null,
+      propsHash: previewData.propsHash,
+      layoutOverridesHash,
+      previewFrame,
+    });
+
+    const { data: existingPreview, error: existingPreviewError } = await this.supabase
+      .from("remotion_template_previews")
+      .select("*")
+      .eq("organization_id", build.organization_id)
+      .eq("preview_cache_key", previewCacheKey)
+      .maybeSingle();
+    const supportsPreviewCacheKey = !isMissingPreviewCacheKeyColumn(existingPreviewError);
+
+    if (existingPreviewError && supportsPreviewCacheKey) {
+      throw new Error(`TEMPLATE_PREVIEW_LOOKUP_FAILED: ${existingPreviewError.message}`);
+    }
+
+    if (supportsPreviewCacheKey && existingPreview) {
+      if (["QUEUED", "RUNNING", "SUCCEEDED"].includes(existingPreview.status)) {
+        return {
+          previewId: existingPreview.id,
+          status: existingPreview.status === "SUCCEEDED" ? "READY" as const : existingPreview.status as "QUEUED" | "RUNNING",
+          data: {
+            ...previewData,
+            previewId: existingPreview.id,
+            previewStatus: existingPreview.status === "SUCCEEDED" ? "READY" as const : existingPreview.status as "QUEUED" | "RUNNING",
+            previewError: null,
+          },
+        };
+      }
+
+      const { data: requeuedPreview, error: requeueError } = await this.supabase
+        .from("remotion_template_previews")
+        .update({
+          status: "QUEUED",
+          worker_id: null,
+          claimed_at: null,
+          worker_heartbeat_at: null,
+          lease_expires_at: null,
+          provider_status: "QUEUED",
+          provider_status_detail: "Preview reencolado para worker local.",
+          error_code: null,
+          error_message: null,
+          failed_at: null,
+          requested_by: input.userId || existingPreview.requested_by || null,
+          updated_at: now,
+          progress: [
+            safeJobProgressEntry({
+              percent: 0,
+              message: "Preview externo reencolado para worker local",
+              stage: "template_preview_requeued",
+              workerId: "system",
+            }),
+          ],
+        })
+        .eq("id", existingPreview.id)
+        .select("*")
+        .single();
+
+      if (requeueError || !requeuedPreview) {
+        throw new Error(`TEMPLATE_PREVIEW_REQUEUE_FAILED: ${requeueError?.message || "Unknown error"}`);
+      }
+
+      return {
+        previewId: requeuedPreview.id,
+        status: "QUEUED" as const,
+        data: {
+          ...previewData,
+          previewId: requeuedPreview.id,
+          previewStatus: "QUEUED" as const,
+          previewError: null,
+        },
+      };
+    }
+
+    const previewInsert: Record<string, unknown> = {
+      organization_id: build.organization_id,
+      template_id: input.templateId,
+      template_version_id: previewData.templateVersionId,
+      template_build_id: previewData.buildId,
+      material_component_id: input.componentId || null,
+      status: "QUEUED",
+      props_hash: previewData.propsHash,
+      layout_overrides_hash: layoutOverridesHash,
+      resolved_props: previewData.resolvedProps,
+      composition_id: previewData.compositionId,
+      bundle_hash: previewData.bundleHash || build.bundle_hash || null,
+      build_hash: previewData.buildHash || build.build_hash || null,
+      preview_frame: previewFrame,
+      provider_status: "QUEUED",
+      provider_status_detail: supportsPreviewCacheKey
+        ? "Esperando que un worker local genere el poster de preview."
+        : "Esperando worker local. Idempotencia avanzada pendiente de migracion preview_cache_key.",
+      progress: [
+        safeJobProgressEntry({
+          percent: 0,
+          message: "Preview externo encolado para worker local",
+          stage: "template_preview_queued",
+          workerId: "system",
+        }),
+      ],
+      requested_by: input.userId || null,
+      created_at: now,
+      updated_at: now,
+    };
+    if (supportsPreviewCacheKey) {
+      previewInsert.preview_cache_key = previewCacheKey;
+    }
+
+    const { data: preview, error: previewError } = await this.supabase
+      .from("remotion_template_previews")
+      .insert(previewInsert)
+      .select("*")
+      .single();
+
+    if (previewError || !preview) {
+      throw new Error(`TEMPLATE_PREVIEW_CREATE_FAILED: ${previewError?.message || "Unknown error"}`);
+    }
+
+    return {
+      previewId: preview.id,
+      status: "QUEUED" as const,
+      data: {
+        ...previewData,
+        previewId: preview.id,
+        previewStatus: "QUEUED" as const,
+        previewError: null,
+      },
+    };
+  }
 
   async listWorkers(organizationId: string) {
     const { data, error } = await this.supabase
@@ -670,7 +1260,159 @@ export class DesktopWorkerControlPlane {
       throw new Error("FORBIDDEN_TEMPLATE_ORGANIZATION");
     }
     if (!templateRecord.storage_path) {
-      throw new Error("DESKTOP_WORKER_NETLIFY_REQUIRES_CUSTOM_TEMPLATE_BUILD");
+      const compositionId = resolveInternalCompositionId(templateRecord.composition_id);
+      const templateConfig = mergeTemplateRenderConfigs(
+        templateRecord.default_config,
+        input.variables?.templateConfig,
+      );
+      const resolvedProps = buildAssemblyInputProps({
+        assets: component.assets || {},
+        compositionId,
+        transitionType: input.variables?.transitionType,
+        templateConfig,
+        layoutOverrides: input.variables?.layoutOverrides,
+      });
+      const propsHash = buildStableHash(resolvedProps);
+      const bundleInfo = await this.publishInternalBundle();
+      const renderMode = "INTERNAL_COMPOSITION";
+      const inputSnapshot = {
+        templateId: input.templateId,
+        templateVersionId: null,
+        bundleHash: bundleInfo.bundleHash,
+        buildId: null,
+        buildHash: null,
+        compositionId,
+        exportMode: "component",
+        externalServeUrl: null,
+        externalBuildStoragePath: `${TEMPLATE_BUNDLE_BUCKET}/${bundleInfo.storagePath}`,
+        cloudProvider: "internal",
+        renderMode,
+        renderProvider: "desktop_worker",
+        propsHash,
+        propsSource: "courseforge-internal-v1",
+        resolvedProps,
+        propKeys: Object.keys(resolvedProps).sort(),
+        renderDiagnostics: buildRenderDiagnostics({
+          renderMode,
+          inputProps: resolvedProps,
+          rawAssets: component.assets || {},
+          templateId: input.templateId,
+          templateVersionId: null,
+          buildId: null,
+          bundleHash: bundleInfo.bundleHash,
+          buildHash: null,
+          compositionId,
+          propsHash,
+        }),
+        variables: input.variables,
+        renderBatchId: input.renderBatchId || null,
+        preferredWorkerId: input.preferredWorkerId || null,
+      };
+      const idempotencyKey = buildRenderIdempotencyKey({
+        componentId: input.componentId,
+        templateId: input.templateId,
+        templateVersionId: null,
+        bundleHash: bundleInfo.bundleHash,
+        buildId: null,
+        buildHash: null,
+        serveUrl: null,
+        propsHash,
+        compositionId,
+        exportMode: "component",
+        variables: input.variables,
+      });
+
+      const existingJobQuery = this.supabase
+        .from("production_jobs")
+        .select("*")
+        .eq("idempotency_key", idempotencyKey);
+      const { data: existingJob } = organizationId
+        ? await existingJobQuery.eq("organization_id", organizationId).maybeSingle()
+        : await existingJobQuery.is("organization_id", null).maybeSingle();
+      const componentHasFinalVideo = hasUsableFinalVideoUrl(component.assets?.final_video_url);
+
+      if (existingJob && !["FAILED", "CANCELLED", "SUCCEEDED"].includes(existingJob.status)) {
+        const assignedWorker = existingJob.worker_id
+          ? await this.getWorkerById(existingJob.worker_id)
+          : null;
+        if (isStaleJobAssignment(existingJob, assignedWorker)) {
+          const resetJob = await this.resetDesktopJob(existingJob.id, inputSnapshot, "Reintentando render interno: el worker asignado ya no esta disponible");
+          return {
+            jobId: resetJob.id,
+            status: resetJob.status,
+            renderProvider: "desktop_worker",
+            message: "Stale internal desktop worker job reset",
+          };
+        }
+      }
+
+      if (existingJob?.status === "SUCCEEDED" && !componentHasFinalVideo) {
+        const resetJob = await this.resetDesktopJob(existingJob.id, inputSnapshot, "Reintentando render interno: el componente no tiene video final");
+        return {
+          jobId: resetJob.id,
+          status: resetJob.status,
+          renderProvider: "desktop_worker",
+          message: "Completed internal desktop worker job without component final video reset",
+        };
+      }
+
+      if (existingJob && !["FAILED", "CANCELLED"].includes(existingJob.status)) {
+        return {
+          jobId: existingJob.id,
+          status: existingJob.status,
+          renderProvider: "desktop_worker",
+          message: "Internal rendering job reused by idempotency key",
+        };
+      }
+
+      if (existingJob) {
+        const resetJob = await this.resetDesktopJob(existingJob.id, inputSnapshot, "Reintentando render interno con worker local");
+        return {
+          jobId: resetJob.id,
+          status: resetJob.status,
+          renderProvider: "desktop_worker",
+          message: "Failed internal desktop worker job reset",
+        };
+      }
+
+      const { data: job, error: jobError } = await this.supabase
+        .from("production_jobs")
+        .insert({
+          organization_id: organizationId,
+          artifact_id: material?.artifact_id || null,
+          material_lesson_id: component.material_lesson_id,
+          material_component_id: input.componentId,
+          lesson_id: lesson?.lesson_id || null,
+          module_id: lesson?.module_id || null,
+          job_type: "REMOTION_RENDER",
+          provider: "remotion",
+          status: "WAITING_PROVIDER",
+          idempotency_key: idempotencyKey,
+          input_snapshot: inputSnapshot,
+          preferred_worker_id: input.preferredWorkerId || null,
+          assigned_strategy: input.assignedStrategy || (input.preferredWorkerId ? "MANUAL" : "AUTO"),
+          render_batch_id: input.renderBatchId || null,
+          created_by: input.userId,
+          progress: [
+            {
+              percent: 0,
+              message: "Job de render interno creado para worker local",
+              stage: "job_created",
+              provider: "desktop_worker",
+              timestamp: new Date().toISOString(),
+            },
+          ],
+        })
+        .select("id, status")
+        .single();
+
+      if (jobError || !job) throw new Error(`JOB_CREATE_FAILED: ${jobError?.message || "Unknown error"}`);
+      return {
+        jobId: job.id,
+        status: job.status,
+        renderProvider: "desktop_worker",
+        message: "Internal desktop worker job waiting for local worker",
+      };
     }
 
     const { data: cloudVersion } = await this.supabase
@@ -685,7 +1427,7 @@ export class DesktopWorkerControlPlane {
     const { data: cloudBuild } = cloudVersion?.id
       ? await this.supabase
           .from("remotion_template_builds")
-          .select("id, bundle_hash, build_hash, serve_url, composition_id, export_mode, status, cloud_provider")
+          .select("id, bundle_hash, build_hash, serve_url, build_output_storage_path, composition_id, export_mode, status, cloud_provider")
           .eq("template_version_id", cloudVersion.id)
           .eq("bundle_hash", cloudVersion.bundle_hash || "")
           .eq("status", "BUILT")
@@ -720,6 +1462,7 @@ export class DesktopWorkerControlPlane {
       compositionId: externalTarget.compositionId,
       exportMode: externalTarget.exportMode,
       externalServeUrl: externalTarget.serveUrl,
+      externalBuildStoragePath: externalTarget.buildOutputStoragePath,
       cloudProvider: externalTarget.cloudProvider || null,
       renderMode,
       renderProvider: "desktop_worker",
@@ -850,11 +1593,165 @@ export class DesktopWorkerControlPlane {
     };
   }
 
+  async startTemplateBuild(input: {
+    templateVersionId: string;
+    organizationIds: string[];
+  }) {
+    const { data: version, error: versionError } = await this.supabase
+      .from("remotion_template_versions")
+      .select("id, template_id, organization_id, status, storage_path, bundle_hash, composition_id, export_mode")
+      .eq("id", input.templateVersionId)
+      .maybeSingle();
+
+    if (versionError || !version) throw new Error("TEMPLATE_VERSION_NOT_FOUND");
+    if (!input.organizationIds.includes(version.organization_id)) throw new Error("FORBIDDEN_TEMPLATE_ORGANIZATION");
+    if (!["APPROVED_FOR_SANDBOX", "APPROVED"].includes(version.status)) {
+      throw new Error(`TEMPLATE_VERSION_NOT_APPROVED: ${version.status}`);
+    }
+    if (!version.bundle_hash || !version.composition_id || !version.storage_path) {
+      throw new Error("TEMPLATE_VERSION_BUILD_METADATA_MISSING");
+    }
+
+    const { data: reusableRows } = await this.supabase
+      .from("remotion_template_builds")
+      .select("*")
+      .eq("template_version_id", version.id)
+      .eq("bundle_hash", version.bundle_hash)
+      .eq("composition_id", version.composition_id)
+      .eq("export_mode", version.export_mode === "root" ? "root" : "component")
+      .eq("cloud_provider", "desktop_worker")
+      .in("status", ["BUILDING", "BUILT"])
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    const reusable = reusableRows?.[0];
+    if (reusable?.status === "BUILT" && reusable.build_hash && reusable.build_output_storage_path) {
+      return {
+        success: true,
+        buildId: reusable.id,
+        status: "BUILT",
+        providerBuildId: reusable.provider_build_id || null,
+        serveUrl: reusable.serve_url || null,
+        buildOutputStoragePath: reusable.build_output_storage_path,
+      };
+    }
+    if (reusable?.status === "BUILDING") {
+      return {
+        success: true,
+        buildId: reusable.id,
+        status: "BUILDING",
+        providerBuildId: reusable.provider_build_id || null,
+        serveUrl: reusable.serve_url || null,
+        buildOutputStoragePath: reusable.build_output_storage_path || null,
+      };
+    }
+
+    const { data: build, error: buildError } = await this.supabase
+      .from("remotion_template_builds")
+      .insert({
+        template_version_id: version.id,
+        organization_id: version.organization_id,
+        status: "BUILDING",
+        bundle_hash: version.bundle_hash,
+        composition_id: version.composition_id,
+        export_mode: version.export_mode === "root" ? "root" : "component",
+        cloud_provider: "desktop_worker",
+        provider_status: "QUEUED",
+        provider_status_detail: "Esperando que un worker local reclame este build.",
+        source_storage_path: version.storage_path,
+        security_profile: {
+          isolation: "desktop-worker",
+          secrets: "none-from-courseforge",
+          artifactContract: "compiled-remotion-zip",
+        },
+        build_log: "Template build queued for SofLIA desktop worker.",
+      })
+      .select("*")
+      .single();
+
+    if (buildError || !build) throw new Error(`TEMPLATE_BUILD_CREATE_FAILED: ${buildError?.message || "Unknown error"}`);
+
+    await this.supabase
+      .from("remotion_template_versions")
+      .update({ build_status: "BUILDING" })
+      .eq("id", version.id);
+
+    return this.buildTemplateWithServerBundler(version, build);
+  }
+
+  async getTemplateBuildStatus(buildId: string, organizationIds: string[]) {
+    const { data: build, error } = await this.supabase
+      .from("remotion_template_builds")
+      .select("*")
+      .eq("id", buildId)
+      .maybeSingle();
+
+    if (error || !build) throw new Error("TEMPLATE_BUILD_NOT_FOUND");
+    if (!organizationIds.includes(build.organization_id)) throw new Error("FORBIDDEN_TEMPLATE_ORGANIZATION");
+
+    return {
+      success: true,
+      buildId: build.id,
+      status: build.status,
+      providerStatus: build.provider_status || null,
+      providerStatusDetail: build.provider_status_detail || null,
+      providerBuildId: build.provider_build_id || null,
+      serveUrl: build.serve_url || null,
+      buildOutputStoragePath: build.build_output_storage_path || null,
+      buildLogStoragePath: build.build_log_storage_path || null,
+      error: build.build_error || null,
+    };
+  }
+
   async claimNextJob(worker: WorkerAuthContext) {
     const claimLimit = await this.getWorkerAvailableClaimSlots(worker.id);
     if (claimLimit <= 0) {
       await this.heartbeat(worker, { status: "BUSY" });
       return null;
+    }
+
+    const claimedTemplateBuilds = await this.claimTemplateBuilds(worker, claimLimit);
+    if (claimedTemplateBuilds.length > 0) {
+      let payloads: ClaimedDesktopWorkerTemplateBuildJob[];
+      try {
+        payloads = await Promise.all(claimedTemplateBuilds.map((build: any) => this.buildClaimedTemplateBuildPayload(build)));
+      } catch (error) {
+        await this.releaseTemplateBuildClaims(
+          worker.id,
+          claimedTemplateBuilds.map((build: any) => build.id),
+          sanitizeText(error instanceof Error ? error.message : String(error), "No se pudo preparar el build para el worker."),
+        );
+        throw error;
+      }
+      await this.heartbeat(worker, { status: "BUSY", activeJobIds: payloads.map((job) => job.jobId) });
+      return payloads.length === 1 ? payloads[0] : { jobs: payloads };
+    }
+
+    const previewLimit = await this.getWorkerAvailableClaimSlots(worker.id);
+    const claimedTemplatePreviews = previewLimit > 0
+      ? await this.claimTemplatePreviews(worker, previewLimit)
+      : [];
+    if (claimedTemplatePreviews.length > 0) {
+      const payloads: ClaimedDesktopWorkerTemplatePreviewJob[] = [];
+      for (const preview of claimedTemplatePreviews) {
+        try {
+          payloads.push(await this.buildClaimedTemplatePreviewPayload(preview));
+        } catch (error) {
+          const message = sanitizeText(
+            error instanceof Error ? error.message : String(error),
+            "No se pudo preparar el preview para el worker.",
+          );
+          await this.failTemplatePreview(worker, preview, {
+            message,
+            errorCode: "TEMPLATE_PREVIEW_PAYLOAD_PREPARE_FAILED",
+          });
+        }
+      }
+
+      if (payloads.length > 0) {
+        await this.heartbeat(worker, { status: "BUSY", activeJobIds: payloads.map((job) => job.jobId) });
+        return payloads.length === 1 ? payloads[0] : { jobs: payloads };
+      }
     }
 
     const claimedJobs = await this.claimJobsAtomically(worker, claimLimit);
@@ -904,6 +1801,7 @@ export class DesktopWorkerControlPlane {
 
     const snapshot = job.input_snapshot || {};
     const resolved = resolveWorkerRenderInput(snapshot);
+    const bundleUrl = await this.createWorkerBundleSignedUrl(resolved.bundle);
     const outputStoragePath = `completed/${job.material_component_id || job.id}/${job.id}-${worker.id}-${Date.now()}.mp4`;
     const { data: signedUpload, error: signedUploadError } = await this.supabase.storage
       .from(VIDEO_BUCKET)
@@ -956,11 +1854,12 @@ export class DesktopWorkerControlPlane {
     await this.heartbeat(worker, { status: "BUSY", activeJobIds: [jobId] });
 
     return {
+      jobType: "render" as const,
       jobId,
       compositionId: resolved.compositionId,
       resolvedProps: resolved.resolvedProps,
       propsHash: resolved.propsHash,
-      bundleUrl: resolved.bundle.signedUrl,
+      bundleUrl,
       bundleHash: resolved.bundle.bundleHash,
       bundleType: resolved.bundle.bundleType,
       outputUploadUrl: signedUpload.signedUrl,
@@ -971,15 +1870,38 @@ export class DesktopWorkerControlPlane {
 
   private async countRunningJobsByWorker(workerIds: string[]) {
     if (workerIds.length === 0) return new Map<string, number>();
-    const { data } = await this.supabase
+    const now = new Date().toISOString();
+    const [{ data }, { data: buildRows }, { data: previewRows }] = await Promise.all([
+      this.supabase
       .from("production_jobs")
       .select("worker_id")
       .in("worker_id", workerIds)
       .eq("job_type", "REMOTION_RENDER")
-      .eq("status", "RUNNING");
+        .eq("status", "RUNNING")
+        .gt("lease_expires_at", now),
+      this.supabase
+        .from("remotion_template_builds")
+        .select("worker_id")
+        .in("worker_id", workerIds)
+        .eq("cloud_provider", "desktop_worker")
+        .eq("status", "BUILDING")
+        .gt("lease_expires_at", now),
+      this.supabase
+        .from("remotion_template_previews")
+        .select("worker_id")
+        .in("worker_id", workerIds)
+        .eq("status", "RUNNING")
+        .gt("lease_expires_at", now),
+    ]);
 
     const counts = new Map<string, number>();
     for (const row of data || []) {
+      if (row.worker_id) counts.set(row.worker_id, (counts.get(row.worker_id) || 0) + 1);
+    }
+    for (const row of buildRows || []) {
+      if (row.worker_id) counts.set(row.worker_id, (counts.get(row.worker_id) || 0) + 1);
+    }
+    for (const row of previewRows || []) {
       if (row.worker_id) counts.set(row.worker_id, (counts.get(row.worker_id) || 0) + 1);
     }
     return counts;
@@ -1008,9 +1930,332 @@ export class DesktopWorkerControlPlane {
     return data || [];
   }
 
+  private async claimTemplateBuilds(worker: WorkerAuthContext, limit: number) {
+    const { data: candidates, error } = await this.supabase
+      .from("remotion_template_builds")
+      .select("*")
+      .eq("organization_id", worker.organizationId)
+      .eq("status", "BUILDING")
+      .eq("cloud_provider", "desktop_worker")
+      .or(`worker_id.is.null,worker_id.eq.${worker.id},lease_expires_at.lte.${new Date().toISOString()}`)
+      .order("created_at", { ascending: true })
+      .limit(limit);
+
+    if (error) throw new Error(`TEMPLATE_BUILD_NEXT_LOOKUP_FAILED: ${error.message}`);
+
+    const claimed: any[] = [];
+    for (const candidate of candidates || []) {
+      const { data: updated } = await this.supabase
+        .from("remotion_template_builds")
+        .update({
+          worker_id: worker.id,
+          claimed_at: candidate.claimed_at || new Date().toISOString(),
+          worker_heartbeat_at: new Date().toISOString(),
+          lease_expires_at: new Date(Date.now() + WORKER_JOB_LEASE_SECONDS * 1000).toISOString(),
+          provider_build_id: worker.id,
+          provider_status: "RUNNING",
+          provider_status_detail: "Claimed by desktop worker.",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", candidate.id)
+        .eq("status", "BUILDING")
+        .select("*")
+        .maybeSingle();
+
+      if (updated) claimed.push(updated);
+      if (claimed.length >= limit) break;
+    }
+
+    return claimed;
+  }
+
+  private async releaseTemplateBuildClaims(workerId: string, buildIds: string[], detail: string) {
+    if (buildIds.length === 0) return;
+    await this.supabase
+      .from("remotion_template_builds")
+      .update({
+        worker_id: null,
+        claimed_at: null,
+        worker_heartbeat_at: null,
+        lease_expires_at: null,
+        provider_build_id: null,
+        provider_status: "QUEUED",
+        provider_status_detail: `Esperando worker: ${detail}`.slice(0, 1000),
+        updated_at: new Date().toISOString(),
+      })
+      .in("id", buildIds)
+      .eq("worker_id", workerId)
+      .eq("status", "BUILDING")
+      .eq("cloud_provider", "desktop_worker");
+  }
+
+  private async claimTemplatePreviews(worker: WorkerAuthContext, limit: number) {
+    const { data: candidates, error } = await this.supabase
+      .from("remotion_template_previews")
+      .select("*")
+      .eq("organization_id", worker.organizationId)
+      .in("status", ["QUEUED", "RUNNING"])
+      .or(`worker_id.is.null,worker_id.eq.${worker.id},lease_expires_at.lte.${new Date().toISOString()}`)
+      .order("created_at", { ascending: true })
+      .limit(limit);
+
+    if (error) throw new Error(`TEMPLATE_PREVIEW_NEXT_LOOKUP_FAILED: ${error.message}`);
+
+    const claimed: any[] = [];
+    for (const candidate of candidates || []) {
+      const { data: updated } = await this.supabase
+        .from("remotion_template_previews")
+        .update({
+          status: "RUNNING",
+          worker_id: worker.id,
+          claimed_at: candidate.claimed_at || new Date().toISOString(),
+          worker_heartbeat_at: new Date().toISOString(),
+          lease_expires_at: new Date(Date.now() + WORKER_JOB_LEASE_SECONDS * 1000).toISOString(),
+          provider_status: "RUNNING",
+          provider_status_detail: "Claimed by desktop worker.",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", candidate.id)
+        .in("status", ["QUEUED", "RUNNING"])
+        .select("*")
+        .maybeSingle();
+
+      if (updated) claimed.push(updated);
+      if (claimed.length >= limit) break;
+    }
+
+    return claimed;
+  }
+
+  private async buildClaimedTemplateBuildPayload(build: any): Promise<ClaimedDesktopWorkerTemplateBuildJob> {
+    const { data: version, error: versionError } = await this.supabase
+      .from("remotion_template_versions")
+      .select("id, storage_path, bundle_hash, composition_id, export_mode")
+      .eq("id", build.template_version_id)
+      .maybeSingle();
+
+    if (versionError || !version) throw new Error("TEMPLATE_VERSION_NOT_FOUND");
+    const sourceLocation = normalizeStoragePath(version.storage_path);
+    const { data: sourceSigned, error: sourceError } = await this.supabase.storage
+      .from(sourceLocation.bucket)
+      .createSignedUrl(sourceLocation.path, Number(process.env.DESKTOP_WORKER_SIGNED_URL_TTL_SECONDS || 3600));
+
+    if (sourceError || !sourceSigned?.signedUrl) {
+      throw new Error(`TEMPLATE_SOURCE_SIGNED_URL_FAILED: ${sourceError?.message || "Unknown error"}`);
+    }
+
+    const outputStoragePath = `template-builds/${build.id}/${version.bundle_hash}.zip`;
+    const { data: outputSigned, error: outputError } = await this.supabase.storage
+      .from(TEMPLATE_BUNDLE_BUCKET)
+      .createSignedUploadUrl(outputStoragePath, { upsert: true });
+
+    if (outputError || !outputSigned?.signedUrl) {
+      throw new Error(`TEMPLATE_BUILD_UPLOAD_URL_FAILED: ${outputError?.message || "Unknown error"}`);
+    }
+
+    return {
+      jobType: "template_build",
+      jobId: build.id,
+      buildId: build.id,
+      templateVersionId: version.id,
+      compositionId: version.composition_id,
+      exportMode: version.export_mode === "root" ? "root" : "component",
+      bundleUrl: sourceSigned.signedUrl,
+      bundleHash: version.bundle_hash,
+      outputUploadUrl: outputSigned.signedUrl,
+      outputStoragePath: `${TEMPLATE_BUNDLE_BUCKET}/${outputStoragePath}`,
+      timeoutInMilliseconds: Number(process.env.EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS || 900000),
+    };
+  }
+
+  private async buildTemplateWithServerBundler(version: any, build: any) {
+    const sourceLocation = normalizeStoragePath(version.storage_path);
+    const outputStoragePath = `template-builds/${build.id}/${version.bundle_hash}.zip`;
+    const workspaceBuildRoot = path.resolve(process.cwd(), ".tmp", "template-builds", build.id);
+    const sourceDir = path.join(workspaceBuildRoot, "source");
+    const outDir = path.join(workspaceBuildRoot, "compiled");
+
+    try {
+      await fsp.rm(workspaceBuildRoot, { recursive: true, force: true });
+      await fsp.mkdir(sourceDir, { recursive: true });
+
+      const { data: sourceBlob, error: downloadError } = await this.supabase.storage
+        .from(sourceLocation.bucket)
+        .download(sourceLocation.path);
+
+      if (downloadError || !sourceBlob) {
+        throw new Error(`TEMPLATE_SOURCE_DOWNLOAD_FAILED: ${downloadError?.message || "Unknown error"}`);
+      }
+
+      const sourceBuffer = Buffer.from(await sourceBlob.arrayBuffer());
+      const sourceZip = await JSZip.loadAsync(sourceBuffer);
+
+      for (const [name, file] of Object.entries(sourceZip.files)) {
+        if (file.dir) continue;
+        if (hasUnsafeZipPath(name)) {
+          throw new Error(`TEMPLATE_SOURCE_UNSAFE_PATH: ${name}`);
+        }
+
+        const targetPath = path.join(sourceDir, name.replace(/\//g, path.sep));
+        await fsp.mkdir(path.dirname(targetPath), { recursive: true });
+        await fsp.writeFile(targetPath, Buffer.from(await file.async("uint8array")));
+      }
+
+      const entryPoint = path.join(sourceDir, version.entry_point || "src/index.tsx");
+      if (!fs.existsSync(entryPoint)) {
+        throw new Error(`TEMPLATE_ENTRYPOINT_NOT_FOUND: ${version.entry_point || "src/index.tsx"}`);
+      }
+
+      const { bundle } = await import("@remotion/bundler");
+      await bundle({ entryPoint, outDir });
+
+      const indexPath = path.join(outDir, "index.html");
+      if (!fs.existsSync(indexPath)) {
+        throw new Error("REMOTION_BUNDLE_INVALID: Remotion no genero index.html para el bundle compilado.");
+      }
+
+      const zip = new JSZip();
+      zip.file("courseforge-compiled-remotion-template.json", JSON.stringify({
+        kind: "courseforge-compiled-remotion-template",
+        sourceBundleHash: version.bundle_hash,
+        compositionId: version.composition_id,
+        exportMode: version.export_mode === "root" ? "root" : "component",
+        remotionVersion: "4.0.484",
+        builtAt: new Date().toISOString(),
+      }, null, 2));
+      await addDirectoryToZip(zip, outDir);
+
+      const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+      const buildHash = sha256Buffer(zipBuffer);
+      const { error: uploadError } = await this.supabase.storage
+        .from(TEMPLATE_BUNDLE_BUCKET)
+        .upload(outputStoragePath, zipBuffer, {
+          contentType: "application/zip",
+          upsert: true,
+        });
+
+      if (uploadError) {
+        throw new Error(`TEMPLATE_BUILD_UPLOAD_FAILED: ${uploadError.message}`);
+      }
+
+      const builtAt = new Date().toISOString();
+      const buildLog = `Server bundler completed. validated remotionVersion=4.0.484 compositionId=${version.composition_id}`;
+      const { error: buildUpdateError } = await this.supabase
+        .from("remotion_template_builds")
+        .update({
+          status: "BUILT",
+          build_hash: buildHash,
+          build_output_storage_path: `${TEMPLATE_BUNDLE_BUCKET}/${outputStoragePath}`,
+          provider_status: "SUCCEEDED",
+          provider_status_detail: null,
+          build_log: buildLog,
+          built_at: builtAt,
+          output_checksum: buildHash,
+          updated_at: builtAt,
+        })
+        .eq("id", build.id);
+
+      if (buildUpdateError) {
+        throw new Error(`TEMPLATE_BUILD_UPDATE_FAILED: ${buildUpdateError.message}`);
+      }
+
+      await this.supabase
+        .from("remotion_template_versions")
+        .update({
+          build_status: "BUILT",
+          build_hash: buildHash,
+          build_output_path: `${TEMPLATE_BUNDLE_BUCKET}/${outputStoragePath}`,
+          built_at: builtAt,
+        })
+        .eq("id", version.id);
+
+      return {
+        success: true,
+        buildId: build.id,
+        status: "BUILT",
+        providerBuildId: null,
+        serveUrl: null,
+        buildOutputStoragePath: `${TEMPLATE_BUNDLE_BUCKET}/${outputStoragePath}`,
+        message: "Template compiled locally by server bundler.",
+      };
+    } catch (error) {
+      const message = sanitizeText(error instanceof Error ? error.message : String(error), "No se pudo compilar la plantilla");
+      const failedAt = new Date().toISOString();
+      await this.supabase
+        .from("remotion_template_builds")
+        .update({
+          status: "BUILD_FAILED",
+          provider_status: "SERVER_TEMPLATE_BUILD_FAILED",
+          provider_status_detail: message,
+          build_error: message,
+          build_failed_at: failedAt,
+          updated_at: failedAt,
+        })
+        .eq("id", build.id);
+      await this.supabase
+        .from("remotion_template_versions")
+        .update({ build_status: "BUILD_FAILED" })
+        .eq("id", version.id);
+      throw new Error(message);
+    } finally {
+      await fsp.rm(workspaceBuildRoot, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+
+  private async buildClaimedTemplatePreviewPayload(preview: any): Promise<ClaimedDesktopWorkerTemplatePreviewJob> {
+    const { data: build, error: buildError } = await this.supabase
+      .from("remotion_template_builds")
+      .select("id, build_output_storage_path, build_hash, bundle_hash, status")
+      .eq("id", preview.template_build_id)
+      .maybeSingle();
+
+    if (buildError || !build) throw new Error("TEMPLATE_BUILD_NOT_FOUND");
+    if (build.status !== "BUILT" || !build.build_output_storage_path) {
+      throw new Error("TEMPLATE_PREVIEW_BUILD_NOT_READY");
+    }
+
+    const buildLocation = normalizeStoragePath(build.build_output_storage_path);
+    const { data: bundleSigned, error: bundleError } = await this.supabase.storage
+      .from(buildLocation.bucket)
+      .createSignedUrl(buildLocation.path, Number(process.env.DESKTOP_WORKER_SIGNED_URL_TTL_SECONDS || 3600));
+
+    if (bundleError || !bundleSigned?.signedUrl) {
+      throw new Error(`TEMPLATE_PREVIEW_BUNDLE_SIGNED_URL_FAILED: ${bundleError?.message || "Unknown error"}`);
+    }
+
+    const posterStoragePath = `template-previews/${preview.id}/poster.png`;
+    const { data: posterSigned, error: posterError } = await this.supabase.storage
+      .from(VIDEO_BUCKET)
+      .createSignedUploadUrl(posterStoragePath, { upsert: true });
+
+    if (posterError || !posterSigned?.signedUrl) {
+      throw new Error(`TEMPLATE_PREVIEW_POSTER_UPLOAD_URL_FAILED: ${posterError?.message || "Unknown error"}`);
+    }
+
+    return {
+      jobType: "template_preview",
+      jobId: preview.id,
+      previewId: preview.id,
+      templateId: preview.template_id,
+      templateVersionId: preview.template_version_id,
+      buildId: preview.template_build_id,
+      compositionId: preview.composition_id,
+      resolvedProps: preview.resolved_props || {},
+      propsHash: preview.props_hash,
+      bundleUrl: bundleSigned.signedUrl,
+      bundleHash: build.build_hash || preview.build_hash || build.bundle_hash || preview.bundle_hash || "template-preview",
+      bundleType: "zip",
+      posterUploadUrl: posterSigned.signedUrl,
+      posterStoragePath,
+      previewFrame: Math.max(0, Math.round(Number(preview.preview_frame) || 0)),
+      timeoutInMilliseconds: Number(process.env.EXTERNAL_TEMPLATE_PREVIEW_TIMEOUT_MS || 300000),
+    };
+  }
+
   private async buildClaimedJobPayload(worker: WorkerAuthContext, job: any) {
     const snapshot = job.input_snapshot || {};
     const resolved = resolveWorkerRenderInput(snapshot);
+    const bundleUrl = await this.createWorkerBundleSignedUrl(resolved.bundle);
     const outputStoragePath = `completed/${job.material_component_id || job.id}/${job.id}-${worker.id}-${Date.now()}.mp4`;
     const { data: signedUpload, error: signedUploadError } = await this.supabase.storage
       .from(VIDEO_BUCKET)
@@ -1041,11 +2286,12 @@ export class DesktopWorkerControlPlane {
       .eq("worker_id", worker.id);
 
     return {
+      jobType: "render" as const,
       jobId: job.id,
       compositionId: resolved.compositionId,
       resolvedProps: resolved.resolvedProps,
       propsHash: resolved.propsHash,
-      bundleUrl: resolved.bundle.signedUrl,
+      bundleUrl,
       bundleHash: resolved.bundle.bundleHash,
       bundleType: resolved.bundle.bundleType,
       outputUploadUrl: signedUpload.signedUrl,
@@ -1054,7 +2300,74 @@ export class DesktopWorkerControlPlane {
     };
   }
 
+  private async createWorkerBundleSignedUrl(bundle: { signedUrl: string; storagePath: string; bundleType: "serve_url" | "zip" }) {
+    if (bundle.bundleType === "serve_url") return bundle.signedUrl;
+
+    const { bucket, path } = normalizeStoragePath(bundle.storagePath);
+    const { data, error } = await this.supabase.storage
+      .from(bucket)
+      .createSignedUrl(path, Number(process.env.DESKTOP_WORKER_SIGNED_URL_TTL_SECONDS || 3600));
+
+    if (error || !data?.signedUrl) {
+      throw new Error(`BUNDLE_SIGNED_URL_FAILED: ${error?.message || "Unknown error"}`);
+    }
+
+    return data.signedUrl;
+  }
+
   async reportProgress(worker: WorkerAuthContext, jobId: string, input: Record<string, unknown>) {
+    const templateBuild = await this.getAuthorizedTemplateBuild(worker, jobId);
+    if (templateBuild) {
+      const message = sanitizeText(input.message, "Compilando plantilla en worker local");
+      const stage = sanitizeText(input.stage, "template_build_progress");
+      await this.supabase
+        .from("remotion_template_builds")
+        .update({
+          worker_heartbeat_at: new Date().toISOString(),
+          lease_expires_at: new Date(Date.now() + WORKER_JOB_LEASE_SECONDS * 1000).toISOString(),
+          provider_status: stage,
+          provider_status_detail: message,
+          build_log: [
+            sanitizeText(templateBuild.build_log, ""),
+            `${new Date().toISOString()} ${stage}: ${message}`,
+          ].filter(Boolean).join("\n").slice(-8000),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", jobId);
+      await this.heartbeat(worker, { status: "BUSY" });
+      return { ok: true };
+    }
+
+    const templatePreview = await this.getAuthorizedTemplatePreview(worker, jobId);
+    if (templatePreview) {
+      const currentProgress = Array.isArray(templatePreview.progress) ? templatePreview.progress : [];
+      const progress = [
+        ...currentProgress.slice(-19),
+        safeJobProgressEntry({
+          percent: Number(input.percent),
+          message: sanitizeText(input.message, "Generando preview externo en worker local"),
+          stage: sanitizeText(input.stage, "template_preview_progress"),
+          workerId: worker.id,
+        }),
+      ];
+      const { error } = await this.supabase
+        .from("remotion_template_previews")
+        .update({
+          progress,
+          worker_heartbeat_at: new Date().toISOString(),
+          lease_expires_at: new Date(Date.now() + WORKER_JOB_LEASE_SECONDS * 1000).toISOString(),
+          provider_status: sanitizeText(input.stage, "template_preview_progress"),
+          provider_status_detail: sanitizeText(input.message, "Generando preview externo en worker local"),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", jobId)
+        .eq("worker_id", worker.id);
+
+      if (error) throw new Error(`TEMPLATE_PREVIEW_PROGRESS_FAILED: ${error.message}`);
+      await this.heartbeat(worker, { status: "BUSY" });
+      return { ok: true };
+    }
+
     const job = await this.getAuthorizedWorkerJob(worker, jobId);
     const currentProgress = Array.isArray(job.progress) ? job.progress : [];
     const progress = [
@@ -1082,6 +2395,16 @@ export class DesktopWorkerControlPlane {
   }
 
   async completeJob(worker: WorkerAuthContext, jobId: string, input: WorkerJobCompleteInput) {
+    const templateBuild = await this.getAuthorizedTemplateBuild(worker, jobId);
+    if (templateBuild) {
+      return this.completeTemplateBuild(worker, templateBuild, input);
+    }
+
+    const templatePreview = await this.getAuthorizedTemplatePreview(worker, jobId);
+    if (templatePreview) {
+      return this.completeTemplatePreview(worker, templatePreview, input);
+    }
+
     const job = await this.getAuthorizedWorkerJob(worker, jobId);
     if (!input.outputStoragePath || !input.outputStoragePath.startsWith("completed/")) {
       throw new Error("INVALID_OUTPUT_STORAGE_PATH");
@@ -1110,6 +2433,7 @@ export class DesktopWorkerControlPlane {
           final_video_source: "desktop_worker",
           final_video_storage_provider: "supabase",
           final_video_storage_path: input.outputStoragePath,
+          final_video_layout_stale: false,
           video_duration: duration,
           production_status: "COMPLETED",
           updated_at: new Date().toISOString(),
@@ -1166,6 +2490,16 @@ export class DesktopWorkerControlPlane {
   }
 
   async failJob(worker: WorkerAuthContext, jobId: string, input: Record<string, unknown>) {
+    const templateBuild = await this.getAuthorizedTemplateBuild(worker, jobId);
+    if (templateBuild) {
+      return this.failTemplateBuild(worker, templateBuild, input);
+    }
+
+    const templatePreview = await this.getAuthorizedTemplatePreview(worker, jobId);
+    if (templatePreview) {
+      return this.failTemplatePreview(worker, templatePreview, input);
+    }
+
     const job = await this.getAuthorizedWorkerJob(worker, jobId);
     const message = sanitizeText(input.message, "El worker local no pudo completar el render");
     const code = sanitizeText(input.errorCode, "") || "DESKTOP_WORKER_RENDER_FAILED";
@@ -1208,6 +2542,199 @@ export class DesktopWorkerControlPlane {
     await this.updateBatchItemFromJob(job.id, "FAILED", message);
     await this.heartbeat(worker, { status: "ONLINE" });
     return { ok: true };
+  }
+
+  private async completeTemplateBuild(
+    worker: WorkerAuthContext,
+    build: any,
+    input: WorkerJobCompleteInput,
+  ) {
+    if (!input.outputStoragePath || !input.outputStoragePath.startsWith(`${TEMPLATE_BUNDLE_BUCKET}/template-builds/`)) {
+      throw new Error("INVALID_TEMPLATE_BUILD_OUTPUT_STORAGE_PATH");
+    }
+
+    const buildHash = sanitizeText(input.buildHash || input.checksum, "");
+    if (!/^[a-f0-9]{64}$/i.test(buildHash)) {
+      throw new Error("INVALID_TEMPLATE_BUILD_HASH");
+    }
+
+    const builtAt = new Date().toISOString();
+    const buildLog = sanitizeText(input.buildLog || input.logsRef, "Template build completed by desktop worker.");
+    const { error } = await this.supabase
+      .from("remotion_template_builds")
+      .update({
+        status: "BUILT",
+        build_hash: buildHash,
+        build_output_storage_path: input.outputStoragePath,
+        provider_status: "SUCCEEDED",
+        provider_status_detail: null,
+        build_log: buildLog,
+        built_at: builtAt,
+        worker_heartbeat_at: builtAt,
+        lease_expires_at: null,
+        output_checksum: buildHash,
+        updated_at: builtAt,
+      })
+      .eq("id", build.id)
+      .eq("worker_id", build.worker_id);
+
+    if (error) throw new Error(`TEMPLATE_BUILD_COMPLETE_FAILED: ${error.message}`);
+
+    await this.supabase
+      .from("remotion_template_versions")
+      .update({
+        build_status: "BUILT",
+        build_hash: buildHash,
+        build_output_path: input.outputStoragePath,
+        built_at: builtAt,
+      })
+      .eq("id", build.template_version_id);
+
+    await this.heartbeat(worker, { status: "ONLINE" });
+    return { buildId: build.id, buildHash, buildOutputStoragePath: input.outputStoragePath };
+  }
+
+  private async failTemplateBuild(worker: WorkerAuthContext, build: any, input: Record<string, unknown>) {
+    const message = sanitizeText(input.message, "El worker local no pudo compilar la plantilla");
+    const code = sanitizeText(input.errorCode, "") || "DESKTOP_WORKER_TEMPLATE_BUILD_FAILED";
+    const failedAt = new Date().toISOString();
+
+    await this.supabase
+      .from("remotion_template_builds")
+      .update({
+        status: "BUILD_FAILED",
+        provider_status: code,
+        provider_status_detail: message,
+        build_error: message,
+        build_failed_at: failedAt,
+        worker_heartbeat_at: failedAt,
+        lease_expires_at: null,
+        updated_at: failedAt,
+      })
+      .eq("id", build.id)
+      .eq("worker_id", worker.id);
+
+    await this.supabase
+      .from("remotion_template_versions")
+      .update({ build_status: "BUILD_FAILED" })
+      .eq("id", build.template_version_id);
+
+    await this.heartbeat(worker, { status: "ONLINE" });
+    return { ok: true };
+  }
+
+  private async completeTemplatePreview(
+    worker: WorkerAuthContext,
+    preview: any,
+    input: WorkerJobCompleteInput,
+  ) {
+    if (!input.outputStoragePath || !input.outputStoragePath.startsWith("template-previews/")) {
+      throw new Error("INVALID_TEMPLATE_PREVIEW_OUTPUT_STORAGE_PATH");
+    }
+
+    const checksum = sanitizeText(input.checksum, "");
+    const completedAt = new Date().toISOString();
+    const { error } = await this.supabase
+      .from("remotion_template_previews")
+      .update({
+        status: "SUCCEEDED",
+        preview_poster_storage_path: input.outputStoragePath,
+        preview_frames: null,
+        output_checksum: checksum || null,
+        provider_status: "SUCCEEDED",
+        provider_status_detail: null,
+        progress: [
+          safeJobProgressEntry({
+            percent: 100,
+            message: "Preview externo generado correctamente",
+            stage: "template_preview_completed",
+            workerId: worker.id,
+          }),
+        ],
+        completed_at: completedAt,
+        worker_heartbeat_at: completedAt,
+        lease_expires_at: null,
+        updated_at: completedAt,
+      })
+      .eq("id", preview.id)
+      .eq("worker_id", worker.id);
+
+    if (error) throw new Error(`TEMPLATE_PREVIEW_COMPLETE_FAILED: ${error.message}`);
+
+    const {
+      data: { publicUrl },
+    } = this.supabase.storage.from(VIDEO_BUCKET).getPublicUrl(input.outputStoragePath);
+
+    await this.heartbeat(worker, { status: "ONLINE" });
+    return { previewId: preview.id, previewPosterUrl: publicUrl };
+  }
+
+  private async failTemplatePreview(worker: WorkerAuthContext, preview: any, input: Record<string, unknown>) {
+    const message = sanitizeText(input.message, "El worker local no pudo generar el preview externo");
+    const code = sanitizeText(input.errorCode, "") || "DESKTOP_WORKER_TEMPLATE_PREVIEW_FAILED";
+    const failedAt = new Date().toISOString();
+
+    await this.supabase
+      .from("remotion_template_previews")
+      .update({
+        status: "FAILED",
+        provider_status: code,
+        provider_status_detail: message,
+        error_code: code,
+        error_message: message,
+        failed_at: failedAt,
+        worker_heartbeat_at: failedAt,
+        lease_expires_at: null,
+        updated_at: failedAt,
+      })
+      .eq("id", preview.id)
+      .eq("worker_id", worker.id);
+
+    await this.heartbeat(worker, { status: "ONLINE" });
+    return { ok: true };
+  }
+
+  private async getAuthorizedTemplateBuild(worker: WorkerAuthContext, buildId: string) {
+    const { data: build, error } = await this.supabase
+      .from("remotion_template_builds")
+      .select("*")
+      .eq("id", buildId)
+      .maybeSingle();
+
+    if (error || !build) return null;
+    if (build.organization_id !== worker.organizationId) {
+      throw new Error("TEMPLATE_BUILD_FORBIDDEN_FOR_WORKER");
+    }
+    if (build.cloud_provider !== "desktop_worker") {
+      throw new Error("TEMPLATE_BUILD_PROVIDER_NOT_DESKTOP_WORKER");
+    }
+    if (!["BUILDING", "BUILD_FAILED"].includes(build.status)) {
+      throw new Error("TEMPLATE_BUILD_NOT_CLAIMABLE");
+    }
+    if (build.worker_id && build.worker_id !== worker.id) {
+      throw new Error("TEMPLATE_BUILD_CLAIMED_BY_ANOTHER_WORKER");
+    }
+    return build;
+  }
+
+  private async getAuthorizedTemplatePreview(worker: WorkerAuthContext, previewId: string) {
+    const { data: preview, error } = await this.supabase
+      .from("remotion_template_previews")
+      .select("*")
+      .eq("id", previewId)
+      .maybeSingle();
+
+    if (error || !preview) return null;
+    if (preview.organization_id !== worker.organizationId) {
+      throw new Error("TEMPLATE_PREVIEW_FORBIDDEN_FOR_WORKER");
+    }
+    if (!["QUEUED", "RUNNING", "FAILED"].includes(preview.status)) {
+      throw new Error("TEMPLATE_PREVIEW_NOT_CLAIMABLE");
+    }
+    if (preview.worker_id && preview.worker_id !== worker.id) {
+      throw new Error("TEMPLATE_PREVIEW_CLAIMED_BY_ANOTHER_WORKER");
+    }
+    return preview;
   }
 
   private async getAuthorizedWorkerJob(worker: WorkerAuthContext, jobId: string) {

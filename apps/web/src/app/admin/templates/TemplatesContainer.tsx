@@ -141,7 +141,7 @@ export default function TemplatesContainer({
   };
 
   const handleApproveVersion = async (versionId: string) => {
-    if (!confirm("¿Aprobar esta versión como ZIP revisado? Para render final deberá pasar por Construir para cloud.")) return;
+    if (!confirm("¿Aprobar esta versión como ZIP revisado? Para render final deberá pasar por Construir con worker.")) return;
     setLoadingVersions(true);
     try {
       const res = await approveTemplateVersionAction(versionId);
@@ -188,22 +188,22 @@ export default function TemplatesContainer({
   };
 
   const handleStartCloudBuild = async (versionId: string) => {
-    if (!confirm("Construir esta version en cloud para habilitar render final con Remotion Lambda?")) return;
+    if (!confirm("Construir esta version con el worker local para habilitar render final?")) return;
     setCloudBuildingVersionId(versionId);
     try {
       const res = await startTemplateCloudBuildAction(versionId);
       if (!res.success) {
-        alert("Error al iniciar build cloud: " + res.error);
+        alert("Error al iniciar build con worker: " + res.error);
         return;
       }
 
-      alert(res.status === "BUILT" ? "Build cloud ya estaba listo." : "Build cloud iniciado.");
+      alert(res.status === "BUILT" ? "Build con worker ya estaba listo." : "Build con worker iniciado.");
       if (selectedVersionTemplate) {
         await refreshVersions(selectedVersionTemplate.id);
         await handleRefresh();
       }
     } catch (err: any) {
-      alert(err.message || "Error al iniciar build cloud");
+      alert(err.message || "Error al iniciar build con worker");
     } finally {
       setCloudBuildingVersionId(null);
     }
@@ -214,7 +214,7 @@ export default function TemplatesContainer({
     try {
       const res = await getTemplateCloudBuildStatusAction(buildId);
       if (!res.success) {
-        alert("Error al consultar build cloud: " + res.error);
+        alert("Error al consultar build con worker: " + res.error);
         return;
       }
 
@@ -223,7 +223,7 @@ export default function TemplatesContainer({
         await handleRefresh();
       }
     } catch (err: any) {
-      alert(err.message || "Error al consultar build cloud");
+      alert(err.message || "Error al consultar build con worker");
     } finally {
       setSyncingCloudBuildId(null);
     }
@@ -975,7 +975,7 @@ export default function TemplatesContainer({
                     <a
                       href={currentTemplateBundleDownloadHref}
                       className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-[#00D4B3]/30 bg-[#00D4B3]/5 px-3 py-2 text-xs font-semibold text-[#00796B] transition hover:bg-[#00D4B3]/10 dark:text-[#00D4B3]"
-                      title="Descarga el bundle existente de esta plantilla. Si hay build cloud, se conserva el ZIP fuente versionado previo a compilar."
+                      title="Descarga el bundle existente de esta plantilla. Si hay build con worker, se conserva el ZIP fuente versionado previo a compilar."
                     >
                       <Download size={14} />
                       Descargar bundle actual
@@ -1080,8 +1080,14 @@ export default function TemplatesContainer({
                         const dependencies = report.info?.dependencies || {};
                         const dependencyKeys = Object.keys(dependencies);
                         const latestCloudBuild = version.cloud_builds?.[0] || null;
-                        const cloudBuildReady = latestCloudBuild?.status === "BUILT" && Boolean(latestCloudBuild.serve_url);
+                        const cloudBuildHasUsableArtifact = latestCloudBuild?.cloud_provider === "desktop_worker"
+                          ? Boolean(latestCloudBuild.build_output_storage_path)
+                          : Boolean(latestCloudBuild?.serve_url || latestCloudBuild?.build_output_storage_path);
+                        const cloudBuildReady = latestCloudBuild?.status === "BUILT" && cloudBuildHasUsableArtifact;
+                        const cloudBuildMissingArtifact = latestCloudBuild?.status === "BUILT" && !cloudBuildHasUsableArtifact;
                         const cloudBuildRunning = latestCloudBuild?.status === "BUILDING";
+                        const cloudBuildQueued = cloudBuildRunning && latestCloudBuild?.provider_status === "QUEUED";
+                        const cloudBuildClaimed = cloudBuildRunning && !cloudBuildQueued;
                         const cloudBuildFailed = latestCloudBuild?.status === "BUILD_FAILED";
                         const versionDownloadHref = `/api/admin/remotion/template-versions/${version.id}/download`;
 
@@ -1263,21 +1269,25 @@ export default function TemplatesContainer({
                               <div className={`p-3.5 rounded-xl border text-xs space-y-2 ${
                                 cloudBuildReady
                                   ? "bg-blue-500/10 border-blue-500/20 text-blue-700 dark:text-blue-300"
-                                  : cloudBuildFailed
+                                  : cloudBuildFailed || cloudBuildMissingArtifact
                                     ? "bg-red-500/10 border-red-500/20 text-red-700 dark:text-red-400"
                                     : "bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-300"
                               }`}>
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                   <div className="flex min-w-0 items-center gap-1.5">
-                                    {cloudBuildRunning ? <Loader2 size={14} className="shrink-0 animate-spin" /> : <Cloud size={14} className="shrink-0" />}
+                                    {cloudBuildClaimed ? <Loader2 size={14} className="shrink-0 animate-spin" /> : <Cloud size={14} className="shrink-0" />}
                                     <span className="font-semibold">
                                       {cloudBuildReady
-                                        ? "Bundle cloud listo para Lambda"
+                                        ? "Bundle compilado listo para worker"
                                         : cloudBuildFailed
-                                          ? "Build cloud fallido"
+                                          ? "Build con worker fallido"
+                                          : cloudBuildMissingArtifact
+                                            ? "Build sin artefacto renderizable"
+                                          : cloudBuildQueued
+                                            ? "Build en cola; esperando worker"
                                           : cloudBuildRunning
-                                            ? "Build cloud en progreso"
-                                            : "Pendiente de build cloud"}
+                                            ? "Build con worker en progreso"
+                                            : "Pendiente de build con worker"}
                                     </span>
                                   </div>
                                   {canReview && (
@@ -1300,7 +1310,7 @@ export default function TemplatesContainer({
                                         className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-300"
                                       >
                                         {cloudBuildingVersionId === version.id ? <Loader2 size={12} className="animate-spin" /> : <Cloud size={12} />}
-                                        Construir para cloud
+                                        Construir con worker
                                       </button>
                                     </div>
                                   )}
@@ -1310,9 +1320,14 @@ export default function TemplatesContainer({
                                     {latestCloudBuild.provider_status_detail}
                                   </p>
                                 )}
-                                {cloudBuildReady && latestCloudBuild?.serve_url && (
-                                  <p className="truncate font-mono text-[10px] opacity-80" title={latestCloudBuild.serve_url}>
-                                    {latestCloudBuild.serve_url}
+                                {cloudBuildMissingArtifact && (
+                                  <p className="text-[10px] leading-relaxed opacity-90">
+                                    El worker marco el build como terminado, pero no registro `build_output_storage_path`. Sin ese artefacto no se habilita render final.
+                                  </p>
+                                )}
+                                {cloudBuildReady && (latestCloudBuild?.serve_url || latestCloudBuild?.build_output_storage_path) && (
+                                  <p className="truncate font-mono text-[10px] opacity-80" title={latestCloudBuild.serve_url || latestCloudBuild.build_output_storage_path || ""}>
+                                    {latestCloudBuild.serve_url || latestCloudBuild.build_output_storage_path}
                                   </p>
                                 )}
                               </div>
@@ -1322,7 +1337,7 @@ export default function TemplatesContainer({
                               <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-700 dark:text-amber-300 flex items-center gap-1.5 animate-in fade-in duration-200">
                                 <ShieldCheck size={14} className="shrink-0" />
                                 <span className="font-medium">
-                                  Aprobacion historica detectada. Para render final, construye este ZIP en cloud.
+                                  Aprobacion historica detectada. Para render final, construye este ZIP con worker.
                                 </span>
                               </div>
                             )}
@@ -1440,8 +1455,10 @@ function TemplateCard({
   const isGlobal = tpl.organization_id === null;
   const isExternalPending = tpl.render_mode === "EXTERNAL_BUNDLE_PENDING";
   const hasExternalReference = tpl.render_mode === "INTERNAL_WITH_EXTERNAL_REFERENCE";
-  const isCloudReady = tpl.render_mode === "EXTERNAL_LAMBDA_SITE_READY";
-  const needsCloudBuild = tpl.render_mode === "EXTERNAL_CLOUD_BUILD_READY" || tpl.render_mode === "EXTERNAL_CLOUD_BUILD_FAILED";
+  const isCloudReady = tpl.render_mode === "EXTERNAL_BUNDLE_SITE_READY";
+  const hasCloudBuildFailed = tpl.render_mode === "EXTERNAL_CLOUD_BUILD_FAILED";
+  const needsCloudBuild = tpl.render_mode === "EXTERNAL_CLOUD_BUILD_READY" || hasCloudBuildFailed;
+  const isCloudBuildQueued = tpl.cloud_build_status === "BUILDING" && tpl.cloud_build_provider_status === "QUEUED";
 
   return (
     <motion.div
@@ -1503,7 +1520,7 @@ function TemplateCard({
               title={tpl.render_status_label}
             >
               {isExternalPending || needsCloudBuild ? <AlertTriangle size={10} /> : <PlayCircle size={10} />}
-              {isCloudReady ? "Bundle cloud listo" : needsCloudBuild ? "Build cloud pendiente" : tpl.storage_path ? "ZIP referencia" : "Renderizable ahora"}
+              {isCloudReady ? "Bundle compilado listo" : hasCloudBuildFailed ? "Build con worker fallido" : isCloudBuildQueued ? "En cola para worker" : needsCloudBuild ? "Build con worker activo" : tpl.storage_path ? "ZIP referencia" : "Renderizable ahora"}
             </span>
           </div>
         </div>

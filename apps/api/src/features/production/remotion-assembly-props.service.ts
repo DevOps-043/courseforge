@@ -2,6 +2,10 @@ import {
   type TemplateRenderConfig,
   parseTemplateRenderConfig,
 } from './template-render-config.service';
+import {
+  parseLayoutOverrideManifests,
+  type LayoutOverrideManifestList,
+} from './layout-overrides.service';
 
 export const ASSEMBLY_FPS = 30;
 export const FALLBACK_DURATION_SECONDS = 10;
@@ -26,6 +30,7 @@ export interface AssemblyInputProps {
   brollClips: { url: string; durationInFrames: number; order: number }[];
   transitionType: 'fade' | 'slide' | 'none';
   templateConfig: TemplateRenderConfig;
+  layoutOverrides: LayoutOverrideManifestList;
 }
 
 interface NormalizedAssemblyAssets {
@@ -165,11 +170,13 @@ export function buildAssemblyInputProps(params: {
   compositionId: string;
   transitionType: unknown;
   templateConfig?: unknown;
+  layoutOverrides?: unknown;
   fps?: number;
 }): AssemblyInputProps {
   const fps = params.fps ?? ASSEMBLY_FPS;
   const normalized = normalizeAssemblyAssets(params.assets, fps);
   const templateConfig = parseTemplateRenderConfig(params.templateConfig);
+  const layoutOverrides = parseLayoutOverrideManifests(params.layoutOverrides);
   const hasPrimaryAssets = Boolean(
     normalized.voiceAudioUrl ||
       normalized.avatarVideoUrl ||
@@ -207,5 +214,6 @@ export function buildAssemblyInputProps(params: {
       ...templateConfig,
       transitionType: transition,
     },
+    layoutOverrides,
   };
 }

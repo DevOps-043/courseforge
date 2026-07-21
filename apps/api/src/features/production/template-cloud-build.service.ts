@@ -59,7 +59,7 @@ const SECURITY_PROFILE = {
   isolation: 'codebuild-ephemeral',
   secrets: 'none-from-courseforge',
   network: 'restricted-by-codebuild-project',
-  artifactContract: 'lambda-site-url',
+  artifactContract: 'external-remotion-site-url',
 };
 
 export class TemplateCloudBuildService {
@@ -513,7 +513,7 @@ export class TemplateCloudBuildService {
 
     const baseUrl = process.env.REMOTION_TEMPLATE_BUILD_PUBLIC_BASE_URL;
     if (!baseUrl?.trim()) {
-      throw new Error('REMOTION_TEMPLATE_BUILD_PUBLIC_BASE_URL is required to mark cloud build as Lambda-ready.');
+      throw new Error('REMOTION_TEMPLATE_BUILD_PUBLIC_BASE_URL is required to mark cloud build as render-ready.');
     }
 
     return `${baseUrl.replace(/\/+$/, '')}/${encodeURIComponent(build.id)}/index.html`;
@@ -539,17 +539,17 @@ export class TemplateCloudBuildService {
   }
 
   private buildSourceStoragePath(templateVersionId: string, bundleHash: string): string {
-    const bucket = process.env.REMOTION_TEMPLATE_SOURCE_BUCKET || process.env.REMOTION_TEMPLATE_BUILD_BUCKET || process.env.REMOTION_LAMBDA_BUCKET || 'remotion-template-builds';
+    const bucket = process.env.REMOTION_TEMPLATE_SOURCE_BUCKET || process.env.REMOTION_TEMPLATE_BUILD_BUCKET || 'remotion-template-builds';
     return `s3://${bucket}/template-sources/${templateVersionId}/${bundleHash}.zip`;
   }
 
   private buildOutputStoragePath(buildId: string): string {
-    const bucket = process.env.REMOTION_TEMPLATE_BUILD_BUCKET || process.env.REMOTION_LAMBDA_BUCKET || 'remotion-template-builds';
+    const bucket = process.env.REMOTION_TEMPLATE_BUILD_BUCKET || 'remotion-template-builds';
     return `s3://${bucket}/template-sites/${buildId}`;
   }
 
   private buildLogStoragePath(buildId: string): string {
-    const bucket = process.env.REMOTION_TEMPLATE_BUILD_LOG_BUCKET || process.env.REMOTION_TEMPLATE_BUILD_BUCKET || process.env.REMOTION_LAMBDA_BUCKET || 'remotion-template-builds';
+    const bucket = process.env.REMOTION_TEMPLATE_BUILD_LOG_BUCKET || process.env.REMOTION_TEMPLATE_BUILD_BUCKET || 'remotion-template-builds';
     return `s3://${bucket}/template-build-logs/${buildId}.log`;
   }
 
@@ -587,7 +587,6 @@ export class TemplateCloudBuildService {
     return (
       process.env.REMOTION_TEMPLATE_CODEBUILD_REGION ||
       process.env.AWS_REGION ||
-      process.env.REMOTION_LAMBDA_REGION ||
       'us-east-2'
     );
   }

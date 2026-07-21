@@ -131,8 +131,11 @@ export interface MaterialAssets {
     // Campo de video final (post-producción)
     final_video_url?: string;
     final_video_source?: 'upload' | 'link'; // Tracks how the final video was provided
+    final_video_layout_stale?: boolean;
     video_duration?: number;
     assembly_target_duration_seconds?: number;
+    layout_overrides?: Record<string, unknown>[];
+    layout_overrides_updated_at?: string;
     // Campos de producción visual (Fase 6)
     production_status?: ProductionStatus;
     gamma_deck_id?: string;

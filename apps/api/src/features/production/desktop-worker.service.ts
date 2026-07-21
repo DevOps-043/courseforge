@@ -519,6 +519,7 @@ export class DesktopWorkerService {
           final_video_source: 'desktop_worker',
           final_video_storage_provider: 'supabase',
           final_video_storage_path: input.outputStoragePath,
+          final_video_layout_stale: false,
           video_duration: duration,
           production_status: 'COMPLETED',
           updated_at: new Date().toISOString(),
@@ -729,6 +730,7 @@ export class DesktopWorkerService {
       compositionId,
       transitionType: snapshot.variables?.transitionType,
       templateConfig,
+      layoutOverrides: snapshot.variables?.layoutOverrides,
     });
     const propsHash = buildStableHash(resolvedProps);
     const bundleInfo = await this.publishInternalBundle();

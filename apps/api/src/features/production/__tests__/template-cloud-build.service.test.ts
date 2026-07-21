@@ -62,7 +62,7 @@ function createSupabaseMock(options: {
 }
 
 describe('TemplateCloudBuildService', () => {
-  it('reuses an existing Lambda-ready build for an approved template version', async () => {
+  it('reuses an existing render-ready build for an approved template version', async () => {
     const { supabase } = createSupabaseMock({
       version: {
         id: 'version-1',

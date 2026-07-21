@@ -106,6 +106,7 @@ export class RemotionWorkerService {
         compositionId: internalCompositionId,
         transitionType: job.input_snapshot?.variables?.transitionType,
         templateConfig,
+        layoutOverrides: job.input_snapshot?.variables?.layoutOverrides,
       });
       propsHash = buildStableHash(inputProps);
       const timeoutInMilliseconds = resolveLocalRenderTimeoutMs();
@@ -145,7 +146,7 @@ export class RemotionWorkerService {
         fps: inputProps.fps,
       });
 
-      console.log('[RemotionWorker] Rendering internal composition. External ZIP bundles require CodeBuild + Remotion Lambda.', {
+      console.log('[RemotionWorker] Rendering internal composition. External ZIP bundles require a render-ready cloud build.', {
         jobId,
         templateId,
         rawTemplateCompositionId: template.composition_id,
@@ -189,6 +190,7 @@ export class RemotionWorkerService {
         ...assets,
         final_video_url: publicUrl,
         final_video_source: 'upload',
+        final_video_layout_stale: false,
         video_duration: Math.round(inputProps.totalDurationInFrames / inputProps.fps),
         production_status: 'COMPLETED',
         updated_at: new Date().toISOString(),

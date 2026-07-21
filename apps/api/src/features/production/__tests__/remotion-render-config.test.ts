@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  DEFAULT_LAMBDA_RENDER_TIMEOUT_MS,
   buildStableHash,
   getRemotionRenderConfig,
   getRemotionRenderReadiness,
@@ -35,31 +34,15 @@ function withEnv(updates: Record<string, string | undefined>, fn: () => void) {
 }
 
 describe('getRemotionRenderConfig', () => {
-  it('defaults to the local provider without requiring Lambda secrets', () => {
-    withEnv({
-      RENDER_PROVIDER: undefined,
-      REMOTION_LAMBDA_REGION: undefined,
-      REMOTION_LAMBDA_FUNCTION_NAME: undefined,
-      REMOTION_LAMBDA_SERVE_URL: undefined,
-      REMOTION_LAMBDA_BUCKET: undefined,
-    }, () => {
+  it('defaults to the local legacy provider', () => {
+    withEnv({ RENDER_PROVIDER: undefined }, () => {
       const config = getRemotionRenderConfig();
       assert.equal(config.provider, 'local');
-      assert.equal(config.lambda.concurrency, null);
-      assert.equal(config.lambda.framesPerLambda, 600);
-      assert.equal(config.lambda.concurrencyPerLambda, 1);
-      assert.equal(config.lambda.timeoutInMilliseconds, DEFAULT_LAMBDA_RENDER_TIMEOUT_MS);
     });
   });
 
-  it('accepts desktop_worker without requiring Lambda config', () => {
-    withEnv({
-      RENDER_PROVIDER: 'desktop_worker',
-      REMOTION_LAMBDA_REGION: undefined,
-      REMOTION_LAMBDA_FUNCTION_NAME: undefined,
-      REMOTION_LAMBDA_SERVE_URL: undefined,
-      REMOTION_LAMBDA_BUCKET: undefined,
-    }, () => {
+  it('accepts desktop_worker without external render provider config', () => {
+    withEnv({ RENDER_PROVIDER: 'desktop_worker' }, () => {
       const config = getRemotionRenderConfig();
       const readiness = getRemotionRenderReadiness();
 
@@ -68,15 +51,13 @@ describe('getRemotionRenderConfig', () => {
     });
   });
 
-  it('fails fast when Lambda is enabled without required config', () => {
-    withEnv({
-      RENDER_PROVIDER: 'lambda',
-      REMOTION_LAMBDA_REGION: undefined,
-      REMOTION_LAMBDA_FUNCTION_NAME: undefined,
-      REMOTION_LAMBDA_SERVE_URL: undefined,
-      REMOTION_LAMBDA_BUCKET: undefined,
-    }, () => {
-      assert.throws(() => getRemotionRenderConfig(), /REMOTION_LAMBDA_REGION/);
+  it('treats unsupported provider values as local legacy renders', () => {
+    withEnv({ RENDER_PROVIDER: 'unsupported_provider' }, () => {
+      const config = getRemotionRenderConfig();
+      const readiness = getRemotionRenderReadiness();
+
+      assert.equal(config.provider, 'local');
+      assert.equal(readiness.provider, 'local');
     });
   });
 
@@ -85,62 +66,6 @@ describe('getRemotionRenderConfig', () => {
       buildStableHash({ b: 2, a: { d: 4, c: 3 } }),
       buildStableHash({ a: { c: 3, d: 4 }, b: 2 }),
     );
-  });
-
-  it('reports Lambda readiness using only REST polling config', () => {
-    withEnv({
-      RENDER_PROVIDER: 'lambda',
-      REMOTION_LAMBDA_REGION: 'us-east-1',
-      REMOTION_LAMBDA_FUNCTION_NAME: 'remotion-render',
-      REMOTION_LAMBDA_SERVE_URL: 'https://example.com/sites/courseforge',
-      REMOTION_LAMBDA_BUCKET: 'courseforge-renders',
-    }, () => {
-      const readiness = getRemotionRenderReadiness();
-      const checkNames = readiness.checks.map((check) => check.name);
-
-      assert.equal(readiness.provider, 'lambda');
-      assert.equal(checkNames.includes('REMOTION_LAMBDA_BUCKET'), true);
-      assert.equal(readiness.tuning.lambdaTimeoutInMilliseconds, DEFAULT_LAMBDA_RENDER_TIMEOUT_MS);
-    });
-  });
-
-  it('uses framesPerLambda by default for Lambda render chunking', () => {
-    withEnv({
-      RENDER_PROVIDER: 'lambda',
-      REMOTION_LAMBDA_REGION: 'us-east-1',
-      REMOTION_LAMBDA_FUNCTION_NAME: 'remotion-render',
-      REMOTION_LAMBDA_SERVE_URL: 'https://example.com/sites/courseforge',
-      REMOTION_LAMBDA_BUCKET: 'courseforge-renders',
-      REMOTION_LAMBDA_CONCURRENCY: undefined,
-      REMOTION_LAMBDA_FRAMES_PER_LAMBDA: undefined,
-      REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA: '1',
-    }, () => {
-      const config = getRemotionRenderConfig();
-
-      assert.equal(config.lambda.concurrency, null);
-      assert.equal(config.lambda.framesPerLambda, 600);
-      assert.equal(config.lambda.concurrencyPerLambda, 1);
-    });
-  });
-
-  it('allows Lambda framesPerLambda tuning through environment variables', () => {
-    withEnv({
-      RENDER_PROVIDER: 'lambda',
-      REMOTION_LAMBDA_REGION: 'us-east-1',
-      REMOTION_LAMBDA_FUNCTION_NAME: 'remotion-render',
-      REMOTION_LAMBDA_SERVE_URL: 'https://example.com/sites/courseforge',
-      REMOTION_LAMBDA_BUCKET: 'courseforge-renders',
-      REMOTION_LAMBDA_CONCURRENCY: undefined,
-      REMOTION_LAMBDA_FRAMES_PER_LAMBDA: '90',
-      REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA: '1',
-    }, () => {
-      const config = getRemotionRenderConfig();
-
-      assert.equal(config.lambda.concurrency, null);
-      assert.equal(config.lambda.framesPerLambda, 90);
-      assert.equal(config.lambda.concurrencyPerLambda, 1);
-      assert.equal(config.lambda.timeoutInMilliseconds, DEFAULT_LAMBDA_RENDER_TIMEOUT_MS);
-    });
   });
 
   it('resolves local and preview render timeouts from the right environment variables', () => {
@@ -172,105 +97,6 @@ describe('getRemotionRenderConfig', () => {
       assert.equal(readiness.ok, false);
       assert.equal(renderTimeoutCheck?.ok, false);
       assert.equal(externalTimeoutCheck?.ok, false);
-    });
-  });
-
-  it('allows Lambda concurrency tuning only when framesPerLambda is absent', () => {
-    withEnv({
-      RENDER_PROVIDER: 'lambda',
-      REMOTION_LAMBDA_REGION: 'us-east-1',
-      REMOTION_LAMBDA_FUNCTION_NAME: 'remotion-render',
-      REMOTION_LAMBDA_SERVE_URL: 'https://example.com/sites/courseforge',
-      REMOTION_LAMBDA_BUCKET: 'courseforge-renders',
-      REMOTION_LAMBDA_CONCURRENCY: '2',
-      REMOTION_LAMBDA_FRAMES_PER_LAMBDA: undefined,
-      REMOTION_LAMBDA_CONCURRENCY_PER_LAMBDA: '1',
-    }, () => {
-      const config = getRemotionRenderConfig();
-
-      assert.equal(config.lambda.concurrency, 2);
-      assert.equal(config.lambda.framesPerLambda, null);
-      assert.equal(config.lambda.concurrencyPerLambda, 1);
-    });
-  });
-
-  it('rejects mixed Lambda chunking strategies', () => {
-    withEnv({
-      RENDER_PROVIDER: 'lambda',
-      REMOTION_LAMBDA_REGION: 'us-east-1',
-      REMOTION_LAMBDA_FUNCTION_NAME: 'remotion-render',
-      REMOTION_LAMBDA_SERVE_URL: 'https://example.com/sites/courseforge',
-      REMOTION_LAMBDA_BUCKET: 'courseforge-renders',
-      REMOTION_LAMBDA_CONCURRENCY: '2',
-      REMOTION_LAMBDA_FRAMES_PER_LAMBDA: '120',
-    }, () => {
-      assert.throws(
-        () => getRemotionRenderConfig(),
-        /REMOTION_LAMBDA_CONCURRENCY.*REMOTION_LAMBDA_FRAMES_PER_LAMBDA/,
-      );
-    });
-  });
-
-  it('rejects invalid Lambda concurrency tuning values', () => {
-    withEnv({
-      RENDER_PROVIDER: 'lambda',
-      REMOTION_LAMBDA_REGION: 'us-east-1',
-      REMOTION_LAMBDA_FUNCTION_NAME: 'remotion-render',
-      REMOTION_LAMBDA_SERVE_URL: 'https://example.com/sites/courseforge',
-      REMOTION_LAMBDA_BUCKET: 'courseforge-renders',
-      REMOTION_LAMBDA_CONCURRENCY: '0',
-    }, () => {
-      assert.throws(() => getRemotionRenderConfig(), /REMOTION_LAMBDA_CONCURRENCY/);
-    });
-  });
-
-  it('allows a bounded Lambda render timeout override', () => {
-    withEnv({
-      RENDER_PROVIDER: 'lambda',
-      REMOTION_LAMBDA_REGION: 'us-east-1',
-      REMOTION_LAMBDA_FUNCTION_NAME: 'remotion-render',
-      REMOTION_LAMBDA_SERVE_URL: 'https://example.com/sites/courseforge',
-      REMOTION_LAMBDA_BUCKET: 'courseforge-renders',
-      REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS: '840000',
-    }, () => {
-      const config = getRemotionRenderConfig();
-
-      assert.equal(config.lambda.timeoutInMilliseconds, 840000);
-    });
-  });
-
-  it('flags undersized production Lambda timeout overrides in readiness', () => {
-    withEnv({
-      NODE_ENV: 'production',
-      RENDER_PROVIDER: 'lambda',
-      NEXT_PUBLIC_SUPABASE_URL: 'https://supabase.example.com',
-      SUPABASE_SERVICE_ROLE_KEY: 'service-role',
-      API_PUBLIC_URL: 'https://api.example.com',
-      REMOTION_LAMBDA_REGION: 'us-east-1',
-      REMOTION_LAMBDA_FUNCTION_NAME: 'remotion-render',
-      REMOTION_LAMBDA_SERVE_URL: 'https://example.com/sites/courseforge',
-      REMOTION_LAMBDA_BUCKET: 'courseforge-renders',
-      REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS: '600000',
-    }, () => {
-      const readiness = getRemotionRenderReadiness();
-      const timeoutCheck = readiness.checks.find(
-        (check) => check.name === 'REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS',
-      );
-
-      assert.equal(timeoutCheck?.ok, false);
-    });
-  });
-
-  it('rejects Lambda render timeouts that exceed the function safety window', () => {
-    withEnv({
-      RENDER_PROVIDER: 'lambda',
-      REMOTION_LAMBDA_REGION: 'us-east-1',
-      REMOTION_LAMBDA_FUNCTION_NAME: 'remotion-render',
-      REMOTION_LAMBDA_SERVE_URL: 'https://example.com/sites/courseforge',
-      REMOTION_LAMBDA_BUCKET: 'courseforge-renders',
-      REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS: '900001',
-    }, () => {
-      assert.throws(() => getRemotionRenderConfig(), /REMOTION_LAMBDA_TIMEOUT_IN_MILLISECONDS/);
     });
   });
 

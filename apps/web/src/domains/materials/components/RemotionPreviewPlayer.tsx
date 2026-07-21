@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { Player } from "@remotion/player";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { getAssemblyAssetReadiness } from "@/remotion/assembly-assets.normalizer";
 import { buildAssemblyProps } from "@/remotion/buildAssemblyProps";
 import { getAssemblyComposition } from "@/remotion/compositions/registry";
+import type { LayoutOverrideManifest } from "@/remotion/layout-overrides";
 import type { TemplateRenderConfigInput } from "@/remotion/template-config";
 import { ASSEMBLY_FPS, ASSEMBLY_HEIGHT, ASSEMBLY_WIDTH } from "@/remotion/types";
 import type { MaterialAssets } from "../types/materials.types";
@@ -15,7 +17,9 @@ interface RemotionPreviewPlayerProps {
   /** Slug de composición (remotion_templates.composition_id). */
   templateSlug: string | null | undefined;
   templateConfig?: TemplateRenderConfigInput;
+  layoutOverrides?: LayoutOverrideManifest[];
   targetDurationSeconds?: number;
+  overlay?: ReactNode;
 }
 
 /**
@@ -34,7 +38,9 @@ export function RemotionPreviewPlayer({
   assets,
   templateSlug,
   templateConfig,
+  layoutOverrides = [],
   targetDurationSeconds,
+  overlay,
 }: RemotionPreviewPlayerProps) {
   const [mounted, setMounted] = useState(false);
 
@@ -57,13 +63,21 @@ export function RemotionPreviewPlayer({
 
   const built = useMemo(() => {
     try {
-      return { ok: true as const, props: buildAssemblyProps(assetsWithTarget, templateSlug, templateConfig) };
+      return {
+        ok: true as const,
+        props: buildAssemblyProps(
+          assetsWithTarget,
+          templateSlug,
+          templateConfig,
+          layoutOverrides,
+        ),
+      };
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Assets inválidos para preview";
       return { ok: false as const, error: message };
     }
-  }, [assetsWithTarget, templateSlug, templateConfig]);
+  }, [assetsWithTarget, templateSlug, templateConfig, layoutOverrides]);
 
   if (!mounted) {
     return (
@@ -110,6 +124,7 @@ export function RemotionPreviewPlayer({
         acknowledgeRemotionLicense
         style={{ width: "100%", height: "100%" }}
       />
+      {overlay}
     </div>
   );
 }

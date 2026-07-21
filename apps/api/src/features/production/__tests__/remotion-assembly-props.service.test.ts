@@ -9,6 +9,7 @@ import {
   resolveCompositionId,
   resolveInternalCompositionId,
 } from '../remotion-assembly-props.service';
+import { parseLayoutOverrideManifests } from '../layout-overrides.service';
 
 const VIDEO_URL = 'https://cdn.example.com/video.mp4';
 const AUDIO_URL = 'https://cdn.example.com/audio.mp3';
@@ -294,6 +295,84 @@ describe('remotion assembly props contract', () => {
     assert.equal(props.templateConfig.accentColor, '#ff00aa');
     assert.equal(props.templateConfig.backgroundColor, '#101010');
     assert.equal(props.templateConfig.avatarScale, 0.3);
+  });
+
+  it('defaults layout overrides to an empty list', () => {
+    const props = buildAssemblyInputProps({
+      compositionId: 'full-slides',
+      transitionType: undefined,
+      assets: {
+        voice_audio: {
+          storage_path: 'production-assets/voice.mp3',
+          public_url: AUDIO_URL,
+          duration: 10,
+        },
+      },
+    });
+
+    assert.deepEqual(props.layoutOverrides, []);
+  });
+
+  it('passes validated layout overrides into server render props', () => {
+    const props = buildAssemblyInputProps({
+      compositionId: 'full-slides',
+      transitionType: undefined,
+      layoutOverrides: [
+        {
+          version: 1,
+          templateId: 'full-slides',
+          componentId: 'component-1',
+          canvas: { width: 1920, height: 1080, fps: ASSEMBLY_FPS },
+          edits: [
+            { layerId: 'avatar', kind: 'position', x: 1280, y: 620 },
+            { layerId: 'primaryVisual', kind: 'size', width: 720, height: 405 },
+          ],
+        },
+      ],
+      assets: {
+        voice_audio: {
+          storage_path: 'production-assets/voice.mp3',
+          public_url: AUDIO_URL,
+          duration: 10,
+        },
+      },
+    });
+
+    assert.equal(props.layoutOverrides.length, 1);
+    assert.equal(props.layoutOverrides[0].edits.length, 2);
+  });
+
+  it('rejects arbitrary style data in layout overrides', () => {
+    assert.throws(
+      () => parseLayoutOverrideManifests([
+        {
+          version: 1,
+          canvas: { width: 1920, height: 1080 },
+          edits: [
+            {
+              layerId: 'avatar',
+              kind: 'position',
+              x: 10,
+              y: 20,
+              css: 'position:fixed;inset:0',
+            },
+          ],
+        },
+      ]),
+      /Unrecognized key|unrecognized_keys/,
+    );
+  });
+
+  it('rejects layout overrides outside safe bounds', () => {
+    assert.throws(
+      () => parseLayoutOverrideManifests([
+        {
+          version: 1,
+          canvas: { width: 1920, height: 1080 },
+          edits: [{ layerId: 'avatar', kind: 'size', width: -1, height: 405 }],
+        },
+      ]),
+    );
   });
 
   it('falls back from invalid template config values', () => {

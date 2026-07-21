@@ -108,6 +108,27 @@ function inferVisualStyle(userText: string) {
   return (styleParts.join("; ") || "Clean educational motion graphics with readable text and soft transitions.").slice(0, 240);
 }
 
+function inferAccentColor(userText: string) {
+  const explicitHex = userText.match(/#[0-9a-fA-F]{6}\b/);
+  if (explicitHex) return explicitHex[0].toUpperCase();
+
+  const normalized = userText.toLowerCase();
+  const colorHints: Array<[string[], string]> = [
+    [["turquesa", "cyan", "cian"], "#00D4B3"],
+    [["azul", "blue"], "#2563EB"],
+    [["verde", "green"], "#16A34A"],
+    [["rojo", "red"], "#DC2626"],
+    [["naranja", "orange"], "#F97316"],
+    [["amarillo", "yellow", "dorado"], "#F59E0B"],
+    [["rosa", "pink", "magenta"], "#DB2777"],
+    [["morado", "purpura", "purple", "violeta"], "#5B21B6"],
+    [["negro", "black"], "#111827"],
+    [["blanco", "white"], "#F8FAFC"],
+  ];
+
+  return colorHints.find(([terms]) => terms.some((term) => normalized.includes(term)))?.[1] || "#5B21B6";
+}
+
 export function stableJsonHash(value: unknown): string {
   return crypto.createHash("sha256").update(stableStringify(value)).digest("hex");
 }
@@ -186,6 +207,7 @@ export function buildSpecFromConversation(input: {
   const inferredStyle = inferVisualStyle(userText);
   const requiredAssets = inferRequiredAssets(userText);
   const displaySubtitle = inferDisplaySubtitle(userText, requiredAssets);
+  const accentColor = inferAccentColor(userText);
 
   return normalizeBundleAgentSpecForRendering(bundleAgentSpecSchema.parse({
     title,
@@ -200,7 +222,7 @@ export function buildSpecFromConversation(input: {
     defaultProps: {
       title,
       subtitle: displaySubtitle,
-      accentColor: "#5B21B6",
+      accentColor,
     },
     propsSchema: {
       type: "object",

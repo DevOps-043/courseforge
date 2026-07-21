@@ -1,4 +1,4 @@
-export interface ExternalLambdaRenderTargetInput {
+export interface ExternalRenderTargetInput {
   jobSnapshot?: Record<string, unknown> | null;
   version?: Record<string, unknown> | null;
   build?: Record<string, unknown> | null;
@@ -6,7 +6,7 @@ export interface ExternalLambdaRenderTargetInput {
 
 const COURSEFORGE_REMOTION_VERSION = '4.0.484';
 
-export interface ExternalLambdaRenderTarget {
+export interface ExternalRenderTarget {
   templateVersionId: string;
   buildId: string;
   serveUrl: string;
@@ -17,9 +17,9 @@ export interface ExternalLambdaRenderTarget {
   cloudProvider: string | null;
 }
 
-export function resolveExternalLambdaRenderTarget(
-  input: ExternalLambdaRenderTargetInput,
-): ExternalLambdaRenderTarget {
+export function resolveExternalRenderTarget(
+  input: ExternalRenderTargetInput,
+): ExternalRenderTarget {
   const snapshot = input.jobSnapshot ?? {};
   const version = input.version ?? {};
   const build = input.build ?? {};
@@ -63,11 +63,11 @@ export function resolveExternalLambdaRenderTarget(
   };
 }
 
-export function isExternalLambdaReadyBuild(build: unknown): build is Record<string, unknown> {
-  return getExternalLambdaReadiness(build).ready;
+export function isExternalReadyBuild(build: unknown): build is Record<string, unknown> {
+  return getExternalBuildReadiness(build).ready;
 }
 
-export function getExternalLambdaReadiness(build: unknown): {
+export function getExternalBuildReadiness(build: unknown): {
   ready: boolean;
   reason: string | null;
 } {

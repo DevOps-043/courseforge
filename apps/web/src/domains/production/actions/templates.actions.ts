@@ -10,7 +10,9 @@ import {
   parseTemplateRenderConfig,
   type TemplateRenderConfigInput,
 } from "@/remotion/template-config";
+import type { EditableLayerDefinition } from "@/remotion/layout-overrides";
 import { createTemplateVersionRecord } from "@/domains/production/templates/template-version.service";
+import { DesktopWorkerControlPlane } from "@/lib/server/desktop-worker-control-plane";
 
 export interface RemotionTemplateVersion {
   id: string;
@@ -108,7 +110,7 @@ const TEMPLATE_BUNDLE_BUCKET = "template-bundles";
 export type RemotionTemplateRenderMode =
   | "SUPPORTED_INTERNAL"
   | "INTERNAL_WITH_EXTERNAL_REFERENCE"
-  | "EXTERNAL_LAMBDA_SITE_READY"
+  | "EXTERNAL_BUNDLE_SITE_READY"
   | "EXTERNAL_CLOUD_BUILD_READY"
   | "EXTERNAL_CLOUD_BUILD_FAILED"
   | "EXTERNAL_BUNDLE_PENDING"
@@ -183,9 +185,12 @@ export interface RemotionTemplate {
   render_status_label: string;
   cloud_build_id?: string | null;
   cloud_build_status?: "BUILDING" | "BUILT" | "BUILD_FAILED" | null;
+  cloud_build_provider_status?: string | null;
   cloud_build_serve_url?: string | null;
+  cloud_build_output_storage_path?: string | null;
   cloud_build_composition_id?: string | null;
   cloud_build_validated?: boolean;
+  editable_layers?: EditableLayerDefinition[];
 }
 
 interface RemotionTemplateCloudBuild {
@@ -193,6 +198,8 @@ interface RemotionTemplateCloudBuild {
   template_version_id: string;
   status: "BUILDING" | "BUILT" | "BUILD_FAILED";
   serve_url: string | null;
+  build_output_storage_path?: string | null;
+  cloud_provider?: string | null;
   composition_id: string | null;
   build_log?: string | null;
   build_error?: string | null;
@@ -213,11 +220,12 @@ function decorateTemplate(template: Omit<RemotionTemplate, "render_mode" | "rend
       ? template.composition_id
       : null;
   const hasCloudBuild = template.cloud_build_status === "BUILT" &&
-    Boolean(template.cloud_build_serve_url) &&
+    Boolean(template.cloud_build_serve_url || template.cloud_build_output_storage_path) &&
     Boolean(cloudCompositionId) &&
     template.cloud_build_validated === true;
   const hasCloudBuildFailure = template.cloud_build_status === "BUILD_FAILED";
   const hasCloudBuildRunning = template.cloud_build_status === "BUILDING";
+  const isCloudBuildQueued = hasCloudBuildRunning && template.cloud_build_provider_status === "QUEUED";
   const renderCompositionId = hasSupportedComposition ? template.composition_id! : DEFAULT_RENDER_COMPOSITION_ID;
   const bundleStatus = template.bundle_status || (hasExternalBundle ? "STORED_REFERENCE" : "NOT_APPLICABLE");
 
@@ -225,26 +233,29 @@ function decorateTemplate(template: Omit<RemotionTemplate, "render_mode" | "rend
   let renderStatusLabel = `Render interno: ${renderCompositionId}`;
 
   if (hasExternalBundle && hasCloudBuild) {
-    renderMode = "EXTERNAL_LAMBDA_SITE_READY";
-    renderStatusLabel = `Bundle cloud listo: ${cloudCompositionId}`;
+    renderMode = "EXTERNAL_BUNDLE_SITE_READY";
+    renderStatusLabel = `Bundle compilado listo: ${cloudCompositionId}`;
+  } else if (hasExternalBundle && isCloudBuildQueued) {
+    renderMode = "EXTERNAL_CLOUD_BUILD_READY";
+    renderStatusLabel = "Build con worker en cola; esperando que un worker lo reclame";
   } else if (hasExternalBundle && hasCloudBuildRunning) {
     renderMode = "EXTERNAL_CLOUD_BUILD_READY";
-    renderStatusLabel = "Build cloud en progreso";
+    renderStatusLabel = "Build con worker en progreso";
   } else if (hasExternalBundle && hasCloudBuildFailure) {
     renderMode = "EXTERNAL_CLOUD_BUILD_FAILED";
-    renderStatusLabel = "Build cloud fallido";
+    renderStatusLabel = "Build con worker fallido";
   } else if (hasExternalBundle && hasLegacySandboxApproval) {
     renderMode = "EXTERNAL_CLOUD_BUILD_READY";
-    renderStatusLabel = "ZIP aprobado historico; requiere construir para cloud";
+    renderStatusLabel = "ZIP aprobado historico; requiere construir con worker";
   } else if (hasSupportedComposition && hasExternalBundle) {
     renderMode = "INTERNAL_WITH_EXTERNAL_REFERENCE";
-    renderStatusLabel = `Renderizable ahora: ${renderCompositionId}. ZIP guardado como referencia (${bundleStatus})`;
+    renderStatusLabel = `ZIP guardado como referencia (${bundleStatus}); requiere build con worker para usar la plantilla custom`;
   } else if (hasSupportedComposition) {
     renderMode = "SUPPORTED_INTERNAL";
     renderStatusLabel = `Renderizable ahora: ${renderCompositionId}`;
   } else if (hasExternalBundle) {
     renderMode = "EXTERNAL_BUNDLE_PENDING";
-    renderStatusLabel = `ZIP guardado como referencia; se usara ${DEFAULT_RENDER_COMPOSITION_ID}`;
+    renderStatusLabel = "ZIP guardado como referencia; requiere aprobacion y build con worker";
   }
 
   return {
@@ -311,6 +322,9 @@ export async function getExternalBundlePreviewDataAction(params: {
         buildId: payload.buildId || null,
         templateVersionId: payload.templateVersionId,
         bundleHash: payload.bundleHash || null,
+        previewId: payload.previewId || null,
+        previewStatus: payload.previewStatus || "MISSING",
+        previewError: payload.previewError || null,
         previewVideoUrl: payload.previewVideoUrl || null,
         previewPosterUrl: payload.previewPosterUrl || null,
         previewDurationSeconds: typeof payload.previewDurationSeconds === "number" ? payload.previewDurationSeconds : null,
@@ -328,8 +342,80 @@ export async function getExternalBundlePreviewDataAction(params: {
   }
 }
 
+export async function requestExternalBundlePreviewRenderAction(params: {
+  templateId: string;
+  componentId?: string | null;
+  variables?: Record<string, unknown>;
+}): Promise<{ success: true; data: ExternalBundlePreviewData } | { success: false; error: string }> {
+  const supabase = await createClient();
+  const token = await getAccessToken(supabase);
+
+  if (!token) {
+    return { success: false, error: "No se encontro un token de autenticacion" };
+  }
+
+  if (!params.templateId) {
+    return { success: false, error: "templateId es requerido" };
+  }
+
+  try {
+    const productionApiUrl = getProductionApiBaseUrl();
+    const response = await fetch(`${productionApiUrl}/api/v1/production/remotion/external-preview/request`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        templateId: params.templateId,
+        componentId: params.componentId || undefined,
+        variables: params.variables || {},
+      }),
+      cache: "no-store",
+    });
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.success) {
+      return {
+        success: false,
+        error: formatExternalPreviewError(payload?.error ?? payload, `HTTP ${response.status}`),
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        serveUrl: payload.serveUrl,
+        compositionId: payload.compositionId,
+        exportMode: payload.exportMode === "root" ? "root" : "component",
+        resolvedProps: payload.resolvedProps || {},
+        propsHash: payload.propsHash,
+        buildHash: payload.buildHash || null,
+        buildId: payload.buildId || null,
+        templateVersionId: payload.templateVersionId,
+        bundleHash: payload.bundleHash || null,
+        previewId: payload.previewId || null,
+        previewStatus: payload.previewStatus || "QUEUED",
+        previewError: payload.previewError || null,
+        previewVideoUrl: payload.previewVideoUrl || null,
+        previewPosterUrl: payload.previewPosterUrl || null,
+        previewDurationSeconds: typeof payload.previewDurationSeconds === "number" ? payload.previewDurationSeconds : null,
+        previewFrames: typeof payload.previewFrames === "number" ? payload.previewFrames : null,
+        compositionDurationSeconds: typeof payload.compositionDurationSeconds === "number" ? payload.compositionDurationSeconds : null,
+        compositionFrames: typeof payload.compositionFrames === "number" ? payload.compositionFrames : null,
+      },
+    };
+  } catch (error: any) {
+    console.error("[TemplatesActions] Error requesting external preview render:", error);
+    return {
+      success: false,
+      error: formatExternalPreviewError(error, "No se pudo solicitar el preview externo"),
+    };
+  }
+}
+
 export interface ExternalBundlePreviewData {
-  serveUrl: string;
+  serveUrl: string | null;
   compositionId: string;
   exportMode: "component" | "root";
   resolvedProps: Record<string, unknown>;
@@ -338,6 +424,9 @@ export interface ExternalBundlePreviewData {
   buildId: string | null;
   templateVersionId: string;
   bundleHash: string | null;
+  previewId: string | null;
+  previewStatus: "READY" | "MISSING" | "QUEUED" | "RUNNING" | "FAILED" | "STALE";
+  previewError: string | null;
   previewVideoUrl: string | null;
   previewPosterUrl: string | null;
   previewDurationSeconds: number | null;
@@ -348,27 +437,19 @@ export interface ExternalBundlePreviewData {
 
 export async function startTemplateCloudBuildAction(
   templateVersionId: string,
-): Promise<{ success: boolean; buildId?: string; status?: string; providerBuildId?: string | null; serveUrl?: string | null; error?: string }> {
+): Promise<{ success: boolean; buildId?: string; status?: string; providerBuildId?: string | null; serveUrl?: string | null; buildOutputStoragePath?: string | null; error?: string }> {
   const supabase = await createClient();
-  const token = await getAccessToken(supabase);
-  if (!token) return { success: false, error: "No se encontro un token de autenticacion" };
+  const authenticatedUser = await getAuthenticatedUser(supabase);
+  if (!authenticatedUser) return { success: false, error: "No se encontro un token de autenticacion" };
 
   try {
-    const productionApiUrl = getProductionApiBaseUrl();
-    const response = await fetch(`${productionApiUrl}/api/v1/production/remotion/template-builds`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ templateVersionId }),
-      cache: "no-store",
+    const activeOrgId = await resolveActiveTemplateOrganizationId();
+    if (!activeOrgId) return { success: false, error: "No se encontro organizacion activa" };
+    await requireTemplateReviewerPermission("construir");
+    const payload = await new DesktopWorkerControlPlane(getServiceRoleClient()).startTemplateBuild({
+      templateVersionId,
+      organizationIds: [activeOrgId],
     });
-
-    const payload = await response.json().catch(() => null);
-    if (!response.ok || !payload?.success) {
-      return { success: false, error: formatExternalPreviewError(payload?.error ?? payload, `HTTP ${response.status}`) };
-    }
 
     return {
       success: true,
@@ -376,10 +457,11 @@ export async function startTemplateCloudBuildAction(
       status: payload.status,
       providerBuildId: payload.providerBuildId || null,
       serveUrl: payload.serveUrl || null,
+      buildOutputStoragePath: payload.buildOutputStoragePath || null,
     };
   } catch (error: any) {
-    console.error("[TemplatesActions] Error starting cloud build:", error);
-    return { success: false, error: formatExternalPreviewError(error, "No se pudo iniciar el build cloud") };
+    console.error("[TemplatesActions] Error starting template build:", error);
+    return { success: false, error: formatExternalPreviewError(error, "No se pudo iniciar el build con worker") };
   }
 }
 
@@ -387,19 +469,13 @@ export async function getTemplateCloudBuildStatusAction(
   buildId: string,
 ): Promise<{ success: boolean; build?: RemotionTemplateCloudBuild & { providerBuildId?: string | null; providerStatusDetail?: string | null }; error?: string }> {
   const supabase = await createClient();
-  const token = await getAccessToken(supabase);
-  if (!token) return { success: false, error: "No se encontro un token de autenticacion" };
+  const authenticatedUser = await getAuthenticatedUser(supabase);
+  if (!authenticatedUser) return { success: false, error: "No se encontro un token de autenticacion" };
 
   try {
-    const productionApiUrl = getProductionApiBaseUrl();
-    const response = await fetch(`${productionApiUrl}/api/v1/production/remotion/template-builds/${encodeURIComponent(buildId)}/status`, {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: "no-store",
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok || !payload?.success) {
-      return { success: false, error: formatExternalPreviewError(payload?.error ?? payload, `HTTP ${response.status}`) };
-    }
+    const activeOrgId = await resolveActiveTemplateOrganizationId();
+    if (!activeOrgId) return { success: false, error: "No se encontro organizacion activa" };
+    const payload = await new DesktopWorkerControlPlane(getServiceRoleClient()).getTemplateBuildStatus(buildId, [activeOrgId]);
 
     return {
       success: true,
@@ -408,6 +484,7 @@ export async function getTemplateCloudBuildStatusAction(
         template_version_id: "",
         status: payload.status,
         serve_url: payload.serveUrl || null,
+        build_output_storage_path: payload.buildOutputStoragePath || null,
         composition_id: null,
         provider_status: payload.providerStatus || null,
         provider_status_detail: payload.providerStatusDetail || null,
@@ -416,8 +493,8 @@ export async function getTemplateCloudBuildStatusAction(
       },
     };
   } catch (error: any) {
-    console.error("[TemplatesActions] Error getting cloud build status:", error);
-    return { success: false, error: formatExternalPreviewError(error, "No se pudo consultar el build cloud") };
+    console.error("[TemplatesActions] Error getting template build status:", error);
+    return { success: false, error: formatExternalPreviewError(error, "No se pudo consultar el build con worker") };
   }
 }
 
@@ -458,6 +535,17 @@ function logTemplateRuntimeState(message: string, meta: Record<string, unknown>)
   console.log(`[TemplatesActions] ${message}`, meta);
 }
 
+const TEMPLATE_REVIEWER_ROLES = new Set(["ADMIN", "ARQUITECTO", "SUPERADMIN"]);
+
+async function requireTemplateReviewerPermission(action: string) {
+  const context = await resolveActiveTenantContext();
+  const platformRole = context?.platformRole || "";
+
+  if (!TEMPLATE_REVIEWER_ROLES.has(platformRole)) {
+    throw new Error(`No tienes permisos de revisor para ${action} bundles.`);
+  }
+}
+
 function decorateTemplates(templates: Array<Omit<RemotionTemplate, "render_mode" | "render_composition_id" | "is_external_bundle_supported" | "render_status_label">>): RemotionTemplate[] {
   return templates.map(decorateTemplate);
 }
@@ -473,17 +561,26 @@ async function attachLatestCloudBuilds(
 
   const { data: versions } = await admin
     .from("remotion_template_versions")
-    .select("id, template_id, composition_id")
+    .select("id, template_id, composition_id, manifest, editable_layers")
     .in("template_id", templateIds)
     .in("status", ["APPROVED_FOR_SANDBOX", "APPROVED"])
     .order("version_number", { ascending: false });
 
-  const latestVersionByTemplate = new Map<string, { id: string; compositionId: string | null }>();
+  const latestVersionByTemplate = new Map<string, { id: string; compositionId: string | null; editableLayers: EditableLayerDefinition[] }>();
   for (const version of versions || []) {
     if (!latestVersionByTemplate.has(version.template_id)) {
+      const manifest = version.manifest && typeof version.manifest === "object"
+        ? version.manifest as Record<string, unknown>
+        : {};
+      const editableLayers = Array.isArray(version.editable_layers)
+        ? version.editable_layers as EditableLayerDefinition[]
+        : Array.isArray(manifest.editableLayers)
+          ? manifest.editableLayers as EditableLayerDefinition[]
+          : [];
       latestVersionByTemplate.set(version.template_id, {
         id: version.id,
         compositionId: isValidExternalCompositionId(version.composition_id) ? version.composition_id : null,
+        editableLayers,
       });
     }
   }
@@ -495,7 +592,7 @@ async function attachLatestCloudBuilds(
 
   const { data: builds } = await admin
     .from("remotion_template_builds")
-    .select("id, template_version_id, status, serve_url, composition_id, build_log, build_error, provider_status, provider_status_detail, created_at")
+    .select("id, template_version_id, status, serve_url, build_output_storage_path, cloud_provider, composition_id, build_log, build_error, provider_status, provider_status_detail, created_at")
     .in("template_version_id", versionIds)
     .in("status", ["BUILDING", "BUILT", "BUILD_FAILED"])
     .order("created_at", { ascending: false });
@@ -520,9 +617,14 @@ async function attachLatestCloudBuilds(
       ...template,
       cloud_build_id: build?.id || null,
       cloud_build_status: build?.status || null,
+      cloud_build_provider_status: build?.provider_status || null,
       cloud_build_serve_url: build?.serve_url || null,
+      cloud_build_output_storage_path: build?.build_output_storage_path || null,
       cloud_build_composition_id: buildCompositionId || version?.compositionId || templateCompositionId,
-      cloud_build_validated: isValidatedCloudBuildLog(build?.build_log),
+      cloud_build_validated: build?.cloud_provider === "desktop_worker"
+        ? Boolean(build.build_output_storage_path)
+        : isValidatedCloudBuildLog(build?.build_log),
+      editable_layers: version?.editableLayers || [],
     };
   });
 }
@@ -947,7 +1049,7 @@ export async function createTemplateVersionAction(
       templateId,
       versionId: version.id,
       versionNumber: version.version_number,
-      status,
+      status: version.status,
       storagePath: normalizedStoragePath,
       entryPoint: report.info.manifest?.entryPoint || null,
       compositionId: report.info.manifest?.compositionId || null,
@@ -996,7 +1098,7 @@ export async function getTemplateVersionsAction(
     const { data: builds } = versionIds.length > 0
       ? await admin
           .from("remotion_template_builds")
-          .select("id, template_version_id, status, serve_url, build_error, provider_status, provider_status_detail, created_at")
+          .select("id, template_version_id, status, serve_url, build_output_storage_path, cloud_provider, build_error, provider_status, provider_status_detail, created_at")
           .in("template_version_id", versionIds)
           .order("created_at", { ascending: false })
       : { data: [] };
@@ -1036,10 +1138,7 @@ export async function approveTemplateVersionAction(
   const admin = getServiceRoleClient();
 
   try {
-    const REVIEWER_ROLES = new Set(["ADMIN", "ARQUITECTO", "SUPERADMIN"]);
-    if (!REVIEWER_ROLES.has((await resolveActiveTenantContext())?.platformRole || "")) {
-      throw new Error("No tienes permisos de revisor para aprobar bundles.");
-    }
+    await requireTemplateReviewerPermission("aprobar");
 
     // 2. Fetch version
     const { data: version, error: fetchVersionError } = await admin
@@ -1132,10 +1231,7 @@ export async function rejectTemplateVersionAction(
   const admin = getServiceRoleClient();
 
   try {
-    const REVIEWER_ROLES = new Set(["ADMIN", "ARQUITECTO", "SUPERADMIN"]);
-    if (!REVIEWER_ROLES.has((await resolveActiveTenantContext())?.platformRole || "")) {
-      throw new Error("No tienes permisos de revisor para rechazar bundles.");
-    }
+    await requireTemplateReviewerPermission("rechazar");
 
     // 2. Fetch version
     const { data: version, error: fetchVersionError } = await admin

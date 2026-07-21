@@ -21,6 +21,7 @@ import {
   type AssemblyTemplate,
 } from "./types";
 import { parseTemplateRenderConfig } from "./template-config";
+import { parseLayoutOverrideManifests } from "./layout-overrides";
 
 const VALID_TEMPLATE_SLUGS = new Set<string>(Object.values(ASSEMBLY_TEMPLATES));
 
@@ -40,10 +41,12 @@ export function buildAssemblyProps(
   assets: MaterialAssets | null | undefined,
   templateSlug: string | null | undefined,
   templateConfigInput: unknown = {},
+  layoutOverridesInput: unknown = [],
   fps: number = ASSEMBLY_FPS,
 ): AssemblyInputProps {
   const normalized = normalizeAssemblyAssets(assets, fps);
   const templateConfig = parseTemplateRenderConfig(templateConfigInput);
+  const layoutOverrides = parseLayoutOverrideManifests(layoutOverridesInput);
   const totalSeconds =
     normalized.totalDurationSeconds > 0
       ? normalized.totalDurationSeconds
@@ -61,6 +64,7 @@ export function buildAssemblyProps(
     brollClips: normalized.brollClips,
     transitionType: templateConfig.transitionType,
     templateConfig,
+    layoutOverrides,
   });
 }
 

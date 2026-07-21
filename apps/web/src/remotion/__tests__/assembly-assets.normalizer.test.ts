@@ -5,10 +5,29 @@ import {
   getAssemblyAssetReadiness,
   normalizeAssemblyAssets,
 } from "../assembly-assets.normalizer";
-import { ASSEMBLY_FPS, safeParseAssemblyInputProps } from "../types";
+import {
+  ASSEMBLY_FPS,
+  ASSEMBLY_HEIGHT,
+  ASSEMBLY_TEMPLATES,
+  ASSEMBLY_WIDTH,
+  safeParseAssemblyInputProps,
+} from "../types";
 import { DEFAULT_TEMPLATE_RENDER_CONFIG } from "../template-config";
+import { safeParseLayoutOverrideManifests } from "../layout-overrides";
+import {
+  buildLayoutOverrideStyle,
+  REMOTION_EDITABLE_LAYERS,
+} from "../layout-override-styles";
 import { buildBrollTimeline } from "../visual-timeline";
 import { deriveAssemblyTargetDurationSeconds } from "../assembly-duration";
+import {
+  commitLayoutLayerCrop,
+  commitLayoutLayerBox,
+  createEmptyLayoutOverrideManifest,
+  getEditableLayoutLayers,
+  getDefaultLayoutLayerBox,
+  getEffectiveLayoutLayerBox,
+} from "../../domains/materials/components/layoutOverrideDraftModel";
 import type { MaterialAssets } from "../../domains/materials/types/materials.types";
 
 const VIDEO_URL = "https://cdn.example.com/video.mp4";
@@ -321,6 +340,83 @@ describe("normalizeAssemblyAssets", () => {
     assert.equal(props.templateConfig.avatarScale, 0.3);
   });
 
+  it("defaults layout overrides to an empty list", () => {
+    const props = buildAssemblyProps(
+      {
+        voice_audio: {
+          storage_path: "production-assets/voice.mp3",
+          public_url: AUDIO_URL,
+          duration: 8,
+        },
+      },
+      "full-slides",
+    );
+
+    assert.deepEqual(props.layoutOverrides, []);
+  });
+
+  it("accepts validated layout overrides in preview props", () => {
+    const props = buildAssemblyProps(
+      {
+        voice_audio: {
+          storage_path: "production-assets/voice.mp3",
+          public_url: AUDIO_URL,
+          duration: 8,
+        },
+      },
+      "full-slides",
+      {},
+      [
+        {
+          version: 1,
+          templateId: "full-slides",
+          componentId: "component-1",
+          canvas: { width: 1920, height: 1080, fps: ASSEMBLY_FPS },
+          edits: [
+            { layerId: "avatar", kind: "position", x: 1280, y: 620 },
+            { layerId: "primaryVisual", kind: "size", width: 720, height: 405 },
+            { layerId: "primaryVisual", kind: "crop", top: 0, right: 0.1, bottom: 0, left: 0 },
+          ],
+        },
+      ],
+    );
+
+    assert.equal(props.layoutOverrides.length, 1);
+    assert.equal(props.layoutOverrides[0].edits.length, 3);
+  });
+
+  it("rejects arbitrary style data in layout overrides", () => {
+    const parsed = safeParseLayoutOverrideManifests([
+      {
+        version: 1,
+        canvas: { width: 1920, height: 1080 },
+        edits: [
+          {
+            layerId: "avatar",
+            kind: "position",
+            x: 10,
+            y: 20,
+            css: "position:fixed;inset:0",
+          },
+        ],
+      },
+    ]);
+
+    assert.equal(parsed.success, false);
+  });
+
+  it("rejects layout overrides outside safe bounds", () => {
+    const parsed = safeParseLayoutOverrideManifests([
+      {
+        version: 1,
+        canvas: { width: 1920, height: 1080 },
+        edits: [{ layerId: "avatar", kind: "size", width: -1, height: 405 }],
+      },
+    ]);
+
+    assert.equal(parsed.success, false);
+  });
+
   it("falls back from invalid template config values", () => {
     const parsed = safeParseAssemblyInputProps({
       template: "full-slides",
@@ -377,5 +473,244 @@ describe("buildBrollTimeline", () => {
       timeline.map((item) => item.startFrame),
       [0, 80],
     );
+  });
+});
+
+describe("buildLayoutOverrideStyle", () => {
+  it("returns an empty style when there are no edits for the layer", () => {
+    const style = buildLayoutOverrideStyle([], REMOTION_EDITABLE_LAYERS.AVATAR);
+
+    assert.deepEqual(style, {});
+  });
+
+  it("translates validated layer edits into safe inline styles", () => {
+    const style = buildLayoutOverrideStyle(
+      [
+        {
+          version: 1,
+          canvas: { width: 1920, height: 1080, fps: ASSEMBLY_FPS },
+          edits: [
+            { layerId: "avatar", kind: "position", x: 100, y: 200 },
+            { layerId: "avatar", kind: "size", width: 640, height: 360 },
+            { layerId: "avatar", kind: "crop", top: 0.05, right: 0.1, bottom: 0, left: 0.15 },
+            { layerId: "avatar", kind: "rotation", angle: 12 },
+          ],
+        },
+      ],
+      REMOTION_EDITABLE_LAYERS.AVATAR,
+    );
+
+    assert.deepEqual(style, {
+      position: "absolute",
+      left: 100,
+      top: 200,
+      right: "auto",
+      bottom: "auto",
+      flex: "none",
+      width: 640,
+      height: 360,
+      clipPath: "inset(5% 10% 0% 15%)",
+      transform: "rotate(12deg)",
+    });
+  });
+
+  it("keeps edits scoped to the requested layer", () => {
+    const style = buildLayoutOverrideStyle(
+      [
+        {
+          version: 1,
+          canvas: { width: 1920, height: 1080 },
+          edits: [
+            { layerId: "primaryVisual", kind: "position", x: 24, y: 48 },
+            { layerId: "avatar", kind: "position", x: 100, y: 200 },
+          ],
+        },
+      ],
+      REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL,
+    );
+
+    assert.equal(style.left, 24);
+    assert.equal(style.top, 48);
+  });
+
+  it("applies later edits for the same layer deterministically", () => {
+    const style = buildLayoutOverrideStyle(
+      [
+        {
+          version: 1,
+          canvas: { width: 1920, height: 1080 },
+          edits: [
+            { layerId: "avatar", kind: "position", x: 100, y: 200 },
+            { layerId: "avatar", kind: "position", x: 300, y: 400 },
+          ],
+        },
+      ],
+      REMOTION_EDITABLE_LAYERS.AVATAR,
+    );
+
+    assert.equal(style.left, 300);
+    assert.equal(style.top, 400);
+  });
+});
+
+describe("layout override draft model", () => {
+  it("exposes slides and b-roll as separate editable layers when both exist", () => {
+    const layers = getEditableLayoutLayers({
+      hasAvatar: true,
+      slideCount: 5,
+      brollCount: 2,
+    });
+
+    assert.deepEqual(
+      layers.map((layer) => layer.id),
+      [
+        REMOTION_EDITABLE_LAYERS.AVATAR,
+        REMOTION_EDITABLE_LAYERS.SLIDES,
+        REMOTION_EDITABLE_LAYERS.BROLL,
+        REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL,
+        REMOTION_EDITABLE_LAYERS.SUPPORT_STRIP,
+      ],
+    );
+  });
+
+  it("derives split-avatar default boxes from the internal composition layout", () => {
+    const primaryVisualBox = getDefaultLayoutLayerBox({
+      layerId: REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL,
+      templateSlug: ASSEMBLY_TEMPLATES.SPLIT_AVATAR,
+    });
+    const avatarBox = getDefaultLayoutLayerBox({
+      layerId: REMOTION_EDITABLE_LAYERS.AVATAR,
+      templateSlug: ASSEMBLY_TEMPLATES.SPLIT_AVATAR,
+    });
+
+    assert.deepEqual(primaryVisualBox, {
+      x: 0,
+      y: 0,
+      width: ASSEMBLY_WIDTH / 2,
+      height: ASSEMBLY_HEIGHT,
+    });
+    assert.deepEqual(avatarBox, {
+      x: ASSEMBLY_WIDTH / 2,
+      y: 0,
+      width: ASSEMBLY_WIDTH / 2,
+      height: ASSEMBLY_HEIGHT,
+    });
+  });
+
+  it("derives avatar-focus support strip from template config", () => {
+    const supportStripBox = getDefaultLayoutLayerBox({
+      layerId: REMOTION_EDITABLE_LAYERS.SUPPORT_STRIP,
+      templateSlug: ASSEMBLY_TEMPLATES.AVATAR_FOCUS,
+      templateConfig: { supportStripHeight: 0.3 },
+    });
+
+    assert.deepEqual(supportStripBox, {
+      x: 0,
+      y: ASSEMBLY_HEIGHT * 0.7,
+      width: ASSEMBLY_WIDTH,
+      height: ASSEMBLY_HEIGHT * 0.3,
+    });
+  });
+
+  it("uses custom template editable layer metadata before internal fallbacks", () => {
+    const layers = getEditableLayoutLayers(
+      {
+        hasAvatar: true,
+        slideCount: 3,
+        brollCount: 1,
+      },
+      [
+        {
+          layerId: REMOTION_EDITABLE_LAYERS.AVATAR,
+          label: "Avatar",
+          kind: "avatar",
+          defaultBox: { x: 0, y: 0, width: ASSEMBLY_WIDTH / 2, height: ASSEMBLY_HEIGHT },
+          capabilities: {
+            canMove: true,
+            canResize: true,
+            canCrop: true,
+            canRotate: false,
+            canHide: true,
+          },
+        },
+      ],
+    );
+    const avatarBox = getDefaultLayoutLayerBox({
+      layerId: REMOTION_EDITABLE_LAYERS.AVATAR,
+      editableLayers: layers,
+    });
+
+    assert.deepEqual(avatarBox, {
+      x: 0,
+      y: 0,
+      width: ASSEMBLY_WIDTH / 2,
+      height: ASSEMBLY_HEIGHT,
+    });
+  });
+
+  it("commits overlay box changes as position and size edits only", () => {
+    const manifest = createEmptyLayoutOverrideManifest({
+      componentId: "component-1",
+      templateId: "template-1",
+    });
+
+    const nextManifest = commitLayoutLayerBox({
+      manifest,
+      layerId: REMOTION_EDITABLE_LAYERS.AVATAR,
+      box: { x: 100.2, y: 200.7, width: 640.4, height: 360.1 },
+    });
+
+    assert.deepEqual(nextManifest.edits, [
+      { layerId: REMOTION_EDITABLE_LAYERS.AVATAR, kind: "position", x: 100, y: 201 },
+      { layerId: REMOTION_EDITABLE_LAYERS.AVATAR, kind: "size", width: 640, height: 360 },
+    ]);
+  });
+
+  it("commits crop edits within safe visible bounds", () => {
+    const manifest = createEmptyLayoutOverrideManifest({
+      componentId: "component-1",
+      templateId: "template-1",
+    });
+
+    const nextManifest = commitLayoutLayerCrop({
+      manifest,
+      layerId: REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL,
+      crop: { top: 0.2, right: 0.9, bottom: 0.1, left: 0.4 },
+    });
+
+    assert.deepEqual(nextManifest.edits, [
+      {
+        layerId: REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL,
+        kind: "crop",
+        top: 0.2,
+        right: 0.55,
+        bottom: 0.1,
+        left: 0.05,
+      },
+    ]);
+  });
+
+  it("uses committed edits over default boxes", () => {
+    const manifest = commitLayoutLayerBox({
+      manifest: createEmptyLayoutOverrideManifest({
+        componentId: "component-1",
+        templateId: "template-1",
+      }),
+      layerId: REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL,
+      box: { x: 12, y: 24, width: 800, height: 450 },
+    });
+
+    const effectiveBox = getEffectiveLayoutLayerBox({
+      manifest,
+      layerId: REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL,
+      templateSlug: ASSEMBLY_TEMPLATES.FULL_SLIDES,
+    });
+
+    assert.deepEqual(effectiveBox, {
+      x: 12,
+      y: 24,
+      width: 800,
+      height: 450,
+    });
   });
 });

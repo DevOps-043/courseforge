@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  serverExternalPackages: ["@google/genai"],
+  serverExternalPackages: ["@google/genai", "@remotion/bundler", "esbuild"],
   experimental: {
     serverActions: {
       allowedOrigins: ["soflia-coursegen.netlify.app", "*.netlify.app", "localhost:3000"]

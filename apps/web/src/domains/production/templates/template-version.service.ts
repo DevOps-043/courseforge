@@ -125,6 +125,7 @@ export async function createTemplateVersionRecord(
       composition_ids: compositionIds,
       props_schema: manifest?.propsSchema || null,
       default_props: manifest?.defaultProps || null,
+      editable_layers: manifest?.editableLayers || [],
       default_duration_frames: manifest?.defaultDurationFrames || null,
       default_fps: manifest?.fps || null,
       default_width: manifest?.width || null,

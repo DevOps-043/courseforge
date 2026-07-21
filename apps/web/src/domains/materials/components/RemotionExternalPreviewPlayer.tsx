@@ -1,20 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, ExternalLink, ImageIcon, Loader2, Play } from "lucide-react";
-import {
-  getExternalBundlePreviewDataAction,
-  type ExternalBundlePreviewData,
-} from "@/domains/production/actions/templates.actions";
+import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import { AlertTriangle, CheckCircle2, ExternalLink, ImageIcon, Loader2, Play, RefreshCw } from "lucide-react";
+import type { ExternalBundlePreviewData } from "@/domains/production/actions/templates.actions";
+import { useExternalTemplatePreview } from "@/domains/materials/hooks/useExternalTemplatePreview";
 
 interface RemotionExternalPreviewPlayerProps {
   templateId: string;
   componentId?: string | null;
   initialPreviewData?: ExternalBundlePreviewData | null;
   variables?: Record<string, unknown>;
+  overlay?: ReactNode;
+  onPreviewDataChange?: (previewData: ExternalBundlePreviewData | null) => void;
 }
 
-function isBrowserReachableUrl(value: string | undefined): value is string {
+function isBrowserReachableUrl(value: string | null | undefined): value is string {
   return typeof value === "string" && /^https?:\/\//i.test(value);
 }
 
@@ -46,137 +47,38 @@ function formatSeconds(value: number | null | undefined): string {
   return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
-function formatPreviewError(value: unknown): string {
-  if (!value) return "No se pudo cargar el preview externo.";
-
-  if (value instanceof Error) {
-    return value.message || "No se pudo cargar el preview externo.";
-  }
-
-  if (typeof value === "string") {
-    return value || "No se pudo cargar el preview externo.";
-  }
-
-  if (typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    const message = record.message || record.error || record.detail || record.details;
-
-    if (typeof message === "string" && message.trim()) {
-      return message;
-    }
-
-    if (message && typeof message === "object") {
-      return formatPreviewError(message);
-    }
-
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return "No se pudo cargar el preview externo.";
-    }
-  }
-
-  return String(value) || "No se pudo cargar el preview externo.";
-}
-
-function serializePreviewVariables(variables: Record<string, unknown>): string {
-  try {
-    return JSON.stringify(variables ?? {});
-  } catch {
-    return "{}";
-  }
-}
-
-function parsePreviewVariables(variablesKey: string): Record<string, unknown> {
-  try {
-    const parsed = JSON.parse(variablesKey);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : {};
-  } catch {
-    return {};
-  }
-}
-
 export function RemotionExternalPreviewPlayer({
   templateId,
   componentId,
   initialPreviewData = null,
   variables = {},
+  overlay,
+  onPreviewDataChange,
 }: RemotionExternalPreviewPlayerProps) {
-  const [previewData, setPreviewData] = useState<ExternalBundlePreviewData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [videoStatus, setVideoStatus] = useState<"idle" | "loading" | "ready" | "playing" | "error">("idle");
   const [videoError, setVideoError] = useState<string | null>(null);
   const [hasVideoStarted, setHasVideoStarted] = useState(false);
-
-  const variablesKey = useMemo(() => serializePreviewVariables(variables), [variables]);
+  const {
+    error,
+    isLoading,
+    isRequestingPreview,
+    previewData,
+    reload,
+    requestPreview,
+    variablesKey,
+  } = useExternalTemplatePreview({
+    templateId,
+    componentId,
+    initialPreviewData,
+    variables,
+    onPreviewDataChange,
+  });
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadPreview() {
-      setIsLoading(true);
-      setError(null);
-      setVideoError(null);
-      setVideoStatus("idle");
-      setHasVideoStarted(false);
-
-      if (initialPreviewData?.serveUrl && initialPreviewData.compositionId) {
-        setPreviewData(initialPreviewData);
-        setIsLoading(false);
-        return;
-      }
-
-      const requestVariables = parsePreviewVariables(variablesKey);
-      console.info("[RemotionExternalPreviewPlayer] Solicitando preview externo", {
-        templateId,
-        componentId: componentId || null,
-        variablesKey,
-      });
-
-      try {
-        const result = await getExternalBundlePreviewDataAction({
-          templateId,
-          componentId,
-          variables: requestVariables,
-        });
-
-        if (!result.success) {
-          throw new Error(formatPreviewError(result.error));
-        }
-
-        if (!cancelled) {
-          setPreviewData(result.data);
-          setVideoStatus(result.data.previewVideoUrl ? "loading" : "idle");
-          console.info("[RemotionExternalPreviewPlayer] Preview externo recibido", {
-            templateId,
-            componentId: componentId || null,
-            hasVideo: Boolean(result.data.previewVideoUrl),
-            hasPoster: Boolean(result.data.previewPosterUrl),
-            buildId: result.data.buildId,
-            propsHash: result.data.propsHash,
-          });
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(formatPreviewError(err));
-          setPreviewData(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    loadPreview();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [templateId, componentId, initialPreviewData, variablesKey]);
+    setVideoError(null);
+    setVideoStatus(previewData?.previewVideoUrl ? "loading" : "idle");
+    setHasVideoStarted(false);
+  }, [previewData?.previewVideoUrl, variablesKey]);
 
   if (isLoading) {
     return (
@@ -296,6 +198,41 @@ export function RemotionExternalPreviewPlayer({
             Preview recortado a {formatSeconds(previewData.previewDurationSeconds)} de una composicion de {formatSeconds(previewData.compositionDurationSeconds)}.
           </div>
         )}
+        {overlay}
+      </div>
+    );
+  }
+
+  if (previewData?.previewPosterUrl) {
+    const isStalePoster = previewData.previewStatus === "STALE";
+    const isRefreshingPoster = previewData.previewStatus === "QUEUED" || previewData.previewStatus === "RUNNING";
+    return (
+      <div className="relative aspect-video overflow-hidden rounded-xl bg-black shadow-inner">
+        <a
+          href={previewData.previewPosterUrl}
+          target="_blank"
+          rel="noreferrer"
+          title="Abrir poster del preview"
+          className="absolute right-2 top-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-black/70 text-white shadow-sm transition hover:bg-black/90 focus:outline-none focus:ring-2 focus:ring-purple-400"
+        >
+          <ImageIcon size={14} />
+        </a>
+        <img
+          src={previewData.previewPosterUrl}
+          alt="Poster del preview Remotion"
+          className="h-full w-full bg-black object-contain"
+        />
+        {(isStalePoster || isRefreshingPoster) && (
+          <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex items-center gap-2 rounded-lg bg-black/75 px-3 py-2 text-[11px] font-medium leading-relaxed text-white">
+            {isRefreshingPoster ? <Loader2 size={13} className="shrink-0 animate-spin" /> : <RefreshCw size={13} className="shrink-0" />}
+            <span>
+              {isRefreshingPoster
+                ? "Generando preview actualizado..."
+                : "Mostrando el ultimo preview mientras se genera la version actualizada."}
+            </span>
+          </div>
+        )}
+        {overlay}
       </div>
     );
   }
@@ -318,15 +255,32 @@ export function RemotionExternalPreviewPlayer({
           title="Preview externo Remotion"
           allow="autoplay; fullscreen"
         />
+        {overlay}
       </div>
     );
   }
 
+  const statusLabel = previewData?.previewStatus === "QUEUED"
+    ? "Preview en cola"
+    : previewData?.previewStatus === "RUNNING"
+      ? "Preview generandose"
+      : previewData?.previewStatus === "FAILED"
+        ? "Preview fallido"
+        : previewData?.previewStatus === "STALE"
+          ? "Preview desactualizado"
+          : "Bundle externo listo para preview";
+
   return (
     <div className="flex aspect-video min-w-0 flex-col justify-center gap-3 overflow-hidden rounded-xl border border-green-500/20 bg-green-500/10 p-4">
       <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-green-700 dark:text-green-300">
-        <CheckCircle2 size={18} className="shrink-0" />
-        Bundle externo listo para preview
+        {previewData?.previewStatus === "RUNNING" || previewData?.previewStatus === "QUEUED" ? (
+          <Loader2 size={18} className="shrink-0 animate-spin" />
+        ) : previewData?.previewStatus === "FAILED" ? (
+          <AlertTriangle size={18} className="shrink-0" />
+        ) : (
+          <CheckCircle2 size={18} className="shrink-0" />
+        )}
+        {statusLabel}
       </div>
       <div className="grid min-w-0 grid-cols-1 gap-1.5 text-[11px] text-green-800/80 dark:text-green-200/80">
         <p className="min-w-0 truncate" title={previewData?.compositionId || undefined}>
@@ -345,8 +299,29 @@ export function RemotionExternalPreviewPlayer({
       <div className="flex min-w-0 items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
         <Play size={14} className="mt-0.5 shrink-0" />
         <span>
-          El build esta listo, pero aun no hay una URL HTTP para reproducirlo en el navegador.
+          {previewData?.previewError ||
+            "El build esta listo, pero aun no hay un poster o URL HTTP para editarlo visualmente en el navegador."}
         </span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={requestPreview}
+          disabled={isRequestingPreview || previewData?.previewStatus === "QUEUED" || previewData?.previewStatus === "RUNNING"}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-green-700 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-green-600 disabled:cursor-not-allowed disabled:bg-gray-300"
+        >
+          {isRequestingPreview ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+          {previewData?.previewStatus === "STALE" ? "Actualizar preview" : "Generar preview"}
+        </button>
+        <button
+          type="button"
+          onClick={reload}
+          disabled={isLoading}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-green-600/30 px-3 py-1.5 text-[11px] font-semibold text-green-800 transition hover:bg-green-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:text-green-200"
+        >
+          <RefreshCw size={13} />
+          Actualizar estado
+        </button>
       </div>
     </div>
   );

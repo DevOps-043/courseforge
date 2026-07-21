@@ -5,6 +5,10 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle, Check, CheckCircle2, Copy, Download, Film, Layers, Link2, Loader2, Monitor, Play, RefreshCw, Search, Sparkles, Square, Unlink } from 'lucide-react';
 import { hasPreviewableAssets } from '@/remotion/buildAssemblyProps';
 import { deriveAssemblyTargetDurationSeconds } from '@/remotion/assembly-duration';
+import {
+    safeParseLayoutOverrideManifests,
+    type LayoutOverrideManifest,
+} from '@/remotion/layout-overrides';
 import { getTemplatesAction, type RemotionTemplate } from '@/domains/production/actions/templates.actions';
 import {
     cancelRemotionAssemblyJobsAction,
@@ -14,12 +18,27 @@ import {
     getRemotionJobStatusAction,
     getRenderWorkerStatusAction,
     revokeRenderWorkerAction,
+    saveRemotionLayoutOverridesAction,
     type RenderWorkerStatusView,
 } from '../actions/production.actions';
 import { useMaterials } from '../hooks/useMaterials';
 import { PRODUCTION_THEME } from './production-asset-ui';
+import { LayoutOverrideDraftPanel } from './LayoutOverrideDraftPanel';
+import {
+    LayoutOverridePreviewOverlay,
+    type LayoutOverrideEditMode,
+    type LayoutOverrideGridSettings,
+} from './LayoutOverridePreviewOverlay';
 import { RemotionExternalPreviewPlayer } from './RemotionExternalPreviewPlayer';
 import { RemotionPreviewPlayer } from './RemotionPreviewPlayer';
+import {
+    REMOTION_EDITABLE_LAYERS,
+    type RemotionEditableLayerId,
+} from '@/remotion/layout-override-styles';
+import {
+    getEditableLayoutLayers,
+    type LayoutAssetSummary,
+} from './layoutOverrideDraftModel';
 
 interface PostproductionAssemblyContainerProps {
     artifactId: string;
@@ -68,13 +87,53 @@ function getAssemblyFailureMessage(job: AssemblyJobTracker) {
     if (job.errorCode === 'OUTPUT_NOT_ACCESSIBLE') {
         return 'El render termino, pero el video final no quedo disponible como URL HTTPS reproducible.';
     }
-    if (job.errorCode === 'LAMBDA_TIMEOUT') {
-        return 'El render supero el tiempo maximo configurado en Lambda.';
-    }
-    if (job.errorCode === 'LAMBDA_THROTTLED') {
-        return 'AWS limito la concurrencia del render. Reintenta cuando termine la cola o reduce concurrencia.';
-    }
     return job.error || 'El ensamblado no se completo. Revisa el ultimo evento del job.';
+}
+
+function getLayoutOverrideDraftKey(params: {
+    componentId?: string | null;
+    templateId?: string | null;
+    templateVersionId?: string | null;
+}) {
+    return `${params.componentId || 'component'}:${params.templateId || 'template'}:${params.templateVersionId || 'base'}`;
+}
+
+function getPersistedLayoutOverrides(
+    component: any,
+    templateId?: string | null,
+    templateVersionId?: string | null,
+): LayoutOverrideManifest[] {
+    const parsed = safeParseLayoutOverrideManifests(component?.assets?.layout_overrides);
+    if (!parsed.success) return [];
+    if (!templateId) return parsed.data;
+
+    return parsed.data.filter((manifest) => (
+        manifest.templateId === templateId &&
+        (templateVersionId ? manifest.templateVersionId === templateVersionId : true)
+    ));
+}
+
+function areLayoutOverridesEqual(left: LayoutOverrideManifest[], right: LayoutOverrideManifest[]) {
+    return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function getLayoutAssetSummary(assets: any): LayoutAssetSummary {
+    const slideCount = Array.isArray(assets?.slides?.images)
+        ? assets.slides.images.length
+        : assets?.slides_url || assets?.slides?.html_public_url || assets?.slides?.html_content_path
+            ? 1
+            : 0;
+    const brollCount = Array.isArray(assets?.b_roll_clips)
+        ? assets.b_roll_clips.length
+        : assets?.video_url || assets?.screencast_url
+            ? 1
+            : 0;
+
+    return {
+        hasAvatar: Boolean(assets?.avatar_video?.public_url),
+        slideCount,
+        brollCount,
+    };
 }
 
 export function PostproductionAssemblyContainer({ artifactId, onNext }: PostproductionAssemblyContainerProps) {
@@ -106,6 +165,16 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const [selectedBatchComponentIds, setSelectedBatchComponentIds] = useState<string[]>([]);
     const [templateOverrides, setTemplateOverrides] = useState<Record<string, string>>({});
     const [workerOverrides, setWorkerOverrides] = useState<Record<string, string>>({});
+    const [layoutOverrideDrafts, setLayoutOverrideDrafts] = useState<Record<string, LayoutOverrideManifest[]>>({});
+    const [externalPreviewLayoutOverrideSnapshots, setExternalPreviewLayoutOverrideSnapshots] = useState<Record<string, LayoutOverrideManifest[]>>({});
+    const [savingLayoutOverrides, setSavingLayoutOverrides] = useState(false);
+    const [selectedLayoutLayerId, setSelectedLayoutLayerId] = useState<RemotionEditableLayerId>(REMOTION_EDITABLE_LAYERS.AVATAR);
+    const [layoutEditMode, setLayoutEditMode] = useState<LayoutOverrideEditMode>('move');
+    const [layoutGridSettings, setLayoutGridSettings] = useState<LayoutOverrideGridSettings>({
+        visible: true,
+        snap: true,
+        size: 80,
+    });
     const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const pollingInFlightRef = useRef(false);
     const pollFailuresRef = useRef(0);
@@ -498,7 +567,16 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                 assignmentMode: Object.values(workerOverrides).some(Boolean) ? 'MIXED' : 'AUTO',
                 items: targets.map((component) => {
                     const templateId = templateOverrides[component.id] || selectedTemplate;
-                    const templateConfig = templates.find((template) => template.id === templateId)?.default_config || {};
+                    const template = templates.find((candidate) => candidate.id === templateId);
+                    const templateConfig = template?.default_config || {};
+                    const templateVersionId = template?.cloud_build_id || template?.id || null;
+                    const layoutDraftKey = getLayoutOverrideDraftKey({
+                        componentId: component.id,
+                        templateId,
+                        templateVersionId,
+                    });
+                    const persistedLayoutOverrides = getPersistedLayoutOverrides(component, templateId, templateVersionId);
+                    const layoutOverrides = layoutOverrideDrafts[layoutDraftKey] ?? persistedLayoutOverrides;
 
                     return {
                         componentId: component.id,
@@ -510,6 +588,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                             componentTitle: getComponentLabel(component),
                             templateConfig,
                             transitionType: (templateConfig as any)?.transitionType,
+                            layoutOverrides,
                         },
                     };
                 }),
@@ -559,10 +638,10 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const selectedTemplateSlug = selectedTemplateConfig?.render_composition_id ?? selectedTemplateConfig?.composition_id ?? null;
     const selectedTemplateUsesExternalBundle = selectedTemplateConfig?.render_mode === 'EXTERNAL_BUNDLE_PENDING'
         || selectedTemplateConfig?.render_mode === 'INTERNAL_WITH_EXTERNAL_REFERENCE';
-    const selectedTemplateUsesCloudBundle = selectedTemplateConfig?.render_mode === 'EXTERNAL_LAMBDA_SITE_READY';
+    const selectedTemplateUsesCloudBundle = selectedTemplateConfig?.render_mode === 'EXTERNAL_BUNDLE_SITE_READY';
     const selectedTemplateUsesExternalPreview = selectedTemplateUsesCloudBundle;
     const selectedCloudPreviewData = useMemo(() => {
-        if (!selectedTemplateUsesCloudBundle || !selectedTemplateConfig?.cloud_build_serve_url) {
+        if (!selectedTemplateUsesCloudBundle) {
             return null;
         }
 
@@ -575,7 +654,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
         }
 
         return {
-            serveUrl: selectedTemplateConfig.cloud_build_serve_url,
+            serveUrl: selectedTemplateConfig.cloud_build_serve_url || null,
             compositionId,
             exportMode: 'component' as const,
             resolvedProps: {},
@@ -584,6 +663,9 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
             buildId: selectedTemplateConfig.cloud_build_id || null,
             templateVersionId: selectedTemplateConfig.cloud_build_id || selectedTemplateConfig.id,
             bundleHash: null,
+            previewId: null,
+            previewStatus: 'MISSING' as const,
+            previewError: null,
             previewVideoUrl: null,
             previewPosterUrl: null,
             previewDurationSeconds: null,
@@ -602,8 +684,40 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     ]);
     const selectedTemplateNeedsCloudBuild = selectedTemplateConfig?.render_mode === 'EXTERNAL_CLOUD_BUILD_READY'
         || selectedTemplateConfig?.render_mode === 'EXTERNAL_CLOUD_BUILD_FAILED';
-    const selectedTemplateBlocksFinalRender = selectedTemplateNeedsCloudBuild;
+    const selectedTemplateBlocksFinalRender = selectedTemplateUsesExternalBundle || selectedTemplateNeedsCloudBuild;
+    const selectedTemplateHasCustomBundleBlocked = selectedTemplateUsesExternalBundle || selectedTemplateNeedsCloudBuild;
     const activePreview = videoComponents.find((component) => component.id === activePreviewId) || videoComponents[0];
+    const activeTemplateVersionId = selectedTemplateConfig?.cloud_build_id || selectedTemplateConfig?.id || null;
+    const activeLayoutDraftKey = getLayoutOverrideDraftKey({
+        componentId: activePreview?.id,
+        templateId: selectedTemplate,
+        templateVersionId: activeTemplateVersionId,
+    });
+    const activeLayoutAssetSummary = useMemo(
+        () => getLayoutAssetSummary(activePreview?.assets),
+        [activePreview?.assets],
+    );
+    const activeEditableLayoutLayers = useMemo(
+        () => getEditableLayoutLayers(
+            activeLayoutAssetSummary,
+            selectedTemplateConfig?.editable_layers || [],
+        ),
+        [activeLayoutAssetSummary, selectedTemplateConfig?.editable_layers],
+    );
+    const activePersistedLayoutOverrides = activePreview
+        ? getPersistedLayoutOverrides(activePreview, selectedTemplate, activeTemplateVersionId)
+        : [];
+    const activeLayoutOverrides = activePreview
+        ? layoutOverrideDrafts[activeLayoutDraftKey] ?? activePersistedLayoutOverrides
+        : [];
+    const activeExternalPreviewLayoutOverrides = activePreview
+        ? externalPreviewLayoutOverrideSnapshots[activeLayoutDraftKey] ?? activePersistedLayoutOverrides
+        : [];
+    const hasUnsavedLayoutOverrides = !areLayoutOverridesEqual(
+        activeLayoutOverrides,
+        activePersistedLayoutOverrides,
+    );
+    const hasLayoutOverridesToDiscard = activeLayoutOverrides.length > 0 || activePersistedLayoutOverrides.length > 0;
     const activePreviewTargetDurationSeconds = deriveAssemblyTargetDurationSeconds(activePreview?.content);
     const activePreviewPending = Boolean(activePreview && !activePreview.assets?.final_video_url);
     const hasRequiredAssets = videoComponents.length > 0;
@@ -614,6 +728,30 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const currentAssemblyLabel = activeAssemblyJobs.length === 1
         ? activeAssemblyJobs[0].label
         : `${activeAssemblyJobs.length || assemblyJobs.length} videos`;
+
+    useEffect(() => {
+        if (
+            activeEditableLayoutLayers.length > 0 &&
+            !activeEditableLayoutLayers.some((layer) => layer.id === selectedLayoutLayerId)
+        ) {
+            setSelectedLayoutLayerId(activeEditableLayoutLayers[0].id);
+        }
+    }, [activeEditableLayoutLayers, selectedLayoutLayerId]);
+
+    useEffect(() => {
+        if (!activePreview) return;
+        setLayoutOverrideDrafts((current) => (
+            current[activeLayoutDraftKey] !== undefined
+                ? current
+                : { ...current, [activeLayoutDraftKey]: activePersistedLayoutOverrides }
+        ));
+        setExternalPreviewLayoutOverrideSnapshots((current) => (
+            current[activeLayoutDraftKey] !== undefined
+                ? current
+                : { ...current, [activeLayoutDraftKey]: activePersistedLayoutOverrides }
+        ));
+    }, [activeLayoutDraftKey, activePersistedLayoutOverrides, activePreview]);
+
     const filteredTemplates = useMemo(() => {
         const search = templateSearch.trim().toLowerCase();
 
@@ -648,9 +786,11 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
             componentTitle: getComponentLabel(activePreview),
             templateConfig: selectedTemplateConfig?.default_config || {},
             transitionType: selectedTemplateConfig?.default_config?.transitionType,
+            layoutOverrides: activeExternalPreviewLayoutOverrides,
         };
     }, [
         activePreview,
+        activeExternalPreviewLayoutOverrides,
         selectedTemplate,
         selectedTemplateConfig?.default_config,
         selectedTemplateUsesExternalPreview,
@@ -662,7 +802,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
             return;
         }
         if (selectedTemplateBlocksFinalRender) {
-            alert('Esta plantilla solo permite preview externo por ahora. Selecciona una plantilla basica interna para ensamblar el video final.');
+            alert('Esta plantilla custom necesita aprobacion y build con worker antes de ensamblar el video final. Selecciona una plantilla basica interna o termina el build de esta plantilla.');
             return;
         }
         await startAssemblyForComponents([activePreview]);
@@ -670,7 +810,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
 
     const handleAssembleAll = async () => {
         if (selectedTemplateBlocksFinalRender) {
-            alert('Esta plantilla solo permite preview externo por ahora. Selecciona una plantilla basica interna para ensamblar videos finales.');
+            alert('Esta plantilla custom necesita aprobacion y build con worker antes de ensamblar videos finales. Selecciona una plantilla basica interna o termina el build de esta plantilla.');
             return;
         }
         const selectedTargets = componentsToAssemble.filter((component) => selectedBatchComponentIds.includes(component.id));
@@ -715,32 +855,105 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
         }
     };
 
-    const renderTemplateCard = (tpl: RemotionTemplate) => (
-        <button
-            key={tpl.id}
-            onClick={() => setSelectedTemplate(tpl.id)}
-            disabled={isAssembling}
-            className={`flex min-h-[132px] flex-col rounded-xl border p-4 text-left transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-white/5 ${
-                selectedTemplate === tpl.id
-                    ? 'border-purple-500 bg-purple-500/5 ring-1 ring-purple-500/30'
-                    : 'border-gray-200 bg-transparent dark:border-[#6C757D]/10'
-            }`}
-        >
-            <span className="mb-2 text-2xl">{tpl.thumbnail_url || 'Template'}</span>
-            <span className="mb-1 line-clamp-2 text-sm font-semibold text-gray-900 dark:text-white">{tpl.name}</span>
-            <span className="line-clamp-3 text-xs leading-snug text-gray-500 dark:text-gray-400">{tpl.description}</span>
-            <span
-                className={`mt-auto inline-flex w-fit items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                    tpl.render_mode === 'EXTERNAL_BUNDLE_PENDING'
-                        ? 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                        : 'border-green-500/25 bg-green-500/10 text-green-700 dark:text-green-300'
+    const handleSaveLayoutOverrides = async () => {
+        if (!activePreview) return;
+
+        setSavingLayoutOverrides(true);
+        const result = await saveRemotionLayoutOverridesAction(
+            activePreview.id,
+            activeLayoutOverrides,
+            {
+                templateId: selectedTemplate,
+                templateVersionId: activeTemplateVersionId,
+            },
+        );
+        if (result.success) {
+            setLayoutOverrideDrafts((current) => {
+                const next = { ...current };
+                if (activeLayoutOverrides.length > 0) {
+                    next[activeLayoutDraftKey] = activeLayoutOverrides;
+                } else {
+                    delete next[activeLayoutDraftKey];
+                }
+                return next;
+            });
+            setExternalPreviewLayoutOverrideSnapshots((current) => {
+                const next = { ...current };
+                if (activeLayoutOverrides.length > 0) {
+                    next[activeLayoutDraftKey] = activeLayoutOverrides;
+                } else {
+                    delete next[activeLayoutDraftKey];
+                }
+                return next;
+            });
+            await refresh();
+            router.refresh();
+        } else {
+            alert(result.error || 'No se pudieron guardar los ajustes de layout.');
+        }
+        setSavingLayoutOverrides(false);
+    };
+
+    const handleDiscardLayoutDraft = () => {
+        if (!activePreview) return;
+        setLayoutOverrideDrafts((current) => {
+            const next = { ...current };
+            next[activeLayoutDraftKey] = [];
+            return next;
+        });
+        setExternalPreviewLayoutOverrideSnapshots((current) => {
+            const next = { ...current };
+            next[activeLayoutDraftKey] = [];
+            return next;
+        });
+    };
+
+    const renderTemplateCard = (tpl: RemotionTemplate) => {
+        const isExternalReady = tpl.render_mode === 'EXTERNAL_BUNDLE_SITE_READY';
+        const isExternalBlocked = tpl.render_mode === 'EXTERNAL_BUNDLE_PENDING'
+            || tpl.render_mode === 'INTERNAL_WITH_EXTERNAL_REFERENCE'
+            || tpl.render_mode === 'EXTERNAL_CLOUD_BUILD_READY';
+        const isExternalFailed = tpl.render_mode === 'EXTERNAL_CLOUD_BUILD_FAILED';
+        const isBuildRunning = tpl.cloud_build_status === 'BUILDING';
+        const statusClass = isExternalFailed
+            ? 'border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300'
+            : isExternalBlocked
+                ? 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                : 'border-green-500/25 bg-green-500/10 text-green-700 dark:text-green-300';
+        const statusLabel = isExternalReady
+            ? 'Bundle compilado'
+            : isExternalFailed
+                ? 'Build fallido'
+                : isBuildRunning
+                    ? 'Build en progreso'
+                    : isExternalBlocked
+                        ? 'Requiere build'
+                        : tpl.render_composition_id;
+
+        return (
+            <button
+                key={tpl.id}
+                onClick={() => setSelectedTemplate(tpl.id)}
+                disabled={isAssembling}
+                className={`flex min-h-[132px] flex-col rounded-xl border p-4 text-left transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-white/5 ${
+                    selectedTemplate === tpl.id
+                        ? 'border-[#00D4B3] bg-[#00D4B3]/5 ring-1 ring-[#00D4B3]/30'
+                        : 'border-gray-200 bg-transparent dark:border-[#6C757D]/10'
                 }`}
             >
-                {tpl.render_mode === 'EXTERNAL_BUNDLE_PENDING' ? <AlertTriangle size={10} /> : <Play size={10} />}
-                {tpl.render_mode === 'EXTERNAL_LAMBDA_SITE_READY' ? 'Bundle cloud' : tpl.render_mode === 'EXTERNAL_CLOUD_BUILD_READY' ? 'Build cloud pendiente' : tpl.storage_path ? 'ZIP referencia' : tpl.render_composition_id}
-            </span>
-        </button>
-    );
+                <span className="mb-2 text-2xl">{tpl.thumbnail_url || 'Template'}</span>
+                <span className="mb-1 line-clamp-2 text-sm font-semibold text-gray-900 dark:text-white">{tpl.name}</span>
+                <span className="line-clamp-3 text-xs leading-snug text-gray-500 dark:text-gray-400">{tpl.description}</span>
+                <span
+                    className={`mt-auto inline-flex w-fit items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusClass}`}
+                    title={tpl.render_status_label}
+                >
+                    {isBuildRunning ? <Loader2 size={10} className="animate-spin" /> : isExternalBlocked || isExternalFailed ? <AlertTriangle size={10} /> : <Play size={10} />}
+                    {statusLabel}
+                </span>
+            </button>
+        );
+    };
 
     const renderTemplateGroup = (title: string, items: RemotionTemplate[]) => (
         <div className="space-y-3">
@@ -751,7 +964,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                 </span>
             </div>
             {items.length > 0 ? (
-                <div className="grid grid-cols-1 gap-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-1">
                     {items.map(renderTemplateCard)}
                 </div>
             ) : (
@@ -831,12 +1044,12 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-8 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
+            <div className="grid grid-cols-1 gap-8 2xl:grid-cols-[minmax(0,1fr)_380px]">
                 <div className="space-y-6">
-                    <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 space-y-4 shadow-sm">
+                    <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-5 sm:p-6 lg:p-8 space-y-5 shadow-sm">
                         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                             <h3 className="text-md font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                <Play className="text-purple-500" size={18} />
+                                <Play className="text-[#00D4B3]" size={18} />
                                 Previsualizacion
                             </h3>
 
@@ -908,9 +1121,124 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                             componentId={hasPreviewableAssets(activePreview.assets) ? activePreview.id : null}
                                             initialPreviewData={selectedCloudPreviewData}
                                             variables={externalPreviewVariables}
+                                            overlay={
+                                                <LayoutOverridePreviewOverlay
+                                                    componentId={activePreview.id}
+                                                    templateId={selectedTemplate}
+                                                    templateVersionId={selectedTemplateConfig?.cloud_build_id || selectedTemplateConfig?.id || null}
+                                                    templateSlug={selectedTemplateSlug}
+                                                    templateConfig={selectedTemplateConfig?.default_config}
+                                                    value={activeLayoutOverrides}
+                                                    selectedLayerId={selectedLayoutLayerId}
+                                                    onSelectedLayerChange={setSelectedLayoutLayerId}
+                                                    editableLayers={activeEditableLayoutLayers}
+                                                    assetSummary={activeLayoutAssetSummary}
+                                                    editMode={layoutEditMode}
+                                                    gridSettings={layoutGridSettings}
+                                                    onChange={(nextOverrides) => setLayoutOverrideDrafts((current) => {
+                                                        const next = { ...current };
+                                                        if (nextOverrides.length > 0) {
+                                                            next[activeLayoutDraftKey] = nextOverrides;
+                                                        } else {
+                                                            delete next[activeLayoutDraftKey];
+                                                        }
+                                                        return next;
+                                                    })}
+                                                    disabled={isAssembling}
+                                                />
+                                            }
                                         />
-                                        <div className="text-xs text-gray-500 dark:text-gray-400 text-center leading-relaxed">
-                                            Preview del bundle externo usando el build cloud aprobado.
+                                        <LayoutOverrideDraftPanel
+                                            componentId={activePreview.id}
+                                            templateId={selectedTemplate}
+                                            templateVersionId={selectedTemplateConfig?.cloud_build_id || selectedTemplateConfig?.id || null}
+                                            value={activeLayoutOverrides}
+                                            editableLayers={activeEditableLayoutLayers}
+                                            selectedLayerId={selectedLayoutLayerId}
+                                            onSelectedLayerChange={setSelectedLayoutLayerId}
+                                            editMode={layoutEditMode}
+                                            onEditModeChange={setLayoutEditMode}
+                                            gridSettings={layoutGridSettings}
+                                            onGridSettingsChange={setLayoutGridSettings}
+                                            onChange={(nextOverrides) => setLayoutOverrideDrafts((current) => {
+                                                const next = { ...current };
+                                                if (nextOverrides.length > 0) {
+                                                    next[activeLayoutDraftKey] = nextOverrides;
+                                                } else {
+                                                    delete next[activeLayoutDraftKey];
+                                                }
+                                                return next;
+                                            })}
+                                            disabled={isAssembling}
+                                        />
+                                        <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50/80 p-3 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419]/50 sm:flex-row sm:items-center sm:justify-between">
+                                            <div className="text-gray-500 dark:text-gray-400">
+                                                {hasUnsavedLayoutOverrides
+                                                    ? 'Hay ajustes de layout sin guardar para este video. El poster externo se actualizara al guardar para no interrumpir la edicion.'
+                                                    : activePreview.assets?.final_video_layout_stale
+                                                        ? 'El video final puede estar desactualizado respecto al layout guardado.'
+                                                        : 'Los ajustes de layout guardados se incluiran al ensamblar con la plantilla custom.'}
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleDiscardLayoutDraft}
+                                                    disabled={!hasLayoutOverridesToDiscard || savingLayoutOverrides || isAssembling}
+                                                    className="rounded-lg border border-gray-200 px-3 py-1.5 font-semibold text-gray-600 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#6C757D]/20 dark:text-gray-300 dark:hover:bg-white/5"
+                                                >
+                                                    Descartar
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSaveLayoutOverrides}
+                                                    disabled={!hasUnsavedLayoutOverrides || savingLayoutOverrides || isAssembling}
+                                                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#00D4B3] px-3 py-1.5 font-semibold text-[#0A2540] transition hover:bg-[#00E5C1] disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500"
+                                                >
+                                                    {savingLayoutOverrides ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                                                    Guardar layout
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            if (activePreview && selectedTemplateHasCustomBundleBlocked && selectedTemplateConfig) {
+                                const isBuildFailed = selectedTemplateConfig.render_mode === 'EXTERNAL_CLOUD_BUILD_FAILED';
+                                const isBuildRunning = selectedTemplateConfig.render_mode === 'EXTERNAL_CLOUD_BUILD_READY'
+                                    && selectedTemplateConfig.cloud_build_status === 'BUILDING';
+
+                                return (
+                                    <div className="flex aspect-video min-w-0 flex-col justify-center gap-4 overflow-hidden rounded-xl border border-amber-500/20 bg-amber-500/10 p-6">
+                                        <div className="flex min-w-0 items-center gap-3 text-sm font-semibold text-amber-800 dark:text-amber-200">
+                                            {isBuildRunning ? (
+                                                <Loader2 size={20} className="shrink-0 animate-spin" />
+                                            ) : (
+                                                <AlertTriangle size={20} className="shrink-0" />
+                                            )}
+                                            <span className="min-w-0 truncate">
+                                                {isBuildFailed
+                                                    ? 'El build de esta plantilla fallo'
+                                                    : isBuildRunning
+                                                        ? 'Build de plantilla en progreso'
+                                                        : 'Plantilla custom pendiente de build validado'}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs leading-relaxed text-amber-800/80 dark:text-amber-200/80">
+                                            No se mostrara una composicion interna como reemplazo, porque eso ocultaria que la plantilla custom todavia no esta lista. Aprueba la version y construyela con worker local desde Plantillas, o selecciona una plantilla basica para ensamblar ahora.
+                                        </p>
+                                        <div className="grid min-w-0 grid-cols-1 gap-1.5 text-[11px] text-amber-900/70 dark:text-amber-100/70">
+                                            <p className="min-w-0 truncate" title={selectedTemplateConfig.name}>
+                                                <span className="font-medium">Plantilla:</span> {selectedTemplateConfig.name}
+                                            </p>
+                                            <p className="min-w-0 truncate" title={selectedTemplateConfig.render_status_label}>
+                                                <span className="font-medium">Estado:</span> {selectedTemplateConfig.render_status_label}
+                                            </p>
+                                            {selectedTemplateConfig.cloud_build_id && (
+                                                <p className="min-w-0 truncate" title={selectedTemplateConfig.cloud_build_id}>
+                                                    <span className="font-medium">Build:</span> {selectedTemplateConfig.cloud_build_id}
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -924,8 +1252,85 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                             assets={activePreview.assets}
                                             templateSlug={selectedTemplateSlug}
                                             templateConfig={selectedTemplateConfig?.default_config}
+                                            layoutOverrides={activeLayoutOverrides}
                                             targetDurationSeconds={activePreviewTargetDurationSeconds}
+                                            overlay={
+                                                <LayoutOverridePreviewOverlay
+                                                    componentId={activePreview.id}
+                                                    templateId={selectedTemplate}
+                                                    templateVersionId={selectedTemplateConfig?.cloud_build_id || selectedTemplateConfig?.id || null}
+                                                    templateSlug={selectedTemplateSlug}
+                                                    templateConfig={selectedTemplateConfig?.default_config}
+                                                    value={activeLayoutOverrides}
+                                                    selectedLayerId={selectedLayoutLayerId}
+                                                    onSelectedLayerChange={setSelectedLayoutLayerId}
+                                                    editableLayers={activeEditableLayoutLayers}
+                                                    assetSummary={activeLayoutAssetSummary}
+                                                    editMode={layoutEditMode}
+                                                    gridSettings={layoutGridSettings}
+                                                    onChange={(nextOverrides) => setLayoutOverrideDrafts((current) => {
+                                                        const next = { ...current };
+                                                        if (nextOverrides.length > 0) {
+                                                            next[activeLayoutDraftKey] = nextOverrides;
+                                                        } else {
+                                                            delete next[activeLayoutDraftKey];
+                                                        }
+                                                        return next;
+                                                    })}
+                                                    disabled={isAssembling}
+                                                />
+                                            }
                                         />
+                                        <LayoutOverrideDraftPanel
+                                            componentId={activePreview.id}
+                                            templateId={selectedTemplate}
+                                            templateVersionId={selectedTemplateConfig?.cloud_build_id || selectedTemplateConfig?.id || null}
+                                            value={activeLayoutOverrides}
+                                            editableLayers={activeEditableLayoutLayers}
+                                            selectedLayerId={selectedLayoutLayerId}
+                                            onSelectedLayerChange={setSelectedLayoutLayerId}
+                                            editMode={layoutEditMode}
+                                            onEditModeChange={setLayoutEditMode}
+                                            gridSettings={layoutGridSettings}
+                                            onGridSettingsChange={setLayoutGridSettings}
+                                            onChange={(nextOverrides) => setLayoutOverrideDrafts((current) => {
+                                                const next = { ...current };
+                                                if (nextOverrides.length > 0) {
+                                                    next[activeLayoutDraftKey] = nextOverrides;
+                                                } else {
+                                                    delete next[activeLayoutDraftKey];
+                                                }
+                                                return next;
+                                            })}
+                                            disabled={isAssembling}
+                                        />
+                                        <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50/80 p-3 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419]/50 sm:flex-row sm:items-center sm:justify-between">
+                                            <div className="text-gray-500 dark:text-gray-400">
+                                                {hasUnsavedLayoutOverrides
+                                                    ? 'Hay ajustes de layout sin guardar para este video.'
+                                                    : activePreview.assets?.final_video_layout_stale
+                                                        ? 'El video final puede estar desactualizado respecto al layout guardado.'
+                                                        : 'Los ajustes de layout guardados se incluiran al ensamblar.'}
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleDiscardLayoutDraft}
+                                                    disabled={savingLayoutOverrides || !hasLayoutOverridesToDiscard}
+                                                    className="rounded-lg border border-gray-200 px-3 py-1.5 font-semibold text-gray-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#6C757D]/20 dark:text-gray-200 dark:hover:bg-white/5"
+                                                >
+                                                    Descartar
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSaveLayoutOverrides}
+                                                    disabled={savingLayoutOverrides || !hasUnsavedLayoutOverrides}
+                                                    className="rounded-lg bg-[#0A2540] px-3 py-1.5 font-semibold text-white transition hover:bg-[#0d2f4d] disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    {savingLayoutOverrides ? 'Guardando...' : 'Guardar layout'}
+                                                </button>
+                                            </div>
+                                        </div>
                                         <div className="text-xs text-gray-500 dark:text-gray-400 text-center leading-relaxed">
                                             Previsualizacion en vivo del ensamblado. El video final se generara al iniciar Remotion.
                                         </div>
@@ -1254,7 +1659,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                         <button
                                             onClick={handleAssembleSelected}
                                             disabled={!activePreviewPending || selectedTemplateBlocksFinalRender || workerGateBlocked}
-                                            className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-purple-500/25 transition-all active:scale-[0.98]"
+                                            className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold bg-[#0A2540] hover:bg-[#0d2f4d] disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-[#0A2540]/20 transition-all active:scale-[0.98]"
                                         >
                                             <RefreshCw className="w-4 h-4" />
                                             Ensamblar seleccionado
@@ -1262,7 +1667,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                         <button
                                             onClick={handleAssembleAll}
                                             disabled={selectedTemplateBlocksFinalRender || workerGateBlocked}
-                                            className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold border border-purple-500/40 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                            className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold border border-[#00D4B3]/40 text-[#0A2540] hover:bg-[#00D4B3]/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all dark:text-[#00D4B3]"
                                         >
                                             <RefreshCw className="w-4 h-4" />
                                             Encolar todos ({componentsToAssemble.length})
@@ -1275,7 +1680,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                 </div>
 
                 <div className="min-h-0">
-                    <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl shadow-sm lg:sticky lg:top-6 lg:max-h-[calc(100vh-7rem)] flex min-h-[420px] flex-col overflow-hidden">
+                    <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl shadow-sm 2xl:sticky 2xl:top-6 2xl:max-h-[calc(100vh-7rem)] flex min-h-[420px] flex-col overflow-hidden">
                         <div className="space-y-4 border-b border-gray-200 p-5 dark:border-[#6C757D]/10">
                             <h3 className="text-md font-bold text-gray-900 dark:text-white flex items-center gap-2">
                                 <Layers className="text-[#1F5AF6]" size={18} />
@@ -1288,7 +1693,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                     value={templateSearch}
                                     onChange={(event) => setTemplateSearch(event.target.value)}
                                     placeholder="Buscar plantillas"
-                                    className="w-full rounded-xl border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 dark:border-[#6C757D]/10 dark:bg-[#0F1419] dark:text-white"
+                                    className="w-full rounded-xl border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 outline-none transition focus:border-[#00D4B3] focus:ring-2 focus:ring-[#00D4B3]/20 dark:border-[#6C757D]/10 dark:bg-[#0F1419] dark:text-white"
                                 />
                             </div>
                         </div>
@@ -1310,13 +1715,13 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                             )}
                         </div>
 
-                        {(selectedTemplateConfig && (selectedTemplateUsesExternalBundle || selectedTemplateNeedsCloudBuild || selectedTemplateConfig.render_mode === 'EXTERNAL_LAMBDA_SITE_READY')) && (
+                        {(selectedTemplateConfig && (selectedTemplateUsesExternalBundle || selectedTemplateNeedsCloudBuild || selectedTemplateConfig.render_mode === 'EXTERNAL_BUNDLE_SITE_READY')) && (
                             <div className="border-t border-gray-200 p-5 dark:border-[#6C757D]/10">
                                 {selectedTemplateUsesExternalBundle && (
                                     <div className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
                                         <AlertTriangle size={15} className="mt-0.5 shrink-0" />
                                         <span>
-                                            Esta plantilla tiene un ZIP guardado como referencia. Por seguridad, el render actual usa la composicion interna {selectedTemplateConfig.render_composition_id}.
+                                            Esta plantilla tiene un ZIP guardado como referencia, pero todavia no tiene build validado. No se usara una composicion interna como reemplazo.
                                         </span>
                                     </div>
                                 )}
@@ -1324,15 +1729,15 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                     <div className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
                                         <AlertTriangle size={15} className="mt-0.5 shrink-0" />
                                         <span>
-                                            Esta plantilla externa necesita un build cloud validado antes de ensamblar el video final.
+                                            Esta plantilla externa necesita un build con worker validado antes de ensamblar el video final.
                                         </span>
                                     </div>
                                 )}
-                                {selectedTemplateConfig.render_mode === 'EXTERNAL_LAMBDA_SITE_READY' && (
+                                {selectedTemplateConfig.render_mode === 'EXTERNAL_BUNDLE_SITE_READY' && (
                                     <div className="flex items-start gap-2 rounded-xl border border-green-500/20 bg-green-500/10 p-3 text-xs leading-relaxed text-green-700 dark:text-green-300">
                                         <CheckCircle2 size={15} className="mt-0.5 shrink-0" />
                                         <span>
-                                            Bundle cloud listo. El render final usara el site aprobado con el provider activo.
+                                            Bundle compilado listo. El render final usara el artefacto aprobado con el provider activo.
                                         </span>
                                     </div>
                                 )}

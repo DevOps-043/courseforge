@@ -19,6 +19,7 @@ import {
   DEFAULT_TEMPLATE_RENDER_CONFIG,
   templateRenderConfigSchema,
 } from "./template-config";
+import { layoutOverrideManifestListSchema } from "./layout-overrides";
 
 // --- Constantes de composición (sin magic numbers dispersos) ---------------
 
@@ -121,6 +122,9 @@ export const assemblyInputPropsSchema = z.object({
   templateConfig: templateRenderConfigSchema.default(
     DEFAULT_TEMPLATE_RENDER_CONFIG,
   ),
+
+  /** Ajustes visuales no destructivos aplicados por el editor de layout. */
+  layoutOverrides: layoutOverrideManifestListSchema,
 });
 
 /**
@@ -168,5 +172,6 @@ export function createDefaultAssemblyProps(
     brollClips: [],
     transitionType: "fade",
     templateConfig: DEFAULT_TEMPLATE_RENDER_CONFIG,
+    layoutOverrides: [],
   };
 }

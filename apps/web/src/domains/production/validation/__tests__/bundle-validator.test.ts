@@ -51,10 +51,26 @@ describe("validateRemotionBundle", () => {
     const propsSchema = {
       type: "object",
       properties: {
+        layoutOverrides: { type: "array" },
         title: { type: "string" },
       },
     };
     const defaultProps = { title: "SofLIA - Engine" };
+    const editableLayers = [
+      {
+        layerId: "avatar",
+        label: "Avatar",
+        kind: "avatar",
+        defaultBox: { x: 0, y: 0, width: 960, height: 1080 },
+        capabilities: {
+          canMove: true,
+          canResize: true,
+          canCrop: true,
+          canRotate: false,
+          canHide: true,
+        },
+      },
+    ];
     const buffer = await zipBuffer({
       "courseforge-remotion-template.json": JSON.stringify(
         manifest({
@@ -66,6 +82,7 @@ describe("validateRemotionBundle", () => {
           height: 1080,
           propsSchema,
           defaultProps,
+          editableLayers,
         }),
       ),
       "src/index.tsx": "export const Root = () => null;",
@@ -82,6 +99,27 @@ describe("validateRemotionBundle", () => {
     assert.equal(result.info.manifest?.height, 1080);
     assert.deepEqual(result.info.manifest?.propsSchema, propsSchema);
     assert.deepEqual(result.info.manifest?.defaultProps, defaultProps);
+    assert.deepEqual(result.info.manifest?.editableLayers, editableLayers);
+    assert.equal(result.warnings.some((warning) => warning.includes("layoutOverrides")), false);
+  });
+
+  it("warns when a valid bundle cannot receive layout editor overrides", async () => {
+    const buffer = await zipBuffer({
+      "courseforge-remotion-template.json": JSON.stringify(manifest({
+        propsSchema: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+          },
+        },
+      })),
+      "src/index.tsx": "export const Template = () => null;",
+    });
+
+    const result = await validateRemotionBundle(buffer, "legacy-layout-contract.zip");
+
+    assert.equal(result.isValid, true);
+    assert.ok(result.warnings.some((warning) => warning.includes("layoutOverrides")));
   });
 
   it("rejects bundles without the required manifest", async () => {

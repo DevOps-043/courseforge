@@ -9,24 +9,22 @@ import {
   getExternalPreviewRenderRoot,
   renderExternalPreviewVideo,
 } from './external-preview-render.service';
-import { RemotionLambdaProgressService } from './remotion-lambda-progress.service';
 import { RemotionRenderOrchestratorService } from './remotion-render-orchestrator.service';
 import {
   buildAssemblyInputProps,
   resolveInternalCompositionId,
 } from './remotion-assembly-props.service';
 import {
-  getRemotionRenderConfig,
   getRemotionRenderReadiness,
   resolveLocalRenderTimeoutMs,
   buildStableHash,
 } from './remotion-render.config';
 import { TemplateCloudBuildService } from './template-cloud-build.service';
 import {
-  getExternalLambdaReadiness,
-  isExternalLambdaReadyBuild,
-  resolveExternalLambdaRenderTarget,
-} from './external-lambda-render-target.service';
+  getExternalBuildReadiness,
+  isExternalReadyBuild,
+  resolveExternalRenderTarget,
+} from './external-render-target.service';
 import { buildExternalTemplateProps } from './external-template-props.service';
 import { DesktopWorkerService } from './desktop-worker.service';
 import { buildRenderDiagnosticsSnapshot } from './remotion-render-diagnostics.service';
@@ -35,7 +33,6 @@ import { mergeTemplateRenderConfigs } from './template-render-config.service';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const renderOrchestrator = new RemotionRenderOrchestratorService();
-const lambdaProgressService = new RemotionLambdaProgressService();
 
 type SupabaseAnyClient = any;
 
@@ -278,8 +275,8 @@ export class ProductionController {
         .maybeSingle();
 
       const cloudBuild = rawCloudBuild as any;
-      if (isExternalLambdaReadyBuild(cloudBuild)) {
-        const target = resolveExternalLambdaRenderTarget({
+      if (isExternalReadyBuild(cloudBuild)) {
+        const target = resolveExternalRenderTarget({
           jobSnapshot: {
             templateVersionId: templateVersion.id,
             buildId: cloudBuild.id,
@@ -651,13 +648,12 @@ export class ProductionController {
         : { data: null };
 
       const renderProvider = renderOrchestrator.providerName;
-      const renderConfig = getRemotionRenderConfig();
-      const cloudBuildReadiness = getExternalLambdaReadiness(cloudBuild);
-      let externalRenderTarget: ReturnType<typeof resolveExternalLambdaRenderTarget> | null = null;
+      const cloudBuildReadiness = getExternalBuildReadiness(cloudBuild);
+      let externalRenderTarget: ReturnType<typeof resolveExternalRenderTarget> | null = null;
       let externalRenderTargetError: Error | null = null;
-      if (hasExternalBundle && cloudVersion && cloudBuild && (renderProvider === 'lambda' || renderProvider === 'desktop_worker')) {
+      if (hasExternalBundle && cloudVersion && cloudBuild && renderProvider === 'desktop_worker') {
         try {
-          externalRenderTarget = resolveExternalLambdaRenderTarget({
+          externalRenderTarget = resolveExternalRenderTarget({
             jobSnapshot: {
               templateVersionId: cloudVersion.id || null,
               buildId: cloudBuild.id || null,
@@ -673,14 +669,10 @@ export class ProductionController {
         }
       }
       const externalBuildIsReady = Boolean(externalRenderTarget);
-      const renderMode = externalBuildIsReady && renderProvider === 'lambda'
-        ? 'EXTERNAL_LAMBDA_SITE_READY'
-        : externalBuildIsReady && renderProvider === 'desktop_worker'
+      const renderMode = externalBuildIsReady && renderProvider === 'desktop_worker'
           ? 'EXTERNAL_DESKTOP_SITE_READY'
         : cloudVersion
           ? 'EXTERNAL_CLOUD_BUILD_READY'
-          : renderProvider === 'lambda'
-          ? 'INTERNAL_LAMBDA'
           : 'INTERNAL_COMPOSITION';
       console.log('[ProductionController] Remotion render mode resolved.', {
         componentId,
@@ -697,10 +689,10 @@ export class ProductionController {
 
       if (
         hasExternalBundle &&
-        (renderProvider === 'lambda' || renderProvider === 'desktop_worker') &&
+        renderProvider === 'desktop_worker' &&
         (!cloudVersion || !externalBuildIsReady)
       ) {
-        console.warn('[ProductionController] External bundle render blocked; cloud build is not Lambda-ready.', {
+        console.warn('[ProductionController] External bundle render blocked; cloud build is not render-ready.', {
           componentId,
           templateId,
           organizationId,
@@ -726,7 +718,7 @@ export class ProductionController {
       }
 
       let externalPropsResult: ReturnType<typeof buildExternalTemplateProps> | null = null;
-      if (renderMode === 'EXTERNAL_LAMBDA_SITE_READY' || renderMode === 'EXTERNAL_DESKTOP_SITE_READY') {
+      if (renderMode === 'EXTERNAL_DESKTOP_SITE_READY') {
         try {
           if (!externalRenderTarget) {
             throw new Error('EXTERNAL_RENDER_TARGET_INCOMPLETE: no se pudo resolver el target externo.');
@@ -742,7 +734,7 @@ export class ProductionController {
         } catch (contractError) {
           const message = contractError instanceof Error ? contractError.message : String(contractError);
           const code = message.split(':')[0] || 'EXTERNAL_RENDER_TARGET_INCOMPLETE';
-          console.warn('[ProductionController] External Lambda render contract rejected.', {
+          console.warn('[ProductionController] External render contract rejected.', {
             componentId,
             templateId,
             organizationId,
@@ -775,6 +767,7 @@ export class ProductionController {
           compositionId: internalCompositionId,
           transitionType: variables?.transitionType,
           templateConfig,
+          layoutOverrides: variables?.layoutOverrides,
         });
         desktopWorkerPropsResult = {
           compositionId: internalCompositionId,
@@ -783,17 +776,7 @@ export class ProductionController {
         };
       }
 
-      const renderTimeoutInMilliseconds =
-        renderProvider === 'lambda'
-          ? renderConfig.lambda.timeoutInMilliseconds
-          : resolveLocalRenderTimeoutMs();
-      const lambdaTuning = renderProvider === 'lambda'
-        ? {
-            concurrency: renderConfig.lambda.concurrency,
-            framesPerLambda: renderConfig.lambda.framesPerLambda,
-            concurrencyPerLambda: renderConfig.lambda.concurrencyPerLambda,
-          }
-        : null;
+      const renderTimeoutInMilliseconds = resolveLocalRenderTimeoutMs();
       const renderDiagnostics = buildRenderDiagnosticsSnapshot({
         renderProvider,
         renderMode,
@@ -807,7 +790,6 @@ export class ProductionController {
         compositionId: desktopWorkerPropsResult?.compositionId || externalRenderTarget?.compositionId || cloudBuild?.composition_id || cloudVersion?.composition_id || null,
         propsHash: desktopWorkerPropsResult?.propsHash || externalPropsResult?.propsHash || null,
         timeoutInMilliseconds: renderTimeoutInMilliseconds,
-        lambdaTuning,
         cloudBuildReadinessReason: cloudBuildReadiness.reason,
       });
 
@@ -1371,25 +1353,6 @@ export class ProductionController {
       if (jobError || !job) {
         console.error('[ProductionController] Job not found or access denied:', jobError);
         return res.status(404).json({ error: 'Job not found or access denied' });
-      }
-
-      if (
-        (job.status === 'WAITING_PROVIDER' || job.status === 'RUNNING') &&
-        job.input_snapshot?.renderProvider === 'lambda'
-      ) {
-        try {
-          await lambdaProgressService.syncJobProgress(serviceClient, job);
-          const { data: refreshedJob } = await serviceClient
-            .from('production_jobs')
-            .select('*')
-            .eq('id', jobId)
-            .single();
-          if (refreshedJob) {
-            job = refreshedJob;
-          }
-        } catch (progressError) {
-          console.warn('[ProductionController] Could not sync Lambda render progress:', progressError);
-        }
       }
 
       return res.json({

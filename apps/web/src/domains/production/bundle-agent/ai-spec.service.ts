@@ -100,6 +100,7 @@ Reglas estrictas:
 - Incluye en requiredAssets solo assets realmente inferidos: slides, audio, avatar, broll, captions.
 - Si hay slides y broll, la plantilla debe ser capaz de mostrar ambos de forma intencional: alternados, combinados, superpuestos o en zonas separadas. No debe ocultar B-roll solo porque existan diapositivas.
 - Usa las referencias visuales adjuntas como inspiracion de estilo, composicion, ritmo, motion, colores o atmosfera; no las trates como assets finales del render.
+- No bases la animacion esperada en transform/translate/scale/rotate sobre capas editables; el editor de layout de SofLIA - Engine controla posicion, tamano y recorte. Describe motion compatible con fades, cortes, ritmo visual y cambios de opacidad.
 - No copies rutas internas, URLs de storage, nombres privados de archivo ni metadatos tecnicos dentro de defaultProps.
 - durationFrames es solo fallback/preview de la plantilla, no debe hardcodear la duracion final del render.
 - La plantilla final debe resolver la duracion con calculateMetadata usando props.totalDurationInFrames y, cuando aplique, metadata real del avatar/audio.

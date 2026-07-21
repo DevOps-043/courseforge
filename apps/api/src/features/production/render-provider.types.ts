@@ -1,4 +1,4 @@
-export type RemotionRenderProviderName = 'local' | 'lambda' | 'desktop_worker';
+export type RemotionRenderProviderName = 'local' | 'desktop_worker';
 
 export interface RenderDispatchResult {
   provider: RemotionRenderProviderName;

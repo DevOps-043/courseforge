@@ -8,8 +8,8 @@ import {
 describe('remotion render diagnostics', () => {
   it('classifies timeouts by execution boundary', () => {
     assert.equal(
-      classifyRemotionFailure('Render timed out after 840000ms', { provider: 'lambda' }),
-      'LAMBDA_TIMEOUT',
+      classifyRemotionFailure('Render timed out after 840000ms', { provider: 'desktop_worker' }),
+      'DESKTOP_WORKER_TIMEOUT',
     );
     assert.equal(
       classifyRemotionFailure('selectComposition timeout', { provider: 'local' }),
@@ -27,8 +27,8 @@ describe('remotion render diagnostics', () => {
 
   it('keeps render diagnostics useful without copying media URLs', () => {
     const snapshot = buildRenderDiagnosticsSnapshot({
-      renderProvider: 'lambda',
-      renderMode: 'EXTERNAL_LAMBDA_SITE_READY',
+      renderProvider: 'desktop_worker',
+      renderMode: 'EXTERNAL_DESKTOP_SITE_READY',
       templateId: 'template-1',
       templateVersionId: 'version-1',
       buildId: 'build-1',
@@ -37,7 +37,6 @@ describe('remotion render diagnostics', () => {
       compositionId: 'courseforge-template',
       propsHash: 'c'.repeat(64),
       timeoutInMilliseconds: 840000,
-      lambdaTuning: { framesPerLambda: 600, concurrencyPerLambda: 1 },
       inputProps: {
         template: 'courseforge-template',
         fps: 30,

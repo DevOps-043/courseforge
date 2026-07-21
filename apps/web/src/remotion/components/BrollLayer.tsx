@@ -1,8 +1,10 @@
+import type { CSSProperties } from "react";
 import { AbsoluteFill, OffthreadVideo, Series } from "remotion";
 import type { AssemblyBrollClip } from "../types";
 
 interface BrollLayerProps {
   clips: AssemblyBrollClip[];
+  style?: CSSProperties;
 }
 
 /**
@@ -11,7 +13,7 @@ interface BrollLayerProps {
  *
  * Degrada con gracia: 0 clips => no renderiza nada.
  */
-export function BrollLayer({ clips }: BrollLayerProps) {
+export function BrollLayer({ clips, style }: BrollLayerProps) {
   if (clips.length === 0) {
     return null;
   }
@@ -25,7 +27,7 @@ export function BrollLayer({ clips }: BrollLayerProps) {
           key={`${clip.order}-${i}`}
           durationInFrames={clip.durationInFrames}
         >
-          <AbsoluteFill style={{ backgroundColor: "#000" }}>
+          <AbsoluteFill style={{ backgroundColor: "#000", ...style }}>
             <OffthreadVideo
               src={clip.url}
               muted

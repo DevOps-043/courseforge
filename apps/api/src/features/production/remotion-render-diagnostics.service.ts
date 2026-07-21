@@ -20,7 +20,6 @@ export interface RenderDiagnosticsSnapshotInput {
   compositionId?: string | null;
   propsHash?: string | null;
   timeoutInMilliseconds?: number | null;
-  lambdaTuning?: Record<string, unknown> | null;
   cloudBuildReadinessReason?: string | null;
 }
 
@@ -37,10 +36,9 @@ export function classifyRemotionFailure(
   if (normalized.includes('external_props_invalid')) return 'EXTERNAL_PROPS_INVALID';
   if (normalized.includes('external_serve_url_mismatch')) return 'EXTERNAL_SERVE_URL_MISMATCH';
   if (normalized.includes('throttl') || normalized.includes('rate exceeded') || normalized.includes('concurrency')) {
-    return context.provider === 'lambda' ? 'LAMBDA_THROTTLED' : 'RENDER_PROVIDER_THROTTLED';
+    return 'RENDER_PROVIDER_THROTTLED';
   }
   if (normalized.includes('timed out') || normalized.includes('timeout')) {
-    if (context.provider === 'lambda') return 'LAMBDA_TIMEOUT';
     if (context.provider === 'preview') return 'EXTERNAL_PREVIEW_TIMEOUT';
     if (context.provider === 'codebuild') return 'CODEBUILD_TIMEOUT';
     if (context.provider === 'desktop_worker') return 'DESKTOP_WORKER_TIMEOUT';
@@ -60,7 +58,6 @@ export function classifyRemotionFailure(
     return 'COMPOSITION_RESOLUTION_FAILED';
   }
 
-  if (context.provider === 'lambda') return 'LAMBDA_RENDER_FAILED';
   if (context.provider === 'desktop_worker') return 'DESKTOP_WORKER_RENDER_FAILED';
   if (context.provider === 'local') return 'LOCAL_RENDER_FAILED';
   if (context.provider === 'preview') return 'EXTERNAL_PREVIEW_RENDER_FAILED';
@@ -85,7 +82,6 @@ export function buildRenderDiagnosticsSnapshot(
     buildHash: truncateHash(input.buildHash),
     propsHash: truncateHash(input.propsHash),
     timeoutInMilliseconds: positiveNumberOrNull(input.timeoutInMilliseconds),
-    lambdaTuning: input.lambdaTuning || null,
     cloudBuildReadinessReason: input.cloudBuildReadinessReason || null,
     props: propsSummary,
     assets: assetSummary,

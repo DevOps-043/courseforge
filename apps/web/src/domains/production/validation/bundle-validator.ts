@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import JSZip from "jszip";
 import { z } from "zod";
+import { editableLayerDefinitionSchema } from "../../../remotion/layout-overrides";
 
 const MAX_ZIP_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_UNZIPPED_SIZE_BYTES = 50 * 1024 * 1024;
@@ -62,6 +63,7 @@ const manifestSchema = z.object({
   height: positiveIntegerSchema.optional(),
   propsSchema: jsonObjectSchema.optional(),
   defaultProps: jsonObjectSchema.optional(),
+  editableLayers: z.array(editableLayerDefinitionSchema).max(40).optional(),
   remotionVersion: z.string().trim().min(1).max(40).optional(),
 });
 
@@ -112,6 +114,23 @@ function readPackageDependencies(packageJson: any) {
     ...(packageJson.devDependencies || {}),
     ...(packageJson.peerDependencies || {}),
   } as Record<string, string>;
+}
+
+function manifestSupportsLayoutOverrides(manifest: RemotionTemplateManifest): boolean {
+  const propsSchema = manifest.propsSchema as Record<string, unknown> | undefined;
+  const properties = propsSchema?.properties;
+
+  if (!properties || typeof properties !== "object" || Array.isArray(properties)) {
+    return false;
+  }
+
+  const layoutOverrides = (properties as Record<string, unknown>).layoutOverrides;
+  return Boolean(
+    layoutOverrides &&
+    typeof layoutOverrides === "object" &&
+    !Array.isArray(layoutOverrides) &&
+    (layoutOverrides as Record<string, unknown>).type === "array",
+  );
 }
 
 /**
@@ -239,6 +258,12 @@ export async function validateRemotionBundle(
 
       if (!manifest.remotionVersion) {
         warnings.push("Se recomienda especificar remotionVersion en el manifiesto.");
+      }
+
+      if (!manifestSupportsLayoutOverrides(manifest)) {
+        warnings.push(
+          "El manifiesto no declara propsSchema.properties.layoutOverrides como array; el editor de layout no podra adaptar posicion, tamano o recorte en esta plantilla.",
+        );
       }
     }
 

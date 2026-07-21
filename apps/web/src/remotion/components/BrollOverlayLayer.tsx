@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { AbsoluteFill, OffthreadVideo, Sequence } from "remotion";
 import type { AssemblyBrollClip } from "../types";
 import { buildBrollTimeline } from "../visual-timeline";
@@ -5,11 +6,13 @@ import { buildBrollTimeline } from "../visual-timeline";
 interface BrollOverlayLayerProps {
   clips: AssemblyBrollClip[];
   durationInFrames: number;
+  containerStyle?: CSSProperties;
 }
 
 export function BrollOverlayLayer({
   clips,
   durationInFrames,
+  containerStyle,
 }: BrollOverlayLayerProps) {
   const timeline = buildBrollTimeline(clips, durationInFrames);
 
@@ -42,6 +45,7 @@ export function BrollOverlayLayer({
                 backgroundColor: "#000",
                 border: "2px solid rgba(255,255,255,0.18)",
                 boxShadow: "0 16px 48px rgba(0,0,0,0.55)",
+                ...containerStyle,
               }}
             >
               <OffthreadVideo

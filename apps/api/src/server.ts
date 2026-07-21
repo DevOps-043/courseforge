@@ -54,6 +54,6 @@ app.listen(PORT, () => {
       .prewarm()
       .catch((err) => console.warn('[API] Fallo al pre-calentar Remotion:', err));
   } else {
-    console.log('[API] Remotion Lambda provider enabled; local bundle prewarm skipped.');
+    console.log('[API] Desktop worker provider enabled; local bundle prewarm skipped.');
   }
 });

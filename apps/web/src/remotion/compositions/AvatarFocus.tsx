@@ -4,6 +4,10 @@ import { PrimaryVisual } from "../components/PrimaryVisual";
 import { AvatarLayer } from "../components/AvatarLayer";
 import { AudioTracks } from "../components/AudioTracks";
 import { parseTemplateRenderConfig } from "../template-config";
+import {
+  buildLayoutOverrideStyle,
+  REMOTION_EDITABLE_LAYERS,
+} from "../layout-override-styles";
 
 /**
  * Plantilla "Avatar Enfocado": el avatar ocupa el centro de la pantalla y, si
@@ -18,23 +22,49 @@ export function AvatarFocus(props: AssemblyInputProps) {
   const templateConfig = parseTemplateRenderConfig(props.templateConfig);
   const hasSupportVisual =
     props.slides.length > 0 || props.brollClips.length > 0;
+  const avatarOverrideStyle = buildLayoutOverrideStyle(
+    props.layoutOverrides,
+    REMOTION_EDITABLE_LAYERS.AVATAR,
+  );
+  const primaryVisualOverrideStyle = buildLayoutOverrideStyle(
+    props.layoutOverrides,
+    REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL,
+  );
+  const slidesOverrideStyle = buildLayoutOverrideStyle(
+    props.layoutOverrides,
+    REMOTION_EDITABLE_LAYERS.SLIDES,
+  );
+  const brollOverrideStyle = buildLayoutOverrideStyle(
+    props.layoutOverrides,
+    REMOTION_EDITABLE_LAYERS.BROLL,
+  );
+  const supportStripOverrideStyle = buildLayoutOverrideStyle(
+    props.layoutOverrides,
+    REMOTION_EDITABLE_LAYERS.SUPPORT_STRIP,
+  );
 
   return (
     <AbsoluteFill style={{ backgroundColor: templateConfig.backgroundColor }}>
       {props.avatarVideoUrl ? (
-        <AvatarLayer
-          url={props.avatarVideoUrl}
-          muted={hasVoice}
-          objectFit="contain"
-        />
+        <div style={{ position: "absolute", inset: 0, ...avatarOverrideStyle }}>
+          <AvatarLayer
+            url={props.avatarVideoUrl}
+            muted={hasVoice}
+            objectFit="contain"
+          />
+        </div>
       ) : (
-        <PrimaryVisual
-          slides={props.slides}
-          brollClips={props.brollClips}
-          durationInFrames={durationInFrames}
-          transitionType={props.transitionType}
-          templateConfig={templateConfig}
-        />
+        <div style={{ position: "absolute", inset: 0, ...primaryVisualOverrideStyle }}>
+          <PrimaryVisual
+            slides={props.slides}
+            brollClips={props.brollClips}
+            durationInFrames={durationInFrames}
+            transitionType={props.transitionType}
+            templateConfig={templateConfig}
+            slidesLayerStyle={slidesOverrideStyle}
+            brollLayerStyle={brollOverrideStyle}
+          />
+        </div>
       )}
 
       {props.avatarVideoUrl && hasSupportVisual ? (
@@ -48,15 +78,20 @@ export function AvatarFocus(props: AssemblyInputProps) {
             overflow: "hidden",
             borderTop: `3px solid ${templateConfig.accentColor}`,
             boxShadow: "0 -8px 24px rgba(0,0,0,0.4)",
+            ...supportStripOverrideStyle,
           }}
         >
-          <PrimaryVisual
-            slides={props.slides}
-            brollClips={props.brollClips}
-            durationInFrames={durationInFrames}
-            transitionType={props.transitionType}
-            templateConfig={templateConfig}
-          />
+          <div style={{ position: "absolute", inset: 0, ...primaryVisualOverrideStyle }}>
+            <PrimaryVisual
+              slides={props.slides}
+              brollClips={props.brollClips}
+              durationInFrames={durationInFrames}
+              transitionType={props.transitionType}
+              templateConfig={templateConfig}
+              slidesLayerStyle={slidesOverrideStyle}
+              brollLayerStyle={brollOverrideStyle}
+            />
+          </div>
         </div>
       ) : null}
 

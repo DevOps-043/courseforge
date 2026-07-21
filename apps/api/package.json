@@ -7,13 +7,12 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "lint": "tsc --noEmit",
-    "test:remotion": "tsc -p tsconfig.remotion-test.json && node .tmp/remotion-tests/features/production/__tests__/remotion-assembly-props.service.test.js && node .tmp/remotion-tests/features/production/__tests__/resolved-props.service.test.js && node .tmp/remotion-tests/features/production/__tests__/external-template-props.service.test.js && node .tmp/remotion-tests/features/production/__tests__/external-lambda-render-target.service.test.js && node .tmp/remotion-tests/features/production/__tests__/template-manifest.service.test.js && node .tmp/remotion-tests/features/production/__tests__/remotion-render-config.test.js && node .tmp/remotion-tests/features/production/__tests__/remotion-render-diagnostics.service.test.js && node .tmp/remotion-tests/features/production/__tests__/desktop-worker.provider.test.js && node .tmp/remotion-tests/features/production/__tests__/remotion-lambda-progress.service.test.js && node .tmp/remotion-tests/features/production/__tests__/template-cloud-build.service.test.js"
+    "test:remotion": "tsc -p tsconfig.remotion-test.json && node .tmp/remotion-tests/features/production/__tests__/remotion-assembly-props.service.test.js && node .tmp/remotion-tests/features/production/__tests__/resolved-props.service.test.js && node .tmp/remotion-tests/features/production/__tests__/external-template-props.service.test.js && node .tmp/remotion-tests/features/production/__tests__/external-render-target.service.test.js && node .tmp/remotion-tests/features/production/__tests__/template-manifest.service.test.js && node .tmp/remotion-tests/features/production/__tests__/remotion-render-config.test.js && node .tmp/remotion-tests/features/production/__tests__/remotion-render-diagnostics.service.test.js && node .tmp/remotion-tests/features/production/__tests__/desktop-worker.provider.test.js && node .tmp/remotion-tests/features/production/__tests__/template-cloud-build.service.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-codebuild": "^3.1077.0",
     "@aws-sdk/client-s3": "^3.1078.0",
     "@remotion/bundler": "4.0.484",
-    "@remotion/lambda": "4.0.484",
     "@remotion/renderer": "4.0.484",
     "@supabase/supabase-js": "^2.107.0",
     "cors": "2.8.5",

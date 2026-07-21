@@ -136,7 +136,14 @@ export function mapWorkerError(error: unknown) {
     message.includes("ALREADY") ||
     message.includes("EXPIRED") ||
     message.includes("EXTERNAL_BUILD_NOT_READY") ||
-    message.includes("DESKTOP_WORKER_NETLIFY_REQUIRES")
+    message.includes("EXTERNAL_RENDER_TARGET_INCOMPLETE") ||
+    message.includes("EXTERNAL_COMPOSITION_ID_MISSING") ||
+    message.includes("DESKTOP_WORKER_NETLIFY_REQUIRES") ||
+    message.includes("DESKTOP_WORKER_REQUIRES_TEMPLATE_BUILD") ||
+    message.includes("TEMPLATE_BUILD_NOT_CLAIMABLE") ||
+    message.includes("TEMPLATE_PREVIEW_BUILD_NOT_READY") ||
+    message.includes("TEMPLATE_PREVIEW_NOT_CLAIMABLE") ||
+    message.includes("TEMPLATE_VERSION_NOT_APPROVED")
   ) {
     return jsonError(message, 409, message.split(":")[0]);
   }

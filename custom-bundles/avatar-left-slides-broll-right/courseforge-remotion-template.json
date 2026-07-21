@@ -1,0 +1,154 @@
+{
+  "name": "Avatar fijo izquierda con diapositiva y B-roll derecha",
+  "entryPoint": "src/index.tsx",
+  "compositionId": "avatar-left-slides-broll-right",
+  "exportMode": "root",
+  "defaultDurationFrames": 1800,
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "remotionVersion": "4.0.484",
+  "propsSchema": {
+    "type": "object",
+    "properties": {
+      "avatarVideoUrl": {
+        "type": "string",
+        "description": "URL publica del avatar o talking head."
+      },
+      "voiceAudioUrl": {
+        "type": "string",
+        "description": "URL publica de la locucion principal."
+      },
+      "bgMusicUrl": {
+        "type": "string",
+        "description": "URL publica de musica de fondo."
+      },
+      "bgMusicVolume": {
+        "type": "number",
+        "description": "Volumen relativo de musica de fondo entre 0 y 1."
+      },
+      "slides": {
+        "type": "array",
+        "description": "Diapositivas renderizables normalizadas por SofLIA - Engine."
+      },
+      "brollClips": {
+        "type": "array",
+        "description": "Clips B-roll normalizados por SofLIA - Engine."
+      },
+      "totalDurationInFrames": {
+        "type": "integer",
+        "description": "Duracion total resuelta para el render."
+      },
+      "layoutOverrides": {
+        "type": "array",
+        "description": "Ajustes visuales no destructivos del editor de layout."
+      }
+    }
+  },
+  "defaultProps": {
+    "avatarVideoUrl": "",
+    "voiceAudioUrl": "",
+    "bgMusicUrl": "",
+    "bgMusicVolume": 0.12,
+    "slides": [],
+    "brollClips": [],
+    "layoutOverrides": [],
+    "totalDurationInFrames": 1800
+  },
+  "editableLayers": [
+    {
+      "layerId": "avatar",
+      "label": "Avatar",
+      "kind": "avatar",
+      "defaultBox": {
+        "x": 0,
+        "y": 0,
+        "width": 806,
+        "height": 1080
+      },
+      "capabilities": {
+        "canMove": true,
+        "canResize": true,
+        "canCrop": true,
+        "canRotate": false,
+        "canHide": true
+      },
+      "constraints": {
+        "minWidth": 320,
+        "minHeight": 360,
+        "safeArea": "full"
+      }
+    },
+    {
+      "layerId": "primaryVisual",
+      "label": "Area derecha",
+      "kind": "custom",
+      "defaultBox": {
+        "x": 806,
+        "y": 0,
+        "width": 1114,
+        "height": 1080
+      },
+      "capabilities": {
+        "canMove": true,
+        "canResize": true,
+        "canCrop": false,
+        "canRotate": false,
+        "canHide": false
+      },
+      "constraints": {
+        "minWidth": 480,
+        "minHeight": 540,
+        "safeArea": "full"
+      }
+    },
+    {
+      "layerId": "slides",
+      "label": "Diapositivas",
+      "kind": "slides",
+      "defaultBox": {
+        "x": 842,
+        "y": 36,
+        "width": 1042,
+        "height": 626
+      },
+      "capabilities": {
+        "canMove": true,
+        "canResize": true,
+        "canCrop": true,
+        "canRotate": false,
+        "canHide": true
+      },
+      "constraints": {
+        "minWidth": 360,
+        "minHeight": 220,
+        "lockAspectRatio": false,
+        "safeArea": "full"
+      }
+    },
+    {
+      "layerId": "broll",
+      "label": "B-roll",
+      "kind": "broll",
+      "defaultBox": {
+        "x": 1364,
+        "y": 752,
+        "width": 520,
+        "height": 292
+      },
+      "capabilities": {
+        "canMove": true,
+        "canResize": true,
+        "canCrop": true,
+        "canRotate": false,
+        "canHide": true
+      },
+      "constraints": {
+        "minWidth": 240,
+        "minHeight": 135,
+        "lockAspectRatio": true,
+        "safeArea": "full"
+      }
+    }
+  ]
+}

@@ -7,9 +7,8 @@
   },
   "include": [
     "src/features/production/remotion-assembly-props.service.ts",
-    "src/features/production/external-lambda-render-target.service.ts",
+    "src/features/production/external-render-target.service.ts",
     "src/features/production/external-template-props.service.ts",
-    "src/features/production/external-template-sandbox-runner.service.ts",
     "src/features/production/template-cloud-build.service.ts",
     "src/features/production/resolved-props.service.ts",
     "src/features/production/sandbox-runner/**/*.ts",

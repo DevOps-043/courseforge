@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  getExternalLambdaReadiness,
-  isExternalLambdaReadyBuild,
-  resolveExternalLambdaRenderTarget,
-} from '../external-lambda-render-target.service';
+  getExternalBuildReadiness,
+  isExternalReadyBuild,
+  resolveExternalRenderTarget,
+} from '../external-render-target.service';
 
-describe('external lambda render target', () => {
+describe('external render target', () => {
   it('uses the cloud build serveUrl and external composition without internal fallback', () => {
-    const target = resolveExternalLambdaRenderTarget({
+    const target = resolveExternalRenderTarget({
       jobSnapshot: {
         templateVersionId: 'version-1',
         buildId: 'build-1',
@@ -39,7 +39,7 @@ describe('external lambda render target', () => {
 
   it('rejects a built record that is missing an external composition id', () => {
     assert.throws(
-      () => resolveExternalLambdaRenderTarget({
+      () => resolveExternalRenderTarget({
         jobSnapshot: {
           templateVersionId: 'version-1',
           buildId: 'build-1',
@@ -56,7 +56,7 @@ describe('external lambda render target', () => {
   });
 
   it('does not treat a built site path as a composition id', () => {
-    const target = resolveExternalLambdaRenderTarget({
+    const target = resolveExternalRenderTarget({
       jobSnapshot: {
         templateVersionId: 'version-1',
         buildId: 'build-1',
@@ -77,8 +77,8 @@ describe('external lambda render target', () => {
     assert.equal(target.compositionId, 'external-main');
   });
 
-  it('marks a build with a site path composition as not Lambda-ready', () => {
-    assert.deepEqual(getExternalLambdaReadiness({
+  it('marks a build with a site path composition as not render-ready', () => {
+    assert.deepEqual(getExternalBuildReadiness({
       status: 'BUILT',
       serve_url: 'https://cdn.example.com/template/index.html',
       composition_id: 'template-sites/build-1/index.html',
@@ -89,29 +89,29 @@ describe('external lambda render target', () => {
     });
   });
 
-  it('requires a Lambda-ready build before external render', () => {
-    assert.equal(isExternalLambdaReadyBuild({
+  it('requires a render-ready build before external render', () => {
+    assert.equal(isExternalReadyBuild({
       status: 'BUILT',
       serve_url: 'https://cdn.example.com/template/index.html',
       composition_id: 'external-main',
       build_log: 'Cloud build completed and validated successfully. remotionVersion=4.0.484',
     }), true);
 
-    assert.equal(isExternalLambdaReadyBuild({
+    assert.equal(isExternalReadyBuild({
       status: 'BUILT',
       serve_url: 'https://cdn.example.com/template/index.html',
       composition_id: 'external-main',
       build_log: 'Cloud build completed successfully.',
     }), false);
 
-    assert.equal(isExternalLambdaReadyBuild({
+    assert.equal(isExternalReadyBuild({
       status: 'BUILT',
       serve_url: 'https://cdn.example.com/template/index.html',
     }), false);
   });
 
-  it('explains why a built external bundle is not Lambda-ready', () => {
-    assert.deepEqual(getExternalLambdaReadiness({
+  it('explains why a built external bundle is not render-ready', () => {
+    assert.deepEqual(getExternalBuildReadiness({
       status: 'BUILT',
       serve_url: 'https://cdn.example.com/template/index.html',
       composition_id: 'external-main',
@@ -123,7 +123,7 @@ describe('external lambda render target', () => {
   });
 
   it('rejects validated external builds compiled with a different Remotion version', () => {
-    assert.deepEqual(getExternalLambdaReadiness({
+    assert.deepEqual(getExternalBuildReadiness({
       status: 'BUILT',
       serve_url: 'https://cdn.example.com/template/index.html',
       composition_id: 'external-main',

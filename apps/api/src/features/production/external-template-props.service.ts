@@ -27,15 +27,27 @@ export interface ExternalTemplatePropsResult extends ResolvedPropsResult {
 
 export function buildExternalTemplateProps(input: ExternalTemplatePropsInput): ExternalTemplatePropsResult {
   const variables = input.variables ?? {};
+  const hasTemplateConfigInput = Boolean(input.templateDefaultConfig || variables.templateConfig);
+  const templateConfig = mergeTemplateRenderConfigs(input.templateDefaultConfig, variables.templateConfig);
   const courseProps = buildAssemblyInputProps({
     assets: input.assets,
     compositionId: input.compositionId,
     transitionType: variables.transitionType,
-    templateConfig: mergeTemplateRenderConfigs(input.templateDefaultConfig, variables.templateConfig),
+    templateConfig,
+    layoutOverrides: variables.layoutOverrides,
   });
   const resolved = buildResolvedProps({
     bundleDefaultProps: input.bundleDefaultProps,
-    courseProps: courseProps as unknown as Record<string, unknown>,
+    courseProps: {
+      ...(courseProps as unknown as Record<string, unknown>),
+      ...(hasTemplateConfigInput
+        ? {
+            accentColor: templateConfig.accentColor,
+            backgroundColor: templateConfig.backgroundColor,
+            surfaceColor: templateConfig.surfaceColor,
+          }
+        : {}),
+    },
     userOverrides: extractExternalTemplateOverrides(variables),
   });
 

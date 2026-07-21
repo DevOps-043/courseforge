@@ -4,6 +4,7 @@ import type {
   AssemblySlide,
   AssemblyTransition,
 } from "../types";
+import type { LayoutOverrideStyle } from "../layout-override-styles";
 import {
   DEFAULT_TEMPLATE_RENDER_CONFIG,
   type TemplateRenderConfig,
@@ -18,6 +19,8 @@ interface PrimaryVisualProps {
   durationInFrames: number;
   transitionType: AssemblyTransition;
   templateConfig?: TemplateRenderConfig;
+  slidesLayerStyle?: LayoutOverrideStyle;
+  brollLayerStyle?: LayoutOverrideStyle;
 }
 
 function NeutralBackground({
@@ -45,25 +48,34 @@ export function PrimaryVisual({
   durationInFrames,
   transitionType,
   templateConfig = DEFAULT_TEMPLATE_RENDER_CONFIG,
+  slidesLayerStyle,
+  brollLayerStyle,
 }: PrimaryVisualProps) {
   if (slides.length > 0) {
     return (
       <>
-        <SlideShow
-          slides={slides}
-          durationInFrames={durationInFrames}
-          transitionType={transitionType}
-        />
+        <div style={{ position: "absolute", inset: 0, ...slidesLayerStyle }}>
+          <SlideShow
+            slides={slides}
+            durationInFrames={durationInFrames}
+            transitionType={transitionType}
+          />
+        </div>
         <BrollOverlayLayer
           clips={brollClips}
           durationInFrames={durationInFrames}
+          containerStyle={brollLayerStyle}
         />
       </>
     );
   }
 
   if (brollClips.length > 0) {
-    return <BrollLayer clips={brollClips} />;
+    return (
+      <div style={{ position: "absolute", inset: 0, ...brollLayerStyle }}>
+        <BrollLayer clips={brollClips} />
+      </div>
+    );
   }
 
   return <NeutralBackground templateConfig={templateConfig} />;

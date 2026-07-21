@@ -5,6 +5,7 @@ import {
   getAccessToken,
   getAuthenticatedUser,
   getAuthorizedArtifactAdmin,
+  getAuthorizedMaterialComponentAdmin,
   getServiceRoleClient,
 } from "@/lib/server/artifact-action-auth";
 import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
@@ -23,6 +24,7 @@ import {
   deriveAssemblyTargetDurationSeconds,
   withAssemblyTargetDuration,
 } from "@/remotion/assembly-duration";
+import { safeParseLayoutOverrideManifests } from "@/remotion/layout-overrides";
 import type { LessonVideoData } from "@/domains/publication/types/publication.types";
 import {
   buildBrollPromptJobInputSnapshot,
@@ -402,6 +404,96 @@ export async function saveMaterialAssetsAction(
   }
 
   return { success: true, productionStatus, dodChecklist };
+}
+
+export async function saveRemotionLayoutOverridesAction(
+  componentId: string,
+  rawLayoutOverrides: unknown,
+  context: { templateId?: string | null; templateVersionId?: string | null } = {},
+) {
+  const authorized = await getAuthorizedMaterialComponentAdmin(componentId);
+  if (!authorized) {
+    return { success: false, error: "No autorizado para editar este componente" };
+  }
+
+  const parsedResult = safeParseLayoutOverrideManifests(rawLayoutOverrides);
+  if (!parsedResult.success) {
+    return { success: false, error: "Ajustes de layout invalidos" };
+  }
+  const parsed = parsedResult.data;
+  const currentAssets = (authorized.component.assets || {}) as MaterialAssets;
+  const existingParsedResult = safeParseLayoutOverrideManifests(currentAssets.layout_overrides);
+  const existingLayoutOverrides = existingParsedResult.success ? existingParsedResult.data : [];
+  const scopedTemplateId = context.templateId || parsed[0]?.templateId || null;
+  const scopedTemplateVersionId = context.templateVersionId || parsed[0]?.templateVersionId || null;
+  const isSameLayoutScope = (manifest: { templateId?: string | null; templateVersionId?: string | null }) => {
+    if (!scopedTemplateId) return false;
+    return (
+      manifest.templateId === scopedTemplateId &&
+      (scopedTemplateVersionId ? manifest.templateVersionId === scopedTemplateVersionId : true)
+    );
+  };
+  const nextLayoutOverrides = scopedTemplateId
+    ? [
+        ...existingLayoutOverrides.filter((manifest) => !isSameLayoutScope(manifest)),
+        ...parsed,
+      ]
+    : parsed;
+  const now = new Date().toISOString();
+  const nextAssets: MaterialAssets = {
+    ...currentAssets,
+    updated_at: now,
+  };
+
+  if (nextLayoutOverrides.length > 0) {
+    nextAssets.layout_overrides = nextLayoutOverrides;
+    nextAssets.layout_overrides_updated_at = now;
+    if (currentAssets.final_video_url) {
+      nextAssets.final_video_layout_stale = true;
+    }
+  } else {
+    delete (nextAssets as any).layout_overrides;
+    delete (nextAssets as any).layout_overrides_updated_at;
+    delete (nextAssets as any).final_video_layout_stale;
+  }
+
+  const { error } = await authorized.admin
+    .from("material_components")
+    .update({ assets: nextAssets })
+    .eq("id", componentId);
+
+  if (error) {
+    console.error("[ProductionActions] Error saving layout overrides:", error);
+    return { success: false, error: error.message };
+  }
+
+  await markDownstreamDirtyAction(
+    authorized.artifactId,
+    7,
+    parsed.length > 0
+      ? "Postproduccion (layout ajustado)"
+      : "Postproduccion (layout restablecido)",
+  );
+  await logPipelineEventAction(
+    authorized.artifactId,
+    parsed.length > 0
+      ? "REMOTION_LAYOUT_OVERRIDES_SAVED"
+      : "REMOTION_LAYOUT_OVERRIDES_CLEARED",
+    {
+      component_id: componentId,
+      overrides_count: nextLayoutOverrides.length,
+      final_video_layout_stale: Boolean(nextAssets.final_video_layout_stale),
+    },
+    "GO-OP-07",
+    componentId,
+    "material_component",
+  );
+
+  return {
+    success: true,
+    layoutOverrides: nextLayoutOverrides,
+    finalVideoLayoutStale: Boolean(nextAssets.final_video_layout_stale),
+  };
 }
 
 export async function syncProductionStatusAction(artifactId: string) {
@@ -1062,6 +1154,7 @@ export async function deleteFinalVideoForPublicationAction(componentId: string) 
     delete (cleanedAssets as any).final_video_storage_path;
     delete (cleanedAssets as any).final_video_source_storage_path;
     delete (cleanedAssets as any).final_video_url_expires_at;
+    delete (cleanedAssets as any).final_video_layout_stale;
 
     const productionStatus = resolveProductionStatus(component?.type || "", cleanedAssets);
     cleanedAssets.production_status = productionStatus;

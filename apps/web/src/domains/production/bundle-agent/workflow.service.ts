@@ -6,12 +6,29 @@ import { bundleAgentSpecSchema, type BundleAgentAuthContext, type BundleAgentSpe
 import { generateBundleSpecWithAi } from "./ai-spec.service";
 import { createTemplateVersionRecord } from "@/domains/production/templates/template-version.service";
 import {
+  DEFAULT_TEMPLATE_RENDER_CONFIG,
   createTemplateConfigSchemaDefinition,
   parseTemplateRenderConfig,
 } from "@/remotion/template-config";
 
 const ACTIVE_CONVERSATION_LIMIT = 25;
 const HOURLY_GENERATION_LIMIT = 12;
+
+function getSpecAccentColor(spec: BundleAgentSpec) {
+  const value = spec.defaultProps.accentColor;
+  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value)
+    ? value
+    : DEFAULT_TEMPLATE_RENDER_CONFIG.accentColor;
+}
+
+function shouldRefreshDefaultAgentConfig(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return true;
+  }
+
+  const record = value as Record<string, unknown>;
+  return record.accentColor === DEFAULT_TEMPLATE_RENDER_CONFIG.accentColor;
+}
 
 export class BundleAgentWorkflowService {
   constructor(private readonly context: BundleAgentAuthContext) {}
@@ -100,6 +117,7 @@ export class BundleAgentWorkflowService {
 
     const spec = bundleAgentSpecSchema.parse(specRow.spec_json);
     const templateId = conversation.template_id || (await this.createPrimaryTemplate(conversationId, spec));
+    await this.refreshAgentTemplateDefaultConfig(templateId, spec);
     const run = await this.createGenerationRun(conversationId, specRow.id, templateId, spec);
 
     try {
@@ -258,7 +276,7 @@ export class BundleAgentWorkflowService {
         storage_path: null,
         thumbnail_url: null,
         config_schema: createTemplateConfigSchemaDefinition(),
-        default_config: parseTemplateRenderConfig({}),
+        default_config: parseTemplateRenderConfig({ accentColor: getSpecAccentColor(spec) }),
         bundle_status: "NOT_APPLICABLE",
       })
       .select("id")
@@ -274,6 +292,31 @@ export class BundleAgentWorkflowService {
       .is("template_id", null);
 
     return data.id;
+  }
+
+  private async refreshAgentTemplateDefaultConfig(templateId: string, spec: BundleAgentSpec) {
+    const { data } = await this.context.admin
+      .from("remotion_templates")
+      .select("default_config")
+      .eq("id", templateId)
+      .eq("organization_id", this.context.organizationId)
+      .maybeSingle();
+
+    if (!shouldRefreshDefaultAgentConfig(data?.default_config)) {
+      return;
+    }
+
+    await this.context.admin
+      .from("remotion_templates")
+      .update({
+        default_config: parseTemplateRenderConfig({
+          ...(data?.default_config || {}),
+          accentColor: getSpecAccentColor(spec),
+        }),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", templateId)
+      .eq("organization_id", this.context.organizationId);
   }
 
   private async createGenerationRun(

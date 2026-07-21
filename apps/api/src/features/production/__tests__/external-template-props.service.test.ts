@@ -50,6 +50,44 @@ describe('external template props contract', () => {
     assert.equal(result.propKeys.includes('slides'), true);
   });
 
+  it('promotes template render config to top-level props for external bundles', () => {
+    const result = buildExternalTemplateProps({
+      assets,
+      compositionId: 'external-main',
+      templateDefaultConfig: {
+        accentColor: '#ff00aa',
+        backgroundColor: '#101010',
+        surfaceColor: '#222222',
+      },
+      bundleDefaultProps: {
+        title: 'Bundle default',
+        accentColor: '#111111',
+      },
+    });
+
+    assert.equal(result.resolvedProps.accentColor, '#ff00aa');
+    assert.equal(result.resolvedProps.backgroundColor, '#101010');
+    assert.equal(result.resolvedProps.surfaceColor, '#222222');
+    assert.equal((result.resolvedProps.templateConfig as any).accentColor, '#ff00aa');
+  });
+
+  it('keeps explicit template prop overrides above promoted render config', () => {
+    const result = buildExternalTemplateProps({
+      assets,
+      compositionId: 'external-main',
+      templateDefaultConfig: {
+        accentColor: '#ff00aa',
+      },
+      variables: {
+        templateProps: {
+          accentColor: '#123456',
+        },
+      },
+    });
+
+    assert.equal(result.resolvedProps.accentColor, '#123456');
+  });
+
   it('fails with a stable code when required props are missing', () => {
     assert.throws(
       () => validatePropsSchema(
