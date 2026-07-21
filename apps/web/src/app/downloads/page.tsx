@@ -37,7 +37,7 @@ export default function DownloadsPage() {
     "NEXT_PUBLIC_SOFLIA_WORKER_DOWNLOAD_URL",
     officialDownloadUrls.windows,
   );
-  const version = readPublicEnv("NEXT_PUBLIC_SOFLIA_WORKER_VERSION") || "0.1.12";
+  const version = readPublicEnv("NEXT_PUBLIC_SOFLIA_WORKER_VERSION") || "0.1.13";
   const options: WorkerDownloadOption[] = [
     {
       id: "windows",
