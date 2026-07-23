@@ -5,6 +5,10 @@ import {
   ASSEMBLY_WIDTH,
 } from "../../../remotion/types";
 import {
+  getBrollItemLayerId,
+  getSlideItemLayerId,
+  isBrollItemLayerId,
+  isSlideItemLayerId,
   REMOTION_EDITABLE_LAYERS,
   type RemotionEditableLayerId,
 } from "../../../remotion/layout-override-styles";
@@ -20,6 +24,9 @@ export interface LayoutLayerOption {
   label: string;
   detail?: string;
   defaultBox?: LayoutLayerBox;
+  canReorder?: boolean;
+  defaultStackOrder?: number;
+  stackGroup?: string;
 }
 
 export interface LayoutLayerBox {
@@ -43,22 +50,98 @@ export interface LayoutAssetSummary {
 }
 
 export const DEFAULT_EDITABLE_LAYOUT_LAYERS: LayoutLayerOption[] = [
-  { id: REMOTION_EDITABLE_LAYERS.AVATAR, label: "Avatar" },
-  { id: REMOTION_EDITABLE_LAYERS.SLIDES, label: "Diapositivas" },
-  { id: REMOTION_EDITABLE_LAYERS.BROLL, label: "B-roll" },
+  {
+    id: REMOTION_EDITABLE_LAYERS.AVATAR,
+    label: "Avatar",
+    canReorder: true,
+    defaultStackOrder: 30,
+    stackGroup: "root",
+  },
+  {
+    id: REMOTION_EDITABLE_LAYERS.SLIDES,
+    label: "Diapositivas",
+    canReorder: true,
+    defaultStackOrder: 10,
+    stackGroup: "primary-visual",
+  },
+  {
+    id: REMOTION_EDITABLE_LAYERS.BROLL,
+    label: "B-roll",
+    canReorder: true,
+    defaultStackOrder: 20,
+    stackGroup: "primary-visual",
+  },
   {
     id: REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL,
     label: "Contenedor visual",
     detail: "Area base",
+    canReorder: true,
+    defaultStackOrder: 10,
+    stackGroup: "root",
   },
   {
     id: REMOTION_EDITABLE_LAYERS.SUPPORT_STRIP,
     label: "Area de apoyo",
     detail: "Avatar enfocado",
+    canReorder: true,
+    defaultStackOrder: 20,
+    stackGroup: "root",
   },
 ];
 
 const MIN_LAYER_SIZE = 24;
+const MIN_VISIBLE_CROP_AREA_RATIO = 0.1;
+
+function getDefaultLayerOption(layerId: string): LayoutLayerOption {
+  const layer = DEFAULT_EDITABLE_LAYOUT_LAYERS.find(
+    (candidate) => candidate.id === layerId,
+  );
+
+  return layer ? { ...layer } : { id: layerId, label: layerId };
+}
+
+function getInternalLayerOption(
+  layerId: string,
+  templateSlug?: string | null,
+): LayoutLayerOption {
+  const layer = getDefaultLayerOption(layerId);
+
+  if (
+    templateSlug === ASSEMBLY_TEMPLATES.AVATAR_FOCUS &&
+    layerId === REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL
+  ) {
+    return {
+      ...layer,
+      canReorder: false,
+      defaultStackOrder: 0,
+      stackGroup: "support-strip",
+    };
+  }
+
+  return layer;
+}
+
+function getOrderedStackSiblings(
+  manifest: LayoutOverrideManifest,
+  editableLayers: LayoutLayerOption[],
+  selectedLayer: LayoutLayerOption,
+): LayoutLayerOption[] {
+  const stackGroup = selectedLayer.stackGroup ?? "root";
+
+  return editableLayers
+    .map((layer, sourceIndex) => ({ layer, sourceIndex }))
+    .filter(
+      ({ layer }) =>
+        layer.canReorder && (layer.stackGroup ?? "root") === stackGroup,
+    )
+    .sort((left, right) => {
+      const orderDelta =
+        getEffectiveLayoutLayerStackOrder(manifest, left.layer) -
+        getEffectiveLayoutLayerStackOrder(manifest, right.layer);
+      return orderDelta || left.sourceIndex - right.sourceIndex;
+    })
+    .map(({ layer }) => layer);
+}
 
 export function createEmptyLayoutOverrideManifest(params: {
   componentId: string;
@@ -82,9 +165,44 @@ export function createEmptyLayoutOverrideManifest(params: {
 export function getEditableLayoutLayers(
   assetSummary: LayoutAssetSummary,
   templateEditableLayers: EditableLayerDefinition[] = [],
+  templateSlug?: string | null,
+  options: { allowInternalFallback?: boolean } = {},
 ): LayoutLayerOption[] {
   const metadataLayers = templateEditableLayers
-    .map(toLayoutLayerOption)
+    .flatMap((layer) => {
+      const groupLayer = toLayoutLayerOption(layer);
+      const itemLayers: LayoutLayerOption[] = [];
+
+      if (layer.itemLayerIdPattern === "slide:{index}") {
+        for (let index = 0; index < assetSummary.slideCount; index += 1) {
+          itemLayers.push({
+            ...groupLayer,
+            id: getSlideItemLayerId(index),
+            label: `Diapositiva ${index + 1}`,
+            detail: "item",
+            canReorder: false,
+            defaultStackOrder: undefined,
+            stackGroup: undefined,
+          });
+        }
+      }
+
+      if (layer.itemLayerIdPattern === "broll:{order}") {
+        for (let order = 1; order <= assetSummary.brollCount; order += 1) {
+          itemLayers.push({
+            ...groupLayer,
+            id: getBrollItemLayerId(order),
+            label: `B-roll ${order}`,
+            detail: "item",
+            canReorder: false,
+            defaultStackOrder: undefined,
+            stackGroup: undefined,
+          });
+        }
+      }
+
+      return [...itemLayers, groupLayer];
+    })
     .filter((layer): layer is LayoutLayerOption => Boolean(layer));
   if (metadataLayers.length > 0) {
     const visibleMetadataLayers = metadataLayers.filter((layer) => shouldShowLayer(layer.id, assetSummary));
@@ -93,43 +211,68 @@ export function getEditableLayoutLayers(
     }
   }
 
+  if (options.allowInternalFallback === false) {
+    return [];
+  }
+
   const layers: LayoutLayerOption[] = [];
 
   if (assetSummary.hasAvatar) {
-    layers.push({ id: REMOTION_EDITABLE_LAYERS.AVATAR, label: "Avatar" });
+    layers.push(getInternalLayerOption(REMOTION_EDITABLE_LAYERS.AVATAR, templateSlug));
+  }
+
+  if (assetSummary.slideCount > 0) {
+    for (let index = 0; index < assetSummary.slideCount; index += 1) {
+      layers.push({
+        id: getSlideItemLayerId(index),
+        label: `Diapositiva ${index + 1}`,
+        detail: "item",
+        canReorder: false,
+      });
+    }
+  }
+
+  if (assetSummary.brollCount > 0) {
+    for (let order = 1; order <= assetSummary.brollCount; order += 1) {
+      layers.push({
+        id: getBrollItemLayerId(order),
+        label: `B-roll ${order}`,
+        detail: "item",
+        canReorder: false,
+      });
+    }
   }
 
   if (assetSummary.slideCount > 0) {
     layers.push({
-      id: REMOTION_EDITABLE_LAYERS.SLIDES,
-      label: "Diapositivas",
+      ...getInternalLayerOption(REMOTION_EDITABLE_LAYERS.SLIDES, templateSlug),
+      label: "Todas las diapositivas",
       detail: `${assetSummary.slideCount}`,
     });
   }
 
   if (assetSummary.brollCount > 0) {
     layers.push({
-      id: REMOTION_EDITABLE_LAYERS.BROLL,
-      label: "B-roll",
+      ...getInternalLayerOption(REMOTION_EDITABLE_LAYERS.BROLL, templateSlug),
+      label: "Todo el B-roll",
       detail: `${assetSummary.brollCount}`,
     });
   }
 
   if (assetSummary.slideCount > 0 || assetSummary.brollCount > 0) {
     layers.push({
-      id: REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL,
-      label: "Contenedor visual",
+      ...getInternalLayerOption(REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL, templateSlug),
       detail: "base",
     });
   }
 
   if (
     assetSummary.hasAvatar &&
-    (assetSummary.slideCount > 0 || assetSummary.brollCount > 0)
+    (assetSummary.slideCount > 0 || assetSummary.brollCount > 0) &&
+    templateSlug === ASSEMBLY_TEMPLATES.AVATAR_FOCUS
   ) {
     layers.push({
-      id: REMOTION_EDITABLE_LAYERS.SUPPORT_STRIP,
-      label: "Area de apoyo",
+      ...getInternalLayerOption(REMOTION_EDITABLE_LAYERS.SUPPORT_STRIP, templateSlug),
       detail: "franja",
     });
   }
@@ -176,6 +319,136 @@ export function removeLayoutLayerEdits(
   };
 }
 
+export function resetLayoutLayerToDefault(params: {
+  manifest: LayoutOverrideManifest;
+  layerId: string;
+  editableLayers: LayoutLayerOption[];
+}): LayoutOverrideManifest {
+  const selectedLayer = params.editableLayers.find(
+    (layer) => layer.id === params.layerId,
+  );
+  const withoutSelectedLayer = removeLayoutLayerEdits(
+    params.manifest,
+    params.layerId,
+  );
+  if (!selectedLayer?.canReorder) return withoutSelectedLayer;
+
+  const stackGroup = selectedLayer.stackGroup ?? "root";
+  const siblingIds = new Set(
+    params.editableLayers
+      .filter(
+        (layer) =>
+          layer.canReorder && (layer.stackGroup ?? "root") === stackGroup,
+      )
+      .map((layer) => layer.id),
+  );
+
+  return {
+    ...withoutSelectedLayer,
+    edits: withoutSelectedLayer.edits.filter(
+      (edit) => edit.kind !== "stack" || !siblingIds.has(edit.layerId),
+    ),
+  };
+}
+
+export function getEffectiveLayoutLayerStackOrder(
+  manifest: LayoutOverrideManifest,
+  layer: LayoutLayerOption,
+): number {
+  return (
+    readLayoutLayerEdit(manifest, layer.id, "stack")?.order ??
+    layer.defaultStackOrder ??
+    0
+  );
+}
+
+export function getLayoutLayerStackPosition(params: {
+  manifest: LayoutOverrideManifest;
+  layerId: string;
+  editableLayers: LayoutLayerOption[];
+}) {
+  const selectedLayer = params.editableLayers.find(
+    (layer) => layer.id === params.layerId,
+  );
+  if (!selectedLayer?.canReorder) {
+    return { canMoveBackward: false, canMoveForward: false, index: -1, total: 0 };
+  }
+
+  const siblings = getOrderedStackSiblings(
+    params.manifest,
+    params.editableLayers,
+    selectedLayer,
+  );
+  const index = siblings.findIndex((layer) => layer.id === selectedLayer.id);
+
+  return {
+    canMoveBackward: index > 0,
+    canMoveForward: index >= 0 && index < siblings.length - 1,
+    index,
+    total: siblings.length,
+  };
+}
+
+export function moveLayoutLayerInStack(params: {
+  manifest: LayoutOverrideManifest;
+  layerId: string;
+  editableLayers: LayoutLayerOption[];
+  direction: "backward" | "forward";
+}): LayoutOverrideManifest {
+  const selectedLayer = params.editableLayers.find(
+    (layer) => layer.id === params.layerId,
+  );
+  if (!selectedLayer?.canReorder) return params.manifest;
+
+  const siblings = getOrderedStackSiblings(
+    params.manifest,
+    params.editableLayers,
+    selectedLayer,
+  );
+  const selectedIndex = siblings.findIndex((layer) => layer.id === selectedLayer.id);
+  const targetIndex = selectedIndex + (params.direction === "forward" ? 1 : -1);
+  if (selectedIndex < 0 || targetIndex < 0 || targetIndex >= siblings.length) {
+    return params.manifest;
+  }
+
+  const reordered = [...siblings];
+  const selectedOrder = getEffectiveLayoutLayerStackOrder(
+    params.manifest,
+    reordered[selectedIndex],
+  );
+  const targetOrder = getEffectiveLayoutLayerStackOrder(
+    params.manifest,
+    reordered[targetIndex],
+  );
+  [reordered[selectedIndex], reordered[targetIndex]] = [
+    reordered[targetIndex],
+    reordered[selectedIndex],
+  ];
+
+  if (selectedOrder !== targetOrder) {
+    const withSelectedOrder = upsertLayoutLayerEdit(params.manifest, {
+      layerId: selectedLayer.id,
+      kind: "stack",
+      order: targetOrder,
+    });
+    return upsertLayoutLayerEdit(withSelectedOrder, {
+      layerId: siblings[targetIndex].id,
+      kind: "stack",
+      order: selectedOrder,
+    });
+  }
+
+  return reordered.reduce(
+    (manifest, layer, index) =>
+      upsertLayoutLayerEdit(manifest, {
+        layerId: layer.id,
+        kind: "stack",
+        order: (index + 1) * 10,
+      }),
+    params.manifest,
+  );
+}
+
 export function commitLayoutLayerBox(params: {
   manifest: LayoutOverrideManifest;
   layerId: string;
@@ -210,7 +483,7 @@ export function commitLayoutLayerCrop(params: {
 }
 
 export function getDefaultLayoutLayerBox(params: {
-  layerId: RemotionEditableLayerId;
+  layerId: string;
   templateSlug?: string | null;
   templateConfig?: unknown;
   assetSummary?: LayoutAssetSummary;
@@ -230,6 +503,20 @@ export function getDefaultLayoutLayerBox(params: {
     width: ASSEMBLY_WIDTH,
     height: ASSEMBLY_HEIGHT,
   };
+
+  if (isSlideItemLayerId(params.layerId)) {
+    return getDefaultLayoutLayerBox({
+      ...params,
+      layerId: REMOTION_EDITABLE_LAYERS.SLIDES,
+    });
+  }
+
+  if (isBrollItemLayerId(params.layerId)) {
+    return getDefaultLayoutLayerBox({
+      ...params,
+      layerId: REMOTION_EDITABLE_LAYERS.BROLL,
+    });
+  }
 
   if (params.templateSlug === ASSEMBLY_TEMPLATES.SPLIT_AVATAR) {
     if (
@@ -315,7 +602,7 @@ export function getDefaultLayoutLayerBox(params: {
 
 export function getEffectiveLayoutLayerBox(params: {
   manifest: LayoutOverrideManifest;
-  layerId: RemotionEditableLayerId;
+  layerId: string;
   templateSlug?: string | null;
   templateConfig?: unknown;
   assetSummary?: LayoutAssetSummary;
@@ -354,21 +641,20 @@ function getDefaultBrollLayerBox(params: {
 }
 
 function toLayoutLayerOption(layer: EditableLayerDefinition): LayoutLayerOption | null {
-  if (!isRemotionEditableLayerId(layer.layerId)) return null;
-
   return {
     id: layer.layerId,
     label: layer.label,
     detail: layer.kind,
     defaultBox: layer.defaultBox ? normalizeLayerBox(layer.defaultBox) : undefined,
+    canReorder: layer.capabilities.canReorder,
+    defaultStackOrder: layer.defaultStackOrder,
+    stackGroup: layer.stackGroup,
   };
 }
 
-function isRemotionEditableLayerId(value: string): value is RemotionEditableLayerId {
-  return Object.values(REMOTION_EDITABLE_LAYERS).includes(value as RemotionEditableLayerId);
-}
-
-function shouldShowLayer(layerId: RemotionEditableLayerId, assetSummary: LayoutAssetSummary): boolean {
+function shouldShowLayer(layerId: string, assetSummary: LayoutAssetSummary): boolean {
+  if (isSlideItemLayerId(layerId)) return assetSummary.slideCount > 0;
+  if (isBrollItemLayerId(layerId)) return assetSummary.brollCount > 0;
   if (layerId === REMOTION_EDITABLE_LAYERS.AVATAR) return assetSummary.hasAvatar;
   if (layerId === REMOTION_EDITABLE_LAYERS.SLIDES) return assetSummary.slideCount > 0;
   if (layerId === REMOTION_EDITABLE_LAYERS.BROLL) return assetSummary.brollCount > 0;
@@ -396,12 +682,21 @@ export function normalizeLayerCrop(crop: LayoutLayerCrop): LayoutLayerCrop {
   const bottom = clampCropInset(crop.bottom);
   const left = clampCropInset(crop.left);
 
-  return {
+  const normalized = {
     top: roundCropInset(clampCropPair(top, bottom)),
     right: roundCropInset(clampCropPair(right, left)),
     bottom: roundCropInset(clampCropPair(bottom, top)),
     left: roundCropInset(clampCropPair(left, right)),
   };
+
+  const visibleWidth = Math.max(0, 1 - normalized.left - normalized.right);
+  const visibleHeight = Math.max(0, 1 - normalized.top - normalized.bottom);
+
+  if (visibleWidth * visibleHeight < MIN_VISIBLE_CROP_AREA_RATIO) {
+    return { top: 0, right: 0, bottom: 0, left: 0 };
+  }
+
+  return normalized;
 }
 
 function clampNumber(value: number, min: number, max: number): number {

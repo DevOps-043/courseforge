@@ -1,5 +1,6 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 
 const LOCAL_FUNCTIONS_BASE_URL = "http://localhost:8888";
@@ -68,6 +69,14 @@ export function getSofliaInboxEnv() {
   };
 }
 
+export function getOpenAiApiKey() {
+  return getRequiredEnv("OPENAI_API_KEY");
+}
+
+export function getOptionalOpenAiApiKey() {
+  return getOptionalEnv("OPENAI_API_KEY");
+}
+
 export function getSofliaAuthSupabaseAnonKey() {
   return getRequiredEnv("SOFLIA_AUTH_SUPABASE_ANON_KEY");
 }
@@ -82,6 +91,10 @@ export function createServiceRoleClient() {
 
 export function createGeminiClient() {
   return new GoogleGenAI({ apiKey: getGeminiApiKey() });
+}
+
+export function createOpenAiClient() {
+  return new OpenAI({ apiKey: getOpenAiApiKey() });
 }
 
 export function createGoogleAIProvider() {

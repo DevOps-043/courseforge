@@ -6,8 +6,9 @@ interface SignedUploadResult {
 }
 
 interface SignedUploadOptions {
+    artifactId?: string;
     componentId?: string;
-    purpose?: 'template-bundle' | 'production-asset' | 'thumbnail' | 'production-video' | 'bundle-agent-reference';
+    purpose?: 'template-bundle' | 'production-asset' | 'thumbnail' | 'production-video' | 'bundle-agent-reference' | 'curation-source-pdf';
     contentType?: string;
     fileSizeBytes?: number;
     upsert?: boolean;
@@ -31,6 +32,7 @@ export async function uploadWithSignedUrl(
         body: JSON.stringify({
             bucket,
             filePath,
+            artifactId: options.artifactId,
             componentId: options.componentId,
             purpose: options.purpose,
             contentType: options.contentType || file.type || undefined,

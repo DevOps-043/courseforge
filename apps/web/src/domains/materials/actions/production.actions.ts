@@ -426,11 +426,12 @@ export async function saveRemotionLayoutOverridesAction(
   const existingLayoutOverrides = existingParsedResult.success ? existingParsedResult.data : [];
   const scopedTemplateId = context.templateId || parsed[0]?.templateId || null;
   const scopedTemplateVersionId = context.templateVersionId || parsed[0]?.templateVersionId || null;
+  const isClearingLayoutScope = parsed.length === 0;
   const isSameLayoutScope = (manifest: { templateId?: string | null; templateVersionId?: string | null }) => {
     if (!scopedTemplateId) return false;
     return (
       manifest.templateId === scopedTemplateId &&
-      (scopedTemplateVersionId ? manifest.templateVersionId === scopedTemplateVersionId : true)
+      (isClearingLayoutScope || (scopedTemplateVersionId ? manifest.templateVersionId === scopedTemplateVersionId : true))
     );
   };
   const nextLayoutOverrides = scopedTemplateId
@@ -666,7 +667,7 @@ export async function assembleRemotionVideoAction(
     return {
       success: false,
       error:
-        "No hay assets renderizables para Remotion. Sube voz, avatar, slides renderizables o B-roll antes de ensamblar.",
+        "No hay assets renderizables para ensamblado. Sube voz, avatar, slides renderizables o B-roll antes de ensamblar.",
     };
   }
 
@@ -689,7 +690,7 @@ export async function assembleRemotionVideoAction(
     }
 
     const productionApiUrl = getProductionApiBaseUrl();
-    console.log("[ProductionActions] Triggering Remotion render via production API.", {
+    console.log("[ProductionActions] Triggering assembly render via production API.", {
       productionApiUrl,
       componentId,
       templateId,
@@ -781,7 +782,7 @@ export async function assembleRemotionVideoAction(
     };
 
   } catch (error: unknown) {
-    console.error("[ProductionActions] Error initiating Remotion assembly:", error);
+    console.error("[ProductionActions] Error initiating video assembly:", error);
     
     // Revert status to PENDING
     try {
@@ -828,7 +829,7 @@ export async function createRemotionAssemblyBatchAction(input: RenderBatchReques
 
     return { success: true, ...batch };
   } catch (error: unknown) {
-    console.error("[ProductionActions] Error creating Remotion assembly batch:", error);
+    console.error("[ProductionActions] Error creating video assembly batch:", error);
     return { success: false, error: getErrorMessage(error) };
   }
 }
@@ -1257,7 +1258,7 @@ export async function completeRemotionAssemblyAction(
       await markDownstreamDirtyAction(
         artifactId,
         6, // Phase 6 - Production updated
-        "Postproducción (Ensamblado Remotion local)",
+        "Postproduccion (Ensamblado local)",
       );
       await syncProductionStatusAction(artifactId);
       await logPipelineEventAction(
@@ -1275,7 +1276,7 @@ export async function completeRemotionAssemblyAction(
 
     return { success: true };
   } catch (error: unknown) {
-    console.error("[ProductionActions] Error completing Remotion assembly:", error);
+    console.error("[ProductionActions] Error completing video assembly:", error);
     return { success: false, error: getErrorMessage(error) };
   }
 }

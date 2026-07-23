@@ -47,9 +47,60 @@ const CURATION_ROWS_SNAPSHOT_SELECT = `
   auto_evaluated,
   auto_reason,
   forbidden_override,
+  origin,
+  source_kind,
+  storage_bucket,
+  storage_path,
+  file_name,
+  mime_type,
+  file_size_bytes,
+  content_sha256,
+  validation_report,
+  added_by,
   created_at,
   updated_at
 `;
+
+const STALE_GENERATING_CURATION_MS = 15 * 60 * 1000;
+
+function isStaleGeneratingCuration(curation: Curation, rowsCount: number) {
+  if (curation.state !== CURATION_STATES.GENERATING || rowsCount > 0) {
+    return false;
+  }
+
+  const updatedAt = Date.parse(curation.updated_at);
+  return Number.isFinite(updatedAt)
+    ? Date.now() - updatedAt > STALE_GENERATING_CURATION_MS
+    : false;
+}
+
+export async function markCurationBlocked(
+  admin: ServiceRoleClient,
+  curationId: string,
+  notes: string,
+) {
+  const blockedDecision: NonNullable<Curation["qa_decision"]> = {
+    decision: "BLOCKED",
+    notes,
+    reviewed_at: new Date().toISOString(),
+    reviewed_by: "system",
+  };
+
+  const { error } = await admin
+    .from("curation")
+    .update({
+      state: CURATION_STATES.BLOCKED,
+      qa_decision: blockedDecision,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", curationId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return blockedDecision;
+}
 
 export async function fetchCurationSnapshot(
   admin: ServiceRoleClient,
@@ -82,9 +133,28 @@ export async function fetchCurationSnapshot(
     throw new Error(rowsError.message);
   }
 
+  const typedRows = (rows as CurationRow[] | null) || [];
+  let typedCuration = curation as Curation;
+
+  if (isStaleGeneratingCuration(typedCuration, typedRows.length)) {
+    const notes =
+      "La curaduria quedo en ejecucion sin fuentes generadas ni actividad reciente. El disparo del background pudo fallar o quedar bloqueado antes de iniciar la busqueda.";
+    const blockedDecision = await markCurationBlocked(
+      admin,
+      typedCuration.id,
+      notes,
+    );
+    typedCuration = {
+      ...typedCuration,
+      qa_decision: blockedDecision,
+      state: CURATION_STATES.BLOCKED,
+      updated_at: new Date().toISOString(),
+    };
+  }
+
   return {
-    curation: curation as Curation,
-    rows: (rows as CurationRow[] | null) || [],
+    curation: typedCuration,
+    rows: typedRows,
   };
 }
 
@@ -170,41 +240,6 @@ export async function ensureGeneratingCurationRecord(
     throw new Error(
       `Failed to create curation record: ${createError?.message || "Unknown error"}`,
     );
-  }
-
-  return newCuration.id;
-}
-
-export async function ensureImportReadyCurationRecord(
-  admin: ServiceRoleClient,
-  artifactId: string,
-) {
-  const { data: existingCuration, error: existingError } = await admin
-    .from("curation")
-    .select("id")
-    .eq("artifact_id", artifactId)
-    .maybeSingle();
-
-  if (existingError) {
-    throw new Error(existingError.message);
-  }
-
-  if (existingCuration?.id) {
-    return existingCuration.id;
-  }
-
-  const { data: newCuration, error: createError } = await admin
-    .from("curation")
-    .insert({
-      artifact_id: artifactId,
-      state: CURATION_STATES.READY_FOR_QA,
-      attempt_number: 1,
-    })
-    .select("id")
-    .single();
-
-  if (createError || !newCuration?.id) {
-    throw new Error("Error creando registro de curaduria.");
   }
 
   return newCuration.id;

@@ -14,7 +14,6 @@ const serverEnvSchema = z
     OPENAI_API_KEY: z.string().min(1).optional(),
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
     GOOGLE_API_KEY: z.string().min(1).optional(),
-    GPT_SOURCES_API_KEY: z.string().min(1).optional(),
     NETLIFY: z.string().min(1).optional(),
     URL: z.string().min(1).optional(),
     DEPLOY_URL: z.string().min(1).optional(),
@@ -41,7 +40,6 @@ function buildEnvObject(): Record<string, string | undefined> {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
     GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
-    GPT_SOURCES_API_KEY: process.env.GPT_SOURCES_API_KEY,
     NETLIFY: process.env.NETLIFY,
     URL: process.env.URL,
     DEPLOY_URL: process.env.DEPLOY_URL,
@@ -153,15 +151,6 @@ export function getOptionalOpenAIApiKey() {
   return getParsedServerEnv().OPENAI_API_KEY || null;
 }
 
-export function getGptSourcesApiKey() {
-  const env = getParsedServerEnv();
-
-  if (!env.GPT_SOURCES_API_KEY) {
-    throw new Error("Configuracion incompleta: falta GPT_SOURCES_API_KEY");
-  }
-
-  return env.GPT_SOURCES_API_KEY;
-}
 
 export function isNetlifyDeployment() {
   const env = getParsedServerEnv();

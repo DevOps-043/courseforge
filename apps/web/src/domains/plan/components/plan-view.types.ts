@@ -7,11 +7,11 @@ export interface PlanComponentItem {
 }
 
 export interface PlanLessonItem {
-  lesson_id: string;
+  lesson_id?: string;
   lesson_order?: number;
   lesson_title: string;
   duration?: string;
-  module_index?: number;
+  module_index?: number | string;
   module_title?: string;
   learning_objective?: string;
   oa_text?: string;
@@ -26,6 +26,7 @@ export interface PlanLessonItem {
 export interface PlanModuleGroup {
   title: string;
   index: number;
+  key: string;
   lessons: PlanLessonItem[];
 }
 
@@ -42,21 +43,60 @@ export interface InstructionalPlanRecord {
   [key: string]: unknown;
 }
 
+function isUsableKey(value: unknown): value is string | number {
+  return (
+    (typeof value === "string" &&
+      value.trim() !== "" &&
+      value !== "undefined") ||
+    (typeof value === "number" && Number.isFinite(value))
+  );
+}
+
+export function getPlanLessonStableId(
+  lesson: PlanLessonItem,
+  lessonPosition = 0,
+) {
+  if (isUsableKey(lesson.lesson_id)) {
+    return String(lesson.lesson_id);
+  }
+
+  const modulePart = isUsableKey(lesson.module_index)
+    ? String(lesson.module_index)
+    : lesson.module_title || "module";
+  const orderPart = isUsableKey(lesson.lesson_order)
+    ? String(lesson.lesson_order)
+    : String(lessonPosition + 1);
+  const titlePart = lesson.lesson_title || "lesson";
+
+  return `${modulePart}-${orderPart}-${titlePart}-${lessonPosition}`;
+}
+
 export function groupPlanModules(lessonPlans: PlanLessonItem[] = []) {
   const grouped = lessonPlans.reduce(
-    (accumulator: Record<number, PlanModuleGroup>, lesson) => {
-      const moduleTitle = lesson.module_title || "Módulo General";
-      const moduleIndex = lesson.module_index ?? 999;
+    (accumulator: Record<string, PlanModuleGroup>, lesson) => {
+      const moduleTitle = lesson.module_title || "Modulo General";
+      const parsedModuleIndex =
+        typeof lesson.module_index === "string"
+          ? Number.parseInt(lesson.module_index, 10)
+          : lesson.module_index;
+      const moduleIndex =
+        typeof parsedModuleIndex === "number" &&
+        Number.isFinite(parsedModuleIndex)
+          ? parsedModuleIndex
+          : 999;
+      const moduleKey =
+        moduleIndex === 999 ? `module-${moduleTitle}` : `module-${moduleIndex}`;
 
-      if (!accumulator[moduleIndex]) {
-        accumulator[moduleIndex] = {
+      if (!accumulator[moduleKey]) {
+        accumulator[moduleKey] = {
           title: moduleTitle,
           index: moduleIndex,
+          key: moduleKey,
           lessons: [],
         };
       }
 
-      accumulator[moduleIndex].lessons.push(lesson);
+      accumulator[moduleKey].lessons.push(lesson);
       return accumulator;
     },
     {},

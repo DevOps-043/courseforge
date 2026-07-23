@@ -3,10 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle, Check, CheckCircle2, Copy, Download, Film, Layers, Link2, Loader2, Monitor, Play, RefreshCw, Search, Sparkles, Square, Unlink } from 'lucide-react';
-import { hasPreviewableAssets } from '@/remotion/buildAssemblyProps';
+import { buildAssemblyProps, hasPreviewableAssets } from '@/remotion/buildAssemblyProps';
 import { deriveAssemblyTargetDurationSeconds } from '@/remotion/assembly-duration';
+import { buildVisualTimeline, type VisualTimeline } from '@/remotion/visual-timeline';
 import {
+    filterLayoutOverridesForEditableLayers,
     safeParseLayoutOverrideManifests,
+    TEMPLATE_LAYOUT_CONTRACT_VERSION,
     type LayoutOverrideManifest,
 } from '@/remotion/layout-overrides';
 import { getTemplatesAction, type RemotionTemplate } from '@/domains/production/actions/templates.actions';
@@ -31,6 +34,7 @@ import {
 } from './LayoutOverridePreviewOverlay';
 import { RemotionExternalPreviewPlayer } from './RemotionExternalPreviewPlayer';
 import { RemotionPreviewPlayer } from './RemotionPreviewPlayer';
+import { RemotionTimelineInspector } from './RemotionTimelineInspector';
 import {
     REMOTION_EDITABLE_LAYERS,
     type RemotionEditableLayerId,
@@ -47,7 +51,7 @@ interface PostproductionAssemblyContainerProps {
 }
 
 type AssemblyJobStatus = 'PENDING' | 'QUEUED' | 'RUNNING' | 'WAITING_PROVIDER' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
-const ASSEMBLY_JOBS_STORAGE_PREFIX = 'courseforge:remotion-assembly-jobs';
+const ASSEMBLY_JOBS_STORAGE_PREFIX = 'courseforge:assembly-jobs';
 
 interface AssemblyJobTracker {
     componentId: string;
@@ -117,6 +121,29 @@ function areLayoutOverridesEqual(left: LayoutOverrideManifest[], right: LayoutOv
     return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function templateUsesExternalPreview(template?: RemotionTemplate | null) {
+    return template?.render_mode === 'EXTERNAL_BUNDLE_SITE_READY';
+}
+
+function getCompatibleTemplateLayoutOverrides(
+    template: RemotionTemplate | undefined,
+    layoutOverrides: LayoutOverrideManifest[],
+) {
+    if (!templateUsesExternalPreview(template)) return layoutOverrides;
+    if (
+        (template?.layout_contract_version ?? 0) < TEMPLATE_LAYOUT_CONTRACT_VERSION ||
+        !Array.isArray(template?.editable_layers) ||
+        template.editable_layers.length === 0
+    ) {
+        return [];
+    }
+
+    return filterLayoutOverridesForEditableLayers(
+        layoutOverrides,
+        template.editable_layers,
+    );
+}
+
 function getLayoutAssetSummary(assets: any): LayoutAssetSummary {
     const slideCount = Array.isArray(assets?.slides?.images)
         ? assets.slides.images.length
@@ -175,6 +202,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
         snap: true,
         size: 80,
     });
+    const [externalPreviewFrame, setExternalPreviewFrame] = useState(0);
     const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const pollingInFlightRef = useRef(false);
     const pollFailuresRef = useRef(0);
@@ -418,7 +446,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                 return;
             }
             console.warn(
-                `[Remotion] Poll de estado fallo (intento ${pollFailuresRef.current}/${MAX_CONSECUTIVE_POLL_FAILURES}). Reintentando...`,
+                `[Assembly] Poll de estado fallo (intento ${pollFailuresRef.current}/${MAX_CONSECUTIVE_POLL_FAILURES}). Reintentando...`,
                 detail,
             );
         };
@@ -534,7 +562,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
             setTrackedJobs(() => hydratedJobs);
             pollAssemblyJobs();
         } catch (error) {
-            console.warn('[Remotion] No se pudo restaurar el progreso de ensamblado.', error);
+            console.warn('[Assembly] No se pudo restaurar el progreso de ensamblado.', error);
             clearPersistedAssemblyJobs();
         }
     }, [artifactId, assemblyJobsStorageKey, loadingComponents, videoComponents]);
@@ -569,14 +597,17 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                     const templateId = templateOverrides[component.id] || selectedTemplate;
                     const template = templates.find((candidate) => candidate.id === templateId);
                     const templateConfig = template?.default_config || {};
-                    const templateVersionId = template?.cloud_build_id || template?.id || null;
+                    const templateVersionId = template?.template_version_id || template?.id || null;
                     const layoutDraftKey = getLayoutOverrideDraftKey({
                         componentId: component.id,
                         templateId,
                         templateVersionId,
                     });
                     const persistedLayoutOverrides = getPersistedLayoutOverrides(component, templateId, templateVersionId);
-                    const layoutOverrides = layoutOverrideDrafts[layoutDraftKey] ?? persistedLayoutOverrides;
+                    const layoutOverrides = getCompatibleTemplateLayoutOverrides(
+                        template,
+                        layoutOverrideDrafts[layoutDraftKey] ?? persistedLayoutOverrides,
+                    );
 
                     return {
                         componentId: component.id,
@@ -640,6 +671,9 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
         || selectedTemplateConfig?.render_mode === 'INTERNAL_WITH_EXTERNAL_REFERENCE';
     const selectedTemplateUsesCloudBundle = selectedTemplateConfig?.render_mode === 'EXTERNAL_BUNDLE_SITE_READY';
     const selectedTemplateUsesExternalPreview = selectedTemplateUsesCloudBundle;
+    const selectedTemplateSupportsExternalLayout = selectedTemplateUsesExternalPreview &&
+        (selectedTemplateConfig?.layout_contract_version ?? 0) >= TEMPLATE_LAYOUT_CONTRACT_VERSION &&
+        Boolean(selectedTemplateConfig?.editable_layers?.length);
     const selectedCloudPreviewData = useMemo(() => {
         if (!selectedTemplateUsesCloudBundle) {
             return null;
@@ -661,7 +695,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
             propsHash: selectedTemplateConfig.cloud_build_id || `${selectedTemplateConfig.id}:${compositionId}`,
             buildHash: null,
             buildId: selectedTemplateConfig.cloud_build_id || null,
-            templateVersionId: selectedTemplateConfig.cloud_build_id || selectedTemplateConfig.id,
+            templateVersionId: selectedTemplateConfig.template_version_id || selectedTemplateConfig.id,
             bundleHash: null,
             previewId: null,
             previewStatus: 'MISSING' as const,
@@ -680,6 +714,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
         selectedTemplateConfig?.composition_id,
         selectedTemplateConfig?.id,
         selectedTemplateConfig?.render_composition_id,
+        selectedTemplateConfig?.template_version_id,
         selectedTemplateUsesCloudBundle,
     ]);
     const selectedTemplateNeedsCloudBuild = selectedTemplateConfig?.render_mode === 'EXTERNAL_CLOUD_BUILD_READY'
@@ -687,7 +722,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const selectedTemplateBlocksFinalRender = selectedTemplateUsesExternalBundle || selectedTemplateNeedsCloudBuild;
     const selectedTemplateHasCustomBundleBlocked = selectedTemplateUsesExternalBundle || selectedTemplateNeedsCloudBuild;
     const activePreview = videoComponents.find((component) => component.id === activePreviewId) || videoComponents[0];
-    const activeTemplateVersionId = selectedTemplateConfig?.cloud_build_id || selectedTemplateConfig?.id || null;
+    const activeTemplateVersionId = selectedTemplateConfig?.template_version_id || selectedTemplateConfig?.id || null;
     const activeLayoutDraftKey = getLayoutOverrideDraftKey({
         componentId: activePreview?.id,
         templateId: selectedTemplate,
@@ -701,24 +736,79 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
         () => getEditableLayoutLayers(
             activeLayoutAssetSummary,
             selectedTemplateConfig?.editable_layers || [],
+            selectedTemplateSlug,
+            { allowInternalFallback: !selectedTemplateUsesExternalPreview },
         ),
-        [activeLayoutAssetSummary, selectedTemplateConfig?.editable_layers],
+        [
+            activeLayoutAssetSummary,
+            selectedTemplateConfig?.editable_layers,
+            selectedTemplateSlug,
+            selectedTemplateUsesExternalPreview,
+        ],
     );
-    const activePersistedLayoutOverrides = activePreview
+    const rawActivePersistedLayoutOverrides = activePreview
         ? getPersistedLayoutOverrides(activePreview, selectedTemplate, activeTemplateVersionId)
         : [];
+    const storedTemplateLayoutOverrides = activePreview
+        ? getPersistedLayoutOverrides(activePreview, selectedTemplate, null)
+        : [];
+    const hasIncompatibleStoredLayoutOverrides = selectedTemplateUsesExternalPreview &&
+        !selectedTemplateSupportsExternalLayout &&
+        storedTemplateLayoutOverrides.length > 0;
+    const activePersistedLayoutOverrides = getCompatibleTemplateLayoutOverrides(
+        selectedTemplateConfig,
+        rawActivePersistedLayoutOverrides,
+    );
     const activeLayoutOverrides = activePreview
-        ? layoutOverrideDrafts[activeLayoutDraftKey] ?? activePersistedLayoutOverrides
+        ? getCompatibleTemplateLayoutOverrides(
+            selectedTemplateConfig,
+            layoutOverrideDrafts[activeLayoutDraftKey] ?? activePersistedLayoutOverrides,
+        )
         : [];
     const activeExternalPreviewLayoutOverrides = activePreview
-        ? externalPreviewLayoutOverrideSnapshots[activeLayoutDraftKey] ?? activePersistedLayoutOverrides
+        ? getCompatibleTemplateLayoutOverrides(
+            selectedTemplateConfig,
+            externalPreviewLayoutOverrideSnapshots[activeLayoutDraftKey] ?? activePersistedLayoutOverrides,
+        )
         : [];
-    const hasUnsavedLayoutOverrides = !areLayoutOverridesEqual(
+    const hasUnsavedLayoutOverrides = hasIncompatibleStoredLayoutOverrides || !areLayoutOverridesEqual(
         activeLayoutOverrides,
         activePersistedLayoutOverrides,
     );
-    const hasLayoutOverridesToDiscard = activeLayoutOverrides.length > 0 || activePersistedLayoutOverrides.length > 0;
+    const hasLayoutOverridesToDiscard = hasIncompatibleStoredLayoutOverrides ||
+        activeLayoutOverrides.length > 0 ||
+        activePersistedLayoutOverrides.length > 0;
     const activePreviewTargetDurationSeconds = deriveAssemblyTargetDurationSeconds(activePreview?.content);
+    const activePreviewTimeline = useMemo<VisualTimeline | null>(() => {
+        if (!activePreview || !hasPreviewableAssets(activePreview.assets)) {
+            return null;
+        }
+
+        try {
+            const props = buildAssemblyProps(
+                activePreviewTargetDurationSeconds
+                    ? {
+                        ...(activePreview.assets ?? {}),
+                        assembly_target_duration_seconds: activePreviewTargetDurationSeconds,
+                    }
+                    : activePreview.assets,
+                selectedTemplateSlug,
+                selectedTemplateConfig?.default_config,
+                activeLayoutOverrides,
+            );
+
+            return buildVisualTimeline(props);
+        } catch (error) {
+            console.warn('[PostproductionAssemblyContainer] No se pudo construir timeline de preview', error);
+            return null;
+        }
+    }, [
+        activeLayoutOverrides,
+        activePreview,
+        activePreviewTargetDurationSeconds,
+        selectedTemplateConfig?.default_config,
+        selectedTemplateSlug,
+    ]);
     const activePreviewPending = Boolean(activePreview && !activePreview.assets?.final_video_url);
     const hasRequiredAssets = videoComponents.length > 0;
     const hasComponentsToAssemble = componentsToAssemble.length > 0;
@@ -740,6 +830,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
 
     useEffect(() => {
         if (!activePreview) return;
+        setExternalPreviewFrame(0);
         setLayoutOverrideDrafts((current) => (
             current[activeLayoutDraftKey] !== undefined
                 ? current
@@ -992,7 +1083,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                         <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
                             <Loader2 className="h-4 w-4 shrink-0 animate-spin text-purple-500" />
                             <span className="truncate">
-                                Ensamblando {currentAssemblyLabel} con Remotion
+                                Ensamblando {currentAssemblyLabel}
                             </span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1029,10 +1120,10 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                     <div>
                         <h2 className="text-xl font-bold mb-2 flex items-center gap-3 text-gray-900 dark:text-white">
                             <Film className="text-purple-500" size={24} />
-                            Fase 7: Postproduccion (Ensamblado Remotion)
+                            Fase 7: Postproduccion (Ensamblado de video)
                         </h2>
                         <p className="text-sm text-gray-500 dark:text-gray-400 max-w-2xl">
-                            Unifica diapositivas, locucion, avatar, musica y B-roll en videos finales renderizados con Remotion.
+                            Unifica diapositivas, locucion, avatar, musica y B-roll en videos finales.
                         </p>
                     </div>
                     {isCompleted && (
@@ -1121,11 +1212,20 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                             componentId={hasPreviewableAssets(activePreview.assets) ? activePreview.id : null}
                                             initialPreviewData={selectedCloudPreviewData}
                                             variables={externalPreviewVariables}
-                                            overlay={
+                                            seekSeconds={
+                                                activePreviewTimeline
+                                                    ? externalPreviewFrame / activePreviewTimeline.fps
+                                                    : null
+                                            }
+                                            onPlaybackSecondsChange={(seconds) => {
+                                                if (!activePreviewTimeline) return;
+                                                setExternalPreviewFrame(Math.round(seconds * activePreviewTimeline.fps));
+                                            }}
+                                            overlay={activeEditableLayoutLayers.length > 0 ? (
                                                 <LayoutOverridePreviewOverlay
                                                     componentId={activePreview.id}
                                                     templateId={selectedTemplate}
-                                                    templateVersionId={selectedTemplateConfig?.cloud_build_id || selectedTemplateConfig?.id || null}
+                                                    templateVersionId={activeTemplateVersionId}
                                                     templateSlug={selectedTemplateSlug}
                                                     templateConfig={selectedTemplateConfig?.default_config}
                                                     value={activeLayoutOverrides}
@@ -1146,12 +1246,29 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                                     })}
                                                     disabled={isAssembling}
                                                 />
-                                            }
+                                            ) : undefined}
                                         />
-                                        <LayoutOverrideDraftPanel
+                                        {!selectedTemplateSupportsExternalLayout ? (
+                                            <div className="flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-800 dark:text-amber-200">
+                                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                                                <span>
+                                                    Esta version del bundle es heredada y no declara coordenadas globales de sus capas. Se mostrara su layout base y no se aplicaran ajustes incompatibles. Genera y compila una nueva version con contrato de layout v2 para editarla desde este panel.
+                                                </span>
+                                            </div>
+                                        ) : null}
+                                        {activePreviewTimeline ? (
+                                            <RemotionTimelineInspector
+                                                timeline={activePreviewTimeline}
+                                                currentFrame={externalPreviewFrame}
+                                                onSeekFrame={setExternalPreviewFrame}
+                                                selectedLayerId={selectedLayoutLayerId}
+                                                onSelectedLayerChange={setSelectedLayoutLayerId}
+                                            />
+                                        ) : null}
+                                        {selectedTemplateSupportsExternalLayout ? <LayoutOverrideDraftPanel
                                             componentId={activePreview.id}
                                             templateId={selectedTemplate}
-                                            templateVersionId={selectedTemplateConfig?.cloud_build_id || selectedTemplateConfig?.id || null}
+                                            templateVersionId={activeTemplateVersionId}
                                             value={activeLayoutOverrides}
                                             editableLayers={activeEditableLayoutLayers}
                                             selectedLayerId={selectedLayoutLayerId}
@@ -1170,10 +1287,14 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                                 return next;
                                             })}
                                             disabled={isAssembling}
-                                        />
+                                        /> : null}
                                         <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50/80 p-3 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419]/50 sm:flex-row sm:items-center sm:justify-between">
                                             <div className="text-gray-500 dark:text-gray-400">
-                                                {hasUnsavedLayoutOverrides
+                                                {!selectedTemplateSupportsExternalLayout
+                                                    ? hasIncompatibleStoredLayoutOverrides
+                                                        ? 'Hay ajustes heredados incompatibles guardados. Restablece el layout para eliminarlos y conservar el diseno base del bundle.'
+                                                        : 'Esta version usa su layout base. Para editar sus capas necesita una nueva version con contrato de layout v2.'
+                                                    : hasUnsavedLayoutOverrides
                                                     ? 'Hay ajustes de layout sin guardar para este video. El poster externo se actualizara al guardar para no interrumpir la edicion.'
                                                     : activePreview.assets?.final_video_layout_stale
                                                         ? 'El video final puede estar desactualizado respecto al layout guardado.'
@@ -1195,7 +1316,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                                     className="inline-flex items-center gap-1.5 rounded-lg bg-[#00D4B3] px-3 py-1.5 font-semibold text-[#0A2540] transition hover:bg-[#00E5C1] disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500"
                                                 >
                                                     {savingLayoutOverrides ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                                                    Guardar layout
+                                                    {!selectedTemplateSupportsExternalLayout ? 'Restablecer layout' : 'Guardar layout'}
                                                 </button>
                                             </div>
                                         </div>
@@ -1254,11 +1375,13 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                             templateConfig={selectedTemplateConfig?.default_config}
                                             layoutOverrides={activeLayoutOverrides}
                                             targetDurationSeconds={activePreviewTargetDurationSeconds}
+                                            selectedLayerId={selectedLayoutLayerId}
+                                            onSelectedLayerChange={setSelectedLayoutLayerId}
                                             overlay={
                                                 <LayoutOverridePreviewOverlay
                                                     componentId={activePreview.id}
                                                     templateId={selectedTemplate}
-                                                    templateVersionId={selectedTemplateConfig?.cloud_build_id || selectedTemplateConfig?.id || null}
+                                                    templateVersionId={activeTemplateVersionId}
                                                     templateSlug={selectedTemplateSlug}
                                                     templateConfig={selectedTemplateConfig?.default_config}
                                                     value={activeLayoutOverrides}
@@ -1284,7 +1407,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                         <LayoutOverrideDraftPanel
                                             componentId={activePreview.id}
                                             templateId={selectedTemplate}
-                                            templateVersionId={selectedTemplateConfig?.cloud_build_id || selectedTemplateConfig?.id || null}
+                                            templateVersionId={activeTemplateVersionId}
                                             value={activeLayoutOverrides}
                                             editableLayers={activeEditableLayoutLayers}
                                             selectedLayerId={selectedLayoutLayerId}
@@ -1332,7 +1455,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                             </div>
                                         </div>
                                         <div className="text-xs text-gray-500 dark:text-gray-400 text-center leading-relaxed">
-                                            Previsualizacion en vivo del ensamblado. El video final se generara al iniciar Remotion.
+                                            Previsualizacion en vivo del ensamblado. El video final se generara al iniciar el motor de render.
                                         </div>
                                     </div>
                                 );
@@ -1352,7 +1475,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                     <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 space-y-6 shadow-sm">
                         <h3 className="text-md font-bold text-gray-900 dark:text-white flex items-center gap-2">
                             <Sparkles className="text-yellow-500" size={18} />
-                            Motor de Render Remotion
+                            Motor de Render
                         </h3>
 
                         <div className="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-[#6C757D]/10 dark:bg-[#0F1419]/50">
@@ -1562,7 +1685,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                         ) : !hasComponentsToAssemble ? (
                             <div className="space-y-4">
                                 <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-600 dark:text-green-400 text-sm">
-                                    Todos los videos del curso ya cuentan con video final. No es necesario ensamblar por Remotion.
+                                    Todos los videos del curso ya cuentan con video final. No es necesario volver a ensamblar.
                                 </div>
                                 {activePreview && (
                                     <button
@@ -1597,7 +1720,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                                     <Loader2 className="animate-spin" size={12} />
                                                     {isReconnecting
                                                         ? 'Render en curso (reconectando con el motor)...'
-                                                        : 'Ensamblando assets con Remotion...'}
+                                                        : 'Ensamblando assets...'}
                                                 </span>
                                                 <span className="font-bold text-gray-900 dark:text-white">{progress}%</span>
                                             </div>

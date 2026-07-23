@@ -6,7 +6,12 @@ import * as path from "node:path";
 import JSZip from "jszip";
 import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { normalizeAssemblyAssets } from "@/remotion/assembly-assets.normalizer";
-import { parseLayoutOverrideManifests } from "@/remotion/layout-overrides";
+import {
+  editableLayerDefinitionSchema,
+  filterLayoutOverridesForEditableLayers,
+  parseLayoutOverrideManifests,
+  TEMPLATE_LAYOUT_CONTRACT_VERSION,
+} from "@/remotion/layout-overrides";
 import { mergeTemplateRenderConfigs } from "@/remotion/template-config";
 
 const WORKER_TOKEN_PREFIX = "swk_";
@@ -419,8 +424,20 @@ function buildExternalTemplateProps(input: {
   variables?: Record<string, unknown>;
   bundleDefaultProps?: Record<string, unknown> | null;
   propsSchema?: Record<string, unknown> | null;
+  layoutContractVersion?: unknown;
+  editableLayers?: unknown;
 }) {
   const variables = input.variables ?? {};
+  const parsedEditableLayers = editableLayerDefinitionSchema.array().safeParse(input.editableLayers ?? []);
+  const supportsGlobalLayoutOverrides =
+    Number(input.layoutContractVersion) >= TEMPLATE_LAYOUT_CONTRACT_VERSION &&
+    parsedEditableLayers.success;
+  const externalLayoutOverrides = supportsGlobalLayoutOverrides
+    ? filterLayoutOverridesForEditableLayers(
+        parseLayoutOverrideManifests(variables.layoutOverrides),
+        parsedEditableLayers.data,
+      )
+    : [];
   const hasTemplateConfigInput = Boolean(input.templateDefaultConfig || variables.templateConfig);
   const templateConfig = mergeTemplateRenderConfigs(input.templateDefaultConfig, variables.templateConfig);
   const courseProps = buildAssemblyInputProps({
@@ -428,7 +445,7 @@ function buildExternalTemplateProps(input: {
     compositionId: input.compositionId,
     transitionType: variables.transitionType,
     templateConfig,
-    layoutOverrides: variables.layoutOverrides,
+    layoutOverrides: externalLayoutOverrides,
   });
   const overrides = extractExternalTemplateOverrides(variables);
   const resolvedProps = {
@@ -442,6 +459,7 @@ function buildExternalTemplateProps(input: {
         }
       : {}),
     ...(overrides || {}),
+    layoutOverrides: externalLayoutOverrides,
   };
   validatePropsSchema(resolvedProps, input.propsSchema);
   return {
@@ -721,7 +739,7 @@ export class DesktopWorkerControlPlane {
 
     const { data: cloudVersion } = await this.supabase
       .from("remotion_template_versions")
-      .select("id, bundle_hash, build_hash, composition_id, export_mode, status, default_props, props_schema")
+      .select("id, bundle_hash, build_hash, composition_id, export_mode, status, default_props, props_schema, manifest, editable_layers")
       .eq("template_id", input.templateId)
       .in("status", ["APPROVED_FOR_SANDBOX", "APPROVED"])
       .order("version_number", { ascending: false })
@@ -785,6 +803,8 @@ export class DesktopWorkerControlPlane {
       variables: input.variables,
       bundleDefaultProps: cloudVersion.default_props,
       propsSchema: cloudVersion.props_schema,
+      layoutContractVersion: cloudVersion.manifest?.layoutContractVersion,
+      editableLayers: cloudVersion.editable_layers,
     });
     const timing = deriveCompositionTiming(propsResult.resolvedProps);
     const layoutOverridesHash = deriveLayoutOverridesHash(propsResult.resolvedProps);
@@ -1417,7 +1437,7 @@ export class DesktopWorkerControlPlane {
 
     const { data: cloudVersion } = await this.supabase
       .from("remotion_template_versions")
-      .select("id, bundle_hash, build_hash, composition_id, export_mode, status, default_props, props_schema")
+      .select("id, bundle_hash, build_hash, composition_id, export_mode, status, default_props, props_schema, manifest, editable_layers")
       .eq("template_id", input.templateId)
       .in("status", ["APPROVED_FOR_SANDBOX", "APPROVED"])
       .order("version_number", { ascending: false })
@@ -1451,6 +1471,8 @@ export class DesktopWorkerControlPlane {
       variables: input.variables,
       bundleDefaultProps: cloudVersion.default_props,
       propsSchema: cloudVersion.props_schema,
+      layoutContractVersion: cloudVersion.manifest?.layoutContractVersion,
+      editableLayers: cloudVersion.editable_layers,
     });
     const renderMode = "EXTERNAL_DESKTOP_SITE_READY";
     const inputSnapshot = {

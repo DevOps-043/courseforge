@@ -51,6 +51,21 @@ export interface CurationRow {
   auto_evaluated: boolean | null;
   auto_reason: string | null;
   forbidden_override: boolean | null;
+  origin?: "automatic" | "manual";
+  source_kind?: "url" | "pdf";
+  storage_bucket?: string | null;
+  storage_path?: string | null;
+  file_name?: string | null;
+  mime_type?: string | null;
+  file_size_bytes?: number | null;
+  content_sha256?: string | null;
+  validation_report?: {
+    status?: "pending" | "valid" | "invalid" | "review_required";
+    reason?: string;
+    checked_at?: string;
+    [key: string]: unknown;
+  } | null;
+  added_by?: string | null;
   created_at: string;
   updated_at: string;
 }

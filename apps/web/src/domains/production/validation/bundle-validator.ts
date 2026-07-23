@@ -1,7 +1,11 @@
 import crypto from "crypto";
 import JSZip from "jszip";
 import { z } from "zod";
-import { editableLayerDefinitionSchema } from "../../../remotion/layout-overrides";
+import {
+  editableLayerDefinitionSchema,
+  TEMPLATE_LAYOUT_CONTRACT_VERSION,
+  TEMPLATE_LAYOUT_COORDINATE_SPACE,
+} from "../../../remotion/layout-overrides";
 
 const MAX_ZIP_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_UNZIPPED_SIZE_BYTES = 50 * 1024 * 1024;
@@ -57,6 +61,8 @@ const manifestSchema = z.object({
   compositionId: z.string().trim().min(1).max(120),
   compositionIds: z.array(z.string().trim().min(1).max(120)).max(100).optional(),
   exportMode: z.enum(["component", "root"]).default("component"),
+  layoutContractVersion: z.number().int().min(1).max(TEMPLATE_LAYOUT_CONTRACT_VERSION).optional(),
+  layoutCoordinateSpace: z.literal(TEMPLATE_LAYOUT_COORDINATE_SPACE).optional(),
   defaultDurationFrames: positiveIntegerSchema.optional(),
   fps: positiveIntegerSchema.optional(),
   width: positiveIntegerSchema.optional(),
@@ -264,6 +270,24 @@ export async function validateRemotionBundle(
         warnings.push(
           "El manifiesto no declara propsSchema.properties.layoutOverrides como array; el editor de layout no podra adaptar posicion, tamano o recorte en esta plantilla.",
         );
+      } else if (
+        manifest.layoutContractVersion !== TEMPLATE_LAYOUT_CONTRACT_VERSION ||
+        !manifest.editableLayers?.length
+      ) {
+        warnings.push(
+          "El bundle no declara un contrato de layout v2 completo. Se renderizara con su layout base y el editor ignorara layoutOverrides para evitar coordenadas incompatibles.",
+        );
+      } else {
+        if (manifest.layoutCoordinateSpace !== TEMPLATE_LAYOUT_COORDINATE_SPACE) {
+          warnings.push(
+            "El contrato v2 usa coordenadas globales del canvas. Declara layoutCoordinateSpace como canvas para documentar ese origen de forma explicita.",
+          );
+        }
+        if (!manifest.editableLayers.some((layer) => layer.capabilities.canReorder)) {
+          warnings.push(
+            "El bundle admite posicion y tamano, pero ninguna capa declara canReorder; el editor no mostrara controles de orden.",
+          );
+        }
       }
     }
 

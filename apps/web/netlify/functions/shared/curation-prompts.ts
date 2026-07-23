@@ -45,7 +45,7 @@ export function generateSystemPrompt(
   courseDescription: string,
 ) {
   return `
-ROLE: Deep Research Agent for Educational Course Content
+ROLE: OpenAI Deep Research Agent for Educational Course Content
 CURRENT DATE: ${new Date().toISOString().split('T')[0]}
 
 ================================================================
@@ -107,6 +107,7 @@ RULES:
 4. Output MUST parse as valid JSON
 
 CRITICAL: Every source MUST be relevant to "${courseTitle}". Reject unrelated results.
+Use the web search tool before answering. Do not invent URLs.
 `;
 }
 

@@ -15,12 +15,15 @@ interface CurationReviewPanelProps {
   curationBlocked: boolean;
   isGenerating: boolean;
   isValidating: boolean;
+  invalidRowsCount: number;
   onApprove: () => Promise<void> | void;
-  onContinue?: () => void;
+  onContinue?: () => Promise<void> | void;
+  onIterateInvalidSources: () => Promise<void> | void;
   onRegenerate: () => Promise<void> | void;
   onReject: () => Promise<void> | void;
   onValidate: () => Promise<void> | void;
   pendingValidationCount: number;
+  missingCoverageCount: number;
   reviewNotes: string;
   setReviewNotes: (value: string) => void;
   rowsLength: number;
@@ -33,19 +36,26 @@ export function CurationReviewPanel({
   curationBlocked,
   isGenerating,
   isValidating,
+  invalidRowsCount,
   onApprove,
   onContinue,
+  onIterateInvalidSources,
   onRegenerate,
   onReject,
   onValidate,
   pendingValidationCount,
+  missingCoverageCount,
   reviewNotes,
   rowsLength,
   setReviewNotes,
   validatedCount,
 }: CurationReviewPanelProps) {
   const canApprove =
-    !isValidating && pendingValidationCount === 0 && rowsLength > 0;
+    !isValidating &&
+    pendingValidationCount === 0 &&
+    missingCoverageCount === 0 &&
+    rowsLength > 0;
+  const hasRetryableSources = invalidRowsCount > 0 || missingCoverageCount > 0;
 
   return (
     <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 mt-8">
@@ -75,6 +85,35 @@ export function CurationReviewPanel({
               fase.
             </p>
           )}
+        </div>
+      )}
+
+      {missingCoverageCount > 0 && (
+        <div className="mt-4 border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-100">
+          {missingCoverageCount} leccion(es) necesitan al menos una fuente valida
+          antes de aprobar.
+        </div>
+      )}
+
+      {hasRetryableSources && !curationApproved && !curationBlocked && (
+        <div className="mt-4 rounded-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-800 dark:text-rose-100">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              Hay {invalidRowsCount} fuente(s) no aptas y {missingCoverageCount}{" "}
+              leccion(es) sin cobertura valida. Puedes iterar esos pendientes
+              ahora; si apruebas sin fuentes no aptas, se eliminaran para que no
+              se usen en materiales.
+            </p>
+            <button
+              type="button"
+              onClick={onIterateInvalidSources}
+              disabled={isValidating || isGenerating}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-rose-500/30 bg-white/80 px-3 py-2 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-[#0F1419] dark:text-rose-300 dark:hover:bg-rose-500/10"
+            >
+              <RefreshCw size={14} />
+              Iterar pendientes
+            </button>
+          </div>
         </div>
       )}
 
@@ -161,7 +200,11 @@ export function CurationReviewPanel({
                 ? "Esperando validacion..."
                 : pendingValidationCount > 0
                   ? "Validacion requerida"
-                  : "Aprobar Fase 4"}
+                  : missingCoverageCount > 0
+                    ? "Cobertura incompleta"
+                    : invalidRowsCount > 0
+                      ? "Aprobar sin no aptas"
+                      : "Aprobar Fase 4"}
             </button>
             <button
               onClick={onReject}

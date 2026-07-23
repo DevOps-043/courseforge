@@ -8,6 +8,10 @@ function boxLiteral(box: LayerBox) {
   return `{ x: ${box.x}, y: ${box.y}, width: ${box.width}, height: ${box.height} }`;
 }
 
+function defaultStackOrder(blueprint: BundleBlueprint, layerId: string, fallback: number) {
+  return blueprint.editableLayers.find((layer) => layer.layerId === layerId)?.defaultStackOrder ?? fallback;
+}
+
 export function buildBundleTemplateSource(blueprint: BundleBlueprint) {
   return `import React from "react";
 import {
@@ -39,7 +43,8 @@ type LayoutOverrideEdit =
   | { layerId: string; kind: "size"; width: number; height: number }
   | { layerId: string; kind: "crop"; top: number; right: number; bottom: number; left: number }
   | { layerId: string; kind: "rotation"; angle: number }
-  | { layerId: string; kind: "visibility"; hidden: boolean };
+  | { layerId: string; kind: "visibility"; hidden: boolean }
+  | { layerId: string; kind: "stack"; order: number };
 
 type LayoutOverrideManifest = {
   version?: number;
@@ -76,6 +81,12 @@ const avatarBox = ${boxLiteral(blueprint.boxes.avatar)};
 const primaryVisualBox = ${boxLiteral(blueprint.boxes.primaryVisual)};
 const slidesBox = ${boxLiteral(blueprint.boxes.slides)};
 const brollBox = ${boxLiteral(blueprint.boxes.broll)};
+const defaultStackOrders = {
+  avatar: ${defaultStackOrder(blueprint, "avatar", 10)},
+  primaryVisual: ${defaultStackOrder(blueprint, "primaryVisual", 0)},
+  slides: ${defaultStackOrder(blueprint, "slides", 20)},
+  broll: ${defaultStackOrder(blueprint, "broll", 30)},
+} as const;
 const defaultProps: TemplateProps = {
   accentColor,
   bgMusicVolume: 0.12,
@@ -158,6 +169,10 @@ function buildLayoutOverrideStyle(
     if (edit.kind === "visibility" && edit.hidden) {
       style.display = "none";
     }
+
+    if (edit.kind === "stack") {
+      style.zIndex = edit.order;
+    }
   }
 
   return style;
@@ -218,6 +233,15 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
   const slidesOverride = buildLayoutOverrideStyle(props.layoutOverrides, REMOTION_EDITABLE_LAYERS.SLIDES);
   const brollOverride = buildLayoutOverrideStyle(props.layoutOverrides, REMOTION_EDITABLE_LAYERS.BROLL);
   const backgroundOverride = buildLayoutOverrideStyle(props.layoutOverrides, REMOTION_EDITABLE_LAYERS.BACKGROUND);
+  const activeSlideItemOverride = activeSlideIndex >= 0
+    ? buildLayoutOverrideStyle(props.layoutOverrides, \`slide:\${activeSlideIndex}\`)
+    : {};
+  const activeBrollItemOverride = activeBroll
+    ? buildLayoutOverrideStyle(
+        props.layoutOverrides,
+        \`broll:\${Math.max(1, Math.round(activeBroll.order ?? (timelineMode === "equal-slides-with-indexed-broll" ? activeSlideIndex : activeSupportIndex) + 1))}\`,
+      )
+    : {};
 
   return (
     <AbsoluteFill
@@ -228,10 +252,10 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
         ...backgroundOverride,
       }}
     >
-      <div style={buildBoxStyle(primaryVisualBox, { background: "#090d14", ...primaryVisualOverride })} />
+      <div style={buildBoxStyle(primaryVisualBox, { background: "#090d14", zIndex: defaultStackOrders.primaryVisual, ...primaryVisualOverride })} />
 
       {hasAvatar ? (
-        <div style={buildBoxStyle(avatarBox, { background: "#05070b", ...avatarOverride })}>
+        <div style={buildBoxStyle(avatarBox, { background: "transparent", zIndex: defaultStackOrders.avatar, ...avatarOverride })}>
           <Video
             src={props.avatarVideoUrl!}
             muted={hasVoice}
@@ -241,7 +265,7 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
       ) : null}
 
       {activeSlide ? (
-        <div style={buildBoxStyle(slidesBox, { opacity: slideOpacity, ...slidesOverride })}>
+        <div style={buildBoxStyle(slidesBox, { opacity: slideOpacity, zIndex: defaultStackOrders.slides, ...slidesOverride, ...activeSlideItemOverride })}>
           <Img
             src={activeSlide.url}
             style={{ width: "100%", height: "100%", objectFit: "contain", objectPosition: "center center" }}
@@ -250,7 +274,7 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
       ) : null}
 
       {activeBroll ? (
-        <div style={buildBoxStyle(brollBox, { background: "#000", ...brollOverride })}>
+        <div style={buildBoxStyle(brollBox, { background: "transparent", zIndex: defaultStackOrders.broll, ...brollOverride, ...activeBrollItemOverride })}>
           <Video
             src={activeBroll.url}
             muted

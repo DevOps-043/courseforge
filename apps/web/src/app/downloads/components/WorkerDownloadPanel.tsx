@@ -125,7 +125,7 @@ export function WorkerDownloadPanel({
               Descarga el worker local para ensamblar videos desde tu equipo
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-gray-600 dark:text-slate-300">
-              SofLIA - Engine Render Worker conecta tu computadora con SofLIA - Engine para ejecutar renders Remotion
+              SofLIA - Engine Render Worker conecta tu computadora con SofLIA - Engine para ejecutar renders
               autorizados, subir el MP4 final y mantener el estado sincronizado con la plataforma.
             </p>
           </div>

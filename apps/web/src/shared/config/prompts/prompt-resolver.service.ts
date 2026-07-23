@@ -14,6 +14,7 @@ import {
     SYSTEM_PROMPT_CODE,
     COMPONENT_PROMPT_CODES,
     DEFAULT_PROMPTS,
+    NO_AI_SLOP_MATERIALS_RULES,
 } from './materials-generation.prompts.modular';
 
 // --------------------------------------------------------------------------
@@ -387,6 +388,8 @@ export function assemblePrompt(resolved: ResolvedPrompts, componentTypes: string
     const parts: string[] = [];
 
     parts.push(resolved.systemPrompt);
+    parts.push('\n---\n');
+    parts.push(NO_AI_SLOP_MATERIALS_RULES);
     parts.push('\n---\n');
     parts.push('## Prioridad de instrucciones\n');
     parts.push('- El schema JSON define UNICAMENTE la forma de salida y los campos requeridos.\n');

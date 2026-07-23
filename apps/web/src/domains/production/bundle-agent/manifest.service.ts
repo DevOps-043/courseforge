@@ -1,5 +1,9 @@
 import type { BundleAgentSpec } from "./types";
 import type { BundleBlueprint } from "./blueprint.service";
+import {
+  TEMPLATE_LAYOUT_CONTRACT_VERSION,
+  TEMPLATE_LAYOUT_COORDINATE_SPACE,
+} from "../../../remotion/layout-overrides";
 
 export function buildBundleManifest(spec: BundleAgentSpec, blueprint: BundleBlueprint) {
   return {
@@ -7,6 +11,8 @@ export function buildBundleManifest(spec: BundleAgentSpec, blueprint: BundleBlue
     entryPoint: "src/index.tsx",
     compositionId: blueprint.compositionId,
     exportMode: "root" as const,
+    layoutContractVersion: TEMPLATE_LAYOUT_CONTRACT_VERSION,
+    layoutCoordinateSpace: TEMPLATE_LAYOUT_COORDINATE_SPACE,
     defaultDurationFrames: blueprint.fallbackDurationFrames,
     fps: blueprint.fps,
     width: blueprint.width,

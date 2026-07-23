@@ -46,7 +46,14 @@ export function AvatarFocus(props: AssemblyInputProps) {
   return (
     <AbsoluteFill style={{ backgroundColor: templateConfig.backgroundColor }}>
       {props.avatarVideoUrl ? (
-        <div style={{ position: "absolute", inset: 0, ...avatarOverrideStyle }}>
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 10,
+            ...avatarOverrideStyle,
+          }}
+        >
           <AvatarLayer
             url={props.avatarVideoUrl}
             muted={hasVoice}
@@ -61,6 +68,7 @@ export function AvatarFocus(props: AssemblyInputProps) {
             durationInFrames={durationInFrames}
             transitionType={props.transitionType}
             templateConfig={templateConfig}
+            layoutOverrides={props.layoutOverrides}
             slidesLayerStyle={slidesOverrideStyle}
             brollLayerStyle={brollOverrideStyle}
           />
@@ -78,6 +86,7 @@ export function AvatarFocus(props: AssemblyInputProps) {
             overflow: "hidden",
             borderTop: `3px solid ${templateConfig.accentColor}`,
             boxShadow: "0 -8px 24px rgba(0,0,0,0.4)",
+            zIndex: 20,
             ...supportStripOverrideStyle,
           }}
         >
@@ -88,6 +97,7 @@ export function AvatarFocus(props: AssemblyInputProps) {
               durationInFrames={durationInFrames}
               transitionType={props.transitionType}
               templateConfig={templateConfig}
+              layoutOverrides={props.layoutOverrides}
               slidesLayerStyle={slidesOverrideStyle}
               brollLayerStyle={brollOverrideStyle}
             />

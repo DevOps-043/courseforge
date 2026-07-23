@@ -22,16 +22,6 @@ interface ComponentInput {
   type?: string;
 }
 
-export interface ImportedSourcePayload {
-  lesson_id: string;
-  lesson_title?: string;
-  summary?: string;
-  title: string;
-  type?: string;
-  url: string;
-  validated?: boolean;
-}
-
 export function mapCurationStatus(status: string) {
   let finalStatus = status;
   let decision = "PENDING";
@@ -97,66 +87,6 @@ export function extractPlanComponents(
       };
     });
   });
-}
-
-export function parseImportedSourcesPayload(jsonString: string):
-  | { success: true; sources: ImportedSourcePayload[] }
-  | { success: false; error: string } {
-  let payload: unknown;
-
-  try {
-    payload = JSON.parse(jsonString);
-  } catch {
-    return {
-      success: false,
-      error: "JSON invalido. Verifica el formato e intenta de nuevo.",
-    };
-  }
-
-  const sources = (payload as { sources?: unknown[] })?.sources;
-
-  if (!Array.isArray(sources) || sources.length === 0) {
-    return {
-      success: false,
-      error: 'El JSON debe contener un array "sources" con al menos una fuente.',
-    };
-  }
-
-  for (let index = 0; index < sources.length; index += 1) {
-    const source = sources[index] as Partial<ImportedSourcePayload>;
-    if (!source.url || !source.title || !source.lesson_id) {
-      return {
-        success: false,
-        error: `Fuente #${index + 1} incompleta: requiere al menos "url", "title" y "lesson_id".`,
-      };
-    }
-  }
-
-  return {
-    success: true,
-    sources: sources as ImportedSourcePayload[],
-  };
-}
-
-export function buildImportedRows(
-  curationId: string,
-  sources: ImportedSourcePayload[],
-) {
-  return sources.map((source) => ({
-    curation_id: curationId,
-    lesson_id: source.lesson_id,
-    lesson_title: source.lesson_title || "",
-    component: (source.type || "DOCUMENTATION").toUpperCase(),
-    is_critical: false,
-    source_ref: source.url,
-    source_title: source.title,
-    source_rationale: "GPT_GENERATED",
-    url_status: "PENDING",
-    apta: null,
-    auto_evaluated: false,
-    auto_reason: null,
-    notes: source.summary || "Importado manualmente desde GPT",
-  }));
 }
 
 interface TriggerCurationGenerationParams {

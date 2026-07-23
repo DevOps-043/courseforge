@@ -1,0 +1,28 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "baseUrl": ".",
+    "isolatedModules": false,
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "outDir": ".tmp/curation-tests",
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": [
+    "netlify/functions/shared/curation-v2/types.ts",
+    "netlify/functions/shared/curation-v2/validation.ts",
+    "netlify/functions/shared/curation-v2/coverage.ts",
+    "netlify/functions/shared/curation-v2/search.ts",
+    "netlify/functions/shared/curation-v2/workflow.ts",
+    "netlify/functions/shared/unified-curation-helpers.ts",
+    "netlify/functions/shared/unified-curation-types.ts",
+    "src/domains/curation/lib/curation-row-rules.ts",
+    "src/domains/curation/types/curation.types.ts",
+    "src/shared/types/curation.types.ts",
+    "netlify/functions/shared/curation-v2/__tests__/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}

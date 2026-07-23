@@ -5,35 +5,16 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { AlertCircle } from "lucide-react";
 import {
-  deleteCurationAction,
-  importCurationJsonAction,
   updateCurationStatusAction,
 } from "../actions/curation.actions";
 import type { Curation, CurationRow } from "../types/curation.types";
 import type { CurationModalConfig } from "../components/CurationDashboardView";
 import { CurationResetOptions } from "../components/CurationResetOptions";
 import { CURATION_STATES } from "@/lib/pipeline-constants";
-import { buildGPTContext, GPT_URL, parseCurationJsonPreview } from "../lib/curation-ui";
-import { STATUS_MESSAGE_DISMISS_DELAY_MS } from "@/shared/constants/timing";
-
-interface SyllabusLesson {
-  id?: string;
-  title: string;
-  objective_specific: string;
-}
-
-interface SyllabusModule {
-  id?: string;
-  title: string;
-  objective_general_ref: string;
-  lessons: SyllabusLesson[];
-}
 
 interface UseCurationControlsParams {
   artifactId: string;
-  courseId?: string;
   curation: Curation | null;
-  ideaCentral?: string;
   isGenerating: boolean;
   isValidating: boolean;
   pendingValidationCount: number;
@@ -44,8 +25,8 @@ interface UseCurationControlsParams {
     gaps?: string[],
     resume?: boolean,
   ) => Promise<void>;
-  clearGPTRows: () => Promise<void>;
-  temario?: SyllabusModule[];
+  clearSystemGeneratedRows: () => Promise<void>;
+  clearInvalidRows: () => Promise<boolean>;
 }
 
 const INITIAL_MODAL_CONFIG: CurationModalConfig = {
@@ -59,34 +40,22 @@ const INITIAL_MODAL_CONFIG: CurationModalConfig = {
 
 export function useCurationControls({
   artifactId,
-  courseId,
   curation,
-  ideaCentral,
   isGenerating,
   isValidating,
   pendingValidationCount,
   refresh,
   rows,
   startCuration,
-  clearGPTRows,
-  temario,
+  clearSystemGeneratedRows,
+  clearInvalidRows,
 }: UseCurationControlsParams) {
   const router = useRouter();
-  const [copiedToClipboard, setCopiedToClipboard] = useState(false);
   const [isLoadingModal, setIsLoadingModal] = useState(false);
-  const [isProcessingJson, setIsProcessingJson] = useState(false);
-  const [jsonError, setJsonError] = useState<string | null>(null);
-  const [jsonInput, setJsonInput] = useState("");
-  const [jsonPreview, setJsonPreview] = useState<{
-    count: number;
-    lessons: string[];
-  } | null>(null);
   const [modalConfig, setModalConfig] =
     useState<CurationModalConfig>(INITIAL_MODAL_CONFIG);
   const [progress, setProgress] = useState(5);
   const [reviewNotes, setReviewNotes] = useState("");
-  const [showAutomaticFlow, setShowAutomaticFlow] = useState(false);
-  const [showJsonImport, setShowJsonImport] = useState(false);
 
   const closeModal = () =>
     setModalConfig((previous) => ({ ...previous, isOpen: false }));
@@ -124,12 +93,13 @@ export function useCurationControls({
         <CurationResetOptions
           onClearCurrentData={async () => {
             setIsLoadingModal(true);
-            await clearGPTRows();
+            await clearSystemGeneratedRows();
             setIsLoadingModal(false);
             closeModal();
           }}
           onRestartAutomaticSearch={async () => {
             setIsLoadingModal(true);
+            await clearSystemGeneratedRows();
             await handleGenerate();
             setIsLoadingModal(false);
             closeModal();
@@ -140,69 +110,6 @@ export function useCurationControls({
       hideActions: true,
       onConfirm: closeModal,
     });
-  };
-
-  const handleOpenGPT = async () => {
-    const context = buildGPTContext({
-      artifactId,
-      courseId,
-      ideaCentral,
-      temario,
-    });
-
-    try {
-      await navigator.clipboard.writeText(context);
-      setCopiedToClipboard(true);
-      toast.success("Contexto copiado al portapapeles. Pegalo en ChatGPT.");
-      setTimeout(
-        () => setCopiedToClipboard(false),
-        STATUS_MESSAGE_DISMISS_DELAY_MS,
-      );
-      window.open(GPT_URL, "_blank");
-    } catch (error) {
-      console.error("Clipboard error:", error);
-      toast.error("No se pudo copiar. Copia el contexto manualmente.");
-    }
-  };
-
-  const handleJsonInputChange = (value: string) => {
-    setJsonInput(value);
-    const { error, preview } = parseCurationJsonPreview(value);
-    setJsonError(error);
-    setJsonPreview(preview);
-  };
-
-  const handleImportJson = async () => {
-    if (!jsonInput.trim() || isProcessingJson) {
-      return;
-    }
-
-    setIsProcessingJson(true);
-    setJsonError(null);
-
-    try {
-      const result = await importCurationJsonAction(artifactId, jsonInput);
-
-      if (!result.success) {
-        const errorMessage = result.error || "Error importando fuentes";
-        setJsonError(errorMessage);
-        toast.error(errorMessage);
-        return;
-      }
-
-      toast.success(result.message || "Fuentes importadas exitosamente");
-      setJsonInput("");
-      setJsonPreview(null);
-      setShowJsonImport(false);
-      await refresh();
-      router.refresh();
-    } catch (error) {
-      console.error("Import error:", error);
-      setJsonError("Error inesperado");
-      toast.error("Error inesperado al importar");
-    } finally {
-      setIsProcessingJson(false);
-    }
   };
 
   const handlePause = () => {
@@ -288,6 +195,18 @@ export function useCurationControls({
     await startCuration(1, [], true);
   };
 
+  const handleIterateInvalidSources = async () => {
+    try {
+      const cleaned = await clearInvalidRows();
+      if (!cleaned) return;
+      await startCuration(1, [], true);
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+      toast.error("No se pudo iterar las fuentes no aptas.");
+    }
+  };
+
   const handleApprove = async () => {
     if (isValidating) {
       toast.warning(
@@ -303,11 +222,18 @@ export function useCurationControls({
       return;
     }
 
-    await updateCurationStatusAction(
+    const cleaned = await clearInvalidRows();
+    if (!cleaned) return;
+
+    const result = await updateCurationStatusAction(
       artifactId,
       CURATION_STATES.APPROVED,
       reviewNotes,
     );
+    if (!result.success) {
+      toast.error(result.error || "No se pudo aprobar la Fase 4");
+      return;
+    }
     toast.success("Fase 4 aprobada exitosamente");
     await refresh();
     router.refresh();
@@ -327,16 +253,16 @@ export function useCurationControls({
   const handleRegenerateBlocked = async () => {
     if (
       !confirm(
-        "Estas seguro de que quieres regenerar? Esto eliminara la curaduria actual.",
+        "¿Regenerar las fuentes automaticas? Las fuentes manuales se conservaran.",
       )
     ) {
       return;
     }
 
     try {
-      await deleteCurationAction(artifactId);
+      await clearSystemGeneratedRows();
       setReviewNotes("");
-      await refresh();
+      await startCuration(1, []);
       router.refresh();
     } catch (error) {
       console.error(error);
@@ -346,30 +272,19 @@ export function useCurationControls({
 
   return {
     closeModal,
-    copiedToClipboard,
     handleApprove,
     handleGenerate,
-    handleImportJson,
-    handleJsonInputChange,
-    handleOpenGPT,
     handlePause,
+    handleIterateInvalidSources,
     handleReject,
     handleRegenerateBlocked,
     handleResetStep,
     handleResume,
     handleStop,
     isLoadingModal,
-    isProcessingJson,
-    jsonError,
-    jsonInput,
-    jsonPreview,
     modalConfig,
     progress,
     reviewNotes,
     setReviewNotes,
-    setShowAutomaticFlow,
-    setShowJsonImport,
-    showAutomaticFlow,
-    showJsonImport,
   };
 }

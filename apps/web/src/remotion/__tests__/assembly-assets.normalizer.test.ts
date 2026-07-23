@@ -13,12 +13,21 @@ import {
   safeParseAssemblyInputProps,
 } from "../types";
 import { DEFAULT_TEMPLATE_RENDER_CONFIG } from "../template-config";
-import { safeParseLayoutOverrideManifests } from "../layout-overrides";
+import {
+  filterLayoutOverridesForEditableLayers,
+  safeParseLayoutOverrideManifests,
+} from "../layout-overrides";
 import {
   buildLayoutOverrideStyle,
+  getBrollItemLayerId,
+  getSlideItemLayerId,
   REMOTION_EDITABLE_LAYERS,
 } from "../layout-override-styles";
-import { buildBrollTimeline } from "../visual-timeline";
+import {
+  buildBrollTimeline,
+  buildVisualTimeline,
+  getActiveTimelineSegments,
+} from "../visual-timeline";
 import { deriveAssemblyTargetDurationSeconds } from "../assembly-duration";
 import {
   commitLayoutLayerCrop,
@@ -27,6 +36,10 @@ import {
   getEditableLayoutLayers,
   getDefaultLayoutLayerBox,
   getEffectiveLayoutLayerBox,
+  getEffectiveLayoutLayerStackOrder,
+  getLayoutLayerStackPosition,
+  moveLayoutLayerInStack,
+  resetLayoutLayerToDefault,
 } from "../../domains/materials/components/layoutOverrideDraftModel";
 import type { MaterialAssets } from "../../domains/materials/types/materials.types";
 
@@ -376,13 +389,14 @@ describe("normalizeAssemblyAssets", () => {
             { layerId: "avatar", kind: "position", x: 1280, y: 620 },
             { layerId: "primaryVisual", kind: "size", width: 720, height: 405 },
             { layerId: "primaryVisual", kind: "crop", top: 0, right: 0.1, bottom: 0, left: 0 },
+            { layerId: "avatar", kind: "stack", order: 30 },
           ],
         },
       ],
     );
 
     assert.equal(props.layoutOverrides.length, 1);
-    assert.equal(props.layoutOverrides[0].edits.length, 3);
+    assert.equal(props.layoutOverrides[0].edits.length, 4);
   });
 
   it("rejects arbitrary style data in layout overrides", () => {
@@ -411,6 +425,18 @@ describe("normalizeAssemblyAssets", () => {
         version: 1,
         canvas: { width: 1920, height: 1080 },
         edits: [{ layerId: "avatar", kind: "size", width: -1, height: 405 }],
+      },
+    ]);
+
+    assert.equal(parsed.success, false);
+  });
+
+  it("rejects arbitrary stack values", () => {
+    const parsed = safeParseLayoutOverrideManifests([
+      {
+        version: 1,
+        canvas: { width: 1920, height: 1080 },
+        edits: [{ layerId: "avatar", kind: "stack", order: 1001 }],
       },
     ]);
 
@@ -476,6 +502,139 @@ describe("buildBrollTimeline", () => {
   });
 });
 
+describe("buildVisualTimeline", () => {
+  it("exposes preview tracks for audio, avatar, slides and b-roll", () => {
+    const props = buildAssemblyProps(
+      {
+        voice_audio: {
+          public_url: AUDIO_URL,
+          storage_path: "production-assets/voice.mp3",
+          duration: 8,
+        },
+        avatar_video: {
+          public_url: VIDEO_URL,
+          storage_path: "production-assets/avatar.mp4",
+          duration: 8,
+        },
+        slides: {
+          images: [
+            {
+              public_url: "https://cdn.example.com/slide-1.png",
+              storage_path: "production-assets/slides/slide-1.png",
+              slide_index: 0,
+            },
+            {
+              public_url: "https://cdn.example.com/slide-2.png",
+              storage_path: "production-assets/slides/slide-2.png",
+              slide_index: 1,
+            },
+          ],
+        },
+        b_roll_clips: [
+          baseClip({
+            id: "clip-1",
+            public_url: "https://cdn.example.com/broll-1.mp4",
+            duration: 1,
+            order: 1,
+          }),
+        ],
+      },
+      ASSEMBLY_TEMPLATES.FULL_SLIDES,
+    );
+
+    const timeline = buildVisualTimeline(props);
+
+    assert.deepEqual(
+      timeline.tracks.map((track) => track.id),
+      ["audio", "avatar", "slides", "broll"],
+    );
+    assert.equal(timeline.durationInFrames, 8 * ASSEMBLY_FPS);
+    assert.deepEqual(
+      timeline.tracks.find((track) => track.id === "slides")?.segments.map((segment) => segment.layerId),
+      [getSlideItemLayerId(0), getSlideItemLayerId(1)],
+    );
+    assert.deepEqual(
+      timeline.tracks.find((track) => track.id === "broll")?.segments.map((segment) => segment.layerId),
+      [getBrollItemLayerId(1)],
+    );
+  });
+
+  it("mirrors B-roll overlay timing when slides are present", () => {
+    const props = buildAssemblyProps(
+      {
+        assembly_target_duration_seconds: 4,
+        slides: {
+          images: [
+            {
+              public_url: IMAGE_URL,
+              storage_path: "production-assets/slides/slide.png",
+              slide_index: 0,
+            },
+          ],
+        },
+        b_roll_clips: [
+          baseClip({
+            public_url: "https://cdn.example.com/broll-1.mp4",
+            duration: 1,
+            order: 1,
+          }),
+          baseClip({
+            id: "clip-2",
+            public_url: "https://cdn.example.com/broll-2.mp4",
+            duration: 1,
+            order: 2,
+          }),
+        ],
+      },
+      ASSEMBLY_TEMPLATES.FULL_SLIDES,
+    );
+
+    const timeline = buildVisualTimeline(props);
+    const brollSegments = timeline.tracks.find((track) => track.id === "broll")?.segments ?? [];
+
+    assert.deepEqual(
+      brollSegments.map((segment) => segment.startFrame),
+      [20, 70],
+    );
+  });
+
+  it("reports active segments for a selected frame", () => {
+    const props = buildAssemblyProps(
+      {
+        assembly_target_duration_seconds: 4,
+        slides: {
+          images: [
+            {
+              public_url: "https://cdn.example.com/slide-1.png",
+              storage_path: "production-assets/slides/slide-1.png",
+              slide_index: 0,
+            },
+            {
+              public_url: "https://cdn.example.com/slide-2.png",
+              storage_path: "production-assets/slides/slide-2.png",
+              slide_index: 1,
+            },
+          ],
+        },
+      },
+      ASSEMBLY_TEMPLATES.FULL_SLIDES,
+    );
+
+    const timeline = buildVisualTimeline(props);
+    const activeAtStart = getActiveTimelineSegments(timeline, 0);
+    const activeAtSecondHalf = getActiveTimelineSegments(timeline, 75);
+
+    assert.deepEqual(
+      activeAtStart.map((segment) => segment.id),
+      ["slide-0"],
+    );
+    assert.deepEqual(
+      activeAtSecondHalf.map((segment) => segment.id),
+      ["slide-1"],
+    );
+  });
+});
+
 describe("buildLayoutOverrideStyle", () => {
   it("returns an empty style when there are no edits for the layer", () => {
     const style = buildLayoutOverrideStyle([], REMOTION_EDITABLE_LAYERS.AVATAR);
@@ -494,6 +653,7 @@ describe("buildLayoutOverrideStyle", () => {
             { layerId: "avatar", kind: "size", width: 640, height: 360 },
             { layerId: "avatar", kind: "crop", top: 0.05, right: 0.1, bottom: 0, left: 0.15 },
             { layerId: "avatar", kind: "rotation", angle: 12 },
+            { layerId: "avatar", kind: "stack", order: 30 },
           ],
         },
       ],
@@ -511,6 +671,7 @@ describe("buildLayoutOverrideStyle", () => {
       height: 360,
       clipPath: "inset(5% 10% 0% 15%)",
       transform: "rotate(12deg)",
+      zIndex: 30,
     });
   });
 
@@ -551,24 +712,51 @@ describe("buildLayoutOverrideStyle", () => {
     assert.equal(style.left, 300);
     assert.equal(style.top, 400);
   });
+
+  it("ignores crop edits that would make the layer almost invisible", () => {
+    const style = buildLayoutOverrideStyle(
+      [
+        {
+          version: 1,
+          canvas: { width: 1920, height: 1080 },
+          edits: [
+            { layerId: "avatar", kind: "crop", top: 0.95, right: 0, bottom: 0, left: 0.95 },
+          ],
+        },
+      ],
+      REMOTION_EDITABLE_LAYERS.AVATAR,
+    );
+
+    assert.equal(style.clipPath, "inset(0% 0% 0% 0%)");
+  });
 });
 
 describe("layout override draft model", () => {
   it("exposes slides and b-roll as separate editable layers when both exist", () => {
-    const layers = getEditableLayoutLayers({
-      hasAvatar: true,
-      slideCount: 5,
-      brollCount: 2,
-    });
+    const layers = getEditableLayoutLayers(
+      {
+        hasAvatar: true,
+        slideCount: 5,
+        brollCount: 2,
+      },
+      [],
+      ASSEMBLY_TEMPLATES.FULL_SLIDES,
+    );
 
     assert.deepEqual(
       layers.map((layer) => layer.id),
       [
         REMOTION_EDITABLE_LAYERS.AVATAR,
+        getSlideItemLayerId(0),
+        getSlideItemLayerId(1),
+        getSlideItemLayerId(2),
+        getSlideItemLayerId(3),
+        getSlideItemLayerId(4),
+        getBrollItemLayerId(1),
+        getBrollItemLayerId(2),
         REMOTION_EDITABLE_LAYERS.SLIDES,
         REMOTION_EDITABLE_LAYERS.BROLL,
         REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL,
-        REMOTION_EDITABLE_LAYERS.SUPPORT_STRIP,
       ],
     );
   });
@@ -631,7 +819,10 @@ describe("layout override draft model", () => {
             canCrop: true,
             canRotate: false,
             canHide: true,
+            canReorder: true,
           },
+          defaultStackOrder: 20,
+          stackGroup: "root",
         },
       ],
     );
@@ -646,6 +837,126 @@ describe("layout override draft model", () => {
       width: ASSEMBLY_WIDTH / 2,
       height: ASSEMBLY_HEIGHT,
     });
+  });
+
+  it("does not invent editable layers for an external bundle without a layout contract", () => {
+    const layers = getEditableLayoutLayers(
+      { hasAvatar: true, slideCount: 3, brollCount: 1 },
+      [],
+      "custom-composition",
+      { allowInternalFallback: false },
+    );
+
+    assert.deepEqual(layers, []);
+  });
+
+  it("expands item layers only when the external contract declares their patterns", () => {
+    const capabilities = {
+      canMove: true,
+      canResize: true,
+      canCrop: true,
+      canRotate: false,
+      canHide: true,
+      canReorder: true,
+    };
+    const layers = getEditableLayoutLayers(
+      { hasAvatar: false, slideCount: 2, brollCount: 1 },
+      [
+        {
+          layerId: "slides",
+          label: "Diapositivas",
+          kind: "slides",
+          itemLayerIdPattern: "slide:{index}",
+          capabilities,
+        },
+        {
+          layerId: "broll",
+          label: "B-roll",
+          kind: "broll",
+          itemLayerIdPattern: "broll:{order}",
+          capabilities,
+        },
+      ],
+      "custom-composition",
+      { allowInternalFallback: false },
+    );
+
+    assert.deepEqual(
+      layers.map((layer) => layer.id),
+      ["slide:0", "slide:1", "slides", "broll:1", "broll"],
+    );
+    assert.equal(layers.find((layer) => layer.id === "slide:0")?.canReorder, false);
+  });
+
+  it("filters external layout edits by declared layer capabilities", () => {
+    const manifests = filterLayoutOverridesForEditableLayers(
+      [
+        {
+          version: 1,
+          canvas: { width: ASSEMBLY_WIDTH, height: ASSEMBLY_HEIGHT },
+          edits: [
+            { layerId: "slides", kind: "position", x: 960, y: 0 },
+            { layerId: "slides", kind: "stack", order: 20 },
+            { layerId: "slide:2", kind: "size", width: 400, height: 300 },
+          ],
+        },
+      ],
+      [
+        {
+          layerId: "slides",
+          label: "Diapositivas",
+          kind: "slides",
+          capabilities: {
+            canMove: true,
+            canResize: true,
+            canCrop: true,
+            canRotate: false,
+            canHide: true,
+            canReorder: false,
+          },
+        },
+      ],
+    );
+
+    assert.deepEqual(manifests[0]?.edits, [
+      { layerId: "slides", kind: "position", x: 960, y: 0 },
+    ]);
+  });
+
+  it("accepts declared item patterns without allowing arbitrary or stack item edits", () => {
+    const manifests = filterLayoutOverridesForEditableLayers(
+      [
+        {
+          version: 1,
+          canvas: { width: ASSEMBLY_WIDTH, height: ASSEMBLY_HEIGHT },
+          edits: [
+            { layerId: "slide:2", kind: "size", width: 800, height: 450 },
+            { layerId: "slide:2", kind: "stack", order: 90 },
+            { layerId: "slide:wrong", kind: "position", x: 0, y: 0 },
+          ],
+        },
+      ],
+      [
+        {
+          layerId: "slides",
+          label: "Diapositivas",
+          kind: "slides",
+          itemLayerIdPattern: "slide:{index}",
+          capabilities: {
+            canMove: true,
+            canResize: true,
+            canCrop: true,
+            canRotate: false,
+            canHide: true,
+            canReorder: true,
+          },
+        },
+      ],
+    );
+
+    assert.deepEqual(manifests[0]?.edits, [
+      { layerId: "slide:2", kind: "size", width: 800, height: 450 },
+    ]);
   });
 
   it("commits overlay box changes as position and size edits only", () => {
@@ -690,6 +1001,30 @@ describe("layout override draft model", () => {
     ]);
   });
 
+  it("resets extreme crop edits before they hide the preview", () => {
+    const manifest = createEmptyLayoutOverrideManifest({
+      componentId: "component-1",
+      templateId: "template-1",
+    });
+
+    const nextManifest = commitLayoutLayerCrop({
+      manifest,
+      layerId: REMOTION_EDITABLE_LAYERS.AVATAR,
+      crop: { top: 0.95, right: 0, bottom: 0, left: 0.95 },
+    });
+
+    assert.deepEqual(nextManifest.edits, [
+      {
+        layerId: REMOTION_EDITABLE_LAYERS.AVATAR,
+        kind: "crop",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+      },
+    ]);
+  });
+
   it("uses committed edits over default boxes", () => {
     const manifest = commitLayoutLayerBox({
       manifest: createEmptyLayoutOverrideManifest({
@@ -712,5 +1047,99 @@ describe("layout override draft model", () => {
       width: 800,
       height: 450,
     });
+  });
+
+  it("moves reorderable layers one level without rewriting unrelated layers", () => {
+    const manifest = createEmptyLayoutOverrideManifest({
+      componentId: "component-1",
+      templateId: "template-1",
+    });
+    const editableLayers = [
+      { id: "slides", label: "Diapositivas", canReorder: true, defaultStackOrder: 10, stackGroup: "root" },
+      { id: "avatar", label: "Avatar", canReorder: true, defaultStackOrder: 20, stackGroup: "root" },
+      { id: "broll", label: "B-roll", canReorder: true, defaultStackOrder: 30, stackGroup: "root" },
+    ];
+
+    const reordered = moveLayoutLayerInStack({
+      manifest,
+      layerId: "avatar",
+      editableLayers,
+      direction: "forward",
+    });
+
+    assert.equal(reordered.edits.length, 2);
+    assert.equal(
+      getEffectiveLayoutLayerStackOrder(reordered, editableLayers[0]),
+      10,
+    );
+    assert.equal(buildLayoutOverrideStyle([reordered], "broll").zIndex, 20);
+    assert.equal(buildLayoutOverrideStyle([reordered], "avatar").zIndex, 30);
+    assert.deepEqual(
+      getLayoutLayerStackPosition({
+        manifest: reordered,
+        layerId: "avatar",
+        editableLayers,
+      }),
+      { canMoveBackward: true, canMoveForward: false, index: 2, total: 3 },
+    );
+  });
+
+  it("does not reorder locked layers or layers from another stack group", () => {
+    const manifest = createEmptyLayoutOverrideManifest({
+      componentId: "component-1",
+      templateId: "template-1",
+    });
+    const editableLayers = [
+      { id: "background", label: "Fondo", canReorder: false, defaultStackOrder: 0, stackGroup: "root" },
+      { id: "slides", label: "Diapositivas", canReorder: true, defaultStackOrder: 10, stackGroup: "visual" },
+      { id: "avatar", label: "Avatar", canReorder: true, defaultStackOrder: 20, stackGroup: "root" },
+    ];
+
+    assert.equal(
+      moveLayoutLayerInStack({
+        manifest,
+        layerId: "background",
+        editableLayers,
+        direction: "forward",
+      }),
+      manifest,
+    );
+    assert.deepEqual(
+      getLayoutLayerStackPosition({
+        manifest,
+        layerId: "avatar",
+        editableLayers,
+      }),
+      { canMoveBackward: false, canMoveForward: false, index: 0, total: 1 },
+    );
+  });
+
+  it("resets a reordered stack group without leaving duplicate levels", () => {
+    const editableLayers = [
+      { id: "slides", label: "Diapositivas", canReorder: true, defaultStackOrder: 10, stackGroup: "root" },
+      { id: "avatar", label: "Avatar", canReorder: true, defaultStackOrder: 20, stackGroup: "root" },
+      { id: "broll", label: "B-roll", canReorder: true, defaultStackOrder: 30, stackGroup: "root" },
+    ];
+    const reordered = moveLayoutLayerInStack({
+      manifest: createEmptyLayoutOverrideManifest({
+        componentId: "component-1",
+        templateId: "template-1",
+      }),
+      layerId: "avatar",
+      editableLayers,
+      direction: "forward",
+    });
+
+    const reset = resetLayoutLayerToDefault({
+      manifest: reordered,
+      layerId: "avatar",
+      editableLayers,
+    });
+
+    assert.equal(reset.edits.some((edit) => edit.kind === "stack"), false);
+    assert.deepEqual(
+      editableLayers.map((layer) => getEffectiveLayoutLayerStackOrder(reset, layer)),
+      [10, 20, 30],
+    );
   });
 });

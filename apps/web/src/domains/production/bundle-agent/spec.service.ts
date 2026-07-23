@@ -55,7 +55,7 @@ function inferTitle(userText: string, fallbackTitle?: string | null) {
   }
 
   const firstRequirement = extractRequirements(userText)[0];
-  return (firstRequirement || fallbackTitle || "SofLIA Remotion bundle").slice(0, 120);
+  return (firstRequirement || fallbackTitle || "SofLIA video bundle").slice(0, 120);
 }
 
 function inferRequiredAssets(userText: string) {
@@ -232,7 +232,7 @@ export function buildSpecFromConversation(input: {
         accentColor: { type: "string", description: "Color de acento para subrayados, bordes y progreso." },
       },
     },
-    changeSummary: "SofLIA generated a controlled Remotion bundle draft from the conversation.",
+    changeSummary: "SofLIA generated a controlled video bundle draft from the conversation.",
     ...(input.overrides && typeof input.overrides === "object" ? input.overrides : {}),
   }));
 }

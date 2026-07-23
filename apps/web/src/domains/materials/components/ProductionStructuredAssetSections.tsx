@@ -438,7 +438,7 @@ interface OpenDesignSlidesSectionProps {
           )}
           {renderableSlideCount > 0 && (
             <span className="font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-500/10 px-1.5 py-0.5 rounded">
-              {renderableSlideCount} imagen(es) listas para Remotion
+              {renderableSlideCount} imagen(es) listas para ensamblado
             </span>
           )}
           {slides?.html_content_path?.endsWith(".html") && (

@@ -12,7 +12,7 @@ interface RouteContext {
 }
 
 function fileNameFromVersion(version: { original_file_name?: string | null; storage_path: string }) {
-  const name = version.original_file_name || version.storage_path.split("/").filter(Boolean).at(-1) || "remotion-template-bundle.zip";
+  const name = version.original_file_name || version.storage_path.split("/").filter(Boolean).at(-1) || "video-template-bundle.zip";
   return name.endsWith(".zip") ? name : `${name}.zip`;
 }
 

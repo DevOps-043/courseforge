@@ -57,9 +57,9 @@ const variantStyles = {
 };
 
 const modalTheme = {
-    backdrop: 'absolute inset-0 bg-slate-950/45 backdrop-blur-sm dark:bg-black/60',
+    backdrop: 'absolute inset-0 bg-slate-950/35 dark:bg-black/60 dark:backdrop-blur-[1px]',
     container:
-        'relative w-full max-w-md overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-[#0F1419]',
+        'relative w-full max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-[#0F1419]',
     title: 'mb-2 text-xl font-bold text-gray-900 dark:text-white',
     message: 'text-sm leading-relaxed text-gray-600 dark:text-gray-400',
     cancelButton:

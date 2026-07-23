@@ -19,24 +19,143 @@ function hasString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function firstStringFromArray(value: unknown): string | null {
+  return Array.isArray(value) ? value.find(hasString) || null : null;
+}
+
+function getNestedRecord(
+  value: unknown,
+  key: string,
+): Record<string, unknown> | null {
+  return asRecord(asRecord(value)?.[key]);
+}
+
+function getStringField(value: unknown, keys: string[]): string | null {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const candidate = record[key];
+    if (hasString(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function getDescriptionFromDescripcion(value: unknown): string | null {
+  if (hasString(value)) {
+    return value;
+  }
+
+  return getStringField(value, [
+    "description",
+    "descripcion",
+    "summary",
+    "resumen",
+    "idea",
+  ]);
+}
+
+function uniqueStrings(values: string[], limit: number) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const value of values) {
+    const normalized = value.trim();
+    const key = normalized.toLowerCase();
+    if (!normalized || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(normalized);
+
+    if (result.length >= limit) {
+      break;
+    }
+  }
+
+  return result;
+}
+
+function buildKeywordsFromModules(syllabusModules: SyllabusContextLike["modules"]) {
+  if (!Array.isArray(syllabusModules)) {
+    return [];
+  }
+
+  const candidates = syllabusModules.flatMap((module) => [
+    module.title || module.name || "",
+    ...(Array.isArray(module.lessons)
+      ? module.lessons.map((lesson) => lesson.title || "")
+      : []),
+  ]);
+
+  return uniqueStrings(candidates.filter(hasString), 10);
+}
+
+function buildLearningObjectivesFromModules(
+  syllabusModules: SyllabusContextLike["modules"],
+) {
+  if (!Array.isArray(syllabusModules)) {
+    return [];
+  }
+
+  const candidates = syllabusModules.flatMap((module) => [
+    module.objective || module.objective_specific || "",
+    ...(Array.isArray(module.lessons)
+      ? module.lessons.map((lesson) => lesson.objective_specific || "")
+      : []),
+  ]);
+
+  return uniqueStrings(candidates.filter(hasString), 8);
+}
+
 export function buildCourseContextSummary(
   artifact: ArtifactContextLike | null | undefined,
   syllabus: SyllabusContextLike | null | undefined,
 ): CourseContextSummary {
+  const originalInput = getNestedRecord(artifact?.generation_metadata, "original_input");
   const courseTitle =
-    artifact?.title || artifact?.main_topic || "Unknown Course";
-  const courseDescription = artifact?.description || "";
-  const courseAudience = artifact?.audience || "";
+    artifact?.title ||
+    artifact?.main_topic ||
+    artifact?.idea_central ||
+    firstStringFromArray(artifact?.nombres) ||
+    getStringField(originalInput, ["title", "courseTitle"]) ||
+    "Unknown Course";
+  const courseDescription =
+    artifact?.description ||
+    getDescriptionFromDescripcion(artifact?.descripcion) ||
+    getStringField(originalInput, ["description", "courseDescription"]) ||
+    "";
+  const courseAudience =
+    artifact?.audience ||
+    getStringField(originalInput, [
+      "targetAudience",
+      "audience",
+      "audienciaObjetivo",
+    ]) ||
+    "";
   const courseObjectives = Array.isArray(artifact?.objectives)
     ? artifact.objectives.filter(hasString)
-    : [];
+    : Array.isArray(artifact?.objetivos)
+      ? artifact.objetivos.filter(hasString)
+      : [];
   const syllabusModules = Array.isArray(syllabus?.modules) ? syllabus.modules : [];
-  const keywords = Array.isArray(syllabus?.keywords)
-    ? syllabus.keywords.filter(hasString).slice(0, 10)
-    : [];
-  const learningObjectives = Array.isArray(syllabus?.learning_objectives)
-    ? syllabus.learning_objectives.filter(hasString)
-    : courseObjectives;
+  const keywords = buildKeywordsFromModules(syllabusModules);
+  const learningObjectives =
+    courseObjectives.length > 0
+      ? courseObjectives
+      : buildLearningObjectivesFromModules(syllabusModules);
   const moduleNames = syllabusModules
     .slice(0, 5)
     .map((module) => module.title || module.name || "")
@@ -121,51 +240,97 @@ export function parseLessonsResponse(responseText: string): LessonResult[] {
   return parsed.lessons;
 }
 
-function getGroundingChunks(
-  response: unknown,
-): Array<{ web?: { uri?: string; title?: string } }> {
-  if (
-    !response ||
-    typeof response !== "object" ||
-    !("candidates" in response) ||
-    !Array.isArray((response as { candidates?: unknown[] }).candidates)
-  ) {
-    return [];
+function collectOpenAiSources(value: unknown, sources: GroundingSource[]) {
+  const record = asRecord(value);
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectOpenAiSources(item, sources));
+    return;
   }
 
-  const firstCandidate = (response as { candidates?: unknown[] }).candidates?.[0];
-  if (
-    !firstCandidate ||
-    typeof firstCandidate !== "object" ||
-    !("groundingMetadata" in firstCandidate)
-  ) {
-    return [];
+  if (!record) {
+    return;
   }
 
-  const groundingMetadata = (
-    firstCandidate as { groundingMetadata?: { groundingChunks?: unknown[] } }
-  ).groundingMetadata;
+  const url =
+    typeof record.url === "string"
+      ? record.url
+      : typeof record.uri === "string"
+        ? record.uri
+        : null;
 
-  return Array.isArray(groundingMetadata?.groundingChunks)
-    ? (groundingMetadata.groundingChunks as Array<{
-        web?: { uri?: string; title?: string };
-      }>)
-    : [];
+  if (url?.startsWith("http")) {
+    sources.push({
+      uri: url,
+      title:
+        typeof record.title === "string"
+          ? record.title
+          : "Source from OpenAI web search",
+    });
+  }
+
+  for (const item of Object.values(record)) {
+    if (item && typeof item === "object") {
+      collectOpenAiSources(item, sources);
+    }
+  }
 }
 
-export async function extractGroundingSources(
+function collectGeminiSources(value: unknown, sources: GroundingSource[]) {
+  const record = asRecord(value);
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectGeminiSources(item, sources));
+    return;
+  }
+
+  if (!record) {
+    return;
+  }
+
+  const web = asRecord(record.web);
+  const url =
+    typeof web?.uri === "string"
+      ? web.uri
+      : typeof record.uri === "string"
+        ? record.uri
+        : typeof record.url === "string"
+          ? record.url
+          : null;
+
+  if (url?.startsWith("http")) {
+    sources.push({
+      uri: url,
+      title:
+        typeof web?.title === "string"
+          ? web.title
+          : typeof record.title === "string"
+            ? record.title
+            : "Source from Gemini Google Search",
+    });
+  }
+
+  for (const item of Object.values(record)) {
+    if (item && typeof item === "object") {
+      collectGeminiSources(item, sources);
+    }
+  }
+}
+
+export async function extractOpenAiSearchSources(
   response: unknown,
   courseTitle: string,
 ): Promise<GroundingSource[]> {
-  const sources: GroundingSource[] = [];
+  const collectedSources: GroundingSource[] = [];
+  collectOpenAiSources(response, collectedSources);
 
-  for (const chunk of getGroundingChunks(response)) {
-    if (!chunk.web?.uri) {
-      continue;
-    }
-
-    let finalUri = chunk.web.uri;
-    if (finalUri.includes("grounding-api-redirect")) {
+  const uniqueSources = new Map<string, GroundingSource>();
+  for (const source of collectedSources) {
+    let finalUri = source.uri;
+    if (
+      finalUri.includes("grounding-api-redirect") ||
+      finalUri.includes("vertexaisearch.cloud.google.com")
+    ) {
       finalUri = await resolveRedirectUrl(finalUri);
     }
 
@@ -173,39 +338,105 @@ export async function extractGroundingSources(
       continue;
     }
 
-    sources.push({
+    uniqueSources.set(finalUri, {
       uri: finalUri,
-      title: chunk.web.title || "Source from Google Search",
+      title: source.title,
     });
   }
 
-  return sources;
+  return Array.from(uniqueSources.values());
 }
 
-export function getResponseText(response: unknown) {
-  if (
-    !response ||
-    typeof response !== "object" ||
-    !("candidates" in response) ||
-    !Array.isArray((response as { candidates?: unknown[] }).candidates)
-  ) {
+export async function extractGeminiSearchSources(
+  response: unknown,
+  courseTitle: string,
+): Promise<GroundingSource[]> {
+  const collectedSources: GroundingSource[] = [];
+  collectGeminiSources(response, collectedSources);
+
+  const uniqueSources = new Map<string, GroundingSource>();
+  for (const source of collectedSources) {
+    let finalUri = source.uri;
+    if (
+      finalUri.includes("grounding-api-redirect") ||
+      finalUri.includes("vertexaisearch.cloud.google.com")
+    ) {
+      finalUri = await resolveRedirectUrl(finalUri);
+    }
+
+    if (isBlockedDomain(finalUri, courseTitle)) {
+      continue;
+    }
+
+    uniqueSources.set(finalUri, {
+      uri: finalUri,
+      title: source.title,
+    });
+  }
+
+  return Array.from(uniqueSources.values());
+}
+
+export function getOpenAiResponseText(response: unknown) {
+  const record = asRecord(response);
+  if (!record) {
     return "";
   }
 
-  const firstCandidate = (response as { candidates?: unknown[] }).candidates?.[0];
-  if (
-    !firstCandidate ||
-    typeof firstCandidate !== "object" ||
-    !("content" in firstCandidate)
-  ) {
+  if (typeof record.output_text === "string") {
+    return record.output_text;
+  }
+
+  const output = Array.isArray(record.output) ? record.output : [];
+  for (const item of output) {
+    const outputItem = asRecord(item);
+    const content = Array.isArray(outputItem?.content)
+      ? outputItem.content
+      : [];
+
+    for (const contentItem of content) {
+      const contentRecord = asRecord(contentItem);
+      if (typeof contentRecord?.text === "string") {
+        return contentRecord.text;
+      }
+    }
+  }
+
+  return "";
+}
+
+export function getGeminiResponseText(response: unknown) {
+  const record = asRecord(response);
+  if (!record) {
     return "";
   }
 
-  const content = (firstCandidate as {
-    content?: { parts?: Array<{ text?: string }> };
-  }).content;
+  if (typeof record.text === "string") {
+    return record.text;
+  }
 
-  return content?.parts?.[0]?.text || "";
+  if (typeof record.output_text === "string") {
+    return record.output_text;
+  }
+
+  const candidates = Array.isArray(record.candidates) ? record.candidates : [];
+  for (const candidate of candidates) {
+    const candidateRecord = asRecord(candidate);
+    const content = asRecord(candidateRecord?.content);
+    const parts = Array.isArray(content?.parts) ? content.parts : [];
+
+    const text = parts
+      .map((part) => asRecord(part)?.text)
+      .filter(hasString)
+      .join("\n")
+      .trim();
+
+    if (text) {
+      return text;
+    }
+  }
+
+  return "";
 }
 
 function buildGroundingRow(params: {
@@ -238,6 +469,7 @@ export async function buildGroundingFallbackForLesson(params: {
   lesson: LessonToProcess;
   groundingSources: GroundingSource[];
   activeModel: string;
+  providerLabel?: string;
   rationale: string;
   distributedStartIndex?: number;
 }): Promise<CurationRowInsert | null> {
@@ -246,6 +478,7 @@ export async function buildGroundingFallbackForLesson(params: {
     lesson,
     groundingSources,
     activeModel,
+    providerLabel = "Provider search",
     rationale,
     distributedStartIndex,
   } = params;
@@ -273,7 +506,7 @@ export async function buildGroundingFallbackForLesson(params: {
       lesson,
       source,
       rationale,
-      autoReason: `Grounding fallback validated (${activeModel})`,
+      autoReason: `${providerLabel} fallback validated (${activeModel})`,
     });
   }
 
@@ -303,9 +536,17 @@ export async function buildValidatedRowsFromModelSources(params: {
   lesson: LessonToProcess;
   sources: LessonSource[];
   activeModel: string;
+  providerLabel?: string;
   maxSourcesPerLesson: number;
 }): Promise<CurationRowInsert[]> {
-  const { curationId, lesson, sources, activeModel, maxSourcesPerLesson } = params;
+  const {
+    curationId,
+    lesson,
+    sources,
+    activeModel,
+    providerLabel = "Provider",
+    maxSourcesPerLesson,
+  } = params;
   const rows: CurationRowInsert[] = [];
 
   for (const source of sources) {
@@ -337,7 +578,7 @@ export async function buildValidatedRowsFromModelSources(params: {
       cobertura_completa: true,
       notes: `Quality: ${source.estimated_quality}/10. Topics: ${source.key_topics_covered?.join(", ") || "N/A"}`,
       auto_evaluated: true,
-      auto_reason: `Validated (${activeModel})`,
+      auto_reason: `Validated with ${providerLabel} (${activeModel})`,
     });
   }
 

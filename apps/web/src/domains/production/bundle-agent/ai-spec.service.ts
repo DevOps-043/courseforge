@@ -84,14 +84,14 @@ function buildPrompt(input: {
     .slice(0, 16_000);
   const visualReferences = buildVisualReferenceContext(input.messages).slice(0, 4_000);
 
-  return `Eres SofLIA Bundle Agent dentro de SofLIA - Engine. Convierte esta conversacion en una especificacion JSON segura para un bundle Remotion.
+  return `Eres SofLIA Bundle Agent dentro de SofLIA - Engine. Convierte esta conversacion en una especificacion JSON segura para un bundle de video.
 
 Reglas estrictas:
 - Responde solo JSON, sin markdown.
 - No incluyas codigo fuente.
 - No incluyas secretos, tokens, credenciales, URLs remotas ni datos sensibles.
 - No pidas dependencias ni runtime arbitrario.
-- Si el titulo sugerido es generico ("Nuevo bundle Remotion"), crea un titulo descriptivo basado en el diseño solicitado.
+- Si el titulo sugerido es generico ("Nuevo bundle de video"), crea un titulo descriptivo basado en el diseño solicitado.
 - description debe ser un resumen funcional claro, no una copia literal de toda la conversacion.
 - visualStyle debe ser una direccion visual concisa y completa; no debe quedar cortada a media frase.
 - defaultProps.title y defaultProps.subtitle son copy visible dentro del video: deben ser cortos, editoriales y aptos para pantalla.
@@ -132,7 +132,7 @@ Contrato exacto:
   "changeSummary": "string"
 }
 
-Titulo sugerido: ${input.title || "SofLIA Remotion bundle"}
+Titulo sugerido: ${input.title || "SofLIA video bundle"}
 
 Referencias visuales adjuntas:
 ${visualReferences}

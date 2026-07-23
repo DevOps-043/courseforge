@@ -47,6 +47,7 @@ export function SplitAvatar(props: AssemblyInputProps) {
           flex: 1,
           position: "relative",
           overflow: "hidden",
+          zIndex: 10,
           ...primaryVisualOverrideStyle,
         }}
       >
@@ -56,6 +57,7 @@ export function SplitAvatar(props: AssemblyInputProps) {
           durationInFrames={durationInFrames}
           transitionType={props.transitionType}
           templateConfig={templateConfig}
+          layoutOverrides={props.layoutOverrides}
           slidesLayerStyle={slidesOverrideStyle}
           brollLayerStyle={brollOverrideStyle}
         />
@@ -66,6 +68,7 @@ export function SplitAvatar(props: AssemblyInputProps) {
           flex: 1,
           position: "relative",
           overflow: "hidden",
+          zIndex: 20,
           ...avatarOverrideStyle,
         }}
       >

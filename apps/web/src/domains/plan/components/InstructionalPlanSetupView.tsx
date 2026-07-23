@@ -109,7 +109,6 @@ export function InstructionalPlanSetupView({
             <div className="flex flex-wrap gap-2 relative z-10 mt-2">
               {[
                 "Estructura JSON",
-                "Optimizado Gemini 2.0",
                 "Validación Pedagógica",
                 "Componentes Modulares",
               ].map((tag) => (

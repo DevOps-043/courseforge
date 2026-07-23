@@ -6,6 +6,7 @@ import { InstructionalPlanValidationResult } from "./InstructionalPlanValidation
 import { InstructionalPlanLessonCard } from "./InstructionalPlanLessonCard";
 import { InstructionalPlanReviewPanel } from "./InstructionalPlanReviewPanel";
 import {
+  getPlanLessonStableId,
   groupPlanModules,
   InstructionalPlanRecord,
   PlanLessonItem,
@@ -111,7 +112,7 @@ export function InstructionalPlanResultsView({
 
       <div className="space-y-8">
         {modules.map((module, modulePosition) => (
-          <div key={module.index} className="space-y-4">
+          <div key={module.key} className="space-y-4">
             <div className="flex items-center gap-3 border-b border-gray-200 py-4 dark:border-gray-800/50">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 text-sm font-bold text-blue-500 dark:text-blue-400">
                 {modulePosition + 1}
@@ -125,19 +126,25 @@ export function InstructionalPlanResultsView({
             </div>
 
             <div className="grid gap-4">
-              {module.lessons.map((lesson) => {
-                const isEditing = editingLessonId === lesson.lesson_id;
-                const displayLesson = isEditing && editedLesson ? editedLesson : lesson;
+              {module.lessons.map((lesson, lessonPosition) => {
+                const lessonId = getPlanLessonStableId(lesson, lessonPosition);
+                const lessonForActions = {
+                  ...lesson,
+                  lesson_id: lessonId,
+                };
+                const isEditing = editingLessonId === lessonId;
+                const displayLesson =
+                  isEditing && editedLesson ? editedLesson : lessonForActions;
 
                 return (
                   <InstructionalPlanLessonCard
-                    key={lesson.lesson_id || `lesson-${module.index}-${module.lessons.indexOf(lesson)}`}
-                    lesson={lesson}
+                    key={lessonId}
+                    lesson={lessonForActions}
                     displayLesson={displayLesson}
-                    expanded={expandedLessonId === lesson.lesson_id}
+                    expanded={expandedLessonId === lessonId}
                     isEditing={isEditing}
-                    onToggle={() => onToggleExpandedLesson(lesson.lesson_id)}
-                    onStartEdit={() => onStartEdit(lesson)}
+                    onToggle={() => onToggleExpandedLesson(lessonId)}
+                    onStartEdit={() => onStartEdit(lessonForActions)}
                     onCancelEdit={onCancelEdit}
                     onSaveEdit={onSaveLesson}
                     onLessonFieldChange={onLessonFieldChange}

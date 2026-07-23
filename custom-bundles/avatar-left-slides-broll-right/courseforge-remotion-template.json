@@ -3,6 +3,8 @@
   "entryPoint": "src/index.tsx",
   "compositionId": "avatar-left-slides-broll-right",
   "exportMode": "root",
+  "layoutContractVersion": 2,
+  "layoutCoordinateSpace": "canvas",
   "defaultDurationFrames": 1800,
   "fps": 30,
   "width": 1920,
@@ -71,8 +73,11 @@
         "canResize": true,
         "canCrop": true,
         "canRotate": false,
-        "canHide": true
+        "canHide": true,
+        "canReorder": true
       },
+      "defaultStackOrder": 10,
+      "stackGroup": "root",
       "constraints": {
         "minWidth": 320,
         "minHeight": 360,
@@ -94,8 +99,11 @@
         "canResize": true,
         "canCrop": false,
         "canRotate": false,
-        "canHide": false
+        "canHide": false,
+        "canReorder": false
       },
+      "defaultStackOrder": 0,
+      "stackGroup": "root",
       "constraints": {
         "minWidth": 480,
         "minHeight": 540,
@@ -117,8 +125,12 @@
         "canResize": true,
         "canCrop": true,
         "canRotate": false,
-        "canHide": true
+        "canHide": true,
+        "canReorder": true
       },
+      "defaultStackOrder": 20,
+      "stackGroup": "root",
+      "itemLayerIdPattern": "slide:{index}",
       "constraints": {
         "minWidth": 360,
         "minHeight": 220,
@@ -141,8 +153,12 @@
         "canResize": true,
         "canCrop": true,
         "canRotate": false,
-        "canHide": true
+        "canHide": true,
+        "canReorder": true
       },
+      "defaultStackOrder": 30,
+      "stackGroup": "root",
+      "itemLayerIdPattern": "broll:{order}",
       "constraints": {
         "minWidth": 240,
         "minHeight": 135,

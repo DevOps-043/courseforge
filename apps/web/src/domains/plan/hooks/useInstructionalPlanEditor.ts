@@ -8,6 +8,7 @@ import type {
   InstructionalPlanRecord,
   PlanLessonItem,
 } from "../components/plan-view.types";
+import { getPlanLessonStableId } from "../components/plan-view.types";
 
 function cloneLesson(lesson: PlanLessonItem): PlanLessonItem {
   return typeof structuredClone === "function"
@@ -31,9 +32,10 @@ export function useInstructionalPlanEditor({
   const [expandedLessonId, setExpandedLessonId] = useState<string | null>(null);
 
   const handleStartEdit = useCallback((lesson: PlanLessonItem) => {
-    setEditingLessonId(lesson.lesson_id);
+    const lessonId = getPlanLessonStableId(lesson);
+    setEditingLessonId(lessonId);
     setEditedLesson(cloneLesson(lesson));
-    setExpandedLessonId(lesson.lesson_id);
+    setExpandedLessonId(lessonId);
   }, []);
 
   const handleCancelEdit = useCallback(() => {
@@ -118,8 +120,10 @@ export function useInstructionalPlanEditor({
     }
 
     const previousPlan = existingPlan;
-    const updatedLessonPlans = existingPlan.lesson_plans.map((lesson) =>
-      lesson.lesson_id === editingLessonId ? editedLesson : lesson,
+    const updatedLessonPlans = existingPlan.lesson_plans.map((lesson, index) =>
+      getPlanLessonStableId(lesson, index) === editingLessonId
+        ? editedLesson
+        : lesson,
     );
 
     try {

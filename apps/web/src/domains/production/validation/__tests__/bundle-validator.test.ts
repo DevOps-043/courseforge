@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import fs from "node:fs";
+import path from "node:path";
 import JSZip from "jszip";
 import { validateRemotionBundle } from "../bundle-validator";
 
@@ -22,6 +24,37 @@ async function zipBuffer(files: Record<string, string | Uint8Array>) {
 }
 
 describe("validateRemotionBundle", () => {
+  it("keeps the canonical custom bundle example on the global canvas v2 contract", async () => {
+    const exampleRoot = path.resolve(
+      process.cwd(),
+      "../../custom-bundles/avatar-left-slides-broll-right",
+    );
+    const manifestSource = fs.readFileSync(
+      path.join(exampleRoot, "courseforge-remotion-template.json"),
+      "utf8",
+    );
+    const templateSource = fs.readFileSync(path.join(exampleRoot, "src/index.tsx"), "utf8");
+    const packageSource = fs.readFileSync(path.join(exampleRoot, "package.json"), "utf8");
+    const buffer = await zipBuffer({
+      "courseforge-remotion-template.json": manifestSource,
+      "src/index.tsx": templateSource,
+      "package.json": packageSource,
+    });
+
+    const result = await validateRemotionBundle(buffer, "avatar-left-v2.zip");
+
+    assert.equal(result.isValid, true);
+    assert.equal(result.info.manifest?.layoutContractVersion, 2);
+    assert.equal(result.info.manifest?.layoutCoordinateSpace, "canvas");
+    assert.equal(
+      result.info.manifest?.editableLayers?.find((layer) => layer.layerId === "slides")?.itemLayerIdPattern,
+      "slide:{index}",
+    );
+    assert.doesNotMatch(templateSource, /gridTemplateColumns/);
+    assert.match(templateSource, /activeSlideItemOverride/);
+    assert.match(templateSource, /background: "transparent"/);
+  });
+
   it("accepts a minimal valid Remotion template bundle", async () => {
     const buffer = await zipBuffer({
       "courseforge-remotion-template.json": JSON.stringify({
@@ -62,12 +95,15 @@ describe("validateRemotionBundle", () => {
         label: "Avatar",
         kind: "avatar",
         defaultBox: { x: 0, y: 0, width: 960, height: 1080 },
+        defaultStackOrder: 10,
+        stackGroup: "root",
         capabilities: {
           canMove: true,
           canResize: true,
           canCrop: true,
           canRotate: false,
           canHide: true,
+          canReorder: true,
         },
       },
     ];
@@ -83,6 +119,8 @@ describe("validateRemotionBundle", () => {
           propsSchema,
           defaultProps,
           editableLayers,
+          layoutContractVersion: 2,
+          layoutCoordinateSpace: "canvas",
         }),
       ),
       "src/index.tsx": "export const Root = () => null;",
@@ -100,6 +138,8 @@ describe("validateRemotionBundle", () => {
     assert.deepEqual(result.info.manifest?.propsSchema, propsSchema);
     assert.deepEqual(result.info.manifest?.defaultProps, defaultProps);
     assert.deepEqual(result.info.manifest?.editableLayers, editableLayers);
+    assert.equal(result.info.manifest?.layoutContractVersion, 2);
+    assert.equal(result.info.manifest?.layoutCoordinateSpace, "canvas");
     assert.equal(result.warnings.some((warning) => warning.includes("layoutOverrides")), false);
   });
 
@@ -120,6 +160,25 @@ describe("validateRemotionBundle", () => {
 
     assert.equal(result.isValid, true);
     assert.ok(result.warnings.some((warning) => warning.includes("layoutOverrides")));
+  });
+
+  it("warns when a bundle has layout overrides but no v2 editable layer contract", async () => {
+    const buffer = await zipBuffer({
+      "courseforge-remotion-template.json": JSON.stringify(manifest({
+        propsSchema: {
+          type: "object",
+          properties: {
+            layoutOverrides: { type: "array" },
+          },
+        },
+      })),
+      "src/index.tsx": "export const Template = () => null;",
+    });
+
+    const result = await validateRemotionBundle(buffer, "legacy-stack-contract.zip");
+
+    assert.equal(result.isValid, true);
+    assert.ok(result.warnings.some((warning) => warning.includes("ignorara layoutOverrides")));
   });
 
   it("rejects bundles without the required manifest", async () => {

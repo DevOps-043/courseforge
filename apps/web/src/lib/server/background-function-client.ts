@@ -30,6 +30,8 @@ interface BackgroundFunctionOptions {
   localHandlerLoader?: () => Promise<LocalFunctionModule>;
 }
 
+const LOCAL_REMOTE_TRIGGER_TIMEOUT_MS = 10_000;
+
 function parseJsonOrText<TData>(rawBody: string): TData | { error?: string; message?: string } {
   if (!rawBody) {
     return {} as TData;
@@ -109,6 +111,7 @@ async function tryLocalHandler<TData>(
     return null;
   }
 
+  console.log(`[BackgroundFunctionClient] Running local handler: ${functionName}`);
   const module = await options.localHandlerLoader();
   const localHandler = (module.handler || module.default) as
     | ((
@@ -118,6 +121,9 @@ async function tryLocalHandler<TData>(
     | undefined;
 
   if (!localHandler) {
+    console.warn(
+      `[BackgroundFunctionClient] Local handler not found for ${functionName}; falling back to HTTP.`,
+    );
     return null;
   }
 
@@ -136,7 +142,38 @@ async function tryLocalHandler<TData>(
     {},
   );
 
-  return parseLocalResponse<TData>(localResponse, options.fallbackError);
+  const parsedResponse = await parseLocalResponse<TData>(
+    localResponse,
+    options.fallbackError,
+  );
+  console.log(`[BackgroundFunctionClient] Local handler completed: ${functionName}`);
+  return parsedResponse;
+}
+
+async function fetchRemoteFunction(
+  functionName: string,
+  payload: BackgroundFunctionPayload,
+) {
+  const url = `${getBackgroundFunctionsBaseUrl()}/.netlify/functions/${functionName}`;
+  const controller = new AbortController();
+  const timeout =
+    !isProductionEnvironment() && url.includes("localhost")
+      ? setTimeout(() => controller.abort(), LOCAL_REMOTE_TRIGGER_TIMEOUT_MS)
+      : null;
+
+  try {
+    console.log(`[BackgroundFunctionClient] Calling HTTP function: ${url}`);
+    return await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
 }
 
 export async function callBackgroundFunctionJson<
@@ -151,14 +188,7 @@ export async function callBackgroundFunctionJson<
     return localResult;
   }
 
-  const response = await fetch(
-    `${getBackgroundFunctionsBaseUrl()}/.netlify/functions/${functionName}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    },
-  );
+  const response = await fetchRemoteFunction(functionName, payload);
 
   return parseRemoteResponse<TData>(response, options.fallbackError);
 }

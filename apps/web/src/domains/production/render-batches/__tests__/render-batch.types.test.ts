@@ -110,6 +110,8 @@ describe("render batch contracts", () => {
       /No se mostrara una composicion interna como reemplazo/,
     );
     assert.match(postproductionSource, /layoutOverrides: activeExternalPreviewLayoutOverrides/);
+    assert.match(postproductionSource, /selectedTemplateSupportsExternalLayout/);
+    assert.match(postproductionSource, /template_version_id \|\| selectedTemplateConfig\?\.id/);
     assert.match(postproductionSource, /setExternalPreviewLayoutOverrideSnapshots/);
     assert.match(postproductionSource, /getLayoutOverrideDraftKey/);
     assert.match(postproductionSource, /activeLayoutDraftKey/);
@@ -127,6 +129,8 @@ describe("render batch contracts", () => {
     assert.match(desktopWorkerControlPlaneSource, /const bundleHash = sha256Buffer\(zipBuffer\)/);
     assert.match(desktopWorkerControlPlaneSource, /readNonEmptyString\(params\.build\.build_hash\)\s*\|\|\s*readNonEmptyString\(params\.build\.bundle_hash\)/);
     assert.match(desktopWorkerControlPlaneSource, /TEMPLATE_PREVIEW_PAYLOAD_PREPARE_FAILED/);
+    assert.match(desktopWorkerControlPlaneSource, /supportsGlobalLayoutOverrides/);
+    assert.match(desktopWorkerControlPlaneSource, /filterLayoutOverridesForEditableLayers/);
     assert.doesNotMatch(
       desktopWorkerControlPlaneSource,
       /claimedTemplatePreviews\.map\(\(preview: any\) => this\.buildClaimedTemplatePreviewPayload\(preview\)\)/,

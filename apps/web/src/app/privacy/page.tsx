@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Política de Privacidad | SOFLIA Generating Sources Assistant",
-  description: "Política de privacidad para el SOFLIA Generating Sources Assistant GPT.",
+  title: "Politica de Privacidad | Courseforge",
+  description:
+    "Politica de privacidad para la curaduria automatica de fuentes en Courseforge.",
 };
 
 export default function PrivacyPolicyPage() {
@@ -10,109 +11,87 @@ export default function PrivacyPolicyPage() {
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 dark:bg-gray-900">
       <div className="max-w-3xl mx-auto bg-white p-8 rounded-xl shadow-sm dark:bg-gray-800 dark:text-gray-200">
         <h1 className="text-3xl font-bold mb-8 text-gray-900 dark:text-white">
-          Políticas de SOFLIA Generating Sources Assistant
+          Politicas de privacidad de Courseforge
         </h1>
 
         <div className="space-y-8 text-gray-700 dark:text-gray-300">
           <section>
             <h2 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">
-              1. Introducción
+              1. Introduccion
             </h2>
             <p>
-              Este GPT, llamado <strong>SOFLIA Generating Sources Assistant</strong>, es un asistente de IA especializado en buscar fuentes bibliográficas de alta calidad para talleres educativos. Ayuda a instructores y diseñadores instruccionales a encontrar recursos confiables que respalden el contenido de sus cursos. Funciona mediante la tecnología de ChatGPT de OpenAI.
+              Courseforge utiliza IA para apoyar la creacion de cursos,
+              incluyendo la busqueda de fuentes publicas relevantes para cada
+              leccion. La curaduria de fuentes se ejecuta dentro de la
+              plataforma y queda sujeta a revision humana antes de alimentar la
+              generacion de materiales.
             </p>
           </section>
 
           <section>
             <h2 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">
-              2. Uso de OpenAI y ChatGPT
+              2. Uso de OpenAI
             </h2>
             <p>
-              Todos los mensajes, archivos y búsquedas que envíe a este GPT se procesan exclusivamente en la plataforma de OpenAI. Este GPT <strong>no almacena</strong> de forma independiente la información que usted ingresa en sus chats fuera del entorno seguro de ChatGPT.
+              Para la curaduria automatica de fuentes, Courseforge puede enviar
+              contexto pedagogico del curso a la API de OpenAI: titulo,
+              descripcion, audiencia, objetivos, modulos y lecciones. No se
+              envia informacion sensible que no sea necesaria para encontrar
+              fuentes educativas publicas.
             </p>
           </section>
 
           <section>
             <h2 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">
-              3. Información que NO recopilamos
+              3. Informacion que no debe ingresarse
             </h2>
             <p>
-              <strong>No solicitamos ni almacenamos datos personales</strong> (por ejemplo: nombres, direcciones, contraseñas, datos de salud o financieros). No utilizamos cookies, píxeles ni otras tecnologías de rastreo dentro de las conversaciones del GPT. Asimismo, el GPT está instruido específicamente para rechazar cualquier interacción que solicite autenticación, pagos o suscripciones.
+              No ingrese contrasenas, tokens, informacion de salud, datos
+              financieros, informacion personal sensible ni contenido
+              confidencial no autorizado en los campos de descripcion del curso.
+              El sistema esta destinado a investigacion educativa y fuentes
+              publicas.
             </p>
           </section>
 
           <section>
             <h2 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">
-              4. Transferencia de Fuentes al Taller (SofLIA - Engine)
+              4. Fuentes y validacion
             </h2>
             <p>
-              Una vez que el usuario valida y confirma las fuentes bibliográficas encontradas, el GPT cuenta con una acción específica que permite el envío de esta información validada hacia la API de la plataforma <strong>SofLIA - Engine</strong> <code>(soflia-coursegen.netlify.app/api/gpt/sources)</code>. 
-              <br/><br/>
-              Durante este proceso <strong>únicamente</strong> se transfiere:
-            </p>
-            <ul className="list-disc pl-6 mt-2 space-y-1">
-              <li>El ID del artefacto interactuado (curso/taller).</li>
-              <li>Las URL de las fuentes seleccionadas y validadas pertinentes al taller.</li>
-              <li>Títulos, tipos y breves resúmenes públicos de dichas fuentes.</li>
-            </ul>
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              Esta transferencia es opcional (requiere su confirmación en el chat) y no contiene datos que le identifiquen personalmente de su cuenta de origen en ChatGPT.
+              Las URLs encontradas se guardan en Courseforge junto con titulo,
+              justificacion, leccion relacionada y estado de validacion tecnica.
+              El sistema valida disponibilidad, redirecciones, errores HTTP,
+              posibles paginas vacias, paywalls basicos y longitud minima de
+              contenido antes de marcar una fuente como apta.
             </p>
           </section>
 
           <section>
             <h2 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">
-              5. Datos y Retención en OpenAI
+              5. Revision humana
             </h2>
             <p>
-              Según las políticas de operación proporcionadas por OpenAI, los archivos o datos que cargue al chat del asistente se conservan en su historial <strong>hasta que usted los elimine</strong>. Según las políticas de OpenAI, si llegáramos a eliminar el GPT por completo de la tienda, los archivos asociados en la base de conocimiento interna serán eliminados dentro de 30 días.
+              Las fuentes sugeridas por IA deben revisarse antes de aprobar la
+              fase de curaduria. La aprobacion humana sigue siendo el control de
+              calidad final para asegurar relevancia, actualidad y pertinencia
+              pedagogica.
             </p>
           </section>
 
           <section>
             <h2 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">
-              6. Seguridad
+              6. Contacto
             </h2>
             <p>
-              Esta herramienta utiliza la infraestructura segura de OpenAI para proteger los textos de entrada en sus servidores. Usted, como usuario, es el responsable de mantener la seguridad, privacidad y acceso a su cuenta de usuario en ChatGPT.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">
-              7. Uso previsto y Exenciones de Responsabilidad
-            </h2>
-            <p>
-              Este GPT está destinado exclusivamente a la investigación educativa y formación (búsqueda de fuentes públicas y gratuitas). Los resultados generados provienen de un modelo de lenguaje autónomo y de fuentes extraídas de internet, y deben ser revisadas antes de incluirlas definitivamente en currículos académicos de alta criticidad. Por favor, <strong>no ingrese información sensible</strong>, confidencial o derechos de autor no autorizados.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">
-              8. Privacidad de Menores
-            </h2>
-            <p>
-              Este GPT está diseñado para diseñadores instruccionales y educadores (adultos). No está dirigido a niños y no solicitamos de ninguna manera información relacionada con menores.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">
-              9. Cambios en la Política
-            </h2>
-            <p>
-              Es posible que actualicemos esta página en el futuro si cambian nuestras prácticas, las características de nuestro GPT, o las normativas de OpenAI. 
-              <br/>
-              <strong>Última actualización:</strong> 05 de Marzo de 2026.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">
-              10. Contacto
-            </h2>
-            <p>
-              Para cualquier consulta legal o de privacidad sobre las prácticas de este asistente, contáctenos en <a href="mailto:support@soflia.ai" className="text-blue-600 hover:underline dark:text-blue-400">support@soflia.ai</a>.
+              Para cualquier consulta legal o de privacidad, contactenos en{" "}
+              <a
+                href="mailto:support@soflia.ai"
+                className="text-blue-600 hover:underline dark:text-blue-400"
+              >
+                support@soflia.ai
+              </a>
+              .
             </p>
           </section>
         </div>

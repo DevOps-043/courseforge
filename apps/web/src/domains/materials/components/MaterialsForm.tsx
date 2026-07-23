@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2, Play } from "lucide-react";
 import { dismissUpstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import { UpstreamChangeAlert } from "@/shared/components/UpstreamChangeAlert";
@@ -65,7 +64,6 @@ export function MaterialsForm({
   className = "",
   profile,
 }: MaterialsFormProps) {
-  const router = useRouter();
   const {
     materials,
     loading,
@@ -83,6 +81,7 @@ export function MaterialsForm({
     isValidating,
     isReadyForQA,
     isApproved,
+    isStartingGeneration,
     generationStuckInfo,
   } = useMaterials(artifactId);
 
@@ -135,7 +134,7 @@ export function MaterialsForm({
   const handleQADecision = async (decision: "APPROVED" | "REJECTED") => {
     await applyQADecision(decision, qaNote);
     setQaNote("");
-    router.refresh();
+    await refresh();
   };
 
   if (loading) {
@@ -163,6 +162,25 @@ export function MaterialsForm({
     );
   }
 
+  if ((!materials || materials.state === "PHASE3_DRAFT") && isStartingGeneration) {
+    return (
+      <div className={`space-y-6 ${className}`}>
+        <MaterialsStepHeader
+          title="Materiales (Fase 3)"
+          stateLabel="Generando..."
+          stateColor="bg-blue-100 text-blue-800"
+          isGenerating
+          isValidating={false}
+        />
+        <MaterialsGeneratingBanner
+          generationStuckInfo={null}
+          isResetting={isResetting}
+          onForceReset={handleForceReset}
+        />
+      </div>
+    );
+  }
+
   if (!materials || materials.state === "PHASE3_DRAFT") {
     return (
       <div className={`space-y-6 ${className}`}>
@@ -177,10 +195,15 @@ export function MaterialsForm({
           </p>
           <button
             onClick={startGeneration}
+            disabled={isStartingGeneration}
             className="inline-flex items-center gap-2 px-6 py-3 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium"
           >
-            <Play className="h-5 w-5" />
-            Iniciar Generacion
+            {isStartingGeneration ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Play className="h-5 w-5" />
+            )}
+            {isStartingGeneration ? "Iniciando..." : "Iniciar Generacion"}
           </button>
         </div>
       </div>

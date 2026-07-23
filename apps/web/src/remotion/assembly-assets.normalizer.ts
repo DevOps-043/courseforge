@@ -62,7 +62,7 @@ function buildWarnings(params: {
     warnings.push({
       code: "SLIDES_REFERENCE_NOT_RENDERIZABLE",
       message:
-        "Hay slides cargadas como referencia, pero todavia no existen imagenes renderizables para Remotion.",
+        "Hay slides cargadas como referencia, pero todavia no existen imagenes renderizables para ensamblado.",
     });
   }
 
@@ -70,7 +70,7 @@ function buildWarnings(params: {
     warnings.push({
       code: "NO_RENDERABLE_VISUAL_ASSETS",
       message:
-        "No hay recursos visuales renderizables; Remotion usara audio/avatar o un fondo neutro.",
+        "No hay recursos visuales renderizables; el preview usara audio/avatar o un fondo neutro.",
     });
   }
 

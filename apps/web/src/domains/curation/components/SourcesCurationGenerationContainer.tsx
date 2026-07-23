@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -46,9 +46,7 @@ interface SourcesCurationGenerationContainerProps {
 
 export function SourcesCurationGenerationContainer({
   artifactId,
-  courseId,
   temario,
-  ideaCentral,
   profile,
   onNext,
 }: SourcesCurationGenerationContainerProps) {
@@ -60,10 +58,48 @@ export function SourcesCurationGenerationContainer({
     startCuration,
     updateRow,
     deleteRow,
-    clearGPTRows,
+    clearSystemGeneratedRows,
+    clearInvalidRows,
+    addManualUrl,
+    addManualPdf,
+    validateRow,
+    initializeManualCuration,
     refresh,
   } = useCuration(artifactId);
   const router = useRouter();
+  const lessons = useMemo(
+    () =>
+      (temario || []).flatMap((module, moduleIndex) =>
+        (module.lessons || []).map((lesson, lessonIndex) => ({
+          id: lesson.id || `lesson-${moduleIndex + 1}-${lessonIndex + 1}`,
+          title: lesson.title,
+        })),
+      ),
+    [temario],
+  );
+  const normalizeLessonKey = (value: string | null | undefined) =>
+    (value || "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, " ");
+  const missingCoverageCount = useMemo(
+    () =>
+      lessons.filter(
+        (lesson) =>
+          !rows.some(
+            (row) =>
+              (row.lesson_id === lesson.id ||
+                normalizeLessonKey(row.lesson_id) === normalizeLessonKey(lesson.id) ||
+                normalizeLessonKey(row.lesson_title) === normalizeLessonKey(lesson.title)) &&
+              row.apta === true &&
+              (!row.validation_report?.status ||
+                row.validation_report.status === "valid"),
+          ),
+      ).length,
+    [lessons, rows],
+  );
   const canReview = REVIEWER_ROLE_SET.has(profile?.platform_role ?? "");
   const curationApproved = isCurationApprovedFromRecord(curation);
   const curationBlocked = isCurationBlockedFromRecord(curation);
@@ -82,45 +118,39 @@ export function SourcesCurationGenerationContainer({
   });
   const {
     closeModal,
-    copiedToClipboard,
     handleApprove,
     handleGenerate,
-    handleImportJson,
-    handleJsonInputChange,
-    handleOpenGPT,
     handlePause,
+    handleIterateInvalidSources,
     handleReject,
     handleRegenerateBlocked,
     handleResetStep,
     handleResume,
     handleStop,
     isLoadingModal,
-    isProcessingJson,
-    jsonError,
-    jsonInput,
-    jsonPreview,
     modalConfig,
     progress,
     reviewNotes,
     setReviewNotes,
-    setShowAutomaticFlow,
-    setShowJsonImport,
-    showAutomaticFlow,
-    showJsonImport,
   } = useCurationControls({
     artifactId,
-    courseId,
     curation,
-    ideaCentral,
     isGenerating,
     isValidating,
     pendingValidationCount,
     refresh,
     rows,
     startCuration,
-    clearGPTRows,
-    temario,
+    clearSystemGeneratedRows,
+    clearInvalidRows,
   });
+  const invalidRowsCount = useMemo(
+    () =>
+      rows.filter(
+        (row) => row.apta === false || row.validation_report?.status === "invalid",
+      ).length,
+    [rows],
+  );
 
   useEffect(() => {
     if (!curation?.state) return;
@@ -138,7 +168,7 @@ export function SourcesCurationGenerationContainer({
   }, [curation?.state, router]);
 
   const showGeneratingView = isGenerating;
-  const showDashboard = !isGenerating && rows.length > 0;
+  const showDashboard = !isGenerating && Boolean(curation);
 
   if (!isHydrated) {
     return (
@@ -185,12 +215,19 @@ export function SourcesCurationGenerationContainer({
         curationBlocked={curationBlocked}
         curationState={curation?.state}
         deleteRow={deleteRow}
+        addManualUrl={addManualUrl}
+        addManualPdf={addManualPdf}
+        validateRow={validateRow}
         isGenerating={isGenerating}
         isLoadingModal={isLoadingModal}
         isValidating={isValidating || isValidatingFromDb}
+        invalidRowsCount={invalidRowsCount}
         modalConfig={modalConfig}
         onApprove={handleApprove}
-        onContinue={onNext}
+        onContinue={async () => {
+          await clearInvalidRows();
+          onNext?.();
+        }}
         onDismissDirty={async () => {
           await dismissUpstreamDirtyAction("curation", artifactId);
           await refresh();
@@ -202,11 +239,14 @@ export function SourcesCurationGenerationContainer({
         }}
         onModalClose={closeModal}
         onRegenerate={handleRegenerateBlocked}
+        onIterateInvalidSources={handleIterateInvalidSources}
         onReject={handleReject}
         onResetStep={handleResetStep}
         onResume={handleResume}
         onValidate={handleValidate}
         pendingValidationCount={pendingValidationCount}
+        missingCoverageCount={missingCoverageCount}
+        lessons={lessons}
         reviewNotes={reviewNotes}
         rows={rows}
         setReviewNotes={setReviewNotes}
@@ -220,23 +260,14 @@ export function SourcesCurationGenerationContainer({
 
   return (
     <CurationSetupView
-      copiedToClipboard={copiedToClipboard}
-      isProcessingJson={isProcessingJson}
-      jsonError={jsonError}
-      jsonInput={jsonInput}
-      jsonPreview={jsonPreview}
       onGenerate={handleGenerate}
-      onImportJson={handleImportJson}
-      onJsonInputChange={handleJsonInputChange}
-      onOpenGPT={handleOpenGPT}
       onRefresh={async () => {
         toast.info("Actualizando datos...");
         await refresh();
       }}
-      setShowAutomaticFlow={setShowAutomaticFlow}
-      setShowJsonImport={setShowJsonImport}
-      showAutomaticFlow={showAutomaticFlow}
-      showJsonImport={showJsonImport}
+      onUseOwnSources={async () => {
+        await initializeManualCuration();
+      }}
       temario={temario}
     />
   );

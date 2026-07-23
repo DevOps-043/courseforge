@@ -47,10 +47,10 @@ const DEFAULT_MODEL_SETTINGS: Record<PipelineModelSettingType, PipelineModelSett
   },
   CURATION: {
     fallback_model: "gemini-2.5-flash",
-    model_name: "gemini-2.5-pro",
+    model_name: "gpt-5.6-luna",
     setting_type: "CURATION",
     temperature: 0.1,
-    thinking_level: "high",
+    thinking_level: "low",
   },
   MATERIALS: {
     fallback_model: "gemini-2.5-flash",

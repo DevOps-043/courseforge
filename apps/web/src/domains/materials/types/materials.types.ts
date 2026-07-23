@@ -255,6 +255,7 @@ export interface MaterialsGenerationInput {
         id: string;
         source_title: string;
         source_ref: string;
+        source_excerpt?: string;
         cobertura_completa: boolean;
     }[];
     iteration_number: number;

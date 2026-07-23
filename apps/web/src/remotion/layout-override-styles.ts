@@ -15,7 +15,10 @@ export type LayoutOverrideStyle = {
   clipPath?: string;
   transform?: string;
   display?: "none";
+  zIndex?: number;
 };
+
+const MIN_VISIBLE_CROP_AREA_RATIO = 0.1;
 
 export const REMOTION_EDITABLE_LAYERS = {
   AVATAR: "avatar",
@@ -27,8 +30,26 @@ export const REMOTION_EDITABLE_LAYERS = {
   BACKGROUND: "background",
 } as const;
 
-export type RemotionEditableLayerId =
-  (typeof REMOTION_EDITABLE_LAYERS)[keyof typeof REMOTION_EDITABLE_LAYERS];
+export type RemotionEditableLayerId = string;
+
+const SLIDE_ITEM_LAYER_PREFIX = "slide:";
+const BROLL_ITEM_LAYER_PREFIX = "broll:";
+
+export function getSlideItemLayerId(index: number): RemotionEditableLayerId {
+  return `${SLIDE_ITEM_LAYER_PREFIX}${Math.max(0, Math.round(index))}`;
+}
+
+export function getBrollItemLayerId(order: number): RemotionEditableLayerId {
+  return `${BROLL_ITEM_LAYER_PREFIX}${Math.max(1, Math.round(order))}`;
+}
+
+export function isSlideItemLayerId(layerId: string): boolean {
+  return layerId.startsWith(SLIDE_ITEM_LAYER_PREFIX);
+}
+
+export function isBrollItemLayerId(layerId: string): boolean {
+  return layerId.startsWith(BROLL_ITEM_LAYER_PREFIX);
+}
 
 function getLayerEdits(
   manifests: LayoutOverrideManifestList | null | undefined,
@@ -45,6 +66,34 @@ function getLayerEdits(
 
 function formatCropInset(value: number): string {
   return `${Math.round(value * 10000) / 100}%`;
+}
+
+function clampCropInset(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.min(0.95, Math.max(0, value));
+}
+
+function normalizeCropForStyle(crop: {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}) {
+  const top = clampCropInset(crop.top);
+  const right = clampCropInset(crop.right);
+  const bottom = clampCropInset(crop.bottom);
+  const left = clampCropInset(crop.left);
+  const visibleWidth = Math.max(0, 1 - left - right);
+  const visibleHeight = Math.max(0, 1 - top - bottom);
+
+  if (visibleWidth * visibleHeight < MIN_VISIBLE_CROP_AREA_RATIO) {
+    return { top: 0, right: 0, bottom: 0, left: 0 };
+  }
+
+  return { top, right, bottom, left };
 }
 
 export function buildLayoutOverrideStyle(
@@ -75,9 +124,10 @@ export function buildLayoutOverrideStyle(
     }
 
     if (edit.kind === "crop") {
-      style.clipPath = `inset(${formatCropInset(edit.top)} ${formatCropInset(
-        edit.right,
-      )} ${formatCropInset(edit.bottom)} ${formatCropInset(edit.left)})`;
+      const crop = normalizeCropForStyle(edit);
+      style.clipPath = `inset(${formatCropInset(crop.top)} ${formatCropInset(
+        crop.right,
+      )} ${formatCropInset(crop.bottom)} ${formatCropInset(crop.left)})`;
     }
 
     if (edit.kind === "rotation") {
@@ -86,6 +136,10 @@ export function buildLayoutOverrideStyle(
 
     if (edit.kind === "visibility" && edit.hidden) {
       style.display = "none";
+    }
+
+    if (edit.kind === "stack") {
+      style.zIndex = edit.order;
     }
   }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, ExternalLink, ImageIcon, Loader2, Play, RefreshCw } from "lucide-react";
 import type { ExternalBundlePreviewData } from "@/domains/production/actions/templates.actions";
@@ -13,6 +13,8 @@ interface RemotionExternalPreviewPlayerProps {
   variables?: Record<string, unknown>;
   overlay?: ReactNode;
   onPreviewDataChange?: (previewData: ExternalBundlePreviewData | null) => void;
+  seekSeconds?: number | null;
+  onPlaybackSecondsChange?: (seconds: number) => void;
 }
 
 function isBrowserReachableUrl(value: string | null | undefined): value is string {
@@ -54,7 +56,10 @@ export function RemotionExternalPreviewPlayer({
   variables = {},
   overlay,
   onPreviewDataChange,
+  seekSeconds = null,
+  onPlaybackSecondsChange,
 }: RemotionExternalPreviewPlayerProps) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [videoStatus, setVideoStatus] = useState<"idle" | "loading" | "ready" | "playing" | "error">("idle");
   const [videoError, setVideoError] = useState<string | null>(null);
   const [hasVideoStarted, setHasVideoStarted] = useState(false);
@@ -79,6 +84,22 @@ export function RemotionExternalPreviewPlayer({
     setVideoStatus(previewData?.previewVideoUrl ? "loading" : "idle");
     setHasVideoStarted(false);
   }, [previewData?.previewVideoUrl, variablesKey]);
+
+  useEffect(() => {
+    if (seekSeconds === null || seekSeconds === undefined) return;
+
+    const video = videoRef.current;
+    if (!video || !Number.isFinite(seekSeconds)) return;
+
+    const boundedSeconds = Math.min(
+      Math.max(0, seekSeconds),
+      Number.isFinite(video.duration) ? Math.max(0, video.duration - 0.05) : seekSeconds,
+    );
+
+    if (Math.abs(video.currentTime - boundedSeconds) > 0.05) {
+      video.currentTime = boundedSeconds;
+    }
+  }, [seekSeconds]);
 
   if (isLoading) {
     return (
@@ -130,6 +151,7 @@ export function RemotionExternalPreviewPlayer({
           </a>
         )}
         <video
+          ref={videoRef}
           key={previewData.previewVideoUrl}
           src={previewData.previewVideoUrl}
           poster={previewData.previewPosterUrl || undefined}
@@ -139,13 +161,14 @@ export function RemotionExternalPreviewPlayer({
           preload="auto"
           onLoadedData={() => {
             setVideoStatus("ready");
-            console.info("[RemotionExternalPreviewPlayer] Video de preview cargo datos", {
+            console.info("[ExternalPreviewPlayer] Video de preview cargo datos", {
               videoUrl: previewData.previewVideoUrl,
             });
           }}
           onCanPlay={() => {
             setVideoStatus((current) => current === "playing" ? "playing" : "ready");
           }}
+          onTimeUpdate={(event) => onPlaybackSecondsChange?.(event.currentTarget.currentTime)}
           onPlay={() => {
             setHasVideoStarted(true);
             setVideoStatus("playing");
@@ -156,7 +179,7 @@ export function RemotionExternalPreviewPlayer({
             const message = mediaError?.message || "El navegador no pudo reproducir el MP4 del preview.";
             setVideoStatus("error");
             setVideoError(message);
-            console.warn("[RemotionExternalPreviewPlayer] Error reproduciendo video de preview", {
+            console.warn("[ExternalPreviewPlayer] Error reproduciendo video de preview", {
               message,
               code: mediaError?.code,
               videoUrl: previewData.previewVideoUrl,
@@ -168,15 +191,15 @@ export function RemotionExternalPreviewPlayer({
           <div className="pointer-events-none absolute inset-x-0 top-0 bottom-12 flex items-center justify-center bg-black">
             <img
               src={previewData.previewPosterUrl || ""}
-              alt="Poster del preview Remotion"
+              alt="Poster del preview"
               className="h-full w-full object-contain"
               onLoad={() => {
-                console.info("[RemotionExternalPreviewPlayer] Poster de preview cargado", {
+                console.info("[ExternalPreviewPlayer] Poster de preview cargado", {
                   posterUrl: previewData.previewPosterUrl,
                 });
               }}
               onError={() => {
-                console.warn("[RemotionExternalPreviewPlayer] No se pudo cargar el poster de preview", {
+                console.warn("[ExternalPreviewPlayer] No se pudo cargar el poster de preview", {
                   posterUrl: previewData.previewPosterUrl,
                 });
               }}
@@ -219,7 +242,7 @@ export function RemotionExternalPreviewPlayer({
         </a>
         <img
           src={previewData.previewPosterUrl}
-          alt="Poster del preview Remotion"
+          alt="Poster del preview"
           className="h-full w-full bg-black object-contain"
         />
         {(isStalePoster || isRefreshingPoster) && (
@@ -252,7 +275,7 @@ export function RemotionExternalPreviewPlayer({
         <iframe
           src={iframeUrl}
           className="h-full w-full border-0"
-          title="Preview externo Remotion"
+          title="Preview externo"
           allow="autoplay; fullscreen"
         />
         {overlay}

@@ -54,6 +54,10 @@ export interface CurationRowRecord {
   source_title?: string | null;
   source_ref: string;
   cobertura_completa?: boolean | null;
+  source_kind?: "url" | "pdf" | null;
+  validation_report?: {
+    content_excerpt?: string;
+  } | null;
 }
 
 const DEFAULT_MODELS = [
@@ -151,6 +155,7 @@ export function buildMaterialsGenerationInput(params: {
       id: source.id,
       source_title: source.source_title || source.source_ref,
       source_ref: source.source_ref,
+      source_excerpt: source.validation_report?.content_excerpt,
       cobertura_completa: source.cobertura_completa || false,
     })),
     iteration_number: iterationNumber,

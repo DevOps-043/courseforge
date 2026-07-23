@@ -28,7 +28,8 @@ type LayoutOverrideEdit =
   | { layerId: string; kind: "size"; width: number; height: number }
   | { layerId: string; kind: "crop"; top: number; right: number; bottom: number; left: number }
   | { layerId: string; kind: "rotation"; angle: number }
-  | { layerId: string; kind: "visibility"; hidden: boolean };
+  | { layerId: string; kind: "visibility"; hidden: boolean }
+  | { layerId: string; kind: "stack"; order: number };
 
 type LayoutOverrideManifest = {
   version?: number;
@@ -56,6 +57,16 @@ const fallbackFps = 30;
 const compositionWidth = 1920;
 const compositionHeight = 1080;
 const compositionId = "avatar-left-slides-broll-right";
+const avatarBox = { x: 0, y: 0, width: 806, height: 1080 };
+const primaryVisualBox = { x: 806, y: 0, width: 1114, height: 1080 };
+const slidesBox = { x: 842, y: 36, width: 1042, height: 626 };
+const brollBox = { x: 1364, y: 752, width: 520, height: 292 };
+const defaultStackOrders = {
+  avatar: 10,
+  primaryVisual: 0,
+  slides: 20,
+  broll: 30,
+} as const;
 const defaultProps: TemplateProps = {
   avatarVideoUrl: "",
   bgMusicUrl: "",
@@ -140,6 +151,10 @@ function buildLayoutOverrideStyle(
     if (edit.kind === "visibility" && edit.hidden) {
       style.display = "none";
     }
+
+    if (edit.kind === "stack") {
+      style.zIndex = edit.order;
+    }
   }
 
   return style;
@@ -150,6 +165,21 @@ function getActiveSlideIndex(frame: number, slideCount: number, durationInFrames
 
   const framesPerSlide = durationInFrames / slideCount;
   return Math.min(slideCount - 1, Math.floor(frame / Math.max(1, framesPerSlide)));
+}
+
+function buildBoxStyle(
+  box: { x: number; y: number; width: number; height: number },
+  overrides: React.CSSProperties = {},
+): React.CSSProperties {
+  return {
+    position: "absolute",
+    left: box.x,
+    top: box.y,
+    width: box.width,
+    height: box.height,
+    overflow: "hidden",
+    ...overrides,
+  };
 }
 
 export const calculateMetadata: CalculateMetadataFunction<TemplateProps> = async ({ props }) => {
@@ -175,7 +205,6 @@ export function AvatarLeftSlidesBrollRight(props: TemplateProps) {
   const activeBroll = activeSlideIndex >= 0 ? brollClips[activeSlideIndex] ?? null : null;
   const hasAvatar = typeof props.avatarVideoUrl === "string" && props.avatarVideoUrl.length > 0;
   const hasVoice = typeof props.voiceAudioUrl === "string" && props.voiceAudioUrl.length > 0;
-  const hasBroll = Boolean(activeBroll);
   const slideOpacity = interpolate(frame % Math.max(1, durationInFrames / Math.max(1, slides.length)), [0, 10], [0.72, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
@@ -186,6 +215,15 @@ export function AvatarLeftSlidesBrollRight(props: TemplateProps) {
   const primaryVisualOverride = buildLayoutOverrideStyle(props.layoutOverrides, REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL);
   const slideOverride = buildLayoutOverrideStyle(props.layoutOverrides, REMOTION_EDITABLE_LAYERS.SLIDES);
   const brollOverride = buildLayoutOverrideStyle(props.layoutOverrides, REMOTION_EDITABLE_LAYERS.BROLL);
+  const activeSlideItemOverride = activeSlideIndex >= 0
+    ? buildLayoutOverrideStyle(props.layoutOverrides, `slide:${activeSlideIndex}`)
+    : {};
+  const activeBrollItemOverride = activeBroll
+    ? buildLayoutOverrideStyle(
+        props.layoutOverrides,
+        `broll:${Math.max(1, Math.round(activeBroll.order ?? activeSlideIndex + 1))}`,
+      )
+    : {};
 
   return (
     <AbsoluteFill
@@ -197,107 +235,78 @@ export function AvatarLeftSlidesBrollRight(props: TemplateProps) {
       }}
     >
       <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          display: "grid",
-          gridTemplateColumns: "42% 58%",
-          gap: 0,
-        }}
-      >
-        <section
-          style={{
-            position: "relative",
-            minWidth: 0,
-            height: "100%",
-            background: "#05070b",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            overflow: "hidden",
+        style={buildBoxStyle(primaryVisualBox, {
+          background: "#090d14",
+          zIndex: defaultStackOrders.primaryVisual,
+          ...primaryVisualOverride,
+        })}
+      />
+
+      {hasAvatar ? (
+        <div
+          style={buildBoxStyle(avatarBox, {
+            background: "transparent",
+            zIndex: defaultStackOrders.avatar,
             ...avatarOverride,
-          }}
+          })}
         >
-          {hasAvatar ? (
-            <Video
-              src={props.avatarVideoUrl!}
-              muted={hasVoice}
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                objectPosition: "center center",
-              }}
-            />
-          ) : null}
-        </section>
+          <Video
+            src={props.avatarVideoUrl!}
+            muted={hasVoice}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              objectPosition: "center center",
+            }}
+          />
+        </div>
+      ) : null}
 
-        <section
-          style={{
-            position: "relative",
-            minWidth: 0,
-            height: "100%",
-            background: "#090d14",
-            overflow: "hidden",
-            ...primaryVisualOverride,
-          }}
+      {activeSlide ? (
+        <div
+          style={buildBoxStyle(slidesBox, {
+            background: "transparent",
+            opacity: slideOpacity,
+            zIndex: defaultStackOrders.slides,
+            ...slideOverride,
+            ...activeSlideItemOverride,
+          })}
         >
-          {activeSlide ? (
-            <div
-              style={{
-                position: "absolute",
-                left: 36,
-                right: 36,
-                top: 36,
-                bottom: hasBroll ? 382 : 36,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                overflow: "hidden",
-                opacity: slideOpacity,
-                ...slideOverride,
-              }}
-            >
-              <Img
-                src={activeSlide.url}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "contain",
-                  objectPosition: "center center",
-                }}
-              />
-            </div>
-          ) : null}
+          <Img
+            src={activeSlide.url}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              objectPosition: "center center",
+            }}
+          />
+        </div>
+      ) : null}
 
-          {activeBroll ? (
-            <div
-              style={{
-                position: "absolute",
-                right: 36,
-                bottom: 36,
-                width: 520,
-                height: 292,
-                background: "#000",
-                overflow: "hidden",
-                ...brollOverride,
-              }}
-            >
-              <Video
-                src={activeBroll.url}
-                muted
-                loop
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                  objectPosition: "center center",
-                }}
-              />
-            </div>
-          ) : null}
-        </section>
-      </div>
+      {activeBroll ? (
+        <div
+          style={buildBoxStyle(brollBox, {
+            background: "transparent",
+            zIndex: defaultStackOrders.broll,
+            ...brollOverride,
+            ...activeBrollItemOverride,
+          })}
+        >
+          <Video
+            src={activeBroll.url}
+            muted
+            loop
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              objectPosition: "center center",
+            }}
+          />
+        </div>
+      ) : null}
 
       {hasVoice ? <Audio src={props.voiceAudioUrl!} /> : null}
       {props.bgMusicUrl ? <Audio src={props.bgMusicUrl} volume={props.bgMusicVolume ?? 0.12} /> : null}

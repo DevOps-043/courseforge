@@ -1,20 +1,38 @@
 import type { GoogleGenAI } from "@google/genai";
+import type OpenAI from "openai";
 import type { CurationRowInsert } from "../../../src/shared/types/curation.types";
-import {
-  SOURCES_PER_LESSON,
-} from "./curation-runtime";
+import { SOURCES_PER_LESSON } from "./curation-runtime";
 import { generateFreshnessReminder } from "./curation-prompts";
 import {
   buildGroundingFallbackForLesson,
   buildValidatedRowsFromModelSources,
-  extractGroundingSources,
+  extractGeminiSearchSources,
+  extractOpenAiSearchSources,
   findLessonResult,
-  getResponseText,
+  getGeminiResponseText,
+  getOpenAiResponseText,
   parseLessonsResponse,
 } from "./unified-curation-helpers";
-import type { GroundingSource, LessonResult, LessonToProcess } from "./unified-curation-types";
+import type {
+  GroundingSource,
+  LessonResult,
+  LessonToProcess,
+} from "./unified-curation-types";
 
-interface ProcessLessonBatchParams {
+interface ProcessOpenAiLessonBatchParams {
+  activeModel: string;
+  attempt: number;
+  batch: LessonToProcess[];
+  batchNum: number;
+  client: OpenAI;
+  courseTitle: string;
+  curationId: string;
+  fullCourseContext: string;
+  reasoningEffort: string;
+  systemPrompt: string;
+}
+
+interface ProcessGeminiLessonBatchParams {
   activeModel: string;
   attempt: number;
   batch: LessonToProcess[];
@@ -31,6 +49,56 @@ interface ProcessLessonBatchResult {
   parsedLessonIds: string[];
   rows: CurationRowInsert[];
 }
+
+const CURATION_RESPONSE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    lessons: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          lesson_id: { type: "string" },
+          lesson_title: { type: "string" },
+          sources: {
+            type: "array",
+            minItems: 1,
+            maxItems: SOURCES_PER_LESSON,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                url: { type: "string" },
+                title: { type: "string" },
+                rationale: { type: "string" },
+                key_topics_covered: {
+                  type: "array",
+                  items: { type: "string" },
+                },
+                estimated_quality: {
+                  type: "number",
+                  minimum: 1,
+                  maximum: 10,
+                },
+              },
+              required: [
+                "url",
+                "title",
+                "rationale",
+                "key_topics_covered",
+                "estimated_quality",
+              ],
+            },
+          },
+        },
+        required: ["lesson_id", "lesson_title", "sources"],
+      },
+    },
+  },
+  required: ["lessons"],
+} as const;
 
 function buildBatchPrompt(params: {
   attempt: number;
@@ -70,8 +138,8 @@ TASK: Find 1-2 HIGH-QUALITY sources for EACH lesson above.
 SEARCH STRATEGY:
 - Search for: "${courseTitle}" + [lesson topic] + "guide" OR "tutorial" OR "tips"
 - Sources MUST directly relate to ${courseTitle}
-- Prefer articles from major publications, .edu sites, or established productivity blogs
-- REJECT: Reddit, forums, unrelated PDFs, social media
+- Prefer articles from major publications, official documentation, .edu sites, or established productivity/business blogs
+- REJECT: Reddit, forums, unrelated PDFs, social media, inaccessible pages
 `.trim();
 }
 
@@ -80,6 +148,7 @@ async function buildFallbackRowsForBatch(params: {
   batch: LessonToProcess[];
   curationId: string;
   groundingSources: GroundingSource[];
+  providerLabel: string;
   rationale: string;
   useDistributedStartIndex?: boolean;
 }) {
@@ -88,6 +157,7 @@ async function buildFallbackRowsForBatch(params: {
     batch,
     curationId,
     groundingSources,
+    providerLabel,
     rationale,
     useDistributedStartIndex,
   } = params;
@@ -101,6 +171,7 @@ async function buildFallbackRowsForBatch(params: {
       lesson,
       groundingSources,
       activeModel,
+      providerLabel,
       rationale,
       distributedStartIndex: useDistributedStartIndex ? lessonIndex : undefined,
     });
@@ -116,37 +187,22 @@ async function buildFallbackRowsForBatch(params: {
   return { rows, failedLessons };
 }
 
-export async function processLessonBatch({
-  activeModel,
-  attempt,
-  batch,
-  batchNum,
-  client,
-  courseTitle,
-  curationId,
-  fullCourseContext,
-  systemPrompt,
-}: ProcessLessonBatchParams): Promise<ProcessLessonBatchResult> {
-  const batchPrompt = buildBatchPrompt({
-    attempt,
+async function buildRowsFromModelOutput(params: {
+  activeModel: string;
+  batch: LessonToProcess[];
+  curationId: string;
+  groundingSources: GroundingSource[];
+  providerLabel: string;
+  responseText: string;
+}) {
+  const {
+    activeModel,
     batch,
-    batchNum,
-    courseTitle,
-    fullCourseContext,
-  });
-
-  const response = await client.models.generateContent({
-    model: activeModel,
-    contents: [{ role: "user", parts: [{ text: batchPrompt }] }],
-    config: {
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      tools: [{ googleSearch: {} }],
-      temperature: 0.3,
-    },
-  });
-
-  const groundingSources = await extractGroundingSources(response, courseTitle);
-  const responseText = getResponseText(response);
+    curationId,
+    groundingSources,
+    providerLabel,
+    responseText,
+  } = params;
 
   if (!responseText) {
     const fallback = await buildFallbackRowsForBatch({
@@ -154,7 +210,8 @@ export async function processLessonBatch({
       batch,
       curationId,
       groundingSources,
-      rationale: "Fuente de Google Search (respuesta vacia del modelo)",
+      providerLabel,
+      rationale: `Fuente de ${providerLabel} (respuesta vacia del modelo)`,
     });
 
     return {
@@ -179,7 +236,8 @@ export async function processLessonBatch({
       batch,
       curationId,
       groundingSources,
-      rationale: "Fuente de Google Search (error de parseo)",
+      providerLabel,
+      rationale: `Fuente de ${providerLabel} (error de parseo)`,
     });
 
     return {
@@ -202,7 +260,8 @@ export async function processLessonBatch({
         lesson,
         groundingSources,
         activeModel,
-        rationale: "Fuente de Google Search (sin resultado especifico)",
+        providerLabel,
+        rationale: `Fuente de ${providerLabel} (sin resultado especifico)`,
         distributedStartIndex: lessonIndex,
       });
 
@@ -219,6 +278,7 @@ export async function processLessonBatch({
       lesson,
       sources: lessonResult.sources,
       activeModel,
+      providerLabel,
       maxSourcesPerLesson: SOURCES_PER_LESSON,
     });
 
@@ -232,7 +292,8 @@ export async function processLessonBatch({
       lesson,
       groundingSources,
       activeModel,
-      rationale: "Fuente alternativa de Google Search (URLs del modelo fallaron)",
+      providerLabel,
+      rationale: `Fuente alternativa de ${providerLabel} (URLs del modelo fallaron)`,
     });
 
     if (!fallbackRow) {
@@ -247,4 +308,125 @@ export async function processLessonBatch({
     parsedLessonIds: parsedLessons.map((lesson) => lesson.lesson_id),
     rows,
   };
+}
+
+export async function processOpenAiLessonBatch({
+  activeModel,
+  attempt,
+  batch,
+  batchNum,
+  client,
+  courseTitle,
+  curationId,
+  fullCourseContext,
+  reasoningEffort,
+  systemPrompt,
+}: ProcessOpenAiLessonBatchParams): Promise<ProcessLessonBatchResult> {
+  const batchPrompt = buildBatchPrompt({
+    attempt,
+    batch,
+    batchNum,
+    courseTitle,
+    fullCourseContext,
+  });
+
+  const response = await client.responses.create(({
+    model: activeModel,
+    input: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: batchPrompt },
+    ],
+    max_output_tokens: 4000,
+    reasoning: { effort: reasoningEffort },
+    text: {
+      format: {
+        type: "json_schema",
+        name: "courseforge_curation_sources",
+        strict: true,
+        schema: CURATION_RESPONSE_SCHEMA,
+      },
+    },
+    tool_choice: "required",
+    tools: [
+      {
+        type: "web_search",
+        external_web_access: true,
+        return_token_budget: "default",
+      },
+    ],
+  } as unknown) as Parameters<typeof client.responses.create>[0]);
+
+  const groundingSources = await extractOpenAiSearchSources(response, courseTitle);
+  const responseText = getOpenAiResponseText(response);
+
+  return buildRowsFromModelOutput({
+    activeModel,
+    batch,
+    curationId,
+    groundingSources,
+    providerLabel: "OpenAI web search",
+    responseText,
+  });
+}
+
+export async function processGeminiLessonBatch({
+  activeModel,
+  attempt,
+  batch,
+  batchNum,
+  client,
+  courseTitle,
+  curationId,
+  fullCourseContext,
+  systemPrompt,
+}: ProcessGeminiLessonBatchParams): Promise<ProcessLessonBatchResult> {
+  const batchPrompt = buildBatchPrompt({
+    attempt,
+    batch,
+    batchNum,
+    courseTitle,
+    fullCourseContext,
+  });
+
+  const response = await client.models.generateContent({
+    model: activeModel,
+    contents: `${systemPrompt}
+
+${batchPrompt}
+
+Return ONLY valid JSON matching this shape:
+{
+  "lessons": [
+    {
+      "lesson_id": "string",
+      "lesson_title": "string",
+      "sources": [
+        {
+          "url": "https://example.com",
+          "title": "string",
+          "rationale": "string",
+          "key_topics_covered": ["string"],
+          "estimated_quality": 8
+        }
+      ]
+    }
+  ]
+}`,
+    config: {
+      temperature: 0.1,
+      tools: [{ googleSearch: {} }],
+    },
+  } as Parameters<typeof client.models.generateContent>[0]);
+
+  const groundingSources = await extractGeminiSearchSources(response, courseTitle);
+  const responseText = getGeminiResponseText(response);
+
+  return buildRowsFromModelOutput({
+    activeModel,
+    batch,
+    curationId,
+    groundingSources,
+    providerLabel: "Gemini Google Search",
+    responseText,
+  });
 }

@@ -18,7 +18,7 @@ export function AvatarLayer({
   objectFit = "cover",
 }: AvatarLayerProps) {
   return (
-    <AbsoluteFill style={{ backgroundColor: "#000" }}>
+    <AbsoluteFill>
       <OffthreadVideo
         src={url}
         muted={muted}

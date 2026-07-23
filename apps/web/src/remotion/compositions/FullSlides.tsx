@@ -43,13 +43,21 @@ export function FullSlides(props: AssemblyInputProps) {
 
   return (
     <AbsoluteFill style={{ backgroundColor: templateConfig.backgroundColor }}>
-      <div style={{ position: "absolute", inset: 0, ...primaryVisualOverrideStyle }}>
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 10,
+          ...primaryVisualOverrideStyle,
+        }}
+      >
         <PrimaryVisual
           slides={props.slides}
           brollClips={props.brollClips}
           durationInFrames={durationInFrames}
           transitionType={props.transitionType}
           templateConfig={templateConfig}
+          layoutOverrides={props.layoutOverrides}
           slidesLayerStyle={slidesOverrideStyle}
           brollLayerStyle={brollOverrideStyle}
         />
@@ -66,6 +74,7 @@ export function FullSlides(props: AssemblyInputProps) {
             overflow: "hidden",
             border: `3px solid ${templateConfig.accentColor}`,
             boxShadow: "0 8px 32px rgba(0,0,0,0.45)",
+            zIndex: 20,
             ...avatarOverrideStyle,
           }}
         >

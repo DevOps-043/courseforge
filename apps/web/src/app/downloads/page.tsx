@@ -9,7 +9,7 @@ export const revalidate = 600;
 
 export const metadata: Metadata = {
   title: "Descargas | SofLIA Engine Render Worker",
-  description: "Descarga el worker local para ensamblar videos Remotion desde tu computadora.",
+  description: "Descarga el worker local para ensamblar videos desde tu computadora.",
 };
 
 function readPublicEnv(name: string) {

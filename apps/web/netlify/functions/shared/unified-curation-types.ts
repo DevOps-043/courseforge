@@ -26,22 +26,32 @@ export interface GroundingSource {
 }
 
 export interface CourseModuleLike {
+  lessons?: Array<{
+    objective_specific?: string | null;
+    title?: string | null;
+  }> | null;
+  objective?: string | null;
+  objective_specific?: string | null;
   title?: string | null;
   name?: string | null;
 }
 
 export interface ArtifactContextLike {
+  descripcion?: unknown;
+  generation_metadata?: unknown;
+  idea_central?: string | null;
+  nombres?: string[] | null;
+  objetivos?: string[] | null;
   title?: string | null;
   description?: string | null;
   main_topic?: string | null;
   audience?: string | null;
   objectives?: string[] | null;
+  organization_id?: string | null;
 }
 
 export interface SyllabusContextLike {
   modules?: CourseModuleLike[] | null;
-  keywords?: string[] | null;
-  learning_objectives?: string[] | null;
 }
 
 export interface LessonPlanLike {

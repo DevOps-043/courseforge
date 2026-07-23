@@ -11,7 +11,7 @@ interface RouteContext {
 }
 
 function fileNameFromPath(path: string) {
-  const name = path.split("/").filter(Boolean).at(-1) || "soflia-remotion-bundle.zip";
+  const name = path.split("/").filter(Boolean).at(-1) || "soflia-video-bundle.zip";
   return name.endsWith(".zip") ? name : `${name}.zip`;
 }
 

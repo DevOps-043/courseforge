@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import {
     getAuthenticatedUser,
+    getAuthorizedArtifactAdmin,
     getAuthorizedMaterialComponentAdmin,
     getServiceRoleClient,
 } from '@/lib/server/artifact-action-auth';
@@ -12,15 +13,17 @@ import {
 import { createClient } from '@/utils/supabase/server';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 
-const ALLOWED_BUCKETS = new Set(['thumbnails', 'production-videos', 'production-assets', 'template-bundles']);
+const ALLOWED_BUCKETS = new Set(['thumbnails', 'production-videos', 'production-assets', 'template-bundles', 'curation-sources']);
 const TEMPLATE_BUNDLE_MAX_BYTES = 10 * 1024 * 1024;
 const BUNDLE_AGENT_REFERENCE_MAX_BYTES = 75 * 1024 * 1024;
+const CURATION_SOURCE_PDF_MAX_BYTES = 25 * 1024 * 1024;
 const GENERAL_UPLOAD_MAX_BYTES = 500 * 1024 * 1024;
 
-type UploadPurpose = 'template-bundle' | 'production-asset' | 'thumbnail' | 'production-video' | 'bundle-agent-reference';
+type UploadPurpose = 'template-bundle' | 'production-asset' | 'thumbnail' | 'production-video' | 'bundle-agent-reference' | 'curation-source-pdf';
 
 interface SignedUploadUrlRequestBody {
     bucket?: string;
+    artifactId?: string;
     componentId?: string;
     filePath?: string;
     purpose?: UploadPurpose;
@@ -70,6 +73,28 @@ async function ensureTemplateBundlesBucket(admin: ReturnType<typeof getServiceRo
     }
 }
 
+async function ensureCurationSourcesBucket(admin: ReturnType<typeof getServiceRoleClient>) {
+    const { data: existingBucket, error: getBucketError } = await admin.storage.getBucket('curation-sources');
+    if (existingBucket && !getBucketError) {
+        const { error } = await admin.storage.updateBucket('curation-sources', {
+            public: false,
+            fileSizeLimit: CURATION_SOURCE_PDF_MAX_BYTES,
+            allowedMimeTypes: ['application/pdf'],
+        });
+        if (error) throw new Error(error.message);
+        return;
+    }
+
+    const { error } = await admin.storage.createBucket('curation-sources', {
+        public: false,
+        fileSizeLimit: CURATION_SOURCE_PDF_MAX_BYTES,
+        allowedMimeTypes: ['application/pdf'],
+    });
+    if (error) {
+        throw new Error(`No se pudo asegurar el bucket privado curation-sources: ${error.message}`);
+    }
+}
+
 async function resolveActiveUploadOrganizationId() {
     const tenant = await resolveActiveTenantContext();
     if (tenant?.organizationId) return tenant.organizationId;
@@ -94,6 +119,7 @@ export async function POST(request: Request) {
     try {
         const {
             bucket,
+            artifactId,
             componentId,
             filePath,
             purpose = 'production-asset',
@@ -203,9 +229,41 @@ export async function POST(request: Request) {
                 .replace(/^organizations\/[^/]+\/bundle-agent-references\//, '')
                 .replace(/^bundle-agent-references\//, '');
             authorizedFilePath = `organizations/${activeOrgId}/bundle-agent-references/${safeRelativePath}`;
+        } else if (purpose === 'curation-source-pdf') {
+            if (bucket !== 'curation-sources') {
+                return NextResponse.json(
+                    { error: 'Las fuentes PDF deben subirse al bucket privado curation-sources' },
+                    { status: 400 },
+                );
+            }
+            if (!artifactId) {
+                return NextResponse.json({ error: 'artifactId es requerido para subir una fuente PDF' }, { status: 400 });
+            }
+            const authorizedArtifact = await getAuthorizedArtifactAdmin(artifactId);
+            if (!authorizedArtifact) {
+                return NextResponse.json({ error: 'Artefacto no encontrado para esta empresa' }, { status: 404 });
+            }
+            if (!activeOrgId || authorizedArtifact.artifact.organization_id !== activeOrgId) {
+                return NextResponse.json({ error: 'El artefacto no pertenece a la organizacion activa' }, { status: 403 });
+            }
+            if (contentType !== 'application/pdf' || !filePath.toLowerCase().endsWith('.pdf')) {
+                return NextResponse.json({ error: 'La fuente debe ser un archivo PDF valido' }, { status: 400 });
+            }
+            if (typeof fileSizeBytes !== 'number' || fileSizeBytes <= 0 || fileSizeBytes > CURATION_SOURCE_PDF_MAX_BYTES) {
+                return NextResponse.json({ error: 'El PDF debe pesar entre 1 byte y 25 MB' }, { status: 400 });
+            }
+            const safeRelativePath = filePath
+                .replace(/^organizations\/[^/]+\/curation-sources\/[^/]+\//, '')
+                .replace(/^curation-sources\/[^/]+\//, '');
+            authorizedFilePath = `organizations/${activeOrgId}/curation-sources/${artifactId}/${safeRelativePath}`;
         } else if (bucket === 'template-bundles') {
             return NextResponse.json(
                 { error: 'El bucket template-bundles solo acepta uploads con purpose template-bundle' },
+                { status: 400 },
+            );
+        } else if (bucket === 'curation-sources') {
+            return NextResponse.json(
+                { error: 'El bucket curation-sources solo acepta uploads con purpose curation-source-pdf' },
                 { status: 400 },
             );
         }
@@ -238,11 +296,15 @@ export async function POST(request: Request) {
         const admin = getServiceRoleClient();
         if (purpose === 'template-bundle') {
             await ensureTemplateBundlesBucket(admin);
+        } else if (purpose === 'curation-source-pdf') {
+            await ensureCurationSourcesBucket(admin);
         }
 
         const { data, error } = await admin.storage
             .from(bucket)
-            .createSignedUploadUrl(authorizedFilePath, { upsert: purpose === 'template-bundle' ? false : upsert ?? true });
+            .createSignedUploadUrl(authorizedFilePath, {
+                upsert: purpose === 'template-bundle' || purpose === 'curation-source-pdf' ? false : upsert ?? true,
+            });
 
         if (error || !data) {
             console.error('[API /storage/signed-upload-url] Error:', error);

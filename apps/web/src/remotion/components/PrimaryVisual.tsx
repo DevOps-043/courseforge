@@ -4,7 +4,13 @@ import type {
   AssemblySlide,
   AssemblyTransition,
 } from "../types";
-import type { LayoutOverrideStyle } from "../layout-override-styles";
+import type { LayoutOverrideManifestList } from "../layout-overrides";
+import {
+  buildLayoutOverrideStyle,
+  getBrollItemLayerId,
+  getSlideItemLayerId,
+  type LayoutOverrideStyle,
+} from "../layout-override-styles";
 import {
   DEFAULT_TEMPLATE_RENDER_CONFIG,
   type TemplateRenderConfig,
@@ -19,6 +25,7 @@ interface PrimaryVisualProps {
   durationInFrames: number;
   transitionType: AssemblyTransition;
   templateConfig?: TemplateRenderConfig;
+  layoutOverrides?: LayoutOverrideManifestList;
   slidesLayerStyle?: LayoutOverrideStyle;
   brollLayerStyle?: LayoutOverrideStyle;
 }
@@ -48,23 +55,43 @@ export function PrimaryVisual({
   durationInFrames,
   transitionType,
   templateConfig = DEFAULT_TEMPLATE_RENDER_CONFIG,
+  layoutOverrides = [],
   slidesLayerStyle,
   brollLayerStyle,
 }: PrimaryVisualProps) {
   if (slides.length > 0) {
     return (
       <>
-        <div style={{ position: "absolute", inset: 0, ...slidesLayerStyle }}>
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 10,
+            ...slidesLayerStyle,
+          }}
+        >
           <SlideShow
             slides={slides}
             durationInFrames={durationInFrames}
             transitionType={transitionType}
+            getSlideStyle={(slide) =>
+              buildLayoutOverrideStyle(
+                layoutOverrides,
+                getSlideItemLayerId(slide.index),
+              )
+            }
           />
         </div>
         <BrollOverlayLayer
           clips={brollClips}
           durationInFrames={durationInFrames}
-          containerStyle={brollLayerStyle}
+          containerStyle={{ zIndex: 20, ...brollLayerStyle }}
+          getClipStyle={(clip) =>
+            buildLayoutOverrideStyle(
+              layoutOverrides,
+              getBrollItemLayerId(clip.order),
+            )
+          }
         />
       </>
     );
@@ -72,8 +99,23 @@ export function PrimaryVisual({
 
   if (brollClips.length > 0) {
     return (
-      <div style={{ position: "absolute", inset: 0, ...brollLayerStyle }}>
-        <BrollLayer clips={brollClips} />
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 20,
+          ...brollLayerStyle,
+        }}
+      >
+        <BrollLayer
+          clips={brollClips}
+          getClipStyle={(clip) =>
+            buildLayoutOverrideStyle(
+              layoutOverrides,
+              getBrollItemLayerId(clip.order),
+            )
+          }
+        />
       </div>
     );
   }

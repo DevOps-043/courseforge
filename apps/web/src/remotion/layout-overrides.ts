@@ -1,6 +1,13 @@
 import { z } from "zod";
 
 export const LAYOUT_OVERRIDE_MANIFEST_VERSION = 1;
+export const TEMPLATE_LAYOUT_CONTRACT_VERSION = 2;
+export const TEMPLATE_LAYOUT_COORDINATE_SPACE = "canvas" as const;
+
+export const editableLayerItemPatternSchema = z.enum([
+  "slide:{index}",
+  "broll:{order}",
+]);
 
 export const editableLayerKindSchema = z.enum([
   "avatar",
@@ -18,6 +25,7 @@ export const editableLayerCapabilitiesSchema = z.object({
   canCrop: z.boolean().default(false),
   canRotate: z.boolean().default(false),
   canHide: z.boolean().default(false),
+  canReorder: z.boolean().default(false),
 }).strict();
 
 export const editableLayerDefinitionSchema = z.object({
@@ -25,6 +33,9 @@ export const editableLayerDefinitionSchema = z.object({
   label: z.string().trim().min(1).max(120),
   kind: editableLayerKindSchema,
   capabilities: editableLayerCapabilitiesSchema,
+  defaultStackOrder: z.number().int().min(0).max(1000).optional(),
+  stackGroup: z.string().trim().min(1).max(80).optional(),
+  itemLayerIdPattern: editableLayerItemPatternSchema.optional(),
   defaultBox: z
     .object({
       x: z.number().finite().min(-10000).max(10000),
@@ -52,6 +63,7 @@ const pixelCoordinateSchema = z.number().finite().min(-10000).max(10000);
 const positiveDimensionSchema = z.number().finite().positive().max(10000);
 const cropInsetSchema = z.number().finite().min(0).max(1);
 const rotationAngleSchema = z.number().finite().min(-180).max(180);
+const stackOrderSchema = z.number().int().min(0).max(1000);
 
 export const layoutOverrideEditSchema = z.discriminatedUnion("kind", [
   z.object({
@@ -83,6 +95,11 @@ export const layoutOverrideEditSchema = z.discriminatedUnion("kind", [
     layerId: layerIdSchema,
     kind: z.literal("visibility"),
     hidden: z.boolean(),
+  }).strict(),
+  z.object({
+    layerId: layerIdSchema,
+    kind: z.literal("stack"),
+    order: stackOrderSchema,
   }).strict(),
 ]);
 
@@ -126,4 +143,55 @@ export function parseLayoutOverrideManifests(
 
 export function safeParseLayoutOverrideManifests(raw: unknown) {
   return layoutOverrideManifestListSchema.safeParse(raw ?? []);
+}
+
+function supportsEditKind(
+  layer: EditableLayerDefinition,
+  kind: LayoutOverrideEdit["kind"],
+): boolean {
+  switch (kind) {
+    case "position":
+      return layer.capabilities.canMove;
+    case "size":
+      return layer.capabilities.canResize;
+    case "crop":
+      return layer.capabilities.canCrop;
+    case "rotation":
+      return layer.capabilities.canRotate;
+    case "visibility":
+      return layer.capabilities.canHide;
+    case "stack":
+      return layer.capabilities.canReorder;
+  }
+}
+
+function matchesItemLayerPattern(layerId: string, pattern: string | undefined) {
+  if (pattern === "slide:{index}") return /^slide:\d+$/.test(layerId);
+  if (pattern === "broll:{order}") return /^broll:[1-9]\d*$/.test(layerId);
+  return false;
+}
+
+export function filterLayoutOverridesForEditableLayers(
+  manifests: LayoutOverrideManifest[],
+  editableLayers: EditableLayerDefinition[],
+): LayoutOverrideManifest[] {
+  const layersById = new Map(editableLayers.map((layer) => [layer.layerId, layer] as const));
+
+  return manifests.flatMap((manifest) => {
+    const edits = manifest.edits.filter((edit) => {
+      const directLayer = layersById.get(edit.layerId);
+      if (directLayer) return supportsEditKind(directLayer, edit.kind);
+
+      const patternLayer = editableLayers.find((layer) =>
+        matchesItemLayerPattern(edit.layerId, layer.itemLayerIdPattern),
+      );
+      return Boolean(
+        patternLayer &&
+        edit.kind !== "stack" &&
+        supportsEditKind(patternLayer, edit.kind),
+      );
+    });
+
+    return edits.length > 0 ? [{ ...manifest, edits }] : [];
+  });
 }

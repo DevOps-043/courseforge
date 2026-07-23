@@ -18,7 +18,7 @@ export class BundleAgentConversationService {
       });
     }
 
-    const title = input.title?.trim() || "SofLIA Remotion bundle";
+    const title = input.title?.trim() || "SofLIA video bundle";
     await this.enforceConversationLimit();
 
     const { data, error } = await this.context.admin
@@ -49,7 +49,7 @@ export class BundleAgentConversationService {
     if (existingError) throw existingError;
     if (existing) return existing;
 
-    const title = input.title?.trim() || template.name || "SofLIA Remotion bundle";
+    const title = input.title?.trim() || template.name || "SofLIA video bundle";
     await this.enforceConversationLimit();
 
     const { data, error } = await this.context.admin

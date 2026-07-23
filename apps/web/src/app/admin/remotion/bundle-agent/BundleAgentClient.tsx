@@ -105,7 +105,7 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
   const pathname = usePathname();
   const templateId = initialTemplateId;
   const [state, setState] = useState<ConversationState>(EMPTY_STATE);
-  const [title, setTitle] = useState("Nuevo bundle Remotion");
+  const [title, setTitle] = useState("Nuevo bundle de video");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [uploadingReferences, setUploadingReferences] = useState(false);
@@ -317,7 +317,7 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
           <p className="mt-2 max-w-2xl text-sm text-slate-600">
             {isTemplateScoped
               ? "Edita este bundle manteniendo su conversacion, specs y versiones generadas dentro del mismo historial auditable."
-              : "Conversa con SofLIA para definir una plantilla Remotion. El agente genera una spec auditable y un ZIP borrador que siempre pasa por validacion y revision humana."}
+              : "Conversa con SofLIA para definir una plantilla de video. El agente genera una spec auditable y un ZIP borrador que siempre pasa por validacion y revision humana."}
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 shadow-sm">
@@ -581,7 +581,7 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
                 ) : null}
               </div>
               <div className="rounded-xl bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Version Remotion</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Version de plantilla</p>
                 <p className="mt-1 font-medium text-slate-900">{latestVersion?.status || "No registrada"}</p>
                 <p className="mt-1 text-xs text-slate-500">Build: {latestVersion?.build_status || "PENDING"}</p>
               </div>

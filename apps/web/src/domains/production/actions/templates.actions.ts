@@ -190,6 +190,8 @@ export interface RemotionTemplate {
   cloud_build_output_storage_path?: string | null;
   cloud_build_composition_id?: string | null;
   cloud_build_validated?: boolean;
+  template_version_id?: string | null;
+  layout_contract_version?: number | null;
   editable_layers?: EditableLayerDefinition[];
 }
 
@@ -566,7 +568,12 @@ async function attachLatestCloudBuilds(
     .in("status", ["APPROVED_FOR_SANDBOX", "APPROVED"])
     .order("version_number", { ascending: false });
 
-  const latestVersionByTemplate = new Map<string, { id: string; compositionId: string | null; editableLayers: EditableLayerDefinition[] }>();
+  const latestVersionByTemplate = new Map<string, {
+    id: string;
+    compositionId: string | null;
+    layoutContractVersion: number | null;
+    editableLayers: EditableLayerDefinition[];
+  }>();
   for (const version of versions || []) {
     if (!latestVersionByTemplate.has(version.template_id)) {
       const manifest = version.manifest && typeof version.manifest === "object"
@@ -580,6 +587,9 @@ async function attachLatestCloudBuilds(
       latestVersionByTemplate.set(version.template_id, {
         id: version.id,
         compositionId: isValidExternalCompositionId(version.composition_id) ? version.composition_id : null,
+        layoutContractVersion: Number.isInteger(manifest.layoutContractVersion)
+          ? Number(manifest.layoutContractVersion)
+          : null,
         editableLayers,
       });
     }
@@ -624,6 +634,8 @@ async function attachLatestCloudBuilds(
       cloud_build_validated: build?.cloud_provider === "desktop_worker"
         ? Boolean(build.build_output_storage_path)
         : isValidatedCloudBuildLog(build?.build_log),
+      template_version_id: version?.id || null,
+      layout_contract_version: version?.layoutContractVersion || null,
       editable_layers: version?.editableLayers || [],
     };
   });

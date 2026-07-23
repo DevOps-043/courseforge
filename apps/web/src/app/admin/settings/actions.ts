@@ -58,10 +58,10 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     is_active: true,
   },
   CURATION: {
-    model_name: 'gemini-2.5-pro',
+    model_name: 'gpt-5.6-luna',
     fallback_model: 'gemini-2.5-flash',
     temperature: 0.1,
-    thinking_level: 'high',
+    thinking_level: 'low',
     setting_type: 'CURATION',
     is_active: true,
   },

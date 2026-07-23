@@ -40,6 +40,32 @@ function normalizePathSegment(segment: string | null | undefined) {
   return segment?.trim().toLowerCase() || null;
 }
 
+function getErrorMessage(error: unknown) {
+  if (typeof error === "object" && error !== null && "message" in error) {
+    return String(error.message);
+  }
+  return String(error);
+}
+
+function isTransientFetchError(error: unknown) {
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    message.includes("fetch failed") ||
+    message.includes("econnreset") ||
+    message.includes("terminated")
+  );
+}
+
+function logTenantLookupError(label: string, error: unknown) {
+  const message = getErrorMessage(error);
+  if (isTransientFetchError(error)) {
+    console.warn(`[TenantContext] ${label}: ${message}`);
+    return;
+  }
+
+  console.error(`[TenantContext] ${label}:`, message);
+}
+
 function getOrganizationBySlug(
   organizations: OrganizationCookieRecord[],
   organizationSlug?: string | null,
@@ -64,7 +90,7 @@ async function getProfilePlatformRole(userId: string) {
     .maybeSingle();
 
   if (error) {
-    console.error("[TenantContext] Error loading profile role:", error.message);
+    logTenantLookupError("Error loading profile role", error);
   }
 
   return ((data || null) as ProfileRoleRecord | null)?.platform_role || null;
@@ -83,7 +109,7 @@ export async function getOrganizationPlatformRole(
     .maybeSingle();
 
   if (error) {
-    console.error("[TenantContext] Error loading organization role:", error.message);
+    logTenantLookupError("Error loading organization role", error);
   }
 
   return ((data || null) as OrganizationUserRoleRecord | null)?.platform_role || null;
@@ -148,7 +174,7 @@ export async function resolveTenantContext(
     return null;
   }
 
-  const platformRole = await getProfilePlatformRole(bridgeUser.id);
+  const platformRole = bridgeUser.platform_role || await getProfilePlatformRole(bridgeUser.id);
   const organizationPlatformRole = await getOrganizationPlatformRole(
     bridgeUser.id,
     organization.id,

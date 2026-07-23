@@ -23,6 +23,16 @@ export interface CurationRowInsert {
   notes?: string;
   auto_evaluated: boolean;
   auto_reason?: string;
+  origin?: "automatic" | "manual";
+  source_kind?: "url" | "pdf";
+  storage_bucket?: string;
+  storage_path?: string;
+  file_name?: string;
+  mime_type?: string;
+  file_size_bytes?: number;
+  content_sha256?: string;
+  validation_report?: object;
+  added_by?: string;
 }
 
 export interface GeminiCandidateSource {

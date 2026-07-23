@@ -44,6 +44,7 @@ const CAN_EDIT_MEDIA_LAYER = {
   canCrop: true,
   canRotate: false,
   canHide: true,
+  canReorder: true,
 };
 
 const CAN_EDIT_CONTAINER_LAYER = {
@@ -52,6 +53,7 @@ const CAN_EDIT_CONTAINER_LAYER = {
   canCrop: false,
   canRotate: false,
   canHide: false,
+  canReorder: false,
 };
 
 function includesAny(text: string, terms: string[]) {
@@ -160,6 +162,8 @@ function buildEditableLayers(boxes: BundleBlueprint["boxes"]): EditableLayerDefi
       label: "Avatar",
       kind: "avatar",
       defaultBox: boxes.avatar,
+      defaultStackOrder: 10,
+      stackGroup: "root",
       capabilities: CAN_EDIT_MEDIA_LAYER,
       constraints: { minWidth: 320, minHeight: 240, safeArea: "full" },
     },
@@ -168,6 +172,8 @@ function buildEditableLayers(boxes: BundleBlueprint["boxes"]): EditableLayerDefi
       label: "Contenedor visual",
       kind: "custom",
       defaultBox: boxes.primaryVisual,
+      defaultStackOrder: 0,
+      stackGroup: "root",
       capabilities: CAN_EDIT_CONTAINER_LAYER,
       constraints: { minWidth: 480, minHeight: 360, safeArea: "full" },
     },
@@ -176,6 +182,9 @@ function buildEditableLayers(boxes: BundleBlueprint["boxes"]): EditableLayerDefi
       label: "Diapositivas",
       kind: "slides",
       defaultBox: boxes.slides,
+      defaultStackOrder: 20,
+      stackGroup: "root",
+      itemLayerIdPattern: "slide:{index}",
       capabilities: CAN_EDIT_MEDIA_LAYER,
       constraints: { minWidth: 360, minHeight: 220, safeArea: "full" },
     },
@@ -184,6 +193,9 @@ function buildEditableLayers(boxes: BundleBlueprint["boxes"]): EditableLayerDefi
       label: "B-roll",
       kind: "broll",
       defaultBox: boxes.broll,
+      defaultStackOrder: 30,
+      stackGroup: "root",
+      itemLayerIdPattern: "broll:{order}",
       capabilities: CAN_EDIT_MEDIA_LAYER,
       constraints: { minWidth: 240, minHeight: 135, lockAspectRatio: true, safeArea: "full" },
     },

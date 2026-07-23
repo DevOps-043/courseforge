@@ -516,10 +516,10 @@ export default function TemplatesContainer({
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3">
             <Video className="text-[#00D4B3]" size={32} />
-            Plantillas de Video (Remotion)
+            Plantillas de Video
           </h1>
           <p className="text-gray-600 dark:text-[#94A3B8]">
-            Gestiona las plantillas de Remotion para tu empresa o explora plantillas públicas de otras empresas.
+            Gestiona las plantillas de video para tu empresa o explora plantillas publicas de otras empresas.
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3">
@@ -660,7 +660,7 @@ export default function TemplatesContainer({
               <div className="flex shrink-0 items-center justify-between gap-4 border-b border-gray-100 bg-gray-50/50 p-5 dark:border-[#6C757D]/10 dark:bg-[#0F1419]/50 sm:p-6">
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                   <CloudUpload className="text-[#00D4B3]" size={20} />
-                  {isEditing ? "Editar Plantilla de Remotion" : "Crear Plantilla de Remotion"}
+                  {isEditing ? "Editar Plantilla de Video" : "Crear Plantilla de Video"}
                 </h3>
                 <button 
                   type="button" 
@@ -716,7 +716,7 @@ export default function TemplatesContainer({
                     ))}
                   </select>
                   <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                    {selectedComposition?.description || "Esta es la plantilla que Remotion ejecuta hoy al ensamblar."}
+                    {selectedComposition?.description || "Esta es la plantilla que ejecuta hoy el motor de ensamblado."}
                   </p>
                 </div>
 
@@ -847,7 +847,7 @@ export default function TemplatesContainer({
                           <>
                             <CloudUpload className="w-8 h-8 text-gray-400 mb-2" />
                             <p className="text-xs text-gray-500"><span className="font-semibold">Sube el bundle zip</span> o arrastra aquí</p>
-                            <p className="text-[10px] text-gray-400">Solo archivos ZIP con código Remotion</p>
+                            <p className="text-[10px] text-gray-400">Solo archivos ZIP con codigo de plantilla</p>
                           </>
                         )}
                       </div>
@@ -967,7 +967,7 @@ export default function TemplatesContainer({
                     Versiones de {selectedVersionTemplate.name}
                   </h3>
                   <p className="text-xs text-gray-500 dark:text-[#94A3B8] mt-1">
-                    Sube y administra los bundles ZIP de Remotion. Los revisores autorizados pueden auditar y aprobar versiones.
+                    Sube y administra los bundles ZIP de plantillas. Los revisores autorizados pueden auditar y aprobar versiones.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1078,7 +1078,15 @@ export default function TemplatesContainer({
                         const fileCount = report.info?.fileCount || 0;
                         const unzippedSize = report.info?.unzippedSize || 0;
                         const dependencies = report.info?.dependencies || {};
-                        const dependencyKeys = Object.keys(dependencies);
+                        const displayDependencies = Object.fromEntries(
+                          Object.entries(dependencies).filter(([dep]) => !dep.toLowerCase().includes("remotion")),
+                        );
+                        const dependencyKeys = Object.keys(displayDependencies);
+                        const displayManifest = version.manifest
+                          ? Object.fromEntries(
+                              Object.entries(version.manifest).filter(([key]) => !key.toLowerCase().includes("remotion")),
+                            )
+                          : null;
                         const latestCloudBuild = version.cloud_builds?.[0] || null;
                         const cloudBuildHasUsableArtifact = latestCloudBuild?.cloud_provider === "desktop_worker"
                           ? Boolean(latestCloudBuild.build_output_storage_path)
@@ -1208,11 +1216,11 @@ export default function TemplatesContainer({
                                     Ver Manifiesto y Dependencias
                                   </summary>
                                   <div className="mt-3 pl-3 border-l-2 border-gray-200 dark:border-gray-800 space-y-3">
-                                    {version.manifest ? (
+                                    {displayManifest ? (
                                       <div>
-                                        <p className="font-semibold text-gray-700 dark:text-slate-300 text-[10px] mb-1">Manifiesto (courseforge-remotion-template.json):</p>
+                                        <p className="font-semibold text-gray-700 dark:text-slate-300 text-[10px] mb-1">Manifiesto de plantilla:</p>
                                         <pre className="p-2 bg-gray-100 dark:bg-[#0F1419] rounded-lg text-[10px] text-gray-600 dark:text-slate-400 overflow-x-auto max-w-full font-mono">
-                                          {JSON.stringify(version.manifest, null, 2)}
+                                          {JSON.stringify(displayManifest, null, 2)}
                                         </pre>
                                       </div>
                                     ) : (
@@ -1226,8 +1234,8 @@ export default function TemplatesContainer({
                                       {dependencyKeys.length > 0 ? (
                                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 p-2 bg-gray-100 dark:bg-[#0F1419] rounded-lg text-[10px] font-mono text-gray-600 dark:text-slate-400">
                                           {dependencyKeys.map((dep) => (
-                                            <div key={dep} className="truncate" title={`${dep}: ${dependencies[dep]}`}>
-                                              <span className="text-gray-400">#</span> {dep} <span className="text-[#00D4B3]">{dependencies[dep]}</span>
+                                            <div key={dep} className="truncate" title={`${dep}: ${displayDependencies[dep]}`}>
+                                              <span className="text-gray-400">#</span> {dep} <span className="text-[#00D4B3]">{displayDependencies[dep]}</span>
                                             </div>
                                           ))}
                                         </div>

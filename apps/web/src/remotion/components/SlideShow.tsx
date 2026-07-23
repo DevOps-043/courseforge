@@ -7,23 +7,33 @@ import {
 import { fade } from "@remotion/transitions/fade";
 import { slide } from "@remotion/transitions/slide";
 import type { AssemblySlide, AssemblyTransition } from "../types";
+import type { LayoutOverrideStyle } from "../layout-override-styles";
 
 interface SlideShowProps {
   slides: AssemblySlide[];
   durationInFrames: number;
   transitionType: AssemblyTransition;
+  getSlideStyle?: (slide: AssemblySlide) => LayoutOverrideStyle;
 }
 
 /** Tope de duración de transición; nunca debe igualar o exceder la slide. */
 const MAX_TRANSITION_FRAMES = 15;
 
-function SlideImage({ url }: { url: string }) {
+function SlideImage({
+  url,
+  style,
+}: {
+  url: string;
+  style?: LayoutOverrideStyle;
+}) {
   return (
-    <AbsoluteFill style={{ backgroundColor: "#000" }}>
-      <Img
-        src={url}
-        style={{ width: "100%", height: "100%", objectFit: "contain" }}
-      />
+    <AbsoluteFill>
+      <div style={{ position: "absolute", inset: 0, ...style }}>
+        <Img
+          src={url}
+          style={{ width: "100%", height: "100%", objectFit: "contain" }}
+        />
+      </div>
     </AbsoluteFill>
   );
 }
@@ -38,6 +48,7 @@ export function SlideShow({
   slides,
   durationInFrames,
   transitionType,
+  getSlideStyle,
 }: SlideShowProps) {
   if (slides.length === 0) {
     return null;
@@ -53,7 +64,7 @@ export function SlideShow({
       <Series>
         {ordered.map((s) => (
           <Series.Sequence key={s.index} durationInFrames={perSlideFrames}>
-            <SlideImage url={s.url} />
+            <SlideImage url={s.url} style={getSlideStyle?.(s)} />
           </Series.Sequence>
         ))}
       </Series>
@@ -76,7 +87,7 @@ export function SlideShow({
         key={`seq-${s.index}`}
         durationInFrames={perSlideFrames + transitionFrames}
       >
-        <SlideImage url={s.url} />
+        <SlideImage url={s.url} style={getSlideStyle?.(s)} />
       </TransitionSeries.Sequence>,
     );
     if (i < slideCount - 1) {

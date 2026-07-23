@@ -433,7 +433,7 @@ export function useProductionAssetState({
         const generated = await autoGenerateSlidesFromStoryboard();
         toast.success(
           generated
-            ? "Slides generadas automáticamente para Remotion"
+            ? "Slides generadas automaticamente para ensamblado"
             : 'No se pudieron generar slides. Usa el botón "Exportar" manualmente.',
         );
         return;
@@ -476,7 +476,7 @@ export function useProductionAssetState({
       }
 
       if (uploadedImages.length === 0) {
-        // Non-renderable file (e.g. HTML) uploaded as reference — also generate SVGs for Remotion
+        // Non-renderable file (e.g. HTML) uploaded as reference; also generate SVGs for assembly.
         const refSlides: SlidesAsset = {
           ...slidesAsset,
           html_public_url: referenceUrl,
@@ -487,11 +487,11 @@ export function useProductionAssetState({
         setSlidesUrl(referenceUrl);
         onAssetChange?.(component.id, { slides: refSlides, slides_url: referenceUrl });
 
-        toast.info("Generando slides para Remotion desde el storyboard...");
+        toast.info("Generando slides para ensamblado desde el storyboard...");
         const generated = await autoGenerateSlidesFromStoryboard(referenceUrl, referencePath);
         toast.success(
           generated
-            ? "Slides guardadas y generadas para Remotion"
+            ? "Slides guardadas y generadas para ensamblado"
             : 'Archivo guardado como referencia. Usa "Exportar" para generar slides renderizables.',
         );
         return;
@@ -979,13 +979,13 @@ export function useProductionAssetState({
 
             // If no renderable images were imported (e.g. HTML file), auto-generate SVGs
             if (!importedSlides?.images?.length) {
-              toast.info("Generando slides para Remotion desde el storyboard...");
+              toast.info("Generando slides para ensamblado desde el storyboard...");
               const generated = await autoGenerateSlidesFromStoryboard(
                 importedSlides?.html_public_url,
                 importedSlides?.html_content_path,
               );
               if (generated) {
-                toast.success("Slides generadas automáticamente para Remotion");
+                toast.success("Slides generadas automaticamente para ensamblado");
               }
             }
             break;

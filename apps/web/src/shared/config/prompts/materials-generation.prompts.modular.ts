@@ -34,6 +34,27 @@ export const COMPONENT_PROMPT_CODES: Record<string, string> = {
 
 export const SYSTEM_PROMPT_CODE = 'MATERIALS_SYSTEM';
 
+export const NO_AI_SLOP_MATERIALS_RULES = `## Filtro editorial anti AI slop
+
+Aplica este filtro antes de entregar el JSON final. Conserva el objetivo pedagogico, la voz profesional de SofLIA y los datos de las fuentes; edita solo lo necesario para que el material suene humano, concreto y util.
+
+Reglas:
+- Escribe directo. Elimina aperturas genericas como "es importante destacar", "en el mundo actual", "hoy en dia", "en este articulo" o "vamos a explorar".
+- No uses grandilocuencia ni relleno: evita "transformador", "paradigma", "vanguardia", "robusto", "meticuloso", "multifacetico", "crucial", "fundamental", "aprovechar", "potenciar", "facilitar" y sinonimos inflados si una palabra simple basta.
+- No atribuyas sin fuente. Evita "expertos dicen", "estudios muestran", "se considera ampliamente" o afirmaciones equivalentes si no vienen de una fuente curada incluida en DATOS DE ENTRADA.
+- Usa sujetos humanos y verbos directos cuando sea posible. Prefiere "el estudiante compara dos enfoques" sobre "se facilita la comparacion de enfoques".
+- Evita cierres falsamente profundos, moralejas decorativas y recapitulaciones tipo "en conclusion". Termina con una accion, criterio, pregunta o punto concreto.
+- Repite el termino correcto cuando sea necesario. No alternes "modelo", "sistema", "herramienta", "agente" o "solucion" solo para variar estilo.
+- No inventes datos, cifras, ejemplos, autores, fechas, herramientas, enlaces ni citas. Si falta evidencia en las fuentes, mantente conceptual y marca el alcance con precision.
+- Cada frase debe aportar una definicion, paso, criterio, ejemplo, contraste, advertencia o decision pedagogica.
+- Manten el contenido claro sin aplanarlo: puede ser cercano, pero no promocional ni dramatico.
+
+Autoevaluacion interna antes de responder:
+1. El texto conserva el OA y no agrega claims externos.
+2. Las fuentes citadas en source_refs_used existen en DATOS DE ENTRADA.
+3. No quedan patrones de relleno, grandilocuencia, atribucion vaga, sinonimos rotados ni finales decorativos.
+4. El JSON sigue exactamente el schema solicitado.`;
+
 /** Prompt code for video B-roll prompt generation (Phase 6 — Production) */
 export const VIDEO_BROLL_PROMPT_CODE = 'VIDEO_BROLL_PROMPTS';
 

@@ -148,6 +148,9 @@ describe("SofLIA Bundle Agent services", () => {
     assert.deepEqual(blueprint.boxes.avatar, { x: 0, y: 0, width: 806, height: 1080 });
     assert.equal(blueprint.editableLayers.some((layer) => layer.layerId === "slides" && layer.defaultBox?.x === 842), true);
     assert.equal(blueprint.editableLayers.some((layer) => layer.layerId === "broll" && layer.defaultBox?.x === 1364), true);
+    assert.equal(blueprint.editableLayers.find((layer) => layer.layerId === "avatar")?.capabilities.canReorder, true);
+    assert.equal(blueprint.editableLayers.find((layer) => layer.layerId === "slides")?.itemLayerIdPattern, "slide:{index}");
+    assert.equal(blueprint.editableLayers.find((layer) => layer.layerId === "broll")?.itemLayerIdPattern, "broll:{order}");
   });
 
   it("generates a controlled ZIP that passes generated bundle validation", async () => {
@@ -159,12 +162,16 @@ describe("SofLIA Bundle Agent services", () => {
     const report = await validateGeneratedRemotionBundle(bundle.buffer, bundle.originalFileName);
     const zip = await JSZip.loadAsync(bundle.buffer);
     const source = await zip.file("src/index.tsx")!.async("text");
+    const readme = await zip.file("README.md")!.async("text");
     const propsSchemaProperties = report.info.manifest?.propsSchema?.properties as Record<string, { type?: string }> | undefined;
 
     assert.equal(report.isValid, true);
     assert.equal(report.info.manifest?.compositionId, "Template-seguro");
     assert.equal(report.info.manifest?.exportMode, "root");
     assert.equal(report.info.manifest?.defaultDurationFrames, 150);
+    assert.equal(report.info.manifest?.layoutContractVersion, 2);
+    assert.equal(report.info.manifest?.layoutCoordinateSpace, "canvas");
+    assert.equal(report.info.manifest?.editableLayers?.find((layer) => layer.layerId === "slides")?.itemLayerIdPattern, "slide:{index}");
     assert.equal(report.info.manifest?.editableLayers?.some((layer) => layer.layerId === "avatar" && layer.defaultBox?.width), true);
     assert.equal(propsSchemaProperties?.avatarVideoUrl?.type, "string");
     assert.equal(propsSchemaProperties?.slides?.type, "array");
@@ -177,6 +184,11 @@ describe("SofLIA Bundle Agent services", () => {
     assert.match(source, /layoutOverrides\?: LayoutOverrideManifest\[\]/);
     assert.match(source, /REMOTION_EDITABLE_LAYERS/);
     assert.match(source, /buildLayoutOverrideStyle/);
+    assert.match(source, /edit\.kind === "stack"/);
+    assert.match(source, /style\.zIndex = edit\.order/);
+    assert.match(source, /activeSlideItemOverride/);
+    assert.match(source, /activeBrollItemOverride/);
+    assert.match(source, /defaultStackOrders/);
     assert.match(source, /primaryVisual/);
     assert.match(source, /export const calculateMetadata/);
     assert.match(source, /props\.totalDurationInFrames/);
@@ -188,6 +200,7 @@ describe("SofLIA Bundle Agent services", () => {
     assert.doesNotMatch(source, /style\.transform/);
     assert.doesNotMatch(source, /translate[XYZ]?\(/);
     assert.doesNotMatch(source, /scale\(/);
+    assert.doesNotMatch(source, /gridTemplateColumns/);
     assert.match(source, /<Video/);
     assert.match(source, /<Img/);
     assert.match(source, /<Audio/);
@@ -195,6 +208,9 @@ describe("SofLIA Bundle Agent services", () => {
     assert.doesNotMatch(source, /Locucion principal activa/);
     assert.doesNotMatch(source, /Direccion visual:/);
     assert.match(bundle.hash, /^[a-f0-9]{64}$/);
+    assert.match(readme, /Layout contract: v2/);
+    assert.match(readme, /Coordinate space: canvas pixels/);
+    assert.match(readme, /slide:\{index\}/);
   });
 
   it("generates structurally different template sources for different visual intents", async () => {
@@ -268,11 +284,14 @@ describe("SofLIA Bundle Agent services", () => {
     const report = await validateGeneratedRemotionBundle(bundle.buffer, bundle.originalFileName);
     const zip = await JSZip.loadAsync(bundle.buffer);
     const source = await zip.file("src/index.tsx")!.async("text");
+    const readme = await zip.file("README.md")!.async("text");
 
     assert.equal(report.isValid, true);
-    assert.equal(report.info.manifest?.compositionId, "courseforge-template-base");
+    assert.equal(report.info.manifest?.compositionId, "soflia-engine-template-base");
     assert.equal(report.info.manifest?.exportMode, "root");
-    assert.equal(bundle.originalFileName, "courseforge-remotion-template-base.zip");
+    assert.equal(report.info.manifest?.layoutCoordinateSpace, "canvas");
+    assert.equal(bundle.originalFileName, "soflia-engine-video-template-base.zip");
+    assert.match(readme, /Layout contract: v2/);
     assert.doesNotMatch(source, /transform\s*:/);
     assert.doesNotMatch(source, /translate[XYZ]?\(/);
     assert.doesNotMatch(source, /scale\(/);

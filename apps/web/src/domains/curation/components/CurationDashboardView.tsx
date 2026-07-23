@@ -2,7 +2,10 @@
 
 import type { ReactNode } from "react";
 import { BookOpen, PlayCircle, RefreshCw } from "lucide-react";
-import { CurationDashboard } from "./CurationDashboard";
+import {
+  CurationDashboard,
+  type CurationLessonOption,
+} from "./CurationDashboard";
 import { CurationReviewPanel } from "./CurationReviewPanel";
 import type { CurationRow } from "../types/curation.types";
 import { UpstreamChangeAlert } from "@/shared/components/UpstreamChangeAlert";
@@ -30,23 +33,36 @@ interface CurationDashboardViewProps {
   isGenerating: boolean;
   isLoadingModal: boolean;
   isValidating: boolean;
+  invalidRowsCount: number;
   modalConfig: CurationModalConfig;
   onApprove: () => Promise<void> | void;
-  onContinue?: () => void;
+  onContinue?: () => Promise<void> | void;
   onDismissDirty: () => Promise<void> | void;
   onIterateDirty: () => Promise<void> | void;
   onModalClose: () => void;
   onRegenerate: () => Promise<void> | void;
+  onIterateInvalidSources: () => Promise<void> | void;
   onReject: () => Promise<void> | void;
   onResetStep: () => void;
   onResume: () => Promise<void> | void;
   onValidate: () => Promise<void> | void;
   pendingValidationCount: number;
+  missingCoverageCount: number;
+  lessons: CurationLessonOption[];
   reviewNotes: string;
   rows: CurationRow[];
   setReviewNotes: (value: string) => void;
   updateRow: (rowId: string, updates: Partial<CurationRow>) => Promise<void>;
   deleteRow: (rowId: string) => Promise<void>;
+  addManualUrl: (
+    lesson: { lessonId: string; lessonTitle: string },
+    url: string,
+  ) => Promise<boolean>;
+  addManualPdf: (
+    lesson: { lessonId: string; lessonTitle: string },
+    file: File,
+  ) => Promise<boolean>;
+  validateRow: (rowId: string) => Promise<boolean>;
   upstreamDirty: boolean;
   upstreamDirtySource?: string | null;
   validatedCount: number;
@@ -61,6 +77,7 @@ export function CurationDashboardView({
   isGenerating,
   isLoadingModal,
   isValidating,
+  invalidRowsCount,
   modalConfig,
   onApprove,
   onContinue,
@@ -68,11 +85,14 @@ export function CurationDashboardView({
   onIterateDirty,
   onModalClose,
   onRegenerate,
+  onIterateInvalidSources,
   onReject,
   onResetStep,
   onResume,
   onValidate,
   pendingValidationCount,
+  missingCoverageCount,
+  lessons,
   reviewNotes,
   rows,
   setReviewNotes,
@@ -80,6 +100,9 @@ export function CurationDashboardView({
   upstreamDirty,
   upstreamDirtySource,
   validatedCount,
+  addManualUrl,
+  addManualPdf,
+  validateRow,
 }: CurationDashboardViewProps) {
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-20 animate-in fade-in duration-500">
@@ -121,6 +144,10 @@ export function CurationDashboardView({
         onUpdateRow={updateRow}
         onDeleteRow={deleteRow}
         isGenerating={isGenerating}
+        lessons={lessons}
+        onAddUrl={addManualUrl}
+        onAddPdf={addManualPdf}
+        onRevalidate={validateRow}
       />
 
       {upstreamDirty && (
@@ -138,12 +165,15 @@ export function CurationDashboardView({
         curationBlocked={curationBlocked}
         isGenerating={isGenerating}
         isValidating={isValidating}
+        invalidRowsCount={invalidRowsCount}
         onApprove={onApprove}
         onContinue={onContinue}
+        onIterateInvalidSources={onIterateInvalidSources}
         onRegenerate={onRegenerate}
         onReject={onReject}
         onValidate={onValidate}
         pendingValidationCount={pendingValidationCount}
+        missingCoverageCount={missingCoverageCount}
         reviewNotes={reviewNotes}
         setReviewNotes={setReviewNotes}
         rowsLength={rows.length}

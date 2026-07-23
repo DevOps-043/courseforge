@@ -1,299 +1,428 @@
-import { useMemo, useState } from 'react';
-import { CurationRow } from '../types/curation.types';
-import { CheckCircle2, XCircle, ChevronDown, ChevronRight, Layers, BookOpen, ExternalLink, FileText, Trash2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+"use client";
+
+import { useMemo, useRef, useState } from "react";
+import {
+  BookOpen,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  FileText,
+  Link2,
+  RefreshCw,
+  Trash2,
+  Upload,
+  XCircle,
+} from "lucide-react";
+import type { CurationRow } from "../types/curation.types";
+
+export interface CurationLessonOption {
+  id: string;
+  title: string;
+}
+
+interface CurationLessonGroup extends CurationLessonOption {
+  sources: CurationRow[];
+}
 
 interface CurationDashboardProps {
+  lessons: CurationLessonOption[];
   rows: CurationRow[];
   onUpdateRow: (id: string, updates: Partial<CurationRow>) => void;
   onDeleteRow: (id: string) => void;
+  onAddUrl: (lesson: { lessonId: string; lessonTitle: string }, url: string) => Promise<boolean>;
+  onAddPdf: (lesson: { lessonId: string; lessonTitle: string }, file: File) => Promise<boolean>;
+  onRevalidate: (id: string) => Promise<boolean>;
   isGenerating: boolean;
 }
 
-export function CurationDashboard({ rows, onUpdateRow, onDeleteRow, isGenerating }: CurationDashboardProps) {
-  
-  // 1. Stats Calculation
-  const stats = useMemo(() => {
-    return {
-      total: rows.length,
-      apta: rows.filter(r => r.apta === true).length,
-      rejected: rows.filter(r => r.apta === false).length,
-      pending: rows.filter(r => r.apta === null).length,
-      auto: rows.filter(r => r.auto_evaluated).length,
-      lessons: new Set(rows.map(r => r.lesson_id)).size
-    };
-  }, [rows]);
+function sourceStatus(row: CurationRow) {
+  if (row.validation_report?.status) return row.validation_report.status;
+  if (!row.auto_evaluated) return "pending";
+  return row.apta ? "valid" : "invalid";
+}
 
-  // 2. Group by Lesson Only
-  const groupedByLesson = useMemo(() => {
-    const groups: Record<string, { title: string; sources: CurationRow[] }> = {};
+function normalizeLessonTitle(value: string | null | undefined) {
+  return (value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
 
-    rows.forEach(row => {
-      const lessonKey = row.lesson_id || 'unknown';
-      const lessonTitle = row.lesson_title || lessonKey;
+function sourceDedupeKey(row: CurationRow) {
+  const sourceKey =
+    row.source_kind === "pdf"
+      ? row.content_sha256 || row.storage_path || row.source_ref
+      : row.source_ref;
+  return [
+    normalizeLessonTitle(row.lesson_title || row.lesson_id),
+    row.source_kind || "url",
+    (sourceKey || "").trim().toLowerCase(),
+  ].join("|");
+}
 
-      if (!groups[lessonKey]) {
-        groups[lessonKey] = { title: lessonTitle, sources: [] };
+function preferSourceRow(current: CurationRow, next: CurationRow) {
+  if (current.origin !== "manual" && next.origin === "manual") return next;
+  if (!current.apta && next.apta) return next;
+  return Date.parse(next.updated_at || "") > Date.parse(current.updated_at || "")
+    ? next
+    : current;
+}
+
+export function CurationDashboard({
+  lessons,
+  rows,
+  onUpdateRow,
+  onDeleteRow,
+  onAddUrl,
+  onAddPdf,
+  onRevalidate,
+  isGenerating,
+}: CurationDashboardProps) {
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [addingUrl, setAddingUrl] = useState<string | null>(null);
+  const [urlValue, setUrlValue] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const groups = useMemo(() => {
+    const lessonMap = new Map<string, CurationLessonGroup>();
+    const titleToKey = new Map<string, string>();
+
+    for (const lesson of lessons) {
+      const titleKey = normalizeLessonTitle(lesson.title);
+      const key = titleKey || lesson.id;
+      if (!lessonMap.has(key)) {
+        lessonMap.set(key, { ...lesson, sources: [] });
       }
-      
-      groups[lessonKey].sources.push(row);
-    });
+      if (titleKey) titleToKey.set(titleKey, key);
+      titleToKey.set(normalizeLessonTitle(lesson.id), key);
+    }
 
-    Object.values(groups).forEach(group => {
-      group.sources.sort((a, b) => {
-        if (a.apta && !b.apta) return -1;
-        if (!a.apta && b.apta) return 1;
-        return 0;
-      });
-    });
+    const sourceKeysByGroup = new Map<string, Map<string, CurationRow>>();
+    for (const row of rows) {
+      const titleKey = normalizeLessonTitle(row.lesson_title);
+      const idKey = normalizeLessonTitle(row.lesson_id);
+      const key = titleToKey.get(titleKey) || titleToKey.get(idKey) || titleKey || row.lesson_id;
 
-    return groups;
-  }, [rows]);
+      if (!lessonMap.has(key)) {
+        lessonMap.set(key, {
+          id: row.lesson_id,
+          title: row.lesson_title || row.lesson_id,
+          sources: [],
+        });
+      }
 
-  // Collapsible Lesson State
-  const [collapsedLessons, setCollapsedLessons] = useState<Record<string, boolean>>({});
-  
-  const toggleLesson = (key: string) => {
-    setCollapsedLessons(prev => ({ ...prev, [key]: !prev[key] }));
+      const groupSourceKeys =
+        sourceKeysByGroup.get(key) || new Map<string, CurationRow>();
+      const dedupeKey = sourceDedupeKey(row);
+      const existing = groupSourceKeys.get(dedupeKey);
+      groupSourceKeys.set(
+        dedupeKey,
+        existing ? preferSourceRow(existing, row) : row,
+      );
+      sourceKeysByGroup.set(key, groupSourceKeys);
+    }
+
+    for (const [key, group] of lessonMap) {
+      const uniqueSources = sourceKeysByGroup.get(key);
+      group.sources = uniqueSources ? [...uniqueSources.values()] : [];
+    }
+    return [...lessonMap.values()];
+  }, [lessons, rows]);
+
+  const stats = useMemo(
+    () => ({
+      lessons: groups.length,
+      valid: groups.flatMap((group) => group.sources).filter((row) => sourceStatus(row) === "valid" && row.apta).length,
+      invalid: groups.flatMap((group) => group.sources).filter((row) => sourceStatus(row) === "invalid").length,
+      manual: groups.flatMap((group) => group.sources).filter((row) => row.origin === "manual").length,
+    }),
+    [groups],
+  );
+  const visibleRowsCount = groups.reduce(
+    (total, group) => total + group.sources.length,
+    0,
+  );
+
+  const submitUrl = async (lesson: CurationLessonOption) => {
+    if (!urlValue.trim()) return;
+    setBusy(`url:${lesson.id}`);
+    const success = await onAddUrl(
+      { lessonId: lesson.id, lessonTitle: lesson.title },
+      urlValue.trim(),
+    );
+    setBusy(null);
+    if (success) {
+      setAddingUrl(null);
+      setUrlValue("");
+    }
   };
 
-  if (rows.length === 0 && !isGenerating) {
-     return (
-        <div className="flex flex-col items-center justify-center p-12 text-gray-500 dark:text-[#6C757D] border border-dashed border-gray-300 dark:border-[#1E2329] rounded-xl bg-gray-50 dark:bg-[#0F1419]/50">
-           <Layers className="mb-4 opacity-50" size={48} />
-           <p className="text-lg font-medium text-gray-900 dark:text-[#E9ECEF]">No hay fuentes curadas aún.</p>
-           <p className="text-sm">Inicia la curaduría para comenzar a buscar.</p>
-        </div>
-     );
-  }
+  const submitPdf = async (lesson: CurationLessonOption, file?: File) => {
+    if (!file) return;
+    setBusy(`pdf:${lesson.id}`);
+    await onAddPdf({ lessonId: lesson.id, lessonTitle: lesson.title }, file);
+    setBusy(null);
+    const input = fileInputs.current[lesson.id];
+    if (input) input.value = "";
+  };
 
   return (
-    <div className="space-y-6">
-      
-      {/* 1. Stats Bar */}
-      <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl bg-white dark:bg-[#0F1419] border border-gray-200 dark:border-[#1E2329] shadow-sm">
-         <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-[#1F5AF6]/10 text-[#1F5AF6] border border-[#1F5AF6]/20">
-            <BookOpen size={16} />
-            <span className="font-bold">{stats.lessons}</span>
-            <span className="text-xs opacity-80 uppercase tracking-wide">Lecciones</span>
-         </div>
-         <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-[#00D4B3]/10 text-[#00D4B3] border border-[#00D4B3]/20">
-            <CheckCircle2 size={16} />
-            <span className="font-bold">{stats.apta}</span>
-            <span className="text-xs opacity-80 uppercase tracking-wide">Fuentes Válidas</span>
-         </div>
-         <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-rose-500/10 text-rose-500 dark:text-rose-400 border border-rose-500/20">
-            <XCircle size={16} />
-            <span className="font-bold">{stats.rejected}</span>
-            <span className="text-xs opacity-80 uppercase tracking-wide">Inválidas</span>
-         </div>
-         
-         <div className="ml-auto text-xs text-gray-500 dark:text-[#6C757D] flex items-center gap-2">
-            <span>{stats.auto} auto-validadas</span>
-            <div className="h-4 w-px bg-gray-200 dark:bg-[#1E2329] mx-2" />
-            <span>Total: {stats.total} fuentes</span>
-         </div>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-3 border border-gray-200 bg-white p-4 shadow-sm dark:border-[#1E2329] dark:bg-[#0F1419]">
+        <Stat icon={BookOpen} value={stats.lessons} label="Lecciones" tone="blue" />
+        <Stat icon={CheckCircle2} value={stats.valid} label="Validas" tone="green" />
+        <Stat icon={XCircle} value={stats.invalid} label="Invalidas" tone="red" />
+        <span className="ml-auto text-xs text-gray-500 dark:text-[#6C757D]">
+          {stats.manual} manuales / {visibleRowsCount - stats.manual} automaticas
+        </span>
       </div>
 
-      {isGenerating && stats.total === 0 && (
-         <div className="p-8 text-center animate-pulse text-[#00D4B3]">
-            <p>Investigando fuentes para cada lección...</p>
-            <p className="text-xs text-gray-500 dark:text-[#6C757D] mt-2">Búsqueda profunda en progreso (1-2 fuentes por lección).</p>
-         </div>
+      {isGenerating && (
+        <div className="border border-[#00D4B3]/20 bg-[#00D4B3]/5 p-4 text-sm text-[#008f79] dark:text-[#00D4B3]">
+          OpenAI esta buscando candidatos. Courseforge valida cada resultado antes de guardarlo.
+        </div>
       )}
 
-      {/* 2. Lesson List */}
       <div className="space-y-3">
-        {Object.entries(groupedByLesson).map(([lessonId, { title, sources }]) => {
-          const isCollapsed = collapsedLessons[lessonId];
-          
-          // Lesson stats
-          const validSources = sources.filter(s => s.apta === true).length;
-          const totalSources = sources.length;
-          const isComplete = validSources > 0;
-
+        {groups.map((lesson) => {
+          const isCollapsed = collapsed[lesson.id];
+          const validCount = lesson.sources.filter(
+            (source) => source.apta && sourceStatus(source) === "valid",
+          ).length;
           return (
-            <div key={lessonId} className="border border-gray-200 dark:border-[#1E2329] rounded-xl overflow-hidden bg-white dark:bg-[#0F1419]">
-              {/* Lesson Header */}
-              <button 
-                 onClick={() => toggleLesson(lessonId)}
-                 className="w-full flex items-center gap-3 p-4 bg-white dark:bg-[#0F1419] hover:bg-gray-50 dark:hover:bg-[#1E2329]/50 transition-colors text-left group"
-              >
-                 {isCollapsed ? (
-                    <ChevronRight size={18} className="text-gray-400 dark:text-[#6C757D] group-hover:text-gray-900 dark:group-hover:text-white transition-colors" />
-                 ) : (
-                    <ChevronDown size={18} className="text-gray-400 dark:text-[#6C757D] group-hover:text-gray-900 dark:group-hover:text-white transition-colors" />
-                 )}
-                 
-                 <div className="flex-1 min-w-0">
-                    <h3 className={`font-semibold text-base truncate ${isComplete ? 'text-[#00D4B3]' : 'text-gray-900 dark:text-[#E9ECEF]'}`}>
-                       {title}
-                    </h3>
-                 </div>
+            <section
+              key={lesson.id}
+              className="overflow-hidden border border-gray-200 bg-white dark:border-[#1E2329] dark:bg-[#0F1419]"
+            >
+              <div className="flex min-h-14 items-center gap-3 px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCollapsed((current) => ({ ...current, [lesson.id]: !current[lesson.id] }))
+                  }
+                  className="p-1 text-gray-500 hover:text-gray-900 dark:hover:text-white"
+                  title={isCollapsed ? "Mostrar fuentes" : "Ocultar fuentes"}
+                >
+                  {isCollapsed ? <ChevronRight size={18} /> : <ChevronDown size={18} />}
+                </button>
+                <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 dark:text-white">
+                  {lesson.title}
+                </h3>
+                <span
+                  className={`text-xs font-semibold ${
+                    validCount >= 1 ? "text-[#00a98f]" : "text-amber-600 dark:text-amber-400"
+                  }`}
+                >
+                  {validCount} / 2 validas
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddingUrl(addingUrl === lesson.id ? null : lesson.id);
+                    setUrlValue("");
+                  }}
+                  className="p-2 text-[#1F5AF6] hover:bg-[#1F5AF6]/10"
+                  title="Agregar URL"
+                >
+                  <Link2 size={17} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputs.current[lesson.id]?.click()}
+                  className="p-2 text-[#00a98f] hover:bg-[#00D4B3]/10"
+                  title="Subir PDF"
+                >
+                  <Upload size={17} />
+                </button>
+                <input
+                  ref={(element) => {
+                    fileInputs.current[lesson.id] = element;
+                  }}
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  className="hidden"
+                  onChange={(event) => submitPdf(lesson, event.target.files?.[0])}
+                />
+              </div>
 
-                 {/* Source count badge */}
-                 <div className={`flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded border
-                    ${isComplete 
-                      ? 'text-[#00D4B3] bg-[#00D4B3]/10 border-[#00D4B3]/20' 
-                      : 'text-gray-500 dark:text-[#6C757D] bg-gray-100 dark:bg-[#151A21] border-gray-200 dark:border-[#1E2329]'
-                    }`}
-                 >
-                    <FileText size={12} />
-                    {validSources} / {totalSources}
-                 </div>
-              </button>
+              {!isCollapsed && (
+                <div className="border-t border-gray-200 p-4 dark:border-[#1E2329]">
+                  {addingUrl === lesson.id && (
+                    <div className="mb-3 flex gap-2">
+                      <input
+                        type="url"
+                        value={urlValue}
+                        onChange={(event) => setUrlValue(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") void submitUrl(lesson);
+                        }}
+                        placeholder="https://..."
+                        className="min-w-0 flex-1 border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-[#1F5AF6] dark:border-[#1E2329] dark:bg-[#151A21] dark:text-white"
+                      />
+                      <button
+                        type="button"
+                        disabled={busy === `url:${lesson.id}`}
+                        onClick={() => void submitUrl(lesson)}
+                        className="bg-[#1F5AF6] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                      >
+                        Agregar
+                      </button>
+                    </div>
+                  )}
 
-              {/* Sources List */}
-              <AnimatePresence>
-                 {!isCollapsed && (
-                    <motion.div 
-                      key="content"
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="border-t border-gray-200 dark:border-[#1E2329]"
-                    >
-                       <div className="p-4 space-y-3">
-                          {sources.length === 0 ? (
-                            <p className="text-gray-500 dark:text-[#6C757D] text-sm italic">No se encontraron fuentes para esta lección.</p>
-                          ) : (
-                            sources.map((source, idx) => (
-                              <LessonSourceCard 
-                                key={source.id} 
-                                source={source} 
-                                index={idx + 1}
-                                onUpdate={onUpdateRow}
-                                onDelete={onDeleteRow}
-                              />
-                            ))
-                          )}
-                       </div>
-                    </motion.div>
-                 )}
-              </AnimatePresence>
-            </div>
+                  {busy === `pdf:${lesson.id}` && (
+                    <p className="mb-3 text-xs text-[#00a98f]">Subiendo y validando PDF...</p>
+                  )}
+
+                  {lesson.sources.length === 0 ? (
+                    <p className="py-4 text-center text-sm text-gray-500">
+                      Esta leccion aun no tiene fuentes. Agrega una URL o PDF propio.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {lesson.sources.map((source) => (
+                        <SourceRow
+                          key={source.id}
+                          source={source}
+                          onUpdate={onUpdateRow}
+                          onDelete={onDeleteRow}
+                          onRevalidate={onRevalidate}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
           );
         })}
       </div>
-
     </div>
   );
 }
 
-// Simplified Source Card
-interface LessonSourceCardProps {
-  source: CurationRow;
-  index: number;
-  onUpdate: (id: string, updates: Partial<CurationRow>) => void;
-  onDelete: (id: string) => void;
+function Stat({
+  icon: Icon,
+  value,
+  label,
+  tone,
+}: {
+  icon: typeof BookOpen;
+  value: number;
+  label: string;
+  tone: "blue" | "green" | "red";
+}) {
+  const colors = {
+    blue: "text-[#1F5AF6] bg-[#1F5AF6]/10",
+    green: "text-[#00a98f] bg-[#00D4B3]/10",
+    red: "text-rose-500 bg-rose-500/10",
+  };
+  return (
+    <span className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs ${colors[tone]}`}>
+      <Icon size={15} />
+      <strong>{value}</strong>
+      {label}
+    </span>
+  );
 }
 
-function LessonSourceCard({ source, index, onUpdate, onDelete }: LessonSourceCardProps) {
-  const isValid = source.apta === true;
-  const isInvalid = source.apta === false;
-
-  const statusColor = isValid 
-    ? 'border-[#00D4B3]/30 bg-[#00D4B3]/5' 
-    : isInvalid 
-      ? 'border-rose-500/30 bg-rose-500/5' 
-      : 'border-gray-200 dark:border-[#1E2329] bg-white dark:bg-[#151A21]';
-
-  const handleToggleApta = () => {
-    const newValue = source.apta === null ? true : source.apta === true ? false : true;
-    onUpdate(source.id, { apta: newValue });
-  };
-
-  const handleDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (confirm('¿Estás seguro de eliminar esta fuente?')) {
-      onDelete(source.id);
-    }
-  };
+function SourceRow({
+  source,
+  onUpdate,
+  onDelete,
+  onRevalidate,
+}: {
+  source: CurationRow;
+  onUpdate: (id: string, updates: Partial<CurationRow>) => void;
+  onDelete: (id: string) => void;
+  onRevalidate: (id: string) => Promise<boolean>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const status = sourceStatus(source);
+  const statusLabel = {
+    pending: "Pendiente",
+    valid: "Valida",
+    invalid: "Invalida",
+    review_required: "Requiere revision",
+  }[status];
+  const statusClass =
+    status === "valid"
+      ? "text-[#00a98f] bg-[#00D4B3]/10"
+      : status === "invalid"
+        ? "text-rose-500 bg-rose-500/10"
+        : "text-amber-600 bg-amber-500/10 dark:text-amber-400";
+  const isPdf = source.source_kind === "pdf";
 
   return (
-    <div className={`p-4 rounded-xl border ${statusColor} transition-all hover:border-[#00D4B3]/50 relative group/card`}>
-      <div className="flex items-start gap-3">
-        {/* Index Number */}
-        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0
-          ${isValid ? 'bg-[#00D4B3] text-[#0A2540]' : isInvalid ? 'bg-rose-500 text-white' : 'bg-gray-200 dark:bg-[#1E2329] text-gray-600 dark:text-[#6C757D]'}`}
-        >
-          {index}
+    <div className="flex items-start gap-3 border border-gray-200 bg-gray-50 p-3 dark:border-[#1E2329] dark:bg-[#151A21]">
+      <FileText size={18} className="mt-0.5 shrink-0 text-gray-400" />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-white">
+            {source.source_title || source.file_name || "Fuente sin titulo"}
+          </p>
+          <span className="bg-gray-200 px-2 py-0.5 text-[10px] font-semibold uppercase text-gray-600 dark:bg-[#1E2329] dark:text-gray-300">
+            {source.origin === "manual" ? "Manual" : "Automatica"}
+          </span>
+          <span className={`px-2 py-0.5 text-[10px] font-semibold ${statusClass}`}>
+            {statusLabel}
+          </span>
         </div>
-
-        {/* Source Content */}
-        <div className="flex-1 min-w-0 space-y-2">
-          {/* Title & Link */}
-          <div className="flex items-start gap-2">
-            <h4 className="text-gray-900 dark:text-white font-medium text-sm leading-tight flex-1">
-              {source.source_title || 'Fuente sin título'}
-            </h4>
-            <div className="flex items-center gap-2 shrink-0">
-               {source.source_ref && (
-                 <a 
-                   href={source.source_ref} 
-                   target="_blank" 
-                   rel="noopener noreferrer"
-                   className="text-[#1F5AF6] hover:text-[#1F5AF6]/80 transition-colors p-1"
-                 >
-                   <ExternalLink size={14} />
-                 </a>
-               )}
-               <button
-                 onClick={handleDelete}
-                 className="text-rose-500 hover:text-rose-600 dark:hover:text-rose-400 opacity-0 group-hover/card:opacity-100 transition-opacity p-1"
-                 title="Eliminar fuente"
-               >
-                 <Trash2 size={14} />
-               </button>
-            </div>
-          </div>
-
-          {/* URL Preview */}
-          {source.source_ref && (
-            <p className="text-gray-500 dark:text-[#6C757D] text-xs truncate font-mono">
-              {source.source_ref}
-            </p>
-          )}
-
-          {/* Rationale */}
-          {source.source_rationale && (
-            <p className="text-gray-600 dark:text-[#94A3B8] text-xs leading-relaxed">
-              {source.source_rationale}
-            </p>
-          )}
-
-          {/* Tags/Notes */}
-          {source.notes && (
-            <div className="flex flex-wrap gap-1 mt-2">
-              <span className="text-[10px] bg-gray-100 dark:bg-[#1E2329] text-gray-600 dark:text-[#6C757D] px-2 py-0.5 rounded">
-                {source.notes}
-              </span>
-            </div>
-          )}
-
-          {/* Auto-evaluation badge */}
-          {source.auto_evaluated && source.auto_reason && (
-            <span className="inline-flex items-center gap-1 text-[10px] text-[#00D4B3] bg-[#00D4B3]/10 px-2 py-0.5 rounded border border-[#00D4B3]/20">
-              <CheckCircle2 size={10} />
-              {source.auto_reason.length > 40 ? source.auto_reason.substring(0, 40) + '...' : source.auto_reason}
-            </span>
-          )}
-        </div>
-
-        {/* Status Toggle Button */}
-        <button
-          onClick={handleToggleApta}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0
-            ${isValid 
-              ? 'bg-[#00D4B3]/20 text-[#00D4B3] border border-[#00D4B3]/30 hover:bg-[#00D4B3]/30' 
-              : isInvalid 
-                ? 'bg-rose-500/20 text-rose-500 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/30' 
-                : 'bg-gray-100 dark:bg-[#1E2329] text-gray-500 dark:text-[#6C757D] border border-gray-200 dark:border-[#1E2329] hover:border-[#00D4B3]/50 hover:text-gray-900 dark:hover:text-white'
-            }`}
-        >
-          {isValid ? 'Válida' : isInvalid ? 'Inválida' : 'Pendiente'}
-        </button>
+        <p className="mt-1 truncate text-xs text-gray-500">
+          {isPdf ? source.file_name : source.source_ref}
+        </p>
+        {(source.validation_report?.reason || source.motivo_no_apta) && (
+          <p className="mt-1 text-xs text-gray-500">
+            {source.validation_report?.reason || source.motivo_no_apta}
+          </p>
+        )}
       </div>
+      {!isPdf && (
+        <a
+          href={source.source_ref}
+          target="_blank"
+          rel="noreferrer"
+          className="p-1.5 text-[#1F5AF6] hover:bg-[#1F5AF6]/10"
+          title="Abrir fuente"
+        >
+          <ExternalLink size={15} />
+        </a>
+      )}
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          await onRevalidate(source.id);
+          setBusy(false);
+        }}
+        className="p-1.5 text-gray-500 hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50 dark:hover:bg-[#1E2329] dark:hover:text-white"
+        title="Revalidar fuente"
+      >
+        <RefreshCw size={15} className={busy ? "animate-spin" : ""} />
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          if (confirm("Eliminar esta fuente?")) onDelete(source.id);
+        }}
+        className="p-1.5 text-rose-500 hover:bg-rose-500/10"
+        title="Eliminar fuente"
+      >
+        <Trash2 size={15} />
+      </button>
+      <button
+        type="button"
+        onClick={() => onUpdate(source.id, { apta: !source.apta })}
+        className={`px-2 py-1 text-xs ${source.apta ? "text-[#00a98f]" : "text-gray-500"}`}
+        title="Cambiar aptitud manual"
+      >
+        {source.apta ? "Apta" : "No apta"}
+      </button>
     </div>
   );
 }

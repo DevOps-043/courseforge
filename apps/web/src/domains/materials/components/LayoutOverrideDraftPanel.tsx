@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Grid3X3, Magnet, Move, RotateCcw, Scissors } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Grid3X3,
+  Magnet,
+  Move,
+  RotateCcw,
+  Scissors,
+} from "lucide-react";
 import {
   ASSEMBLY_HEIGHT,
   ASSEMBLY_WIDTH,
@@ -17,8 +25,10 @@ import type {
 } from "./LayoutOverridePreviewOverlay";
 import {
   createEmptyLayoutOverrideManifest,
+  getLayoutLayerStackPosition,
+  moveLayoutLayerInStack,
   readLayoutLayerEdit,
-  removeLayoutLayerEdits,
+  resetLayoutLayerToDefault,
   type LayoutLayerOption,
   upsertLayoutLayerEdit,
 } from "./layoutOverrideDraftModel";
@@ -80,6 +90,11 @@ export function LayoutOverrideDraftPanel({
   const displayY = position?.y ?? selectedDefaultBox?.y ?? 0;
   const displayWidth = size?.width ?? selectedDefaultBox?.width ?? ASSEMBLY_WIDTH;
   const displayHeight = size?.height ?? selectedDefaultBox?.height ?? ASSEMBLY_HEIGHT;
+  const stackPosition = getLayoutLayerStackPosition({
+    manifest,
+    layerId: selectedLayerId,
+    editableLayers,
+  });
 
   const updateManifest = (nextManifest: LayoutOverrideManifest) => {
     onChange(nextManifest.edits.length > 0 ? [nextManifest] : []);
@@ -141,7 +156,33 @@ export function LayoutOverrideDraftPanel({
   };
 
   const resetLayer = () => {
-    updateManifest(removeLayoutLayerEdits(manifest, selectedLayerId));
+    updateManifest(
+      resetLayoutLayerToDefault({
+        manifest,
+        layerId: selectedLayerId,
+        editableLayers,
+      }),
+    );
+  };
+
+  const resetCrop = () => {
+    updateManifest({
+      ...manifest,
+      edits: manifest.edits.filter(
+        (edit) => !(edit.layerId === selectedLayerId && edit.kind === "crop"),
+      ),
+    });
+  };
+
+  const moveSelectedLayer = (direction: "backward" | "forward") => {
+    updateManifest(
+      moveLayoutLayerInStack({
+        manifest,
+        layerId: selectedLayerId,
+        editableLayers,
+        direction,
+      }),
+    );
   };
 
   const updateGridSettings = (patch: Partial<LayoutOverrideGridSettings>) => {
@@ -238,24 +279,53 @@ export function LayoutOverrideDraftPanel({
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(220px,0.8fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
-        <label className="space-y-1 text-xs font-semibold text-gray-600 dark:text-gray-300">
-          Capa
-          <select
-            value={selectedLayerId}
-            onChange={(event) =>
-              changeSelectedLayer(event.target.value as RemotionEditableLayerId)
-            }
-            disabled={disabled}
-            className="w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419] dark:text-white"
-          >
-            {editableLayers.map((layer) => (
-              <option key={layer.id} value={layer.id}>
-                {layer.detail ? `${layer.label} (${layer.detail})` : layer.label}
-              </option>
-            ))}
-          </select>
-        </label>
+      <div className="grid gap-4 xl:grid-cols-[minmax(220px,1fr)_minmax(140px,0.7fr)_minmax(140px,0.7fr)]">
+        <div className="space-y-2">
+          <label className="block space-y-1 text-xs font-semibold text-gray-600 dark:text-gray-300">
+            Capa
+            <select
+              value={selectedLayerId}
+              onChange={(event) =>
+                changeSelectedLayer(event.target.value as RemotionEditableLayerId)
+              }
+              disabled={disabled}
+              className="w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419] dark:text-white"
+            >
+              {editableLayers.map((layer) => (
+                <option key={layer.id} value={layer.id}>
+                  {layer.detail ? `${layer.label} (${layer.detail})` : layer.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => moveSelectedLayer("backward")}
+              disabled={disabled || !stackPosition.canMoveBackward}
+              title="Bajar una capa"
+              aria-label="Bajar una capa"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-gray-200 dark:hover:bg-white/5"
+            >
+              <ArrowDown className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => moveSelectedLayer("forward")}
+              disabled={disabled || !stackPosition.canMoveForward}
+              title="Subir una capa"
+              aria-label="Subir una capa"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-gray-200 dark:hover:bg-white/5"
+            >
+              <ArrowUp className="h-4 w-4" />
+            </button>
+            <span className="text-[11px] text-gray-500 dark:text-gray-400">
+              {stackPosition.total > 1 && stackPosition.index >= 0
+                ? `Nivel ${stackPosition.index + 1} de ${stackPosition.total}`
+                : "Orden fijo"}
+            </span>
+          </div>
+        </div>
 
         <div className="grid grid-cols-2 gap-2">
           <label className="space-y-1 text-xs font-semibold text-gray-600 dark:text-gray-300">
@@ -303,7 +373,23 @@ export function LayoutOverrideDraftPanel({
           </label>
         </div>
 
-        <div className="grid grid-cols-4 gap-2">
+      </div>
+
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <span className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          Recorte (%)
+        </span>
+        <button
+          type="button"
+          onClick={resetCrop}
+          disabled={disabled || !crop}
+          className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-gray-300 dark:hover:bg-white/5"
+        >
+          Mostrar completo
+        </button>
+      </div>
+
+      <div className="mt-2 grid gap-2 sm:grid-cols-4">
           {(["top", "right", "bottom", "left"] as const).map((field) => (
             <label
               key={field}
@@ -317,11 +403,10 @@ export function LayoutOverrideDraftPanel({
                 value={Math.round(((crop?.[field] ?? 0) as number) * 100)}
                 onChange={(event) => updateCrop(field, event.target.value)}
                 disabled={disabled}
-                className="w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419] dark:text-white"
+                className="w-full min-w-[56px] rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419] dark:text-white"
               />
             </label>
           ))}
-        </div>
       </div>
     </div>
   );

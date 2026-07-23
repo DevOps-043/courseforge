@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePolling } from '@/shared/hooks/usePolling';
 import { materialsService } from '../services/materials.service';
 import {
@@ -30,6 +30,7 @@ interface UseMaterialsReturn {
   isValidating: boolean;
   isReadyForQA: boolean;
   isApproved: boolean;
+  isStartingGeneration: boolean;
   generationStuckInfo: { isStuck: boolean; minutesElapsed: number } | null;
 }
 
@@ -52,15 +53,19 @@ function getGenerationStuckInfo(
 export function useMaterials(artifactId: string): UseMaterialsReturn {
   const [materials, setMaterials] = useState<MaterialsPayload | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isStartingGeneration, setIsStartingGeneration] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generationStuckInfo, setGenerationStuckInfo] = useState<{
     isStuck: boolean;
     minutesElapsed: number;
   } | null>(null);
+  const hasLoadedRef = useRef(false);
 
   const loadMaterials = useCallback(async () => {
     try {
-      setLoading(true);
+      if (!hasLoadedRef.current) {
+        setLoading(true);
+      }
       setError(null);
 
       const data = await materialsService.getMaterialsByArtifactId(artifactId);
@@ -70,6 +75,7 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
       console.error('Error loading materials:', err);
       setError('Error al cargar materiales');
     } finally {
+      hasLoadedRef.current = true;
       setLoading(false);
     }
   }, [artifactId]);
@@ -98,10 +104,16 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
 
   const startGeneration = useCallback(async () => {
     try {
+      setIsStartingGeneration(true);
       setError(null);
       const result = await materialsService.startMaterialsGeneration(artifactId);
       if (!result.success) {
-        setError(result.error || 'Error al iniciar generacion');
+        const resultError = 'error' in result ? result.error : undefined;
+        if (resultError?.includes('Ya existe un proceso de materiales en curso')) {
+          await loadMaterials();
+          return;
+        }
+        setError(resultError || 'Error al iniciar generacion');
         return;
       }
 
@@ -109,6 +121,8 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
     } catch (err) {
       console.error('Error starting generation:', err);
       setError('Error al iniciar generacion');
+    } finally {
+      setIsStartingGeneration(false);
     }
   }, [artifactId, loadMaterials]);
 
@@ -125,12 +139,13 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
           setError(result.error || 'Error en iteracion dirigida');
           return;
         }
+        await loadMaterials();
       } catch (err) {
         console.error('Error running fix iteration:', err);
         setError('Error en iteracion dirigida');
       }
     },
-    [],
+    [loadMaterials],
   );
 
   const validateLesson = useCallback(
@@ -278,6 +293,7 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
     isValidating: materials?.state === 'PHASE3_VALIDATING',
     isReadyForQA: materials?.state === 'PHASE3_READY_FOR_QA',
     isApproved: materials?.state === 'PHASE3_APPROVED',
+    isStartingGeneration,
     generationStuckInfo,
   };
 }
