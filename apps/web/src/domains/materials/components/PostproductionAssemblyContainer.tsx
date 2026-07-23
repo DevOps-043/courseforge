@@ -94,6 +94,27 @@ function getAssemblyFailureMessage(job: AssemblyJobTracker) {
     return job.error || 'El ensamblado no se completo. Revisa el ultimo evento del job.';
 }
 
+function getWorkerRecoverySummary(worker: RenderWorkerStatusView) {
+    const report = worker.last_capacity_report;
+    const localRecovery = report && typeof report === 'object' && !Array.isArray(report)
+        ? (report.localRecovery as Record<string, unknown> | undefined)
+        : undefined;
+    if (!localRecovery || typeof localRecovery !== 'object' || Array.isArray(localRecovery)) return null;
+    return {
+        pendingUploads: Number(localRecovery.pendingUploads || 0),
+        pendingCompletes: Number(localRecovery.pendingCompletes || 0),
+        pendingCleanup: Number(localRecovery.pendingCleanup || 0),
+        retainedBytes: Number(localRecovery.retainedBytes || 0),
+    };
+}
+
+function formatRecoveryBytes(value: number) {
+    if (value >= 1024 * 1024 * 1024) return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`;
+    if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+    if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+    return `${value} B`;
+}
+
 function getLayoutOverrideDraftKey(params: {
     componentId?: string | null;
     templateId?: string | null;
@@ -1536,7 +1557,9 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
 
                             {visibleDesktopWorkers.length ? (
                                 <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
-                                    {visibleDesktopWorkers.slice(0, 4).map((worker) => (
+                                    {visibleDesktopWorkers.slice(0, 4).map((worker) => {
+                                        const recovery = getWorkerRecoverySummary(worker);
+                                        return (
                                         <div key={worker.id} className="rounded-lg border border-gray-200 bg-white p-2 dark:border-[#6C757D]/10 dark:bg-[#151A21]">
                                             <div className="flex items-center justify-between gap-2">
                                                 <span className="truncate font-semibold text-gray-800 dark:text-gray-100">
@@ -1547,6 +1570,11 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                             <p className="mt-1 text-gray-500 dark:text-gray-400">
                                                 {[worker.platform, worker.arch, worker.app_version].filter(Boolean).join(' · ') || 'Sin metadata'} · heartbeat {worker.last_heartbeat_at ? new Date(worker.last_heartbeat_at).toLocaleString() : 'pendiente'}
                                             </p>
+                                            {recovery ? (
+                                                <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                                                    Recuperacion: {recovery.pendingUploads} subidas, {recovery.pendingCompletes} confirmaciones, {recovery.pendingCleanup} limpiezas, {formatRecoveryBytes(recovery.retainedBytes)} retenidos
+                                                </p>
+                                            ) : null}
                                             <button
                                                 type="button"
                                                 onClick={() => void handleRevokeWorker(worker.id)}
@@ -1561,7 +1589,8 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                                 Desvincular
                                             </button>
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             ) : null}
 

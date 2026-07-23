@@ -100,6 +100,24 @@ export interface WorkerJobCompleteInput {
   buildLog?: string;
 }
 
+type WorkerLocalRecoveryInput = {
+  pendingUploads: number;
+  pendingCompletes: number;
+  pendingCleanup: number;
+  retainedBytes: number;
+  jobs?: Array<{
+    jobId?: string;
+    jobType?: string;
+    remoteTable?: string;
+    localState?: string;
+    artifactReady?: boolean;
+    artifactChecksum?: string;
+    artifactSizeBytes?: number;
+    cleanupPolicy?: string;
+    cleanupStatus?: string;
+  }>;
+};
+
 export interface ExternalTemplatePreviewData {
   serveUrl: string | null;
   compositionId: string;
@@ -144,6 +162,36 @@ function readWorkerCapacity(input: Record<string, unknown>) {
       memoryGb: Number(input.memoryGb ?? rawCapacity.memoryGb) || null,
       source: typeof input.maxConcurrentJobs === "number" || typeof rawCapacity.maxConcurrentJobs === "number" ? "AUTO" : "UNKNOWN",
     },
+  };
+}
+
+function readLocalRecovery(input: Record<string, unknown>): WorkerLocalRecoveryInput | null {
+  const raw = input.localRecovery;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const source = raw as Record<string, unknown>;
+  const jobs = Array.isArray(source.jobs)
+    ? source.jobs
+      .filter((job): job is Record<string, unknown> => Boolean(job && typeof job === "object" && !Array.isArray(job)))
+      .slice(0, 25)
+      .map((job) => ({
+        jobId: typeof job.jobId === "string" ? job.jobId : undefined,
+        jobType: typeof job.jobType === "string" ? job.jobType : undefined,
+        remoteTable: typeof job.remoteTable === "string" ? job.remoteTable : undefined,
+        localState: typeof job.localState === "string" ? job.localState : undefined,
+        artifactReady: job.artifactReady === true,
+        artifactChecksum: typeof job.artifactChecksum === "string" ? job.artifactChecksum : undefined,
+        artifactSizeBytes: Number.isFinite(Number(job.artifactSizeBytes)) ? Math.max(0, Math.round(Number(job.artifactSizeBytes))) : undefined,
+        cleanupPolicy: typeof job.cleanupPolicy === "string" ? job.cleanupPolicy : undefined,
+        cleanupStatus: typeof job.cleanupStatus === "string" ? job.cleanupStatus : undefined,
+      }))
+    : undefined;
+
+  return {
+    pendingUploads: Math.max(0, Math.round(Number(source.pendingUploads || 0))),
+    pendingCompletes: Math.max(0, Math.round(Number(source.pendingCompletes || 0))),
+    pendingCleanup: Math.max(0, Math.round(Number(source.pendingCleanup || 0))),
+    retainedBytes: Math.max(0, Math.round(Number(source.retainedBytes || 0))),
+    jobs,
   };
 }
 
@@ -576,7 +624,7 @@ function assertWorkerCanAccessJob(worker: WorkerAuthContext, job: any) {
   if (job.input_snapshot?.renderProvider !== "desktop_worker") {
     throw new Error("JOB_PROVIDER_NOT_DESKTOP_WORKER");
   }
-  if (!["PENDING", "QUEUED", "WAITING_PROVIDER", "RUNNING"].includes(job.status)) {
+  if (!["PENDING", "QUEUED", "WAITING_PROVIDER", "RUNNING", "SUCCEEDED"].includes(job.status)) {
     throw new Error("JOB_NOT_CLAIMABLE");
   }
   if (job.worker_id && job.worker_id !== worker.id) {
@@ -1171,6 +1219,7 @@ export class DesktopWorkerControlPlane {
     const requestedStatus = input.status === "BUSY" ? "BUSY" : input.status === "OFFLINE" ? "OFFLINE" : "ONLINE";
     const now = new Date().toISOString();
     const capacity = readWorkerCapacity(input);
+    const localRecovery = readLocalRecovery(input);
     const activeJobIds = Array.isArray(input.activeJobIds)
       ? input.activeJobIds.filter((jobId): jobId is string => typeof jobId === "string")
       : [];
@@ -1182,7 +1231,9 @@ export class DesktopWorkerControlPlane {
         arch: sanitizeText(input.arch, ""),
         app_version: sanitizeText(input.appVersion, ""),
         max_concurrent_jobs: capacity.maxConcurrentJobs,
-        last_capacity_report: capacity.report,
+        last_capacity_report: localRecovery
+          ? { ...capacity.report, localRecovery: { ...localRecovery, jobs: undefined } }
+          : capacity.report,
         capacity_updated_at: now,
         last_heartbeat_at: requestedStatus === "OFFLINE" ? null : now,
         updated_at: now,
@@ -1208,7 +1259,40 @@ export class DesktopWorkerControlPlane {
         .in("status", ["RUNNING"]);
     }
 
+    if (localRecovery) {
+      await this.recordWorkerLocalRecovery(worker, localRecovery, now);
+    }
+
     return { ...data, status: resolveComputedWorkerStatus(data) };
+  }
+
+  private async recordWorkerLocalRecovery(
+    worker: WorkerAuthContext,
+    recovery: WorkerLocalRecoveryInput,
+    now: string,
+  ) {
+    const rows = (recovery.jobs || [])
+      .filter((job) => job.jobId && job.jobType && job.remoteTable && job.localState)
+      .map((job) => ({
+        worker_id: worker.id,
+        organization_id: worker.organizationId,
+        remote_table: sanitizeText(job.remoteTable, "production_jobs"),
+        remote_job_id: job.jobId,
+        job_type: sanitizeText(job.jobType, "render"),
+        local_state: sanitizeText(job.localState, "unknown"),
+        artifact_ready: job.artifactReady === true,
+        artifact_checksum: sanitizeText(job.artifactChecksum, "") || null,
+        artifact_size_bytes: job.artifactSizeBytes || null,
+        cleanup_policy: sanitizeText(job.cleanupPolicy, ""),
+        cleanup_status: sanitizeText(job.cleanupStatus, ""),
+        last_reported_at: now,
+        metadata: {},
+      }));
+    if (rows.length === 0) return;
+
+    await this.supabase
+      .from("render_worker_job_recovery_states")
+      .upsert(rows, { onConflict: "worker_id,remote_table,remote_job_id" });
   }
 
   async revokeWorker(workerId: string, organizationId: string) {
@@ -2337,6 +2421,106 @@ export class DesktopWorkerControlPlane {
     return data.signedUrl;
   }
 
+  async refreshUploadUrl(worker: WorkerAuthContext, jobId: string, input: Record<string, unknown>) {
+    const jobType = sanitizeText(input.jobType, "render");
+    const outputStoragePath = sanitizeText(input.outputStoragePath, "");
+    if (!outputStoragePath) throw new Error("INVALID_OUTPUT_STORAGE_PATH");
+
+    if (jobType === "template_build") {
+      const build = await this.getAuthorizedTemplateBuild(worker, jobId);
+      if (!build) throw new Error("TEMPLATE_BUILD_NOT_FOUND");
+      if (!outputStoragePath.startsWith(`${TEMPLATE_BUNDLE_BUCKET}/template-builds/${jobId}/`)) {
+        throw new Error("INVALID_TEMPLATE_BUILD_OUTPUT_STORAGE_PATH");
+      }
+      const storagePath = outputStoragePath.slice(`${TEMPLATE_BUNDLE_BUCKET}/`.length);
+      const { data, error } = await this.supabase.storage
+        .from(TEMPLATE_BUNDLE_BUCKET)
+        .createSignedUploadUrl(storagePath, { upsert: true });
+      if (error || !data?.signedUrl) throw new Error(`TEMPLATE_BUILD_UPLOAD_URL_FAILED: ${error?.message || "Unknown error"}`);
+      return { uploadUrl: data.signedUrl, outputStoragePath, expiresInSeconds: SIGNED_URL_TTL_SECONDS };
+    }
+
+    if (jobType === "template_preview") {
+      const preview = await this.getAuthorizedTemplatePreview(worker, jobId);
+      if (!preview) throw new Error("TEMPLATE_PREVIEW_NOT_FOUND");
+      if (!outputStoragePath.startsWith("template-previews/")) {
+        throw new Error("INVALID_TEMPLATE_PREVIEW_OUTPUT_STORAGE_PATH");
+      }
+      const { data, error } = await this.supabase.storage
+        .from(VIDEO_BUCKET)
+        .createSignedUploadUrl(outputStoragePath, { upsert: true });
+      if (error || !data?.signedUrl) throw new Error(`TEMPLATE_PREVIEW_UPLOAD_URL_FAILED: ${error?.message || "Unknown error"}`);
+      return { uploadUrl: data.signedUrl, outputStoragePath, expiresInSeconds: SIGNED_URL_TTL_SECONDS };
+    }
+
+    const job = await this.getAuthorizedWorkerJob(worker, jobId);
+    if (job.worker_id && job.worker_id !== worker.id) throw new Error("JOB_CLAIMED_BY_ANOTHER_WORKER");
+    if (!outputStoragePath.startsWith("completed/")) {
+      throw new Error("INVALID_OUTPUT_STORAGE_PATH");
+    }
+    const { data, error } = await this.supabase.storage
+      .from(VIDEO_BUCKET)
+      .createSignedUploadUrl(outputStoragePath, { upsert: true });
+    if (error || !data?.signedUrl) throw new Error(`OUTPUT_UPLOAD_URL_FAILED: ${error?.message || "Unknown error"}`);
+    return { uploadUrl: data.signedUrl, outputStoragePath, expiresInSeconds: SIGNED_URL_TTL_SECONDS };
+  }
+
+  async listRecoverableJobs(worker: WorkerAuthContext) {
+    const now = new Date().toISOString();
+    const [{ data: renderJobs }, { data: builds }, { data: previews }] = await Promise.all([
+      this.supabase
+        .from("production_jobs")
+        .select("id, status, worker_id, lease_expires_at, output_checksum, output_snapshot, provider_error, updated_at")
+        .eq("organization_id", worker.organizationId)
+        .eq("worker_id", worker.id)
+        .in("status", ["RUNNING", "FAILED", "RETRY_SCHEDULED"])
+        .or(`lease_expires_at.is.null,lease_expires_at.lte.${now}`),
+      this.supabase
+        .from("remotion_template_builds")
+        .select("id, status, worker_id, lease_expires_at, output_checksum, build_output_storage_path, provider_status, provider_status_detail, updated_at")
+        .eq("organization_id", worker.organizationId)
+        .eq("worker_id", worker.id)
+        .in("status", ["BUILDING", "BUILD_FAILED"])
+        .or(`lease_expires_at.is.null,lease_expires_at.lte.${now}`),
+      this.supabase
+        .from("remotion_template_previews")
+        .select("id, status, worker_id, lease_expires_at, output_checksum, preview_poster_storage_path, provider_status, provider_status_detail, updated_at")
+        .eq("organization_id", worker.organizationId)
+        .eq("worker_id", worker.id)
+        .in("status", ["RUNNING", "FAILED"])
+        .or(`lease_expires_at.is.null,lease_expires_at.lte.${now}`),
+    ]);
+
+    return {
+      jobs: [
+        ...(renderJobs || []).map((job: any) => ({
+          jobType: "render",
+          jobId: job.id,
+          status: job.status,
+          outputStoragePath: job.output_snapshot?.outputStoragePath || null,
+          outputChecksum: job.output_checksum || null,
+          updatedAt: job.updated_at,
+        })),
+        ...(builds || []).map((build: any) => ({
+          jobType: "template_build",
+          jobId: build.id,
+          status: build.status,
+          outputStoragePath: build.build_output_storage_path || null,
+          outputChecksum: build.output_checksum || null,
+          updatedAt: build.updated_at,
+        })),
+        ...(previews || []).map((preview: any) => ({
+          jobType: "template_preview",
+          jobId: preview.id,
+          status: preview.status,
+          outputStoragePath: preview.preview_poster_storage_path || null,
+          outputChecksum: preview.output_checksum || null,
+          updatedAt: preview.updated_at,
+        })),
+      ],
+    };
+  }
+
   async reportProgress(worker: WorkerAuthContext, jobId: string, input: Record<string, unknown>) {
     const templateBuild = await this.getAuthorizedTemplateBuild(worker, jobId);
     if (templateBuild) {
@@ -2432,6 +2616,19 @@ export class DesktopWorkerControlPlane {
       throw new Error("INVALID_OUTPUT_STORAGE_PATH");
     }
 
+    if (job.status === "SUCCEEDED") {
+      const existingPath = job.output_snapshot?.outputStoragePath;
+      const existingChecksum = job.output_checksum || job.output_snapshot?.outputChecksum || "";
+      if (existingPath === input.outputStoragePath && (!input.checksum || !existingChecksum || existingChecksum === input.checksum)) {
+        return {
+          finalVideoUrl: job.output_snapshot?.final_video_url || null,
+          durationSeconds: job.duration_seconds || deriveDurationFromJob(job),
+          alreadyCompleted: true,
+        };
+      }
+      throw new Error("JOB_ALREADY_COMPLETED_WITH_DIFFERENT_OUTPUT");
+    }
+
     const {
       data: { publicUrl },
     } = this.supabase.storage.from(VIDEO_BUCKET).getPublicUrl(input.outputStoragePath);
@@ -2523,6 +2720,7 @@ export class DesktopWorkerControlPlane {
     }
 
     const job = await this.getAuthorizedWorkerJob(worker, jobId);
+    if (job.status === "SUCCEEDED") return { ok: true, alreadyCompleted: true };
     const message = sanitizeText(input.message, "El worker local no pudo completar el render");
     const code = sanitizeText(input.errorCode, "") || "DESKTOP_WORKER_RENDER_FAILED";
 
@@ -2580,6 +2778,16 @@ export class DesktopWorkerControlPlane {
       throw new Error("INVALID_TEMPLATE_BUILD_HASH");
     }
 
+    if (build.status === "BUILT") {
+      if (
+        build.build_output_storage_path === input.outputStoragePath &&
+        (!build.output_checksum || build.output_checksum === buildHash)
+      ) {
+        return { buildId: build.id, buildHash, buildOutputStoragePath: input.outputStoragePath, alreadyCompleted: true };
+      }
+      throw new Error("TEMPLATE_BUILD_ALREADY_COMPLETED_WITH_DIFFERENT_OUTPUT");
+    }
+
     const builtAt = new Date().toISOString();
     const buildLog = sanitizeText(input.buildLog || input.logsRef, "Template build completed by desktop worker.");
     const { error } = await this.supabase
@@ -2621,6 +2829,8 @@ export class DesktopWorkerControlPlane {
     const code = sanitizeText(input.errorCode, "") || "DESKTOP_WORKER_TEMPLATE_BUILD_FAILED";
     const failedAt = new Date().toISOString();
 
+    if (build.status === "BUILT") return { ok: true, alreadyCompleted: true };
+
     await this.supabase
       .from("remotion_template_builds")
       .update({
@@ -2656,6 +2866,18 @@ export class DesktopWorkerControlPlane {
 
     const checksum = sanitizeText(input.checksum, "");
     const completedAt = new Date().toISOString();
+    if (preview.status === "SUCCEEDED") {
+      if (
+        preview.preview_poster_storage_path === input.outputStoragePath &&
+        (!preview.output_checksum || !checksum || preview.output_checksum === checksum)
+      ) {
+        const {
+          data: { publicUrl },
+        } = this.supabase.storage.from(VIDEO_BUCKET).getPublicUrl(input.outputStoragePath);
+        return { previewId: preview.id, previewPosterUrl: publicUrl, alreadyCompleted: true };
+      }
+      throw new Error("TEMPLATE_PREVIEW_ALREADY_COMPLETED_WITH_DIFFERENT_OUTPUT");
+    }
     const { error } = await this.supabase
       .from("remotion_template_previews")
       .update({
@@ -2696,6 +2918,8 @@ export class DesktopWorkerControlPlane {
     const code = sanitizeText(input.errorCode, "") || "DESKTOP_WORKER_TEMPLATE_PREVIEW_FAILED";
     const failedAt = new Date().toISOString();
 
+    if (preview.status === "SUCCEEDED") return { ok: true, alreadyCompleted: true };
+
     await this.supabase
       .from("remotion_template_previews")
       .update({
@@ -2730,7 +2954,7 @@ export class DesktopWorkerControlPlane {
     if (build.cloud_provider !== "desktop_worker") {
       throw new Error("TEMPLATE_BUILD_PROVIDER_NOT_DESKTOP_WORKER");
     }
-    if (!["BUILDING", "BUILD_FAILED"].includes(build.status)) {
+    if (!["BUILDING", "BUILD_FAILED", "BUILT"].includes(build.status)) {
       throw new Error("TEMPLATE_BUILD_NOT_CLAIMABLE");
     }
     if (build.worker_id && build.worker_id !== worker.id) {
@@ -2750,7 +2974,7 @@ export class DesktopWorkerControlPlane {
     if (preview.organization_id !== worker.organizationId) {
       throw new Error("TEMPLATE_PREVIEW_FORBIDDEN_FOR_WORKER");
     }
-    if (!["QUEUED", "RUNNING", "FAILED"].includes(preview.status)) {
+    if (!["QUEUED", "RUNNING", "FAILED", "SUCCEEDED"].includes(preview.status)) {
       throw new Error("TEMPLATE_PREVIEW_NOT_CLAIMABLE");
     }
     if (preview.worker_id && preview.worker_id !== worker.id) {
