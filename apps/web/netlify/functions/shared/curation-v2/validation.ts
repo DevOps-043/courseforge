@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { PDFParse } from "pdf-parse";
 import type {
   CurationValidationReport,
   PdfValidationResult,
@@ -263,6 +262,22 @@ export function extractPdfText(buffer: Uint8Array) {
   return `${textOperators} ${arrayOperators}`.replace(/\s+/g, " ").trim();
 }
 
+async function extractPdfTextWithParser(buffer: Uint8Array) {
+  try {
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse({ data: buffer });
+    try {
+      const result = await parser.getText();
+      return result.text.replace(/\s+/g, " ").trim();
+    } finally {
+      await parser.destroy().catch(() => undefined);
+    }
+  } catch (error) {
+    console.warn("[CurationV2] PDF parser unavailable; using fallback extractor.", error);
+    return extractPdfText(buffer);
+  }
+}
+
 export async function validatePdfBuffer(
   buffer: Uint8Array,
   mimeType: string,
@@ -275,16 +290,7 @@ export async function validatePdfBuffer(
   checks.valid_mime = mimeType === "application/pdf" && hasPdfHeader;
   let text = "";
   if (checks.valid_mime) {
-    const parser = new PDFParse({ data: buffer });
-    try {
-      const result = await parser.getText();
-      text = result.text.replace(/\s+/g, " ").trim();
-    } catch {
-      // A small fallback keeps validation deterministic for simple text-only PDFs.
-      text = extractPdfText(buffer);
-    } finally {
-      await parser.destroy().catch(() => undefined);
-    }
+    text = await extractPdfTextWithParser(buffer);
   }
   checks.minimum_content = text.length >= minimumCharacters;
 
