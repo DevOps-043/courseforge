@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { AlertTriangle, Check, CheckCircle2, Copy, Download, Film, Layers, Link2, Loader2, Monitor, Play, RefreshCw, Search, Sparkles, Square, Unlink } from 'lucide-react';
 import { buildAssemblyProps, hasPreviewableAssets } from '@/remotion/buildAssemblyProps';
 import { deriveAssemblyTargetDurationSeconds } from '@/remotion/assembly-duration';
@@ -185,7 +185,6 @@ function getLayoutAssetSummary(assets: any): LayoutAssetSummary {
 }
 
 export function PostproductionAssemblyContainer({ artifactId, onNext }: PostproductionAssemblyContainerProps) {
-    const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const { materials, getLessonComponents, refresh } = useMaterials(artifactId);
@@ -367,7 +366,6 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                 ),
             );
             await refresh();
-            router.refresh();
         } else {
             setWorkerStatusError(result.error || 'No se pudo detener el ensamblado.');
         }
@@ -529,7 +527,6 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                 if (allFinished) {
                     stopPolling();
                     await refresh();
-                    router.refresh();
                     setIsAssembling(false);
                     setIsReconnecting(false);
 
@@ -958,7 +955,6 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
             }
 
             await refresh();
-            router.refresh();
         } catch (error) {
             console.error(error);
             alert('No se pudo eliminar el video final.');
@@ -999,7 +995,6 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                 return next;
             });
             await refresh();
-            router.refresh();
         } else {
             alert(result.error || 'No se pudieron guardar los ajustes de layout.');
         }

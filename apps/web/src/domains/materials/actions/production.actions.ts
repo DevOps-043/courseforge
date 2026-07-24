@@ -78,6 +78,18 @@ function firstRelation<T>(value: T | T[] | null | undefined): T | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
+async function withProductionActionBoundary<T>(
+  label: string,
+  action: () => Promise<T>,
+) {
+  try {
+    return await action();
+  } catch (error) {
+    console.error(`[ProductionActions] ${label}:`, error);
+    return { success: false as const, error: getErrorMessage(error) };
+  }
+}
+
 function buildDodChecklist(
   assets: Partial<MaterialAssets>,
 ): ProductionDodChecklist {
@@ -803,20 +815,20 @@ export async function assembleRemotionVideoAction(
 }
 
 export async function createRemotionAssemblyBatchAction(input: RenderBatchRequest) {
-  const parsed = renderBatchRequestSchema.safeParse(input);
-  if (!parsed.success) {
-    return { success: false, error: "Solicitud de batch invalida" };
-  }
+  return withProductionActionBoundary("Unhandled create assembly batch error", async () => {
+    const parsed = renderBatchRequestSchema.safeParse(input);
+    if (!parsed.success) {
+      return { success: false, error: "Solicitud de batch invalida" };
+    }
 
-  const auth = await getAuthorizedSupabase();
-  if (auth.error || !auth.user) return { success: false, error: auth.error || "Unauthorized" };
+    const auth = await getAuthorizedSupabase();
+    if (auth.error || !auth.user) return { success: false, error: auth.error || "Unauthorized" };
 
-  const authorized = await getAuthorizedArtifactAdmin(parsed.data.artifactId);
-  if (!authorized?.artifact?.organization_id) {
-    return { success: false, error: "No autorizado para ensamblar este artefacto" };
-  }
+    const authorized = await getAuthorizedArtifactAdmin(parsed.data.artifactId);
+    if (!authorized?.artifact?.organization_id) {
+      return { success: false, error: "No autorizado para ensamblar este artefacto" };
+    }
 
-  try {
     const organizationIds = await getAuthenticatedOrganizationIds(
       auth.user.userId,
       authorized.artifact.organization_id,
@@ -828,10 +840,7 @@ export async function createRemotionAssemblyBatchAction(input: RenderBatchReques
     });
 
     return { success: true, ...batch };
-  } catch (error: unknown) {
-    console.error("[ProductionActions] Error creating video assembly batch:", error);
-    return { success: false, error: getErrorMessage(error) };
-  }
+  });
 }
 
 export async function getRemotionAssemblyBatchStatusAction(batchId: string): Promise<
@@ -852,14 +861,14 @@ export async function getRemotionAssemblyBatchStatusAction(batchId: string): Pro
 }
 
 export async function getRemotionJobStatusAction(jobId: string) {
-  const { error: authError } = await getAuthorizedSupabase();
-  if (authError) return { success: false, error: authError };
+  return withProductionActionBoundary("Unhandled job status error", async () => {
+    const { error: authError } = await getAuthorizedSupabase();
+    if (authError) return { success: false, error: authError };
 
-  const webSupabase = await createClient();
-  const token = await getAccessToken(webSupabase);
-  if (!token) return { success: false, error: "No se encontró un token de autenticación" };
+    const webSupabase = await createClient();
+    const token = await getAccessToken(webSupabase);
+    if (!token) return { success: false, error: "No se encontro un token de autenticacion" };
 
-  try {
     const productionApiUrl = getProductionApiBaseUrl();
     const response = await fetch(`${productionApiUrl}/api/v1/production/jobs/${jobId}/status`, {
       headers: {
@@ -876,26 +885,24 @@ export async function getRemotionJobStatusAction(jobId: string) {
       success: true,
       job
     };
-  } catch (error: unknown) {
-    return { success: false, error: getErrorMessage(error) };
-  }
+  });
 }
 
 export async function cancelRemotionAssemblyJobsAction(artifactId: string, jobIds: string[]) {
-  const authorized = await getAuthorizedArtifactAdmin(artifactId);
-  if (!authorized?.artifact?.organization_id) {
-    return { success: false, error: "No se encontro la organizacion del artefacto" };
-  }
+  return withProductionActionBoundary("Unhandled cancel assembly jobs error", async () => {
+    const authorized = await getAuthorizedArtifactAdmin(artifactId);
+    if (!authorized?.artifact?.organization_id) {
+      return { success: false, error: "No se encontro la organizacion del artefacto" };
+    }
 
-  const validJobIds = jobIds.filter((jobId) =>
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId),
-  );
+    const validJobIds = jobIds.filter((jobId) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId),
+    );
 
-  if (validJobIds.length === 0) {
-    return { success: true, cancelledCount: 0 };
-  }
+    if (validJobIds.length === 0) {
+      return { success: true, cancelledCount: 0 };
+    }
 
-  try {
     const now = new Date().toISOString();
     const { data: jobs, error: fetchError } = await authorized.admin
       .from("production_jobs")
@@ -958,9 +965,7 @@ export async function cancelRemotionAssemblyJobsAction(artifactId: string, jobId
     }
 
     return { success: true, cancelledCount: cancellableIds.length };
-  } catch (error: unknown) {
-    return { success: false, error: getErrorMessage(error) };
-  }
+  });
 }
 
 export interface RenderWorkerStatusView {
@@ -1016,17 +1021,17 @@ async function getProductionApiToken() {
 }
 
 export async function getRenderWorkerStatusAction(artifactId: string) {
-  const organizationId = await getArtifactOrganizationId(artifactId);
-  if (!organizationId) {
-    return { success: false, error: "No se encontro la organizacion del artefacto" };
-  }
+  return withProductionActionBoundary("Unhandled render worker status error", async () => {
+    const organizationId = await getArtifactOrganizationId(artifactId);
+    if (!organizationId) {
+      return { success: false, error: "No se encontro la organizacion del artefacto" };
+    }
 
-  const token = await getProductionApiToken();
-  if (!token) {
-    return { success: false, error: "No se encontro un token de autenticacion" };
-  }
+    const token = await getProductionApiToken();
+    if (!token) {
+      return { success: false, error: "No se encontro un token de autenticacion" };
+    }
 
-  try {
     const productionApiUrl = getProductionApiBaseUrl();
     const [readinessResponse, workersResponse] = await Promise.all([
       fetch(`${productionApiUrl}/api/v1/production/remotion/readiness`, {
@@ -1060,23 +1065,21 @@ export async function getRenderWorkerStatusAction(artifactId: string) {
       requiresDesktopWorker: renderProvider === "desktop_worker",
       workers: (workerPayload.workers || []) as RenderWorkerStatusView[],
     };
-  } catch (error: unknown) {
-    return { success: false, error: getErrorMessage(error) };
-  }
+  });
 }
 
 export async function createRenderWorkerLinkCodeAction(artifactId: string) {
-  const organizationId = await getArtifactOrganizationId(artifactId);
-  if (!organizationId) {
-    return { success: false, error: "No se encontro la organizacion del artefacto" };
-  }
+  return withProductionActionBoundary("Unhandled create worker link code error", async () => {
+    const organizationId = await getArtifactOrganizationId(artifactId);
+    if (!organizationId) {
+      return { success: false, error: "No se encontro la organizacion del artefacto" };
+    }
 
-  const token = await getProductionApiToken();
-  if (!token) {
-    return { success: false, error: "No se encontro un token de autenticacion" };
-  }
+    const token = await getProductionApiToken();
+    if (!token) {
+      return { success: false, error: "No se encontro un token de autenticacion" };
+    }
 
-  try {
     const productionApiUrl = getProductionApiBaseUrl();
     const response = await fetch(`${productionApiUrl}/api/v1/production/remotion/workers/link-codes`, {
       method: "POST",
@@ -1098,24 +1101,20 @@ export async function createRenderWorkerLinkCodeAction(artifactId: string) {
       code: result.code as string,
       expiresAt: result.linkCode?.expires_at as string | undefined,
     };
-  } catch (error: unknown) {
-    return { success: false, error: getErrorMessage(error) };
-  }
+  });
 }
 
 export async function revokeRenderWorkerAction(artifactId: string, workerId: string) {
-  const organizationId = await getArtifactOrganizationId(artifactId);
-  if (!organizationId) {
-    return { success: false, error: "No se encontro la organizacion del artefacto" };
-  }
+  return withProductionActionBoundary("Unhandled revoke worker error", async () => {
+    const organizationId = await getArtifactOrganizationId(artifactId);
+    if (!organizationId) {
+      return { success: false, error: "No se encontro la organizacion del artefacto" };
+    }
 
-  try {
     const service = new DesktopWorkerControlPlane(getServiceRoleClient());
     await service.revokeWorker(workerId, organizationId);
     return { success: true };
-  } catch (error: unknown) {
-    return { success: false, error: getErrorMessage(error) };
-  }
+  });
 }
 
 export async function deleteFinalVideoForPublicationAction(componentId: string) {
