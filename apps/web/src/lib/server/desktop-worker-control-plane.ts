@@ -1782,7 +1782,19 @@ export class DesktopWorkerControlPlane {
       .update({ build_status: "BUILDING" })
       .eq("id", version.id);
 
-    return this.buildTemplateWithServerBundler(version, build);
+    if (process.env.COURSEFORGE_TEMPLATE_SERVER_BUNDLER === "true") {
+      return this.buildTemplateWithServerBundler(version, build);
+    }
+
+    return {
+      success: true,
+      buildId: build.id,
+      status: "BUILDING",
+      providerBuildId: build.provider_build_id || null,
+      serveUrl: null,
+      buildOutputStoragePath: null,
+      message: "Template build queued for SofLIA desktop worker.",
+    };
   }
 
   async getTemplateBuildStatus(buildId: string, organizationIds: string[]) {
