@@ -683,13 +683,13 @@ export async function getTemplatesAction(): Promise<{
   templates?: RemotionTemplate[];
   error?: string;
 }> {
-  const { error: authError } = await getAuthorizedSupabase();
-  if (authError) return { success: false, error: authError };
-
-  const activeOrgId = await resolveActiveTemplateOrganizationId();
-  const admin = getServiceRoleClient();
-
   try {
+    const { error: authError } = await getAuthorizedSupabase();
+    if (authError) return { success: false, error: authError };
+
+    const activeOrgId = await resolveActiveTemplateOrganizationId();
+    const admin = getServiceRoleClient();
+
     // 1. Fetch system templates + owned templates
     let query = admin
       .from("remotion_templates")
@@ -745,15 +745,15 @@ export async function getPublicTemplatesAction(): Promise<{
   templates?: RemotionTemplate[];
   error?: string;
 }> {
-  const { error: authError } = await getAuthorizedSupabase();
-  if (authError) return { success: false, error: authError };
-
-  const activeOrgId = await resolveActiveTemplateOrganizationId();
-  if (!activeOrgId) return { success: true, templates: [] };
-
-  const admin = getServiceRoleClient();
-
   try {
+    const { error: authError } = await getAuthorizedSupabase();
+    if (authError) return { success: false, error: authError };
+
+    const activeOrgId = await resolveActiveTemplateOrganizationId();
+    if (!activeOrgId) return { success: true, templates: [] };
+
+    const admin = getServiceRoleClient();
+
     // Get owned and acquired templates to exclude them
     const { data: owned } = await admin
       .from("remotion_templates")

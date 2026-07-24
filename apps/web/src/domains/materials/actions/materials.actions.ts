@@ -28,97 +28,115 @@ const RESTARTABLE_MATERIALS_STATES = new Set<Esp05StepState>([
   "PHASE3_NEEDS_FIX",
 ]);
 
+async function withMaterialsActionBoundary<T>(
+  label: string,
+  action: () => Promise<T>,
+) {
+  try {
+    return await action();
+  } catch (error) {
+    console.error(`[MaterialsActions] ${label}:`, error);
+    return createMaterialsActionError(getErrorMessage(error));
+  }
+}
+
 export async function getMaterialsSnapshotAction(artifactId: string) {
-  const context = await getAuthorizedArtifactMaterialsContext(artifactId);
-  if (!context.ok) {
-    return context.errorResult;
-  }
+  return withMaterialsActionBoundary("Unhandled snapshot error", async () => {
+    const context = await getAuthorizedArtifactMaterialsContext(artifactId);
+    if (!context.ok) {
+      return context.errorResult;
+    }
 
-  const snapshot = await fetchMaterialsSnapshot(context.admin, artifactId);
-  if (snapshot.error) {
-    console.error("[MaterialsActions] Snapshot error:", snapshot.error);
-    return createMaterialsActionError(snapshot.error.message);
-  }
+    const snapshot = await fetchMaterialsSnapshot(context.admin, artifactId);
+    if (snapshot.error) {
+      console.error("[MaterialsActions] Snapshot error:", snapshot.error);
+      return createMaterialsActionError(snapshot.error.message);
+    }
 
-  return {
-    success: true as const,
-    lessons: snapshot.lessons,
-    materials: snapshot.materials,
-  };
+    return {
+      success: true as const,
+      lessons: snapshot.lessons,
+      materials: snapshot.materials,
+    };
+  });
 }
 
 export async function getLessonComponentsSnapshotAction(lessonId: string) {
-  const context = await getAuthorizedLessonMaterialsContext(lessonId);
-  if (!context.ok) {
-    return context.errorResult;
-  }
+  return withMaterialsActionBoundary("Unhandled components snapshot error", async () => {
+    const context = await getAuthorizedLessonMaterialsContext(lessonId);
+    if (!context.ok) {
+      return context.errorResult;
+    }
 
-  const { data: components, error } = await fetchLessonComponentsSnapshot(
-    context.admin,
-    lessonId,
-  );
+    const { data: components, error } = await fetchLessonComponentsSnapshot(
+      context.admin,
+      lessonId,
+    );
 
-  if (error) {
-    console.error("[MaterialsActions] Components snapshot error:", error);
-    return createMaterialsActionError(error.message);
-  }
+    if (error) {
+      console.error("[MaterialsActions] Components snapshot error:", error);
+      return createMaterialsActionError(error.message);
+    }
 
-  return { success: true as const, components: components || [] };
+    return { success: true as const, components: components || [] };
+  });
 }
 
 export async function startMaterialsGenerationAction(artifactId: string) {
-  const context = await getAuthorizedArtifactMaterialsContext(artifactId);
-  if (!context.ok) {
-    return context.errorResult;
-  }
+  return withMaterialsActionBoundary("Unhandled start generation error", async () => {
+    const context = await getAuthorizedArtifactMaterialsContext(artifactId);
+    if (!context.ok) {
+      return context.errorResult;
+    }
 
-  const { data: existing, error: existingError } =
-    await fetchArtifactMaterialsRecord(context.admin, artifactId);
+    const { data: existing, error: existingError } =
+      await fetchArtifactMaterialsRecord(context.admin, artifactId);
 
-  if (existingError) {
-    console.error(
-      "[MaterialsActions] Error checking existing materials:",
-      existingError,
-    );
-    return createMaterialsActionError(existingError.message);
-  }
+    if (existingError) {
+      console.error(
+        "[MaterialsActions] Error checking existing materials:",
+        existingError,
+      );
+      return createMaterialsActionError(existingError.message);
+    }
 
-  if (
-    existing &&
-    !RESTARTABLE_MATERIALS_STATES.has(existing.state as Esp05StepState)
-  ) {
-    return createMaterialsActionError(
-      "Ya existe un proceso de materiales en curso",
-    );
-  }
+    if (
+      existing &&
+      !RESTARTABLE_MATERIALS_STATES.has(existing.state as Esp05StepState)
+    ) {
+      return createMaterialsActionError(
+        "Ya existe un proceso de materiales en curso",
+      );
+    }
 
-  const { data: materials, error: upsertError } =
-    await upsertGenerationMaterialsRecord(context.admin, artifactId, existing);
+    const { data: materials, error: upsertError } =
+      await upsertGenerationMaterialsRecord(context.admin, artifactId, existing);
 
-  if (upsertError || !materials?.id) {
-    console.error(
-      "[MaterialsActions] Error creating materials record:",
-      upsertError,
-    );
-    return createMaterialsActionError(
-      upsertError?.message || "No se pudo crear el registro de materiales",
-    );
-  }
+    if (upsertError || !materials?.id) {
+      console.error(
+        "[MaterialsActions] Error creating materials record:",
+        upsertError,
+      );
+      return createMaterialsActionError(
+        upsertError?.message || "No se pudo crear el registro de materiales",
+      );
+    }
 
-  try {
-    await callMaterialsNetlifyFunction(
-      "materials-generation-background",
-      { artifactId, materialsId: materials.id, mode: "init" },
-      "Error al iniciar la generacion de materiales",
-      () => import("../../../../netlify/functions/materials-generation-background"),
-    );
+    try {
+      await callMaterialsNetlifyFunction(
+        "materials-generation-background",
+        { artifactId, materialsId: materials.id, mode: "init" },
+        "Error al iniciar la generacion de materiales",
+        () => import("../../../../netlify/functions/materials-generation-background"),
+      );
 
-    return { success: true as const };
-  } catch (error) {
-    await updateMaterialsState(context.admin, materials.id, "PHASE3_DRAFT");
-    console.error("[MaterialsActions] Error triggering generation:", error);
-    return createMaterialsActionError(getErrorMessage(error));
-  }
+      return { success: true as const };
+    } catch (error) {
+      await updateMaterialsState(context.admin, materials.id, "PHASE3_DRAFT");
+      console.error("[MaterialsActions] Error triggering generation:", error);
+      return createMaterialsActionError(getErrorMessage(error));
+    }
+  });
 }
 
 export async function runMaterialsFixIterationAction(
