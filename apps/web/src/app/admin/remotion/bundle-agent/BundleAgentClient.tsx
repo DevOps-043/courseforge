@@ -80,6 +80,33 @@ function formatSpecSummary(spec: Record<string, unknown> | undefined) {
   ].filter(Boolean).join(" - ");
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function formatCreativeBriefSummary(spec: Record<string, unknown> | undefined) {
+  const brief = asRecord(spec?.creativeBrief);
+  if (!brief) return null;
+
+  const similarityCheck = asRecord(brief.similarityCheck);
+  const visualVariants = Array.isArray(brief.visualVariants) ? brief.visualVariants : [];
+  const variantNames = visualVariants
+    .map((variant) => asRecord(variant)?.name)
+    .filter((name): name is string => typeof name === "string" && name.trim().length > 0)
+    .slice(0, 3);
+  const differentiators = Array.isArray(similarityCheck?.differentiators)
+    ? similarityCheck.differentiators.filter((item): item is string => typeof item === "string").slice(0, 4)
+    : [];
+
+  return {
+    directionName: typeof brief.directionName === "string" ? brief.directionName : "Direccion creativa",
+    layoutSystem: typeof brief.layoutSystem === "string" ? brief.layoutSystem : null,
+    motionLanguage: typeof brief.motionLanguage === "string" ? brief.motionLanguage : null,
+    variantNames,
+    differentiators,
+  };
+}
+
 function getReferenceType(file: File): BundleAgentVisualReference["type"] | null {
   if (file.type.startsWith("image/")) return "image";
   if (file.type.startsWith("video/")) return "video";
@@ -101,6 +128,149 @@ function formatFileSize(sizeBytes: number) {
   return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`;
 }
 
+function rgbToHex(red: number, green: number, blue: number) {
+  return `#${[red, green, blue]
+    .map((value) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, "0"))
+    .join("")}`.toUpperCase();
+}
+
+function getSaturation(red: number, green: number, blue: number) {
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  return max === 0 ? 0 : (max - min) / max;
+}
+
+function colorDistance(left: [number, number, number], right: [number, number, number]) {
+  return Math.sqrt(
+    (left[0] - right[0]) ** 2 +
+    (left[1] - right[1]) ** 2 +
+    (left[2] - right[2]) ** 2,
+  );
+}
+
+function loadImageElement(file: File) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error(`No se pudo analizar la imagen ${file.name}.`));
+    };
+    image.src = url;
+  });
+}
+
+function averageSamples(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  predicate: (x: number, y: number) => boolean,
+): [number, number, number] {
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  let count = 0;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (!predicate(x, y)) continue;
+      const offset = (y * width + x) * 4;
+      red += data[offset];
+      green += data[offset + 1];
+      blue += data[offset + 2];
+      count += 1;
+    }
+  }
+
+  if (count === 0) return [0, 0, 0];
+  return [red / count, green / count, blue / count];
+}
+
+function findDivider(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  targetColor: [number, number, number],
+  orientation: "vertical" | "horizontal",
+) {
+  const outerMargin = orientation === "vertical" ? width * 0.08 : height * 0.08;
+  const limit = orientation === "vertical" ? width : height;
+  const span = orientation === "vertical" ? height : width;
+  let bestIndex = -1;
+  let bestScore = 0;
+
+  for (let index = Math.round(outerMargin); index < limit - outerMargin; index += 1) {
+    let matches = 0;
+    for (let position = 0; position < span; position += 1) {
+      const x = orientation === "vertical" ? index : position;
+      const y = orientation === "vertical" ? position : index;
+      const offset = (y * width + x) * 4;
+      const pixel: [number, number, number] = [data[offset], data[offset + 1], data[offset + 2]];
+      if (colorDistance(pixel, targetColor) < 82 && getSaturation(pixel[0], pixel[1], pixel[2]) > 0.25) {
+        matches += 1;
+      }
+    }
+
+    const score = matches / span;
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = index;
+    }
+  }
+
+  return bestScore > (orientation === "vertical" ? 0.45 : 0.2)
+    ? { ratio: bestIndex / limit, score: bestScore }
+    : null;
+}
+
+async function analyzeImageReference(file: File) {
+  try {
+    const image = await loadImageElement(file);
+    const maxWidth = 640;
+    const scale = Math.min(1, maxWidth / image.naturalWidth);
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return null;
+
+    context.drawImage(image, 0, 0, width, height);
+    const data = context.getImageData(0, 0, width, height).data;
+    const band = Math.max(2, Math.round(Math.min(width, height) * 0.025));
+    const edgeColor = averageSamples(data, width, height, (x, y) => (
+      x < band || x >= width - band || y < band || y >= height - band
+    ));
+    const edgeColorHex = rgbToHex(edgeColor[0], edgeColor[1], edgeColor[2]);
+    const verticalDivider = findDivider(data, width, height, edgeColor, "vertical");
+    const horizontalDivider = findDivider(data, width, height, edgeColor, "horizontal");
+    const hints: string[] = [
+      `canvas ${image.naturalWidth}x${image.naturalHeight}`,
+      `dominant frame/border color ${edgeColorHex}`,
+    ];
+
+    if (verticalDivider) {
+      hints.push(`strong vertical divider near ${Math.round(verticalDivider.ratio * 100)}% width`);
+    }
+    if (horizontalDivider) {
+      hints.push(`strong horizontal divider near ${Math.round(horizontalDivider.ratio * 100)}% height`);
+    }
+    if (verticalDivider && horizontalDivider) {
+      hints.push("wireframe structure: large left region plus right column split into top and bottom regions");
+      hints.push("map left region to avatar, top-right to slides, bottom-right to B-roll when those assets are requested");
+    }
+
+    return `Automatic visual reference analysis: ${hints.join("; ")}. Treat detected frame color and region divisions as hard layout constraints when the user asks to use the reference structure.`;
+  } catch {
+    return null;
+  }
+}
+
 export function BundleAgentClient({ initialTemplateId = null }: { initialTemplateId?: string | null }) {
   const pathname = usePathname();
   const templateId = initialTemplateId;
@@ -119,6 +289,7 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
   const isTemplateScoped = Boolean(templateId || state.conversation?.template_id);
   const hasRequestedTemplateConversation = !templateId || state.conversation?.template_id === templateId;
   const specSummary = useMemo(() => formatSpecSummary(latestSpec?.spec_json), [latestSpec]);
+  const creativeBriefSummary = useMemo(() => formatCreativeBriefSummary(latestSpec?.spec_json), [latestSpec]);
   const baseBundleHref = "/api/admin/remotion/bundle-agent/base-bundle";
   const templatesHref = useMemo(() => {
     const normalizedPath = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
@@ -259,6 +430,7 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
 
         const id = crypto.randomUUID();
         const safeFileName = sanitizeUploadFileName(file.name);
+        const visualSummary = referenceType === "image" ? await analyzeImageReference(file) : null;
         const uploaded = await uploadWithSignedUrl(
           "production-assets",
           `bundle-agent-references/${id}/${safeFileName}`,
@@ -279,6 +451,7 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
           sizeBytes: file.size,
           storagePath: uploaded.path,
           publicUrl: uploaded.publicUrl,
+          ...(visualSummary ? { visualSummary } : {}),
         });
       }
 
@@ -538,6 +711,24 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
                   <p className="mt-1 font-medium text-slate-900">{String(latestSpec.spec_json.title || title)}</p>
                   {specSummary ? <p className="mt-1 text-slate-600">{specSummary}</p> : null}
                 </div>
+                {creativeBriefSummary ? (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Direccion creativa</p>
+                    <p className="mt-1 font-semibold text-slate-900">{creativeBriefSummary.directionName}</p>
+                    {creativeBriefSummary.layoutSystem ? (
+                      <p className="mt-1 text-xs leading-5 text-slate-600">{creativeBriefSummary.layoutSystem}</p>
+                    ) : null}
+                    {creativeBriefSummary.motionLanguage ? (
+                      <p className="mt-2 text-xs leading-5 text-slate-500">{creativeBriefSummary.motionLanguage}</p>
+                    ) : null}
+                    {creativeBriefSummary.variantNames.length > 0 ? (
+                      <p className="mt-2 text-xs text-slate-500">Variantes: {creativeBriefSummary.variantNames.join(", ")}</p>
+                    ) : null}
+                    {creativeBriefSummary.differentiators.length > 0 ? (
+                      <p className="mt-1 text-xs text-slate-500">Diferencia: {creativeBriefSummary.differentiators.join(" / ")}</p>
+                    ) : null}
+                  </div>
+                ) : null}
                 {previewHref ? (
                   <a
                     href={previewHref}
@@ -545,7 +736,7 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
                     rel="noreferrer"
                     className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#5B21B6]/30 bg-[#5B21B6]/5 px-4 py-2 text-sm font-semibold text-[#4C1D95] transition hover:border-[#5B21B6]/50 hover:bg-[#5B21B6]/10"
                   >
-                    Ver plantilla sin assets
+                    Ver vista estructural
                     <ExternalLink size={16} />
                   </a>
                 ) : null}

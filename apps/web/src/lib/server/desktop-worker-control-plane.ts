@@ -38,6 +38,20 @@ let internalBundlePromise: Promise<{
   bundleType: "zip";
 }> | null = null;
 
+export function shouldUseTemplateServerBundler(env: NodeJS.ProcessEnv = process.env) {
+  const setting = String(env.COURSEFORGE_TEMPLATE_SERVER_BUNDLER || "").trim().toLowerCase();
+  if (["1", "true", "yes", "server", "local"].includes(setting)) return true;
+  if (["0", "false", "no", "worker", "desktop_worker"].includes(setting)) return false;
+
+  return env.NODE_ENV !== "production" || env.NETLIFY_DEV === "true";
+}
+
+export function isEsbuildSpawnPermissionFailure(value: unknown) {
+  const message = value instanceof Error ? value.stack || value.message : String(value || "");
+  const normalized = message.toLowerCase();
+  return normalized.includes("esbuild") && normalized.includes("spawn") && normalized.includes("eperm");
+}
+
 export interface WorkerAuthContext {
   id: string;
   organizationId: string;
@@ -1752,6 +1766,7 @@ export class DesktopWorkerControlPlane {
       };
     }
 
+    const useServerBundler = shouldUseTemplateServerBundler();
     const { data: build, error: buildError } = await this.supabase
       .from("remotion_template_builds")
       .insert({
@@ -1762,15 +1777,19 @@ export class DesktopWorkerControlPlane {
         composition_id: version.composition_id,
         export_mode: version.export_mode === "root" ? "root" : "component",
         cloud_provider: "desktop_worker",
-        provider_status: "QUEUED",
-        provider_status_detail: "Esperando que un worker local reclame este build.",
+        provider_status: useServerBundler ? "SERVER_BUNDLER" : "QUEUED",
+        provider_status_detail: useServerBundler
+          ? "Compilando plantilla con el bundler local del servidor."
+          : "Esperando que un worker local reclame este build.",
         source_storage_path: version.storage_path,
         security_profile: {
-          isolation: "desktop-worker",
+          isolation: useServerBundler ? "server-bundler" : "desktop-worker",
           secrets: "none-from-courseforge",
           artifactContract: "compiled-remotion-zip",
         },
-        build_log: "Template build queued for SofLIA desktop worker.",
+        build_log: useServerBundler
+          ? "Template build started with local server bundler."
+          : "Template build queued for SofLIA desktop worker.",
       })
       .select("*")
       .single();
@@ -1782,7 +1801,7 @@ export class DesktopWorkerControlPlane {
       .update({ build_status: "BUILDING" })
       .eq("id", version.id);
 
-    if (process.env.COURSEFORGE_TEMPLATE_SERVER_BUNDLER === "true") {
+    if (useServerBundler) {
       return this.buildTemplateWithServerBundler(version, build);
     }
 
@@ -2837,11 +2856,36 @@ export class DesktopWorkerControlPlane {
   }
 
   private async failTemplateBuild(worker: WorkerAuthContext, build: any, input: Record<string, unknown>) {
-    const message = sanitizeText(input.message, "El worker local no pudo compilar la plantilla");
+    let message = sanitizeText(input.message, "El worker local no pudo compilar la plantilla");
     const code = sanitizeText(input.errorCode, "") || "DESKTOP_WORKER_TEMPLATE_BUILD_FAILED";
     const failedAt = new Date().toISOString();
 
     if (build.status === "BUILT") return { ok: true, alreadyCompleted: true };
+
+    if (shouldUseTemplateServerBundler() && isEsbuildSpawnPermissionFailure(`${code}\n${message}`)) {
+      const { data: version } = await this.supabase
+        .from("remotion_template_versions")
+        .select("*")
+        .eq("id", build.template_version_id)
+        .maybeSingle();
+
+      if (version) {
+        try {
+          const recovered = await this.buildTemplateWithServerBundler(version, {
+            ...build,
+            provider_status: "SERVER_BUNDLER_RECOVERY",
+            provider_status_detail: "Worker no pudo ejecutar esbuild; recuperando build en servidor local.",
+          });
+          await this.heartbeat(worker, { status: "ONLINE" });
+          return { ok: true, recoveredWithServerBundler: true, ...recovered };
+        } catch (recoveryError) {
+          message = sanitizeText(
+            `${message}\nServer bundler recovery failed: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`,
+            message,
+          );
+        }
+      }
+    }
 
     await this.supabase
       .from("remotion_template_builds")

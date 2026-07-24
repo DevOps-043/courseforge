@@ -38,6 +38,13 @@ type BrollClip = {
   url: string;
 };
 
+type Box = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 type LayoutOverrideEdit =
   | { layerId: string; kind: "position"; x: number; y: number }
   | { layerId: string; kind: "size"; width: number; height: number }
@@ -56,15 +63,30 @@ type LayoutOverrideManifest = {
   edits?: LayoutOverrideEdit[];
 };
 
+type DesignTokens = {
+  accentColor?: string;
+  backgroundColor?: string;
+  mutedTextColor?: string;
+  surfaceColor?: string;
+  textColor?: string;
+  typographyBody?: string;
+  typographyDisplay?: string;
+};
+
 type TemplateProps = {
   accentColor?: string;
+  animationVariant?: string;
   avatarVideoUrl?: string;
   bgMusicUrl?: string;
   bgMusicVolume?: number;
   brollClips?: BrollClip[];
+  designTokens?: DesignTokens;
+  expandMissingSupportMedia?: boolean;
   layoutOverrides?: LayoutOverrideManifest[];
+  sceneSwapOnSlideChange?: boolean;
   slides?: SlideAsset[];
   totalDurationInFrames?: number;
+  visualVariantId?: string;
   voiceAudioUrl?: string;
 };
 
@@ -77,6 +99,7 @@ const accentColor = ${json(blueprint.accentColor)};
 const layoutMode = ${json(blueprint.layout)};
 const timelineMode = ${json(blueprint.timeline)};
 const renderText = ${blueprint.renderText ? "true" : "false"};
+const isReferenceFrameLayout = layoutMode === "reference-frame-avatar-left-stack-right";
 const avatarBox = ${boxLiteral(blueprint.boxes.avatar)};
 const primaryVisualBox = ${boxLiteral(blueprint.boxes.primaryVisual)};
 const slidesBox = ${boxLiteral(blueprint.boxes.slides)};
@@ -89,11 +112,24 @@ const defaultStackOrders = {
 } as const;
 const defaultProps: TemplateProps = {
   accentColor,
+  animationVariant: "measured",
   bgMusicVolume: 0.12,
   brollClips: [],
+  designTokens: {
+    accentColor,
+    backgroundColor: "#05070b",
+    surfaceColor: "#090d14",
+    textColor: "#f8fafc",
+    mutedTextColor: "#cbd5e1",
+    typographyBody: "Inter, Arial, sans-serif",
+    typographyDisplay: "Inter, Arial, sans-serif",
+  },
+  expandMissingSupportMedia: false,
   layoutOverrides: [],
+  sceneSwapOnSlideChange: false,
   slides: [],
   totalDurationInFrames: fallbackDurationInFrames,
+  visualVariantId: "variant-studio-asymmetric",
 };
 
 const REMOTION_EDITABLE_LAYERS = {
@@ -184,7 +220,48 @@ function getActiveIndex(frame: number, itemCount: number, durationInFrames: numb
   return Math.min(itemCount - 1, Math.floor(frame / Math.max(1, framesPerItem)));
 }
 
-function buildBoxStyle(box: { x: number; y: number; width: number; height: number }, overrides: React.CSSProperties = {}): React.CSSProperties {
+function mirrorBoxHorizontally(box: Box): Box {
+  return {
+    ...box,
+    x: compositionWidth - box.x - box.width,
+  };
+}
+
+function lerp(start: number, end: number, progress: number) {
+  return start + (end - start) * progress;
+}
+
+function lerpBox(from: Box, to: Box, progress: number): Box {
+  return {
+    x: Math.round(lerp(from.x, to.x, progress)),
+    y: Math.round(lerp(from.y, to.y, progress)),
+    width: Math.round(lerp(from.width, to.width, progress)),
+    height: Math.round(lerp(from.height, to.height, progress)),
+  };
+}
+
+function unionBoxes(first: Box, second: Box): Box {
+  const x = Math.min(first.x, second.x);
+  const y = Math.min(first.y, second.y);
+  const right = Math.max(first.x + first.width, second.x + second.width);
+  const bottom = Math.max(first.y + first.height, second.y + second.height);
+
+  return {
+    x,
+    y,
+    width: right - x,
+    height: bottom - y,
+  };
+}
+
+function buildSceneBox(baseBox: Box, sceneMirrored: boolean, previousSceneMirrored: boolean, progress: number): Box {
+  const from = previousSceneMirrored ? mirrorBoxHorizontally(baseBox) : baseBox;
+  const to = sceneMirrored ? mirrorBoxHorizontally(baseBox) : baseBox;
+
+  return lerpBox(from, to, progress);
+}
+
+function buildBoxStyle(box: Box, overrides: React.CSSProperties = {}): React.CSSProperties {
   return {
     position: "absolute",
     left: box.x,
@@ -217,16 +294,47 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
   const activeSlideIndex = getActiveIndex(frame, slides.length, durationInFrames);
   const activeSupportIndex = getActiveIndex(frame, Math.max(slides.length, brollClips.length), durationInFrames);
   const activeSlide = activeSlideIndex >= 0 ? slides[activeSlideIndex] : null;
-  const activeBroll = timelineMode === "equal-slides-with-indexed-broll"
-    ? activeSlideIndex >= 0 ? brollClips[activeSlideIndex] ?? null : null
-    : activeSupportIndex >= 0 ? brollClips[activeSupportIndex] ?? null : null;
+  const activeBrollIndex = brollClips.length <= 0
+    ? -1
+    : timelineMode === "equal-slides-with-indexed-broll"
+      ? slides.length > 0
+        ? activeSlideIndex >= 0 ? Math.min(brollClips.length - 1, activeSlideIndex) : -1
+        : activeSupportIndex
+      : activeSupportIndex;
+  const activeBroll = activeBrollIndex >= 0 ? brollClips[activeBrollIndex] ?? null : null;
   const hasVoice = typeof props.voiceAudioUrl === "string" && props.voiceAudioUrl.length > 0;
   const hasAvatar = typeof props.avatarVideoUrl === "string" && props.avatarVideoUrl.length > 0;
+  const hasSlidesAsset = slides.length > 0;
+  const hasBrollAsset = brollClips.length > 0;
+  const sceneItemCount = Math.max(1, slides.length, brollClips.length);
+  const sceneIndex = Math.max(0, activeSlideIndex >= 0 ? activeSlideIndex : activeSupportIndex >= 0 ? activeSupportIndex : 0);
+  const framesPerScene = durationInFrames / sceneItemCount;
+  const sceneLocalFrame = frame % Math.max(1, framesPerScene);
+  const sceneTransitionFrames = Math.min(18, Math.max(1, framesPerScene * 0.24));
+  const sceneProgress = props.sceneSwapOnSlideChange
+    ? interpolate(sceneLocalFrame, [0, sceneTransitionFrames], [0, 1], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    })
+    : 1;
+  const sceneMirrored = Boolean(props.sceneSwapOnSlideChange) && sceneIndex % 2 === 1;
+  const previousSceneMirrored = Boolean(props.sceneSwapOnSlideChange) && sceneIndex > 0 && (sceneIndex - 1) % 2 === 1;
+  const supportUnionBox = unionBoxes(slidesBox, brollBox);
+  const shouldExpandSupport = props.expandMissingSupportMedia === true;
+  const effectiveSlidesBox = shouldExpandSupport && hasSlidesAsset && !hasBrollAsset ? supportUnionBox : slidesBox;
+  const effectiveBrollBox = shouldExpandSupport && hasBrollAsset && !hasSlidesAsset ? supportUnionBox : brollBox;
+  const avatarSceneBox = buildSceneBox(avatarBox, sceneMirrored, previousSceneMirrored, sceneProgress);
+  const slidesSceneBox = buildSceneBox(effectiveSlidesBox, sceneMirrored, previousSceneMirrored, sceneProgress);
+  const brollSceneBox = buildSceneBox(effectiveBrollBox, sceneMirrored, previousSceneMirrored, sceneProgress);
   const slideLocalFrame = frame % Math.max(1, durationInFrames / Math.max(1, slides.length));
   const slideOpacity = interpolate(slideLocalFrame, [0, 10], [0.74, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
+  const tokenAccent = props.designTokens?.accentColor || props.accentColor || accentColor;
+  const tokenBackground = props.designTokens?.backgroundColor || "#05070b";
+  const tokenSurface = props.designTokens?.surfaceColor || "#090d14";
+  const tokenBodyFont = props.designTokens?.typographyBody || "Inter, Arial, sans-serif";
 
   const avatarOverride = buildLayoutOverrideStyle(props.layoutOverrides, REMOTION_EDITABLE_LAYERS.AVATAR);
   const primaryVisualOverride = buildLayoutOverrideStyle(props.layoutOverrides, REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL);
@@ -239,23 +347,23 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
   const activeBrollItemOverride = activeBroll
     ? buildLayoutOverrideStyle(
         props.layoutOverrides,
-        \`broll:\${Math.max(1, Math.round(activeBroll.order ?? (timelineMode === "equal-slides-with-indexed-broll" ? activeSlideIndex : activeSupportIndex) + 1))}\`,
+        \`broll:\${Math.max(1, Math.round(activeBroll.order ?? activeBrollIndex + 1))}\`,
       )
     : {};
 
   return (
     <AbsoluteFill
       style={{
-        background: "#05070b",
-        fontFamily: "Inter, Arial, sans-serif",
+        background: tokenBackground,
+        fontFamily: tokenBodyFont,
         overflow: "hidden",
         ...backgroundOverride,
       }}
     >
-      <div style={buildBoxStyle(primaryVisualBox, { background: "#090d14", zIndex: defaultStackOrders.primaryVisual, ...primaryVisualOverride })} />
+      <div style={buildBoxStyle(primaryVisualBox, { background: isReferenceFrameLayout ? "transparent" : tokenSurface, zIndex: defaultStackOrders.primaryVisual, ...primaryVisualOverride })} />
 
       {hasAvatar ? (
-        <div style={buildBoxStyle(avatarBox, { background: "transparent", zIndex: defaultStackOrders.avatar, ...avatarOverride })}>
+        <div style={buildBoxStyle(avatarSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.avatar, ...avatarOverride })}>
           <Video
             src={props.avatarVideoUrl!}
             muted={hasVoice}
@@ -265,7 +373,7 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
       ) : null}
 
       {activeSlide ? (
-        <div style={buildBoxStyle(slidesBox, { opacity: slideOpacity, zIndex: defaultStackOrders.slides, ...slidesOverride, ...activeSlideItemOverride })}>
+        <div style={buildBoxStyle(slidesSceneBox, { background: tokenSurface, opacity: slideOpacity, zIndex: defaultStackOrders.slides, ...slidesOverride, ...activeSlideItemOverride })}>
           <Img
             src={activeSlide.url}
             style={{ width: "100%", height: "100%", objectFit: "contain", objectPosition: "center center" }}
@@ -274,7 +382,7 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
       ) : null}
 
       {activeBroll ? (
-        <div style={buildBoxStyle(brollBox, { background: "transparent", zIndex: defaultStackOrders.broll, ...brollOverride, ...activeBrollItemOverride })}>
+        <div style={buildBoxStyle(brollSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.broll, ...brollOverride, ...activeBrollItemOverride })}>
           <Video
             src={activeBroll.url}
             muted
@@ -292,7 +400,7 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
             bottom: 44,
             width: 220,
             height: 8,
-            background: props.accentColor || accentColor,
+            background: tokenAccent,
             opacity: 0.92,
           }}
         />

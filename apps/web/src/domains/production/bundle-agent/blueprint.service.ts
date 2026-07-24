@@ -3,7 +3,10 @@ import type { BundleAgentSpec } from "./types";
 
 export type BundleBlueprintLayout =
   | "avatar-left-slides-broll-right"
+  | "reference-frame-avatar-left-stack-right"
+  | "support-left-avatar-right"
   | "split-avatar-support"
+  | "stacked-support"
   | "media-only";
 
 export type BundleBlueprintTimeline = "equal-slides-with-indexed-broll" | "equal-support-visuals";
@@ -61,7 +64,17 @@ function includesAny(text: string, terms: string[]) {
 }
 
 function getIntentText(spec: BundleAgentSpec) {
-  return `${spec.title} ${spec.description} ${spec.visualStyle} ${spec.changeSummary}`.toLowerCase();
+  const creativeBrief = spec.creativeBrief;
+  return [
+    spec.title,
+    spec.description,
+    spec.visualStyle,
+    spec.changeSummary,
+    creativeBrief?.directionName,
+    creativeBrief?.layoutSystem,
+    creativeBrief?.motionLanguage,
+    creativeBrief?.visualVariants?.map((variant) => `${variant.name} ${variant.composition} ${variant.motion}`).join(" "),
+  ].filter(Boolean).join(" ").toLowerCase();
 }
 
 function shouldRenderText(spec: BundleAgentSpec) {
@@ -87,7 +100,34 @@ function resolveLayout(spec: BundleAgentSpec): BundleBlueprintLayout {
   const hasSlides = spec.requiredAssets.includes("slides");
   const hasBroll = spec.requiredAssets.includes("broll");
   const asksLeftAvatar = includesAny(intent, ["avatar totalmente a la izquierda", "avatar fijo izquierda", "avatar a la izquierda"]);
+  const asksRightAvatar = includesAny(intent, ["avatar a la derecha", "avatar del lado derecho", "avatar fijo derecha"]);
   const asksRightStack = includesAny(intent, ["superior derecha", "inferior derecha", "lado derecho", "diapositiva arriba", "b-roll abajo"]);
+  const asksStacked = includesAny(intent, ["vertical", "apilado", "arriba y abajo", "slide arriba", "b-roll abajo", "diapositiva arriba"]);
+  const asksExplicitStackedLayout = includesAny(intent, ["vertical", "apilado", "arriba y abajo", "stacked studio", "stacked support", "stacked evidence"]);
+  const asksFullscreen = includesAny(intent, ["pantalla completa", "full screen", "fullscreen", "visual principal a pantalla completa", "media field", "media-led"]);
+  const asksReferenceWireframe = includesAny(intent, [
+    "reference wireframe lock",
+    "wireframe de referencia",
+    "large left region plus right column split",
+    "left half reserved for avatar",
+    "slide region above and b-roll region below",
+  ]);
+
+  if (hasAvatar && hasSlides && hasBroll && asksReferenceWireframe) {
+    return "reference-frame-avatar-left-stack-right";
+  }
+
+  if (asksFullscreen && (hasSlides || hasBroll) && !hasAvatar) {
+    return "media-only";
+  }
+
+  if (hasAvatar && (hasSlides || hasBroll) && asksRightAvatar) {
+    return "support-left-avatar-right";
+  }
+
+  if (hasAvatar && hasSlides && hasBroll && asksStacked && asksExplicitStackedLayout && !asksLeftAvatar) {
+    return "stacked-support";
+  }
 
   if (hasAvatar && hasSlides && hasBroll && (asksLeftAvatar || asksRightStack || !shouldRenderText(spec))) {
     return "avatar-left-slides-broll-right";
@@ -109,7 +149,7 @@ function resolveTimeline(spec: BundleAgentSpec, layout: BundleBlueprintLayout): 
     "se vean todas las diapositivas",
   ]);
 
-  if (layout === "avatar-left-slides-broll-right" || asksEqualSlides) {
+  if (layout === "avatar-left-slides-broll-right" || layout === "reference-frame-avatar-left-stack-right" || asksEqualSlides) {
     return "equal-slides-with-indexed-broll";
   }
 
@@ -137,6 +177,26 @@ function buildBoxes(layout: BundleBlueprintLayout, width: number, height: number
     };
   }
 
+  if (layout === "reference-frame-avatar-left-stack-right") {
+    const frame = Math.round(Math.min(width, height) * 0.032);
+    const gap = Math.max(4, Math.round(Math.min(width, height) * 0.004));
+    const innerX = frame;
+    const innerY = frame;
+    const innerWidth = width - frame * 2;
+    const innerHeight = height - frame * 2;
+    const leftWidth = Math.round((innerWidth - gap) * 0.5);
+    const rightX = innerX + leftWidth + gap;
+    const rightWidth = innerWidth - leftWidth - gap;
+    const supportHeight = Math.round((innerHeight - gap) * 0.5);
+
+    return {
+      avatar: box(innerX, innerY, leftWidth, innerHeight),
+      primaryVisual: box(0, 0, width, height),
+      slides: box(rightX, innerY, rightWidth, supportHeight),
+      broll: box(rightX, innerY + supportHeight + gap, rightWidth, innerHeight - supportHeight - gap),
+    };
+  }
+
   if (layout === "split-avatar-support") {
     const half = width / 2;
     return {
@@ -144,6 +204,32 @@ function buildBoxes(layout: BundleBlueprintLayout, width: number, height: number
       primaryVisual: box(half, 0, half, height),
       slides: box(half + 48, 48, half - 96, height - 96),
       broll: box(width - 560 - 48, height - 315 - 48, 560, 315),
+    };
+  }
+
+  if (layout === "support-left-avatar-right") {
+    const avatarWidth = width * 0.38;
+    const supportWidth = width - avatarWidth;
+    const margin = 48;
+    return {
+      avatar: box(supportWidth, 0, avatarWidth, height),
+      primaryVisual: box(0, 0, supportWidth, height),
+      slides: box(margin, margin, supportWidth - margin * 2, height - margin * 2),
+      broll: box(margin, height - 360 - margin, 640, 360),
+    };
+  }
+
+  if (layout === "stacked-support") {
+    const avatarWidth = width * 0.36;
+    const supportWidth = width - avatarWidth;
+    const margin = 42;
+    const supportX = avatarWidth;
+    const supportHeight = (height - margin * 3) / 2;
+    return {
+      avatar: box(0, 0, avatarWidth, height),
+      primaryVisual: box(supportX, 0, supportWidth, height),
+      slides: box(supportX + margin, margin, supportWidth - margin * 2, supportHeight),
+      broll: box(supportX + margin, margin * 2 + supportHeight, supportWidth - margin * 2, supportHeight),
     };
   }
 
@@ -203,7 +289,7 @@ function buildEditableLayers(boxes: BundleBlueprint["boxes"]): EditableLayerDefi
 }
 
 function getAccentColor(spec: BundleAgentSpec) {
-  const value = spec.defaultProps.accentColor;
+  const value = spec.defaultProps.accentColor || spec.creativeBrief?.colorTokens?.accent;
   return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value.toUpperCase() : "#00D4B3";
 }
 

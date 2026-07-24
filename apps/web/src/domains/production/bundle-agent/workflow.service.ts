@@ -108,9 +108,12 @@ export class BundleAgentWorkflowService {
   async generateVersion(conversationId: string, input: { specId?: string | null } = {}) {
     await this.enforceGenerationLimit();
     const conversation = await this.getConversation(conversationId);
-    const specRow = input.specId
+    let specRow = input.specId
       ? await this.getSpec(input.specId, conversationId)
       : await this.getLatestSpec(conversationId);
+    if (!input.specId && (!specRow || await this.hasUserMessagesAfterSpec(conversationId, specRow.created_at))) {
+      specRow = await this.createSpec(conversationId);
+    }
     if (!specRow) {
       throw new Error("No hay spec disponible para generar el bundle.");
     }
@@ -261,6 +264,23 @@ export class BundleAgentWorkflowService {
 
     if (error) throw error;
     return data;
+  }
+
+  private async hasUserMessagesAfterSpec(conversationId: string, specCreatedAt?: string | null) {
+    if (!specCreatedAt) {
+      return true;
+    }
+
+    const { count, error } = await this.context.admin
+      .from("soflia_bundle_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("conversation_id", conversationId)
+      .eq("organization_id", this.context.organizationId)
+      .eq("role", "USER")
+      .gt("created_at", specCreatedAt);
+
+    if (error) throw error;
+    return (count || 0) > 0;
   }
 
   private async createPrimaryTemplate(conversationId: string, spec: BundleAgentSpec): Promise<string> {

@@ -6,7 +6,7 @@ import { buildBundleBlueprint } from "../blueprint.service";
 import { redactSensitiveText, sanitizeErrorMessage } from "../redaction.service";
 import { buildSpecFromConversation, computeSpecHash } from "../spec.service";
 import { validateGeneratedRemotionBundle } from "../security-validator";
-import { bundleAgentMessageMetadataSchema, type BundleAgentSpec } from "../types";
+import { DEFAULT_BUNDLE_AGENT_CREATIVE_BRIEF, bundleAgentMessageMetadataSchema, type BundleAgentSpec } from "../types";
 
 async function zipBuffer(files: Record<string, string>) {
   const zip = new JSZip();
@@ -87,6 +87,9 @@ describe("SofLIA Bundle Agent services", () => {
     assert.equal(spec.title, "Curso de ventas consultivas");
     assert.equal(spec.compositionId, "Curso-de-ventas-consultivas");
     assert.deepEqual(spec.requiredAssets, ["audio", "slides"]);
+    assert.equal(spec.creativeBrief.visualVariants.length, 3);
+    assert.equal(spec.creativeBrief.similarityCheck.differentiators.length >= 4, true);
+    assert.equal(spec.defaultProps.visualVariantId, spec.creativeBrief.visualVariants[0].id);
     assert.equal(computeSpecHash(spec), computeSpecHash(spec));
   });
 
@@ -102,6 +105,7 @@ describe("SofLIA Bundle Agent services", () => {
     });
 
     assert.equal(spec.defaultProps.accentColor, "#2563EB");
+    assert.equal((spec.defaultProps.designTokens as Record<string, unknown>).accentColor, "#2563EB");
   });
 
   it("infers a descriptive spec for avatar, slides and b-roll requests", () => {
@@ -153,6 +157,81 @@ describe("SofLIA Bundle Agent services", () => {
     assert.equal(blueprint.editableLayers.find((layer) => layer.layerId === "broll")?.itemLayerIdPattern, "broll:{order}");
   });
 
+  it("weights the latest user feedback when creating a revised deterministic spec", () => {
+    const spec = buildSpecFromConversation({
+      title: "Nuevo bundle Remotion",
+      messages: [
+        {
+          role: "USER",
+          content_redacted: "Quiero avatar a la izquierda, slides a la derecha y acentos morados.",
+        },
+        {
+          role: "TOOL",
+          content_redacted: "Spec estructurada generada por SofLIA.",
+        },
+        {
+          role: "USER",
+          content_redacted: "Cambia la nueva version: avatar a la derecha, contenido a la izquierda y acentos azules.",
+        },
+      ],
+    });
+    const blueprint = buildBundleBlueprint(spec);
+
+    assert.equal(spec.defaultProps.accentColor, "#2563EB");
+    assert.match(spec.visualStyle, /avatar ubicado a la derecha/i);
+    assert.match(spec.changeSummary, /avatar a la derecha/i);
+    assert.equal(blueprint.layout, "support-left-avatar-right");
+    assert.deepEqual(blueprint.boxes.avatar, { x: 1190, y: 0, width: 730, height: 1080 });
+    assert.equal(blueprint.boxes.slides.x, 48);
+  });
+
+  it("supports a stacked support layout for vertical revision feedback", () => {
+    const spec = buildSpecFromConversation({
+      title: "Nuevo bundle Remotion",
+      messages: [
+        {
+          role: "USER",
+          content_redacted: "Necesito avatar, slides y B-roll con composicion vertical apilada: diapositiva arriba y B-roll abajo.",
+        },
+      ],
+    });
+    const blueprint = buildBundleBlueprint(spec);
+
+    assert.equal(blueprint.layout, "stacked-support");
+    assert.equal(blueprint.boxes.avatar.width, 691);
+    assert.equal(blueprint.boxes.slides.y, 42);
+    assert.equal(blueprint.boxes.broll.y, 561);
+  });
+
+  it("locks layout and frame color from analyzed wireframe visual references", () => {
+    const spec = buildSpecFromConversation({
+      title: "Nuevo bundle Remotion",
+      messages: [
+        {
+          role: "USER",
+          content_redacted: [
+            "Usa la imagen de referencia para tomar estructura y color del marco.",
+            "En cada cambio de escena al cambiar la diapositiva, los elementos de izquierda y derecha intercambian lados con transiciones suaves.",
+            "Si no hay B-roll o diapositiva, el elemento disponible toma el espacio del otro.",
+            "Automatic visual reference analysis: canvas 800x600; dominant frame/border color #DE8D00; strong vertical divider near 50% width; strong horizontal divider near 50% height; wireframe structure: large left region plus right column split into top and bottom regions; map left region to avatar, top-right to slides, bottom-right to B-roll when those assets are requested.",
+          ].join("\n"),
+        },
+      ],
+    });
+    const blueprint = buildBundleBlueprint(spec);
+
+    assert.equal(spec.creativeBrief.directionName, "Reference Wireframe Lock");
+    assert.equal(spec.defaultProps.accentColor, "#DE8D00");
+    assert.equal(spec.defaultProps.animationVariant, "scene-swap");
+    assert.equal(spec.defaultProps.expandMissingSupportMedia, true);
+    assert.equal(spec.defaultProps.sceneSwapOnSlideChange, true);
+    assert.equal((spec.defaultProps.designTokens as Record<string, unknown>).backgroundColor, "#DE8D00");
+    assert.equal(blueprint.layout, "reference-frame-avatar-left-stack-right");
+    assert.deepEqual(blueprint.boxes.avatar, { x: 35, y: 35, width: 923, height: 1010 });
+    assert.deepEqual(blueprint.boxes.slides, { x: 962, y: 35, width: 923, height: 503 });
+    assert.deepEqual(blueprint.boxes.broll, { x: 962, y: 542, width: 923, height: 503 });
+  });
+
   it("generates a controlled ZIP that passes generated bundle validation", async () => {
     const spec = buildSpecFromConversation({
       title: "Template seguro",
@@ -176,11 +255,26 @@ describe("SofLIA Bundle Agent services", () => {
     assert.equal(propsSchemaProperties?.avatarVideoUrl?.type, "string");
     assert.equal(propsSchemaProperties?.slides?.type, "array");
     assert.equal(propsSchemaProperties?.brollClips?.type, "array");
+    assert.equal(propsSchemaProperties?.animationVariant?.type, "string");
+    assert.equal(propsSchemaProperties?.designTokens?.type, "object");
+    assert.equal(propsSchemaProperties?.expandMissingSupportMedia?.type, "boolean");
     assert.equal(propsSchemaProperties?.layoutOverrides?.type, "array");
+    assert.equal(propsSchemaProperties?.sceneSwapOnSlideChange?.type, "boolean");
     assert.equal(propsSchemaProperties?.totalDurationInFrames?.type, "integer");
+    assert.equal(propsSchemaProperties?.visualVariantId?.type, "string");
     assert.match(source, /avatarVideoUrl/);
     assert.match(source, /slides/);
     assert.match(source, /brollClips/);
+    assert.match(source, /type DesignTokens/);
+    assert.match(source, /animationVariant\?: string/);
+    assert.match(source, /visualVariantId\?: string/);
+    assert.match(source, /tokenAccent/);
+    assert.match(source, /isReferenceFrameLayout/);
+    assert.match(source, /sceneSwapOnSlideChange\?: boolean/);
+    assert.match(source, /expandMissingSupportMedia\?: boolean/);
+    assert.match(source, /mirrorBoxHorizontally/);
+    assert.match(source, /buildSceneBox/);
+    assert.match(source, /supportUnionBox/);
     assert.match(source, /layoutOverrides\?: LayoutOverrideManifest\[\]/);
     assert.match(source, /REMOTION_EDITABLE_LAYERS/);
     assert.match(source, /buildLayoutOverrideStyle/);
@@ -218,6 +312,12 @@ describe("SofLIA Bundle Agent services", () => {
       title: "Plantilla cinematica de B-roll",
       description: "Pantalla completa cinematic inmersivo con B-roll de fondo y texto superpuesto.",
       visualStyle: "cinematic inmersivo pantalla completa con zoom y profundidad",
+      creativeBrief: {
+        ...DEFAULT_BUNDLE_AGENT_CREATIVE_BRIEF,
+        directionName: "Cinematic Learning Field",
+        layoutSystem: "Media field with full-frame B-roll and compact overlays.",
+        motionLanguage: "Kinetic cuts with brief overlay reveals.",
+      },
       compositionId: "plantilla-cinematica-broll",
       durationFrames: 180,
       fps: 30,
@@ -241,6 +341,12 @@ describe("SofLIA Bundle Agent services", () => {
       title: "Plantilla editorial clara",
       description: "Layout claro editorial para lectura explicativa con slides sin avatar.",
       visualStyle: "claro editorial lectura explicativo con transiciones suaves",
+      creativeBrief: {
+        ...DEFAULT_BUNDLE_AGENT_CREATIVE_BRIEF,
+        directionName: "Editorial Learning Page",
+        layoutSystem: "Editorial media layout with a strong reading rail.",
+        motionLanguage: "Soft measured transitions and calm support visual holds.",
+      },
       compositionId: "plantilla-editorial-clara",
       durationFrames: 180,
       fps: 30,

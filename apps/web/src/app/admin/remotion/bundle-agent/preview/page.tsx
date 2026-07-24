@@ -1,9 +1,10 @@
+import type React from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { buildBundleBlueprint, type LayerBox } from "@/domains/production/bundle-agent/blueprint.service";
 import { BundleAgentConversationService } from "@/domains/production/bundle-agent/conversation.service";
 import { resolveBundleAgentAuthContext } from "@/domains/production/bundle-agent/route-context";
 import { bundleAgentSpecSchema, type BundleAgentSpec } from "@/domains/production/bundle-agent/types";
-import { inferVisualProfile } from "@/domains/production/bundle-agent/visual-profile.service";
 
 export const dynamic = "force-dynamic";
 
@@ -30,110 +31,151 @@ function getAccentColor(spec: BundleAgentSpec) {
   return /^#[0-9A-Fa-f]{6}$/.test(color) ? color : "#5B21B6";
 }
 
+function getBoxStyle(box: LayerBox, spec: BundleAgentSpec, zIndex: number): React.CSSProperties {
+  return {
+    position: "absolute",
+    left: `${(box.x / spec.width) * 100}%`,
+    top: `${(box.y / spec.height) * 100}%`,
+    width: `${(box.width / spec.width) * 100}%`,
+    height: `${(box.height / spec.height) * 100}%`,
+    zIndex,
+  };
+}
+
+function getPreviewTheme(spec: BundleAgentSpec, accentColor: string) {
+  const text = `${spec.title} ${spec.description} ${spec.visualStyle}`.toLowerCase();
+  const tokens = spec.creativeBrief?.colorTokens;
+  const isReferenceWireframe = spec.creativeBrief?.layoutSystem.toLowerCase().includes("reference wireframe");
+
+  if (isReferenceWireframe && tokens) {
+    return {
+      background: tokens.background,
+      panel: tokens.surface,
+      border: tokens.accent,
+      title: "text-slate-950",
+      subtitle: "text-slate-700",
+    };
+  }
+
+  if (text.includes("claro") || text.includes("minimal") || text.includes("white")) {
+    return {
+      background: `linear-gradient(135deg, #f8fafc 0%, #e2e8f0 58%, ${accentColor}22 100%)`,
+      panel: "rgba(255,255,255,0.72)",
+      border: "rgba(15,23,42,0.14)",
+      title: "text-slate-950",
+      subtitle: "text-slate-700",
+    };
+  }
+
+  if (text.includes("cinematic") || text.includes("inmersivo") || text.includes("pantalla completa")) {
+    return {
+      background: `radial-gradient(circle at 72% 34%, ${accentColor}66, transparent 30%), linear-gradient(145deg, #020617 0%, #111827 46%, #030712 100%)`,
+      panel: "rgba(15,23,42,0.48)",
+      border: "rgba(255,255,255,0.16)",
+      title: "text-white",
+      subtitle: "text-white/82",
+    };
+  }
+
+  return {
+    background: `linear-gradient(135deg, #09090f 0%, #151022 48%, ${accentColor}88 140%)`,
+    panel: "rgba(255,255,255,0.1)",
+    border: "rgba(255,255,255,0.15)",
+    title: "text-white",
+    subtitle: "text-white/82",
+  };
+}
+
+function getTextBlockStyle(layout: string): React.CSSProperties {
+  if (layout === "media-only" || layout === "support-left-avatar-right") {
+    return { left: "6%", bottom: "9%", width: "42%" };
+  }
+
+  if (layout === "stacked-support") {
+    return { left: "5%", bottom: "8%", width: "28%" };
+  }
+
+  return { right: "6%", top: "13%", width: "35%" };
+}
+
 function SpecPreviewCanvas({ spec }: { spec: BundleAgentSpec }) {
   const accentColor = getAccentColor(spec);
-  const profile = inferVisualProfile(spec);
+  const blueprint = buildBundleBlueprint(spec);
   const title = getStringProp(spec, "title", spec.title);
   const subtitle = getStringProp(spec, "subtitle", spec.description || spec.visualStyle);
   const hasAvatar = spec.requiredAssets.includes("avatar");
   const hasSlides = spec.requiredAssets.includes("slides");
   const hasBroll = spec.requiredAssets.includes("broll");
   const hasCaptions = spec.requiredAssets.includes("captions");
-  const isLight = profile.backgroundPreset === "editorial-light";
-  const isCinematic = profile.layoutVariant === "cinematic-overlay";
-  const isMediaFirst = profile.layoutVariant === "media-first";
-  const isTextLed = profile.layoutVariant === "text-led";
-  const background = isLight
-    ? "linear-gradient(135deg, #f8fafc 0%, #e2e8f0 52%, #fef3c7 100%)"
-    : profile.backgroundPreset === "cinematic-dark"
-      ? "radial-gradient(circle at 50% 20%, rgba(255,255,255,0.18), transparent 26%), linear-gradient(145deg, #030712 0%, #111827 42%, #020617 100%)"
-      : profile.backgroundPreset === "minimal-contrast"
-        ? `linear-gradient(135deg, #111827 0%, #1f2937 50%, ${accentColor} 180%)`
-        : "linear-gradient(135deg, #09090f 0%, #151022 48%, #2e1065 100%)";
-  const textColor = isLight ? "text-slate-950" : "text-white";
-  const mutedTextColor = isLight ? "text-slate-700" : "text-white/80";
-
-  if (isCinematic) {
-    return (
-      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 p-4 shadow-2xl">
-        <div className="relative aspect-video overflow-hidden rounded-2xl p-10 text-white" style={{ background }}>
-          <div
-            className="absolute inset-0"
-            style={{
-              background: hasBroll || hasSlides
-                ? `radial-gradient(circle at 68% 38%, ${accentColor}88, transparent 28%), linear-gradient(120deg, rgba(15,23,42,0.22), rgba(15,23,42,0.88))`
-                : `radial-gradient(circle at 70% 42%, ${accentColor}, transparent 26%)`,
-            }}
-          />
-          <div className="absolute inset-y-0 right-0 w-1/2 bg-white/10" />
-          <div className="absolute bottom-10 left-10 max-w-2xl">
-            <div className="mb-6 h-2 w-36 rounded-full" style={{ backgroundColor: accentColor }} />
-            <h1 className="text-6xl font-semibold leading-none tracking-normal">{title}</h1>
-            <p className="mt-6 text-2xl leading-snug text-white/85">{subtitle}</p>
-            <div className="mt-8 h-2 w-full overflow-hidden rounded-full bg-white/15">
-              <div className="h-full w-2/3" style={{ backgroundColor: accentColor }} />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const theme = getPreviewTheme(spec, accentColor);
+  const isReferenceFrameLayout = blueprint.layout === "reference-frame-avatar-left-stack-right";
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 p-4 shadow-2xl">
-      <div
-        className={`relative aspect-video overflow-hidden rounded-2xl p-10 ${textColor}`}
-        style={{ background }}
-      >
-        <div className="absolute left-0 top-0 h-full w-1/3 bg-white/10 blur-2xl" />
-        <div
-          className="relative grid h-full gap-8"
-          style={{
-            gridTemplateColumns: isMediaFirst ? "1.22fr 0.78fr" : isTextLed ? "0.84fr 1.16fr" : "1fr 1fr",
-          }}
-        >
-          <section
-            className="flex flex-col justify-between rounded-[28px] border p-8"
-            style={{
-              borderColor: accentColor,
-              background: isLight ? "rgba(255,255,255,0.68)" : "linear-gradient(180deg, rgba(91,33,182,0.26), rgba(12,10,18,0.9))",
-              boxShadow: isLight ? "0 28px 80px rgba(15,23,42,0.16)" : `inset 0 0 48px ${accentColor}44`,
-            }}
-          >
-            <div className="inline-flex w-fit rounded-full border border-current/20 bg-white/10 px-4 py-2 text-sm font-semibold">
-              {isMediaFirst ? "Visual principal" : hasAvatar ? "Avatar en primera persona" : "Area visual principal"}
-            </div>
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 p-4 shadow-2xl">
+      <div className="relative aspect-video overflow-hidden rounded-xl" style={{ background: theme.background }}>
+        <div style={getBoxStyle(blueprint.boxes.primaryVisual, spec, 1)} className={`overflow-hidden ${isReferenceFrameLayout ? "" : "rounded-xl border"}`}>
+          <div className="h-full w-full" style={{ borderColor: theme.border, background: isReferenceFrameLayout ? "transparent" : theme.panel }} />
+        </div>
+
+        {hasAvatar ? (
+          <div style={getBoxStyle(blueprint.boxes.avatar, spec, 2)} className="overflow-hidden border">
             <div
-              className={`mx-auto flex items-center justify-center text-3xl font-black ${isMediaFirst ? "h-64 w-full rounded-3xl" : "h-56 w-56 rounded-full"}`}
+              className="h-full w-full"
               style={{
-                background: isMediaFirst
-                  ? `linear-gradient(135deg, ${accentColor}44, rgba(15,23,42,0.26))`
-                  : `radial-gradient(circle at 50% 32%, rgba(255,255,255,0.28), ${accentColor} 38%, rgba(12,10,18,0.2) 68%)`,
+                borderColor: theme.border,
+                background: isReferenceFrameLayout
+                  ? theme.panel
+                  : `radial-gradient(circle at 50% 28%, rgba(255,255,255,0.26), ${accentColor}88 30%, rgba(15,23,42,0.16) 68%)`,
+              }}
+            />
+          </div>
+        ) : null}
+
+        {hasSlides ? (
+          <div style={getBoxStyle(blueprint.boxes.slides, spec, 3)} className={`overflow-hidden border ${isReferenceFrameLayout ? "" : "rounded-xl shadow-2xl"}`}>
+            <div
+              className="h-full w-full"
+              style={{
+                borderColor: theme.border,
+                background: isReferenceFrameLayout
+                  ? theme.panel
+                  : `linear-gradient(135deg, rgba(255,255,255,0.86), rgba(226,232,240,0.68)), linear-gradient(90deg, ${accentColor}44, transparent)`,
               }}
             >
-              {isMediaFirst ? (hasBroll ? "B-roll" : "Slides") : "POV"}
+              {!isReferenceFrameLayout ? (
+                <>
+                  <div className="m-[6%] h-[10%] w-[52%] rounded-full" style={{ backgroundColor: accentColor }} />
+                  <div className="mx-[6%] mt-[7%] h-[7%] w-[78%] rounded-full" style={{ backgroundColor: "rgba(15,23,42,0.18)" }} />
+                  <div className="mx-[6%] mt-[4%] h-[7%] w-[62%] rounded-full" style={{ backgroundColor: "rgba(15,23,42,0.14)" }} />
+                  <div className="mx-[6%] mt-[9%] h-[28%] w-[42%] rounded-xl" style={{ backgroundColor: "rgba(15,23,42,0.1)" }} />
+                </>
+              ) : null}
             </div>
-            <p className={`text-xl leading-snug ${mutedTextColor}`}>
-              Placeholder sin assets: aqui se validan encuadre, jerarquia visual y zona del avatar.
-            </p>
-          </section>
+          </div>
+        ) : null}
 
-          <section className={`flex flex-col justify-center rounded-[28px] border p-9 ${isLight ? "border-slate-900/15 bg-white/70" : "border-white/15 bg-white/10"}`}>
-            <div className="mb-7 h-2 w-28 rounded-full" style={{ backgroundColor: accentColor }} />
-            <h1 className={`${isTextLed ? "text-6xl" : "text-5xl"} font-semibold leading-none tracking-normal`}>{title}</h1>
-            <p className={`mt-6 text-2xl leading-snug ${isLight ? "text-slate-700" : "text-white/90"}`}>{subtitle}</p>
-            <p className={`mt-6 text-base leading-relaxed ${isLight ? "text-slate-600" : "text-white/65"}`}>Direccion visual: {spec.visualStyle}</p>
-            <div className="mt-8 grid grid-cols-2 gap-3 text-sm">
-              <div className={isLight ? "rounded-xl bg-slate-900/10 p-3" : "rounded-xl bg-white/10 p-3"}>{hasSlides ? "Slides: soporte visual" : "Slides: no requeridas"}</div>
-              <div className={isLight ? "rounded-xl bg-slate-900/10 p-3" : "rounded-xl bg-white/10 p-3"}>{hasBroll ? "B-roll: soporte visual" : "B-roll: no requerido"}</div>
-            </div>
-            {hasCaptions ? (
-              <div className="mt-7 rounded-xl bg-black/35 px-4 py-3 text-center text-lg font-semibold text-white">
-                Subtitulos blancos de alta legibilidad
-              </div>
-            ) : null}
+        {hasBroll ? (
+          <div style={getBoxStyle(blueprint.boxes.broll, spec, 4)} className={`overflow-hidden border ${isReferenceFrameLayout ? "" : "rounded-xl shadow-2xl"}`}>
+            <div
+              className="h-full w-full"
+              style={{
+                borderColor: theme.border,
+                background: isReferenceFrameLayout
+                  ? theme.panel
+                  : `radial-gradient(circle at 68% 36%, ${accentColor}99, transparent 28%), linear-gradient(135deg, rgba(15,23,42,0.18), rgba(15,23,42,0.84))`,
+              }}
+            />
+          </div>
+        ) : null}
+
+        {!isReferenceFrameLayout ? (
+          <section className={`absolute z-10 ${theme.title}`} style={getTextBlockStyle(blueprint.layout)}>
+            <div className="mb-5 h-2 w-24 rounded-full" style={{ backgroundColor: accentColor }} />
+            <h1 className="text-5xl font-semibold leading-none tracking-normal">{title}</h1>
+            <p className={`mt-5 text-2xl leading-snug ${theme.subtitle}`}>{subtitle}</p>
+            {hasCaptions ? <div className="mt-7 h-12 rounded-xl bg-black/30" /> : null}
           </section>
-        </div>
+        ) : null}
       </div>
     </div>
   );
@@ -186,10 +228,10 @@ export default async function BundleAgentPreviewPage({ searchParams }: PreviewPa
               <ArrowLeft size={16} />
               Regresar al agente
             </Link>
-            <p className="text-sm font-semibold uppercase tracking-wide text-[#5B21B6]">Preview sin assets</p>
+            <p className="text-sm font-semibold uppercase tracking-wide text-[#5B21B6]">Vista estructural</p>
             <h1 className="mt-1 text-3xl font-semibold text-slate-950">{spec.title}</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Vista estructural segura para revisar layout, estilo y props antes de generar build cloud o usar assets reales.
+              Revision de layout, estilo y props antes de generar build cloud o usar assets reales.
             </p>
           </div>
           <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
