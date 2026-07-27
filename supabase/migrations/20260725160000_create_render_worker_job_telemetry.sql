@@ -143,6 +143,7 @@ CREATE TABLE IF NOT EXISTS public.render_worker_job_metric_samples (
   system_memory_total_bytes bigint NOT NULL DEFAULT 0,
   system_cpu_count integer NOT NULL DEFAULT 0,
   top_processes jsonb NOT NULL DEFAULT '[]'::jsonb,
+  system_top_processes jsonb NOT NULL DEFAULT '[]'::jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT render_worker_job_metric_samples_pkey PRIMARY KEY (id),
   CONSTRAINT render_worker_job_metric_samples_run_fkey

@@ -398,6 +398,24 @@ function readTelemetryStatus(value: unknown, fallback: string) {
     : fallback;
 }
 
+function readTelemetryTerminalAt(row: Record<string, unknown>): string | null {
+  return readNonEmptyString(row.completed_at)
+    || readNonEmptyString(row.failed_at)
+    || readNonEmptyString(row.finished_at)
+    || readNonEmptyString(row.built_at);
+}
+
+function isTelemetryTerminalStatus(status: unknown): boolean {
+  return ["SUCCEEDED", "FAILED", "CANCELLED", "BUILT"].includes(typeof status === "string" ? status : "");
+}
+
+function isTelemetryRunAfterTerminal(target: { remoteStatus?: string | null; terminalAt?: string | null }, startedAt: string): boolean {
+  if (!target.terminalAt || !isTelemetryTerminalStatus(target.remoteStatus)) return false;
+  const startedAtMs = Date.parse(startedAt);
+  const terminalAtMs = Date.parse(target.terminalAt);
+  return Number.isFinite(startedAtMs) && Number.isFinite(terminalAtMs) && startedAtMs > terminalAtMs;
+}
+
 function readWorkerCapabilities(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -2178,6 +2196,8 @@ export class DesktopWorkerControlPlane {
     const config = readTelemetryRecord(input.config);
     const hardware = readTelemetryRecord(input.hardware);
     const gpuAdapters = readTelemetryArray(hardware.gpuAdapters, 8);
+    const now = new Date().toISOString();
+    const startedAt = readTelemetryDate(input.startedAt, now);
 
     const { data: existingRun, error: existingError } = await this.supabase
       .from("render_worker_job_runs")
@@ -2194,7 +2214,10 @@ export class DesktopWorkerControlPlane {
       return { runId: existingRun.id };
     }
 
-    const now = new Date().toISOString();
+    if (isTelemetryRunAfterTerminal(target, startedAt)) {
+      throw new Error("TELEMETRY_RUN_TARGET_ALREADY_TERMINAL");
+    }
+
     const insertPayload = {
       worker_id: worker.id,
       organization_id: worker.organizationId,
@@ -2215,7 +2238,7 @@ export class DesktopWorkerControlPlane {
       props_hash: readTelemetryString(input.propsHash, target.propsHash || "", 160) || null,
       output_storage_path: readTelemetryString(input.outputStoragePath, target.outputStoragePath || "", 500) || null,
       status: "running",
-      started_at: readTelemetryDate(input.startedAt, now),
+      started_at: startedAt,
       last_stage: "claim",
       power_profile: readTelemetryString(config.powerProfile, "", 80) || null,
       max_concurrent_jobs: readTelemetryInteger(config.maxConcurrentJobs, 0, 8) || null,
@@ -2278,6 +2301,7 @@ export class DesktopWorkerControlPlane {
       system_memory_total_bytes: readTelemetryInteger(sample.systemMemoryTotalBytes, 0),
       system_cpu_count: readTelemetryInteger(sample.systemCpuCount, 0, 1024),
       top_processes: readTelemetryTopProcesses(sample.topProcesses),
+      system_top_processes: readTelemetryTopProcesses(sample.systemTopProcesses),
     }));
 
     const { error } = await this.supabase
@@ -3498,6 +3522,8 @@ export class DesktopWorkerControlPlane {
         bundleHash: templateBuild.bundle_hash || templateBuild.build_hash || null,
         propsHash: null,
         outputStoragePath: templateBuild.build_output_storage_path || null,
+        remoteStatus: templateBuild.status || null,
+        terminalAt: readTelemetryTerminalAt(templateBuild),
       };
     }
 
@@ -3516,6 +3542,8 @@ export class DesktopWorkerControlPlane {
         bundleHash: templatePreview.bundle_hash || templatePreview.build_hash || null,
         propsHash: templatePreview.props_hash || null,
         outputStoragePath: templatePreview.preview_poster_storage_path || templatePreview.preview_video_storage_path || null,
+        remoteStatus: templatePreview.status || null,
+        terminalAt: readTelemetryTerminalAt(templatePreview),
       };
     }
 
@@ -3533,6 +3561,8 @@ export class DesktopWorkerControlPlane {
       bundleHash: job.input_snapshot?.desktopBundleHash || job.input_snapshot?.bundleHash || null,
       propsHash: job.input_snapshot?.propsHash || null,
       outputStoragePath: job.output_snapshot?.outputStoragePath || null,
+      remoteStatus: job.status || null,
+      terminalAt: readTelemetryTerminalAt(job),
     };
   }
 
