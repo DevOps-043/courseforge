@@ -1,10 +1,6 @@
 import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { DesktopWorkerControlPlane } from "@/lib/server/desktop-worker-control-plane";
 import { normalizeAssemblyAssets } from "@/remotion/assembly-assets.normalizer";
-import {
-  deriveAssemblyTargetDurationSeconds,
-  withAssemblyTargetDuration,
-} from "@/remotion/assembly-duration";
 import type { MaterialAssets } from "@/domains/materials/types/materials.types";
 import {
   renderBatchRequestSchema,
@@ -40,9 +36,7 @@ function getLastLog(progress: unknown) {
 
 function hasRenderableAssets(component: any) {
   const currentAssets = (component.assets || {}) as MaterialAssets;
-  const targetDurationSeconds = deriveAssemblyTargetDurationSeconds(component.content);
-  const renderAssets = withAssemblyTargetDuration(currentAssets, targetDurationSeconds);
-  const normalizedAssets = normalizeAssemblyAssets(renderAssets, 30);
+  const normalizedAssets = normalizeAssemblyAssets(currentAssets, 30);
 
   return Boolean(
     normalizedAssets.voiceAudioUrl ||

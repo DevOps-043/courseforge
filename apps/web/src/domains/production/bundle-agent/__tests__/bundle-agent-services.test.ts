@@ -288,7 +288,10 @@ describe("SofLIA Bundle Agent services", () => {
     assert.match(source, /props\.totalDurationInFrames/);
     assert.match(source, /registerRoot\(RemotionRoot\)/);
     assert.match(source, /<Composition/);
-    assert.match(source, /timelineMode === "equal-slides-with-indexed-broll"/);
+    assert.match(source, /function buildBrollTimeline/);
+    assert.match(source, /getActiveBrollTimelineItem/);
+    assert.match(source, /<Sequence from=\{activeBrollItem\.startFrame\}/);
+    assert.doesNotMatch(source, /\sloop\s/);
     assert.doesNotMatch(source, /slides\.length > 0 \? null :/);
     assert.doesNotMatch(source, /transform\s*:/);
     assert.doesNotMatch(source, /style\.transform/);
@@ -380,9 +383,11 @@ describe("SofLIA Bundle Agent services", () => {
     assert.equal(editorialReport.isValid, true);
     assert.notEqual(cinematicSource, editorialSource);
     assert.match(cinematicSource, /const layoutMode = "media-only"/);
-    assert.match(cinematicSource, /const timelineMode = "equal-support-visuals"/);
+    assert.match(cinematicSource, /function buildBrollTimeline/);
+    assert.match(cinematicSource, /getActiveBrollTimelineItem/);
     assert.match(editorialSource, /const layoutMode = "media-only"/);
-    assert.match(editorialSource, /const timelineMode = "equal-support-visuals"/);
+    assert.match(editorialSource, /function buildBrollTimeline/);
+    assert.match(editorialSource, /getActiveBrollTimelineItem/);
   });
 
   it("generates a downloadable base ZIP that passes bundle validation", async () => {

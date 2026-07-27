@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { AlertTriangle, Check, CheckCircle2, Copy, Download, Film, Layers, Link2, Loader2, Monitor, Play, RefreshCw, Search, Sparkles, Square, Unlink } from 'lucide-react';
 import { buildAssemblyProps, hasPreviewableAssets } from '@/remotion/buildAssemblyProps';
-import { deriveAssemblyTargetDurationSeconds } from '@/remotion/assembly-duration';
+import { verifyBrowserMediaDurationsFromUrls } from '@/remotion/browser-media-duration-verification';
 import { buildVisualTimeline, type VisualTimeline } from '@/remotion/visual-timeline';
 import {
     filterLayoutOverridesForEditableLayers,
@@ -12,6 +12,10 @@ import {
     TEMPLATE_LAYOUT_CONTRACT_VERSION,
     type LayoutOverrideManifest,
 } from '@/remotion/layout-overrides';
+import {
+    safeParseTimelineOverrideManifests,
+    type TimelineOverrideManifest,
+} from '@/remotion/timeline-overrides';
 import { getTemplatesAction, type RemotionTemplate } from '@/domains/production/actions/templates.actions';
 import {
     cancelRemotionAssemblyJobsAction,
@@ -22,6 +26,7 @@ import {
     getRenderWorkerStatusAction,
     revokeRenderWorkerAction,
     saveRemotionLayoutOverridesAction,
+    saveRemotionTimelineOverridesAction,
     type RenderWorkerStatusView,
 } from '../actions/production.actions';
 import { useMaterials } from '../hooks/useMaterials';
@@ -43,6 +48,7 @@ import {
     getEditableLayoutLayers,
     type LayoutAssetSummary,
 } from './layoutOverrideDraftModel';
+import type { MaterialAssets } from '../types/materials.types';
 
 interface PostproductionAssemblyContainerProps {
     artifactId: string;
@@ -52,6 +58,7 @@ interface PostproductionAssemblyContainerProps {
 
 type AssemblyJobStatus = 'PENDING' | 'QUEUED' | 'RUNNING' | 'WAITING_PROVIDER' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
 const ASSEMBLY_JOBS_STORAGE_PREFIX = 'courseforge:assembly-jobs';
+type AssemblyWorkspaceView = 'preview' | 'workers' | 'batch' | 'templates';
 
 interface AssemblyJobTracker {
     componentId: string;
@@ -138,7 +145,26 @@ function getPersistedLayoutOverrides(
     ));
 }
 
+function getPersistedTimelineOverrides(
+    component: any,
+    templateId?: string | null,
+    templateVersionId?: string | null,
+): TimelineOverrideManifest[] {
+    const parsed = safeParseTimelineOverrideManifests(component?.assets?.timeline_overrides);
+    if (!parsed.success) return [];
+    if (!templateId) return parsed.data;
+
+    return parsed.data.filter((manifest) => (
+        manifest.templateId === templateId &&
+        (templateVersionId ? manifest.templateVersionId === templateVersionId : true)
+    ));
+}
+
 function areLayoutOverridesEqual(left: LayoutOverrideManifest[], right: LayoutOverrideManifest[]) {
+    return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function areTimelineOverridesEqual(left: TimelineOverrideManifest[], right: TimelineOverrideManifest[]) {
     return JSON.stringify(left) === JSON.stringify(right);
 }
 
@@ -213,8 +239,12 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const [templateOverrides, setTemplateOverrides] = useState<Record<string, string>>({});
     const [workerOverrides, setWorkerOverrides] = useState<Record<string, string>>({});
     const [layoutOverrideDrafts, setLayoutOverrideDrafts] = useState<Record<string, LayoutOverrideManifest[]>>({});
+    const [timelineOverrideDrafts, setTimelineOverrideDrafts] = useState<Record<string, TimelineOverrideManifest[]>>({});
     const [externalPreviewLayoutOverrideSnapshots, setExternalPreviewLayoutOverrideSnapshots] = useState<Record<string, LayoutOverrideManifest[]>>({});
+    const [externalPreviewTimelineOverrideSnapshots, setExternalPreviewTimelineOverrideSnapshots] = useState<Record<string, TimelineOverrideManifest[]>>({});
+    const [assemblyWorkspaceView, setAssemblyWorkspaceView] = useState<AssemblyWorkspaceView>('preview');
     const [savingLayoutOverrides, setSavingLayoutOverrides] = useState(false);
+    const [savingTimelineOverrides, setSavingTimelineOverrides] = useState(false);
     const [selectedLayoutLayerId, setSelectedLayoutLayerId] = useState<RemotionEditableLayerId>(REMOTION_EDITABLE_LAYERS.AVATAR);
     const [layoutEditMode, setLayoutEditMode] = useState<LayoutOverrideEditMode>('move');
     const [layoutGridSettings, setLayoutGridSettings] = useState<LayoutOverrideGridSettings>({
@@ -626,6 +656,8 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                         template,
                         layoutOverrideDrafts[layoutDraftKey] ?? persistedLayoutOverrides,
                     );
+                    const persistedTimelineOverrides = getPersistedTimelineOverrides(component, templateId, templateVersionId);
+                    const timelineOverrides = timelineOverrideDrafts[layoutDraftKey] ?? persistedTimelineOverrides;
 
                     return {
                         componentId: component.id,
@@ -638,6 +670,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                             templateConfig,
                             transitionType: (templateConfig as any)?.transitionType,
                             layoutOverrides,
+                            timelineOverrides,
                         },
                     };
                 }),
@@ -740,12 +773,39 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const selectedTemplateBlocksFinalRender = selectedTemplateUsesExternalBundle || selectedTemplateNeedsCloudBuild;
     const selectedTemplateHasCustomBundleBlocked = selectedTemplateUsesExternalBundle || selectedTemplateNeedsCloudBuild;
     const activePreview = videoComponents.find((component) => component.id === activePreviewId) || videoComponents[0];
+    const [verifiedActivePreviewAssets, setVerifiedActivePreviewAssets] = useState<MaterialAssets | null | undefined>(
+        activePreview?.assets,
+    );
     const activeTemplateVersionId = selectedTemplateConfig?.template_version_id || selectedTemplateConfig?.id || null;
     const activeLayoutDraftKey = getLayoutOverrideDraftKey({
         componentId: activePreview?.id,
         templateId: selectedTemplate,
         templateVersionId: activeTemplateVersionId,
     });
+
+    useEffect(() => {
+        let cancelled = false;
+        const assets = activePreview?.assets as MaterialAssets | null | undefined;
+        setVerifiedActivePreviewAssets(assets);
+
+        verifyBrowserMediaDurationsFromUrls(assets)
+            .then((nextAssets) => {
+                if (!cancelled) {
+                    setVerifiedActivePreviewAssets(nextAssets);
+                }
+            })
+            .catch((error) => {
+                console.warn('[PostproductionAssemblyContainer] No se pudieron verificar duraciones de assets', error);
+                if (!cancelled) {
+                    setVerifiedActivePreviewAssets(assets);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [activePreview?.assets]);
+
     const activeLayoutAssetSummary = useMemo(
         () => getLayoutAssetSummary(activePreview?.assets),
         [activePreview?.assets],
@@ -789,30 +849,41 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
             externalPreviewLayoutOverrideSnapshots[activeLayoutDraftKey] ?? activePersistedLayoutOverrides,
         )
         : [];
+    const activePersistedTimelineOverrides = activePreview
+        ? getPersistedTimelineOverrides(activePreview, selectedTemplate, activeTemplateVersionId)
+        : [];
+    const activeTimelineOverrides = activePreview
+        ? timelineOverrideDrafts[activeLayoutDraftKey] ?? activePersistedTimelineOverrides
+        : [];
+    const activeExternalPreviewTimelineOverrides = activePreview
+        ? externalPreviewTimelineOverrideSnapshots[activeLayoutDraftKey] ?? activePersistedTimelineOverrides
+        : [];
     const hasUnsavedLayoutOverrides = hasIncompatibleStoredLayoutOverrides || !areLayoutOverridesEqual(
         activeLayoutOverrides,
         activePersistedLayoutOverrides,
     );
+    const hasUnsavedTimelineOverrides = !areTimelineOverridesEqual(
+        activeTimelineOverrides,
+        activePersistedTimelineOverrides,
+    );
     const hasLayoutOverridesToDiscard = hasIncompatibleStoredLayoutOverrides ||
         activeLayoutOverrides.length > 0 ||
         activePersistedLayoutOverrides.length > 0;
-    const activePreviewTargetDurationSeconds = deriveAssemblyTargetDurationSeconds(activePreview?.content);
+    const hasTimelineOverridesToDiscard =
+        activeTimelineOverrides.length > 0 ||
+        activePersistedTimelineOverrides.length > 0;
     const activePreviewTimeline = useMemo<VisualTimeline | null>(() => {
-        if (!activePreview || !hasPreviewableAssets(activePreview.assets)) {
+        if (!activePreview || !hasPreviewableAssets(verifiedActivePreviewAssets)) {
             return null;
         }
 
         try {
             const props = buildAssemblyProps(
-                activePreviewTargetDurationSeconds
-                    ? {
-                        ...(activePreview.assets ?? {}),
-                        assembly_target_duration_seconds: activePreviewTargetDurationSeconds,
-                    }
-                    : activePreview.assets,
+                verifiedActivePreviewAssets,
                 selectedTemplateSlug,
                 selectedTemplateConfig?.default_config,
                 activeLayoutOverrides,
+                activeTimelineOverrides,
             );
 
             return buildVisualTimeline(props);
@@ -823,7 +894,8 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     }, [
         activeLayoutOverrides,
         activePreview,
-        activePreviewTargetDurationSeconds,
+        activeTimelineOverrides,
+        verifiedActivePreviewAssets,
         selectedTemplateConfig?.default_config,
         selectedTemplateSlug,
     ]);
@@ -836,6 +908,16 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const currentAssemblyLabel = activeAssemblyJobs.length === 1
         ? activeAssemblyJobs[0].label
         : `${activeAssemblyJobs.length || assemblyJobs.length} videos`;
+    const assemblyWorkspaceTabs: Array<{
+        count?: number;
+        id: AssemblyWorkspaceView;
+        label: string;
+    }> = [
+        { id: 'preview', label: 'Editor', count: videoComponents.length },
+        { id: 'workers', label: 'Workers', count: visibleDesktopWorkers.length },
+        { id: 'batch', label: 'Ensamble', count: componentsToAssemble.length },
+        { id: 'templates', label: 'Plantillas', count: templates.length },
+    ];
 
     useEffect(() => {
         if (
@@ -859,7 +941,17 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                 ? current
                 : { ...current, [activeLayoutDraftKey]: activePersistedLayoutOverrides }
         ));
-    }, [activeLayoutDraftKey, activePersistedLayoutOverrides, activePreview]);
+        setTimelineOverrideDrafts((current) => (
+            current[activeLayoutDraftKey] !== undefined
+                ? current
+                : { ...current, [activeLayoutDraftKey]: activePersistedTimelineOverrides }
+        ));
+        setExternalPreviewTimelineOverrideSnapshots((current) => (
+            current[activeLayoutDraftKey] !== undefined
+                ? current
+                : { ...current, [activeLayoutDraftKey]: activePersistedTimelineOverrides }
+        ));
+    }, [activeLayoutDraftKey, activePersistedLayoutOverrides, activePersistedTimelineOverrides, activePreview]);
 
     const filteredTemplates = useMemo(() => {
         const search = templateSearch.trim().toLowerCase();
@@ -896,10 +988,12 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
             templateConfig: selectedTemplateConfig?.default_config || {},
             transitionType: selectedTemplateConfig?.default_config?.transitionType,
             layoutOverrides: activeExternalPreviewLayoutOverrides,
+            timelineOverrides: activeExternalPreviewTimelineOverrides,
         };
     }, [
         activePreview,
         activeExternalPreviewLayoutOverrides,
+        activeExternalPreviewTimelineOverrides,
         selectedTemplate,
         selectedTemplateConfig?.default_config,
         selectedTemplateUsesExternalPreview,
@@ -1009,6 +1103,58 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
             return next;
         });
         setExternalPreviewLayoutOverrideSnapshots((current) => {
+            const next = { ...current };
+            next[activeLayoutDraftKey] = [];
+            return next;
+        });
+    };
+
+    const handleSaveTimelineOverrides = async () => {
+        if (!activePreview) return;
+
+        setSavingTimelineOverrides(true);
+        const result = await saveRemotionTimelineOverridesAction(
+            activePreview.id,
+            activeTimelineOverrides,
+            {
+                templateId: selectedTemplate,
+                templateVersionId: activeTemplateVersionId,
+            },
+        );
+        if (result.success) {
+            setTimelineOverrideDrafts((current) => {
+                const next = { ...current };
+                if (activeTimelineOverrides.length > 0) {
+                    next[activeLayoutDraftKey] = activeTimelineOverrides;
+                } else {
+                    delete next[activeLayoutDraftKey];
+                }
+                return next;
+            });
+            setExternalPreviewTimelineOverrideSnapshots((current) => {
+                const next = { ...current };
+                if (activeTimelineOverrides.length > 0) {
+                    next[activeLayoutDraftKey] = activeTimelineOverrides;
+                } else {
+                    delete next[activeLayoutDraftKey];
+                }
+                return next;
+            });
+            await refresh();
+        } else {
+            alert(result.error || 'No se pudieron guardar los ajustes de timeline.');
+        }
+        setSavingTimelineOverrides(false);
+    };
+
+    const handleDiscardTimelineDraft = () => {
+        if (!activePreview) return;
+        setTimelineOverrideDrafts((current) => {
+            const next = { ...current };
+            next[activeLayoutDraftKey] = [];
+            return next;
+        });
+        setExternalPreviewTimelineOverrideSnapshots((current) => {
             const next = { ...current };
             next[activeLayoutDraftKey] = [];
             return next;
@@ -1151,24 +1297,57 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-8 2xl:grid-cols-[minmax(0,1fr)_380px]">
+            <div className="sticky top-20 z-10 rounded-xl border border-gray-200 bg-white/95 p-2 shadow-sm backdrop-blur dark:border-[#6C757D]/10 dark:bg-[#151A21]/95">
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                    {assemblyWorkspaceTabs.map((tab) => {
+                        const active = assemblyWorkspaceView === tab.id;
+                        return (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => setAssemblyWorkspaceView(tab.id)}
+                                className={`flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                                    active
+                                        ? 'bg-[#0A2540] text-white shadow-sm dark:bg-[#00D4B3] dark:text-[#061018]'
+                                        : 'text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/5'
+                                }`}
+                            >
+                                <span>{tab.label}</span>
+                                {typeof tab.count === 'number' ? (
+                                    <span className={`rounded-full px-2 py-0.5 text-[11px] ${
+                                        active
+                                            ? 'bg-white/20 text-white dark:bg-[#061018]/15 dark:text-[#061018]'
+                                            : 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-300'
+                                    }`}>
+                                        {tab.count}
+                                    </span>
+                                ) : null}
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-8">
+                {assemblyWorkspaceView !== 'templates' ? (
                 <div className="space-y-6">
-                    <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-5 sm:p-6 lg:p-8 space-y-5 shadow-sm">
-                        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                    {assemblyWorkspaceView === 'preview' ? (
+                    <div className="space-y-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#6C757D]/10 dark:bg-[#151A21] sm:p-5">
+                        <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 dark:border-white/5 xl:flex-row xl:items-center xl:justify-between">
                             <h3 className="text-md font-bold text-gray-900 dark:text-white flex items-center gap-2">
                                 <Play className="text-[#00D4B3]" size={18} />
-                                Previsualizacion
+                                Editor de ensamble
                             </h3>
 
                             {videoComponents.length > 1 && (
-                                <div className="w-full space-y-1.5 xl:max-w-md">
+                                <div className="w-full rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-[#6C757D]/10 dark:bg-[#0F1419]/60 xl:max-w-xl">
                                     <label className="text-xs font-semibold text-gray-500 dark:text-gray-400">
                                         Seleccionar Video para Preview:
                                     </label>
                                     <select
                                         value={activePreviewId}
                                         onChange={(event) => setActivePreviewId(event.target.value)}
-                                        className="w-full text-sm rounded-xl border border-gray-200 bg-white p-2 dark:border-[#6C757D]/10 dark:bg-[#0F1419] dark:text-white"
+                                        className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white p-2 text-sm text-gray-900 dark:border-[#6C757D]/10 dark:bg-[#151A21] dark:text-white"
                                     >
                                         {videoComponents.map((component, index) => (
                                             <option key={component.id} value={component.id}>
@@ -1185,14 +1364,19 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
 
                             if (previewUrl) {
                                 return (
-                                    <div className="space-y-4">
-                                        <div className="relative aspect-video bg-black rounded-xl overflow-hidden shadow-inner group">
+                                    <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-3 shadow-inner dark:border-[#1D2835] dark:bg-[#0B1118]">
+                                        <div className="flex min-h-[280px] items-center justify-center rounded-xl bg-white p-3 dark:bg-[#070A0F]">
+                                        <div
+                                            className="relative aspect-video overflow-hidden rounded-lg bg-gray-100 shadow-inner group dark:bg-black"
+                                            style={{ width: "min(100%, 82vh)" }}
+                                        >
                                             <video
                                                 key={previewUrl}
                                                 src={previewUrl}
                                                 controls
                                                 className="w-full h-full object-contain"
                                             />
+                                        </div>
                                         </div>
                                         <div className="flex flex-wrap items-center justify-center gap-3">
                                             <a
@@ -1212,7 +1396,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                                 {deletingVideoId === activePreview?.id ? 'Eliminando...' : 'Borrar video final'}
                                             </button>
                                         </div>
-                                        <div className="text-xs text-gray-500 dark:text-gray-400 text-center leading-relaxed">
+                                        <div className="text-center text-xs leading-relaxed text-gray-500 dark:text-gray-400">
                                             Video: {activePreview.lessonTitle || 'Leccion'} - {(activePreview.content as any)?.title || 'Video'}. Listo para envio final.
                                         </div>
                                     </div>
@@ -1222,6 +1406,8 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                             if (activePreview && selectedTemplateUsesExternalPreview) {
                                 return (
                                     <div className="space-y-4">
+                                        <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-3 shadow-inner dark:border-[#1D2835] dark:bg-[#0B1118]">
+                                            <div className={`grid min-h-0 gap-3 ${selectedTemplateSupportsExternalLayout ? 'xl:grid-cols-[minmax(0,1fr)_360px]' : ''}`}>
                                         <RemotionExternalPreviewPlayer
                                             key={`${activePreview.id}-${selectedTemplate}-external`}
                                             templateId={selectedTemplate}
@@ -1264,6 +1450,34 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                                 />
                                             ) : undefined}
                                         />
+                                                {selectedTemplateSupportsExternalLayout ? (
+                                                    <aside className="min-h-0 overflow-y-auto rounded-xl bg-white dark:bg-[#070A0F] xl:max-h-[calc(46vh+4.5rem)]">
+                                                        <LayoutOverrideDraftPanel
+                                                            componentId={activePreview.id}
+                                                            templateId={selectedTemplate}
+                                                            templateVersionId={activeTemplateVersionId}
+                                                            value={activeLayoutOverrides}
+                                                            editableLayers={activeEditableLayoutLayers}
+                                                            selectedLayerId={selectedLayoutLayerId}
+                                                            onSelectedLayerChange={setSelectedLayoutLayerId}
+                                                            editMode={layoutEditMode}
+                                                            onEditModeChange={setLayoutEditMode}
+                                                            gridSettings={layoutGridSettings}
+                                                            onGridSettingsChange={setLayoutGridSettings}
+                                                            onChange={(nextOverrides) => setLayoutOverrideDrafts((current) => {
+                                                                const next = { ...current };
+                                                                if (nextOverrides.length > 0) {
+                                                                    next[activeLayoutDraftKey] = nextOverrides;
+                                                                } else {
+                                                                    delete next[activeLayoutDraftKey];
+                                                                }
+                                                                return next;
+                                                            })}
+                                                            disabled={isAssembling}
+                                                        />
+                                                    </aside>
+                                                ) : null}
+                                            </div>
                                         {!selectedTemplateSupportsExternalLayout ? (
                                             <div className="flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-800 dark:text-amber-200">
                                                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -1279,31 +1493,18 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                                 onSeekFrame={setExternalPreviewFrame}
                                                 selectedLayerId={selectedLayoutLayerId}
                                                 onSelectedLayerChange={setSelectedLayoutLayerId}
+                                                componentId={activePreview.id}
+                                                templateId={selectedTemplate}
+                                                templateVersionId={activeTemplateVersionId}
+                                                value={activeTimelineOverrides}
+                                                onChange={(nextOverrides) => setTimelineOverrideDrafts((current) => ({
+                                                    ...current,
+                                                    [activeLayoutDraftKey]: nextOverrides,
+                                                }))}
+                                                disabled={isAssembling}
                                             />
                                         ) : null}
-                                        {selectedTemplateSupportsExternalLayout ? <LayoutOverrideDraftPanel
-                                            componentId={activePreview.id}
-                                            templateId={selectedTemplate}
-                                            templateVersionId={activeTemplateVersionId}
-                                            value={activeLayoutOverrides}
-                                            editableLayers={activeEditableLayoutLayers}
-                                            selectedLayerId={selectedLayoutLayerId}
-                                            onSelectedLayerChange={setSelectedLayoutLayerId}
-                                            editMode={layoutEditMode}
-                                            onEditModeChange={setLayoutEditMode}
-                                            gridSettings={layoutGridSettings}
-                                            onGridSettingsChange={setLayoutGridSettings}
-                                            onChange={(nextOverrides) => setLayoutOverrideDrafts((current) => {
-                                                const next = { ...current };
-                                                if (nextOverrides.length > 0) {
-                                                    next[activeLayoutDraftKey] = nextOverrides;
-                                                } else {
-                                                    delete next[activeLayoutDraftKey];
-                                                }
-                                                return next;
-                                            })}
-                                            disabled={isAssembling}
-                                        /> : null}
+                                        </div>
                                         <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50/80 p-3 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419]/50 sm:flex-row sm:items-center sm:justify-between">
                                             <div className="text-gray-500 dark:text-gray-400">
                                                 {!selectedTemplateSupportsExternalLayout
@@ -1333,6 +1534,34 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                                 >
                                                     {savingLayoutOverrides ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                                                     {!selectedTemplateSupportsExternalLayout ? 'Restablecer layout' : 'Guardar layout'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50/80 p-3 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419]/50 sm:flex-row sm:items-center sm:justify-between">
+                                            <div className="text-gray-500 dark:text-gray-400">
+                                                {hasUnsavedTimelineOverrides
+                                                    ? 'Hay ajustes de timeline sin guardar para este video.'
+                                                    : activePreview.assets?.final_video_assembly_stale
+                                                        ? 'El video final puede estar desactualizado respecto al timeline guardado.'
+                                                        : 'Los bundles externos recibiran timelineOverrides; los bundles heredados pueden ignorarlos.'}
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleDiscardTimelineDraft}
+                                                    disabled={!hasTimelineOverridesToDiscard || savingTimelineOverrides || isAssembling}
+                                                    className="rounded-lg border border-gray-200 px-3 py-1.5 font-semibold text-gray-600 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#6C757D]/20 dark:text-gray-300 dark:hover:bg-white/5"
+                                                >
+                                                    Restablecer timeline
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSaveTimelineOverrides}
+                                                    disabled={!hasUnsavedTimelineOverrides || savingTimelineOverrides || isAssembling}
+                                                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#00D4B3] px-3 py-1.5 font-semibold text-[#0A2540] transition hover:bg-[#00E5C1] disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500"
+                                                >
+                                                    {savingTimelineOverrides ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                                                    Guardar timeline
                                                 </button>
                                             </div>
                                         </div>
@@ -1390,9 +1619,42 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                             templateSlug={selectedTemplateSlug}
                                             templateConfig={selectedTemplateConfig?.default_config}
                                             layoutOverrides={activeLayoutOverrides}
-                                            targetDurationSeconds={activePreviewTargetDurationSeconds}
+                                            timelineOverrides={activeTimelineOverrides}
                                             selectedLayerId={selectedLayoutLayerId}
                                             onSelectedLayerChange={setSelectedLayoutLayerId}
+                                            componentId={activePreview.id}
+                                            templateId={selectedTemplate}
+                                            templateVersionId={activeTemplateVersionId}
+                                            timelineOverrideValue={activeTimelineOverrides}
+                                            onTimelineOverrideChange={(nextOverrides) => setTimelineOverrideDrafts((current) => ({
+                                                ...current,
+                                                [activeLayoutDraftKey]: nextOverrides,
+                                            }))}
+                                            sidePanel={
+                                                <LayoutOverrideDraftPanel
+                                                    componentId={activePreview.id}
+                                                    templateId={selectedTemplate}
+                                                    templateVersionId={activeTemplateVersionId}
+                                                    value={activeLayoutOverrides}
+                                                    editableLayers={activeEditableLayoutLayers}
+                                                    selectedLayerId={selectedLayoutLayerId}
+                                                    onSelectedLayerChange={setSelectedLayoutLayerId}
+                                                    editMode={layoutEditMode}
+                                                    onEditModeChange={setLayoutEditMode}
+                                                    gridSettings={layoutGridSettings}
+                                                    onGridSettingsChange={setLayoutGridSettings}
+                                                    onChange={(nextOverrides) => setLayoutOverrideDrafts((current) => {
+                                                        const next = { ...current };
+                                                        if (nextOverrides.length > 0) {
+                                                            next[activeLayoutDraftKey] = nextOverrides;
+                                                        } else {
+                                                            delete next[activeLayoutDraftKey];
+                                                        }
+                                                        return next;
+                                                    })}
+                                                    disabled={isAssembling}
+                                                />
+                                            }
                                             overlay={
                                                 <LayoutOverridePreviewOverlay
                                                     componentId={activePreview.id}
@@ -1420,29 +1682,33 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                                 />
                                             }
                                         />
-                                        <LayoutOverrideDraftPanel
-                                            componentId={activePreview.id}
-                                            templateId={selectedTemplate}
-                                            templateVersionId={activeTemplateVersionId}
-                                            value={activeLayoutOverrides}
-                                            editableLayers={activeEditableLayoutLayers}
-                                            selectedLayerId={selectedLayoutLayerId}
-                                            onSelectedLayerChange={setSelectedLayoutLayerId}
-                                            editMode={layoutEditMode}
-                                            onEditModeChange={setLayoutEditMode}
-                                            gridSettings={layoutGridSettings}
-                                            onGridSettingsChange={setLayoutGridSettings}
-                                            onChange={(nextOverrides) => setLayoutOverrideDrafts((current) => {
-                                                const next = { ...current };
-                                                if (nextOverrides.length > 0) {
-                                                    next[activeLayoutDraftKey] = nextOverrides;
-                                                } else {
-                                                    delete next[activeLayoutDraftKey];
-                                                }
-                                                return next;
-                                            })}
-                                            disabled={isAssembling}
-                                        />
+                                        <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50/80 p-3 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419]/50 sm:flex-row sm:items-center sm:justify-between">
+                                            <div className="text-gray-500 dark:text-gray-400">
+                                                {hasUnsavedTimelineOverrides
+                                                    ? 'Hay ajustes de timeline sin guardar para este video.'
+                                                    : activePreview.assets?.final_video_assembly_stale
+                                                        ? 'El video final puede estar desactualizado respecto al timeline guardado.'
+                                                        : 'Los ajustes de timeline guardados se incluiran al ensamblar.'}
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleDiscardTimelineDraft}
+                                                    disabled={savingTimelineOverrides || !hasTimelineOverridesToDiscard}
+                                                    className="rounded-lg border border-gray-200 px-3 py-1.5 font-semibold text-gray-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#6C757D]/20 dark:text-gray-200 dark:hover:bg-white/5"
+                                                >
+                                                    Restablecer timeline
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSaveTimelineOverrides}
+                                                    disabled={savingTimelineOverrides || !hasUnsavedTimelineOverrides}
+                                                    className="rounded-lg bg-[#0A2540] px-3 py-1.5 font-semibold text-white transition hover:bg-[#0d2f4d] disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    {savingTimelineOverrides ? 'Guardando...' : 'Guardar timeline'}
+                                                </button>
+                                            </div>
+                                        </div>
                                         <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50/80 p-3 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419]/50 sm:flex-row sm:items-center sm:justify-between">
                                             <div className="text-gray-500 dark:text-gray-400">
                                                 {hasUnsavedLayoutOverrides
@@ -1487,13 +1753,16 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                             );
                         })()}
                     </div>
+                    ) : null}
 
+                    {assemblyWorkspaceView === 'workers' || assemblyWorkspaceView === 'batch' ? (
                     <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 space-y-6 shadow-sm">
                         <h3 className="text-md font-bold text-gray-900 dark:text-white flex items-center gap-2">
                             <Sparkles className="text-yellow-500" size={18} />
                             Motor de Render
                         </h3>
 
+                        {assemblyWorkspaceView === 'workers' ? (
                         <div className="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-[#6C757D]/10 dark:bg-[#0F1419]/50">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                 <div className="min-w-0 space-y-1">
@@ -1629,7 +1898,11 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                     </div>
                                 </div>
                             )}
+                        </div>
+                        ) : null}
 
+                        {assemblyWorkspaceView === 'batch' ? (
+                        <div className="space-y-4">
                             {componentsToAssemble.length > 0 ? (
                                 <div className="mt-4 rounded-xl border border-gray-200 bg-white p-3 text-xs dark:border-[#6C757D]/10 dark:bg-[#151A21]">
                                     <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1700,7 +1973,6 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                     {workerGateMessage}
                                 </div>
                             )}
-                        </div>
 
                         {!hasRequiredAssets ? (
                             <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-sm">
@@ -1823,9 +2095,14 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                 )}
                             </div>
                         )}
+                        </div>
+                        ) : null}
                     </div>
+                    ) : null}
                 </div>
+                ) : null}
 
+                {assemblyWorkspaceView === 'templates' ? (
                 <div className="min-h-0">
                     <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl shadow-sm 2xl:sticky 2xl:top-6 2xl:max-h-[calc(100vh-7rem)] flex min-h-[420px] flex-col overflow-hidden">
                         <div className="space-y-4 border-b border-gray-200 p-5 dark:border-[#6C757D]/10">
@@ -1892,6 +2169,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                         )}
                     </div>
                 </div>
+                ) : null}
             </div>
         </div>
     );

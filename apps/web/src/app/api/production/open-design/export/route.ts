@@ -477,41 +477,23 @@ export async function POST(request: Request) {
             slides,
         });
 
-        // Keep the legacy storage field for compatibility with existing assets.
         const currentAssets = component.assets || {};
         const generatedSlidesId = currentAssets.slides?.open_design_project_id || `slides-${componentId}-${Date.now().toString(36)}`;
-        
+        const {
+            html_content_path: _htmlContentPath,
+            html_public_url: _htmlPublicUrl,
+            ...slidesWithoutHtmlSource
+        } = currentAssets.slides || {};
+
         const updatedAssets = {
             ...currentAssets,
             slides: {
-                ...currentAssets.slides,
+                ...slidesWithoutHtmlSource,
                 open_design_project_id: generatedSlidesId,
-                // We mock saving the html content path directly to storage path as reference
-                html_content_path: `production-assets/slides/${componentId}-slides.html`,
                 images: slideImages,
             },
             updated_at: new Date().toISOString(),
         };
-
-        // Also save this HTML to the Supabase Storage production-assets bucket so it can be downloaded/viewed
-        const htmlBuffer = Buffer.from(html, 'utf-8');
-        const storagePath = `slides/${componentId}-slides.html`;
-
-        const { error: uploadError } = await admin.storage
-            .from('production-assets')
-            .upload(storagePath, htmlBuffer, {
-                contentType: 'text/html',
-                upsert: true,
-            });
-
-        if (uploadError) {
-            console.error('[API /open-design/export] Storage upload error:', uploadError);
-        } else {
-            const { data: { publicUrl } } = admin.storage
-                .from('production-assets')
-                .getPublicUrl(storagePath);
-            updatedAssets.slides.html_public_url = publicUrl;
-        }
 
         // Save updated assets to material_component
         await admin
@@ -524,7 +506,7 @@ export async function POST(request: Request) {
             html,
             generatedSlidesId,
             openDesignProjectId: generatedSlidesId,
-            htmlPublicUrl: updatedAssets.slides.html_public_url || null,
+            htmlPublicUrl: null,
             slideImages,
         });
 

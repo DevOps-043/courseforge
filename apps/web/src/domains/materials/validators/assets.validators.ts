@@ -47,6 +47,7 @@ export const slideImageSchema = z.object({
   storage_path: z.string().trim(),
   public_url: z.string().url(),
   file_name: z.string().trim().optional(),
+  content_type: z.string().trim().optional(),
 });
 
 // Schema for Slides asset group
@@ -75,7 +76,13 @@ export const materialAssetsSchema = z.object({
   notes: z.string().trim().optional(),
   final_video_url: z.string().url().or(z.literal("")).optional(),
   final_video_source: z.enum(["upload", "link"]).optional(),
+  final_video_layout_stale: z.boolean().optional(),
+  final_video_assembly_stale: z.boolean().optional(),
   video_duration: z.number().nonnegative().optional(),
+  layout_overrides: z.array(z.record(z.string(), z.unknown())).optional(),
+  layout_overrides_updated_at: z.string().optional(),
+  timeline_overrides: z.array(z.record(z.string(), z.unknown())).optional(),
+  timeline_overrides_updated_at: z.string().optional(),
   production_status: productionStatusSchema.optional(),
   gamma_deck_id: z.string().trim().optional(),
   png_export_path: z.string().trim().optional(),

@@ -190,8 +190,8 @@ export function LayoutOverrideDraftPanel({
   };
 
   return (
-    <div className="rounded-2xl border border-[#00D4B3]/20 bg-[#00D4B3]/5 p-5">
-      <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+    <div className="rounded-2xl border border-[#00D4B3]/20 bg-[#00D4B3]/5 p-4">
+      <div className="mb-4 flex flex-col gap-3">
         <div>
           <h4 className="text-sm font-bold text-gray-900 dark:text-white">
             Editor de layout
@@ -279,7 +279,7 @@ export function LayoutOverrideDraftPanel({
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(220px,1fr)_minmax(140px,0.7fr)_minmax(140px,0.7fr)]">
+      <div className="grid gap-4">
         <div className="space-y-2">
           <label className="block space-y-1 text-xs font-semibold text-gray-600 dark:text-gray-300">
             Capa

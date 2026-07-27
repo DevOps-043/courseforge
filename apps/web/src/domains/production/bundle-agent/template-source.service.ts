@@ -19,6 +19,7 @@ import {
   Audio,
   Composition,
   Img,
+  Sequence,
   Video,
   interpolate,
   registerRoot,
@@ -36,6 +37,12 @@ type BrollClip = {
   durationInFrames?: number;
   order?: number;
   url: string;
+};
+
+type BrollTimelineItem = {
+  clip: BrollClip;
+  startFrame: number;
+  durationInFrames: number;
 };
 
 type Box = {
@@ -97,7 +104,6 @@ const fallbackFps = ${blueprint.fps};
 const fallbackDurationInFrames = ${blueprint.fallbackDurationFrames};
 const accentColor = ${json(blueprint.accentColor)};
 const layoutMode = ${json(blueprint.layout)};
-const timelineMode = ${json(blueprint.timeline)};
 const renderText = ${blueprint.renderText ? "true" : "false"};
 const isReferenceFrameLayout = layoutMode === "reference-frame-avatar-left-stack-right";
 const avatarBox = ${boxLiteral(blueprint.boxes.avatar)};
@@ -220,6 +226,45 @@ function getActiveIndex(frame: number, itemCount: number, durationInFrames: numb
   return Math.min(itemCount - 1, Math.floor(frame / Math.max(1, framesPerItem)));
 }
 
+function getClipDurationInFrames(clip: BrollClip) {
+  return typeof clip.durationInFrames === "number" && Number.isFinite(clip.durationInFrames)
+    ? Math.max(1, Math.round(clip.durationInFrames))
+    : 150;
+}
+
+function buildBrollTimeline(clips: BrollClip[], durationInFrames: number): BrollTimelineItem[] {
+  if (clips.length === 0 || durationInFrames <= 0) return [];
+
+  const ordered = orderedBrollClips(clips);
+  const totalClipFrames = ordered.reduce((sum, clip) => sum + getClipDurationInFrames(clip), 0);
+  const availableGapFrames = Math.max(0, durationInFrames - totalClipFrames);
+  const gapFrames = availableGapFrames > 0 ? Math.floor(availableGapFrames / (ordered.length + 1)) : 0;
+  const timeline: BrollTimelineItem[] = [];
+  let cursor = gapFrames;
+
+  for (const clip of ordered) {
+    if (cursor >= durationInFrames) break;
+    const remainingFrames = durationInFrames - cursor;
+    const clipDurationInFrames = Math.min(getClipDurationInFrames(clip), remainingFrames);
+
+    if (clipDurationInFrames > 0) {
+      timeline.push({
+        clip,
+        startFrame: cursor,
+        durationInFrames: clipDurationInFrames,
+      });
+    }
+
+    cursor += clipDurationInFrames + gapFrames;
+  }
+
+  return timeline;
+}
+
+function getActiveBrollTimelineItem(frame: number, timeline: BrollTimelineItem[]) {
+  return timeline.find((item) => frame >= item.startFrame && frame < item.startFrame + item.durationInFrames) ?? null;
+}
+
 function mirrorBoxHorizontally(box: Box): Box {
   return {
     ...box,
@@ -291,17 +336,12 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
   const { durationInFrames } = useVideoConfig();
   const slides = orderedSlides(props.slides);
   const brollClips = orderedBrollClips(props.brollClips);
+  const brollTimeline = buildBrollTimeline(brollClips, durationInFrames);
   const activeSlideIndex = getActiveIndex(frame, slides.length, durationInFrames);
   const activeSupportIndex = getActiveIndex(frame, Math.max(slides.length, brollClips.length), durationInFrames);
   const activeSlide = activeSlideIndex >= 0 ? slides[activeSlideIndex] : null;
-  const activeBrollIndex = brollClips.length <= 0
-    ? -1
-    : timelineMode === "equal-slides-with-indexed-broll"
-      ? slides.length > 0
-        ? activeSlideIndex >= 0 ? Math.min(brollClips.length - 1, activeSlideIndex) : -1
-        : activeSupportIndex
-      : activeSupportIndex;
-  const activeBroll = activeBrollIndex >= 0 ? brollClips[activeBrollIndex] ?? null : null;
+  const activeBrollItem = getActiveBrollTimelineItem(frame, brollTimeline);
+  const activeBroll = activeBrollItem?.clip ?? null;
   const hasVoice = typeof props.voiceAudioUrl === "string" && props.voiceAudioUrl.length > 0;
   const hasAvatar = typeof props.avatarVideoUrl === "string" && props.avatarVideoUrl.length > 0;
   const hasSlidesAsset = slides.length > 0;
@@ -347,7 +387,7 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
   const activeBrollItemOverride = activeBroll
     ? buildLayoutOverrideStyle(
         props.layoutOverrides,
-        \`broll:\${Math.max(1, Math.round(activeBroll.order ?? activeBrollIndex + 1))}\`,
+        \`broll:\${Math.max(1, Math.round(activeBroll.order ?? 1))}\`,
       )
     : {};
 
@@ -381,15 +421,16 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
         </div>
       ) : null}
 
-      {activeBroll ? (
-        <div style={buildBoxStyle(brollSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.broll, ...brollOverride, ...activeBrollItemOverride })}>
-          <Video
-            src={activeBroll.url}
-            muted
-            loop
-            style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center center" }}
-          />
-        </div>
+      {activeBroll && activeBrollItem ? (
+        <Sequence from={activeBrollItem.startFrame} durationInFrames={activeBrollItem.durationInFrames}>
+          <div style={buildBoxStyle(brollSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.broll, ...brollOverride, ...activeBrollItemOverride })}>
+            <Video
+              src={activeBroll.url}
+              muted
+              style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center center" }}
+            />
+          </div>
+        </Sequence>
       ) : null}
 
       {renderText && layoutMode !== "avatar-left-slides-broll-right" ? (

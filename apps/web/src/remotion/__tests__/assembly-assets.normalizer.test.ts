@@ -17,6 +17,7 @@ import {
   filterLayoutOverridesForEditableLayers,
   safeParseLayoutOverrideManifests,
 } from "../layout-overrides";
+import { safeParseTimelineOverrideManifests } from "../timeline-overrides";
 import {
   buildLayoutOverrideStyle,
   getBrollItemLayerId,
@@ -28,7 +29,6 @@ import {
   buildVisualTimeline,
   getActiveTimelineSegments,
 } from "../visual-timeline";
-import { deriveAssemblyTargetDurationSeconds } from "../assembly-duration";
 import {
   commitLayoutLayerCrop,
   commitLayoutLayerBox,
@@ -59,7 +59,7 @@ function baseClip(params: Partial<NonNullable<MaterialAssets["b_roll_clips"]>[nu
 }
 
 describe("normalizeAssemblyAssets", () => {
-  it("sorts slide images by slide_index and keeps only renderable URLs", () => {
+  it("sorts slide images by slide_index and normalizes them to contiguous layer indexes", () => {
     const assets: MaterialAssets = {
       slides: {
         images: [
@@ -81,7 +81,14 @@ describe("normalizeAssemblyAssets", () => {
 
     assert.deepEqual(
       normalized.slides.map((slide) => slide.index),
-      [1, 2],
+      [0, 1],
+    );
+    assert.deepEqual(
+      normalized.slides.map((slide) => slide.url),
+      [
+        "https://cdn.example.com/slide-1.png",
+        "https://cdn.example.com/slide-2.png",
+      ],
     );
     assert.equal(normalized.totalDurationSeconds, 10);
   });
@@ -171,7 +178,7 @@ describe("normalizeAssemblyAssets", () => {
       normalized.brollClips.map((clip) => clip.durationInFrames),
       [150, 120, 60],
     );
-    assert.equal(normalized.totalDurationSeconds, 11);
+    assert.equal(normalized.totalDurationSeconds, 6);
   });
 
   it("prioritizes voice duration over avatar, B-roll and slides", () => {
@@ -207,7 +214,7 @@ describe("normalizeAssemblyAssets", () => {
     assert.equal(props.avatarVideoUrl, VIDEO_URL);
   });
 
-  it("prioritizes voice duration over assembly target duration", () => {
+  it("ignores assembly target duration when voice duration exists", () => {
     const props = buildAssemblyProps(
       {
         assembly_target_duration_seconds: 170,
@@ -223,7 +230,7 @@ describe("normalizeAssemblyAssets", () => {
     assert.equal(props.totalDurationInFrames, 51 * ASSEMBLY_FPS);
   });
 
-  it("prioritizes visual asset duration over assembly target duration", () => {
+  it("ignores assembly target duration when B-roll duration exists", () => {
     const props = buildAssemblyProps(
       {
         assembly_target_duration_seconds: 170,
@@ -235,7 +242,7 @@ describe("normalizeAssemblyAssets", () => {
     assert.equal(props.totalDurationInFrames, 31 * 60 * ASSEMBLY_FPS);
   });
 
-  it("uses assembly target duration only when assets have no measurable duration", () => {
+  it("falls back when assets have no measurable duration", () => {
     const props = buildAssemblyProps(
       {
         assembly_target_duration_seconds: 170,
@@ -247,10 +254,10 @@ describe("normalizeAssemblyAssets", () => {
       "full-slides",
     );
 
-    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
+    assert.equal(props.totalDurationInFrames, 10 * ASSEMBLY_FPS);
   });
 
-  it("uses assembly target duration before slide-count fallback", () => {
+  it("uses slide-count fallback instead of assembly target duration", () => {
     const props = buildAssemblyProps(
       {
         assembly_target_duration_seconds: 170,
@@ -265,10 +272,10 @@ describe("normalizeAssemblyAssets", () => {
       "full-slides",
     );
 
-    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
+    assert.equal(props.totalDurationInFrames, 15 * ASSEMBLY_FPS);
   });
 
-  it("uses assembly target duration instead of a shorter avatar duration", () => {
+  it("uses avatar duration instead of assembly target duration", () => {
     const props = buildAssemblyProps(
       {
         assembly_target_duration_seconds: 170,
@@ -288,10 +295,10 @@ describe("normalizeAssemblyAssets", () => {
       "full-slides",
     );
 
-    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
+    assert.equal(props.totalDurationInFrames, 51 * ASSEMBLY_FPS);
   });
 
-  it("uses assembly target duration before default B-roll fallback durations", () => {
+  it("uses default B-roll fallback durations instead of assembly target duration", () => {
     const props = buildAssemblyProps(
       {
         assembly_target_duration_seconds: 170,
@@ -300,24 +307,7 @@ describe("normalizeAssemblyAssets", () => {
       "full-slides",
     );
 
-    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
-  });
-
-  it("derives target duration from generated video content hierarchy", () => {
-    const duration = deriveAssemblyTargetDurationSeconds({
-      duration_estimate_minutes: 2.5,
-      script: {
-        sections: [
-          { duration_seconds: 40, timecode_start: "00:00", timecode_end: "00:40" },
-          { duration_seconds: 50, timecode_start: "00:40", timecode_end: "01:30" },
-        ],
-      },
-      storyboard: [
-        { timecode_start: "00:00", timecode_end: "02:50" },
-      ],
-    });
-
-    assert.equal(duration, 170);
+    assert.equal(props.totalDurationInFrames, 5 * ASSEMBLY_FPS);
   });
 
   it("falls back to the default template and duration for empty assets", () => {
@@ -366,6 +356,64 @@ describe("normalizeAssemblyAssets", () => {
     );
 
     assert.deepEqual(props.layoutOverrides, []);
+    assert.deepEqual(props.timelineOverrides, []);
+  });
+
+  it("accepts validated timeline overrides in preview props", () => {
+    const props = buildAssemblyProps(
+      {
+        voice_audio: {
+          storage_path: "production-assets/voice.mp3",
+          public_url: AUDIO_URL,
+          duration: 8,
+        },
+      },
+      "full-slides",
+      {},
+      [],
+      [
+        {
+          version: 1,
+          templateId: "full-slides",
+          componentId: "component-1",
+          timeline: { fps: ASSEMBLY_FPS, durationInFrames: 8 * ASSEMBLY_FPS },
+          segments: [
+            {
+              id: "broll-1",
+              trackKind: "broll",
+              layerId: "broll:1",
+              startFrame: 30,
+              endFrame: 180,
+              sourceStartFrame: 15,
+              sourceEndFrame: 75,
+              loopMode: "loop",
+            },
+          ],
+        },
+      ],
+    );
+
+    assert.equal(props.timelineOverrides.length, 1);
+    assert.equal(props.timelineOverrides[0].segments[0].loopMode, "loop");
+  });
+
+  it("rejects invalid timeline ranges", () => {
+    const parsed = safeParseTimelineOverrideManifests([
+      {
+        version: 1,
+        timeline: { fps: ASSEMBLY_FPS, durationInFrames: 300 },
+        segments: [
+          {
+            id: "slide-1",
+            trackKind: "slides",
+            startFrame: 120,
+            endFrame: 30,
+          },
+        ],
+      },
+    ]);
+
+    assert.equal(parsed.success, false);
   });
 
   it("accepts validated layout overrides in preview props", () => {
@@ -562,7 +610,11 @@ describe("buildVisualTimeline", () => {
   it("mirrors B-roll overlay timing when slides are present", () => {
     const props = buildAssemblyProps(
       {
-        assembly_target_duration_seconds: 4,
+        voice_audio: {
+          public_url: AUDIO_URL,
+          storage_path: "production-assets/voice.mp3",
+          duration: 4,
+        },
         slides: {
           images: [
             {
@@ -601,7 +653,11 @@ describe("buildVisualTimeline", () => {
   it("reports active segments for a selected frame", () => {
     const props = buildAssemblyProps(
       {
-        assembly_target_duration_seconds: 4,
+        voice_audio: {
+          public_url: AUDIO_URL,
+          storage_path: "production-assets/voice.mp3",
+          duration: 4,
+        },
         slides: {
           images: [
             {
@@ -626,12 +682,176 @@ describe("buildVisualTimeline", () => {
 
     assert.deepEqual(
       activeAtStart.map((segment) => segment.id),
-      ["slide-0"],
+      ["voice", "slide-0"],
     );
     assert.deepEqual(
       activeAtSecondHalf.map((segment) => segment.id),
-      ["slide-1"],
+      ["voice", "slide-1"],
     );
+  });
+
+  it("applies slide timeline overrides after the uniform baseline", () => {
+    const props = buildAssemblyProps(
+      {
+        voice_audio: {
+          public_url: AUDIO_URL,
+          storage_path: "production-assets/voice.mp3",
+          duration: 6,
+        },
+        slides: {
+          images: [
+            {
+              public_url: "https://cdn.example.com/slide-1.png",
+              storage_path: "production-assets/slides/slide-1.png",
+              slide_index: 0,
+            },
+            {
+              public_url: "https://cdn.example.com/slide-2.png",
+              storage_path: "production-assets/slides/slide-2.png",
+              slide_index: 1,
+            },
+          ],
+        },
+      },
+      ASSEMBLY_TEMPLATES.FULL_SLIDES,
+      {},
+      [],
+      [
+        {
+          version: 1,
+          timeline: { fps: ASSEMBLY_FPS, durationInFrames: 180 },
+          segments: [
+            {
+              id: "slide-0",
+              trackKind: "slides",
+              layerId: getSlideItemLayerId(0),
+              startFrame: 0,
+              endFrame: 120,
+              loopMode: "none",
+            },
+          ],
+        },
+      ],
+    );
+
+    const timeline = buildVisualTimeline(props);
+    const slideSegments = timeline.tracks.find((track) => track.id === "slides")?.segments ?? [];
+
+    assert.equal(slideSegments[0].durationInFrames, 120);
+    assert.equal(slideSegments[1].startFrame, 90);
+  });
+
+  it("applies B-roll trim and loop metadata", () => {
+    const props = buildAssemblyProps(
+      {
+        voice_audio: {
+          public_url: AUDIO_URL,
+          storage_path: "production-assets/voice.mp3",
+          duration: 8,
+        },
+        b_roll_clips: [baseClip({ duration: 2, order: 1 })],
+      },
+      ASSEMBLY_TEMPLATES.FULL_SLIDES,
+      {},
+      [],
+      [
+        {
+          version: 1,
+          timeline: { fps: ASSEMBLY_FPS, durationInFrames: 240 },
+          segments: [
+            {
+              id: "broll-1",
+              trackKind: "broll",
+              layerId: getBrollItemLayerId(1),
+              startFrame: 30,
+              endFrame: 210,
+              sourceStartFrame: 15,
+              sourceEndFrame: 45,
+              loopMode: "loop",
+            },
+          ],
+        },
+      ],
+    );
+
+    const timeline = buildVisualTimeline(props);
+    const broll = timeline.tracks.find((track) => track.id === "broll")?.segments[0];
+
+    assert.equal(broll?.startFrame, 30);
+    assert.equal(broll?.durationInFrames, 180);
+    assert.equal(broll?.sourceStartFrame, 15);
+    assert.equal(broll?.sourceEndFrame, 45);
+    assert.equal(broll?.sourceDurationInFrames, 60);
+    assert.equal(broll?.loopMode, "loop");
+  });
+
+  it("clamps timeline overrides to the composition duration", () => {
+    const props = buildAssemblyProps(
+      {
+        voice_audio: {
+          public_url: AUDIO_URL,
+          storage_path: "production-assets/voice.mp3",
+          duration: 4,
+        },
+        b_roll_clips: [baseClip({ duration: 2, order: 1 })],
+      },
+      ASSEMBLY_TEMPLATES.FULL_SLIDES,
+      {},
+      [],
+      [
+        {
+          version: 1,
+          timeline: { fps: ASSEMBLY_FPS, durationInFrames: 120 },
+          segments: [
+            {
+              id: "broll-1",
+              trackKind: "broll",
+              startFrame: 90,
+              endFrame: 999,
+              sourceStartFrame: 0,
+              sourceEndFrame: 999,
+              loopMode: "loop",
+            },
+          ],
+        },
+      ],
+    );
+
+    const timeline = buildVisualTimeline(props);
+    const broll = timeline.tracks.find((track) => track.id === "broll")?.segments[0];
+
+    assert.equal(broll?.endFrame, 120);
+    assert.equal(broll?.durationInFrames, 30);
+    assert.equal(broll?.sourceEndFrame, 60);
+  });
+
+  it("keeps first and last slide layer ids addressable with many one-based slide assets", () => {
+    const props = buildAssemblyProps(
+      {
+        voice_audio: {
+          public_url: AUDIO_URL,
+          storage_path: "production-assets/voice.mp3",
+          duration: 48,
+        },
+        slides: {
+          images: Array.from({ length: 24 }, (_, index) => ({
+            public_url: `https://cdn.example.com/slide-${index + 1}.png`,
+            storage_path: `production-assets/slides/slide-${index + 1}.png`,
+            slide_index: index + 1,
+          })),
+        },
+      },
+      ASSEMBLY_TEMPLATES.FULL_SLIDES,
+    );
+
+    const timeline = buildVisualTimeline(props);
+    const slideSegments = timeline.tracks.find((track) => track.id === "slides")?.segments ?? [];
+
+    assert.equal(slideSegments.length, 24);
+    assert.equal(slideSegments[0].layerId, getSlideItemLayerId(0));
+    assert.equal(slideSegments[0].label, "Slide 1");
+    assert.equal(slideSegments[23].layerId, getSlideItemLayerId(23));
+    assert.equal(slideSegments[23].label, "Slide 24");
   });
 });
 

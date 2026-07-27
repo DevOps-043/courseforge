@@ -29,6 +29,7 @@ import { buildExternalTemplateProps } from './external-template-props.service';
 import { DesktopWorkerService } from './desktop-worker.service';
 import { buildRenderDiagnosticsSnapshot } from './remotion-render-diagnostics.service';
 import { mergeTemplateRenderConfigs } from './template-render-config.service';
+import { verifyMediaDurationsFromUrls } from './media-duration-verification.service';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -717,6 +718,21 @@ export class ProductionController {
         });
       }
 
+      const durationVerification = await verifyMediaDurationsFromUrls(component.assets || {});
+      const renderAssets = durationVerification.assets || {};
+
+      if (
+        Object.keys(durationVerification.measuredDurations).length > 0 ||
+        durationVerification.failedMeasurements.length > 0
+      ) {
+        console.log('[ProductionController] Media duration verification completed.', {
+          componentId,
+          templateId,
+          measuredDurations: durationVerification.measuredDurations,
+          failedMeasurements: durationVerification.failedMeasurements,
+        });
+      }
+
       let externalPropsResult: ReturnType<typeof buildExternalTemplateProps> | null = null;
       if (renderMode === 'EXTERNAL_DESKTOP_SITE_READY') {
         try {
@@ -724,7 +740,7 @@ export class ProductionController {
             throw new Error('EXTERNAL_RENDER_TARGET_INCOMPLETE: no se pudo resolver el target externo.');
           }
           externalPropsResult = buildExternalTemplateProps({
-            assets: component.assets || {},
+            assets: renderAssets,
             compositionId: externalRenderTarget.compositionId,
             templateDefaultConfig: templateRecord?.default_config,
             variables,
@@ -763,7 +779,7 @@ export class ProductionController {
           variables?.templateConfig,
         );
         const resolvedProps = buildAssemblyInputProps({
-          assets: component.assets || {},
+          assets: renderAssets,
           compositionId: internalCompositionId,
           transitionType: variables?.transitionType,
           templateConfig,
@@ -781,7 +797,7 @@ export class ProductionController {
         renderProvider,
         renderMode,
         inputProps: desktopWorkerPropsResult?.resolvedProps || externalPropsResult?.resolvedProps || null,
-        rawAssets: component.assets || {},
+        rawAssets: renderAssets,
         templateId,
         templateVersionId: externalRenderTarget?.templateVersionId || cloudVersion?.id || null,
         buildId: externalRenderTarget?.buildId || cloudBuild?.id || null,

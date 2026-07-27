@@ -8,6 +8,7 @@ import {
   buildLayoutOverrideStyle,
   REMOTION_EDITABLE_LAYERS,
 } from "../layout-override-styles";
+import { buildVisualTimeline } from "../visual-timeline";
 
 function getAvatarPositionStyle(position: string) {
   const vertical = position.startsWith("top") ? { top: 48 } : { bottom: 48 };
@@ -40,6 +41,7 @@ export function FullSlides(props: AssemblyInputProps) {
     props.layoutOverrides,
     REMOTION_EDITABLE_LAYERS.AVATAR,
   );
+  const timelineSegments = buildVisualTimeline(props).tracks.flatMap((track) => track.segments);
 
   return (
     <AbsoluteFill style={{ backgroundColor: templateConfig.backgroundColor }}>
@@ -58,6 +60,7 @@ export function FullSlides(props: AssemblyInputProps) {
           transitionType={props.transitionType}
           templateConfig={templateConfig}
           layoutOverrides={props.layoutOverrides}
+          timelineSegments={timelineSegments}
           slidesLayerStyle={slidesOverrideStyle}
           brollLayerStyle={brollOverrideStyle}
         />

@@ -85,8 +85,8 @@ export function normalizeAssemblyAssets(
 
   const slides = (a.slides?.images ?? [])
     .filter((img) => Boolean(img?.public_url))
-    .map((img) => ({ index: img.slide_index, url: img.public_url }))
-    .sort((left, right) => left.index - right.index);
+    .sort((left, right) => left.slide_index - right.slide_index)
+    .map((img, index) => ({ index, url: img.public_url }));
 
   const brollClips = (a.b_roll_clips ?? [])
     .filter((clip) => Boolean(clip?.public_url))
@@ -122,20 +122,12 @@ export function normalizeAssemblyAssets(
   const avatarDurationSeconds = isPositiveNumber(a.avatar_video?.duration)
     ? a.avatar_video.duration
     : 0;
-  const targetDurationSeconds = isPositiveNumber(a.assembly_target_duration_seconds)
-    ? a.assembly_target_duration_seconds
-    : 0;
-
   let totalDurationSeconds = voiceDurationSeconds;
 
-  if (totalDurationSeconds <= 0 && targetDurationSeconds > 0) {
-    totalDurationSeconds = Math.max(
-      targetDurationSeconds,
-      avatarDurationSeconds,
-      explicitBrollTotalSeconds,
-    );
-  } else if (totalDurationSeconds <= 0 && avatarDurationSeconds > 0) {
+  if (totalDurationSeconds <= 0 && avatarDurationSeconds > 0) {
     totalDurationSeconds = avatarDurationSeconds;
+  } else if (totalDurationSeconds <= 0 && explicitBrollTotalSeconds > 0) {
+    totalDurationSeconds = explicitBrollTotalSeconds;
   } else if (totalDurationSeconds <= 0 && fallbackBrollTotalSeconds > 0) {
     totalDurationSeconds = fallbackBrollTotalSeconds;
   } else if (totalDurationSeconds <= 0 && slides.length > 0) {

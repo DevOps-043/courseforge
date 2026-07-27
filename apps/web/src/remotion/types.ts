@@ -20,6 +20,7 @@ import {
   templateRenderConfigSchema,
 } from "./template-config";
 import { layoutOverrideManifestListSchema } from "./layout-overrides";
+import { timelineOverrideManifestListSchema } from "./timeline-overrides";
 
 // --- Constantes de composición (sin magic numbers dispersos) ---------------
 
@@ -83,6 +84,21 @@ export const assemblyBrollClipSchema = z.object({
 });
 export type AssemblyBrollClip = z.infer<typeof assemblyBrollClipSchema>;
 
+export const assemblyTimelineSegmentSchema = z.object({
+  id: z.string(),
+  trackKind: z.enum(["slides", "broll"]),
+  layerId: z.string().optional(),
+  label: z.string(),
+  startFrame: z.number().int().min(0),
+  endFrame: z.number().int().positive(),
+  durationInFrames: z.number().int().positive(),
+  sourceUrl: z.string().url().optional(),
+  sourceStartFrame: z.number().int().min(0).optional(),
+  sourceEndFrame: z.number().int().positive().optional(),
+  loopMode: z.enum(["loop", "freeze", "none"]).default("loop"),
+});
+export type AssemblyTimelineSegment = z.infer<typeof assemblyTimelineSegmentSchema>;
+
 // --- Contrato principal -----------------------------------------------------
 
 /**
@@ -125,6 +141,9 @@ export const assemblyInputPropsSchema = z.object({
 
   /** Ajustes visuales no destructivos aplicados por el editor de layout. */
   layoutOverrides: layoutOverrideManifestListSchema,
+
+  /** Ajustes temporales no destructivos aplicados por el editor de timeline. */
+  timelineOverrides: timelineOverrideManifestListSchema,
 });
 
 /**
@@ -173,5 +192,6 @@ export function createDefaultAssemblyProps(
     transitionType: "fade",
     templateConfig: DEFAULT_TEMPLATE_RENDER_CONFIG,
     layoutOverrides: [],
+    timelineOverrides: [],
   };
 }

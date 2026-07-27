@@ -42,8 +42,8 @@ describe('external template props contract', () => {
     assert.equal(result.resolvedProps.template, 'external-main');
     assert.equal(result.resolvedProps.voiceAudioUrl, 'https://cdn.example.com/voice.mp3');
     assert.deepEqual(result.resolvedProps.slides, [
-      { index: 1, url: 'https://cdn.example.com/slide-1.png' },
-      { index: 2, url: 'https://cdn.example.com/slide-2.png' },
+      { index: 0, url: 'https://cdn.example.com/slide-1.png' },
+      { index: 1, url: 'https://cdn.example.com/slide-2.png' },
     ]);
     assert.match(result.propsHash, /^[a-f0-9]{64}$/);
     assert.equal(result.propsSource, 'courseforge-canonical-v1');

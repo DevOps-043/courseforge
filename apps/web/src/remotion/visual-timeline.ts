@@ -9,6 +9,7 @@ import type {
   AssemblyInputProps,
   AssemblySlide,
 } from "./types";
+import type { TimelineOverrideSegment } from "./timeline-overrides";
 
 export interface BrollTimelineItem {
   clip: AssemblyBrollClip;
@@ -76,6 +77,10 @@ export interface VisualTimelineSegment {
   endFrame: number;
   durationInFrames: number;
   sourceUrl?: string;
+  sourceStartFrame?: number;
+  sourceEndFrame?: number;
+  sourceDurationInFrames?: number;
+  loopMode?: "loop" | "freeze" | "none";
 }
 
 export interface VisualTimelineTrack {
@@ -111,6 +116,10 @@ function buildSegment(params: {
   startFrame: number;
   durationInFrames: number;
   sourceUrl?: string;
+  sourceStartFrame?: number;
+  sourceEndFrame?: number;
+  sourceDurationInFrames?: number;
+  loopMode?: "loop" | "freeze" | "none";
   totalDurationInFrames: number;
 }): VisualTimelineSegment | null {
   const startFrame = clampTimelineFrame(
@@ -138,6 +147,10 @@ function buildSegment(params: {
     endFrame,
     durationInFrames,
     sourceUrl: params.sourceUrl,
+    sourceStartFrame: params.sourceStartFrame,
+    sourceEndFrame: params.sourceEndFrame,
+    sourceDurationInFrames: params.sourceDurationInFrames,
+    loopMode: params.loopMode,
   };
 }
 
@@ -176,6 +189,7 @@ function buildSlideTimeline(
       startFrame,
       durationInFrames,
       sourceUrl: slide.url,
+      loopMode: "none",
       totalDurationInFrames,
     });
 
@@ -228,6 +242,10 @@ function buildBrollSegments(props: AssemblyInputProps): VisualTimelineSegment[] 
       startFrame: item.startFrame,
       durationInFrames: item.durationInFrames,
       sourceUrl: item.clip.url,
+      sourceStartFrame: 0,
+      sourceEndFrame: item.clip.durationInFrames,
+      sourceDurationInFrames: item.clip.durationInFrames,
+      loopMode: "loop",
       totalDurationInFrames: props.totalDurationInFrames,
     });
 
@@ -248,6 +266,92 @@ function buildFullDurationSegment(params: {
     startFrame: 0,
     durationInFrames: params.totalDurationInFrames,
   });
+}
+
+function getTimelineOverrideSegments(
+  props: AssemblyInputProps,
+): TimelineOverrideSegment[] {
+  return props.timelineOverrides.flatMap((manifest) => manifest.segments);
+}
+
+function findSegmentOverride(
+  segment: VisualTimelineSegment,
+  overrides: TimelineOverrideSegment[],
+) {
+  for (let index = overrides.length - 1; index >= 0; index -= 1) {
+    const candidate = overrides[index];
+    if (candidate.trackKind !== segment.trackKind) continue;
+    if (candidate.id === segment.id) return candidate;
+    if (candidate.layerId && segment.layerId && candidate.layerId === segment.layerId) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function applySegmentOverride(
+  segment: VisualTimelineSegment,
+  override: TimelineOverrideSegment,
+  totalDurationInFrames: number,
+): VisualTimelineSegment | null {
+  const startFrame = clampTimelineFrame(override.startFrame, totalDurationInFrames);
+  const endFrame = clampTimelineFrame(override.endFrame, totalDurationInFrames);
+  const durationInFrames = endFrame - startFrame;
+
+  if (durationInFrames <= 0) {
+    return null;
+  }
+
+  const sourceDurationInFrames = Math.max(
+    1,
+    segment.sourceEndFrame ?? segment.durationInFrames,
+    segment.sourceDurationInFrames ?? segment.sourceEndFrame ?? segment.durationInFrames,
+  );
+  const sourceStartFrame =
+    segment.trackKind === "broll"
+      ? clampTimelineFrame(override.sourceStartFrame ?? segment.sourceStartFrame ?? 0, sourceDurationInFrames)
+      : undefined;
+  const sourceEndFrame =
+    segment.trackKind === "broll"
+      ? Math.max(
+          (sourceStartFrame ?? 0) + 1,
+          clampTimelineFrame(override.sourceEndFrame ?? segment.sourceEndFrame ?? sourceDurationInFrames, sourceDurationInFrames),
+        )
+      : undefined;
+
+  return {
+    ...segment,
+    startFrame,
+    endFrame,
+    durationInFrames,
+    sourceStartFrame,
+    sourceEndFrame,
+    sourceDurationInFrames,
+    loopMode: segment.trackKind === "broll" ? override.loopMode ?? "loop" : "none",
+  };
+}
+
+function applyTimelineOverridesToTracks(
+  tracks: VisualTimelineTrack[],
+  props: AssemblyInputProps,
+): VisualTimelineTrack[] {
+  const overrides = getTimelineOverrideSegments(props);
+  if (overrides.length === 0) {
+    return tracks;
+  }
+
+  return tracks.map((track) => ({
+    ...track,
+    segments: track.segments
+      .flatMap((segment) => {
+        const override = findSegmentOverride(segment, overrides);
+        const nextSegment = override
+          ? applySegmentOverride(segment, override, props.totalDurationInFrames)
+          : segment;
+        return nextSegment ? [nextSegment] : [];
+      })
+      .sort((left, right) => left.startFrame - right.startFrame || left.id.localeCompare(right.id)),
+  }));
 }
 
 export function buildVisualTimeline(props: AssemblyInputProps): VisualTimeline {
@@ -327,11 +431,13 @@ export function buildVisualTimeline(props: AssemblyInputProps): VisualTimeline {
     });
   }
 
+  const resolvedTracks = applyTimelineOverridesToTracks(tracks, props);
+
   return {
     fps: props.fps,
     durationInFrames: props.totalDurationInFrames,
     durationInSeconds: props.totalDurationInFrames / props.fps,
-    tracks,
+    tracks: resolvedTracks,
   };
 }
 

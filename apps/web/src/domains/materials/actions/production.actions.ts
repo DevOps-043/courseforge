@@ -20,11 +20,8 @@ import {
   type RenderBatchStatusView,
 } from "@/domains/production/render-batches/render-batch.types";
 import { normalizeAssemblyAssets } from "@/remotion/assembly-assets.normalizer";
-import {
-  deriveAssemblyTargetDurationSeconds,
-  withAssemblyTargetDuration,
-} from "@/remotion/assembly-duration";
 import { safeParseLayoutOverrideManifests } from "@/remotion/layout-overrides";
+import { safeParseTimelineOverrideManifests } from "@/remotion/timeline-overrides";
 import type { LessonVideoData } from "@/domains/publication/types/publication.types";
 import {
   buildBrollPromptJobInputSnapshot,
@@ -189,6 +186,170 @@ function buildGammaDeckId(params: {
 
 function isProductionComplete(_componentType: string, assets?: MaterialAssets | null) {
   return assets?.production_status === "COMPLETED";
+}
+
+type TimedAssetRecord = {
+  duration?: unknown;
+  public_url?: unknown;
+  storage_path?: unknown;
+  [key: string]: unknown;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasOwnProperty<T extends object, K extends PropertyKey>(
+  value: T,
+  key: K,
+): value is T & Record<K, unknown> {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function assetReferenceKey(asset: unknown) {
+  if (!isRecord(asset)) {
+    return "";
+  }
+
+  const publicUrl = typeof asset.public_url === "string" ? asset.public_url.trim() : "";
+  const storagePath = typeof asset.storage_path === "string" ? asset.storage_path.trim() : "";
+  return `${publicUrl}|${storagePath}`;
+}
+
+function incomingHasOwnDuration(asset: unknown) {
+  return isRecord(asset) && hasOwnProperty(asset, "duration");
+}
+
+function sanitizeTimedAssetDuration(
+  currentAsset: unknown,
+  incomingAsset: unknown,
+  mergedAsset: unknown,
+) {
+  if (!isRecord(mergedAsset)) {
+    return mergedAsset;
+  }
+
+  const referenceChanged = assetReferenceKey(currentAsset) !== assetReferenceKey(mergedAsset);
+  if (!referenceChanged || incomingHasOwnDuration(incomingAsset)) {
+    return mergedAsset;
+  }
+
+  const cleaned: TimedAssetRecord = { ...mergedAsset };
+  delete cleaned.duration;
+  return cleaned;
+}
+
+function sanitizeBrollClipDurations(
+  currentClips: MaterialAssets["b_roll_clips"],
+  incomingClips: MaterialAssets["b_roll_clips"] | null | undefined,
+  mergedClips: MaterialAssets["b_roll_clips"] | null | undefined,
+) {
+  if (!Array.isArray(mergedClips)) {
+    return mergedClips;
+  }
+
+  const currentById = new Map(
+    (currentClips || []).map((clip) => [clip.id, clip] as const),
+  );
+  const incomingById = new Map(
+    (incomingClips || []).map((clip) => [clip.id, clip] as const),
+  );
+
+  return mergedClips.map((clip) => {
+    const currentClip = currentById.get(clip.id);
+    const incomingClip = incomingById.get(clip.id);
+    return sanitizeTimedAssetDuration(currentClip, incomingClip, clip) as NonNullable<
+      MaterialAssets["b_roll_clips"]
+    >[number];
+  });
+}
+
+function sourceSignature(assets: Partial<MaterialAssets>) {
+  const broll = (assets.b_roll_clips || []).map((clip) => ({
+    id: clip.id,
+    order: clip.order,
+    ref: assetReferenceKey(clip),
+  }));
+  const slideImages = (assets.slides?.images || []).map((slide) => ({
+    index: slide.slide_index,
+    ref: assetReferenceKey(slide),
+  }));
+
+  return JSON.stringify({
+    voice: assetReferenceKey(assets.voice_audio),
+    avatar: assetReferenceKey(assets.avatar_video),
+    backgroundMusic: assetReferenceKey(assets.background_music),
+    broll,
+    slidesUrl: assets.slides_url || "",
+    slidesHtmlUrl: assets.slides?.html_public_url || "",
+    slidesHtmlPath: assets.slides?.html_content_path || "",
+    slideImages,
+    videoUrl: assets.video_url || "",
+    screencastUrl: assets.screencast_url || "",
+  });
+}
+
+function clearFinalVideoMetadata(assets: MaterialAssets) {
+  const cleaned = { ...assets };
+  delete (cleaned as any).final_video_url;
+  delete (cleaned as any).final_video_source;
+  delete (cleaned as any).final_video_storage_provider;
+  delete (cleaned as any).final_video_storage_path;
+  delete (cleaned as any).final_video_source_storage_path;
+  delete (cleaned as any).final_video_url_expires_at;
+  delete (cleaned as any).final_video_layout_stale;
+  delete (cleaned as any).final_video_assembly_stale;
+  delete (cleaned as any).video_duration;
+  return cleaned;
+}
+
+function sanitizeMaterialAssetMetadata(params: {
+  currentAssets: MaterialAssets;
+  incomingAssets: Partial<MaterialAssets>;
+  mergedAssets: MaterialAssets;
+}) {
+  const { currentAssets, incomingAssets } = params;
+  let sanitizedAssets: MaterialAssets = { ...params.mergedAssets };
+
+  if (hasOwnProperty(incomingAssets, "voice_audio")) {
+    sanitizedAssets.voice_audio = sanitizeTimedAssetDuration(
+      currentAssets.voice_audio,
+      incomingAssets.voice_audio,
+      sanitizedAssets.voice_audio,
+    ) as MaterialAssets["voice_audio"];
+  }
+
+  if (hasOwnProperty(incomingAssets, "avatar_video")) {
+    sanitizedAssets.avatar_video = sanitizeTimedAssetDuration(
+      currentAssets.avatar_video,
+      incomingAssets.avatar_video,
+      sanitizedAssets.avatar_video,
+    ) as MaterialAssets["avatar_video"];
+  }
+
+  if (hasOwnProperty(incomingAssets, "background_music")) {
+    sanitizedAssets.background_music = sanitizeTimedAssetDuration(
+      currentAssets.background_music,
+      incomingAssets.background_music,
+      sanitizedAssets.background_music,
+    ) as MaterialAssets["background_music"];
+  }
+
+  if (hasOwnProperty(incomingAssets, "b_roll_clips")) {
+    sanitizedAssets.b_roll_clips = sanitizeBrollClipDurations(
+      currentAssets.b_roll_clips,
+      incomingAssets.b_roll_clips,
+      sanitizedAssets.b_roll_clips,
+    ) as MaterialAssets["b_roll_clips"];
+  }
+
+  delete (sanitizedAssets as any).assembly_target_duration_seconds;
+
+  if (sourceSignature(currentAssets) !== sourceSignature(sanitizedAssets)) {
+    sanitizedAssets = clearFinalVideoMetadata(sanitizedAssets);
+  }
+
+  return sanitizedAssets;
 }
 
 
@@ -362,18 +523,23 @@ export async function saveMaterialAssetsAction(
   const component = (rawComponent || null) as ProductionComponentRecord | null;
   const currentAssets = (component?.assets || {}) as MaterialAssets;
   const mergedAssets: MaterialAssets = { ...currentAssets, ...assets };
+  const sanitizedAssets = sanitizeMaterialAssetMetadata({
+    currentAssets,
+    incomingAssets: assets,
+    mergedAssets,
+  });
   const componentType = component?.type || "";
   const lesson = firstRelation(component?.material_lessons);
   const materials = firstRelation(lesson?.materials);
   const artifactId = materials?.artifact_id || undefined;
-  const dodChecklist = buildDodChecklist(mergedAssets);
-  const productionStatus = resolveProductionStatus(componentType, mergedAssets);
+  const dodChecklist = buildDodChecklist(sanitizedAssets);
+  const productionStatus = resolveProductionStatus(componentType, sanitizedAssets);
 
   const finalAssets: MaterialAssets = {
-    ...mergedAssets,
+    ...sanitizedAssets,
     gamma_deck_id: buildGammaDeckId({
       componentType,
-      currentAssets: mergedAssets,
+      currentAssets: sanitizedAssets,
       lesson,
     }),
     production_status: productionStatus,
@@ -507,6 +673,106 @@ export async function saveRemotionLayoutOverridesAction(
     layoutOverrides: nextLayoutOverrides,
     finalVideoLayoutStale: Boolean(nextAssets.final_video_layout_stale),
   };
+}
+
+export async function saveRemotionTimelineOverridesAction(
+  componentId: string,
+  rawTimelineOverrides: unknown,
+  context: { templateId?: string | null; templateVersionId?: string | null } = {},
+) {
+  const authorized = await getAuthorizedMaterialComponentAdmin(componentId);
+  if (!authorized) {
+    return { success: false, error: "No autorizado para editar este componente" };
+  }
+
+  const parsedResult = safeParseTimelineOverrideManifests(rawTimelineOverrides);
+  if (!parsedResult.success) {
+    return { success: false, error: "Ajustes de timeline invalidos" };
+  }
+
+  const parsed = parsedResult.data;
+  const currentAssets = (authorized.component.assets || {}) as MaterialAssets;
+  const existingParsedResult = safeParseTimelineOverrideManifests(currentAssets.timeline_overrides);
+  const existingTimelineOverrides = existingParsedResult.success ? existingParsedResult.data : [];
+  const scopedTemplateId = context.templateId || parsed[0]?.templateId || null;
+  const scopedTemplateVersionId = context.templateVersionId || parsed[0]?.templateVersionId || null;
+  const isClearingTimelineScope = parsed.length === 0;
+  const isSameTimelineScope = (manifest: { templateId?: string | null; templateVersionId?: string | null }) => {
+    if (!scopedTemplateId) return false;
+    return (
+      manifest.templateId === scopedTemplateId &&
+      (isClearingTimelineScope || (scopedTemplateVersionId ? manifest.templateVersionId === scopedTemplateVersionId : true))
+    );
+  };
+  const nextTimelineOverrides = scopedTemplateId
+    ? [
+        ...existingTimelineOverrides.filter((manifest) => !isSameTimelineScope(manifest)),
+        ...parsed,
+      ]
+    : parsed;
+  const now = new Date().toISOString();
+  const nextAssets: MaterialAssets = {
+    ...currentAssets,
+    updated_at: now,
+  };
+
+  if (nextTimelineOverrides.length > 0) {
+    nextAssets.timeline_overrides = nextTimelineOverrides;
+    nextAssets.timeline_overrides_updated_at = now;
+    if (currentAssets.final_video_url) {
+      nextAssets.final_video_assembly_stale = true;
+      nextAssets.final_video_layout_stale = true;
+    }
+  } else {
+    delete (nextAssets as any).timeline_overrides;
+    delete (nextAssets as any).timeline_overrides_updated_at;
+    delete (nextAssets as any).final_video_assembly_stale;
+  }
+
+  const { error } = await authorized.admin
+    .from("material_components")
+    .update({ assets: nextAssets })
+    .eq("id", componentId);
+
+  if (error) {
+    console.error("[ProductionActions] Error saving timeline overrides:", error);
+    return { success: false, error: error.message };
+  }
+
+  await markDownstreamDirtyAction(
+    authorized.artifactId,
+    7,
+    parsed.length > 0
+      ? "Postproduccion (timeline ajustado)"
+      : "Postproduccion (timeline restablecido)",
+  );
+  await logPipelineEventAction(
+    authorized.artifactId,
+    parsed.length > 0
+      ? "REMOTION_TIMELINE_OVERRIDES_SAVED"
+      : "REMOTION_TIMELINE_OVERRIDES_CLEARED",
+    {
+      component_id: componentId,
+      overrides_count: nextTimelineOverrides.length,
+      final_video_assembly_stale: Boolean(nextAssets.final_video_assembly_stale),
+    },
+    "GO-OP-07",
+    componentId,
+    "material_component",
+  );
+
+  return {
+    success: true,
+    timelineOverrides: nextTimelineOverrides,
+    final_video_assembly_stale: Boolean(nextAssets.final_video_assembly_stale),
+  };
+}
+
+export async function clearRemotionTimelineOverridesAction(
+  componentId: string,
+  context: { templateId?: string | null; templateVersionId?: string | null } = {},
+) {
+  return saveRemotionTimelineOverridesAction(componentId, [], context);
 }
 
 export async function syncProductionStatusAction(artifactId: string) {
@@ -665,9 +931,7 @@ export async function assembleRemotionVideoAction(
 
   const component = rawComponent as ProductionComponentRecord | null;
   const currentAssets = (component?.assets || {}) as MaterialAssets;
-  const targetDurationSeconds = deriveAssemblyTargetDurationSeconds(component?.content);
-  const renderAssets = withAssemblyTargetDuration(currentAssets, targetDurationSeconds);
-  const normalizedAssets = normalizeAssemblyAssets(renderAssets, 30);
+  const normalizedAssets = normalizeAssemblyAssets(currentAssets, 30);
   const hasPrimaryRenderableAssets = Boolean(
     normalizedAssets.voiceAudioUrl ||
       normalizedAssets.avatarVideoUrl ||
@@ -686,7 +950,7 @@ export async function assembleRemotionVideoAction(
   try {
     // Update component status to IN_PROGRESS
     const updatedAssets: MaterialAssets = {
-      ...renderAssets,
+      ...currentAssets,
       production_status: "IN_PROGRESS",
       updated_at: new Date().toISOString(),
     };
@@ -712,21 +976,15 @@ export async function assembleRemotionVideoAction(
         hasAvatarVideo: Boolean(normalizedAssets.avatarVideoUrl),
         hasVoiceAudio: Boolean(normalizedAssets.voiceAudioUrl),
         totalDurationSeconds: normalizedAssets.totalDurationSeconds,
-        assemblyTargetDurationSeconds: targetDurationSeconds ?? null,
-        avatarDurationSeconds: typeof renderAssets.avatar_video?.duration === "number"
-          ? renderAssets.avatar_video.duration
+        avatarDurationSeconds: typeof currentAssets.avatar_video?.duration === "number"
+          ? currentAssets.avatar_video.duration
           : null,
-        voiceDurationSeconds: typeof renderAssets.voice_audio?.duration === "number"
-          ? renderAssets.voice_audio.duration
+        voiceDurationSeconds: typeof currentAssets.voice_audio?.duration === "number"
+          ? currentAssets.voice_audio.duration
           : null,
       },
       variablesKeys: Object.keys(variables || {}),
     });
-    
-    const renderVariables = {
-      ...variables,
-      assemblyTargetDurationSeconds: targetDurationSeconds ?? null,
-    };
 
     const response = await fetch(`${productionApiUrl}/api/v1/production/remotion/render`, {
       method: "POST",
@@ -737,7 +995,7 @@ export async function assembleRemotionVideoAction(
       body: JSON.stringify({
         componentId,
         templateId,
-        variables: renderVariables
+        variables
       })
     });
 

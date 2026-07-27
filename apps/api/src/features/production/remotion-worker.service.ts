@@ -322,13 +322,20 @@ export class RemotionWorkerService {
       compositionId,
       timeoutInMilliseconds,
       durationInFrames: composition.durationInFrames,
+      expectedDurationInFrames: inputProps.totalDurationInFrames,
       fps: composition.fps,
+      expectedFps: inputProps.fps,
     });
+    const renderComposition = {
+      ...composition,
+      durationInFrames: inputProps.totalDurationInFrames,
+      fps: inputProps.fps,
+    };
 
     fs.mkdirSync(outputDir, { recursive: true });
     let lastReportedPercent = 40;
     await renderMedia({
-      composition,
+      composition: renderComposition,
       serveUrl,
       codec: 'h264',
       outputLocation: outputPath,

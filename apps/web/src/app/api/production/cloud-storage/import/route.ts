@@ -10,6 +10,10 @@ import {
   type ProductionAssetType,
 } from "@/domains/production/cloud-storage/types";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
+import {
+  isHtmlSlideSource,
+  rasterizeStoredOpenDesignHtmlSlides,
+} from "@/domains/production/validation/open-design-html-rasterizer.service";
 
 interface ImportRequestBody {
   accessToken?: string;
@@ -147,14 +151,48 @@ export async function POST(request: Request) {
               },
             ]
           : [];
+        const shouldRasterizeHtml =
+          importedImages.length === 0 &&
+          isHtmlSlideSource({
+            mimeType: result.mimeType,
+            fileName: result.fileName,
+            publicUrl: result.publicUrl,
+            storagePath: result.storagePath,
+          });
+        const rasterizedImages =
+          shouldRasterizeHtml
+            ? (
+                await rasterizeStoredOpenDesignHtmlSlides({
+                  admin,
+                  componentId,
+                  htmlStoragePath: result.storagePath,
+                })
+              ).images
+            : [];
+        const nextImages =
+          importedImages.length > 0
+            ? [...currentImages, ...importedImages]
+            : rasterizedImages.length > 0
+              ? rasterizedImages
+              : currentImages;
 
+        const {
+          html_content_path: _htmlContentPath,
+          html_public_url: _htmlPublicUrl,
+          ...slidesWithoutHtmlSource
+        } = currentAssets.slides || {};
+        const hasRenderableSlides = importedImages.length > 0 || rasterizedImages.length > 0;
         updatedAssets.slides = {
-          ...currentAssets.slides,
-          html_public_url: result.publicUrl,
-          html_content_path: result.storagePath,
-          images: importedImages.length > 0 ? [...currentImages, ...importedImages] : currentImages,
+          ...(hasRenderableSlides ? slidesWithoutHtmlSource : currentAssets.slides),
+          ...(hasRenderableSlides
+            ? {}
+            : {
+                html_public_url: result.publicUrl,
+                html_content_path: result.storagePath,
+              }),
+          images: nextImages,
         };
-        updatedAssets.slides_url = result.publicUrl;
+        updatedAssets.slides_url = nextImages[0]?.public_url || result.publicUrl;
         break;
       }
     }

@@ -12,6 +12,7 @@ import {
   parseLayoutOverrideManifests,
   TEMPLATE_LAYOUT_CONTRACT_VERSION,
 } from "@/remotion/layout-overrides";
+import { parseTimelineOverrideManifests } from "@/remotion/timeline-overrides";
 import { mergeTemplateRenderConfigs } from "@/remotion/template-config";
 
 const WORKER_TOKEN_PREFIX = "swk_";
@@ -112,6 +113,37 @@ export interface WorkerJobCompleteInput {
   logsRef?: string;
   buildHash?: string;
   buildLog?: string;
+}
+
+export interface WorkerTelemetryRunInput {
+  localRunId?: unknown;
+  jobType?: unknown;
+  buildId?: unknown;
+  templateVersionId?: unknown;
+  compositionId?: unknown;
+  bundleHash?: unknown;
+  propsHash?: unknown;
+  outputStoragePath?: unknown;
+  status?: unknown;
+  startedAt?: unknown;
+  config?: unknown;
+  hardware?: unknown;
+}
+
+export interface WorkerTelemetrySamplesInput {
+  remoteRunId?: unknown;
+  samples?: unknown;
+}
+
+export interface WorkerTelemetryFinishInput {
+  status?: unknown;
+  finishedAt?: unknown;
+  elapsedMs?: unknown;
+  lastStage?: unknown;
+  lastProgressPercent?: unknown;
+  errorCode?: unknown;
+  errorMessage?: unknown;
+  summary?: unknown;
 }
 
 type WorkerLocalRecoveryInput = {
@@ -325,6 +357,97 @@ function readNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function readTelemetryRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function readTelemetryArray(value: unknown, limit: number): unknown[] {
+  return Array.isArray(value) ? value.slice(0, limit) : [];
+}
+
+function readTelemetryString(value: unknown, fallback = "", maxLength = 500): string {
+  return sanitizeText(typeof value === "string" ? value : fallback, fallback).slice(0, maxLength);
+}
+
+function readTelemetryDate(value: unknown, fallback = new Date().toISOString()): string {
+  if (typeof value !== "string") return fallback;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : fallback;
+}
+
+function readTelemetryNumber(value: unknown, fallback = 0, max = Number.MAX_SAFE_INTEGER): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.min(max, parsed));
+}
+
+function readTelemetryInteger(value: unknown, fallback = 0, max = Number.MAX_SAFE_INTEGER): number {
+  return Math.round(readTelemetryNumber(value, fallback, max));
+}
+
+function readTelemetryPercent(value: unknown): number {
+  return Math.round(readTelemetryNumber(value, 0, 100) * 100) / 100;
+}
+
+function readTelemetryStatus(value: unknown, fallback: string) {
+  const status = typeof value === "string" ? value : fallback;
+  return ["running", "completed", "upload_pending", "confirm_pending", "failed", "interrupted"].includes(status)
+    ? status
+    : fallback;
+}
+
+function readWorkerCapabilities(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function isPrimaryBundleWorker(worker: { capabilities?: unknown }) {
+  const capabilities = readWorkerCapabilities(worker.capabilities);
+  return capabilities.bundleRole === "PRIMARY" || capabilities.primaryBundleWorker === true;
+}
+
+function readTelemetryTopProcesses(value: unknown) {
+  return readTelemetryArray(value, 8)
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object" && !Array.isArray(item)))
+    .map((item) => ({
+      pid: readTelemetryInteger(item.pid, 0),
+      parentPid: item.parentPid === undefined ? null : readTelemetryInteger(item.parentPid, 0),
+      name: readTelemetryString(item.name, "process", 160),
+      type: readTelemetryString(item.type, "Process", 80),
+      cpuPercent: readTelemetryPercent(item.cpuPercent),
+      memoryBytes: readTelemetryInteger(item.memoryBytes, 0),
+    }));
+}
+
+function readTelemetrySummary(value: unknown) {
+  const summary = readTelemetryRecord(value);
+  return {
+    sample_count: readTelemetryInteger(summary.sampleCount, 0),
+    avg_app_cpu_percent: readTelemetryPercent(summary.avgAppCpuPercent),
+    max_app_cpu_percent: readTelemetryPercent(summary.maxAppCpuPercent),
+    avg_app_gpu_percent: readTelemetryPercent(summary.avgAppGpuPercent),
+    max_app_gpu_percent: readTelemetryPercent(summary.maxAppGpuPercent),
+    avg_app_memory_bytes: readTelemetryInteger(summary.avgAppMemoryBytes, 0),
+    max_app_memory_bytes: readTelemetryInteger(summary.maxAppMemoryBytes, 0),
+    avg_system_cpu_percent: readTelemetryPercent(summary.avgSystemCpuPercent),
+    max_system_cpu_percent: readTelemetryPercent(summary.maxSystemCpuPercent),
+    avg_system_gpu_percent: readTelemetryPercent(summary.avgSystemGpuPercent),
+    max_system_gpu_percent: readTelemetryPercent(summary.maxSystemGpuPercent),
+    max_system_memory_used_bytes: readTelemetryInteger(summary.maxSystemMemoryUsedBytes, 0),
+  };
+}
+
+function readTelemetryLocalRunId(value: unknown): string {
+  const localRunId = readTelemetryString(value, "", 120);
+  if (!/^[A-Za-z0-9._:-]{8,120}$/.test(localRunId)) {
+    throw new Error("INVALID_TELEMETRY_LOCAL_RUN_ID");
+  }
+  return localRunId;
+}
+
 function normalizeStoragePath(value: string): { bucket: string; path: string } {
   const normalized = value.replace(/\\/g, "/").replace(/^\/+/, "");
   const separatorIndex = normalized.indexOf("/");
@@ -418,16 +541,92 @@ function secondsToFrames(seconds: number, fps: number): number {
   return Math.max(1, Math.round(seconds * fps));
 }
 
+function isPositiveFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function readAssetPublicUrl(asset: unknown): string | null {
+  if (!asset || typeof asset !== "object" || Array.isArray(asset)) return null;
+  const publicUrl = (asset as { public_url?: unknown }).public_url;
+  return typeof publicUrl === "string" && publicUrl.trim() ? publicUrl.trim() : null;
+}
+
+async function probeMediaDurationFromUrl(url: string): Promise<number | null> {
+  const { ALL_FORMATS, Input, UrlSource } = await import("mediabunny");
+  const input = new Input({
+    source: new UrlSource(url, {
+      parallelism: 1,
+      getRetryDelay: (previousAttempts) => (previousAttempts < 1 ? 0.5 : null),
+    }),
+    formats: ALL_FORMATS,
+  });
+
+  try {
+    const duration = await input.computeDuration();
+    return isPositiveFiniteNumber(duration) ? Math.max(1, Math.round(duration)) : null;
+  } finally {
+    input.dispose();
+  }
+}
+
+async function verifyAssetDuration(asset: unknown, key: string) {
+  if (!asset || typeof asset !== "object" || Array.isArray(asset)) return asset;
+  const source = asset as Record<string, unknown>;
+  const publicUrl = readAssetPublicUrl(source);
+  if (!publicUrl) {
+    const clone = { ...source };
+    delete clone.duration;
+    return clone;
+  }
+
+  try {
+    const measuredDuration = await probeMediaDurationFromUrl(publicUrl);
+    if (measuredDuration) {
+      return { ...source, duration: measuredDuration };
+    }
+  } catch (error) {
+    console.warn("[DesktopWorkerControlPlane] No se pudo verificar duracion de asset", {
+      key,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  const clone = { ...source };
+  delete clone.duration;
+  return clone;
+}
+
+async function verifyMediaDurationsFromUrls(rawAssets: unknown) {
+  if (!rawAssets || typeof rawAssets !== "object" || Array.isArray(rawAssets)) return rawAssets;
+
+  const source = rawAssets as Record<string, unknown>;
+  const verified: Record<string, unknown> = { ...source };
+  verified.voice_audio = await verifyAssetDuration(source.voice_audio, "voice_audio");
+  verified.avatar_video = await verifyAssetDuration(source.avatar_video, "avatar_video");
+
+  if (Array.isArray(source.b_roll_clips)) {
+    verified.b_roll_clips = await Promise.all(
+      source.b_roll_clips.map((clip, index) => verifyAssetDuration(clip, `b_roll_clips.${index + 1}`)),
+    );
+  }
+
+  return verified;
+}
+
 function buildAssemblyInputProps(params: {
   assets: any;
   compositionId: string;
   transitionType: unknown;
   templateConfig?: unknown;
   layoutOverrides?: unknown;
+  timelineOverrides?: unknown;
 }) {
   const normalized = normalizeAssemblyAssets(params.assets, ASSEMBLY_FPS);
   const templateConfig = mergeTemplateRenderConfigs(params.templateConfig, null);
   const layoutOverrides = parseLayoutOverrideManifests(params.layoutOverrides);
+  const timelineOverrides = parseTimelineOverrideManifests(
+    params.timelineOverrides ?? params.assets?.timeline_overrides,
+  );
   const totalSeconds =
     normalized.totalDurationSeconds > 0
       ? normalized.totalDurationSeconds
@@ -453,6 +652,7 @@ function buildAssemblyInputProps(params: {
       transitionType: transition,
     },
     layoutOverrides,
+    timelineOverrides,
   };
 }
 
@@ -508,6 +708,7 @@ function buildExternalTemplateProps(input: {
     transitionType: variables.transitionType,
     templateConfig,
     layoutOverrides: externalLayoutOverrides,
+    timelineOverrides: variables.timelineOverrides,
   });
   const overrides = extractExternalTemplateOverrides(variables);
   const resolvedProps = {
@@ -522,6 +723,7 @@ function buildExternalTemplateProps(input: {
       : {}),
     ...(overrides || {}),
     layoutOverrides: externalLayoutOverrides,
+    timelineOverrides: courseProps.timelineOverrides,
   };
   validatePropsSchema(resolvedProps, input.propsSchema);
   return {
@@ -1116,11 +1318,52 @@ export class DesktopWorkerControlPlane {
 
     return workers.map((worker: any) => ({
       ...worker,
+      is_primary_bundle_worker: isPrimaryBundleWorker(worker),
       status: resolveComputedWorkerStatus(worker),
       max_concurrent_jobs: normalizeMaxConcurrentJobs(worker.max_concurrent_jobs),
       running_jobs: runningCounts.get(worker.id) || 0,
       available_slots: Math.max(0, normalizeMaxConcurrentJobs(worker.max_concurrent_jobs) - (runningCounts.get(worker.id) || 0)),
     }));
+  }
+
+  async setPrimaryBundleWorker(workerId: string, organizationId: string) {
+    const { data: target, error: targetError } = await this.supabase
+      .from("render_workers")
+      .select("id, organization_id, status")
+      .eq("id", workerId)
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+
+    if (targetError || !target) throw new Error("WORKER_NOT_FOUND");
+    if (target.status === "REVOKED") throw new Error("WORKER_REVOKED");
+
+    const { data: workers, error } = await this.supabase
+      .from("render_workers")
+      .select("id, capabilities")
+      .eq("organization_id", organizationId)
+      .neq("status", "REVOKED");
+
+    if (error) throw new Error(`WORKER_PRIMARY_UPDATE_FAILED: ${error.message}`);
+
+    const now = new Date().toISOString();
+    await Promise.all((workers || []).map((worker: any) => {
+      const capabilities = readWorkerCapabilities(worker.capabilities);
+      const isPrimary = worker.id === workerId;
+      return this.supabase
+        .from("render_workers")
+        .update({
+          capabilities: {
+            ...capabilities,
+            bundleRole: isPrimary ? "PRIMARY" : "GENERAL",
+            primaryBundleWorker: isPrimary,
+          },
+          updated_at: now,
+        })
+        .eq("id", worker.id)
+        .eq("organization_id", organizationId);
+    }));
+
+    return { id: workerId, organization_id: organizationId, is_primary_bundle_worker: true };
   }
 
   async createLinkCode(input: {
@@ -1378,17 +1621,19 @@ export class DesktopWorkerControlPlane {
       throw new Error("FORBIDDEN_TEMPLATE_ORGANIZATION");
     }
     if (!templateRecord.storage_path) {
+      const verifiedAssets = await verifyMediaDurationsFromUrls(component.assets || {});
       const compositionId = resolveInternalCompositionId(templateRecord.composition_id);
       const templateConfig = mergeTemplateRenderConfigs(
         templateRecord.default_config,
         input.variables?.templateConfig,
       );
       const resolvedProps = buildAssemblyInputProps({
-        assets: component.assets || {},
+        assets: verifiedAssets,
         compositionId,
         transitionType: input.variables?.transitionType,
         templateConfig,
         layoutOverrides: input.variables?.layoutOverrides,
+        timelineOverrides: input.variables?.timelineOverrides,
       });
       const propsHash = buildStableHash(resolvedProps);
       const bundleInfo = await this.publishInternalBundle();
@@ -1413,7 +1658,7 @@ export class DesktopWorkerControlPlane {
         renderDiagnostics: buildRenderDiagnostics({
           renderMode,
           inputProps: resolvedProps,
-          rawAssets: component.assets || {},
+          rawAssets: verifiedAssets,
           templateId: input.templateId,
           templateVersionId: null,
           buildId: null,
@@ -1562,8 +1807,9 @@ export class DesktopWorkerControlPlane {
       build: cloudBuild,
     });
 
+    const verifiedAssets = await verifyMediaDurationsFromUrls(component.assets || {});
     const propsResult = buildExternalTemplateProps({
-      assets: component.assets || {},
+      assets: verifiedAssets,
       compositionId: externalTarget.compositionId,
       templateDefaultConfig: templateRecord.default_config,
       variables: input.variables,
@@ -1593,7 +1839,7 @@ export class DesktopWorkerControlPlane {
       renderDiagnostics: buildRenderDiagnostics({
         renderMode,
         inputProps: propsResult.resolvedProps,
-        rawAssets: component.assets || {},
+        rawAssets: verifiedAssets,
         templateId: input.templateId,
         templateVersionId: cloudVersion.id,
         buildId: cloudBuild.id,
@@ -1926,6 +2172,154 @@ export class DesktopWorkerControlPlane {
     };
   }
 
+  async startTelemetryRun(worker: WorkerAuthContext, jobId: string, input: WorkerTelemetryRunInput) {
+    const target = await this.resolveAuthorizedTelemetryTarget(worker, jobId);
+    const localRunId = readTelemetryLocalRunId(input.localRunId);
+    const config = readTelemetryRecord(input.config);
+    const hardware = readTelemetryRecord(input.hardware);
+    const gpuAdapters = readTelemetryArray(hardware.gpuAdapters, 8);
+
+    const { data: existingRun, error: existingError } = await this.supabase
+      .from("render_worker_job_runs")
+      .select("id, remote_job_id")
+      .eq("worker_id", worker.id)
+      .eq("local_run_id", localRunId)
+      .maybeSingle();
+
+    if (existingError) throw new Error(`TELEMETRY_RUN_LOOKUP_FAILED: ${existingError.message}`);
+    if (existingRun) {
+      if (existingRun.remote_job_id !== target.remoteJobId) {
+        throw new Error("TELEMETRY_RUN_ALREADY_BOUND_TO_DIFFERENT_JOB");
+      }
+      return { runId: existingRun.id };
+    }
+
+    const now = new Date().toISOString();
+    const insertPayload = {
+      worker_id: worker.id,
+      organization_id: worker.organizationId,
+      local_run_id: localRunId,
+      remote_table: target.remoteTable,
+      remote_job_id: target.remoteJobId,
+      job_type: target.jobType,
+      production_job_id: target.remoteTable === "production_jobs" ? target.remoteJobId : null,
+      template_build_id: target.remoteTable === "remotion_template_builds" ? target.remoteJobId : null,
+      template_preview_id: target.remoteTable === "remotion_template_previews" ? target.remoteJobId : null,
+      related_template_build_id: target.relatedTemplateBuildId,
+      render_batch_id: target.renderBatchId,
+      artifact_id: target.artifactId,
+      material_component_id: target.materialComponentId,
+      template_version_id: target.templateVersionId,
+      composition_id: readTelemetryString(input.compositionId, target.compositionId || "", 160) || null,
+      bundle_hash: readTelemetryString(input.bundleHash, target.bundleHash || "", 160) || null,
+      props_hash: readTelemetryString(input.propsHash, target.propsHash || "", 160) || null,
+      output_storage_path: readTelemetryString(input.outputStoragePath, target.outputStoragePath || "", 500) || null,
+      status: "running",
+      started_at: readTelemetryDate(input.startedAt, now),
+      last_stage: "claim",
+      power_profile: readTelemetryString(config.powerProfile, "", 80) || null,
+      max_concurrent_jobs: readTelemetryInteger(config.maxConcurrentJobs, 0, 8) || null,
+      render_concurrency: readTelemetryInteger(config.renderConcurrency, 0, 64) || null,
+      hardware_acceleration: readTelemetryString(config.hardwareAcceleration, "", 80) || null,
+      chromium_gl: readTelemetryString(config.chromiumGl, "", 80) || null,
+      video_bitrate: readTelemetryString(config.videoBitrate, "", 80) || null,
+      platform: readTelemetryString(hardware.platform, "unknown", 40) || "unknown",
+      arch: readTelemetryString(hardware.arch, "unknown", 40) || "unknown",
+      cpu_model: readTelemetryString(hardware.cpuModel, "", 160) || null,
+      cpu_logical_threads: Math.max(1, readTelemetryInteger(hardware.cpuLogicalThreads, 1, 1024)),
+      memory_total_bytes: readTelemetryInteger(hardware.memoryTotalBytes, 0),
+      gpu_adapters: gpuAdapters,
+      config_snapshot: config,
+      hardware_snapshot: { ...hardware, gpuAdapters },
+      created_at: now,
+      updated_at: now,
+    };
+
+    const { data, error } = await this.supabase
+      .from("render_worker_job_runs")
+      .insert(insertPayload)
+      .select("id")
+      .single();
+
+    if (error || !data) throw new Error(`TELEMETRY_RUN_CREATE_FAILED: ${error?.message || "Unknown error"}`);
+    return { runId: data.id };
+  }
+
+  async recordTelemetrySamples(
+    worker: WorkerAuthContext,
+    jobId: string,
+    localRunIdInput: string,
+    input: WorkerTelemetrySamplesInput,
+  ) {
+    const localRunId = readTelemetryLocalRunId(localRunIdInput);
+    const { run, target } = await this.getTelemetryRun(worker, jobId, localRunId);
+    const samples = readTelemetryArray(input.samples, 100)
+      .filter((sample): sample is Record<string, unknown> => Boolean(sample && typeof sample === "object" && !Array.isArray(sample)));
+
+    if (samples.length === 0) return { accepted: 0 };
+
+    const rows = samples.map((sample) => ({
+      run_id: run.id,
+      worker_id: worker.id,
+      organization_id: worker.organizationId,
+      remote_table: target.remoteTable,
+      remote_job_id: target.remoteJobId,
+      sampled_at: readTelemetryDate(sample.sampledAt),
+      worker_state: readTelemetryString(sample.workerState, "rendering", 80) || "rendering",
+      stage: readTelemetryString(sample.stage, "", 120) || null,
+      progress_percent: sample.progressPercent === undefined ? null : readTelemetryPercent(sample.progressPercent),
+      app_cpu_percent: readTelemetryPercent(sample.appCpuPercent),
+      app_gpu_percent: readTelemetryPercent(sample.appGpuPercent),
+      app_memory_bytes: readTelemetryInteger(sample.appMemoryBytes, 0),
+      app_process_count: readTelemetryInteger(sample.appProcessCount, 0, 1024),
+      system_cpu_percent: readTelemetryPercent(sample.systemCpuPercent),
+      system_gpu_percent: readTelemetryPercent(sample.systemGpuPercent),
+      system_memory_used_bytes: readTelemetryInteger(sample.systemMemoryUsedBytes, 0),
+      system_memory_total_bytes: readTelemetryInteger(sample.systemMemoryTotalBytes, 0),
+      system_cpu_count: readTelemetryInteger(sample.systemCpuCount, 0, 1024),
+      top_processes: readTelemetryTopProcesses(sample.topProcesses),
+    }));
+
+    const { error } = await this.supabase
+      .from("render_worker_job_metric_samples")
+      .upsert(rows, { onConflict: "run_id,sampled_at", ignoreDuplicates: true });
+
+    if (error) throw new Error(`TELEMETRY_SAMPLE_WRITE_FAILED: ${error.message}`);
+    return { accepted: rows.length };
+  }
+
+  async finishTelemetryRun(
+    worker: WorkerAuthContext,
+    jobId: string,
+    localRunIdInput: string,
+    input: WorkerTelemetryFinishInput,
+  ) {
+    const localRunId = readTelemetryLocalRunId(localRunIdInput);
+    const { run } = await this.getTelemetryRun(worker, jobId, localRunId);
+    const summary = readTelemetrySummary(input.summary);
+    const finishedAt = readTelemetryDate(input.finishedAt);
+    const status = readTelemetryStatus(input.status, "completed");
+
+    const { error } = await this.supabase
+      .from("render_worker_job_runs")
+      .update({
+        status,
+        finished_at: finishedAt,
+        elapsed_ms: readTelemetryInteger(input.elapsedMs, 0),
+        last_stage: readTelemetryString(input.lastStage, "", 120) || run.last_stage || null,
+        last_progress_percent: input.lastProgressPercent === undefined ? run.last_progress_percent : readTelemetryPercent(input.lastProgressPercent),
+        error_code: readTelemetryString(input.errorCode, "", 120) || null,
+        error_message: readTelemetryString(input.errorMessage, "", 500) || null,
+        ...summary,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", run.id)
+      .eq("worker_id", worker.id);
+
+    if (error) throw new Error(`TELEMETRY_RUN_FINISH_FAILED: ${error.message}`);
+    return { runId: run.id };
+  }
+
   async claimJob(worker: WorkerAuthContext, jobId: string) {
     const { data: job, error: jobError } = await this.supabase
       .from("production_jobs")
@@ -2068,15 +2462,45 @@ export class DesktopWorkerControlPlane {
   }
 
   private async claimTemplateBuilds(worker: WorkerAuthContext, limit: number) {
-    const { data: candidates, error } = await this.supabase
+    const { data: currentWorker } = await this.supabase
+      .from("render_workers")
+      .select("id, capabilities")
+      .eq("id", worker.id)
+      .maybeSingle();
+    const currentIsPrimary = isPrimaryBundleWorker(currentWorker || {});
+
+    let primaryWorkerIds: string[] = [];
+    if (!currentIsPrimary) {
+      const { data: primaryWorkers } = await this.supabase
+        .from("render_workers")
+        .select("id, status, last_heartbeat_at, capabilities")
+        .eq("organization_id", worker.organizationId)
+        .neq("status", "REVOKED");
+
+      primaryWorkerIds = (primaryWorkers || [])
+        .filter((candidate: any) => isPrimaryBundleWorker(candidate) && resolveComputedWorkerStatus(candidate) !== "OFFLINE")
+        .map((candidate: any) => candidate.id);
+    }
+
+    const now = new Date().toISOString();
+    const unassignedBuildsShouldWaitForPrimary = !currentIsPrimary && primaryWorkerIds.length > 0;
+
+    let query = this.supabase
       .from("remotion_template_builds")
       .select("*")
       .eq("organization_id", worker.organizationId)
       .eq("status", "BUILDING")
       .eq("cloud_provider", "desktop_worker")
-      .or(`worker_id.is.null,worker_id.eq.${worker.id},lease_expires_at.lte.${new Date().toISOString()}`)
       .order("created_at", { ascending: true })
       .limit(limit);
+
+    if (unassignedBuildsShouldWaitForPrimary) {
+      query = query.or(`worker_id.eq.${worker.id},lease_expires_at.lte.${now}`);
+    } else {
+      query = query.or(`worker_id.is.null,worker_id.eq.${worker.id},lease_expires_at.lte.${now}`);
+    }
+
+    const { data: candidates, error } = await query;
 
     if (error) throw new Error(`TEMPLATE_BUILD_NEXT_LOOKUP_FAILED: ${error.message}`);
 
@@ -2664,9 +3088,16 @@ export class DesktopWorkerControlPlane {
       data: { publicUrl },
     } = this.supabase.storage.from(VIDEO_BUCKET).getPublicUrl(input.outputStoragePath);
 
-    const duration = Number.isFinite(input.durationSeconds)
+    const expectedDuration = deriveDurationFromJob(job);
+    const reportedDuration = Number.isFinite(input.durationSeconds)
       ? Math.max(1, Math.round(input.durationSeconds || 0))
-      : deriveDurationFromJob(job);
+      : null;
+    if (reportedDuration && expectedDuration > 0 && Math.abs(reportedDuration - expectedDuration) > 2) {
+      throw new Error(
+        `OUTPUT_DURATION_MISMATCH: el worker genero ${reportedDuration}s, pero el job esperaba ${expectedDuration}s.`,
+      );
+    }
+    const duration = reportedDuration || expectedDuration;
 
     const { data: component } = await this.supabase
       .from("material_components")
@@ -3049,6 +3480,77 @@ export class DesktopWorkerControlPlane {
     if (error || !job) throw new Error("JOB_NOT_FOUND");
     assertWorkerCanAccessJob(worker, job);
     return job;
+  }
+
+  private async resolveAuthorizedTelemetryTarget(worker: WorkerAuthContext, jobId: string) {
+    const templateBuild = await this.getAuthorizedTemplateBuild(worker, jobId);
+    if (templateBuild) {
+      return {
+        remoteTable: "remotion_template_builds",
+        remoteJobId: templateBuild.id,
+        jobType: "template_build",
+        relatedTemplateBuildId: null,
+        renderBatchId: null,
+        artifactId: null,
+        materialComponentId: null,
+        templateVersionId: templateBuild.template_version_id || null,
+        compositionId: templateBuild.composition_id || null,
+        bundleHash: templateBuild.bundle_hash || templateBuild.build_hash || null,
+        propsHash: null,
+        outputStoragePath: templateBuild.build_output_storage_path || null,
+      };
+    }
+
+    const templatePreview = await this.getAuthorizedTemplatePreview(worker, jobId);
+    if (templatePreview) {
+      return {
+        remoteTable: "remotion_template_previews",
+        remoteJobId: templatePreview.id,
+        jobType: "template_preview",
+        relatedTemplateBuildId: templatePreview.template_build_id || null,
+        renderBatchId: null,
+        artifactId: null,
+        materialComponentId: templatePreview.material_component_id || null,
+        templateVersionId: templatePreview.template_version_id || null,
+        compositionId: templatePreview.composition_id || null,
+        bundleHash: templatePreview.bundle_hash || templatePreview.build_hash || null,
+        propsHash: templatePreview.props_hash || null,
+        outputStoragePath: templatePreview.preview_poster_storage_path || templatePreview.preview_video_storage_path || null,
+      };
+    }
+
+    const job = await this.getAuthorizedWorkerJob(worker, jobId);
+    return {
+      remoteTable: "production_jobs",
+      remoteJobId: job.id,
+      jobType: "render",
+      relatedTemplateBuildId: null,
+      renderBatchId: job.render_batch_id || null,
+      artifactId: job.artifact_id || null,
+      materialComponentId: job.material_component_id || null,
+      templateVersionId: job.input_snapshot?.templateVersionId || null,
+      compositionId: job.input_snapshot?.compositionId || null,
+      bundleHash: job.input_snapshot?.desktopBundleHash || job.input_snapshot?.bundleHash || null,
+      propsHash: job.input_snapshot?.propsHash || null,
+      outputStoragePath: job.output_snapshot?.outputStoragePath || null,
+    };
+  }
+
+  private async getTelemetryRun(worker: WorkerAuthContext, jobId: string, localRunId: string) {
+    const target = await this.resolveAuthorizedTelemetryTarget(worker, jobId);
+    const { data: run, error } = await this.supabase
+      .from("render_worker_job_runs")
+      .select("id, remote_job_id, remote_table, last_stage, last_progress_percent")
+      .eq("worker_id", worker.id)
+      .eq("local_run_id", localRunId)
+      .maybeSingle();
+
+    if (error) throw new Error(`TELEMETRY_RUN_LOOKUP_FAILED: ${error.message}`);
+    if (!run) throw new Error("TELEMETRY_RUN_NOT_FOUND");
+    if (run.remote_job_id !== target.remoteJobId || run.remote_table !== target.remoteTable) {
+      throw new Error("TELEMETRY_RUN_JOB_MISMATCH");
+    }
+    return { run, target };
   }
 
   private async updateBatchItemFromJob(jobId: string, status: string, errorSanitized?: string) {

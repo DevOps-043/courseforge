@@ -8,6 +8,7 @@ import {
   buildLayoutOverrideStyle,
   REMOTION_EDITABLE_LAYERS,
 } from "../layout-override-styles";
+import { buildVisualTimeline } from "../visual-timeline";
 
 /**
  * Plantilla "Avatar Enfocado": el avatar ocupa el centro de la pantalla y, si
@@ -42,6 +43,7 @@ export function AvatarFocus(props: AssemblyInputProps) {
     props.layoutOverrides,
     REMOTION_EDITABLE_LAYERS.SUPPORT_STRIP,
   );
+  const timelineSegments = buildVisualTimeline(props).tracks.flatMap((track) => track.segments);
 
   return (
     <AbsoluteFill style={{ backgroundColor: templateConfig.backgroundColor }}>
@@ -69,6 +71,7 @@ export function AvatarFocus(props: AssemblyInputProps) {
             transitionType={props.transitionType}
             templateConfig={templateConfig}
             layoutOverrides={props.layoutOverrides}
+            timelineSegments={timelineSegments}
             slidesLayerStyle={slidesOverrideStyle}
             brollLayerStyle={brollOverrideStyle}
           />
@@ -98,6 +101,7 @@ export function AvatarFocus(props: AssemblyInputProps) {
               transitionType={props.transitionType}
               templateConfig={templateConfig}
               layoutOverrides={props.layoutOverrides}
+              timelineSegments={timelineSegments}
               slidesLayerStyle={slidesOverrideStyle}
               brollLayerStyle={brollOverrideStyle}
             />

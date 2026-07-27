@@ -500,9 +500,16 @@ export class DesktopWorkerService {
       data: { publicUrl },
     } = this.supabase.storage.from(VIDEO_BUCKET).getPublicUrl(input.outputStoragePath);
 
-    const duration = Number.isFinite(input.durationSeconds)
+    const expectedDuration = this.deriveDurationFromJob(job);
+    const reportedDuration = Number.isFinite(input.durationSeconds)
       ? Math.max(1, Math.round(input.durationSeconds || 0))
-      : this.deriveDurationFromJob(job);
+      : null;
+    if (reportedDuration && expectedDuration > 0 && Math.abs(reportedDuration - expectedDuration) > 2) {
+      throw new Error(
+        `OUTPUT_DURATION_MISMATCH: el worker genero ${reportedDuration}s, pero el job esperaba ${expectedDuration}s.`,
+      );
+    }
+    const duration = reportedDuration || expectedDuration;
 
     const { data: component } = await this.supabase
       .from('material_components')
@@ -725,13 +732,19 @@ export class DesktopWorkerService {
       template.default_config,
       snapshot.variables?.templateConfig,
     );
-    const resolvedProps = buildAssemblyInputProps({
-      assets: component.assets || {},
-      compositionId,
-      transitionType: snapshot.variables?.transitionType,
-      templateConfig,
-      layoutOverrides: snapshot.variables?.layoutOverrides,
-    });
+    const snapshotProps =
+      snapshot.resolvedProps && typeof snapshot.resolvedProps === 'object' && !Array.isArray(snapshot.resolvedProps)
+        ? snapshot.resolvedProps
+        : null;
+    const resolvedProps = snapshotProps
+      ? snapshotProps
+      : buildAssemblyInputProps({
+          assets: component.assets || {},
+          compositionId,
+          transitionType: snapshot.variables?.transitionType,
+          templateConfig,
+          layoutOverrides: snapshot.variables?.layoutOverrides,
+        });
     const propsHash = buildStableHash(resolvedProps);
     const bundleInfo = await this.publishInternalBundle();
     const renderDiagnostics = buildRenderDiagnosticsSnapshot({

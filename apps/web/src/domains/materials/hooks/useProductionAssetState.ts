@@ -68,6 +68,16 @@ function isRenderableSlideImage(file: File) {
   );
 }
 
+function isHtmlSlideFile(file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  return (
+    file.type === "text/html" ||
+    file.type === "application/xhtml+xml" ||
+    extension === "html" ||
+    extension === "htm"
+  );
+}
+
 function getMimeTypeFromExtension(fileName: string) {
   const extension = fileName.split(".").pop()?.toLowerCase();
   if (extension === "png") return "image/png";
@@ -100,7 +110,10 @@ async function expandSlideInputFiles(files: File[]) {
 
     const zip = await JSZip.loadAsync(file);
     const imageEntries = Object.values(zip.files)
-      .filter((entry) => !entry.dir && isRenderableSlideImage(new File([], entry.name)))
+      .filter((entry) => {
+        const zipFile = new File([], entry.name);
+        return !entry.dir && (isRenderableSlideImage(zipFile) || isHtmlSlideFile(zipFile));
+      })
       .sort((left, right) => naturalSlideNameCompare(left.name, right.name));
 
     for (const entry of imageEntries) {
@@ -343,10 +356,7 @@ export function useProductionAssetState({
 
   // Helper: generates renderable slide images from the component storyboard.
   // Used automatically when uploaded/imported slides contain no renderable images.
-  const autoGenerateSlidesFromStoryboard = async (
-    preferredHtmlUrl?: string,
-    preferredHtmlPath?: string,
-  ): Promise<boolean> => {
+  const autoGenerateSlidesFromStoryboard = async (): Promise<boolean> => {
     try {
       const exportResponse = await fetch('/api/production/open-design/export', {
         method: 'POST',
@@ -363,21 +373,55 @@ export function useProductionAssetState({
 
       const newSlides: SlidesAsset = {
         open_design_project_id: exportData.generatedSlidesId || exportData.openDesignProjectId,
-        // Prefer the user's uploaded file as the HTML reference; fall back to generated HTML
-        html_content_path: preferredHtmlPath || `production-assets/slides/${component.id}-slides.html`,
-        html_public_url: preferredHtmlUrl || exportData.htmlPublicUrl,
         images: exportData.slideImages,
       };
+      const firstSlideUrl = exportData.slideImages[0]?.public_url || "";
       setSlidesAsset(newSlides);
-      setSlidesUrl(newSlides.html_public_url || '');
+      setSlidesUrl(firstSlideUrl);
       onAssetChange?.(component.id, {
         slides: newSlides,
-        slides_url: newSlides.html_public_url || '',
+        slides_url: firstSlideUrl,
       });
       return true;
     } catch {
       return false;
     }
+  };
+
+  const transformUploadedHtmlSlides = async (
+    preferredHtmlPath: string,
+  ): Promise<boolean> => {
+    const response = await fetch("/api/production/open-design/html-to-png", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        componentId: component.id,
+        htmlContentPath: preferredHtmlPath,
+      }),
+    });
+    const data = await response.json();
+
+    if (!response.ok || !data.success || !Array.isArray(data.slideImages) || data.slideImages.length === 0) {
+      throw new Error(data.error || "No se pudo transformar el HTML a PNG");
+    }
+
+    const {
+      html_public_url: _htmlPublicUrl,
+      html_content_path: _htmlContentPath,
+      ...slidesWithoutHtmlSource
+    } = data.assets?.slides || slidesAsset || {};
+    const newSlides: SlidesAsset = {
+      ...slidesWithoutHtmlSource,
+      images: data.slideImages,
+    };
+
+    setSlidesAsset(newSlides);
+    setSlidesUrl(data.assets?.slides_url || data.slideImages[0]?.public_url || "");
+    onAssetChange?.(component.id, {
+      slides: newSlides,
+      slides_url: data.assets?.slides_url || data.slideImages[0]?.public_url || "",
+    });
+    return true;
   };
 
   // 3. Generated HTML export & Upload ZIP/HTML
@@ -399,17 +443,16 @@ export function useProductionAssetState({
 
       const newSlides: SlidesAsset = {
         open_design_project_id: data.generatedSlidesId || data.openDesignProjectId,
-        html_content_path: `production-assets/slides/${component.id}-slides.html`,
-        html_public_url: data.htmlPublicUrl,
         images: Array.isArray(data.slideImages)
           ? data.slideImages
           : slidesAsset?.images || [],
       };
+      const firstSlideUrl = newSlides.images?.[0]?.public_url || "";
       setSlidesAsset(newSlides);
-      setSlidesUrl(data.htmlPublicUrl || '');
+      setSlidesUrl(firstSlideUrl);
       onAssetChange?.(component.id, {
         slides: newSlides,
-        slides_url: data.htmlPublicUrl || '',
+        slides_url: firstSlideUrl,
       });
       toast.success('Slides exportadas y copiadas al portapapeles');
 
@@ -476,7 +519,7 @@ export function useProductionAssetState({
       }
 
       if (uploadedImages.length === 0) {
-        // Non-renderable file (e.g. HTML) uploaded as reference; also generate SVGs for assembly.
+        const hasHtmlSource = files.some(isHtmlSlideFile);
         const refSlides: SlidesAsset = {
           ...slidesAsset,
           html_public_url: referenceUrl,
@@ -487,8 +530,15 @@ export function useProductionAssetState({
         setSlidesUrl(referenceUrl);
         onAssetChange?.(component.id, { slides: refSlides, slides_url: referenceUrl });
 
+        if (hasHtmlSource) {
+          toast.info("Transformando HTML a PNG para ensamblado...");
+          await transformUploadedHtmlSlides(referencePath);
+          toast.success("HTML transformado a PNG correctamente");
+          return;
+        }
+
         toast.info("Generando slides para ensamblado desde el storyboard...");
-        const generated = await autoGenerateSlidesFromStoryboard(referenceUrl, referencePath);
+        const generated = await autoGenerateSlidesFromStoryboard();
         toast.success(
           generated
             ? "Slides guardadas y generadas para ensamblado"
@@ -980,10 +1030,7 @@ export function useProductionAssetState({
             // If no renderable images were imported (e.g. HTML file), auto-generate SVGs
             if (!importedSlides?.images?.length) {
               toast.info("Generando slides para ensamblado desde el storyboard...");
-              const generated = await autoGenerateSlidesFromStoryboard(
-                importedSlides?.html_public_url,
-                importedSlides?.html_content_path,
-              );
+              const generated = await autoGenerateSlidesFromStoryboard();
               if (generated) {
                 toast.success("Slides generadas automaticamente para ensamblado");
               }

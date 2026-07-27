@@ -1,5 +1,4 @@
-import { ReactNode } from "react";
-import { AbsoluteFill, Img, Series } from "remotion";
+import { AbsoluteFill, Img, Sequence } from "remotion";
 import {
   TransitionSeries,
   linearTiming,
@@ -8,11 +7,13 @@ import { fade } from "@remotion/transitions/fade";
 import { slide } from "@remotion/transitions/slide";
 import type { AssemblySlide, AssemblyTransition } from "../types";
 import type { LayoutOverrideStyle } from "../layout-override-styles";
+import type { VisualTimelineSegment } from "../visual-timeline";
 
 interface SlideShowProps {
   slides: AssemblySlide[];
   durationInFrames: number;
   transitionType: AssemblyTransition;
+  segments?: VisualTimelineSegment[];
   getSlideStyle?: (slide: AssemblySlide) => LayoutOverrideStyle;
 }
 
@@ -48,6 +49,7 @@ export function SlideShow({
   slides,
   durationInFrames,
   transitionType,
+  segments,
   getSlideStyle,
 }: SlideShowProps) {
   if (slides.length === 0) {
@@ -57,17 +59,44 @@ export function SlideShow({
   const ordered = [...slides].sort((a, b) => a.index - b.index);
   const slideCount = ordered.length;
   const perSlideFrames = Math.max(1, Math.floor(durationInFrames / slideCount));
+  const segmentBySlideId = new Map(
+    (segments || []).map((segment) => [segment.id, segment] as const),
+  );
+
+  if (segments && segments.length > 0) {
+    return (
+      <>
+        {ordered.flatMap((slide) => {
+          const segment = segmentBySlideId.get(`slide-${slide.index}`);
+          if (!segment) return [];
+          return (
+            <Sequence
+              key={segment.id}
+              from={segment.startFrame}
+              durationInFrames={segment.durationInFrames}
+            >
+              <SlideImage url={slide.url} style={getSlideStyle?.(slide)} />
+            </Sequence>
+          );
+        })}
+      </>
+    );
+  }
 
   // Corte seco (o una sola slide): no hay transición que calcular.
   if (transitionType === "none" || slideCount === 1) {
     return (
-      <Series>
+      <>
         {ordered.map((s) => (
-          <Series.Sequence key={s.index} durationInFrames={perSlideFrames}>
+          <Sequence
+            key={s.index}
+            from={s.index * perSlideFrames}
+            durationInFrames={perSlideFrames}
+          >
             <SlideImage url={s.url} style={getSlideStyle?.(s)} />
-          </Series.Sequence>
+          </Sequence>
         ))}
-      </Series>
+      </>
     );
   }
 
@@ -80,7 +109,7 @@ export function SlideShow({
   const presentation = transitionType === "slide" ? slide() : fade();
 
   // TransitionSeries exige hijos planos alternando Sequence/Transition.
-  const children: ReactNode[] = [];
+  const children = [];
   ordered.forEach((s, i) => {
     children.push(
       <TransitionSeries.Sequence

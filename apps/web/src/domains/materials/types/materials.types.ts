@@ -136,6 +136,9 @@ export interface MaterialAssets {
     assembly_target_duration_seconds?: number;
     layout_overrides?: Record<string, unknown>[];
     layout_overrides_updated_at?: string;
+    timeline_overrides?: Record<string, unknown>[];
+    timeline_overrides_updated_at?: string;
+    final_video_assembly_stale?: boolean;
     // Campos de producción visual (Fase 6)
     production_status?: ProductionStatus;
     gamma_deck_id?: string;
@@ -186,6 +189,7 @@ export interface MaterialAssets {
             storage_path: string;
             public_url: string;
             file_name?: string;
+            content_type?: string;
         }[];
     };
 }

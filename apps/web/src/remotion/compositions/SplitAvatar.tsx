@@ -8,6 +8,7 @@ import {
   buildLayoutOverrideStyle,
   REMOTION_EDITABLE_LAYERS,
 } from "../layout-override-styles";
+import { buildVisualTimeline } from "../visual-timeline";
 
 /**
  * Plantilla "Presentación + Avatar (Dividida)": recurso visual a la izquierda,
@@ -37,6 +38,7 @@ export function SplitAvatar(props: AssemblyInputProps) {
     templateConfig.backgroundStyle === "solid"
       ? templateConfig.backgroundColor
       : `linear-gradient(135deg, ${templateConfig.surfaceColor} 0%, ${templateConfig.backgroundColor} 100%)`;
+  const timelineSegments = buildVisualTimeline(props).tracks.flatMap((track) => track.segments);
 
   return (
     <AbsoluteFill
@@ -58,6 +60,7 @@ export function SplitAvatar(props: AssemblyInputProps) {
           transitionType={props.transitionType}
           templateConfig={templateConfig}
           layoutOverrides={props.layoutOverrides}
+          timelineSegments={timelineSegments}
           slidesLayerStyle={slidesOverrideStyle}
           brollLayerStyle={brollOverrideStyle}
         />

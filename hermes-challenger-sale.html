@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="en"><head><script data-od-sandbox-shim="">(function(){
+  function makeStore(){
+    var data = {};
+    var api = {
+      getItem: function(k){ return Object.prototype.hasOwnProperty.call(data, k) ? data[k] : null; },
+      setItem: function(k, v){ data[k] = String(v); },
+      removeItem: function(k){ delete data[k]; },
+      clear: function(){ data = {}; },
+      key: function(i){ return Object.keys(data)[i] || null; }
+    };
+    Object.defineProperty(api, 'length', { get: function(){ return Object.keys(data).length; } });
+    return api;
+  }
+  function tryShim(name){
+    var works = false;
+    try { works = !!window[name] && typeof window[name].getItem === 'function'; void window[name].length; }
+    catch (_) { works = false; }
+    if (works) return;
+    try { Object.defineProperty(window, name, { configurable: true, value: makeStore() }); }
+    catch (_) { try { window[name] = makeStore(); } catch (__) {} }
+  }
+  tryShim('localStorage');
+  tryShim('sessionStorage');
+  document.addEventListener('click', (e) => {
+    if (!e.target || !(e.target instanceof Element)) return;
+    var link = e.target.closest('a[href]');
+    if (!link) return;
+    var href = link.getAttribute('href');
+    if (href === null) return;
+    var isAnchor = href.startsWith('#') || href === '';
+    if (isAnchor) {
+      e.preventDefault();
+      if (href === '' || href === '#') {
+        window.scrollTo({ top: 0 });
+        history.replaceState(null, '', ' ');
+      } else {
+        var targetId = href.slice(1);
+        var target = targetId ? document.getElementById(targetId) : null;
+        if (target) {
+          target.scrollIntoView();
+          location.hash === href && history.replaceState(null, '', ' ');
+          location.hash = href;
+        }
+      }
+    } else if (link.getAttribute('target') === '_blank') {
+      e.preventDefault();
+      let safe = false;
+      try {
+        var url = new URL(href, location.href);
+        safe =
+          url.protocol === 'http:' ||
+          url.protocol === 'https:' ||
+          url.protocol === 'mailto:';
+      } catch (_) {}
+      safe && window.open(href, '_blank', 'noopener,noreferrer');
+    }
+  });
+})();</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>El Mito de las Ventas B2B — Hermes Cyber Terminal</title>
+  <style>
+    /* ===========================================================
+       Deck framework — DO NOT EDIT the rules in this <style> block.
+       =========================================================== */
+    :root {
+      /* SLOT: theme tokens */
+      --bg: #020408;
+      --fg: #e0f2fe;
+      --muted: #64748b;
+      --accent: #00f3ff;
+      --accent-glow: rgba(0, 243, 255, 0.4);
+      --surface: #0a1120;
+      --shell: #010204;
+      --border: rgba(0, 243, 255, 0.2);
+      
+      --font-display: 'Inter', -apple-system, system-ui, sans-serif;
+      --font-body: 'JetBrains Mono', ui-monospace, monospace;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--shell);
+      color: var(--fg);
+      font: 18px/1.5 var(--font-body);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    .deck-shell {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+    .deck-stage {
+      width: 1920px;
+      height: 1080px;
+      background: var(--bg);
+      position: relative;
+      transform-origin: top left;
+      box-shadow: 0 0 100px rgba(0, 243, 255, 0.1);
+      flex-shrink: 0;
+    }
+    .slide {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+    .slide:not(.active) { display: none !important; }
+    :where(.slide.active) { display: flex; flex-direction: column; }
+
+    .deck-counter {
+      position: fixed;
+      bottom: 22px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(2, 4, 8, 0.95);
+      backdrop-filter: blur(10px);
+      padding: 6px;
+      border-radius: 4px;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font: 12px/1 var(--font-mono);
+      letter-spacing: 0.18em;
+      z-index: 1000;
+      box-shadow: 0 0 15px var(--accent-glow);
+    }
+    .deck-counter button {
+      width: 36px; height: 36px;
+      background: transparent;
+      color: var(--accent);
+      border: 0;
+      font-size: 18px;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+    }
+    .deck-counter button:hover { background: var(--accent-glow); }
+    .deck-counter button[disabled] { opacity: 0.3; cursor: default; }
+    .deck-counter .deck-count { padding: 0 14px; }
+    .deck-hint {
+      position: fixed;
+      bottom: 26px;
+      right: 28px;
+      color: var(--muted);
+      font: 11px/1 var(--font-mono);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      z-index: 999;
+    }
+
+    @media print {
+      @page { size: 1920px 1080px; margin: 0; }
+      html, body { width: 1920px !important; height: auto !important; overflow: visible !important; background: #000 !important; }
+      .deck-shell { position: static !important; display: block !important; }
+      .deck-stage { width: 1920px !important; height: auto !important; transform: none !important; position: static !important; }
+      .slide { display: flex !important; position: relative !important; width: 1920px !important; height: 1080px !important; page-break-after: always; }
+      .deck-counter, .deck-hint { display: none !important; }
+    }
+  </style>
+  <style>
+    /* SLOT: per-deck styles — Hermes + SofLIA Hybrid */
+    
+    /* CRT Scanlines Layer */
+    .deck-stage::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.15) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+      background-size: 100% 4px, 3px 100%;
+      pointer-events: none;
+      z-index: 100;
+      opacity: 0.4;
+    }
+
+    /* SofLIA Blueprint Grid */
+    .deck-stage::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: 
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 80px 80px;
+      z-index: 0;
+      opacity: 0.3;
+    }
+
+    .slide {
+      padding: 120px 160px;
+      z-index: 10;
+    }
+
+    /* Terminal HUD elements */
+    .hud-line {
+      position: absolute;
+      top: 40px;
+      left: 80px;
+      right: 80px;
+      height: 1px;
+      background: var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 40px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent);
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+    }
+    .hud-footer {
+      position: absolute;
+      bottom: 40px;
+      left: 80px;
+      right: 80px;
+      height: 1px;
+      background: var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px 40px 0;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 0.2em;
+    }
+
+    /* Typography */
+    .display {
+      font-family: var(--font-display);
+      font-weight: 900;
+      text-transform: uppercase;
+      line-height: 0.85;
+      color: var(--fg);
+      margin-bottom: 40px;
+      position: relative;
+    }
+    .h1 { font-size: 160px; letter-spacing: -0.05em; }
+    .h2 { font-size: 88px; letter-spacing: -0.02em; line-height: 1; }
+    .h3 { font-size: 44px; font-weight: 700; margin-bottom: 20px; color: var(--accent); }
+
+    .accent-glow {
+      color: var(--accent);
+      text-shadow: 0 0 20px var(--accent-glow);
+    }
+
+    /* SofLIA Label System */
+    .label {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.3em;
+      color: var(--muted);
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .label::before {
+      content: '';
+      width: 60px;
+      height: 1px;
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+    }
+
+    /* Content Elements */
+    .body-text {
+      font-size: 36px;
+      max-width: 1200px;
+      line-height: 1.4;
+      font-family: var(--font-body);
+      color: var(--fg);
+      opacity: 0.9;
+    }
+
+    .terminal-box {
+      background: rgba(0, 243, 255, 0.05);
+      border: 1px solid var(--border);
+      padding: 60px;
+      margin-top: 40px;
+      position: relative;
+      overflow: hidden;
+    }
+    .terminal-box::after {
+      content: '';
+      position: absolute;
+      top: 0; right: 0;
+      width: 15px; height: 15px;
+      background: var(--accent);
+      clip-path: polygon(100% 0, 100% 100%, 0 0);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 100px;
+      margin-top: 60px;
+    }
+
+    ul { list-style: none; }
+    li {
+      margin-bottom: 25px;
+      padding-left: 50px;
+      position: relative;
+      font-size: 32px;
+    }
+    li::before {
+      content: '>_';
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    /* Animations */
+    .build-in {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: all 0.7s cubic-bezier(0.19, 1, 0.22, 1);
+    }
+    .slide.active .build-in {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .slide.active .delay-1 { transition-delay: 0.15s; }
+    .slide.active .delay-2 { transition-delay: 0.3s; }
+    .slide.active .delay-3 { transition-delay: 0.45s; }
+    .slide.active .delay-4 { transition-delay: 0.6s; }
+    .slide.active .delay-5 { transition-delay: 0.75s; }
+
+    /* Special Variants */
+    .s-cover { justify-content: center; align-items: flex-start; }
+    .s-center { justify-content: center; align-items: center; text-align: center; }
+    
+    .big-stat {
+      font-size: 200px;
+      font-weight: 900;
+      font-family: var(--font-display);
+      line-height: 0.8;
+      color: var(--accent);
+      text-shadow: 0 0 40px var(--accent-glow);
+    }
+
+    .kicker {
+      font-family: var(--font-mono);
+      font-size: 18px;
+      color: var(--accent);
+      background: rgba(0, 243, 255, 0.1);
+      padding: 4px 12px;
+      display: inline-block;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="deck-shell">
+    <div class="deck-stage" id="deck-stage">
+
+      <!-- SLIDE 1: COVER -->
+      <section class="slide active s-cover" data-screen-label="01 Cover">
+        <div class="hud-line">
+          <span>PROJECT: HERMES // TERMINAL V.2.0</span>
+          <span>STATUS: ONLINE</span>
+        </div>
+        <div class="label build-in">ESTRATEGIA COMERCIAL B2B</div>
+        <h1 class="display h1 build-in delay-1">El Mito de<br><span class="accent-glow">las Ventas</span></h1>
+        <div class="body-text build-in delay-2" style="font-size: 44px; font-weight: 300; letter-spacing: 0.1em; opacity: 0.7;">
+          ¿LA AMABILIDAD REALMENTE CIERRA TRATOS COMPLEJOS?
+        </div>
+        <div class="hud-footer build-in delay-4">
+          <span>// SESSION_ID: CHALLENGER_SALE_01</span>
+          <span>[ PRESS ANY KEY TO CONTINUE ]</span>
+        </div>
+      </section>
+
+      <!-- SLIDE 2: GARTNER -->
+      <section class="slide" data-screen-label="02 Gartner Result">
+        <div class="label">DATA_EXTRACT // GARTNER</div>
+        <h2 class="display h2 build-in">Lo que descubrió<br>el análisis</h2>
+        <div class="body-text build-in delay-1">
+          Un estudio de CEB analizó miles de vendedores B2B en cientos de empresas. El resultado desafió décadas de ventas consultivas.
+        </div>
+        <div class="terminal-box build-in delay-2">
+          <div class="kicker">CRITICAL ERROR: PARADIGM_SHIFT</div>
+          <div class="display h3 accent-glow" style="font-size: 60px; margin-top: 20px;">Relationship Builder</div>
+          <div class="body-text" style="font-size: 48px; font-weight: 700;">
+            Fue el de <span style="background: var(--accent); color: var(--bg); padding: 5px 15px;">peor desempeño</span> en ventas complejas.
+          </div>
+        </div>
+      </section>
+
+      <!-- SLIDE 3: RELATIONSHIP BUILDER -->
+      <section class="slide" data-screen-label="03 Profile Analysis">
+        <div class="label">PROFILE_DUMP // RELATIONSHIP_BUILDER</div>
+        <h2 class="display h2 build-in">Anatomía del<br>Vendedor Amable</h2>
+        <div class="grid-2">
+          <ul class="build-in delay-1">
+            <li class="build-in delay-1">Siempre disponible</li>
+            <li class="build-in delay-2">Generoso con su tiempo</li>
+            <li class="build-in delay-3">Busca generar consenso</li>
+            <li class="build-in delay-4">Prioriza la armonía</li>
+            <li class="build-in delay-5">Construye relaciones</li>
+          </ul>
+          <div class="terminal-box build-in delay-3" style="display: flex; flex-direction: column; justify-content: center; border-color: #ff3e3e;">
+            <div class="kicker" style="background: rgba(255, 62, 62, 0.1); color: #ff3e3e;">ALERT: LOW_CORRELATION</div>
+            <div class="body-text accent-glow" style="font-size: 34px; font-weight: 700; color: #ff3e3e;">
+              ESTAS CARACTERÍSTICAS NO SE TRADUJERON EN MEJORES RESULTADOS.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SLIDE 4: WHY -->
+      <section class="slide" data-screen-label="04 Market Shift">
+        <div class="label">SYSTEM_UPDATE // MARKET_DYNAMICS</div>
+        <h2 class="display h2 build-in">¿Por qué sucede?</h2>
+        <div class="body-text build-in delay-1" style="font-size: 52px; font-weight: 300; margin-bottom: 60px;">
+          El comprador B2B <span class="accent-glow">mutó</span>.
+        </div>
+        <div class="grid-2">
+          <div class="terminal-box build-in delay-2">
+            <div class="label">LEGACY_MODE</div>
+            <p style="font-size: 28px;">Vendedores que informan o acompañan.</p>
+          </div>
+          <div class="terminal-box build-in delay-3" style="border-color: var(--accent);">
+            <div class="label" style="color: var(--accent);">CHALLENGER_MODE</div>
+            <p class="accent-glow" style="font-size: 28px;">Vendedores que aportan una nueva perspectiva.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SLIDE 5: VALUE -->
+      <section class="slide" data-screen-label="05 Expectations">
+        <div class="label">CLIENT_EXPECTATION // DATA_QUERY</div>
+        <h2 class="display h2 build-in">Lo que realmente<br>valoran</h2>
+        <div class="body-text build-in delay-1" style="margin-bottom: 40px;">Más allá de la relación, buscan profesionales que:</div>
+        <div class="grid-2">
+          <ul class="build-in delay-2">
+            <li class="build-in delay-2">Aporten insights inesperados</li>
+            <li class="build-in delay-3">Identifiquen problemas ocultos</li>
+            <li class="build-in delay-4">Descubran oportunidades</li>
+          </ul>
+          <ul class="build-in delay-5">
+            <li class="build-in delay-5">Cuestionen el status quo</li>
+            <li class="build-in delay-6">Naveguen la complejidad</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- SLIDE 6: CHALLENGE -->
+      <section class="slide s-center" data-screen-label="06 The Power">
+        <div class="label build-in">TRANSFORMATION_LOG // CORE_VALUE</div>
+        <h1 class="display h1 build-in delay-1">El Poder de<br><span class="accent-glow">Desafiar</span></h1>
+        <div class="body-text build-in delay-2" style="font-size: 48px; text-align: center; max-width: 1000px;">
+          Los mejores vendedores ayudan al cliente a <span class="accent-glow">replantear</span> su negocio.
+        </div>
+        <div class="terminal-box build-in delay-3" style="margin-top: 60px; font-size: 24px; padding: 20px 40px;">
+          CREAR VALOR ANTES DE PRESENTAR UNA SOLUCIÓN
+        </div>
+      </section>
+
+      <!-- SLIDE 7: EXAMPLE -->
+      <section class="slide" data-screen-label="07 A/B Comparison">
+        <div class="label">SIMULATION // TWO_MODELS</div>
+        <h2 class="display h2 build-in">Dos enfoques</h2>
+        <div class="grid-2">
+          <div class="terminal-box build-in delay-1">
+            <div class="kicker">BUILDER</div>
+            <p style="opacity: 0.6;">Meses de relación cómoda. Simpatía. Evita el conflicto.</p>
+          </div>
+          <div class="terminal-box build-in delay-2" style="border-width: 2px;">
+            <div class="kicker">CHALLENGER</div>
+            <p class="accent-glow">Detecta riesgos. Cuestiona. Impulsa la necesidad de cambio.</p>
+          </div>
+        </div>
+        <div class="body-text build-in delay-3" style="margin-top: 60px; text-align: center; font-weight: 900; letter-spacing: 0.2em; color: var(--accent);">
+          LA DIFERENCIA ES EL VALOR QUE APORTAS
+        </div>
+      </section>
+
+      <!-- SLIDE 8: TRUST -->
+      <section class="slide" data-screen-label="08 Trust Source">
+        <div class="label">CREDIBILITY_PROTOCOL // TRUST</div>
+        <h2 class="display h2 build-in">La nueva fuente<br>de confianza</h2>
+        <div class="body-text build-in delay-1" style="font-size: 44px; margin-bottom: 60px;">
+          La confianza no nace de agradar, nace de la <span class="accent-glow">enseñanza</span>.
+        </div>
+        <div class="grid-2">
+          <div class="terminal-box build-in delay-2">
+            <div class="display h3">INSIGHT</div>
+            <p>El cliente percibe que aprendió algo nuevo.</p>
+          </div>
+          <div class="terminal-box build-in delay-3">
+            <div class="display h3">CONTROL</div>
+            <p>El cliente siente que puede decidir mejor.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SLIDE 9: CONCLUSION -->
+      <section class="slide" data-screen-label="09 Synthesis">
+        <div class="label">SUMMARY_LOG // KEY_TAKEAWAYS</div>
+        <h2 class="display h2 build-in">La amabilidad<br>no es suficiente</h2>
+        <div class="grid-2">
+          <ul class="build-in delay-1">
+            <li class="accent-glow">Perspectiva</li>
+            <li class="accent-glow">Desafío</li>
+            <li class="accent-glow">Conocimiento</li>
+            <li class="accent-glow">Guía estratégica</li>
+          </ul>
+          <div class="body-text build-in delay-2" style="border-left: 2px solid var(--accent); padding-left: 60px; font-size: 32px;">
+            Quienes lideran conversaciones de negocio generan más impacto que quienes solo construyen relaciones.
+          </div>
+        </div>
+      </section>
+
+      <!-- SLIDE 10: CTA -->
+      <section class="slide s-center" data-screen-label="10 Terminal Prompt">
+        <div class="label build-in">INPUT_REQUIRED // ACTION</div>
+        <h2 class="display h1 build-in delay-1" style="font-size: 110px;">¿Qué harás<br><span class="accent-glow">diferente?</span></h2>
+        <div class="body-text build-in delay-2" style="font-size: 36px; max-width: 900px; margin-top: 40px; font-family: var(--font-mono);">
+          [ Si tus clientes valoran más los insights que la amabilidad... ]
+        </div>
+        <div class="hud-footer build-in delay-4">
+          <span>// END_OF_LESSON</span>
+          <span>SYSTEM_READY_FOR_INPUT &gt; _</span>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- Framework chrome — DO NOT EDIT below this line. -->
+  <nav class="deck-counter" role="navigation" aria-label="Deck navigation">
+    <button type="button" id="deck-prev" aria-label="Previous slide">‹</button>
+    <span class="deck-count"><span id="deck-cur">01</span> <span class="total">/ <span id="deck-total">01</span></span></span>
+    <button type="button" id="deck-next" aria-label="Next slide">›</button>
+  </nav>
+  <div class="deck-hint">← / → · space</div>
+
+  <script>
+    (function () {
+      var stage = document.getElementById('deck-stage');
+      var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+      var prev = document.getElementById('deck-prev');
+      var next = document.getElementById('deck-next');
+      var cur = document.getElementById('deck-cur');
+      var total = document.getElementById('deck-total');
+      var STORE = 'deck:idx:' + (location.pathname || '/');
+      var idx = 0;
+
+      function fit() {
+        var sw = window.innerWidth;
+        var sh = window.innerHeight;
+        var pad = 32;
+        var s = Math.min((sw - pad) / 1920, (sh - pad) / 1080);
+        if (!isFinite(s) || s <= 0) s = 1;
+        var tx = (sw - 1920 * s) / 2;
+        var ty = (sh - 1080 * s) / 2;
+        stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';
+      }
+
+      function pad2(n) { return (n < 10 ? '0' : '') + n; }
+      function paint() {
+        slides.forEach(function (el, i) { el.classList.toggle('active', i === idx); });
+        if (cur) cur.textContent = pad2(idx + 1);
+        if (total) total.textContent = pad2(slides.length);
+        if (prev) prev.toggleAttribute('disabled', idx <= 0);
+        if (next) next.toggleAttribute('disabled', idx >= slides.length - 1);
+      }
+      function go(i) {
+        idx = Math.max(0, Math.min(slides.length - 1, i));
+        paint();
+        try { localStorage.setItem(STORE, String(idx)); } catch (_) {}
+      }
+      function onKey(e) {
+        var t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+        if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); go(idx + 1); }
+        else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(idx - 1); }
+        else if (e.key === 'Home') { e.preventDefault(); go(0); }
+        else if (e.key === 'End') { e.preventDefault(); go(slides.length - 1); }
+      }
+      window.addEventListener('keydown', onKey, true);
+      document.addEventListener('keydown', onKey, true);
+      if (prev) prev.addEventListener('click', function () { go(idx - 1); });
+      if (next) next.addEventListener('click', function () { go(idx + 1); });
+
+      document.body.setAttribute('tabindex', '-1');
+      document.body.style.outline = 'none';
+      function focusDeck() { try { window.focus(); document.body.focus({ preventScroll: true }); } catch (_) {} }
+      document.addEventListener('mousedown', focusDeck);
+      window.addEventListener('load', focusDeck);
+
+      try {
+        var saved = parseInt(localStorage.getItem(STORE) || '0', 10);
+        if (!isNaN(saved) && saved >= 0 && saved < slides.length) idx = saved;
+      } catch (_) {}
+
+      window.addEventListener('resize', fit);
+      fit();
+      paint();
+      focusDeck();
+    })();
+  </script>
+
+
+<script data-od-snapshot-bridge="">(function(){
+  function copyComputedStyle(source, target){
+    if (!source || !target || source.nodeType !== 1 || target.nodeType !== 1) return;
+    var computed = window.getComputedStyle(source);
+    var style = target.getAttribute('style') || '';
+    for (var i = 0; i < computed.length; i++){
+      var prop = computed[i];
+      style += prop + ':' + computed.getPropertyValue(prop) + ';';
+    }
+    target.setAttribute('style', style);
+  }
+  function syncElementState(source, target){
+    var tag = source.tagName ? source.tagName.toLowerCase() : '';
+    if (tag === 'img' && source.currentSrc) target.setAttribute('src', source.currentSrc);
+    if (tag === 'input' || tag === 'textarea') target.setAttribute('value', source.value || '');
+    if (tag === 'canvas') {
+      try {
+        var img = document.createElement('img');
+        img.setAttribute('src', source.toDataURL('image/png'));
+        img.setAttribute('style', target.getAttribute('style') || '');
+        target.parentNode && target.parentNode.replaceChild(img, target);
+      } catch (_) {}
+    }
+  }
+  function inlineSnapshotStyles(originalRoot, cloneRoot){
+    copyComputedStyle(originalRoot, cloneRoot);
+    syncElementState(originalRoot, cloneRoot);
+    var originals = originalRoot.querySelectorAll('*');
+    var clones = cloneRoot.querySelectorAll('*');
+    var count = Math.min(originals.length, clones.length);
+    for (var i = 0; i < count; i++){
+      copyComputedStyle(originals[i], clones[i]);
+      syncElementState(originals[i], clones[i]);
+    }
+    var scripts = cloneRoot.querySelectorAll('script');
+    for (var s = scripts.length - 1; s >= 0; s--) scripts[s].remove();
+  }
+  function waitForImages(){
+    var imgs = Array.prototype.slice.call(document.images || []);
+    return Promise.all(imgs.map(function(img){
+      if (img.complete) return Promise.resolve();
+      return new Promise(function(resolve){
+        img.addEventListener('load', resolve, { once: true });
+        img.addEventListener('error', resolve, { once: true });
+      });
+    }));
+  }
+  function renderSnapshot(id){
+    var w = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
+    var h = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
+    var dpr = window.devicePixelRatio || 1;
+    var docW = Math.max(w, document.documentElement.scrollWidth || 0, document.body ? document.body.scrollWidth : 0);
+    var docH = Math.max(h, document.documentElement.scrollHeight || 0, document.body ? document.body.scrollHeight : 0);
+    var clone = document.documentElement.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+    inlineSnapshotStyles(document.documentElement, clone);
+    var serializer = new XMLSerializer();
+    var html = serializer.serializeToString(clone);
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">' +
+      '<foreignObject x="' + (-window.scrollX || 0) + '" y="' + (-window.scrollY || 0) + '" width="' + docW + '" height="' + docH + '">' +
+      html +
+      '</foreignObject></svg>';
+    var img = new Image();
+    img.onload = function(){
+      try {
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.floor(w * dpr));
+        canvas.height = Math.max(1, Math.floor(h * dpr));
+        var ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('no 2d context');
+        ctx.scale(dpr, dpr);
+        ctx.drawImage(img, 0, 0, w, h);
+        window.parent.postMessage({ type: 'od:snapshot:result', id: id, dataUrl: canvas.toDataURL('image/png'), w: canvas.width, h: canvas.height }, '*');
+      } catch (err) {
+        window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: String(err && err.message || err) }, '*');
+      }
+    };
+    img.onerror = function(){
+      window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: 'snapshot image failed' }, '*');
+    };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  }
+  window.addEventListener('message', function(ev){
+    var data = ev && ev.data;
+    if (!data || data.type !== 'od:snapshot' || !data.id) return;
+    waitForImages().then(function(){ renderSnapshot(String(data.id)); });
+  });
+})();</script></body></html>

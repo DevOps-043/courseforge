@@ -103,7 +103,7 @@ export function RemotionExternalPreviewPlayer({
 
   if (isLoading) {
     return (
-      <div className="flex aspect-video items-center justify-center rounded-xl bg-black/90">
+      <div className="flex min-h-[280px] items-center justify-center rounded-xl bg-gray-100 dark:bg-black/90">
         <Loader2 className="animate-spin text-purple-400" size={28} />
       </div>
     );
@@ -111,7 +111,7 @@ export function RemotionExternalPreviewPlayer({
 
   if (error) {
     return (
-      <div className="flex aspect-video min-w-0 flex-col items-center justify-center gap-2 overflow-hidden rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-center">
+      <div className="flex min-h-[280px] min-w-0 flex-col items-center justify-center gap-2 overflow-hidden rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-center">
         <AlertTriangle className="text-amber-500" size={24} />
         <p className="max-w-full break-words text-xs leading-relaxed text-amber-700 dark:text-amber-300">{error}</p>
       </div>
@@ -129,7 +129,11 @@ export function RemotionExternalPreviewPlayer({
     );
 
     return (
-      <div className="relative aspect-video overflow-hidden rounded-xl bg-black shadow-inner">
+      <div className="flex min-h-[280px] items-center justify-center rounded-xl bg-white p-3 dark:bg-[#070A0F]">
+      <div
+        className="relative aspect-video overflow-hidden rounded-lg bg-gray-100 shadow-inner dark:bg-black"
+        style={{ width: "min(100%, 82vh)" }}
+      >
         <a
           href={previewData.previewVideoUrl}
           target="_blank"
@@ -223,6 +227,7 @@ export function RemotionExternalPreviewPlayer({
         )}
         {overlay}
       </div>
+      </div>
     );
   }
 
@@ -230,7 +235,11 @@ export function RemotionExternalPreviewPlayer({
     const isStalePoster = previewData.previewStatus === "STALE";
     const isRefreshingPoster = previewData.previewStatus === "QUEUED" || previewData.previewStatus === "RUNNING";
     return (
-      <div className="relative aspect-video overflow-hidden rounded-xl bg-black shadow-inner">
+      <div className="flex min-h-[280px] items-center justify-center rounded-xl bg-white p-3 dark:bg-[#070A0F]">
+      <div
+        className="relative aspect-video overflow-hidden rounded-lg bg-gray-100 shadow-inner dark:bg-black"
+        style={{ width: "min(100%, 82vh)" }}
+      >
         <a
           href={previewData.previewPosterUrl}
           target="_blank"
@@ -257,12 +266,17 @@ export function RemotionExternalPreviewPlayer({
         )}
         {overlay}
       </div>
+      </div>
     );
   }
 
   if (iframeUrl) {
     return (
-      <div className="relative aspect-video overflow-hidden rounded-xl bg-black shadow-inner">
+      <div className="flex min-h-[280px] items-center justify-center rounded-xl bg-white p-3 dark:bg-[#070A0F]">
+      <div
+        className="relative aspect-video overflow-hidden rounded-lg bg-gray-100 shadow-inner dark:bg-black"
+        style={{ width: "min(100%, 82vh)" }}
+      >
         <a
           href={iframeUrl}
           target="_blank"
@@ -280,6 +294,7 @@ export function RemotionExternalPreviewPlayer({
         />
         {overlay}
       </div>
+      </div>
     );
   }
 
@@ -294,7 +309,7 @@ export function RemotionExternalPreviewPlayer({
           : "Bundle externo listo para preview";
 
   return (
-    <div className="flex aspect-video min-w-0 flex-col justify-center gap-3 overflow-hidden rounded-xl border border-green-500/20 bg-green-500/10 p-4">
+    <div className="flex min-h-[280px] min-w-0 flex-col justify-center gap-3 overflow-hidden rounded-xl border border-green-500/20 bg-green-500/10 p-4">
       <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-green-700 dark:text-green-300">
         {previewData?.previewStatus === "RUNNING" || previewData?.previewStatus === "QUEUED" ? (
           <Loader2 size={18} className="shrink-0 animate-spin" />

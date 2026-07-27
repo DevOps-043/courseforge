@@ -107,7 +107,7 @@ export default function SharedSidebarLayout({
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-[#0F1419] flex text-slate-800 dark:text-slate-200 overflow-x-hidden selection:bg-[#00D4B3]/30 transition-colors duration-300">
+        <div className="min-h-screen bg-gray-50 dark:bg-[#0F1419] flex text-slate-800 dark:text-slate-200 overflow-x-clip selection:bg-[#00D4B3]/30 transition-colors duration-300">
             <motion.aside
                 initial={false}
                 animate={{ width: isOpen ? 280 : 64 }}

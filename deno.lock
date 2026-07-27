@@ -82,6 +82,7 @@
             "npm:@netlify/functions@^5.1.2",
             "npm:@remotion/bundler@4.0.484",
             "npm:@remotion/player@4.0.484",
+            "npm:@remotion/renderer@4.0.484",
             "npm:@remotion/transitions@4.0.484",
             "npm:@supabase/ssr@latest",
             "npm:@supabase/supabase-js@latest",

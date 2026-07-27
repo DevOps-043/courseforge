@@ -18,6 +18,7 @@ import {
 import { BrollLayer } from "./BrollLayer";
 import { BrollOverlayLayer } from "./BrollOverlayLayer";
 import { SlideShow } from "./SlideShow";
+import type { VisualTimelineSegment } from "../visual-timeline";
 
 interface PrimaryVisualProps {
   slides: AssemblySlide[];
@@ -26,6 +27,7 @@ interface PrimaryVisualProps {
   transitionType: AssemblyTransition;
   templateConfig?: TemplateRenderConfig;
   layoutOverrides?: LayoutOverrideManifestList;
+  timelineSegments?: VisualTimelineSegment[];
   slidesLayerStyle?: LayoutOverrideStyle;
   brollLayerStyle?: LayoutOverrideStyle;
 }
@@ -56,9 +58,13 @@ export function PrimaryVisual({
   transitionType,
   templateConfig = DEFAULT_TEMPLATE_RENDER_CONFIG,
   layoutOverrides = [],
+  timelineSegments = [],
   slidesLayerStyle,
   brollLayerStyle,
 }: PrimaryVisualProps) {
+  const slideTimelineSegments = timelineSegments.filter((segment) => segment.trackKind === "slides");
+  const brollTimelineSegments = timelineSegments.filter((segment) => segment.trackKind === "broll");
+
   if (slides.length > 0) {
     return (
       <>
@@ -74,6 +80,7 @@ export function PrimaryVisual({
             slides={slides}
             durationInFrames={durationInFrames}
             transitionType={transitionType}
+            segments={slideTimelineSegments}
             getSlideStyle={(slide) =>
               buildLayoutOverrideStyle(
                 layoutOverrides,
@@ -85,6 +92,7 @@ export function PrimaryVisual({
         <BrollOverlayLayer
           clips={brollClips}
           durationInFrames={durationInFrames}
+          segments={brollTimelineSegments}
           containerStyle={{ zIndex: 20, ...brollLayerStyle }}
           getClipStyle={(clip) =>
             buildLayoutOverrideStyle(
@@ -109,6 +117,7 @@ export function PrimaryVisual({
       >
         <BrollLayer
           clips={brollClips}
+          segments={brollTimelineSegments}
           getClipStyle={(clip) =>
             buildLayoutOverrideStyle(
               layoutOverrides,

@@ -382,6 +382,10 @@ interface OpenDesignSlidesSectionProps {
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
   const renderableSlideCount = slides?.images?.length || 0;
   const hasSourceReference = Boolean(slides?.html_public_url);
+  const slideImages = useMemo(
+    () => [...(slides?.images || [])].sort((left, right) => left.slide_index - right.slide_index),
+    [slides?.images],
+  );
 
   return (
     <div className="p-3 rounded-xl border border-gray-200 dark:border-[#6C757D]/10 bg-gray-50/50 dark:bg-[#0F1419]/30">
@@ -441,18 +445,6 @@ interface OpenDesignSlidesSectionProps {
               {renderableSlideCount} imagen(es) listas para ensamblado
             </span>
           )}
-          {slides?.html_content_path?.endsWith(".html") && (
-            <a
-              href={`/api/admin/slides/html-preview?path=${encodeURIComponent(
-                slides.html_content_path.replace(/^production-assets\//, "")
-              )}`}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-0.5 text-purple-600 hover:text-purple-550 dark:text-purple-400 dark:hover:text-purple-300 font-bold"
-            >
-              <ExternalLink size={10} /> Ver Slides HTML
-            </a>
-          )}
           <button
             onClick={onClear}
             className="inline-flex items-center gap-0.5 text-red-500 hover:text-red-700 ml-auto font-bold cursor-pointer"
@@ -460,6 +452,34 @@ interface OpenDesignSlidesSectionProps {
           >
             <X size={10} /> Eliminar
           </button>
+        </div>
+      )}
+
+      {slideImages.length > 0 && (
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {slideImages.map((slide) => (
+            <a
+              key={`${slide.storage_path}-${slide.slide_index}`}
+              href={slide.public_url}
+              target="_blank"
+              rel="noreferrer"
+              className="group overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm transition-colors hover:border-purple-300 dark:border-[#6C757D]/20 dark:bg-[#0F1419]"
+              title={`Slide ${slide.slide_index}`}
+            >
+              <div className="aspect-video overflow-hidden bg-black">
+                <img
+                  src={slide.public_url}
+                  alt={`Slide ${slide.slide_index}`}
+                  className="h-full w-full object-contain"
+                  loading="lazy"
+                />
+              </div>
+              <div className="flex items-center justify-between px-2 py-1 text-[10px] font-bold text-gray-600 dark:text-gray-300">
+                <span>Slide {String(slide.slide_index).padStart(2, "0")}</span>
+                <ExternalLink size={10} className="opacity-0 transition-opacity group-hover:opacity-100" />
+              </div>
+            </a>
+          ))}
         </div>
       )}
 
