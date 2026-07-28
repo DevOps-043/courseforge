@@ -16,6 +16,7 @@ import {
 } from "./worker-telemetry-page-data";
 
 export const dynamic = "force-dynamic";
+const DISPLAY_TIME_ZONE = "America/Mexico_City";
 
 function formatDuration(milliseconds: number | null) {
   if (!milliseconds || milliseconds <= 0) return "Sin cerrar";
@@ -33,6 +34,7 @@ function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("es-MX", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: DISPLAY_TIME_ZONE,
   }).format(new Date(value));
 }
 

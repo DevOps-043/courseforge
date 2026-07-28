@@ -79,6 +79,13 @@ interface MaterialComponentRow {
   type?: string | null;
 }
 
+interface ProductionJobRow {
+  id: string;
+  status?: string | null;
+  completed_at?: string | null;
+  failed_at?: string | null;
+}
+
 export interface WorkerTelemetryRunView {
   id: string;
   workerName: string;
@@ -179,6 +186,45 @@ function getGpuLabel(value: unknown) {
     .filter(Boolean);
 
   return names.slice(0, 2).join(" + ") || "GPU no reportada";
+}
+
+function getTerminalProductionJobFinishedAt(job: ProductionJobRow | null | undefined) {
+  if (!job?.status) return null;
+
+  const normalizedStatus = job.status.toUpperCase();
+  if (normalizedStatus === "SUCCEEDED" || normalizedStatus === "COMPLETED") {
+    return job.completed_at || null;
+  }
+
+  if (normalizedStatus === "FAILED" || normalizedStatus === "CANCELLED" || normalizedStatus === "CANCELED") {
+    return job.failed_at || job.completed_at || null;
+  }
+
+  return null;
+}
+
+function resolveRunStatus(rowStatus: string, job: ProductionJobRow | null | undefined) {
+  if (rowStatus !== "running" || !job?.status) return rowStatus;
+
+  const normalizedStatus = job.status.toUpperCase();
+  if (normalizedStatus === "SUCCEEDED" || normalizedStatus === "COMPLETED") return "completed";
+  if (normalizedStatus === "FAILED") return "failed";
+  if (normalizedStatus === "CANCELLED" || normalizedStatus === "CANCELED") return "interrupted";
+  return rowStatus;
+}
+
+function resolveElapsedMs(row: WorkerTelemetryRunRow, finishedAt: string | null) {
+  const storedElapsedMs = row.elapsed_ms === null || row.elapsed_ms === undefined
+    ? null
+    : toFiniteNumber(row.elapsed_ms, 0);
+
+  if (storedElapsedMs !== null && storedElapsedMs > 0) return storedElapsedMs;
+  if (!finishedAt) return null;
+
+  const computedElapsedMs = new Date(finishedAt).getTime() - new Date(row.started_at).getTime();
+  return Number.isFinite(computedElapsedMs) && computedElapsedMs > 0
+    ? computedElapsedMs
+    : storedElapsedMs;
 }
 
 async function loadRowsById<T extends { id: string }>(
@@ -349,6 +395,12 @@ export async function loadWorkerTelemetryPageData(organizationSlug?: string | nu
     "id, type",
     uniq(rows.map((row) => row.material_component_id)),
   );
+  const productionJobsById = await loadRowsById<ProductionJobRow>(
+    admin,
+    "production_jobs",
+    "id, status, completed_at, failed_at",
+    uniq(rows.filter((row) => row.remote_table === "production_jobs").map((row) => row.remote_job_id)),
+  );
 
   const runs = rows.map((row) => {
     const worker = workersById.get(row.worker_id);
@@ -356,9 +408,12 @@ export async function loadWorkerTelemetryPageData(organizationSlug?: string | nu
     const component = row.material_component_id
       ? componentsById.get(row.material_component_id)
       : null;
-    const elapsedMs = row.elapsed_ms === null || row.elapsed_ms === undefined
-      ? null
-      : toFiniteNumber(row.elapsed_ms, 0);
+    const productionJob = row.remote_table === "production_jobs"
+      ? productionJobsById.get(row.remote_job_id)
+      : null;
+    const finishedAt = row.finished_at || getTerminalProductionJobFinishedAt(productionJob);
+    const elapsedMs = resolveElapsedMs(row, finishedAt);
+    const status = resolveRunStatus(row.status, productionJob);
 
     return {
       id: row.id,
@@ -366,9 +421,9 @@ export async function loadWorkerTelemetryPageData(organizationSlug?: string | nu
       workerStatus: worker?.status || "UNKNOWN",
       jobLabel: `${row.remote_table}:${row.remote_job_id.slice(0, 8)}`,
       jobType: row.job_type,
-      status: row.status,
+      status,
       startedAt: row.started_at,
-      finishedAt: row.finished_at || null,
+      finishedAt,
       elapsedMs,
       lastStage: row.last_stage || null,
       progressPercent:
