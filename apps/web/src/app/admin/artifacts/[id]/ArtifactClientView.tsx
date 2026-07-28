@@ -126,6 +126,23 @@ export default function ArtifactClientView({
     }
   }, [artifact.state, isRegenerating, router]);
 
+  useEffect(() => {
+    const enabled = currentStep === 7;
+    window.dispatchEvent(
+      new CustomEvent("courseforge:admin-focus-mode", {
+        detail: { enabled },
+      }),
+    );
+
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("courseforge:admin-focus-mode", {
+          detail: { enabled: false },
+        }),
+      );
+    };
+  }, [currentStep]);
+
   const showToast = (
     message: string,
     type: "success" | "error" | "info" = "info",

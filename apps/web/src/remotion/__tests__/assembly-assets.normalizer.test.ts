@@ -981,6 +981,28 @@ describe("layout override draft model", () => {
     );
   });
 
+  it("derives B-roll item boxes from the effective B-roll layer box", () => {
+    const manifest = createEmptyLayoutOverrideManifest({
+      componentId: "component-1",
+      templateId: ASSEMBLY_TEMPLATES.FULL_SLIDES,
+    });
+
+    assert.deepEqual(
+      getEffectiveLayoutLayerBox({
+        manifest,
+        layerId: getBrollItemLayerId(1),
+        templateSlug: ASSEMBLY_TEMPLATES.FULL_SLIDES,
+        assetSummary: { hasAvatar: false, slideCount: 3, brollCount: 1 },
+      }),
+      {
+        x: 1219,
+        y: 665,
+        width: 653,
+        height: 367,
+      },
+    );
+  });
+
   it("derives split-avatar default boxes from the internal composition layout", () => {
     const primaryVisualBox = getDefaultLayoutLayerBox({
       layerId: REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL,
@@ -1105,7 +1127,10 @@ describe("layout override draft model", () => {
       layers.map((layer) => layer.id),
       ["slide:0", "slide:1", "slides", "broll:1", "broll"],
     );
-    assert.equal(layers.find((layer) => layer.id === "slide:0")?.canReorder, false);
+    const firstSlideLayer = layers.find((layer) => layer.id === "slide:0");
+    assert.equal(firstSlideLayer?.canReorder, true);
+    assert.equal(firstSlideLayer?.defaultStackOrder, 1);
+    assert.equal(firstSlideLayer?.stackGroup, "slides-items");
   });
 
   it("filters external layout edits by declared layer capabilities", () => {
@@ -1143,7 +1168,7 @@ describe("layout override draft model", () => {
     ]);
   });
 
-  it("accepts declared item patterns without allowing arbitrary or stack item edits", () => {
+  it("accepts declared item patterns including stack when the contract allows it", () => {
     const manifests = filterLayoutOverridesForEditableLayers(
       [
         {
@@ -1176,6 +1201,7 @@ describe("layout override draft model", () => {
 
     assert.deepEqual(manifests[0]?.edits, [
       { layerId: "slide:2", kind: "size", width: 800, height: 450 },
+      { layerId: "slide:2", kind: "stack", order: 90 },
     ]);
   });
 
@@ -1301,6 +1327,37 @@ describe("layout override draft model", () => {
         editableLayers,
       }),
       { canMoveBackward: true, canMoveForward: false, index: 2, total: 3 },
+    );
+  });
+
+  it("moves individual asset layers inside their own stack group", () => {
+    const manifest = createEmptyLayoutOverrideManifest({
+      componentId: "component-1",
+      templateId: "template-1",
+    });
+    const editableLayers = [
+      { id: "slide:0", label: "Diapositiva 1", canReorder: true, defaultStackOrder: 1, stackGroup: "slide-items" },
+      { id: "slide:1", label: "Diapositiva 2", canReorder: true, defaultStackOrder: 2, stackGroup: "slide-items" },
+      { id: "broll:1", label: "B-roll 1", canReorder: true, defaultStackOrder: 1, stackGroup: "broll-items" },
+    ];
+
+    const reordered = moveLayoutLayerInStack({
+      manifest,
+      layerId: "slide:0",
+      editableLayers,
+      direction: "forward",
+    });
+
+    assert.equal(buildLayoutOverrideStyle([reordered], "slide:0").zIndex, 2);
+    assert.equal(buildLayoutOverrideStyle([reordered], "slide:1").zIndex, 1);
+    assert.equal(buildLayoutOverrideStyle([reordered], "broll:1").zIndex, undefined);
+    assert.deepEqual(
+      getLayoutLayerStackPosition({
+        manifest: reordered,
+        layerId: "slide:0",
+        editableLayers,
+      }),
+      { canMoveBackward: true, canMoveForward: false, index: 1, total: 2 },
     );
   });
 

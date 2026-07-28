@@ -5,6 +5,7 @@ import {
 } from "@remotion/transitions";
 import { fade } from "@remotion/transitions/fade";
 import { slide } from "@remotion/transitions/slide";
+import type { ReactNode } from "react";
 import type { AssemblySlide, AssemblyTransition } from "../types";
 import type { LayoutOverrideStyle } from "../layout-override-styles";
 import type { VisualTimelineSegment } from "../visual-timeline";
@@ -109,7 +110,7 @@ export function SlideShow({
   const presentation = transitionType === "slide" ? slide() : fade();
 
   // TransitionSeries exige hijos planos alternando Sequence/Transition.
-  const children = [];
+  const children: ReactNode[] = [];
   ordered.forEach((s, i) => {
     children.push(
       <TransitionSeries.Sequence

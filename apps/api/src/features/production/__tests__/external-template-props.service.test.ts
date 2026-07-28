@@ -31,6 +31,22 @@ describe('external template props contract', () => {
         accentColor: '#111111',
       },
       variables: {
+        timelineOverrides: [
+          {
+            version: 1,
+            templateId: 'external-main',
+            componentId: 'component-1',
+            timeline: { fps: 30, durationInFrames: 360 },
+            segments: [
+              {
+                id: 'broll-1',
+                trackKind: 'broll',
+                startFrame: 120,
+                endFrame: 180,
+              },
+            ],
+          },
+        ],
         templateProps: {
           title: 'User override',
         },
@@ -45,6 +61,7 @@ describe('external template props contract', () => {
       { index: 0, url: 'https://cdn.example.com/slide-1.png' },
       { index: 1, url: 'https://cdn.example.com/slide-2.png' },
     ]);
+    assert.equal((result.resolvedProps.timelineOverrides as any[])[0].segments[0].startFrame, 120);
     assert.match(result.propsHash, /^[a-f0-9]{64}$/);
     assert.equal(result.propsSource, 'courseforge-canonical-v1');
     assert.equal(result.propKeys.includes('slides'), true);

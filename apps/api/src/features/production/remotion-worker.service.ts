@@ -107,6 +107,7 @@ export class RemotionWorkerService {
         transitionType: job.input_snapshot?.variables?.transitionType,
         templateConfig,
         layoutOverrides: job.input_snapshot?.variables?.layoutOverrides,
+        timelineOverrides: job.input_snapshot?.variables?.timelineOverrides,
       });
       propsHash = buildStableHash(inputProps);
       const timeoutInMilliseconds = resolveLocalRenderTimeoutMs();

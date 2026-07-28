@@ -10,6 +10,7 @@ import {
   resolveInternalCompositionId,
 } from '../remotion-assembly-props.service';
 import { parseLayoutOverrideManifests } from '../layout-overrides.service';
+import { parseTimelineOverrideManifests } from '../timeline-overrides.service';
 
 const VIDEO_URL = 'https://cdn.example.com/video.mp4';
 const AUDIO_URL = 'https://cdn.example.com/audio.mp3';
@@ -318,6 +319,7 @@ describe('remotion assembly props contract', () => {
     });
 
     assert.deepEqual(props.layoutOverrides, []);
+    assert.deepEqual(props.timelineOverrides, []);
   });
 
   it('passes validated layout overrides into server render props', () => {
@@ -333,6 +335,7 @@ describe('remotion assembly props contract', () => {
           edits: [
             { layerId: 'avatar', kind: 'position', x: 1280, y: 620 },
             { layerId: 'primaryVisual', kind: 'size', width: 720, height: 405 },
+            { layerId: 'avatar', kind: 'stack', order: 30 },
           ],
         },
       ],
@@ -346,7 +349,89 @@ describe('remotion assembly props contract', () => {
     });
 
     assert.equal(props.layoutOverrides.length, 1);
-    assert.equal(props.layoutOverrides[0].edits.length, 2);
+    assert.equal(props.layoutOverrides[0].edits.length, 3);
+  });
+
+  it('passes validated timeline overrides into server render props', () => {
+    const props = buildAssemblyInputProps({
+      compositionId: 'full-slides',
+      transitionType: undefined,
+      timelineOverrides: [
+        {
+          version: 1,
+          templateId: 'full-slides',
+          componentId: 'component-1',
+          timeline: { fps: ASSEMBLY_FPS, durationInFrames: 300 },
+          segments: [
+            {
+              id: 'broll-1',
+              trackKind: 'broll',
+              layerId: 'broll:1',
+              startFrame: 180,
+              endFrame: 270,
+              sourceStartFrame: 0,
+              sourceEndFrame: 90,
+              loopMode: 'loop',
+            },
+          ],
+        },
+      ],
+      assets: {
+        b_roll_clips: [baseClip({ duration: 3 })],
+      },
+    });
+
+    assert.equal(props.timelineOverrides.length, 1);
+    assert.equal(props.timelineOverrides[0].segments[0].startFrame, 180);
+    assert.equal(props.timelineOverrides[0].segments[0].endFrame, 270);
+  });
+
+  it('uses persisted asset timeline overrides when variables omit them', () => {
+    const props = buildAssemblyInputProps({
+      compositionId: 'full-slides',
+      transitionType: undefined,
+      assets: {
+        b_roll_clips: [baseClip({ duration: 3 })],
+        timeline_overrides: [
+          {
+            version: 1,
+            templateId: 'full-slides',
+            componentId: 'component-1',
+            timeline: { fps: ASSEMBLY_FPS, durationInFrames: 300 },
+            segments: [
+              {
+                id: 'broll-1',
+                trackKind: 'broll',
+                startFrame: 150,
+                endFrame: 240,
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    assert.equal(props.timelineOverrides[0].segments[0].startFrame, 150);
+  });
+
+  it('rejects invalid timeline ranges', () => {
+    assert.throws(
+      () => parseTimelineOverrideManifests([
+        {
+          version: 1,
+          timeline: { fps: ASSEMBLY_FPS, durationInFrames: 300 },
+          segments: [
+            {
+              id: 'broll-1',
+              trackKind: 'broll',
+              startFrame: 270,
+              endFrame: 180,
+            },
+          ],
+        },
+      ]),
+      /Timeline segment endFrame/,
+    );
   });
 
   it('rejects arbitrary style data in layout overrides', () => {
@@ -377,6 +462,18 @@ describe('remotion assembly props contract', () => {
           version: 1,
           canvas: { width: 1920, height: 1080 },
           edits: [{ layerId: 'avatar', kind: 'size', width: -1, height: 405 }],
+        },
+      ]),
+    );
+  });
+
+  it('rejects layout stack levels outside safe bounds', () => {
+    assert.throws(
+      () => parseLayoutOverrideManifests([
+        {
+          version: 1,
+          canvas: { width: 1920, height: 1080 },
+          edits: [{ layerId: 'avatar', kind: 'stack', order: 1001 }],
         },
       ]),
     );

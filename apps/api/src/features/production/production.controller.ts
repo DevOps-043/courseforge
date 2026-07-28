@@ -784,6 +784,7 @@ export class ProductionController {
           transitionType: variables?.transitionType,
           templateConfig,
           layoutOverrides: variables?.layoutOverrides,
+          timelineOverrides: variables?.timelineOverrides,
         });
         desktopWorkerPropsResult = {
           compositionId: internalCompositionId,

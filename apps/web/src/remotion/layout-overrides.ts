@@ -187,7 +187,6 @@ export function filterLayoutOverridesForEditableLayers(
       );
       return Boolean(
         patternLayer &&
-        edit.kind !== "stack" &&
         supportsEditKind(patternLayer, edit.kind),
       );
     });

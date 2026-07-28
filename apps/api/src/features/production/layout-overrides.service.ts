@@ -7,6 +7,7 @@ const pixelCoordinateSchema = z.number().finite().min(-10000).max(10000);
 const positiveDimensionSchema = z.number().finite().positive().max(10000);
 const cropInsetSchema = z.number().finite().min(0).max(1);
 const rotationAngleSchema = z.number().finite().min(-180).max(180);
+const stackOrderSchema = z.number().int().min(0).max(1000);
 
 export const editableLayerDefinitionSchema = z.object({
   layerId: layerIdSchema,
@@ -26,7 +27,11 @@ export const editableLayerDefinitionSchema = z.object({
     canCrop: z.boolean().default(false),
     canRotate: z.boolean().default(false),
     canHide: z.boolean().default(false),
+    canReorder: z.boolean().default(false),
   }).strict(),
+  defaultStackOrder: z.number().int().min(0).max(1000).optional(),
+  stackGroup: z.string().trim().min(1).max(80).optional(),
+  itemLayerIdPattern: z.enum(['slide:{index}', 'broll:{order}']).optional(),
   constraints: z
     .object({
       minWidth: z.number().finite().positive().optional(),
@@ -70,6 +75,11 @@ export const layoutOverrideEditSchema = z.discriminatedUnion('kind', [
     layerId: layerIdSchema,
     kind: z.literal('visibility'),
     hidden: z.boolean(),
+  }).strict(),
+  z.object({
+    layerId: layerIdSchema,
+    kind: z.literal('stack'),
+    order: stackOrderSchema,
   }).strict(),
 ]);
 

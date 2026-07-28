@@ -744,6 +744,7 @@ export class DesktopWorkerService {
           transitionType: snapshot.variables?.transitionType,
           templateConfig,
           layoutOverrides: snapshot.variables?.layoutOverrides,
+          timelineOverrides: snapshot.variables?.timelineOverrides,
         });
     const propsHash = buildStableHash(resolvedProps);
     const bundleInfo = await this.publishInternalBundle();

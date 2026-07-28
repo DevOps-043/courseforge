@@ -35,6 +35,7 @@ export function buildExternalTemplateProps(input: ExternalTemplatePropsInput): E
     transitionType: variables.transitionType,
     templateConfig,
     layoutOverrides: variables.layoutOverrides,
+    timelineOverrides: variables.timelineOverrides,
   });
   const resolved = buildResolvedProps({
     bundleDefaultProps: input.bundleDefaultProps,

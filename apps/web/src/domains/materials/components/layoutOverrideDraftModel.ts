@@ -180,9 +180,12 @@ export function getEditableLayoutLayers(
             id: getSlideItemLayerId(index),
             label: `Diapositiva ${index + 1}`,
             detail: "item",
-            canReorder: false,
-            defaultStackOrder: undefined,
-            stackGroup: undefined,
+            canReorder: groupLayer.canReorder,
+            defaultStackOrder:
+              groupLayer.defaultStackOrder !== undefined
+                ? groupLayer.defaultStackOrder + index
+                : index + 1,
+            stackGroup: `${groupLayer.stackGroup ?? groupLayer.id}-items`,
           });
         }
       }
@@ -194,9 +197,12 @@ export function getEditableLayoutLayers(
             id: getBrollItemLayerId(order),
             label: `B-roll ${order}`,
             detail: "item",
-            canReorder: false,
-            defaultStackOrder: undefined,
-            stackGroup: undefined,
+            canReorder: groupLayer.canReorder,
+            defaultStackOrder:
+              groupLayer.defaultStackOrder !== undefined
+                ? groupLayer.defaultStackOrder + order - 1
+                : order,
+            stackGroup: `${groupLayer.stackGroup ?? groupLayer.id}-items`,
           });
         }
       }
@@ -227,7 +233,9 @@ export function getEditableLayoutLayers(
         id: getSlideItemLayerId(index),
         label: `Diapositiva ${index + 1}`,
         detail: "item",
-        canReorder: false,
+        canReorder: true,
+        defaultStackOrder: index + 1,
+        stackGroup: "slide-items",
       });
     }
   }
@@ -238,7 +246,9 @@ export function getEditableLayoutLayers(
         id: getBrollItemLayerId(order),
         label: `B-roll ${order}`,
         detail: "item",
-        canReorder: false,
+        canReorder: true,
+        defaultStackOrder: order,
+        stackGroup: "broll-items",
       });
     }
   }
@@ -640,7 +650,7 @@ function getDefaultBrollLayerBox(params: {
   };
 }
 
-function toLayoutLayerOption(layer: EditableLayerDefinition): LayoutLayerOption | null {
+function toLayoutLayerOption(layer: EditableLayerDefinition): LayoutLayerOption {
   return {
     id: layer.layerId,
     label: layer.label,

@@ -84,6 +84,7 @@ export default function SharedSidebarLayout({
 }: SharedSidebarLayoutProps) {
     const [isPinned, setIsPinned] = useState(true);
     const [isHovered, setIsHovered] = useState(false);
+    const [isFocusModeRequested, setIsFocusModeRequested] = useState(false);
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
     useAuth(); // Inicializa stores de auth y organización
 
@@ -95,7 +96,21 @@ export default function SharedSidebarLayout({
     }, []);
 
     const pathname = usePathname();
-    const isOpen = isPinned || isHovered;
+    const isOpen = (isPinned && !isFocusModeRequested) || isHovered;
+
+    useEffect(() => {
+        const handleFocusModeChange = (event: Event) => {
+            const detail = (event as CustomEvent<{ enabled?: boolean }>).detail;
+            setIsFocusModeRequested(Boolean(detail?.enabled));
+            setIsHovered(false);
+        };
+
+        window.addEventListener('courseforge:admin-focus-mode', handleFocusModeChange);
+
+        return () => {
+            window.removeEventListener('courseforge:admin-focus-mode', handleFocusModeChange);
+        };
+    }, []);
 
     const isActive = (href: string) => {
         if (href === basePath) return pathname === basePath;
@@ -284,7 +299,7 @@ export default function SharedSidebarLayout({
                 className="flex-1 py-8 pr-8 min-h-screen"
                 onClick={() => setIsUserMenuOpen(false)}
             >
-                <div className="max-w-7xl mx-auto">
+                <div className={isFocusModeRequested ? "max-w-none" : "max-w-7xl mx-auto"}>
                     {children}
                 </div>
             </motion.main>

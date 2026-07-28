@@ -6,6 +6,10 @@ import {
   parseLayoutOverrideManifests,
   type LayoutOverrideManifestList,
 } from './layout-overrides.service';
+import {
+  parseTimelineOverrideManifests,
+  type TimelineOverrideManifestList,
+} from './timeline-overrides.service';
 
 export const ASSEMBLY_FPS = 30;
 export const FALLBACK_DURATION_SECONDS = 10;
@@ -31,6 +35,7 @@ export interface AssemblyInputProps {
   transitionType: 'fade' | 'slide' | 'none';
   templateConfig: TemplateRenderConfig;
   layoutOverrides: LayoutOverrideManifestList;
+  timelineOverrides: TimelineOverrideManifestList;
 }
 
 interface NormalizedAssemblyAssets {
@@ -163,12 +168,16 @@ export function buildAssemblyInputProps(params: {
   transitionType: unknown;
   templateConfig?: unknown;
   layoutOverrides?: unknown;
+  timelineOverrides?: unknown;
   fps?: number;
 }): AssemblyInputProps {
   const fps = params.fps ?? ASSEMBLY_FPS;
   const normalized = normalizeAssemblyAssets(params.assets, fps);
   const templateConfig = parseTemplateRenderConfig(params.templateConfig);
   const layoutOverrides = parseLayoutOverrideManifests(params.layoutOverrides);
+  const timelineOverrides = parseTimelineOverrideManifests(
+    params.timelineOverrides ?? params.assets?.timeline_overrides,
+  );
   const hasPrimaryAssets = Boolean(
     normalized.voiceAudioUrl ||
       normalized.avatarVideoUrl ||
@@ -207,5 +216,6 @@ export function buildAssemblyInputProps(params: {
       transitionType: transition,
     },
     layoutOverrides,
+    timelineOverrides,
   };
 }

@@ -58,7 +58,6 @@ interface PostproductionAssemblyContainerProps {
 
 type AssemblyJobStatus = 'PENDING' | 'QUEUED' | 'RUNNING' | 'WAITING_PROVIDER' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
 const ASSEMBLY_JOBS_STORAGE_PREFIX = 'courseforge:assembly-jobs';
-type AssemblyWorkspaceView = 'preview' | 'workers' | 'batch' | 'templates';
 
 interface AssemblyJobTracker {
     componentId: string;
@@ -242,7 +241,6 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const [timelineOverrideDrafts, setTimelineOverrideDrafts] = useState<Record<string, TimelineOverrideManifest[]>>({});
     const [externalPreviewLayoutOverrideSnapshots, setExternalPreviewLayoutOverrideSnapshots] = useState<Record<string, LayoutOverrideManifest[]>>({});
     const [externalPreviewTimelineOverrideSnapshots, setExternalPreviewTimelineOverrideSnapshots] = useState<Record<string, TimelineOverrideManifest[]>>({});
-    const [assemblyWorkspaceView, setAssemblyWorkspaceView] = useState<AssemblyWorkspaceView>('preview');
     const [savingLayoutOverrides, setSavingLayoutOverrides] = useState(false);
     const [savingTimelineOverrides, setSavingTimelineOverrides] = useState(false);
     const [selectedLayoutLayerId, setSelectedLayoutLayerId] = useState<RemotionEditableLayerId>(REMOTION_EDITABLE_LAYERS.AVATAR);
@@ -908,16 +906,6 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     const currentAssemblyLabel = activeAssemblyJobs.length === 1
         ? activeAssemblyJobs[0].label
         : `${activeAssemblyJobs.length || assemblyJobs.length} videos`;
-    const assemblyWorkspaceTabs: Array<{
-        count?: number;
-        id: AssemblyWorkspaceView;
-        label: string;
-    }> = [
-        { id: 'preview', label: 'Editor', count: videoComponents.length },
-        { id: 'workers', label: 'Workers', count: visibleDesktopWorkers.length },
-        { id: 'batch', label: 'Ensamble', count: componentsToAssemble.length },
-        { id: 'templates', label: 'Plantillas', count: templates.length },
-    ];
 
     useEffect(() => {
         if (
@@ -1297,41 +1285,8 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                 </div>
             </div>
 
-            <div className="sticky top-20 z-10 rounded-xl border border-gray-200 bg-white/95 p-2 shadow-sm backdrop-blur dark:border-[#6C757D]/10 dark:bg-[#151A21]/95">
-                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                    {assemblyWorkspaceTabs.map((tab) => {
-                        const active = assemblyWorkspaceView === tab.id;
-                        return (
-                            <button
-                                key={tab.id}
-                                type="button"
-                                onClick={() => setAssemblyWorkspaceView(tab.id)}
-                                className={`flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                                    active
-                                        ? 'bg-[#0A2540] text-white shadow-sm dark:bg-[#00D4B3] dark:text-[#061018]'
-                                        : 'text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/5'
-                                }`}
-                            >
-                                <span>{tab.label}</span>
-                                {typeof tab.count === 'number' ? (
-                                    <span className={`rounded-full px-2 py-0.5 text-[11px] ${
-                                        active
-                                            ? 'bg-white/20 text-white dark:bg-[#061018]/15 dark:text-[#061018]'
-                                            : 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-300'
-                                    }`}>
-                                        {tab.count}
-                                    </span>
-                                ) : null}
-                            </button>
-                        );
-                    })}
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-8">
-                {assemblyWorkspaceView !== 'templates' ? (
+            <div className="grid grid-cols-1 gap-6">
                 <div className="space-y-6">
-                    {assemblyWorkspaceView === 'preview' ? (
                     <div className="space-y-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#6C757D]/10 dark:bg-[#151A21] sm:p-5">
                         <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 dark:border-white/5 xl:flex-row xl:items-center xl:justify-between">
                             <h3 className="text-md font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -1456,8 +1411,11 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                                             componentId={activePreview.id}
                                                             templateId={selectedTemplate}
                                                             templateVersionId={activeTemplateVersionId}
+                                                            templateSlug={selectedTemplateSlug}
+                                                            templateConfig={selectedTemplateConfig?.default_config}
                                                             value={activeLayoutOverrides}
                                                             editableLayers={activeEditableLayoutLayers}
+                                                            assetSummary={activeLayoutAssetSummary}
                                                             selectedLayerId={selectedLayoutLayerId}
                                                             onSelectedLayerChange={setSelectedLayoutLayerId}
                                                             editMode={layoutEditMode}
@@ -1635,8 +1593,11 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                                     componentId={activePreview.id}
                                                     templateId={selectedTemplate}
                                                     templateVersionId={activeTemplateVersionId}
+                                                    templateSlug={selectedTemplateSlug}
+                                                    templateConfig={selectedTemplateConfig?.default_config}
                                                     value={activeLayoutOverrides}
                                                     editableLayers={activeEditableLayoutLayers}
+                                                    assetSummary={activeLayoutAssetSummary}
                                                     selectedLayerId={selectedLayoutLayerId}
                                                     onSelectedLayerChange={setSelectedLayoutLayerId}
                                                     editMode={layoutEditMode}
@@ -1753,16 +1714,15 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                             );
                         })()}
                     </div>
-                    ) : null}
+                </div>
 
-                    {assemblyWorkspaceView === 'workers' || assemblyWorkspaceView === 'batch' ? (
+                <div className="grid gap-6 2xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
                     <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 space-y-6 shadow-sm">
                         <h3 className="text-md font-bold text-gray-900 dark:text-white flex items-center gap-2">
                             <Sparkles className="text-yellow-500" size={18} />
                             Motor de Render
                         </h3>
 
-                        {assemblyWorkspaceView === 'workers' ? (
                         <div className="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-[#6C757D]/10 dark:bg-[#0F1419]/50">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                 <div className="min-w-0 space-y-1">
@@ -1899,9 +1859,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                 </div>
                             )}
                         </div>
-                        ) : null}
 
-                        {assemblyWorkspaceView === 'batch' ? (
                         <div className="space-y-4">
                             {componentsToAssemble.length > 0 ? (
                                 <div className="mt-4 rounded-xl border border-gray-200 bg-white p-3 text-xs dark:border-[#6C757D]/10 dark:bg-[#151A21]">
@@ -2096,13 +2054,8 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                             </div>
                         )}
                         </div>
-                        ) : null}
                     </div>
-                    ) : null}
-                </div>
-                ) : null}
 
-                {assemblyWorkspaceView === 'templates' ? (
                 <div className="min-h-0">
                     <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl shadow-sm 2xl:sticky 2xl:top-6 2xl:max-h-[calc(100vh-7rem)] flex min-h-[420px] flex-col overflow-hidden">
                         <div className="space-y-4 border-b border-gray-200 p-5 dark:border-[#6C757D]/10">
@@ -2169,7 +2122,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                         )}
                     </div>
                 </div>
-                ) : null}
+            </div>
             </div>
         </div>
     );
