@@ -111,7 +111,7 @@ export default async function DownloadsPage() {
     latestRelease?.assetUrls.windows,
     officialDownloadUrls.windows,
   );
-  const version = latestRelease?.version || readPublicEnv("NEXT_PUBLIC_SOFLIA_WORKER_VERSION") || "0.2.6";
+  const version = latestRelease?.version || readPublicEnv("NEXT_PUBLIC_SOFLIA_WORKER_VERSION") || "0.2.7";
   const options: WorkerDownloadOption[] = [
     {
       id: "windows",
