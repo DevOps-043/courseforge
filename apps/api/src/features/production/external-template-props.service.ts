@@ -25,6 +25,22 @@ export interface ExternalTemplatePropsResult extends ResolvedPropsResult {
   propKeys: string[];
 }
 
+const PROTECTED_COURSE_PROP_KEYS = new Set([
+  'avatarVideoUrl',
+  'bgMusicUrl',
+  'bgMusicVolume',
+  'brollClips',
+  'fps',
+  'layoutOverrides',
+  'slides',
+  'template',
+  'templateConfig',
+  'timelineOverrides',
+  'totalDurationInFrames',
+  'transitionType',
+  'voiceAudioUrl',
+]);
+
 export function buildExternalTemplateProps(input: ExternalTemplatePropsInput): ExternalTemplatePropsResult {
   const variables = input.variables ?? {};
   const hasTemplateConfigInput = Boolean(input.templateDefaultConfig || variables.templateConfig);
@@ -69,9 +85,21 @@ export function extractExternalTemplateOverrides(value: unknown): Record<string,
 
   const variables = value as Record<string, unknown>;
   const candidate = variables.resolvedProps ?? variables.customTemplateProps ?? variables.templateProps;
-  return candidate && typeof candidate === 'object' && !Array.isArray(candidate)
-    ? candidate as Record<string, unknown>
-    : null;
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+    return null;
+  }
+
+  return filterProtectedCoursePropOverrides(candidate as Record<string, unknown>);
+}
+
+export function filterProtectedCoursePropOverrides(
+  overrides: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const filtered = Object.fromEntries(
+    Object.entries(overrides).filter(([key]) => !PROTECTED_COURSE_PROP_KEYS.has(key)),
+  );
+
+  return Object.keys(filtered).length > 0 ? filtered : null;
 }
 
 export function validatePropsSchema(

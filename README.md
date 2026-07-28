@@ -221,15 +221,25 @@ Endpoints principales:
 
 - `POST /remotion/render`
 - `GET /remotion/readiness`
+- `GET /remotion/external-preview`
+- `POST /remotion/external-preview/request`
+- `GET /remotion/template-builds`
+- `GET /remotion/template-builds/:buildId/status`
 - `GET /remotion/workers`
+- `POST /remotion/workers/:workerId/revoke`
 - `POST /remotion/workers/link-codes`
 - `POST /remotion/workers/link`
 - `POST /remotion/workers/heartbeat`
+- `GET /remotion/workers/jobs/recoverable`
 - `POST /remotion/workers/jobs/claim-next`
 - `POST /remotion/workers/jobs/:jobId/claim`
 - `POST /remotion/workers/jobs/:jobId/progress`
 - `POST /remotion/workers/jobs/:jobId/complete`
 - `POST /remotion/workers/jobs/:jobId/fail`
+- `POST /remotion/workers/jobs/:jobId/refresh-upload-url`
+- `POST /remotion/workers/jobs/:jobId/telemetry/runs`
+- `POST /remotion/workers/jobs/:jobId/telemetry/runs/:localRunId/samples`
+- `POST /remotion/workers/jobs/:jobId/telemetry/runs/:localRunId/finish`
 - `GET /jobs/:jobId/status`
 
 ### API Express Legacy
@@ -253,7 +263,21 @@ Los ZIPs subidos no deben tratarse como codigo confiable. Pasan por validacion, 
 
 ### Worker De Escritorio
 
-La API ya contiene endpoints y tablas para registrar workers, reclamar jobs, reportar progreso y completar/fallar renders. Esto permite sacar el computo pesado del servidor principal cuando el flujo usa `desktop_worker`.
+La API contiene endpoints y tablas para registrar workers, vincularlos con link codes, reclamar jobs, reportar progreso, recuperar jobs interrumpidos y completar/fallar renders. Esto permite sacar el computo pesado del servidor principal cuando el flujo usa `desktop_worker`. El instalador se distribuye desde `/downloads`.
+
+Telemetria de workers:
+
+- El worker reporta corridas (`telemetry/runs`), muestras periodicas (`.../samples`) y cierre de corrida (`.../finish`), incluyendo top-procesos del sistema (CPU/memoria).
+- Panel admin: `/admin/worker-telemetry` (y variante tenant-aware `/[empresaSlug]/admin/worker-telemetry`) para vincular workers y revisar telemetria de jobs recientes.
+- Jobs interrumpidos se listan via `GET /remotion/workers/jobs/recoverable` para reintentos controlados.
+
+### Open Design (Slides Externos)
+
+Pipeline para convertir slides diseñados externamente en assets renderizables:
+
+- `POST /api/production/open-design/html-to-png`: rasteriza HTML/SVG de una slide a PNG.
+- `POST /api/production/open-design/export`: exporta el set de slides de un componente a assets almacenados, listos para el ensamblado Remotion.
+- Validado por `open-design-slide-test.service.ts` antes de aceptarse como asset de produccion.
 
 ---
 
@@ -293,8 +317,10 @@ Publicacion:
 - `POST /api/auth/switch-organization`
 - `GET /api/auth/google/login`
 - `GET /api/auth/google/callback`
+- `POST /api/auth/google/disconnect`
 - `GET /api/auth/microsoft/login`
 - `GET /api/auth/microsoft/callback`
+- `POST /api/auth/microsoft/disconnect`
 - `POST /api/lia`
 - `POST /api/syllabus`
 - `POST /api/save-draft`
@@ -304,13 +330,22 @@ Publicacion:
 - `POST /api/admin/scorm/process`
 - `POST /api/gpt/sources`
 - `GET /api/debug/soflia`
+- `POST /api/storage/signed-upload-url`
 - `POST /api/production/cloud-storage/import`
 - `GET /api/production/cloud-storage/list`
 - `POST /api/production/google-drive/import`
 - `GET /api/production/google-drive/list`
+- `POST /api/production/import-external`
 - `POST /api/production/artlist/import`
 - `GET /api/production/artlist/search`
+- `POST /api/production/open-design/html-to-png`
+- `POST /api/production/open-design/export`
+- `GET /api/video-metadata`
 - `POST /api/admin/remotion/bundle-agent/...`
+- `GET /api/admin/remotion/template-versions/:versionId/download`
+- `POST /api/admin/slides/html-preview`
+
+Todos los endpoints bajo `/api/v1/production/...` (control plane del worker de escritorio) estan documentados en [Produccion Visual y Remotion](#produccion-visual-y-remotion).
 
 ### Netlify Functions
 
@@ -350,9 +385,20 @@ Tablas clave:
 - `remotion_templates`
 - `remotion_template_versions`
 - `remotion_template_builds`
+- `remotion_template_previews`
 - `production_jobs`
 - `production_evidence`
+- `production_render_batches`
+- `production_render_batch_items`
 - `render_workers`
+- `render_worker_link_codes`
+- `render_worker_job_recovery_states`
+- `render_worker_job_runs`
+- `render_worker_job_metric_samples`
+- `soflia_bundle_conversations`
+- `soflia_bundle_messages`
+- `soflia_bundle_specs`
+- `soflia_bundle_generation_runs`
 - `user_cloud_storage_credentials`
 - `user_google_credentials`
 - `organization_user_roles`

@@ -286,6 +286,10 @@ function sourceSignature(assets: Partial<MaterialAssets>) {
     slideImages,
     videoUrl: assets.video_url || "",
     screencastUrl: assets.screencast_url || "",
+    assemblyTargetDurationSeconds:
+      typeof assets.assembly_target_duration_seconds === "number"
+        ? assets.assembly_target_duration_seconds
+        : null,
   });
 }
 
@@ -342,8 +346,6 @@ function sanitizeMaterialAssetMetadata(params: {
       sanitizedAssets.b_roll_clips,
     ) as MaterialAssets["b_roll_clips"];
   }
-
-  delete (sanitizedAssets as any).assembly_target_duration_seconds;
 
   if (sourceSignature(currentAssets) !== sourceSignature(sanitizedAssets)) {
     sanitizedAssets = clearFinalVideoMetadata(sanitizedAssets);

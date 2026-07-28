@@ -1,19 +1,4 @@
-import type { BundleBlueprint, LayerBox } from "./blueprint.service";
-
-function json(value: unknown) {
-  return JSON.stringify(value);
-}
-
-function boxLiteral(box: LayerBox) {
-  return `{ x: ${box.x}, y: ${box.y}, width: ${box.width}, height: ${box.height} }`;
-}
-
-function defaultStackOrder(blueprint: BundleBlueprint, layerId: string, fallback: number) {
-  return blueprint.editableLayers.find((layer) => layer.layerId === layerId)?.defaultStackOrder ?? fallback;
-}
-
-export function buildBundleTemplateSource(blueprint: BundleBlueprint) {
-  return `import React from "react";
+import React from "react";
 import {
   AbsoluteFill,
   Audio,
@@ -135,24 +120,25 @@ type TemplateProps = {
   voiceAudioUrl?: string;
 };
 
-const compositionId = ${json(blueprint.compositionId)};
-const compositionWidth = ${blueprint.width};
-const compositionHeight = ${blueprint.height};
-const fallbackFps = ${blueprint.fps};
-const fallbackDurationInFrames = ${blueprint.fallbackDurationFrames};
-const accentColor = ${json(blueprint.accentColor)};
-const layoutMode = ${json(blueprint.layout)};
-const renderText = ${blueprint.renderText ? "true" : "false"};
+const compositionId = "Nuevo-bundle-de-video";
+const compositionWidth = 1920;
+const compositionHeight = 1080;
+const fallbackFps = 30;
+const fallbackDurationInFrames = 150;
+const accentColor = "#DA951C";
+const layoutMode: string = "stacked-support";
+const timelineMode: string = "equal-support-visuals";
+const renderText = false;
 const isReferenceFrameLayout = layoutMode === "reference-frame-avatar-left-stack-right";
-const avatarBox = ${boxLiteral(blueprint.boxes.avatar)};
-const primaryVisualBox = ${boxLiteral(blueprint.boxes.primaryVisual)};
-const slidesBox = ${boxLiteral(blueprint.boxes.slides)};
-const brollBox = ${boxLiteral(blueprint.boxes.broll)};
+const avatarBox = { x: 0, y: 0, width: 691, height: 1080 };
+const primaryVisualBox = { x: 691, y: 0, width: 1229, height: 1080 };
+const slidesBox = { x: 733, y: 42, width: 1145, height: 477 };
+const brollBox = { x: 733, y: 561, width: 1145, height: 477 };
 const defaultStackOrders = {
-  avatar: ${defaultStackOrder(blueprint, "avatar", 10)},
-  primaryVisual: ${defaultStackOrder(blueprint, "primaryVisual", 0)},
-  slides: ${defaultStackOrder(blueprint, "slides", 20)},
-  broll: ${defaultStackOrder(blueprint, "broll", 30)},
+  avatar: 10,
+  primaryVisual: 0,
+  slides: 20,
+  broll: 30,
 } as const;
 const defaultProps: TemplateProps = {
   accentColor,
@@ -211,7 +197,7 @@ function getLayerEdits(
 
 function formatCropInset(value: number) {
   const bounded = Math.min(1, Math.max(0, value));
-  return \`\${Math.round(bounded * 10000) / 100}%\`;
+  return `${Math.round(bounded * 10000) / 100}%`;
 }
 
 function buildLayoutOverrideStyle(
@@ -240,11 +226,11 @@ function buildLayoutOverrideStyle(
     }
 
     if (edit.kind === "crop") {
-      style.clipPath = \`inset(\${formatCropInset(edit.top)} \${formatCropInset(edit.right)} \${formatCropInset(edit.bottom)} \${formatCropInset(edit.left)})\`;
+      style.clipPath = `inset(${formatCropInset(edit.top)} ${formatCropInset(edit.right)} ${formatCropInset(edit.bottom)} ${formatCropInset(edit.left)})`;
     }
 
     if (edit.kind === "rotation") {
-      style.rotate = \`\${edit.angle}deg\`;
+      style.rotate = `${edit.angle}deg`;
     }
 
     if (edit.kind === "visibility" && edit.hidden) {
@@ -313,6 +299,12 @@ function resolveOverrideWindow(segment: TimelineOverrideSegment, durationInFrame
   };
 }
 
+function getClipDurationInFrames(clip: BrollClip) {
+  return typeof clip.durationInFrames === "number" && Number.isFinite(clip.durationInFrames)
+    ? Math.max(1, Math.round(clip.durationInFrames))
+    : 150;
+}
+
 function buildSlideTimeline(
   slides: SlideAsset[],
   durationInFrames: number,
@@ -332,24 +324,14 @@ function buildSlideTimeline(
       slide,
       startFrame,
       durationInFrames: Math.max(1, endFrame - startFrame),
-      id: "slide-" + index,
-      layerId: "slide:" + index,
+      id: `slide-${index}`,
+      layerId: `slide:${index}`,
       index,
     };
     const override = findTimelineOverrideSegment(segments, item);
 
     return override ? { ...item, ...resolveOverrideWindow(override, durationInFrames) } : item;
   }).filter((item) => item.durationInFrames > 0);
-}
-
-function getActiveSlideTimelineItem(frame: number, timeline: SlideTimelineItem[]) {
-  return timeline.find((item) => frame >= item.startFrame && frame < item.startFrame + item.durationInFrames) ?? null;
-}
-
-function getClipDurationInFrames(clip: BrollClip) {
-  return typeof clip.durationInFrames === "number" && Number.isFinite(clip.durationInFrames)
-    ? Math.max(1, Math.round(clip.durationInFrames))
-    : 150;
 }
 
 function buildBrollTimeline(
@@ -361,44 +343,38 @@ function buildBrollTimeline(
 
   const ordered = orderedBrollClips(clips);
   const segments = getTimelineOverrideSegments(timelineOverrides, "broll");
-  const totalClipFrames = ordered.reduce((sum, clip) => sum + getClipDurationInFrames(clip), 0);
-  const availableGapFrames = Math.max(0, durationInFrames - totalClipFrames);
-  const gapFrames = availableGapFrames > 0 ? Math.floor(availableGapFrames / (ordered.length + 1)) : 0;
-  const timeline: BrollTimelineItem[] = [];
-  let cursor = gapFrames;
+  const supportCount = Math.max(1, ordered.length);
+  const framesPerItem = durationInFrames / supportCount;
 
-  for (const clip of ordered) {
-    if (cursor >= durationInFrames) break;
-    const remainingFrames = durationInFrames - cursor;
-    const clipDurationInFrames = Math.min(getClipDurationInFrames(clip), remainingFrames);
+  return ordered.map((clip, position) => {
+    const order = normalizeClipOrder(clip.order, position + 1);
+    const startFrame = Math.floor(position * framesPerItem);
+    const baselineDuration = timelineMode === "equal-support-visuals"
+      ? Math.max(1, Math.floor((position === ordered.length - 1 ? durationInFrames : Math.floor((position + 1) * framesPerItem)) - startFrame))
+      : Math.min(getClipDurationInFrames(clip), Math.max(1, durationInFrames - startFrame));
+    const item: BrollTimelineItem = {
+      clip,
+      startFrame,
+      durationInFrames: baselineDuration,
+      id: `broll-${order}`,
+      layerId: `broll:${order}`,
+    };
+    const override = findTimelineOverrideSegment(segments, item);
 
-    if (clipDurationInFrames > 0) {
-      const order = normalizeClipOrder(clip.order, timeline.length + 1);
-      const item: BrollTimelineItem = {
-        clip,
-        startFrame: cursor,
-        durationInFrames: clipDurationInFrames,
-        id: "broll-" + order,
-        layerId: "broll:" + order,
-      };
-      const override = findTimelineOverrideSegment(segments, item);
-      const overriddenItem = override
-        ? {
-          ...item,
-          ...resolveOverrideWindow(override, durationInFrames),
-          sourceStartFrame: normalizeOptionalFrame(override.sourceStartFrame),
-          sourceEndFrame: normalizeOptionalFrame(override.sourceEndFrame),
-          loopMode: override.loopMode,
-        }
-        : item;
+    return override
+      ? {
+        ...item,
+        ...resolveOverrideWindow(override, durationInFrames),
+        sourceStartFrame: normalizeOptionalFrame(override.sourceStartFrame),
+        sourceEndFrame: normalizeOptionalFrame(override.sourceEndFrame),
+        loopMode: override.loopMode,
+      }
+      : item;
+  }).filter((item) => item.durationInFrames > 0);
+}
 
-      timeline.push(overriddenItem);
-    }
-
-    cursor += clipDurationInFrames + gapFrames;
-  }
-
-  return timeline;
+function getActiveSlideTimelineItem(frame: number, timeline: SlideTimelineItem[]) {
+  return timeline.find((item) => frame >= item.startFrame && frame < item.startFrame + item.durationInFrames) ?? null;
 }
 
 function getActiveBrollTimelineItem(frame: number, timeline: BrollTimelineItem[]) {
@@ -479,10 +455,10 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
   const slideTimeline = buildSlideTimeline(slides, durationInFrames, props.timelineOverrides);
   const brollTimeline = buildBrollTimeline(brollClips, durationInFrames, props.timelineOverrides);
   const activeSlideItem = getActiveSlideTimelineItem(frame, slideTimeline);
+  const activeBrollItem = getActiveBrollTimelineItem(frame, brollTimeline);
   const activeSlideIndex = activeSlideItem?.index ?? -1;
   const activeSupportIndex = getActiveIndex(frame, Math.max(slides.length, brollClips.length), durationInFrames);
   const activeSlide = activeSlideItem?.slide ?? null;
-  const activeBrollItem = getActiveBrollTimelineItem(frame, brollTimeline);
   const activeBroll = activeBrollItem?.clip ?? null;
   const hasVoice = typeof props.voiceAudioUrl === "string" && props.voiceAudioUrl.length > 0;
   const hasAvatar = typeof props.avatarVideoUrl === "string" && props.avatarVideoUrl.length > 0;
@@ -570,6 +546,7 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
             <Video
               src={activeBroll.url}
               muted
+              loop={activeBrollItem.loopMode !== "none"}
               startFrom={activeBrollItem.sourceStartFrame}
               endAt={activeBrollItem.sourceEndFrame}
               style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center center" }}
@@ -614,5 +591,3 @@ function RemotionRoot() {
 }
 
 registerRoot(RemotionRoot);
-`;
-}

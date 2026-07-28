@@ -260,6 +260,7 @@ describe("SofLIA Bundle Agent services", () => {
     assert.equal(propsSchemaProperties?.expandMissingSupportMedia?.type, "boolean");
     assert.equal(propsSchemaProperties?.layoutOverrides?.type, "array");
     assert.equal(propsSchemaProperties?.sceneSwapOnSlideChange?.type, "boolean");
+    assert.equal(propsSchemaProperties?.timelineOverrides?.type, "array");
     assert.equal(propsSchemaProperties?.totalDurationInFrames?.type, "integer");
     assert.equal(propsSchemaProperties?.visualVariantId?.type, "string");
     assert.match(source, /avatarVideoUrl/);
@@ -276,6 +277,11 @@ describe("SofLIA Bundle Agent services", () => {
     assert.match(source, /buildSceneBox/);
     assert.match(source, /supportUnionBox/);
     assert.match(source, /layoutOverrides\?: LayoutOverrideManifest\[\]/);
+    assert.match(source, /timelineOverrides\?: TimelineOverrideManifest\[\]/);
+    assert.match(source, /type TimelineOverrideSegment/);
+    assert.match(source, /buildSlideTimeline/);
+    assert.match(source, /getTimelineOverrideSegments/);
+    assert.match(source, /props\.timelineOverrides/);
     assert.match(source, /REMOTION_EDITABLE_LAYERS/);
     assert.match(source, /buildLayoutOverrideStyle/);
     assert.match(source, /edit\.kind === "stack"/);
@@ -289,8 +295,12 @@ describe("SofLIA Bundle Agent services", () => {
     assert.match(source, /registerRoot\(RemotionRoot\)/);
     assert.match(source, /<Composition/);
     assert.match(source, /function buildBrollTimeline/);
+    assert.match(source, /getActiveSlideTimelineItem/);
     assert.match(source, /getActiveBrollTimelineItem/);
+    assert.match(source, /<Sequence from=\{activeSlideItem\.startFrame\}/);
     assert.match(source, /<Sequence from=\{activeBrollItem\.startFrame\}/);
+    assert.match(source, /startFrom=\{activeBrollItem\.sourceStartFrame\}/);
+    assert.match(source, /endAt=\{activeBrollItem\.sourceEndFrame\}/);
     assert.doesNotMatch(source, /\sloop\s/);
     assert.doesNotMatch(source, /slides\.length > 0 \? null :/);
     assert.doesNotMatch(source, /transform\s*:/);

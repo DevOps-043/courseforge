@@ -146,7 +146,7 @@ describe('remotion assembly props contract', () => {
     assert.equal(props.avatarVideoUrl, VIDEO_URL);
   });
 
-  it('ignores assembly target duration when voice duration exists', () => {
+  it('uses assembly target duration before measured voice duration', () => {
     const props = buildAssemblyInputProps({
       compositionId: 'full-slides',
       transitionType: undefined,
@@ -160,10 +160,10 @@ describe('remotion assembly props contract', () => {
       },
     });
 
-    assert.equal(props.totalDurationInFrames, 51 * ASSEMBLY_FPS);
+    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
   });
 
-  it('ignores assembly target duration when B-roll duration exists', () => {
+  it('uses assembly target duration before measured B-roll duration', () => {
     const props = buildAssemblyInputProps({
       compositionId: 'full-slides',
       transitionType: undefined,
@@ -173,10 +173,10 @@ describe('remotion assembly props contract', () => {
       },
     });
 
-    assert.equal(props.totalDurationInFrames, 31 * 60 * ASSEMBLY_FPS);
+    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
   });
 
-  it('falls back when assets have no measurable duration', () => {
+  it('uses assembly target duration when assets have no measurable duration', () => {
     const props = buildAssemblyInputProps({
       compositionId: 'full-slides',
       transitionType: undefined,
@@ -189,10 +189,10 @@ describe('remotion assembly props contract', () => {
       },
     });
 
-    assert.equal(props.totalDurationInFrames, 10 * ASSEMBLY_FPS);
+    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
   });
 
-  it('uses slide-count fallback instead of assembly target duration', () => {
+  it('uses assembly target duration before slide-count fallback', () => {
     const props = buildAssemblyInputProps({
       compositionId: 'full-slides',
       transitionType: undefined,
@@ -208,10 +208,10 @@ describe('remotion assembly props contract', () => {
       },
     });
 
-    assert.equal(props.totalDurationInFrames, 15 * ASSEMBLY_FPS);
+    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
   });
 
-  it('uses avatar duration instead of assembly target duration', () => {
+  it('uses assembly target duration before measured avatar duration', () => {
     const props = buildAssemblyInputProps({
       compositionId: 'full-slides',
       transitionType: undefined,
@@ -232,10 +232,10 @@ describe('remotion assembly props contract', () => {
       },
     });
 
-    assert.equal(props.totalDurationInFrames, 51 * ASSEMBLY_FPS);
+    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
   });
 
-  it('uses default B-roll fallback durations instead of assembly target duration', () => {
+  it('uses assembly target duration before default B-roll fallback durations', () => {
     const props = buildAssemblyInputProps({
       compositionId: 'full-slides',
       transitionType: undefined,
@@ -245,7 +245,7 @@ describe('remotion assembly props contract', () => {
       },
     });
 
-    assert.equal(props.totalDurationInFrames, 5 * ASSEMBLY_FPS);
+    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
   });
 
   it('rejects empty assets instead of producing a blank fallback video', () => {
@@ -384,6 +384,7 @@ describe('remotion assembly props contract', () => {
     assert.equal(props.timelineOverrides.length, 1);
     assert.equal(props.timelineOverrides[0].segments[0].startFrame, 180);
     assert.equal(props.timelineOverrides[0].segments[0].endFrame, 270);
+    assert.equal(props.totalDurationInFrames, 3 * ASSEMBLY_FPS);
   });
 
   it('uses persisted asset timeline overrides when variables omit them', () => {
@@ -412,6 +413,37 @@ describe('remotion assembly props contract', () => {
     });
 
     assert.equal(props.timelineOverrides[0].segments[0].startFrame, 150);
+    assert.equal(props.totalDurationInFrames, 3 * ASSEMBLY_FPS);
+  });
+
+  it('uses assembly target duration before stale timeline manifest duration', () => {
+    const props = buildAssemblyInputProps({
+      compositionId: 'full-slides',
+      transitionType: undefined,
+      assets: {
+        assembly_target_duration_seconds: 42,
+        b_roll_clips: [baseClip({ duration: 9 * 60 })],
+        timeline_overrides: [
+          {
+            version: 1,
+            templateId: 'full-slides',
+            componentId: 'component-1',
+            timeline: { fps: ASSEMBLY_FPS, durationInFrames: 9 * 60 * ASSEMBLY_FPS },
+            segments: [
+              {
+                id: 'broll-1',
+                trackKind: 'broll',
+                startFrame: 30,
+                endFrame: 120,
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    assert.equal(props.totalDurationInFrames, 42 * ASSEMBLY_FPS);
+    assert.equal(props.timelineOverrides[0].timeline.durationInFrames, 9 * 60 * ASSEMBLY_FPS);
   });
 
   it('rejects invalid timeline ranges', () => {

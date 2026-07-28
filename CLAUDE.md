@@ -21,6 +21,8 @@ npm run build
 npm run lint
 npm run test:remotion --workspace=apps/web
 npm run test:remotion --workspace=apps/api
+npm run test:auth-bridge --workspace=apps/web
+npm run test:curation --workspace=apps/web
 ```
 
 Notas:
@@ -28,7 +30,9 @@ Notas:
 - `npm run dev` levanta `apps/web` en `:3000`.
 - `npm run dev:legacy-api` levanta `apps/api` en `:4000` solo para diagnosticar el camino Express.
 - En `apps/web`, `npm run lint` sigue usando `next lint`; para validacion confiable de TypeScript usa `npx tsc -p apps/web/tsconfig.json --noEmit`.
-- Para cambios de Remotion o produccion visual, ejecuta los tests Remotion del workspace afectado.
+- En `apps/api`, `npm run lint` es `tsc --noEmit` (no hay ESLint en ese workspace).
+- Los scripts `test:*` compilan primero con `tsc -p <tsconfig.*-test.json>` hacia `.tmp/` y luego ejecutan los `.js` resultantes con `node`; no son runners tipo Jest/Vitest, así que para correr un test individual hay que compilar y apuntar `node` directamente al archivo compilado bajo `.tmp/`.
+- Para cambios de Remotion o produccion visual, ejecuta los tests Remotion del workspace afectado. Para cambios en Auth Bridge (`apps/web/src/app/login`) usa `test:auth-bridge`; para cambios en curacion (`netlify/functions/shared/curation-v2`) usa `test:curation`.
 
 ---
 

@@ -81,6 +81,52 @@ export function resolveExternalCompositionId(
   return fallback;
 }
 
+function resolveTimelineOverrideDurationSeconds(params: {
+  timelineOverrides: TimelineOverrideManifestList;
+  compositionId: string;
+}) {
+  const matchingManifests = params.timelineOverrides.filter(
+    (manifest) => !manifest.templateId || manifest.templateId === params.compositionId,
+  );
+
+  for (let index = matchingManifests.length - 1; index >= 0; index -= 1) {
+    const manifest = matchingManifests[index];
+    const timelineFps = manifest.timeline.fps;
+    const durationInFrames = manifest.timeline.durationInFrames;
+    if (isPositiveNumber(timelineFps) && isPositiveNumber(durationInFrames)) {
+      return durationInFrames / timelineFps;
+    }
+  }
+
+  return 0;
+}
+
+export function resolveAssemblyDurationSeconds(params: {
+  assets: any;
+  normalizedDurationSeconds: number;
+  timelineOverrides: TimelineOverrideManifestList;
+  compositionId: string;
+}) {
+  const targetDurationSeconds = params.assets?.assembly_target_duration_seconds;
+  if (isPositiveNumber(targetDurationSeconds)) {
+    return targetDurationSeconds;
+  }
+
+  if (params.normalizedDurationSeconds > 0) {
+    return params.normalizedDurationSeconds;
+  }
+
+  const timelineDurationSeconds = resolveTimelineOverrideDurationSeconds({
+    timelineOverrides: params.timelineOverrides,
+    compositionId: params.compositionId,
+  });
+  if (timelineDurationSeconds > 0) {
+    return timelineDurationSeconds;
+  }
+
+  return FALLBACK_DURATION_SECONDS;
+}
+
 export function normalizeAssemblyAssets(
   assets: any,
   fps: number = ASSEMBLY_FPS,
@@ -191,10 +237,12 @@ export function buildAssemblyInputProps(params: {
     );
   }
 
-  const totalSeconds =
-    normalized.totalDurationSeconds > 0
-      ? normalized.totalDurationSeconds
-      : FALLBACK_DURATION_SECONDS;
+  const totalSeconds = resolveAssemblyDurationSeconds({
+    assets: params.assets,
+    normalizedDurationSeconds: normalized.totalDurationSeconds,
+    timelineOverrides,
+    compositionId: params.compositionId,
+  });
   const transition =
     params.transitionType === 'slide' || params.transitionType === 'none'
       ? params.transitionType

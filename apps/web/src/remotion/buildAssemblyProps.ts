@@ -22,12 +22,19 @@ import {
 } from "./types";
 import { parseTemplateRenderConfig } from "./template-config";
 import { parseLayoutOverrideManifests } from "./layout-overrides";
-import { parseTimelineOverrideManifests } from "./timeline-overrides";
+import {
+  parseTimelineOverrideManifests,
+  type TimelineOverrideManifestList,
+} from "./timeline-overrides";
 
 const VALID_TEMPLATE_SLUGS = new Set<string>(Object.values(ASSEMBLY_TEMPLATES));
 
 function secondsToFrames(seconds: number, fps: number): number {
   return Math.max(1, Math.round(seconds * fps));
+}
+
+function isPositiveNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
 function resolveTemplate(slug: string | null | undefined): AssemblyTemplate {
@@ -36,6 +43,52 @@ function resolveTemplate(slug: string | null | undefined): AssemblyTemplate {
   }
 
   return DEFAULT_ASSEMBLY_TEMPLATE;
+}
+
+function resolveTimelineOverrideDurationSeconds(params: {
+  timelineOverrides: TimelineOverrideManifestList;
+  template: AssemblyTemplate;
+}) {
+  const matchingManifests = params.timelineOverrides.filter(
+    (manifest) => !manifest.templateId || manifest.templateId === params.template,
+  );
+
+  for (let index = matchingManifests.length - 1; index >= 0; index -= 1) {
+    const manifest = matchingManifests[index];
+    const timelineFps = manifest.timeline.fps;
+    const durationInFrames = manifest.timeline.durationInFrames;
+    if (isPositiveNumber(timelineFps) && isPositiveNumber(durationInFrames)) {
+      return durationInFrames / timelineFps;
+    }
+  }
+
+  return 0;
+}
+
+export function resolveAssemblyDurationSeconds(params: {
+  assets: MaterialAssets | null | undefined;
+  normalizedDurationSeconds: number;
+  timelineOverrides: TimelineOverrideManifestList;
+  template: AssemblyTemplate;
+}) {
+  const targetDurationSeconds = params.assets?.assembly_target_duration_seconds;
+  if (isPositiveNumber(targetDurationSeconds)) {
+    return targetDurationSeconds;
+  }
+
+  if (params.normalizedDurationSeconds > 0) {
+    return params.normalizedDurationSeconds;
+  }
+
+  const timelineDurationSeconds = resolveTimelineOverrideDurationSeconds({
+    timelineOverrides: params.timelineOverrides,
+    template: params.template,
+  });
+  if (timelineDurationSeconds > 0) {
+    return timelineDurationSeconds;
+  }
+
+  return ASSEMBLY_FALLBACK_DURATION_SECONDS;
 }
 
 export function buildAssemblyProps(
@@ -47,16 +100,19 @@ export function buildAssemblyProps(
   fps: number = ASSEMBLY_FPS,
 ): AssemblyInputProps {
   const normalized = normalizeAssemblyAssets(assets, fps);
+  const template = resolveTemplate(templateSlug);
   const templateConfig = parseTemplateRenderConfig(templateConfigInput);
   const layoutOverrides = parseLayoutOverrideManifests(layoutOverridesInput);
   const timelineOverrides = parseTimelineOverrideManifests(timelineOverridesInput);
-  const totalSeconds =
-    normalized.totalDurationSeconds > 0
-      ? normalized.totalDurationSeconds
-      : ASSEMBLY_FALLBACK_DURATION_SECONDS;
+  const totalSeconds = resolveAssemblyDurationSeconds({
+    assets,
+    normalizedDurationSeconds: normalized.totalDurationSeconds,
+    timelineOverrides,
+    template,
+  });
 
   return parseAssemblyInputProps({
-    template: resolveTemplate(templateSlug),
+    template,
     fps,
     totalDurationInFrames: secondsToFrames(totalSeconds, fps),
     voiceAudioUrl: normalized.voiceAudioUrl,

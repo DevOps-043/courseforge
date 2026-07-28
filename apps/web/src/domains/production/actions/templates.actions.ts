@@ -655,21 +655,26 @@ export async function createTemplateBundleUploadPathAction(params: {
   templateId?: string | null;
   fileName: string;
 }): Promise<{ success: boolean; bucket?: string; path?: string; error?: string }> {
-  const { error: authError } = await getAuthorizedSupabase();
-  if (authError) return { success: false, error: authError };
+  try {
+    const { error: authError } = await getAuthorizedSupabase();
+    if (authError) return { success: false, error: authError };
 
-  const activeOrgId = await resolveActiveTemplateOrganizationId();
+    const activeOrgId = await resolveActiveTemplateOrganizationId();
   if (!activeOrgId) return { success: false, error: "No se encontrÃ³ organizaciÃ³n activa" };
 
-  const scope = sanitizeBundleFileSegment(params.templateId || "new");
-  const safeName = sanitizeBundleFileSegment(params.fileName).replace(/\.zip$/i, "");
-  const entropy = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const scope = sanitizeBundleFileSegment(params.templateId || "new");
+    const safeName = sanitizeBundleFileSegment(params.fileName).replace(/\.zip$/i, "");
+    const entropy = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
-  return {
-    success: true,
-    bucket: TEMPLATE_BUNDLE_BUCKET,
-    path: `organizations/${activeOrgId}/templates/${scope}/${entropy}_${safeName}.zip`,
-  };
+    return {
+      success: true,
+      bucket: TEMPLATE_BUNDLE_BUCKET,
+      path: `organizations/${activeOrgId}/templates/${scope}/${entropy}_${safeName}.zip`,
+    };
+  } catch (error: any) {
+    console.error("[TemplatesActions] Error creating bundle upload path:", error);
+    return { success: false, error: error.message || "No se pudo preparar la ruta segura del bundle" };
+  }
 }
 
 /**

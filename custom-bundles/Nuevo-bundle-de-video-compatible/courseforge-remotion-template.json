@@ -1,0 +1,219 @@
+{
+  "name": "Nuevo bundle de video",
+  "entryPoint": "src/index.tsx",
+  "compositionId": "Nuevo-bundle-de-video",
+  "exportMode": "root",
+  "layoutContractVersion": 2,
+  "layoutCoordinateSpace": "canvas",
+  "defaultDurationFrames": 150,
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "propsSchema": {
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "description": "Titulo principal de la leccion o composicion."
+      },
+      "subtitle": {
+        "type": "string",
+        "description": "Subtitulo o texto narrativo corto en pantalla."
+      },
+      "accentColor": {
+        "type": "string",
+        "description": "Color de acento opcional."
+      },
+      "designTokens": {
+        "type": "object",
+        "description": "Tokens visuales seguros expuestos por la direccion creativa."
+      },
+      "visualVariantId": {
+        "type": "string",
+        "description": "ID de variante visual declarada en creativeBrief.visualVariants."
+      },
+      "animationVariant": {
+        "type": "string",
+        "description": "Ritmo de animacion elegido desde la direccion creativa."
+      },
+      "sceneSwapOnSlideChange": {
+        "type": "boolean",
+        "description": "Intercambia izquierda/derecha al cambiar de diapositiva."
+      },
+      "expandMissingSupportMedia": {
+        "type": "boolean",
+        "description": "Expande slide o B-roll cuando falta el otro soporte visual."
+      },
+      "avatarVideoUrl": {
+        "type": "string",
+        "description": "URL publica del video de avatar/talking head."
+      },
+      "bgMusicUrl": {
+        "type": "string",
+        "description": "URL publica de musica de fondo."
+      },
+      "bgMusicVolume": {
+        "type": "number",
+        "description": "Volumen relativo de musica de fondo entre 0 y 1."
+      },
+      "brollClips": {
+        "type": "array",
+        "description": "Clips B-roll normalizados por SofLIA - Engine."
+      },
+      "layoutOverrides": {
+        "type": "array",
+        "description": "Manifiestos de ajustes visuales no destructivos del editor de layout."
+      },
+      "slides": {
+        "type": "array",
+        "description": "Slides renderizables normalizadas por SofLIA - Engine."
+      },
+      "timelineOverrides": {
+        "type": "array",
+        "description": "Manifiestos de ajustes temporales no destructivos del editor de timeline."
+      },
+      "totalDurationInFrames": {
+        "type": "integer",
+        "description": "Duracion total resuelta para el render."
+      },
+      "voiceAudioUrl": {
+        "type": "string",
+        "description": "URL publica de la locucion principal."
+      }
+    }
+  },
+  "defaultProps": {
+    "title": "Nuevo bundle de video",
+    "subtitle": "Video educativo con avatar, diapositivas, B-roll.",
+    "accentColor": "#DA951C",
+    "designTokens": {
+      "backgroundColor": "#05070B",
+      "surfaceColor": "#111827",
+      "accentColor": "#DA951C",
+      "textColor": "#F8FAFC",
+      "mutedTextColor": "#CBD5E1",
+      "typographyDisplay": "Compact high-contrast sans display",
+      "typographyBody": "Readable humanist sans for lesson context"
+    },
+    "visualVariantId": "variant-studio-asymmetric",
+    "animationVariant": "scene-swap",
+    "sceneSwapOnSlideChange": true,
+    "expandMissingSupportMedia": true,
+    "bgMusicVolume": 0.12,
+    "brollClips": [],
+    "layoutOverrides": [],
+    "slides": [],
+    "timelineOverrides": [],
+    "totalDurationInFrames": 150
+  },
+  "editableLayers": [
+    {
+      "layerId": "avatar",
+      "label": "Avatar",
+      "kind": "avatar",
+      "defaultBox": {
+        "x": 0,
+        "y": 0,
+        "width": 691,
+        "height": 1080
+      },
+      "defaultStackOrder": 10,
+      "stackGroup": "root",
+      "capabilities": {
+        "canMove": true,
+        "canResize": true,
+        "canCrop": true,
+        "canRotate": false,
+        "canHide": true,
+        "canReorder": true
+      },
+      "constraints": {
+        "minWidth": 320,
+        "minHeight": 240,
+        "safeArea": "full"
+      }
+    },
+    {
+      "layerId": "primaryVisual",
+      "label": "Contenedor visual",
+      "kind": "custom",
+      "defaultBox": {
+        "x": 691,
+        "y": 0,
+        "width": 1229,
+        "height": 1080
+      },
+      "defaultStackOrder": 0,
+      "stackGroup": "root",
+      "capabilities": {
+        "canMove": true,
+        "canResize": true,
+        "canCrop": false,
+        "canRotate": false,
+        "canHide": false,
+        "canReorder": false
+      },
+      "constraints": {
+        "minWidth": 480,
+        "minHeight": 360,
+        "safeArea": "full"
+      }
+    },
+    {
+      "layerId": "slides",
+      "label": "Diapositivas",
+      "kind": "slides",
+      "defaultBox": {
+        "x": 733,
+        "y": 42,
+        "width": 1145,
+        "height": 477
+      },
+      "defaultStackOrder": 20,
+      "stackGroup": "root",
+      "itemLayerIdPattern": "slide:{index}",
+      "capabilities": {
+        "canMove": true,
+        "canResize": true,
+        "canCrop": true,
+        "canRotate": false,
+        "canHide": true,
+        "canReorder": true
+      },
+      "constraints": {
+        "minWidth": 360,
+        "minHeight": 220,
+        "safeArea": "full"
+      }
+    },
+    {
+      "layerId": "broll",
+      "label": "B-roll",
+      "kind": "broll",
+      "defaultBox": {
+        "x": 733,
+        "y": 561,
+        "width": 1145,
+        "height": 477
+      },
+      "defaultStackOrder": 30,
+      "stackGroup": "root",
+      "itemLayerIdPattern": "broll:{order}",
+      "capabilities": {
+        "canMove": true,
+        "canResize": true,
+        "canCrop": true,
+        "canRotate": false,
+        "canHide": true,
+        "canReorder": true
+      },
+      "constraints": {
+        "minWidth": 240,
+        "minHeight": 135,
+        "lockAspectRatio": true,
+        "safeArea": "full"
+      }
+    }
+  ],
+  "remotionVersion": "4.0.484"
+}

@@ -122,7 +122,7 @@ function readPackageDependencies(packageJson: any) {
   } as Record<string, string>;
 }
 
-function manifestSupportsLayoutOverrides(manifest: RemotionTemplateManifest): boolean {
+function manifestSupportsArrayProp(manifest: RemotionTemplateManifest, propName: string): boolean {
   const propsSchema = manifest.propsSchema as Record<string, unknown> | undefined;
   const properties = propsSchema?.properties;
 
@@ -130,13 +130,21 @@ function manifestSupportsLayoutOverrides(manifest: RemotionTemplateManifest): bo
     return false;
   }
 
-  const layoutOverrides = (properties as Record<string, unknown>).layoutOverrides;
+  const propSchema = (properties as Record<string, unknown>)[propName];
   return Boolean(
-    layoutOverrides &&
-    typeof layoutOverrides === "object" &&
-    !Array.isArray(layoutOverrides) &&
-    (layoutOverrides as Record<string, unknown>).type === "array",
+    propSchema &&
+    typeof propSchema === "object" &&
+    !Array.isArray(propSchema) &&
+    (propSchema as Record<string, unknown>).type === "array",
   );
+}
+
+function manifestSupportsLayoutOverrides(manifest: RemotionTemplateManifest): boolean {
+  return manifestSupportsArrayProp(manifest, "layoutOverrides");
+}
+
+function manifestSupportsTimelineOverrides(manifest: RemotionTemplateManifest): boolean {
+  return manifestSupportsArrayProp(manifest, "timelineOverrides");
 }
 
 /**
@@ -288,6 +296,12 @@ export async function validateRemotionBundle(
             "El bundle admite posicion y tamano, pero ninguna capa declara canReorder; el editor no mostrara controles de orden.",
           );
         }
+      }
+
+      if (manifestSupportsLayoutOverrides(manifest) && !manifestSupportsTimelineOverrides(manifest)) {
+        warnings.push(
+          "El manifiesto no declara propsSchema.properties.timelineOverrides como array; el editor de timeline no podra aplicar cambios de inicio, fin o recorte por asset en esta plantilla.",
+        );
       }
     }
 

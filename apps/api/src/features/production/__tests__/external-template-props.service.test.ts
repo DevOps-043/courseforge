@@ -105,6 +105,50 @@ describe('external template props contract', () => {
     assert.equal(result.resolvedProps.accentColor, '#123456');
   });
 
+  it('does not let template prop overrides replace canonical assembly props', () => {
+    const result = buildExternalTemplateProps({
+      assets: {
+        ...assets,
+        assembly_target_duration_seconds: 42,
+      },
+      compositionId: 'external-main',
+      variables: {
+        timelineOverrides: [
+          {
+            version: 1,
+            templateId: 'external-main',
+            componentId: 'component-1',
+            timeline: { fps: 30, durationInFrames: 9 * 60 * 30 },
+            segments: [
+              {
+                id: 'slide-0',
+                trackKind: 'slides',
+                layerId: 'slide:0',
+                startFrame: 30,
+                endFrame: 120,
+              },
+            ],
+          },
+        ],
+        templateProps: {
+          title: 'Allowed title',
+          totalDurationInFrames: 9 * 60 * 30,
+          slides: [],
+          brollClips: [],
+          timelineOverrides: [],
+        },
+      },
+    });
+
+    assert.equal(result.resolvedProps.title, 'Allowed title');
+    assert.equal(result.resolvedProps.totalDurationInFrames, 42 * 30);
+    assert.deepEqual(result.resolvedProps.slides, [
+      { index: 0, url: 'https://cdn.example.com/slide-1.png' },
+      { index: 1, url: 'https://cdn.example.com/slide-2.png' },
+    ]);
+    assert.equal((result.resolvedProps.timelineOverrides as any[])[0].segments[0].startFrame, 30);
+  });
+
   it('fails with a stable code when required props are missing', () => {
     assert.throws(
       () => validatePropsSchema(

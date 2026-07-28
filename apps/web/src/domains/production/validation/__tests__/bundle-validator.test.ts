@@ -85,6 +85,7 @@ describe("validateRemotionBundle", () => {
       type: "object",
       properties: {
         layoutOverrides: { type: "array" },
+        timelineOverrides: { type: "array" },
         title: { type: "string" },
       },
     };
@@ -141,6 +142,7 @@ describe("validateRemotionBundle", () => {
     assert.equal(result.info.manifest?.layoutContractVersion, 2);
     assert.equal(result.info.manifest?.layoutCoordinateSpace, "canvas");
     assert.equal(result.warnings.some((warning) => warning.includes("layoutOverrides")), false);
+    assert.equal(result.warnings.some((warning) => warning.includes("timelineOverrides")), false);
   });
 
   it("warns when a valid bundle cannot receive layout editor overrides", async () => {
@@ -179,6 +181,7 @@ describe("validateRemotionBundle", () => {
 
     assert.equal(result.isValid, true);
     assert.ok(result.warnings.some((warning) => warning.includes("ignorara layoutOverrides")));
+    assert.ok(result.warnings.some((warning) => warning.includes("timelineOverrides")));
   });
 
   it("rejects bundles without the required manifest", async () => {
