@@ -22,6 +22,14 @@ const PROVIDERS: ProductionProviderDefinition[] = [
     name: "Manual Upload/Link",
     jobTypes: [],
   },
+  {
+    key: PRODUCTION_PROVIDERS.HEYGEN,
+    name: "HeyGen",
+    jobTypes: [
+      PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_CLIP,
+      PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_VIDEO,
+    ],
+  },
 ];
 
 export function getProductionProvider(provider: ProductionProvider) {

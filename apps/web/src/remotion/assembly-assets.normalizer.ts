@@ -1,5 +1,9 @@
 import type { MaterialAssets } from "@/domains/materials/types/materials.types";
-import type { AssemblyBrollClip, AssemblySlide } from "./types";
+import type {
+  AssemblyAvatarClip,
+  AssemblyBrollClip,
+  AssemblySlide,
+} from "./types";
 
 const DEFAULT_CLIP_SECONDS = 5;
 const DEFAULT_SLIDE_SECONDS = 5;
@@ -19,6 +23,7 @@ export interface NormalizedAssemblyAssets {
   bgMusicUrl?: string;
   bgMusicVolume: number;
   avatarVideoUrl?: string;
+  avatarClips: AssemblyAvatarClip[];
   slides: AssemblySlide[];
   brollClips: AssemblyBrollClip[];
   totalDurationSeconds: number;
@@ -53,6 +58,7 @@ function buildWarnings(params: {
   assets: MaterialAssets;
   slides: AssemblySlide[];
   brollClips: AssemblyBrollClip[];
+  avatarClips: AssemblyAvatarClip[];
 }) {
   const warnings: AssemblyAssetWarning[] = [];
   const hasNonRenderableSlides =
@@ -66,7 +72,11 @@ function buildWarnings(params: {
     });
   }
 
-  if (params.slides.length === 0 && params.brollClips.length === 0) {
+  if (
+    params.slides.length === 0 &&
+    params.brollClips.length === 0 &&
+    params.avatarClips.length === 0
+  ) {
     warnings.push({
       code: "NO_RENDERABLE_VISUAL_ASSETS",
       message:
@@ -75,6 +85,12 @@ function buildWarnings(params: {
   }
 
   return warnings;
+}
+
+function isCompletedAvatarClip(
+  clip: NonNullable<MaterialAssets["avatar_clips"]>[number],
+) {
+  return Boolean(clip?.public_url) && (!clip.status || clip.status === "COMPLETED");
 }
 
 export function normalizeAssemblyAssets(
@@ -105,6 +121,23 @@ export function normalizeAssemblyAssets(
     )
     .map(({ originalIndex: _originalIndex, ...clip }) => clip);
 
+  const avatarClips = (a.avatar_clips ?? [])
+    .filter(isCompletedAvatarClip)
+    .map((clip, index) => ({
+      url: clip.public_url as string,
+      durationInFrames: secondsToFrames(
+        isPositiveNumber(clip.duration) ? clip.duration : DEFAULT_CLIP_SECONDS,
+        fps,
+      ),
+      order: isPositiveNumber(clip.order) ? clip.order : index + 1,
+      originalIndex: index,
+    }))
+    .sort(
+      (left, right) =>
+        left.order - right.order || left.originalIndex - right.originalIndex,
+    )
+    .map(({ originalIndex: _originalIndex, ...clip }) => clip);
+
   const explicitBrollTotalSeconds = (a.b_roll_clips ?? [])
     .filter(
       (clip): clip is NonNullable<MaterialAssets["b_roll_clips"]>[number] & { duration: number } =>
@@ -115,6 +148,16 @@ export function normalizeAssemblyAssets(
     (sum, clip) => sum + clip.durationInFrames / fps,
     0,
   );
+  const explicitAvatarClipTotalSeconds = (a.avatar_clips ?? [])
+    .filter(
+      (clip): clip is NonNullable<MaterialAssets["avatar_clips"]>[number] & { duration: number } =>
+        isCompletedAvatarClip(clip) && isPositiveNumber(clip.duration),
+    )
+    .reduce((sum, clip) => sum + clip.duration, 0);
+  const fallbackAvatarClipTotalSeconds = avatarClips.reduce(
+    (sum, clip) => sum + clip.durationInFrames / fps,
+    0,
+  );
 
   const voiceDurationSeconds = isPositiveNumber(a.voice_audio?.duration)
     ? a.voice_audio.duration
@@ -122,25 +165,40 @@ export function normalizeAssemblyAssets(
   const avatarDurationSeconds = isPositiveNumber(a.avatar_video?.duration)
     ? a.avatar_video.duration
     : 0;
-  let totalDurationSeconds = voiceDurationSeconds;
+  let totalDurationSeconds = 0;
 
-  if (totalDurationSeconds <= 0 && avatarDurationSeconds > 0) {
+  if (
+    a.avatar_generation_mode === "scene_clips" &&
+    (explicitAvatarClipTotalSeconds > 0 || fallbackAvatarClipTotalSeconds > 0)
+  ) {
+    totalDurationSeconds =
+      explicitAvatarClipTotalSeconds || fallbackAvatarClipTotalSeconds;
+  } else if (a.avatar_generation_mode === "single_video" && avatarDurationSeconds > 0) {
     totalDurationSeconds = avatarDurationSeconds;
-  } else if (totalDurationSeconds <= 0 && explicitBrollTotalSeconds > 0) {
+  } else if (!a.avatar_generation_mode && explicitAvatarClipTotalSeconds > 0) {
+    totalDurationSeconds = explicitAvatarClipTotalSeconds;
+  } else if (!a.avatar_generation_mode && fallbackAvatarClipTotalSeconds > 0) {
+    totalDurationSeconds = fallbackAvatarClipTotalSeconds;
+  } else if (voiceDurationSeconds > 0) {
+    totalDurationSeconds = voiceDurationSeconds;
+  } else if (avatarDurationSeconds > 0) {
+    totalDurationSeconds = avatarDurationSeconds;
+  } else if (explicitBrollTotalSeconds > 0) {
     totalDurationSeconds = explicitBrollTotalSeconds;
-  } else if (totalDurationSeconds <= 0 && fallbackBrollTotalSeconds > 0) {
+  } else if (fallbackBrollTotalSeconds > 0) {
     totalDurationSeconds = fallbackBrollTotalSeconds;
-  } else if (totalDurationSeconds <= 0 && slides.length > 0) {
+  } else if (slides.length > 0) {
     totalDurationSeconds = slides.length * DEFAULT_SLIDE_SECONDS;
   }
 
-  const warnings = buildWarnings({ assets: a, slides, brollClips });
+  const warnings = buildWarnings({ assets: a, slides, brollClips, avatarClips });
 
   return {
     voiceAudioUrl: a.voice_audio?.public_url || undefined,
     bgMusicUrl: a.background_music?.public_url || undefined,
     bgMusicVolume: a.background_music?.volume_multiplier ?? DEFAULT_BG_MUSIC_VOLUME,
     avatarVideoUrl: a.avatar_video?.public_url || undefined,
+    avatarClips,
     slides,
     brollClips,
     totalDurationSeconds,
@@ -155,10 +213,13 @@ export function getAssemblyAssetReadiness(
   const a = assets ?? {};
   const normalized = normalizeAssemblyAssets(a, fps);
   const hasRenderableVisualAssets =
-    normalized.slides.length > 0 || normalized.brollClips.length > 0;
+    normalized.slides.length > 0 ||
+    normalized.brollClips.length > 0 ||
+    normalized.avatarClips.length > 0;
   const hasRenderableAssets = Boolean(
-    normalized.voiceAudioUrl ||
+      normalized.voiceAudioUrl ||
       normalized.avatarVideoUrl ||
+      normalized.avatarClips.length > 0 ||
       normalized.bgMusicUrl ||
       hasRenderableVisualAssets,
   );

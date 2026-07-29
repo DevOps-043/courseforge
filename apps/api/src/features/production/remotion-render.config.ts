@@ -8,7 +8,6 @@ export const RECOMMENDED_CLOUD_RUN_RENDER_TIMEOUT_MS = 1_800_000;
 
 export interface RemotionRenderConfig {
   provider: RemotionRenderProviderSetting;
-  apiPublicUrl: string | null;
 }
 
 export interface RemotionRenderTuningSnapshot {
@@ -35,29 +34,6 @@ function normalizeProvider(value: string | undefined): RemotionRenderProviderSet
   return 'local';
 }
 
-function optionalUrl(value: string | undefined): string | null {
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== 'https:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
-      throw new Error('Only HTTPS public URLs are allowed outside local development.');
-    }
-    return value.replace(/\/+$/, '');
-  } catch {
-    throw new Error(`Invalid public URL configuration: ${value}`);
-  }
-}
-
-function optionalPositiveInteger(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw?.trim()) return fallback;
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new Error(`${name} must be a positive integer.`);
-  }
-  return parsed;
-}
-
 function optionalPositiveIntegerFromEnv(
   name: string,
   fallback: number,
@@ -71,9 +47,8 @@ function optionalPositiveIntegerFromEnv(
 
 export function getRemotionRenderConfig(): RemotionRenderConfig {
   const provider = normalizeProvider(process.env.RENDER_PROVIDER);
-  const apiPublicUrl = optionalUrl(process.env.API_PUBLIC_URL || process.env.EXPRESS_PUBLIC_URL);
 
-  return { provider, apiPublicUrl };
+  return { provider };
 }
 
 export function getRemotionRenderReadiness(): RemotionRenderReadiness {
@@ -93,10 +68,6 @@ export function getRemotionRenderReadiness(): RemotionRenderReadiness {
       'EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS',
       RECOMMENDED_CLOUD_RUN_RENDER_TIMEOUT_MS,
     ));
-  }
-
-  if (process.env.NODE_ENV === 'production') {
-    checks.push(requiredAnyEnvCheck(['API_PUBLIC_URL', 'EXPRESS_PUBLIC_URL']));
   }
 
   return {
@@ -158,17 +129,6 @@ function requiredEnvCheck(name: string): RemotionRenderReadinessCheck {
   };
 }
 
-function requiredAnyEnvCheck(names: string[]): RemotionRenderReadinessCheck {
-  const configuredName = names.find((name) => Boolean(process.env[name]?.trim()));
-  return {
-    name: names.join('|'),
-    ok: Boolean(configuredName),
-    message: configuredName
-      ? `${configuredName} is configured.`
-      : `One of ${names.join(', ')} is required in production.`,
-  };
-}
-
 function requiredIntegerAtLeastCheck(name: string, minimum: number): RemotionRenderReadinessCheck {
   const raw = process.env[name];
   const parsed = raw?.trim() ? Number(raw) : NaN;
@@ -181,50 +141,6 @@ function requiredIntegerAtLeastCheck(name: string, minimum: number): RemotionRen
       ? `${name} is configured for long-running Cloud Run renders.`
       : `${name} must be an integer >= ${minimum} for production local renders.`,
   };
-}
-
-function httpsUrlCheck(name: string, value: string | undefined): RemotionRenderReadinessCheck {
-  if (!value?.trim()) {
-    return { name, ok: false, message: `${name} is missing.` };
-  }
-
-  try {
-    const url = new URL(value);
-    const ok = url.protocol === 'https:' || url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-    return {
-      name,
-      ok,
-      message: ok ? `${name} is a valid URL.` : `${name} must use HTTPS outside local development.`,
-    };
-  } catch {
-    return {
-      name,
-      ok: false,
-      message: `${name} is not a valid URL.`,
-    };
-  }
-}
-
-function optionalPositiveIntegerOrNullFromEnv(
-  name: string,
-  env: NodeJS.ProcessEnv = process.env,
-): number | null {
-  const raw = env[name];
-  if (!raw?.trim()) return null;
-  const parsed = Number(raw);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
-function optionalBoundedPositiveIntegerFromEnv(
-  name: string,
-  fallback: number,
-  max: number,
-  env: NodeJS.ProcessEnv = process.env,
-): number {
-  const raw = env[name];
-  if (!raw?.trim()) return fallback;
-  const parsed = Number(raw);
-  return Number.isInteger(parsed) && parsed > 0 && parsed <= max ? parsed : fallback;
 }
 
 function stableStringify(value: unknown): string {

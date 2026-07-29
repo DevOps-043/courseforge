@@ -77,6 +77,8 @@ export function ProductionAssetCard({
     voiceAudio,
     backgroundMusic,
     bRollClips,
+    avatarClips,
+    avatarGenerationMode,
     avatarVideo,
     slidesAsset,
     isUploadingVoice,
@@ -94,10 +96,29 @@ export function ProductionAssetCard({
     slidesFileRef,
 
     // Heygen sync
+    heygenAspectRatio,
+    heygenAvatarPresets,
+    heygenCaptionEnabled,
+    heygenEngine,
+    heygenJobId,
+    heygenJobStatus,
+    heygenProviderJobId,
+    heygenResolution,
     isSyncingHeygen,
+    isLoadingHeygenPresets,
+    selectedHeygenAvatarPresetId,
+    selectedHeygenVoicePresetId,
+    setHeygenAspectRatio,
+    setHeygenCaptionEnabled,
+    setHeygenEngine,
+    setHeygenResolution,
+    setSelectedHeygenAvatarPresetId,
+    setSelectedHeygenVoicePresetId,
+    heygenVoicePresets,
     heygenSyncProgress,
     heygenError,
-    handleHeygenSync,
+    loadHeygenPresets,
+    handleHeygenStatusCheck,
 
     // Sub-handlers
     handleVoiceUpload,
@@ -258,15 +279,37 @@ export function ProductionAssetCard({
               />
               
               <AvatarVideoSection
+                componentId={component.id}
+                avatarClips={avatarClips}
+                avatarGenerationMode={avatarGenerationMode}
                 avatarVideo={avatarVideo}
+                aspectRatio={heygenAspectRatio}
+                avatarPresets={heygenAvatarPresets}
+                captionEnabled={heygenCaptionEnabled}
+                engine={heygenEngine}
+                jobId={heygenJobId}
+                jobStatus={heygenJobStatus}
+                providerJobId={heygenProviderJobId}
+                resolution={heygenResolution}
                 isUploading={isUploadingAvatar}
                 isSyncing={isSyncingHeygen}
+                isLoadingPresets={isLoadingHeygenPresets}
+                selectedAvatarPresetId={selectedHeygenAvatarPresetId}
+                selectedVoicePresetId={selectedHeygenVoicePresetId}
                 syncProgress={heygenSyncProgress}
                 syncError={heygenError}
+                voicePresets={heygenVoicePresets}
                 fileRef={avatarFileRef}
                 onUpload={handleAvatarUpload}
-                onHeygenSync={handleHeygenSync}
+                onHeygenStatusCheck={handleHeygenStatusCheck}
+                onRefreshPresets={loadHeygenPresets}
                 onClear={clearAvatarVideo}
+                onAspectRatioChange={setHeygenAspectRatio}
+                onAvatarPresetChange={setSelectedHeygenAvatarPresetId}
+                onCaptionEnabledChange={setHeygenCaptionEnabled}
+                onEngineChange={setHeygenEngine}
+                onResolutionChange={setHeygenResolution}
+                onVoicePresetChange={setSelectedHeygenVoicePresetId}
                 isSearchingDrive={isSearchingGoogleDrive}
                 isImportingDrive={isImportingGoogleDrive}
                 driveSearchResults={googleDriveSearchResults}

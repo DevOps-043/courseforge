@@ -132,7 +132,7 @@ export async function createOrReuseProductionJob(
 
   let existingQuery = supabase
     .from("production_jobs")
-    .select("id, output_snapshot, status")
+    .select("id, output_snapshot, provider_job_id, status")
     .eq("idempotency_key", params.idempotencyKey)
     .eq("job_type", params.jobType)
     .eq("provider", params.provider);
@@ -169,7 +169,7 @@ export async function createOrReuseProductionJob(
       provider_model: params.providerModel || null,
       status: PRODUCTION_JOB_STATUSES.PENDING,
     })
-    .select("id, output_snapshot, status")
+    .select("id, output_snapshot, provider_job_id, status")
     .single();
 
   if (error) {

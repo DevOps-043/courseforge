@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import JSZip from "jszip";
 import { toast } from "sonner";
 import { getErrorMessage } from "@/lib/errors";
@@ -13,6 +13,8 @@ import {
   COPY_FEEDBACK_RESET_DELAY_MS,
 } from "@/shared/constants/timing";
 import type {
+  AvatarClip,
+  AvatarGenerationMode,
   MaterialAssets,
   MaterialComponent,
   StoryboardItem,
@@ -49,6 +51,16 @@ function isValidHttpUrl(url: string) {
   return url.startsWith("https://") || url.startsWith("http://");
 }
 
+function isRestPendingHeygenStatus(status: unknown) {
+  return (
+    status === "PENDING" ||
+    status === "QUEUED" ||
+    status === "RUNNING" ||
+    status === "WAITING_PROVIDER" ||
+    status === "RETRY_SCHEDULED"
+  );
+}
+
 function isRenderableSlideImage(file: File) {
   const imageMimeTypes = new Set([
     "image/png",
@@ -67,6 +79,16 @@ function isRenderableSlideImage(file: File) {
     extension === "svg"
   );
 }
+
+interface HeygenPreset {
+  id: string;
+  is_default?: boolean;
+  name?: string | null;
+}
+
+type HeygenEngine = "avatar_iv" | "avatar_v";
+type HeygenResolution = "720p" | "1080p" | "4k";
+type HeygenAspectRatio = "16:9" | "9:16";
 
 function isHtmlSlideFile(file: File) {
   const extension = file.name.split(".").pop()?.toLowerCase();
@@ -133,6 +155,7 @@ async function expandSlideInputFiles(files: File[]) {
 function buildSingleUploadedSlideImage(params: {
   file: File;
   fileName: string;
+  originalFileName: string;
   publicUrl: string;
   slideIndex?: number;
 }) {
@@ -141,6 +164,7 @@ function buildSingleUploadedSlideImage(params: {
   }
 
   return {
+    file_name: params.originalFileName,
     slide_index: params.slideIndex ?? 1,
     storage_path: `production-assets/${params.fileName}`,
     public_url: params.publicUrl,
@@ -184,9 +208,11 @@ export function useProductionAssetState({
   // Legacy states (kept for compatibility and fallback)
   const [bRollPrompts, setBRollPrompts] = useState(component.assets?.b_roll_prompts || "");
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
-  const [finalVideoSource, setFinalVideoSource] = useState<"upload" | "link" | null>(
+  const [finalVideoSource, setFinalVideoSource] = useState<"upload" | "link" | "desktop_worker" | null>(
     component.assets?.final_video_source || (component.assets?.final_video_url ? "link" : null)
   );
+  const [finalVideoFileName, setFinalVideoFileName] = useState(component.assets?.final_video_file_name || "");
+  const [finalVideoStoragePath, setFinalVideoStoragePath] = useState(component.assets?.final_video_storage_path || "");
   const [finalVideoUrl, setFinalVideoUrl] = useState(component.assets?.final_video_url || "");
   const [screencastUrl, setScreencastUrl] = useState(component.assets?.screencast_url || "");
   const [slidesUrl, setSlidesUrl] = useState(component.assets?.slides_url || "");
@@ -206,6 +232,13 @@ export function useProductionAssetState({
   const [avatarVideo, setAvatarVideo] = useState<AvatarVideo | null>(
     (component.assets as any)?.avatar_video || null
   );
+  const [avatarGenerationMode, setAvatarGenerationMode] =
+    useState<AvatarGenerationMode>(
+      (component.assets as any)?.avatar_generation_mode || "single_video",
+    );
+  const [avatarClips, setAvatarClips] = useState<AvatarClip[]>(
+    (component.assets as any)?.avatar_clips || [],
+  );
   const [slidesAsset, setSlidesAsset] = useState<SlidesAsset | null>(
     (component.assets as any)?.slides || null
   );
@@ -221,8 +254,24 @@ export function useProductionAssetState({
   const [isUploadingSlides, setIsUploadingSlides] = useState(false);
   const [isExportingOpenDesign, setIsExportingOpenDesign] = useState(false);
 
-  // Heygen synchronization states
+  // HeyGen generation states
+  const [heygenAvatarPresets, setHeygenAvatarPresets] = useState<HeygenPreset[]>([]);
+  const [heygenVoicePresets, setHeygenVoicePresets] = useState<HeygenPreset[]>([]);
+  const [isLoadingHeygenPresets, setIsLoadingHeygenPresets] = useState(false);
   const [isSyncingHeygen, setIsSyncingHeygen] = useState(false);
+  const [heygenAspectRatio, setHeygenAspectRatio] =
+    useState<HeygenAspectRatio>("16:9");
+  const [heygenCaptionEnabled, setHeygenCaptionEnabled] = useState(false);
+  const [heygenEngine, setHeygenEngine] = useState<HeygenEngine>("avatar_iv");
+  const [heygenJobId, setHeygenJobId] = useState<string | null>(null);
+  const [heygenJobStatus, setHeygenJobStatus] = useState<string | null>(null);
+  const [heygenProviderJobId, setHeygenProviderJobId] = useState<string | null>(null);
+  const [heygenResolution, setHeygenResolution] =
+    useState<HeygenResolution>("1080p");
+  const [selectedHeygenAvatarPresetId, setSelectedHeygenAvatarPresetId] =
+    useState("");
+  const [selectedHeygenVoicePresetId, setSelectedHeygenVoicePresetId] =
+    useState("");
   const [heygenSyncProgress, setHeygenSyncProgress] = useState(0);
   const [heygenError, setHeygenError] = useState<string | null>(null);
 
@@ -244,6 +293,80 @@ export function useProductionAssetState({
   const slidesFileRef = useRef<HTMLInputElement>(null);
 
   const videoUrl = component.assets?.video_url || "";
+
+  useEffect(() => {
+    void loadHeygenPresets();
+    void loadLatestHeygenJob();
+  }, []);
+
+  const loadHeygenPresets = async () => {
+    setIsLoadingHeygenPresets(true);
+    try {
+      const response = await fetch("/api/production/heygen/presets");
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "No se pudieron cargar presets HeyGen");
+      }
+
+      const avatars = Array.isArray(data.data?.avatars) ? data.data.avatars : [];
+      const voices = Array.isArray(data.data?.voices) ? data.data.voices : [];
+      setHeygenAvatarPresets(avatars);
+      setHeygenVoicePresets(voices);
+
+      const defaultAvatar = avatars.find((avatar: HeygenPreset) => avatar.is_default);
+      const defaultVoice = voices.find((voice: HeygenPreset) => voice.is_default);
+      setSelectedHeygenAvatarPresetId((current) =>
+        current || defaultAvatar?.id || avatars[0]?.id || "",
+      );
+      setSelectedHeygenVoicePresetId((current) =>
+        current || defaultVoice?.id || voices[0]?.id || "",
+      );
+    } catch (error) {
+      console.warn("Could not load HeyGen presets:", error);
+    } finally {
+      setIsLoadingHeygenPresets(false);
+    }
+  };
+
+  const loadLatestHeygenJob = async () => {
+    try {
+      const response = await fetch(
+        `/api/production/heygen/jobs?componentId=${component.id}`,
+      );
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "No se pudo recuperar el job HeyGen");
+      }
+
+      const latestJob = data.data?.latestJob;
+      if (!latestJob) return;
+
+      setHeygenJobId(latestJob.jobId || null);
+      setHeygenJobStatus(latestJob.status || null);
+      setHeygenProviderJobId(latestJob.providerJobId || null);
+
+      if (data.data?.asset?.publicUrl && data.data?.asset?.storagePath) {
+        const recoveredAvatar: AvatarVideo = {
+          external_id: latestJob.providerJobId || undefined,
+          file_name: data.data.asset.storagePath.split("/").pop(),
+          provider: "heygen",
+          public_url: data.data.asset.publicUrl,
+          storage_path: data.data.asset.storagePath,
+          sync_status: "COMPLETED",
+        };
+        setAvatarVideo((current) => current || recoveredAvatar);
+        return;
+      }
+
+      if (isRestPendingHeygenStatus(latestJob.status)) {
+        setHeygenSyncProgress(35);
+        setIsSyncingHeygen(true);
+        pollHeygenStatus(latestJob.jobId);
+      }
+    } catch (error) {
+      console.warn("Could not recover latest HeyGen job:", error);
+    }
+  };
 
   const updateAsset = (
     field: string,
@@ -282,7 +405,7 @@ export function useProductionAssetState({
     setIsUploadingVoice(true);
     try {
       const fileName = `voices/${component.id}-voice.${file.name.split('.').pop()}`;
-      const { publicUrl } = await uploadWithSignedUrl('production-assets', fileName, file, {
+      const { publicUrl, path } = await uploadWithSignedUrl('production-assets', fileName, file, {
         componentId: component.id,
       });
 
@@ -301,8 +424,9 @@ export function useProductionAssetState({
       }
 
       const newVoice: VoiceAudio = {
-        storage_path: `production-assets/${fileName}`,
+        storage_path: `production-assets/${path}`,
         public_url: publicUrl,
+        file_name: file.name,
         duration: duration || undefined,
         provider: 'elevenlabs',
         last_uploaded_at: new Date().toISOString(),
@@ -326,13 +450,14 @@ export function useProductionAssetState({
     setIsUploadingMusic(true);
     try {
       const fileName = `music/${component.id}-bg.${file.name.split('.').pop()}`;
-      const { publicUrl } = await uploadWithSignedUrl('production-assets', fileName, file, {
+      const { publicUrl, path } = await uploadWithSignedUrl('production-assets', fileName, file, {
         componentId: component.id,
       });
 
       const newMusic: BackgroundMusic = {
-        storage_path: `production-assets/${fileName}`,
+        storage_path: `production-assets/${path}`,
         public_url: publicUrl,
+        file_name: file.name,
         volume_multiplier: backgroundMusic?.volume_multiplier ?? 0.15,
       };
       setBackgroundMusic(newMusic);
@@ -497,18 +622,19 @@ export function useProductionAssetState({
         const fileName = isRenderableSlideImage(file)
           ? `slides/${component.id}-slide-${String(index + 1).padStart(2, "0")}-${safeName}.${extension}`
           : `slides/${component.id}-slides-source.${extension}`;
-        const { publicUrl } = await uploadWithSignedUrl('production-assets', fileName, file, {
+        const { publicUrl, path } = await uploadWithSignedUrl('production-assets', fileName, file, {
           componentId: component.id,
         });
 
         if (!referenceUrl) {
           referenceUrl = publicUrl;
-          referencePath = `production-assets/${fileName}`;
+          referencePath = `production-assets/${path}`;
         }
 
         const uploadedImage = buildSingleUploadedSlideImage({
           file,
-          fileName,
+          fileName: path,
+          originalFileName: file.name,
           publicUrl,
           slideIndex: uploadedImages.length + 1,
         });
@@ -575,7 +701,7 @@ export function useProductionAssetState({
     try {
       const clipId = `clip-${Date.now()}`;
       const fileName = `broll/${component.id}-${clipId}.${file.name.split('.').pop()}`;
-      const { publicUrl } = await uploadWithSignedUrl('production-assets', fileName, file, {
+      const { publicUrl, path } = await uploadWithSignedUrl('production-assets', fileName, file, {
         componentId: component.id,
       });
 
@@ -595,8 +721,9 @@ export function useProductionAssetState({
 
       const newClip: BRollClip = {
         id: clipId,
-        storage_path: `production-assets/${fileName}`,
+        storage_path: `production-assets/${path}`,
         public_url: publicUrl,
+        file_name: file.name,
         duration: duration || undefined,
         order: bRollClips.length + 1,
       };
@@ -635,6 +762,13 @@ export function useProductionAssetState({
   };
 
   const clearAvatarVideo = () => {
+    if (avatarGenerationMode === "scene_clips") {
+      setAvatarClips([]);
+      onAssetChange?.(component.id, { avatar_clips: [] });
+      toast.info("Clips de avatar removidos");
+      return;
+    }
+
     setAvatarVideo(null);
     onAssetChange?.(component.id, { avatar_video: null as any });
     toast.info("Video de avatar removido");
@@ -655,7 +789,7 @@ export function useProductionAssetState({
     setIsUploadingAvatar(true);
     try {
       const fileName = `avatars/${component.id}-avatar.${file.name.split('.').pop()}`;
-      const { publicUrl } = await uploadWithSignedUrl('production-assets', fileName, file, {
+      const { publicUrl, path } = await uploadWithSignedUrl('production-assets', fileName, file, {
         componentId: component.id,
       });
 
@@ -673,14 +807,42 @@ export function useProductionAssetState({
         }
       }
 
+      const storagePath = `production-assets/${path}`;
       const newAvatar: AvatarVideo = {
-        storage_path: `production-assets/${fileName}`,
+        storage_path: storagePath,
         public_url: publicUrl,
+        file_name: file.name,
         duration: duration || undefined,
         provider: 'upload',
       };
+
+      if (avatarGenerationMode === "scene_clips") {
+        const newClip: AvatarClip = {
+          id: `manual-${Date.now()}`,
+          order: avatarClips.length + 1,
+          script_text: file.name,
+          storage_path: storagePath,
+          public_url: publicUrl,
+          file_name: file.name,
+          duration: duration || undefined,
+          provider: "upload",
+          status: "COMPLETED",
+        };
+        const updatedClips = [...avatarClips, newClip];
+        setAvatarClips(updatedClips);
+        onAssetChange?.(component.id, {
+          avatar_generation_mode: "scene_clips",
+          avatar_clips: updatedClips,
+        });
+        toast.success("Clip de avatar subido");
+        return;
+      }
+
       setAvatarVideo(newAvatar);
-      onAssetChange?.(component.id, { avatar_video: newAvatar });
+      onAssetChange?.(component.id, {
+        avatar_generation_mode: "single_video",
+        avatar_video: newAvatar,
+      });
       toast.success('Video de avatar subido');
     } catch (err: any) {
       toast.error(`Error al subir avatar: ${err.message}`);
@@ -690,58 +852,62 @@ export function useProductionAssetState({
     }
   };
 
-  const handleHeygenSync = async (videoId: string) => {
-    if (!videoId) {
-      toast.error('Por favor introduce un ID de Heygen válido');
-      return;
-    }
-
+  const handleHeygenSync = async () => {
     setIsSyncingHeygen(true);
     setHeygenSyncProgress(10);
     setHeygenError(null);
     try {
-      const isUrl = videoId.trim().startsWith('http://') || videoId.trim().startsWith('https://');
-      const response = await fetch('/api/production/import-external', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/production/heygen/videos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          provider: 'heygen',
           componentId: component.id,
-          videoId: isUrl ? undefined : videoId.trim(),
-          videoUrl: isUrl ? videoId.trim() : undefined,
+          aspectRatio: heygenAspectRatio,
+          autoPromote: true,
+          avatarPresetId: selectedHeygenAvatarPresetId || undefined,
+          caption: heygenCaptionEnabled,
+          engine: heygenEngine,
+          outputFormat: "mp4",
+          resolution: heygenResolution,
+          voicePresetId: selectedHeygenVoicePresetId || undefined,
         }),
       });
 
       if (response.status === 202) {
         setHeygenSyncProgress(30);
         // Start polling background status
-        pollHeygenStatus(videoId.trim());
         return;
       }
 
       const data = await response.json();
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Error al importar de Heygen');
+        throw new Error(data.error || "Error al generar video con HeyGen");
       }
 
-      setHeygenSyncProgress(100);
-      setAvatarVideo(data.assets.avatar_video);
-      
-      onAssetChange?.(component.id, {
-        avatar_video: data.assets.avatar_video,
-      });
-      
-      toast.success('Video de Heygen transferido e importado correctamente');
+      const jobId = data.data?.jobId;
+      setHeygenJobId(jobId || null);
+      setHeygenProviderJobId(data.data?.providerJobId || null);
+      setHeygenJobStatus(data.data?.status || null);
+      setHeygenSyncProgress(35);
+      toast.success("Video enviado a HeyGen");
+
+      if (jobId) {
+        pollHeygenStatus(jobId);
+      } else {
+        setIsSyncingHeygen(false);
+      }
     } catch (err: any) {
       console.error(err);
+      setHeygenSyncProgress(0);
+      setIsSyncingHeygen(false);
       setHeygenError(err.message || 'Error de importación');
       toast.error(`Error de importación: ${err.message}`);
     } finally {
-      setIsSyncingHeygen(false);
+      // Polling clears this state when HeyGen finishes or times out.
     }
   };
 
-  const pollHeygenStatus = (videoId: string) => {
+  const pollHeygenStatus = (jobId: string) => {
     let attempts = 0;
     const interval = setInterval(async () => {
       attempts += 1;
@@ -753,28 +919,42 @@ export function useProductionAssetState({
       }
 
       try {
-        const response = await fetch('/api/production/import-external', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            provider: 'heygen',
-            componentId: component.id,
-            videoId,
-          }),
-        });
+        const response = await fetch(
+          `/api/production/heygen/jobs/${jobId}?autoPromote=true`,
+        );
 
         if (response.ok) {
           const data = await response.json();
-          clearInterval(interval);
-          setHeygenSyncProgress(100);
-          setAvatarVideo(data.assets.avatar_video);
-          
-          onAssetChange?.(component.id, {
-            avatar_video: data.assets.avatar_video,
-          });
-          
-          setIsSyncingHeygen(false);
-          toast.success('Video de Heygen transferido e importado correctamente');
+          const result = data.data;
+          setHeygenJobStatus(result.status || null);
+          setHeygenProviderJobId(result.providerJobId || null);
+
+          if (result.status === "SUCCEEDED" && result.asset) {
+            const newAvatar: AvatarVideo = {
+              external_id: result.providerJobId || undefined,
+              file_name: result.asset.storagePath.split("/").pop(),
+              provider: "heygen",
+              public_url: result.asset.publicUrl,
+              storage_path: result.asset.storagePath,
+              sync_status: "COMPLETED",
+            };
+            clearInterval(interval);
+            setHeygenSyncProgress(100);
+            setAvatarVideo(newAvatar);
+            setAvatarGenerationMode("single_video");
+            onAssetChange?.(component.id, {
+              avatar_generation_mode: "single_video",
+              avatar_video: newAvatar,
+            });
+            setIsSyncingHeygen(false);
+            toast.success("Video de HeyGen importado correctamente");
+          } else if (result.status === "FAILED") {
+            clearInterval(interval);
+            setHeygenError("HeyGen reporto la generacion como fallida.");
+            setIsSyncingHeygen(false);
+          } else {
+            setHeygenSyncProgress((prev) => Math.min(prev + 5, 95));
+          }
         } else if (response.status !== 202) {
           clearInterval(interval);
           const data = await response.json();
@@ -787,6 +967,17 @@ export function useProductionAssetState({
         console.error('Heygen polling error:', err);
       }
     }, 5000);
+  };
+
+  const handleHeygenStatusCheck = () => {
+    if (!heygenJobId) {
+      toast.error("No hay job activo de HeyGen para consultar.");
+      return;
+    }
+
+    setIsSyncingHeygen(true);
+    setHeygenError(null);
+    pollHeygenStatus(heygenJobId);
   };
 
   // Original generate prompts handler (adapted)
@@ -841,12 +1032,20 @@ export function useProductionAssetState({
       const fileExt = file.name.split(".").pop();
       const fileName = `${component.id}-${Date.now()}.${fileExt}`;
 
-      const { publicUrl } = await uploadWithSignedUrl("production-assets", `videos/${fileName}`, file, {
+      const { publicUrl, path } = await uploadWithSignedUrl("production-assets", `videos/${fileName}`, file, {
         componentId: component.id,
       });
 
-      updateAsset("final_video_url", publicUrl, setFinalVideoUrl);
+      setFinalVideoUrl(publicUrl);
       setFinalVideoSource("upload");
+      setFinalVideoFileName(file.name);
+      setFinalVideoStoragePath(`production-assets/${path}`);
+      onAssetChange?.(component.id, {
+        final_video_file_name: file.name,
+        final_video_source: "upload",
+        final_video_storage_path: `production-assets/${path}`,
+        final_video_url: publicUrl,
+      });
       setUrlError(null);
       toast.success("Video subido correctamente");
     } catch (error) {
@@ -871,11 +1070,17 @@ export function useProductionAssetState({
         video_url: videoUrl || undefined,
         screencast_url: screencastUrl || undefined,
         b_roll_prompts: bRollPrompts || undefined,
+        final_video_url: finalVideoUrl || undefined,
+        final_video_source: finalVideoSource || undefined,
+        final_video_file_name: finalVideoFileName || undefined,
+        final_video_storage_path: finalVideoStoragePath || undefined,
 
         // Structured assets
         voice_audio: voiceAudio || null as any,
         background_music: backgroundMusic || null as any,
         b_roll_clips: bRollClips.length > 0 ? bRollClips : null as any,
+        avatar_generation_mode: avatarGenerationMode,
+        avatar_clips: avatarClips.length > 0 ? avatarClips : null as any,
         avatar_video: avatarVideo || null as any,
         slides: slidesAsset || null as any,
       };
@@ -991,6 +1196,7 @@ export function useProductionAssetState({
           type,
           componentId: component.id,
           accessToken,
+          avatarGenerationMode,
         }),
       });
       const data = await response.json();
@@ -1013,8 +1219,35 @@ export function useProductionAssetState({
             toast.success(`Clip de B-roll importado exitosamente de ${providerLabel}`);
             break;
           case "avatar":
+            if (avatarGenerationMode === "scene_clips") {
+              const importedAvatar = data.assets.avatar_video;
+              const newClip: AvatarClip = {
+                id: `cloud-${Date.now()}`,
+                order: avatarClips.length + 1,
+                script_text: importedAvatar?.file_name || "Avatar importado",
+                storage_path: importedAvatar?.storage_path,
+                public_url: importedAvatar?.public_url,
+                file_name: importedAvatar?.file_name,
+                duration: importedAvatar?.duration,
+                provider,
+                status: "COMPLETED",
+              };
+              const updatedClips = [...avatarClips, newClip];
+              setAvatarClips(updatedClips);
+              onAssetChange?.(component.id, {
+                avatar_generation_mode: "scene_clips",
+                avatar_clips: updatedClips,
+              });
+              toast.success(`Clip de avatar importado exitosamente de ${providerLabel}`);
+              break;
+            }
+
             setAvatarVideo(data.assets.avatar_video);
-            onAssetChange?.(component.id, { avatar_video: data.assets.avatar_video });
+            setAvatarGenerationMode("single_video");
+            onAssetChange?.(component.id, {
+              avatar_generation_mode: "single_video",
+              avatar_video: data.assets.avatar_video,
+            });
             toast.success(`Avatar importado exitosamente de ${providerLabel}`);
             break;
           case "slides": {
@@ -1086,6 +1319,8 @@ export function useProductionAssetState({
     voiceAudio,
     backgroundMusic,
     bRollClips,
+    avatarClips,
+    avatarGenerationMode,
     avatarVideo,
     slidesAsset,
     isUploadingVoice,
@@ -1103,10 +1338,31 @@ export function useProductionAssetState({
     slidesFileRef,
 
     // Heygen sync
+    heygenAspectRatio,
+    heygenAvatarPresets,
+    heygenCaptionEnabled,
+    heygenEngine,
+    heygenJobId,
+    heygenJobStatus,
+    heygenProviderJobId,
+    heygenResolution,
     isSyncingHeygen,
+    isLoadingHeygenPresets,
+    selectedHeygenAvatarPresetId,
+    selectedHeygenVoicePresetId,
+    setHeygenAspectRatio,
+    setHeygenCaptionEnabled,
+    setHeygenEngine,
+    setHeygenResolution,
+    setAvatarGenerationMode,
+    setSelectedHeygenAvatarPresetId,
+    setSelectedHeygenVoicePresetId,
+    heygenVoicePresets,
     heygenSyncProgress,
     heygenError,
+    loadHeygenPresets,
     handleHeygenSync,
+    handleHeygenStatusCheck,
 
     // Sub-handlers
     handleVoiceUpload,

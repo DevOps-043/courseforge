@@ -5,6 +5,7 @@ import {
   type RemotionEditableLayerId,
 } from "./layout-override-styles";
 import type {
+  AssemblyAvatarClip,
   AssemblyBrollClip,
   AssemblyInputProps,
   AssemblySlide,
@@ -59,6 +60,12 @@ export function buildBrollTimeline(
   }
 
   return items;
+}
+
+export interface AvatarTimelineItem {
+  clip: AssemblyAvatarClip;
+  startFrame: number;
+  durationInFrames: number;
 }
 
 export type VisualTimelineTrackKind =
@@ -253,6 +260,45 @@ function buildBrollSegments(props: AssemblyInputProps): VisualTimelineSegment[] 
   });
 }
 
+function buildAvatarClipSegments(props: AssemblyInputProps): VisualTimelineSegment[] {
+  const ordered = [...props.avatarClips].sort((left, right) => left.order - right.order);
+  const segments: VisualTimelineSegment[] = [];
+  let cursor = 0;
+
+  for (const clip of ordered) {
+    const durationInFrames = Math.min(
+      clip.durationInFrames,
+      Math.max(0, props.totalDurationInFrames - cursor),
+    );
+
+    const segment = buildSegment({
+      id: `avatar-${clip.order}`,
+      trackKind: "avatar",
+      layerId: REMOTION_EDITABLE_LAYERS.AVATAR,
+      label: `Avatar ${clip.order}`,
+      startFrame: cursor,
+      durationInFrames,
+      sourceUrl: clip.url,
+      sourceStartFrame: 0,
+      sourceEndFrame: clip.durationInFrames,
+      sourceDurationInFrames: clip.durationInFrames,
+      loopMode: "none",
+      totalDurationInFrames: props.totalDurationInFrames,
+    });
+
+    if (segment) {
+      segments.push(segment);
+    }
+
+    cursor += durationInFrames;
+    if (cursor >= props.totalDurationInFrames) {
+      break;
+    }
+  }
+
+  return segments;
+}
+
 function buildFullDurationSegment(params: {
   id: string;
   trackKind: VisualTimelineTrackKind;
@@ -308,11 +354,11 @@ function applySegmentOverride(
     segment.sourceDurationInFrames ?? segment.sourceEndFrame ?? segment.durationInFrames,
   );
   const sourceStartFrame =
-    segment.trackKind === "broll"
+    segment.trackKind === "broll" || segment.trackKind === "avatar"
       ? clampTimelineFrame(override.sourceStartFrame ?? segment.sourceStartFrame ?? 0, sourceDurationInFrames)
       : undefined;
   const sourceEndFrame =
-    segment.trackKind === "broll"
+    segment.trackKind === "broll" || segment.trackKind === "avatar"
       ? Math.max(
           (sourceStartFrame ?? 0) + 1,
           clampTimelineFrame(override.sourceEndFrame ?? segment.sourceEndFrame ?? sourceDurationInFrames, sourceDurationInFrames),
@@ -386,23 +432,28 @@ export function buildVisualTimeline(props: AssemblyInputProps): VisualTimeline {
     });
   }
 
-  const avatarSegment = props.avatarVideoUrl
-    ? buildFullDurationSegment({
-        id: "avatar",
-        trackKind: "avatar",
-        layerId: REMOTION_EDITABLE_LAYERS.AVATAR,
-        label: "Avatar",
-        sourceUrl: props.avatarVideoUrl,
-        totalDurationInFrames: props.totalDurationInFrames,
-      })
-    : null;
+  const avatarSegments =
+    props.avatarClips.length > 0
+      ? buildAvatarClipSegments(props)
+      : props.avatarVideoUrl
+        ? [
+            buildFullDurationSegment({
+              id: "avatar",
+              trackKind: "avatar",
+              layerId: REMOTION_EDITABLE_LAYERS.AVATAR,
+              label: "Avatar",
+              sourceUrl: props.avatarVideoUrl,
+              totalDurationInFrames: props.totalDurationInFrames,
+            }),
+          ].filter((segment): segment is VisualTimelineSegment => Boolean(segment))
+        : [];
 
-  if (avatarSegment) {
+  if (avatarSegments.length > 0) {
     tracks.push({
       id: "avatar",
       kind: "avatar",
       label: "Avatar",
-      segments: [avatarSegment],
+      segments: avatarSegments,
     });
   }
 

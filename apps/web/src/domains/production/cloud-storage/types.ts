@@ -1,6 +1,13 @@
 export const CLOUD_STORAGE_PROVIDERS = ["google_drive", "onedrive"] as const;
+export const INTEGRATION_CREDENTIAL_PROVIDERS = [
+  "google_drive",
+  "onedrive",
+  "heygen",
+] as const;
 
 export type CloudStorageProvider = (typeof CLOUD_STORAGE_PROVIDERS)[number];
+export type IntegrationCredentialProvider =
+  (typeof INTEGRATION_CREDENTIAL_PROVIDERS)[number];
 
 export type ProductionAssetType = "voice" | "music" | "broll" | "avatar" | "slides";
 
@@ -9,7 +16,7 @@ export interface CloudStorageCredentialRecord {
   account_email: string;
   expires_at: string;
   organization_id: string | null;
-  provider: CloudStorageProvider;
+  provider: IntegrationCredentialProvider;
   refresh_token: string;
   scopes: string[] | null;
   user_id: string;

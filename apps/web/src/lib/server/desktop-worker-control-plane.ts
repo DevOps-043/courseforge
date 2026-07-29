@@ -628,6 +628,12 @@ async function verifyMediaDurationsFromUrls(rawAssets: unknown) {
     );
   }
 
+  if (Array.isArray(source.avatar_clips)) {
+    verified.avatar_clips = await Promise.all(
+      source.avatar_clips.map((clip, index) => verifyAssetDuration(clip, `avatar_clips.${index + 1}`)),
+    );
+  }
+
   return verified;
 }
 
@@ -662,6 +668,7 @@ function buildAssemblyInputProps(params: {
     bgMusicUrl: normalized.bgMusicUrl,
     bgMusicVolume: normalized.bgMusicVolume,
     avatarVideoUrl: normalized.avatarVideoUrl,
+    avatarClips: normalized.avatarClips,
     slides: normalized.slides,
     brollClips: normalized.brollClips,
     transitionType: transition,
@@ -3136,6 +3143,7 @@ export class DesktopWorkerControlPlane {
           ...(component?.assets || {}),
           final_video_url: publicUrl,
           final_video_source: "desktop_worker",
+          final_video_file_name: input.outputStoragePath.split("/").filter(Boolean).pop(),
           final_video_storage_provider: "supabase",
           final_video_storage_path: input.outputStoragePath,
           final_video_layout_stale: false,

@@ -213,7 +213,9 @@ export function normalizeLibraryAssets(source: LibraryComponentSource): LibraryS
   pushAsset({
     assetType: "video_final",
     fallbackName: "video-final",
+    fileName: assets.final_video_file_name,
     publicUrl: assets.final_video_url || assets.video_url,
+    storagePath: assets.final_video_storage_path,
     title: assets.final_video_url ? "Video final" : "Video de produccion",
   });
 
@@ -282,4 +284,3 @@ export function libraryItemMatchesQuery(item: LibrarySearchResult, query: string
 
   return haystack.includes(normalizedQuery);
 }
-

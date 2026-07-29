@@ -1,0 +1,172 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+export const HEYGEN_API_BASE_URL = "https://api.heygen.com";
+export const HEYGEN_DEFAULT_PAGE_SIZE = 50;
+export const HEYGEN_MAX_IMPORT_SIZE_BYTES = 150 * 1024 * 1024;
+export const HEYGEN_REQUEST_TIMEOUT_MS = 20_000;
+export const HEYGEN_VIDEO_IMPORT_TIMEOUT_MS = 45_000;
+export const HEYGEN_VIDEO_STORAGE_BUCKET = "production-assets";
+export const HEYGEN_ALLOWED_VIDEO_HOSTS = [
+  "heygen.com",
+  "heygen.ai",
+  "cdn.heygen.com",
+  "resource.heygen.com",
+  "files2.heygen.ai",
+] as const;
+
+export const HEYGEN_VIDEO_STATUSES = {
+  COMPLETED: "completed",
+  FAILED: "failed",
+  PENDING: "pending",
+  PROCESSING: "processing",
+} as const;
+
+export type HeygenVideoStatus =
+  (typeof HEYGEN_VIDEO_STATUSES)[keyof typeof HEYGEN_VIDEO_STATUSES] | string;
+
+export type HeygenAvatarVideoEngine = "avatar_iv" | "avatar_v";
+export type HeygenAvatarVideoResolution = "720p" | "1080p" | "4k";
+export type HeygenAvatarVideoAspectRatio = "16:9" | "9:16";
+export type HeygenAvatarVideoOutputFormat = "mp4" | "webm";
+
+export interface HeygenAvatarLook {
+  avatarType?: string | null;
+  defaultVoiceId?: string | null;
+  groupId?: string | null;
+  id: string;
+  metadata: Record<string, unknown>;
+  name: string;
+  previewImageUrl?: string | null;
+  previewVideoUrl?: string | null;
+  status?: string | null;
+  supportedApiEngines: string[];
+}
+
+export interface HeygenVoice {
+  gender?: string | null;
+  id: string;
+  language?: string | null;
+  metadata: Record<string, unknown>;
+  name: string;
+  previewAudioUrl?: string | null;
+  type?: string | null;
+}
+
+export interface HeygenCatalogSyncResult {
+  avatarCount: number;
+  defaultAvatarPresetId: string | null;
+  defaultVoicePresetId: string | null;
+  organizationId: string;
+  syncedAt: string;
+  voiceCount: number;
+}
+
+export interface HeygenAvatarVideoBackground {
+  asset_id?: string;
+  url?: string;
+  value?: string;
+}
+
+export interface HeygenCreateVideoRequest {
+  aspect_ratio: HeygenAvatarVideoAspectRatio;
+  avatar_id: string;
+  background?: HeygenAvatarVideoBackground;
+  callback_id?: string;
+  caption?: {
+    file_format: "srt";
+    style: "default";
+  };
+  engine?: {
+    type: HeygenAvatarVideoEngine;
+  };
+  output_format: HeygenAvatarVideoOutputFormat;
+  resolution: HeygenAvatarVideoResolution;
+  script: string;
+  title: string;
+  type: "avatar";
+  voice_id: string;
+}
+
+export interface HeygenCreateVideoResponse {
+  outputFormat?: string | null;
+  providerStatus?: string | null;
+  raw: Record<string, unknown>;
+  videoId: string;
+}
+
+export interface HeygenVideoDetails {
+  captionedVideoUrl?: string | null;
+  durationSeconds?: number | null;
+  failureCode?: string | null;
+  failureMessage?: string | null;
+  gifUrl?: string | null;
+  outputFormat?: string | null;
+  raw: Record<string, unknown>;
+  status: HeygenVideoStatus;
+  subtitleUrl?: string | null;
+  thumbnailUrl?: string | null;
+  videoId: string;
+  videoPageUrl?: string | null;
+  videoUrl?: string | null;
+}
+
+export interface HeygenAvatarVideoGenerationOptions {
+  aspectRatio: HeygenAvatarVideoAspectRatio;
+  autoPromote: boolean;
+  avatarPresetId?: string;
+  background?: HeygenAvatarVideoBackground;
+  caption: boolean;
+  componentId: string;
+  engine: HeygenAvatarVideoEngine;
+  outputFormat: HeygenAvatarVideoOutputFormat;
+  resolution: HeygenAvatarVideoResolution;
+  voicePresetId?: string;
+}
+
+export interface HeygenAvatarPresetRow {
+  default_voice_id?: string | null;
+  heygen_avatar_look_id: string;
+  id: string;
+  is_default: boolean;
+}
+
+export interface HeygenAvatarPresetGenerationRow extends HeygenAvatarPresetRow {
+  name: string;
+  supported_api_engines?: string[] | null;
+}
+
+export interface HeygenVoicePresetRow {
+  heygen_voice_id: string;
+  id: string;
+  is_default: boolean;
+}
+
+export interface HeygenVoicePresetGenerationRow extends HeygenVoicePresetRow {
+  name: string;
+}
+
+export interface HeygenProductionJobRow {
+  artifact_id: string;
+  created_at?: string | null;
+  duration_seconds?: number | null;
+  id: string;
+  input_snapshot?: Record<string, unknown> | null;
+  material_component_id?: string | null;
+  material_lesson_id?: string | null;
+  lesson_id?: string | null;
+  module_id?: string | null;
+  organization_id?: string | null;
+  output_snapshot?: Record<string, unknown> | null;
+  provider_job_id?: string | null;
+  provider_model?: string | null;
+  status: string;
+  updated_at?: string | null;
+}
+
+export interface HeygenProductionAssetRow {
+  id: string;
+  public_url?: string | null;
+  storage_path?: string | null;
+}
+
+export type HeygenSupabaseClient = SupabaseClient<any, "public", any>;

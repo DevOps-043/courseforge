@@ -58,6 +58,7 @@ export async function POST(request: Request) {
             updatedAssets.background_music = {
                 storage_path: result.storagePath,
                 public_url: result.publicUrl,
+                file_name: result.fileName,
                 duration: result.duration,
                 volume_multiplier: currentAssets.background_music?.volume_multiplier ?? 0.15,
             };
@@ -67,6 +68,7 @@ export async function POST(request: Request) {
                 id: assetId,
                 storage_path: result.storagePath,
                 public_url: result.publicUrl,
+                file_name: result.fileName,
                 duration: result.duration,
                 order: currentClips.length + 1,
             };

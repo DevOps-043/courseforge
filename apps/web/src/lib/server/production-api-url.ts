@@ -23,9 +23,7 @@ export function getProductionApiBaseUrl(): string {
 
   const configured =
     normalizeBaseUrl(process.env.PRODUCTION_API_URL) ||
-    normalizeBaseUrl(process.env.EXPRESS_INTERNAL_API_URL) ||
-    normalizeBaseUrl(process.env.API_PUBLIC_URL) ||
-    normalizeBaseUrl(process.env.EXPRESS_API_URL);
+    normalizeBaseUrl(process.env.SOFLIA_ENGINE_WEB_URL);
 
   if (configured) {
     return configured;

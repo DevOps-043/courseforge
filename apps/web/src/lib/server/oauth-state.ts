@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { cookies } from "next/headers";
 import type { NextResponse } from "next/server";
-import type { CloudStorageProvider } from "@/domains/production/cloud-storage/types";
+import type { IntegrationCredentialProvider } from "@/domains/production/cloud-storage/types";
 
 const COOKIE_PREFIX = "courseforge_oauth_state";
 const STATE_TTL_SECONDS = 10 * 60;
@@ -10,11 +10,11 @@ interface OAuthStatePayload {
   nonce: string;
   organizationId: string;
   organizationSlug: string;
-  provider: CloudStorageProvider;
+  provider: IntegrationCredentialProvider;
   userId: string;
 }
 
-function getCookieName(provider: CloudStorageProvider) {
+function getCookieName(provider: IntegrationCredentialProvider) {
   return `${COOKIE_PREFIX}_${provider}`;
 }
 
@@ -44,7 +44,7 @@ function decodeState(state: string): OAuthStatePayload | null {
 export function createOAuthState(params: {
   organizationId: string;
   organizationSlug: string;
-  provider: CloudStorageProvider;
+  provider: IntegrationCredentialProvider;
   response: NextResponse;
   userId: string;
 }) {
@@ -69,7 +69,7 @@ export function createOAuthState(params: {
 }
 
 export async function validateOAuthState(params: {
-  expectedProvider: CloudStorageProvider;
+  expectedProvider: IntegrationCredentialProvider;
   state: string | null;
 }) {
   if (!params.state) return null;

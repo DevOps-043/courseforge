@@ -17,6 +17,7 @@ import {
 
 interface ImportRequestBody {
   accessToken?: string;
+  avatarGenerationMode?: "scene_clips" | "single_video";
   componentId?: string;
   fileIdOrUrl?: string;
   provider?: unknown;
@@ -101,6 +102,7 @@ export async function POST(request: Request) {
         updatedAssets.voice_audio = {
           storage_path: result.storagePath,
           public_url: result.publicUrl,
+          file_name: result.fileName,
           provider: "custom",
           last_uploaded_at: new Date().toISOString(),
         };
@@ -109,6 +111,7 @@ export async function POST(request: Request) {
         updatedAssets.background_music = {
           storage_path: result.storagePath,
           public_url: result.publicUrl,
+          file_name: result.fileName,
           volume_multiplier: currentAssets.background_music?.volume_multiplier ?? 0.15,
         };
         break;
@@ -122,15 +125,39 @@ export async function POST(request: Request) {
             id: `${body.provider}-${Date.now()}`,
             storage_path: result.storagePath,
             public_url: result.publicUrl,
+            file_name: result.fileName,
             order: currentClips.length + 1,
           },
         ];
         break;
       }
       case "avatar":
+        if (body.avatarGenerationMode === "scene_clips") {
+          const currentClips = Array.isArray(currentAssets.avatar_clips)
+            ? currentAssets.avatar_clips
+            : [];
+          updatedAssets.avatar_generation_mode = "scene_clips";
+          updatedAssets.avatar_clips = [
+            ...currentClips,
+            {
+              id: `${body.provider}-${Date.now()}`,
+              storage_path: result.storagePath,
+              public_url: result.publicUrl,
+              file_name: result.fileName,
+              order: currentClips.length + 1,
+              provider: "upload",
+              script_text: result.fileName,
+              status: "COMPLETED",
+            },
+          ];
+          break;
+        }
+
+        updatedAssets.avatar_generation_mode = "single_video";
         updatedAssets.avatar_video = {
           storage_path: result.storagePath,
           public_url: result.publicUrl,
+          file_name: result.fileName,
           provider: "upload",
         };
         break;
@@ -145,6 +172,7 @@ export async function POST(request: Request) {
         })
           ? [
               {
+                file_name: result.fileName,
                 slide_index: currentImages.length + 1,
                 storage_path: result.storagePath,
                 public_url: result.publicUrl,

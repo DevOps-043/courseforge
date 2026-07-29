@@ -126,6 +126,7 @@ export function buildAssemblyProps(
     bgMusicUrl: normalized.bgMusicUrl,
     bgMusicVolume: normalized.bgMusicVolume,
     avatarVideoUrl: normalized.avatarVideoUrl,
+    avatarClips: normalized.avatarClips,
     slides: normalized.slides,
     brollClips: normalized.brollClips,
     transitionType: templateConfig.transitionType,

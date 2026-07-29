@@ -23,6 +23,8 @@ import {
 import { toast } from "sonner";
 import type {
   VoiceAudio,
+  AvatarClip,
+  AvatarGenerationMode,
   BackgroundMusic,
   BRollClip,
   AvatarVideo,
@@ -36,6 +38,13 @@ import type {
   CloudStorageProvider,
 } from "@/domains/production/cloud-storage/types";
 
+function formatSeconds(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
+  const totalSeconds = Math.round(seconds);
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
 
 // ---------------------------------------------------------
 // 1. VOICE AUDIO SECTION
@@ -656,15 +665,37 @@ export function BRollClipsSection({
 // 5. AVATAR IA SECTION
 // ---------------------------------------------------------
 interface AvatarVideoSectionProps {
+  aspectRatio: "16:9" | "9:16";
+  avatarClips: AvatarClip[];
+  avatarGenerationMode: AvatarGenerationMode;
   avatarVideo: AvatarVideo | null;
+  avatarPresets: { id: string; is_default?: boolean; name?: string | null }[];
+  captionEnabled: boolean;
+  componentId: string;
+  engine: "avatar_iv" | "avatar_v";
   isUploading: boolean;
   isSyncing: boolean;
+  isLoadingPresets: boolean;
+  jobId: string | null;
+  jobStatus: string | null;
+  providerJobId: string | null;
+  resolution: "720p" | "1080p" | "4k";
+  selectedAvatarPresetId: string;
+  selectedVoicePresetId: string;
   syncProgress: number;
   syncError: string | null;
+  voicePresets: { id: string; is_default?: boolean; name?: string | null }[];
   fileRef: React.RefObject<HTMLInputElement | null>;
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onHeygenSync: (videoId: string) => void;
+  onAspectRatioChange: (value: "16:9" | "9:16") => void;
+  onAvatarPresetChange: (value: string) => void;
+  onCaptionEnabledChange: (value: boolean) => void;
   onClear: () => void;
+  onEngineChange: (value: "avatar_iv" | "avatar_v") => void;
+  onHeygenStatusCheck: () => void;
+  onRefreshPresets: () => Promise<void>;
+  onResolutionChange: (value: "720p" | "1080p" | "4k") => void;
+  onVoicePresetChange: (value: string) => void;
   
   // Drive props
   isSearchingDrive: boolean;
@@ -673,13 +704,40 @@ interface AvatarVideoSectionProps {
   searchDrive: (query: string) => Promise<void>;
   importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   clearDriveSearchResults: () => void;
-}export function AvatarVideoSection({
+}
+
+export function AvatarVideoSection({
+  aspectRatio,
+  avatarClips,
+  avatarGenerationMode,
   avatarVideo,
+  avatarPresets,
+  captionEnabled,
+  componentId,
+  engine,
   isUploading,
   isSyncing,
+  isLoadingPresets,
+  jobId,
+  jobStatus,
+  providerJobId,
+  resolution,
+  selectedAvatarPresetId,
+  selectedVoicePresetId,
+  syncProgress,
+  syncError,
+  voicePresets,
   fileRef,
   onUpload,
   onClear,
+  onAspectRatioChange,
+  onAvatarPresetChange,
+  onCaptionEnabledChange,
+  onEngineChange,
+  onHeygenStatusCheck,
+  onRefreshPresets,
+  onResolutionChange,
+  onVoicePresetChange,
   isSearchingDrive,
   isImportingDrive,
   driveSearchResults,
@@ -688,6 +746,25 @@ interface AvatarVideoSectionProps {
   clearDriveSearchResults,
 }: AvatarVideoSectionProps) {
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
+  const completedAvatarClips = avatarClips.filter(
+    (clip) => clip.status === "COMPLETED" && clip.public_url,
+  );
+  const avatarClipDuration = completedAvatarClips.reduce(
+    (sum, clip) => sum + (typeof clip.duration === "number" ? clip.duration : 0),
+    0,
+  );
+  const hasAvatarClips = completedAvatarClips.length > 0;
+  const openHeygenModule = () => {
+    const currentPath = window.location.pathname;
+    const adminIndex = currentPath.indexOf("/admin");
+    const tenantPrefix = adminIndex > 0 ? currentPath.slice(0, adminIndex) : "";
+    const query = new URLSearchParams({
+      componentId,
+      source: "course",
+    });
+
+    window.location.assign(`${tenantPrefix}/admin/heygen?${query.toString()}`);
+  };
 
   return (
     <div className="p-3 rounded-xl border border-gray-200 dark:border-[#6C757D]/10 bg-gray-50/50 dark:bg-[#0F1419]/30">
@@ -695,7 +772,7 @@ interface AvatarVideoSectionProps {
         <div className="flex items-center gap-2">
           <Video size={14} className="text-rose-500" />
           <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Avatar IA (Talking Head)</span>
-          {avatarVideo && (
+          {(avatarVideo || hasAvatarClips) && (
             <span className="flex items-center gap-0.5 text-[10px] font-semibold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 px-1.5 py-0.5 rounded-full">
               <CheckCircle2 size={10} /> Listo
             </span>
@@ -723,23 +800,128 @@ interface AvatarVideoSectionProps {
         </div>
       </div>
 
-      {/* {!avatarVideo && !isSyncing && (
-        <div className="flex gap-1.5 mt-2 pt-2 border-t border-gray-100 dark:border-[#6C757D]/10">
-          <input
-            type="text"
-            placeholder="ID de Video Heygen..."
-            value={heygenId}
-            onChange={(e) => setHeygenId(e.target.value)}
-            disabled={isSyncing || isUploading}
-            className="flex-1 px-2.5 py-1 text-[11px] rounded-lg border border-gray-300 bg-white text-gray-900 placeholder-gray-400 focus:outline-none dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
-          />
-          <button
-            onClick={handleSyncSubmit}
-            disabled={isSyncing || isUploading || !heygenId}
-            className="px-3 py-1.5 text-[10px] font-bold rounded-lg bg-rose-605 hover:bg-rose-500 text-white transition-colors disabled:opacity-50"
-          >
-            Importar Heygen
-          </button>
+      <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-semibold text-gray-500 dark:text-gray-400">
+        <span className="rounded-full bg-gray-100 px-2 py-1 dark:bg-white/5">
+          {avatarGenerationMode === "scene_clips" ? "Modo: Por escenas" : "Modo: Video completo"}
+        </span>
+        {avatarGenerationMode === "scene_clips" ? (
+          <span className="rounded-full bg-gray-100 px-2 py-1 dark:bg-white/5">
+            {completedAvatarClips.length}/{avatarClips.length} clips · {formatSeconds(avatarClipDuration)}
+          </span>
+        ) : avatarVideo?.duration ? (
+          <span className="rounded-full bg-gray-100 px-2 py-1 dark:bg-white/5">
+            {formatSeconds(avatarVideo.duration)}
+          </span>
+        ) : null}
+      </div>
+
+      {!avatarVideo && (
+        <div className="mt-3 space-y-2 border-t border-gray-100 pt-3 dark:border-[#6C757D]/10">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <select
+              value={selectedAvatarPresetId}
+              onChange={(event) => onAvatarPresetChange(event.target.value)}
+              disabled={isSyncing || isLoadingPresets}
+              className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-800 focus:border-rose-500 focus:outline-none disabled:opacity-60 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
+            >
+              <option value="">Avatar default</option>
+              {avatarPresets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name || preset.id}
+                  {preset.is_default ? " (default)" : ""}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={selectedVoicePresetId}
+              onChange={(event) => onVoicePresetChange(event.target.value)}
+              disabled={isSyncing || isLoadingPresets}
+              className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-800 focus:border-rose-500 focus:outline-none disabled:opacity-60 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
+            >
+              <option value="">Voz default</option>
+              {voicePresets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name || preset.id}
+                  {preset.is_default ? " (default)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <select
+              value={engine}
+              onChange={(event) => onEngineChange(event.target.value as "avatar_iv" | "avatar_v")}
+              disabled={isSyncing}
+              className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-800 focus:border-rose-500 focus:outline-none disabled:opacity-60 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
+            >
+              <option value="avatar_iv">Avatar IV</option>
+              <option value="avatar_v">Avatar V</option>
+            </select>
+
+            <select
+              value={resolution}
+              onChange={(event) => onResolutionChange(event.target.value as "720p" | "1080p" | "4k")}
+              disabled={isSyncing}
+              className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-800 focus:border-rose-500 focus:outline-none disabled:opacity-60 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
+            >
+              <option value="720p">720p</option>
+              <option value="1080p">1080p</option>
+              <option value="4k">4K</option>
+            </select>
+
+            <select
+              value={aspectRatio}
+              onChange={(event) => onAspectRatioChange(event.target.value as "16:9" | "9:16")}
+              disabled={isSyncing}
+              className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-800 focus:border-rose-500 focus:outline-none disabled:opacity-60 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
+            >
+              <option value="16:9">16:9</option>
+              <option value="9:16">9:16</option>
+            </select>
+
+            <label className="flex items-center justify-center gap-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-bold text-gray-650 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-gray-300">
+              <input
+                type="checkbox"
+                checked={captionEnabled}
+                onChange={(event) => onCaptionEnabledChange(event.target.checked)}
+                disabled={isSyncing}
+                className="accent-rose-500"
+              />
+              SRT
+            </label>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={openHeygenModule}
+              disabled={isSyncing || isUploading || isLoadingPresets}
+              className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-[10px] font-bold text-white transition-colors hover:bg-rose-500 disabled:opacity-50"
+            >
+              <ExternalLink size={11} />
+              Abrir modulo HeyGen
+            </button>
+            <button
+              type="button"
+              onClick={onRefreshPresets}
+              disabled={isSyncing || isLoadingPresets}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[10px] font-bold text-gray-650 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-[#6C757D]/20 dark:bg-[#151A21] dark:text-gray-300 dark:hover:bg-white/5"
+            >
+              {isLoadingPresets ? "Cargando..." : "Presets"}
+            </button>
+            {jobId && (
+              <button
+                type="button"
+                onClick={onHeygenStatusCheck}
+                disabled={isSyncing}
+                className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-[10px] font-bold text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300"
+              >
+                Consultar
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -748,7 +930,7 @@ interface AvatarVideoSectionProps {
           <div className="flex justify-between text-[9px] font-semibold text-rose-500">
             <span className="flex items-center gap-1 animate-pulse">
               <Loader2 size={8} className="animate-spin" />
-              Sincronizando Heygen...
+              Generando HeyGen...
             </span>
             <span>{syncProgress}%</span>
           </div>
@@ -765,7 +947,15 @@ interface AvatarVideoSectionProps {
         <p className="text-[10px] text-red-500 font-medium mt-1.5 pl-1">
           Error: {syncError}
         </p>
-      )} */}
+      )}
+
+      {(jobId || providerJobId || jobStatus) && !avatarVideo && (
+        <div className="mt-2 flex flex-wrap gap-2 border-t border-gray-100 pt-2 text-[10px] text-gray-500 dark:border-[#6C757D]/10 dark:text-gray-400">
+          {jobStatus && <span>Status: {jobStatus}</span>}
+          {providerJobId && <span>HeyGen: {providerJobId}</span>}
+          {jobId && <span>Job: {jobId.slice(0, 8)}...</span>}
+        </div>
+      )}
 
       {avatarVideo && (
         <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-gray-105 dark:border-[#6C757D]/10 text-[10px]">

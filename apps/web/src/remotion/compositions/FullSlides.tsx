@@ -2,6 +2,7 @@ import { AbsoluteFill, useVideoConfig } from "remotion";
 import type { AssemblyInputProps } from "../types";
 import { PrimaryVisual } from "../components/PrimaryVisual";
 import { AvatarLayer } from "../components/AvatarLayer";
+import { AvatarClipLayer } from "../components/AvatarClipLayer";
 import { AudioTracks } from "../components/AudioTracks";
 import { parseTemplateRenderConfig } from "../template-config";
 import {
@@ -42,6 +43,8 @@ export function FullSlides(props: AssemblyInputProps) {
     REMOTION_EDITABLE_LAYERS.AVATAR,
   );
   const timelineSegments = buildVisualTimeline(props).tracks.flatMap((track) => track.segments);
+  const avatarSegments = timelineSegments.filter((segment) => segment.trackKind === "avatar");
+  const hasAvatar = props.avatarClips.length > 0 || Boolean(props.avatarVideoUrl);
 
   return (
     <AbsoluteFill style={{ backgroundColor: templateConfig.backgroundColor }}>
@@ -66,7 +69,7 @@ export function FullSlides(props: AssemblyInputProps) {
         />
       </div>
 
-      {props.avatarVideoUrl ? (
+      {hasAvatar ? (
         <div
           style={{
             position: "absolute",
@@ -81,7 +84,15 @@ export function FullSlides(props: AssemblyInputProps) {
             ...avatarOverrideStyle,
           }}
         >
-          <AvatarLayer url={props.avatarVideoUrl} muted={hasVoice} />
+          {props.avatarClips.length > 0 ? (
+            <AvatarClipLayer
+              clips={props.avatarClips}
+              muted={hasVoice}
+              segments={avatarSegments}
+            />
+          ) : props.avatarVideoUrl ? (
+            <AvatarLayer url={props.avatarVideoUrl} muted={hasVoice} />
+          ) : null}
         </div>
       ) : null}
 

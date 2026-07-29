@@ -97,6 +97,7 @@ export async function POST(request: Request) {
         updatedAssets.voice_audio = {
           storage_path: result.storagePath,
           public_url: result.publicUrl,
+          file_name: result.fileName,
           provider: "custom",
           last_uploaded_at: new Date().toISOString(),
         };
@@ -105,6 +106,7 @@ export async function POST(request: Request) {
         updatedAssets.background_music = {
           storage_path: result.storagePath,
           public_url: result.publicUrl,
+          file_name: result.fileName,
           volume_multiplier: currentAssets.background_music?.volume_multiplier ?? 0.15,
         };
         break;
@@ -114,6 +116,7 @@ export async function POST(request: Request) {
           id: `drive-${Date.now()}`,
           storage_path: result.storagePath,
           public_url: result.publicUrl,
+          file_name: result.fileName,
           order: currentClips.length + 1,
         };
         updatedAssets.b_roll_clips = [...currentClips, newClip];
@@ -123,6 +126,7 @@ export async function POST(request: Request) {
         updatedAssets.avatar_video = {
           storage_path: result.storagePath,
           public_url: result.publicUrl,
+          file_name: result.fileName,
           provider: "upload",
         };
         break;
@@ -137,6 +141,7 @@ export async function POST(request: Request) {
         })
           ? [
               {
+                file_name: result.fileName,
                 slide_index: currentImages.length + 1,
                 storage_path: result.storagePath,
                 public_url: result.publicUrl,

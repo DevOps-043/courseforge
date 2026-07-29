@@ -84,9 +84,16 @@ export const assemblyBrollClipSchema = z.object({
 });
 export type AssemblyBrollClip = z.infer<typeof assemblyBrollClipSchema>;
 
+export const assemblyAvatarClipSchema = z.object({
+  url: z.string().url(),
+  durationInFrames: z.number().int().positive(),
+  order: z.number().int().min(1),
+});
+export type AssemblyAvatarClip = z.infer<typeof assemblyAvatarClipSchema>;
+
 export const assemblyTimelineSegmentSchema = z.object({
   id: z.string(),
-  trackKind: z.enum(["slides", "broll"]),
+  trackKind: z.enum(["avatar", "slides", "broll"]),
   layerId: z.string().optional(),
   label: z.string(),
   startFrame: z.number().int().min(0),
@@ -124,6 +131,9 @@ export const assemblyInputPropsSchema = z.object({
 
   /** Video de avatar (talking head). */
   avatarVideoUrl: z.string().url().optional(),
+
+  /** Clips de avatar en secuencia. Puede venir vacio. */
+  avatarClips: z.array(assemblyAvatarClipSchema).default([]),
 
   /** Slides en orden de aparición. Puede venir vacío. */
   slides: z.array(assemblySlideSchema).default([]),
@@ -187,6 +197,7 @@ export function createDefaultAssemblyProps(
     fps: ASSEMBLY_FPS,
     totalDurationInFrames: ASSEMBLY_FALLBACK_DURATION_FRAMES,
     bgMusicVolume: 0.15,
+    avatarClips: [],
     slides: [],
     brollClips: [],
     transitionType: "fade",

@@ -7,7 +7,6 @@ import {
   resolveExternalPreviewRenderTimeoutMs,
   resolveLocalRenderTimeoutMs,
 } from '../remotion-render.config';
-import { ensureAwsCredentialsEnv } from '../aws-credentials-env';
 
 function withEnv(updates: Record<string, string | undefined>, fn: () => void) {
   const previous = new Map<string, string | undefined>();
@@ -85,8 +84,6 @@ describe('getRemotionRenderConfig', () => {
       RENDER_PROVIDER: 'local',
       NEXT_PUBLIC_SUPABASE_URL: 'https://supabase.example.com',
       SUPABASE_SERVICE_ROLE_KEY: 'service-role',
-      API_PUBLIC_URL: 'https://api.example.com',
-      EXPRESS_PUBLIC_URL: undefined,
       REMOTION_RENDER_TIMEOUT_MS: undefined,
       EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS: undefined,
     }, () => {
@@ -97,23 +94,6 @@ describe('getRemotionRenderConfig', () => {
       assert.equal(readiness.ok, false);
       assert.equal(renderTimeoutCheck?.ok, false);
       assert.equal(externalTimeoutCheck?.ok, false);
-    });
-  });
-
-  it('maps Netlify-safe AWS credential aliases to the AWS SDK environment names', () => {
-    withEnv({
-      AWS_ACCESS_KEY_ID: undefined,
-      AWS_SECRET_ACCESS_KEY: undefined,
-      AWS_SESSION_TOKEN: undefined,
-      SOFLIA_AWS_ACCESS_KEY_ID: 'alias-access-key',
-      SOFLIA_AWS_SECRET_ACCESS_KEY: 'alias-secret-key',
-      SOFLIA_AWS_SESSION_TOKEN: 'alias-session-token',
-    }, () => {
-      ensureAwsCredentialsEnv();
-
-      assert.equal(process.env.AWS_ACCESS_KEY_ID, 'alias-access-key');
-      assert.equal(process.env.AWS_SECRET_ACCESS_KEY, 'alias-secret-key');
-      assert.equal(process.env.AWS_SESSION_TOKEN, 'alias-session-token');
     });
   });
 });

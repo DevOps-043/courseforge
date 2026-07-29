@@ -1,6 +1,6 @@
 import type { RemotionRenderProviderSetting } from './remotion-render.config';
 
-type FailureProvider = RemotionRenderProviderSetting | 'preview' | 'codebuild' | 'unknown';
+type FailureProvider = RemotionRenderProviderSetting | 'preview' | 'unknown';
 
 export interface RemotionFailureContext {
   provider?: FailureProvider;
@@ -40,7 +40,6 @@ export function classifyRemotionFailure(
   }
   if (normalized.includes('timed out') || normalized.includes('timeout')) {
     if (context.provider === 'preview') return 'EXTERNAL_PREVIEW_TIMEOUT';
-    if (context.provider === 'codebuild') return 'CODEBUILD_TIMEOUT';
     if (context.provider === 'desktop_worker') return 'DESKTOP_WORKER_TIMEOUT';
     if (context.provider === 'local') return 'LOCAL_RENDER_TIMEOUT';
     return 'RENDER_TIMEOUT';
@@ -61,7 +60,6 @@ export function classifyRemotionFailure(
   if (context.provider === 'desktop_worker') return 'DESKTOP_WORKER_RENDER_FAILED';
   if (context.provider === 'local') return 'LOCAL_RENDER_FAILED';
   if (context.provider === 'preview') return 'EXTERNAL_PREVIEW_RENDER_FAILED';
-  if (context.provider === 'codebuild') return 'CODEBUILD_RENDER_FAILED';
   return 'REMOTION_RENDER_FAILED';
 }
 

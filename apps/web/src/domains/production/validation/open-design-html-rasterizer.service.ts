@@ -2,6 +2,7 @@ import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { prepareOpenDesignDeckForHtmlToPng } from "./open-design-slide-test.service";
 
 export interface RenderableSlideAsset {
+  file_name?: string;
   slide_index: number;
   storage_path: string;
   public_url: string;
@@ -149,6 +150,7 @@ export async function rasterizeOpenDesignHtmlToStorage(params: {
         } = params.admin.storage.from(BUCKET).getPublicUrl(storagePath);
 
         images.push({
+          file_name: storagePath.split("/").pop(),
           slide_index: slide.index,
           storage_path: `${BUCKET}/${storagePath}`,
           public_url: publicUrl,

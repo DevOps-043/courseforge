@@ -99,6 +99,8 @@ describe("normalizeLibraryAssets", () => {
             ],
           },
           final_video_url: "https://cdn.example.com/final.mp4",
+          final_video_file_name: "final-publicado.mp4",
+          final_video_storage_path: "production-assets/videos/final-publicado.mp4",
           screencast_url: "https://cdn.example.com/screencast.mp4",
         },
       }),
@@ -109,6 +111,10 @@ describe("normalizeLibraryAssets", () => {
       ["voice", "music", "broll", "avatar", "slides", "slides", "video_final", "screencast"],
     );
     assert.equal(items.every((item) => item.id.includes("gamma") === false), true);
+    assert.equal(
+      items.find((item) => item.assetType === "video_final")?.fileName,
+      "final-publicado.mp4",
+    );
   });
 
   it("supports incomplete assets without emitting empty asset items", () => {

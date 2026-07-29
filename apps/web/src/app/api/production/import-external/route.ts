@@ -165,11 +165,14 @@ export async function POST(request: Request) {
                 sync_status: 'COMPLETED',
                 public_url: publicUrl,
                 storage_path: `production-assets/${storagePath}`,
+                file_name: videoId ? `${provider}-${videoId}.mp4` : `${provider}-video.mp4`,
                 duration: currentAssets.video_duration || undefined, // Maintain duration if known
             },
             // Fallback for retrocompatibility: also set the direct final video URL
             final_video_url: publicUrl,
             final_video_source: 'upload',
+            final_video_file_name: videoId ? `${provider}-${videoId}.mp4` : `${provider}-video.mp4`,
+            final_video_storage_path: `production-assets/${storagePath}`,
             updated_at: new Date().toISOString(),
         };
 

@@ -19,10 +19,6 @@ describe('remotion render diagnostics', () => {
       classifyRemotionFailure('preview render timed out', { provider: 'preview' }),
       'EXTERNAL_PREVIEW_TIMEOUT',
     );
-    assert.equal(
-      classifyRemotionFailure('timeout while validating CodeBuild bundle', { provider: 'codebuild' }),
-      'CODEBUILD_TIMEOUT',
-    );
   });
 
   it('keeps render diagnostics useful without copying media URLs', () => {

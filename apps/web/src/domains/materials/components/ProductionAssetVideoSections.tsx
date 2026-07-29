@@ -87,7 +87,7 @@ export function ProductionAssetPromptsSection({
 
 interface ProductionAssetFinalVideoSectionProps {
   fileRef: RefObject<HTMLInputElement | null>;
-  finalVideoSource: "upload" | "link" | null;
+  finalVideoSource: "upload" | "link" | "desktop_worker" | null;
   finalVideoUrl: string;
   isSaving: boolean;
   isUploading: boolean;

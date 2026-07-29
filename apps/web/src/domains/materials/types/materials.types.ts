@@ -121,6 +121,40 @@ export interface ProductionDodChecklist {
     has_final_video_url: boolean; // URL del video final de producción
 }
 
+export type AvatarGenerationMode = 'scene_clips' | 'single_video';
+
+export type AvatarClipStatus =
+    | 'DRAFT'
+    | 'WAITING_PROVIDER'
+    | 'COMPLETED'
+    | 'FAILED'
+    | 'STALE';
+
+export interface AvatarClip {
+    id: string;
+    order: number;
+    storyboard_take_number?: number;
+    visual_type?: string;
+    script_text: string;
+    avatar_preset_id?: string;
+    voice_preset_id?: string;
+    background?: {
+        value?: string;
+        url?: string;
+        asset_id?: string;
+    };
+    public_url?: string;
+    storage_path?: string;
+    file_name?: string;
+    duration?: number;
+    provider?: string;
+    external_id?: string;
+    job_id?: string;
+    status: AvatarClipStatus;
+    error_message?: string;
+    source_hash?: string;
+}
+
 export interface MaterialAssets {
     // Campos existentes
     slides_url?: string;
@@ -130,7 +164,9 @@ export interface MaterialAssets {
     notes?: string;
     // Campo de video final (post-producción)
     final_video_url?: string;
-    final_video_source?: 'upload' | 'link'; // Tracks how the final video was provided
+    final_video_source?: 'upload' | 'link' | 'desktop_worker'; // Tracks how the final video was provided
+    final_video_file_name?: string;
+    final_video_storage_path?: string;
     final_video_layout_stale?: boolean;
     video_duration?: number;
     assembly_target_duration_seconds?: number;
@@ -171,6 +207,8 @@ export interface MaterialAssets {
         prompt_used?: string;
         order: number;
     }[];
+    avatar_generation_mode?: AvatarGenerationMode;
+    avatar_clips?: AvatarClip[];
     avatar_video?: {
         storage_path: string;
         public_url: string;

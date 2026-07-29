@@ -7,7 +7,7 @@ import {
 } from '../external-render-target.service';
 
 describe('external render target', () => {
-  it('uses the cloud build serveUrl and external composition without internal fallback', () => {
+  it('uses the worker build serveUrl and external composition without internal fallback', () => {
     const target = resolveExternalRenderTarget({
       jobSnapshot: {
         templateVersionId: 'version-1',
@@ -25,7 +25,7 @@ describe('external render target', () => {
         serve_url: 'https://cdn.example.com/template/index.html',
         composition_id: 'external-main',
         build_hash: 'build-hash',
-        cloud_provider: 'aws-codebuild',
+        cloud_provider: 'desktop_worker',
       },
     });
 
@@ -34,7 +34,7 @@ describe('external render target', () => {
     assert.equal(target.templateVersionId, 'version-1');
     assert.equal(target.buildId, 'build-1');
     assert.equal(target.buildHash, 'build-hash');
-    assert.equal(target.cloudProvider, 'aws-codebuild');
+    assert.equal(target.cloudProvider, 'desktop_worker');
   });
 
   it('rejects a built record that is missing an external composition id', () => {
@@ -70,7 +70,7 @@ describe('external render target', () => {
         status: 'BUILT',
         serve_url: 'https://cdn.example.com/template/index.html',
         composition_id: 'template-sites/build-1/index.html',
-        build_log: 'Cloud build completed and validated successfully. remotionVersion=4.0.484',
+        build_log: 'Worker build completed and validated successfully. remotionVersion=4.0.484',
       },
     });
 
@@ -82,7 +82,7 @@ describe('external render target', () => {
       status: 'BUILT',
       serve_url: 'https://cdn.example.com/template/index.html',
       composition_id: 'template-sites/build-1/index.html',
-      build_log: 'Cloud build completed and validated successfully. remotionVersion=4.0.484',
+      build_log: 'Worker build completed and validated successfully. remotionVersion=4.0.484',
     }), {
       ready: false,
       reason: 'COMPOSITION_ID_INVALID',
@@ -94,14 +94,14 @@ describe('external render target', () => {
       status: 'BUILT',
       serve_url: 'https://cdn.example.com/template/index.html',
       composition_id: 'external-main',
-      build_log: 'Cloud build completed and validated successfully. remotionVersion=4.0.484',
+      build_log: 'Worker build completed and validated successfully. remotionVersion=4.0.484',
     }), true);
 
     assert.equal(isExternalReadyBuild({
       status: 'BUILT',
       serve_url: 'https://cdn.example.com/template/index.html',
       composition_id: 'external-main',
-      build_log: 'Cloud build completed successfully.',
+      build_log: 'Worker build completed successfully.',
     }), false);
 
     assert.equal(isExternalReadyBuild({
@@ -115,7 +115,7 @@ describe('external render target', () => {
       status: 'BUILT',
       serve_url: 'https://cdn.example.com/template/index.html',
       composition_id: 'external-main',
-      build_log: 'Cloud build completed successfully.',
+      build_log: 'Worker build completed successfully.',
     }), {
       ready: false,
       reason: 'BUILD_NOT_VALIDATED',
@@ -127,7 +127,7 @@ describe('external render target', () => {
       status: 'BUILT',
       serve_url: 'https://cdn.example.com/template/index.html',
       composition_id: 'external-main',
-      build_log: 'Cloud build completed and validated successfully. remotionVersion=4.0.474',
+      build_log: 'Worker build completed and validated successfully. remotionVersion=4.0.474',
     }), {
       ready: false,
       reason: 'BUILD_REMOTION_VERSION_MISMATCH',

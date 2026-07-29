@@ -21,6 +21,7 @@ interface ScriptSection {
 }
 
 interface RenderableSlideAsset {
+    file_name?: string;
     slide_index: number;
     storage_path: string;
     public_url: string;
@@ -163,6 +164,7 @@ async function uploadRenderableSlideImages(params: {
             .getPublicUrl(storagePath);
 
         images.push({
+            file_name: storagePath.split('/').pop(),
             slide_index: slide.index,
             storage_path: `production-assets/${storagePath}`,
             public_url: publicUrl,

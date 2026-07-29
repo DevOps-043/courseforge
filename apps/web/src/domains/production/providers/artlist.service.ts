@@ -171,7 +171,7 @@ export class ArtlistService {
     assetId: string,
     type: "music" | "video",
     componentId: string
-  ): Promise<{ publicUrl: string; storagePath: string; duration: number }> {
+  ): Promise<{ fileName: string; publicUrl: string; storagePath: string; duration: number }> {
     let sourceUrl = "";
     let duration = 0;
     let title = "";
@@ -247,6 +247,7 @@ export class ArtlistService {
       .getPublicUrl(storagePath);
 
     return {
+      fileName: `${title || assetId}.${fileExt}`,
       publicUrl,
       storagePath: `production-assets/${storagePath}`,
       duration,

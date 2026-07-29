@@ -31,6 +31,7 @@ export interface AssemblyInputProps {
   bgMusicUrl?: string;
   bgMusicVolume: number;
   avatarVideoUrl?: string;
+  avatarClips: { url: string; durationInFrames: number; order: number }[];
   slides: { index: number; url: string }[];
   brollClips: { url: string; durationInFrames: number; order: number }[];
   transitionType: 'fade' | 'slide' | 'none';
@@ -44,6 +45,7 @@ interface NormalizedAssemblyAssets {
   bgMusicUrl?: string;
   bgMusicVolume: number;
   avatarVideoUrl?: string;
+  avatarClips: { url: string; durationInFrames: number; order: number }[];
   slides: { index: number; url: string }[];
   brollClips: { url: string; durationInFrames: number; order: number }[];
   totalDurationSeconds: number;
@@ -158,6 +160,25 @@ export function normalizeAssemblyAssets(
     )
     .map(({ originalIndex: _originalIndex, ...clip }: { originalIndex: number; url: string; durationInFrames: number; order: number }) => clip);
 
+  const avatarClips = (source.avatar_clips ?? [])
+    .filter((clip: any) => Boolean(clip?.public_url) && (!clip.status || clip.status === 'COMPLETED'))
+    .map((clip: any, index: number) => ({
+      url: clip.public_url,
+      durationInFrames: secondsToFrames(
+        isPositiveNumber(clip.duration) ? clip.duration : DEFAULT_CLIP_SECONDS,
+        fps,
+      ),
+      order: isPositiveNumber(clip.order) ? clip.order : index + 1,
+      originalIndex: index,
+    }))
+    .sort(
+      (
+        left: { order: number; originalIndex: number },
+        right: { order: number; originalIndex: number },
+      ) => left.order - right.order || left.originalIndex - right.originalIndex,
+    )
+    .map(({ originalIndex: _originalIndex, ...clip }: { originalIndex: number; url: string; durationInFrames: number; order: number }) => clip);
+
   const explicitBrollTotalSeconds = (source.b_roll_clips ?? [])
     .filter((clip: any) => Boolean(clip?.public_url) && isPositiveNumber(clip?.duration))
     .reduce(
@@ -168,6 +189,13 @@ export function normalizeAssemblyAssets(
     (sum: number, clip: { durationInFrames: number }) => sum + clip.durationInFrames / fps,
     0,
   );
+  const explicitAvatarClipTotalSeconds = (source.avatar_clips ?? [])
+    .filter((clip: any) => Boolean(clip?.public_url) && (!clip.status || clip.status === 'COMPLETED') && isPositiveNumber(clip?.duration))
+    .reduce((sum: number, clip: any) => sum + clip.duration, 0);
+  const fallbackAvatarClipTotalSeconds = avatarClips.reduce(
+    (sum: number, clip: { durationInFrames: number }) => sum + clip.durationInFrames / fps,
+    0,
+  );
 
   const voiceDurationSeconds = isPositiveNumber(source.voice_audio?.duration)
     ? source.voice_audio.duration
@@ -175,15 +203,28 @@ export function normalizeAssemblyAssets(
   const avatarDurationSeconds = isPositiveNumber(source.avatar_video?.duration)
     ? source.avatar_video.duration
     : 0;
-  let totalDurationSeconds = voiceDurationSeconds;
+  let totalDurationSeconds = 0;
 
-  if (totalDurationSeconds <= 0 && avatarDurationSeconds > 0) {
+  if (
+    source.avatar_generation_mode === 'scene_clips' &&
+    (explicitAvatarClipTotalSeconds > 0 || fallbackAvatarClipTotalSeconds > 0)
+  ) {
+    totalDurationSeconds = explicitAvatarClipTotalSeconds || fallbackAvatarClipTotalSeconds;
+  } else if (source.avatar_generation_mode === 'single_video' && avatarDurationSeconds > 0) {
     totalDurationSeconds = avatarDurationSeconds;
-  } else if (totalDurationSeconds <= 0 && explicitBrollTotalSeconds > 0) {
+  } else if (!source.avatar_generation_mode && explicitAvatarClipTotalSeconds > 0) {
+    totalDurationSeconds = explicitAvatarClipTotalSeconds;
+  } else if (!source.avatar_generation_mode && fallbackAvatarClipTotalSeconds > 0) {
+    totalDurationSeconds = fallbackAvatarClipTotalSeconds;
+  } else if (voiceDurationSeconds > 0) {
+    totalDurationSeconds = voiceDurationSeconds;
+  } else if (avatarDurationSeconds > 0) {
+    totalDurationSeconds = avatarDurationSeconds;
+  } else if (explicitBrollTotalSeconds > 0) {
     totalDurationSeconds = explicitBrollTotalSeconds;
-  } else if (totalDurationSeconds <= 0 && fallbackBrollTotalSeconds > 0) {
+  } else if (fallbackBrollTotalSeconds > 0) {
     totalDurationSeconds = fallbackBrollTotalSeconds;
-  } else if (totalDurationSeconds <= 0 && slides.length > 0) {
+  } else if (slides.length > 0) {
     totalDurationSeconds = slides.length * DEFAULT_SLIDE_SECONDS;
   }
 
@@ -192,6 +233,7 @@ export function normalizeAssemblyAssets(
     bgMusicUrl: source.background_music?.public_url || undefined,
     bgMusicVolume: source.background_music?.volume_multiplier ?? DEFAULT_BG_MUSIC_VOLUME,
     avatarVideoUrl: source.avatar_video?.public_url || undefined,
+    avatarClips,
     slides,
     brollClips,
     totalDurationSeconds,
@@ -204,6 +246,7 @@ export function hasPrimaryRenderableAssemblyAssets(assets: any): boolean {
   return Boolean(
     normalized.voiceAudioUrl ||
       normalized.avatarVideoUrl ||
+      normalized.avatarClips.length > 0 ||
       normalized.slides.length > 0 ||
       normalized.brollClips.length > 0,
   );
@@ -228,6 +271,7 @@ export function buildAssemblyInputProps(params: {
   const hasPrimaryAssets = Boolean(
     normalized.voiceAudioUrl ||
       normalized.avatarVideoUrl ||
+      normalized.avatarClips.length > 0 ||
       normalized.slides.length > 0 ||
       normalized.brollClips.length > 0,
   );
@@ -263,6 +307,7 @@ export function buildAssemblyInputProps(params: {
     bgMusicUrl: normalized.bgMusicUrl,
     bgMusicVolume: normalized.bgMusicVolume,
     avatarVideoUrl: normalized.avatarVideoUrl,
+    avatarClips: normalized.avatarClips,
     slides: normalized.slides,
     brollClips: normalized.brollClips,
     transitionType: transition,

@@ -14,6 +14,7 @@ const serverEnvSchema = z
     OPENAI_API_KEY: z.string().min(1).optional(),
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
     GOOGLE_API_KEY: z.string().min(1).optional(),
+    HEYGEN_API_KEY: z.string().min(1).optional(),
     NETLIFY: z.string().min(1).optional(),
     URL: z.string().min(1).optional(),
     DEPLOY_URL: z.string().min(1).optional(),
@@ -40,6 +41,7 @@ function buildEnvObject(): Record<string, string | undefined> {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
     GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+    HEYGEN_API_KEY: process.env.HEYGEN_API_KEY,
     NETLIFY: process.env.NETLIFY,
     URL: process.env.URL,
     DEPLOY_URL: process.env.DEPLOY_URL,
@@ -151,6 +153,15 @@ export function getOptionalOpenAIApiKey() {
   return getParsedServerEnv().OPENAI_API_KEY || null;
 }
 
+export function getHeygenApiKey() {
+  const apiKey = getParsedServerEnv().HEYGEN_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("Configuracion incompleta: falta HEYGEN_API_KEY");
+  }
+
+  return apiKey;
+}
 
 export function isNetlifyDeployment() {
   const env = getParsedServerEnv();

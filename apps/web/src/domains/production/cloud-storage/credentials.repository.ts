@@ -2,7 +2,7 @@ import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { decrypt, encrypt } from "@/lib/server/crypto";
 import type {
   CloudStorageCredentialRecord,
-  CloudStorageProvider,
+  IntegrationCredentialProvider,
 } from "./types";
 
 export interface UpsertCloudStorageCredentialsInput {
@@ -10,7 +10,7 @@ export interface UpsertCloudStorageCredentialsInput {
   accountEmail: string;
   expiresAt: string;
   organizationId: string;
-  provider: CloudStorageProvider;
+  provider: IntegrationCredentialProvider;
   refreshToken: string;
   scopes: string[];
   userId: string;
@@ -19,7 +19,7 @@ export interface UpsertCloudStorageCredentialsInput {
 export async function getCloudStorageCredentials(
   userId: string,
   organizationId: string,
-  provider: CloudStorageProvider,
+  provider: IntegrationCredentialProvider,
 ) {
   const admin = getServiceRoleClient();
   const { data, error } = await admin
@@ -82,7 +82,7 @@ export async function updateCloudStorageAccessToken(params: {
   accessToken: string;
   expiresAt: string;
   organizationId: string;
-  provider: CloudStorageProvider;
+  provider: IntegrationCredentialProvider;
   refreshToken?: string;
   userId: string;
 }) {
@@ -112,7 +112,7 @@ export async function updateCloudStorageAccessToken(params: {
 export async function deleteCloudStorageCredentials(
   userId: string,
   organizationId: string,
-  provider: CloudStorageProvider,
+  provider: IntegrationCredentialProvider,
 ) {
   const admin = getServiceRoleClient();
   const { error } = await admin

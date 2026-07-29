@@ -122,15 +122,20 @@ function resolveProductionStatus(
   
   // A talking head avatar is generally required for theoretical explanation videos
   const needsAvatar = componentType === "VIDEO_THEORETICAL";
+  const hasCompletedAvatarClips = Boolean(
+    assets.avatar_clips?.some((clip) => clip.status === "COMPLETED" && clip.public_url),
+  );
+  const hasAvatarAsset = Boolean(assets.avatar_video?.public_url || hasCompletedAvatarClips);
 
   const hasRequiredSlides = !needsSlides || Boolean(assets.slides?.images?.length || assets.slides_url);
   const hasRequiredScreencast = !needsScreencast || Boolean(assets.screencast_url);
   const hasRequiredVoice = !needsVoice || Boolean(
     assets.voice_audio?.public_url || 
     assets.avatar_video?.public_url || 
+    hasCompletedAvatarClips ||
     assets.video_url
   );
-  const hasRequiredAvatar = !needsAvatar || Boolean(assets.avatar_video?.public_url);
+  const hasRequiredAvatar = !needsAvatar || hasAvatarAsset;
   
   // Clips are ready if we have video clips uploaded or generated prompts for them
   const hasRequiredClips = !needsVoice || Boolean(assets.b_roll_clips?.length || assets.b_roll_prompts);
@@ -149,7 +154,7 @@ function resolveProductionStatus(
     Boolean(assets.slides?.images?.length || assets.slides_url) ||
     Boolean(assets.screencast_url) ||
     Boolean(assets.voice_audio?.public_url || assets.video_url) ||
-    Boolean(assets.avatar_video?.public_url) ||
+    hasAvatarAsset ||
     Boolean(assets.b_roll_clips?.length || assets.b_roll_prompts)
   ) {
     return "IN_PROGRESS";
@@ -296,11 +301,42 @@ function sanitizeBrollClipDurations(
   });
 }
 
+function sanitizeAvatarClipDurations(
+  currentClips: MaterialAssets["avatar_clips"],
+  incomingClips: MaterialAssets["avatar_clips"] | null | undefined,
+  mergedClips: MaterialAssets["avatar_clips"] | null | undefined,
+) {
+  if (!Array.isArray(mergedClips)) {
+    return mergedClips;
+  }
+
+  const currentById = new Map(
+    (currentClips || []).map((clip) => [clip.id, clip] as const),
+  );
+  const incomingById = new Map(
+    (incomingClips || []).map((clip) => [clip.id, clip] as const),
+  );
+
+  return mergedClips.map((clip) => {
+    const currentClip = currentById.get(clip.id);
+    const incomingClip = incomingById.get(clip.id);
+    return sanitizeTimedAssetDuration(currentClip, incomingClip, clip) as NonNullable<
+      MaterialAssets["avatar_clips"]
+    >[number];
+  });
+}
+
 function sourceSignature(assets: Partial<MaterialAssets>) {
   const broll = (assets.b_roll_clips || []).map((clip) => ({
     id: clip.id,
     order: clip.order,
     ref: assetReferenceKey(clip),
+  }));
+  const avatarClips = (assets.avatar_clips || []).map((clip) => ({
+    id: clip.id,
+    order: clip.order,
+    ref: assetReferenceKey(clip),
+    status: clip.status,
   }));
   const slideImages = (assets.slides?.images || []).map((slide) => ({
     index: slide.slide_index,
@@ -310,6 +346,8 @@ function sourceSignature(assets: Partial<MaterialAssets>) {
   return JSON.stringify({
     voice: assetReferenceKey(assets.voice_audio),
     avatar: assetReferenceKey(assets.avatar_video),
+    avatarGenerationMode: assets.avatar_generation_mode || "",
+    avatarClips,
     backgroundMusic: assetReferenceKey(assets.background_music),
     broll,
     slidesUrl: assets.slides_url || "",
@@ -329,6 +367,7 @@ function clearFinalVideoMetadata(assets: MaterialAssets) {
   const cleaned = { ...assets };
   delete (cleaned as any).final_video_url;
   delete (cleaned as any).final_video_source;
+  delete (cleaned as any).final_video_file_name;
   delete (cleaned as any).final_video_storage_provider;
   delete (cleaned as any).final_video_storage_path;
   delete (cleaned as any).final_video_source_storage_path;
@@ -377,6 +416,14 @@ function sanitizeMaterialAssetMetadata(params: {
       incomingAssets.b_roll_clips,
       sanitizedAssets.b_roll_clips,
     ) as MaterialAssets["b_roll_clips"];
+  }
+
+  if (hasOwnProperty(incomingAssets, "avatar_clips")) {
+    sanitizedAssets.avatar_clips = sanitizeAvatarClipDurations(
+      currentAssets.avatar_clips,
+      incomingAssets.avatar_clips,
+      sanitizedAssets.avatar_clips,
+    ) as MaterialAssets["avatar_clips"];
   }
 
   if (sourceSignature(currentAssets) !== sourceSignature(sanitizedAssets)) {
@@ -1451,6 +1498,7 @@ export async function deleteFinalVideoForPublicationAction(componentId: string) 
 
     delete (cleanedAssets as any).final_video_url;
     delete (cleanedAssets as any).final_video_source;
+    delete (cleanedAssets as any).final_video_file_name;
     delete (cleanedAssets as any).final_video_storage_provider;
     delete (cleanedAssets as any).final_video_storage_path;
     delete (cleanedAssets as any).final_video_source_storage_path;

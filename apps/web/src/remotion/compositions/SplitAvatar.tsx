@@ -2,6 +2,7 @@ import { AbsoluteFill, useVideoConfig } from "remotion";
 import type { AssemblyInputProps } from "../types";
 import { PrimaryVisual } from "../components/PrimaryVisual";
 import { AvatarLayer } from "../components/AvatarLayer";
+import { AvatarClipLayer } from "../components/AvatarClipLayer";
 import { AudioTracks } from "../components/AudioTracks";
 import { parseTemplateRenderConfig } from "../template-config";
 import {
@@ -39,6 +40,8 @@ export function SplitAvatar(props: AssemblyInputProps) {
       ? templateConfig.backgroundColor
       : `linear-gradient(135deg, ${templateConfig.surfaceColor} 0%, ${templateConfig.backgroundColor} 100%)`;
   const timelineSegments = buildVisualTimeline(props).tracks.flatMap((track) => track.segments);
+  const avatarSegments = timelineSegments.filter((segment) => segment.trackKind === "avatar");
+  const hasAvatar = props.avatarClips.length > 0 || Boolean(props.avatarVideoUrl);
 
   return (
     <AbsoluteFill
@@ -75,8 +78,16 @@ export function SplitAvatar(props: AssemblyInputProps) {
           ...avatarOverrideStyle,
         }}
       >
-        {props.avatarVideoUrl ? (
+        {props.avatarClips.length > 0 ? (
+          <AvatarClipLayer
+            clips={props.avatarClips}
+            muted={hasVoice}
+            segments={avatarSegments}
+          />
+        ) : props.avatarVideoUrl ? (
           <AvatarLayer url={props.avatarVideoUrl} muted={hasVoice} />
+        ) : hasAvatar ? (
+          null
         ) : (
           <AbsoluteFill
             style={{

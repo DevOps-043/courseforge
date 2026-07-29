@@ -1,14 +1,19 @@
 export const PRODUCTION_JOB_TYPES = {
   BROLL_PROMPT_GENERATION: "BROLL_PROMPT_GENERATION",
+  HEYGEN_AVATAR_CLIP: "HEYGEN_AVATAR_CLIP",
+  HEYGEN_AVATAR_VIDEO: "HEYGEN_AVATAR_VIDEO",
   REMOTION_RENDER: "REMOTION_RENDER",
 } as const;
 
 export const PRODUCTION_ASSET_TYPES = {
+  AVATAR_VIDEO_CLIP: "AVATAR_VIDEO_CLIP",
+  AVATAR_VIDEO: "AVATAR_VIDEO",
   BROLL_PROMPTS: "BROLL_PROMPTS",
 } as const;
 
 export const PRODUCTION_PROVIDERS = {
   GEMINI: "gemini",
+  HEYGEN: "heygen",
   MANUAL: "manual",
   REMOTION: "remotion",
 } as const;
@@ -63,6 +68,7 @@ export interface ProductionComponentContext {
 export interface ProductionJobRecord {
   id: string;
   output_snapshot?: Record<string, unknown> | null;
+  provider_job_id?: string | null;
   status: ProductionJobStatus;
 }
 

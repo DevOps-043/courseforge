@@ -59,6 +59,18 @@ function baseClip(params: Partial<NonNullable<MaterialAssets["b_roll_clips"]>[nu
   };
 }
 
+function baseAvatarClip(params: Partial<NonNullable<MaterialAssets["avatar_clips"]>[number]>) {
+  return {
+    id: params.id ?? "avatar-clip",
+    order: params.order ?? 1,
+    public_url: params.public_url ?? VIDEO_URL,
+    script_text: params.script_text ?? "Texto de prueba",
+    status: params.status ?? "COMPLETED",
+    storage_path: params.storage_path ?? "production-assets/avatar/clip.mp4",
+    duration: params.duration,
+  };
+}
+
 describe("normalizeAssemblyAssets", () => {
   it("sorts slide images by slide_index and normalizes them to contiguous layer indexes", () => {
     const assets: MaterialAssets = {
@@ -180,6 +192,51 @@ describe("normalizeAssemblyAssets", () => {
       [150, 120, 60],
     );
     assert.equal(normalized.totalDurationSeconds, 6);
+  });
+
+  it("uses real avatar clip durations when scene mode is active", () => {
+    const assets: MaterialAssets = {
+      avatar_generation_mode: "scene_clips",
+      avatar_clips: [
+        baseAvatarClip({ id: "second", order: 2, duration: 8.4, public_url: "https://cdn.example.com/avatar-2.mp4" }),
+        baseAvatarClip({ id: "first", order: 1, duration: 4.2, public_url: "https://cdn.example.com/avatar-1.mp4" }),
+      ],
+      avatar_video: {
+        storage_path: "production-assets/avatar.mp4",
+        public_url: VIDEO_URL,
+        duration: 120,
+      },
+      voice_audio: {
+        storage_path: "production-assets/voice.mp3",
+        public_url: AUDIO_URL,
+        duration: 60,
+      },
+    };
+
+    const props = buildAssemblyProps(assets, "avatar-focus");
+
+    assert.equal(props.totalDurationInFrames, Math.round(12.6 * ASSEMBLY_FPS));
+    assert.deepEqual(
+      props.avatarClips.map((clip) => clip.url),
+      ["https://cdn.example.com/avatar-1.mp4", "https://cdn.example.com/avatar-2.mp4"],
+    );
+  });
+
+  it("uses the single avatar video duration when video-complete mode is active", () => {
+    const props = buildAssemblyProps(
+      {
+        avatar_generation_mode: "single_video",
+        avatar_clips: [baseAvatarClip({ duration: 30 })],
+        avatar_video: {
+          storage_path: "production-assets/avatar.mp4",
+          public_url: VIDEO_URL,
+          duration: 75,
+        },
+      },
+      "split-avatar",
+    );
+
+    assert.equal(props.totalDurationInFrames, 75 * ASSEMBLY_FPS);
   });
 
   it("prioritizes voice duration over avatar, B-roll and slides", () => {
@@ -634,6 +691,31 @@ describe("buildVisualTimeline", () => {
     assert.deepEqual(
       timeline.tracks.find((track) => track.id === "broll")?.segments.map((segment) => segment.layerId),
       [getBrollItemLayerId(1)],
+    );
+  });
+
+  it("creates sequential avatar clip segments when avatarClips are present", () => {
+    const props = buildAssemblyProps(
+      {
+        avatar_generation_mode: "scene_clips",
+        avatar_clips: [
+          baseAvatarClip({ id: "one", order: 1, duration: 2, public_url: "https://cdn.example.com/avatar-1.mp4" }),
+          baseAvatarClip({ id: "two", order: 2, duration: 3, public_url: "https://cdn.example.com/avatar-2.mp4" }),
+        ],
+      },
+      "avatar-focus",
+    );
+
+    const timeline = buildVisualTimeline(props);
+    const avatarSegments = timeline.tracks.find((track) => track.id === "avatar")?.segments || [];
+
+    assert.deepEqual(
+      avatarSegments.map((segment) => segment.id),
+      ["avatar-1", "avatar-2"],
+    );
+    assert.deepEqual(
+      avatarSegments.map((segment) => segment.startFrame),
+      [0, 2 * ASSEMBLY_FPS],
     );
   });
 

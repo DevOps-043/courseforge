@@ -19,7 +19,6 @@ import {
   resolveLocalRenderTimeoutMs,
   buildStableHash,
 } from './remotion-render.config';
-import { TemplateCloudBuildService } from './template-cloud-build.service';
 import {
   getExternalBuildReadiness,
   isExternalReadyBuild,
@@ -179,7 +178,7 @@ export class ProductionController {
   }
 
   private buildBrowserPreviewVideoUrl(req: Request, fileName: string): string {
-    const publicBaseUrl = process.env.EXPRESS_PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+    const publicBaseUrl = `${req.protocol}://${req.get('host')}`;
     return `${publicBaseUrl.replace(/\/+$/, '')}/api/v1/production/remotion/external-preview-renders/${encodeURIComponent(fileName)}`;
   }
 
@@ -366,76 +365,6 @@ export class ProductionController {
 
       const readiness = getRemotionRenderReadiness();
       return res.status(readiness.ok ? 200 : 503).json(readiness);
-    } catch (err) {
-      return next(err);
-    }
-  }
-
-  async startTemplateCloudBuild(req: Request, res: Response, next: NextFunction) {
-    try {
-      const authContext = await this.authenticateRequest(req);
-      if (!authContext) {
-        return res.status(401).json({ error: 'Invalid or expired token' });
-      }
-
-      const templateVersionId = typeof req.body?.templateVersionId === 'string'
-        ? req.body.templateVersionId
-        : req.params.templateVersionId;
-      if (!isUuid(templateVersionId)) {
-        return res.status(400).json({ error: 'templateVersionId is required.', code: 'INVALID_TEMPLATE_VERSION_ID' });
-      }
-
-      const { data: version, error } = await authContext.serviceClient
-        .from('remotion_template_versions')
-        .select('id, organization_id, status')
-        .eq('id', templateVersionId)
-        .maybeSingle();
-
-      if (error || !version) {
-        return res.status(404).json({ error: 'Template version not found.', code: 'TEMPLATE_VERSION_NOT_FOUND' });
-      }
-
-      if (version.organization_id && !authContext.organizationIds.includes(version.organization_id)) {
-        return res.status(403).json({ error: 'Forbidden.', code: 'ORG_FORBIDDEN' });
-      }
-
-      const service = new TemplateCloudBuildService(authContext.serviceClient);
-      const result = await service.startBuild(templateVersionId);
-      return res.status(result.success ? 202 : 400).json(result);
-    } catch (err) {
-      return next(err);
-    }
-  }
-
-  async getTemplateCloudBuildStatus(req: Request, res: Response, next: NextFunction) {
-    try {
-      const authContext = await this.authenticateRequest(req);
-      if (!authContext) {
-        return res.status(401).json({ error: 'Invalid or expired token' });
-      }
-
-      const buildId = req.params.buildId;
-      if (!isUuid(buildId)) {
-        return res.status(400).json({ error: 'buildId is invalid.', code: 'INVALID_BUILD_ID' });
-      }
-
-      const { data: build, error } = await authContext.serviceClient
-        .from('remotion_template_builds')
-        .select('id, organization_id')
-        .eq('id', buildId)
-        .maybeSingle();
-
-      if (error || !build) {
-        return res.status(404).json({ error: 'Cloud build not found.', code: 'CLOUD_BUILD_NOT_FOUND' });
-      }
-
-      if (build.organization_id && !authContext.organizationIds.includes(build.organization_id)) {
-        return res.status(403).json({ error: 'Forbidden.', code: 'ORG_FORBIDDEN' });
-      }
-
-      const service = new TemplateCloudBuildService(authContext.serviceClient);
-      const result = await service.getBuildStatus(buildId);
-      return res.status(result.success ? 200 : 404).json(result);
     } catch (err) {
       return next(err);
     }

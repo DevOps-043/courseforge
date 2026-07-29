@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import type { CloudStorageProvider } from "@/domains/production/cloud-storage/types";
+import type { IntegrationCredentialProvider } from "@/domains/production/cloud-storage/types";
 
 interface OAuthPopupResponseParams {
-  provider: CloudStorageProvider;
+  provider: IntegrationCredentialProvider;
   status: "success" | "error";
   message?: string;
   redirectPath?: string;
