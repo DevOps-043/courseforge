@@ -23,6 +23,7 @@ import {
 import { parseTemplateRenderConfig } from "./template-config";
 import { parseLayoutOverrideManifests } from "./layout-overrides";
 import {
+  normalizeTimelineOverrideManifestsForDuration,
   parseTimelineOverrideManifests,
   type TimelineOverrideManifestList,
 } from "./timeline-overrides";
@@ -110,11 +111,17 @@ export function buildAssemblyProps(
     timelineOverrides,
     template,
   });
+  const totalDurationInFrames = secondsToFrames(totalSeconds, fps);
+  const normalizedTimelineOverrides = normalizeTimelineOverrideManifestsForDuration({
+    manifests: timelineOverrides,
+    durationInFrames: totalDurationInFrames,
+    fps,
+  });
 
   return parseAssemblyInputProps({
     template,
     fps,
-    totalDurationInFrames: secondsToFrames(totalSeconds, fps),
+    totalDurationInFrames,
     voiceAudioUrl: normalized.voiceAudioUrl,
     bgMusicUrl: normalized.bgMusicUrl,
     bgMusicVolume: normalized.bgMusicVolume,
@@ -124,7 +131,7 @@ export function buildAssemblyProps(
     transitionType: templateConfig.transitionType,
     templateConfig,
     layoutOverrides,
-    timelineOverrides,
+    timelineOverrides: normalizedTimelineOverrides,
   });
 }
 

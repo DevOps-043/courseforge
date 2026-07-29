@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import type { AssemblySlide, AssemblyTransition } from "../types";
 import type { LayoutOverrideStyle } from "../layout-override-styles";
 import type { VisualTimelineSegment } from "../visual-timeline";
+import { resolveSlideTimelineRenderItems } from "./slide-timeline-rendering";
 
 interface SlideShowProps {
   slides: AssemblySlide[];
@@ -60,26 +61,21 @@ export function SlideShow({
   const ordered = [...slides].sort((a, b) => a.index - b.index);
   const slideCount = ordered.length;
   const perSlideFrames = Math.max(1, Math.floor(durationInFrames / slideCount));
-  const segmentBySlideId = new Map(
-    (segments || []).map((segment) => [segment.id, segment] as const),
-  );
 
   if (segments && segments.length > 0) {
+    const timelineItems = resolveSlideTimelineRenderItems(ordered, segments);
+
     return (
       <>
-        {ordered.flatMap((slide) => {
-          const segment = segmentBySlideId.get(`slide-${slide.index}`);
-          if (!segment) return [];
-          return (
-            <Sequence
-              key={segment.id}
-              from={segment.startFrame}
-              durationInFrames={segment.durationInFrames}
-            >
-              <SlideImage url={slide.url} style={getSlideStyle?.(slide)} />
-            </Sequence>
-          );
-        })}
+        {timelineItems.map(({ slide, segment }) => (
+          <Sequence
+            key={segment.id}
+            from={segment.startFrame}
+            durationInFrames={segment.durationInFrames}
+          >
+            <SlideImage url={slide.url} style={getSlideStyle?.(slide)} />
+          </Sequence>
+        ))}
       </>
     );
   }

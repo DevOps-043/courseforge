@@ -32,6 +32,7 @@
     "src/domains/production/render-batches/__tests__/**/*.ts",
     "src/remotion/types.ts",
     "src/remotion/visual-timeline.ts",
+    "src/remotion/components/slide-timeline-rendering.ts",
     "src/remotion/__tests__/**/*.ts"
   ],
   "exclude": [

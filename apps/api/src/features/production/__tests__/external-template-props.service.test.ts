@@ -146,6 +146,7 @@ describe('external template props contract', () => {
       { index: 0, url: 'https://cdn.example.com/slide-1.png' },
       { index: 1, url: 'https://cdn.example.com/slide-2.png' },
     ]);
+    assert.equal((result.resolvedProps.timelineOverrides as any[])[0].timeline.durationInFrames, 42 * 30);
     assert.equal((result.resolvedProps.timelineOverrides as any[])[0].segments[0].startFrame, 30);
   });
 

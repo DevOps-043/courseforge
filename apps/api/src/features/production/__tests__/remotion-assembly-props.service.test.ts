@@ -367,8 +367,8 @@ describe('remotion assembly props contract', () => {
               id: 'broll-1',
               trackKind: 'broll',
               layerId: 'broll:1',
-              startFrame: 180,
-              endFrame: 270,
+              startFrame: 30,
+              endFrame: 75,
               sourceStartFrame: 0,
               sourceEndFrame: 90,
               loopMode: 'loop',
@@ -382,8 +382,9 @@ describe('remotion assembly props contract', () => {
     });
 
     assert.equal(props.timelineOverrides.length, 1);
-    assert.equal(props.timelineOverrides[0].segments[0].startFrame, 180);
-    assert.equal(props.timelineOverrides[0].segments[0].endFrame, 270);
+    assert.equal(props.timelineOverrides[0].timeline.durationInFrames, 3 * ASSEMBLY_FPS);
+    assert.equal(props.timelineOverrides[0].segments[0].startFrame, 30);
+    assert.equal(props.timelineOverrides[0].segments[0].endFrame, 75);
     assert.equal(props.totalDurationInFrames, 3 * ASSEMBLY_FPS);
   });
 
@@ -403,8 +404,8 @@ describe('remotion assembly props contract', () => {
               {
                 id: 'broll-1',
                 trackKind: 'broll',
-                startFrame: 150,
-                endFrame: 240,
+                startFrame: 15,
+                endFrame: 75,
               },
             ],
           },
@@ -412,7 +413,8 @@ describe('remotion assembly props contract', () => {
       },
     });
 
-    assert.equal(props.timelineOverrides[0].segments[0].startFrame, 150);
+    assert.equal(props.timelineOverrides[0].timeline.durationInFrames, 3 * ASSEMBLY_FPS);
+    assert.equal(props.timelineOverrides[0].segments[0].startFrame, 15);
     assert.equal(props.totalDurationInFrames, 3 * ASSEMBLY_FPS);
   });
 
@@ -443,7 +445,7 @@ describe('remotion assembly props contract', () => {
     });
 
     assert.equal(props.totalDurationInFrames, 42 * ASSEMBLY_FPS);
-    assert.equal(props.timelineOverrides[0].timeline.durationInFrames, 9 * 60 * ASSEMBLY_FPS);
+    assert.equal(props.timelineOverrides[0].timeline.durationInFrames, 42 * ASSEMBLY_FPS);
   });
 
   it('rejects invalid timeline ranges', () => {

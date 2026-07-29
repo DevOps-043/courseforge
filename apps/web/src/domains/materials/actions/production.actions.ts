@@ -21,7 +21,12 @@ import {
 } from "@/domains/production/render-batches/render-batch.types";
 import { normalizeAssemblyAssets } from "@/remotion/assembly-assets.normalizer";
 import { safeParseLayoutOverrideManifests } from "@/remotion/layout-overrides";
-import { safeParseTimelineOverrideManifests } from "@/remotion/timeline-overrides";
+import {
+  normalizeTimelineOverrideManifestsForDuration,
+  safeParseTimelineOverrideManifests,
+  type TimelineOverrideManifest,
+} from "@/remotion/timeline-overrides";
+import { ASSEMBLY_FALLBACK_DURATION_SECONDS, ASSEMBLY_FPS } from "@/remotion/types";
 import type { LessonVideoData } from "@/domains/publication/types/publication.types";
 import {
   buildBrollPromptJobInputSnapshot,
@@ -186,6 +191,33 @@ function buildGammaDeckId(params: {
 
 function isProductionComplete(_componentType: string, assets?: MaterialAssets | null) {
   return assets?.production_status === "COMPLETED";
+}
+
+function isPositiveNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function resolveTimelineOverrideCanonicalDurationSeconds(
+  assets: MaterialAssets,
+  manifests: TimelineOverrideManifest[],
+) {
+  const normalized = normalizeAssemblyAssets(assets, ASSEMBLY_FPS);
+  if (isPositiveNumber(assets.assembly_target_duration_seconds)) {
+    return assets.assembly_target_duration_seconds;
+  }
+  if (normalized.totalDurationSeconds > 0) {
+    return normalized.totalDurationSeconds;
+  }
+
+  const manifestDuration = manifests.find((manifest) =>
+    isPositiveNumber(manifest.timeline.fps) &&
+    isPositiveNumber(manifest.timeline.durationInFrames)
+  );
+  if (manifestDuration) {
+    return manifestDuration.timeline.durationInFrames / manifestDuration.timeline.fps;
+  }
+
+  return ASSEMBLY_FALLBACK_DURATION_SECONDS;
 }
 
 type TimedAssetRecord = {
@@ -692,8 +724,17 @@ export async function saveRemotionTimelineOverridesAction(
     return { success: false, error: "Ajustes de timeline invalidos" };
   }
 
-  const parsed = parsedResult.data;
   const currentAssets = (authorized.component.assets || {}) as MaterialAssets;
+  const parsed = parsedResult.data.length > 0
+    ? normalizeTimelineOverrideManifestsForDuration({
+        manifests: parsedResult.data,
+        durationInFrames: Math.max(
+          1,
+          Math.round(resolveTimelineOverrideCanonicalDurationSeconds(currentAssets, parsedResult.data) * ASSEMBLY_FPS),
+        ),
+        fps: ASSEMBLY_FPS,
+      })
+    : [];
   const existingParsedResult = safeParseTimelineOverrideManifests(currentAssets.timeline_overrides);
   const existingTimelineOverrides = existingParsedResult.success ? existingParsedResult.data : [];
   const scopedTemplateId = context.templateId || parsed[0]?.templateId || null;

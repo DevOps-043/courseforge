@@ -44,6 +44,10 @@
       "layoutOverrides": {
         "type": "array",
         "description": "Ajustes visuales no destructivos del editor de layout."
+      },
+      "timelineOverrides": {
+        "type": "array",
+        "description": "Ajustes no destructivos de inicio, fin y recorte por asset en el timeline."
       }
     }
   },
@@ -55,6 +59,7 @@
     "slides": [],
     "brollClips": [],
     "layoutOverrides": [],
+    "timelineOverrides": [],
     "totalDurationInFrames": 1800
   },
   "editableLayers": [

@@ -253,6 +253,7 @@ export function RemotionTimelineInspector({
     const handleMove = (event: PointerEvent) => {
       const deltaFrames = Math.round((event.clientX - dragState.startClientX) / pxPerFrame);
       const original = dragState.original;
+      let nextSeekFrame = original.startFrame;
       commitSegment(dragState.segmentId, () => {
         if (dragState.mode === "move") {
           const duration = original.durationInFrames;
@@ -260,6 +261,7 @@ export function RemotionTimelineInspector({
             original.startFrame + deltaFrames,
             Math.max(0, timeline.durationInFrames - duration),
           );
+          nextSeekFrame = startFrame;
           return {
             ...original,
             startFrame,
@@ -270,6 +272,7 @@ export function RemotionTimelineInspector({
 
         if (dragState.mode === "start") {
           const startFrame = clampFrame(original.startFrame + deltaFrames, original.endFrame - 1);
+          nextSeekFrame = startFrame;
           return {
             ...original,
             startFrame,
@@ -281,12 +284,14 @@ export function RemotionTimelineInspector({
           original.startFrame + 1,
           clampFrame(original.endFrame + deltaFrames, timeline.durationInFrames),
         );
+        nextSeekFrame = endFrame - 1;
         return {
           ...original,
           endFrame,
           durationInFrames: endFrame - original.startFrame,
         };
       });
+      onSeekFrame(clampFrame(nextSeekFrame, Math.max(0, timeline.durationInFrames - 1)));
     };
 
     const handleUp = () => setDragState(null);
@@ -297,7 +302,7 @@ export function RemotionTimelineInspector({
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
     };
-  }, [commitSegment, dragState, pxPerFrame, timeline.durationInFrames]);
+  }, [commitSegment, dragState, onSeekFrame, pxPerFrame, timeline.durationInFrames]);
 
   const commitNumeric = (field: "start" | "end" | "duration" | "sourceStart" | "sourceEnd", seconds: number) => {
     if (!selectedSegment) return;
@@ -305,15 +310,18 @@ export function RemotionTimelineInspector({
     commitSegment(selectedSegment.id, (segment) => {
       if (field === "start") {
         const startFrame = clampFrame(frame, segment.endFrame - 1);
+        onSeekFrame(startFrame);
         return { ...segment, startFrame, durationInFrames: segment.endFrame - startFrame };
       }
       if (field === "end") {
         const endFrame = Math.max(segment.startFrame + 1, clampFrame(frame, timeline.durationInFrames));
+        onSeekFrame(clampFrame(endFrame - 1, Math.max(0, timeline.durationInFrames - 1)));
         return { ...segment, endFrame, durationInFrames: endFrame - segment.startFrame };
       }
       if (field === "duration") {
         const durationInFrames = Math.max(1, frame);
         const endFrame = clampFrame(segment.startFrame + durationInFrames, timeline.durationInFrames);
+        onSeekFrame(clampFrame(endFrame - 1, Math.max(0, timeline.durationInFrames - 1)));
         return { ...segment, endFrame, durationInFrames: endFrame - segment.startFrame };
       }
       if (segment.trackKind !== "broll") return segment;
@@ -382,18 +390,22 @@ export function RemotionTimelineInspector({
         </div>
       </div>
 
-      <div className="space-y-1.5">
-        <div className="grid min-w-0 grid-cols-[92px_minmax(0,1fr)] items-center gap-2">
-          <div />
-          <div
-            className="overflow-x-auto rounded-md border border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-[#0B1118]"
-            onClick={(event) => {
-              const rect = event.currentTarget.getBoundingClientRect();
-              const x = event.clientX - rect.left + event.currentTarget.scrollLeft;
-              onSeekFrame(clampFrame(x / pxPerFrame, timeline.durationInFrames));
-            }}
-          >
-            <div className="relative h-7" style={{ width: `${contentWidth}px` }}>
+      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-[#0B1118]">
+        <div
+          className="space-y-1.5 p-1.5"
+          style={{ width: `${contentWidth + 104}px` }}
+        >
+          <div className="grid grid-cols-[92px_minmax(0,1fr)] items-center gap-2">
+            <div className="sticky left-1 z-30 h-7 rounded-md bg-gray-50 dark:bg-[#0B1118]" />
+            <div
+              className="relative h-7 rounded-md bg-white dark:bg-[#101820]"
+              style={{ width: `${contentWidth}px` }}
+              onClick={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                onSeekFrame(clampFrame(x / pxPerFrame, timeline.durationInFrames));
+              }}
+            >
               {rulerTicks.map((tick) => (
                 <div
                   key={tick.seconds}
@@ -413,27 +425,30 @@ export function RemotionTimelineInspector({
               />
             </div>
           </div>
-        </div>
 
-        {timeline.tracks.map((track) => {
-          const style = TRACK_STYLES[track.kind];
-          const TrackIcon = style.Icon;
+          {timeline.tracks.map((track) => {
+            const style = TRACK_STYLES[track.kind];
+            const TrackIcon = style.Icon;
 
-          return (
-            <div
-              key={track.id}
-              className="grid min-w-0 grid-cols-[92px_minmax(0,1fr)] items-center gap-2"
-            >
+            return (
               <div
-                className={`inline-flex h-7 min-w-0 items-center gap-1.5 rounded-md px-2 text-xs font-bold ${style.badge}`}
+                key={track.id}
+                className="grid grid-cols-[92px_minmax(0,1fr)] items-center gap-2"
               >
-                <TrackIcon className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{track.label}</span>
-              </div>
-              <div className="overflow-x-auto rounded-md border border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-[#0B1118]">
                 <div
-                  className="relative h-8"
+                  className={`sticky left-1 z-30 inline-flex h-7 min-w-0 items-center gap-1.5 rounded-md px-2 text-xs font-bold shadow-sm ${style.badge}`}
+                >
+                  <TrackIcon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{track.label}</span>
+                </div>
+                <div
+                  className="relative h-8 rounded-md bg-white dark:bg-[#101820]"
                   style={{ width: `${contentWidth}px` }}
+                  onClick={(event) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const x = event.clientX - rect.left;
+                    onSeekFrame(clampFrame(x / pxPerFrame, timeline.durationInFrames));
+                  }}
                 >
                   <div
                     className="pointer-events-none absolute bottom-0 top-0 z-20 w-px bg-[#00D4B3]"
@@ -449,7 +464,10 @@ export function RemotionTimelineInspector({
                         key={segment.id}
                         role="button"
                         tabIndex={0}
-                        onClick={() => handleSelectSegment(segment)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleSelectSegment(segment);
+                        }}
                         onPointerDown={(event) => handlePointerDown(event, segment, "move")}
                         title={`${segment.label}: ${formatSeconds(segment.startFrame / timeline.fps)} - ${formatSeconds(segment.endFrame / timeline.fps)}`}
                         className={`absolute top-1 h-6 overflow-hidden rounded-md px-2 text-left text-[11px] font-semibold text-white shadow-sm transition ${style.bar} ${
@@ -477,9 +495,9 @@ export function RemotionTimelineInspector({
                   })}
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       {selectedSegment ? (

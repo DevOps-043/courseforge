@@ -7,6 +7,7 @@ import {
   type LayoutOverrideManifestList,
 } from './layout-overrides.service';
 import {
+  normalizeTimelineOverrideManifestsForDuration,
   parseTimelineOverrideManifests,
   type TimelineOverrideManifestList,
 } from './timeline-overrides.service';
@@ -243,6 +244,12 @@ export function buildAssemblyInputProps(params: {
     timelineOverrides,
     compositionId: params.compositionId,
   });
+  const totalDurationInFrames = secondsToFrames(totalSeconds, fps);
+  const normalizedTimelineOverrides = normalizeTimelineOverrideManifestsForDuration({
+    manifests: timelineOverrides,
+    durationInFrames: totalDurationInFrames,
+    fps,
+  });
   const transition =
     params.transitionType === 'slide' || params.transitionType === 'none'
       ? params.transitionType
@@ -251,7 +258,7 @@ export function buildAssemblyInputProps(params: {
   return {
     template: params.compositionId,
     fps,
-    totalDurationInFrames: secondsToFrames(totalSeconds, fps),
+    totalDurationInFrames,
     voiceAudioUrl: normalized.voiceAudioUrl,
     bgMusicUrl: normalized.bgMusicUrl,
     bgMusicVolume: normalized.bgMusicVolume,
@@ -264,6 +271,6 @@ export function buildAssemblyInputProps(params: {
       transitionType: transition,
     },
     layoutOverrides,
-    timelineOverrides,
+    timelineOverrides: normalizedTimelineOverrides,
   };
 }

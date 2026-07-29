@@ -29,6 +29,7 @@ import {
   buildVisualTimeline,
   getActiveTimelineSegments,
 } from "../visual-timeline";
+import { resolveSlideTimelineRenderItems } from "../components/slide-timeline-rendering";
 import {
   commitLayoutLayerCrop,
   commitLayoutLayerBox,
@@ -335,7 +336,7 @@ describe("normalizeAssemblyAssets", () => {
     );
 
     assert.equal(props.totalDurationInFrames, 42 * ASSEMBLY_FPS);
-    assert.equal(props.timelineOverrides[0].timeline.durationInFrames, 9 * 60 * ASSEMBLY_FPS);
+    assert.equal(props.timelineOverrides[0].timeline.durationInFrames, 42 * ASSEMBLY_FPS);
   });
 
   it("falls back to the default template and duration for empty assets", () => {
@@ -768,6 +769,30 @@ describe("buildVisualTimeline", () => {
 
     assert.equal(slideSegments[0].durationInFrames, 120);
     assert.equal(slideSegments[1].startFrame, 90);
+  });
+
+  it("resolves slide render segments by layer id when override ids drift", () => {
+    const items = resolveSlideTimelineRenderItems(
+      [
+        { index: 0, url: "https://cdn.example.com/slide-1.png" },
+        { index: 1, url: "https://cdn.example.com/slide-2.png" },
+      ],
+      [
+        {
+          id: "legacy-slide-id",
+          trackKind: "slides",
+          layerId: getSlideItemLayerId(0),
+          label: "Slide 1",
+          startFrame: 45,
+          endFrame: 120,
+          durationInFrames: 75,
+        },
+      ],
+    );
+
+    assert.equal(items.length, 1);
+    assert.equal(items[0].slide.index, 0);
+    assert.equal(items[0].segment.startFrame, 45);
   });
 
   it("applies B-roll trim and loop metadata", () => {

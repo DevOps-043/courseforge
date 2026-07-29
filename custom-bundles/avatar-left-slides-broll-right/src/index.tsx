@@ -4,6 +4,7 @@ import {
   Audio,
   Composition,
   Img,
+  Sequence,
   Video,
   interpolate,
   registerRoot,
@@ -21,6 +22,48 @@ type BrollClip = {
   durationInFrames?: number;
   order?: number;
   url: string;
+};
+
+type TimelineOverrideSegment = {
+  id?: string;
+  trackKind?: "slides" | "broll";
+  layerId?: string;
+  startFrame?: number;
+  endFrame?: number;
+  sourceStartFrame?: number;
+  sourceEndFrame?: number;
+  loopMode?: "loop" | "freeze" | "none";
+};
+
+type TimelineOverrideManifest = {
+  version?: number;
+  templateId?: string;
+  templateVersionId?: string | null;
+  timeline?: {
+    durationInFrames?: number;
+    fps?: number;
+  };
+  segments?: TimelineOverrideSegment[];
+};
+
+type SlideTimelineItem = {
+  slide: SlideAsset;
+  startFrame: number;
+  durationInFrames: number;
+  id: string;
+  layerId: string;
+  index: number;
+};
+
+type BrollTimelineItem = {
+  clip: BrollClip;
+  startFrame: number;
+  durationInFrames: number;
+  id: string;
+  layerId: string;
+  sourceStartFrame?: number;
+  sourceEndFrame?: number;
+  loopMode?: "loop" | "freeze" | "none";
 };
 
 type LayoutOverrideEdit =
@@ -48,6 +91,7 @@ type TemplateProps = {
   brollClips?: BrollClip[];
   layoutOverrides?: LayoutOverrideManifest[];
   slides?: SlideAsset[];
+  timelineOverrides?: TimelineOverrideManifest[];
   totalDurationInFrames?: number;
   voiceAudioUrl?: string;
 };
@@ -74,6 +118,7 @@ const defaultProps: TemplateProps = {
   brollClips: [],
   layoutOverrides: [],
   slides: [],
+  timelineOverrides: [],
   totalDurationInFrames: fallbackDurationInFrames,
   voiceAudioUrl: "",
 };
@@ -160,11 +205,136 @@ function buildLayoutOverrideStyle(
   return style;
 }
 
-function getActiveSlideIndex(frame: number, slideCount: number, durationInFrames: number) {
-  if (slideCount <= 0) return -1;
+function clampFrame(value: number, min: number, max: number) {
+  const rounded = typeof value === "number" && Number.isFinite(value) ? Math.round(value) : min;
+  return Math.min(max, Math.max(min, rounded));
+}
 
-  const framesPerSlide = durationInFrames / slideCount;
-  return Math.min(slideCount - 1, Math.floor(frame / Math.max(1, framesPerSlide)));
+function normalizeItemIndex(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.round(value))
+    : fallback;
+}
+
+function normalizeClipOrder(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(1, Math.round(value))
+    : fallback;
+}
+
+function normalizeOptionalFrame(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.round(value)) : undefined;
+}
+
+function getTimelineOverrideSegments(
+  manifests: TimelineOverrideManifest[] | null | undefined,
+  trackKind: "slides" | "broll",
+): TimelineOverrideSegment[] {
+  if (!Array.isArray(manifests)) return [];
+
+  return manifests.flatMap((manifest) => {
+    if (!Array.isArray(manifest.segments)) return [];
+    return manifest.segments.filter((segment) => segment.trackKind === trackKind);
+  });
+}
+
+function findTimelineOverrideSegment(
+  segments: TimelineOverrideSegment[],
+  item: { id: string; layerId: string },
+) {
+  return segments.find((segment) => segment.id === item.id || segment.layerId === item.layerId) ?? null;
+}
+
+function resolveOverrideWindow(segment: TimelineOverrideSegment, durationInFrames: number) {
+  const boundedDuration = Math.max(1, Math.round(durationInFrames));
+  const rawStartFrame = typeof segment.startFrame === "number" && Number.isFinite(segment.startFrame) ? segment.startFrame : 0;
+  const rawEndFrame = typeof segment.endFrame === "number" && Number.isFinite(segment.endFrame) ? segment.endFrame : rawStartFrame + 1;
+  const startFrame = clampFrame(rawStartFrame, 0, Math.max(0, boundedDuration - 1));
+  const endFrame = clampFrame(rawEndFrame, startFrame + 1, boundedDuration);
+
+  return {
+    startFrame,
+    durationInFrames: endFrame - startFrame,
+  };
+}
+
+function buildSlideTimeline(
+  slides: SlideAsset[],
+  durationInFrames: number,
+  timelineOverrides: TimelineOverrideManifest[] | null | undefined,
+): SlideTimelineItem[] {
+  if (slides.length === 0 || durationInFrames <= 0) return [];
+
+  const ordered = orderedSlides(slides);
+  const segments = getTimelineOverrideSegments(timelineOverrides, "slides");
+  const framesPerSlide = durationInFrames / ordered.length;
+
+  return ordered.map((slide, position) => {
+    const startFrame = Math.floor(position * framesPerSlide);
+    const endFrame = position === ordered.length - 1 ? durationInFrames : Math.floor((position + 1) * framesPerSlide);
+    const index = normalizeItemIndex(slide.index, position);
+    const item: SlideTimelineItem = {
+      slide,
+      startFrame,
+      durationInFrames: Math.max(1, endFrame - startFrame),
+      id: `slide-${index}`,
+      layerId: `slide:${index}`,
+      index,
+    };
+    const override = findTimelineOverrideSegment(segments, item);
+
+    return override ? { ...item, ...resolveOverrideWindow(override, durationInFrames) } : item;
+  }).filter((item) => item.durationInFrames > 0);
+}
+
+function getClipDurationInFrames(clip: BrollClip) {
+  return typeof clip.durationInFrames === "number" && Number.isFinite(clip.durationInFrames)
+    ? Math.max(1, Math.round(clip.durationInFrames))
+    : 150;
+}
+
+function buildBrollTimeline(
+  clips: BrollClip[],
+  durationInFrames: number,
+  timelineOverrides: TimelineOverrideManifest[] | null | undefined,
+): BrollTimelineItem[] {
+  if (clips.length === 0 || durationInFrames <= 0) return [];
+
+  const ordered = orderedBrollClips(clips);
+  const segments = getTimelineOverrideSegments(timelineOverrides, "broll");
+  const framesPerItem = durationInFrames / Math.max(1, ordered.length);
+
+  return ordered.map((clip, position) => {
+    const startFrame = Math.floor(position * framesPerItem);
+    const endFrame = position === ordered.length - 1 ? durationInFrames : Math.floor((position + 1) * framesPerItem);
+    const order = normalizeClipOrder(clip.order, position + 1);
+    const item: BrollTimelineItem = {
+      clip,
+      startFrame,
+      durationInFrames: Math.max(1, Math.min(getClipDurationInFrames(clip), endFrame - startFrame)),
+      id: `broll-${order}`,
+      layerId: `broll:${order}`,
+    };
+    const override = findTimelineOverrideSegment(segments, item);
+
+    return override
+      ? {
+          ...item,
+          ...resolveOverrideWindow(override, durationInFrames),
+          sourceStartFrame: normalizeOptionalFrame(override.sourceStartFrame),
+          sourceEndFrame: normalizeOptionalFrame(override.sourceEndFrame),
+          loopMode: override.loopMode,
+        }
+      : item;
+  }).filter((item) => item.durationInFrames > 0);
+}
+
+function getActiveSlideTimelineItem(frame: number, timeline: SlideTimelineItem[]) {
+  return timeline.find((item) => frame >= item.startFrame && frame < item.startFrame + item.durationInFrames) ?? null;
+}
+
+function getActiveBrollTimelineItem(frame: number, timeline: BrollTimelineItem[]) {
+  return timeline.find((item) => frame >= item.startFrame && frame < item.startFrame + item.durationInFrames) ?? null;
 }
 
 function buildBoxStyle(
@@ -200,12 +370,16 @@ export function AvatarLeftSlidesBrollRight(props: TemplateProps) {
   const { durationInFrames } = useVideoConfig();
   const slides = orderedSlides(props.slides);
   const brollClips = orderedBrollClips(props.brollClips);
-  const activeSlideIndex = getActiveSlideIndex(frame, slides.length, durationInFrames);
-  const activeSlide = activeSlideIndex >= 0 ? slides[activeSlideIndex] : null;
-  const activeBroll = activeSlideIndex >= 0 ? brollClips[activeSlideIndex] ?? null : null;
+  const slideTimeline = buildSlideTimeline(slides, durationInFrames, props.timelineOverrides);
+  const brollTimeline = buildBrollTimeline(brollClips, durationInFrames, props.timelineOverrides);
+  const activeSlideItem = getActiveSlideTimelineItem(frame, slideTimeline);
+  const activeBrollItem = getActiveBrollTimelineItem(frame, brollTimeline);
+  const activeSlide = activeSlideItem?.slide ?? null;
+  const activeBroll = activeBrollItem?.clip ?? null;
   const hasAvatar = typeof props.avatarVideoUrl === "string" && props.avatarVideoUrl.length > 0;
   const hasVoice = typeof props.voiceAudioUrl === "string" && props.voiceAudioUrl.length > 0;
-  const slideOpacity = interpolate(frame % Math.max(1, durationInFrames / Math.max(1, slides.length)), [0, 10], [0.72, 1], {
+  const slideLocalFrame = activeSlideItem ? Math.max(0, frame - activeSlideItem.startFrame) : 0;
+  const slideOpacity = interpolate(slideLocalFrame, [0, 10], [0.72, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
@@ -215,13 +389,13 @@ export function AvatarLeftSlidesBrollRight(props: TemplateProps) {
   const primaryVisualOverride = buildLayoutOverrideStyle(props.layoutOverrides, REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL);
   const slideOverride = buildLayoutOverrideStyle(props.layoutOverrides, REMOTION_EDITABLE_LAYERS.SLIDES);
   const brollOverride = buildLayoutOverrideStyle(props.layoutOverrides, REMOTION_EDITABLE_LAYERS.BROLL);
-  const activeSlideItemOverride = activeSlideIndex >= 0
-    ? buildLayoutOverrideStyle(props.layoutOverrides, `slide:${activeSlideIndex}`)
+  const activeSlideItemOverride = activeSlideItem
+    ? buildLayoutOverrideStyle(props.layoutOverrides, activeSlideItem.layerId)
     : {};
-  const activeBrollItemOverride = activeBroll
+  const activeBrollItemOverride = activeBrollItem
     ? buildLayoutOverrideStyle(
         props.layoutOverrides,
-        `broll:${Math.max(1, Math.round(activeBroll.order ?? activeSlideIndex + 1))}`,
+        activeBrollItem.layerId,
       )
     : {};
 
@@ -263,49 +437,55 @@ export function AvatarLeftSlidesBrollRight(props: TemplateProps) {
         </div>
       ) : null}
 
-      {activeSlide ? (
-        <div
-          style={buildBoxStyle(slidesBox, {
-            background: "transparent",
-            opacity: slideOpacity,
-            zIndex: defaultStackOrders.slides,
-            ...slideOverride,
-            ...activeSlideItemOverride,
-          })}
-        >
-          <Img
-            src={activeSlide.url}
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "contain",
-              objectPosition: "center center",
-            }}
-          />
-        </div>
+      {activeSlide && activeSlideItem ? (
+        <Sequence from={activeSlideItem.startFrame} durationInFrames={activeSlideItem.durationInFrames}>
+          <div
+            style={buildBoxStyle(slidesBox, {
+              background: "transparent",
+              opacity: slideOpacity,
+              zIndex: defaultStackOrders.slides,
+              ...slideOverride,
+              ...activeSlideItemOverride,
+            })}
+          >
+            <Img
+              src={activeSlide.url}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                objectPosition: "center center",
+              }}
+            />
+          </div>
+        </Sequence>
       ) : null}
 
-      {activeBroll ? (
-        <div
-          style={buildBoxStyle(brollBox, {
-            background: "transparent",
-            zIndex: defaultStackOrders.broll,
-            ...brollOverride,
-            ...activeBrollItemOverride,
-          })}
-        >
-          <Video
-            src={activeBroll.url}
-            muted
-            loop
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              objectPosition: "center center",
-            }}
-          />
-        </div>
+      {activeBroll && activeBrollItem ? (
+        <Sequence from={activeBrollItem.startFrame} durationInFrames={activeBrollItem.durationInFrames}>
+          <div
+            style={buildBoxStyle(brollBox, {
+              background: "transparent",
+              zIndex: defaultStackOrders.broll,
+              ...brollOverride,
+              ...activeBrollItemOverride,
+            })}
+          >
+            <Video
+              src={activeBroll.url}
+              muted
+              loop={activeBrollItem.loopMode !== "freeze"}
+              startFrom={activeBrollItem.sourceStartFrame}
+              endAt={activeBrollItem.sourceEndFrame}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                objectPosition: "center center",
+              }}
+            />
+          </div>
+        </Sequence>
       ) : null}
 
       {hasVoice ? <Audio src={props.voiceAudioUrl!} /> : null}

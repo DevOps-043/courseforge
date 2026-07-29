@@ -51,6 +51,35 @@ export type TimelineOverrideSegment = z.infer<typeof timelineOverrideSegmentSche
 export type TimelineOverrideManifest = z.infer<typeof timelineOverrideManifestSchema>;
 export type TimelineOverrideManifestList = z.infer<typeof timelineOverrideManifestListSchema>;
 
+function clampTimelineFrame(frame: number, durationInFrames: number): number {
+  return Math.max(0, Math.min(durationInFrames, Math.round(frame)));
+}
+
+export function normalizeTimelineOverrideManifestsForDuration(params: {
+  manifests: TimelineOverrideManifestList;
+  durationInFrames: number;
+  fps: number;
+}): TimelineOverrideManifestList {
+  const durationInFrames = Math.max(1, Math.round(params.durationInFrames));
+  const fps = Math.max(1, Math.round(params.fps));
+
+  return params.manifests.map((manifest) => ({
+    ...manifest,
+    timeline: {
+      fps,
+      durationInFrames,
+    },
+    segments: manifest.segments.flatMap((segment) => {
+      const startFrame = clampTimelineFrame(segment.startFrame, durationInFrames);
+      const endFrame = clampTimelineFrame(segment.endFrame, durationInFrames);
+
+      return endFrame > startFrame
+        ? [{ ...segment, startFrame, endFrame }]
+        : [];
+    }),
+  }));
+}
+
 export function parseTimelineOverrideManifests(raw: unknown): TimelineOverrideManifestList {
   return timelineOverrideManifestListSchema.parse(raw ?? []);
 }
