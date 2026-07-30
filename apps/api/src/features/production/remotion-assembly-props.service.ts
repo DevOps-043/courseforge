@@ -18,6 +18,7 @@ export const DEFAULT_CLIP_SECONDS = 5;
 export const DEFAULT_SLIDE_SECONDS = 5;
 export const DEFAULT_BG_MUSIC_VOLUME = 0.15;
 export const DEFAULT_COMPOSITION_ID = 'full-slides';
+export const AVATAR_CLIP_CROSSFADE_FRAMES = 8;
 
 // Only compositions registered by the internal Remotion root are accepted here.
 // External cloud bundles may provide different composition IDs.
@@ -53,6 +54,43 @@ interface NormalizedAssemblyAssets {
 
 function secondsToFrames(seconds: number, fps: number): number {
   return Math.max(1, Math.round(seconds * fps));
+}
+
+function normalizeDurationInFrames(value: number): number {
+  return Number.isFinite(value) ? Math.max(1, Math.round(value)) : 1;
+}
+
+function getAvatarClipCrossfadeFrames(
+  currentClip: { durationInFrames: number },
+  nextClip: { durationInFrames: number },
+): number {
+  const currentDuration = normalizeDurationInFrames(currentClip.durationInFrames);
+  const nextDuration = normalizeDurationInFrames(nextClip.durationInFrames);
+  const boundedByClipLength = Math.min(
+    Math.floor(currentDuration / 4),
+    Math.floor(nextDuration / 4),
+  );
+
+  return Math.max(0, Math.min(AVATAR_CLIP_CROSSFADE_FRAMES, boundedByClipLength));
+}
+
+function getAvatarClipEffectiveDurationInFrames(
+  clips: { durationInFrames: number }[],
+): number {
+  if (clips.length === 0) {
+    return 0;
+  }
+
+  const rawDuration = clips.reduce(
+    (sum, clip) => sum + normalizeDurationInFrames(clip.durationInFrames),
+    0,
+  );
+  const overlapDuration = clips.reduce((sum, clip, index) => {
+    const nextClip = clips[index + 1];
+    return nextClip ? sum + getAvatarClipCrossfadeFrames(clip, nextClip) : sum;
+  }, 0);
+
+  return Math.max(1, rawDuration - overlapDuration);
 }
 
 function isPositiveNumber(value: unknown): value is number {
@@ -161,7 +199,7 @@ export function normalizeAssemblyAssets(
     .map(({ originalIndex: _originalIndex, ...clip }: { originalIndex: number; url: string; durationInFrames: number; order: number }) => clip);
 
   const avatarClips = (source.avatar_clips ?? [])
-    .filter((clip: any) => Boolean(clip?.public_url) && (!clip.status || clip.status === 'COMPLETED'))
+    .filter((clip: any) => Boolean(clip?.public_url) && !clip.deleted && (!clip.status || clip.status === 'COMPLETED'))
     .map((clip: any, index: number) => ({
       url: clip.public_url,
       durationInFrames: secondsToFrames(
@@ -189,13 +227,8 @@ export function normalizeAssemblyAssets(
     (sum: number, clip: { durationInFrames: number }) => sum + clip.durationInFrames / fps,
     0,
   );
-  const explicitAvatarClipTotalSeconds = (source.avatar_clips ?? [])
-    .filter((clip: any) => Boolean(clip?.public_url) && (!clip.status || clip.status === 'COMPLETED') && isPositiveNumber(clip?.duration))
-    .reduce((sum: number, clip: any) => sum + clip.duration, 0);
-  const fallbackAvatarClipTotalSeconds = avatarClips.reduce(
-    (sum: number, clip: { durationInFrames: number }) => sum + clip.durationInFrames / fps,
-    0,
-  );
+  const avatarClipTotalSeconds =
+    getAvatarClipEffectiveDurationInFrames(avatarClips) / fps;
 
   const voiceDurationSeconds = isPositiveNumber(source.voice_audio?.duration)
     ? source.voice_audio.duration
@@ -207,15 +240,13 @@ export function normalizeAssemblyAssets(
 
   if (
     source.avatar_generation_mode === 'scene_clips' &&
-    (explicitAvatarClipTotalSeconds > 0 || fallbackAvatarClipTotalSeconds > 0)
+    avatarClipTotalSeconds > 0
   ) {
-    totalDurationSeconds = explicitAvatarClipTotalSeconds || fallbackAvatarClipTotalSeconds;
+    totalDurationSeconds = avatarClipTotalSeconds;
   } else if (source.avatar_generation_mode === 'single_video' && avatarDurationSeconds > 0) {
     totalDurationSeconds = avatarDurationSeconds;
-  } else if (!source.avatar_generation_mode && explicitAvatarClipTotalSeconds > 0) {
-    totalDurationSeconds = explicitAvatarClipTotalSeconds;
-  } else if (!source.avatar_generation_mode && fallbackAvatarClipTotalSeconds > 0) {
-    totalDurationSeconds = fallbackAvatarClipTotalSeconds;
+  } else if (!source.avatar_generation_mode && avatarClipTotalSeconds > 0) {
+    totalDurationSeconds = avatarClipTotalSeconds;
   } else if (voiceDurationSeconds > 0) {
     totalDurationSeconds = voiceDurationSeconds;
   } else if (avatarDurationSeconds > 0) {

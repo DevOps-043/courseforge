@@ -1,8 +1,18 @@
 import type { CSSProperties } from "react";
-import { AbsoluteFill, OffthreadVideo, Sequence, Series } from "remotion";
+import {
+  AbsoluteFill,
+  OffthreadVideo,
+  Sequence,
+  interpolate,
+  useCurrentFrame,
+} from "remotion";
 import type { AssemblyAvatarClip } from "../types";
 import type { LayoutOverrideStyle } from "../layout-override-styles";
 import type { VisualTimelineSegment } from "../visual-timeline";
+import {
+  getAvatarClipCrossfadeFrames,
+  getAvatarSegmentCrossfadeFrames,
+} from "../avatar-clip-transitions";
 
 interface AvatarClipLayerProps {
   clips: AssemblyAvatarClip[];
@@ -15,33 +25,61 @@ interface AvatarClipLayerProps {
 
 function AvatarClipVideo({
   clip,
+  durationInFrames,
+  fadeInFrames = 0,
+  fadeOutFrames = 0,
   muted,
   objectFit,
   segment,
   style,
 }: {
   clip: AssemblyAvatarClip;
+  durationInFrames: number;
+  fadeInFrames?: number;
+  fadeOutFrames?: number;
   muted: boolean;
   objectFit: CSSProperties["objectFit"];
   segment?: VisualTimelineSegment;
   style?: CSSProperties;
 }) {
+  const frame = useCurrentFrame();
   const sourceStartFrame = Math.max(0, segment?.sourceStartFrame ?? 0);
   const sourceEndFrame = Math.max(
     sourceStartFrame + 1,
     segment?.sourceEndFrame ?? clip.durationInFrames,
   );
+  const fadeInOpacity =
+    fadeInFrames > 0
+      ? interpolate(frame, [0, fadeInFrames], [0, 1], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        })
+      : 1;
+  const fadeOutOpacity =
+    fadeOutFrames > 0
+      ? interpolate(
+          frame,
+          [Math.max(0, durationInFrames - fadeOutFrames), durationInFrames - 1],
+          [1, 0],
+          {
+            extrapolateLeft: "clamp",
+            extrapolateRight: "clamp",
+          },
+        )
+      : 1;
+  const opacity = Math.min(fadeInOpacity, fadeOutOpacity);
 
   return (
     <OffthreadVideo
       src={clip.url}
       muted={muted}
+      volume={muted ? 0 : opacity}
       startFrom={sourceStartFrame}
       endAt={sourceEndFrame}
       onError={(err) => {
         console.warn("[Remotion preview] Clip de avatar no reproducible:", clip.url, err);
       }}
-      style={{ width: "100%", height: "100%", objectFit, ...style }}
+      style={{ width: "100%", height: "100%", objectFit, opacity, ...style }}
     />
   );
 }
@@ -63,12 +101,22 @@ export function AvatarClipLayer({
   const clipByOrder = new Map(ordered.map((clip) => [clip.order, clip] as const));
 
   if (segments && segments.length > 0) {
+    const orderedSegments = [...segments].sort(
+      (left, right) => left.startFrame - right.startFrame || left.id.localeCompare(right.id),
+    );
+
     return (
       <>
-        {segments.flatMap((segment) => {
+        {orderedSegments.flatMap((segment, index) => {
           const orderMatch = segment.id.match(/^avatar-(\d+)$/);
           const clip = orderMatch ? clipByOrder.get(Number(orderMatch[1])) : undefined;
           if (!clip) return [];
+          const { fadeInFrames, fadeOutFrames } = getAvatarSegmentCrossfadeFrames({
+            current: segment,
+            previous: orderedSegments[index - 1],
+            next: orderedSegments[index + 1],
+          });
+
           return (
             <Sequence
               key={segment.id}
@@ -84,6 +132,9 @@ export function AvatarClipLayer({
               >
                 <AvatarClipVideo
                   clip={clip}
+                  durationInFrames={segment.durationInFrames}
+                  fadeInFrames={fadeInFrames}
+                  fadeOutFrames={fadeOutFrames}
                   muted={muted}
                   objectFit={objectFit}
                   segment={segment}
@@ -96,28 +147,47 @@ export function AvatarClipLayer({
     );
   }
 
+  let cursor = 0;
+
   return (
-    <Series>
-      {ordered.map((clip, index) => (
-        <Series.Sequence
-          key={`${clip.order}-${index}`}
-          durationInFrames={clip.durationInFrames}
-        >
-          <AbsoluteFill
-            style={{
-              backgroundColor: "transparent",
-              ...style,
-              ...getClipStyle?.(clip),
-            }}
+    <>
+      {ordered.map((clip, index) => {
+        const previousClip = ordered[index - 1];
+        const nextClip = ordered[index + 1];
+        const startFrame = cursor;
+        const fadeInFrames = previousClip
+          ? getAvatarClipCrossfadeFrames(previousClip, clip)
+          : 0;
+        const fadeOutFrames = nextClip
+          ? getAvatarClipCrossfadeFrames(clip, nextClip)
+          : 0;
+        cursor += Math.max(1, clip.durationInFrames - fadeOutFrames);
+
+        return (
+          <Sequence
+            key={`${clip.order}-${index}`}
+            from={startFrame}
+            durationInFrames={clip.durationInFrames}
           >
-            <AvatarClipVideo
-              clip={clip}
-              muted={muted}
-              objectFit={objectFit}
-            />
-          </AbsoluteFill>
-        </Series.Sequence>
-      ))}
-    </Series>
+            <AbsoluteFill
+              style={{
+                backgroundColor: "transparent",
+                ...style,
+                ...getClipStyle?.(clip),
+              }}
+            >
+              <AvatarClipVideo
+                clip={clip}
+                durationInFrames={clip.durationInFrames}
+                fadeInFrames={fadeInFrames}
+                fadeOutFrames={fadeOutFrames}
+                muted={muted}
+                objectFit={objectFit}
+              />
+            </AbsoluteFill>
+          </Sequence>
+        );
+      })}
+    </>
   );
 }

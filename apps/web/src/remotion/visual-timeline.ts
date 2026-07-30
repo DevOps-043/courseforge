@@ -11,6 +11,7 @@ import type {
   AssemblySlide,
 } from "./types";
 import type { TimelineOverrideSegment } from "./timeline-overrides";
+import { getAvatarClipCrossfadeFrames } from "./avatar-clip-transitions";
 
 export interface BrollTimelineItem {
   clip: AssemblyBrollClip;
@@ -265,7 +266,8 @@ function buildAvatarClipSegments(props: AssemblyInputProps): VisualTimelineSegme
   const segments: VisualTimelineSegment[] = [];
   let cursor = 0;
 
-  for (const clip of ordered) {
+  for (let index = 0; index < ordered.length; index += 1) {
+    const clip = ordered[index]!;
     const durationInFrames = Math.min(
       clip.durationInFrames,
       Math.max(0, props.totalDurationInFrames - cursor),
@@ -290,7 +292,12 @@ function buildAvatarClipSegments(props: AssemblyInputProps): VisualTimelineSegme
       segments.push(segment);
     }
 
-    cursor += durationInFrames;
+    const nextClip = ordered[index + 1];
+    const crossfadeFrames = nextClip
+      ? getAvatarClipCrossfadeFrames(clip, nextClip)
+      : 0;
+
+    cursor += Math.max(1, durationInFrames - crossfadeFrames);
     if (cursor >= props.totalDurationInFrames) {
       break;
     }

@@ -32,6 +32,7 @@ export function buildBundleManifest(spec: BundleAgentSpec, blueprint: BundleBlue
       properties: {
         ...(spec.propsSchema.properties || {}),
         accentColor: { type: "string", description: "Color de acento opcional." },
+        avatarClips: { type: "array", description: "Clips de avatar normalizados por SofLIA - Engine." },
         avatarVideoUrl: { type: "string", description: "URL publica del video de avatar/talking head." },
         bgMusicUrl: { type: "string", description: "URL publica de musica de fondo." },
         bgMusicVolume: { type: "number", description: "Volumen relativo de musica de fondo entre 0 y 1." },
@@ -51,6 +52,7 @@ export function buildBundleManifest(spec: BundleAgentSpec, blueprint: BundleBlue
     defaultProps: {
       ...spec.defaultProps,
       accentColor: blueprint.accentColor,
+      avatarClips: Array.isArray(spec.defaultProps.avatarClips) ? spec.defaultProps.avatarClips : [],
       bgMusicVolume: typeof spec.defaultProps.bgMusicVolume === "number" ? spec.defaultProps.bgMusicVolume : 0.12,
       brollClips: Array.isArray(spec.defaultProps.brollClips) ? spec.defaultProps.brollClips : [],
       animationVariant: typeof spec.defaultProps.animationVariant === "string" ? spec.defaultProps.animationVariant : getDefaultAnimationVariant(spec),

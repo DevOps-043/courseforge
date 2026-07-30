@@ -1,13 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
+  ArrowLeft,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   ExternalLink,
   Loader2,
+  Plus,
   RefreshCw,
   Sparkles,
+  Trash2,
   Unplug,
   UserRoundCog,
 } from "lucide-react";
@@ -25,6 +30,7 @@ interface AvatarSceneClip {
     url?: string;
     value?: string;
   };
+  deleted?: boolean;
   duration?: number;
   error_message?: string;
   external_id?: string;
@@ -32,6 +38,7 @@ interface AvatarSceneClip {
   id: string;
   job_id?: string;
   order: number;
+  origin?: "storyboard" | "manual";
   provider?: string;
   public_url?: string;
   script_text: string;
@@ -108,7 +115,7 @@ const STATUS_LABELS: Record<string, string> = {
   FAILED: "Fallido",
   PENDING: "Pendiente",
   SUCCEEDED: "Completado",
-  WAITING_PROVIDER: "Esperando HeyGen",
+  WAITING_PROVIDER: "Esperando proveedor",
 };
 
 const CLIP_STATUS_LABELS: Record<AvatarSceneClip["status"], string> = {
@@ -116,15 +123,23 @@ const CLIP_STATUS_LABELS: Record<AvatarSceneClip["status"], string> = {
   DRAFT: "Borrador",
   FAILED: "Fallido",
   STALE: "Desactualizado",
-  WAITING_PROVIDER: "Esperando HeyGen",
+  WAITING_PROVIDER: "Esperando proveedor",
 };
 
 export default function HeygenStudioClient({
   organizationLabel,
 }: HeygenStudioClientProps) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const componentId = searchParams.get("componentId");
+  const source = searchParams.get("source");
+  const returnTo = searchParams.get("returnTo");
   const isCourseContext = Boolean(componentId);
+  const safeReturnTo =
+    returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//")
+      ? returnTo
+      : null;
+  const shouldShowCourseBackButton = isCourseContext || source === "course";
 
   const [avatarPresets, setAvatarPresets] = useState<AvatarPreset[]>([]);
   const [voicePresets, setVoicePresets] = useState<VoicePreset[]>([]);
@@ -134,12 +149,15 @@ export default function HeygenStudioClient({
   const [resolution, setResolution] = useState<Resolution>("1080p");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
   const [caption, setCaption] = useState(false);
-  const [standaloneTitle, setStandaloneTitle] = useState("Talking head HeyGen");
+  const [standaloneTitle, setStandaloneTitle] = useState("Video de avatar");
   const [standaloneScript, setStandaloneScript] = useState("");
   const [avatarGenerationMode, setAvatarGenerationMode] =
     useState<AvatarGenerationMode>("scene_clips");
   const [sceneClips, setSceneClips] = useState<AvatarSceneClip[]>([]);
   const [selectedSceneClipIds, setSelectedSceneClipIds] = useState<string[]>([]);
+  const [sceneClipPanelOverrides, setSceneClipPanelOverrides] = useState<
+    Record<string, boolean>
+  >({});
   const [currentJob, setCurrentJob] = useState<CurrentJob | null>(null);
   const [connection, setConnection] = useState<HeygenConnection>({
     connected: false,
@@ -208,7 +226,7 @@ export default function HeygenStudioClient({
 
       setConnection(payload.data as HeygenConnection);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al consultar HeyGen.";
+      const message = error instanceof Error ? error.message : "Error al consultar la conexion de avatares.";
       setErrorMessage(message);
     } finally {
       setIsLoadingConnection(false);
@@ -259,7 +277,7 @@ export default function HeygenStudioClient({
       const payload = await response.json();
 
       if (!response.ok || !payload.success) {
-        throw new Error(payload.error || "No se pudieron cargar las escenas.");
+        throw new Error(readApiErrorMessage(payload, "No se pudieron cargar las escenas."));
       }
 
       const clips = (payload.data?.clips || []) as AvatarSceneClip[];
@@ -271,7 +289,7 @@ export default function HeygenStudioClient({
         current.length > 0 ? current : clips.map((clip) => clip.id),
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al cargar escenas HeyGen.";
+      const message = error instanceof Error ? error.message : "Error al cargar escenas de avatar.";
       setErrorMessage(message);
     } finally {
       setIsLoadingScenes(false);
@@ -296,6 +314,27 @@ export default function HeygenStudioClient({
     loadScenes();
   }, [connection.connected, loadScenes]);
 
+  useEffect(() => {
+    const activeClipIds = new Set(
+      sceneClips.filter((clip) => !clip.deleted).map((clip) => clip.id),
+    );
+
+    setSceneClipPanelOverrides((current) => {
+      let changed = false;
+      const next: Record<string, boolean> = {};
+
+      for (const [clipId, expanded] of Object.entries(current)) {
+        if (activeClipIds.has(clipId)) {
+          next[clipId] = expanded;
+        } else {
+          changed = true;
+        }
+      }
+
+      return changed ? next : current;
+    });
+  }, [sceneClips]);
+
   const syncCatalog = useCallback(async () => {
     const response = await fetch("/api/production/heygen/sync", {
       method: "POST",
@@ -303,7 +342,7 @@ export default function HeygenStudioClient({
     const payload = await response.json();
 
     if (!response.ok || !payload.success) {
-      throw new Error(payload.error || "No se pudo sincronizar HeyGen.");
+      throw new Error(payload.error || "No se pudo sincronizar el catalogo de avatares.");
     }
 
     return payload.data as { avatarCount?: number; voiceCount?: number };
@@ -321,11 +360,11 @@ export default function HeygenStudioClient({
     try {
       const result = await syncCatalog();
       toast.success(
-        `Catalogo HeyGen sincronizado: ${result.avatarCount ?? 0} avatars y ${result.voiceCount ?? 0} voces.`,
+        `Catalogo de avatares sincronizado: ${result.avatarCount ?? 0} avatares y ${result.voiceCount ?? 0} voces.`,
       );
       await loadPresets();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al sincronizar HeyGen.";
+      const message = error instanceof Error ? error.message : "Error al sincronizar el catalogo de avatares.";
       setErrorMessage(message);
       toast.error(message);
     } finally {
@@ -335,7 +374,7 @@ export default function HeygenStudioClient({
 
   const handleCreateVideo = async () => {
     if (!connection.connected) {
-      toast.error("Configura la API key de HeyGen antes de generar talking heads.");
+      toast.error("Configura la API key de HeyGen antes de generar avatares.");
       return;
     }
 
@@ -374,13 +413,13 @@ export default function HeygenStudioClient({
       const payload = await response.json();
 
       if (!response.ok || !payload.success) {
-        throw new Error(payload.error || "No se pudo crear el video en HeyGen.");
+        throw new Error(readApiErrorMessage(payload, "No se pudo crear el video con el proveedor de avatares."));
       }
 
       setCurrentJob(payload.data as CurrentJob);
-      toast.success("Job enviado a HeyGen.");
+      toast.success("Job de avatar enviado.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al generar video HeyGen.";
+      const message = error instanceof Error ? error.message : "Error al generar video de avatar.";
       setErrorMessage(message);
       toast.error(message);
     } finally {
@@ -410,16 +449,16 @@ export default function HeygenStudioClient({
       if (nextStatus === "SUCCEEDED") {
         toast.success(
           currentJob.standalone
-            ? "Video standalone listo en HeyGen."
+            ? "Video independiente listo."
             : "Video importado al asset del componente.",
         );
       } else if (nextStatus === "FAILED") {
-        toast.error("HeyGen reporto el job como fallido.");
+        toast.error("El proveedor reporto el job como fallido.");
       } else {
-        toast.info("HeyGen sigue procesando el video.");
+        toast.info("El proveedor sigue procesando el video.");
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al consultar HeyGen.";
+      const message = error instanceof Error ? error.message : "Error al consultar el proveedor de avatares.";
       setErrorMessage(message);
       toast.error(message);
     } finally {
@@ -433,12 +472,91 @@ export default function HeygenStudioClient({
     );
   };
 
+  const reindexVisibleSceneClips = (clips: AvatarSceneClip[]) => {
+    let order = 1;
+    return clips.map((clip) => {
+      if (clip.deleted) return clip;
+      const nextClip = { ...clip, order };
+      order += 1;
+      return nextClip;
+    });
+  };
+
+  const createManualSceneClip = (): AvatarSceneClip => ({
+    avatar_preset_id: selectedAvatarPresetId || undefined,
+    id:
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? `manual-${crypto.randomUUID()}`
+        : `manual-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    order: 1,
+    origin: "manual",
+    script_text: "",
+    status: "DRAFT",
+    voice_preset_id: selectedVoicePresetId || undefined,
+  });
+
+  const insertSceneClipAt = (visibleIndex: number) => {
+    setSceneClips((current) => {
+      const next: AvatarSceneClip[] = [];
+      let visibleCursor = 0;
+      let inserted = false;
+
+      for (const clip of current) {
+        if (!clip.deleted && visibleCursor === visibleIndex && !inserted) {
+          next.push(createManualSceneClip());
+          inserted = true;
+        }
+        next.push(clip);
+        if (!clip.deleted) visibleCursor += 1;
+      }
+
+      if (!inserted) {
+        next.push(createManualSceneClip());
+      }
+
+      return reindexVisibleSceneClips(next);
+    });
+  };
+
+  const deleteSceneClip = (clipId: string) => {
+    setSceneClips((current) =>
+      reindexVisibleSceneClips(
+        current.flatMap((clip) => {
+          if (clip.id !== clipId) return [clip];
+          if (clip.origin === "manual") return [];
+          return [{ ...clip, deleted: true, status: "DRAFT" as const }];
+        }),
+      ),
+    );
+    setSelectedSceneClipIds((current) => current.filter((id) => id !== clipId));
+  };
+
   const toggleSceneClip = (clipId: string) => {
     setSelectedSceneClipIds((current) =>
       current.includes(clipId)
         ? current.filter((id) => id !== clipId)
         : [...current, clipId],
     );
+  };
+
+  const isSceneClipPanelExpanded = (clip: AvatarSceneClip) =>
+    sceneClipPanelOverrides[clip.id] ?? clip.status !== "COMPLETED";
+
+  const toggleSceneClipPanel = (clip: AvatarSceneClip) => {
+    const nextExpanded = !isSceneClipPanelExpanded(clip);
+    setSceneClipPanelOverrides((current) => ({
+      ...current,
+      [clip.id]: nextExpanded,
+    }));
+  };
+
+  const handleReturnToCourseFlow = () => {
+    if (safeReturnTo) {
+      router.push(safeReturnTo);
+      return;
+    }
+
+    router.back();
   };
 
   const saveSceneClips = async (clips: AvatarSceneClip[] = sceneClips) => {
@@ -456,7 +574,7 @@ export default function HeygenStudioClient({
     const payload = await response.json();
 
     if (!response.ok || !payload.success) {
-      throw new Error(payload.error || "No se pudieron guardar las escenas.");
+      throw new Error(readApiErrorMessage(payload, "No se pudieron guardar las escenas."));
     }
 
     const nextClips = (payload.data?.clips || clips) as AvatarSceneClip[];
@@ -464,9 +582,21 @@ export default function HeygenStudioClient({
     return nextClips;
   };
 
+  const handleSaveSceneEdits = async () => {
+    setErrorMessage(null);
+    try {
+      await saveSceneClips(sceneClips);
+      toast.success("Cambios de clips guardados.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudieron guardar los clips.";
+      setErrorMessage(message);
+      toast.error(message);
+    }
+  };
+
   const handleGenerateSelectedClips = async () => {
     if (!connection.connected || !componentId) {
-      toast.error("Configura la API key de HeyGen antes de generar clips.");
+      toast.error("Configura la API key de HeyGen antes de generar clips de avatar.");
       return;
     }
 
@@ -497,13 +627,21 @@ export default function HeygenStudioClient({
       const payload = await response.json();
 
       if (!response.ok || !payload.success) {
-        throw new Error(payload.error || "No se pudieron generar los clips.");
+        throw new Error(readApiErrorMessage(payload, "No se pudieron generar los clips."));
       }
 
-      setSceneClips((payload.data?.clips || clips) as AvatarSceneClip[]);
-      toast.success(`Lote enviado a HeyGen: ${selectedSceneClipIds.length} escenas.`);
+      const nextClips = (payload.data?.clips || clips) as AvatarSceneClip[];
+      setSceneClips(nextClips);
+      const failedCount = nextClips.filter(
+        (clip) => selectedSceneClipIds.includes(clip.id) && clip.status === "FAILED",
+      ).length;
+      if (failedCount > 0) {
+        toast.error(`${failedCount} escenas fueron rechazadas por el proveedor.`);
+      } else {
+        toast.success(`Lote de avatares enviado: ${selectedSceneClipIds.length} escenas.`);
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al generar clips HeyGen.";
+      const message = error instanceof Error ? error.message : "Error al generar clips de avatar.";
       setErrorMessage(message);
       toast.error(message);
     } finally {
@@ -525,7 +663,7 @@ export default function HeygenStudioClient({
       const payload = await response.json();
 
       if (!response.ok || !payload.success) {
-        throw new Error(payload.error || "No se pudo consultar el estado de clips.");
+        throw new Error(readApiErrorMessage(payload, "No se pudo consultar el estado de clips."));
       }
 
       const clips = (payload.data?.clips || []) as AvatarSceneClip[];
@@ -533,7 +671,7 @@ export default function HeygenStudioClient({
       const completed = clips.filter((clip) => clip.status === "COMPLETED").length;
       toast.info(`Clips completados: ${completed}/${clips.length}.`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al consultar clips HeyGen.";
+      const message = error instanceof Error ? error.message : "Error al consultar clips de avatar.";
       setErrorMessage(message);
       toast.error(message);
     } finally {
@@ -568,19 +706,19 @@ export default function HeygenStudioClient({
       try {
         const syncResult = await syncCatalog();
         toast.success(
-          `Catalogo HeyGen sincronizado: ${syncResult.avatarCount ?? 0} avatars y ${syncResult.voiceCount ?? 0} voces.`,
+          `Catalogo de avatares sincronizado: ${syncResult.avatarCount ?? 0} avatares y ${syncResult.voiceCount ?? 0} voces.`,
         );
       } catch (syncError) {
         const syncMessage =
           syncError instanceof Error
             ? syncError.message
-            : "No se pudo sincronizar HeyGen.";
+            : "No se pudo sincronizar el catalogo de avatares.";
         setErrorMessage(`API key guardada, pero no se pudo sincronizar el catalogo: ${syncMessage}`);
         toast.error("API key guardada, pero no se pudo sincronizar el catalogo.");
       }
       await loadPresets();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al guardar HeyGen.";
+      const message = error instanceof Error ? error.message : "Error al guardar la conexion de avatares.";
       setErrorMessage(message);
       toast.error(message);
     } finally {
@@ -603,9 +741,9 @@ export default function HeygenStudioClient({
       }
 
       setConnection(payload.data as HeygenConnection);
-      toast.success("Conexion HeyGen validada.");
+      toast.success("Conexion de avatares validada.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al validar HeyGen.";
+      const message = error instanceof Error ? error.message : "Error al validar la conexion de avatares.";
       setErrorMessage(message);
       toast.error(message);
       await loadConnection();
@@ -625,7 +763,7 @@ export default function HeygenStudioClient({
       const payload = await response.json();
 
       if (!response.ok || !payload.success) {
-        throw new Error(payload.error || "No se pudo desconectar HeyGen.");
+        throw new Error(payload.error || "No se pudo desconectar el proveedor de avatares.");
       }
 
       setConnection({ connected: false, last4: null });
@@ -633,9 +771,9 @@ export default function HeygenStudioClient({
       setVoicePresets([]);
       setSelectedAvatarPresetId("");
       setSelectedVoicePresetId("");
-      toast.success("HeyGen desconectado.");
+      toast.success("Proveedor de avatares desconectado.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al desconectar HeyGen.";
+      const message = error instanceof Error ? error.message : "Error al desconectar el proveedor de avatares.";
       setErrorMessage(message);
       toast.error(message);
     } finally {
@@ -644,11 +782,34 @@ export default function HeygenStudioClient({
   };
 
   const isSceneMode = isCourseContext && avatarGenerationMode === "scene_clips";
-  const completedSceneClips = sceneClips.filter((clip) => clip.status === "COMPLETED");
+  const visibleSceneClips = sceneClips.filter((clip) => !clip.deleted);
+  const completedSceneClips = visibleSceneClips.filter((clip) => clip.status === "COMPLETED");
   const sceneDurationSeconds = completedSceneClips.reduce(
     (total, clip) => total + (typeof clip.duration === "number" ? clip.duration : 0),
     0,
   );
+  const generatedVideoItems = [
+    ...completedSceneClips
+      .filter((clip) => clip.public_url)
+      .map((clip) => ({
+        duration: clip.duration,
+        id: clip.id,
+        label: `Escena ${clip.order}`,
+        meta: clip.visual_type || clip.provider || "Clip de avatar",
+        url: clip.public_url!,
+      })),
+    ...(currentJob?.asset?.publicUrl
+      ? [
+          {
+            duration: currentJob.script?.durationEstimateSeconds,
+            id: currentJob.jobId,
+            label: currentJob.script?.title || standaloneTitle || "Video completo",
+            meta: currentJob.providerJobId || "Video de avatar",
+            url: currentJob.asset.publicUrl,
+          },
+        ]
+      : []),
+  ];
 
   return (
     <div className="space-y-6">
@@ -659,13 +820,23 @@ export default function HeygenStudioClient({
               <UserRoundCog size={24} />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">HeyGen</h1>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Avatares</h1>
               <p className="mt-2 max-w-2xl text-sm text-gray-600 dark:text-[#94A3B8]">
-                Modulo para administrar presets y generar talking heads de {organizationLabel}.
+                Modulo para administrar presets y generar videos de avatar de {organizationLabel}.
               </p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            {shouldShowCourseBackButton ? (
+              <button
+                type="button"
+                onClick={handleReturnToCourseFlow}
+                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5"
+              >
+                <ArrowLeft size={16} />
+                Regresar al flujo
+              </button>
+            ) : null}
             {connection.connected ? (
               <>
                 <button
@@ -753,13 +924,13 @@ export default function HeygenStudioClient({
 
       {connection.connected ? (
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-700 dark:text-emerald-300">
-          HeyGen conectado con API key de empresa
+          Proveedor de avatares conectado con API key de empresa
           {connection.last4 ? ` terminada en ${connection.last4}` : ""}.
           {connection.lastValidatedAt ? ` Ultima validacion: ${new Date(connection.lastValidatedAt).toLocaleString()}.` : ""}
         </div>
       ) : (
         <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-700 dark:text-amber-300">
-          Configura una API key de HeyGen para sincronizar los avatars y voces de esta empresa.
+          Configura una API key de HeyGen para sincronizar los avatares y voces de esta empresa.
         </div>
       )}
 
@@ -767,11 +938,11 @@ export default function HeygenStudioClient({
         <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-white/5 dark:bg-[#151A21]">
           <div className="mb-5 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Talking head</h2>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Generacion de avatar</h2>
               <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
                 {isCourseContext
                   ? "Generacion asociada al componente del curso."
-                  : "Generacion libre con la cuenta de HeyGen configurada."}
+                  : "Generacion libre con la cuenta de avatares configurada."}
               </p>
             </div>
             {isCourseContext ? (
@@ -808,7 +979,7 @@ export default function HeygenStudioClient({
               </div>
               <span className="text-xs font-semibold text-gray-500 dark:text-slate-400">
                 {isSceneMode
-                  ? `${completedSceneClips.length}/${sceneClips.length} clips listos · ${formatDuration(sceneDurationSeconds)}`
+                  ? `${completedSceneClips.length}/${visibleSceneClips.length} clips listos · ${formatDuration(sceneDurationSeconds)}`
                   : "Un solo avatar y voz para todo el guion"}
               </span>
             </div>
@@ -843,12 +1014,20 @@ export default function HeygenStudioClient({
             <div className="mb-5 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="text-sm font-semibold text-gray-700 dark:text-slate-300">
-                  {isLoadingScenes ? "Cargando escenas..." : `${sceneClips.length} escenas del storyboard`}
+                  {isLoadingScenes ? "Cargando escenas..." : `${visibleSceneClips.length} clips del video`}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => setSelectedSceneClipIds(sceneClips.map((clip) => clip.id))}
+                    onClick={handleSaveSceneEdits}
+                    disabled={isGeneratingClips || isLoadingScenes}
+                    className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+                  >
+                    Guardar cambios
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSceneClipIds(visibleSceneClips.map((clip) => clip.id))}
                     className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
                   >
                     Todas
@@ -863,83 +1042,151 @@ export default function HeygenStudioClient({
                 </div>
               </div>
 
-              {sceneClips.length === 0 ? (
+              <InsertSceneClipButton
+                disabled={isGeneratingClips}
+                label="Agregar clip al inicio"
+                onClick={() => insertSceneClipAt(0)}
+              />
+
+              {visibleSceneClips.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500 dark:border-white/10 dark:text-slate-400">
-                  No se encontraron bloques de guion para este componente.
+                  No hay clips activos para este componente.
                 </div>
               ) : (
-                sceneClips.map((clip) => (
-                  <div
-                    key={clip.id}
-                    className="rounded-xl border border-gray-200 p-4 dark:border-white/10"
-                  >
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                      <label className="inline-flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-white">
-                        <input
-                          type="checkbox"
-                          checked={selectedSceneClipIds.includes(clip.id)}
-                          onChange={() => toggleSceneClip(clip.id)}
-                          className="accent-rose-500"
-                        />
-                        Escena {clip.order}
-                        {clip.visual_type ? (
-                          <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-500 dark:bg-white/5 dark:text-slate-400">
-                            {clip.visual_type}
-                          </span>
-                        ) : null}
-                      </label>
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getClipStatusClassName(clip.status)}`}>
-                        {CLIP_STATUS_LABELS[clip.status] || clip.status}
-                      </span>
-                    </div>
-                    <textarea
-                      value={clip.script_text}
-                      disabled={isGeneratingClips}
-                      onChange={(event) => updateSceneClip(clip.id, { script_text: event.target.value })}
-                      className="min-h-28 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm leading-relaxed text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[#0F1419] dark:text-white"
-                    />
-                    <div className="mt-3 grid gap-3 md:grid-cols-3">
-                      <SelectField
-                        disabled={isGeneratingClips || isLoadingPresets}
-                        label="Avatar"
-                        value={clip.avatar_preset_id || selectedAvatarPresetId}
-                        onChange={(value) => updateSceneClip(clip.id, { avatar_preset_id: value || undefined })}
-                        options={avatarPresets.map((preset) => ({
-                          label: `${preset.name || preset.id}${preset.is_default ? " (default)" : ""}`,
-                          value: preset.id,
-                        }))}
-                        placeholder="Avatar default"
+                visibleSceneClips.map((clip, clipIndex) => {
+                  const isPanelExpanded = isSceneClipPanelExpanded(clip);
+                  const scriptPreview =
+                    clip.script_text.length > 140
+                      ? `${clip.script_text.slice(0, 140).trim()}...`
+                      : clip.script_text;
+
+                  return (
+                    <div key={clip.id} className="space-y-3">
+                      <div className="rounded-xl border border-gray-200 p-4 dark:border-white/10">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => toggleSceneClipPanel(clip)}
+                              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                              aria-expanded={isPanelExpanded}
+                              title={isPanelExpanded ? "Cerrar panel" : "Abrir panel"}
+                            >
+                              {isPanelExpanded ? (
+                                <ChevronDown size={16} />
+                              ) : (
+                                <ChevronRight size={16} />
+                              )}
+                            </button>
+                            <label className="inline-flex min-w-0 items-center gap-2 text-sm font-bold text-gray-800 dark:text-white">
+                              <input
+                                type="checkbox"
+                                checked={selectedSceneClipIds.includes(clip.id)}
+                                onChange={() => toggleSceneClip(clip.id)}
+                                className="accent-rose-500"
+                              />
+                              <span>Escena {clip.order}</span>
+                              {clip.origin === "manual" ? (
+                                <span className="rounded-full bg-rose-500/10 px-2 py-1 text-xs font-semibold text-rose-600 dark:text-rose-300">
+                                  Manual
+                                </span>
+                              ) : null}
+                              {clip.visual_type ? (
+                                <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-500 dark:bg-white/5 dark:text-slate-400">
+                                  {clip.visual_type}
+                                </span>
+                              ) : null}
+                            </label>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getClipStatusClassName(clip.status)}`}>
+                              {CLIP_STATUS_LABELS[clip.status] || clip.status}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => deleteSceneClip(clip.id)}
+                              disabled={isGeneratingClips}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+                              title="Eliminar clip"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {!isPanelExpanded ? (
+                          <p className="mt-2 text-sm leading-relaxed text-gray-500 dark:text-slate-400">
+                            {scriptPreview || "Sin guion capturado."}
+                            {typeof clip.duration === "number" ? (
+                              <span className="ml-2 font-semibold text-gray-400 dark:text-slate-500">
+                                {formatDuration(clip.duration)}
+                              </span>
+                            ) : null}
+                          </p>
+                        ) : (
+                          <>
+                            <textarea
+                              value={clip.script_text}
+                              disabled={isGeneratingClips}
+                              onChange={(event) => updateSceneClip(clip.id, { script_text: event.target.value })}
+                              className="mt-3 min-h-28 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm leading-relaxed text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[#0F1419] dark:text-white"
+                            />
+                            {clip.error_message ? (
+                              <p className="mt-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-600 dark:text-red-300">
+                                {clip.error_message}
+                              </p>
+                            ) : null}
+                            <div className="mt-3 grid gap-3 md:grid-cols-3">
+                              <SelectField
+                                disabled={isGeneratingClips || isLoadingPresets}
+                                label="Avatar"
+                                value={clip.avatar_preset_id || selectedAvatarPresetId}
+                                onChange={(value) => updateSceneClip(clip.id, { avatar_preset_id: value || undefined })}
+                                options={avatarPresets.map((preset) => ({
+                                  label: `${preset.name || preset.id}${preset.is_default ? " (default)" : ""}`,
+                                  value: preset.id,
+                                }))}
+                                placeholder="Avatar default"
+                              />
+                              <SelectField
+                                disabled={isGeneratingClips || isLoadingPresets}
+                                label="Voz"
+                                value={clip.voice_preset_id || selectedVoicePresetId}
+                                onChange={(value) => updateSceneClip(clip.id, { voice_preset_id: value || undefined })}
+                                options={voicePresets.map((preset) => ({
+                                  label: `${preset.name || preset.id}${preset.is_default ? " (default)" : ""}`,
+                                  value: preset.id,
+                                }))}
+                                placeholder="Voz default"
+                              />
+                              <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
+                                Fondo
+                                <input
+                                  value={clip.background?.value || clip.background?.url || ""}
+                                  disabled={isGeneratingClips}
+                                  onChange={(event) =>
+                                    updateSceneClip(clip.id, {
+                                      background: event.target.value.trim()
+                                        ? { value: event.target.value.trim() }
+                                        : undefined,
+                                    })
+                                  }
+                                  placeholder="Opcional"
+                                  className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[#0F1419] dark:text-white"
+                                />
+                              </label>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      <InsertSceneClipButton
+                        disabled={isGeneratingClips}
+                        label="Agregar clip aqui"
+                        onClick={() => insertSceneClipAt(clipIndex + 1)}
                       />
-                      <SelectField
-                        disabled={isGeneratingClips || isLoadingPresets}
-                        label="Voz"
-                        value={clip.voice_preset_id || selectedVoicePresetId}
-                        onChange={(value) => updateSceneClip(clip.id, { voice_preset_id: value || undefined })}
-                        options={voicePresets.map((preset) => ({
-                          label: `${preset.name || preset.id}${preset.is_default ? " (default)" : ""}`,
-                          value: preset.id,
-                        }))}
-                        placeholder="Voz default"
-                      />
-                      <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
-                        Fondo
-                        <input
-                          value={clip.background?.value || clip.background?.url || ""}
-                          disabled={isGeneratingClips}
-                          onChange={(event) =>
-                            updateSceneClip(clip.id, {
-                              background: event.target.value.trim()
-                                ? { value: event.target.value.trim() }
-                                : undefined,
-                            })
-                          }
-                          placeholder="Opcional"
-                          className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[#0F1419] dark:text-white"
-                        />
-                      </label>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           ) : null}
@@ -1038,7 +1285,7 @@ export default function HeygenStudioClient({
                 <button
                   type="button"
                   onClick={handleCheckClipStatus}
-                  disabled={!connection.connected || isCheckingClipStatus || sceneClips.length === 0}
+                  disabled={!connection.connected || isCheckingClipStatus || visibleSceneClips.length === 0}
                   className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300"
                 >
                   {isCheckingClipStatus ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
@@ -1059,7 +1306,7 @@ export default function HeygenStudioClient({
                   className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-rose-500/15 transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                  Generar talking head
+                  Generar avatar
                 </button>
                 <button
                   type="button"
@@ -1086,13 +1333,13 @@ export default function HeygenStudioClient({
           {currentJob ? (
             <div className="mt-4 space-y-3">
               <StatusRow label="Job" value={currentJob.jobId} mono />
-              <StatusRow label="HeyGen" value={currentJob.providerJobId || "Pendiente"} mono />
+              <StatusRow label="Proveedor" value={currentJob.providerJobId || "Pendiente"} mono />
               <StatusRow
                 label="Estado"
                 value={STATUS_LABELS[currentJob.status] || currentJob.status}
               />
               {currentJob.providerStatus ? (
-                <StatusRow label="Provider" value={currentJob.providerStatus} />
+                <StatusRow label="Proveedor" value={currentJob.providerStatus} />
               ) : null}
               {currentJob.script?.title ? (
                 <StatusRow label="Script" value={currentJob.script.title} />
@@ -1117,9 +1364,19 @@ export default function HeygenStudioClient({
         </section>
       </div>
 
+      <GeneratedVideoLibrary
+        emptyText={
+          isCourseContext
+            ? "Los clips de esta leccion apareceran aqui cuando terminen."
+            : "El video generado aparecera aqui cuando termine el job activo."
+        }
+        items={generatedVideoItems}
+        title={isCourseContext ? "Videos de esta generacion" : "Biblioteca de videos"}
+      />
+
       <section className="grid gap-6 xl:grid-cols-2">
         <PresetList
-          emptyText="Sin avatars sincronizados."
+          emptyText="Sin avatares sincronizados."
           items={avatarPresets.map((preset) => ({
             id: preset.id,
             imageUrl: preset.preview_image_url || undefined,
@@ -1127,7 +1384,7 @@ export default function HeygenStudioClient({
             meta: preset.heygen_avatar_look_id || preset.status || undefined,
             name: preset.name || preset.id,
           }))}
-          title="Avatars"
+          title="Avatares"
         />
         <PresetList
           emptyText="Sin voces sincronizadas."
@@ -1179,6 +1436,28 @@ function SelectField({
   );
 }
 
+function InsertSceneClipButton({
+  disabled,
+  label,
+  onClick,
+}: {
+  disabled?: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-rose-300 bg-rose-50/60 px-3 py-2 text-xs font-bold text-rose-600 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
+    >
+      <Plus size={14} />
+      {label}
+    </button>
+  );
+}
+
 function StatusRow({
   label,
   mono,
@@ -1220,6 +1499,125 @@ function getClipStatusClassName(status: AvatarSceneClip["status"]) {
     return "bg-blue-500/10 text-blue-700 dark:text-blue-300";
   }
   return "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-slate-300";
+}
+
+function readApiErrorMessage(payload: any, fallback: string) {
+  const error = typeof payload?.error === "string" ? payload.error : fallback;
+  const hint = typeof payload?.hint === "string" ? payload.hint : "";
+  return hint ? `${error} ${hint}` : error;
+}
+
+function GeneratedVideoLibrary({
+  emptyText,
+  items,
+  title,
+}: {
+  emptyText: string;
+  items: {
+    duration?: number;
+    id: string;
+    label: string;
+    meta?: string;
+    url: string;
+  }[];
+  title: string;
+}) {
+  const [selectedVideoId, setSelectedVideoId] = useState<string | null>(items[0]?.id ?? null);
+  const selectedVideo = items.find((item) => item.id === selectedVideoId) || items[0] || null;
+
+  useEffect(() => {
+    if (items.length === 0) {
+      setSelectedVideoId(null);
+      return;
+    }
+    if (!selectedVideoId || !items.some((item) => item.id === selectedVideoId)) {
+      setSelectedVideoId(items[0].id);
+    }
+  }, [items, selectedVideoId]);
+
+  return (
+    <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-white/5 dark:bg-[#151A21]">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-lg font-bold text-gray-900 dark:text-white">{title}</h2>
+        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-500 dark:bg-white/5 dark:text-slate-400">
+          {items.length}
+        </span>
+      </div>
+      {items.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500 dark:border-white/10 dark:text-slate-400">
+          {emptyText}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {selectedVideo ? (
+            <div className="overflow-hidden rounded-xl border border-gray-100 bg-gray-50 shadow-sm dark:border-white/5 dark:bg-[#0F1419]">
+              <video
+                key={selectedVideo.id}
+                src={selectedVideo.url}
+                autoPlay
+                controls
+                playsInline
+                preload="metadata"
+                className="aspect-video w-full bg-black object-contain"
+              />
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-gray-900 dark:text-white">
+                    {selectedVideo.label}
+                  </p>
+                  <p className="truncate text-xs text-gray-500 dark:text-slate-400">
+                    {[selectedVideo.meta, selectedVideo.duration ? formatDuration(selectedVideo.duration) : null].filter(Boolean).join(" - ")}
+                  </p>
+                </div>
+                <a
+                  href={selectedVideo.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-600 transition hover:text-rose-500 dark:text-rose-300"
+                >
+                  <ExternalLink size={13} />
+                  Abrir en pestana
+                </a>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {items.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setSelectedVideoId(item.id)}
+              className={`overflow-hidden rounded-xl border bg-gray-50 text-left shadow-sm transition dark:bg-[#0F1419] ${
+                selectedVideo?.id === item.id
+                  ? "border-rose-400 ring-2 ring-rose-500/20 dark:border-rose-400"
+                  : "border-gray-100 hover:border-rose-200 dark:border-white/5 dark:hover:border-rose-500/30"
+              }`}
+            >
+              <video
+                src={item.url}
+                muted
+                playsInline
+                preload="metadata"
+                className="aspect-video w-full bg-black object-cover"
+              />
+              <div className="p-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-gray-900 dark:text-white">
+                    {item.label}
+                  </p>
+                  <p className="truncate text-xs text-gray-500 dark:text-slate-400">
+                    {[item.meta, item.duration ? formatDuration(item.duration) : null].filter(Boolean).join(" - ")}
+                  </p>
+                </div>
+              </div>
+            </button>
+          ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
 }
 
 function PresetList({

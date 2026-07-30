@@ -52,6 +52,8 @@ export const avatarClipBackgroundSchema = z.object({
 export const avatarClipSchema = z.object({
   id: z.string().trim(),
   order: z.number().int().min(1),
+  deleted: z.boolean().optional(),
+  origin: z.enum(["storyboard", "manual"]).optional(),
   storyboard_take_number: z.number().int().min(1).optional(),
   visual_type: z.string().trim().optional(),
   script_text: z.string().trim(),

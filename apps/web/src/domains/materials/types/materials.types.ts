@@ -133,6 +133,8 @@ export type AvatarClipStatus =
 export interface AvatarClip {
     id: string;
     order: number;
+    deleted?: boolean;
+    origin?: 'storyboard' | 'manual';
     storyboard_take_number?: number;
     visual_type?: string;
     script_text: string;

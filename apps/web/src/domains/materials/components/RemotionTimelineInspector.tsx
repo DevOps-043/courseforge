@@ -91,18 +91,20 @@ function clampFrame(frame: number, durationInFrames: number) {
 }
 
 function isEditableSegment(segment: VisualTimelineSegment) {
-  return segment.trackKind === "slides" || segment.trackKind === "broll";
+  return segment.trackKind === "slides" || segment.trackKind === "broll" || segment.trackKind === "avatar";
 }
 
 function segmentToOverride(segment: VisualTimelineSegment) {
+  const canTrimSource = segment.trackKind === "broll" || segment.trackKind === "avatar";
+
   return {
     id: segment.id,
-    trackKind: segment.trackKind as "slides" | "broll",
+    trackKind: segment.trackKind as "slides" | "broll" | "avatar",
     layerId: segment.layerId,
     startFrame: segment.startFrame,
     endFrame: segment.endFrame,
-    sourceStartFrame: segment.trackKind === "broll" ? segment.sourceStartFrame ?? 0 : undefined,
-    sourceEndFrame: segment.trackKind === "broll" ? segment.sourceEndFrame ?? segment.durationInFrames : undefined,
+    sourceStartFrame: canTrimSource ? segment.sourceStartFrame ?? 0 : undefined,
+    sourceEndFrame: canTrimSource ? segment.sourceEndFrame ?? segment.durationInFrames : undefined,
     loopMode: segment.trackKind === "broll" ? segment.loopMode ?? "loop" : "none",
   };
 }
@@ -324,7 +326,7 @@ export function RemotionTimelineInspector({
         onSeekFrame(clampFrame(endFrame - 1, Math.max(0, timeline.durationInFrames - 1)));
         return { ...segment, endFrame, durationInFrames: endFrame - segment.startFrame };
       }
-      if (segment.trackKind !== "broll") return segment;
+      if (segment.trackKind !== "broll" && segment.trackKind !== "avatar") return segment;
       const sourceDuration = Math.max(
         1,
         segment.sourceDurationInFrames ?? segment.sourceEndFrame ?? segment.durationInFrames,
@@ -538,7 +540,7 @@ export function RemotionTimelineInspector({
               className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-gray-900 dark:border-white/10 dark:bg-[#101820] dark:text-white"
             />
           </label>
-          {selectedSegment.trackKind === "broll" ? (
+          {selectedSegment.trackKind === "broll" || selectedSegment.trackKind === "avatar" ? (
             <>
               <label className="space-y-1">
                 <span className="font-semibold text-gray-600 dark:text-slate-300">Recorte inicio</span>
@@ -564,12 +566,14 @@ export function RemotionTimelineInspector({
                   className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-gray-900 dark:border-white/10 dark:bg-[#101820] dark:text-white"
                 />
               </label>
-              <div className="space-y-1">
-                <span className="font-semibold text-gray-600 dark:text-slate-300">Extender</span>
-                <div className="rounded-md border border-gray-200 bg-white px-2 py-1 font-semibold text-gray-700 dark:border-white/10 dark:bg-[#101820] dark:text-slate-200">
-                  Loop
+              {selectedSegment.trackKind === "broll" ? (
+                <div className="space-y-1">
+                  <span className="font-semibold text-gray-600 dark:text-slate-300">Extender</span>
+                  <div className="rounded-md border border-gray-200 bg-white px-2 py-1 font-semibold text-gray-700 dark:border-white/10 dark:bg-[#101820] dark:text-slate-200">
+                    Loop
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </>
           ) : null}
         </div>

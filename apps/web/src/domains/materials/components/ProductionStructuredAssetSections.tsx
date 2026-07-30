@@ -760,6 +760,7 @@ export function AvatarVideoSection({
     const tenantPrefix = adminIndex > 0 ? currentPath.slice(0, adminIndex) : "";
     const query = new URLSearchParams({
       componentId,
+      returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`,
       source: "course",
     });
 
@@ -771,7 +772,7 @@ export function AvatarVideoSection({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Video size={14} className="text-rose-500" />
-          <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Avatar IA (Talking Head)</span>
+          <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Avatares</span>
           {(avatarVideo || hasAvatarClips) && (
             <span className="flex items-center gap-0.5 text-[10px] font-semibold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 px-1.5 py-0.5 rounded-full">
               <CheckCircle2 size={10} /> Listo
@@ -901,7 +902,7 @@ export function AvatarVideoSection({
               className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-[10px] font-bold text-white transition-colors hover:bg-rose-500 disabled:opacity-50"
             >
               <ExternalLink size={11} />
-              Abrir modulo HeyGen
+              Abrir modulo de avatares
             </button>
             <button
               type="button"
@@ -930,7 +931,7 @@ export function AvatarVideoSection({
           <div className="flex justify-between text-[9px] font-semibold text-rose-500">
             <span className="flex items-center gap-1 animate-pulse">
               <Loader2 size={8} className="animate-spin" />
-              Generando HeyGen...
+              Generando avatar...
             </span>
             <span>{syncProgress}%</span>
           </div>
@@ -952,10 +953,52 @@ export function AvatarVideoSection({
       {(jobId || providerJobId || jobStatus) && !avatarVideo && (
         <div className="mt-2 flex flex-wrap gap-2 border-t border-gray-100 pt-2 text-[10px] text-gray-500 dark:border-[#6C757D]/10 dark:text-gray-400">
           {jobStatus && <span>Status: {jobStatus}</span>}
-          {providerJobId && <span>HeyGen: {providerJobId}</span>}
+          {providerJobId && <span>Proveedor: {providerJobId}</span>}
           {jobId && <span>Job: {jobId.slice(0, 8)}...</span>}
         </div>
       )}
+
+      {hasAvatarClips ? (
+        <div className="mt-3 border-t border-gray-100 pt-3 dark:border-[#6C757D]/10">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Clips generados
+            </span>
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-white/5 dark:text-gray-400">
+              {completedAvatarClips.length} clip(s)
+            </span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {completedAvatarClips.map((clip) => (
+              <div
+                key={clip.id}
+                className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-[#6C757D]/20 dark:bg-[#151A21]"
+              >
+                <video
+                  src={clip.public_url}
+                  controls
+                  preload="metadata"
+                  className="aspect-video w-full bg-black object-cover"
+                />
+                <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-[10px]">
+                  <span className="min-w-0 truncate font-bold text-gray-700 dark:text-gray-200">
+                    Escena {clip.order}
+                    {clip.duration ? ` - ${formatSeconds(clip.duration)}` : ""}
+                  </span>
+                  <a
+                    href={clip.public_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="shrink-0 font-bold text-rose-500 hover:text-rose-400"
+                  >
+                    Abrir
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {avatarVideo && (
         <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-gray-105 dark:border-[#6C757D]/10 text-[10px]">
@@ -971,7 +1014,7 @@ export function AvatarVideoSection({
             rel="noreferrer"
             className="inline-flex items-center gap-0.5 text-rose-500 hover:text-rose-400 font-bold"
           >
-            <ExternalLink size={10} /> Ver Avatar
+            <ExternalLink size={10} /> Ver avatar
           </a>
           <button
             onClick={onClear}

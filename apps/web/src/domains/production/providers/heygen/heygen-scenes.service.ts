@@ -6,6 +6,7 @@ import {
   resolveProductionComponentContext,
 } from "../../jobs/production-jobs.service";
 import {
+  PRODUCTION_ASSET_TYPES,
   PRODUCTION_JOB_STATUSES,
   PRODUCTION_JOB_TYPES,
   PRODUCTION_PROVIDERS,
@@ -13,6 +14,10 @@ import {
 } from "../../types/production.types";
 import { HeygenClient } from "./heygen.client";
 import { HeygenRepository } from "./heygen.repository";
+import {
+  assertHeygenTextInputWithinLimits,
+  HeygenRequestValidationError,
+} from "./heygen-request-constraints";
 import {
   HEYGEN_VIDEO_STATUSES,
   type HeygenAvatarVideoAspectRatio,
@@ -47,7 +52,8 @@ export interface HeygenSceneClipGenerationOptions {
 
 export interface HeygenSceneClipJobResult {
   clipId: string;
-  jobId: string;
+  errorMessage?: string;
+  jobId: string | null;
   providerJobId: string | null;
   status: ProductionJobStatus;
 }
@@ -72,8 +78,7 @@ export class HeygenScenesService {
   }): AvatarClip[] {
     const baseClips = readStoryboardScenes(params.componentContent);
     const existingById = new Map((params.existingClips || []).map((clip) => [clip.id, clip]));
-
-    return baseClips.map((baseClip) => {
+    const mergedBaseClips = baseClips.map((baseClip) => {
       const existing = existingById.get(baseClip.id);
       if (!existing) return baseClip;
 
@@ -94,6 +99,12 @@ export class HeygenScenesService {
         source_hash: baseClip.source_hash,
       };
     });
+
+    const manualClips = (params.existingClips || []).filter(
+      (clip) => clip.origin === "manual" && !clip.deleted,
+    );
+
+    return sortClips([...mergedBaseClips, ...manualClips]);
   }
 
   async saveSceneClips(params: {
@@ -134,13 +145,15 @@ export class HeygenScenesService {
     }
 
     const selectedIds = new Set(params.options.clipIds);
-    const selectedClips = params.options.clips.filter((clip) => selectedIds.has(clip.id));
+    const selectedClips = params.options.clips.filter(
+      (clip) => selectedIds.has(clip.id) && !clip.deleted,
+    );
     if (selectedClips.length === 0) {
       throw new HeygenScenesServiceError("Selecciona al menos una escena para generar.");
     }
 
     const jobs: HeygenSceneClipJobResult[] = [];
-    let clips = sortClips(params.options.clips);
+    let clips = sortClips(params.options.clips.filter((clip) => !clip.deleted));
     await this.saveSceneClips({
       avatarGenerationMode: "scene_clips",
       clips,
@@ -167,9 +180,9 @@ export class HeygenScenesService {
         return result
           ? {
               ...clip,
-              error_message: undefined,
+              error_message: result.errorMessage,
               external_id: result.providerJobId || clip.external_id,
-              job_id: result.jobId,
+              job_id: result.jobId || clip.job_id,
               provider: PRODUCTION_PROVIDERS.HEYGEN,
               status: result.status === PRODUCTION_JOB_STATUSES.FAILED ? "FAILED" : "WAITING_PROVIDER",
             }
@@ -215,6 +228,20 @@ export class HeygenScenesService {
       if (!job) continue;
 
       if (job.status === PRODUCTION_JOB_STATUSES.SUCCEEDED) {
+        const existingAsset = await this.repository.findAvatarVideoAssetByJob(
+          job.id,
+          PRODUCTION_ASSET_TYPES.AVATAR_VIDEO_CLIP,
+        );
+        if (existingAsset?.public_url && existingAsset.storage_path) {
+          clips = replaceClip(clips, clip.id, {
+            ...clip,
+            duration: job.duration_seconds || clip.duration,
+            file_name: existingAsset.storage_path.split("/").at(-1) || clip.file_name,
+            public_url: existingAsset.public_url,
+            storage_path: existingAsset.storage_path,
+            status: "COMPLETED",
+          });
+        }
         continue;
       }
 
@@ -294,6 +321,25 @@ export class HeygenScenesService {
     options: HeygenSceneClipGenerationOptions;
     organizationId: string;
   }): Promise<HeygenSceneClipJobResult> {
+    try {
+      assertHeygenTextInputWithinLimits({
+        label: `La escena ${params.clip.order}`,
+        text: params.clip.script_text,
+      });
+    } catch (error) {
+      if (error instanceof HeygenRequestValidationError) {
+        return {
+          clipId: params.clip.id,
+          errorMessage: error.message,
+          jobId: null,
+          providerJobId: null,
+          status: PRODUCTION_JOB_STATUSES.FAILED,
+        };
+      }
+
+      throw error;
+    }
+
     const avatar = await this.repository.getAvatarPresetForGeneration({
       organizationId: params.organizationId,
       presetId: params.clip.avatar_preset_id,
@@ -359,7 +405,23 @@ export class HeygenScenesService {
       options: params.options,
       providerVoiceId,
     });
-    const createdVideo = await this.client.createAvatarVideo(requestPayload, job.id);
+    let createdVideo;
+    try {
+      createdVideo = await this.client.createAvatarVideo(requestPayload, job.id);
+    } catch (error) {
+      await this.repository.markVideoJobFailed({
+        errorPayload: buildCreateFailurePayload(error, requestPayload, params.clip),
+        jobId: job.id,
+      });
+
+      return {
+        clipId: params.clip.id,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        jobId: job.id,
+        providerJobId: null,
+        status: PRODUCTION_JOB_STATUSES.FAILED,
+      };
+    }
 
     await this.repository.markVideoJobWaitingProvider({
       jobId: job.id,
@@ -431,6 +493,7 @@ function readStoryboardScenes(componentContent: unknown): AvatarClip[] {
       {
         id,
         order: index + 1,
+        origin: "storyboard" as const,
         storyboard_take_number: takeNumber,
         visual_type: visualType || undefined,
         script_text: scriptText,
@@ -466,9 +529,29 @@ function buildHeygenCreateClipPayload(params: {
     output_format: params.options.outputFormat,
     resolution: params.options.resolution,
     script: params.clip.script_text,
-    title: `Talking head ${params.clip.order}`,
+    title: `Avatar ${params.clip.order}`,
     type: "avatar",
     voice_id: params.providerVoiceId,
+  };
+}
+
+function buildCreateFailurePayload(
+  error: unknown,
+  requestPayload: HeygenCreateVideoRequest,
+  clip: AvatarClip,
+) {
+  return {
+    clip_id: clip.id,
+    error_message: error instanceof Error ? error.message : String(error),
+    request: {
+      aspect_ratio: requestPayload.aspect_ratio,
+      caption_enabled: Boolean(requestPayload.caption),
+      engine: requestPayload.engine?.type || null,
+      output_format: requestPayload.output_format,
+      resolution: requestPayload.resolution,
+      script_characters: requestPayload.script.length,
+      title: requestPayload.title,
+    },
   };
 }
 

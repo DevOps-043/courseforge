@@ -23,7 +23,7 @@ export default function AdminLayoutClient({
         { href: basePath, icon: <LayoutDashboard size={22} />, label: 'Dashboard' },
         { href: `${basePath}/users`, icon: <Users size={22} />, label: 'Usuarios' },
         { href: `${basePath}/artifacts`, icon: <Boxes size={22} />, label: 'Artefactos' },
-        { href: `${basePath}/heygen`, icon: <UserRoundCog size={22} />, label: 'HeyGen' },
+        { href: `${basePath}/heygen`, icon: <UserRoundCog size={22} />, label: 'Avatares' },
         { href: `${basePath}/library`, icon: <Library size={22} />, label: 'Libreria' },
         { href: `${basePath}/templates`, icon: <Video size={22} />, label: 'Plantillas' },
         ...(canViewWorkerTelemetry

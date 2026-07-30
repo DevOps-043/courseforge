@@ -16,6 +16,12 @@ import {
   HeygenCredentialResolverError,
 } from "@/domains/production/providers/heygen/heygen-credential-resolver.service";
 import { HeygenRepository } from "@/domains/production/providers/heygen/heygen.repository";
+import {
+  assertHeygenTextInputWithinLimits,
+  buildResolutionRejectionHint,
+  HEYGEN_MAX_TEXT_INPUT_CHARACTERS,
+  HeygenRequestValidationError,
+} from "@/domains/production/providers/heygen/heygen-request-constraints";
 import { createClient } from "@/utils/supabase/server";
 
 const standaloneVideoRequestSchema = z
@@ -26,17 +32,23 @@ const standaloneVideoRequestSchema = z
     engine: z.enum(["avatar_iv", "avatar_v"]).default("avatar_iv"),
     outputFormat: z.enum(["mp4", "webm"]).default("mp4"),
     resolution: z.enum(["720p", "1080p", "4k"]).default("1080p"),
-    script: z.string().trim().min(20).max(8000),
+    script: z.string().trim().min(20).max(HEYGEN_MAX_TEXT_INPUT_CHARACTERS),
     title: z.string().trim().min(3).max(120),
     voicePresetId: z.string().uuid().optional(),
   })
   .strict();
 
 export async function POST(request: Request) {
+  let requestedResolution: "720p" | "1080p" | "4k" = "1080p";
   try {
     const payload = standaloneVideoRequestSchema.parse(
       await request.json().catch(() => ({})),
     );
+    requestedResolution = payload.resolution;
+    assertHeygenTextInputWithinLimits({
+      label: "El guion standalone",
+      text: payload.script,
+    });
     const supabase = await createClient();
     const authenticatedUser = await getAuthenticatedUser(supabase);
     if (!authenticatedUser) {
@@ -131,9 +143,21 @@ export async function POST(request: Request) {
       );
     }
 
+    if (error instanceof HeygenRequestValidationError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
+
     if (error instanceof HeygenApiError) {
       return NextResponse.json(
-        { error: "HeyGen rechazo la solicitud de generacion standalone." },
+        {
+          error: error.message,
+          hint: buildResolutionRejectionHint(requestedResolution),
+          providerCode: error.providerCode || null,
+          retryAfterSeconds: error.retryAfterSeconds || null,
+        },
         {
           headers: buildRetryAfterHeaders(error.retryAfterSeconds),
           status: error.status === 429 ? 429 : 502,

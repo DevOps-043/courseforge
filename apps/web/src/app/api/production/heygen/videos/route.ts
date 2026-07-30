@@ -16,14 +16,20 @@ import {
   getHeygenClientForOrganization,
   HeygenCredentialResolverError,
 } from "@/domains/production/providers/heygen/heygen-credential-resolver.service";
+import {
+  buildResolutionRejectionHint,
+  HeygenRequestValidationError,
+} from "@/domains/production/providers/heygen/heygen-request-constraints";
 import { heygenGenerateVideoRequestSchema } from "@/domains/production/providers/heygen/heygen.validators";
 import { createClient } from "@/utils/supabase/server";
 
 export async function POST(request: Request) {
+  let requestedResolution: "720p" | "1080p" | "4k" = "1080p";
   try {
     const payload = heygenGenerateVideoRequestSchema.parse(
       await request.json().catch(() => ({})),
     );
+    requestedResolution = payload.resolution;
     const supabase = await createClient();
     const authenticatedUser = await getAuthenticatedUser(supabase);
     if (!authenticatedUser) {
@@ -92,9 +98,21 @@ export async function POST(request: Request) {
       );
     }
 
+    if (error instanceof HeygenRequestValidationError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
+
     if (error instanceof HeygenApiError) {
       return NextResponse.json(
-        { error: "HeyGen rechazo la solicitud de generacion." },
+        {
+          error: error.message,
+          hint: buildResolutionRejectionHint(requestedResolution),
+          providerCode: error.providerCode || null,
+          retryAfterSeconds: error.retryAfterSeconds || null,
+        },
         {
           headers: buildRetryAfterHeaders(error.retryAfterSeconds),
           status: error.status === 429 ? 429 : 502,

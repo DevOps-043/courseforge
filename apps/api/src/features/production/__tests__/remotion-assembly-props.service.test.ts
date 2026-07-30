@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  AVATAR_CLIP_CROSSFADE_FRAMES,
   ASSEMBLY_FPS,
   buildAssemblyInputProps,
   hasPrimaryRenderableAssemblyAssets,
@@ -24,6 +25,18 @@ function baseClip(params: Record<string, unknown>) {
     duration: params.duration,
     prompt_used: params.prompt_used,
     order: params.order ?? 1,
+  };
+}
+
+function baseAvatarClip(params: Record<string, unknown>) {
+  return {
+    id: params.id ?? 'avatar-clip',
+    storage_path: params.storage_path ?? 'production-assets/avatar/clip.mp4',
+    public_url: params.public_url ?? VIDEO_URL,
+    duration: params.duration,
+    order: params.order ?? 1,
+    status: params.status ?? 'COMPLETED',
+    deleted: params.deleted,
   };
 }
 
@@ -108,6 +121,34 @@ describe('remotion assembly props contract', () => {
       [150, 120, 60],
     );
     assert.equal(normalized.totalDurationSeconds, 6);
+  });
+
+  it('uses overlapping avatar clip duration when scene mode is active', () => {
+    const props = buildAssemblyInputProps({
+      compositionId: 'avatar-focus',
+      transitionType: 'none',
+      assets: {
+        avatar_generation_mode: 'scene_clips',
+        avatar_clips: [
+          baseAvatarClip({ id: 'second', order: 2, duration: 3, public_url: 'https://cdn.example.com/avatar-2.mp4' }),
+          baseAvatarClip({ id: 'first', order: 1, duration: 2, public_url: 'https://cdn.example.com/avatar-1.mp4' }),
+        ],
+        avatar_video: {
+          storage_path: 'production-assets/avatar.mp4',
+          public_url: VIDEO_URL,
+          duration: 90,
+        },
+      },
+    });
+
+    assert.equal(
+      props.totalDurationInFrames,
+      5 * ASSEMBLY_FPS - AVATAR_CLIP_CROSSFADE_FRAMES,
+    );
+    assert.deepEqual(
+      props.avatarClips.map((clip) => clip.url),
+      ['https://cdn.example.com/avatar-1.mp4', 'https://cdn.example.com/avatar-2.mp4'],
+    );
   });
 
   it('prioritizes voice duration over avatar, B-roll and slides', () => {

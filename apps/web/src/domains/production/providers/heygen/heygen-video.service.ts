@@ -13,6 +13,9 @@ import { HeygenClient } from "./heygen.client";
 import { HeygenRepository } from "./heygen.repository";
 import { buildHeygenScriptFromComponent } from "./heygen-script-builder";
 import {
+  assertHeygenTextInputWithinLimits,
+} from "./heygen-request-constraints";
+import {
   HEYGEN_VIDEO_STATUSES,
   type HeygenAvatarVideoGenerationOptions,
   type HeygenAvatarVideoOutputFormat,
@@ -95,6 +98,10 @@ export class HeygenVideoService {
       componentType: params.componentType,
       fallbackTitle: params.fallbackTitle,
     });
+    assertHeygenTextInputWithinLimits({
+      label: "El guion consolidado",
+      text: script.scriptText,
+    });
     const avatar = await this.repository.getAvatarPresetForGeneration({
       organizationId: params.organizationId,
       presetId: params.options.avatarPresetId,
@@ -172,10 +179,19 @@ export class HeygenVideoService {
       scriptText: script.scriptText,
       title: script.title,
     });
-    const createdVideo = await this.client.createAvatarVideo(
-      requestPayload,
-      job.id,
-    );
+    let createdVideo;
+    try {
+      createdVideo = await this.client.createAvatarVideo(
+        requestPayload,
+        job.id,
+      );
+    } catch (error) {
+      await this.repository.markVideoJobFailed({
+        errorPayload: buildCreateFailurePayload(error, requestPayload),
+        jobId: job.id,
+      });
+      throw error;
+    }
 
     await this.repository.markVideoJobWaitingProvider({
       jobId: job.id,
@@ -400,6 +416,24 @@ function buildCompletedOutputSnapshot(
     public_url: asset.publicUrl,
     storage_path: asset.storagePath,
     thumbnail_url: video.thumbnailUrl || null,
+  };
+}
+
+function buildCreateFailurePayload(
+  error: unknown,
+  requestPayload: HeygenCreateVideoRequest,
+) {
+  return {
+    error_message: error instanceof Error ? error.message : String(error),
+    request: {
+      aspect_ratio: requestPayload.aspect_ratio,
+      caption_enabled: Boolean(requestPayload.caption),
+      engine: requestPayload.engine?.type || null,
+      output_format: requestPayload.output_format,
+      resolution: requestPayload.resolution,
+      script_characters: requestPayload.script.length,
+      title: requestPayload.title,
+    },
   };
 }
 

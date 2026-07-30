@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { HeygenScenesService } from "../heygen-scenes.service";
 import { buildHeygenScriptFromComponent } from "../heygen-script-builder";
 
 describe("HeyGen script builder", () => {
@@ -63,6 +64,54 @@ describe("HeyGen script builder", () => {
           componentType: "VIDEO_GUIDE",
         }),
       /guion narrativo suficiente/,
+    );
+  });
+});
+
+describe("HeyGen scene clip builder", () => {
+  it("preserves manual clips and hidden deleted storyboard clips", () => {
+    const service = new HeygenScenesService({} as any, {} as any);
+    const clips = service.buildSceneClips({
+      componentContent: {
+        storyboard: [
+          {
+            narration_text: "Escena base que se mantiene.",
+            take_number: 1,
+            visual_type: "avatar_focus",
+          },
+          {
+            narration_text: "Escena base eliminada por edicion.",
+            take_number: 2,
+            visual_type: "avatar_focus",
+          },
+        ],
+      },
+      existingClips: [
+        {
+          deleted: true,
+          id: "scene-2",
+          order: 2,
+          origin: "storyboard",
+          script_text: "Escena base eliminada por edicion.",
+          status: "DRAFT",
+        },
+        {
+          id: "manual-split",
+          order: 3,
+          origin: "manual",
+          script_text: "Nueva division manual del guion.",
+          status: "DRAFT",
+        },
+      ],
+    });
+
+    assert.deepEqual(
+      clips.map((clip) => [clip.id, clip.origin, clip.deleted === true]),
+      [
+        ["scene-1", "storyboard", false],
+        ["scene-2", "storyboard", true],
+        ["manual-split", "manual", false],
+      ],
     );
   });
 });

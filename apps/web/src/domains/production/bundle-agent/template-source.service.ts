@@ -39,9 +39,15 @@ type BrollClip = {
   url: string;
 };
 
+type AvatarClip = {
+  durationInFrames?: number;
+  order?: number;
+  url: string;
+};
+
 type TimelineOverrideSegment = {
   id?: string;
-  trackKind?: "slides" | "broll";
+  trackKind?: "slides" | "broll" | "avatar";
   layerId?: string;
   startFrame?: number;
   endFrame?: number;
@@ -82,6 +88,16 @@ type BrollTimelineItem = {
   loopMode?: "loop" | "freeze" | "none";
 };
 
+type AvatarTimelineItem = {
+  clip: AvatarClip;
+  startFrame: number;
+  durationInFrames: number;
+  id: string;
+  layerId: string;
+  sourceStartFrame?: number;
+  sourceEndFrame?: number;
+};
+
 type Box = {
   x: number;
   y: number;
@@ -120,6 +136,7 @@ type DesignTokens = {
 type TemplateProps = {
   accentColor?: string;
   animationVariant?: string;
+  avatarClips?: AvatarClip[];
   avatarVideoUrl?: string;
   bgMusicUrl?: string;
   bgMusicVolume?: number;
@@ -157,6 +174,7 @@ const defaultStackOrders = {
 const defaultProps: TemplateProps = {
   accentColor,
   animationVariant: "measured",
+  avatarClips: [],
   bgMusicVolume: 0.12,
   brollClips: [],
   designTokens: {
@@ -184,6 +202,7 @@ const REMOTION_EDITABLE_LAYERS = {
   BROLL: "broll",
   BACKGROUND: "background",
 } as const;
+const AVATAR_CLIP_CROSSFADE_FRAMES = 8;
 
 function orderedSlides(slides: SlideAsset[] = []) {
   return slides
@@ -192,6 +211,12 @@ function orderedSlides(slides: SlideAsset[] = []) {
 }
 
 function orderedBrollClips(clips: BrollClip[] = []) {
+  return clips
+    .filter((clip) => typeof clip.url === "string" && clip.url.length > 0)
+    .sort((left, right) => (left.order ?? 0) - (right.order ?? 0));
+}
+
+function orderedAvatarClips(clips: AvatarClip[] = []) {
   return clips
     .filter((clip) => typeof clip.url === "string" && clip.url.length > 0)
     .sort((left, right) => (left.order ?? 0) - (right.order ?? 0));
@@ -283,7 +308,7 @@ function normalizeOptionalFrame(value: number | undefined) {
 
 function getTimelineOverrideSegments(
   manifests: TimelineOverrideManifest[] | null | undefined,
-  trackKind: "slides" | "broll",
+  trackKind: "slides" | "broll" | "avatar",
 ): TimelineOverrideSegment[] {
   if (!Array.isArray(manifests)) return [];
 
@@ -352,6 +377,67 @@ function getClipDurationInFrames(clip: BrollClip) {
     : 150;
 }
 
+function getAvatarClipDurationInFrames(clip: AvatarClip) {
+  return typeof clip.durationInFrames === "number" && Number.isFinite(clip.durationInFrames)
+    ? Math.max(1, Math.round(clip.durationInFrames))
+    : 150;
+}
+
+function getAvatarClipCrossfadeFrames(currentClip: AvatarClip, nextClip: AvatarClip) {
+  const currentDuration = getAvatarClipDurationInFrames(currentClip);
+  const nextDuration = getAvatarClipDurationInFrames(nextClip);
+  const boundedByClipLength = Math.min(
+    Math.floor(currentDuration / 4),
+    Math.floor(nextDuration / 4),
+  );
+
+  return Math.max(0, Math.min(AVATAR_CLIP_CROSSFADE_FRAMES, boundedByClipLength));
+}
+
+function getAvatarTimelineItemFadeFrames(
+  item: AvatarTimelineItem,
+  index: number,
+  timeline: AvatarTimelineItem[],
+) {
+  const previousItem = timeline[index - 1];
+  const nextItem = timeline[index + 1];
+  const currentDuration = Math.max(1, item.durationInFrames);
+  const maxFadeFrames = Math.max(0, currentDuration - 1);
+
+  return {
+    fadeInFrames: previousItem
+      ? Math.min(maxFadeFrames, Math.max(0, previousItem.startFrame + previousItem.durationInFrames - item.startFrame))
+      : 0,
+    fadeOutFrames: nextItem
+      ? Math.min(maxFadeFrames, Math.max(0, item.startFrame + item.durationInFrames - nextItem.startFrame))
+      : 0,
+  };
+}
+
+function getAvatarTimelineItemOpacity(
+  frame: number,
+  item: AvatarTimelineItem,
+  index: number,
+  timeline: AvatarTimelineItem[],
+) {
+  const localFrame = Math.max(0, frame - item.startFrame);
+  const { fadeInFrames, fadeOutFrames } = getAvatarTimelineItemFadeFrames(item, index, timeline);
+  const fadeInOpacity = fadeInFrames > 0
+    ? interpolate(localFrame, [0, fadeInFrames], [0, 1], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    })
+    : 1;
+  const fadeOutOpacity = fadeOutFrames > 0
+    ? interpolate(localFrame, [Math.max(0, item.durationInFrames - fadeOutFrames), item.durationInFrames - 1], [1, 0], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    })
+    : 1;
+
+  return Math.min(fadeInOpacity, fadeOutOpacity);
+}
+
 function buildBrollTimeline(
   clips: BrollClip[],
   durationInFrames: number,
@@ -403,6 +489,59 @@ function buildBrollTimeline(
 
 function getActiveBrollTimelineItem(frame: number, timeline: BrollTimelineItem[]) {
   return timeline.find((item) => frame >= item.startFrame && frame < item.startFrame + item.durationInFrames) ?? null;
+}
+
+function buildAvatarTimeline(
+  clips: AvatarClip[],
+  durationInFrames: number,
+  timelineOverrides: TimelineOverrideManifest[] | null | undefined,
+): AvatarTimelineItem[] {
+  if (clips.length === 0 || durationInFrames <= 0) return [];
+
+  const ordered = orderedAvatarClips(clips);
+  const segments = getTimelineOverrideSegments(timelineOverrides, "avatar");
+  const timeline: AvatarTimelineItem[] = [];
+  let cursor = 0;
+
+  for (let index = 0; index < ordered.length; index += 1) {
+    const clip = ordered[index]!;
+    if (cursor >= durationInFrames) break;
+    const remainingFrames = durationInFrames - cursor;
+    const clipDurationInFrames = Math.min(getAvatarClipDurationInFrames(clip), remainingFrames);
+
+    if (clipDurationInFrames > 0) {
+      const order = normalizeClipOrder(clip.order, timeline.length + 1);
+      const item: AvatarTimelineItem = {
+        clip,
+        startFrame: cursor,
+        durationInFrames: clipDurationInFrames,
+        id: "avatar-" + order,
+        layerId: "avatar",
+        sourceStartFrame: 0,
+        sourceEndFrame: getAvatarClipDurationInFrames(clip),
+      };
+      const override = findTimelineOverrideSegment(segments, item);
+      const overriddenItem = override
+        ? {
+          ...item,
+          ...resolveOverrideWindow(override, durationInFrames),
+          sourceStartFrame: normalizeOptionalFrame(override.sourceStartFrame) ?? item.sourceStartFrame,
+          sourceEndFrame: normalizeOptionalFrame(override.sourceEndFrame) ?? item.sourceEndFrame,
+        }
+        : item;
+
+      timeline.push(overriddenItem);
+    }
+
+    const nextClip = ordered[index + 1];
+    const crossfadeFrames = nextClip
+      ? getAvatarClipCrossfadeFrames(clip, nextClip)
+      : 0;
+
+    cursor += Math.max(1, clipDurationInFrames - crossfadeFrames);
+  }
+
+  return timeline;
 }
 
 function mirrorBoxHorizontally(box: Box): Box {
@@ -476,8 +615,10 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
   const { durationInFrames } = useVideoConfig();
   const slides = orderedSlides(props.slides);
   const brollClips = orderedBrollClips(props.brollClips);
+  const avatarClips = orderedAvatarClips(props.avatarClips);
   const slideTimeline = buildSlideTimeline(slides, durationInFrames, props.timelineOverrides);
   const brollTimeline = buildBrollTimeline(brollClips, durationInFrames, props.timelineOverrides);
+  const avatarTimeline = buildAvatarTimeline(avatarClips, durationInFrames, props.timelineOverrides);
   const activeSlideItem = getActiveSlideTimelineItem(frame, slideTimeline);
   const activeSlideIndex = activeSlideItem?.index ?? -1;
   const activeSupportIndex = getActiveIndex(frame, Math.max(slides.length, brollClips.length), durationInFrames);
@@ -485,7 +626,9 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
   const activeBrollItem = getActiveBrollTimelineItem(frame, brollTimeline);
   const activeBroll = activeBrollItem?.clip ?? null;
   const hasVoice = typeof props.voiceAudioUrl === "string" && props.voiceAudioUrl.length > 0;
-  const hasAvatar = typeof props.avatarVideoUrl === "string" && props.avatarVideoUrl.length > 0;
+  const hasAvatarVideo = typeof props.avatarVideoUrl === "string" && props.avatarVideoUrl.length > 0;
+  const hasAvatarClips = avatarTimeline.length > 0;
+  const hasAvatar = hasAvatarClips || hasAvatarVideo;
   const hasSlidesAsset = slides.length > 0;
   const hasBrollAsset = brollClips.length > 0;
   const sceneItemCount = Math.max(1, slides.length, brollClips.length);
@@ -543,7 +686,28 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
     >
       <div style={buildBoxStyle(primaryVisualBox, { background: isReferenceFrameLayout ? "transparent" : tokenSurface, zIndex: defaultStackOrders.primaryVisual, ...primaryVisualOverride })} />
 
-      {hasAvatar ? (
+      {hasAvatarClips ? (
+        <>
+          {avatarTimeline.map((avatarItem, avatarIndex) => {
+            const avatarOpacity = getAvatarTimelineItemOpacity(frame, avatarItem, avatarIndex, avatarTimeline);
+
+            return (
+              <Sequence key={avatarItem.id} from={avatarItem.startFrame} durationInFrames={avatarItem.durationInFrames}>
+                <div style={buildBoxStyle(avatarSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.avatar, opacity: avatarOpacity, ...avatarOverride })}>
+                  <Video
+                    src={avatarItem.clip.url}
+                    muted={hasVoice}
+                    volume={hasVoice ? 0 : avatarOpacity}
+                    startFrom={avatarItem.sourceStartFrame}
+                    endAt={avatarItem.sourceEndFrame}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center center" }}
+                  />
+                </div>
+              </Sequence>
+            );
+          })}
+        </>
+      ) : hasAvatarVideo ? (
         <div style={buildBoxStyle(avatarSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.avatar, ...avatarOverride })}>
           <Video
             src={props.avatarVideoUrl!}

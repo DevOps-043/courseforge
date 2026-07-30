@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const TIMELINE_OVERRIDE_MANIFEST_VERSION = 1;
 
-const timelineTrackKindSchema = z.enum(["slides", "broll"]);
+const timelineTrackKindSchema = z.enum(["slides", "broll", "avatar"]);
 const timelineFrameSchema = z.number().int().min(0).max(24 * 60 * 60 * 240);
 
 export const timelineOverrideSegmentSchema = z.object({

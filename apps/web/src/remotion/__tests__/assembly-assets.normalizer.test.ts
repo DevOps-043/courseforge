@@ -29,6 +29,7 @@ import {
   buildVisualTimeline,
   getActiveTimelineSegments,
 } from "../visual-timeline";
+import { AVATAR_CLIP_CROSSFADE_FRAMES } from "../avatar-clip-transitions";
 import { resolveSlideTimelineRenderItems } from "../components/slide-timeline-rendering";
 import {
   commitLayoutLayerCrop,
@@ -63,6 +64,7 @@ function baseAvatarClip(params: Partial<NonNullable<MaterialAssets["avatar_clips
   return {
     id: params.id ?? "avatar-clip",
     order: params.order ?? 1,
+    deleted: params.deleted,
     public_url: params.public_url ?? VIDEO_URL,
     script_text: params.script_text ?? "Texto de prueba",
     status: params.status ?? "COMPLETED",
@@ -215,10 +217,32 @@ describe("normalizeAssemblyAssets", () => {
 
     const props = buildAssemblyProps(assets, "avatar-focus");
 
-    assert.equal(props.totalDurationInFrames, Math.round(12.6 * ASSEMBLY_FPS));
+    assert.equal(
+      props.totalDurationInFrames,
+      Math.round(12.6 * ASSEMBLY_FPS) - AVATAR_CLIP_CROSSFADE_FRAMES,
+    );
     assert.deepEqual(
       props.avatarClips.map((clip) => clip.url),
       ["https://cdn.example.com/avatar-1.mp4", "https://cdn.example.com/avatar-2.mp4"],
+    );
+  });
+
+  it("ignores deleted avatar clips in scene mode duration and render props", () => {
+    const props = buildAssemblyProps(
+      {
+        avatar_generation_mode: "scene_clips",
+        avatar_clips: [
+          baseAvatarClip({ id: "active", order: 1, duration: 5, public_url: "https://cdn.example.com/avatar-active.mp4" }),
+          baseAvatarClip({ deleted: true, id: "deleted", order: 2, duration: 50, public_url: "https://cdn.example.com/avatar-deleted.mp4" }),
+        ],
+      },
+      "avatar-focus",
+    );
+
+    assert.equal(props.totalDurationInFrames, 5 * ASSEMBLY_FPS);
+    assert.deepEqual(
+      props.avatarClips.map((clip) => clip.url),
+      ["https://cdn.example.com/avatar-active.mp4"],
     );
   });
 
@@ -694,7 +718,7 @@ describe("buildVisualTimeline", () => {
     );
   });
 
-  it("creates sequential avatar clip segments when avatarClips are present", () => {
+  it("creates overlapping avatar clip segments when avatarClips are present", () => {
     const props = buildAssemblyProps(
       {
         avatar_generation_mode: "scene_clips",
@@ -715,7 +739,11 @@ describe("buildVisualTimeline", () => {
     );
     assert.deepEqual(
       avatarSegments.map((segment) => segment.startFrame),
-      [0, 2 * ASSEMBLY_FPS],
+      [0, 2 * ASSEMBLY_FPS - AVATAR_CLIP_CROSSFADE_FRAMES],
+    );
+    assert.equal(
+      avatarSegments[0].endFrame - avatarSegments[1].startFrame,
+      AVATAR_CLIP_CROSSFADE_FRAMES,
     );
   });
 
@@ -919,6 +947,54 @@ describe("buildVisualTimeline", () => {
     assert.equal(broll?.sourceEndFrame, 45);
     assert.equal(broll?.sourceDurationInFrames, 60);
     assert.equal(broll?.loopMode, "loop");
+  });
+
+  it("accepts and applies avatar clip timeline overrides", () => {
+    const parsed = safeParseTimelineOverrideManifests([
+      {
+        version: 1,
+        timeline: { fps: ASSEMBLY_FPS, durationInFrames: 150 },
+        segments: [
+          {
+            id: "avatar-2",
+            trackKind: "avatar",
+            layerId: REMOTION_EDITABLE_LAYERS.AVATAR,
+            startFrame: 75,
+            endFrame: 135,
+            sourceStartFrame: 6,
+            sourceEndFrame: 66,
+            loopMode: "none",
+          },
+        ],
+      },
+    ]);
+
+    assert.equal(parsed.success, true);
+
+    const props = buildAssemblyProps(
+      {
+        avatar_generation_mode: "scene_clips",
+        avatar_clips: [
+          baseAvatarClip({ id: "avatar-clip-1", order: 1, duration: 2 }),
+          baseAvatarClip({ id: "avatar-clip-2", order: 2, duration: 3 }),
+        ],
+      },
+      ASSEMBLY_TEMPLATES.AVATAR_FOCUS,
+      {},
+      [],
+      parsed.success ? parsed.data : [],
+    );
+
+    const timeline = buildVisualTimeline(props);
+    const avatarSegments = timeline.tracks.find((track) => track.id === "avatar")?.segments ?? [];
+    const movedAvatar = avatarSegments.find((segment) => segment.id === "avatar-2");
+
+    assert.equal(movedAvatar?.startFrame, 75);
+    assert.equal(movedAvatar?.endFrame, 135);
+    assert.equal(movedAvatar?.durationInFrames, 60);
+    assert.equal(movedAvatar?.sourceStartFrame, 6);
+    assert.equal(movedAvatar?.sourceEndFrame, 66);
+    assert.equal(movedAvatar?.loopMode, "none");
   });
 
   it("clamps timeline overrides to the composition duration", () => {

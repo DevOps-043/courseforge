@@ -4,6 +4,7 @@ import type {
   AssemblyBrollClip,
   AssemblySlide,
 } from "./types";
+import { getAvatarClipEffectiveDurationInFrames } from "./avatar-clip-transitions";
 
 const DEFAULT_CLIP_SECONDS = 5;
 const DEFAULT_SLIDE_SECONDS = 5;
@@ -90,7 +91,7 @@ function buildWarnings(params: {
 function isCompletedAvatarClip(
   clip: NonNullable<MaterialAssets["avatar_clips"]>[number],
 ) {
-  return Boolean(clip?.public_url) && (!clip.status || clip.status === "COMPLETED");
+  return Boolean(clip?.public_url) && !clip.deleted && (!clip.status || clip.status === "COMPLETED");
 }
 
 export function normalizeAssemblyAssets(
@@ -148,16 +149,8 @@ export function normalizeAssemblyAssets(
     (sum, clip) => sum + clip.durationInFrames / fps,
     0,
   );
-  const explicitAvatarClipTotalSeconds = (a.avatar_clips ?? [])
-    .filter(
-      (clip): clip is NonNullable<MaterialAssets["avatar_clips"]>[number] & { duration: number } =>
-        isCompletedAvatarClip(clip) && isPositiveNumber(clip.duration),
-    )
-    .reduce((sum, clip) => sum + clip.duration, 0);
-  const fallbackAvatarClipTotalSeconds = avatarClips.reduce(
-    (sum, clip) => sum + clip.durationInFrames / fps,
-    0,
-  );
+  const avatarClipTotalSeconds =
+    getAvatarClipEffectiveDurationInFrames(avatarClips) / fps;
 
   const voiceDurationSeconds = isPositiveNumber(a.voice_audio?.duration)
     ? a.voice_audio.duration
@@ -169,16 +162,13 @@ export function normalizeAssemblyAssets(
 
   if (
     a.avatar_generation_mode === "scene_clips" &&
-    (explicitAvatarClipTotalSeconds > 0 || fallbackAvatarClipTotalSeconds > 0)
+    avatarClipTotalSeconds > 0
   ) {
-    totalDurationSeconds =
-      explicitAvatarClipTotalSeconds || fallbackAvatarClipTotalSeconds;
+    totalDurationSeconds = avatarClipTotalSeconds;
   } else if (a.avatar_generation_mode === "single_video" && avatarDurationSeconds > 0) {
     totalDurationSeconds = avatarDurationSeconds;
-  } else if (!a.avatar_generation_mode && explicitAvatarClipTotalSeconds > 0) {
-    totalDurationSeconds = explicitAvatarClipTotalSeconds;
-  } else if (!a.avatar_generation_mode && fallbackAvatarClipTotalSeconds > 0) {
-    totalDurationSeconds = fallbackAvatarClipTotalSeconds;
+  } else if (!a.avatar_generation_mode && avatarClipTotalSeconds > 0) {
+    totalDurationSeconds = avatarClipTotalSeconds;
   } else if (voiceDurationSeconds > 0) {
     totalDurationSeconds = voiceDurationSeconds;
   } else if (avatarDurationSeconds > 0) {
