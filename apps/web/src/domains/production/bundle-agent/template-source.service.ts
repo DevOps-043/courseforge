@@ -204,6 +204,10 @@ const REMOTION_EDITABLE_LAYERS = {
 } as const;
 const AVATAR_CLIP_CROSSFADE_FRAMES = 8;
 
+function getAvatarClipItemLayerId(order: number) {
+  return "avatar:" + Math.max(1, Math.round(order));
+}
+
 function orderedSlides(slides: SlideAsset[] = []) {
   return slides
     .filter((slide) => typeof slide.url === "string" && slide.url.length > 0)
@@ -516,7 +520,7 @@ function buildAvatarTimeline(
         startFrame: cursor,
         durationInFrames: clipDurationInFrames,
         id: "avatar-" + order,
-        layerId: "avatar",
+        layerId: getAvatarClipItemLayerId(order),
         sourceStartFrame: 0,
         sourceEndFrame: getAvatarClipDurationInFrames(clip),
       };
@@ -690,10 +694,11 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
         <>
           {avatarTimeline.map((avatarItem, avatarIndex) => {
             const avatarOpacity = getAvatarTimelineItemOpacity(frame, avatarItem, avatarIndex, avatarTimeline);
+            const avatarItemOverride = buildLayoutOverrideStyle(props.layoutOverrides, avatarItem.layerId);
 
             return (
               <Sequence key={avatarItem.id} from={avatarItem.startFrame} durationInFrames={avatarItem.durationInFrames}>
-                <div style={buildBoxStyle(avatarSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.avatar, opacity: avatarOpacity, ...avatarOverride })}>
+                <div style={buildBoxStyle(avatarSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.avatar, opacity: avatarOpacity, ...avatarOverride, ...avatarItemOverride })}>
                   <Video
                     src={avatarItem.clip.url}
                     muted={hasVoice}

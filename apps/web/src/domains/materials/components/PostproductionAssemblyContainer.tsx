@@ -191,6 +191,13 @@ function getCompatibleTemplateLayoutOverrides(
 }
 
 function getLayoutAssetSummary(assets: any): LayoutAssetSummary {
+    const completedAvatarClips = Array.isArray(assets?.avatar_clips)
+        ? assets.avatar_clips.filter((clip: any) => (
+            clip?.public_url &&
+            !clip?.deleted &&
+            (!clip?.status || clip.status === 'COMPLETED')
+        ))
+        : [];
     const slideCount = Array.isArray(assets?.slides?.images)
         ? assets.slides.images.length
         : assets?.slides_url || assets?.slides?.html_public_url || assets?.slides?.html_content_path
@@ -203,7 +210,8 @@ function getLayoutAssetSummary(assets: any): LayoutAssetSummary {
             : 0;
 
     return {
-        hasAvatar: Boolean(assets?.avatar_video?.public_url),
+        hasAvatar: Boolean(assets?.avatar_video?.public_url || completedAvatarClips.length > 0),
+        avatarClipCount: completedAvatarClips.length,
         slideCount,
         brollCount,
     };

@@ -93,6 +93,10 @@ describe("render batch contracts", () => {
     const externalPreviewHookSource = fs.readFileSync(externalPreviewHookPath, "utf8");
     const layoutOverridePreviewOverlaySource = fs.readFileSync(layoutOverridePreviewOverlayPath, "utf8");
     const productionActionsSource = fs.readFileSync(productionActionsPath, "utf8");
+    const renderBatchServiceSource = fs.readFileSync(path.resolve(
+      process.cwd(),
+      "src/domains/production/render-batches/render-batch.service.ts",
+    ), "utf8");
     const desktopWorkerControlPlaneSource = fs.readFileSync(desktopWorkerControlPlanePath, "utf8");
     const templateActionsSource = fs.readFileSync(templateActionsPath, "utf8");
     const templatesContainerSource = fs.readFileSync(templatesContainerPath, "utf8");
@@ -111,6 +115,9 @@ describe("render batch contracts", () => {
     );
     assert.match(postproductionSource, /layoutOverrides: activeExternalPreviewLayoutOverrides/);
     assert.match(postproductionSource, /selectedTemplateSupportsExternalLayout/);
+    assert.match(postproductionSource, /completedAvatarClips/);
+    assert.match(postproductionSource, /avatarClipCount: completedAvatarClips\.length/);
+    assert.match(postproductionSource, /assets\?\.avatar_clips/);
     assert.match(postproductionSource, /template_version_id \|\| selectedTemplateConfig\?\.id/);
     assert.match(postproductionSource, /setExternalPreviewLayoutOverrideSnapshots/);
     assert.match(postproductionSource, /getLayoutOverrideDraftKey/);
@@ -123,6 +130,7 @@ describe("render batch contracts", () => {
     assert.doesNotMatch(layoutOverridePreviewOverlaySource, /width:\s*Math\.max\(gridSize,\s*snapValueToGrid\(box\.width/);
     assert.match(productionActionsSource, /scopedTemplateId/);
     assert.match(productionActionsSource, /existingLayoutOverrides\.filter\(\(manifest\) => !isSameLayoutScope\(manifest\)\)/);
+    assert.match(renderBatchServiceSource, /normalizedAssets\.avatarClips\.length > 0/);
     assert.match(desktopWorkerControlPlaneSource, /publishInternalBundle/);
     assert.match(desktopWorkerControlPlaneSource, /INTERNAL_COMPOSITION/);
     assert.match(desktopWorkerControlPlaneSource, /courseforge-internal-bundle\.json/);

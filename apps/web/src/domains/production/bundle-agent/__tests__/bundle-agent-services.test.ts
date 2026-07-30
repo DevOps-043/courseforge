@@ -153,6 +153,7 @@ describe("SofLIA Bundle Agent services", () => {
     assert.equal(blueprint.editableLayers.some((layer) => layer.layerId === "slides" && layer.defaultBox?.x === 842), true);
     assert.equal(blueprint.editableLayers.some((layer) => layer.layerId === "broll" && layer.defaultBox?.x === 1364), true);
     assert.equal(blueprint.editableLayers.find((layer) => layer.layerId === "avatar")?.capabilities.canReorder, true);
+    assert.equal(blueprint.editableLayers.find((layer) => layer.layerId === "avatar")?.itemLayerIdPattern, "avatar:{order}");
     assert.equal(blueprint.editableLayers.find((layer) => layer.layerId === "slides")?.itemLayerIdPattern, "slide:{index}");
     assert.equal(blueprint.editableLayers.find((layer) => layer.layerId === "broll")?.itemLayerIdPattern, "broll:{order}");
   });
@@ -251,6 +252,7 @@ describe("SofLIA Bundle Agent services", () => {
     assert.equal(report.info.manifest?.layoutContractVersion, 2);
     assert.equal(report.info.manifest?.layoutCoordinateSpace, "canvas");
     assert.equal(report.info.manifest?.editableLayers?.find((layer) => layer.layerId === "slides")?.itemLayerIdPattern, "slide:{index}");
+    assert.equal(report.info.manifest?.editableLayers?.find((layer) => layer.layerId === "avatar")?.itemLayerIdPattern, "avatar:{order}");
     assert.equal(report.info.manifest?.editableLayers?.some((layer) => layer.layerId === "avatar" && layer.defaultBox?.width), true);
     assert.equal(propsSchemaProperties?.avatarVideoUrl?.type, "string");
     assert.equal(propsSchemaProperties?.slides?.type, "array");

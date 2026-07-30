@@ -7,6 +7,7 @@ import { AudioTracks } from "../components/AudioTracks";
 import { parseTemplateRenderConfig } from "../template-config";
 import {
   buildLayoutOverrideStyle,
+  getAvatarClipItemLayerId,
   REMOTION_EDITABLE_LAYERS,
 } from "../layout-override-styles";
 import { buildVisualTimeline } from "../visual-timeline";
@@ -65,6 +66,12 @@ export function AvatarFocus(props: AssemblyInputProps) {
               muted={hasVoice}
               objectFit="contain"
               segments={avatarSegments}
+              getClipStyle={(clip) =>
+                buildLayoutOverrideStyle(
+                  props.layoutOverrides,
+                  getAvatarClipItemLayerId(clip.order),
+                )
+              }
             />
           ) : props.avatarVideoUrl ? (
             <AvatarLayer

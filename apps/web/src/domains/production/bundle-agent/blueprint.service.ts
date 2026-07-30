@@ -250,6 +250,7 @@ function buildEditableLayers(boxes: BundleBlueprint["boxes"]): EditableLayerDefi
       defaultBox: boxes.avatar,
       defaultStackOrder: 10,
       stackGroup: "root",
+      itemLayerIdPattern: "avatar:{order}",
       capabilities: CAN_EDIT_MEDIA_LAYER,
       constraints: { minWidth: 320, minHeight: 240, safeArea: "full" },
     },

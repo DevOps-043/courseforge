@@ -7,6 +7,7 @@ import { AudioTracks } from "../components/AudioTracks";
 import { parseTemplateRenderConfig } from "../template-config";
 import {
   buildLayoutOverrideStyle,
+  getAvatarClipItemLayerId,
   REMOTION_EDITABLE_LAYERS,
 } from "../layout-override-styles";
 import { buildVisualTimeline } from "../visual-timeline";
@@ -79,11 +80,17 @@ export function SplitAvatar(props: AssemblyInputProps) {
         }}
       >
         {props.avatarClips.length > 0 ? (
-          <AvatarClipLayer
-            clips={props.avatarClips}
-            muted={hasVoice}
-            segments={avatarSegments}
-          />
+            <AvatarClipLayer
+              clips={props.avatarClips}
+              muted={hasVoice}
+              segments={avatarSegments}
+              getClipStyle={(clip) =>
+                buildLayoutOverrideStyle(
+                  props.layoutOverrides,
+                  getAvatarClipItemLayerId(clip.order),
+                )
+              }
+            />
         ) : props.avatarVideoUrl ? (
           <AvatarLayer url={props.avatarVideoUrl} muted={hasVoice} />
         ) : hasAvatar ? (

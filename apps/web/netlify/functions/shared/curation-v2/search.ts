@@ -46,14 +46,16 @@ export async function searchLessonCandidates(params: {
   courseContext: string;
   lessons: CurationLesson[];
   customPrompt?: string;
+  systemPrompt?: string;
 }) {
-  const { client, model, courseContext, lessons, customPrompt } = params;
+  const { client, model, courseContext, lessons, customPrompt, systemPrompt } = params;
   const response = await client.responses.create(({
     model,
     input: [
       {
         role: "system",
         content:
+          systemPrompt ||
           "Eres un investigador educativo. Busca candidatos reales y accesibles. No declares una fuente valida: Courseforge la validara. Evita redes sociales, foros, paywalls y URLs inventadas.",
       },
       {

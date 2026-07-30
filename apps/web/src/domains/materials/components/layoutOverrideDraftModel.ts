@@ -5,8 +5,10 @@ import {
   ASSEMBLY_WIDTH,
 } from "../../../remotion/types";
 import {
+  getAvatarClipItemLayerId,
   getBrollItemLayerId,
   getSlideItemLayerId,
+  isAvatarClipItemLayerId,
   isBrollItemLayerId,
   isSlideItemLayerId,
   REMOTION_EDITABLE_LAYERS,
@@ -45,6 +47,7 @@ export interface LayoutLayerCrop {
 
 export interface LayoutAssetSummary {
   hasAvatar: boolean;
+  avatarClipCount?: number;
   slideCount: number;
   brollCount: number;
 }
@@ -190,6 +193,27 @@ export function getEditableLayoutLayers(
         }
       }
 
+      if (
+        layer.itemLayerIdPattern === "avatar:{order}" ||
+        (layer.kind === "avatar" && (assetSummary.avatarClipCount ?? 0) > 0)
+      ) {
+        const avatarClipCount = assetSummary.avatarClipCount ?? (assetSummary.hasAvatar ? 1 : 0);
+        for (let order = 1; order <= avatarClipCount; order += 1) {
+          itemLayers.push({
+            ...groupLayer,
+            id: getAvatarClipItemLayerId(order),
+            label: `Avatar ${order}`,
+            detail: "clip",
+            canReorder: groupLayer.canReorder,
+            defaultStackOrder:
+              groupLayer.defaultStackOrder !== undefined
+                ? groupLayer.defaultStackOrder + order - 1
+                : order,
+            stackGroup: `${groupLayer.stackGroup ?? groupLayer.id}-items`,
+          });
+        }
+      }
+
       if (layer.itemLayerIdPattern === "broll:{order}") {
         for (let order = 1; order <= assetSummary.brollCount; order += 1) {
           itemLayers.push({
@@ -224,7 +248,23 @@ export function getEditableLayoutLayers(
   const layers: LayoutLayerOption[] = [];
 
   if (assetSummary.hasAvatar) {
-    layers.push(getInternalLayerOption(REMOTION_EDITABLE_LAYERS.AVATAR, templateSlug));
+    const avatarClipCount = assetSummary.avatarClipCount ?? 0;
+    for (let order = 1; order <= avatarClipCount; order += 1) {
+      layers.push({
+        ...getInternalLayerOption(REMOTION_EDITABLE_LAYERS.AVATAR, templateSlug),
+        id: getAvatarClipItemLayerId(order),
+        label: `Avatar ${order}`,
+        detail: "clip",
+        defaultStackOrder: order,
+        stackGroup: "avatar-items",
+      });
+    }
+
+    layers.push({
+      ...getInternalLayerOption(REMOTION_EDITABLE_LAYERS.AVATAR, templateSlug),
+      label: avatarClipCount > 0 ? "Todo el avatar" : "Avatar",
+      detail: avatarClipCount > 0 ? `${avatarClipCount}` : undefined,
+    });
   }
 
   if (assetSummary.slideCount > 0) {
@@ -528,6 +568,13 @@ export function getDefaultLayoutLayerBox(params: {
     });
   }
 
+  if (isAvatarClipItemLayerId(params.layerId)) {
+    return getDefaultLayoutLayerBox({
+      ...params,
+      layerId: REMOTION_EDITABLE_LAYERS.AVATAR,
+    });
+  }
+
   if (params.templateSlug === ASSEMBLY_TEMPLATES.SPLIT_AVATAR) {
     if (
       params.layerId === REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL ||
@@ -663,6 +710,7 @@ function toLayoutLayerOption(layer: EditableLayerDefinition): LayoutLayerOption 
 }
 
 function shouldShowLayer(layerId: string, assetSummary: LayoutAssetSummary): boolean {
+  if (isAvatarClipItemLayerId(layerId)) return (assetSummary.avatarClipCount ?? 0) > 0;
   if (isSlideItemLayerId(layerId)) return assetSummary.slideCount > 0;
   if (isBrollItemLayerId(layerId)) return assetSummary.brollCount > 0;
   if (layerId === REMOTION_EDITABLE_LAYERS.AVATAR) return assetSummary.hasAvatar;

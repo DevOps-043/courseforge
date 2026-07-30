@@ -20,6 +20,7 @@ import {
 import { safeParseTimelineOverrideManifests } from "../timeline-overrides";
 import {
   buildLayoutOverrideStyle,
+  getAvatarClipItemLayerId,
   getBrollItemLayerId,
   getSlideItemLayerId,
   REMOTION_EDITABLE_LAYERS,
@@ -153,6 +154,29 @@ describe("normalizeAssemblyAssets", () => {
         (warning) => warning.code === "SLIDES_REFERENCE_NOT_RENDERIZABLE",
       ),
       false,
+    );
+  });
+
+  it("treats completed avatar clips as renderable without a merged avatar video", () => {
+    const assets: MaterialAssets = {
+      avatar_clips: [
+        baseAvatarClip({
+          id: "avatar-1",
+          public_url: "https://cdn.example.com/avatar-1.mp4",
+          duration: 14.4,
+          order: 1,
+        }),
+      ],
+    };
+
+    const readiness = getAssemblyAssetReadiness(assets, ASSEMBLY_FPS);
+    const props = buildAssemblyProps(assets, ASSEMBLY_TEMPLATES.SPLIT_AVATAR);
+
+    assert.equal(readiness.hasRenderableAssets, true);
+    assert.equal(readiness.hasRenderableVisualAssets, true);
+    assert.deepEqual(
+      props.avatarClips.map((clip) => clip.url),
+      ["https://cdn.example.com/avatar-1.mp4"],
     );
   });
 
@@ -738,6 +762,10 @@ describe("buildVisualTimeline", () => {
       ["avatar-1", "avatar-2"],
     );
     assert.deepEqual(
+      avatarSegments.map((segment) => segment.layerId),
+      [getAvatarClipItemLayerId(1), getAvatarClipItemLayerId(2)],
+    );
+    assert.deepEqual(
       avatarSegments.map((segment) => segment.startFrame),
       [0, 2 * ASSEMBLY_FPS - AVATAR_CLIP_CROSSFADE_FRAMES],
     );
@@ -1293,6 +1321,70 @@ describe("layout override draft model", () => {
     });
   });
 
+  it("exposes avatar clips as individual editable layers", () => {
+    const layers = getEditableLayoutLayers(
+      {
+        hasAvatar: true,
+        avatarClipCount: 2,
+        slideCount: 0,
+        brollCount: 0,
+      },
+      [],
+      ASSEMBLY_TEMPLATES.SPLIT_AVATAR,
+    );
+
+    assert.deepEqual(
+      layers.map((layer) => layer.id),
+      [getAvatarClipItemLayerId(1), getAvatarClipItemLayerId(2), REMOTION_EDITABLE_LAYERS.AVATAR],
+    );
+    assert.equal(layers[0]?.label, "Avatar 1");
+    assert.equal(layers[2]?.label, "Todo el avatar");
+  });
+
+  it("expands avatar clip layers for legacy template metadata without an item pattern", () => {
+    const capabilities = {
+      canMove: true,
+      canResize: true,
+      canCrop: true,
+      canRotate: false,
+      canHide: true,
+      canReorder: true,
+    };
+    const layers = getEditableLayoutLayers(
+      {
+        hasAvatar: true,
+        avatarClipCount: 2,
+        slideCount: 0,
+        brollCount: 0,
+      },
+      [
+        {
+          layerId: "avatar",
+          label: "Avatar",
+          kind: "avatar",
+          capabilities,
+          defaultBox: { x: 960, y: 0, width: 960, height: 1080 },
+          defaultStackOrder: 10,
+          stackGroup: "root",
+        },
+      ],
+      "custom-composition",
+      { allowInternalFallback: false },
+    );
+
+    assert.deepEqual(
+      layers.map((layer) => layer.id),
+      ["avatar:1", "avatar:2", "avatar"],
+    );
+    assert.deepEqual(
+      getDefaultLayoutLayerBox({
+        layerId: getAvatarClipItemLayerId(1),
+        editableLayers: layers,
+      }),
+      { x: 960, y: 0, width: 960, height: 1080 },
+    );
+  });
+
   it("does not invent editable layers for an external bundle without a layout contract", () => {
     const layers = getEditableLayoutLayers(
       { hasAvatar: true, slideCount: 3, brollCount: 1 },
@@ -1314,8 +1406,15 @@ describe("layout override draft model", () => {
       canReorder: true,
     };
     const layers = getEditableLayoutLayers(
-      { hasAvatar: false, slideCount: 2, brollCount: 1 },
+      { hasAvatar: true, avatarClipCount: 2, slideCount: 2, brollCount: 1 },
       [
+        {
+          layerId: "avatar",
+          label: "Avatar",
+          kind: "avatar",
+          itemLayerIdPattern: "avatar:{order}",
+          capabilities,
+        },
         {
           layerId: "slides",
           label: "Diapositivas",
@@ -1337,7 +1436,7 @@ describe("layout override draft model", () => {
 
     assert.deepEqual(
       layers.map((layer) => layer.id),
-      ["slide:0", "slide:1", "slides", "broll:1", "broll"],
+      ["avatar:1", "avatar:2", "avatar", "slide:0", "slide:1", "slides", "broll:1", "broll"],
     );
     const firstSlideLayer = layers.find((layer) => layer.id === "slide:0");
     assert.equal(firstSlideLayer?.canReorder, true);
@@ -1378,6 +1477,41 @@ describe("layout override draft model", () => {
     assert.deepEqual(manifests[0]?.edits, [
       { layerId: "slides", kind: "position", x: 960, y: 0 },
     ]);
+  });
+
+  it("keeps avatar clip edits for legacy avatar layer contracts", () => {
+    const manifests = filterLayoutOverridesForEditableLayers(
+      [
+        {
+          version: 1,
+          canvas: { width: ASSEMBLY_WIDTH, height: ASSEMBLY_HEIGHT },
+          edits: [
+            { layerId: getAvatarClipItemLayerId(1), kind: "position", x: 120, y: 40 },
+            { layerId: getAvatarClipItemLayerId(2), kind: "size", width: 640, height: 360 },
+          ],
+        },
+      ],
+      [
+        {
+          layerId: "avatar",
+          label: "Avatar",
+          kind: "avatar",
+          capabilities: {
+            canMove: true,
+            canResize: true,
+            canCrop: true,
+            canRotate: false,
+            canHide: true,
+            canReorder: true,
+          },
+        },
+      ],
+    );
+
+    assert.deepEqual(
+      manifests[0]?.edits.map((edit) => edit.layerId),
+      [getAvatarClipItemLayerId(1), getAvatarClipItemLayerId(2)],
+    );
   });
 
   it("accepts declared item patterns including stack when the contract allows it", () => {

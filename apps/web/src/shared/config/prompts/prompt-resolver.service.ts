@@ -436,14 +436,18 @@ async function fetchPromptsFromDb(
     if (organizationId) {
         const { data: orgRows } = await supabase
             .from('system_prompts')
-            .select('code, content, is_active')
+            .select('code, content, is_active, updated_at, created_at')
             .in('code', codes)
             .eq('organization_id', organizationId)
-            .eq('is_active', true);
+            .eq('is_active', true)
+            .order('updated_at', { ascending: false })
+            .order('created_at', { ascending: false });
 
         if (orgRows && orgRows.length > 0) {
             for (const row of orgRows as SystemPromptRow[]) {
-                result.set(row.code, row.content);
+                if (!result.has(row.code)) {
+                    result.set(row.code, row.content);
+                }
             }
         }
     }
@@ -453,10 +457,12 @@ async function fetchPromptsFromDb(
     if (missingCodes.length > 0) {
         const { data: globalRows } = await supabase
             .from('system_prompts')
-            .select('code, content, is_active')
+            .select('code, content, is_active, updated_at, created_at')
             .in('code', missingCodes)
             .is('organization_id', null)
-            .eq('is_active', true);
+            .eq('is_active', true)
+            .order('updated_at', { ascending: false })
+            .order('created_at', { ascending: false });
 
         if (globalRows) {
             for (const row of globalRows as SystemPromptRow[]) {
@@ -497,4 +503,14 @@ export async function resolveSinglePrompt(
 ): Promise<string> {
     const dbPrompts = await fetchPromptsFromDb(supabase, [code], organizationId);
     return dbPrompts.get(code) ?? DEFAULT_PROMPTS[code] ?? '';
+}
+
+export async function resolvePromptWithFallback(
+    supabase: SupabaseClient,
+    code: string,
+    fallback: string,
+    organizationId?: string | null,
+): Promise<string> {
+    const dbPrompts = await fetchPromptsFromDb(supabase, [code], organizationId);
+    return dbPrompts.get(code) ?? DEFAULT_PROMPTS[code] ?? fallback;
 }

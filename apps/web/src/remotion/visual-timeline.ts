@@ -1,4 +1,5 @@
 import {
+  getAvatarClipItemLayerId,
   getBrollItemLayerId,
   getSlideItemLayerId,
   REMOTION_EDITABLE_LAYERS,
@@ -276,7 +277,7 @@ function buildAvatarClipSegments(props: AssemblyInputProps): VisualTimelineSegme
     const segment = buildSegment({
       id: `avatar-${clip.order}`,
       trackKind: "avatar",
-      layerId: REMOTION_EDITABLE_LAYERS.AVATAR,
+      layerId: getAvatarClipItemLayerId(clip.order),
       label: `Avatar ${clip.order}`,
       startFrame: cursor,
       durationInFrames,

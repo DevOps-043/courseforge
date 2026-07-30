@@ -1,6 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 import { resolveModelSetting } from "./shared/bootstrap";
 import { runCurationWorkflowV2 } from "./shared/curation-v2/workflow";
+import { resolvePromptWithFallback } from "../../src/shared/config/prompts/prompt-resolver.service";
+import {
+  CURATION_PROMPT_CODE,
+  curationPromptDefault,
+} from "../../src/shared/config/prompts/pipeline.prompts";
 
 interface UnifiedCurationParams {
   artifactId: string;
@@ -50,6 +55,12 @@ export async function processUnifiedCuration({
   const model = configuredModel.toLowerCase().startsWith("gemini-")
     ? OPENAI_CURATION_DEFAULTS.model
     : configuredModel;
+  const systemPrompt = await resolvePromptWithFallback(
+    supabase,
+    CURATION_PROMPT_CODE,
+    curationPromptDefault,
+    artifact?.organization_id || null,
+  );
 
   console.log(
     `[Curation V2] OpenAI-only workflow. Model: ${model}. Artifact: ${artifactId}.`,
@@ -58,6 +69,7 @@ export async function processUnifiedCuration({
     artifactId,
     curationId,
     customPrompt,
+    systemPrompt,
     model,
     openAiApiKey,
     supabase,

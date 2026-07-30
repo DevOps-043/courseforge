@@ -22,7 +22,7 @@ export interface ModelSettingsRecord extends ModelSettingsUpdateInput {
 }
 
 const SYSTEM_PROMPT_SELECT_FIELDS =
-  'id, code, version, organization_id, content, description, is_active, created_at, updated_at';
+  'id, code, version, organization_id, content, description, is_active, parent_prompt_id, source, change_summary, created_by, created_at, updated_at';
 const MODEL_SETTINGS_SELECT_FIELDS =
   'id, model_name, fallback_model, temperature, thinking_level, setting_type, is_active';
 const MODEL_SETTING_TYPES = [
@@ -80,10 +80,6 @@ function getAdminClient() {
   return createAdminClient(getSupabaseUrl(), getSupabaseServiceRoleKey());
 }
 
-function getSystemPromptIdentity(prompt: Pick<SystemPrompt, 'code' | 'version'>) {
-  return `${prompt.code}::${prompt.version}`;
-}
-
 function isPreferredSystemPrompt(candidate: SystemPrompt, current: SystemPrompt) {
   if (candidate.is_active !== current.is_active) {
     return candidate.is_active;
@@ -99,19 +95,168 @@ function isPreferredSystemPrompt(candidate: SystemPrompt, current: SystemPrompt)
   return candidate.id.localeCompare(current.id) > 0;
 }
 
-function dedupeSystemPromptsByIdentity(prompts: SystemPrompt[]) {
-  const promptsByIdentity = new Map<string, SystemPrompt>();
+function dedupeActiveSystemPromptsByCode(prompts: SystemPrompt[]) {
+  const promptsByCode = new Map<string, SystemPrompt>();
 
   for (const prompt of prompts) {
-    const identity = getSystemPromptIdentity(prompt);
-    const current = promptsByIdentity.get(identity);
-
+    const current = promptsByCode.get(prompt.code);
     if (!current || isPreferredSystemPrompt(prompt, current)) {
-      promptsByIdentity.set(identity, prompt);
+      promptsByCode.set(prompt.code, prompt);
     }
   }
 
-  return Array.from(promptsByIdentity.values());
+  return Array.from(promptsByCode.values());
+}
+
+function parseSemver(version: string) {
+  const match = version.match(/^(\d+)\.(\d+)\.(\d+)$/);
+  if (!match) return null;
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+  };
+}
+
+function comparePromptVersions(left: string, right: string) {
+  const leftSemver = parseSemver(left);
+  const rightSemver = parseSemver(right);
+
+  if (leftSemver && rightSemver) {
+    return (
+      leftSemver.major - rightSemver.major ||
+      leftSemver.minor - rightSemver.minor ||
+      leftSemver.patch - rightSemver.patch
+    );
+  }
+
+  return left.localeCompare(right);
+}
+
+function getNextPromptVersion(versions: string[], baseVersion = '1.0.0') {
+  const parsedVersions = versions
+    .map(parseSemver)
+    .filter((version): version is NonNullable<ReturnType<typeof parseSemver>> => Boolean(version));
+
+  if (parsedVersions.length === 0) {
+    const base = parseSemver(baseVersion) ?? { major: 1, minor: 0, patch: 0 };
+    return `${base.major}.${base.minor}.${base.patch + 1}`;
+  }
+
+  parsedVersions.sort((left, right) => (
+    left.major - right.major ||
+    left.minor - right.minor ||
+    left.patch - right.patch
+  ));
+
+  const latest = parsedVersions[parsedVersions.length - 1];
+  return `${latest.major}.${latest.minor}.${latest.patch + 1}`;
+}
+
+function promptsHaveSameContent(prompt: SystemPrompt, next: UpdateSystemPromptDTO) {
+  return (
+    prompt.content === next.content &&
+    (next.description === undefined || prompt.description === next.description) &&
+    (next.is_active === undefined || prompt.is_active === next.is_active)
+  );
+}
+
+async function getPromptVersionsForScope(params: {
+  code: string;
+  organizationId: string | null;
+  supabaseAdmin: ReturnType<typeof getAdminClient>;
+}) {
+  let query = params.supabaseAdmin
+    .from('system_prompts')
+    .select('version')
+    .eq('code', params.code);
+
+  query = params.organizationId
+    ? query.eq('organization_id', params.organizationId)
+    : query.is('organization_id', null);
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data || []) as Array<{ version: string }>).map((row) => row.version);
+}
+
+async function deactivateActivePromptForScope(params: {
+  code: string;
+  organizationId: string | null;
+  supabaseAdmin: ReturnType<typeof getAdminClient>;
+}) {
+  let query = params.supabaseAdmin
+    .from('system_prompts')
+    .update({
+      is_active: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('code', params.code)
+    .eq('is_active', true);
+
+  query = params.organizationId
+    ? query.eq('organization_id', params.organizationId)
+    : query.is('organization_id', null);
+
+  const { error } = await query;
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function insertPromptVersion(params: {
+  basePrompt: SystemPrompt;
+  content: string;
+  createdBy: string;
+  description?: string | null;
+  organizationId: string | null;
+  source: string;
+  changeSummary?: string | null;
+  supabaseAdmin: ReturnType<typeof getAdminClient>;
+}) {
+  const versions = await getPromptVersionsForScope({
+    code: params.basePrompt.code,
+    organizationId: params.organizationId,
+    supabaseAdmin: params.supabaseAdmin,
+  });
+  const nextVersion = getNextPromptVersion(versions, params.basePrompt.version);
+
+  await deactivateActivePromptForScope({
+    code: params.basePrompt.code,
+    organizationId: params.organizationId,
+    supabaseAdmin: params.supabaseAdmin,
+  });
+
+  const now = new Date().toISOString();
+  const { data, error } = await params.supabaseAdmin
+    .from('system_prompts')
+    .insert({
+      code: params.basePrompt.code,
+      version: nextVersion,
+      organization_id: params.organizationId,
+      content: params.content,
+      description: params.description ?? params.basePrompt.description,
+      is_active: true,
+      parent_prompt_id: params.basePrompt.id,
+      source: params.source,
+      change_summary: params.changeSummary ?? null,
+      created_by: params.createdBy,
+      created_at: now,
+      updated_at: now,
+    })
+    .select(SYSTEM_PROMPT_SELECT_FIELDS)
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as SystemPrompt;
 }
 
 async function getResolvedActiveOrgId() {
@@ -160,8 +305,8 @@ export async function getSystemPromptsAction() {
     .from('system_prompts')
     .select(SYSTEM_PROMPT_SELECT_FIELDS)
     .is('organization_id', null)
+    .eq('is_active', true)
     .order('code', { ascending: true })
-    .order('version', { ascending: true })
     .order('updated_at', { ascending: false });
 
   if (error) {
@@ -169,7 +314,7 @@ export async function getSystemPromptsAction() {
     return { success: false, error: error.message };
   }
 
-  const globalPrompts = dedupeSystemPromptsByIdentity((globalData || []) as SystemPrompt[]);
+  const globalPrompts = dedupeActiveSystemPromptsByCode((globalData || []) as SystemPrompt[]);
 
   // If no active org, return globals only
   if (!activeOrgId) {
@@ -181,8 +326,8 @@ export async function getSystemPromptsAction() {
     .from('system_prompts')
     .select(SYSTEM_PROMPT_SELECT_FIELDS)
     .eq('organization_id', activeOrgId)
+    .eq('is_active', true)
     .order('code', { ascending: true })
-    .order('version', { ascending: true })
     .order('updated_at', { ascending: false });
 
   if (orgError) {
@@ -190,29 +335,38 @@ export async function getSystemPromptsAction() {
     return { success: false, error: orgError.message };
   }
 
-  const orgPrompts = dedupeSystemPromptsByIdentity((orgData || []) as SystemPrompt[]);
-  const orgByIdentity = new Map(orgPrompts.map((p) => [getSystemPromptIdentity(p), p]));
+  const orgPrompts = dedupeActiveSystemPromptsByCode((orgData || []) as SystemPrompt[]);
+  const orgByCode = new Map(orgPrompts.map((p) => [p.code, p]));
 
-  // Merge: org-specific overrides global for the same code+version; globals fill in the rest
+  // Merge: org-specific active prompts override global active prompts by code.
   const merged = globalPrompts.map((global) => {
-    const override = orgByIdentity.get(getSystemPromptIdentity(global));
-    return override ? { ...override, is_org_override: true } : global;
+    const override = orgByCode.get(global.code);
+    return override
+      ? {
+          ...override,
+          is_org_override: true,
+          is_restored_default: override.source === 'RESTORE_DEFAULT',
+        }
+      : global;
   });
 
   // Add any org-specific codes that don't exist as globals
   for (const orgPrompt of orgPrompts) {
     const existsInMerged = merged.some(
-      (prompt) => getSystemPromptIdentity(prompt) === getSystemPromptIdentity(orgPrompt),
+      (prompt) => prompt.code === orgPrompt.code,
     );
 
     if (!existsInMerged) {
-      merged.push({ ...orgPrompt, is_org_override: true });
+      merged.push({
+        ...orgPrompt,
+        is_org_override: true,
+        is_restored_default: orgPrompt.source === 'RESTORE_DEFAULT',
+      });
     }
   }
 
   merged.sort((a, b) => {
-    const codeComparison = a.code.localeCompare(b.code);
-    return codeComparison || a.version.localeCompare(b.version);
+    return a.code.localeCompare(b.code);
   });
 
   return { success: true, prompts: merged };
@@ -228,64 +382,59 @@ export async function updateSystemPromptAction(prompt: UpdateSystemPromptDTO) {
     const activeOrgId = await getResolvedActiveOrgId();
     const supabaseAdmin = getAdminClient();
 
-    // Check if this row belongs to the current org or is a global prompt
-    const { data: existing } = await supabaseAdmin
+    const { data: existing, error: existingError } = await supabaseAdmin
       .from('system_prompts')
-      .select('id, code, version, organization_id')
+      .select(SYSTEM_PROMPT_SELECT_FIELDS)
       .eq('id', prompt.id)
       .single();
 
-    const isOwnedByOrg = existing?.organization_id === activeOrgId;
-    const isGlobal = !existing?.organization_id;
+    if (existingError || !existing) {
+      return { success: false, error: existingError?.message || 'Prompt no encontrado' };
+    }
 
-    if (activeOrgId && (isGlobal || !isOwnedByOrg)) {
-      // Editing a global prompt → create an org-specific override instead of mutating the global
-      const { data, error } = await supabaseAdmin
-        .from('system_prompts')
-        .upsert(
-          {
-            code: existing!.code,
-            version: existing!.version,
-            organization_id: activeOrgId,
-            content: prompt.content,
-            description: prompt.description,
-            is_active: prompt.is_active,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'code,version,organization_id' },
-        )
-        .select()
-        .single();
+    const existingPrompt = existing as SystemPrompt;
+    if (promptsHaveSameContent(existingPrompt, prompt)) {
+      return {
+        success: true,
+        prompt: {
+          ...existingPrompt,
+          is_org_override: Boolean(existingPrompt.organization_id),
+          is_restored_default: existingPrompt.source === 'RESTORE_DEFAULT',
+        },
+      };
+    }
 
-      if (error) {
-        console.error('Error upserting org prompt override:', error);
-        return { success: false, error: error.message };
-      }
+    const targetOrganizationId = activeOrgId || existingPrompt.organization_id || null;
+
+    try {
+      const data = await insertPromptVersion({
+        basePrompt: existingPrompt,
+        content: prompt.content,
+        description: prompt.description,
+        organizationId: targetOrganizationId,
+        source: targetOrganizationId ? 'ORG_EDIT' : 'GLOBAL_EDIT',
+        changeSummary: prompt.change_summary || null,
+        createdBy: user.id,
+        supabaseAdmin,
+      });
 
       await revalidateSettingsPaths();
-      return { success: true, prompt: data as SystemPrompt };
+      return {
+        success: true,
+        prompt: {
+          ...data,
+          is_org_override: Boolean(targetOrganizationId),
+          is_restored_default: data.source === 'RESTORE_DEFAULT',
+        } as SystemPrompt,
+      };
+    } catch (error) {
+      console.error('Error creating prompt version:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Error al versionar el prompt',
+      };
     }
 
-    // Editing an org-specific row that already belongs to this org → update in place
-    const { data, error } = await supabaseAdmin
-      .from('system_prompts')
-      .update({
-          content: prompt.content,
-          description: prompt.description,
-          is_active: prompt.is_active,
-          updated_at: new Date().toISOString(),
-      })
-      .eq('id', prompt.id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error updating prompt:', error);
-      return { success: false, error: error.message };
-    }
-
-    await revalidateSettingsPaths();
-    return { success: true, prompt: data as SystemPrompt };
 }
 
 export async function getModelSettingsAction() {
@@ -357,19 +506,190 @@ export async function resetPromptToDefaultAction(promptCode: string) {
 
   const supabaseAdmin = getAdminClient();
 
-  const { error } = await supabaseAdmin
-    .from('system_prompts')
-    .delete()
-    .eq('code', promptCode)
-    .eq('organization_id', activeOrgId);
+  const [{ data: activeOrgPrompt, error: orgError }, { data: globalPrompt, error: globalError }] =
+    await Promise.all([
+      supabaseAdmin
+        .from('system_prompts')
+        .select(SYSTEM_PROMPT_SELECT_FIELDS)
+        .eq('code', promptCode)
+        .eq('organization_id', activeOrgId)
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabaseAdmin
+        .from('system_prompts')
+        .select(SYSTEM_PROMPT_SELECT_FIELDS)
+        .eq('code', promptCode)
+        .is('organization_id', null)
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
 
-  if (error) {
-    console.error('Error resetting prompt to default:', error);
-    return { success: false, error: error.message };
+  if (orgError || globalError) {
+    const error = orgError || globalError;
+    console.error('Error loading prompt for reset:', error);
+    return { success: false, error: error?.message || 'Error cargando prompt default' };
   }
 
-  await revalidateSettingsPaths();
-  return { success: true };
+  if (!globalPrompt) {
+    return { success: false, error: 'No existe un prompt global default para restaurar' };
+  }
+
+  const basePrompt = ((activeOrgPrompt || globalPrompt) as SystemPrompt);
+  const defaultPrompt = globalPrompt as SystemPrompt;
+
+  try {
+    const data = await insertPromptVersion({
+      basePrompt,
+      content: defaultPrompt.content,
+      description: defaultPrompt.description,
+      organizationId: activeOrgId,
+      source: 'RESTORE_DEFAULT',
+      changeSummary: `Restaurado desde default global ${defaultPrompt.version}`,
+      createdBy: user.id,
+      supabaseAdmin,
+    });
+
+    await revalidateSettingsPaths();
+    return {
+      success: true,
+      prompt: {
+        ...data,
+        is_org_override: true,
+        is_restored_default: true,
+      } as SystemPrompt,
+    };
+  } catch (error) {
+    console.error('Error resetting prompt to default:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Error al restaurar el prompt',
+    };
+  }
+}
+
+export async function getSystemPromptHistoryAction(promptCode: string) {
+  const user = await getAuthBridgeUser();
+
+  if (!user) {
+    return { success: false, error: 'Unauthorized' };
+  }
+
+  const activeOrgId = await getResolvedActiveOrgId();
+  const supabaseAdmin = getAdminClient();
+
+  const { data: globalRows, error: globalError } = await supabaseAdmin
+    .from('system_prompts')
+    .select(SYSTEM_PROMPT_SELECT_FIELDS)
+    .eq('code', promptCode)
+    .is('organization_id', null)
+    .order('created_at', { ascending: false });
+
+  if (globalError) {
+    console.error('Error fetching global prompt history:', globalError);
+    return { success: false, error: globalError.message };
+  }
+
+  const orgRowsPromise = activeOrgId
+    ? supabaseAdmin
+        .from('system_prompts')
+        .select(SYSTEM_PROMPT_SELECT_FIELDS)
+        .eq('code', promptCode)
+        .eq('organization_id', activeOrgId)
+        .order('created_at', { ascending: false })
+    : Promise.resolve({ data: [], error: null });
+
+  const { data: orgRows, error: orgError } = await orgRowsPromise;
+
+  if (orgError) {
+    console.error('Error fetching organization prompt history:', orgError);
+    return { success: false, error: orgError.message };
+  }
+
+  const history = [
+    ...((orgRows || []) as SystemPrompt[]).map((prompt) => ({
+      ...prompt,
+      is_org_override: true,
+      is_restored_default: prompt.source === 'RESTORE_DEFAULT',
+    })),
+    ...((globalRows || []) as SystemPrompt[]),
+  ];
+
+  history.sort((a, b) => {
+    const activeComparison = Number(b.is_active) - Number(a.is_active);
+    if (activeComparison !== 0) return activeComparison;
+    return (
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime() ||
+      comparePromptVersions(b.version, a.version)
+    );
+  });
+
+  return { success: true, prompts: history };
+}
+
+export async function restorePromptVersionAction(promptId: string) {
+  const user = await getAuthBridgeUser();
+
+  if (!user) {
+    return { success: false, error: 'Unauthorized' };
+  }
+
+  const activeOrgId = await getResolvedActiveOrgId();
+
+  if (!activeOrgId) {
+    return { success: false, error: 'No hay organizacion activa' };
+  }
+
+  const supabaseAdmin = getAdminClient();
+  const { data: selected, error: selectedError } = await supabaseAdmin
+    .from('system_prompts')
+    .select(SYSTEM_PROMPT_SELECT_FIELDS)
+    .eq('id', promptId)
+    .single();
+
+  if (selectedError || !selected) {
+    return { success: false, error: selectedError?.message || 'Version de prompt no encontrada' };
+  }
+
+  const selectedPrompt = selected as SystemPrompt;
+  const isAllowedScope =
+    !selectedPrompt.organization_id || selectedPrompt.organization_id === activeOrgId;
+
+  if (!isAllowedScope) {
+    return { success: false, error: 'No puedes restaurar una version de otra organizacion' };
+  }
+
+  try {
+    const data = await insertPromptVersion({
+      basePrompt: selectedPrompt,
+      content: selectedPrompt.content,
+      description: selectedPrompt.description,
+      organizationId: activeOrgId,
+      source: selectedPrompt.organization_id ? 'RESTORE_VERSION' : 'RESTORE_DEFAULT',
+      changeSummary: `Restaurado desde ${selectedPrompt.code} v${selectedPrompt.version}`,
+      createdBy: user.id,
+      supabaseAdmin,
+    });
+
+    await revalidateSettingsPaths();
+    return {
+      success: true,
+      prompt: {
+        ...data,
+        is_org_override: true,
+        is_restored_default: data.source === 'RESTORE_DEFAULT',
+      } as SystemPrompt,
+    };
+  } catch (error) {
+    console.error('Error restoring prompt version:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Error al restaurar version',
+    };
+  }
 }
 
 // Actualiza un batch completo de configuraciones de modelo

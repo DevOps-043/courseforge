@@ -34,13 +34,14 @@ function getLastLog(progress: unknown) {
   return typeof last.message === "string" ? last.message : undefined;
 }
 
-function hasRenderableAssets(component: any) {
+export function hasRenderableAssets(component: any) {
   const currentAssets = (component.assets || {}) as MaterialAssets;
   const normalizedAssets = normalizeAssemblyAssets(currentAssets, 30);
 
   return Boolean(
     normalizedAssets.voiceAudioUrl ||
       normalizedAssets.avatarVideoUrl ||
+      normalizedAssets.avatarClips.length > 0 ||
       normalizedAssets.slides.length > 0 ||
       normalizedAssets.brollClips.length > 0,
   );

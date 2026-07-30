@@ -5,6 +5,7 @@ export const TEMPLATE_LAYOUT_CONTRACT_VERSION = 2;
 export const TEMPLATE_LAYOUT_COORDINATE_SPACE = "canvas" as const;
 
 export const editableLayerItemPatternSchema = z.enum([
+  "avatar:{order}",
   "slide:{index}",
   "broll:{order}",
 ]);
@@ -166,9 +167,14 @@ function supportsEditKind(
 }
 
 function matchesItemLayerPattern(layerId: string, pattern: string | undefined) {
+  if (pattern === "avatar:{order}") return /^avatar:[1-9]\d*$/.test(layerId);
   if (pattern === "slide:{index}") return /^slide:\d+$/.test(layerId);
   if (pattern === "broll:{order}") return /^broll:[1-9]\d*$/.test(layerId);
   return false;
+}
+
+function matchesLegacyAvatarClipLayer(layerId: string, layer: EditableLayerDefinition) {
+  return layer.kind === "avatar" && /^avatar:[1-9]\d*$/.test(layerId);
 }
 
 export function filterLayoutOverridesForEditableLayers(
@@ -183,7 +189,8 @@ export function filterLayoutOverridesForEditableLayers(
       if (directLayer) return supportsEditKind(directLayer, edit.kind);
 
       const patternLayer = editableLayers.find((layer) =>
-        matchesItemLayerPattern(edit.layerId, layer.itemLayerIdPattern),
+        matchesItemLayerPattern(edit.layerId, layer.itemLayerIdPattern) ||
+        matchesLegacyAvatarClipLayer(edit.layerId, layer),
       );
       return Boolean(
         patternLayer &&

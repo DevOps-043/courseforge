@@ -34,6 +34,7 @@ export type RemotionEditableLayerId = string;
 
 const SLIDE_ITEM_LAYER_PREFIX = "slide:";
 const BROLL_ITEM_LAYER_PREFIX = "broll:";
+const AVATAR_CLIP_ITEM_LAYER_PREFIX = "avatar:";
 
 export function getSlideItemLayerId(index: number): RemotionEditableLayerId {
   return `${SLIDE_ITEM_LAYER_PREFIX}${Math.max(0, Math.round(index))}`;
@@ -43,12 +44,20 @@ export function getBrollItemLayerId(order: number): RemotionEditableLayerId {
   return `${BROLL_ITEM_LAYER_PREFIX}${Math.max(1, Math.round(order))}`;
 }
 
+export function getAvatarClipItemLayerId(order: number): RemotionEditableLayerId {
+  return `${AVATAR_CLIP_ITEM_LAYER_PREFIX}${Math.max(1, Math.round(order))}`;
+}
+
 export function isSlideItemLayerId(layerId: string): boolean {
   return layerId.startsWith(SLIDE_ITEM_LAYER_PREFIX);
 }
 
 export function isBrollItemLayerId(layerId: string): boolean {
   return layerId.startsWith(BROLL_ITEM_LAYER_PREFIX);
+}
+
+export function isAvatarClipItemLayerId(layerId: string): boolean {
+  return layerId.startsWith(AVATAR_CLIP_ITEM_LAYER_PREFIX);
 }
 
 function getLayerEdits(

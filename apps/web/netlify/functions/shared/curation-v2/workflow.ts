@@ -55,6 +55,7 @@ export async function runCurationWorkflowV2(params: {
   artifactId: string;
   curationId: string;
   customPrompt?: string;
+  systemPrompt?: string;
   openAiApiKey: string;
   model: string;
   supabase: SupabaseClient;
@@ -64,6 +65,7 @@ export async function runCurationWorkflowV2(params: {
     artifactId,
     curationId,
     customPrompt,
+    systemPrompt,
     openAiApiKey,
     model,
     supabase,
@@ -145,6 +147,7 @@ export async function runCurationWorkflowV2(params: {
           courseContext: context.fullCourseContext,
           lessons: batch,
           customPrompt,
+          systemPrompt,
         });
         successfulBatches += 1;
         lastSearchError = undefined;

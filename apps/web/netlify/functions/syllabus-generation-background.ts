@@ -18,6 +18,13 @@ import {
   SyllabusGenerationContent,
 } from "../../src/domains/syllabus/lib/syllabus-generation";
 import { SyllabusGenerationMetadata } from "../../src/domains/syllabus/types/syllabus.types";
+import { resolvePromptWithFallback } from "../../src/shared/config/prompts/prompt-resolver.service";
+import {
+  SYLLABUS_PROMPT_CODE,
+  SYLLABUS_RESEARCH_PROMPT_CODE,
+  renderPromptTemplate,
+  syllabusResearchPromptDefault,
+} from "../../src/shared/config/prompts/pipeline.prompts";
 
 interface SyllabusBackgroundRequest {
   accessToken?: string;
@@ -43,6 +50,7 @@ function buildCorrectionRules(objectiveCount: number) {
 }
 
 function buildSyllabusPrompt(
+  promptTemplate: string,
   ideaCentral: string,
   objetivos: string[],
   route: string | undefined,
@@ -53,7 +61,7 @@ function buildSyllabusPrompt(
     .map((objetivo, index) => `${index + 1}. ${objetivo}`)
     .join("\n");
 
-  return SYLLABUS_PROMPT.replace("{{ideaCentral}}", ideaCentral)
+  return promptTemplate.replace("{{ideaCentral}}", ideaCentral)
     .replace("{{objetivos}}", objetivosFormatted)
     .replace("{{routeContext}}", contextWithResearch)
     .replace(/{{.*?}}/g, "");
@@ -133,6 +141,20 @@ export const handler: Handler = async (event) => {
     }, artifactScope?.organization_id || null);
     console.log(`[Syllabus Background] Model config: ${modelConfig.model} / ${modelConfig.fallbackModel}`);
 
+    const promptOrganizationId = artifactScope?.organization_id || null;
+    const syllabusResearchPromptTemplate = await resolvePromptWithFallback(
+      supabase,
+      SYLLABUS_RESEARCH_PROMPT_CODE,
+      syllabusResearchPromptDefault,
+      promptOrganizationId,
+    );
+    const syllabusPromptTemplate = await resolvePromptWithFallback(
+      supabase,
+      SYLLABUS_PROMPT_CODE,
+      SYLLABUS_PROMPT,
+      promptOrganizationId,
+    );
+
     const searchModelName = modelConfig.fallbackModel || modelConfig.model;
     let researchContext = "";
     let searchQueries: string[] = [];
@@ -140,7 +162,10 @@ export const handler: Handler = async (event) => {
     try {
       const searchResult = await genAI.models.generateContent({
         model: searchModelName,
-        contents: buildSyllabusResearchPrompt(ideaCentral, objetivos),
+        contents: renderPromptTemplate(syllabusResearchPromptTemplate, {
+          ideaCentral,
+          objetivos: objetivos.map((objetivo, index) => `${index + 1}. ${objetivo}`).join("\n"),
+        }) || buildSyllabusResearchPrompt(ideaCentral, objetivos),
         config: {
           tools: [{ googleSearch: {} }],
           temperature: 0.7,
@@ -174,6 +199,7 @@ export const handler: Handler = async (event) => {
 
     const mainModelName = modelConfig.model;
     const basePrompt = buildSyllabusPrompt(
+      syllabusPromptTemplate,
       ideaCentral,
       objetivos,
       route,

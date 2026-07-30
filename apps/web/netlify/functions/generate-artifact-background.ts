@@ -14,6 +14,12 @@ import { getErrorMessage } from './shared/errors';
 import { methodNotAllowedResponse, parseJsonBody } from './shared/http';
 import { getCloudStorageService } from '../../src/domains/production/cloud-storage/cloud-storage.service';
 import { isCloudStorageProvider, type CloudStorageProvider } from '../../src/domains/production/cloud-storage/types';
+import { resolvePromptWithFallback } from "../../src/shared/config/prompts/prompt-resolver.service";
+import {
+    ARTIFACT_BASE_PROMPT_CODE,
+    ARTIFACT_BASE_RESEARCH_PROMPT_CODE,
+    renderPromptTemplate,
+} from "../../src/shared/config/prompts/pipeline.prompts";
 
 const BLOOM_VERBS = [
   "comprender", "aplicar", "analizar", "evaluar", "crear",
@@ -129,12 +135,13 @@ export const handler: Handler = async (event) => {
             }
         }
 
-        const modelConfig = await resolveModelSetting(createServiceRoleClient(), "ARTIFACT_BASE", {
+        const serviceSupabase = createServiceRoleClient();
+        const modelConfig = await resolveModelSetting(serviceSupabase, "ARTIFACT_BASE", {
             model: "gemini-2.5-flash",
             fallbackModel: "gemini-2.0-flash",
             temperature: 0.7,
             thinkingLevel: "medium",
-        });
+        }, organizationId || null);
         console.log(`[Background Job] Model config: ${modelConfig.model} / ${modelConfig.fallbackModel}`);
 
         let researchContext = "";
@@ -142,13 +149,25 @@ export const handler: Handler = async (event) => {
         const searchModels = [modelConfig.model, modelConfig.fallbackModel].filter(Boolean) as string[];
         let researchSuccess = false;
 
-        const researchPrompt = `
+        const hardcodedResearchPrompt = `
             Investiga tendencias educativas 2024-2025 sobre:
             TEMA: ${formData.title}
             DESCRIPCIÓN: ${formData.description}
             Encuentra herramientas, estadísticas y obsolescencias.
             ${feedback ? `\nNOTA IMPORTANTE (Feedback Usuario): ${feedback}` : ''}
         `;
+
+        const researchPromptTemplate = await resolvePromptWithFallback(
+            serviceSupabase,
+            ARTIFACT_BASE_RESEARCH_PROMPT_CODE,
+            hardcodedResearchPrompt,
+            organizationId || null,
+        );
+        const researchPrompt = renderPromptTemplate(researchPromptTemplate, {
+            courseTitle: formData.title || "",
+            courseDescription: formData.description || "",
+            feedbackBlock: feedback ? `NOTA IMPORTANTE (Feedback Usuario): ${feedback}` : "",
+        });
 
         for (const modelName of searchModels) {
             try {
@@ -190,7 +209,7 @@ export const handler: Handler = async (event) => {
         }
 
         const genModels = [modelConfig.model, modelConfig.fallbackModel].filter(Boolean) as string[];
-        const systemPrompt = `
+        const hardcodedSystemPrompt = `
             Eres un Diseñador Instruccional Experto y Copywriter Senior.
             CONTEXTO RESEARCH: ${researchContext}
             ${feedback ? `\nFEEDBACK PREVIO (Corrigiendo versión anterior): ${feedback}` : ''}
@@ -205,6 +224,20 @@ export const handler: Handler = async (event) => {
 
             NO generes el temario ni módulos aún. Solo la definición estratégica.
         `;
+
+        const systemPromptTemplate = await resolvePromptWithFallback(
+            serviceSupabase,
+            ARTIFACT_BASE_PROMPT_CODE,
+            hardcodedSystemPrompt,
+            organizationId || null,
+        );
+        const systemPrompt = renderPromptTemplate(systemPromptTemplate, {
+            bloomVerbs: BLOOM_VERBS.join(", "),
+            courseTitle: formData.title || "",
+            courseDescription: formData.description || "",
+            feedbackBlock: feedback ? `FEEDBACK PREVIO (Corrigiendo version anterior): ${feedback}` : "",
+            researchContext,
+        });
 
         let content: GeneratedArtifactContent | null = null;
         let genModelUsed = '';
