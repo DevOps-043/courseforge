@@ -4,8 +4,8 @@ import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import {
     createGeminiClient,
-    createGoogleAIProvider,
     createServiceRoleClient,
+    resolveAiModel,
     resolveModelSetting,
     getSupabaseAnonKey,
     getSupabaseUrl,
@@ -27,7 +27,6 @@ const BLOOM_VERBS = [
   "implementar", "demostrar", "explicar",
 ];
 
-const googleAI = createGoogleAIProvider();
 const genAI = createGeminiClient();
 
 const Phase1Schema = z.object({
@@ -246,7 +245,7 @@ export const handler: Handler = async (event) => {
             try {
                 console.log(`[Background Job] Generating Phase 1 with ${modelName}...`);
                 const result = await generateObject({
-                    model: googleAI(modelName),
+                    model: resolveAiModel(modelName),
                     schema: Phase1Schema,
                     prompt: systemPrompt,
                     temperature: 0.7,

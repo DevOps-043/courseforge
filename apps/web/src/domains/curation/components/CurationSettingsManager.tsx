@@ -149,50 +149,34 @@ const PROMPT_HELP_TEXT: Record<string, string> = {
     "Funcion: convierte escenas de storyboard en terminos de busqueda para clips externos. Estructura: devuelve JSON con prompts, scene_index, original_description y generated_prompt.",
 };
 
-const GEMINI_MODEL_OPTIONS = [
-  {
-    value: "gemini-3.5-flash",
-    label: "Gemini 3.5 Flash",
-    description: "Frontier estable",
-  },
-  {
-    value: "gemini-3.1-pro-preview",
-    label: "Gemini 3.1 Pro Preview",
-    description: "Razonamiento avanzado",
-  },
-  {
-    value: "gemini-3.1-flash-lite",
-    label: "Gemini 3.1 Flash-Lite",
-    description: "Alta eficiencia",
-  },
-  {
-    value: "gemini-3-flash-preview",
-    label: "Gemini 3 Flash Preview",
-    description: "Preview veloz",
-  },
-  {
-    value: "gemini-2.5-pro",
-    label: "Gemini 2.5 Pro",
-    description: "Razonamiento avanzado",
-  },
-  {
-    value: "gemini-2.5-flash",
-    label: "Gemini 2.5 Flash",
-    description: "Balance costo/velocidad",
-  },
-  {
-    value: "gemini-2.5-flash-lite",
-    label: "Gemini 2.5 Flash-Lite",
-    description: "Alta escala / economico",
-  },
+const ALL_MODEL_OPTIONS = [
+  // Modelos Google Gemini
   {
     value: "gemini-2.0-flash",
     label: "Gemini 2.0 Flash",
-    description: "Rapido y estable",
+    description: "Rapido, estable y recomendado para la mayoria de pasos",
   },
-];
-
-const OPENAI_CURATION_MODEL_OPTIONS = [
+  {
+    value: "gemini-1.5-flash",
+    label: "Gemini 1.5 Flash",
+    description: "Eficiente y veloz",
+  },
+  {
+    value: "gemini-1.5-pro",
+    label: "Gemini 1.5 Pro",
+    description: "Razonamiento complejo y analisis profundo",
+  },
+  {
+    value: "gemini-2.0-flash-lite",
+    label: "Gemini 2.0 Flash Lite",
+    description: "Alta escala y muy economico",
+  },
+  // Modelos OpenAI GPT-5 & Next-Gen
+  {
+    value: "gpt-5.6-sol",
+    label: "GPT-5.6 Sol",
+    description: "Maxima calidad y capacidad analitica",
+  },
   {
     value: "gpt-5.6-luna",
     label: "GPT-5.6 Luna",
@@ -202,11 +186,6 @@ const OPENAI_CURATION_MODEL_OPTIONS = [
     value: "gpt-5.6-terra",
     label: "GPT-5.6 Terra",
     description: "Balance calidad/costo",
-  },
-  {
-    value: "gpt-5.6-sol",
-    label: "GPT-5.6 Sol",
-    description: "Maxima calidad",
   },
   {
     value: "gpt-5.5",
@@ -238,6 +217,32 @@ const OPENAI_CURATION_MODEL_OPTIONS = [
     label: "GPT-5.4 nano",
     description: "Minimo costo / tareas simples",
   },
+  // Modelos OpenAI GPT Standard
+  {
+    value: "gpt-4o",
+    label: "GPT-4o (OpenAI)",
+    description: "Modelo insignia multimodal de alta capacidad",
+  },
+  {
+    value: "gpt-4o-mini",
+    label: "GPT-4o Mini (OpenAI)",
+    description: "Rapido, inteligente y altamente costo-eficiente",
+  },
+  {
+    value: "o3-mini",
+    label: "o3-mini (OpenAI)",
+    description: "Modelo de razonamiento logico y codigo",
+  },
+  {
+    value: "o1",
+    label: "o1 (OpenAI)",
+    description: "Razonamiento avanzado para problemas complejos",
+  },
+  {
+    value: "gpt-4-turbo",
+    label: "GPT-4 Turbo (OpenAI)",
+    description: "Modelo GPT-4 analitico tradicional",
+  },
 ];
 
 const REASONING_LEVEL_OPTIONS = [
@@ -256,10 +261,8 @@ const OPENAI_REASONING_LEVEL_OPTIONS = [
   { value: "max", label: "Max", description: "Maxima exploracion" },
 ];
 
-function getModelOptions(settingType: string) {
-  return settingType === "CURATION"
-    ? OPENAI_CURATION_MODEL_OPTIONS
-    : GEMINI_MODEL_OPTIONS;
+function getModelOptions(_settingType: string) {
+  return ALL_MODEL_OPTIONS;
 }
 
 function getReasoningOptions(settingType: string) {
