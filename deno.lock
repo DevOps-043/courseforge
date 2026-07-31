@@ -50,8 +50,6 @@
       "apps/api": {
         "packageJson": {
           "dependencies": [
-            "npm:@aws-sdk/client-codebuild@^3.1077.0",
-            "npm:@aws-sdk/client-s3@^3.1078.0",
             "npm:@remotion/bundler@4.0.484",
             "npm:@remotion/renderer@4.0.484",
             "npm:@supabase/supabase-js@^2.107.0",

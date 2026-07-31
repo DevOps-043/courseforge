@@ -138,16 +138,11 @@ export async function regenerateArtifactAction(
   feedback?: string,
 ) {
   const supabase = await createClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-  if (authError || !user) return { success: false, error: "Unauthorized" };
+  const authUser = await getAuthenticatedUser(supabase);
+  if (!authUser) return { success: false, error: "Unauthorized" };
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) return { success: false, error: "Unauthorized" };
+  const accessToken = await getAccessToken(supabase);
+  if (!accessToken) return { success: false, error: "Unauthorized" };
 
   const tenant = await resolveActiveTenantContext();
   const activeOrgId = tenant?.organizationId ?? (await getActiveOrganizationId());
@@ -196,7 +191,9 @@ export async function regenerateArtifactAction(
       "generate-artifact-background",
       {
         artifactId,
-        userToken: session.access_token,
+        userId: authUser.userId,
+        userToken: accessToken,
+        organizationId: activeOrgId,
         formData: originalInput,
         feedback,
       },
