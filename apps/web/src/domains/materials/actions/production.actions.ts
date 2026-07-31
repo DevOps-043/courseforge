@@ -375,6 +375,9 @@ function clearFinalVideoMetadata(assets: MaterialAssets) {
   delete (cleaned as any).final_video_layout_stale;
   delete (cleaned as any).final_video_assembly_stale;
   delete (cleaned as any).video_duration;
+  delete (cleaned as any).assembly_target_duration_seconds;
+  delete (cleaned as any).timeline_overrides;
+  delete (cleaned as any).timeline_overrides_updated_at;
   return cleaned;
 }
 

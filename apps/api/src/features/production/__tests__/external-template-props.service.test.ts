@@ -141,12 +141,12 @@ describe('external template props contract', () => {
     });
 
     assert.equal(result.resolvedProps.title, 'Allowed title');
-    assert.equal(result.resolvedProps.totalDurationInFrames, 42 * 30);
+    assert.equal(result.resolvedProps.totalDurationInFrames, 12 * 30);
     assert.deepEqual(result.resolvedProps.slides, [
       { index: 0, url: 'https://cdn.example.com/slide-1.png' },
       { index: 1, url: 'https://cdn.example.com/slide-2.png' },
     ]);
-    assert.equal((result.resolvedProps.timelineOverrides as any[])[0].timeline.durationInFrames, 42 * 30);
+    assert.equal((result.resolvedProps.timelineOverrides as any[])[0].timeline.durationInFrames, 12 * 30);
     assert.equal((result.resolvedProps.timelineOverrides as any[])[0].segments[0].startFrame, 30);
   });
 

@@ -123,6 +123,8 @@ const PROMPT_HELP_TEXT: Record<string, string> = {
     "Funcion: genera modulos y lecciones del temario. Estructura: usa {{ideaCentral}}, {{objetivos}} y {{routeContext}}; debe devolver JSON con modules y lessons.",
   INSTRUCTIONAL_PLAN:
     "Funcion: genera el plan instruccional por leccion. Estructura: usa variables como ${courseName}, ${ideaCentral}, ${lessonCount} y ${lessonsText}; debe orientar OA, Bloom, criterios y componentes.",
+  INSTRUCTIONAL_PLAN_SYSTEM:
+    "Funcion: define las reglas globales de diseno instruccional para la fase 3. Estructura: explica calidad esperada, componentes permitidos, criterios Bloom y formato JSON que debe respetar el plan.",
   CURATION:
     "Funcion: guia la busqueda automatica de fuentes por leccion. Estructura: define criterios de candidatos, tipos de fuentes permitidas y restricciones; el sistema anade contexto del curso y lecciones.",
   MATERIALS_SYSTEM:

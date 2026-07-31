@@ -12,7 +12,10 @@ import {
   parseLayoutOverrideManifests,
   TEMPLATE_LAYOUT_CONTRACT_VERSION,
 } from "@/remotion/layout-overrides";
-import { parseTimelineOverrideManifests } from "@/remotion/timeline-overrides";
+import {
+  normalizeTimelineOverrideManifestsForDuration,
+  parseTimelineOverrideManifests,
+} from "@/remotion/timeline-overrides";
 import { mergeTemplateRenderConfigs } from "@/remotion/template-config";
 
 const WORKER_TOKEN_PREFIX = "swk_";
@@ -563,6 +566,61 @@ function isPositiveFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
+function resolveTimelineOverrideDurationSeconds(params: {
+  timelineOverrides: ReturnType<typeof parseTimelineOverrideManifests>;
+  compositionId: string;
+}) {
+  const matchingManifests = params.timelineOverrides.filter(
+    (manifest) => !manifest.templateId || manifest.templateId === params.compositionId,
+  );
+
+  for (let index = matchingManifests.length - 1; index >= 0; index -= 1) {
+    const manifest = matchingManifests[index];
+    const fps = manifest.timeline.fps;
+    const frames = manifest.timeline.durationInFrames;
+    if (isPositiveFiniteNumber(fps) && isPositiveFiniteNumber(frames)) {
+      return frames / fps;
+    }
+  }
+
+  return 0;
+}
+
+/**
+ * Resuelve la duracion total del ensamblado.
+ *
+ * Prioridad: la duracion real medida de los assets (voz/avatar/b-roll/slides)
+ * SIEMPRE gana cuando existe. `assembly_target_duration_seconds` es un legado de
+ * una estimacion de guion (Fase 5) sin escritor vigente en el codigo actual; solo
+ * se usa como ultimo recurso cuando ningun asset tiene duracion medible, para no
+ * dejar caer el video a un fallback generico de 10s.
+ */
+function resolveAssemblyDurationSeconds(params: {
+  assets: any;
+  compositionId: string;
+  normalizedDurationSeconds: number;
+  timelineOverrides: ReturnType<typeof parseTimelineOverrideManifests>;
+}) {
+  if (params.normalizedDurationSeconds > 0) {
+    return params.normalizedDurationSeconds;
+  }
+
+  const targetDurationSeconds = params.assets?.assembly_target_duration_seconds;
+  if (isPositiveFiniteNumber(targetDurationSeconds)) {
+    return targetDurationSeconds;
+  }
+
+  const timelineDurationSeconds = resolveTimelineOverrideDurationSeconds({
+    compositionId: params.compositionId,
+    timelineOverrides: params.timelineOverrides,
+  });
+  if (timelineDurationSeconds > 0) {
+    return timelineDurationSeconds;
+  }
+
+  return FALLBACK_DURATION_SECONDS;
+}
+
 function readAssetPublicUrl(asset: unknown): string | null {
   if (!asset || typeof asset !== "object" || Array.isArray(asset)) return null;
   const publicUrl = (asset as { public_url?: unknown }).public_url;
@@ -651,10 +709,18 @@ function buildAssemblyInputProps(params: {
   const timelineOverrides = parseTimelineOverrideManifests(
     params.timelineOverrides ?? params.assets?.timeline_overrides,
   );
-  const totalSeconds =
-    normalized.totalDurationSeconds > 0
-      ? normalized.totalDurationSeconds
-      : FALLBACK_DURATION_SECONDS;
+  const totalSeconds = resolveAssemblyDurationSeconds({
+    assets: params.assets,
+    compositionId: params.compositionId,
+    normalizedDurationSeconds: normalized.totalDurationSeconds,
+    timelineOverrides,
+  });
+  const totalDurationInFrames = secondsToFrames(totalSeconds, ASSEMBLY_FPS);
+  const normalizedTimelineOverrides = normalizeTimelineOverrideManifestsForDuration({
+    manifests: timelineOverrides,
+    durationInFrames: totalDurationInFrames,
+    fps: ASSEMBLY_FPS,
+  });
   const transition =
     params.transitionType === "slide" || params.transitionType === "none"
       ? params.transitionType
@@ -663,7 +729,7 @@ function buildAssemblyInputProps(params: {
   return {
     template: params.compositionId,
     fps: ASSEMBLY_FPS,
-    totalDurationInFrames: secondsToFrames(totalSeconds, ASSEMBLY_FPS),
+    totalDurationInFrames,
     voiceAudioUrl: normalized.voiceAudioUrl,
     bgMusicUrl: normalized.bgMusicUrl,
     bgMusicVolume: normalized.bgMusicVolume,
@@ -677,7 +743,7 @@ function buildAssemblyInputProps(params: {
       transitionType: transition,
     },
     layoutOverrides,
-    timelineOverrides,
+    timelineOverrides: normalizedTimelineOverrides,
   };
 }
 

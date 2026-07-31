@@ -187,7 +187,7 @@ describe('remotion assembly props contract', () => {
     assert.equal(props.avatarVideoUrl, VIDEO_URL);
   });
 
-  it('uses assembly target duration before measured voice duration', () => {
+  it('prefers measured voice duration over assembly target duration', () => {
     const props = buildAssemblyInputProps({
       compositionId: 'full-slides',
       transitionType: undefined,
@@ -201,10 +201,10 @@ describe('remotion assembly props contract', () => {
       },
     });
 
-    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
+    assert.equal(props.totalDurationInFrames, 51 * ASSEMBLY_FPS);
   });
 
-  it('uses assembly target duration before measured B-roll duration', () => {
+  it('prefers measured B-roll duration over assembly target duration', () => {
     const props = buildAssemblyInputProps({
       compositionId: 'full-slides',
       transitionType: undefined,
@@ -214,7 +214,7 @@ describe('remotion assembly props contract', () => {
       },
     });
 
-    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
+    assert.equal(props.totalDurationInFrames, 31 * 60 * ASSEMBLY_FPS);
   });
 
   it('uses assembly target duration when assets have no measurable duration', () => {
@@ -233,7 +233,7 @@ describe('remotion assembly props contract', () => {
     assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
   });
 
-  it('uses assembly target duration before slide-count fallback', () => {
+  it('prefers slide-count duration over assembly target duration', () => {
     const props = buildAssemblyInputProps({
       compositionId: 'full-slides',
       transitionType: undefined,
@@ -249,10 +249,10 @@ describe('remotion assembly props contract', () => {
       },
     });
 
-    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
+    assert.equal(props.totalDurationInFrames, 3 * 5 * ASSEMBLY_FPS);
   });
 
-  it('uses assembly target duration before measured avatar duration', () => {
+  it('prefers measured avatar duration over assembly target duration', () => {
     const props = buildAssemblyInputProps({
       compositionId: 'full-slides',
       transitionType: undefined,
@@ -273,10 +273,10 @@ describe('remotion assembly props contract', () => {
       },
     });
 
-    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
+    assert.equal(props.totalDurationInFrames, 51 * ASSEMBLY_FPS);
   });
 
-  it('uses assembly target duration before default B-roll fallback durations', () => {
+  it('prefers default B-roll fallback duration over assembly target duration', () => {
     const props = buildAssemblyInputProps({
       compositionId: 'full-slides',
       transitionType: undefined,
@@ -286,7 +286,7 @@ describe('remotion assembly props contract', () => {
       },
     });
 
-    assert.equal(props.totalDurationInFrames, 170 * ASSEMBLY_FPS);
+    assert.equal(props.totalDurationInFrames, 5 * ASSEMBLY_FPS);
   });
 
   it('rejects empty assets instead of producing a blank fallback video', () => {
@@ -459,13 +459,16 @@ describe('remotion assembly props contract', () => {
     assert.equal(props.totalDurationInFrames, 3 * ASSEMBLY_FPS);
   });
 
-  it('uses assembly target duration before stale timeline manifest duration', () => {
+  it('uses assembly target duration over a stale timeline manifest when no asset duration is measurable', () => {
     const props = buildAssemblyInputProps({
       compositionId: 'full-slides',
       transitionType: undefined,
       assets: {
         assembly_target_duration_seconds: 42,
-        b_roll_clips: [baseClip({ duration: 9 * 60 })],
+        avatar_video: {
+          storage_path: 'production-assets/avatar.mp4',
+          public_url: VIDEO_URL,
+        },
         timeline_overrides: [
           {
             version: 1,

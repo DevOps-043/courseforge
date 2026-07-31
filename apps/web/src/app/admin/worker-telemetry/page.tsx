@@ -12,6 +12,7 @@ import type React from "react";
 import { WorkerLinkingPanel } from "./WorkerLinkingPanel";
 import {
   loadWorkerTelemetryPageData,
+  type WorkerTelemetryInsight,
   type WorkerTelemetryRunView,
 } from "./worker-telemetry-page-data";
 
@@ -28,6 +29,11 @@ function formatDuration(milliseconds: number | null) {
   if (hours > 0) return `${hours}h ${minutes}m`;
   if (minutes > 0) return `${minutes}m ${seconds}s`;
   return `${seconds}s`;
+}
+
+function formatMetricDuration(milliseconds: number | null, emptyLabel = "Sin datos") {
+  if (!milliseconds || milliseconds <= 0) return emptyLabel;
+  return formatDuration(milliseconds);
 }
 
 function formatDateTime(value: string) {
@@ -56,6 +62,16 @@ function formatPercent(value: number) {
   return `${Math.round(value * 10) / 10}%`;
 }
 
+function formatSecondsDuration(seconds: number | null) {
+  if (!seconds || seconds <= 0) return "Sin duracion";
+  return formatDuration(seconds * 1000);
+}
+
+function formatRatio(value: number | null) {
+  if (!value || value <= 0) return "Sin ratio";
+  return `${value.toFixed(value >= 10 ? 0 : 1)}x`;
+}
+
 function translateJobType(value: string) {
   if (value === "template_build") return "Build plantilla";
   if (value === "template_preview") return "Preview plantilla";
@@ -81,6 +97,12 @@ function statusClasses(value: string) {
   return "bg-blue-500/10 text-blue-700 dark:text-blue-300";
 }
 
+function insightClasses(level: WorkerTelemetryInsight["level"]) {
+  if (level === "critical") return "border-red-200 bg-red-50 text-red-800 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-200";
+  if (level === "warning") return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200";
+  return "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200";
+}
+
 function SummaryCard({
   icon,
   label,
@@ -102,6 +124,20 @@ function SummaryCard({
       </div>
       <p className="text-sm text-gray-500 dark:text-[#94A3B8]">{label}</p>
       <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+    </div>
+  );
+}
+
+function OptimizationInsightCard({ insight }: { insight: WorkerTelemetryInsight }) {
+  return (
+    <div className={`rounded-lg border p-4 ${insightClasses(insight.level)}`}>
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <h3 className="text-sm font-bold">{insight.title}</h3>
+        <span className="shrink-0 rounded-full bg-white/70 px-2 py-1 text-[11px] font-semibold text-gray-700 dark:bg-black/20 dark:text-white">
+          {insight.metric}
+        </span>
+      </div>
+      <p className="text-sm leading-5 opacity-90">{insight.detail}</p>
     </div>
   );
 }
@@ -140,9 +176,15 @@ function TelemetryRunRow({ run }: { run: WorkerTelemetryRunView }) {
       <td className="px-4 py-4">
         <p className="font-medium text-gray-900 dark:text-white">{formatDuration(run.elapsedMs)}</p>
         <p className="mt-1 text-xs text-gray-500 dark:text-[#94A3B8]">{formatDateTime(run.startedAt)}</p>
+        <div className="mt-2 grid gap-1 text-xs text-gray-500 dark:text-[#94A3B8]">
+          <span>Cola: {formatMetricDuration(run.queueWaitMs)}</span>
+          <span>Video: {formatSecondsDuration(run.resolvedDurationSeconds)}</span>
+          <span>Ratio render/video: {formatRatio(run.renderVideoRatio)}</span>
+        </div>
       </td>
       <td className="px-4 py-4">
         <div className="grid gap-1 text-xs text-gray-600 dark:text-[#94A3B8]">
+          <span>Diagnostico: {run.bottleneckLabel}</span>
           <span>CPU app prom/max: {formatPercent(run.avgAppCpuPercent)} / {formatPercent(run.maxAppCpuPercent)}</span>
           <span>GPU app prom/max: {formatPercent(run.avgAppGpuPercent)} / {formatPercent(run.maxAppGpuPercent)}</span>
           <span>CPU sistema max: {formatPercent(run.maxSystemCpuPercent)}</span>
@@ -171,7 +213,7 @@ export default async function WorkerTelemetryPage({
 }) {
   const queryParams = searchParams ? await searchParams : {};
   const routeParams = params ? await params : {};
-  const { linkCodes, organizationId, runs, summary, workers } = await loadWorkerTelemetryPageData(routeParams.empresaSlug);
+  const { linkCodes, optimizationInsights, organizationId, runs, summary, workers } = await loadWorkerTelemetryPageData(routeParams.empresaSlug);
   const organizationSlug = routeParams.empresaSlug || null;
   const newLinkCode = typeof queryParams.workerLinkCode === "string" ? queryParams.workerLinkCode : null;
 
@@ -184,12 +226,15 @@ export default async function WorkerTelemetryPage({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard icon={<Activity size={22} />} label="Ejecuciones" value={summary.totalRuns.toLocaleString()} hint="ultimas 50" />
         <SummaryCard icon={<CheckCircle2 size={22} />} label="Completadas" value={summary.completedRuns.toLocaleString()} hint="finalizadas" />
-        <SummaryCard icon={<Clock3 size={22} />} label="Tiempo promedio" value={formatDuration(summary.avgElapsedMs)} hint="runs cerrados" />
+        <SummaryCard icon={<Clock3 size={22} />} label="Tiempo promedio" value={formatMetricDuration(summary.avgElapsedMs)} hint="runs cerrados" />
+        <SummaryCard icon={<Gauge size={22} />} label="Tiempo p95" value={formatMetricDuration(summary.p95ElapsedMs)} hint="cola excluida" />
+        <SummaryCard icon={<Clock3 size={22} />} label="Cola p95" value={formatMetricDuration(summary.p95QueueWaitMs)} hint={`${summary.queueWaitRuns} con datos`} />
+        <SummaryCard icon={<MonitorCog size={22} />} label="Ratio p95" value={formatRatio(summary.p95RenderVideoRatio)} hint="render/video" />
         <SummaryCard icon={<AlertTriangle size={22} />} label="Fallidas" value={summary.failedRuns.toLocaleString()} hint="requieren revision" />
-        <SummaryCard icon={<Server size={22} />} label="Workers" value={summary.workerCount.toLocaleString()} hint="en muestra" />
+        <SummaryCard icon={<Server size={22} />} label="Workers" value={summary.workerCount.toLocaleString()} hint={`${summary.sampledRuns} con samples`} />
       </div>
 
       <WorkerLinkingPanel
@@ -200,33 +245,15 @@ export default async function WorkerTelemetryPage({
         workers={workers}
       />
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-[#6C757D]/10 dark:bg-[#151A21]">
-          <div className="mb-3 flex items-center gap-2">
-            <MonitorCog className="h-5 w-5 text-[#00A98F] dark:text-[#00D4B3]" />
-            <h2 className="font-bold text-gray-900 dark:text-white">Uso recomendado</h2>
-          </div>
-          <p className="text-sm text-gray-600 dark:text-[#94A3B8]">
-            Esta vista es para administradores. El worker sigue mostrando el trabajo activo, mientras aqui se audita rendimiento historico por equipo, job y componente.
-          </p>
+      <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-[#6C757D]/10 dark:bg-[#151A21]">
+        <div className="mb-4 flex items-center gap-2">
+          <Cpu className="h-5 w-5 text-[#1F5AF6]" />
+          <h2 className="font-bold text-gray-900 dark:text-white">Diagnostico operativo</h2>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-[#6C757D]/10 dark:bg-[#151A21]">
-          <div className="mb-3 flex items-center gap-2">
-            <Cpu className="h-5 w-5 text-[#1F5AF6]" />
-            <h2 className="font-bold text-gray-900 dark:text-white">Comparativa tecnica</h2>
-          </div>
-          <p className="text-sm text-gray-600 dark:text-[#94A3B8]">
-            CPU, GPU, memoria y duracion quedan vinculados al job para identificar que hardware conviene para ensamblados especificos.
-          </p>
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-[#6C757D]/10 dark:bg-[#151A21]">
-          <div className="mb-3 flex items-center gap-2">
-            <Gauge className="h-5 w-5 text-amber-500" />
-            <h2 className="font-bold text-gray-900 dark:text-white">Retencion</h2>
-          </div>
-          <p className="text-sm text-gray-600 dark:text-[#94A3B8]">
-            La tabla muestra un limite reciente para evitar cargas pesadas; agregaremos filtros y agregados cuando tengamos volumen real de datos.
-          </p>
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          {optimizationInsights.map((insight) => (
+            <OptimizationInsightCard key={`${insight.level}-${insight.title}`} insight={insight} />
+          ))}
         </div>
       </div>
 

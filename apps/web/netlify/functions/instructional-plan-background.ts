@@ -3,6 +3,13 @@ import { generateObject } from "ai";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { INSTRUCTIONAL_PLAN_SYSTEM_PROMPT } from "../../src/config/prompts/instructional-plan";
+import { resolvePromptWithFallback } from "../../src/shared/config/prompts/prompt-resolver.service";
+import {
+  INSTRUCTIONAL_PLAN_CONTEXT_PROMPT_CODE,
+  INSTRUCTIONAL_PLAN_SYSTEM_PROMPT_CODE,
+  instructionalPlanContextPromptDefault,
+  renderPromptTemplate,
+} from "../../src/shared/config/prompts/pipeline.prompts";
 import {
   createGoogleAIProvider,
   createServiceRoleClient,
@@ -74,6 +81,7 @@ interface RequestBody {
 interface ArtifactRecord {
   idea_central: string;
   nombres?: string[] | null;
+  organization_id?: string | null;
 }
 
 interface SyllabusLessonRecord {
@@ -90,10 +98,6 @@ interface SyllabusModuleRecord {
 
 interface SyllabusRecord {
   modules?: unknown;
-}
-
-interface PromptRecord {
-  content?: string | null;
 }
 
 function createBackgroundSupabaseClient(userToken: string) {
@@ -127,26 +131,17 @@ function normalizeSyllabusModules(rawModules: unknown): SyllabusModuleRecord[] {
 }
 
 function buildContextPromptTemplate(params: {
-  artifact: ArtifactRecord;
+  configuredPrompt: string;
   customPrompt?: string;
-  dbPrompt?: PromptRecord | null;
   useCustomPrompt?: boolean;
 }) {
-  const { artifact, customPrompt, dbPrompt, useCustomPrompt } = params;
+  const { configuredPrompt, customPrompt, useCustomPrompt } = params;
 
   if (useCustomPrompt && customPrompt && customPrompt.trim().length > 0) {
     return customPrompt;
   }
 
-  return (
-    dbPrompt?.content ||
-    `CONTEXTO DEL CURSO:
-Curso: ${artifact.nombres?.[0] || artifact.idea_central}
-Idea Central: ${artifact.idea_central}
-
-ESTRUCTURA DE LECCIONES:
-\${lessonsText}`
-  );
+  return configuredPrompt || instructionalPlanContextPromptDefault;
 }
 
 function renderLessonsText(lessons: SyllabusLessonRecord[]) {
@@ -195,26 +190,27 @@ async function generateModulePlans(params: {
   module: SyllabusModuleRecord;
   moduleIndex: number;
   modelName: string;
+  systemPromptTemplate: string;
   temperature: number;
 }) {
-  const { artifact, contextPromptTemplate, module, moduleIndex, modelName, temperature } =
+  const { artifact, contextPromptTemplate, module, moduleIndex, modelName, systemPromptTemplate, temperature } =
     params;
   const lessons = module.lessons || [];
   const lessonsText = renderLessonsText(lessons);
-
-  const finalContextPrompt = contextPromptTemplate
-    .replace(
-      /\$\{courseName\}/g,
-      artifact.nombres?.[0] || artifact.idea_central,
-    )
-    .replace(/\$\{ideaCentral\}/g, artifact.idea_central)
-    .replace(/\$\{lessonsText\}/g, lessonsText)
-    .replace(/\$\{currentModule\}/g, module.title);
+  const promptVariables = {
+    courseName: artifact.nombres?.[0] || artifact.idea_central,
+    currentModule: module.title,
+    ideaCentral: artifact.idea_central,
+    lessonCount: lessons.length,
+    lessonsText,
+  };
+  const finalSystemPrompt = renderPromptTemplate(systemPromptTemplate, promptVariables);
+  const finalContextPrompt = renderPromptTemplate(contextPromptTemplate, promptVariables);
 
   const result = await generateObject({
     model: googleAI(modelName),
     schema: GeneratedPlanSchema,
-    prompt: `${INSTRUCTIONAL_PLAN_SYSTEM_PROMPT}\n\nMODULO ACTUAL: ${module.title}\n${finalContextPrompt}`,
+    prompt: `${finalSystemPrompt}\n\nMODULO ACTUAL: ${module.title}\n${finalContextPrompt}`,
     temperature,
   });
 
@@ -274,17 +270,25 @@ export const handler: Handler = async (event) => {
     const artifact = rawArtifact as ArtifactRecord;
     const syllabusModules = normalizeSyllabusModules(syllabusRecord.modules);
 
-    const { data: dbPrompt } = await supabase
-      .from("system_prompts")
-      .select("content")
-      .eq("code", "INSTRUCTIONAL_PLAN")
-      .eq("is_active", true)
-      .single();
+    const promptOrganizationId = artifact.organization_id || null;
+    const [systemPromptTemplate, contextPromptTemplateFromDb] = await Promise.all([
+      resolvePromptWithFallback(
+        supabase,
+        INSTRUCTIONAL_PLAN_SYSTEM_PROMPT_CODE,
+        INSTRUCTIONAL_PLAN_SYSTEM_PROMPT,
+        promptOrganizationId,
+      ),
+      resolvePromptWithFallback(
+        supabase,
+        INSTRUCTIONAL_PLAN_CONTEXT_PROMPT_CODE,
+        instructionalPlanContextPromptDefault,
+        promptOrganizationId,
+      ),
+    ]);
 
     const contextPromptTemplate = buildContextPromptTemplate({
-      artifact,
+      configuredPrompt: contextPromptTemplateFromDb,
       customPrompt: body.customPrompt,
-      dbPrompt: (dbPrompt || null) as PromptRecord | null,
       useCustomPrompt: body.useCustomPrompt,
     });
 
@@ -295,7 +299,7 @@ export const handler: Handler = async (event) => {
       fallbackModel: "gemini-2.0-flash",
       temperature: 0.7,
       thinkingLevel: "medium",
-    });
+    }, promptOrganizationId);
     const modelName = modelConfig.model;
     console.log(
       `[Background Job] Starting incremental generation with ${modelName}`,
@@ -321,6 +325,7 @@ export const handler: Handler = async (event) => {
           module,
           moduleIndex,
           modelName,
+          systemPromptTemplate,
           temperature: modelConfig.temperature,
         });
 

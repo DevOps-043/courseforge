@@ -66,19 +66,28 @@ function resolveTimelineOverrideDurationSeconds(params: {
   return 0;
 }
 
+/**
+ * Resuelve la duracion total del ensamblado.
+ *
+ * Prioridad: la duracion real medida de los assets (voz/avatar/b-roll/slides)
+ * SIEMPRE gana cuando existe. `assembly_target_duration_seconds` es un legado de
+ * una estimacion de guion (Fase 5) sin escritor vigente en el codigo actual; solo
+ * se usa como ultimo recurso cuando ningun asset tiene duracion medible, para no
+ * dejar caer el video a un fallback generico de 10s.
+ */
 export function resolveAssemblyDurationSeconds(params: {
   assets: MaterialAssets | null | undefined;
   normalizedDurationSeconds: number;
   timelineOverrides: TimelineOverrideManifestList;
   template: AssemblyTemplate;
 }) {
+  if (params.normalizedDurationSeconds > 0) {
+    return params.normalizedDurationSeconds;
+  }
+
   const targetDurationSeconds = params.assets?.assembly_target_duration_seconds;
   if (isPositiveNumber(targetDurationSeconds)) {
     return targetDurationSeconds;
-  }
-
-  if (params.normalizedDurationSeconds > 0) {
-    return params.normalizedDurationSeconds;
   }
 
   const timelineDurationSeconds = resolveTimelineOverrideDurationSeconds({

@@ -7,6 +7,12 @@ import { DesktopWorkerControlPlane } from "@/lib/server/desktop-worker-control-p
 
 const ADMIN_ROLES = new Set(["ADMIN", "SUPERADMIN"]);
 const RUN_LIMIT = 50;
+const LONG_RESOLVED_VIDEO_SECONDS = 5 * 60;
+const QUEUE_WAIT_WARNING_MS = 2 * 60 * 1000;
+const SLOW_RENDER_RATIO_WARNING = 6;
+const HIGH_CPU_PERCENT = 85;
+const HIGH_GPU_PERCENT = 80;
+const HIGH_MEMORY_RATIO = 0.85;
 
 type SupabaseAdminClient = ReturnType<typeof getServiceRoleClient>;
 
@@ -82,8 +88,22 @@ interface MaterialComponentRow {
 interface ProductionJobRow {
   id: string;
   status?: string | null;
+  created_at?: string | null;
+  claimed_at?: string | null;
+  started_at?: string | null;
   completed_at?: string | null;
   failed_at?: string | null;
+  duration_seconds?: number | null;
+  input_snapshot?: unknown;
+}
+
+export type WorkerTelemetryInsightLevel = "info" | "warning" | "critical";
+
+export interface WorkerTelemetryInsight {
+  detail: string;
+  level: WorkerTelemetryInsightLevel;
+  metric: string;
+  title: string;
 }
 
 export interface WorkerTelemetryRunView {
@@ -96,6 +116,10 @@ export interface WorkerTelemetryRunView {
   startedAt: string;
   finishedAt: string | null;
   elapsedMs: number | null;
+  queueWaitMs: number | null;
+  resolvedDurationSeconds: number | null;
+  renderVideoRatio: number | null;
+  bottleneckLabel: string;
   lastStage: string | null;
   progressPercent: number | null;
   sampleCount: number;
@@ -119,9 +143,16 @@ export interface WorkerTelemetryRunView {
 
 export interface WorkerTelemetrySummary {
   avgElapsedMs: number;
+  avgRenderVideoRatio: number;
   completedRuns: number;
   failedRuns: number;
+  longDurationRuns: number;
+  p95ElapsedMs: number;
+  p95QueueWaitMs: number;
+  p95RenderVideoRatio: number;
+  queueWaitRuns: number;
   runningRuns: number;
+  sampledRuns: number;
   totalRuns: number;
   workerCount: number;
 }
@@ -153,6 +184,7 @@ export interface WorkerLinkCodeView {
 export interface WorkerTelemetryPageData {
   linkCodes: WorkerLinkCodeView[];
   organizationId: string | null;
+  optimizationInsights: WorkerTelemetryInsight[];
   role: string | null;
   runs: WorkerTelemetryRunView[];
   summary: WorkerTelemetrySummary;
@@ -162,6 +194,23 @@ export interface WorkerTelemetryPageData {
 function toFiniteNumber(value: unknown, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function toPositiveNumberOrNull(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parseDateMs(value: string | null | undefined) {
+  if (!value) return null;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }
 
 function uniq(values: Array<string | null | undefined>) {
@@ -201,6 +250,160 @@ function getTerminalProductionJobFinishedAt(job: ProductionJobRow | null | undef
   }
 
   return null;
+}
+
+function resolveQueueWaitMs(job: ProductionJobRow | null | undefined) {
+  const createdAtMs = parseDateMs(job?.created_at);
+  const claimedAtMs = parseDateMs(job?.claimed_at || job?.started_at);
+  if (!createdAtMs || !claimedAtMs || claimedAtMs <= createdAtMs) return null;
+  return claimedAtMs - createdAtMs;
+}
+
+function resolveProductionJobDurationSeconds(job: ProductionJobRow | null | undefined) {
+  const inputSnapshot = asRecord(job?.input_snapshot);
+  const resolvedProps = asRecord(inputSnapshot?.resolvedProps);
+  const frames = toPositiveNumberOrNull(resolvedProps?.totalDurationInFrames);
+  const fps = toPositiveNumberOrNull(resolvedProps?.fps);
+
+  if (frames && fps) {
+    return frames / fps;
+  }
+
+  return toPositiveNumberOrNull(job?.duration_seconds);
+}
+
+function resolveRenderVideoRatio(elapsedMs: number | null, resolvedDurationSeconds: number | null) {
+  if (!elapsedMs || elapsedMs <= 0 || !resolvedDurationSeconds || resolvedDurationSeconds <= 0) return null;
+  return elapsedMs / 1000 / resolvedDurationSeconds;
+}
+
+function resolveBottleneckLabel(run: {
+  elapsedMs: number | null;
+  maxAppCpuPercent: number;
+  maxAppGpuPercent: number;
+  maxSystemCpuPercent: number;
+  maxSystemGpuPercent: number;
+  maxSystemMemoryUsedBytes: number;
+  memoryTotalBytes: number;
+}) {
+  const memoryRatio = run.memoryTotalBytes > 0
+    ? run.maxSystemMemoryUsedBytes / run.memoryTotalBytes
+    : 0;
+
+  if (memoryRatio >= HIGH_MEMORY_RATIO) return "Presion de memoria";
+  if (Math.max(run.maxAppGpuPercent, run.maxSystemGpuPercent) >= HIGH_GPU_PERCENT) return "GPU saturada";
+  if (Math.max(run.maxAppCpuPercent, run.maxSystemCpuPercent) >= HIGH_CPU_PERCENT) return "CPU saturada";
+  if ((run.elapsedMs || 0) > 0) return "Sin saturacion clara";
+  return "Sin muestra suficiente";
+}
+
+function percentile(values: number[], percentileRank: number) {
+  const sorted = values
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((left, right) => left - right);
+
+  if (sorted.length === 0) return 0;
+  const index = Math.ceil((percentileRank / 100) * sorted.length) - 1;
+  return sorted[Math.max(0, Math.min(sorted.length - 1, index))];
+}
+
+function average(values: number[]) {
+  const validValues = values.filter((value) => Number.isFinite(value) && value > 0);
+  return validValues.length
+    ? validValues.reduce((total, value) => total + value, 0) / validValues.length
+    : 0;
+}
+
+function buildOptimizationInsights(runs: WorkerTelemetryRunView[], summary: WorkerTelemetrySummary): WorkerTelemetryInsight[] {
+  const insights: WorkerTelemetryInsight[] = [];
+  const totalRuns = Math.max(1, summary.totalRuns);
+  const failureRate = summary.failedRuns / totalRuns;
+  const memoryPressureRuns = runs.filter((run) => run.bottleneckLabel === "Presion de memoria").length;
+  const cpuPressureRuns = runs.filter((run) => run.bottleneckLabel === "CPU saturada").length;
+  const gpuPressureRuns = runs.filter((run) => run.bottleneckLabel === "GPU saturada").length;
+
+  if (summary.longDurationRuns > 0) {
+    insights.push({
+      level: "critical",
+      title: "Duracion resuelta anormalmente larga",
+      metric: `${summary.longDurationRuns} run(s) >= 5 min`,
+      detail: "Hay jobs cuyo input ya llega a Remotion con una duracion larga. La investigacion debe empezar en los datos de la pagina: assets, timeline_overrides, assembly_target_duration_seconds e input_snapshot.resolvedProps.",
+    });
+  }
+
+  if (summary.p95QueueWaitMs >= QUEUE_WAIT_WARNING_MS) {
+    insights.push({
+      level: "warning",
+      title: "Cola antes de renderizar",
+      metric: `p95 espera ${Math.round(summary.p95QueueWaitMs / 1000)}s`,
+      detail: "Los jobs tardan en ser reclamados por un worker. Revisa capacidad disponible, workers offline, preferred_worker_id y max_concurrent_jobs antes de optimizar Remotion.",
+    });
+  }
+
+  if (summary.p95RenderVideoRatio >= SLOW_RENDER_RATIO_WARNING) {
+    insights.push({
+      level: "warning",
+      title: "Render lento contra duracion del video",
+      metric: `p95 ${summary.p95RenderVideoRatio.toFixed(1)}x`,
+      detail: "El tiempo de procesamiento esta creciendo mas que la duracion final. Conviene comparar composiciones, bitrate, aceleracion de Chromium y uso CPU/GPU por equipo.",
+    });
+  }
+
+  if (memoryPressureRuns > 0) {
+    insights.push({
+      level: "warning",
+      title: "Presion de memoria detectada",
+      metric: `${memoryPressureRuns} run(s)`,
+      detail: "Algunos renders llegan a un uso alto de RAM del sistema. Reduce concurrencia del worker o revisa assets pesados antes de subir max_concurrent_jobs.",
+    });
+  }
+
+  if (cpuPressureRuns > gpuPressureRuns && cpuPressureRuns > 0) {
+    insights.push({
+      level: "info",
+      title: "Cuello principal en CPU",
+      metric: `${cpuPressureRuns} run(s)`,
+      detail: "La muestra apunta a saturacion de CPU. Para ese equipo, subir concurrencia probablemente empeore tiempos si no hay cola real que lo justifique.",
+    });
+  }
+
+  if (gpuPressureRuns >= cpuPressureRuns && gpuPressureRuns > 0) {
+    insights.push({
+      level: "info",
+      title: "Cuello principal en GPU",
+      metric: `${gpuPressureRuns} run(s)`,
+      detail: "La muestra apunta a saturacion de GPU. Revisa chromium_gl, hardware_acceleration y composiciones con videos simultaneos.",
+    });
+  }
+
+  if (failureRate >= 0.15) {
+    insights.push({
+      level: "critical",
+      title: "Tasa de fallos elevada",
+      metric: `${Math.round(failureRate * 100)}%`,
+      detail: "La prioridad es estabilizar errores antes de optimizar velocidad. Agrupa por error_message, plantilla y worker para separar fallos de datos vs. fallos del equipo.",
+    });
+  }
+
+  if (summary.sampledRuns === 0 && summary.totalRuns > 0) {
+    insights.push({
+      level: "warning",
+      title: "Telemetria incompleta",
+      metric: "0 runs con samples",
+      detail: "Los runs existen, pero no hay muestras de CPU/GPU/RAM. El worker debe seguir enviando samples para que el diagnostico sea confiable.",
+    });
+  }
+
+  if (insights.length === 0) {
+    insights.push({
+      level: "info",
+      title: "Sin cuello evidente en la muestra",
+      metric: `${summary.totalRuns} run(s)`,
+      detail: "La muestra reciente no muestra duraciones anormales, colas altas ni saturacion clara. Mantener monitoreo con mas volumen antes de cambiar configuracion.",
+    });
+  }
+
+  return insights.slice(0, 6);
 }
 
 function resolveRunStatus(rowStatus: string, job: ProductionJobRow | null | undefined) {
@@ -398,7 +601,7 @@ export async function loadWorkerTelemetryPageData(organizationSlug?: string | nu
   const productionJobsById = await loadRowsById<ProductionJobRow>(
     admin,
     "production_jobs",
-    "id, status, completed_at, failed_at",
+    "id, status, created_at, claimed_at, started_at, completed_at, failed_at, duration_seconds, input_snapshot",
     uniq(rows.filter((row) => row.remote_table === "production_jobs").map((row) => row.remote_job_id)),
   );
 
@@ -414,6 +617,18 @@ export async function loadWorkerTelemetryPageData(organizationSlug?: string | nu
     const finishedAt = row.finished_at || getTerminalProductionJobFinishedAt(productionJob);
     const elapsedMs = resolveElapsedMs(row, finishedAt);
     const status = resolveRunStatus(row.status, productionJob);
+    const queueWaitMs = resolveQueueWaitMs(productionJob);
+    const resolvedDurationSeconds = resolveProductionJobDurationSeconds(productionJob);
+    const renderVideoRatio = resolveRenderVideoRatio(elapsedMs, resolvedDurationSeconds);
+    const metrics = {
+      elapsedMs,
+      maxAppCpuPercent: toFiniteNumber(row.max_app_cpu_percent),
+      maxAppGpuPercent: toFiniteNumber(row.max_app_gpu_percent),
+      maxSystemCpuPercent: toFiniteNumber(row.max_system_cpu_percent),
+      maxSystemGpuPercent: toFiniteNumber(row.max_system_gpu_percent),
+      maxSystemMemoryUsedBytes: toFiniteNumber(row.max_system_memory_used_bytes),
+      memoryTotalBytes: toFiniteNumber(row.memory_total_bytes),
+    };
 
     return {
       id: row.id,
@@ -425,6 +640,10 @@ export async function loadWorkerTelemetryPageData(organizationSlug?: string | nu
       startedAt: row.started_at,
       finishedAt,
       elapsedMs,
+      queueWaitMs,
+      resolvedDurationSeconds,
+      renderVideoRatio,
+      bottleneckLabel: resolveBottleneckLabel(metrics),
       lastStage: row.last_stage || null,
       progressPercent:
         row.last_progress_percent === null || row.last_progress_percent === undefined
@@ -432,15 +651,15 @@ export async function loadWorkerTelemetryPageData(organizationSlug?: string | nu
           : toFiniteNumber(row.last_progress_percent),
       sampleCount: toFiniteNumber(row.sample_count),
       avgAppCpuPercent: toFiniteNumber(row.avg_app_cpu_percent),
-      maxAppCpuPercent: toFiniteNumber(row.max_app_cpu_percent),
+      maxAppCpuPercent: metrics.maxAppCpuPercent,
       avgAppGpuPercent: toFiniteNumber(row.avg_app_gpu_percent),
-      maxAppGpuPercent: toFiniteNumber(row.max_app_gpu_percent),
+      maxAppGpuPercent: metrics.maxAppGpuPercent,
       avgSystemCpuPercent: toFiniteNumber(row.avg_system_cpu_percent),
-      maxSystemCpuPercent: toFiniteNumber(row.max_system_cpu_percent),
+      maxSystemCpuPercent: metrics.maxSystemCpuPercent,
       avgSystemGpuPercent: toFiniteNumber(row.avg_system_gpu_percent),
-      maxSystemGpuPercent: toFiniteNumber(row.max_system_gpu_percent),
-      maxSystemMemoryUsedBytes: toFiniteNumber(row.max_system_memory_used_bytes),
-      memoryTotalBytes: toFiniteNumber(row.memory_total_bytes),
+      maxSystemGpuPercent: metrics.maxSystemGpuPercent,
+      maxSystemMemoryUsedBytes: metrics.maxSystemMemoryUsedBytes,
+      memoryTotalBytes: metrics.memoryTotalBytes,
       cpuLabel: [row.cpu_model, row.cpu_logical_threads ? `${row.cpu_logical_threads} hilos` : null]
         .filter(Boolean)
         .join(" · ") || "CPU no reportado",
@@ -458,9 +677,31 @@ export async function loadWorkerTelemetryPageData(organizationSlug?: string | nu
   const failedRuns = runs.filter((run) => run.status === "failed" || run.status === "interrupted").length;
   const runningRuns = runs.filter((run) => run.status === "running").length;
   const elapsedRuns = runs.filter((run) => run.elapsedMs !== null && run.elapsedMs > 0);
+  const elapsedValues = elapsedRuns.map((run) => run.elapsedMs || 0);
+  const queueWaitValues = runs
+    .map((run) => run.queueWaitMs)
+    .filter((value): value is number => value !== null && value > 0);
+  const renderVideoRatioValues = runs
+    .map((run) => run.renderVideoRatio)
+    .filter((value): value is number => value !== null && value > 0);
   const avgElapsedMs = elapsedRuns.length
     ? elapsedRuns.reduce((total, run) => total + (run.elapsedMs || 0), 0) / elapsedRuns.length
     : 0;
+  const summary: WorkerTelemetrySummary = {
+    avgElapsedMs,
+    avgRenderVideoRatio: average(renderVideoRatioValues),
+    completedRuns,
+    failedRuns,
+    longDurationRuns: runs.filter((run) => (run.resolvedDurationSeconds || 0) >= LONG_RESOLVED_VIDEO_SECONDS).length,
+    p95ElapsedMs: percentile(elapsedValues, 95),
+    p95QueueWaitMs: percentile(queueWaitValues, 95),
+    p95RenderVideoRatio: percentile(renderVideoRatioValues, 95),
+    queueWaitRuns: queueWaitValues.length,
+    runningRuns,
+    sampledRuns: runs.filter((run) => run.sampleCount > 0).length,
+    totalRuns: runs.length,
+    workerCount: new Set(runs.map((run) => run.workerName)).size,
+  };
 
   return {
     linkCodes: ((linkCodeRows || []) as RenderWorkerLinkCodeRow[]).map((code) => ({
@@ -472,16 +713,10 @@ export async function loadWorkerTelemetryPageData(organizationSlug?: string | nu
       createdAt: code.created_at,
     })),
     organizationId: access.organizationId,
+    optimizationInsights: buildOptimizationInsights(runs, summary),
     role,
     runs,
-    summary: {
-      avgElapsedMs,
-      completedRuns,
-      failedRuns,
-      runningRuns,
-      totalRuns: runs.length,
-      workerCount: new Set(runs.map((run) => run.workerName)).size,
-    },
+    summary,
     workers: (linkedWorkers as any[]).map((worker) => ({
       id: worker.id,
       name: worker.device_name || "SofLIA Render Worker",

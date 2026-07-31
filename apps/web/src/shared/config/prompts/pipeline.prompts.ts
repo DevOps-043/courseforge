@@ -2,6 +2,8 @@ export const ARTIFACT_BASE_RESEARCH_PROMPT_CODE = "ARTIFACT_BASE_RESEARCH";
 export const ARTIFACT_BASE_PROMPT_CODE = "ARTIFACT_BASE";
 export const SYLLABUS_RESEARCH_PROMPT_CODE = "SYLLABUS_RESEARCH";
 export const SYLLABUS_PROMPT_CODE = "SYLLABUS";
+export const INSTRUCTIONAL_PLAN_SYSTEM_PROMPT_CODE = "INSTRUCTIONAL_PLAN_SYSTEM";
+export const INSTRUCTIONAL_PLAN_CONTEXT_PROMPT_CODE = "INSTRUCTIONAL_PLAN";
 export const CURATION_PROMPT_CODE = "CURATION";
 
 export const artifactBaseResearchPromptDefault = `Investiga tendencias educativas recientes sobre:
@@ -39,6 +41,16 @@ Identifica:
 3. Estructura logica recomendada.
 
 Dame un resumen denso y tecnico.`;
+
+export const instructionalPlanContextPromptDefault = `CONTEXTO DEL CURSO:
+Curso: ${"${courseName}"}
+Idea Central: ${"${ideaCentral}"}
+
+ESTRUCTURA DE LECCIONES A PLANIFICAR (${"${lessonCount}"}):
+${"${lessonsText}"}
+
+INSTRUCCIONES ADICIONALES:
+Analiza el contenido y genera el plan instruccional detallado siguiendo estrictamente las reglas de formato, calidad y coherencia Bloom definidas en tus instrucciones de sistema.`;
 
 export const curationPromptDefault =
   "Eres un investigador educativo. Busca candidatos reales y accesibles. No declares una fuente valida: Courseforge la validara. Evita redes sociales, foros, paywalls y URLs inventadas.";
