@@ -11,11 +11,11 @@ import {
   renderPromptTemplate,
 } from "../../src/shared/config/prompts/pipeline.prompts";
 import {
-  createGoogleAIProvider,
   createServiceRoleClient,
   getSupabaseServiceKey,
   getSupabaseUrl,
   hasSupabaseServiceRoleKey,
+  resolveAiModel,
   resolveModelSetting,
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
@@ -65,8 +65,6 @@ const GeneratedPlanSchema = z.object({
     .optional()
     .default([]),
 });
-
-const googleAI = createGoogleAIProvider();
 
 type BackgroundSupabaseClient = SupabaseClient;
 type GeneratedLessonPlan = z.infer<typeof LessonPlanSchema>;
@@ -208,7 +206,7 @@ async function generateModulePlans(params: {
   const finalContextPrompt = renderPromptTemplate(contextPromptTemplate, promptVariables);
 
   const result = await generateObject({
-    model: googleAI(modelName),
+    model: resolveAiModel(modelName),
     schema: GeneratedPlanSchema,
     prompt: `${finalSystemPrompt}\n\nMODULO ACTUAL: ${module.title}\n${finalContextPrompt}`,
     temperature,

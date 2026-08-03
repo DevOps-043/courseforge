@@ -1,4 +1,5 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAI } from "@ai-sdk/openai";
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
@@ -101,6 +102,23 @@ export function createGoogleAIProvider() {
   return createGoogleGenerativeAI({
     apiKey: getGeminiApiKey(),
   });
+}
+
+export function createOpenAiAIProvider() {
+  return createOpenAI({
+    apiKey: getOpenAiApiKey(),
+  });
+}
+
+export function resolveAiModel(modelName: string) {
+  const name = modelName.toLowerCase();
+  if (name.startsWith("gpt-") || name.startsWith("o1") || name.startsWith("o3")) {
+    const openaiProvider = createOpenAiAIProvider();
+    return openaiProvider(modelName);
+  }
+
+  const googleProvider = createGoogleAIProvider();
+  return googleProvider(modelName);
 }
 
 export function getFunctionsBaseUrl() {
