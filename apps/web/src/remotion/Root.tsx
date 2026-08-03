@@ -37,6 +37,7 @@ const calculateMetadata: CalculateMetadataFunction<AssemblyInputProps> = ({
 };
 
 const TEMPLATE_IDS: AssemblyTemplate[] = [
+  ASSEMBLY_TEMPLATES.ANIMATED_DECK_AVATAR,
   ASSEMBLY_TEMPLATES.FULL_SLIDES,
   ASSEMBLY_TEMPLATES.SPLIT_AVATAR,
   ASSEMBLY_TEMPLATES.AVATAR_FOCUS,

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { Clock, Film, Music2, UserRound, ZoomIn, ZoomOut } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock, Film, Music2, UserRound, ZoomIn, ZoomOut } from "lucide-react";
 import {
   getActiveTimelineSegments,
   type VisualTimeline,
@@ -177,6 +177,9 @@ export function RemotionTimelineInspector({
   const [zoomPxPerSecond, setZoomPxPerSecond] = useState(80);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [timelineScrollLeft, setTimelineScrollLeft] = useState(0);
+  const [timelineMaxScrollLeft, setTimelineMaxScrollLeft] = useState(0);
+  const timelineScrollRef = useRef<HTMLDivElement | null>(null);
   const clampedFrame = Math.min(
     Math.max(0, timeline.durationInFrames - 1),
     Math.max(0, Math.round(currentFrame)),
@@ -204,11 +207,37 @@ export function RemotionTimelineInspector({
     [timeline, zoomPxPerSecond],
   );
 
+  const syncTimelineScrollState = () => {
+    const element = timelineScrollRef.current;
+    if (!element) return;
+    setTimelineScrollLeft(Math.round(element.scrollLeft));
+    setTimelineMaxScrollLeft(Math.max(0, element.scrollWidth - element.clientWidth));
+  };
+
+  const scrollTimelineBy = (delta: number) => {
+    const element = timelineScrollRef.current;
+    if (!element) return;
+    element.scrollBy({ left: delta, behavior: "smooth" });
+  };
+
+  const setTimelineScrollPosition = (nextScrollLeft: number) => {
+    const element = timelineScrollRef.current;
+    if (!element) return;
+    element.scrollLeft = nextScrollLeft;
+    syncTimelineScrollState();
+  };
+
   useEffect(() => {
     if (selectedSegment && selectedSegment.id !== selectedSegmentId) {
       setSelectedSegmentId(selectedSegment.id);
     }
   }, [selectedSegment, selectedSegmentId]);
+
+  useEffect(() => {
+    syncTimelineScrollState();
+    window.addEventListener("resize", syncTimelineScrollState);
+    return () => window.removeEventListener("resize", syncTimelineScrollState);
+  }, [contentWidth]);
 
   const commitSegment = (segmentId: string, updater: (segment: VisualTimelineSegment) => VisualTimelineSegment) => {
     if (!onChange || disabled) return;
@@ -347,7 +376,7 @@ export function RemotionTimelineInspector({
   }
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-[#26313D] dark:bg-[#101820]">
+    <section className="relative z-0 overflow-hidden rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-[#26313D] dark:bg-[#101820]">
       <div className="mb-2 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div className="flex min-w-0 items-center gap-2">
           <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#00D4B3]/15 text-[#00A98F] dark:text-[#00D4B3]">
@@ -362,7 +391,36 @@ export function RemotionTimelineInspector({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => scrollTimelineBy(-Math.max(160, zoomPxPerSecond * 2))}
+            disabled={timelineMaxScrollLeft <= 0 || timelineScrollLeft <= 0}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
+            title="Mover timeline a la izquierda"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={timelineMaxScrollLeft}
+            step={1}
+            value={Math.min(timelineScrollLeft, timelineMaxScrollLeft)}
+            onChange={(event) => setTimelineScrollPosition(Number(event.target.value))}
+            disabled={timelineMaxScrollLeft <= 0}
+            className="w-28 accent-[#00D4B3] disabled:opacity-40"
+            aria-label="Desplazamiento horizontal del timeline"
+          />
+          <button
+            type="button"
+            onClick={() => scrollTimelineBy(Math.max(160, zoomPxPerSecond * 2))}
+            disabled={timelineMaxScrollLeft <= 0 || timelineScrollLeft >= timelineMaxScrollLeft}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
+            title="Mover timeline a la derecha"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
           <button
             type="button"
             onClick={() => setZoomPxPerSecond((value) => Math.max(30, value - 20))}
@@ -392,113 +450,126 @@ export function RemotionTimelineInspector({
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-[#0B1118]">
-        <div
-          className="space-y-1.5 p-1.5"
-          style={{ width: `${contentWidth + 104}px` }}
-        >
-          <div className="grid grid-cols-[92px_minmax(0,1fr)] items-center gap-2">
-            <div className="sticky left-1 z-30 h-7 rounded-md bg-gray-50 dark:bg-[#0B1118]" />
-            <div
-              className="relative h-7 rounded-md bg-white dark:bg-[#101820]"
-              style={{ width: `${contentWidth}px` }}
-              onClick={(event) => {
-                const rect = event.currentTarget.getBoundingClientRect();
-                const x = event.clientX - rect.left;
-                onSeekFrame(clampFrame(x / pxPerFrame, timeline.durationInFrames));
-              }}
-            >
-              {rulerTicks.map((tick) => (
-                <div
-                  key={tick.seconds}
-                  className={`absolute bottom-0 top-0 border-l ${tick.major ? "border-gray-400 dark:border-slate-500" : "border-gray-200 dark:border-white/10"}`}
-                  style={{ left: `${tick.seconds * zoomPxPerSecond}px` }}
-                >
-                  {tick.major ? (
-                    <span className="ml-1 text-[10px] font-semibold text-gray-500 dark:text-slate-400">
-                      {tick.seconds}s
-                    </span>
-                  ) : null}
+      <div className="relative z-0 rounded-lg border border-gray-200 bg-gray-50 p-1.5 dark:border-white/10 dark:bg-[#0B1118]">
+        <div className="grid grid-cols-[92px_minmax(0,1fr)] gap-2">
+          <div className="space-y-1.5">
+            <div className="h-7 rounded-md bg-gray-50 dark:bg-[#0B1118]" />
+            {timeline.tracks.map((track) => {
+              const style = TRACK_STYLES[track.kind];
+              const TrackIcon = style.Icon;
+
+              return (
+                <div key={track.id} className="flex h-8 items-center">
+                  <div
+                    className={`inline-flex h-7 w-full min-w-0 items-center gap-1.5 rounded-md px-2 text-xs font-bold shadow-sm ${style.badge}`}
+                  >
+                    <TrackIcon className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{track.label}</span>
+                  </div>
                 </div>
-              ))}
-              <div
-                className="pointer-events-none absolute bottom-0 top-0 z-20 w-px bg-[#00D4B3]"
-                style={{ left: `${playheadLeft}px` }}
-              />
-            </div>
+              );
+            })}
           </div>
 
-          {timeline.tracks.map((track) => {
-            const style = TRACK_STYLES[track.kind];
-            const TrackIcon = style.Icon;
-
-            return (
+          <div
+            ref={timelineScrollRef}
+            onScroll={syncTimelineScrollState}
+            className="min-w-0 overflow-x-auto overflow-y-hidden"
+          >
+            <div
+              className="space-y-1.5"
+              style={{ width: `${contentWidth}px` }}
+            >
               <div
-                key={track.id}
-                className="grid grid-cols-[92px_minmax(0,1fr)] items-center gap-2"
+                className="relative h-7 rounded-md bg-white dark:bg-[#101820]"
+                style={{ width: `${contentWidth}px` }}
+                onClick={(event) => {
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const x = event.clientX - rect.left;
+                  onSeekFrame(clampFrame(x / pxPerFrame, timeline.durationInFrames));
+                }}
               >
-                <div
-                  className={`sticky left-1 z-30 inline-flex h-7 min-w-0 items-center gap-1.5 rounded-md px-2 text-xs font-bold shadow-sm ${style.badge}`}
-                >
-                  <TrackIcon className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{track.label}</span>
-                </div>
-                <div
-                  className="relative h-8 rounded-md bg-white dark:bg-[#101820]"
-                  style={{ width: `${contentWidth}px` }}
-                  onClick={(event) => {
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    const x = event.clientX - rect.left;
-                    onSeekFrame(clampFrame(x / pxPerFrame, timeline.durationInFrames));
-                  }}
-                >
+                {rulerTicks.map((tick) => (
                   <div
-                    className="pointer-events-none absolute bottom-0 top-0 z-20 w-px bg-[#00D4B3]"
-                    style={{ left: `${playheadLeft}px` }}
-                  />
-                  {track.segments.map((segment) => {
-                    const isActive = activeSegmentIds.has(segment.id);
-                    const isSelected = selectedSegment?.id === segment.id;
-                    const editable = isEditableSegment(segment) && Boolean(onChange) && !disabled;
-
-                    return (
-                      <div
-                        key={segment.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleSelectSegment(segment);
-                        }}
-                        onPointerDown={(event) => handlePointerDown(event, segment, "move")}
-                        title={`${segment.label}: ${formatSeconds(segment.startFrame / timeline.fps)} - ${formatSeconds(segment.endFrame / timeline.fps)}`}
-                        className={`absolute top-1 h-6 overflow-hidden rounded-md px-2 text-left text-[11px] font-semibold text-white shadow-sm transition ${style.bar} ${
-                          isActive ? style.activeBar : ""
-                        } ${
-                          isSelected ? "outline outline-2 outline-offset-1 outline-[#00D4B3]" : ""
-                        } ${editable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
-                        style={getSegmentStyle(segment, pxPerFrame)}
-                      >
-                        {editable ? (
-                          <>
-                            <span
-                              className="absolute inset-y-0 left-0 z-10 w-2 cursor-ew-resize bg-black/15"
-                              onPointerDown={(event) => handlePointerDown(event, segment, "start")}
-                            />
-                            <span
-                              className="absolute inset-y-0 right-0 z-10 w-2 cursor-ew-resize bg-black/15"
-                              onPointerDown={(event) => handlePointerDown(event, segment, "end")}
-                            />
-                          </>
-                        ) : null}
-                        <span className="block truncate">{segment.label}</span>
-                      </div>
-                    );
-                  })}
-                </div>
+                    key={tick.seconds}
+                    className={`absolute bottom-0 top-0 border-l ${tick.major ? "border-gray-400 dark:border-slate-500" : "border-gray-200 dark:border-white/10"}`}
+                    style={{ left: `${tick.seconds * zoomPxPerSecond}px` }}
+                  >
+                    {tick.major ? (
+                      <span className="ml-1 text-[10px] font-semibold text-gray-500 dark:text-slate-400">
+                        {tick.seconds}s
+                      </span>
+                    ) : null}
+                  </div>
+                ))}
+                <div
+                  className="pointer-events-none absolute bottom-0 top-0 z-[1] w-px bg-[#00D4B3]"
+                  style={{ left: `${playheadLeft}px` }}
+                />
               </div>
-            );
-          })}
+
+              {timeline.tracks.map((track) => {
+                const style = TRACK_STYLES[track.kind];
+
+                return (
+                  <div
+                    key={track.id}
+                    className="relative h-8 rounded-md bg-white dark:bg-[#101820]"
+                    style={{ width: `${contentWidth}px` }}
+                    onClick={(event) => {
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      const x = event.clientX - rect.left;
+                      onSeekFrame(clampFrame(x / pxPerFrame, timeline.durationInFrames));
+                    }}
+                  >
+                    <div
+                      className="pointer-events-none absolute bottom-0 top-0 z-[1] w-px bg-[#00D4B3]"
+                      style={{ left: `${playheadLeft}px` }}
+                    />
+                    {track.segments.map((segment) => {
+                      const isActive = activeSegmentIds.has(segment.id);
+                      const isSelected = selectedSegment?.id === segment.id;
+                      const editable = isEditableSegment(segment) && Boolean(onChange) && !disabled;
+
+                      return (
+                        <div
+                          key={segment.id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleSelectSegment(segment);
+                          }}
+                          onPointerDown={(event) => handlePointerDown(event, segment, "move")}
+                          title={`${segment.label}: ${formatSeconds(segment.startFrame / timeline.fps)} - ${formatSeconds(segment.endFrame / timeline.fps)}`}
+                          className={`absolute top-1 h-6 overflow-hidden rounded-md px-2 text-left text-[11px] font-semibold text-white shadow-sm transition ${style.bar} ${
+                            isActive ? style.activeBar : ""
+                          } ${
+                            isSelected ? "outline outline-2 outline-offset-1 outline-[#00D4B3]" : ""
+                          } ${editable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
+                          style={getSegmentStyle(segment, pxPerFrame)}
+                        >
+                          {editable ? (
+                            <>
+                              <span
+                                className="absolute inset-y-0 left-0 z-10 w-2 cursor-ew-resize bg-black/15"
+                                onPointerDown={(event) => handlePointerDown(event, segment, "start")}
+                              />
+                              <span
+                                className="absolute inset-y-0 right-0 z-10 w-2 cursor-ew-resize bg-black/15"
+                                onPointerDown={(event) => handlePointerDown(event, segment, "end")}
+                              />
+                            </>
+                          ) : null}
+                          <span className="block truncate">{segment.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
 

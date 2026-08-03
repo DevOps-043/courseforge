@@ -30,7 +30,7 @@ const WORKER_JOB_LEASE_SECONDS = 180;
 const ASSEMBLY_FPS = 30;
 const FALLBACK_DURATION_SECONDS = 10;
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
-const INTERNAL_COMPOSITION_IDS = ["full-slides", "split-avatar", "avatar-focus"] as const;
+const INTERNAL_COMPOSITION_IDS = ["animated-deck-avatar", "full-slides", "split-avatar", "avatar-focus"] as const;
 const DEFAULT_INTERNAL_COMPOSITION_ID = "full-slides";
 
 type SupabaseAnyClient = ReturnType<typeof getServiceRoleClient>;
@@ -340,6 +340,17 @@ function safeJobProgressEntry(params: {
     workerId: params.workerId,
     timestamp: new Date().toISOString(),
   };
+}
+
+function readLastJobProgressPercent(progress: unknown, fallback = 0) {
+  if (!Array.isArray(progress)) return fallback;
+  for (let index = progress.length - 1; index >= 0; index -= 1) {
+    const entry = progress[index];
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const percent = Number((entry as { percent?: unknown }).percent);
+    if (Number.isFinite(percent)) return Math.max(0, Math.min(100, Math.round(percent)));
+  }
+  return fallback;
 }
 
 function isWorkerHeartbeatFresh(worker: { last_heartbeat_at?: string | null }) {
@@ -736,6 +747,8 @@ function buildAssemblyInputProps(params: {
     avatarVideoUrl: normalized.avatarVideoUrl,
     avatarClips: normalized.avatarClips,
     slides: normalized.slides,
+    deckCss: normalized.deckCss,
+    deckFonts: normalized.deckFonts,
     brollClips: normalized.brollClips,
     transitionType: transition,
     templateConfig: {
@@ -751,9 +764,36 @@ function extractExternalTemplateOverrides(value: unknown): Record<string, unknow
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const variables = value as Record<string, unknown>;
   const candidate = variables.resolvedProps ?? variables.customTemplateProps ?? variables.templateProps;
-  return candidate && typeof candidate === "object" && !Array.isArray(candidate)
-    ? (candidate as Record<string, unknown>)
-    : null;
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
+
+  return filterProtectedExternalTemplateOverrides(candidate as Record<string, unknown>);
+}
+
+const PROTECTED_EXTERNAL_TEMPLATE_PROP_KEYS = new Set([
+  "avatarClips",
+  "avatarVideoUrl",
+  "bgMusicUrl",
+  "bgMusicVolume",
+  "brollClips",
+  "deckCss",
+  "deckFonts",
+  "fps",
+  "layoutOverrides",
+  "slides",
+  "template",
+  "templateConfig",
+  "timelineOverrides",
+  "totalDurationInFrames",
+  "transitionType",
+  "voiceAudioUrl",
+]);
+
+function filterProtectedExternalTemplateOverrides(overrides: Record<string, unknown>) {
+  const filtered = Object.fromEntries(
+    Object.entries(overrides).filter(([key]) => !PROTECTED_EXTERNAL_TEMPLATE_PROP_KEYS.has(key)),
+  );
+
+  return Object.keys(filtered).length > 0 ? filtered : null;
 }
 
 function validatePropsSchema(
@@ -770,6 +810,66 @@ function validatePropsSchema(
   }
 }
 
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function hasOwnRecordKey(value: unknown, key: string) {
+  return Object.prototype.hasOwnProperty.call(readRecord(value), key);
+}
+
+function propsContainHtmlSlides(props: Record<string, unknown>) {
+  const slides = Array.isArray(props.slides) ? props.slides : [];
+  return slides.some((slide) => {
+    if (!slide || typeof slide !== "object" || Array.isArray(slide)) return false;
+    const record = slide as Record<string, unknown>;
+    return record.kind === "html" || typeof record.html === "string";
+  });
+}
+
+function templateDeclaresHtmlDeckSupport(input: {
+  bundleDefaultProps?: Record<string, unknown> | null;
+  propsSchema?: Record<string, unknown> | null;
+  manifest?: unknown;
+}) {
+  const manifest = readRecord(input.manifest);
+  const capabilities = readRecord(manifest.capabilities);
+  if (
+    capabilities.htmlDeck === true ||
+    capabilities.htmlSlides === true ||
+    capabilities.animatedDeck === true
+  ) {
+    return true;
+  }
+
+  const schemaProperties = readRecord(input.propsSchema?.properties);
+  const manifestSchemaProperties = readRecord(readRecord(manifest.propsSchema).properties);
+  const manifestDefaultProps = readRecord(manifest.defaultProps);
+
+  return [
+    input.bundleDefaultProps,
+    schemaProperties,
+    manifestSchemaProperties,
+    manifestDefaultProps,
+  ].some((record) => hasOwnRecordKey(record, "deckCss") && hasOwnRecordKey(record, "deckFonts"));
+}
+
+function assertExternalTemplateCanRenderSlides(input: {
+  resolvedProps: Record<string, unknown>;
+  bundleDefaultProps?: Record<string, unknown> | null;
+  propsSchema?: Record<string, unknown> | null;
+  manifest?: unknown;
+}) {
+  if (!propsContainHtmlSlides(input.resolvedProps)) return;
+  if (templateDeclaresHtmlDeckSupport(input)) return;
+
+  throw new Error(
+    "EXTERNAL_TEMPLATE_HTML_DECK_UNSUPPORTED: la plantilla externa no declara soporte para slides HTML animadas. Usa una composicion interna compatible o publica una version de plantilla que acepte deckCss, deckFonts y slides kind=html.",
+  );
+}
+
 function buildExternalTemplateProps(input: {
   assets: unknown;
   compositionId: string;
@@ -777,6 +877,7 @@ function buildExternalTemplateProps(input: {
   variables?: Record<string, unknown>;
   bundleDefaultProps?: Record<string, unknown> | null;
   propsSchema?: Record<string, unknown> | null;
+  manifest?: unknown;
   layoutContractVersion?: unknown;
   editableLayers?: unknown;
 }) {
@@ -817,6 +918,12 @@ function buildExternalTemplateProps(input: {
     timelineOverrides: courseProps.timelineOverrides,
   };
   validatePropsSchema(resolvedProps, input.propsSchema);
+  assertExternalTemplateCanRenderSlides({
+    resolvedProps,
+    bundleDefaultProps: input.bundleDefaultProps,
+    propsSchema: input.propsSchema,
+    manifest: input.manifest,
+  });
   return {
     resolvedProps,
     propsHash: buildStableHash(resolvedProps),
@@ -902,6 +1009,10 @@ function buildRenderDiagnostics(params: {
   compositionId?: string | null;
   propsHash?: string | null;
 }) {
+  const slides = Array.isArray(params.inputProps?.slides) ? params.inputProps.slides : [];
+  const htmlSlideCount = slides.filter((slide) => readRecord(slide).kind === "html").length;
+  const imageSlideCount = slides.filter((slide) => readRecord(slide).kind === "image").length;
+
   return {
     renderProvider: "desktop_worker",
     renderMode: params.renderMode,
@@ -913,6 +1024,15 @@ function buildRenderDiagnostics(params: {
     compositionId: params.compositionId || null,
     propsHash: params.propsHash || null,
     inputPropKeys: params.inputProps ? Object.keys(params.inputProps).sort() : [],
+    slideDiagnostics: {
+      total: slides.length,
+      html: htmlSlideCount,
+      image: imageSlideCount,
+      missingKind: Math.max(0, slides.length - htmlSlideCount - imageSlideCount),
+      hasDeckCss: typeof params.inputProps?.deckCss === "string" && params.inputProps.deckCss.length > 0,
+      deckCssBytes: typeof params.inputProps?.deckCss === "string" ? params.inputProps.deckCss.length : 0,
+      deckFonts: Array.isArray(params.inputProps?.deckFonts) ? params.inputProps.deckFonts.length : 0,
+    },
     rawAssetKeys:
       params.rawAssets && typeof params.rawAssets === "object" && !Array.isArray(params.rawAssets)
         ? Object.keys(params.rawAssets as Record<string, unknown>).sort()
@@ -1158,6 +1278,7 @@ export class DesktopWorkerControlPlane {
       variables: input.variables,
       bundleDefaultProps: cloudVersion.default_props,
       propsSchema: cloudVersion.props_schema,
+      manifest: cloudVersion.manifest,
       layoutContractVersion: cloudVersion.manifest?.layoutContractVersion,
       editableLayers: cloudVersion.editable_layers,
     });
@@ -1906,6 +2027,7 @@ export class DesktopWorkerControlPlane {
       variables: input.variables,
       bundleDefaultProps: cloudVersion.default_props,
       propsSchema: cloudVersion.props_schema,
+      manifest: cloudVersion.manifest,
       layoutContractVersion: cloudVersion.manifest?.layoutContractVersion,
       editableLayers: cloudVersion.editable_layers,
     });
@@ -3152,6 +3274,61 @@ export class DesktopWorkerControlPlane {
     return { ok: true };
   }
 
+  async closeRunningTelemetryRunsForProductionJob(input: {
+    workerId: string;
+    jobId: string;
+    status: "completed" | "failed";
+    finishedAt: string;
+    lastStage: string;
+    lastProgressPercent: number;
+    errorCode?: string | null;
+    errorMessage?: string | null;
+  }) {
+    const { data: runs, error: lookupError } = await this.supabase
+      .from("render_worker_job_runs")
+      .select("id, started_at, status")
+      .eq("worker_id", input.workerId)
+      .eq("remote_table", "production_jobs")
+      .eq("remote_job_id", input.jobId)
+      .is("finished_at", null);
+
+    if (lookupError) {
+      console.warn("[DesktopWorkerControlPlane] No se pudo buscar telemetria abierta", {
+        jobId: input.jobId,
+        error: lookupError.message,
+      });
+      return;
+    }
+
+    const results = await Promise.all((runs || []).map((run: any) => {
+      const elapsedMs = run.started_at
+        ? Math.max(0, new Date(input.finishedAt).getTime() - new Date(run.started_at).getTime())
+        : null;
+
+      return this.supabase
+        .from("render_worker_job_runs")
+        .update({
+          status: input.status,
+          finished_at: input.finishedAt,
+          elapsed_ms: elapsedMs,
+          last_stage: input.lastStage,
+          last_progress_percent: input.lastProgressPercent,
+          error_code: input.errorCode || null,
+          error_message: input.errorMessage || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", run.id)
+        .eq("worker_id", input.workerId);
+    }));
+    const failedUpdate = results.find((result: any) => result?.error);
+    if (failedUpdate?.error) {
+      console.warn("[DesktopWorkerControlPlane] No se pudo cerrar una fila de telemetria", {
+        jobId: input.jobId,
+        error: failedUpdate.error.message,
+      });
+    }
+  }
+
   async completeJob(worker: WorkerAuthContext, jobId: string, input: WorkerJobCompleteInput) {
     const templateBuild = await this.getAuthorizedTemplateBuild(worker, jobId);
     if (templateBuild) {
@@ -3228,6 +3405,7 @@ export class DesktopWorkerControlPlane {
       duration,
     });
 
+    const completedAt = new Date().toISOString();
     const outputSnapshot = {
       ...(job.output_snapshot || {}),
       final_video_url: publicUrl,
@@ -3240,21 +3418,24 @@ export class DesktopWorkerControlPlane {
       outputChecksum: sanitizeText(input.checksum, ""),
       logsRef: sanitizeText(input.logsRef, ""),
     };
+    const currentProgress = Array.isArray(job.progress) ? job.progress : [];
+    const progress = [
+      ...currentProgress.slice(-19),
+      safeJobProgressEntry({
+        percent: 100,
+        message: "Ensamblado completado exitosamente en worker local",
+        stage: "desktop_worker_completed",
+        workerId: worker.id,
+      }),
+    ];
 
     const { error } = await this.supabase
       .from("production_jobs")
       .update({
         status: "SUCCEEDED",
-        progress: [
-          safeJobProgressEntry({
-            percent: 100,
-            message: "Ensamblado completado exitosamente en worker local",
-            stage: "desktop_worker_completed",
-            workerId: worker.id,
-          }),
-        ],
-        completed_at: new Date().toISOString(),
-        worker_heartbeat_at: new Date().toISOString(),
+        progress,
+        completed_at: completedAt,
+        worker_heartbeat_at: completedAt,
         lease_expires_at: null,
         output_checksum: outputSnapshot.outputChecksum || null,
         logs_ref: outputSnapshot.logsRef || null,
@@ -3263,6 +3444,14 @@ export class DesktopWorkerControlPlane {
       .eq("id", jobId);
 
     if (error) throw new Error(`JOB_COMPLETE_FAILED: ${error.message}`);
+    await this.closeRunningTelemetryRunsForProductionJob({
+      workerId: worker.id,
+      jobId,
+      status: "completed",
+      finishedAt: completedAt,
+      lastStage: "complete",
+      lastProgressPercent: 100,
+    });
     await this.updateBatchItemFromJob(job.id, "SUCCEEDED");
     await this.heartbeat(worker, { status: "ONLINE" });
     return { finalVideoUrl: publicUrl, durationSeconds: duration };
@@ -3284,12 +3473,26 @@ export class DesktopWorkerControlPlane {
     const message = sanitizeText(input.message, "El worker local no pudo completar el render");
     const code = sanitizeText(input.errorCode, "") || "DESKTOP_WORKER_RENDER_FAILED";
 
+    const failedAt = new Date().toISOString();
+    const currentProgress = Array.isArray(job.progress) ? job.progress : [];
+    const failureProgressPercent = readLastJobProgressPercent(currentProgress, 0);
+    const progress = [
+      ...currentProgress.slice(-19),
+      safeJobProgressEntry({
+        percent: failureProgressPercent,
+        message,
+        stage: "desktop_worker_failed",
+        workerId: worker.id,
+      }),
+    ];
+
     await this.supabase
       .from("production_jobs")
       .update({
         status: "FAILED",
-        failed_at: new Date().toISOString(),
-        worker_heartbeat_at: new Date().toISOString(),
+        progress,
+        failed_at: failedAt,
+        worker_heartbeat_at: failedAt,
         lease_expires_at: null,
         provider_error: {
           code,
@@ -3300,6 +3503,17 @@ export class DesktopWorkerControlPlane {
         },
       })
       .eq("id", jobId);
+
+    await this.closeRunningTelemetryRunsForProductionJob({
+      workerId: worker.id,
+      jobId,
+      status: "failed",
+      finishedAt: failedAt,
+      lastStage: "fail",
+      lastProgressPercent: failureProgressPercent,
+      errorCode: code,
+      errorMessage: message,
+    });
 
     if (job.material_component_id) {
       const { data: component } = await this.supabase

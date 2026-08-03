@@ -132,6 +132,15 @@ describe("render batch contracts", () => {
     assert.match(productionActionsSource, /existingLayoutOverrides\.filter\(\(manifest\) => !isSameLayoutScope\(manifest\)\)/);
     assert.match(renderBatchServiceSource, /normalizedAssets\.avatarClips\.length > 0/);
     assert.match(desktopWorkerControlPlaneSource, /publishInternalBundle/);
+    assert.match(desktopWorkerControlPlaneSource, /"animated-deck-avatar"/);
+    assert.match(desktopWorkerControlPlaneSource, /deckCss: normalized\.deckCss/);
+    assert.match(desktopWorkerControlPlaneSource, /deckFonts: normalized\.deckFonts/);
+    assert.match(desktopWorkerControlPlaneSource, /PROTECTED_EXTERNAL_TEMPLATE_PROP_KEYS/);
+    assert.match(desktopWorkerControlPlaneSource, /"deckCss"/);
+    assert.match(desktopWorkerControlPlaneSource, /"deckFonts"/);
+    assert.match(desktopWorkerControlPlaneSource, /EXTERNAL_TEMPLATE_HTML_DECK_UNSUPPORTED/);
+    assert.match(desktopWorkerControlPlaneSource, /slideDiagnostics/);
+    assert.match(desktopWorkerControlPlaneSource, /closeRunningTelemetryRunsForProductionJob/);
     assert.match(desktopWorkerControlPlaneSource, /INTERNAL_COMPOSITION/);
     assert.match(desktopWorkerControlPlaneSource, /courseforge-internal-bundle\.json/);
     assert.match(desktopWorkerControlPlaneSource, /const bundleHash = sha256Buffer\(zipBuffer\)/);

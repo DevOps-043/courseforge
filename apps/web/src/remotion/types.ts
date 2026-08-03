@@ -45,6 +45,7 @@ export const ASSEMBLY_FALLBACK_DURATION_SECONDS = 10;
  * plantilla sembrada en `remotion_templates`.
  */
 export const ASSEMBLY_TEMPLATES = {
+  ANIMATED_DECK_AVATAR: "animated-deck-avatar",
   SPLIT_AVATAR: "split-avatar",
   FULL_SLIDES: "full-slides",
   AVATAR_FOCUS: "avatar-focus",
@@ -58,6 +59,7 @@ export const DEFAULT_ASSEMBLY_TEMPLATE: AssemblyTemplate =
   ASSEMBLY_TEMPLATES.FULL_SLIDES;
 
 export const assemblyTemplateSchema = z.enum([
+  ASSEMBLY_TEMPLATES.ANIMATED_DECK_AVATAR,
   ASSEMBLY_TEMPLATES.SPLIT_AVATAR,
   ASSEMBLY_TEMPLATES.FULL_SLIDES,
   ASSEMBLY_TEMPLATES.AVATAR_FOCUS,
@@ -69,10 +71,31 @@ export type AssemblyTransition = z.infer<typeof assemblyTransitionSchema>;
 
 // --- Sub-esquemas de assets resueltos --------------------------------------
 
-/** Una slide ya resuelta a su URL pública e índice de orden. */
+/** Una slide ya resuelta a su URL publica o a HTML saneado. */
 export const assemblySlideSchema = z.object({
+  animationCount: z.number().int().min(0).default(0),
+  classes: z.string().trim().optional(),
+  html: z.string().optional(),
   index: z.number().int().min(0),
-  url: z.string().url(),
+  kind: z.enum(["image", "html"]).default("image"),
+  label: z.string().trim().optional(),
+  url: z.string().url().optional(),
+}).superRefine((slide, context) => {
+  if (slide.kind === "image" && !slide.url) {
+    context.addIssue({
+      code: "custom",
+      message: "Las slides de imagen requieren url.",
+      path: ["url"],
+    });
+  }
+
+  if (slide.kind === "html" && (!slide.html || !slide.classes)) {
+    context.addIssue({
+      code: "custom",
+      message: "Las slides HTML requieren html y classes saneados.",
+      path: ["html"],
+    });
+  }
 });
 export type AssemblySlide = z.infer<typeof assemblySlideSchema>;
 
@@ -138,6 +161,19 @@ export const assemblyInputPropsSchema = z.object({
   /** Slides en orden de aparición. Puede venir vacío. */
   slides: z.array(assemblySlideSchema).default([]),
 
+  /** CSS saneado y aislado para slides HTML animadas. */
+  deckCss: z.string().default(""),
+
+  /** Google Fonts permitidas para el deck HTML. */
+  deckFonts: z
+    .array(
+      z.object({
+        family: z.string().trim().min(1),
+        href: z.string().url(),
+      }),
+    )
+    .default([]),
+
   /** Clips de B-roll en orden. Puede venir vacío. */
   brollClips: z.array(assemblyBrollClipSchema).default([]),
 
@@ -199,6 +235,8 @@ export function createDefaultAssemblyProps(
     bgMusicVolume: 0.15,
     avatarClips: [],
     slides: [],
+    deckCss: "",
+    deckFonts: [],
     brollClips: [],
     transitionType: "fade",
     templateConfig: DEFAULT_TEMPLATE_RENDER_CONFIG,

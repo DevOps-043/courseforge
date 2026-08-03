@@ -23,7 +23,7 @@ const LINK_CODE_TTL_MS = 10 * 60 * 1000;
 const BUNDLE_BUCKET = process.env.REMOTION_DESKTOP_WORKER_BUNDLE_BUCKET || 'production-videos';
 const VIDEO_BUCKET = 'production-videos';
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
-const INTERNAL_COMPOSITION_IDS = ['full-slides', 'split-avatar', 'avatar-focus'];
+const INTERNAL_COMPOSITION_IDS = ['animated-deck-avatar', 'full-slides', 'split-avatar', 'avatar-focus'];
 
 type SupabaseAnyClient = any;
 

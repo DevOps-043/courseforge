@@ -25,6 +25,8 @@ interface PrimaryVisualProps {
   brollClips: AssemblyBrollClip[];
   durationInFrames: number;
   transitionType: AssemblyTransition;
+  deckCss?: string;
+  deckFonts?: { family: string; href: string }[];
   templateConfig?: TemplateRenderConfig;
   layoutOverrides?: LayoutOverrideManifestList;
   timelineSegments?: VisualTimelineSegment[];
@@ -56,6 +58,8 @@ export function PrimaryVisual({
   brollClips,
   durationInFrames,
   transitionType,
+  deckCss = "",
+  deckFonts = [],
   templateConfig = DEFAULT_TEMPLATE_RENDER_CONFIG,
   layoutOverrides = [],
   timelineSegments = [],
@@ -80,6 +84,8 @@ export function PrimaryVisual({
             slides={slides}
             durationInFrames={durationInFrames}
             transitionType={transitionType}
+            deckCss={deckCss}
+            deckFonts={deckFonts}
             segments={slideTimelineSegments}
             getSlideStyle={(slide) =>
               buildLayoutOverrideStyle(

@@ -87,6 +87,8 @@ export function ProductionAssetCard({
     isUploadingAvatar,
     isUploadingSlides,
     isExportingOpenDesign,
+    isGeneratingSofliaSlides,
+    isPreparingAnimatedDeck,
 
     // Refs
     voiceFileRef,
@@ -124,7 +126,9 @@ export function ProductionAssetCard({
     handleVoiceUpload,
     handleMusicUpload,
     handleVolumeChange,
+    handleSofliaEngineSlideGeneration,
     handleOpenDesignExport,
+    prepareUploadedHtmlSlidesAsAnimatedDeck,
     handleSlidesZipUpload,
     handleBrollClipUpload,
     removeBrollClip,
@@ -244,10 +248,14 @@ export function ProductionAssetCard({
               <OpenDesignSlidesSection
                 slides={slidesAsset}
                 isExporting={isExportingOpenDesign}
+                isGeneratingSofliaSlides={isGeneratingSofliaSlides}
                 isUploading={isUploadingSlides}
+                isPreparingAnimatedDeck={isPreparingAnimatedDeck}
                 fileRef={slidesFileRef}
+                onGenerateSofliaSlides={handleSofliaEngineSlideGeneration}
                 onExport={handleOpenDesignExport}
                 onUpload={handleSlidesZipUpload}
+                onPrepareAnimatedDeck={prepareUploadedHtmlSlidesAsAnimatedDeck}
                 onClear={clearSlidesAsset}
                 isSearchingDrive={isSearchingGoogleDrive}
                 isImportingDrive={isImportingGoogleDrive}

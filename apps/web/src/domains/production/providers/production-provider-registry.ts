@@ -13,6 +13,15 @@ interface ProductionProviderDefinition {
 
 const PROVIDERS: ProductionProviderDefinition[] = [
   {
+    key: PRODUCTION_PROVIDERS.SOFLIA_ENGINE_SLIDES,
+    name: "SofLIA - Engine Slides",
+    jobTypes: [
+      PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
+      PRODUCTION_JOB_TYPES.SLIDE_DECK_EXPORT,
+      PRODUCTION_JOB_TYPES.SLIDE_DECK_PREPARE,
+    ],
+  },
+  {
     key: PRODUCTION_PROVIDERS.GEMINI,
     name: "Gemini",
     jobTypes: [PRODUCTION_JOB_TYPES.BROLL_PROMPT_GENERATION],

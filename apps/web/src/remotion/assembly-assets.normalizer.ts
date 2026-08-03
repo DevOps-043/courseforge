@@ -26,6 +26,8 @@ export interface NormalizedAssemblyAssets {
   avatarVideoUrl?: string;
   avatarClips: AssemblyAvatarClip[];
   slides: AssemblySlide[];
+  deckCss: string;
+  deckFonts: { family: string; href: string }[];
   brollClips: AssemblyBrollClip[];
   totalDurationSeconds: number;
   warnings: AssemblyAssetWarning[];
@@ -48,9 +50,11 @@ function isPositiveNumber(value: unknown): value is number {
 
 function hasSlideReference(assets: MaterialAssets): boolean {
   return Boolean(
-    assets.slides_url ||
+      assets.slides_url ||
       assets.slides?.html_public_url ||
       assets.slides?.html_content_path ||
+      assets.slides?.animated_deck?.status === "READY_FOR_PREVIEW" ||
+      assets.slides?.animated_deck?.status === "READY_FOR_RENDER" ||
       assets.slides?.open_design_project_id,
   );
 }
@@ -100,10 +104,32 @@ export function normalizeAssemblyAssets(
 ): NormalizedAssemblyAssets {
   const a = assets ?? {};
 
-  const slides = (a.slides?.images ?? [])
+  const animatedDeck = a.slides?.animated_deck;
+  const hasAnimatedDeck =
+    animatedDeck?.status === "READY_FOR_PREVIEW" ||
+    animatedDeck?.status === "READY_FOR_RENDER";
+  const animatedSlides = hasAnimatedDeck
+    ? (animatedDeck.slides ?? [])
+        .sort((left, right) => left.index - right.index)
+        .map((slide, index) => ({
+          animationCount: slide.animationCount,
+          classes: slide.classes,
+          html: slide.html,
+          index,
+          kind: "html" as const,
+          label: slide.label,
+        }))
+    : [];
+  const imageSlides = (a.slides?.images ?? [])
     .filter((img) => Boolean(img?.public_url))
     .sort((left, right) => left.slide_index - right.slide_index)
-    .map((img, index) => ({ index, url: img.public_url }));
+    .map((img, index) => ({
+      animationCount: 0,
+      index,
+      kind: "image" as const,
+      url: img.public_url,
+    }));
+  const slides = animatedSlides.length > 0 ? animatedSlides : imageSlides;
 
   const brollClips = (a.b_roll_clips ?? [])
     .filter((clip) => Boolean(clip?.public_url))
@@ -190,6 +216,13 @@ export function normalizeAssemblyAssets(
     avatarVideoUrl: a.avatar_video?.public_url || undefined,
     avatarClips,
     slides,
+    deckCss: animatedSlides.length > 0 ? animatedDeck?.css || "" : "",
+    deckFonts: animatedSlides.length > 0
+      ? (animatedDeck?.fonts ?? []).map((font) => ({
+          family: font.family,
+          href: font.href,
+        }))
+      : [],
     brollClips,
     totalDurationSeconds,
     warnings,

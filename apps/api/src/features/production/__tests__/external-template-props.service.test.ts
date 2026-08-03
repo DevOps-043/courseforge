@@ -21,6 +21,26 @@ const assets = {
   },
 };
 
+const animatedDeckAssets = {
+  ...assets,
+  slides: {
+    animated_deck: {
+      status: 'READY_FOR_RENDER',
+      css: '.deck-scope .slide { width: 1920px; height: 1080px; }',
+      fonts: [{ family: 'Inter', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap' }],
+      slides: [
+        {
+          animationCount: 1,
+          classes: 'slide title-slide',
+          html: '<h1>Slide animada</h1>',
+          index: 1,
+          label: 'Slide 1',
+        },
+      ],
+    },
+  },
+};
+
 describe('external template props contract', () => {
   it('merges bundle defaults, Courseforge props and user overrides deterministically', () => {
     const result = buildExternalTemplateProps({
@@ -148,6 +168,48 @@ describe('external template props contract', () => {
     ]);
     assert.equal((result.resolvedProps.timelineOverrides as any[])[0].timeline.durationInFrames, 12 * 30);
     assert.equal((result.resolvedProps.timelineOverrides as any[])[0].segments[0].startFrame, 30);
+  });
+
+  it('rejects html slide decks when an external template does not declare support', () => {
+    assert.throws(
+      () => buildExternalTemplateProps({
+        assets: animatedDeckAssets,
+        compositionId: 'external-main',
+        bundleDefaultProps: {
+          title: 'Bundle antiguo',
+        },
+      }),
+      /EXTERNAL_TEMPLATE_HTML_DECK_UNSUPPORTED/,
+    );
+  });
+
+  it('allows html slide decks when the external template declares support', () => {
+    const result = buildExternalTemplateProps({
+      assets: animatedDeckAssets,
+      compositionId: 'external-main',
+      bundleDefaultProps: {
+        deckCss: '',
+        deckFonts: [],
+        title: 'Bundle compatible',
+      },
+      manifest: {
+        capabilities: {
+          htmlDeck: true,
+        },
+      },
+      variables: {
+        templateProps: {
+          deckCss: '',
+          deckFonts: [],
+          title: 'Titulo permitido',
+        },
+      },
+    });
+
+    assert.equal(result.resolvedProps.title, 'Titulo permitido');
+    assert.match(String(result.resolvedProps.deckCss), /deck-scope/);
+    assert.equal((result.resolvedProps.deckFonts as any[])[0].family, 'Inter');
+    assert.equal((result.resolvedProps.slides as any[])[0].kind, 'html');
   });
 
   it('fails with a stable code when required props are missing', () => {

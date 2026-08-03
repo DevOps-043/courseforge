@@ -1,4 +1,4 @@
-import { AbsoluteFill, Img, Sequence } from "remotion";
+import { AbsoluteFill, Img, Sequence, useCurrentFrame, useVideoConfig } from "remotion";
 import {
   TransitionSeries,
   linearTiming,
@@ -10,11 +10,14 @@ import type { AssemblySlide, AssemblyTransition } from "../types";
 import type { LayoutOverrideStyle } from "../layout-override-styles";
 import type { VisualTimelineSegment } from "../visual-timeline";
 import { resolveSlideTimelineRenderItems } from "./slide-timeline-rendering";
+import { AnimatedDeckSlide } from "./AnimatedDeckSlide";
 
 interface SlideShowProps {
   slides: AssemblySlide[];
   durationInFrames: number;
   transitionType: AssemblyTransition;
+  deckCss?: string;
+  deckFonts?: { family: string; href: string }[];
   segments?: VisualTimelineSegment[];
   getSlideStyle?: (slide: AssemblySlide) => LayoutOverrideStyle;
 }
@@ -41,6 +44,37 @@ function SlideImage({
   );
 }
 
+function SlideFrame({
+  durationInFrames,
+  slide,
+  style,
+}: {
+  durationInFrames: number;
+  slide: AssemblySlide;
+  style?: LayoutOverrideStyle;
+}) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+
+  return (
+    <AbsoluteFill>
+      <div style={{ position: "absolute", inset: 0, ...style }}>
+        {slide.kind === "html" ? (
+          <AnimatedDeckSlide
+            slide={slide}
+            localFrame={Math.min(frame, durationInFrames)}
+            fps={fps}
+            width={1920}
+            height={1080}
+          />
+        ) : (
+          <SlideImage url={slide.url || ""} />
+        )}
+      </div>
+    </AbsoluteFill>
+  );
+}
+
 /**
  * Reproduce las slides en orden, repartiendo `durationInFrames` de forma
  * equitativa. Con transición usa `@remotion/transitions`; sin ella, corte seco.
@@ -51,6 +85,8 @@ export function SlideShow({
   slides,
   durationInFrames,
   transitionType,
+  deckCss = "",
+  deckFonts = [],
   segments,
   getSlideStyle,
 }: SlideShowProps) {
@@ -73,7 +109,12 @@ export function SlideShow({
             from={segment.startFrame}
             durationInFrames={segment.durationInFrames}
           >
-            <SlideImage url={slide.url} style={getSlideStyle?.(slide)} />
+            <DeckStyle css={deckCss} fonts={deckFonts} />
+            <SlideFrame
+              durationInFrames={segment.durationInFrames}
+              slide={slide}
+              style={getSlideStyle?.(slide)}
+            />
           </Sequence>
         ))}
       </>
@@ -90,7 +131,12 @@ export function SlideShow({
             from={s.index * perSlideFrames}
             durationInFrames={perSlideFrames}
           >
-            <SlideImage url={s.url} style={getSlideStyle?.(s)} />
+            <DeckStyle css={deckCss} fonts={deckFonts} />
+            <SlideFrame
+              durationInFrames={perSlideFrames}
+              slide={s}
+              style={getSlideStyle?.(s)}
+            />
           </Sequence>
         ))}
       </>
@@ -113,7 +159,12 @@ export function SlideShow({
         key={`seq-${s.index}`}
         durationInFrames={perSlideFrames + transitionFrames}
       >
-        <SlideImage url={s.url} style={getSlideStyle?.(s)} />
+        <DeckStyle css={deckCss} fonts={deckFonts} />
+        <SlideFrame
+          durationInFrames={perSlideFrames + transitionFrames}
+          slide={s}
+          style={getSlideStyle?.(s)}
+        />
       </TransitionSeries.Sequence>,
     );
     if (i < slideCount - 1) {
@@ -128,4 +179,23 @@ export function SlideShow({
   });
 
   return <TransitionSeries>{children}</TransitionSeries>;
+}
+
+function DeckStyle({
+  css,
+  fonts,
+}: {
+  css: string;
+  fonts: { family: string; href: string }[];
+}) {
+  if (!css && fonts.length === 0) {
+    return null;
+  }
+
+  const fontImports = fonts
+    .filter((font) => !css.includes(font.href))
+    .map((font) => `@import url("${font.href}");`)
+    .join("\n");
+
+  return <style>{`${fontImports}\n${css}`}</style>;
 }

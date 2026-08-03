@@ -157,6 +157,70 @@ describe("normalizeAssemblyAssets", () => {
     );
   });
 
+  it("prioritizes prepared animated decks over legacy slide images", () => {
+    const assets: MaterialAssets = {
+      slides: {
+        animated_deck: {
+          animated_slide_count: 1,
+          cleanup_report: { slideCount: 2 },
+          css: ".deck-scope .slide { width: 1920px; height: 1080px; }",
+          fonts: [
+            {
+              family: "Outfit",
+              href: "https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap",
+              source: "google",
+            },
+          ],
+          height: 1080,
+          slide_count: 2,
+          slides: [
+            {
+              animationCount: 1,
+              classes: "slide s-center",
+              html: "<h1>Animated</h1>",
+              index: 1,
+              label: "01 Animated",
+            },
+            {
+              animationCount: 0,
+              classes: "slide s-center",
+              html: "<h1>Static</h1>",
+              index: 2,
+              label: "02 Static",
+            },
+          ],
+          source: "manual_upload",
+          source_html_path: "production-assets/slides/source.html",
+          static_slide_count: 1,
+          status: "READY_FOR_RENDER",
+          validation_report: { isValid: true },
+          width: 1920,
+        },
+        images: [
+          {
+            slide_index: 1,
+            storage_path: "production-assets/slides/legacy.png",
+            public_url: "https://cdn.example.com/legacy.png",
+          },
+        ],
+      },
+    };
+
+    const normalized = normalizeAssemblyAssets(assets, ASSEMBLY_FPS);
+    const props = buildAssemblyProps(assets, ASSEMBLY_TEMPLATES.FULL_SLIDES);
+
+    assert.deepEqual(
+      normalized.slides.map((slide) => slide.kind),
+      ["html", "html"],
+    );
+    assert.equal(normalized.slides[0].html, "<h1>Animated</h1>");
+    assert.equal(normalized.deckCss, ".deck-scope .slide { width: 1920px; height: 1080px; }");
+    assert.deepEqual(normalized.deckFonts.map((font) => font.family), ["Outfit"]);
+    assert.equal(props.slides[0].kind, "html");
+    assert.equal(props.deckFonts[0].family, "Outfit");
+    assert.equal(props.totalDurationInFrames, 10 * ASSEMBLY_FPS);
+  });
+
   it("treats completed avatar clips as renderable without a merged avatar video", () => {
     const assets: MaterialAssets = {
       avatar_clips: [
@@ -911,8 +975,8 @@ describe("buildVisualTimeline", () => {
   it("resolves slide render segments by layer id when override ids drift", () => {
     const items = resolveSlideTimelineRenderItems(
       [
-        { index: 0, url: "https://cdn.example.com/slide-1.png" },
-        { index: 1, url: "https://cdn.example.com/slide-2.png" },
+        { animationCount: 0, index: 0, kind: "image", url: "https://cdn.example.com/slide-1.png" },
+        { animationCount: 0, index: 1, kind: "image", url: "https://cdn.example.com/slide-2.png" },
       ],
       [
         {

@@ -138,6 +138,7 @@ export function mapWorkerError(error: unknown) {
     message.includes("EXTERNAL_BUILD_NOT_READY") ||
     message.includes("EXTERNAL_RENDER_TARGET_INCOMPLETE") ||
     message.includes("EXTERNAL_COMPOSITION_ID_MISSING") ||
+    message.includes("EXTERNAL_TEMPLATE_HTML_DECK_UNSUPPORTED") ||
     message.includes("DESKTOP_WORKER_NETLIFY_REQUIRES") ||
     message.includes("DESKTOP_WORKER_REQUIRES_TEMPLATE_BUILD") ||
     message.includes("TEMPLATE_BUILD_NOT_CLAIMABLE") ||

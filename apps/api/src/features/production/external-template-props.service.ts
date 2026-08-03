@@ -17,6 +17,7 @@ export interface ExternalTemplatePropsInput {
   variables?: Record<string, unknown>;
   bundleDefaultProps?: Record<string, unknown> | null;
   propsSchema?: Record<string, unknown> | null;
+  manifest?: unknown;
 }
 
 export interface ExternalTemplatePropsResult extends ResolvedPropsResult {
@@ -30,6 +31,8 @@ const PROTECTED_COURSE_PROP_KEYS = new Set([
   'bgMusicUrl',
   'bgMusicVolume',
   'brollClips',
+  'deckCss',
+  'deckFonts',
   'fps',
   'layoutOverrides',
   'slides',
@@ -69,6 +72,12 @@ export function buildExternalTemplateProps(input: ExternalTemplatePropsInput): E
   });
 
   validatePropsSchema(resolved.resolvedProps, input.propsSchema);
+  assertExternalTemplateCanRenderHtmlSlides({
+    resolvedProps: resolved.resolvedProps,
+    bundleDefaultProps: input.bundleDefaultProps,
+    propsSchema: input.propsSchema,
+    manifest: input.manifest,
+  });
 
   return {
     ...resolved,
@@ -90,6 +99,66 @@ export function extractExternalTemplateOverrides(value: unknown): Record<string,
   }
 
   return filterProtectedCoursePropOverrides(candidate as Record<string, unknown>);
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function hasOwnRecordKey(value: unknown, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(readRecord(value), key);
+}
+
+function propsContainHtmlSlides(props: Record<string, unknown>): boolean {
+  const slides = Array.isArray(props.slides) ? props.slides : [];
+  return slides.some((slide) => {
+    if (!slide || typeof slide !== 'object' || Array.isArray(slide)) return false;
+    const record = slide as Record<string, unknown>;
+    return record.kind === 'html' || typeof record.html === 'string';
+  });
+}
+
+function templateDeclaresHtmlDeckSupport(input: {
+  bundleDefaultProps?: Record<string, unknown> | null;
+  propsSchema?: Record<string, unknown> | null;
+  manifest?: unknown;
+}): boolean {
+  const manifest = readRecord(input.manifest);
+  const capabilities = readRecord(manifest.capabilities);
+  if (
+    capabilities.htmlDeck === true ||
+    capabilities.htmlSlides === true ||
+    capabilities.animatedDeck === true
+  ) {
+    return true;
+  }
+
+  const schemaProperties = readRecord(input.propsSchema?.properties);
+  const manifestSchemaProperties = readRecord(readRecord(manifest.propsSchema).properties);
+  const manifestDefaultProps = readRecord(manifest.defaultProps);
+
+  return [
+    input.bundleDefaultProps,
+    schemaProperties,
+    manifestSchemaProperties,
+    manifestDefaultProps,
+  ].some((record) => hasOwnRecordKey(record, 'deckCss') && hasOwnRecordKey(record, 'deckFonts'));
+}
+
+function assertExternalTemplateCanRenderHtmlSlides(input: {
+  resolvedProps: Record<string, unknown>;
+  bundleDefaultProps?: Record<string, unknown> | null;
+  propsSchema?: Record<string, unknown> | null;
+  manifest?: unknown;
+}): void {
+  if (!propsContainHtmlSlides(input.resolvedProps)) return;
+  if (templateDeclaresHtmlDeckSupport(input)) return;
+
+  throw new Error(
+    'EXTERNAL_TEMPLATE_HTML_DECK_UNSUPPORTED: la plantilla externa no declara soporte para slides HTML animadas. Usa una composicion interna compatible o publica una version de plantilla que acepte deckCss, deckFonts y slides kind=html.',
+  );
 }
 
 export function filterProtectedCoursePropOverrides(

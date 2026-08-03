@@ -224,6 +224,48 @@ export interface MaterialAssets {
         open_design_project_id?: string;
         html_content_path?: string;
         html_public_url?: string;
+        qa_content_path?: string;
+        qa_report?: Record<string, unknown>;
+        spec_content_path?: string;
+        animated_deck?: {
+            status: 'PENDING' | 'VALIDATING' | 'READY_FOR_PREVIEW' | 'READY_FOR_RENDER' | 'FAILED';
+            source: 'manual_upload' | 'open_design_import';
+            source_html_path: string;
+            deck_json_path?: string;
+            deck_css_path?: string;
+            slide_count: number;
+            animated_slide_count: number;
+            static_slide_count: number;
+            width: number;
+            height: number;
+            fonts: {
+                family: string;
+                source: 'google';
+                href: string;
+                weights?: string[];
+            }[];
+            remote_assets?: {
+                source_url: string;
+                storage_path: string;
+                public_url: string;
+                content_type: string;
+                bytes: number;
+                status?: 'imported' | 'placeholder';
+                fallback_reason?: string;
+            }[];
+            css: string;
+            slides: {
+                index: number;
+                label: string;
+                classes: string;
+                html: string;
+                animationCount: number;
+            }[];
+            cleanup_report: Record<string, unknown>;
+            validation_report: Record<string, unknown>;
+            error_message?: string;
+            generated_at?: string;
+        };
         images?: {
             slide_index: number;
             storage_path: string;

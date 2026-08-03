@@ -50,6 +50,10 @@ interface WorkerTelemetryRunRow {
   template_version_id?: string | null;
   render_batch_id?: string | null;
   composition_id?: string | null;
+  render_concurrency?: number | null;
+  hardware_acceleration?: string | null;
+  chromium_gl?: string | null;
+  video_bitrate?: string | null;
   error_code?: string | null;
   error_message?: string | null;
 }
@@ -135,6 +139,7 @@ export interface WorkerTelemetryRunView {
   memoryTotalBytes: number;
   cpuLabel: string;
   gpuLabel: string;
+  renderConfigLabel: string;
   artifactTitle: string | null;
   componentType: string | null;
   platformLabel: string;
@@ -318,6 +323,9 @@ function buildOptimizationInsights(runs: WorkerTelemetryRunView[], summary: Work
   const insights: WorkerTelemetryInsight[] = [];
   const totalRuns = Math.max(1, summary.totalRuns);
   const failureRate = summary.failedRuns / totalRuns;
+  const unsampledRuns = runs.filter((run) => run.sampleCount === 0).length;
+  const openTelemetryRuns = runs.filter((run) => !run.finishedAt).length;
+  const incompleteTelemetryRatio = Math.max(unsampledRuns, openTelemetryRuns) / totalRuns;
   const memoryPressureRuns = runs.filter((run) => run.bottleneckLabel === "Presion de memoria").length;
   const cpuPressureRuns = runs.filter((run) => run.bottleneckLabel === "CPU saturada").length;
   const gpuPressureRuns = runs.filter((run) => run.bottleneckLabel === "GPU saturada").length;
@@ -385,12 +393,12 @@ function buildOptimizationInsights(runs: WorkerTelemetryRunView[], summary: Work
     });
   }
 
-  if (summary.sampledRuns === 0 && summary.totalRuns > 0) {
+  if (incompleteTelemetryRatio >= 0.25 && summary.totalRuns > 0) {
     insights.push({
-      level: "warning",
+      level: incompleteTelemetryRatio >= 0.75 ? "critical" : "warning",
       title: "Telemetria incompleta",
-      metric: "0 runs con samples",
-      detail: "Los runs existen, pero no hay muestras de CPU/GPU/RAM. El worker debe seguir enviando samples para que el diagnostico sea confiable.",
+      metric: `${unsampledRuns} sin samples · ${openTelemetryRuns} abiertos`,
+      detail: "Hay runs que no cerraron o no enviaron muestras de CPU/GPU/RAM. El worker debe enviar samples durante render y cerrar /telemetry/runs/{localRunId}/finish aunque el job termine por /complete.",
     });
   }
 
@@ -546,7 +554,7 @@ export async function loadWorkerTelemetryPageData(organizationSlug?: string | nu
   let query = admin
     .from("render_worker_job_runs")
     .select(
-      "id, worker_id, organization_id, remote_table, remote_job_id, job_type, status, started_at, finished_at, elapsed_ms, last_stage, last_progress_percent, sample_count, avg_app_cpu_percent, max_app_cpu_percent, avg_app_gpu_percent, max_app_gpu_percent, avg_system_cpu_percent, max_system_cpu_percent, avg_system_gpu_percent, max_system_gpu_percent, max_system_memory_used_bytes, memory_total_bytes, cpu_model, cpu_logical_threads, gpu_adapters, platform, arch, artifact_id, material_component_id, template_version_id, render_batch_id, composition_id, error_code, error_message",
+      "id, worker_id, organization_id, remote_table, remote_job_id, job_type, status, started_at, finished_at, elapsed_ms, last_stage, last_progress_percent, sample_count, avg_app_cpu_percent, max_app_cpu_percent, avg_app_gpu_percent, max_app_gpu_percent, avg_system_cpu_percent, max_system_cpu_percent, avg_system_gpu_percent, max_system_gpu_percent, max_system_memory_used_bytes, memory_total_bytes, cpu_model, cpu_logical_threads, gpu_adapters, platform, arch, artifact_id, material_component_id, template_version_id, render_batch_id, composition_id, render_concurrency, hardware_acceleration, chromium_gl, video_bitrate, error_code, error_message",
     )
     .order("started_at", { ascending: false })
     .limit(RUN_LIMIT);
@@ -664,6 +672,12 @@ export async function loadWorkerTelemetryPageData(organizationSlug?: string | nu
         .filter(Boolean)
         .join(" · ") || "CPU no reportado",
       gpuLabel: getGpuLabel(row.gpu_adapters),
+      renderConfigLabel: [
+        row.render_concurrency ? `${row.render_concurrency} renders` : null,
+        row.hardware_acceleration ? `HW ${row.hardware_acceleration}` : null,
+        row.chromium_gl ? `GL ${row.chromium_gl}` : null,
+        row.video_bitrate ? `bitrate ${row.video_bitrate}` : null,
+      ].filter(Boolean).join(" · ") || "Config render no reportada",
       artifactTitle: artifact?.title || null,
       componentType: component?.type || null,
       platformLabel: [worker?.platform || row.platform, worker?.arch || row.arch, worker?.app_version]

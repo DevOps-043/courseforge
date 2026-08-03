@@ -137,6 +137,8 @@ export function buildAssemblyProps(
     avatarVideoUrl: normalized.avatarVideoUrl,
     avatarClips: normalized.avatarClips,
     slides: normalized.slides,
+    deckCss: normalized.deckCss,
+    deckFonts: normalized.deckFonts,
     brollClips: normalized.brollClips,
     transitionType: templateConfig.transitionType,
     templateConfig,

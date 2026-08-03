@@ -253,6 +253,8 @@ export function useProductionAssetState({
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isUploadingSlides, setIsUploadingSlides] = useState(false);
   const [isExportingOpenDesign, setIsExportingOpenDesign] = useState(false);
+  const [isGeneratingSofliaSlides, setIsGeneratingSofliaSlides] = useState(false);
+  const [isPreparingAnimatedDeck, setIsPreparingAnimatedDeck] = useState(false);
 
   // HeyGen generation states
   const [heygenAvatarPresets, setHeygenAvatarPresets] = useState<HeygenPreset[]>([]);
@@ -513,10 +515,12 @@ export function useProductionAssetState({
     }
   };
 
-  const transformUploadedHtmlSlides = async (
+  const prepareUploadedHtmlSlidesAsAnimatedDeck = async (
     preferredHtmlPath: string,
   ): Promise<boolean> => {
-    const response = await fetch("/api/production/open-design/html-to-png", {
+    setIsPreparingAnimatedDeck(true);
+    try {
+      const response = await fetch("/api/production/slides/animated-deck/prepare", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -524,32 +528,79 @@ export function useProductionAssetState({
         htmlContentPath: preferredHtmlPath,
       }),
     });
-    const data = await response.json();
+      const data = await response.json();
 
-    if (!response.ok || !data.success || !Array.isArray(data.slideImages) || data.slideImages.length === 0) {
-      throw new Error(data.error || "No se pudo transformar el HTML a PNG");
+      if (!response.ok || !data.success || !data.assets?.slides?.animated_deck) {
+        throw new Error(data.error || "No se pudo preparar el deck animado");
+      }
+
+      const newSlides: SlidesAsset = data.assets.slides;
+
+      setSlidesAsset(newSlides);
+      setSlidesUrl(newSlides.html_public_url || slidesUrl);
+      onAssetChange?.(component.id, {
+        final_video_assembly_stale: true,
+        slides: newSlides,
+        slides_url: newSlides.html_public_url || slidesUrl,
+      });
+      return true;
+    } finally {
+      setIsPreparingAnimatedDeck(false);
     }
-
-    const {
-      html_public_url: _htmlPublicUrl,
-      html_content_path: _htmlContentPath,
-      ...slidesWithoutHtmlSource
-    } = data.assets?.slides || slidesAsset || {};
-    const newSlides: SlidesAsset = {
-      ...slidesWithoutHtmlSource,
-      images: data.slideImages,
-    };
-
-    setSlidesAsset(newSlides);
-    setSlidesUrl(data.assets?.slides_url || data.slideImages[0]?.public_url || "");
-    onAssetChange?.(component.id, {
-      slides: newSlides,
-      slides_url: data.assets?.slides_url || data.slideImages[0]?.public_url || "",
-    });
-    return true;
   };
 
   // 3. Generated HTML export & Upload ZIP/HTML
+  const handleSofliaEngineSlideGeneration = async () => {
+    setIsGeneratingSofliaSlides(true);
+    try {
+      const response = await fetch("/api/production/slides/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          componentId: component.id,
+          locale: "es",
+          metadata: {
+            brandLabel: "SofLIA - Engine",
+          },
+          template: "course-module",
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "No se pudo generar el deck SofLIA - Engine");
+      }
+
+      const generatedSlides = data.assets?.slides as SlidesAsset | undefined;
+      const generatedSlidesUrl =
+        data.assets?.slides_url || generatedSlides?.html_public_url || slidesUrl;
+
+      if (generatedSlides) {
+        setSlidesAsset(generatedSlides);
+      }
+      setSlidesUrl(generatedSlidesUrl);
+      const updatedAssets: Partial<MaterialAssets> = {
+        final_video_assembly_stale: true,
+        production_status: "DECK_READY" as any,
+        slides_url: generatedSlidesUrl,
+      };
+      const nextSlides = generatedSlides || slidesAsset;
+      if (nextSlides) {
+        updatedAssets.slides = nextSlides;
+      }
+      onAssetChange?.(component.id, updatedAssets);
+      toast.success(
+        data.reused
+          ? "Deck SofLIA - Engine recuperado"
+          : "Deck SofLIA - Engine generado",
+      );
+    } catch (err: any) {
+      toast.error(`Error al generar deck SofLIA - Engine: ${err.message}`);
+    } finally {
+      setIsGeneratingSofliaSlides(false);
+    }
+  };
+
   const handleOpenDesignExport = async () => {
     setIsExportingOpenDesign(true);
     try {
@@ -657,9 +708,9 @@ export function useProductionAssetState({
         onAssetChange?.(component.id, { slides: refSlides, slides_url: referenceUrl });
 
         if (hasHtmlSource) {
-          toast.info("Transformando HTML a PNG para ensamblado...");
-          await transformUploadedHtmlSlides(referencePath);
-          toast.success("HTML transformado a PNG correctamente");
+          toast.info("Preparando deck HTML animado para Remotion...");
+          await prepareUploadedHtmlSlidesAsAnimatedDeck(referencePath);
+          toast.success("Deck HTML preparado para preview y ensamblado");
           return;
         }
 
@@ -1329,6 +1380,8 @@ export function useProductionAssetState({
     isUploadingAvatar,
     isUploadingSlides,
     isExportingOpenDesign,
+    isGeneratingSofliaSlides,
+    isPreparingAnimatedDeck,
 
     // Refs
     voiceFileRef,
@@ -1368,7 +1421,9 @@ export function useProductionAssetState({
     handleVoiceUpload,
     handleMusicUpload,
     handleVolumeChange,
+    handleSofliaEngineSlideGeneration,
     handleOpenDesignExport,
+    prepareUploadedHtmlSlidesAsAnimatedDeck,
     handleSlidesZipUpload,
     handleBrollClipUpload,
     removeBrollClip,

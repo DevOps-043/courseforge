@@ -26,6 +26,11 @@ export function buildBundleManifest(spec: BundleAgentSpec, blueprint: BundleBlue
     fps: blueprint.fps,
     width: blueprint.width,
     height: blueprint.height,
+    capabilities: {
+      animatedDeck: true,
+      htmlDeck: true,
+      htmlSlides: true,
+    },
     propsSchema: {
       ...spec.propsSchema,
       type: "object" as const,
@@ -37,6 +42,8 @@ export function buildBundleManifest(spec: BundleAgentSpec, blueprint: BundleBlue
         bgMusicUrl: { type: "string", description: "URL publica de musica de fondo." },
         bgMusicVolume: { type: "number", description: "Volumen relativo de musica de fondo entre 0 y 1." },
         brollClips: { type: "array", description: "Clips B-roll normalizados por SofLIA - Engine." },
+        deckCss: { type: "string", description: "CSS saneado y scoped de diapositivas HTML animadas." },
+        deckFonts: { type: "array", description: "Google Fonts permitidas para diapositivas HTML animadas." },
         animationVariant: { type: "string", description: "Ritmo de animacion elegido desde la direccion creativa." },
         designTokens: { type: "object", description: "Tokens visuales seguros expuestos por la direccion creativa." },
         expandMissingSupportMedia: { type: "boolean", description: "Expande slide o B-roll cuando falta el otro soporte visual." },
@@ -55,6 +62,8 @@ export function buildBundleManifest(spec: BundleAgentSpec, blueprint: BundleBlue
       avatarClips: Array.isArray(spec.defaultProps.avatarClips) ? spec.defaultProps.avatarClips : [],
       bgMusicVolume: typeof spec.defaultProps.bgMusicVolume === "number" ? spec.defaultProps.bgMusicVolume : 0.12,
       brollClips: Array.isArray(spec.defaultProps.brollClips) ? spec.defaultProps.brollClips : [],
+      deckCss: typeof spec.defaultProps.deckCss === "string" ? spec.defaultProps.deckCss : "",
+      deckFonts: Array.isArray(spec.defaultProps.deckFonts) ? spec.defaultProps.deckFonts : [],
       animationVariant: typeof spec.defaultProps.animationVariant === "string" ? spec.defaultProps.animationVariant : getDefaultAnimationVariant(spec),
       designTokens: {
         backgroundColor: spec.creativeBrief.colorTokens.background,

@@ -22,7 +22,17 @@ export const AVATAR_CLIP_CROSSFADE_FRAMES = 8;
 
 // Only compositions registered by the internal Remotion root are accepted here.
 // External cloud bundles may provide different composition IDs.
-const INTERNAL_COMPOSITION_IDS = new Set(['full-slides', 'split-avatar', 'avatar-focus']);
+const INTERNAL_COMPOSITION_IDS = new Set(['animated-deck-avatar', 'full-slides', 'split-avatar', 'avatar-focus']);
+
+type AssemblySlide = {
+  animationCount?: number;
+  classes?: string;
+  html?: string;
+  index: number;
+  kind?: 'html' | 'image';
+  label?: string;
+  url?: string;
+};
 
 export interface AssemblyInputProps {
   template: string;
@@ -33,7 +43,9 @@ export interface AssemblyInputProps {
   bgMusicVolume: number;
   avatarVideoUrl?: string;
   avatarClips: { url: string; durationInFrames: number; order: number }[];
-  slides: { index: number; url: string }[];
+  slides: AssemblySlide[];
+  deckCss: string;
+  deckFonts: { family: string; href: string }[];
   brollClips: { url: string; durationInFrames: number; order: number }[];
   transitionType: 'fade' | 'slide' | 'none';
   templateConfig: TemplateRenderConfig;
@@ -47,7 +59,9 @@ interface NormalizedAssemblyAssets {
   bgMusicVolume: number;
   avatarVideoUrl?: string;
   avatarClips: { url: string; durationInFrames: number; order: number }[];
-  slides: { index: number; url: string }[];
+  slides: AssemblySlide[];
+  deckCss: string;
+  deckFonts: { family: string; href: string }[];
   brollClips: { url: string; durationInFrames: number; order: number }[];
   totalDurationSeconds: number;
 }
@@ -183,10 +197,29 @@ export function normalizeAssemblyAssets(
 ): NormalizedAssemblyAssets {
   const source = assets ?? {};
 
-  const slides = (source.slides?.images ?? [])
+  const animatedDeck = source.slides?.animated_deck;
+  const hasAnimatedDeck =
+    animatedDeck?.status === 'READY_FOR_PREVIEW' ||
+    animatedDeck?.status === 'READY_FOR_RENDER';
+  const animatedSlides = hasAnimatedDeck
+    ? (animatedDeck.slides ?? [])
+      .sort((left: any, right: any) => left.index - right.index)
+      .map((slide: any, index: number) => ({
+        animationCount: isPositiveNumber(slide.animationCount) ? Math.round(slide.animationCount) : 0,
+        classes: typeof slide.classes === 'string' ? slide.classes : undefined,
+        html: typeof slide.html === 'string' ? slide.html : undefined,
+        index,
+        kind: 'html' as const,
+        label: typeof slide.label === 'string' ? slide.label : undefined,
+      }))
+      .filter((slide: AssemblySlide) => slide.kind !== 'html' || Boolean(slide.html && slide.classes))
+    : [];
+
+  const imageSlides = (source.slides?.images ?? [])
     .filter((img: any) => Boolean(img?.public_url))
     .sort((left: any, right: any) => left.slide_index - right.slide_index)
     .map((img: any, index: number) => ({ index, url: img.public_url }));
+  const slides = animatedSlides.length > 0 ? animatedSlides : imageSlides;
 
   const brollClips = (source.b_roll_clips ?? [])
     .filter((clip: any) => Boolean(clip?.public_url))
@@ -275,6 +308,15 @@ export function normalizeAssemblyAssets(
     avatarVideoUrl: source.avatar_video?.public_url || undefined,
     avatarClips,
     slides,
+    deckCss: animatedSlides.length > 0 ? animatedDeck?.css || '' : '',
+    deckFonts: animatedSlides.length > 0
+      ? (animatedDeck?.fonts ?? [])
+        .filter((font: any) => Boolean(font?.family && font?.href))
+        .map((font: any) => ({
+          family: String(font.family),
+          href: String(font.href),
+        }))
+      : [],
     brollClips,
     totalDurationSeconds,
   };
@@ -349,6 +391,8 @@ export function buildAssemblyInputProps(params: {
     avatarVideoUrl: normalized.avatarVideoUrl,
     avatarClips: normalized.avatarClips,
     slides: normalized.slides,
+    deckCss: normalized.deckCss,
+    deckFonts: normalized.deckFonts,
     brollClips: normalized.brollClips,
     transitionType: transition,
     templateConfig: {

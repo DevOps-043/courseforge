@@ -95,13 +95,23 @@ async function withProductionActionBoundary<T>(
 function buildDodChecklist(
   assets: Partial<MaterialAssets>,
 ): ProductionDodChecklist {
+  const hasAnimatedDeck = assets.slides?.animated_deck?.status === "READY_FOR_RENDER";
   return {
-    has_slides_url: Boolean(assets.slides_url),
+    has_slides_url: Boolean(assets.slides_url || hasAnimatedDeck),
     has_video_url: Boolean(assets.video_url),
     has_screencast_url: Boolean(assets.screencast_url),
     has_b_roll_prompts: Boolean(assets.b_roll_prompts),
     has_final_video_url: Boolean(assets.final_video_url),
   };
+}
+
+function hasRenderableSlides(assets: Partial<MaterialAssets>) {
+  return Boolean(
+    assets.slides?.animated_deck?.status === "READY_FOR_RENDER" ||
+      assets.slides?.animated_deck?.status === "READY_FOR_PREVIEW" ||
+      assets.slides?.images?.length ||
+      assets.slides_url,
+  );
 }
 
 function resolveProductionStatus(
@@ -127,7 +137,7 @@ function resolveProductionStatus(
   );
   const hasAvatarAsset = Boolean(assets.avatar_video?.public_url || hasCompletedAvatarClips);
 
-  const hasRequiredSlides = !needsSlides || Boolean(assets.slides?.images?.length || assets.slides_url);
+  const hasRequiredSlides = !needsSlides || hasRenderableSlides(assets);
   const hasRequiredScreencast = !needsScreencast || Boolean(assets.screencast_url);
   const hasRequiredVoice = !needsVoice || Boolean(
     assets.voice_audio?.public_url || 
@@ -151,7 +161,7 @@ function resolveProductionStatus(
   }
 
   if (
-    Boolean(assets.slides?.images?.length || assets.slides_url) ||
+    hasRenderableSlides(assets) ||
     Boolean(assets.screencast_url) ||
     Boolean(assets.voice_audio?.public_url || assets.video_url) ||
     hasAvatarAsset ||

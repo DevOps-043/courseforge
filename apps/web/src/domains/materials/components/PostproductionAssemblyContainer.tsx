@@ -200,6 +200,8 @@ function getLayoutAssetSummary(assets: any): LayoutAssetSummary {
         : [];
     const slideCount = Array.isArray(assets?.slides?.images)
         ? assets.slides.images.length
+        : assets?.slides?.animated_deck?.slide_count
+            ? assets.slides.animated_deck.slide_count
         : assets?.slides_url || assets?.slides?.html_public_url || assets?.slides?.html_content_path
             ? 1
             : 0;
@@ -1236,7 +1238,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
             {showGlobalAssemblyProgress && (
-                <div className="sticky top-3 z-30 rounded-xl border border-purple-500/30 bg-white/95 p-4 shadow-lg shadow-purple-500/10 backdrop-blur dark:bg-[#151A21]/95">
+                <div className="sticky top-3 z-40 rounded-xl border border-purple-500/30 bg-white p-4 shadow-lg shadow-purple-500/10 dark:bg-[#151A21]">
                     <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
                             <Loader2 className="h-4 w-4 shrink-0 animate-spin text-purple-500" />

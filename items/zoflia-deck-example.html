@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Zoflia Deck — SofLIA Challenger System</title>
+  <style>
+    /* ===========================================================
+       Deck framework — DO NOT EDIT the rules in this <style> block.
+       =========================================================== */
+    :root {
+      /* ZOFLIA DECK — APPROVED SOFLIA TOKENS */
+      --font-display: 'Newsreader', Georgia, 'Times New Roman', serif;
+      --font-ui: 'Inter Tight', Inter, Arial, Helvetica, sans-serif;
+      --bg: #F3F7F8;
+      --bg-positive: #E8FAF7;
+      --fg: #0A2540;
+      --muted: #6C7887;
+      --accent: #23AEA8;
+      --accent-accessible: #138A87;
+      --blue-deep: #0A2540;
+      --shell: #FFFFFF;
+      --grid-line: rgba(10, 37, 64, 0.1);
+      --type-display-hero: 96px;
+      --type-display-lg: 72px;
+      --type-heading-1: 56px;
+      --type-heading-2: 40px;
+      --type-heading-3: 28px;
+      --type-body-lg: 28px;
+      --type-body: 22px;
+      --type-label: 14px;
+      --type-metric-display: 140px;
+      --leading-display: 0.92;
+      --leading-body: 1.6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--shell);
+      color: var(--fg);
+      font: 400 18px/1.6 var(--font-ui);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    .deck-shell {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+    }
+    .deck-stage {
+      width: 1920px;
+      height: 1080px;
+      background: var(--bg);
+      position: relative;
+      transform-origin: top left;
+      box-shadow: 0 30px 80px rgba(10, 37, 64, 0.15);
+    }
+    .slide {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+    .slide:not(.active) { display: none !important; }
+    :where(.slide.active) { display: flex; flex-direction: column; }
+
+    /* Light Mode Chrome */
+    .deck-counter {
+      position: fixed;
+      bottom: 22px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      padding: 6px;
+      border-radius: 999px;
+      border: 1px solid var(--grid-line);
+      color: var(--blue-deep);
+      font: 500 12px/1.2 var(--font-ui);
+      letter-spacing: 0.10em;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(10, 37, 64, 0.05);
+    }
+    .deck-counter button {
+      width: 36px; height: 36px;
+      background: transparent;
+      color: var(--blue-deep);
+      border: 0;
+      border-radius: 50%;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      transition: background 0.15s;
+    }
+    .deck-counter button:hover { background: rgba(35, 174, 168, 0.15); }
+    .deck-counter button[disabled] { opacity: 0.3; cursor: default; }
+    .deck-counter .deck-count {
+      padding: 0 14px;
+      letter-spacing: 0.10em;
+    }
+    .deck-counter .deck-count .total { color: rgba(10, 37, 64, 0.4); }
+    .deck-hint {
+      position: fixed;
+      bottom: 26px;
+      right: 28px;
+      color: var(--muted);
+      font: 500 12px/1.25 var(--font-ui);
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      z-index: 999;
+      pointer-events: none;
+    }
+
+    @media print {
+      @page { size: 1920px 1080px; margin: 0; }
+      html, body {
+        width: 1920px !important;
+        height: auto !important;
+        overflow: visible !important;
+        background: #fff !important;
+      }
+      .deck-shell {
+        position: static !important;
+        display: block !important;
+        inset: auto !important;
+      }
+      .deck-stage {
+        width: 1920px !important;
+        height: auto !important;
+        transform: none !important;
+        box-shadow: none !important;
+        position: static !important;
+      }
+      .slide {
+        display: flex !important;
+        position: relative !important;
+        inset: auto !important;
+        width: 1920px !important;
+        height: 1080px !important;
+        page-break-after: always;
+        break-after: page;
+      }
+      .slide:last-child { page-break-after: auto; break-after: auto; }
+      .deck-counter, .deck-hint { display: none !important; }
+    }
+  </style>
+  <style>
+    /* SLOT: per-deck styles */
+    @import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700&family=Newsreader:opsz,wght@6..72,300;6..72,400&display=swap');
+
+    .deck-stage::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--grid-line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+      background-size: 120px 120px;
+      background-position: center center;
+      opacity: 1;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .slide {
+      font-family: var(--font-ui);
+      padding: 80px 120px;
+      z-index: 1;
+    }
+
+    /* Crosshairs */
+    .crosshair {
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      z-index: 2;
+    }
+    .crosshair::before, .crosshair::after {
+      content: '';
+      position: absolute;
+      background: var(--blue-deep);
+    }
+    .crosshair::before { top: 50%; left: 0; right: 0; height: 1px; transform: translateY(-50%); }
+    .crosshair::after { left: 50%; top: 0; bottom: 0; width: 1px; transform: translateX(-50%); }
+    .ch-tl { top: 60px; left: 60px; }
+    .ch-tr { top: 60px; right: 60px; }
+    .ch-bl { bottom: 60px; left: 60px; }
+    .ch-br { bottom: 60px; right: 60px; }
+
+    /* Layout variants */
+    .s-center { justify-content: center; align-items: center; text-align: center; }
+    .s-split { display: grid; grid-template-columns: 1fr 1fr; align-items: stretch; padding: 0; }
+    .s-split .content-pane { padding: 100px 120px; display: flex; flex-direction: column; justify-content: center; z-index: 2; }
+    .s-split .image-pane { width: 100%; height: 1080px; position: relative; background: #E2E8F0; overflow: hidden; }
+    .bg-pane { position: absolute; inset: 0; background: var(--bg); z-index: 0; }
+
+    .image-pane img, .bg-pane img {
+      width: 100%; height: 100%; object-fit: cover;
+      filter: grayscale(100%) contrast(110%); mix-blend-mode: multiply; opacity: 0.8;
+      transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .bg-pane img { opacity: 0.15; }
+    .slide.active .image-pane img, .slide.active .bg-pane img { transform: scale(1.05); }
+    .s-split .image-pane::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, var(--bg) 0%, transparent 40%); }
+    .s-split-rev { grid-template-columns: 1fr 1fr; }
+    .s-split-rev .image-pane::after { background: linear-gradient(-90deg, var(--bg) 0%, transparent 40%); }
+
+    .avatar-box {
+      width: 100%; height: 100%; border: 1px dashed var(--accent); background: rgba(35, 174, 168, 0.05);
+      display: flex; justify-content: center; align-items: center; color: var(--blue-deep);
+      font-family: var(--font-ui); font-weight: 500; letter-spacing: 0.10em; text-transform: uppercase; font-size: var(--type-label);
+    }
+    .avatar-box::before { content: '[ ESPACIO PARA AVATAR / B-ROLL ]'; }
+
+    /* Typography */
+    .font-display { font-family: var(--font-display); }
+    .text-deep { color: var(--blue-deep); }
+    .text-muted { color: var(--muted); }
+    .text-aqua { color: var(--accent-accessible); }
+
+    .kicker {
+      font-family: var(--font-ui); font-size: var(--type-label); line-height: 1.25; font-weight: 500; letter-spacing: 0.10em;
+      color: var(--blue-deep); text-transform: uppercase; margin-bottom: 24px; display: flex; align-items: center; gap: 16px;
+    }
+    .kicker::before { content: ''; display: block; width: 48px; height: 2px; background: var(--accent); }
+    .s-center .kicker::before { display: none; }
+
+    .display-huge { font-size: var(--type-display-hero); font-weight: 300; line-height: 0.92; letter-spacing: -0.04em; margin-bottom: 32px; }
+    .display-large { font-size: var(--type-display-lg); font-weight: 300; line-height: 0.98; letter-spacing: -0.035em; margin-bottom: 40px; }
+    .display-medium { font-size: var(--type-heading-1); font-weight: 400; line-height: 1.04; letter-spacing: -0.03em; margin-bottom: 24px; }
+    .heading-card { font-family: var(--font-ui); font-size: var(--type-heading-2); font-weight: 600; line-height: 1.18; letter-spacing: 0; }
+
+    .body-lead { font-family: var(--font-ui); font-size: var(--type-body-lg); line-height: 1.55; color: var(--fg); max-width: 54ch; font-weight: 300; }
+    .body-standard { font-family: var(--font-ui); font-size: var(--type-body); line-height: var(--leading-body); color: var(--muted); max-width: 65ch; font-weight: 400; }
+
+    ul.custom-list { list-style: none; display: grid; gap: 24px; margin-top: 40px; }
+    ul.custom-list li { display: flex; gap: 24px; align-items: center; color: var(--fg); font-size: 24px; font-weight: 400; }
+    ul.custom-list li::before { content: ''; display: block; width: 12px; height: 12px; background: var(--accent); }
+
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; margin-top: 60px; width: 100%; }
+    .card { border: 1px solid var(--grid-line); padding: 60px 40px; background: #FFFFFF; transition: all 0.3s ease; position: relative; box-shadow: 0 10px 30px rgba(10, 37, 64, 0.03); }
+    .card:hover { border-color: var(--blue-deep); box-shadow: 0 15px 40px rgba(10, 37, 64, 0.08); transform: translateY(-4px); }
+    .card .icon-box { width: 64px; height: 64px; border: 1px solid var(--accent); background: rgba(35, 174, 168, 0.05); display: flex; justify-content: center; align-items: center; margin-bottom: 32px; color: var(--blue-deep); font-size: 24px; }
+
+    .brand-mark { position: absolute; top: 60px; right: 120px; font-family: var(--font-ui); font-size: var(--type-label); line-height: 1.25; font-weight: 500; color: var(--muted); letter-spacing: 0.10em; text-transform: uppercase; z-index: 10; }
+    .footer-safe { max-height: 760px; display: flex; flex-direction: column; justify-content: center; position: relative; z-index: 2; }
+    .footer-safe-top { max-height: 760px; display: flex; flex-direction: column; justify-content: flex-start; position: relative; z-index: 2; padding-top: 0; }
+
+    .border-box { border: 1px solid var(--grid-line); padding: 80px; position: relative; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(8px); box-shadow: 0 20px 60px rgba(10, 37, 64, 0.05); }
+    .border-box::before, .border-box::after { content: ''; position: absolute; width: 8px; height: 8px; background: var(--accent); }
+    .border-box::before { top: -4px; left: -4px; }
+    .border-box::after { bottom: -4px; right: -4px; }
+
+    .stat-large { font-family: var(--font-ui); font-size: var(--type-metric-display); font-weight: 600; color: var(--blue-deep); line-height: 1; font-variant-numeric: tabular-nums; }
+
+    /* ===========================================================
+       CSS ANIMATIONS SYSTEM
+       =========================================================== */
+
+    /* 1. Animated Marker */
+    @keyframes draw-marker {
+      0% { width: 0; }
+      100% { width: calc(100% + 8px); }
+    }
+    .anim-marker {
+      color: var(--blue-deep);
+      position: relative;
+      display: inline-block;
+      z-index: 1;
+    }
+    .anim-marker::after {
+      content: '';
+      position: absolute;
+      bottom: 8px;
+      left: -4px;
+      height: 24px;
+      background: var(--accent);
+      z-index: -1;
+      opacity: 0.4;
+      transform: skewX(-10deg);
+      width: 0;
+    }
+    .slide.active .anim-marker::after {
+      animation: draw-marker 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.4s forwards;
+    }
+
+    .static-marker {
+      color: var(--blue-deep);
+      position: relative;
+      display: inline-block;
+      z-index: 1;
+    }
+    .static-marker::after {
+      content: ''; position: absolute; bottom: 8px; left: -4px; right: -4px; height: 24px;
+      background: var(--accent); z-index: -1; opacity: 0.4; transform: skewX(-10deg);
+    }
+
+    /* 2. Color Shift */
+    @keyframes shift-color {
+      0% { color: var(--fg); }
+      100% { color: var(--accent); }
+    }
+    .anim-color { color: var(--fg); }
+    .slide.active .anim-color {
+      animation: shift-color 0.6s ease 0.6s forwards;
+    }
+
+    /* 3. Smooth Reveal */
+    @keyframes reveal-clip {
+      0% { clip-path: polygon(0 0, 0 0, 0 100%, 0 100%); }
+      100% { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%); }
+    }
+    .anim-reveal {
+      display: inline-block;
+      clip-path: polygon(0 0, 0 0, 0 100%, 0 100%);
+      color: var(--accent);
+    }
+    .slide.active .anim-reveal {
+      animation: reveal-clip 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
+    }
+
+    /* 4. Typewriter */
+    @keyframes clip-type {
+      0% { clip-path: polygon(0 0, 0 0, 0 120%, 0 120%); padding-right: 0; }
+      100% { clip-path: polygon(0 0, 100% 0, 100% 120%, 0 120%); padding-right: 14px; }
+    }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    .anim-typewriter {
+      display: inline-block;
+      position: relative;
+      color: var(--accent);
+      clip-path: polygon(0 0, 0 0, 0 120%, 0 120%);
+    }
+    .anim-typewriter::after {
+      content: ''; position: absolute; right: 0px; top: 10%; bottom: 10%; width: 5px;
+      background: var(--accent); opacity: 0;
+    }
+    .slide.active .anim-typewriter {
+      animation: clip-type 1s cubic-bezier(0.4, 0.0, 0.2, 1) 0.6s forwards;
+    }
+    .slide.active .anim-typewriter::after {
+      animation: blink 0.8s step-end infinite;
+    }
+
+    /* 5. Fade Up */
+    @keyframes fade-up {
+      0% { opacity: 0; transform: translateY(20px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+    .anim-fade-up {
+      display: inline-block;
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    .slide.active .anim-fade-up {
+      animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.8s forwards;
+    }
+    .slide.active .stagger-1 { animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards; }
+    .slide.active .stagger-2 { animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.7s forwards; }
+    .slide.active .stagger-3 { animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.9s forwards; }
+  </style>
+</head>
+<body>
+  <div class="deck-shell">
+    <div class="deck-stage" id="deck-stage">
+
+      <!-- SLIDE 01: Provocation / Title [ANIMATED] -->
+      <section class="slide active s-center" data-screen-label="01 Título">
+        <div class="bg-pane">
+          <!-- Placeholder Image -->
+          <img src="https://images.unsplash.com/photo-1552581234-26160f608093?auto=format&fit=crop&w=1920&q=80" alt="Background pattern" />
+        </div>
+        <div class="ch-tl crosshair"></div><div class="ch-tr crosshair"></div>
+        <div class="ch-bl crosshair"></div><div class="ch-br crosshair"></div>
+        <div class="brand-mark">01 // PREMISA</div>
+
+        <div class="border-box" style="width: 100%; max-width: 1400px; z-index: 10;">
+          <h1 class="font-display display-huge text-deep">
+            GRAN IDEA<br>
+            <span class="anim-marker">SUBRAYADA</span><br>RESTO DEL TÍTULO
+          </h1>
+          <p class="body-lead anim-fade-up" style="margin: 0 auto; margin-top: 40px; color: var(--muted);">
+            Subtítulo o explicación corta<br>que complementa el mensaje principal.
+          </p>
+        </div>
+      </section>
+
+      <!-- SLIDE 02: Split Text-Left Image-Right -->
+      <section class="slide s-split" data-screen-label="02 Idea">
+        <div class="content-pane">
+          <div class="kicker">Kicker Text</div>
+          <h2 class="font-display display-large text-deep">
+            IDEA FUERTE<br><span class="static-marker">DESTACADA</span> CON<br>MÁS LÍNEAS.
+          </h2>
+        </div>
+        <div class="image-pane">
+          <img src="https://images.unsplash.com/photo-1556761175-5973dc0f32d7?auto=format&fit=crop&w=1200&q=80" alt="Representación" />
+        </div>
+      </section>
+
+      <!-- SLIDE 03: Split Image-Left Text-Right [ANIMATED] -->
+      <section class="slide s-split s-split-rev" data-screen-label="03 Datos">
+        <div class="image-pane" style="padding: 60px;">
+          <div class="avatar-box"></div>
+        </div>
+        <div class="content-pane" style="padding-left: 100px;">
+          <div class="kicker">Data Dura</div>
+          <h2 class="font-display display-medium text-deep">
+            LA EVIDENCIA<br><span class="anim-color">CONTRADICE</span> EL MITO
+          </h2>
+          <p class="body-lead" style="margin-bottom: 20px;">
+            Explicación breve del contexto o la estadística.
+          </p>
+          <ul class="custom-list">
+            <li>Primer punto clave</li>
+            <li>Segundo punto relevante</li>
+            <li>Tercer beneficio o dato</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- SLIDE 04: Framework / 3-Columns -->
+      <section class="slide" data-screen-label="04 Framework">
+        <div class="ch-tl crosshair"></div><div class="ch-tr crosshair"></div>
+        <div class="brand-mark">04 // FRAMEWORK</div>
+
+        <div class="footer-safe-top" style="padding-top: 100px;">
+          <div class="kicker">Contexto</div>
+          <h2 class="font-display display-large text-deep">TITULAR <span class="anim-marker">PRINCIPAL</span> DE LA SECCIÓN</h2>
+
+          <div class="grid-3" style="gap: 50px; margin-top: 40px;">
+            <div class="card anim-fade-up stagger-1" style="padding: 50px 40px;">
+              <div class="icon-box" style="width: 80px; height: 80px; font-size: 40px; margin-bottom: 40px;">💡</div>
+              <h3 class="heading-card text-deep" style="margin-bottom: 24px;">PUNTO<br>UNO</h3>
+              <p class="body-standard" style="font-size: 28px; line-height: 1.4; color: var(--fg); font-weight: 400;">
+                Explicación del primer pilar.
+              </p>
+            </div>
+            <div class="card anim-fade-up stagger-2" style="padding: 50px 40px;">
+              <div class="icon-box" style="width: 80px; height: 80px; font-size: 40px; margin-bottom: 40px;">🔍</div>
+              <h3 class="heading-card text-deep" style="margin-bottom: 24px;">PUNTO<br>DOS</h3>
+              <p class="body-standard" style="font-size: 28px; line-height: 1.4; color: var(--fg); font-weight: 400;">
+                Explicación del segundo pilar.
+              </p>
+            </div>
+            <div class="card anim-fade-up stagger-3" style="padding: 50px 40px;">
+              <div class="icon-box" style="width: 80px; height: 80px; font-size: 40px; margin-bottom: 40px;">🧭</div>
+              <h3 class="heading-card text-deep" style="margin-bottom: 24px;">PUNTO<br>TRES</h3>
+              <p class="body-standard" style="font-size: 28px; line-height: 1.4; color: var(--fg); font-weight: 400;">
+                Explicación del tercer pilar.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SLIDE 05: Closing / Darker contrast [ANIMATED] -->
+      <section class="slide s-center" data-screen-label="05 Cierre">
+        <div class="bg-pane" style="background: #000000; background-image: linear-gradient(#0A2540 1px, transparent 1px), linear-gradient(90deg, #0A2540 1px, transparent 1px); background-size: 120px 120px; background-position: center center;">
+          <img src="https://images.unsplash.com/photo-1573164713988-8665fc963095?auto=format&fit=crop&w=1920&q=80" alt="Cierre" style="opacity: 0.2; mix-blend-mode: screen; filter: grayscale(100%);" />
+        </div>
+        <div class="ch-tl crosshair" style="--blue-deep: var(--accent);"></div>
+        <div class="ch-br crosshair" style="--blue-deep: var(--accent);"></div>
+
+        <div class="border-box" style="z-index: 10; background: rgba(0, 0, 0, 0.85); border-color: #0A2540; box-shadow: 0 20px 60px rgba(35, 174, 168, 0.05);">
+          <h2 class="font-display display-huge" style="color: #F3F7F8;">
+            TITULAR DE <span class="anim-typewriter" style="color: var(--accent);">CIERRE</span><br>
+            <span class="anim-fade-up" style="color: #F3F7F8;">CON PREGUNTA FINAL</span>
+          </h2>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- Framework chrome — DO NOT EDIT below this line. -->
+  <nav class="deck-counter" role="navigation" aria-label="Navegación de presentación">
+    <button type="button" id="deck-prev" aria-label="Diapositiva anterior">‹</button>
+    <span class="deck-count"><span id="deck-cur">01</span> <span class="total">/ <span id="deck-total">05</span></span></span>
+    <button type="button" id="deck-next" aria-label="Diapositiva siguiente">›</button>
+  </nav>
+  <div class="deck-hint">← / → · space</div>
+
+  <script>
+    (function () {
+      var stage = document.getElementById('deck-stage');
+      var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+      var prev = document.getElementById('deck-prev');
+      var next = document.getElementById('deck-next');
+      var cur = document.getElementById('deck-cur');
+      var total = document.getElementById('deck-total');
+      var STORE = 'deck:idx:' + (location.pathname || '/');
+      var idx = 0;
+
+      function fit() {
+        var sw = window.innerWidth;
+        var sh = window.innerHeight;
+        var pad = 32;
+        var s = Math.min((sw - pad) / 1920, (sh - pad) / 1080);
+        if (!isFinite(s) || s <= 0) s = 1;
+        var tx = (sw - 1920 * s) / 2;
+        var ty = (sh - 1080 * s) / 2;
+        stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';
+      }
+
+      function pad2(n) { return (n < 10 ? '0' : '') + n; }
+      function paint() {
+        slides.forEach(function (el, i) { el.classList.toggle('active', i === idx); });
+        if (cur) cur.textContent = pad2(idx + 1);
+        if (total) total.textContent = pad2(slides.length);
+        if (prev) prev.toggleAttribute('disabled', idx <= 0);
+        if (next) next.toggleAttribute('disabled', idx >= slides.length - 1);
+      }
+      function go(i) {
+        idx = Math.max(0, Math.min(slides.length - 1, i));
+        paint();
+        try { localStorage.setItem(STORE, String(idx)); } catch (_) {}
+      }
+      function onKey(e) {
+        if (e.__odDeckKeyHandled) return;
+        var t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+        if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+        if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.__odDeckKeyHandled = true; e.preventDefault(); go(idx + 1); }
+        else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.__odDeckKeyHandled = true; e.preventDefault(); go(idx - 1); }
+        else if (e.key === 'Home' || String(e.key).toLowerCase() === 'r') { e.__odDeckKeyHandled = true; e.preventDefault(); go(0); }
+        else if (e.key === 'End') { e.__odDeckKeyHandled = true; e.preventDefault(); go(slides.length - 1); }
+      }
+      window.addEventListener('keydown', onKey, true);
+      document.addEventListener('keydown', onKey, true);
+      if (prev) prev.addEventListener('click', function () { go(idx - 1); });
+      if (next) next.addEventListener('click', function () { go(idx + 1); });
+      document.addEventListener('click', function (e) {
+        if (e.defaultPrevented) return;
+        if (e.button !== undefined && e.button !== 0) return;
+        if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+        var t = e.target;
+        while (t && t !== document.body && t !== document.documentElement) {
+          var tag = String(t.tagName || '').toUpperCase();
+          if (
+            tag === 'A' ||
+            tag === 'BUTTON' ||
+            tag === 'INPUT' ||
+            tag === 'TEXTAREA' ||
+            tag === 'SELECT' ||
+            t.isContentEditable ||
+            t.getAttribute('role') === 'button' ||
+            t.getAttribute('role') === 'link'
+          ) return;
+          t = t.parentElement;
+        }
+        focusDeck();
+        if (e.clientX < window.innerWidth / 2) go(idx - 1);
+        else go(idx + 1);
+      }, true);
+
+      document.body.setAttribute('tabindex', '-1');
+      document.body.style.outline = 'none';
+      function focusDeck() { try { window.focus(); document.body.focus({ preventScroll: true }); } catch (_) {} }
+      document.addEventListener('mousedown', focusDeck);
+      window.addEventListener('load', focusDeck);
+
+      try {
+        var saved = parseInt(localStorage.getItem(STORE) || '0', 10);
+        if (!isNaN(saved) && saved >= 0 && saved < slides.length) idx = saved;
+      } catch (_) {}
+
+      window.addEventListener('resize', fit);
+      fit();
+      paint();
+      focusDeck();
+    })();
+  </script>
+</body>
+</html>

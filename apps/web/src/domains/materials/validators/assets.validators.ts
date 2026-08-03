@@ -92,11 +92,61 @@ export const slideImageSchema = z.object({
   content_type: z.string().trim().optional(),
 });
 
+export const animatedDeckFontSchema = z.object({
+  family: z.string().trim().min(1),
+  href: z.string().url(),
+  source: z.literal("google"),
+  weights: z.array(z.string().trim()).optional(),
+});
+
+export const animatedDeckRemoteAssetSchema = z.object({
+  bytes: z.number().int().nonnegative(),
+  content_type: z.string().trim(),
+  public_url: z.string().url(),
+  source_url: z.string().url(),
+  storage_path: z.string().trim(),
+  status: z.enum(["imported", "placeholder"]).optional(),
+  fallback_reason: z.string().trim().optional(),
+});
+
+export const animatedDeckSlideSchema = z.object({
+  animationCount: z.number().int().min(0),
+  classes: z.string().trim(),
+  html: z.string(),
+  index: z.number().int().min(1),
+  label: z.string().trim(),
+});
+
+export const animatedDeckSchema = z.object({
+  animated_slide_count: z.number().int().min(0),
+  cleanup_report: z.record(z.string(), z.unknown()),
+  css: z.string(),
+  deck_css_path: z.string().trim().optional(),
+  deck_json_path: z.string().trim().optional(),
+  error_message: z.string().trim().optional(),
+  fonts: z.array(animatedDeckFontSchema),
+  generated_at: z.string().optional(),
+  height: z.number().int().positive(),
+  remote_assets: z.array(animatedDeckRemoteAssetSchema).optional(),
+  slide_count: z.number().int().min(0),
+  slides: z.array(animatedDeckSlideSchema),
+  source: z.enum(["manual_upload", "open_design_import"]),
+  source_html_path: z.string().trim(),
+  static_slide_count: z.number().int().min(0),
+  status: z.enum(["PENDING", "VALIDATING", "READY_FOR_PREVIEW", "READY_FOR_RENDER", "FAILED"]),
+  validation_report: z.record(z.string(), z.unknown()),
+  width: z.number().int().positive(),
+});
+
 // Schema for Slides asset group
 export const slidesSchema = z.object({
   open_design_project_id: z.string().trim().optional(),
   html_content_path: z.string().trim().optional(),
   html_public_url: z.string().url().optional(),
+  qa_content_path: z.string().trim().optional(),
+  qa_report: z.record(z.string(), z.unknown()).optional(),
+  spec_content_path: z.string().trim().optional(),
+  animated_deck: animatedDeckSchema.optional(),
   images: z.array(slideImageSchema).optional(),
 });
 

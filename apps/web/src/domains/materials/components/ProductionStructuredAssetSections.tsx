@@ -360,10 +360,14 @@ export function BackgroundMusicSection({
 interface OpenDesignSlidesSectionProps {
   slides: SlidesAsset | null;
   isExporting: boolean;
+  isGeneratingSofliaSlides: boolean;
   isUploading: boolean;
+  isPreparingAnimatedDeck: boolean;
   fileRef: React.RefObject<HTMLInputElement | null>;
+  onGenerateSofliaSlides: () => void;
   onExport: () => void;
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onPrepareAnimatedDeck: (htmlContentPath: string) => Promise<boolean>;
   onClear: () => void;
   
   // Drive props
@@ -376,10 +380,14 @@ interface OpenDesignSlidesSectionProps {
 }export function OpenDesignSlidesSection({
   slides,
   isExporting,
+  isGeneratingSofliaSlides,
   isUploading,
+  isPreparingAnimatedDeck,
   fileRef,
+  onGenerateSofliaSlides,
   onExport,
   onUpload,
+  onPrepareAnimatedDeck,
   onClear,
   isSearchingDrive,
   isImportingDrive,
@@ -389,38 +397,87 @@ interface OpenDesignSlidesSectionProps {
   clearDriveSearchResults,
 }: OpenDesignSlidesSectionProps) {
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
+  const animatedDeck = slides?.animated_deck;
+  const qaStatus = typeof slides?.qa_report?.status === "string"
+    ? slides.qa_report.status
+    : null;
+  const qaFindingCount = Array.isArray(slides?.qa_report?.findings)
+    ? slides.qa_report.findings.length
+    : 0;
   const renderableSlideCount = slides?.images?.length || 0;
-  const hasSourceReference = Boolean(slides?.html_public_url);
+  const hasSourceReference = Boolean(slides?.html_public_url || slides?.html_content_path);
+  const canPrepareAnimatedDeck = Boolean(slides?.html_content_path);
   const slideImages = useMemo(
     () => [...(slides?.images || [])].sort((left, right) => left.slide_index - right.slide_index),
     [slides?.images],
   );
+  const handlePrepareAnimatedDeck = async () => {
+    if (!slides?.html_content_path) {
+      toast.error("No hay HTML fuente para preparar como deck animado.");
+      return;
+    }
+
+    try {
+      await onPrepareAnimatedDeck(slides.html_content_path);
+      toast.success("Deck animado preparado para Remotion");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo preparar el deck animado");
+    }
+  };
 
   return (
     <div className="p-3 rounded-xl border border-gray-200 dark:border-[#6C757D]/10 bg-gray-50/50 dark:bg-[#0F1419]/30">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Wand2 size={14} className="text-purple-500" />
-          <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Diapositivas generadas</span>
-          {renderableSlideCount > 0 ? (
+          <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Slides SofLIA - Engine</span>
+          {animatedDeck?.status === "READY_FOR_RENDER" || animatedDeck?.status === "READY_FOR_PREVIEW" ? (
             <span className="flex items-center gap-0.5 text-[10px] font-semibold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 px-1.5 py-0.5 rounded-full">
-              <CheckCircle2 size={10} /> {renderableSlideCount} renderizable(s)
+              <CheckCircle2 size={10} /> Deck HTML listo
+            </span>
+          ) : animatedDeck?.status === "FAILED" ? (
+            <span className="flex items-center gap-0.5 text-[10px] font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 px-1.5 py-0.5 rounded-full">
+              <AlertTriangle size={10} /> Deck fallido
+            </span>
+          ) : renderableSlideCount > 0 ? (
+            <span className="flex items-center gap-0.5 text-[10px] font-semibold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 px-1.5 py-0.5 rounded-full">
+              <CheckCircle2 size={10} /> {renderableSlideCount} imagen(es)
             </span>
           ) : hasSourceReference ? (
             <span className="flex items-center gap-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded-full">
               Fuente cargada
             </span>
           ) : null}
+          {qaStatus && (
+            <span className={`flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+              qaStatus === "FAIL"
+                ? "text-red-600 bg-red-50 dark:bg-red-500/10 dark:text-red-300"
+                : qaStatus === "WARN"
+                  ? "text-amber-600 bg-amber-50 dark:bg-amber-500/10 dark:text-amber-300"
+                  : "text-green-600 bg-green-50 dark:bg-green-500/10 dark:text-green-300"
+            }`}>
+              QA {qaStatus}{qaFindingCount > 0 ? ` · ${qaFindingCount}` : ""}
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5">
           <button
-            onClick={onExport}
-            disabled={isExporting}
+            onClick={onGenerateSofliaSlides}
+            disabled={isGeneratingSofliaSlides}
             className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-sm transition-all"
           >
+            {isGeneratingSofliaSlides ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+            <span>{isGeneratingSofliaSlides ? "Generando..." : "Generar SofLIA"}</span>
+          </button>
+
+          <button
+            onClick={onExport}
+            disabled={isExporting}
+            className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg border border-gray-300 bg-white dark:bg-[#151A21] hover:bg-gray-50 dark:hover:bg-white/5 text-gray-650 dark:text-gray-300 transition-colors"
+          >
             {isExporting ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
-            <span>{isExporting ? "Creando..." : "Exportar"}</span>
+            <span>{isExporting ? "Creando..." : "OpenDesign"}</span>
           </button>
           
           <button
@@ -432,6 +489,17 @@ interface OpenDesignSlidesSectionProps {
             <span>Subir slides</span>
           </button>
 
+          {canPrepareAnimatedDeck && (
+            <button
+              onClick={handlePrepareAnimatedDeck}
+              disabled={isPreparingAnimatedDeck}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300 transition-colors"
+            >
+              {isPreparingAnimatedDeck ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
+              <span>{isPreparingAnimatedDeck ? "Preparando..." : "Preparar deck"}</span>
+            </button>
+          )}
+
           <button
             onClick={() => setIsDriveModalOpen(true)}
             className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg border border-blue-200 bg-blue-50/50 hover:bg-blue-100/70 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300 transition-colors"
@@ -442,7 +510,7 @@ interface OpenDesignSlidesSectionProps {
         </div>
       </div>
 
-      {(slides?.open_design_project_id || slides?.html_public_url || renderableSlideCount > 0) && (
+      {(slides?.open_design_project_id || hasSourceReference || renderableSlideCount > 0 || animatedDeck) && (
         <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-gray-100 dark:border-[#6C757D]/10 text-[10px]">
           {slides?.open_design_project_id && (
             <span className="font-mono text-gray-450 dark:text-gray-400 bg-gray-100 dark:bg-white/5 px-1.5 py-0.5 rounded">
@@ -451,9 +519,23 @@ interface OpenDesignSlidesSectionProps {
           )}
           {renderableSlideCount > 0 && (
             <span className="font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-500/10 px-1.5 py-0.5 rounded">
-              {renderableSlideCount} imagen(es) listas para ensamblado
+              {renderableSlideCount} imagen(es) heredadas
             </span>
           )}
+          {animatedDeck && (
+            <span className={`font-semibold px-1.5 py-0.5 rounded ${
+              animatedDeck.status === "FAILED"
+                ? "bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300"
+                : "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+            }`}>
+              {animatedDeck.slide_count} slide(s) HTML · {animatedDeck.animated_slide_count} animada(s) · {animatedDeck.static_slide_count} estatica(s)
+            </span>
+          )}
+          {animatedDeck?.fonts?.length ? (
+            <span className="font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-500/10 px-1.5 py-0.5 rounded">
+              Fonts: {animatedDeck.fonts.map((font) => font.family).join(", ")}
+            </span>
+          ) : null}
           <button
             onClick={onClear}
             className="inline-flex items-center gap-0.5 text-red-500 hover:text-red-700 ml-auto font-bold cursor-pointer"
@@ -461,6 +543,12 @@ interface OpenDesignSlidesSectionProps {
           >
             <X size={10} /> Eliminar
           </button>
+        </div>
+      )}
+
+      {animatedDeck?.status === "FAILED" && (
+        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-2 text-[11px] leading-relaxed text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
+          {animatedDeck.error_message || "El deck no paso las validaciones de seguridad."}
         </div>
       )}
 
@@ -1375,7 +1463,7 @@ export function GoogleDriveImportModal({
   const isDeveloperKeyLikelyApiKey = Boolean(developerKey?.startsWith("AIza"));
   const isConfigured = Boolean(clientId && developerKey && isDeveloperKeyLikelyApiKey);
   const driveReadonlyScope = "https://www.googleapis.com/auth/drive.readonly";
-  const driveTokenCacheKey = "courseforge.googleDrive.readonlyToken";
+  const driveTokenCacheKey = "soflia-engine.googleDrive.readonlyToken";
 
   const connectedProviders = useMemo(
     () => connections.filter((connection) => connection.connected),

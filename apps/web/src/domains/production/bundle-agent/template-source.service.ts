@@ -29,8 +29,18 @@ import {
 } from "remotion";
 
 type SlideAsset = {
+  animationCount?: number;
+  classes?: string;
+  html?: string;
   index?: number;
-  url: string;
+  kind?: "image" | "html";
+  label?: string;
+  url?: string;
+};
+
+type DeckFont = {
+  family?: string;
+  href: string;
 };
 
 type BrollClip = {
@@ -141,6 +151,8 @@ type TemplateProps = {
   bgMusicUrl?: string;
   bgMusicVolume?: number;
   brollClips?: BrollClip[];
+  deckCss?: string;
+  deckFonts?: DeckFont[];
   designTokens?: DesignTokens;
   expandMissingSupportMedia?: boolean;
   layoutOverrides?: LayoutOverrideManifest[];
@@ -177,6 +189,8 @@ const defaultProps: TemplateProps = {
   avatarClips: [],
   bgMusicVolume: 0.12,
   brollClips: [],
+  deckCss: "",
+  deckFonts: [],
   designTokens: {
     accentColor,
     backgroundColor: "#05070b",
@@ -210,8 +224,17 @@ function getAvatarClipItemLayerId(order: number) {
 
 function orderedSlides(slides: SlideAsset[] = []) {
   return slides
-    .filter((slide) => typeof slide.url === "string" && slide.url.length > 0)
+    .filter((slide) => {
+      if (slide.kind === "html" || typeof slide.html === "string") {
+        return typeof slide.html === "string" && slide.html.length > 0;
+      }
+      return typeof slide.url === "string" && slide.url.length > 0;
+    })
     .sort((left, right) => (left.index ?? 0) - (right.index ?? 0));
+}
+
+function isHtmlSlide(slide: SlideAsset) {
+  return (slide.kind === "html" || typeof slide.html === "string") && typeof slide.html === "string" && slide.html.length > 0;
 }
 
 function orderedBrollClips(clips: BrollClip[] = []) {
@@ -601,6 +624,62 @@ function buildBoxStyle(box: Box, overrides: React.CSSProperties = {}): React.CSS
   };
 }
 
+function getRenderableDeckFonts(fonts: DeckFont[] | null | undefined) {
+  if (!Array.isArray(fonts)) return [];
+  return fonts.filter((font) => typeof font.href === "string" && /^https:\\/\\/fonts\\.googleapis\\.com\\//i.test(font.href));
+}
+
+function DeckRuntimeStyles(props: { deckCss?: string; deckFonts?: DeckFont[] }) {
+  const fonts = getRenderableDeckFonts(props.deckFonts);
+
+  return (
+    <>
+      {fonts.map((font, index) => (
+        <link key={font.href + index} rel="stylesheet" href={font.href} />
+      ))}
+      {typeof props.deckCss === "string" && props.deckCss.length > 0 ? <style>{props.deckCss}</style> : null}
+    </>
+  );
+}
+
+function renderSlideAsset(slide: SlideAsset, box: Box) {
+  if (!isHtmlSlide(slide)) {
+    return (
+      <Img
+        src={slide.url || ""}
+        style={{ width: "100%", height: "100%", objectFit: "contain", objectPosition: "center center" }}
+      />
+    );
+  }
+
+  const scale = Math.min(box.width / compositionWidth, box.height / compositionHeight);
+  const scaledWidth = Math.max(1, Math.round(compositionWidth * scale));
+  const scaledHeight = Math.max(1, Math.round(compositionHeight * scale));
+  const offsetX = Math.round((box.width - scaledWidth) / 2);
+  const offsetY = Math.round((box.height - scaledHeight) / 2);
+
+  return (
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
+      <div
+        className="deck-scope"
+        style={{
+          position: "absolute",
+          left: offsetX,
+          top: offsetY,
+          width: compositionWidth,
+          height: compositionHeight,
+          zoom: scale,
+        }}
+      >
+        <section
+          className={slide.classes || "slide"}
+          dangerouslySetInnerHTML={{ __html: slide.html || "" }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export const calculateMetadata: CalculateMetadataFunction<TemplateProps> = async ({ props }) => {
   const durationFromProps =
     typeof props.totalDurationInFrames === "number" && Number.isFinite(props.totalDurationInFrames)
@@ -688,6 +767,8 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
         ...backgroundOverride,
       }}
     >
+      <DeckRuntimeStyles deckCss={props.deckCss} deckFonts={props.deckFonts} />
+
       <div style={buildBoxStyle(primaryVisualBox, { background: isReferenceFrameLayout ? "transparent" : tokenSurface, zIndex: defaultStackOrders.primaryVisual, ...primaryVisualOverride })} />
 
       {hasAvatarClips ? (
@@ -725,10 +806,7 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
       {activeSlide && activeSlideItem ? (
         <Sequence from={activeSlideItem.startFrame} durationInFrames={activeSlideItem.durationInFrames}>
           <div style={buildBoxStyle(slidesSceneBox, { background: tokenSurface, opacity: slideOpacity, zIndex: defaultStackOrders.slides, ...slidesOverride, ...activeSlideItemOverride })}>
-            <Img
-              src={activeSlide.url}
-              style={{ width: "100%", height: "100%", objectFit: "contain", objectPosition: "center center" }}
-            />
+            {renderSlideAsset(activeSlide, slidesSceneBox)}
           </div>
         </Sequence>
       ) : null}

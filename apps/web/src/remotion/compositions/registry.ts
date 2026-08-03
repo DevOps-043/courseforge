@@ -8,6 +8,7 @@ import {
 import { FullSlides } from "./FullSlides";
 import { SplitAvatar } from "./SplitAvatar";
 import { AvatarFocus } from "./AvatarFocus";
+import { AnimatedDeckAvatar } from "./AnimatedDeckAvatar";
 
 /**
  * Mapa estable slug-de-plantilla -> composición React.
@@ -20,6 +21,7 @@ export const ASSEMBLY_COMPOSITIONS: Record<
   AssemblyTemplate,
   ComponentType<AssemblyInputProps>
 > = {
+  [ASSEMBLY_TEMPLATES.ANIMATED_DECK_AVATAR]: AnimatedDeckAvatar,
   [ASSEMBLY_TEMPLATES.FULL_SLIDES]: FullSlides,
   [ASSEMBLY_TEMPLATES.SPLIT_AVATAR]: SplitAvatar,
   [ASSEMBLY_TEMPLATES.AVATAR_FOCUS]: AvatarFocus,

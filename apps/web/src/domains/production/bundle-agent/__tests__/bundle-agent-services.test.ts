@@ -249,6 +249,9 @@ describe("SofLIA Bundle Agent services", () => {
     assert.equal(report.info.manifest?.compositionId, "Template-seguro");
     assert.equal(report.info.manifest?.exportMode, "root");
     assert.equal(report.info.manifest?.defaultDurationFrames, 150);
+    assert.equal(report.info.manifest?.capabilities?.animatedDeck, true);
+    assert.equal(report.info.manifest?.capabilities?.htmlDeck, true);
+    assert.equal(report.info.manifest?.capabilities?.htmlSlides, true);
     assert.equal(report.info.manifest?.layoutContractVersion, 2);
     assert.equal(report.info.manifest?.layoutCoordinateSpace, "canvas");
     assert.equal(report.info.manifest?.editableLayers?.find((layer) => layer.layerId === "slides")?.itemLayerIdPattern, "slide:{index}");
@@ -257,6 +260,8 @@ describe("SofLIA Bundle Agent services", () => {
     assert.equal(propsSchemaProperties?.avatarVideoUrl?.type, "string");
     assert.equal(propsSchemaProperties?.slides?.type, "array");
     assert.equal(propsSchemaProperties?.brollClips?.type, "array");
+    assert.equal(propsSchemaProperties?.deckCss?.type, "string");
+    assert.equal(propsSchemaProperties?.deckFonts?.type, "array");
     assert.equal(propsSchemaProperties?.animationVariant?.type, "string");
     assert.equal(propsSchemaProperties?.designTokens?.type, "object");
     assert.equal(propsSchemaProperties?.expandMissingSupportMedia?.type, "boolean");
@@ -268,6 +273,12 @@ describe("SofLIA Bundle Agent services", () => {
     assert.match(source, /avatarVideoUrl/);
     assert.match(source, /slides/);
     assert.match(source, /brollClips/);
+    assert.match(source, /deckCss\?: string/);
+    assert.match(source, /deckFonts\?: DeckFont\[\]/);
+    assert.match(source, /kind\?: "image" \| "html"/);
+    assert.match(source, /dangerouslySetInnerHTML/);
+    assert.match(source, /DeckRuntimeStyles/);
+    assert.match(source, /className="deck-scope"/);
     assert.match(source, /type DesignTokens/);
     assert.match(source, /animationVariant\?: string/);
     assert.match(source, /visualVariantId\?: string/);

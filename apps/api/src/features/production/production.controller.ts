@@ -301,6 +301,7 @@ export class ProductionController {
               variables: variables && typeof variables === 'object' ? variables as Record<string, unknown> : {},
               bundleDefaultProps: templateVersion.default_props,
               propsSchema: templateVersion.props_schema,
+              manifest: templateVersion.manifest,
             })
           : {
               resolvedProps: templateVersion.default_props || {},
@@ -675,6 +676,7 @@ export class ProductionController {
             variables,
             bundleDefaultProps: cloudVersion?.default_props,
             propsSchema: cloudVersion?.props_schema,
+            manifest: cloudVersion?.manifest,
           });
         } catch (contractError) {
           const message = contractError instanceof Error ? contractError.message : String(contractError);

@@ -105,7 +105,7 @@ export function ArtifactWorkflowStepper({
     ][currentStep - 1] ?? "Curso";
 
   return (
-    <div className="sticky top-0 z-30 rounded-b-xl border-b border-x border-gray-200 bg-[#F8FAFC]/95 px-3 py-2 shadow-[0_14px_30px_rgba(15,23,42,0.10)] backdrop-blur supports-[backdrop-filter]:bg-[#F8FAFC]/85 dark:border-[#6C757D]/10 dark:bg-[#10151C]/95 dark:supports-[backdrop-filter]:bg-[#10151C]/85">
+    <div className="sticky top-0 z-50 rounded-b-xl border-b border-x border-gray-200 bg-[#F8FAFC] px-3 py-2 shadow-[0_14px_30px_rgba(15,23,42,0.10)] dark:border-[#6C757D]/10 dark:bg-[#10151C]">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">

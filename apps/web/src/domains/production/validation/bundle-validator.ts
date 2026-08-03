@@ -61,6 +61,11 @@ const manifestSchema = z.object({
   compositionId: z.string().trim().min(1).max(120),
   compositionIds: z.array(z.string().trim().min(1).max(120)).max(100).optional(),
   exportMode: z.enum(["component", "root"]).default("component"),
+  capabilities: z.object({
+    animatedDeck: z.boolean().optional(),
+    htmlDeck: z.boolean().optional(),
+    htmlSlides: z.boolean().optional(),
+  }).optional(),
   layoutContractVersion: z.number().int().min(1).max(TEMPLATE_LAYOUT_CONTRACT_VERSION).optional(),
   layoutCoordinateSpace: z.literal(TEMPLATE_LAYOUT_COORDINATE_SPACE).optional(),
   defaultDurationFrames: positiveIntegerSchema.optional(),

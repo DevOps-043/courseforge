@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Boxes, Cloud, LayoutDashboard, Library, Settings, Users, Video, Gauge, UserRoundCog } from 'lucide-react';
+import { Boxes, Cloud, LayoutDashboard, Library, Presentation, Settings, Users, Video, Gauge, UserRoundCog } from 'lucide-react';
 import SharedSidebarLayout, { NavItemConfig } from '@/components/layout/SharedSidebarLayout';
 import type { SidebarProfile } from '@/components/layout/layout.types';
 
@@ -26,6 +26,7 @@ export default function AdminLayoutClient({
         { href: `${basePath}/heygen`, icon: <UserRoundCog size={22} />, label: 'Avatares' },
         { href: `${basePath}/library`, icon: <Library size={22} />, label: 'Libreria' },
         { href: `${basePath}/templates`, icon: <Video size={22} />, label: 'Plantillas' },
+        { href: `${basePath}/slides`, icon: <Presentation size={22} />, label: 'Slides' },
         ...(canViewWorkerTelemetry
             ? [{ href: `${basePath}/worker-telemetry`, icon: <Gauge size={22} />, label: 'Workers' }]
             : []),

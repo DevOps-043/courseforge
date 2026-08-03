@@ -88,6 +88,8 @@ export function AvatarFocus(props: AssemblyInputProps) {
             brollClips={props.brollClips}
             durationInFrames={durationInFrames}
             transitionType={props.transitionType}
+            deckCss={props.deckCss}
+            deckFonts={props.deckFonts}
             templateConfig={templateConfig}
             layoutOverrides={props.layoutOverrides}
             timelineSegments={timelineSegments}
@@ -118,6 +120,8 @@ export function AvatarFocus(props: AssemblyInputProps) {
               brollClips={props.brollClips}
               durationInFrames={durationInFrames}
               transitionType={props.transitionType}
+              deckCss={props.deckCss}
+              deckFonts={props.deckFonts}
               templateConfig={templateConfig}
               layoutOverrides={props.layoutOverrides}
               timelineSegments={timelineSegments}
