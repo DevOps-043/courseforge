@@ -1,4 +1,5 @@
 import { Audio } from "remotion";
+import { REMOTE_MEDIA_RENDER_PROPS } from "../media-rendering.config";
 
 interface AudioTracksProps {
   voiceAudioUrl?: string;
@@ -20,9 +21,14 @@ export function AudioTracks({
 }: AudioTracksProps) {
   return (
     <>
-      {voiceAudioUrl ? <Audio src={voiceAudioUrl} /> : null}
+      {voiceAudioUrl ? <Audio {...REMOTE_MEDIA_RENDER_PROPS} src={voiceAudioUrl} /> : null}
       {bgMusicUrl ? (
-        <Audio src={bgMusicUrl} volume={bgMusicVolume} loop />
+        <Audio
+          {...REMOTE_MEDIA_RENDER_PROPS}
+          src={bgMusicUrl}
+          volume={bgMusicVolume}
+          loop
+        />
       ) : null}
     </>
   );

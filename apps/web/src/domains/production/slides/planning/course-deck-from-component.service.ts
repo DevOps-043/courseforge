@@ -43,6 +43,35 @@ function compactText(value: unknown): string {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
 }
 
+function limitText(value: unknown, maxLength: number): string {
+  const compact = compactText(value);
+  if (compact.length <= maxLength) {
+    return compact;
+  }
+
+  const sliced = compact.slice(0, maxLength - 1).trimEnd();
+  const sentenceBreak = Math.max(
+    sliced.lastIndexOf(". "),
+    sliced.lastIndexOf("? "),
+    sliced.lastIndexOf("! "),
+  );
+  const wordBreak = sliced.lastIndexOf(" ");
+  const breakAt = sentenceBreak >= Math.floor(maxLength * 0.45)
+    ? sentenceBreak + 1
+    : wordBreak >= Math.floor(maxLength * 0.55)
+      ? wordBreak
+      : sliced.length;
+
+  return `${sliced.slice(0, breakAt).trimEnd()}...`;
+}
+
+function limitItems(items: string[], maxItems = 4) {
+  return items
+    .map((item) => limitText(item, 240))
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
 function splitVisibleText(value: string) {
   return value
     .split(/\n|•|- /)
@@ -53,7 +82,7 @@ function splitVisibleText(value: string) {
 function titleFromContent(content: Record<string, unknown>, fallback: string) {
   const directTitle = compactText(content.title);
   const scriptTitle = compactText(asRecord(content.script).title);
-  return directTitle || scriptTitle || fallback;
+  return limitText(directTitle || scriptTitle || fallback, 180);
 }
 
 function buildCustomSlides(input: SlideDeckGenerateInput): CourseSlideSpec[] | null {
@@ -93,20 +122,24 @@ function buildSlidesFromScript(content: Record<string, unknown>, title: string):
 
   const contentSlides = sections.slice(0, 8).map((section, index): CourseSlideSpec => {
     const visibleLines = splitVisibleText(compactText(section.on_screen_text));
-    const sectionTitle = visibleLines[0] || `Idea ${index + 1}`;
-    const bullets = visibleLines.slice(1, 5);
+    const sectionTitle = limitText(visibleLines[0] || `Idea ${index + 1}`, 180);
+    const bullets = limitItems(visibleLines.slice(1, 5));
     const narration = compactText(section.narration_text);
+    const fallbackItem = limitText(
+      narration || compactText(section.visual_notes) || "Idea principal de la seccion.",
+      240,
+    );
 
     return {
       bodyBlocks: [{
-        items: bullets.length ? bullets : [narration || compactText(section.visual_notes) || "Idea principal de la seccion."],
+        items: bullets.length ? bullets : [fallbackItem],
         kind: "bullets",
       }],
       citations: [],
       id: `script-section-${section.section_number || index + 1}`,
       order: index + 2,
-      speakerNotes: narration,
-      subtitle: compactText(section.visual_notes).slice(0, 180) || undefined,
+      speakerNotes: limitText(narration, 1800) || undefined,
+      subtitle: limitText(section.visual_notes, 240) || undefined,
       title: sectionTitle,
       type: index === 0 ? "concept" : "worked_example",
       validationHints: {
@@ -161,8 +194,8 @@ function buildSlidesFromScript(content: Record<string, unknown>, title: string):
       citations: [],
       id: "cover",
       order: 1,
-      subtitle: compactText(script.title) || undefined,
-      title,
+      subtitle: limitText(script.title, 240) || undefined,
+      title: limitText(title, 180),
       type: "cover",
       validationHints: {
         mustKeepClaims: [],
@@ -192,7 +225,7 @@ function buildSlidesFromStoryboard(content: Record<string, unknown>, title: stri
       citations: [],
       id: "cover",
       order: 1,
-      title,
+      title: limitText(title, 180),
       type: "cover",
       validationHints: {
         mustKeepClaims: [],
@@ -201,19 +234,22 @@ function buildSlidesFromStoryboard(content: Record<string, unknown>, title: stri
     },
     ...storyboard.slice(0, 10).map((item, index): CourseSlideSpec => {
       const visibleLines = splitVisibleText(compactText(item.on_screen_text));
+      const bodyItems = limitItems(visibleLines.slice(1, 5));
+      const fallbackItem = limitText(
+        compactText(item.visual_content) || compactText(item.narration_text) || "Accion visual de la escena.",
+        240,
+      );
       return {
         bodyBlocks: [{
-          items: visibleLines.slice(1, 5).length
-            ? visibleLines.slice(1, 5)
-            : [compactText(item.visual_content) || compactText(item.narration_text) || "Accion visual de la escena."],
+          items: bodyItems.length ? bodyItems : [fallbackItem],
           kind: "bullets",
         }],
         citations: [],
         id: `storyboard-${item.take_number || index + 1}`,
         order: index + 2,
-        speakerNotes: compactText(item.narration_text),
-        subtitle: compactText(item.visual_content).slice(0, 180) || undefined,
-        title: visibleLines[0] || `Escena ${item.take_number || index + 1}`,
+        speakerNotes: limitText(item.narration_text, 1800) || undefined,
+        subtitle: limitText(item.visual_content, 240) || undefined,
+        title: limitText(visibleLines[0] || `Escena ${item.take_number || index + 1}`, 180),
         type: "concept",
         validationHints: {
           mustKeepClaims: [],
@@ -237,7 +273,7 @@ function fallbackSlides(title: string): CourseSlideSpec[] {
     citations: [],
     id: "fallback-cover",
     order: 1,
-    title,
+    title: limitText(title, 180),
     type: "cover",
     validationHints: {
       mustKeepClaims: [],
@@ -279,7 +315,7 @@ export function buildCourseDeckSpecFromComponent(params: BuildCourseDeckSpecPara
     sourceSnapshot: {
       componentType,
       source,
-      title,
+      title: limitText(title, 180),
     },
     template: params.input.template,
     width: COURSE_DECK_WIDTH,

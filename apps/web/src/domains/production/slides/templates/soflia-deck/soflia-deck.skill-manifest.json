@@ -1,0 +1,52 @@
+{
+  "id": "soflia-deck",
+  "kind": "slide_skill",
+  "version": "1.0.0",
+  "skillFile": "soflia-deck.skill.md",
+  "description": "Self-contained light-mode SofLIA challenger decks with editorial headlines, structured B2B layouts, SVG chart support and built-in animation classes.",
+  "triggers": [
+    "SofLIA Deck",
+    "SofLIA deck",
+    "SofLIA presentation",
+    "high-voltage deck",
+    "challenger deck",
+    "B2B pitch deck"
+  ],
+  "designTokens": {
+    "typography": {
+      "display": "Newsreader",
+      "ui": "Inter Tight"
+    },
+    "colors": {
+      "blueDeep": "#0A2540",
+      "accent": "#23AEA8",
+      "accentAccessible": "#138A87",
+      "muted": "#6C7887",
+      "bg": "#F3F7F8",
+      "bgPositive": "#E8FAF7",
+      "shell": "#FFFFFF"
+    }
+  },
+  "layoutVocabulary": [
+    "s-center",
+    "s-split",
+    "s-split-rev",
+    "grid-3"
+  ],
+  "animationClasses": [
+    "anim-marker",
+    "static-marker",
+    "anim-color",
+    "anim-reveal",
+    "anim-typewriter",
+    "anim-fade-up",
+    "stagger-1",
+    "stagger-2",
+    "stagger-3"
+  ],
+  "outputContract": {
+    "artifactIdentifier": "soflia-deck",
+    "artifactType": "text/html",
+    "language": "es"
+  }
+}

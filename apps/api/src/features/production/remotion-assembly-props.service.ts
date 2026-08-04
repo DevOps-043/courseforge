@@ -11,6 +11,7 @@ import {
   parseTimelineOverrideManifests,
   type TimelineOverrideManifestList,
 } from './timeline-overrides.service';
+import { repairCommonUtf8Mojibake } from './mojibake.service';
 
 export const ASSEMBLY_FPS = 30;
 export const FALLBACK_DURATION_SECONDS = 10;
@@ -111,6 +112,16 @@ function isPositiveNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
+function normalizeAnimatedSlideClasses(classes: unknown) {
+  const classList = (typeof classes === 'string' ? classes : 'slide')
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!classList.includes('active')) {
+    classList.push('active');
+  }
+  return classList.join(' ');
+}
+
 export function resolveInternalCompositionId(rawCompositionId: unknown): string {
   if (typeof rawCompositionId === 'string' && INTERNAL_COMPOSITION_IDS.has(rawCompositionId)) {
     return rawCompositionId;
@@ -206,8 +217,8 @@ export function normalizeAssemblyAssets(
       .sort((left: any, right: any) => left.index - right.index)
       .map((slide: any, index: number) => ({
         animationCount: isPositiveNumber(slide.animationCount) ? Math.round(slide.animationCount) : 0,
-        classes: typeof slide.classes === 'string' ? slide.classes : undefined,
-        html: typeof slide.html === 'string' ? slide.html : undefined,
+        classes: normalizeAnimatedSlideClasses(slide.classes),
+        html: typeof slide.html === 'string' ? repairCommonUtf8Mojibake(slide.html) : undefined,
         index,
         kind: 'html' as const,
         label: typeof slide.label === 'string' ? slide.label : undefined,

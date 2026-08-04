@@ -1,8 +1,9 @@
 import { renderCourseChartSvg } from "../charts/svg-chart-renderer.service";
+import { repairCommonUtf8Mojibake } from "../../text/mojibake.service";
 import type { CourseDeckSpec, CourseSlideSpec } from "../specs/course-deck.schema";
 
 function escapeHtml(value: string) {
-  return value
+  return repairCommonUtf8Mojibake(value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -10,105 +11,725 @@ function escapeHtml(value: string) {
     .replace(/'/g, "&#39;");
 }
 
+function firstTextBlock(slide: CourseSlideSpec) {
+  const paragraph = slide.bodyBlocks.find((block) => block.kind === "paragraph" && block.text);
+  const callout = slide.bodyBlocks.find((block) => block.kind === "callout" && block.text);
+  return paragraph?.text || callout?.text || "";
+}
+
+function bulletItems(slide: CourseSlideSpec) {
+  return slide.bodyBlocks.flatMap((block) => block.kind === "bullets" ? block.items || [] : []);
+}
+
 function renderBlock(block: CourseSlideSpec["bodyBlocks"][number]) {
   if (block.kind === "bullets") {
     const items = (block.items || [])
+      .slice(0, 4)
       .map((item) => `<li>${escapeHtml(item)}</li>`)
       .join("");
-    return `<ul class="lesson-list">${items}</ul>`;
+    return `<ul class="point-list">${items}</ul>`;
   }
   if (block.kind === "callout") {
-    return `<div class="callout">${escapeHtml(block.text || "")}</div>`;
+    return `<div class="callout anim-fade-up">${escapeHtml(block.text || "")}</div>`;
   }
   if (block.kind === "code") {
     return `<pre class="code"><code>${escapeHtml(block.text || "")}</code></pre>`;
   }
-  return `<p class="lede">${escapeHtml(block.text || "")}</p>`;
+  return `<p class="lead copy-block">${escapeHtml(block.text || "")}</p>`;
 }
 
-function renderSlide(slide: CourseSlideSpec, deck: CourseDeckSpec) {
-  const body = slide.bodyBlocks.map(renderBlock).join("\n");
-  const chart = slide.chart
-    ? `<div class="chart-wrap">${renderCourseChartSvg(slide.chart, {
-        accent: deck.designSystem.accent,
-        accent2: deck.designSystem.accent2,
-      })}</div>`
-    : "";
-  const notes = slide.speakerNotes
+function renderBodyBlocks(slide: CourseSlideSpec) {
+  return slide.bodyBlocks.map(renderBlock).join("\n");
+}
+
+function slideKicker(slide: CourseSlideSpec, deck: CourseDeckSpec) {
+  if (slide.type === "cover") {
+    return deck.designSystem.brandLabel;
+  }
+
+  return slide.type.replace(/_/g, " ").toUpperCase();
+}
+
+function brandMark(slide: CourseSlideSpec) {
+  return `${String(slide.order).padStart(2, "0")} // ${slide.type.replace(/_/g, " ").toUpperCase()}`;
+}
+
+function renderCrosshairs() {
+  return `<div class="ch-tl crosshair"></div><div class="ch-tr crosshair"></div><div class="ch-bl crosshair"></div><div class="ch-br crosshair"></div>`;
+}
+
+function renderNotes(slide: CourseSlideSpec) {
+  return slide.speakerNotes
     ? `<aside class="notes">${escapeHtml(slide.speakerNotes)}</aside>`
     : "";
-  const slideClass = slide.type === "cover" || slide.type === "summary"
-    ? "slide full"
-    : "slide";
+}
 
-  return `<section class="${slideClass}" data-screen-label="${String(slide.order).padStart(2, "0")} ${escapeHtml(slide.title)}" data-title="${escapeHtml(slide.title)}">
-    <aside class="sidebar">
-      <div class="brand">${escapeHtml(deck.designSystem.brandLabel)}</div>
-      <h5>Leccion</h5>
-      <p class="dim">${escapeHtml(deck.sourceSnapshot.title || "Modulo del curso")}</p>
-      <h5>Progreso</h5>
-      <p class="dim">${slide.order} / ${deck.slides.length}</p>
-    </aside>
-    <main class="main">
-      <p class="kicker">${escapeHtml(slide.type.replace(/_/g, " ").toUpperCase())}</p>
-      <h2 class="h2">${escapeHtml(slide.title)}</h2>
-      ${slide.subtitle ? `<p class="subtitle">${escapeHtml(slide.subtitle)}</p>` : ""}
-      ${body}
-      ${chart}
-    </main>
-    <div class="deck-footer"><span>${escapeHtml(deck.designSystem.brandLabel)}</span><span>${slide.order} / ${deck.slides.length}</span></div>
-    ${notes}
+function renderVisualPane(slide: CourseSlideSpec, deck: CourseDeckSpec) {
+  const label = slide.chart ? "GRAFICA SVG" : "ASSET / B-ROLL";
+  const detail = slide.chart
+    ? slide.chart.title
+    : slide.subtitle || deck.sourceSnapshot.title || deck.designSystem.brandLabel;
+
+  return `<div class="image-pane">
+    <div class="visual-grid"></div>
+    <div class="visual-object">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(detail)}</strong>
+    </div>
+  </div>`;
+}
+
+function renderChart(slide: CourseSlideSpec, deck: CourseDeckSpec) {
+  if (!slide.chart) {
+    return "";
+  }
+
+  return `<div class="chart-card anim-fade-up">
+    ${renderCourseChartSvg(slide.chart, {
+      accent: deck.designSystem.accent,
+      accent2: deck.designSystem.accent2,
+    })}
+  </div>`;
+}
+
+function renderCenterSlide(slide: CourseSlideSpec, deck: CourseDeckSpec, isActive: boolean) {
+  const lead = slide.subtitle || firstTextBlock(slide);
+  const extraBullets = bulletItems(slide)
+    .slice(0, 3)
+    .map((item, index) => `<li class="anim-fade-up stagger-${index + 1}">${escapeHtml(item)}</li>`)
+    .join("");
+
+  return `<section class="slide ${isActive ? "active " : ""}s-center" data-screen-label="${String(slide.order).padStart(2, "0")} ${escapeHtml(slide.title)}" data-title="${escapeHtml(slide.title)}">
+    <div class="bg-pane"></div>
+    ${renderCrosshairs()}
+    <div class="center-copy">
+      <div class="kicker">${escapeHtml(slideKicker(slide, deck))}</div>
+      <h1 class="display-huge"><span class="anim-marker">${escapeHtml(slide.title)}</span></h1>
+      ${lead ? `<p class="lead max-center">${escapeHtml(lead)}</p>` : ""}
+      ${extraBullets ? `<ul class="center-points">${extraBullets}</ul>` : ""}
+    </div>
+    ${renderNotes(slide)}
   </section>`;
+}
+
+function renderSplitSlide(
+  slide: CourseSlideSpec,
+  deck: CourseDeckSpec,
+  isActive: boolean,
+  reverse: boolean,
+) {
+  return `<section class="slide ${isActive ? "active " : ""}s-split${reverse ? " s-split-rev" : ""}" data-screen-label="${String(slide.order).padStart(2, "0")} ${escapeHtml(slide.title)}" data-title="${escapeHtml(slide.title)}">
+    <div class="content-pane">
+      <div class="kicker">${escapeHtml(slideKicker(slide, deck))}</div>
+      <h2 class="display-large"><span class="anim-reveal">${escapeHtml(slide.title)}</span></h2>
+      ${slide.subtitle ? `<p class="lead">${escapeHtml(slide.subtitle)}</p>` : ""}
+      ${renderBodyBlocks(slide)}
+    </div>
+    ${renderVisualPane(slide, deck)}
+    <div class="brand-mark">${escapeHtml(brandMark(slide))}</div>
+    ${renderNotes(slide)}
+  </section>`;
+}
+
+function renderDataSlide(slide: CourseSlideSpec, deck: CourseDeckSpec, isActive: boolean) {
+  return `<section class="slide ${isActive ? "active " : ""}s-split s-split-rev data-slide" data-screen-label="${String(slide.order).padStart(2, "0")} ${escapeHtml(slide.title)}" data-title="${escapeHtml(slide.title)}">
+    <div class="chart-pane">
+      ${renderChart(slide, deck)}
+    </div>
+    <div class="content-pane">
+      <div class="kicker">${escapeHtml(slideKicker(slide, deck))}</div>
+      <h2 class="display-large"><span class="anim-color">${escapeHtml(slide.title)}</span></h2>
+      ${slide.subtitle ? `<p class="lead">${escapeHtml(slide.subtitle)}</p>` : ""}
+      ${renderBodyBlocks(slide)}
+    </div>
+    <div class="brand-mark">${escapeHtml(brandMark(slide))}</div>
+    ${renderNotes(slide)}
+  </section>`;
+}
+
+function renderFrameworkSlide(slide: CourseSlideSpec, deck: CourseDeckSpec, isActive: boolean) {
+  const items = bulletItems(slide).slice(0, 3);
+  const cards = (items.length ? items : slide.bodyBlocks.map((block) => block.text || "").filter(Boolean))
+    .slice(0, 3)
+    .map((item, index) => `<div class="card anim-fade-up stagger-${index + 1}">
+      <div class="card-index">${String(index + 1).padStart(2, "0")}</div>
+      <h3>${escapeHtml(item.split(":")[0] || `Idea ${index + 1}`)}</h3>
+      <p>${escapeHtml(item.includes(":") ? item.split(":").slice(1).join(":").trim() : item)}</p>
+    </div>`)
+    .join("");
+
+  return `<section class="slide ${isActive ? "active " : ""}framework-slide" data-screen-label="${String(slide.order).padStart(2, "0")} ${escapeHtml(slide.title)}" data-title="${escapeHtml(slide.title)}">
+    ${renderCrosshairs()}
+    <div class="brand-mark">${escapeHtml(brandMark(slide))}</div>
+    <div class="footer-safe-top">
+      <div class="kicker">${escapeHtml(deck.designSystem.brandLabel)}</div>
+      <h2 class="display-large">${escapeHtml(slide.title)}</h2>
+      ${slide.subtitle ? `<p class="lead framework-lead">${escapeHtml(slide.subtitle)}</p>` : ""}
+      <div class="grid-3">${cards}</div>
+    </div>
+    ${renderNotes(slide)}
+  </section>`;
+}
+
+function renderClosingSlide(slide: CourseSlideSpec, deck: CourseDeckSpec, isActive: boolean) {
+  const lead = slide.subtitle || firstTextBlock(slide);
+  return `<section class="slide ${isActive ? "active " : ""}s-center closing-slide" data-screen-label="${String(slide.order).padStart(2, "0")} ${escapeHtml(slide.title)}" data-title="${escapeHtml(slide.title)}">
+    <div class="bg-pane"></div>
+    <div class="ch-tl crosshair"></div><div class="ch-br crosshair"></div>
+    <div class="center-copy">
+      <div class="kicker">${escapeHtml(deck.designSystem.brandLabel)}</div>
+      <h2 class="display-huge"><span class="anim-typewriter">${escapeHtml(slide.title)}</span></h2>
+      ${lead ? `<p class="lead max-center">${escapeHtml(lead)}</p>` : ""}
+    </div>
+    ${renderNotes(slide)}
+  </section>`;
+}
+
+function renderSlide(slide: CourseSlideSpec, deck: CourseDeckSpec, isActive: boolean) {
+  if (slide.chart || slide.type === "data_explainer") {
+    return renderDataSlide(slide, deck, isActive);
+  }
+
+  if (slide.type === "cover" || slide.type === "quote" || slide.type === "transition") {
+    return renderCenterSlide(slide, deck, isActive);
+  }
+
+  if (slide.type === "summary") {
+    return renderClosingSlide(slide, deck, isActive);
+  }
+
+  if (["objectives", "exercise", "knowledge_check", "diagram"].includes(slide.type) && bulletItems(slide).length >= 2) {
+    return renderFrameworkSlide(slide, deck, isActive);
+  }
+
+  return renderSplitSlide(slide, deck, isActive, slide.order % 2 === 1);
 }
 
 function renderCss(deck: CourseDeckSpec) {
   return `:root {
-  --bg: #fbfaf6;
-  --bg-soft: #f4f1e8;
-  --surface: #ffffff;
-  --surface-2: #f6f3ea;
-  --border: rgba(60,45,20,.12);
-  --text-1: #2a2418;
-  --text-2: #5a5140;
-  --text-3: #8a7f68;
-  --accent: ${deck.designSystem.accent};
-  --accent-2: ${deck.designSystem.accent2};
+  --font-display: 'Newsreader', Georgia, 'Times New Roman', serif;
+  --font-ui: 'Inter Tight', Inter, Arial, Helvetica, sans-serif;
+  --bg: #F3F7F8;
+  --bg-positive: #E8FAF7;
+  --shell: #FFFFFF;
+  --blue-deep: #0A2540;
+  --accent: ${deck.designSystem.accent || "#23AEA8"};
+  --accent-accessible: ${deck.designSystem.accent2 || "#138A87"};
+  --muted: #6C7887;
+  --grid-line: rgba(10, 37, 64, 0.10);
+  --type-display-hero: 126px;
+  --type-display-large: 86px;
+  --type-lead: 30px;
+  --type-body: 24px;
+  --type-label: 14px;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text-1); font-family: Inter, Arial, sans-serif; }
-.deck { width: ${deck.width}px; min-height: ${deck.height}px; background: var(--bg); }
-.slide { position: relative; width: ${deck.width}px; height: ${deck.height}px; padding: 64px 80px; display: grid; grid-template-columns: 280px 1fr; gap: 56px; overflow: hidden; background: var(--bg); }
-.slide.full { grid-template-columns: 1fr; display: flex; flex-direction: column; justify-content: center; padding-right: 240px; }
-.slide.full .sidebar { display: none; }
-.sidebar { border-right: 1px solid var(--border); padding-right: 32px; }
-.brand { font-family: Georgia, serif; font-size: 28px; font-weight: 700; color: var(--accent); }
-.sidebar h5, .kicker { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .14em; color: var(--accent-2); }
-.dim { color: var(--text-2); font-size: 18px; line-height: 1.55; }
-.main { min-width: 0; align-self: center; }
-.h2 { margin: 0; font-family: Georgia, serif; font-size: 64px; line-height: 1.04; letter-spacing: -0.02em; color: var(--text-1); max-width: 980px; }
-.subtitle { margin: 18px 0 0; font-size: 30px; line-height: 1.35; color: var(--text-2); max-width: 1000px; }
-.lede { margin: 30px 0 0; font-size: 30px; line-height: 1.45; color: var(--text-2); max-width: 980px; }
-.lesson-list { margin: 34px 0 0; padding: 0; list-style: none; display: grid; gap: 18px; max-width: 1000px; }
-.lesson-list li { padding: 22px 26px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); box-shadow: 0 12px 30px rgba(60,45,20,.07); font-size: 28px; line-height: 1.32; color: var(--text-1); }
-.callout { margin-top: 30px; max-width: 980px; border-left: 6px solid var(--accent-2); background: var(--surface-2); padding: 24px 30px; border-radius: 0 16px 16px 0; font-size: 26px; line-height: 1.38; color: var(--text-2); }
-.code { margin-top: 28px; max-width: 1040px; background: #2a2418; color: #f4f1e8; border-radius: 16px; padding: 26px 30px; font-size: 22px; line-height: 1.55; overflow: hidden; }
-.chart-wrap { margin-top: 30px; max-width: 920px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); padding: 18px; box-shadow: 0 12px 30px rgba(60,45,20,.07); }
-.cf-chart { width: 100%; height: auto; }
-.chart-title { font-size: 26px; font-weight: 800; fill: var(--text-1); }
-.chart-subtitle, .chart-label { font-size: 18px; fill: var(--text-2); }
-.chart-value { font-size: 19px; font-weight: 800; fill: var(--text-1); }
-.chart-big { font-size: 58px; font-weight: 900; fill: var(--text-1); }
-.chart-track { fill: rgba(42,36,24,.08); }
-.chart-axis { stroke: rgba(42,36,24,.32); stroke-width: 2; }
-.chart-grid { stroke: rgba(42,36,24,.10); stroke-width: 1.5; }
-.deck-footer { position: absolute; left: 80px; right: 80px; bottom: 36px; display: flex; justify-content: space-between; color: var(--text-3); font-size: 16px; }
-.notes { display: none !important; }`;
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--shell);
+  color: var(--blue-deep);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+.deck-shell { position: fixed; inset: 0; overflow: hidden; background: var(--shell); }
+.deck-stage {
+  width: ${deck.width}px;
+  height: ${deck.height}px;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+  transform-origin: top left;
+  box-shadow: 0 30px 80px rgba(10, 37, 64, 0.15);
+}
+.deck-stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(10,37,64,.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(10,37,64,.045) 1px, transparent 1px);
+  background-size: 80px 80px;
+  pointer-events: none;
+  z-index: 0;
+}
+.slide {
+  position: absolute;
+  inset: 0;
+  width: ${deck.width}px;
+  height: ${deck.height}px;
+  overflow: hidden;
+  padding: 80px 120px;
+  background: var(--bg);
+  color: var(--blue-deep);
+  display: none;
+}
+.slide.active { display: flex; flex-direction: column; }
+.s-center { justify-content: center; align-items: center; text-align: center; }
+.s-split {
+  display: none;
+  grid-template-columns: 1fr 1fr;
+  align-items: stretch;
+  padding: 0;
+}
+.s-split.active { display: grid; }
+.s-split-rev .content-pane { order: 2; }
+.s-split-rev .image-pane, .s-split-rev .chart-pane { order: 1; }
+.content-pane {
+  padding: 100px 120px;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+}
+.image-pane, .chart-pane {
+  width: 100%;
+  height: ${deck.height}px;
+  position: relative;
+  overflow: hidden;
+  background: #E2E8F0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.image-pane::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, var(--bg) 0%, transparent 38%);
+}
+.s-split-rev .image-pane::after { background: linear-gradient(-90deg, var(--bg) 0%, transparent 38%); }
+.visual-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 30% 30%, rgba(35,174,168,.22), transparent 0 22%, transparent 23%),
+    linear-gradient(rgba(10,37,64,.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(10,37,64,.08) 1px, transparent 1px);
+  background-size: auto, 64px 64px, 64px 64px;
+}
+.visual-object {
+  width: 620px;
+  min-height: 380px;
+  padding: 54px;
+  position: relative;
+  z-index: 2;
+  border: 1px solid rgba(10,37,64,.16);
+  background: rgba(255,255,255,.82);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 24px 70px rgba(10,37,64,.12);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.visual-object span {
+  font-size: var(--type-label);
+  letter-spacing: .10em;
+  text-transform: uppercase;
+  color: var(--accent-accessible);
+  font-weight: 600;
+  margin-bottom: 22px;
+}
+.visual-object strong {
+  font-size: 42px;
+  line-height: 1.08;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.kicker {
+  font-family: var(--font-ui);
+  font-size: var(--type-label);
+  line-height: 1.25;
+  font-weight: 600;
+  color: var(--accent-accessible);
+  letter-spacing: .10em;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.kicker::before {
+  content: '';
+  display: block;
+  width: 48px;
+  height: 2px;
+  background: var(--accent);
+}
+.s-center .kicker {
+  display: block;
+  color: var(--blue-deep);
+}
+.s-center .kicker::before { display: none; }
+.display-huge, .display-large {
+  font-family: var(--font-display);
+  font-weight: 300;
+  color: var(--blue-deep);
+  margin: 0;
+  text-wrap: balance;
+}
+.display-huge {
+  max-width: 1320px;
+  font-size: var(--type-display-hero);
+  line-height: .92;
+  letter-spacing: -0.04em;
+}
+.display-large {
+  max-width: 820px;
+  font-size: var(--type-display-large);
+  line-height: .98;
+  letter-spacing: -0.035em;
+}
+.lead {
+  margin: 30px 0 0;
+  max-width: 760px;
+  font-size: var(--type-lead);
+  line-height: 1.5;
+  font-weight: 300;
+  color: var(--muted);
+}
+.max-center {
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 980px;
+}
+.copy-block + .copy-block { margin-top: 18px; }
+.point-list, .center-points {
+  margin: 34px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 18px;
+  max-width: 780px;
+}
+.point-list li, .center-points li {
+  position: relative;
+  padding-left: 28px;
+  font-size: var(--type-body);
+  line-height: 1.48;
+  color: var(--blue-deep);
+}
+.point-list li::before, .center-points li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: .72em;
+  width: 9px;
+  height: 9px;
+  background: var(--accent);
+}
+.center-points {
+  display: flex;
+  justify-content: center;
+  gap: 34px;
+  max-width: 1180px;
+}
+.center-points li {
+  max-width: 320px;
+  text-align: left;
+}
+.callout {
+  margin-top: 30px;
+  max-width: 760px;
+  border-left: 4px solid var(--accent);
+  background: rgba(255,255,255,.82);
+  padding: 24px 30px;
+  font-size: 24px;
+  line-height: 1.45;
+  color: var(--blue-deep);
+}
+.code {
+  margin-top: 28px;
+  max-width: 820px;
+  background: var(--blue-deep);
+  color: #F3F7F8;
+  padding: 28px 32px;
+  font-size: 22px;
+  line-height: 1.55;
+  overflow: hidden;
+}
+.framework-slide.active { display: flex; }
+.footer-safe-top {
+  max-height: 820px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+}
+.framework-lead { max-width: 980px; }
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 40px;
+  margin-top: 58px;
+  width: 100%;
+}
+.card {
+  min-height: 315px;
+  border: 1px solid var(--grid-line);
+  padding: 46px 40px;
+  background: var(--shell);
+  box-shadow: 0 10px 30px rgba(10,37,64,.04);
+  position: relative;
+}
+.card-index {
+  width: 58px;
+  height: 58px;
+  border: 1px solid var(--accent);
+  background: rgba(35,174,168,.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 34px;
+  color: var(--accent-accessible);
+  font-size: 16px;
+  letter-spacing: .10em;
+  font-weight: 600;
+}
+.card h3 {
+  margin: 0 0 18px;
+  font-size: 34px;
+  line-height: 1.12;
+  font-weight: 600;
+  color: var(--blue-deep);
+}
+.card p {
+  margin: 0;
+  font-size: 23px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.chart-pane {
+  padding: 82px;
+  background: var(--bg-positive);
+}
+.chart-card {
+  width: 760px;
+  background: rgba(255,255,255,.94);
+  border: 1px solid rgba(10,37,64,.12);
+  padding: 34px;
+  box-shadow: 0 24px 70px rgba(10,37,64,.10);
+}
+.cf-chart { width: 100%; height: auto; display: block; }
+.chart-title { font-size: 26px; font-weight: 800; fill: var(--blue-deep); }
+.chart-subtitle, .chart-label { font-size: 18px; fill: var(--muted); }
+.chart-value { font-size: 19px; font-weight: 800; fill: var(--blue-deep); }
+.chart-big { font-size: 58px; font-weight: 900; fill: var(--blue-deep); }
+.chart-track { fill: rgba(10,37,64,.08); }
+.chart-axis { stroke: rgba(10,37,64,.32); stroke-width: 2; }
+.chart-grid { stroke: rgba(10,37,64,.10); stroke-width: 1.5; }
+.brand-mark {
+  position: absolute;
+  top: 60px;
+  right: 120px;
+  z-index: 10;
+  font-size: var(--type-label);
+  line-height: 1.25;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: .10em;
+  text-transform: uppercase;
+}
+.crosshair {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  z-index: 5;
+}
+.crosshair::before, .crosshair::after {
+  content: '';
+  position: absolute;
+  background: var(--blue-deep);
+  opacity: .35;
+}
+.crosshair::before { top: 50%; left: 0; right: 0; height: 1px; transform: translateY(-50%); }
+.crosshair::after { left: 50%; top: 0; bottom: 0; width: 1px; transform: translateX(-50%); }
+.ch-tl { top: 60px; left: 60px; }
+.ch-tr { top: 60px; right: 60px; }
+.ch-bl { bottom: 60px; left: 60px; }
+.ch-br { bottom: 60px; right: 60px; }
+.closing-slide {
+  background: var(--blue-deep);
+  color: var(--shell);
+}
+.closing-slide .bg-pane {
+  background:
+    linear-gradient(rgba(35,174,168,.18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(35,174,168,.18) 1px, transparent 1px),
+    var(--blue-deep);
+  background-size: 120px 120px;
+}
+.closing-slide .display-huge, .closing-slide .lead, .closing-slide .kicker { color: var(--shell); }
+.closing-slide .crosshair::before, .closing-slide .crosshair::after { background: var(--accent); opacity: .9; }
+.bg-pane { position: absolute; inset: 0; background: var(--bg); z-index: 0; }
+.center-copy { position: relative; z-index: 2; }
+.deck-counter {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255,255,255,.95);
+  border: 1px solid rgba(10,37,64,.10);
+  box-shadow: 0 8px 30px rgba(10,37,64,.10);
+  padding: 5px;
+  z-index: 999;
+  font-family: var(--font-ui);
+}
+.deck-counter button {
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  color: var(--blue-deep);
+  border: 0;
+  cursor: pointer;
+  font-size: 22px;
+}
+.deck-counter button:hover { background: rgba(35,174,168,.15); }
+.deck-counter button[disabled] { opacity: .3; cursor: default; }
+.deck-count {
+  padding: 0 14px;
+  font-size: 13px;
+  letter-spacing: .10em;
+  color: var(--blue-deep);
+}
+.deck-count .total { color: rgba(10,37,64,.45); }
+.deck-hint {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  color: rgba(10,37,64,.45);
+  font-size: 11px;
+  letter-spacing: .10em;
+  text-transform: uppercase;
+  z-index: 999;
+}
+.anim-marker, .anim-color, .anim-reveal, .anim-typewriter { position: relative; display: inline; }
+.anim-marker::after {
+  content: '';
+  position: absolute;
+  left: -2%;
+  bottom: .08em;
+  height: .18em;
+  background: var(--accent);
+  z-index: -1;
+  opacity: .42;
+  transform: skewX(-10deg);
+  width: 0;
+}
+.slide.active .anim-marker::after { animation: draw-marker .6s cubic-bezier(.16,1,.3,1) .35s forwards; }
+@keyframes draw-marker { to { width: 104%; } }
+@keyframes shift-color { to { color: var(--accent-accessible); } }
+.slide.active .anim-color { animation: shift-color .6s ease .45s forwards; }
+.anim-reveal { clip-path: inset(0 100% 0 0); }
+.slide.active .anim-reveal { animation: reveal-clip .7s cubic-bezier(.16,1,.3,1) .3s forwards; }
+@keyframes reveal-clip { to { clip-path: inset(0 0 0 0); } }
+.anim-typewriter { clip-path: inset(0 100% 0 0); }
+.slide.active .anim-typewriter { animation: reveal-clip .9s cubic-bezier(.4,0,.2,1) .35s forwards; }
+.anim-fade-up { opacity: 0; transform: translateY(20px); }
+.slide.active .anim-fade-up { animation: fade-up .6s cubic-bezier(.16,1,.3,1) .6s forwards; }
+.slide.active .stagger-1 { animation-delay: .45s; }
+.slide.active .stagger-2 { animation-delay: .6s; }
+.slide.active .stagger-3 { animation-delay: .75s; }
+@keyframes fade-up { to { opacity: 1; transform: translateY(0); } }
+.notes { display: none !important; }
+@media print {
+  .deck-shell { position: static !important; display: block !important; overflow: visible !important; }
+  .deck-stage { transform: none !important; height: auto !important; position: static !important; box-shadow: none !important; }
+  .slide { display: flex !important; position: relative !important; page-break-after: always; break-after: page; }
+  .s-split, .s-split.active, .data-slide { display: grid !important; }
+  .slide:last-child { page-break-after: auto; break-after: auto; }
+  .deck-counter, .deck-hint { display: none !important; }
+}`;
+}
+
+function renderRuntime(deck: CourseDeckSpec) {
+  const storeKey = JSON.stringify(`soflia-engine-deck:${deck.materialComponentId}`);
+
+  return `<script data-soflia-template-runtime="soflia-deck">
+(() => {
+  const stage = document.getElementById("deck-stage");
+  const slides = Array.from(document.querySelectorAll(".slide"));
+  const prev = document.getElementById("deck-prev");
+  const next = document.getElementById("deck-next");
+  const cur = document.getElementById("deck-cur");
+  const total = document.getElementById("deck-total");
+  const storeKey = ${storeKey};
+  let index = 0;
+
+  function pad(value) {
+    return value < 10 ? "0" + value : String(value);
+  }
+
+  function scaleStage() {
+    if (!stage) return;
+    const scale = Math.min(window.innerWidth / ${deck.width}, window.innerHeight / ${deck.height});
+    const tx = (window.innerWidth - (${deck.width} * scale)) / 2;
+    const ty = (window.innerHeight - (${deck.height} * scale)) / 2;
+    stage.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")";
+  }
+
+  function paint() {
+    slides.forEach((slide, slideIndex) => {
+      slide.classList.toggle("active", slideIndex === index);
+    });
+    if (cur) cur.textContent = pad(index + 1);
+    if (total) total.textContent = pad(slides.length);
+    if (prev) prev.toggleAttribute("disabled", index <= 0);
+    if (next) next.toggleAttribute("disabled", index >= slides.length - 1);
+  }
+
+  function go(nextIndex) {
+    index = Math.max(0, Math.min(slides.length - 1, nextIndex));
+    paint();
+    try { window.localStorage.setItem(storeKey, String(index)); } catch (_) {}
+  }
+
+  prev?.addEventListener("click", () => go(index - 1));
+  next?.addEventListener("click", () => go(index + 1));
+  window.addEventListener("resize", scaleStage);
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === " ") {
+      event.preventDefault();
+      go(index + 1);
+    }
+    if (event.key === "ArrowLeft" || event.key === "PageUp") {
+      event.preventDefault();
+      go(index - 1);
+    }
+    if (event.key === "Home") {
+      event.preventDefault();
+      go(0);
+    }
+    if (event.key === "End") {
+      event.preventDefault();
+      go(slides.length - 1);
+    }
+  }, true);
+
+  try {
+    const saved = Number(window.localStorage.getItem(storeKey));
+    if (!Number.isNaN(saved) && saved >= 0 && saved < slides.length) {
+      index = saved;
+    }
+  } catch (_) {}
+
+  scaleStage();
+  paint();
+})();
+</script>`;
 }
 
 export function renderCourseDeckHtml(deck: CourseDeckSpec) {
-  const slides = deck.slides
-    .sort((left, right) => left.order - right.order)
-    .map((slide) => renderSlide(slide, deck))
+  const sortedSlides = [...deck.slides].sort((left, right) => left.order - right.order);
+  const slides = sortedSlides
+    .map((slide, index) => renderSlide(slide, deck, index === 0))
     .join("\n");
 
   return `<!doctype html>
@@ -117,13 +738,24 @@ export function renderCourseDeckHtml(deck: CourseDeckSpec) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=${deck.width}, initial-scale=1">
   <title>${escapeHtml(deck.sourceSnapshot.title || "SofLIA - Engine Deck")}</title>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700&family=Newsreader:opsz,wght@6..72,300;6..72,400&display=swap">
   <style>${renderCss(deck)}</style>
 </head>
 <body>
-  <div class="deck">
-    ${slides}
+  <div class="deck-shell">
+    <div class="deck-stage" id="deck-stage">
+      ${slides}
+    </div>
   </div>
+  <nav class="deck-counter" role="navigation" aria-label="Navegacion de presentacion">
+    <button type="button" id="deck-prev" aria-label="Diapositiva anterior">&lsaquo;</button>
+    <span class="deck-count"><span id="deck-cur">01</span> <span class="total">/ <span id="deck-total">${String(sortedSlides.length).padStart(2, "0")}</span></span></span>
+    <button type="button" id="deck-next" aria-label="Diapositiva siguiente">&rsaquo;</button>
+  </nav>
+  <div class="deck-hint">Flechas para navegar</div>
+  ${renderRuntime(deck)}
 </body>
 </html>`;
 }

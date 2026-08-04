@@ -279,6 +279,9 @@ describe("SofLIA Bundle Agent services", () => {
     assert.match(source, /dangerouslySetInnerHTML/);
     assert.match(source, /DeckRuntimeStyles/);
     assert.match(source, /className="deck-scope"/);
+    assert.equal(source.includes('className={`${slide.classes || "slide"} active`}'), true);
+    assert.equal(source.includes('"--deck-t": String(Math.max(0, localFrame) / Math.max(1, fps))'), true);
+    assert.equal(source.includes("renderSlideAsset(activeSlide, slidesSceneBox, slideLocalFrame, fallbackFps)"), true);
     assert.match(source, /type DesignTokens/);
     assert.match(source, /animationVariant\?: string/);
     assert.match(source, /visualVariantId\?: string/);
@@ -335,6 +338,7 @@ describe("SofLIA Bundle Agent services", () => {
 
   it("generates structurally different template sources for different visual intents", async () => {
     const cinematicSpec: BundleAgentSpec = {
+      artifactKind: "video_bundle",
       title: "Plantilla cinematica de B-roll",
       description: "Pantalla completa cinematic inmersivo con B-roll de fondo y texto superpuesto.",
       visualStyle: "cinematic inmersivo pantalla completa con zoom y profundidad",
@@ -364,6 +368,7 @@ describe("SofLIA Bundle Agent services", () => {
       changeSummary: "Plantilla cinematica full-screen.",
     };
     const editorialSpec: BundleAgentSpec = {
+      artifactKind: "video_bundle",
       title: "Plantilla editorial clara",
       description: "Layout claro editorial para lectura explicativa con slides sin avatar.",
       visualStyle: "claro editorial lectura explicativo con transiciones suaves",

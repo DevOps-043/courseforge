@@ -2,8 +2,19 @@ import { buildControlledBundleZip } from "./generation.service";
 import { sanitizeErrorMessage } from "./redaction.service";
 import { computeSpecHash, stableJsonHash } from "./spec.service";
 import { validateGeneratedRemotionBundle } from "./security-validator";
-import { bundleAgentSpecSchema, type BundleAgentAuthContext, type BundleAgentSpec } from "./types";
+import {
+  bundleAgentArtifactKindSchema,
+  bundleAgentSpecSchema,
+  type BundleAgentArtifactKind,
+  type BundleAgentAuthContext,
+  type BundleAgentSpec,
+} from "./types";
 import { generateBundleSpecWithAi } from "./ai-spec.service";
+import {
+  buildSlideTemplatePackageZip,
+  buildSlideTemplateSpecFromConversation,
+  parseSlideTemplateAgentSpec,
+} from "./slide-template-package.service";
 import { createTemplateVersionRecord } from "@/domains/production/templates/template-version.service";
 import {
   DEFAULT_TEMPLATE_RENDER_CONFIG,
@@ -33,8 +44,11 @@ function shouldRefreshDefaultAgentConfig(value: unknown) {
 export class BundleAgentWorkflowService {
   constructor(private readonly context: BundleAgentAuthContext) {}
 
-  async createSpec(conversationId: string, overrides?: unknown) {
+  async createSpec(conversationId: string, overrides?: unknown, artifactKindInput?: unknown) {
     const conversation = await this.getConversation(conversationId);
+    const artifactKind = bundleAgentArtifactKindSchema
+      .catch("video_bundle")
+      .parse(artifactKindInput);
     const { data: messages } = await this.context.admin
       .from("soflia_bundle_messages")
       .select("role, content_redacted, metadata")
@@ -42,15 +56,32 @@ export class BundleAgentWorkflowService {
       .eq("organization_id", this.context.organizationId)
       .order("created_at", { ascending: true });
 
-    const generated = await generateBundleSpecWithAi({
-      organizationId: this.context.organizationId,
-      title: conversation.title,
-      messages: messages || [],
-    });
-    const spec = bundleAgentSpecSchema.parse({
-      ...generated.spec,
-      ...(overrides && typeof overrides === "object" ? overrides : {}),
-    });
+    const generated = artifactKind === "slide_template"
+      ? {
+          model: "soflia-slide-template-deterministic-v1",
+          source: "deterministic_fallback" as const,
+          spec: buildSlideTemplateSpecFromConversation({
+            messages: messages || [],
+            overrides,
+            title: conversation.title,
+          }),
+          warning: null,
+        }
+      : await generateBundleSpecWithAi({
+          organizationId: this.context.organizationId,
+          title: conversation.title,
+          messages: messages || [],
+        });
+    const spec = artifactKind === "slide_template"
+      ? parseSlideTemplateAgentSpec({
+          ...generated.spec,
+          ...(overrides && typeof overrides === "object" ? overrides : {}),
+        })
+      : bundleAgentSpecSchema.parse({
+          ...generated.spec,
+          artifactKind,
+          ...(overrides && typeof overrides === "object" ? overrides : {}),
+        });
     const specHash = computeSpecHash(spec);
     const { data: latest } = await this.context.admin
       .from("soflia_bundle_specs")
@@ -85,7 +116,9 @@ export class BundleAgentWorkflowService {
           ? "Spec estructurada generada por SofLIA con OpenAI y validada por contrato."
           : generated.source === "gemini"
             ? "Spec estructurada generada por SofLIA con Gemini y validada por contrato."
-            : "Spec estructurada generada con fallback deterministico y validada por contrato.",
+            : artifactKind === "slide_template"
+              ? "Spec de plantilla de slides generada con contrato SofLIA Deck."
+              : "Spec estructurada generada con fallback deterministico y validada por contrato.",
         metadata: {
           source: generated.source,
           model: generated.model,
@@ -105,17 +138,24 @@ export class BundleAgentWorkflowService {
     return data;
   }
 
-  async generateVersion(conversationId: string, input: { specId?: string | null } = {}) {
+  async generateVersion(conversationId: string, input: { artifactKind?: BundleAgentArtifactKind; specId?: string | null } = {}) {
     await this.enforceGenerationLimit();
     const conversation = await this.getConversation(conversationId);
     let specRow = input.specId
       ? await this.getSpec(input.specId, conversationId)
       : await this.getLatestSpec(conversationId);
     if (!input.specId && (!specRow || await this.hasUserMessagesAfterSpec(conversationId, specRow.created_at))) {
-      specRow = await this.createSpec(conversationId);
+      specRow = await this.createSpec(conversationId, undefined, input.artifactKind);
     }
     if (!specRow) {
       throw new Error("No hay spec disponible para generar el bundle.");
+    }
+
+    const artifactKind = bundleAgentArtifactKindSchema
+      .catch("video_bundle")
+      .parse((specRow.spec_json as Record<string, unknown>)?.artifactKind || input.artifactKind);
+    if (artifactKind === "slide_template") {
+      return this.generateSlideTemplatePackage(conversationId, specRow.id, specRow.spec_json);
     }
 
     const spec = bundleAgentSpecSchema.parse(specRow.spec_json);
@@ -266,6 +306,72 @@ export class BundleAgentWorkflowService {
     return data;
   }
 
+  private async generateSlideTemplatePackage(
+    conversationId: string,
+    specId: string,
+    specJson: unknown,
+  ) {
+    const spec = parseSlideTemplateAgentSpec(specJson);
+    const run = await this.createGenerationRun(conversationId, specId, null, spec);
+
+    try {
+      await this.context.admin
+        .from("soflia_bundle_conversations")
+        .update({ status: "GENERATING", updated_at: new Date().toISOString() })
+        .eq("id", conversationId)
+        .eq("organization_id", this.context.organizationId);
+
+      const bundle = await buildSlideTemplatePackageZip(spec);
+      const storagePath = await this.uploadBundle(null, run.id, bundle.originalFileName, bundle.buffer);
+      await this.context.admin
+        .from("soflia_bundle_generation_runs")
+        .update({
+          status: bundle.validationReport.isValid ? "PACKAGED" : "VALIDATION_FAILED",
+          output_hash: bundle.hash,
+          bundle_storage_path: storagePath,
+          validation_report: bundle.validationReport,
+          finished_at: new Date().toISOString(),
+        })
+        .eq("id", run.id)
+        .eq("organization_id", this.context.organizationId);
+
+      await this.context.admin
+        .from("soflia_bundle_conversations")
+        .update({
+          status: bundle.validationReport.isValid ? "ACTIVE" : "FAILED",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", conversationId)
+        .eq("organization_id", this.context.organizationId);
+
+      return {
+        artifactKind: "slide_template" as const,
+        generationRunId: run.id,
+        templateId: null,
+        validationReport: bundle.validationReport,
+        version: null,
+      };
+    } catch (error) {
+      await this.context.admin
+        .from("soflia_bundle_generation_runs")
+        .update({
+          status: "FAILED",
+          error_sanitized: sanitizeErrorMessage(error),
+          finished_at: new Date().toISOString(),
+        })
+        .eq("id", run.id)
+        .eq("organization_id", this.context.organizationId);
+
+      await this.context.admin
+        .from("soflia_bundle_conversations")
+        .update({ status: "FAILED", updated_at: new Date().toISOString() })
+        .eq("id", conversationId)
+        .eq("organization_id", this.context.organizationId);
+
+      throw error;
+    }
+  }
+
   private async hasUserMessagesAfterSpec(conversationId: string, specCreatedAt?: string | null) {
     if (!specCreatedAt) {
       return true;
@@ -342,8 +448,8 @@ export class BundleAgentWorkflowService {
   private async createGenerationRun(
     conversationId: string,
     specId: string,
-    templateId: string,
-    spec: BundleAgentSpec,
+    templateId: string | null,
+    spec: BundleAgentSpec | ReturnType<typeof parseSlideTemplateAgentSpec>,
   ) {
     const { data, error } = await this.context.admin
       .from("soflia_bundle_generation_runs")
@@ -353,7 +459,9 @@ export class BundleAgentWorkflowService {
         spec_id: specId,
         template_id: templateId,
         status: "RUNNING",
-        model: "courseforge-controlled-template-v1",
+        model: spec.artifactKind === "slide_template"
+          ? "soflia-slide-template-package-v1"
+          : "soflia-controlled-video-template-v1",
         input_hash: stableJsonHash(spec),
       })
       .select("*")
@@ -364,13 +472,15 @@ export class BundleAgentWorkflowService {
   }
 
   private async uploadBundle(
-    templateId: string,
+    templateId: string | null,
     runId: string,
     originalFileName: string,
     buffer: ArrayBuffer,
   ): Promise<string> {
     const safeFileName = originalFileName.replace(/[^A-Za-z0-9._-]/g, "_");
-    const path = `organizations/${this.context.organizationId}/templates/${templateId}/agent-runs/${runId}/${safeFileName}`;
+    const path = templateId
+      ? `organizations/${this.context.organizationId}/templates/${templateId}/agent-runs/${runId}/${safeFileName}`
+      : `organizations/${this.context.organizationId}/slide-templates/agent-runs/${runId}/${safeFileName}`;
     const { error } = await this.context.admin.storage
       .from("template-bundles")
       .upload(path, Buffer.from(buffer), {

@@ -248,7 +248,7 @@ export class ProductionController {
       const { data: rawVersion, error: versionError } = await serviceClient
         .from('remotion_template_versions')
         .select(
-          'id, organization_id, bundle_hash, build_hash, entry_point, storage_path, template_type, export_mode, composition_id, default_props, props_schema, default_duration_frames, default_fps, default_width, default_height, status',
+          'id, organization_id, bundle_hash, build_hash, entry_point, storage_path, template_type, export_mode, composition_id, default_props, props_schema, manifest, default_duration_frames, default_fps, default_width, default_height, status',
         )
         .eq('template_id', templateId)
         .in('status', ['APPROVED_FOR_SANDBOX', 'APPROVED'])
@@ -558,7 +558,7 @@ export class ProductionController {
       const { data: cloudVersion } = hasExternalBundle
         ? await serviceClient
             .from('remotion_template_versions')
-            .select('id, bundle_hash, build_hash, composition_id, export_mode, status, default_props, props_schema')
+            .select('id, bundle_hash, build_hash, composition_id, export_mode, status, default_props, props_schema, manifest')
             .eq('template_id', templateId)
             .in('status', ['APPROVED_FOR_SANDBOX', 'APPROVED'])
             .order('version_number', { ascending: false })

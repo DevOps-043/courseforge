@@ -181,7 +181,15 @@ function validateChartContracts(
   }
 }
 
+function stripTrustedTemplateRuntime(html: string) {
+  return html.replace(
+    /<script\b(?=[^>]*\bdata-soflia-template-runtime=(["'])soflia-deck\1)[^>]*>[\s\S]*?<\/script>/gi,
+    "",
+  );
+}
+
 function validateHtmlSafety(html: string, findings: CourseDeckQaFinding[]) {
+  const htmlForSafetyScan = stripTrustedTemplateRuntime(html);
   const disallowedPatterns = [
     { code: "script_tag", pattern: /<script\b/i },
     { code: "iframe_tag", pattern: /<iframe\b/i },
@@ -192,7 +200,7 @@ function validateHtmlSafety(html: string, findings: CourseDeckQaFinding[]) {
   ];
 
   for (const pattern of disallowedPatterns) {
-    if (pattern.pattern.test(html)) {
+    if (pattern.pattern.test(htmlForSafetyScan)) {
       pushFinding(findings, {
         code: pattern.code,
         message: "El HTML renderizado contiene una construccion no permitida.",

@@ -79,7 +79,11 @@ export function AnimatedDeckAvatar(props: AssemblyInputProps) {
           {props.avatarClips.length > 0 ? (
             <AvatarClipLayer clips={props.avatarClips} muted={hasVoice} segments={avatarSegments} />
           ) : props.avatarVideoUrl ? (
-            <AvatarLayer url={props.avatarVideoUrl} muted={hasVoice} />
+            <AvatarLayer
+              url={props.avatarVideoUrl}
+              durationInFrames={durationInFrames}
+              muted={hasVoice}
+            />
           ) : (
             <AbsoluteFill
               style={{

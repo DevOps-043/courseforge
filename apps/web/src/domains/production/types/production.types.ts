@@ -97,4 +97,5 @@ export interface CompleteBrollPromptJobParams {
   model: string;
   promptsText: string;
   promptItems: unknown[];
+  slideDeckSpec?: Record<string, unknown>;
 }

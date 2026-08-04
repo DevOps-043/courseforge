@@ -19,6 +19,8 @@ import {
   Download,
   HardDrive,
   AlertTriangle,
+  Eye,
+  ListChecks,
 } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -32,6 +34,7 @@ import type {
 } from "../validators/assets.validators";
 import { CloudStorageConnectButton } from "@/app/admin/artifacts/new/components/CloudStorageConnectButton";
 import { getCloudStorageConnectionsAction } from "@/domains/production/actions/cloud-storage.actions";
+import { repairCommonUtf8Mojibake } from "@/domains/production/text/mojibake.service";
 import type {
   CloudStorageConnection,
   CloudStorageFile,
@@ -44,6 +47,204 @@ function formatSeconds(seconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
   const remainingSeconds = totalSeconds % 60;
   return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+type AnimatedDeckAsset = NonNullable<SlidesAsset["animated_deck"]>;
+type AnimatedDeckSlideAsset = AnimatedDeckAsset["slides"][number];
+
+function escapeHtmlAttribute(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function buildAnimatedDeckSlideSrcDoc(deck: AnimatedDeckAsset, slide: AnimatedDeckSlideAsset) {
+  const width = deck.width || 1920;
+  const height = deck.height || 1080;
+  const classList = (slide.classes || "slide")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!classList.includes("active")) {
+    classList.push("active");
+  }
+  const classes = escapeHtmlAttribute(classList.join(" "));
+  const html = repairCommonUtf8Mojibake(slide.html || "");
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=${width}, initial-scale=1" />
+  <style>
+    html, body {
+      margin: 0;
+      width: ${width}px;
+      height: ${height}px;
+      overflow: hidden;
+      background: #05070b;
+    }
+    .deck-scope {
+      position: relative;
+      width: ${width}px;
+      height: ${height}px;
+      overflow: hidden;
+    }
+    ${deck.css || ""}
+  </style>
+</head>
+<body>
+  <div class="deck-scope" style="--deck-t: 0;">
+    <section class="${classes}">${html}</section>
+  </div>
+</body>
+</html>`;
+}
+
+function AnimatedDeckSlideFrame({
+  deck,
+  slide,
+}: {
+  deck: AnimatedDeckAsset;
+  slide: AnimatedDeckSlideAsset;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(0.2);
+  const width = deck.width || 1920;
+  const height = deck.height || 1080;
+  const srcDoc = useMemo(
+    () => buildAnimatedDeckSlideSrcDoc(deck, slide),
+    [deck, slide],
+  );
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const updateScale = () => {
+      const nextScale = container.clientWidth / width;
+      setScale(Number.isFinite(nextScale) && nextScale > 0 ? nextScale : 0.2);
+    };
+    updateScale();
+
+    const resizeObserver = new ResizeObserver(updateScale);
+    resizeObserver.observe(container);
+    return () => resizeObserver.disconnect();
+  }, [width]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative aspect-video overflow-hidden rounded-lg border border-gray-200 bg-[#05070b] dark:border-[#6C757D]/20"
+    >
+      <iframe
+        title={`Preview ${slide.label || slide.index}`}
+        srcDoc={srcDoc}
+        sandbox=""
+        scrolling="no"
+        className="absolute left-0 top-0 border-0"
+        style={{
+          width,
+          height,
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
+        }}
+      />
+    </div>
+  );
+}
+
+function AnimatedDeckPreview({
+  deck,
+  sourceUrl,
+}: {
+  deck: AnimatedDeckAsset;
+  sourceUrl?: string;
+}) {
+  const deckSlides = useMemo(
+    () => [...(deck.slides || [])].sort((left, right) => left.index - right.index),
+    [deck.slides],
+  );
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const selectedSlide = deckSlides[Math.min(selectedIndex, Math.max(0, deckSlides.length - 1))];
+
+  useEffect(() => {
+    if (selectedIndex > deckSlides.length - 1) {
+      setSelectedIndex(Math.max(0, deckSlides.length - 1));
+    }
+  }, [deckSlides.length, selectedIndex]);
+
+  if (!selectedSlide) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 rounded-xl border border-purple-100 bg-white p-3 shadow-sm dark:border-purple-500/10 dark:bg-[#0F1419]/60">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Eye size={14} className="text-purple-500" />
+          <span className="text-xs font-bold text-gray-800 dark:text-gray-100">Vista de slides resultantes</span>
+          <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-bold text-purple-700 dark:bg-purple-500/10 dark:text-purple-300">
+            {deckSlides.length} slide(s)
+          </span>
+        </div>
+        {sourceUrl ? (
+          <a
+            href={sourceUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[10px] font-bold text-gray-600 transition-colors hover:bg-gray-50 dark:border-[#6C757D]/20 dark:text-gray-300 dark:hover:bg-white/5"
+          >
+            <ExternalLink size={10} />
+            HTML original
+          </a>
+        ) : null}
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px]">
+        <div className="min-w-0 space-y-2">
+          <AnimatedDeckSlideFrame deck={deck} slide={selectedSlide} />
+          <div className="flex items-center justify-between gap-2 text-[10px] text-gray-500 dark:text-gray-400">
+            <span className="truncate font-semibold">
+              Slide {selectedSlide.index}: {selectedSlide.label || "Sin titulo"}
+            </span>
+            <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 font-bold dark:bg-white/5">
+              {selectedSlide.animationCount} animacion(es)
+            </span>
+          </div>
+        </div>
+
+        <div className="min-w-0 rounded-lg border border-gray-100 bg-gray-50 p-2 dark:border-[#6C757D]/10 dark:bg-[#151A21]/80">
+          <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <ListChecks size={12} />
+            Pasos
+          </div>
+          <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
+            {deckSlides.map((slide, index) => (
+              <button
+                key={`${slide.index}-${slide.label}`}
+                type="button"
+                onClick={() => setSelectedIndex(index)}
+                className={`flex w-full items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-left text-[10px] transition-colors ${
+                  selectedSlide.index === slide.index
+                    ? "border-purple-300 bg-purple-50 text-purple-800 dark:border-purple-500/30 dark:bg-purple-500/10 dark:text-purple-200"
+                    : "border-transparent text-gray-600 hover:bg-white dark:text-gray-300 dark:hover:bg-white/5"
+                }`}
+              >
+                <span className="min-w-0 truncate font-bold">
+                  {String(index + 1).padStart(2, "0")} - {slide.label || `Slide ${slide.index}`}
+                </span>
+                <span className="shrink-0 rounded bg-white/70 px-1 py-0.5 font-semibold dark:bg-black/20">
+                  {slide.animationCount}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------
@@ -550,6 +751,13 @@ interface OpenDesignSlidesSectionProps {
         <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-2 text-[11px] leading-relaxed text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
           {animatedDeck.error_message || "El deck no paso las validaciones de seguridad."}
         </div>
+      )}
+
+      {animatedDeck && animatedDeck.status !== "FAILED" && (
+        <AnimatedDeckPreview
+          deck={animatedDeck}
+          sourceUrl={slides?.html_public_url}
+        />
       )}
 
       {slideImages.length > 0 && (

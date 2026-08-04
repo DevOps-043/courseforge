@@ -105,6 +105,8 @@ export interface ClaimedDesktopWorkerTemplatePreviewJob {
   bundleType: "zip";
   posterUploadUrl: string;
   posterStoragePath: string;
+  videoUploadUrl: string;
+  videoStoragePath: string;
   previewFrame: number;
   timeoutInMilliseconds: number;
 }
@@ -113,6 +115,12 @@ export interface WorkerJobCompleteInput {
   outputStoragePath: string;
   checksum?: string;
   durationSeconds?: number;
+  previewDurationSeconds?: number;
+  previewFrames?: number;
+  compositionDurationSeconds?: number;
+  compositionFrames?: number;
+  posterStoragePath?: string;
+  videoStoragePath?: string;
   logsRef?: string;
   buildHash?: string;
   buildLog?: string;
@@ -948,6 +956,19 @@ function derivePreviewFrame(props: Record<string, unknown>) {
   const totalFrames = Number(props.totalDurationInFrames);
   if (!Number.isFinite(totalFrames) || totalFrames <= 1) return 0;
   return Math.max(0, Math.min(Math.round(totalFrames) - 1, Math.round(totalFrames * 0.18)));
+}
+
+function isPreviewVideoStoragePath(value: string | null | undefined): value is string {
+  return Boolean(value && /^template-previews\/.+\.(mp4|webm|mov)$/i.test(value));
+}
+
+function isPreviewPosterStoragePath(value: string | null | undefined): value is string {
+  return Boolean(value && /^template-previews\/.+\.(png|jpg|jpeg|webp)$/i.test(value));
+}
+
+function normalizePreviewMetric(value: unknown) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric) : null;
 }
 
 function deriveLayoutOverridesHash(props: Record<string, unknown>) {
@@ -3004,12 +3025,20 @@ export class DesktopWorkerControlPlane {
     }
 
     const posterStoragePath = `template-previews/${preview.id}/poster.png`;
+    const videoStoragePath = `template-previews/${preview.id}/preview.mp4`;
     const { data: posterSigned, error: posterError } = await this.supabase.storage
       .from(VIDEO_BUCKET)
       .createSignedUploadUrl(posterStoragePath, { upsert: true });
 
     if (posterError || !posterSigned?.signedUrl) {
       throw new Error(`TEMPLATE_PREVIEW_POSTER_UPLOAD_URL_FAILED: ${posterError?.message || "Unknown error"}`);
+    }
+    const { data: videoSigned, error: videoError } = await this.supabase.storage
+      .from(VIDEO_BUCKET)
+      .createSignedUploadUrl(videoStoragePath, { upsert: true });
+
+    if (videoError || !videoSigned?.signedUrl) {
+      throw new Error(`TEMPLATE_PREVIEW_VIDEO_UPLOAD_URL_FAILED: ${videoError?.message || "Unknown error"}`);
     }
 
     return {
@@ -3027,6 +3056,8 @@ export class DesktopWorkerControlPlane {
       bundleType: "zip",
       posterUploadUrl: posterSigned.signedUrl,
       posterStoragePath,
+      videoUploadUrl: videoSigned.signedUrl,
+      videoStoragePath,
       previewFrame: Math.max(0, Math.round(Number(preview.preview_frame) || 0)),
       timeoutInMilliseconds: Number(process.env.EXTERNAL_TEMPLATE_PREVIEW_TIMEOUT_MS || 300000),
     };
@@ -3659,21 +3690,44 @@ export class DesktopWorkerControlPlane {
     preview: any,
     input: WorkerJobCompleteInput,
   ) {
-    if (!input.outputStoragePath || !input.outputStoragePath.startsWith("template-previews/")) {
+    const outputStoragePath = sanitizeText(input.outputStoragePath, "");
+    const reportedPosterStoragePath = sanitizeText(input.posterStoragePath, "");
+    const reportedVideoStoragePath = sanitizeText(input.videoStoragePath, "");
+    if (!outputStoragePath || !outputStoragePath.startsWith("template-previews/")) {
+      throw new Error("INVALID_TEMPLATE_PREVIEW_OUTPUT_STORAGE_PATH");
+    }
+
+    const previewPosterStoragePath = isPreviewPosterStoragePath(outputStoragePath)
+      ? outputStoragePath
+      : isPreviewPosterStoragePath(reportedPosterStoragePath)
+        ? reportedPosterStoragePath
+        : null;
+    const previewVideoStoragePath = isPreviewVideoStoragePath(outputStoragePath)
+      ? outputStoragePath
+      : isPreviewVideoStoragePath(reportedVideoStoragePath)
+        ? reportedVideoStoragePath
+        : null;
+    if (!previewPosterStoragePath && !previewVideoStoragePath) {
       throw new Error("INVALID_TEMPLATE_PREVIEW_OUTPUT_STORAGE_PATH");
     }
 
     const checksum = sanitizeText(input.checksum, "");
+    const previewDurationSeconds = normalizePreviewMetric(input.previewDurationSeconds ?? input.durationSeconds);
+    const previewFrames = normalizePreviewMetric(input.previewFrames);
     const completedAt = new Date().toISOString();
     if (preview.status === "SUCCEEDED") {
+      const existingOutputPath = preview.preview_video_storage_path || preview.preview_poster_storage_path;
       if (
-        preview.preview_poster_storage_path === input.outputStoragePath &&
+        existingOutputPath === outputStoragePath &&
         (!preview.output_checksum || !checksum || preview.output_checksum === checksum)
       ) {
-        const {
-          data: { publicUrl },
-        } = this.supabase.storage.from(VIDEO_BUCKET).getPublicUrl(input.outputStoragePath);
-        return { previewId: preview.id, previewPosterUrl: publicUrl, alreadyCompleted: true };
+        const previewPosterUrl = preview.preview_poster_storage_path
+          ? this.supabase.storage.from(VIDEO_BUCKET).getPublicUrl(preview.preview_poster_storage_path).data.publicUrl
+          : null;
+        const previewVideoUrl = preview.preview_video_storage_path
+          ? this.supabase.storage.from(VIDEO_BUCKET).getPublicUrl(preview.preview_video_storage_path).data.publicUrl
+          : null;
+        return { previewId: preview.id, previewPosterUrl, previewVideoUrl, alreadyCompleted: true };
       }
       throw new Error("TEMPLATE_PREVIEW_ALREADY_COMPLETED_WITH_DIFFERENT_OUTPUT");
     }
@@ -3681,8 +3735,10 @@ export class DesktopWorkerControlPlane {
       .from("remotion_template_previews")
       .update({
         status: "SUCCEEDED",
-        preview_poster_storage_path: input.outputStoragePath,
-        preview_frames: null,
+        preview_poster_storage_path: previewPosterStoragePath,
+        preview_video_storage_path: previewVideoStoragePath,
+        preview_duration_seconds: previewDurationSeconds,
+        preview_frames: previewFrames,
         output_checksum: checksum || null,
         provider_status: "SUCCEEDED",
         provider_status_detail: null,
@@ -3704,12 +3760,15 @@ export class DesktopWorkerControlPlane {
 
     if (error) throw new Error(`TEMPLATE_PREVIEW_COMPLETE_FAILED: ${error.message}`);
 
-    const {
-      data: { publicUrl },
-    } = this.supabase.storage.from(VIDEO_BUCKET).getPublicUrl(input.outputStoragePath);
+    const previewPosterUrl = previewPosterStoragePath
+      ? this.supabase.storage.from(VIDEO_BUCKET).getPublicUrl(previewPosterStoragePath).data.publicUrl
+      : null;
+    const previewVideoUrl = previewVideoStoragePath
+      ? this.supabase.storage.from(VIDEO_BUCKET).getPublicUrl(previewVideoStoragePath).data.publicUrl
+      : null;
 
     await this.heartbeat(worker, { status: "ONLINE" });
-    return { previewId: preview.id, previewPosterUrl: publicUrl };
+    return { previewId: preview.id, previewPosterUrl, previewVideoUrl };
   }
 
   private async failTemplatePreview(worker: WorkerAuthContext, preview: any, input: Record<string, unknown>) {

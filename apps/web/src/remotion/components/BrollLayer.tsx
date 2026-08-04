@@ -1,8 +1,10 @@
 import type { CSSProperties } from "react";
-import { AbsoluteFill, Loop, OffthreadVideo, Sequence, Series } from "remotion";
+import { AbsoluteFill, Freeze, Loop, OffthreadVideo, Sequence, Series } from "remotion";
 import type { AssemblyBrollClip } from "../types";
 import type { LayoutOverrideStyle } from "../layout-override-styles";
 import type { VisualTimelineSegment } from "../visual-timeline";
+import { REMOTE_MEDIA_RENDER_PROPS } from "../media-rendering.config";
+import { resolveSafeRemoteVideoRange } from "../remote-video-source-range";
 
 interface BrollLayerProps {
   clips: AssemblyBrollClip[];
@@ -20,27 +22,44 @@ function BrollVideo({
   segment?: VisualTimelineSegment;
   style?: CSSProperties;
 }) {
-  const sourceStartFrame = Math.max(0, segment?.sourceStartFrame ?? 0);
-  const sourceEndFrame = Math.max(
-    sourceStartFrame + 1,
-    segment?.sourceEndFrame ?? clip.durationInFrames,
-  );
-  const sourceDurationInFrames = sourceEndFrame - sourceStartFrame;
+  const sourceRange = resolveSafeRemoteVideoRange({
+    sourceStartFrame: segment?.sourceStartFrame,
+    sourceEndFrame: segment?.sourceEndFrame,
+    fallbackDurationInFrames: clip.durationInFrames,
+    sequenceDurationInFrames: segment?.durationInFrames ?? clip.durationInFrames,
+  });
   const video = (
     <OffthreadVideo
+      {...REMOTE_MEDIA_RENDER_PROPS}
       src={clip.url}
       muted
-      startFrom={sourceStartFrame}
-      endAt={sourceEndFrame}
+      startFrom={sourceRange.sourceStartFrame}
+      endAt={sourceRange.sourceEndFrame}
       style={{ width: "100%", height: "100%", objectFit: "cover", ...style }}
     />
   );
 
-  if (!segment || segment.durationInFrames <= sourceDurationInFrames || segment.loopMode !== "loop") {
+  if (!segment || segment.durationInFrames <= sourceRange.sourceDurationInFrames) {
     return video;
   }
 
-  return <Loop durationInFrames={sourceDurationInFrames}>{video}</Loop>;
+  if (segment.loopMode === "loop") {
+    return <Loop durationInFrames={sourceRange.sourceDurationInFrames}>{video}</Loop>;
+  }
+
+  return (
+    <>
+      <Sequence from={0} durationInFrames={sourceRange.sourceDurationInFrames}>
+        {video}
+      </Sequence>
+      <Sequence
+        from={sourceRange.sourceDurationInFrames}
+        durationInFrames={sourceRange.tailFreezeInFrames}
+      >
+        <Freeze frame={sourceRange.sourceDurationInFrames - 1}>{video}</Freeze>
+      </Sequence>
+    </>
+  );
 }
 
 /**

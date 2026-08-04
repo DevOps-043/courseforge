@@ -14,6 +14,7 @@ export async function POST(request: Request, context: RouteContext) {
     const authContext = await resolveBundleAgentAuthContext();
     const service = new BundleAgentWorkflowService(authContext);
     const result = await service.generateVersion(conversationId, {
+      artifactKind: body?.artifactKind === "slide_template" ? "slide_template" : "video_bundle",
       specId: typeof body?.specId === "string" ? body.specId : null,
     });
 

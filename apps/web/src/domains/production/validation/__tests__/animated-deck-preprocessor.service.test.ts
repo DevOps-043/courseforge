@@ -49,13 +49,26 @@ describe("prepareAnimatedDeckForRemotion", () => {
     assert.equal(result.animatedSlideCount, 1);
     assert.equal(result.staticSlideCount, 1);
     assert.equal(result.deck.slides[0].label, "01 Animated");
-    assert.equal(result.deck.slides[0].classes, "slide s-center");
+    assert.equal(result.deck.slides[0].classes, "slide active s-center");
+    assert.equal(result.deck.slides[1].classes, "slide s-center active");
     assert.ok(result.deck.slides[0].animationCount > 0);
     assert.equal(result.deck.slides[1].animationCount, 0);
     assert.doesNotMatch(result.deck.slides[0].html, /onclick|B-ROLL/);
     assert.match(result.css, /\.deck-scope \.slide/);
     assert.match(result.css, /animation-play-state: paused/);
     assert.match(result.css, /--deck-t/);
+  });
+
+  it("repairs common UTF-8 mojibake before storing slide HTML", () => {
+    const html = MIXED_DECK.replace(
+      "<h1 class=\"headline\" onclick=\"alert('x')\">Animated</h1>",
+      "<h1 class=\"headline\">Pantalla de tÃ­tulo con transiciÃ³n</h1>",
+    );
+    const result = prepareAnimatedDeckForRemotion(html);
+
+    assert.match(result.deck.slides[0].html, /título/);
+    assert.match(result.deck.slides[0].html, /transición/);
+    assert.doesNotMatch(result.deck.slides[0].html, /tÃ­tulo|transiciÃ³n/);
   });
 
   it("allows Google Fonts and records them as deck metadata", () => {

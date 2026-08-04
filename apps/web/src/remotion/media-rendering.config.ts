@@ -1,0 +1,8 @@
+export const REMOTE_MEDIA_DELAY_RENDER_TIMEOUT_MS = 45_000;
+export const REMOTE_MEDIA_DELAY_RENDER_RETRIES = 1;
+export const REMOTE_VIDEO_END_PADDING_FRAMES = 15;
+
+export const REMOTE_MEDIA_RENDER_PROPS = {
+  delayRenderTimeoutInMilliseconds: REMOTE_MEDIA_DELAY_RENDER_TIMEOUT_MS,
+  delayRenderRetries: REMOTE_MEDIA_DELAY_RENDER_RETRIES,
+} as const;

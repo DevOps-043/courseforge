@@ -43,7 +43,7 @@ describe("SofLIA - Engine slide deck generation", () => {
     assert.equal(deck.sourceSnapshot.source, "component_content");
   });
 
-  it("renders escaped HTML and SVG charts without scripts", () => {
+  it("renders escaped HTML, SVG charts and the SofLIA Deck template contract", () => {
     const deck = buildCourseDeckSpecFromComponent({
       artifactId: "artifact-1",
       component: {
@@ -74,7 +74,68 @@ describe("SofLIA - Engine slide deck generation", () => {
     assert.match(html, /&lt;b&gt;custom&lt;\/b&gt;/);
     assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
     assert.match(html, /class="cf-chart"/);
+    assert.match(html, /class="deck-stage"/);
+    assert.match(html, /s-split|s-center|data-slide/);
+    assert.match(html, /Newsreader/);
+    assert.match(html, /Inter\+Tight|Inter Tight/);
+    assert.match(html, /--blue-deep: #0A2540/);
+    assert.match(html, /data-soflia-template-runtime="soflia-deck"/);
     assert.doesNotMatch(html, /<script>alert/);
+  });
+
+  it("repairs mojibake in generated deck text before rendering HTML", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-1",
+      component: {
+        content: {},
+        id: "component-1",
+        type: "VIDEO_THEORETICAL",
+      },
+      input: {
+        customSlides: [
+          {
+            bullets: ["TransiciÃ³n a un reloj", "EnergÃ­a cognitiva"],
+            title: "Pantalla de tÃ­tulo",
+          },
+        ],
+        locale: "es",
+        template: "course-module",
+      },
+    });
+    const html = renderCourseDeckHtml(deck);
+
+    assert.match(html, /Pantalla de título/);
+    assert.match(html, /Transición a un reloj/);
+    assert.match(html, /Energía cognitiva/);
+    assert.doesNotMatch(html, /tÃ­tulo|TransiciÃ³n|EnergÃ­a/);
+  });
+
+  it("allows the trusted SofLIA Deck runtime but rejects arbitrary scripts", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-1",
+      component: {
+        content: {},
+        id: "component-1",
+        type: "VIDEO_THEORETICAL",
+      },
+      input: {
+        locale: "es",
+        template: "course-module",
+      },
+    });
+    const html = renderCourseDeckHtml(deck);
+    const trustedReport = validateCourseDeckQuality({
+      deckSpec: deck,
+      html,
+    });
+    const unsafeReport = validateCourseDeckQuality({
+      deckSpec: deck,
+      html: `${html}<script>alert("x")</script>`,
+    });
+
+    assert.equal(trustedReport.checks.htmlSafety, true);
+    assert.equal(unsafeReport.status, "FAIL");
+    assert.equal(unsafeReport.checks.htmlSafety, false);
   });
 
   it("runs generation as explicit stages and returns a QA report", () => {

@@ -379,13 +379,33 @@ export function useProductionAssetState({
     onAssetChange?.(component.id, { [field]: value });
   };
 
-  const copyToClipboard = (text: string, label = "Copiado") => {
-    navigator.clipboard.writeText(text);
-    setCopyFeedback(label);
-    window.setTimeout(() => setCopyFeedback(null), COPY_FEEDBACK_RESET_DELAY_MS);
+  const copyToClipboard = async (text: string, label = "Copiado") => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "true");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+
+      setCopyFeedback(label);
+      window.setTimeout(() => setCopyFeedback(null), COPY_FEEDBACK_RESET_DELAY_MS);
+      return true;
+    } catch (error) {
+      console.warn("Could not copy to clipboard:", error);
+      toast.warning("No se pudo copiar al portapapeles. La exportacion continuo.");
+      return false;
+    }
   };
 
-  const openInGamma = () => {
+  const openInGamma = async () => {
     const formattedContent = formatGammaContent(
       component.content as Record<string, unknown>,
     );
@@ -395,7 +415,7 @@ export function useProductionAssetState({
       return;
     }
 
-    copyToClipboard(formattedContent, "Estructura copiada");
+    await copyToClipboard(formattedContent, "Estructura copiada");
     window.open("https://gamma.app/create", "_blank");
   };
 
@@ -615,7 +635,7 @@ export function useProductionAssetState({
         throw new Error(data.error || 'Error al exportar slides');
       }
 
-      copyToClipboard(data.html, 'HTML Copiado');
+      const copied = await copyToClipboard(data.html, 'HTML Copiado');
 
       const newSlides: SlidesAsset = {
         open_design_project_id: data.generatedSlidesId || data.openDesignProjectId,
@@ -630,7 +650,9 @@ export function useProductionAssetState({
         slides: newSlides,
         slides_url: firstSlideUrl,
       });
-      toast.success('Slides exportadas y copiadas al portapapeles');
+      toast.success(copied
+        ? 'Slides exportadas y copiadas al portapapeles'
+        : 'Slides exportadas; copia manual requerida');
 
     } catch (err: any) {
       toast.error(`Error al exportar slides: ${err.message}`);

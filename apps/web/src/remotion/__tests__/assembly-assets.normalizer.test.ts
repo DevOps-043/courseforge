@@ -30,6 +30,7 @@ import {
   buildVisualTimeline,
   getActiveTimelineSegments,
 } from "../visual-timeline";
+import { resolveSafeRemoteVideoRange } from "../remote-video-source-range";
 import { AVATAR_CLIP_CROSSFADE_FRAMES } from "../avatar-clip-transitions";
 import { resolveSlideTimelineRenderItems } from "../components/slide-timeline-rendering";
 import {
@@ -75,6 +76,32 @@ function baseAvatarClip(params: Partial<NonNullable<MaterialAssets["avatar_clips
 }
 
 describe("normalizeAssemblyAssets", () => {
+  it("keeps remote video source ranges away from the fragile final frames", () => {
+    const range = resolveSafeRemoteVideoRange({
+      fallbackDurationInFrames: 600,
+      sequenceDurationInFrames: 600,
+    });
+
+    assert.equal(range.sourceStartFrame, 0);
+    assert.equal(range.sourceEndFrame, 585);
+    assert.equal(range.sourceDurationInFrames, 585);
+    assert.equal(range.tailFreezeInFrames, 15);
+  });
+
+  it("does not pad very short remote video ranges out of existence", () => {
+    const range = resolveSafeRemoteVideoRange({
+      sourceStartFrame: 3,
+      sourceEndFrame: 8,
+      fallbackDurationInFrames: 5,
+      sequenceDurationInFrames: 5,
+    });
+
+    assert.equal(range.sourceStartFrame, 3);
+    assert.equal(range.sourceEndFrame, 8);
+    assert.equal(range.sourceDurationInFrames, 5);
+    assert.equal(range.tailFreezeInFrames, 0);
+  });
+
   it("sorts slide images by slide_index and normalizes them to contiguous layer indexes", () => {
     const assets: MaterialAssets = {
       slides: {
@@ -177,7 +204,7 @@ describe("normalizeAssemblyAssets", () => {
             {
               animationCount: 1,
               classes: "slide s-center",
-              html: "<h1>Animated</h1>",
+              html: "<h1>Animated tÃ­tulo</h1>",
               index: 1,
               label: "01 Animated",
             },
@@ -213,7 +240,8 @@ describe("normalizeAssemblyAssets", () => {
       normalized.slides.map((slide) => slide.kind),
       ["html", "html"],
     );
-    assert.equal(normalized.slides[0].html, "<h1>Animated</h1>");
+    assert.equal(normalized.slides[0].classes, "slide s-center active");
+    assert.equal(normalized.slides[0].html, "<h1>Animated título</h1>");
     assert.equal(normalized.deckCss, ".deck-scope .slide { width: 1920px; height: 1080px; }");
     assert.deepEqual(normalized.deckFonts.map((font) => font.family), ["Outfit"]);
     assert.equal(props.slides[0].kind, "html");

@@ -46,8 +46,10 @@ import {
   getTemplateCloudBuildStatusAction,
   createTemplateVersionAction,
   createTemplateBundleUploadPathAction,
+  getSlideTemplatePackagesAction,
   type RemotionTemplate,
-  type RemotionTemplateVersion
+  type RemotionTemplateVersion,
+  type SlideTemplateLibraryItem
 } from "@/domains/production/actions/templates.actions";
 import { uploadWithSignedUrl } from "@/lib/storage-upload";
 import {
@@ -56,22 +58,27 @@ import {
   parseTemplateRenderConfig,
   type TemplateRenderConfig,
 } from "@/remotion/template-config";
+import { SlideTemplatePreview, VideoTemplatePreview } from "./TemplateLibraryPreviews";
 
 interface TemplatesContainerProps {
   initialTemplates: RemotionTemplate[];
   initialPublicTemplates: RemotionTemplate[];
+  initialSlideTemplates: SlideTemplateLibraryItem[];
   initialUserRole?: string | null;
 }
 
 export default function TemplatesContainer({
   initialTemplates,
   initialPublicTemplates,
+  initialSlideTemplates,
   initialUserRole = null,
 }: TemplatesContainerProps) {
   const params = useParams<{ empresaSlug?: string }>();
+  const [libraryMode, setLibraryMode] = useState<"video_bundles" | "slide_templates">("video_bundles");
   const [activeTab, setActiveTab] = useState<"mine" | "public">("mine");
   const [templates, setTemplates] = useState<RemotionTemplate[]>(initialTemplates);
   const [publicTemplates, setPublicTemplates] = useState<RemotionTemplate[]>(initialPublicTemplates);
+  const [slideTemplates, setSlideTemplates] = useState<SlideTemplateLibraryItem[]>(initialSlideTemplates);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -360,11 +367,15 @@ export default function TemplatesContainer({
     try {
       const resMine = await getTemplatesAction();
       const resPublic = await getPublicTemplatesAction();
+      const resSlideTemplates = await getSlideTemplatePackagesAction();
       if (resMine.success && resMine.templates) {
         setTemplates(resMine.templates);
       }
       if (resPublic.success && resPublic.templates) {
         setPublicTemplates(resPublic.templates);
+      }
+      if (resSlideTemplates.success && resSlideTemplates.slideTemplates) {
+        setSlideTemplates(resSlideTemplates.slideTemplates);
       }
     } catch (err) {
       console.error("Error refreshing templates:", err);
@@ -485,20 +496,30 @@ export default function TemplatesContainer({
     }
   };
 
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
   const filteredMine = templates.filter(t => 
-    t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.description?.toLowerCase().includes(searchTerm.toLowerCase())
+    t.name.toLowerCase().includes(normalizedSearchTerm) ||
+    t.description?.toLowerCase().includes(normalizedSearchTerm)
   );
 
   const filteredPublic = publicTemplates.filter(t => 
-    t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.description?.toLowerCase().includes(searchTerm.toLowerCase())
+    t.name.toLowerCase().includes(normalizedSearchTerm) ||
+    t.description?.toLowerCase().includes(normalizedSearchTerm)
+  );
+  const filteredSlideTemplates = slideTemplates.filter((template) =>
+    template.title.toLowerCase().includes(normalizedSearchTerm) ||
+    template.description?.toLowerCase().includes(normalizedSearchTerm) ||
+    template.package_id?.toLowerCase().includes(normalizedSearchTerm)
   );
   const selectedComposition = compositionOptions.find((option) => option.id === compositionId);
   const bundleAgentHref = params?.empresaSlug
     ? `/${params.empresaSlug}/admin/remotion/bundle-agent`
     : "/admin/remotion/bundle-agent";
+  const createWithSofliaHref = libraryMode === "slide_templates"
+    ? `${bundleAgentHref}?artifactKind=slide_template`
+    : bundleAgentHref;
   const baseBundleDownloadHref = "/api/admin/remotion/bundle-agent/base-bundle";
+  const baseSlideTemplateDownloadHref = "/api/admin/remotion/bundle-agent/base-bundle?artifactKind=slide_template";
   const currentTemplateVersion = selectedVersionTemplate
     ? versions.find((version) => selectedVersionTemplate.storage_path && version.storage_path === selectedVersionTemplate.storage_path) ||
       versions.find((version) => version.status === "APPROVED") ||
@@ -508,6 +529,11 @@ export default function TemplatesContainer({
   const currentTemplateBundleDownloadHref = currentTemplateVersion
     ? `/api/admin/remotion/template-versions/${currentTemplateVersion.id}/download`
     : null;
+  const emptyStateMessage = libraryMode === "slide_templates"
+    ? "Genera una plantilla de slides con SofLIA para verla en esta biblioteca."
+    : activeTab === "mine"
+      ? "Puedes subir una nueva plantilla para tu organizacion."
+      : "No hay plantillas publicas de otras empresas disponibles para adquirir.";
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
@@ -516,74 +542,103 @@ export default function TemplatesContainer({
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3">
             <Video className="text-[#00D4B3]" size={32} />
-            Plantillas de Video
+            Biblioteca de Bundles y Slides
           </h1>
           <p className="text-gray-600 dark:text-[#94A3B8]">
-            Gestiona las plantillas de video para tu empresa o explora plantillas publicas de otras empresas.
+            Gestiona bundles de video y plantillas de diapositivas desde el mismo apartado, con preview visual de su disposicion.
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3">
           <a
-            href={baseBundleDownloadHref}
+            href={libraryMode === "slide_templates" ? baseSlideTemplateDownloadHref : baseBundleDownloadHref}
             className="flex items-center justify-center gap-2 px-5 py-2.5 bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/20 text-gray-700 dark:text-slate-300 font-semibold rounded-xl shadow-sm transition-all hover:border-[#00D4B3]/40 hover:text-[#009688] dark:hover:text-[#00D4B3] hover:scale-[1.02] active:scale-[0.98]"
           >
             <Download size={20} />
-            Descargar base ZIP
+            {libraryMode === "slide_templates" ? "Descargar base slides" : "Descargar base ZIP"}
           </a>
           <Link
-            href={bundleAgentHref}
+            href={createWithSofliaHref}
             className="flex items-center justify-center gap-2 px-5 py-2.5 bg-white dark:bg-[#151A21] border border-[#00D4B3]/40 text-[#009688] dark:text-[#00D4B3] font-semibold rounded-xl shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
           >
             <Sparkles size={20} />
             Crear con SofLIA
           </Link>
-          <button
-            onClick={openCreateModal}
-            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#00D4B3] to-[#009688] hover:from-[#00E5C1] hover:to-[#00A896] text-white font-semibold rounded-xl shadow-lg shadow-[#00D4B3]/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <Plus size={20} />
-            Crear Plantilla
-          </button>
+          {libraryMode === "video_bundles" && (
+            <button
+              onClick={openCreateModal}
+              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#00D4B3] to-[#009688] hover:from-[#00E5C1] hover:to-[#00A896] text-white font-semibold rounded-xl shadow-lg shadow-[#00D4B3]/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <Plus size={20} />
+              Crear Plantilla
+            </button>
+          )}
         </div>
       </div>
 
       {/* Tabs and Search */}
-      <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-4 shadow-sm">
+      <div className="flex flex-col gap-4 bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-4 shadow-sm">
         {/* Navigation tabs */}
-        <div className="flex bg-gray-100 dark:bg-[#0F1419] p-1.5 rounded-xl self-start">
-          <button
-            onClick={() => setActiveTab("mine")}
-            className={`px-5 py-2 rounded-lg font-semibold text-sm transition-all ${
-              activeTab === "mine"
-                ? "bg-white dark:bg-[#1A202C] text-[#00D4B3] shadow-md shadow-[#00D4B3]/5"
-                : "text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white"
-            }`}
-          >
-            Mis Plantillas ({templates.length})
-          </button>
-          <button
-            onClick={() => setActiveTab("public")}
-            className={`px-5 py-2 rounded-lg font-semibold text-sm transition-all ${
-              activeTab === "public"
-                ? "bg-white dark:bg-[#1A202C] text-[#00D4B3] shadow-md shadow-[#00D4B3]/5"
-                : "text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white"
-            }`}
-          >
-            Adquirir de otras empresas ({publicTemplates.length})
-          </button>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex bg-gray-100 dark:bg-[#0F1419] p-1.5 rounded-xl self-start">
+            <button
+              onClick={() => setLibraryMode("video_bundles")}
+              className={`px-5 py-2 rounded-lg font-semibold text-sm transition-all ${
+                libraryMode === "video_bundles"
+                  ? "bg-white dark:bg-[#1A202C] text-[#00D4B3] shadow-md shadow-[#00D4B3]/5"
+                  : "text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white"
+              }`}
+            >
+              Bundles de video ({templates.length})
+            </button>
+            <button
+              onClick={() => setLibraryMode("slide_templates")}
+              className={`px-5 py-2 rounded-lg font-semibold text-sm transition-all ${
+                libraryMode === "slide_templates"
+                  ? "bg-white dark:bg-[#1A202C] text-[#00D4B3] shadow-md shadow-[#00D4B3]/5"
+                  : "text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white"
+              }`}
+            >
+              Plantillas de slides ({slideTemplates.length})
+            </button>
+          </div>
+
+          {/* Search input */}
+          <div className="relative flex-1 md:max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#94A3B8]" size={18} />
+            <input 
+              type="text" 
+              placeholder="Buscar plantilla..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl py-2.5 pl-10 pr-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 transition-colors placeholder-gray-400 dark:placeholder-gray-600"
+            />
+          </div>
         </div>
 
-        {/* Search input */}
-        <div className="relative flex-1 md:max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#94A3B8]" size={18} />
-          <input 
-            type="text" 
-            placeholder="Buscar plantilla..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl py-2.5 pl-10 pr-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 transition-colors placeholder-gray-400 dark:placeholder-gray-600"
-          />
-        </div>
+        {libraryMode === "video_bundles" && (
+          <div className="flex bg-gray-100 dark:bg-[#0F1419] p-1.5 rounded-xl self-start">
+            <button
+              onClick={() => setActiveTab("mine")}
+              className={`px-5 py-2 rounded-lg font-semibold text-sm transition-all ${
+                activeTab === "mine"
+                  ? "bg-white dark:bg-[#1A202C] text-[#00D4B3] shadow-md shadow-[#00D4B3]/5"
+                  : "text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white"
+              }`}
+            >
+              Mis Plantillas ({templates.length})
+            </button>
+            <button
+              onClick={() => setActiveTab("public")}
+              className={`px-5 py-2 rounded-lg font-semibold text-sm transition-all ${
+                activeTab === "public"
+                  ? "bg-white dark:bg-[#1A202C] text-[#00D4B3] shadow-md shadow-[#00D4B3]/5"
+                  : "text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white"
+              }`}
+            >
+              Adquirir de otras empresas ({publicTemplates.length})
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Templates Grid */}
@@ -595,43 +650,55 @@ export default function TemplatesContainer({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <AnimatePresence mode="wait">
-            {activeTab === "mine" ? (
-              filteredMine.map((tpl) => (
-                <TemplateCard 
-                  key={tpl.id}
-                  tpl={tpl}
-                  isMine={true}
-                  onDelete={() => handleDelete(tpl.id)}
-                  onEdit={() => openEditModal(tpl)}
-                  onAcquire={() => {}}
-                  onViewVersions={() => handleViewVersions(tpl)}
-                  bundleAgentHref={`${bundleAgentHref}?templateId=${encodeURIComponent(tpl.id)}`}
-                />
-              ))
+            {libraryMode === "video_bundles" ? (
+              activeTab === "mine" ? (
+                filteredMine.map((tpl) => (
+                  <TemplateCard 
+                    key={tpl.id}
+                    tpl={tpl}
+                    isMine={true}
+                    onDelete={() => handleDelete(tpl.id)}
+                    onEdit={() => openEditModal(tpl)}
+                    onAcquire={() => {}}
+                    onViewVersions={() => handleViewVersions(tpl)}
+                    bundleAgentHref={`${bundleAgentHref}?templateId=${encodeURIComponent(tpl.id)}`}
+                  />
+                ))
+              ) : (
+                filteredPublic.map((tpl) => (
+                  <TemplateCard 
+                    key={tpl.id}
+                    tpl={tpl}
+                    isMine={false}
+                    onDelete={() => {}}
+                    onEdit={() => {}}
+                    onAcquire={() => handleAcquire(tpl.id)}
+                    onViewVersions={() => {}}
+                    bundleAgentHref={null}
+                  />
+                ))
+              )
             ) : (
-              filteredPublic.map((tpl) => (
-                <TemplateCard 
-                  key={tpl.id}
-                  tpl={tpl}
-                  isMine={false}
-                  onDelete={() => {}}
-                  onEdit={() => {}}
-                  onAcquire={() => handleAcquire(tpl.id)}
-                  onViewVersions={() => {}}
-                  bundleAgentHref={null}
+              filteredSlideTemplates.map((template) => (
+                <SlideTemplateCard
+                  key={template.id}
+                  template={template}
                 />
               ))
             )}
           </AnimatePresence>
-          {((activeTab === "mine" && filteredMine.length === 0) || 
-            (activeTab === "public" && filteredPublic.length === 0)) && (
+          {((libraryMode === "video_bundles" && activeTab === "mine" && filteredMine.length === 0) || 
+            (libraryMode === "video_bundles" && activeTab === "public" && filteredPublic.length === 0) ||
+            (libraryMode === "slide_templates" && filteredSlideTemplates.length === 0)) && (
             <div className="col-span-full flex flex-col items-center justify-center py-20 bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 border-dashed rounded-2xl">
               <Layers className="w-16 h-16 text-gray-300 dark:text-gray-700 mb-4" />
               <p className="text-lg font-semibold text-gray-600 dark:text-gray-300">
                 No se encontraron plantillas.
               </p>
               <p className="text-sm text-gray-400 dark:text-slate-500 mt-1">
-                {activeTab === "mine" 
+                {libraryMode === "slide_templates"
+                  ? emptyStateMessage
+                  : activeTab === "mine" 
                   ? "Puedes subir una nueva plantilla para tu organización." 
                   : "No hay plantillas públicas de otras empresas disponibles para adquirir."}
               </p>
@@ -1443,6 +1510,102 @@ export default function TemplatesContainer({
   );
 }
 
+function getSlideTemplateStatusLabel(status: SlideTemplateLibraryItem["status"]) {
+  switch (status) {
+    case "PACKAGED":
+      return "Paquete listo";
+    case "VALIDATION_FAILED":
+      return "Validacion fallida";
+    case "FAILED":
+      return "Generacion fallida";
+    case "RUNNING":
+      return "Generando";
+    case "QUEUED":
+      return "En cola";
+    case "SUBMITTED_FOR_REVIEW":
+      return "En revision";
+    default:
+      return status;
+  }
+}
+
+function SlideTemplateCard({ template }: { template: SlideTemplateLibraryItem }) {
+  const isReady = template.status === "PACKAGED" && Boolean(template.bundle_storage_path);
+  const hasFailed = template.status === "FAILED" || template.status === "VALIDATION_FAILED";
+  const downloadHref = `/api/admin/remotion/bundle-agent/conversations/${template.conversation_id}/runs/${template.id}/download`;
+  const canvasLabel = template.runtime_canvas
+    ? `${template.runtime_canvas.width}x${template.runtime_canvas.height} (${template.runtime_canvas.aspectRatio})`
+    : "Canvas 16:9";
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 15 }}
+      className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 hover:border-[#00D4B3]/50 dark:hover:border-[#00D4B3]/50 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg hover:shadow-[#00D4B3]/5 dark:hover:shadow-[#00D4B3]/3 transition-all duration-300 group flex flex-col justify-between"
+    >
+      <div className="p-6 space-y-4">
+        <SlideTemplatePreview item={template} />
+
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h4 className="font-bold text-gray-900 dark:text-white mb-1 group-hover:text-[#00D4B3] transition-colors">
+              {template.title}
+            </h4>
+            <p className="text-xs text-gray-500 dark:text-slate-400 leading-relaxed line-clamp-3 min-h-[48px]">
+              {template.description || "Plantilla de slides generada por SofLIA Deck."}
+            </p>
+          </div>
+          <span
+            className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+              isReady
+                ? "border-green-500/25 bg-green-500/10 text-green-700 dark:text-green-300"
+                : hasFailed
+                  ? "border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300"
+                  : "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+            }`}
+          >
+            {getSlideTemplateStatusLabel(template.status)}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 text-[11px]">
+          <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-gray-500 dark:border-[#6C757D]/5 dark:bg-[#0F1419]/50 dark:text-gray-400">
+            <span className="block font-semibold text-gray-700 dark:text-slate-300">Slides ejemplo</span>
+            {template.example_slide_count || "N/D"}
+          </div>
+          <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-gray-500 dark:border-[#6C757D]/5 dark:bg-[#0F1419]/50 dark:text-gray-400">
+            <span className="block font-semibold text-gray-700 dark:text-slate-300">Canvas</span>
+            {canvasLabel}
+          </div>
+        </div>
+
+        {template.error_sanitized && (
+          <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-[11px] leading-relaxed text-red-700 dark:text-red-300">
+            {template.error_sanitized}
+          </div>
+        )}
+      </div>
+
+      <div className="px-6 py-4 bg-gray-50/50 dark:bg-[#1E2329]/20 border-t border-gray-100 dark:border-[#6C757D]/5 flex justify-end items-center gap-2">
+        <a
+          href={isReady ? downloadHref : "#"}
+          aria-disabled={!isReady}
+          className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold transition-all ${
+            isReady
+              ? "bg-[#00D4B3] text-white hover:bg-[#00E5C1]"
+              : "pointer-events-none bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500"
+          }`}
+        >
+          <Download size={14} />
+          Descargar ZIP
+        </a>
+      </div>
+    </motion.div>
+  );
+}
+
 function TemplateCard({ 
   tpl, 
   isMine, 
@@ -1477,6 +1640,8 @@ function TemplateCard({
       className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 hover:border-[#00D4B3]/50 dark:hover:border-[#00D4B3]/50 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg hover:shadow-[#00D4B3]/5 dark:hover:shadow-[#00D4B3]/3 transition-all duration-300 group flex flex-col justify-between"
     >
       <div className="p-6 space-y-4">
+        <VideoTemplatePreview template={tpl} />
+
         {/* Card Header Emojis & Badges */}
         <div className="flex justify-between items-start">
           <div className="w-12 h-12 bg-gray-55/10 dark:bg-gray-800/60 rounded-xl flex items-center justify-center text-2xl shadow-inner group-hover:scale-110 transition-transform duration-300">

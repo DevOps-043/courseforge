@@ -35,6 +35,8 @@ const QUICK_PROMPTS = [
   "Disena una plantilla sobria para videos teoricos con texto grande, fondo limpio y ritmo pausado.",
 ];
 
+type AgentArtifactKind = "video_bundle" | "slide_template";
+
 const VISUAL_REFERENCE_LIMIT = 6;
 const VISUAL_REFERENCE_MAX_BYTES = 75 * 1024 * 1024;
 
@@ -126,6 +128,13 @@ function sanitizeUploadFileName(fileName: string) {
 function formatFileSize(sizeBytes: number) {
   if (sizeBytes >= 1024 * 1024) return `${Math.round(sizeBytes / (1024 * 1024))} MB`;
   return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`;
+}
+
+function normalizeLegacySofliaName(value: string) {
+  return value
+    .replace(/ZofLIA/g, "SofLIA")
+    .replace(/Zoflia/g, "SofLIA")
+    .replace(/zoflia/g, "soflia");
 }
 
 function rgbToHex(red: number, green: number, blue: number) {
@@ -271,11 +280,18 @@ async function analyzeImageReference(file: File) {
   }
 }
 
-export function BundleAgentClient({ initialTemplateId = null }: { initialTemplateId?: string | null }) {
+export function BundleAgentClient({
+  initialArtifactKind = "video_bundle",
+  initialTemplateId = null,
+}: {
+  initialArtifactKind?: AgentArtifactKind;
+  initialTemplateId?: string | null;
+}) {
   const pathname = usePathname();
   const templateId = initialTemplateId;
   const [state, setState] = useState<ConversationState>(EMPTY_STATE);
-  const [title, setTitle] = useState("Nuevo bundle de video");
+  const [title, setTitle] = useState(initialArtifactKind === "slide_template" ? "Plantilla SofLIA Deck" : "Nuevo bundle de video");
+  const [artifactKind, setArtifactKind] = useState<AgentArtifactKind>(initialArtifactKind);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [uploadingReferences, setUploadingReferences] = useState(false);
@@ -290,7 +306,10 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
   const hasRequestedTemplateConversation = !templateId || state.conversation?.template_id === templateId;
   const specSummary = useMemo(() => formatSpecSummary(latestSpec?.spec_json), [latestSpec]);
   const creativeBriefSummary = useMemo(() => formatCreativeBriefSummary(latestSpec?.spec_json), [latestSpec]);
-  const baseBundleHref = "/api/admin/remotion/bundle-agent/base-bundle";
+  const effectiveArtifactKind: AgentArtifactKind = templateId ? "video_bundle" : artifactKind;
+  const baseBundleHref = effectiveArtifactKind === "slide_template"
+    ? "/api/admin/remotion/bundle-agent/base-bundle?artifactKind=slide_template"
+    : "/api/admin/remotion/bundle-agent/base-bundle";
   const templatesHref = useMemo(() => {
     const normalizedPath = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
     return normalizedPath.replace(/\/admin\/remotion\/bundle-agent$/, "/admin/templates");
@@ -319,6 +338,9 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
       generationRuns: payload.generationRuns || [],
       versionLinks: payload.versionLinks || [],
     });
+    if (payload.conversation?.title) {
+      setTitle(normalizeLegacySofliaName(payload.conversation.title));
+    }
   }
 
   async function run(action: () => Promise<void>) {
@@ -339,7 +361,7 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
     const payload = await readJson(await fetch("/api/admin/remotion/bundle-agent/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, templateId }),
+      body: JSON.stringify({ title: normalizeLegacySofliaName(title), templateId }),
     }));
     await refresh(payload.conversation.id);
     return payload.conversation.id as string;
@@ -353,9 +375,9 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
       const payload = await readJson(await fetch("/api/admin/remotion/bundle-agent/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, templateId }),
+        body: JSON.stringify({ title: normalizeLegacySofliaName(title), templateId }),
       }));
-      setTitle(payload.conversation.title || title);
+      setTitle(normalizeLegacySofliaName(payload.conversation.title || title));
       await refresh(payload.conversation.id);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -386,7 +408,11 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
   async function generateSpec() {
     await run(async () => {
       const conversationId = await ensureConversation();
-      await readJson(await fetch(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/specs`, { method: "POST" }));
+      await readJson(await fetch(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/specs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ artifactKind: effectiveArtifactKind }),
+      }));
       await refresh(conversationId);
     });
   }
@@ -394,7 +420,11 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
   async function generateVersion() {
     await run(async () => {
       const conversationId = await ensureConversation();
-      await readJson(await fetch(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/generate`, { method: "POST" }));
+      await readJson(await fetch(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ artifactKind: effectiveArtifactKind }),
+      }));
       await refresh(conversationId);
     });
   }
@@ -490,8 +520,36 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
           <p className="mt-2 max-w-2xl text-sm text-slate-600">
             {isTemplateScoped
               ? "Edita este bundle manteniendo su conversacion, specs y versiones generadas dentro del mismo historial auditable."
-              : "Conversa con SofLIA para definir una plantilla de video. El agente genera una spec auditable y un ZIP borrador que siempre pasa por validacion y revision humana."}
+              : "Conversa con SofLIA para definir una plantilla de video o slides. El agente genera una spec auditable y un paquete ZIP validado segun el tipo seleccionado."}
           </p>
+          {!templateId ? (
+            <div className="mt-4 inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+              {[
+                { id: "video_bundle", label: "Bundle de video" },
+                { id: "slide_template", label: "Plantilla de slides" },
+              ].map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => {
+                    const nextKind = option.id as AgentArtifactKind;
+                    setArtifactKind(nextKind);
+                    if (!state.conversation) {
+                      setTitle(nextKind === "slide_template" ? "Plantilla SofLIA Deck" : "Nuevo bundle de video");
+                    }
+                  }}
+                  disabled={Boolean(state.conversation)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    effectiveArtifactKind === option.id
+                      ? "bg-slate-950 text-white"
+                      : "text-slate-600 hover:bg-slate-50"
+                  } disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
         <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 shadow-sm">
           <span className="h-2 w-2 rounded-full bg-emerald-500" />
@@ -555,7 +613,7 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
                       ) : null}
                       <div className={`max-w-[78%] rounded-2xl px-4 py-3 text-sm shadow-sm ${isUser ? "bg-blue-600 text-white" : isTool ? "border border-slate-200 bg-white text-slate-700" : "border border-slate-100 bg-white text-slate-800"}`}>
                         <p className={`mb-1 text-xs font-semibold ${isUser ? "text-blue-100" : "text-slate-500"}`}>{roleLabel(item.role)}</p>
-                        <p className="whitespace-pre-wrap leading-6">{item.content_redacted}</p>
+                        <p className="whitespace-pre-wrap leading-6">{normalizeLegacySofliaName(item.content_redacted)}</p>
                         {item.metadata?.visualReferences?.length ? (
                           <div className={`mt-3 grid gap-1 text-xs ${isUser ? "text-blue-100" : "text-slate-500"}`}>
                             {item.metadata.visualReferences.map((reference) => (
@@ -673,7 +731,11 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
               >
                 <span>
                   <span className="block font-semibold text-slate-900">Generar spec</span>
-                  <span className="text-slate-500">OpenAI/Gemini produce el contrato JSON.</span>
+                  <span className="text-slate-500">
+                    {effectiveArtifactKind === "slide_template"
+                      ? "Crea el contrato JSON SofLIA Deck."
+                      : "OpenAI/Gemini produce el contrato JSON."}
+                  </span>
                 </span>
                 {latestSpec ? <CheckCircle2 className="text-emerald-500" size={20} /> : <Sparkles size={20} />}
               </button>
@@ -684,8 +746,14 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
                 className="flex items-center justify-between rounded-xl bg-slate-950 px-4 py-3 text-left text-sm text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
                 <span>
-                  <span className="block font-semibold">Generar version ZIP</span>
-                  <span className="text-slate-300">Crea borrador validado, no aprobado.</span>
+                  <span className="block font-semibold">
+                    {effectiveArtifactKind === "slide_template" ? "Generar plantilla ZIP" : "Generar version ZIP"}
+                  </span>
+                  <span className="text-slate-300">
+                    {effectiveArtifactKind === "slide_template"
+                      ? "Empaqueta skill, manifests, schemas y ejemplos."
+                      : "Crea borrador validado, no aprobado."}
+                  </span>
                 </span>
                 <PackageCheck size={20} />
               </button>
@@ -694,8 +762,14 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
                 className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-left text-sm transition hover:border-[#5B21B6]/40 hover:bg-[#5B21B6]/5"
               >
                 <span>
-                  <span className="block font-semibold text-slate-900">Descargar base ZIP</span>
-                  <span className="text-slate-500">Estructura minima para crear bundles por fuera.</span>
+                  <span className="block font-semibold text-slate-900">
+                    {effectiveArtifactKind === "slide_template" ? "Descargar base slides" : "Descargar base ZIP"}
+                  </span>
+                  <span className="text-slate-500">
+                    {effectiveArtifactKind === "slide_template"
+                      ? "Skill y manifests base para plantillas de slides."
+                      : "Estructura minima para crear bundles por fuera."}
+                  </span>
                 </span>
                 <Download size={20} />
               </a>
@@ -708,7 +782,7 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
               <div className="grid gap-3 text-sm">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Version {latestSpec.version_number}</p>
-                  <p className="mt-1 font-medium text-slate-900">{String(latestSpec.spec_json.title || title)}</p>
+                  <p className="mt-1 font-medium text-slate-900">{normalizeLegacySofliaName(String(latestSpec.spec_json.title || title))}</p>
                   {specSummary ? <p className="mt-1 text-slate-600">{specSummary}</p> : null}
                 </div>
                 {creativeBriefSummary ? (
@@ -743,7 +817,7 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
                 <details className="rounded-xl bg-slate-950 p-3 text-xs text-white">
                   <summary className="cursor-pointer text-slate-200">Ver JSON</summary>
                   <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap">
-                    {JSON.stringify(latestSpec.spec_json, null, 2)}
+                    {normalizeLegacySofliaName(JSON.stringify(latestSpec.spec_json, null, 2))}
                   </pre>
                 </details>
               </div>
@@ -767,7 +841,7 @@ export function BundleAgentClient({ initialTemplateId = null }: { initialTemplat
                     className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-[#5B21B6]/40 hover:text-[#4C1D95]"
                   >
                     <Download size={14} />
-                    Descargar bundle generado
+                    {effectiveArtifactKind === "slide_template" ? "Descargar plantilla generada" : "Descargar bundle generado"}
                   </a>
                 ) : null}
               </div>

@@ -496,7 +496,7 @@ function fallbackSpec(input: { title?: string | null; messages: MessageForSpec[]
       ...input,
       messages: buildFallbackMessagesWithVisualContext(input.messages),
     }),
-    model: "courseforge-deterministic-fallback",
+    model: "soflia-engine-deterministic-fallback",
     source: "deterministic_fallback",
     warning,
   };

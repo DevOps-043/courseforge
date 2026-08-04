@@ -16,6 +16,7 @@ import {
   buildRenderDiagnosticsSnapshot,
   classifyRemotionFailure,
 } from './remotion-render-diagnostics.service';
+import { verifyMediaDurationsFromUrls } from './media-duration-verification.service';
 
 let cachedBundlePromise: Promise<string> | null = null;
 
@@ -95,7 +96,20 @@ export class RemotionWorkerService {
         throw new Error(`Plantilla no encontrada: ${tplError?.message || 'Error desconocido'}`);
       }
 
-      assets = component.assets || {};
+      const durationVerification = await verifyMediaDurationsFromUrls(component.assets || {});
+      assets = durationVerification.assets || {};
+      if (
+        Object.keys(durationVerification.measuredDurations).length > 0 ||
+        durationVerification.failedMeasurements.length > 0
+      ) {
+        console.log('[RemotionWorker] Media duration verification completed.', {
+          jobId,
+          componentId,
+          measuredDurations: durationVerification.measuredDurations,
+          failedMeasurements: durationVerification.failedMeasurements,
+        });
+      }
+
       const internalCompositionId = resolveInternalCompositionId(template.composition_id);
       const templateConfig = mergeTemplateRenderConfigs(
         template.default_config,

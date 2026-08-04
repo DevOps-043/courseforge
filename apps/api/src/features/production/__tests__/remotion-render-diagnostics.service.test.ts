@@ -21,6 +21,16 @@ describe('remotion render diagnostics', () => {
     );
   });
 
+  it('classifies Remotion video canplay waits as media asset load timeouts', () => {
+    assert.equal(
+      classifyRemotionFailure(
+        'A delayRender() "Rendering <Html5Video />" was called but not cleared after 898000ms at time 19.766.',
+        { provider: 'desktop_worker' },
+      ),
+      'MEDIA_ASSET_LOAD_TIMEOUT',
+    );
+  });
+
   it('keeps render diagnostics useful without copying media URLs', () => {
     const snapshot = buildRenderDiagnosticsSnapshot({
       renderProvider: 'desktop_worker',

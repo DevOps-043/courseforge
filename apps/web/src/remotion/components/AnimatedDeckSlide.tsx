@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { AssemblySlide } from "../types";
+import { repairCommonUtf8Mojibake } from "../../domains/production/text/mojibake.service";
 
 interface AnimatedDeckSlideProps {
   slide: AssemblySlide;
@@ -24,6 +25,11 @@ export function AnimatedDeckSlide({
   const scaledHeight = DECK_HEIGHT * scale;
   const left = (width - scaledWidth) / 2;
   const top = (height - scaledHeight) / 2;
+  const classList = (slide.classes || "slide").split(/\s+/).filter(Boolean);
+  if (!classList.includes("active")) {
+    classList.push("active");
+  }
+  const slideHtml = repairCommonUtf8Mojibake(slide.html || "");
 
   return (
     <div
@@ -49,13 +55,13 @@ export function AnimatedDeckSlide({
         }}
       >
         <section
-          className={`${slide.classes || "slide"} active`}
+          className={classList.join(" ")}
           style={
             {
               "--deck-t": String(localFrame / fps),
             } as CSSProperties
           }
-          dangerouslySetInnerHTML={{ __html: slide.html || "" }}
+          dangerouslySetInnerHTML={{ __html: slideHtml }}
         />
       </div>
     </div>

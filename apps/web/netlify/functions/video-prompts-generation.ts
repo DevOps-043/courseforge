@@ -27,6 +27,7 @@ import {
   formatBrollPromptsForAssets,
   parseBrollPromptResponse,
 } from "../../src/domains/production/validation/broll-prompts.schema";
+import { buildCourseDeckSpecFromComponent } from "../../src/domains/production/slides/planning/course-deck-from-component.service";
 import { CLIP_GENERATION_PROMPT_CODE } from "../../src/shared/config/prompts/materials-generation.prompts.modular";
 import { resolveSinglePrompt } from "../../src/shared/config/prompts/prompt-resolver.service";
 
@@ -37,6 +38,28 @@ interface VideoPromptsRequestBody {
   productionJobId?: string;
   storyboard?: unknown;
   userToken?: string;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function normalizeStoryboardForSlides(storyboard: unknown) {
+  const record = asRecord(storyboard);
+  const storyboardItems = Array.isArray(storyboard)
+    ? storyboard
+    : Array.isArray(record.storyboard)
+      ? record.storyboard
+      : Array.isArray(record.takes)
+        ? record.takes
+        : [];
+
+  return {
+    ...record,
+    storyboard: storyboardItems,
+  };
 }
 
 export const handler: Handler = async (event) => {
@@ -124,6 +147,21 @@ export const handler: Handler = async (event) => {
 
     const result = parseBrollPromptResponse(JSON.parse(jsonMatch[0]));
     const promptsText = formatBrollPromptsForAssets(result.prompts);
+    const slideDeckSpec = buildCourseDeckSpecFromComponent({
+      artifactId: context.artifactId,
+      component: {
+        content: normalizeStoryboardForSlides(storyboard),
+        id: componentId,
+        type: context.componentType,
+      },
+      input: {
+        locale: "es",
+        metadata: {
+          brandLabel: "SofLIA - Engine",
+        },
+        template: "course-module",
+      },
+    }) as unknown as Record<string, unknown>;
 
     await completeBrollPromptProductionJob(supabase, {
       context,
@@ -131,12 +169,14 @@ export const handler: Handler = async (event) => {
       model: BROLL_PROMPT_MODEL,
       promptItems: result.prompts,
       promptsText,
+      slideDeckSpec,
     });
     productionJobCompleted = true;
 
     await syncBrollPromptsToMaterialComponent({
       componentId,
       promptsText,
+      slideDeckSpec,
       supabase,
     });
 

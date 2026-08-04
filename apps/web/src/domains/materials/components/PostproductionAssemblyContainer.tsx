@@ -97,6 +97,14 @@ function getAssemblyFailureMessage(job: AssemblyJobTracker) {
     if (job.errorCode === 'OUTPUT_NOT_ACCESSIBLE') {
         return 'El render termino, pero el video final no quedo disponible como URL HTTPS reproducible.';
     }
+    const rawError = job.error || '';
+    const mediaLoadTimedOut =
+        job.errorCode === 'MEDIA_ASSET_LOAD_TIMEOUT' ||
+        ((job.errorCode === 'LOCAL_RENDER_TIMEOUT' || job.errorCode === 'DESKTOP_WORKER_TIMEOUT') &&
+            /delayRender|Html5Video|canplay/i.test(rawError));
+    if (mediaLoadTimedOut) {
+        return 'Un video o audio remoto no pudo cargarse durante el render. Revisa o regenera el asset de HeyGen/B-roll de esta leccion y vuelve a ensamblar.';
+    }
     return job.error || 'El ensamblado no se completo. Revisa el ultimo evento del job.';
 }
 

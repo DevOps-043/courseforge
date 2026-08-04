@@ -1,9 +1,9 @@
 ---
-name: "zoflia-deck"
+name: "soflia-deck"
 description: |
-  Create light-mode SofLIA challenger decks using the approved Newsreader and Inter Tight typography system, Deep Blue and accessible Aqua accents, oversized editorial headlines, structured B2B layouts, and built-in slide animations. Use for Zoflia Deck, SofLIA presentations, high-voltage corporate decks, Challenger Sale pitches, keynote storytelling, and executive B2B slides.
+  Create light-mode SofLIA challenger decks using the approved Newsreader and Inter Tight typography system, Deep Blue and accessible Aqua accents, oversized editorial headlines, structured B2B layouts, and built-in slide animations. Use for SofLIA Deck, SofLIA presentations, high-voltage corporate decks, Challenger Sale pitches, keynote storytelling, and executive B2B slides.
 triggers:
-  - "Zoflia Deck"
+  - "SofLIA Deck"
   - "SofLIA deck"
   - "SofLIA presentation"
   - "high-voltage deck"
@@ -20,10 +20,10 @@ od:
   fidelity: high-fidelity
   speaker_notes: false
   animations: true
-  example_prompt: "Create a 10-slide Zoflia Deck for a high-stakes B2B pitch using the approved SofLIA typography and color tokens."
+  example_prompt: "Create a 10-slide SofLIA Deck for a high-stakes B2B pitch using the approved SofLIA typography and color tokens."
 ---
 
-# Zoflia Deck
+# SofLIA Deck
 
 Create a self-contained light HTML presentation with a high-voltage corporate challenger aesthetic. Keep the typography, palette, animation system, and slide vocabulary as one coordinated system.
 
@@ -98,7 +98,7 @@ Use Aqua as an accent, not as a paragraph color. Prefer `--accent-accessible` fo
 Emit the completed deck between artifact tags:
 
 ```html
-<artifact identifier="zoflia-deck" type="text/html" title="Deck Title">
+<artifact identifier="soflia-deck" type="text/html" title="Deck Title">
 <!doctype html>
 <html lang="es">...</html>
 </artifact>

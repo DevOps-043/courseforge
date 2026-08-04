@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const bundleAgentMessageRoleSchema = z.enum(["USER", "ASSISTANT", "SYSTEM", "TOOL"]);
+export const bundleAgentArtifactKindSchema = z.enum(["video_bundle", "slide_template"]);
 
 export const BUNDLE_AGENT_VISUAL_REFERENCE_LIMIT = 6;
 
@@ -137,6 +138,7 @@ export const bundleAgentCreativeBriefSchema = z.object({
 });
 
 export const bundleAgentSpecSchema = z.object({
+  artifactKind: bundleAgentArtifactKindSchema.default("video_bundle"),
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(1000).default(""),
   visualStyle: z.string().trim().min(1).max(240),
@@ -175,6 +177,7 @@ export const bundleAgentSpecSchema = z.object({
 });
 
 export type BundleAgentMessageRole = z.infer<typeof bundleAgentMessageRoleSchema>;
+export type BundleAgentArtifactKind = z.infer<typeof bundleAgentArtifactKindSchema>;
 export type BundleAgentVisualReference = z.infer<typeof bundleAgentVisualReferenceSchema>;
 export type BundleAgentMessageMetadata = z.infer<typeof bundleAgentMessageMetadataSchema>;
 export type BundleAgentSpec = z.infer<typeof bundleAgentSpecSchema>;

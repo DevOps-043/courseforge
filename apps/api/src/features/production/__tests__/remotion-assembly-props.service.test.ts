@@ -85,6 +85,31 @@ describe('remotion assembly props contract', () => {
     assert.equal(normalized.totalDurationSeconds, 10);
   });
 
+  it('normalizes animated deck slides for render-safe HTML props', () => {
+    const normalized = normalizeAssemblyAssets({
+      slides: {
+        animated_deck: {
+          status: 'READY_FOR_RENDER',
+          css: '.deck-scope .slide { width: 1920px; height: 1080px; }',
+          fonts: [],
+          slides: [
+            {
+              animationCount: 1,
+              classes: 'slide s-center',
+              html: '<h1>Pantalla de tÃ­tulo</h1>',
+              index: 1,
+              label: '01 Intro',
+            },
+          ],
+        },
+      },
+    });
+
+    assert.equal(normalized.slides[0].classes, 'slide s-center active');
+    assert.equal(normalized.slides[0].html, '<h1>Pantalla de título</h1>');
+    assert.equal(normalized.slides[0].kind, 'html');
+  });
+
   it('sorts multiple B-roll clips by order and applies default duration', () => {
     const normalized = normalizeAssemblyAssets({
       b_roll_clips: [

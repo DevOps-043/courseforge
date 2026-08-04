@@ -11,6 +11,7 @@ import type { LayoutOverrideStyle } from "../layout-override-styles";
 import type { VisualTimelineSegment } from "../visual-timeline";
 import { resolveSlideTimelineRenderItems } from "./slide-timeline-rendering";
 import { AnimatedDeckSlide } from "./AnimatedDeckSlide";
+import { REMOTE_MEDIA_RENDER_PROPS } from "../media-rendering.config";
 
 interface SlideShowProps {
   slides: AssemblySlide[];
@@ -36,6 +37,7 @@ function SlideImage({
     <AbsoluteFill>
       <div style={{ position: "absolute", inset: 0, ...style }}>
         <Img
+          {...REMOTE_MEDIA_RENDER_PROPS}
           src={url}
           style={{ width: "100%", height: "100%", objectFit: "contain" }}
         />

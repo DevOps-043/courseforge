@@ -78,6 +78,7 @@ function buildTemplateSource(spec: BundleAgentSpec) {
 
 export function buildBaseBundleSpec(): BundleAgentSpec {
   return {
+    artifactKind: "video_bundle",
     title: "SofLIA - Engine Video Template Base",
     description: "Base segura para crear un bundle externo compatible con SofLIA - Engine.",
     visualStyle: "estructura base con avatar, contenido lateral, slides, B-roll y capas editables",

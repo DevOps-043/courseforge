@@ -1,4 +1,5 @@
 import type { MaterialAssets } from "@/domains/materials/types/materials.types";
+import { repairCommonUtf8Mojibake } from "../domains/production/text/mojibake.service";
 import type {
   AssemblyAvatarClip,
   AssemblyBrollClip,
@@ -98,6 +99,14 @@ function isCompletedAvatarClip(
   return Boolean(clip?.public_url) && !clip.deleted && (!clip.status || clip.status === "COMPLETED");
 }
 
+function normalizeAnimatedSlideClasses(classes: string | undefined) {
+  const classList = (classes || "slide").split(/\s+/).filter(Boolean);
+  if (!classList.includes("active")) {
+    classList.push("active");
+  }
+  return classList.join(" ");
+}
+
 export function normalizeAssemblyAssets(
   assets: MaterialAssets | null | undefined,
   fps: number,
@@ -113,8 +122,8 @@ export function normalizeAssemblyAssets(
         .sort((left, right) => left.index - right.index)
         .map((slide, index) => ({
           animationCount: slide.animationCount,
-          classes: slide.classes,
-          html: slide.html,
+          classes: normalizeAnimatedSlideClasses(slide.classes),
+          html: repairCommonUtf8Mojibake(slide.html),
           index,
           kind: "html" as const,
           label: slide.label,

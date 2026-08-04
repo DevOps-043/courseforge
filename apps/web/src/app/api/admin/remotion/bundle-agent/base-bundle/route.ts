@@ -2,11 +2,22 @@ import { NextResponse } from "next/server";
 import { buildExternalAuthorBundleBaseZip } from "@/domains/production/bundle-agent/generation.service";
 import { sanitizeErrorMessage } from "@/domains/production/bundle-agent/redaction.service";
 import { resolveBundleAgentAuthContext } from "@/domains/production/bundle-agent/route-context";
+import {
+  buildSlideTemplatePackageZip,
+  buildSlideTemplateSpecFromConversation,
+} from "@/domains/production/bundle-agent/slide-template-package.service";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await resolveBundleAgentAuthContext();
-    const bundle = await buildExternalAuthorBundleBaseZip();
+    const url = new URL(request.url);
+    const artifactKind = url.searchParams.get("artifactKind");
+    const bundle = artifactKind === "slide_template"
+      ? await buildSlideTemplatePackageZip(buildSlideTemplateSpecFromConversation({
+          messages: [],
+          title: "Plantilla SofLIA Deck Base",
+        }))
+      : await buildExternalAuthorBundleBaseZip();
 
     return new NextResponse(Buffer.from(bundle.buffer), {
       headers: {

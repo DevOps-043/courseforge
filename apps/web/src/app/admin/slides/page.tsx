@@ -223,6 +223,7 @@ async function getSlideGenerationCandidates(): Promise<SlideGenerationCandidate[
       const qaReport = (row.assets?.slides as Record<string, unknown> | undefined)?.qa_report as
         | Record<string, unknown>
         | undefined;
+      const slidesAssets = row.assets?.slides as Record<string, unknown> | undefined;
       const courseTitle = artifact?.idea_central || "Artefacto sin titulo";
       const lessonTitle = lesson?.lesson_title || "Leccion sin titulo";
       const componentType = row.type || "VIDEO";
@@ -231,8 +232,12 @@ async function getSlideGenerationCandidates(): Promise<SlideGenerationCandidate[
         artifactId,
         componentId: row.id,
         componentType,
+        hasPreparedSpec: Boolean(slidesAssets?.prepared_spec),
         label: `${courseTitle} / ${lessonTitle} / ${componentType.replace(/_/g, " ")}`,
         lessonTitle,
+        preparedSlideCount: typeof slidesAssets?.prepared_slide_count === "number"
+          ? slidesAssets.prepared_slide_count
+          : null,
         qaStatus: typeof qaReport?.status === "string" ? qaReport.status : null,
       };
     })

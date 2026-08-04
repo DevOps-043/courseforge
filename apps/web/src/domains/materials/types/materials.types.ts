@@ -224,6 +224,10 @@ export interface MaterialAssets {
         open_design_project_id?: string;
         html_content_path?: string;
         html_public_url?: string;
+        prepared_at?: string;
+        prepared_from_storyboard?: boolean;
+        prepared_slide_count?: number;
+        prepared_spec?: Record<string, unknown>;
         qa_content_path?: string;
         qa_report?: Record<string, unknown>;
         spec_content_path?: string;

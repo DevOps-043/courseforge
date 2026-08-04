@@ -9,8 +9,10 @@ export interface SlideGenerationCandidate {
   artifactId: string;
   componentId: string;
   componentType: string;
+  hasPreparedSpec?: boolean;
   label: string;
   lessonTitle: string;
+  preparedSlideCount?: number | null;
   qaStatus?: string | null;
 }
 
@@ -145,6 +147,14 @@ export function SofliaEngineSlidesGenerator({
           {selectedCandidate?.qaStatus && (
             <span className="w-fit rounded-full border border-gray-200 px-2 py-1 text-[11px] font-bold text-gray-600 dark:border-white/10 dark:text-gray-300">
               Ultimo QA {selectedCandidate.qaStatus}
+            </span>
+          )}
+          {selectedCandidate?.hasPreparedSpec && (
+            <span className="w-fit rounded-full border border-[#00D4B3]/30 bg-[#00D4B3]/10 px-2 py-1 text-[11px] font-bold text-[#007F6D] dark:text-[#00D4B3]">
+              JSON precargado
+              {selectedCandidate.preparedSlideCount
+                ? ` (${selectedCandidate.preparedSlideCount} slides)`
+                : ""}
             </span>
           )}
         </div>

@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "soflia-deck-spec-v1",
+  "templateId": "soflia-deck-template",
+  "title": "Leccion Challenger SofLIA",
+  "locale": "es",
+  "format": "16:9",
+  "width": 1920,
+  "height": 1080,
+  "slides": [
+    {
+      "id": "cover",
+      "order": 1,
+      "layout": "provocation",
+      "kicker": "SOFLIA - ENGINE",
+      "headline": "La clase no necesita mas texto. Necesita una decision visual.",
+      "lead": "Un deck efectivo reduce friccion cognitiva antes de pedirle accion al estudiante.",
+      "animation": "anim-marker"
+    },
+    {
+      "id": "idea",
+      "order": 2,
+      "layout": "split_text_media",
+      "headline": "De guion a evidencia",
+      "lead": "Cada slide debe justificar por que aparece en ese momento del aprendizaje.",
+      "bullets": [
+        "Parte desde el storyboard aprobado.",
+        "Convierte acciones visuales en jerarquia editorial.",
+        "Mantiene notas para QA y ensamble."
+      ],
+      "media": {
+        "kind": "placeholder",
+        "alt": "Visual de produccion educativa"
+      }
+    },
+    {
+      "id": "chart",
+      "order": 3,
+      "layout": "data_explainer",
+      "headline": "El ritmo tambien se mide",
+      "lead": "Las graficas se declaran como JSON y se renderizan como SVG responsive.",
+      "chart": {
+        "id": "lesson-rhythm",
+        "type": "bar",
+        "title": "Distribucion de tiempo",
+        "unit": "s",
+        "sourceRefs": ["storyboard.timecode"],
+        "points": [
+          { "label": "Contexto", "value": 25 },
+          { "label": "Demostracion", "value": 40 },
+          { "label": "Practica", "value": 35 }
+        ]
+      }
+    },
+    {
+      "id": "framework",
+      "order": 4,
+      "layout": "three_column_framework",
+      "headline": "Tres controles antes de renderizar",
+      "cards": [
+        { "title": "Claridad", "body": "Una idea dominante por slide." },
+        { "title": "Evidencia", "body": "Claims trazables al guion o fuentes." },
+        { "title": "Forma", "body": "Tokens, layouts y runtime intactos." }
+      ]
+    },
+    {
+      "id": "closing",
+      "order": 5,
+      "layout": "closing",
+      "headline": "Si la slide no cambia la decision, sobra.",
+      "lead": "Cierra con una accion observable para el estudiante.",
+      "animation": "anim-typewriter"
+    }
+  ]
+}

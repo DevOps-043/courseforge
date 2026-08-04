@@ -146,6 +146,12 @@ describe("render batch contracts", () => {
     assert.match(desktopWorkerControlPlaneSource, /const bundleHash = sha256Buffer\(zipBuffer\)/);
     assert.match(desktopWorkerControlPlaneSource, /readNonEmptyString\(params\.build\.build_hash\)\s*\|\|\s*readNonEmptyString\(params\.build\.bundle_hash\)/);
     assert.match(desktopWorkerControlPlaneSource, /TEMPLATE_PREVIEW_PAYLOAD_PREPARE_FAILED/);
+    assert.match(desktopWorkerControlPlaneSource, /videoUploadUrl: string;/);
+    assert.match(desktopWorkerControlPlaneSource, /videoStoragePath: string;/);
+    assert.match(desktopWorkerControlPlaneSource, /template-previews\/\$\{preview\.id\}\/preview\.mp4/);
+    assert.match(desktopWorkerControlPlaneSource, /preview_video_storage_path: previewVideoStoragePath/);
+    assert.match(desktopWorkerControlPlaneSource, /preview_duration_seconds: previewDurationSeconds/);
+    assert.match(desktopWorkerControlPlaneSource, /preview_frames: previewFrames/);
     assert.match(desktopWorkerControlPlaneSource, /supportsGlobalLayoutOverrides/);
     assert.match(desktopWorkerControlPlaneSource, /filterLayoutOverridesForEditableLayers/);
     assert.doesNotMatch(

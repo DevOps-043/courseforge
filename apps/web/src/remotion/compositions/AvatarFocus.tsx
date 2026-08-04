@@ -76,6 +76,7 @@ export function AvatarFocus(props: AssemblyInputProps) {
           ) : props.avatarVideoUrl ? (
             <AvatarLayer
               url={props.avatarVideoUrl}
+              durationInFrames={durationInFrames}
               muted={hasVoice}
               objectFit="contain"
             />

@@ -479,6 +479,6 @@ export function buildSpecFromConversation(input: {
   }));
 }
 
-export function computeSpecHash(spec: BundleAgentSpec): string {
+export function computeSpecHash(spec: unknown): string {
   return stableJsonHash(spec);
 }

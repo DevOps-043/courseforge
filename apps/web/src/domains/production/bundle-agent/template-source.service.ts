@@ -18,6 +18,7 @@ import {
   AbsoluteFill,
   Audio,
   Composition,
+  Freeze,
   Img,
   Sequence,
   Video,
@@ -217,6 +218,7 @@ const REMOTION_EDITABLE_LAYERS = {
   BACKGROUND: "background",
 } as const;
 const AVATAR_CLIP_CROSSFADE_FRAMES = 8;
+const REMOTE_VIDEO_END_PADDING_FRAMES = 15;
 
 function getAvatarClipItemLayerId(order: number) {
   return "avatar:" + Math.max(1, Math.round(order));
@@ -331,6 +333,75 @@ function normalizeClipOrder(value: number | undefined, fallback: number) {
 
 function normalizeOptionalFrame(value: number | undefined) {
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.round(value)) : undefined;
+}
+
+function resolveSafeRemoteVideoRange(params: {
+  sourceStartFrame?: number;
+  sourceEndFrame?: number;
+  fallbackDurationInFrames: number;
+  sequenceDurationInFrames: number;
+}) {
+  const sourceStartFrame = normalizeOptionalFrame(params.sourceStartFrame) ?? 0;
+  const fallbackEndFrame = sourceStartFrame + Math.max(1, Math.round(params.fallbackDurationInFrames));
+  const requestedSourceEndFrame = Math.max(
+    sourceStartFrame + 1,
+    normalizeOptionalFrame(params.sourceEndFrame) ?? fallbackEndFrame,
+  );
+  const requestedSourceDurationInFrames = requestedSourceEndFrame - sourceStartFrame;
+  const shouldPadEnd = requestedSourceDurationInFrames > REMOTE_VIDEO_END_PADDING_FRAMES + 1;
+  const sourceEndFrame = shouldPadEnd
+    ? requestedSourceEndFrame - REMOTE_VIDEO_END_PADDING_FRAMES
+    : requestedSourceEndFrame;
+  const sourceDurationInFrames = Math.max(1, sourceEndFrame - sourceStartFrame);
+  const sequenceDurationInFrames = Math.max(1, Math.round(params.sequenceDurationInFrames));
+
+  return {
+    sourceStartFrame,
+    sourceEndFrame,
+    sourceDurationInFrames,
+    tailFreezeInFrames: Math.max(0, sequenceDurationInFrames - sourceDurationInFrames),
+  };
+}
+
+function SafeRemoteVideo(props: {
+  src: string;
+  muted?: boolean;
+  volume?: number;
+  startFrom?: number;
+  endAt?: number;
+  fallbackDurationInFrames: number;
+  durationInFrames: number;
+  style?: React.CSSProperties;
+}) {
+  const sourceRange = resolveSafeRemoteVideoRange({
+    sourceStartFrame: props.startFrom,
+    sourceEndFrame: props.endAt,
+    fallbackDurationInFrames: props.fallbackDurationInFrames,
+    sequenceDurationInFrames: props.durationInFrames,
+  });
+  const video = (
+    <Video
+      src={props.src}
+      muted={props.muted}
+      volume={props.volume}
+      startFrom={sourceRange.sourceStartFrame}
+      endAt={sourceRange.sourceEndFrame}
+      style={props.style}
+    />
+  );
+
+  if (sourceRange.tailFreezeInFrames <= 0) return video;
+
+  return (
+    <>
+      <Sequence from={0} durationInFrames={sourceRange.sourceDurationInFrames}>
+        {video}
+      </Sequence>
+      <Sequence from={sourceRange.sourceDurationInFrames} durationInFrames={sourceRange.tailFreezeInFrames}>
+        <Freeze frame={sourceRange.sourceDurationInFrames - 1}>{video}</Freeze>
+      </Sequence>
+    </>
+  );
 }
 
 function getTimelineOverrideSegments(
@@ -642,7 +713,7 @@ function DeckRuntimeStyles(props: { deckCss?: string; deckFonts?: DeckFont[] }) 
   );
 }
 
-function renderSlideAsset(slide: SlideAsset, box: Box) {
+function renderSlideAsset(slide: SlideAsset, box: Box, localFrame: number, fps: number) {
   if (!isHtmlSlide(slide)) {
     return (
       <Img
@@ -672,7 +743,10 @@ function renderSlideAsset(slide: SlideAsset, box: Box) {
         }}
       >
         <section
-          className={slide.classes || "slide"}
+          className={\`\${slide.classes || "slide"} active\`}
+          style={{
+            "--deck-t": String(Math.max(0, localFrame) / Math.max(1, fps)),
+          } as React.CSSProperties}
           dangerouslySetInnerHTML={{ __html: slide.html || "" }}
         />
       </div>
@@ -780,12 +854,14 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
             return (
               <Sequence key={avatarItem.id} from={avatarItem.startFrame} durationInFrames={avatarItem.durationInFrames}>
                 <div style={buildBoxStyle(avatarSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.avatar, opacity: avatarOpacity, ...avatarOverride, ...avatarItemOverride })}>
-                  <Video
+                  <SafeRemoteVideo
                     src={avatarItem.clip.url}
                     muted={hasVoice}
                     volume={hasVoice ? 0 : avatarOpacity}
                     startFrom={avatarItem.sourceStartFrame}
                     endAt={avatarItem.sourceEndFrame}
+                    fallbackDurationInFrames={getAvatarClipDurationInFrames(avatarItem.clip)}
+                    durationInFrames={avatarItem.durationInFrames}
                     style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center center" }}
                   />
                 </div>
@@ -795,9 +871,11 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
         </>
       ) : hasAvatarVideo ? (
         <div style={buildBoxStyle(avatarSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.avatar, ...avatarOverride })}>
-          <Video
+          <SafeRemoteVideo
             src={props.avatarVideoUrl!}
             muted={hasVoice}
+            fallbackDurationInFrames={durationInFrames}
+            durationInFrames={durationInFrames}
             style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center center" }}
           />
         </div>
@@ -806,7 +884,7 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
       {activeSlide && activeSlideItem ? (
         <Sequence from={activeSlideItem.startFrame} durationInFrames={activeSlideItem.durationInFrames}>
           <div style={buildBoxStyle(slidesSceneBox, { background: tokenSurface, opacity: slideOpacity, zIndex: defaultStackOrders.slides, ...slidesOverride, ...activeSlideItemOverride })}>
-            {renderSlideAsset(activeSlide, slidesSceneBox)}
+            {renderSlideAsset(activeSlide, slidesSceneBox, slideLocalFrame, fallbackFps)}
           </div>
         </Sequence>
       ) : null}
@@ -814,11 +892,13 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
       {activeBroll && activeBrollItem ? (
         <Sequence from={activeBrollItem.startFrame} durationInFrames={activeBrollItem.durationInFrames}>
           <div style={buildBoxStyle(brollSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.broll, ...brollOverride, ...activeBrollItemOverride })}>
-            <Video
+            <SafeRemoteVideo
               src={activeBroll.url}
               muted
               startFrom={activeBrollItem.sourceStartFrame}
               endAt={activeBrollItem.sourceEndFrame}
+              fallbackDurationInFrames={getClipDurationInFrames(activeBroll)}
+              durationInFrames={activeBrollItem.durationInFrames}
               style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center center" }}
             />
           </div>

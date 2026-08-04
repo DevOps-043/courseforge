@@ -149,6 +149,25 @@ export async function verifyMediaDurationsFromUrls(
     );
   }
 
+  if (Array.isArray(source.avatar_clips)) {
+    nextAssets.avatar_clips = await Promise.all(
+      source.avatar_clips.map((clip, index) => {
+        const avatarClip = clip as BrollAsset;
+        const order =
+          isPositiveFiniteNumber(avatarClip.order)
+            ? Math.round(avatarClip.order)
+            : index + 1;
+        return measureAssetDuration({
+          asset: avatarClip,
+          key: `avatar_clips.${order}`,
+          probe,
+          measuredDurations,
+          failedMeasurements,
+        });
+      }),
+    );
+  }
+
   return {
     assets: nextAssets,
     measuredDurations,

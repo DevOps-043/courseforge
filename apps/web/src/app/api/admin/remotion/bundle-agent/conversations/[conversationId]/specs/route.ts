@@ -13,7 +13,7 @@ export async function POST(request: Request, context: RouteContext) {
     const body = await request.json().catch(() => ({}));
     const authContext = await resolveBundleAgentAuthContext();
     const service = new BundleAgentWorkflowService(authContext);
-    const spec = await service.createSpec(conversationId, body?.overrides);
+    const spec = await service.createSpec(conversationId, body?.overrides, body?.artifactKind);
 
     return NextResponse.json({ success: true, spec }, { status: 201 });
   } catch (error) {

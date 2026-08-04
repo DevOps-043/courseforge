@@ -1,3 +1,5 @@
+import { repairCommonUtf8Mojibake } from "../text/mojibake.service";
+
 export const ANIMATED_DECK_SCHEMA_VERSION = "animated-deck-v1";
 
 export const ANIMATED_DECK_WIDTH = 1920;
@@ -361,10 +363,13 @@ function stripOuterSection(markup: string) {
 
 function readSectionClasses(markup: string) {
   const classAttr = readAttribute(markup, "class") || "slide";
-  return classAttr
+  const classes = classAttr
     .split(/\s+/)
-    .filter((className) => className && className !== "active")
-    .join(" ");
+    .filter(Boolean);
+  if (!classes.includes("active")) {
+    classes.push("active");
+  }
+  return classes.join(" ");
 }
 
 function cleanSlideInnerHtml(markup: string) {
@@ -463,7 +468,8 @@ function assertSafeRemoteUrls(params: {
 }
 
 export function collectAnimatedDeckRemoteAssetUrls(sourceHtml: string): string[] {
-  const fontLinks = extractGoogleFontLinks(sourceHtml);
+  const normalizedSourceHtml = repairCommonUtf8Mojibake(sourceHtml);
+  const fontLinks = extractGoogleFontLinks(normalizedSourceHtml);
   const htmlWithoutScripts = fontLinks.html.replace(SCRIPT_RE, "");
   const styleBlocks = Array.from(htmlWithoutScripts.matchAll(STYLE_RE), (match) => match[1]);
   const importedFonts = extractGoogleFontImports(styleBlocks.join("\n"));
@@ -485,7 +491,7 @@ export function rewriteAnimatedDeckRemoteAssetUrls(
   sourceHtml: string,
   urlMap: Record<string, string>,
 ): string {
-  let html = sourceHtml;
+  let html = repairCommonUtf8Mojibake(sourceHtml);
   for (const [sourceUrl, targetUrl] of Object.entries(urlMap)) {
     html = html.split(sourceUrl).join(targetUrl);
     const normalizedSource = normalizeRemoteUrlForComparison(sourceUrl);
@@ -571,8 +577,9 @@ export function prepareAnimatedDeckForRemotion(
   sourceHtml: string,
   options: PrepareAnimatedDeckOptions = {},
 ): PreparedAnimatedDeck {
-  const removedScripts = countMatches(sourceHtml, SCRIPT_RE);
-  const fontLinks = extractGoogleFontLinks(sourceHtml);
+  const normalizedSourceHtml = repairCommonUtf8Mojibake(sourceHtml);
+  const removedScripts = countMatches(normalizedSourceHtml, SCRIPT_RE);
+  const fontLinks = extractGoogleFontLinks(normalizedSourceHtml);
   const htmlWithoutScripts = fontLinks.html.replace(SCRIPT_RE, "");
   const styleBlocks = Array.from(htmlWithoutScripts.matchAll(STYLE_RE), (match) => match[1]);
   const cssWithoutComments = styleBlocks.join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
@@ -612,8 +619,8 @@ export function prepareAnimatedDeckForRemotion(
     hasControllerResidue: preparedSlides.some((slide) => CONTROLLER_RESIDUE_RE.test(slide.html)) ||
       CONTROLLER_RESIDUE_RE.test(css),
     removedControllerNodes:
-      countMatches(sourceHtml, /<nav\b(?=[^>]*\bclass=(["'])[^"']*\bdeck-counter\b[^"']*\1)[\s\S]*?<\/nav>/gi) +
-      countMatches(sourceHtml, /<div\b(?=[^>]*\bclass=(["'])[^"']*\bdeck-hint\b[^"']*\1)[\s\S]*?<\/div>/gi),
+      countMatches(normalizedSourceHtml, /<nav\b(?=[^>]*\bclass=(["'])[^"']*\bdeck-counter\b[^"']*\1)[\s\S]*?<\/nav>/gi) +
+      countMatches(normalizedSourceHtml, /<div\b(?=[^>]*\bclass=(["'])[^"']*\bdeck-hint\b[^"']*\1)[\s\S]*?<\/div>/gi),
     removedEventAttributes,
     removedFontLinks: fontLinks.removedFontLinks,
     removedImports: importedFonts.removedImports,
@@ -627,7 +634,7 @@ export function prepareAnimatedDeckForRemotion(
     css,
     fonts,
     slides: preparedSlides,
-    sourceHtml,
+    sourceHtml: normalizedSourceHtml,
   });
   const animatedSlideCount = preparedSlides.filter((slide) => slide.animationCount > 0).length;
 

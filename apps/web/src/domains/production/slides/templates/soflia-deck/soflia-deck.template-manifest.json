@@ -1,0 +1,42 @@
+{
+  "id": "soflia-deck-template",
+  "kind": "slide_template",
+  "version": "1.0.0",
+  "skillId": "soflia-deck",
+  "runtime": {
+    "format": "html",
+    "canvas": {
+      "width": 1920,
+      "height": 1080,
+      "aspectRatio": "16:9"
+    },
+    "responsiveStrategy": "scale_1920x1080_stage_to_viewport",
+    "trustedScriptPolicy": "template_runtime_only"
+  },
+  "inputSchema": {
+    "type": "object",
+    "required": ["title", "audience", "learningObjective"],
+    "properties": {
+      "title": { "type": "string", "description": "Deck or lesson title." },
+      "subtitle": { "type": "string", "description": "Optional deck subtitle." },
+      "audience": { "type": "string", "description": "Target learners." },
+      "learningObjective": { "type": "string", "description": "Main learning objective." },
+      "sourceContent": { "type": "object", "description": "Lesson script, storyboard, notes or curated content." },
+      "slideCount": { "type": "integer", "description": "Target number of slides." },
+      "charts": { "type": "array", "description": "Optional declarative SVG chart specs." }
+    }
+  },
+  "deckSpecSchema": {
+    "schemaVersion": "soflia-deck-spec-v1",
+    "slideLayouts": ["provocation", "split_text_media", "split_media_text", "three_column_framework", "data_explainer", "closing"],
+    "chartTypes": ["bar", "line", "area", "proportion"]
+  },
+  "qaPolicy": {
+    "forbidGeneratedScripts": true,
+    "allowTrustedTemplateRuntime": true,
+    "maxSlides": 24,
+    "maxBodyBlocksPerSlide": 5,
+    "requiredFonts": ["Newsreader", "Inter Tight"],
+    "requiredRootTokens": ["--blue-deep", "--accent", "--accent-accessible", "--muted", "--bg", "--bg-positive", "--shell"]
+  }
+}

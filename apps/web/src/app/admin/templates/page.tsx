@@ -1,4 +1,4 @@
-import { getTemplatesAction, getPublicTemplatesAction } from "@/domains/production/actions/templates.actions";
+import { getTemplatesAction, getPublicTemplatesAction, getSlideTemplatePackagesAction } from "@/domains/production/actions/templates.actions";
 import TemplatesContainer from "./TemplatesContainer";
 import { createClient } from "@/utils/supabase/server";
 import { getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
@@ -10,9 +10,11 @@ export default async function TemplatesPage() {
   const [
     { templates: initialTemplates = [] },
     { templates: initialPublicTemplates = [] },
+    { slideTemplates: initialSlideTemplates = [] },
   ] = await Promise.all([
     getTemplatesAction(),
     getPublicTemplatesAction(),
+    getSlideTemplatePackagesAction(),
   ]);
 
   let initialUserRole: string | null = null;
@@ -41,6 +43,7 @@ export default async function TemplatesPage() {
     <TemplatesContainer
       initialTemplates={initialTemplates}
       initialPublicTemplates={initialPublicTemplates}
+      initialSlideTemplates={initialSlideTemplates}
       initialUserRole={initialUserRole}
     />
   );

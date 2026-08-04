@@ -203,40 +203,82 @@ export async function completeBrollPromptProductionJob(
   params: CompleteBrollPromptJobParams,
 ) {
   const now = new Date().toISOString();
-  const { error: assetError } = await supabase.from("production_assets").insert({
-    artifact_id: params.context.artifactId,
-    asset_type: PRODUCTION_ASSET_TYPES.BROLL_PROMPTS,
-    content: {
-      prompts: params.promptItems,
-      text: params.promptsText,
+  const slideDeckSpec = params.slideDeckSpec;
+  const slideCount = Array.isArray(slideDeckSpec?.slides)
+    ? slideDeckSpec.slides.length
+    : 0;
+  const assetRows = [
+    {
+      artifact_id: params.context.artifactId,
+      asset_type: PRODUCTION_ASSET_TYPES.BROLL_PROMPTS,
+      content: {
+        prompts: params.promptItems,
+        text: params.promptsText,
+      },
+      material_component_id: params.context.componentId,
+      material_lesson_id: params.context.materialLessonId,
+      lesson_id: params.context.lessonId,
+      metadata: {
+        component_type: params.context.componentType,
+        model: params.model,
+      },
+      module_id: params.context.moduleId,
+      organization_id: params.context.organizationId,
+      production_job_id: params.jobId,
+      provider: PRODUCTION_PROVIDERS.GEMINI,
+      qa_status: PRODUCTION_QA_STATUSES.GENERATED,
     },
-    material_component_id: params.context.componentId,
-    material_lesson_id: params.context.materialLessonId,
-    lesson_id: params.context.lessonId,
-    metadata: {
-      component_type: params.context.componentType,
-      model: params.model,
-    },
-    module_id: params.context.moduleId,
-    organization_id: params.context.organizationId,
-    production_job_id: params.jobId,
-    provider: PRODUCTION_PROVIDERS.GEMINI,
-    qa_status: PRODUCTION_QA_STATUSES.GENERATED,
-  });
+    ...(slideDeckSpec
+      ? [{
+          artifact_id: params.context.artifactId,
+          asset_type: PRODUCTION_ASSET_TYPES.SLIDE_DECK_SPEC,
+          content: slideDeckSpec,
+          material_component_id: params.context.componentId,
+          material_lesson_id: params.context.materialLessonId,
+          lesson_id: params.context.lessonId,
+          metadata: {
+            component_type: params.context.componentType,
+            generated_with: "video_prompts_generation",
+            slide_count: slideCount,
+            template: typeof slideDeckSpec.template === "string"
+              ? slideDeckSpec.template
+              : "course-module",
+          },
+          module_id: params.context.moduleId,
+          organization_id: params.context.organizationId,
+          production_job_id: params.jobId,
+          provider: PRODUCTION_PROVIDERS.SOFLIA_ENGINE_SLIDES,
+          qa_status: PRODUCTION_QA_STATUSES.PENDING,
+        }]
+      : []),
+  ];
+  const { error: assetError } = await supabase.from("production_assets").insert(assetRows);
 
   if (assetError) {
     throw assetError;
+  }
+
+  const outputSnapshot: Record<string, unknown> = {
+    asset_type: PRODUCTION_ASSET_TYPES.BROLL_PROMPTS,
+    prompts_text: params.promptsText,
+    prompt_count: params.promptItems.length,
+  };
+
+  if (slideDeckSpec) {
+    outputSnapshot.slide_deck_spec = {
+      asset_type: PRODUCTION_ASSET_TYPES.SLIDE_DECK_SPEC,
+      schema_version: slideDeckSpec.schemaVersion,
+      slide_count: slideCount,
+      template: slideDeckSpec.template,
+      prepared_from: "storyboard",
+    };
   }
 
   const { error: jobError } = await supabase
     .from("production_jobs")
     .update({
       completed_at: now,
-      output_snapshot: {
-        asset_type: PRODUCTION_ASSET_TYPES.BROLL_PROMPTS,
-        prompts_text: params.promptsText,
-        prompt_count: params.promptItems.length,
-      },
+      output_snapshot: outputSnapshot,
       status: PRODUCTION_JOB_STATUSES.SUCCEEDED,
       updated_at: now,
     })

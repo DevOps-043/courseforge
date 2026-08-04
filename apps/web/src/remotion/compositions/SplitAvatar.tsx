@@ -94,7 +94,11 @@ export function SplitAvatar(props: AssemblyInputProps) {
               }
             />
         ) : props.avatarVideoUrl ? (
-          <AvatarLayer url={props.avatarVideoUrl} muted={hasVoice} />
+          <AvatarLayer
+            url={props.avatarVideoUrl}
+            durationInFrames={durationInFrames}
+            muted={hasVoice}
+          />
         ) : hasAvatar ? (
           null
         ) : (

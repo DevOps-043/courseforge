@@ -35,6 +35,13 @@ export function classifyRemotionFailure(
   if (normalized.includes('external_composition_id_missing')) return 'EXTERNAL_COMPOSITION_ID_MISSING';
   if (normalized.includes('external_props_invalid')) return 'EXTERNAL_PROPS_INVALID';
   if (normalized.includes('external_serve_url_mismatch')) return 'EXTERNAL_SERVE_URL_MISMATCH';
+  if (
+    normalized.includes('delayrender') ||
+    normalized.includes('html5video') ||
+    normalized.includes('canplay')
+  ) {
+    return 'MEDIA_ASSET_LOAD_TIMEOUT';
+  }
   if (normalized.includes('throttl') || normalized.includes('rate exceeded') || normalized.includes('concurrency')) {
     return 'RENDER_PROVIDER_THROTTLED';
   }

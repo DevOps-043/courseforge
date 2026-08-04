@@ -195,6 +195,35 @@ export interface RemotionTemplate {
   editable_layers?: EditableLayerDefinition[];
 }
 
+export interface SlideTemplateLibraryItem {
+  id: string;
+  conversation_id: string;
+  organization_id: string;
+  spec_id: string | null;
+  title: string;
+  description: string | null;
+  package_id: string | null;
+  status: "QUEUED" | "RUNNING" | "PACKAGED" | "VALIDATION_FAILED" | "SUBMITTED_FOR_REVIEW" | "FAILED";
+  bundle_storage_path: string | null;
+  output_hash: string | null;
+  error_sanitized: string | null;
+  created_at: string;
+  finished_at: string | null;
+  layouts: string[];
+  example_slide_count: number;
+  runtime_canvas: {
+    width: number;
+    height: number;
+    aspectRatio: string;
+  } | null;
+  validation_report: {
+    isValid?: boolean;
+    errors?: string[];
+    warnings?: string[];
+    info?: Record<string, unknown>;
+  } | null;
+}
+
 interface RemotionTemplateCloudBuild {
   id: string;
   template_version_id: string;
@@ -342,6 +371,51 @@ export async function getExternalBundlePreviewDataAction(params: {
       error: formatExternalPreviewError(error, "No se pudo obtener el preview externo"),
     };
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function getStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+}
+
+function getSlideTemplateLayouts(specJson: unknown): string[] {
+  const spec = asRecord(specJson);
+  const templateManifest = asRecord(spec?.templateManifest);
+  const deckSpecSchema = asRecord(templateManifest?.deckSpecSchema);
+  return getStringList(deckSpecSchema?.slideLayouts);
+}
+
+function getSlideTemplateCanvas(specJson: unknown): SlideTemplateLibraryItem["runtime_canvas"] {
+  const spec = asRecord(specJson);
+  const templateManifest = asRecord(spec?.templateManifest);
+  const runtime = asRecord(templateManifest?.runtime);
+  const canvas = asRecord(runtime?.canvas);
+  const width = typeof canvas?.width === "number" ? canvas.width : null;
+  const height = typeof canvas?.height === "number" ? canvas.height : null;
+  const aspectRatio = typeof canvas?.aspectRatio === "string" ? canvas.aspectRatio : null;
+
+  return width && height && aspectRatio ? { width, height, aspectRatio } : null;
+}
+
+function getSlideTemplateExampleCount(specJson: unknown): number {
+  const spec = asRecord(specJson);
+  const examples = Array.isArray(spec?.examples) ? spec.examples : [];
+  const firstExample = asRecord(examples[0]);
+  const slides = Array.isArray(firstExample?.slides) ? firstExample.slides : [];
+  return slides.length;
+}
+
+function isSlideTemplateRun(run: Record<string, any>, specJson: unknown) {
+  const validationInfo = asRecord(asRecord(run.validation_report)?.info);
+  const spec = asRecord(specJson);
+  return validationInfo?.artifactKind === "slide_template" || spec?.artifactKind === "slide_template";
 }
 
 export async function requestExternalBundlePreviewRenderAction(params: {
@@ -739,6 +813,93 @@ export async function getTemplatesAction(): Promise<{
   } catch (error: any) {
     console.error("[TemplatesActions] Error fetching templates:", error);
     return { success: false, error: error.message || "Error al obtener plantillas" };
+  }
+}
+
+export async function getSlideTemplatePackagesAction(): Promise<{
+  success: boolean;
+  slideTemplates?: SlideTemplateLibraryItem[];
+  error?: string;
+}> {
+  try {
+    const { error: authError } = await getAuthorizedSupabase();
+    if (authError) return { success: false, error: authError };
+
+    const activeOrgId = await resolveActiveTemplateOrganizationId();
+    if (!activeOrgId) return { success: true, slideTemplates: [] };
+
+    const admin = getServiceRoleClient();
+    const { data: runs, error: runsError } = await admin
+      .from("soflia_bundle_generation_runs")
+      .select("id, conversation_id, organization_id, spec_id, status, output_hash, bundle_storage_path, validation_report, error_sanitized, created_at, finished_at")
+      .eq("organization_id", activeOrgId)
+      .is("template_id", null)
+      .order("created_at", { ascending: false })
+      .limit(80);
+
+    if (runsError) throw runsError;
+    if (!runs || runs.length === 0) {
+      return { success: true, slideTemplates: [] };
+    }
+
+    const conversationIds = Array.from(new Set(runs.map((run: any) => run.conversation_id).filter(Boolean)));
+    const specIds = Array.from(new Set(runs.map((run: any) => run.spec_id).filter(Boolean)));
+
+    const [{ data: conversations, error: conversationsError }, { data: specs, error: specsError }] = await Promise.all([
+      conversationIds.length > 0
+        ? admin
+            .from("soflia_bundle_conversations")
+            .select("id, title")
+            .eq("organization_id", activeOrgId)
+            .in("id", conversationIds)
+        : Promise.resolve({ data: [], error: null }),
+      specIds.length > 0
+        ? admin
+            .from("soflia_bundle_specs")
+            .select("id, spec_json")
+            .eq("organization_id", activeOrgId)
+            .in("id", specIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (conversationsError) throw conversationsError;
+    if (specsError) throw specsError;
+
+    const conversationsById = new Map((conversations || []).map((conversation: any) => [conversation.id, conversation]));
+    const specsById = new Map((specs || []).map((spec: any) => [spec.id, spec]));
+    const slideTemplates = runs
+      .map((run: any): SlideTemplateLibraryItem | null => {
+        const specJson = specsById.get(run.spec_id)?.spec_json;
+        if (!isSlideTemplateRun(run, specJson)) return null;
+
+        const spec = asRecord(specJson);
+        const conversation = conversationsById.get(run.conversation_id);
+        return {
+          id: run.id,
+          conversation_id: run.conversation_id,
+          organization_id: run.organization_id,
+          spec_id: run.spec_id || null,
+          title: typeof spec?.title === "string" ? spec.title : conversation?.title || "Plantilla de slides",
+          description: typeof spec?.description === "string" ? spec.description : null,
+          package_id: typeof spec?.packageId === "string" ? spec.packageId : null,
+          status: run.status,
+          bundle_storage_path: run.bundle_storage_path || null,
+          output_hash: run.output_hash || null,
+          error_sanitized: run.error_sanitized || null,
+          created_at: run.created_at,
+          finished_at: run.finished_at || null,
+          layouts: getSlideTemplateLayouts(specJson),
+          example_slide_count: getSlideTemplateExampleCount(specJson),
+          runtime_canvas: getSlideTemplateCanvas(specJson),
+          validation_report: asRecord(run.validation_report),
+        };
+      })
+      .filter((item): item is SlideTemplateLibraryItem => Boolean(item));
+
+    return { success: true, slideTemplates };
+  } catch (error: any) {
+    console.error("[TemplatesActions] Error fetching slide template packages:", error);
+    return { success: false, error: error.message || "Error al obtener plantillas de slides" };
   }
 }
 

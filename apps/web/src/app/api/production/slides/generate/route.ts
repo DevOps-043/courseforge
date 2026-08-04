@@ -21,7 +21,13 @@ import {
   PRODUCTION_QA_STATUSES,
 } from "@/domains/production/types/production.types";
 import { generateCourseDeckWithQualityGate } from "@/domains/production/slides/generation/course-deck-generation-orchestrator.service";
-import { slideDeckGenerateInputSchema } from "@/domains/production/slides/specs/course-deck.schema";
+import { renderCourseDeckHtml } from "@/domains/production/slides/render/html-deck-renderer.service";
+import {
+  courseDeckSpecSchema,
+  slideDeckGenerateInputSchema,
+  type CourseDeckSpec,
+} from "@/domains/production/slides/specs/course-deck.schema";
+import { validateCourseDeckQuality } from "@/domains/production/slides/validation/course-deck-qa.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -36,16 +42,32 @@ function deckBasePath(componentId: string) {
   return `slides/${componentId}-soflia-engine-deck`;
 }
 
+function getPreparedDeckSpec(assets: MaterialAssets, componentId: string): CourseDeckSpec | null {
+  const preparedSpec = assets.slides?.prepared_spec;
+  if (!preparedSpec) {
+    return null;
+  }
+
+  const parsed = courseDeckSpecSchema.safeParse(preparedSpec);
+  if (!parsed.success || parsed.data.materialComponentId !== componentId) {
+    return null;
+  }
+
+  return parsed.data;
+}
+
 async function uploadTextAsset(params: {
   admin: NonNullable<Awaited<ReturnType<typeof getAuthorizedMaterialComponentAdmin>>>["admin"];
   content: string;
   contentType: string;
   storagePath: string;
 }) {
+  const contentType = params.contentType.split(";")[0]?.trim() || params.contentType;
+  const contentBody = Buffer.from(params.content, "utf8");
   const { error } = await params.admin.storage
     .from(BUCKET)
-    .upload(params.storagePath, params.content, {
-      contentType: params.contentType,
+    .upload(params.storagePath, contentBody, {
+      contentType,
       upsert: true,
     });
 
@@ -130,11 +152,67 @@ export async function POST(request: Request) {
       supabase: authorizedComponent.admin,
     });
 
-    const deckGeneration = generateCourseDeckWithQualityGate({
-      artifactId: authorizedComponent.artifactId,
-      component: authorizedComponent.component,
-      input,
-    });
+    const currentAssets = (authorizedComponent.component.assets || {}) as MaterialAssets;
+    const preparedDeckSpec = input.customSlides?.length
+      ? null
+      : getPreparedDeckSpec(currentAssets, componentId);
+    const deckGeneration = preparedDeckSpec
+      ? (() => {
+          const html = renderCourseDeckHtml(preparedDeckSpec);
+          const qaReport = validateCourseDeckQuality({
+            deckSpec: preparedDeckSpec,
+            html,
+          });
+
+          return {
+            deckSpec: preparedDeckSpec,
+            html,
+            qaReport,
+            stages: [
+              {
+                durationMs: 0,
+                name: "deck_brief",
+                status: "success",
+                summary: "Spec preparado desde storyboard de produccion.",
+              },
+              {
+                durationMs: 0,
+                name: "slide_plan",
+                status: "success",
+                summary: `Se reutilizaron ${preparedDeckSpec.slides.length} slides preparadas.`,
+              },
+              {
+                durationMs: 0,
+                name: "chart_data",
+                status: "success",
+                summary: "Graficas resueltas desde el spec preparado.",
+              },
+              {
+                durationMs: 0,
+                name: "visual_direction",
+                status: "success",
+                summary: `Template ${preparedDeckSpec.template}.`,
+              },
+              {
+                durationMs: 0,
+                name: "html_render",
+                status: "success",
+                summary: "HTML renderizado desde spec preparado.",
+              },
+              {
+                durationMs: 0,
+                name: "quality_gate",
+                status: "success",
+                summary: `QA ${qaReport.status}.`,
+              },
+            ],
+          };
+        })()
+      : generateCourseDeckWithQualityGate({
+          artifactId: authorizedComponent.artifactId,
+          component: authorizedComponent.component,
+          input,
+        });
     const { deckSpec, html, qaReport, stages } = deckGeneration;
 
     if (qaReport.status === "FAIL") {
@@ -155,7 +233,7 @@ export async function POST(request: Request) {
     const htmlUpload = await uploadTextAsset({
       admin: authorizedComponent.admin,
       content: html,
-      contentType: "text/html; charset=utf-8",
+      contentType: "text/html",
       storagePath: `${basePath}.html`,
     });
     const qaUpload = await uploadTextAsset({
@@ -241,7 +319,6 @@ export async function POST(request: Request) {
       throw assetError;
     }
 
-    const currentAssets = (authorizedComponent.component.assets || {}) as MaterialAssets;
     const updatedAssets: MaterialAssets = {
       ...currentAssets,
       final_video_assembly_stale: true,
