@@ -18,6 +18,7 @@ import {
 } from '@/remotion/timeline-overrides';
 import { getTemplatesAction, type RemotionTemplate } from '@/domains/production/actions/templates.actions';
 import {
+    assembleRemotionVideoAction,
     cancelRemotionAssemblyJobsAction,
     createRemotionAssemblyBatchAction,
     createRenderWorkerLinkCodeAction,
@@ -52,8 +53,10 @@ import type { MaterialAssets } from '../types/materials.types';
 
 interface PostproductionAssemblyContainerProps {
     artifactId: string;
+    initialComponentId?: string;
     onNext?: () => void;
     profile?: unknown;
+    singleVideoOnly?: boolean;
 }
 
 type AssemblyJobStatus = 'PENDING' | 'QUEUED' | 'RUNNING' | 'WAITING_PROVIDER' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
@@ -227,11 +230,16 @@ function getLayoutAssetSummary(assets: any): LayoutAssetSummary {
     };
 }
 
-export function PostproductionAssemblyContainer({ artifactId, onNext }: PostproductionAssemblyContainerProps) {
+export function PostproductionAssemblyContainer({
+    artifactId,
+    initialComponentId,
+    onNext,
+    singleVideoOnly = false,
+}: PostproductionAssemblyContainerProps) {
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const { materials, getLessonComponents, refresh } = useMaterials(artifactId);
-    const assemblyJobsStorageKey = `${ASSEMBLY_JOBS_STORAGE_PREFIX}:${artifactId}`;
+    const assemblyJobsStorageKey = `${ASSEMBLY_JOBS_STORAGE_PREFIX}:${artifactId}:${initialComponentId || 'all'}`;
     const [templates, setTemplates] = useState<RemotionTemplate[]>([]);
     const [selectedTemplate, setSelectedTemplate] = useState<string>('');
     const [isAssembling, setIsAssembling] = useState(false);
@@ -484,7 +492,15 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                         }));
                 });
                 const results = await Promise.all(allCompPromises);
-                setVideoComponents(results.flat());
+                const resolvedComponents = results.flat();
+                const scopedComponents = initialComponentId
+                    ? resolvedComponents.filter((component) => component.id === initialComponentId)
+                    : resolvedComponents;
+
+                setVideoComponents(scopedComponents);
+                if (initialComponentId && scopedComponents.length > 0) {
+                    setActivePreviewId(initialComponentId);
+                }
             } catch (err) {
                 console.error('Error fetching video components:', err);
             } finally {
@@ -492,7 +508,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
             }
         };
         fetchVideoComponents();
-    }, [materials, getLessonComponents]);
+    }, [materials, getLessonComponents, initialComponentId]);
 
     const pollAssemblyJobs = () => {
         stopPolling();
@@ -640,6 +656,10 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
 
     const startAssemblyForComponents = async (targets: any[]) => {
         if (targets.length === 0) return;
+        if (singleVideoOnly && targets.length !== 1) {
+            alert('Este apartado solo permite ensamblar un video a la vez.');
+            return;
+        }
         if (workerGateBlocked) {
             alert(workerGateMessage);
             return;
@@ -653,44 +673,70 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
         setAssemblyJobs([]);
 
         try {
-            const triggerResult = await createRemotionAssemblyBatchAction({
-                artifactId,
-                defaultTemplateId: selectedTemplate,
-                assignmentMode: Object.values(workerOverrides).some(Boolean) ? 'MIXED' : 'AUTO',
-                items: targets.map((component) => {
-                    const templateId = templateOverrides[component.id] || selectedTemplate;
-                    const template = templates.find((candidate) => candidate.id === templateId);
-                    const templateConfig = template?.default_config || {};
-                    const templateVersionId = template?.template_version_id || template?.id || null;
-                    const layoutDraftKey = getLayoutOverrideDraftKey({
-                        componentId: component.id,
-                        templateId,
-                        templateVersionId,
-                    });
-                    const persistedLayoutOverrides = getPersistedLayoutOverrides(component, templateId, templateVersionId);
-                    const layoutOverrides = getCompatibleTemplateLayoutOverrides(
-                        template,
-                        layoutOverrideDrafts[layoutDraftKey] ?? persistedLayoutOverrides,
+            const buildRenderItem = (component: any) => {
+                const templateId = templateOverrides[component.id] || selectedTemplate;
+                const template = templates.find((candidate) => candidate.id === templateId);
+                const templateConfig = template?.default_config || {};
+                const templateVersionId = template?.template_version_id || template?.id || null;
+                const layoutDraftKey = getLayoutOverrideDraftKey({
+                    componentId: component.id,
+                    templateId,
+                    templateVersionId,
+                });
+                const persistedLayoutOverrides = getPersistedLayoutOverrides(component, templateId, templateVersionId);
+                const layoutOverrides = getCompatibleTemplateLayoutOverrides(
+                    template,
+                    layoutOverrideDrafts[layoutDraftKey] ?? persistedLayoutOverrides,
+                );
+                const persistedTimelineOverrides = getPersistedTimelineOverrides(component, templateId, templateVersionId);
+                const timelineOverrides = timelineOverrideDrafts[layoutDraftKey] ?? persistedTimelineOverrides;
+
+                return {
+                    componentId: component.id,
+                    templateId,
+                    preferredWorkerId: workerOverrides[component.id] || null,
+                    variables: {
+                        template: templateId,
+                        videoComponentsCount: targets.length,
+                        componentTitle: getComponentLabel(component),
+                        templateConfig,
+                        transitionType: (templateConfig as any)?.transitionType,
+                        layoutOverrides,
+                        timelineOverrides,
+                    },
+                };
+            };
+
+            const triggerResult = singleVideoOnly
+                ? await (async () => {
+                    const target = buildRenderItem(targets[0]);
+                    const result = await assembleRemotionVideoAction(
+                        target.componentId,
+                        target.templateId,
+                        target.variables,
                     );
-                    const persistedTimelineOverrides = getPersistedTimelineOverrides(component, templateId, templateVersionId);
-                    const timelineOverrides = timelineOverrideDrafts[layoutDraftKey] ?? persistedTimelineOverrides;
+
+                    if (!result.success || !result.jobId) {
+                        return { success: false as const, error: result.error };
+                    }
 
                     return {
-                        componentId: component.id,
-                        templateId,
-                        preferredWorkerId: workerOverrides[component.id] || null,
-                        variables: {
-                            template: templateId,
-                            videoComponentsCount: targets.length,
-                            componentTitle: getComponentLabel(component),
-                            templateConfig,
-                            transitionType: (templateConfig as any)?.transitionType,
-                            layoutOverrides,
-                            timelineOverrides,
-                        },
+                        success: true as const,
+                        items: [{
+                            componentId: target.componentId,
+                            jobId: result.jobId,
+                            label: getComponentLabel(targets[0]),
+                            status: result.status || 'WAITING_PROVIDER',
+                            progress: 5,
+                        }],
                     };
-                }),
-            });
+                })()
+                : await createRemotionAssemblyBatchAction({
+                    artifactId,
+                    defaultTemplateId: selectedTemplate,
+                    assignmentMode: Object.values(workerOverrides).some(Boolean) ? 'MIXED' : 'AUTO',
+                    items: targets.map(buildRenderItem),
+                });
 
             const startedJobs: AssemblyJobTracker[] = triggerResult.success && "items" in triggerResult
                 ? triggerResult.items.map((item: any) => ({
@@ -1288,10 +1334,12 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                     <div>
                         <h2 className="text-xl font-bold mb-2 flex items-center gap-3 text-gray-900 dark:text-white">
                             <Film className="text-purple-500" size={24} />
-                            Fase 7: Postproduccion (Ensamblado de video)
+                            {singleVideoOnly ? 'Ensamble de video' : 'Fase 7: Postproduccion (Ensamblado de video)'}
                         </h2>
                         <p className="text-sm text-gray-500 dark:text-gray-400 max-w-2xl">
-                            Unifica diapositivas, locucion, avatar, musica y B-roll en videos finales.
+                            {singleVideoOnly
+                                ? 'Unifica los assets del video seleccionado sin crear batches ni encolar multiples lecciones.'
+                                : 'Unifica diapositivas, locucion, avatar, musica y B-roll en videos finales.'}
                         </p>
                     </div>
                     {isCompleted && (
@@ -1312,7 +1360,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                 Editor de ensamble
                             </h3>
 
-                            {videoComponents.length > 1 && (
+                            {!singleVideoOnly && videoComponents.length > 1 && (
                                 <div className="w-full rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-[#6C757D]/10 dark:bg-[#0F1419]/60 xl:max-w-xl">
                                     <label className="text-xs font-semibold text-gray-500 dark:text-gray-400">
                                         Seleccionar Video para Preview:
@@ -1879,7 +1927,7 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                         </div>
 
                         <div className="space-y-4">
-                            {componentsToAssemble.length > 0 ? (
+                            {!singleVideoOnly && componentsToAssemble.length > 0 ? (
                                 <div className="mt-4 rounded-xl border border-gray-200 bg-white p-3 text-xs dark:border-[#6C757D]/10 dark:bg-[#151A21]">
                                     <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                         <div>
@@ -1957,7 +2005,9 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                         ) : !hasComponentsToAssemble ? (
                             <div className="space-y-4">
                                 <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-600 dark:text-green-400 text-sm">
-                                    Todos los videos del curso ya cuentan con video final. No es necesario volver a ensamblar.
+                                    {singleVideoOnly
+                                        ? 'Este video ya cuenta con video final. Puedes reensamblarlo si necesitas aplicar cambios recientes.'
+                                        : 'Todos los videos del curso ya cuentan con video final. No es necesario volver a ensamblar.'}
                                 </div>
                                 {activePreview && (
                                     <button
@@ -1981,7 +2031,9 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                         ) : (
                             <div className="space-y-4">
                                 <p className="text-sm text-gray-600 dark:text-gray-300">
-                                    Hay {componentsToAssemble.length} de {videoComponents.length} componente(s) pendientes. Puedes ensamblar solo el video seleccionado o encolar todos los pendientes.
+                                    {singleVideoOnly
+                                        ? 'Este apartado ensambla un solo video. Ajusta assets, layout o timeline antes de generar el render final.'
+                                        : `Hay ${componentsToAssemble.length} de ${videoComponents.length} componente(s) pendientes. Puedes ensamblar solo el video seleccionado o encolar todos los pendientes.`}
                                 </p>
 
                                 {isAssembling ? (
@@ -2057,16 +2109,18 @@ export function PostproductionAssemblyContainer({ artifactId, onNext }: Postprod
                                             className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold bg-[#0A2540] hover:bg-[#0d2f4d] disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-[#0A2540]/20 transition-all active:scale-[0.98]"
                                         >
                                             <RefreshCw className="w-4 h-4" />
-                                            Ensamblar seleccionado
+                                            {singleVideoOnly ? 'Ensamblar video' : 'Ensamblar seleccionado'}
                                         </button>
-                                        <button
-                                            onClick={handleAssembleAll}
-                                            disabled={selectedTemplateBlocksFinalRender || workerGateBlocked}
-                                            className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold border border-[#00D4B3]/40 text-[#0A2540] hover:bg-[#00D4B3]/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all dark:text-[#00D4B3]"
-                                        >
-                                            <RefreshCw className="w-4 h-4" />
-                                            Encolar todos ({componentsToAssemble.length})
-                                        </button>
+                                        {!singleVideoOnly && (
+                                            <button
+                                                onClick={handleAssembleAll}
+                                                disabled={selectedTemplateBlocksFinalRender || workerGateBlocked}
+                                                className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold border border-[#00D4B3]/40 text-[#0A2540] hover:bg-[#00D4B3]/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all dark:text-[#00D4B3]"
+                                            >
+                                                <RefreshCw className="w-4 h-4" />
+                                                Encolar todos ({componentsToAssemble.length})
+                                            </button>
+                                        )}
                                     </div>
                                 )}
                             </div>

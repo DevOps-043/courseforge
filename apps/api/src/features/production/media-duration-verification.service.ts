@@ -32,8 +32,8 @@ function readPublicUrl(asset: unknown): string | null {
     : null;
 }
 
-function roundMeasuredDuration(seconds: number): number {
-  return Math.max(1, Math.round(seconds));
+function normalizeMeasuredDurationSeconds(seconds: number): number {
+  return Math.max(0.001, Math.floor(seconds * 1000) / 1000);
 }
 
 function stripUnverifiedDuration<T extends MediaAsset>(asset: T): T {
@@ -61,11 +61,11 @@ async function measureAssetDuration(params: {
   try {
     const measured = await params.probe(publicUrl);
     if (isPositiveFiniteNumber(measured)) {
-      const rounded = roundMeasuredDuration(measured);
-      params.measuredDurations[params.key] = rounded;
+      const measuredSeconds = normalizeMeasuredDurationSeconds(measured);
+      params.measuredDurations[params.key] = measuredSeconds;
       return {
         ...params.asset,
-        duration: rounded,
+        duration: measuredSeconds,
       };
     }
   } catch (error) {

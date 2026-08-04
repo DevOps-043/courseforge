@@ -176,6 +176,24 @@ describe('remotion assembly props contract', () => {
     );
   });
 
+  it('converts measured decimal durations to render-safe frames without overshooting the media', () => {
+    const props = buildAssemblyInputProps({
+      compositionId: 'avatar-focus',
+      transitionType: 'none',
+      assets: {
+        avatar_generation_mode: 'single_video',
+        avatar_video: {
+          storage_path: 'production-assets/avatar.mp4',
+          public_url: VIDEO_URL,
+          duration: 19.728,
+        },
+      },
+    });
+
+    assert.equal(props.avatarVideoUrl, VIDEO_URL);
+    assert.equal(props.totalDurationInFrames, 591);
+  });
+
   it('prioritizes voice duration over avatar, B-roll and slides', () => {
     const props = buildAssemblyInputProps({
       compositionId: 'split-avatar',

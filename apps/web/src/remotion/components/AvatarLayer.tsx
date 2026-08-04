@@ -1,7 +1,6 @@
 import { CSSProperties } from "react";
-import { AbsoluteFill, Freeze, OffthreadVideo, Sequence } from "remotion";
+import { AbsoluteFill, OffthreadVideo } from "remotion";
 import { REMOTE_MEDIA_RENDER_PROPS } from "../media-rendering.config";
-import { resolveSafeRemoteVideoRange } from "../remote-video-source-range";
 
 interface AvatarLayerProps {
   url: string;
@@ -21,38 +20,20 @@ export function AvatarLayer({
   muted,
   objectFit = "cover",
 }: AvatarLayerProps) {
-  const sourceRange = resolveSafeRemoteVideoRange({
-    fallbackDurationInFrames: durationInFrames,
-    sequenceDurationInFrames: durationInFrames,
-  });
-  const video = (
+  return (
+    <AbsoluteFill>
     <OffthreadVideo
       {...REMOTE_MEDIA_RENDER_PROPS}
       src={url}
       muted={muted}
-      startFrom={sourceRange.sourceStartFrame}
-      endAt={sourceRange.sourceEndFrame}
+      startFrom={0}
+      endAt={durationInFrames}
       // En el Player, un hipo de reproduccion del avatar no debe tumbar el preview.
       onError={(err) => {
         console.warn("[Remotion preview] Avatar no reproducible:", url, err);
       }}
       style={{ width: "100%", height: "100%", objectFit }}
     />
-  );
-
-  return (
-    <AbsoluteFill>
-      <Sequence from={0} durationInFrames={sourceRange.sourceDurationInFrames}>
-        {video}
-      </Sequence>
-      {sourceRange.tailFreezeInFrames > 0 ? (
-        <Sequence
-          from={sourceRange.sourceDurationInFrames}
-          durationInFrames={sourceRange.tailFreezeInFrames}
-        >
-          <Freeze frame={sourceRange.sourceDurationInFrames - 1}>{video}</Freeze>
-        </Sequence>
-      ) : null}
     </AbsoluteFill>
   );
 }

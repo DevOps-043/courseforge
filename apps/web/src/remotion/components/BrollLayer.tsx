@@ -1,10 +1,40 @@
 import type { CSSProperties } from "react";
-import { AbsoluteFill, Freeze, Loop, OffthreadVideo, Sequence, Series } from "remotion";
+import {
+  AbsoluteFill,
+  Loop,
+  OffthreadVideo,
+  Sequence,
+  Series,
+  interpolate,
+  useCurrentFrame,
+} from "remotion";
 import type { AssemblyBrollClip } from "../types";
 import type { LayoutOverrideStyle } from "../layout-override-styles";
 import type { VisualTimelineSegment } from "../visual-timeline";
 import { REMOTE_MEDIA_RENDER_PROPS } from "../media-rendering.config";
-import { resolveSafeRemoteVideoRange } from "../remote-video-source-range";
+
+const BROLL_FADE_FRAMES = 8;
+
+function getFadeOpacity(frame: number, durationInFrames: number) {
+  const fadeFrames = Math.min(BROLL_FADE_FRAMES, Math.max(0, Math.floor(durationInFrames / 2)));
+  if (fadeFrames <= 0) return 1;
+
+  const fadeInOpacity = interpolate(frame, [0, fadeFrames], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const fadeOutOpacity = interpolate(
+    frame,
+    [Math.max(0, durationInFrames - fadeFrames), Math.max(0, durationInFrames - 1)],
+    [1, 0],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    },
+  );
+
+  return Math.min(fadeInOpacity, fadeOutOpacity);
+}
 
 interface BrollLayerProps {
   clips: AssemblyBrollClip[];
@@ -22,44 +52,35 @@ function BrollVideo({
   segment?: VisualTimelineSegment;
   style?: CSSProperties;
 }) {
-  const sourceRange = resolveSafeRemoteVideoRange({
-    sourceStartFrame: segment?.sourceStartFrame,
-    sourceEndFrame: segment?.sourceEndFrame,
-    fallbackDurationInFrames: clip.durationInFrames,
-    sequenceDurationInFrames: segment?.durationInFrames ?? clip.durationInFrames,
-  });
+  const frame = useCurrentFrame();
+  const durationInFrames = segment?.durationInFrames ?? clip.durationInFrames;
+  const sourceStartFrame = Math.max(0, Math.round(segment?.sourceStartFrame ?? 0));
+  const sourceEndFrame = Math.max(
+    sourceStartFrame + 1,
+    Math.round(segment?.sourceEndFrame ?? clip.durationInFrames),
+  );
+  const sourceDurationInFrames = sourceEndFrame - sourceStartFrame;
+  const opacity = getFadeOpacity(frame, durationInFrames);
   const video = (
     <OffthreadVideo
       {...REMOTE_MEDIA_RENDER_PROPS}
       src={clip.url}
       muted
-      startFrom={sourceRange.sourceStartFrame}
-      endAt={sourceRange.sourceEndFrame}
-      style={{ width: "100%", height: "100%", objectFit: "cover", ...style }}
+      startFrom={sourceStartFrame}
+      endAt={sourceEndFrame}
+      style={{ width: "100%", height: "100%", objectFit: "cover", opacity, ...style }}
     />
   );
 
-  if (!segment || segment.durationInFrames <= sourceRange.sourceDurationInFrames) {
+  if (!segment || segment.durationInFrames <= sourceDurationInFrames) {
     return video;
   }
 
   if (segment.loopMode === "loop") {
-    return <Loop durationInFrames={sourceRange.sourceDurationInFrames}>{video}</Loop>;
+    return <Loop durationInFrames={sourceDurationInFrames}>{video}</Loop>;
   }
 
-  return (
-    <>
-      <Sequence from={0} durationInFrames={sourceRange.sourceDurationInFrames}>
-        {video}
-      </Sequence>
-      <Sequence
-        from={sourceRange.sourceDurationInFrames}
-        durationInFrames={sourceRange.tailFreezeInFrames}
-      >
-        <Freeze frame={sourceRange.sourceDurationInFrames - 1}>{video}</Freeze>
-      </Sequence>
-    </>
-  );
+  return video;
 }
 
 /**

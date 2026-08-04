@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileJson, Loader2, Play, RefreshCw } from "lucide-react";
+import { ArrowLeft, FileJson, FileText, Loader2, Play, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 export interface SlideGenerationCandidate {
@@ -18,6 +19,8 @@ export interface SlideGenerationCandidate {
 
 interface SofliaEngineSlidesGeneratorProps {
   candidates: SlideGenerationCandidate[];
+  initialComponentId?: string | null;
+  returnTo?: string | null;
 }
 
 const CUSTOM_SLIDES_EXAMPLE = JSON.stringify(
@@ -54,6 +57,19 @@ const CUSTOM_SLIDES_EXAMPLE = JSON.stringify(
   2,
 );
 
+const SIMPLE_SLIDES_EXAMPLE = `Panorama del modulo
+- Contexto principal
+- Decision importante
+- Resultado esperado
+
+---
+Comparacion de esfuerzos
+- Investigacion: 4 horas
+- Guion: 6 horas
+- Slides: 3 horas`;
+
+type SlidesInputMode = "simple" | "json";
+
 function parseCustomSlides(rawValue: string) {
   const trimmed = rawValue.trim();
   if (!trimmed) {
@@ -68,16 +84,60 @@ function parseCustomSlides(rawValue: string) {
   return parsed;
 }
 
+function parseSimpleSlides(rawValue: string) {
+  const trimmed = rawValue.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const sections = trimmed
+    .split(/\n\s*---+\s*\n|\n{2,}/)
+    .map((section) => section.trim())
+    .filter(Boolean);
+
+  const slides = sections.map((section, index) => {
+    const [rawTitle, ...rawBullets] = section
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const title = rawTitle?.replace(/^#+\s*/, "").trim();
+    if (!title) {
+      throw new Error("Cada slide necesita un titulo.");
+    }
+
+    const bullets = rawBullets
+      .map((line) => line.replace(/^[-*]\s+/, "").replace(/^\d+[.)]\s+/, "").trim())
+      .filter(Boolean);
+
+    return {
+      bullets,
+      title,
+      type: index === 0 ? "cover" : "content",
+    };
+  });
+
+  return slides.length > 0 ? slides : undefined;
+}
+
 export function SofliaEngineSlidesGenerator({
   candidates,
+  initialComponentId,
+  returnTo,
 }: SofliaEngineSlidesGeneratorProps) {
   const router = useRouter();
+  const initialCandidate = initialComponentId
+    ? candidates.find((candidate) => candidate.componentId === initialComponentId)
+    : null;
   const [selectedComponentId, setSelectedComponentId] = useState(
-    candidates[0]?.componentId || "",
+    initialCandidate?.componentId || candidates[0]?.componentId || "",
   );
-  const [manualComponentId, setManualComponentId] = useState("");
+  const [manualComponentId, setManualComponentId] = useState(
+    initialComponentId && !initialCandidate ? initialComponentId : "",
+  );
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
+  const [slidesInputMode, setSlidesInputMode] = useState<SlidesInputMode>("simple");
+  const [simpleSlidesText, setSimpleSlidesText] = useState("");
   const [customSlidesJson, setCustomSlidesJson] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [lastGeneratedUrl, setLastGeneratedUrl] = useState<string | null>(null);
@@ -96,7 +156,10 @@ export function SofliaEngineSlidesGenerator({
 
     setIsGenerating(true);
     try {
-      const customSlides = parseCustomSlides(customSlidesJson);
+      const customSlides =
+        slidesInputMode === "json"
+          ? parseCustomSlides(customSlidesJson)
+          : parseSimpleSlides(simpleSlidesText);
       const response = await fetch("/api/production/slides/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -156,6 +219,15 @@ export function SofliaEngineSlidesGenerator({
                 ? ` (${selectedCandidate.preparedSlideCount} slides)`
                 : ""}
             </span>
+          )}
+          {returnTo && (
+            <Link
+              href={returnTo}
+              className="inline-flex w-fit items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-bold text-gray-600 transition hover:bg-gray-50 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5"
+            >
+              <ArrowLeft size={12} />
+              Volver al ensamble
+            </Link>
           )}
         </div>
       </div>
@@ -225,39 +297,91 @@ export function SofliaEngineSlidesGenerator({
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-gray-500">
-              <FileJson size={13} />
-              CustomSlides JSON
+              {slidesInputMode === "json" ? <FileJson size={13} /> : <FileText size={13} />}
+              {slidesInputMode === "json" ? "CustomSlides JSON" : "Contenido simple"}
             </span>
-            <button
-              type="button"
-              onClick={() => setCustomSlidesJson(CUSTOM_SLIDES_EXAMPLE)}
-              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-bold text-gray-600 transition hover:bg-gray-50 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5"
-            >
-              <RefreshCw size={12} />
-              Ejemplo
-            </button>
+            <div className="flex items-center gap-2">
+              <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-white/10 dark:bg-[#0F1419]">
+                <button
+                  type="button"
+                  onClick={() => setSlidesInputMode("simple")}
+                  className={`rounded-md px-2 py-1 text-[11px] font-bold transition ${
+                    slidesInputMode === "simple"
+                      ? "bg-white text-[#0A2540] shadow-sm dark:bg-[#151A21] dark:text-white"
+                      : "text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white"
+                  }`}
+                >
+                  Texto
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSlidesInputMode("json")}
+                  className={`rounded-md px-2 py-1 text-[11px] font-bold transition ${
+                    slidesInputMode === "json"
+                      ? "bg-white text-[#0A2540] shadow-sm dark:bg-[#151A21] dark:text-white"
+                      : "text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white"
+                  }`}
+                >
+                  JSON
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (slidesInputMode === "json") {
+                    setCustomSlidesJson(CUSTOM_SLIDES_EXAMPLE);
+                  } else {
+                    setSimpleSlidesText(SIMPLE_SLIDES_EXAMPLE);
+                  }
+                }}
+                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-bold text-gray-600 transition hover:bg-gray-50 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5"
+              >
+                <RefreshCw size={12} />
+                Ejemplo
+              </button>
+            </div>
           </div>
-          <textarea
-            value={customSlidesJson}
-            onChange={(event) => setCustomSlidesJson(event.target.value)}
-            placeholder="Opcional"
-            spellCheck={false}
-            className="min-h-56 w-full resize-y rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-xs leading-5 text-gray-900 outline-none transition focus:border-[#00A98F] focus:ring-2 focus:ring-[#00D4B3]/20 dark:border-white/10 dark:bg-[#0F1419] dark:text-white"
-          />
+          {slidesInputMode === "json" ? (
+            <textarea
+              value={customSlidesJson}
+              onChange={(event) => setCustomSlidesJson(event.target.value)}
+              placeholder="Opcional"
+              spellCheck={false}
+              className="min-h-56 w-full resize-y rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-xs leading-5 text-gray-900 outline-none transition focus:border-[#00A98F] focus:ring-2 focus:ring-[#00D4B3]/20 dark:border-white/10 dark:bg-[#0F1419] dark:text-white"
+            />
+          ) : (
+            <textarea
+              value={simpleSlidesText}
+              onChange={(event) => setSimpleSlidesText(event.target.value)}
+              placeholder="Titulo del slide&#10;- Punto clave&#10;- Otro punto&#10;&#10;---&#10;Siguiente slide&#10;- Punto clave"
+              spellCheck
+              className="min-h-56 w-full resize-y rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm leading-6 text-gray-900 outline-none transition focus:border-[#00A98F] focus:ring-2 focus:ring-[#00D4B3]/20 dark:border-white/10 dark:bg-[#0F1419] dark:text-white"
+            />
+          )}
         </div>
       </div>
 
       <div className="flex flex-col gap-3 border-t border-gray-100 px-5 py-4 dark:border-white/10 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0 text-xs text-gray-500 dark:text-gray-400">
           {lastGeneratedUrl ? (
-            <a
-              href={lastGeneratedUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="font-semibold text-[#00A98F] hover:underline"
-            >
-              Abrir ultimo deck generado
-            </a>
+            <div className="flex flex-wrap items-center gap-3">
+              <a
+                href={lastGeneratedUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold text-[#00A98F] hover:underline"
+              >
+                Abrir ultimo deck generado
+              </a>
+              {returnTo && (
+                <Link
+                  href={returnTo}
+                  className="font-semibold text-[#0A2540] hover:underline dark:text-white"
+                >
+                  Volver al ensamble
+                </Link>
+              )}
+            </div>
           ) : (
             <span>
               {effectiveComponentId

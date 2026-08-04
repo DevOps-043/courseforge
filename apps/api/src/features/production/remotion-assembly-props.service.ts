@@ -19,7 +19,7 @@ export const DEFAULT_CLIP_SECONDS = 5;
 export const DEFAULT_SLIDE_SECONDS = 5;
 export const DEFAULT_BG_MUSIC_VOLUME = 0.15;
 export const DEFAULT_COMPOSITION_ID = 'full-slides';
-export const AVATAR_CLIP_CROSSFADE_FRAMES = 8;
+export const AVATAR_CLIP_CROSSFADE_FRAMES = 12;
 
 // Only compositions registered by the internal Remotion root are accepted here.
 // External cloud bundles may provide different composition IDs.
@@ -68,7 +68,7 @@ interface NormalizedAssemblyAssets {
 }
 
 function secondsToFrames(seconds: number, fps: number): number {
-  return Math.max(1, Math.round(seconds * fps));
+  return Math.max(1, Math.floor(seconds * fps));
 }
 
 function normalizeDurationInFrames(value: number): number {

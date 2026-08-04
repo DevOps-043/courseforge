@@ -1,7 +1,6 @@
 import type { CSSProperties } from "react";
 import {
   AbsoluteFill,
-  Freeze,
   OffthreadVideo,
   Sequence,
   interpolate,
@@ -15,7 +14,6 @@ import {
   getAvatarClipCrossfadeFrames,
   getAvatarSegmentCrossfadeFrames,
 } from "../avatar-clip-transitions";
-import { resolveSafeRemoteVideoRange } from "../remote-video-source-range";
 
 interface AvatarClipLayerProps {
   clips: AssemblyAvatarClip[];
@@ -46,12 +44,11 @@ function AvatarClipVideo({
   style?: CSSProperties;
 }) {
   const frame = useCurrentFrame();
-  const sourceRange = resolveSafeRemoteVideoRange({
-    sourceStartFrame: segment?.sourceStartFrame,
-    sourceEndFrame: segment?.sourceEndFrame,
-    fallbackDurationInFrames: clip.durationInFrames,
-    sequenceDurationInFrames: durationInFrames,
-  });
+  const sourceStartFrame = Math.max(0, Math.round(segment?.sourceStartFrame ?? 0));
+  const sourceEndFrame = Math.max(
+    sourceStartFrame + 1,
+    Math.round(segment?.sourceEndFrame ?? clip.durationInFrames),
+  );
   const fadeInOpacity =
     fadeInFrames > 0
       ? interpolate(frame, [0, fadeInFrames], [0, 1], {
@@ -73,37 +70,19 @@ function AvatarClipVideo({
       : 1;
   const opacity = Math.min(fadeInOpacity, fadeOutOpacity);
 
-  const video = (
+  return (
     <OffthreadVideo
       {...REMOTE_MEDIA_RENDER_PROPS}
       src={clip.url}
       muted={muted}
       volume={muted ? 0 : opacity}
-      startFrom={sourceRange.sourceStartFrame}
-      endAt={sourceRange.sourceEndFrame}
+      startFrom={sourceStartFrame}
+      endAt={sourceEndFrame}
       onError={(err) => {
         console.warn("[Remotion preview] Clip de avatar no reproducible:", clip.url, err);
       }}
       style={{ width: "100%", height: "100%", objectFit, opacity, ...style }}
     />
-  );
-
-  if (sourceRange.tailFreezeInFrames <= 0) {
-    return video;
-  }
-
-  return (
-    <>
-      <Sequence from={0} durationInFrames={sourceRange.sourceDurationInFrames}>
-        {video}
-      </Sequence>
-      <Sequence
-        from={sourceRange.sourceDurationInFrames}
-        durationInFrames={sourceRange.tailFreezeInFrames}
-      >
-        <Freeze frame={sourceRange.sourceDurationInFrames - 1}>{video}</Freeze>
-      </Sequence>
-    </>
   );
 }
 

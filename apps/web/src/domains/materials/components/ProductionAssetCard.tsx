@@ -29,6 +29,7 @@ import {
 
 interface ProductionAssetCardProps {
   component: MaterialComponent;
+  hideGeneratedAssetTools?: boolean;
   lessonTitle: string;
   onAssetChange?: (
     componentId: string,
@@ -42,6 +43,7 @@ interface ProductionAssetCardProps {
     componentId: string,
     assets: Partial<MaterialAssets>,
   ) => Promise<void>;
+  sofliaSlidesHref?: string;
 }
 
 const VIDEO_SECTION_TYPES = new Set([
@@ -52,10 +54,12 @@ const VIDEO_SECTION_TYPES = new Set([
 
 export function ProductionAssetCard({
   component,
+  hideGeneratedAssetTools = false,
   lessonTitle,
   onAssetChange,
   onGeneratePrompts,
   onSaveAssets,
+  sofliaSlidesHref,
 }: ProductionAssetCardProps) {
   const {
     bRollPrompts,
@@ -251,6 +255,9 @@ export function ProductionAssetCard({
                 isGeneratingSofliaSlides={isGeneratingSofliaSlides}
                 isUploading={isUploadingSlides}
                 isPreparingAnimatedDeck={isPreparingAnimatedDeck}
+                showOpenDesignExport={!hideGeneratedAssetTools}
+                showSofliaGeneration={!hideGeneratedAssetTools}
+                sofliaSlidesHref={sofliaSlidesHref}
                 fileRef={slidesFileRef}
                 onGenerateSofliaSlides={handleSofliaEngineSlideGeneration}
                 onExport={handleOpenDesignExport}
@@ -328,7 +335,7 @@ export function ProductionAssetCard({
             </div>
           )}
 
-          {requiresPrompts && (
+          {requiresPrompts && !hideGeneratedAssetTools && (
             <ProductionAssetPromptsSection
               bRollPrompts={bRollPrompts}
               copyToClipboard={copyToClipboard}

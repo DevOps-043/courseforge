@@ -18,7 +18,6 @@ import {
   AbsoluteFill,
   Audio,
   Composition,
-  Freeze,
   Img,
   Sequence,
   Video,
@@ -217,8 +216,8 @@ const REMOTION_EDITABLE_LAYERS = {
   BROLL: "broll",
   BACKGROUND: "background",
 } as const;
-const AVATAR_CLIP_CROSSFADE_FRAMES = 8;
-const REMOTE_VIDEO_END_PADDING_FRAMES = 15;
+const AVATAR_CLIP_CROSSFADE_FRAMES = 12;
+const BROLL_FADE_FRAMES = 8;
 
 function getAvatarClipItemLayerId(order: number) {
   return "avatar:" + Math.max(1, Math.round(order));
@@ -335,35 +334,25 @@ function normalizeOptionalFrame(value: number | undefined) {
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.round(value)) : undefined;
 }
 
-function resolveSafeRemoteVideoRange(params: {
+function resolveMediaSourceRange(params: {
   sourceStartFrame?: number;
   sourceEndFrame?: number;
   fallbackDurationInFrames: number;
-  sequenceDurationInFrames: number;
 }) {
   const sourceStartFrame = normalizeOptionalFrame(params.sourceStartFrame) ?? 0;
   const fallbackEndFrame = sourceStartFrame + Math.max(1, Math.round(params.fallbackDurationInFrames));
-  const requestedSourceEndFrame = Math.max(
+  const sourceEndFrame = Math.max(
     sourceStartFrame + 1,
     normalizeOptionalFrame(params.sourceEndFrame) ?? fallbackEndFrame,
   );
-  const requestedSourceDurationInFrames = requestedSourceEndFrame - sourceStartFrame;
-  const shouldPadEnd = requestedSourceDurationInFrames > REMOTE_VIDEO_END_PADDING_FRAMES + 1;
-  const sourceEndFrame = shouldPadEnd
-    ? requestedSourceEndFrame - REMOTE_VIDEO_END_PADDING_FRAMES
-    : requestedSourceEndFrame;
-  const sourceDurationInFrames = Math.max(1, sourceEndFrame - sourceStartFrame);
-  const sequenceDurationInFrames = Math.max(1, Math.round(params.sequenceDurationInFrames));
 
   return {
     sourceStartFrame,
     sourceEndFrame,
-    sourceDurationInFrames,
-    tailFreezeInFrames: Math.max(0, sequenceDurationInFrames - sourceDurationInFrames),
   };
 }
 
-function SafeRemoteVideo(props: {
+function RenderVideo(props: {
   src: string;
   muted?: boolean;
   volume?: number;
@@ -373,13 +362,13 @@ function SafeRemoteVideo(props: {
   durationInFrames: number;
   style?: React.CSSProperties;
 }) {
-  const sourceRange = resolveSafeRemoteVideoRange({
+  const sourceRange = resolveMediaSourceRange({
     sourceStartFrame: props.startFrom,
     sourceEndFrame: props.endAt,
     fallbackDurationInFrames: props.fallbackDurationInFrames,
-    sequenceDurationInFrames: props.durationInFrames,
   });
-  const video = (
+
+  return (
     <Video
       src={props.src}
       muted={props.muted}
@@ -388,19 +377,6 @@ function SafeRemoteVideo(props: {
       endAt={sourceRange.sourceEndFrame}
       style={props.style}
     />
-  );
-
-  if (sourceRange.tailFreezeInFrames <= 0) return video;
-
-  return (
-    <>
-      <Sequence from={0} durationInFrames={sourceRange.sourceDurationInFrames}>
-        {video}
-      </Sequence>
-      <Sequence from={sourceRange.sourceDurationInFrames} durationInFrames={sourceRange.tailFreezeInFrames}>
-        <Freeze frame={sourceRange.sourceDurationInFrames - 1}>{video}</Freeze>
-      </Sequence>
-    </>
   );
 }
 
@@ -532,6 +508,28 @@ function getAvatarTimelineItemOpacity(
       extrapolateRight: "clamp",
     })
     : 1;
+
+  return Math.min(fadeInOpacity, fadeOutOpacity);
+}
+
+function getTimelineItemFadeOpacity(frame: number, startFrame: number, durationInFrames: number, fadeFrames: number) {
+  const localFrame = Math.max(0, frame - startFrame);
+  const boundedFadeFrames = Math.min(fadeFrames, Math.max(0, Math.floor(durationInFrames / 2)));
+  if (boundedFadeFrames <= 0) return 1;
+
+  const fadeInOpacity = interpolate(localFrame, [0, boundedFadeFrames], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const fadeOutOpacity = interpolate(
+    localFrame,
+    [Math.max(0, durationInFrames - boundedFadeFrames), Math.max(0, durationInFrames - 1)],
+    [1, 0],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    },
+  );
 
   return Math.min(fadeInOpacity, fadeOutOpacity);
 }
@@ -854,7 +852,7 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
             return (
               <Sequence key={avatarItem.id} from={avatarItem.startFrame} durationInFrames={avatarItem.durationInFrames}>
                 <div style={buildBoxStyle(avatarSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.avatar, opacity: avatarOpacity, ...avatarOverride, ...avatarItemOverride })}>
-                  <SafeRemoteVideo
+                  <RenderVideo
                     src={avatarItem.clip.url}
                     muted={hasVoice}
                     volume={hasVoice ? 0 : avatarOpacity}
@@ -871,7 +869,7 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
         </>
       ) : hasAvatarVideo ? (
         <div style={buildBoxStyle(avatarSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.avatar, ...avatarOverride })}>
-          <SafeRemoteVideo
+          <RenderVideo
             src={props.avatarVideoUrl!}
             muted={hasVoice}
             fallbackDurationInFrames={durationInFrames}
@@ -892,14 +890,20 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
       {activeBroll && activeBrollItem ? (
         <Sequence from={activeBrollItem.startFrame} durationInFrames={activeBrollItem.durationInFrames}>
           <div style={buildBoxStyle(brollSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.broll, ...brollOverride, ...activeBrollItemOverride })}>
-            <SafeRemoteVideo
+            <RenderVideo
               src={activeBroll.url}
               muted
               startFrom={activeBrollItem.sourceStartFrame}
               endAt={activeBrollItem.sourceEndFrame}
               fallbackDurationInFrames={getClipDurationInFrames(activeBroll)}
               durationInFrames={activeBrollItem.durationInFrames}
-              style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center center" }}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                objectPosition: "center center",
+                opacity: getTimelineItemFadeOpacity(frame, activeBrollItem.startFrame, activeBrollItem.durationInFrames, BROLL_FADE_FRAMES),
+              }}
             />
           </div>
         </Sequence>

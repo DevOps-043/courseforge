@@ -22,6 +22,11 @@ import {
 
 export const dynamic = "force-dynamic";
 
+type SlidesSearchParams = {
+  componentId?: string | string[];
+  returnTo?: string | string[];
+};
+
 interface RecentSlideDeck {
   artifactId: string;
   createdAt: string;
@@ -259,7 +264,18 @@ function StatusBadge({ status }: { status: RecentSlideDeck["status"] }) {
   );
 }
 
-export default async function SofliaEngineSlidesPage() {
+function getSearchParamValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function SofliaEngineSlidesPage({
+  searchParams,
+}: {
+  searchParams?: Promise<SlidesSearchParams>;
+}) {
+  const params = searchParams ? await searchParams : {};
+  const initialComponentId = getSearchParamValue(params.componentId) || null;
+  const returnTo = getSearchParamValue(params.returnTo) || null;
   const tenant = await resolveActiveTenantContext();
   const adminBasePath = tenant?.organizationSlug
     ? `/${tenant.organizationSlug}/admin`
@@ -335,7 +351,11 @@ export default async function SofliaEngineSlidesPage() {
         </div>
       </section>
 
-      <SofliaEngineSlidesGenerator candidates={generationCandidates} />
+      <SofliaEngineSlidesGenerator
+        candidates={generationCandidates}
+        initialComponentId={initialComponentId}
+        returnTo={returnTo}
+      />
 
       <section className="grid gap-6 xl:grid-cols-[1fr_380px]">
         <div className="rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#151A21]">

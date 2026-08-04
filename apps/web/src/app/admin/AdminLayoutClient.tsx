@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Boxes, Cloud, LayoutDashboard, Library, Presentation, Settings, Users, Video, Gauge, UserRoundCog } from 'lucide-react';
+import { Boxes, Clapperboard, Cloud, LayoutDashboard, Library, Presentation, Settings, Users, Video, Gauge, UserRoundCog } from 'lucide-react';
 import SharedSidebarLayout, { NavItemConfig } from '@/components/layout/SharedSidebarLayout';
 import type { SidebarProfile } from '@/components/layout/layout.types';
 
@@ -27,6 +27,7 @@ export default function AdminLayoutClient({
         { href: `${basePath}/library`, icon: <Library size={22} />, label: 'Libreria' },
         { href: `${basePath}/templates`, icon: <Video size={22} />, label: 'Plantillas' },
         { href: `${basePath}/slides`, icon: <Presentation size={22} />, label: 'Slides' },
+        { href: `${basePath}/assembly`, icon: <Clapperboard size={22} />, label: 'Ensamble' },
         ...(canViewWorkerTelemetry
             ? [{ href: `${basePath}/worker-telemetry`, icon: <Gauge size={22} />, label: 'Workers' }]
             : []),

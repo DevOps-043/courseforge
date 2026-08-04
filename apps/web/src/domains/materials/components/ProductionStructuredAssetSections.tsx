@@ -564,6 +564,9 @@ interface OpenDesignSlidesSectionProps {
   isGeneratingSofliaSlides: boolean;
   isUploading: boolean;
   isPreparingAnimatedDeck: boolean;
+  showOpenDesignExport?: boolean;
+  showSofliaGeneration?: boolean;
+  sofliaSlidesHref?: string;
   fileRef: React.RefObject<HTMLInputElement | null>;
   onGenerateSofliaSlides: () => void;
   onExport: () => void;
@@ -584,6 +587,9 @@ interface OpenDesignSlidesSectionProps {
   isGeneratingSofliaSlides,
   isUploading,
   isPreparingAnimatedDeck,
+  showOpenDesignExport = true,
+  showSofliaGeneration = true,
+  sofliaSlidesHref,
   fileRef,
   onGenerateSofliaSlides,
   onExport,
@@ -663,23 +669,35 @@ interface OpenDesignSlidesSectionProps {
         </div>
 
         <div className="flex items-center gap-1.5">
-          <button
-            onClick={onGenerateSofliaSlides}
-            disabled={isGeneratingSofliaSlides}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-sm transition-all"
-          >
-            {isGeneratingSofliaSlides ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
-            <span>{isGeneratingSofliaSlides ? "Generando..." : "Generar SofLIA"}</span>
-          </button>
+          {sofliaSlidesHref ? (
+            <a
+              href={sofliaSlidesHref}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-sm transition-all"
+            >
+              <Sparkles size={10} />
+              <span>Slides con SofLIA</span>
+            </a>
+          ) : showSofliaGeneration ? (
+            <button
+              onClick={onGenerateSofliaSlides}
+              disabled={isGeneratingSofliaSlides}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-sm transition-all"
+            >
+              {isGeneratingSofliaSlides ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+              <span>{isGeneratingSofliaSlides ? "Generando..." : "Generar SofLIA"}</span>
+            </button>
+          ) : null}
 
-          <button
-            onClick={onExport}
-            disabled={isExporting}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg border border-gray-300 bg-white dark:bg-[#151A21] hover:bg-gray-50 dark:hover:bg-white/5 text-gray-650 dark:text-gray-300 transition-colors"
-          >
-            {isExporting ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
-            <span>{isExporting ? "Creando..." : "OpenDesign"}</span>
-          </button>
+          {showOpenDesignExport && (
+            <button
+              onClick={onExport}
+              disabled={isExporting}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg border border-gray-300 bg-white dark:bg-[#151A21] hover:bg-gray-50 dark:hover:bg-white/5 text-gray-650 dark:text-gray-300 transition-colors"
+            >
+              {isExporting ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+              <span>{isExporting ? "Creando..." : "OpenDesign"}</span>
+            </button>
+          )}
           
           <button
             onClick={() => fileRef.current?.click()}

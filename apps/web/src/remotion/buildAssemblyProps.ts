@@ -31,7 +31,7 @@ import {
 const VALID_TEMPLATE_SLUGS = new Set<string>(Object.values(ASSEMBLY_TEMPLATES));
 
 function secondsToFrames(seconds: number, fps: number): number {
-  return Math.max(1, Math.round(seconds * fps));
+  return Math.max(1, Math.floor(seconds * fps));
 }
 
 function isPositiveNumber(value: unknown): value is number {

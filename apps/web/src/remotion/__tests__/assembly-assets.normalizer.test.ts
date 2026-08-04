@@ -30,7 +30,6 @@ import {
   buildVisualTimeline,
   getActiveTimelineSegments,
 } from "../visual-timeline";
-import { resolveSafeRemoteVideoRange } from "../remote-video-source-range";
 import { AVATAR_CLIP_CROSSFADE_FRAMES } from "../avatar-clip-transitions";
 import { resolveSlideTimelineRenderItems } from "../components/slide-timeline-rendering";
 import {
@@ -76,32 +75,6 @@ function baseAvatarClip(params: Partial<NonNullable<MaterialAssets["avatar_clips
 }
 
 describe("normalizeAssemblyAssets", () => {
-  it("keeps remote video source ranges away from the fragile final frames", () => {
-    const range = resolveSafeRemoteVideoRange({
-      fallbackDurationInFrames: 600,
-      sequenceDurationInFrames: 600,
-    });
-
-    assert.equal(range.sourceStartFrame, 0);
-    assert.equal(range.sourceEndFrame, 585);
-    assert.equal(range.sourceDurationInFrames, 585);
-    assert.equal(range.tailFreezeInFrames, 15);
-  });
-
-  it("does not pad very short remote video ranges out of existence", () => {
-    const range = resolveSafeRemoteVideoRange({
-      sourceStartFrame: 3,
-      sourceEndFrame: 8,
-      fallbackDurationInFrames: 5,
-      sequenceDurationInFrames: 5,
-    });
-
-    assert.equal(range.sourceStartFrame, 3);
-    assert.equal(range.sourceEndFrame, 8);
-    assert.equal(range.sourceDurationInFrames, 5);
-    assert.equal(range.tailFreezeInFrames, 0);
-  });
-
   it("sorts slide images by slide_index and normalizes them to contiguous layer indexes", () => {
     const assets: MaterialAssets = {
       slides: {
@@ -335,12 +308,28 @@ describe("normalizeAssemblyAssets", () => {
 
     assert.equal(
       props.totalDurationInFrames,
-      Math.round(12.6 * ASSEMBLY_FPS) - AVATAR_CLIP_CROSSFADE_FRAMES,
+      Math.floor(4.2 * ASSEMBLY_FPS) + Math.floor(8.4 * ASSEMBLY_FPS) - AVATAR_CLIP_CROSSFADE_FRAMES,
     );
     assert.deepEqual(
       props.avatarClips.map((clip) => clip.url),
       ["https://cdn.example.com/avatar-1.mp4", "https://cdn.example.com/avatar-2.mp4"],
     );
+  });
+
+  it("converts decimal video durations with floor so Remotion never seeks past the source", () => {
+    const props = buildAssemblyProps(
+      {
+        avatar_generation_mode: "single_video",
+        avatar_video: {
+          storage_path: "production-assets/avatar.mp4",
+          public_url: VIDEO_URL,
+          duration: 19.728,
+        },
+      },
+      "split-avatar",
+    );
+
+    assert.equal(props.totalDurationInFrames, 591);
   });
 
   it("ignores deleted avatar clips in scene mode duration and render props", () => {

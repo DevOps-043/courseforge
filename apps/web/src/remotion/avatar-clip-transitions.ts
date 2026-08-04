@@ -1,4 +1,4 @@
-export const AVATAR_CLIP_CROSSFADE_FRAMES = 8;
+export const AVATAR_CLIP_CROSSFADE_FRAMES = 12;
 
 export interface AvatarClipDurationLike {
   durationInFrames: number;
