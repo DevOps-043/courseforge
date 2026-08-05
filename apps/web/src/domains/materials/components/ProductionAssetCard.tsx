@@ -30,6 +30,7 @@ import {
 interface ProductionAssetCardProps {
   component: MaterialComponent;
   hideGeneratedAssetTools?: boolean;
+  hideStoryboard?: boolean;
   lessonTitle: string;
   onAssetChange?: (
     componentId: string,
@@ -55,6 +56,7 @@ const VIDEO_SECTION_TYPES = new Set([
 export function ProductionAssetCard({
   component,
   hideGeneratedAssetTools = false,
+  hideStoryboard = false,
   lessonTitle,
   onAssetChange,
   onGeneratePrompts,
@@ -199,12 +201,14 @@ export function ProductionAssetCard({
         onSave={handleSave}
       />
 
-      <div className="grid grid-cols-1 gap-6 p-6 md:grid-cols-2">
-        <div className="space-y-4">
-          <ProductionStoryboardViewer
-            content={component.content as Record<string, unknown>}
-          />
-        </div>
+      <div className={`grid grid-cols-1 gap-6 p-6 ${hideStoryboard ? "" : "md:grid-cols-2"}`}>
+        {!hideStoryboard && (
+          <div className="space-y-4">
+            <ProductionStoryboardViewer
+              content={component.content as Record<string, unknown>}
+            />
+          </div>
+        )}
 
         <div className="space-y-6">
           {/* Structured Asset Form for Video Components */}

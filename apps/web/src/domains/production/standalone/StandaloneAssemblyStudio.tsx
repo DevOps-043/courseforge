@@ -371,6 +371,7 @@ export function StandaloneAssemblyStudio() {
               <ProductionAssetCard
                 component={componentView.component}
                 hideGeneratedAssetTools
+                hideStoryboard
                 lessonTitle={componentView.lessonTitle}
                 onGeneratePrompts={handleGeneratePrompts}
                 onSaveAssets={handleSaveAssets}

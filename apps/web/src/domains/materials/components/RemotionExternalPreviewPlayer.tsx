@@ -160,7 +160,6 @@ export function RemotionExternalPreviewPlayer({
           src={previewData.previewVideoUrl}
           poster={previewData.previewPosterUrl || undefined}
           className="h-full w-full bg-black object-contain"
-          controls
           playsInline
           preload="auto"
           onLoadedData={() => {
@@ -192,7 +191,7 @@ export function RemotionExternalPreviewPlayer({
           }}
         />
         {showPosterOverlay && (
-          <div className="pointer-events-none absolute inset-x-0 top-0 bottom-12 flex items-center justify-center bg-black">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black">
             <img
               src={previewData.previewPosterUrl || ""}
               alt="Poster del preview"
