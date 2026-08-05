@@ -291,7 +291,9 @@ export function normalizeAssemblyAssets(
     : 0;
   let totalDurationSeconds = 0;
 
-  if (
+  if (voiceDurationSeconds > 0) {
+    totalDurationSeconds = voiceDurationSeconds;
+  } else if (
     source.avatar_generation_mode === 'scene_clips' &&
     avatarClipTotalSeconds > 0
   ) {
@@ -300,8 +302,6 @@ export function normalizeAssemblyAssets(
     totalDurationSeconds = avatarDurationSeconds;
   } else if (!source.avatar_generation_mode && avatarClipTotalSeconds > 0) {
     totalDurationSeconds = avatarClipTotalSeconds;
-  } else if (voiceDurationSeconds > 0) {
-    totalDurationSeconds = voiceDurationSeconds;
   } else if (avatarDurationSeconds > 0) {
     totalDurationSeconds = avatarDurationSeconds;
   } else if (explicitBrollTotalSeconds > 0) {

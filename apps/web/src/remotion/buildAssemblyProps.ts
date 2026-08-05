@@ -27,12 +27,9 @@ import {
   parseTimelineOverrideManifests,
   type TimelineOverrideManifestList,
 } from "./timeline-overrides";
+import { durationSecondsToFrames } from "./media-duration";
 
 const VALID_TEMPLATE_SLUGS = new Set<string>(Object.values(ASSEMBLY_TEMPLATES));
-
-function secondsToFrames(seconds: number, fps: number): number {
-  return Math.max(1, Math.floor(seconds * fps));
-}
 
 function isPositiveNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -120,7 +117,7 @@ export function buildAssemblyProps(
     timelineOverrides,
     template,
   });
-  const totalDurationInFrames = secondsToFrames(totalSeconds, fps);
+  const totalDurationInFrames = durationSecondsToFrames(totalSeconds, fps);
   const normalizedTimelineOverrides = normalizeTimelineOverrideManifestsForDuration({
     manifests: timelineOverrides,
     durationInFrames: totalDurationInFrames,

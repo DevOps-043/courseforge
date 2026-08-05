@@ -199,6 +199,7 @@ describe('remotion assembly props contract', () => {
       compositionId: 'split-avatar',
       transitionType: 'none',
       assets: {
+        avatar_generation_mode: 'single_video',
         voice_audio: {
           storage_path: 'production-assets/voice.mp3',
           public_url: AUDIO_URL,

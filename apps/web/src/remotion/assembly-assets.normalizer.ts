@@ -6,6 +6,7 @@ import type {
   AssemblySlide,
 } from "./types";
 import { getAvatarClipEffectiveDurationInFrames } from "./avatar-clip-transitions";
+import { durationSecondsToFrames } from "./media-duration";
 
 const DEFAULT_CLIP_SECONDS = 5;
 const DEFAULT_SLIDE_SECONDS = 5;
@@ -39,10 +40,6 @@ export interface AssemblyAssetReadiness {
   hasRenderableAssets: boolean;
   hasRenderableVisualAssets: boolean;
   warnings: AssemblyAssetWarning[];
-}
-
-function secondsToFrames(seconds: number, fps: number): number {
-  return Math.max(1, Math.floor(seconds * fps));
 }
 
 function isPositiveNumber(value: unknown): value is number {
@@ -144,7 +141,7 @@ export function normalizeAssemblyAssets(
     .filter((clip) => Boolean(clip?.public_url))
     .map((clip, index) => ({
       url: clip.public_url,
-      durationInFrames: secondsToFrames(
+      durationInFrames: durationSecondsToFrames(
         isPositiveNumber(clip.duration) ? clip.duration : DEFAULT_CLIP_SECONDS,
         fps,
       ),
@@ -161,7 +158,7 @@ export function normalizeAssemblyAssets(
     .filter(isCompletedAvatarClip)
     .map((clip, index) => ({
       url: clip.public_url as string,
-      durationInFrames: secondsToFrames(
+      durationInFrames: durationSecondsToFrames(
         isPositiveNumber(clip.duration) ? clip.duration : DEFAULT_CLIP_SECONDS,
         fps,
       ),
@@ -195,7 +192,9 @@ export function normalizeAssemblyAssets(
     : 0;
   let totalDurationSeconds = 0;
 
-  if (
+  if (voiceDurationSeconds > 0) {
+    totalDurationSeconds = voiceDurationSeconds;
+  } else if (
     a.avatar_generation_mode === "scene_clips" &&
     avatarClipTotalSeconds > 0
   ) {
@@ -204,8 +203,6 @@ export function normalizeAssemblyAssets(
     totalDurationSeconds = avatarDurationSeconds;
   } else if (!a.avatar_generation_mode && avatarClipTotalSeconds > 0) {
     totalDurationSeconds = avatarClipTotalSeconds;
-  } else if (voiceDurationSeconds > 0) {
-    totalDurationSeconds = voiceDurationSeconds;
   } else if (avatarDurationSeconds > 0) {
     totalDurationSeconds = avatarDurationSeconds;
   } else if (explicitBrollTotalSeconds > 0) {

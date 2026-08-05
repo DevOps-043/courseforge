@@ -7,6 +7,10 @@ import JSZip from "jszip";
 import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { normalizeAssemblyAssets } from "@/remotion/assembly-assets.normalizer";
 import {
+  durationSecondsToFrames,
+  normalizeMeasuredDurationSeconds,
+} from "@/remotion/media-duration";
+import {
   editableLayerDefinitionSchema,
   filterLayoutOverridesForEditableLayers,
   parseLayoutOverrideManifests,
@@ -339,7 +343,9 @@ function safeJobProgressEntry(params: {
   message: string;
   stage: string;
   workerId: string;
+  detail?: unknown;
 }) {
+  const detail = sanitizeJobProgressDetail(params.detail);
   return {
     percent: Math.max(0, Math.min(100, Math.round(params.percent))),
     message: sanitizeText(params.message, "Worker progress"),
@@ -347,7 +353,26 @@ function safeJobProgressEntry(params: {
     provider: "desktop_worker",
     workerId: params.workerId,
     timestamp: new Date().toISOString(),
+    ...(detail ? { detail } : {}),
   };
+}
+
+function sanitizeJobProgressDetail(value: unknown): Record<string, string | number | boolean | null> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const safeDetail: Record<string, string | number | boolean | null> = {};
+  for (const [key, entryValue] of Object.entries(value as Record<string, unknown>).slice(0, 20)) {
+    if (/(authorization|secret|signed|src|token|url)/i.test(key)) continue;
+    if (typeof entryValue === "string") {
+      safeDetail[key] = sanitizeText(entryValue, "").slice(0, 200);
+    } else if (typeof entryValue === "number" && Number.isFinite(entryValue)) {
+      safeDetail[key] = entryValue;
+    } else if (typeof entryValue === "boolean" || entryValue === null) {
+      safeDetail[key] = entryValue;
+    }
+  }
+
+  return Object.keys(safeDetail).length > 0 ? safeDetail : null;
 }
 
 function readLastJobProgressPercent(progress: unknown, fallback = 0) {
@@ -577,10 +602,6 @@ function deriveDurationFromJob(job: any): number {
   return 0;
 }
 
-function secondsToFrames(seconds: number, fps: number): number {
-  return Math.max(1, Math.round(seconds * fps));
-}
-
 function isPositiveFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
@@ -658,7 +679,7 @@ async function probeMediaDurationFromUrl(url: string): Promise<number | null> {
 
   try {
     const duration = await input.computeDuration();
-    return isPositiveFiniteNumber(duration) ? Math.max(1, Math.round(duration)) : null;
+    return normalizeMeasuredDurationSeconds(duration);
   } finally {
     input.dispose();
   }
@@ -734,7 +755,7 @@ function buildAssemblyInputProps(params: {
     normalizedDurationSeconds: normalized.totalDurationSeconds,
     timelineOverrides,
   });
-  const totalDurationInFrames = secondsToFrames(totalSeconds, ASSEMBLY_FPS);
+  const totalDurationInFrames = durationSecondsToFrames(totalSeconds, ASSEMBLY_FPS);
   const normalizedTimelineOverrides = normalizeTimelineOverrideManifestsForDuration({
     manifests: timelineOverrides,
     durationInFrames: totalDurationInFrames,
@@ -3288,6 +3309,7 @@ export class DesktopWorkerControlPlane {
         message: sanitizeText(input.message, "Renderizando en worker local"),
         stage: sanitizeText(input.stage, "desktop_worker_progress"),
         workerId: worker.id,
+        detail: input.detail,
       }),
     ];
 
@@ -3503,6 +3525,7 @@ export class DesktopWorkerControlPlane {
     if (job.status === "SUCCEEDED") return { ok: true, alreadyCompleted: true };
     const message = sanitizeText(input.message, "El worker local no pudo completar el render");
     const code = sanitizeText(input.errorCode, "") || "DESKTOP_WORKER_RENDER_FAILED";
+    const failureStage = sanitizeText(input.stage, "desktop_worker");
 
     const failedAt = new Date().toISOString();
     const currentProgress = Array.isArray(job.progress) ? job.progress : [];
@@ -3529,7 +3552,7 @@ export class DesktopWorkerControlPlane {
           code,
           message,
           renderProvider: "desktop_worker",
-          stage: sanitizeText(input.stage, "desktop_worker"),
+          stage: failureStage,
           workerId: worker.id,
         },
       })
@@ -3540,7 +3563,7 @@ export class DesktopWorkerControlPlane {
       jobId,
       status: "failed",
       finishedAt: failedAt,
-      lastStage: "fail",
+      lastStage: failureStage,
       lastProgressPercent: failureProgressPercent,
       errorCode: code,
       errorMessage: message,
