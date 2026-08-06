@@ -20,8 +20,8 @@ import {
   Composition,
   Freeze,
   Img,
+  OffthreadVideo,
   Sequence,
-  Video,
   interpolate,
   registerRoot,
   useCurrentFrame,
@@ -381,12 +381,14 @@ function RenderVideo(props: {
     sequenceDurationInFrames: props.durationInFrames,
   });
   const video = (
-    <Video
+    <OffthreadVideo
       src={props.src}
       muted={props.muted}
       volume={props.volume}
       startFrom={sourceRange.sourceStartFrame}
       endAt={sourceRange.sourceEndFrame}
+      delayRenderTimeoutInMilliseconds={45_000}
+      delayRenderRetries={1}
       style={props.style}
     />
   );

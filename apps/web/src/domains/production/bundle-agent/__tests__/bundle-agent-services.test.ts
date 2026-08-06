@@ -327,7 +327,8 @@ describe("SofLIA Bundle Agent services", () => {
     assert.doesNotMatch(source, /translate[XYZ]?\(/);
     assert.doesNotMatch(source, /scale\(/);
     assert.doesNotMatch(source, /gridTemplateColumns/);
-    assert.match(source, /<Video/);
+    assert.match(source, /<OffthreadVideo/);
+    assert.doesNotMatch(source, /<Video/);
     assert.match(source, /<Img/);
     assert.match(source, /<Audio/);
     assert.doesNotMatch(source, /Avatar en primera persona/);

@@ -53,6 +53,37 @@ describe("validateRemotionBundle", () => {
     assert.doesNotMatch(templateSource, /gridTemplateColumns/);
     assert.match(templateSource, /activeSlideItemOverride/);
     assert.match(templateSource, /background: "transparent"/);
+    assert.match(templateSource, /<OffthreadVideo/);
+    assert.doesNotMatch(templateSource, /<Video/);
+  });
+
+  it("keeps the production custom bundle compatible with avatar clips and off-thread media", async () => {
+    const exampleRoot = path.resolve(
+      process.cwd(),
+      "../../custom-bundles/Nuevo-bundle-de-video-compatible",
+    );
+    const manifestSource = fs.readFileSync(
+      path.join(exampleRoot, "courseforge-remotion-template.json"),
+      "utf8",
+    );
+    const templateSource = fs.readFileSync(path.join(exampleRoot, "src/index.tsx"), "utf8");
+    const packageSource = fs.readFileSync(path.join(exampleRoot, "package.json"), "utf8");
+    const buffer = await zipBuffer({
+      "courseforge-remotion-template.json": manifestSource,
+      "src/index.tsx": templateSource,
+      "package.json": packageSource,
+    });
+
+    const result = await validateRemotionBundle(buffer, "nuevo-bundle-de-video.zip");
+    const parsedManifest = JSON.parse(manifestSource) as {
+      propsSchema?: { properties?: Record<string, unknown> };
+    };
+
+    assert.equal(result.isValid, true);
+    assert.ok(parsedManifest.propsSchema?.properties?.avatarClips);
+    assert.match(templateSource, /buildAvatarTimeline/);
+    assert.match(templateSource, /<OffthreadVideo/);
+    assert.doesNotMatch(templateSource, /<Video/);
   });
 
   it("accepts a minimal valid Remotion template bundle", async () => {

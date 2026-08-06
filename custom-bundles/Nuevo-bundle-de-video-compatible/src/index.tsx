@@ -3,9 +3,11 @@ import {
   AbsoluteFill,
   Audio,
   Composition,
+  Freeze,
   Img,
+  Loop,
+  OffthreadVideo,
   Sequence,
-  Video,
   interpolate,
   registerRoot,
   useCurrentFrame,
@@ -19,6 +21,12 @@ type SlideAsset = {
 };
 
 type BrollClip = {
+  durationInFrames?: number;
+  order?: number;
+  url: string;
+};
+
+type AvatarClip = {
   durationInFrames?: number;
   order?: number;
   url: string;
@@ -105,6 +113,7 @@ type DesignTokens = {
 type TemplateProps = {
   accentColor?: string;
   animationVariant?: string;
+  avatarClips?: AvatarClip[];
   avatarVideoUrl?: string;
   bgMusicUrl?: string;
   bgMusicVolume?: number;
@@ -143,6 +152,7 @@ const defaultStackOrders = {
 const defaultProps: TemplateProps = {
   accentColor,
   animationVariant: "measured",
+  avatarClips: [],
   bgMusicVolume: 0.12,
   brollClips: [],
   designTokens: {
@@ -178,6 +188,12 @@ function orderedSlides(slides: SlideAsset[] = []) {
 }
 
 function orderedBrollClips(clips: BrollClip[] = []) {
+  return clips
+    .filter((clip) => typeof clip.url === "string" && clip.url.length > 0)
+    .sort((left, right) => (left.order ?? 0) - (right.order ?? 0));
+}
+
+function orderedAvatarClips(clips: AvatarClip[] = []) {
   return clips
     .filter((clip) => typeof clip.url === "string" && clip.url.length > 0)
     .sort((left, right) => (left.order ?? 0) - (right.order ?? 0));
@@ -303,6 +319,79 @@ function getClipDurationInFrames(clip: BrollClip) {
   return typeof clip.durationInFrames === "number" && Number.isFinite(clip.durationInFrames)
     ? Math.max(1, Math.round(clip.durationInFrames))
     : 150;
+}
+
+function buildAvatarTimeline(clips: AvatarClip[], totalDurationInFrames: number) {
+  let cursor = 0;
+  return clips.flatMap((clip, index) => {
+    if (cursor >= totalDurationInFrames) return [];
+    const clipDurationInFrames = getClipDurationInFrames(clip);
+    const remainingFrames = totalDurationInFrames - cursor;
+    const durationInFrames = index === clips.length - 1
+      ? remainingFrames
+      : Math.min(clipDurationInFrames, remainingFrames);
+    const item = {
+      clip,
+      startFrame: cursor,
+      durationInFrames: Math.max(1, durationInFrames),
+      sourceDurationInFrames: clipDurationInFrames,
+    };
+    cursor += Math.min(clipDurationInFrames, remainingFrames);
+    return [item];
+  });
+}
+
+function SafeRenderVideo({
+  src,
+  muted,
+  durationInFrames,
+  sourceStartFrame = 0,
+  sourceEndFrame,
+  loop = false,
+  style,
+}: {
+  src: string;
+  muted: boolean;
+  durationInFrames: number;
+  sourceStartFrame?: number;
+  sourceEndFrame?: number;
+  loop?: boolean;
+  style: React.CSSProperties;
+}) {
+  const requestedEndFrame = Math.max(
+    sourceStartFrame + 1,
+    sourceEndFrame ?? sourceStartFrame + durationInFrames,
+  );
+  const safeEndFrame = requestedEndFrame - sourceStartFrame > 16
+    ? requestedEndFrame - 15
+    : requestedEndFrame;
+  const sourceDurationInFrames = Math.max(1, safeEndFrame - sourceStartFrame);
+  const video = (
+    <OffthreadVideo
+      src={src}
+      muted={muted}
+      startFrom={sourceStartFrame}
+      endAt={safeEndFrame}
+      delayRenderTimeoutInMilliseconds={45_000}
+      delayRenderRetries={1}
+      style={style}
+    />
+  );
+
+  if (loop) {
+    return <Loop durationInFrames={sourceDurationInFrames}>{video}</Loop>;
+  }
+
+  return (
+    <>
+      <Sequence from={0} durationInFrames={sourceDurationInFrames}>{video}</Sequence>
+      {durationInFrames > sourceDurationInFrames ? (
+        <Sequence from={sourceDurationInFrames} durationInFrames={durationInFrames - sourceDurationInFrames}>
+          <Freeze frame={sourceDurationInFrames - 1}>{video}</Freeze>
+        </Sequence>
+      ) : null}
+    </>
+  );
 }
 
 function buildSlideTimeline(
@@ -450,6 +539,8 @@ export const calculateMetadata: CalculateMetadataFunction<TemplateProps> = async
 export function CourseforgeGeneratedBundle(props: TemplateProps) {
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
+  const avatarClips = orderedAvatarClips(props.avatarClips);
+  const avatarTimeline = buildAvatarTimeline(avatarClips, durationInFrames);
   const slides = orderedSlides(props.slides);
   const brollClips = orderedBrollClips(props.brollClips);
   const slideTimeline = buildSlideTimeline(slides, durationInFrames, props.timelineOverrides);
@@ -461,7 +552,8 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
   const activeSlide = activeSlideItem?.slide ?? null;
   const activeBroll = activeBrollItem?.clip ?? null;
   const hasVoice = typeof props.voiceAudioUrl === "string" && props.voiceAudioUrl.length > 0;
-  const hasAvatar = typeof props.avatarVideoUrl === "string" && props.avatarVideoUrl.length > 0;
+  const hasAvatarVideo = typeof props.avatarVideoUrl === "string" && props.avatarVideoUrl.length > 0;
+  const hasAvatar = avatarTimeline.length > 0 || hasAvatarVideo;
   const hasSlidesAsset = slides.length > 0;
   const hasBrollAsset = brollClips.length > 0;
   const sceneItemCount = Math.max(1, slides.length, brollClips.length);
@@ -521,11 +613,28 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
 
       {hasAvatar ? (
         <div style={buildBoxStyle(avatarSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.avatar, ...avatarOverride })}>
-          <Video
-            src={props.avatarVideoUrl!}
-            muted={hasVoice}
-            style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center center" }}
-          />
+          {avatarTimeline.length > 0 ? avatarTimeline.map((item, index) => (
+            <Sequence
+              key={`${item.clip.order ?? index + 1}-${index}`}
+              from={item.startFrame}
+              durationInFrames={item.durationInFrames}
+            >
+              <SafeRenderVideo
+                src={item.clip.url}
+                muted={hasVoice}
+                durationInFrames={item.durationInFrames}
+                sourceEndFrame={item.sourceDurationInFrames}
+                style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center center" }}
+              />
+            </Sequence>
+          )) : (
+            <SafeRenderVideo
+              src={props.avatarVideoUrl!}
+              muted={hasVoice}
+              durationInFrames={durationInFrames}
+              style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center center" }}
+            />
+          )}
         </div>
       ) : null}
 
@@ -543,12 +652,13 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
       {activeBroll && activeBrollItem ? (
         <Sequence from={activeBrollItem.startFrame} durationInFrames={activeBrollItem.durationInFrames}>
           <div style={buildBoxStyle(brollSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.broll, ...brollOverride, ...activeBrollItemOverride })}>
-            <Video
+            <SafeRenderVideo
               src={activeBroll.url}
               muted
+              durationInFrames={activeBrollItem.durationInFrames}
               loop={activeBrollItem.loopMode !== "none"}
-              startFrom={activeBrollItem.sourceStartFrame}
-              endAt={activeBrollItem.sourceEndFrame}
+              sourceStartFrame={activeBrollItem.sourceStartFrame}
+              sourceEndFrame={activeBrollItem.sourceEndFrame ?? getClipDurationInFrames(activeBroll)}
               style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center center" }}
             />
           </div>

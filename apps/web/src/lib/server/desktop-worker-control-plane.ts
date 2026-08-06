@@ -2348,7 +2348,11 @@ export class DesktopWorkerControlPlane {
       return null;
     }
 
-    const claimedTemplateBuilds = await this.claimTemplateBuilds(worker, claimLimit);
+    // Builds and full renders are processed serially by the desktop worker.
+    // Claiming a whole capacity batch would only hold leases for jobs that have
+    // not started yet. Preview jobs remain batchable below because they are the
+    // only job type the worker executes concurrently.
+    const claimedTemplateBuilds = await this.claimTemplateBuilds(worker, Math.min(1, claimLimit));
     if (claimedTemplateBuilds.length > 0) {
       let payloads: ClaimedDesktopWorkerTemplateBuildJob[];
       try {
@@ -2392,7 +2396,7 @@ export class DesktopWorkerControlPlane {
       }
     }
 
-    const claimedJobs = await this.claimJobsAtomically(worker, claimLimit);
+    const claimedJobs = await this.claimJobsAtomically(worker, Math.min(1, claimLimit));
     if (claimedJobs.length === 0) {
       await this.heartbeat(worker, { status: "ONLINE" });
       return null;
