@@ -35,7 +35,7 @@ export function AnimatedDeckSlide({
     <div
       className="deck-scope"
       style={{
-        backgroundColor: "#000",
+        backgroundColor: "#ffffff",
         height,
         overflow: "hidden",
         position: "relative",

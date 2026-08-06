@@ -83,7 +83,7 @@ function buildAnimatedDeckSlideSrcDoc(deck: AnimatedDeckAsset, slide: AnimatedDe
       width: ${width}px;
       height: ${height}px;
       overflow: hidden;
-      background: #05070b;
+      background: #ffffff;
     }
     .deck-scope {
       position: relative;
