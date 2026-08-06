@@ -3,9 +3,11 @@ import {
   AbsoluteFill,
   Audio,
   Composition,
+  Freeze,
   Img,
+  Loop,
+  OffthreadVideo,
   Sequence,
-  Video,
   interpolate,
   registerRoot,
   useCurrentFrame,
@@ -293,6 +295,59 @@ function getClipDurationInFrames(clip: BrollClip) {
     : 150;
 }
 
+function SafeRenderVideo({
+  src,
+  muted,
+  durationInFrames,
+  sourceStartFrame = 0,
+  sourceEndFrame,
+  loop = false,
+  style,
+}: {
+  src: string;
+  muted: boolean;
+  durationInFrames: number;
+  sourceStartFrame?: number;
+  sourceEndFrame?: number;
+  loop?: boolean;
+  style: React.CSSProperties;
+}) {
+  const requestedEndFrame = Math.max(
+    sourceStartFrame + 1,
+    sourceEndFrame ?? sourceStartFrame + durationInFrames,
+  );
+  const safeEndFrame = requestedEndFrame - sourceStartFrame > 16
+    ? requestedEndFrame - 15
+    : requestedEndFrame;
+  const sourceDurationInFrames = Math.max(1, safeEndFrame - sourceStartFrame);
+  const video = (
+    <OffthreadVideo
+      src={src}
+      muted={muted}
+      startFrom={sourceStartFrame}
+      endAt={safeEndFrame}
+      delayRenderTimeoutInMilliseconds={45_000}
+      delayRenderRetries={1}
+      style={style}
+    />
+  );
+
+  if (loop) {
+    return <Loop durationInFrames={sourceDurationInFrames}>{video}</Loop>;
+  }
+
+  return (
+    <>
+      <Sequence from={0} durationInFrames={sourceDurationInFrames}>{video}</Sequence>
+      {durationInFrames > sourceDurationInFrames ? (
+        <Sequence from={sourceDurationInFrames} durationInFrames={durationInFrames - sourceDurationInFrames}>
+          <Freeze frame={sourceDurationInFrames - 1}>{video}</Freeze>
+        </Sequence>
+      ) : null}
+    </>
+  );
+}
+
 function buildBrollTimeline(
   clips: BrollClip[],
   durationInFrames: number,
@@ -424,9 +479,10 @@ export function AvatarLeftSlidesBrollRight(props: TemplateProps) {
             ...avatarOverride,
           })}
         >
-          <Video
+          <SafeRenderVideo
             src={props.avatarVideoUrl!}
             muted={hasVoice}
+            durationInFrames={durationInFrames}
             style={{
               width: "100%",
               height: "100%",
@@ -471,12 +527,13 @@ export function AvatarLeftSlidesBrollRight(props: TemplateProps) {
               ...activeBrollItemOverride,
             })}
           >
-            <Video
+            <SafeRenderVideo
               src={activeBroll.url}
               muted
+              durationInFrames={activeBrollItem.durationInFrames}
               loop={activeBrollItem.loopMode !== "freeze"}
-              startFrom={activeBrollItem.sourceStartFrame}
-              endAt={activeBrollItem.sourceEndFrame}
+              sourceStartFrame={activeBrollItem.sourceStartFrame}
+              sourceEndFrame={activeBrollItem.sourceEndFrame ?? getClipDurationInFrames(activeBroll)}
               style={{
                 width: "100%",
                 height: "100%",

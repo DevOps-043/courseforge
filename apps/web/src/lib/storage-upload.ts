@@ -56,7 +56,10 @@ export async function uploadWithSignedUrl(
     const supabase = createClient();
     const { error: uploadError } = await supabase.storage
         .from(bucket)
-        .uploadToSignedUrl(path, token, file, { upsert: options.upsert ?? true });
+        .uploadToSignedUrl(path, token, file, {
+            contentType: options.contentType || file.type || 'application/octet-stream',
+            upsert: options.upsert ?? true,
+        });
 
     if (uploadError) {
         throw uploadError;

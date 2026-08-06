@@ -31,6 +31,11 @@ import {
   getActiveTimelineSegments,
 } from "../visual-timeline";
 import { AVATAR_CLIP_CROSSFADE_FRAMES } from "../avatar-clip-transitions";
+import {
+  durationSecondsToFrames,
+  normalizeMeasuredDurationSeconds,
+} from "../media-duration";
+import { resolveSafeRemoteVideoRange } from "../remote-video-source-range";
 import { resolveSlideTimelineRenderItems } from "../components/slide-timeline-rendering";
 import {
   commitLayoutLayerCrop,
@@ -75,6 +80,42 @@ function baseAvatarClip(params: Partial<NonNullable<MaterialAssets["avatar_clips
 }
 
 describe("normalizeAssemblyAssets", () => {
+  it("keeps remote video source ranges away from fragile final frames", () => {
+    const range = resolveSafeRemoteVideoRange({
+      fallbackDurationInFrames: 600,
+      sequenceDurationInFrames: 600,
+    });
+
+    assert.deepEqual(range, {
+      sourceStartFrame: 0,
+      sourceEndFrame: 585,
+      sourceDurationInFrames: 585,
+      tailFreezeInFrames: 15,
+    });
+  });
+
+  it("does not pad very short remote video ranges out of existence", () => {
+    const range = resolveSafeRemoteVideoRange({
+      sourceStartFrame: 3,
+      sourceEndFrame: 8,
+      fallbackDurationInFrames: 5,
+      sequenceDurationInFrames: 5,
+    });
+
+    assert.deepEqual(range, {
+      sourceStartFrame: 3,
+      sourceEndFrame: 8,
+      sourceDurationInFrames: 5,
+      tailFreezeInFrames: 0,
+    });
+  });
+
+  it("preserves measured duration precision and floors frame conversion", () => {
+    assert.equal(normalizeMeasuredDurationSeconds(19.7289), 19.728);
+    assert.equal(durationSecondsToFrames(19.728, ASSEMBLY_FPS), 591);
+    assert.equal(normalizeMeasuredDurationSeconds(Number.NaN), null);
+  });
+
   it("sorts slide images by slide_index and normalizes them to contiguous layer indexes", () => {
     const assets: MaterialAssets = {
       slides: {
@@ -297,11 +338,6 @@ describe("normalizeAssemblyAssets", () => {
         public_url: VIDEO_URL,
         duration: 120,
       },
-      voice_audio: {
-        storage_path: "production-assets/voice.mp3",
-        public_url: AUDIO_URL,
-        duration: 60,
-      },
     };
 
     const props = buildAssemblyProps(assets, "avatar-focus");
@@ -370,6 +406,7 @@ describe("normalizeAssemblyAssets", () => {
 
   it("prioritizes voice duration over avatar, B-roll and slides", () => {
     const assets: MaterialAssets = {
+      avatar_generation_mode: "single_video",
       voice_audio: {
         storage_path: "production-assets/voice.mp3",
         public_url: AUDIO_URL,

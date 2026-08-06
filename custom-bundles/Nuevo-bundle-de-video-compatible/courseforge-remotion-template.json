@@ -48,6 +48,10 @@
         "type": "string",
         "description": "URL publica del video de avatar/talking head."
       },
+      "avatarClips": {
+        "type": "array",
+        "description": "Clips de avatar normalizados y ordenados por SofLIA - Engine."
+      },
       "bgMusicUrl": {
         "type": "string",
         "description": "URL publica de musica de fondo."
@@ -100,6 +104,7 @@
     "sceneSwapOnSlideChange": true,
     "expandMissingSupportMedia": true,
     "bgMusicVolume": 0.12,
+    "avatarClips": [],
     "brollClips": [],
     "layoutOverrides": [],
     "slides": [],

@@ -317,6 +317,9 @@ describe("SofLIA Bundle Agent services", () => {
     assert.match(source, /<Sequence from=\{activeBrollItem\.startFrame\}/);
     assert.match(source, /startFrom=\{activeBrollItem\.sourceStartFrame\}/);
     assert.match(source, /endAt=\{activeBrollItem\.sourceEndFrame\}/);
+    assert.match(source, /REMOTE_VIDEO_END_PADDING_FRAMES = 15/);
+    assert.match(source, /function resolveSafeRemoteVideoRange/);
+    assert.match(source, /<Freeze frame=\{sourceRange\.sourceDurationInFrames - 1\}>/);
     assert.doesNotMatch(source, /\sloop\s/);
     assert.doesNotMatch(source, /slides\.length > 0 \? null :/);
     assert.doesNotMatch(source, /transform\s*:/);
@@ -324,7 +327,8 @@ describe("SofLIA Bundle Agent services", () => {
     assert.doesNotMatch(source, /translate[XYZ]?\(/);
     assert.doesNotMatch(source, /scale\(/);
     assert.doesNotMatch(source, /gridTemplateColumns/);
-    assert.match(source, /<Video/);
+    assert.match(source, /<OffthreadVideo/);
+    assert.doesNotMatch(source, /<Video/);
     assert.match(source, /<Img/);
     assert.match(source, /<Audio/);
     assert.doesNotMatch(source, /Avatar en primera persona/);

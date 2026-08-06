@@ -100,6 +100,16 @@ function getAssemblyFailureMessage(job: AssemblyJobTracker) {
     if (job.errorCode === 'OUTPUT_NOT_ACCESSIBLE') {
         return 'El render termino, pero el video final no quedo disponible como URL HTTPS reproducible.';
     }
+    if (job.errorCode === 'RENDER_ASSET_DOWNLOAD_STALLED') {
+        return 'La descarga de un asset dejo de recibir datos durante 90 segundos. Verifica el origen del archivo o la ruta de red y vuelve a intentar.';
+    }
+    if (
+        job.errorCode === 'RENDER_ASSET_INCOMPLETE' ||
+        job.errorCode === 'RENDER_ASSET_PREFLIGHT_FAILED' ||
+        job.errorCode === 'RENDER_ASSET_INVALID_SIGNATURE'
+    ) {
+        return 'El asset descargado esta incompleto o no es un medio valido. Regenera o reemplaza ese archivo antes de volver a ensamblar.';
+    }
     const rawError = job.error || '';
     const mediaLoadTimedOut =
         job.errorCode === 'MEDIA_ASSET_LOAD_TIMEOUT' ||

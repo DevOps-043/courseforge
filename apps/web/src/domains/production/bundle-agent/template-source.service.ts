@@ -18,9 +18,10 @@ import {
   AbsoluteFill,
   Audio,
   Composition,
+  Freeze,
   Img,
+  OffthreadVideo,
   Sequence,
-  Video,
   interpolate,
   registerRoot,
   useCurrentFrame,
@@ -218,6 +219,7 @@ const REMOTION_EDITABLE_LAYERS = {
 } as const;
 const AVATAR_CLIP_CROSSFADE_FRAMES = 12;
 const BROLL_FADE_FRAMES = 8;
+const REMOTE_VIDEO_END_PADDING_FRAMES = 15;
 
 function getAvatarClipItemLayerId(order: number) {
   return "avatar:" + Math.max(1, Math.round(order));
@@ -334,21 +336,31 @@ function normalizeOptionalFrame(value: number | undefined) {
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.round(value)) : undefined;
 }
 
-function resolveMediaSourceRange(params: {
+function resolveSafeRemoteVideoRange(params: {
   sourceStartFrame?: number;
   sourceEndFrame?: number;
   fallbackDurationInFrames: number;
+  sequenceDurationInFrames: number;
 }) {
   const sourceStartFrame = normalizeOptionalFrame(params.sourceStartFrame) ?? 0;
   const fallbackEndFrame = sourceStartFrame + Math.max(1, Math.round(params.fallbackDurationInFrames));
-  const sourceEndFrame = Math.max(
+  const requestedSourceEndFrame = Math.max(
     sourceStartFrame + 1,
     normalizeOptionalFrame(params.sourceEndFrame) ?? fallbackEndFrame,
   );
+  const requestedSourceDurationInFrames = requestedSourceEndFrame - sourceStartFrame;
+  const shouldPadEnd = requestedSourceDurationInFrames > REMOTE_VIDEO_END_PADDING_FRAMES + 1;
+  const sourceEndFrame = shouldPadEnd
+    ? requestedSourceEndFrame - REMOTE_VIDEO_END_PADDING_FRAMES
+    : requestedSourceEndFrame;
+  const sourceDurationInFrames = Math.max(1, sourceEndFrame - sourceStartFrame);
+  const sequenceDurationInFrames = Math.max(1, Math.round(params.sequenceDurationInFrames));
 
   return {
     sourceStartFrame,
     sourceEndFrame,
+    sourceDurationInFrames,
+    tailFreezeInFrames: Math.max(0, sequenceDurationInFrames - sourceDurationInFrames),
   };
 }
 
@@ -362,21 +374,36 @@ function RenderVideo(props: {
   durationInFrames: number;
   style?: React.CSSProperties;
 }) {
-  const sourceRange = resolveMediaSourceRange({
+  const sourceRange = resolveSafeRemoteVideoRange({
     sourceStartFrame: props.startFrom,
     sourceEndFrame: props.endAt,
     fallbackDurationInFrames: props.fallbackDurationInFrames,
+    sequenceDurationInFrames: props.durationInFrames,
   });
-
-  return (
-    <Video
+  const video = (
+    <OffthreadVideo
       src={props.src}
       muted={props.muted}
       volume={props.volume}
       startFrom={sourceRange.sourceStartFrame}
       endAt={sourceRange.sourceEndFrame}
+      delayRenderTimeoutInMilliseconds={45_000}
+      delayRenderRetries={1}
       style={props.style}
     />
+  );
+
+  if (sourceRange.tailFreezeInFrames <= 0) return video;
+
+  return (
+    <>
+      <Sequence from={0} durationInFrames={sourceRange.sourceDurationInFrames}>
+        {video}
+      </Sequence>
+      <Sequence from={sourceRange.sourceDurationInFrames} durationInFrames={sourceRange.tailFreezeInFrames}>
+        <Freeze frame={sourceRange.sourceDurationInFrames - 1}>{video}</Freeze>
+      </Sequence>
+    </>
   );
 }
 

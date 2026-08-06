@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import {
   AbsoluteFill,
+  Freeze,
   Loop,
   OffthreadVideo,
   Sequence,
@@ -11,6 +12,7 @@ import type { AssemblyBrollClip } from "../types";
 import type { LayoutOverrideStyle } from "../layout-override-styles";
 import { buildBrollTimeline, type VisualTimelineSegment } from "../visual-timeline";
 import { REMOTE_MEDIA_RENDER_PROPS } from "../media-rendering.config";
+import { resolveSafeRemoteVideoRange } from "../remote-video-source-range";
 
 const BROLL_FADE_FRAMES = 8;
 
@@ -52,20 +54,20 @@ function OverlayVideo({
 }) {
   const frame = useCurrentFrame();
   const durationInFrames = segment?.durationInFrames ?? clip.durationInFrames;
-  const sourceStartFrame = Math.max(0, Math.round(segment?.sourceStartFrame ?? 0));
-  const sourceEndFrame = Math.max(
-    sourceStartFrame + 1,
-    Math.round(segment?.sourceEndFrame ?? clip.durationInFrames),
-  );
-  const sourceDurationInFrames = sourceEndFrame - sourceStartFrame;
+  const sourceRange = resolveSafeRemoteVideoRange({
+    sourceStartFrame: segment?.sourceStartFrame,
+    sourceEndFrame: segment?.sourceEndFrame,
+    fallbackDurationInFrames: clip.durationInFrames,
+    sequenceDurationInFrames: durationInFrames,
+  });
   const opacity = getFadeOpacity(frame, durationInFrames);
   const video = (
     <OffthreadVideo
       {...REMOTE_MEDIA_RENDER_PROPS}
       src={clip.url}
       muted
-      startFrom={sourceStartFrame}
-      endAt={sourceEndFrame}
+      startFrom={sourceRange.sourceStartFrame}
+      endAt={sourceRange.sourceEndFrame}
       style={{
         width: "100%",
         height: "100%",
@@ -75,15 +77,27 @@ function OverlayVideo({
     />
   );
 
-  if (!segment || segment.durationInFrames <= sourceDurationInFrames) {
+  if (durationInFrames <= sourceRange.sourceDurationInFrames) {
     return video;
   }
 
-  if (segment.loopMode === "loop") {
-    return <Loop durationInFrames={sourceDurationInFrames}>{video}</Loop>;
+  if (segment?.loopMode === "loop") {
+    return <Loop durationInFrames={sourceRange.sourceDurationInFrames}>{video}</Loop>;
   }
 
-  return video;
+  return (
+    <>
+      <Sequence from={0} durationInFrames={sourceRange.sourceDurationInFrames}>
+        {video}
+      </Sequence>
+      <Sequence
+        from={sourceRange.sourceDurationInFrames}
+        durationInFrames={sourceRange.tailFreezeInFrames}
+      >
+        <Freeze frame={sourceRange.sourceDurationInFrames - 1}>{video}</Freeze>
+      </Sequence>
+    </>
+  );
 }
 
 export function BrollOverlayLayer({
