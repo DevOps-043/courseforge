@@ -1,6 +1,15 @@
+import {
+  buildSourceInsights,
+  type SlideSourceInsight,
+  type SlideSourcePack,
+} from "../content/slide-source-pack.service";
+
+type SourceInsightType = SlideSourceInsight["type"];
+
 export interface EvidencePack {
   claimCount: number;
   hasSourceRefs: boolean;
+  sourceInsightCounts: Record<SourceInsightType, number>;
   sourceRefs: string[];
 }
 
@@ -8,9 +17,7 @@ interface BuildEvidencePackParams {
   component: {
     content?: unknown;
     source_refs?: unknown;
-    sourcePack?: {
-      sourceRefs?: string[];
-    };
+    sourcePack?: SlideSourcePack;
   };
 }
 
@@ -86,6 +93,28 @@ function countClaims(value: unknown, depth = 0): number {
   }, 0);
 }
 
+function emptySourceInsightCounts(): Record<SourceInsightType, number> {
+  return {
+    concept: 0,
+    practice: 0,
+    question: 0,
+    summary: 0,
+  };
+}
+
+function countSourceInsights(sourcePack?: SlideSourcePack) {
+  const counts = emptySourceInsightCounts();
+  const insights = sourcePack?.insights?.length
+    ? sourcePack.insights
+    : buildSourceInsights(sourcePack?.items || []);
+
+  for (const insight of insights) {
+    counts[insight.type] += 1;
+  }
+
+  return counts;
+}
+
 export function buildEvidencePack(params: BuildEvidencePackParams): EvidencePack {
   const sourceRefs = new Set<string>();
   pushSourceRef(sourceRefs, params.component.source_refs);
@@ -95,6 +124,7 @@ export function buildEvidencePack(params: BuildEvidencePackParams): EvidencePack
   return {
     claimCount: countClaims(params.component.content),
     hasSourceRefs: sourceRefs.size > 0,
+    sourceInsightCounts: countSourceInsights(params.component.sourcePack),
     sourceRefs: Array.from(sourceRefs).slice(0, 20),
   };
 }

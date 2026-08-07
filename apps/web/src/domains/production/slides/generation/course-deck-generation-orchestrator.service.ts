@@ -177,6 +177,7 @@ export function generateCourseDeckWithQualityGate(
         claimCount: evidencePack.claimCount,
         hasSourceRefs: evidencePack.hasSourceRefs,
         ...agentStageOutput(params, "evidence"),
+        sourceInsightCounts: evidencePack.sourceInsightCounts,
         sourceRefCount: evidencePack.sourceRefs.length,
       },
       value: evidencePack,

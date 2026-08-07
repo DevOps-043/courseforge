@@ -178,6 +178,92 @@ describe("SofLIA - Engine slide deck generation", () => {
     assert.match(visibleText, /Reducir distractores ayuda/i);
   });
 
+  it("does not use curation rationale as visible lesson content", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-1",
+      component: {
+        content: {
+          script: {
+            sections: [
+              {
+                on_screen_text: "Practica de enfoque\nCierra notificaciones antes de iniciar una tarea profunda.",
+                section_number: 1,
+              },
+            ],
+            title: "Enfoque y energia cognitiva",
+          },
+        },
+        id: "component-1",
+        sourcePack: {
+          items: [{
+            rationale: "Puede complementar la leccion con fundamentos cognitivos y estrategias practicas.",
+            ref: "https://example.edu/generic-rationale",
+            title: "Fuente de apoyo",
+          }],
+          sourceRefs: ["https://example.edu/generic-rationale"],
+        },
+        type: "VIDEO_THEORETICAL",
+      },
+      input: {
+        locale: "es",
+        template: "course-module",
+      },
+    });
+    const generatedSlide = deck.slides.find((slide) => slide.id === "script-section-1");
+    const visibleText = [
+      generatedSlide?.title || "",
+      ...(generatedSlide?.bodyBlocks[0]?.items || []),
+    ].join(" ");
+
+    assert.doesNotMatch(visibleText, /puede complementar|fundamentos cognitivos y estrategias practicas/i);
+    assert.match(visibleText, /Cierra notificaciones/i);
+  });
+
+  it("does not plan worked examples when available evidence cannot fill them", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-1",
+      component: {
+        content: {
+          script: {
+            sections: [
+              {
+                on_screen_text: "Marco inicial\nLa atencion sostenida requiere proteger los recursos cognitivos.",
+                section_number: 1,
+              },
+              {
+                narration_text: "El avatar explica el contexto general sin dar un ejemplo aplicable.",
+                section_number: 2,
+              },
+            ],
+            title: "Enfoque y energia cognitiva",
+          },
+        },
+        id: "component-1",
+        sourcePack: {
+          items: [{
+            rationale: "Puede complementar la leccion con fundamentos cognitivos y estrategias practicas.",
+            ref: "https://example.edu/generic-rationale",
+            title: "Fuente de apoyo",
+          }],
+          sourceRefs: ["https://example.edu/generic-rationale"],
+        },
+        type: "VIDEO_THEORETICAL",
+      },
+      input: {
+        locale: "es",
+        template: "course-module",
+      },
+    });
+    const secondContentSlide = deck.slides.find((slide) => slide.id === "script-section-2");
+    const visibleText = [
+      secondContentSlide?.title || "",
+      ...(secondContentSlide?.bodyBlocks[0]?.items || []),
+    ].join(" ");
+
+    assert.equal(secondContentSlide?.type, "concept");
+    assert.doesNotMatch(visibleText, /puede complementar|fundamentos cognitivos y estrategias practicas/i);
+  });
+
   it("propagates evidence source refs into planned generated slides", () => {
     const deck = buildCourseDeckSpecFromComponent({
       artifactId: "artifact-1",

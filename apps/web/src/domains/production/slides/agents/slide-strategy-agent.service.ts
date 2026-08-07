@@ -69,9 +69,119 @@ function evidenceRefsForSlide(evidence: EvidencePack) {
   return evidence.sourceRefs.slice(0, 4);
 }
 
+function sourceInsightTypeForSlideType(type: CourseSlideSpec["type"]) {
+  if (type === "exercise" || type === "worked_example") return "practice";
+  if (type === "knowledge_check") return "question";
+  if (type === "summary") return "summary";
+  return "concept";
+}
+
+function hasSourceEvidenceForSlideType(
+  evidence: EvidencePack,
+  type: CourseSlideSpec["type"],
+) {
+  return evidence.sourceInsightCounts[sourceInsightTypeForSlideType(type)] > 0;
+}
+
+function hasExplicitScriptContentForType(
+  section: ScriptSectionLike,
+  type: CourseSlideSpec["type"],
+) {
+  if (type === "knowledge_check") {
+    return Boolean(
+      compactText(section.reflection_question) ||
+      (Array.isArray(section.common_errors) && section.common_errors.length > 0),
+    );
+  }
+
+  if (type === "worked_example" || type === "exercise") {
+    const text = [
+      section.on_screen_text,
+      section.on_screen_action,
+      section.success_criteria,
+    ].map(compactText).join(" ");
+    return Boolean(
+      (Array.isArray(section.best_practices) && section.best_practices.length > 0) ||
+      includesAny(text, ["paso", "ejemplo", "aplicacion", "demostracion", "demo", "actividad", "ejercicio", "practica"]),
+    );
+  }
+
+  return Boolean(
+    compactText(section.on_screen_text) ||
+    compactText(section.success_criteria),
+  );
+}
+
+function hasExplicitStoryboardContentForType(
+  item: StoryboardItemLike,
+  type: CourseSlideSpec["type"],
+) {
+  const text = [
+    item.visual_type,
+    item.visual_content,
+    item.on_screen_action,
+    item.on_screen_text,
+    item.success_criteria_visible,
+  ].map(compactText).join(" ");
+
+  if (type === "knowledge_check") {
+    return includesAny(text, ["quiz", "pregunta", "check", "evaluacion"]);
+  }
+
+  if (type === "worked_example" || type === "exercise") {
+    return includesAny(text, ["paso", "ejemplo", "aplicacion", "demo", "tutorial", "actividad", "ejercicio", "practica"]);
+  }
+
+  return Boolean(compactText(item.on_screen_text) || compactText(item.success_criteria_visible));
+}
+
+function evidenceBackedFallbackType(
+  evidence: EvidencePack,
+  index: number,
+): CourseSlideSpec["type"] {
+  if (index === 0) {
+    return "concept";
+  }
+  if (evidence.sourceInsightCounts.concept > 0) {
+    return "concept";
+  }
+  if (evidence.sourceInsightCounts.practice > 0) {
+    return "worked_example";
+  }
+  if (evidence.sourceInsightCounts.question > 0) {
+    return "knowledge_check";
+  }
+  if (evidence.sourceInsightCounts.summary > 0) {
+    return "summary";
+  }
+  return "concept";
+}
+
+function resolveFillableSlideType(params: {
+  desiredType: CourseSlideSpec["type"];
+  evidence: EvidencePack;
+  hasExplicitContent: boolean;
+  index: number;
+}) {
+  if (
+    params.desiredType === "cover" ||
+    params.desiredType === "data_explainer" ||
+    params.desiredType === "objectives"
+  ) {
+    return params.desiredType;
+  }
+
+  if (params.hasExplicitContent || hasSourceEvidenceForSlideType(params.evidence, params.desiredType)) {
+    return params.desiredType;
+  }
+
+  return evidenceBackedFallbackType(params.evidence, params.index);
+}
+
 function planTypeFromScriptSection(
   section: ScriptSectionLike,
   index: number,
+  evidence: EvidencePack,
 ): CourseSlideSpec["type"] {
   const text = [
     section.section_type,
@@ -82,28 +192,38 @@ function planTypeFromScriptSection(
     section.reflection_question,
   ].map(compactText).join(" ");
 
-  if (Array.isArray(section.common_errors) && section.common_errors.length > 0) {
-    return "knowledge_check";
-  }
-  if (Array.isArray(section.best_practices) && section.best_practices.length >= 2) {
-    return "objectives";
-  }
-  if (includesAny(text, ["pregunta", "reflexion", "quiz", "check", "evaluacion"])) {
-    return "knowledge_check";
-  }
-  if (includesAny(text, ["paso", "ejemplo", "aplicacion", "demostracion", "demo"])) {
-    return "worked_example";
-  }
-  if (includesAny(text, ["actividad", "ejercicio", "practica"])) {
-    return "exercise";
-  }
+  const desiredType = (() => {
+    if (Array.isArray(section.common_errors) && section.common_errors.length > 0) {
+      return "knowledge_check";
+    }
+    if (Array.isArray(section.best_practices) && section.best_practices.length >= 2) {
+      return "objectives";
+    }
+    if (includesAny(text, ["pregunta", "reflexion", "quiz", "check", "evaluacion"])) {
+      return "knowledge_check";
+    }
+    if (includesAny(text, ["paso", "ejemplo", "aplicacion", "demostracion", "demo"])) {
+      return "worked_example";
+    }
+    if (includesAny(text, ["actividad", "ejercicio", "practica"])) {
+      return "exercise";
+    }
 
-  return index === 0 ? "concept" : "worked_example";
+    return "concept";
+  })();
+
+  return resolveFillableSlideType({
+    desiredType,
+    evidence,
+    hasExplicitContent: hasExplicitScriptContentForType(section, desiredType),
+    index,
+  });
 }
 
 function planTypeFromStoryboardItem(
   item: StoryboardItemLike,
   index: number,
+  evidence: EvidencePack,
 ): CourseSlideSpec["type"] {
   const text = [
     item.visual_type,
@@ -113,17 +233,26 @@ function planTypeFromStoryboardItem(
     item.success_criteria_visible,
   ].map(compactText).join(" ");
 
-  if (includesAny(text, ["quiz", "pregunta", "check", "evaluacion"])) {
-    return "knowledge_check";
-  }
-  if (includesAny(text, ["paso", "demo", "pantalla", "captura", "tutorial"])) {
-    return "worked_example";
-  }
-  if (includesAny(text, ["actividad", "ejercicio", "practica"])) {
-    return "exercise";
-  }
+  const desiredType = (() => {
+    if (includesAny(text, ["quiz", "pregunta", "check", "evaluacion"])) {
+      return "knowledge_check";
+    }
+    if (includesAny(text, ["paso", "ejemplo", "aplicacion", "demo", "pantalla", "captura", "tutorial"])) {
+      return "worked_example";
+    }
+    if (includesAny(text, ["actividad", "ejercicio", "practica"])) {
+      return "exercise";
+    }
 
-  return index === 0 ? "concept" : "worked_example";
+    return "concept";
+  })();
+
+  return resolveFillableSlideType({
+    desiredType,
+    evidence,
+    hasExplicitContent: hasExplicitStoryboardContentForType(item, desiredType),
+    index,
+  });
 }
 
 function planCustomSlides(
@@ -161,7 +290,7 @@ function planScriptSlides(
       order: index + 2,
       purpose: "Convertir una seccion del guion en apoyo visual breve.",
       sourceRefs: ["component.content.script", ...evidenceRefsForSlide(evidence)],
-      type: planTypeFromScriptSection(section, index),
+      type: planTypeFromScriptSection(section, index, evidence),
     })),
   ];
 }
@@ -187,7 +316,7 @@ function planStoryboardSlides(
       order: index + 2,
       purpose: "Transformar una toma del storyboard en apoyo visual.",
       sourceRefs: ["component.content.storyboard", ...evidenceRefsForSlide(evidence)],
-      type: planTypeFromStoryboardItem(item, index),
+      type: planTypeFromStoryboardItem(item, index, evidence),
     })),
   ];
 }

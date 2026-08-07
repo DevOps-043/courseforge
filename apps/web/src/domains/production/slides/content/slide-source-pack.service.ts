@@ -31,10 +31,6 @@ function compactText(value: unknown): string {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
 }
 
-function isGenericSourceNote(value: string) {
-  return /fuente agregada manualmente|fuente agregada por el usuario/i.test(value);
-}
-
 function normalizeForAnalysis(value: string) {
   return value
     .toLowerCase()
@@ -42,6 +38,13 @@ function normalizeForAnalysis(value: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function isGenericSourceNote(value: string) {
+  const normalized = normalizeForAnalysis(value);
+  return /fuente agregada manualmente|fuente agregada por el usuario|pdf agregado manualmente/.test(normalized) ||
+    /\bpuede complementar( la leccion)?\b/.test(normalized) ||
+    /\b(complementar|aporta|puede aportar|sirve para|util para)\b.{0,80}\b(leccion|evidencia|base|fundamentos|contexto)\b/.test(normalized);
 }
 
 function sourceClaim(item: SlideSourceItem) {
@@ -130,13 +133,22 @@ function isSourceMetadataSentence(sentence: string, item: SlideSourceItem) {
     .test(normalizedSentence);
 }
 
+function isCurationRationaleSentence(sentence: string) {
+  const normalized = normalizeForAnalysis(sentence);
+  return isGenericSourceNote(sentence) ||
+    /\bpuede complementar( la leccion)?\b/.test(normalized) ||
+    /^complementar la leccion\b/.test(normalized) ||
+    /\b(fundamentos cognitivos y estrategias practicas|base cientifica para|contexto practico para)\b/.test(normalized);
+}
+
 function splitEducationalSentences(value: string, item: SlideSourceItem) {
   const sentences = compactText(value)
     .replace(/\s([.!?])\s/g, "$1\n")
     .split(/\n|(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim().replace(/\s+/g, " "))
     .filter((sentence) => sentence.length >= 45 && sentence.length <= 320)
-    .filter((sentence) => !isSourceMetadataSentence(sentence, item));
+    .filter((sentence) => !isSourceMetadataSentence(sentence, item))
+    .filter((sentence) => !isCurationRationaleSentence(sentence));
 
   const seen = new Set<string>();
   const unique: string[] = [];

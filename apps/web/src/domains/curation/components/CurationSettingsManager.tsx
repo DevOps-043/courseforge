@@ -44,6 +44,7 @@ const SETTING_ORDER = [
   "SLIDES_DECK_BRIEF_AGENT",
   "SLIDES_EVIDENCE_AGENT",
   "SLIDES_STRATEGY_AGENT",
+  "SLIDE_TEMPLATE_TYPE_AGENT",
   "SLIDES_VISIBLE_COPY_AGENT",
   "SLIDES_VISUAL_TEMPLATE_AGENT",
   "SLIDES_QA_AGENT",
@@ -107,6 +108,11 @@ const SETTING_METADATA: Record<
     icon: <BrainCircuit size={16} />,
     accent: "teal",
   },
+  SLIDE_TEMPLATE_TYPE_AGENT: {
+    title: "Slides - Agente de Tipos de Template",
+    icon: <BrainCircuit size={16} />,
+    accent: "teal",
+  },
   SLIDES_VISIBLE_COPY_AGENT: {
     title: "Slides - Agente de Copy Visible",
     icon: <MessageSquareCode size={16} />,
@@ -153,14 +159,15 @@ const PROMPT_CODE_MATCHERS: Record<string, (code: string) => boolean> = {
     code.includes("B_ROLL") ||
     code.includes("VIDEO_PROMPT") ||
     code.includes("PRODUCTION"),
+  BUNDLE_AGENT: (code) => code === "BUNDLE_AGENT",
+  SLIDES_DECK_BRIEF_AGENT: (code) => code === "SLIDES_DECK_BRIEF_AGENT",
+  SLIDES_EVIDENCE_AGENT: (code) => code === "SLIDES_EVIDENCE_AGENT",
+  SLIDES_STRATEGY_AGENT: (code) => code === "SLIDES_STRATEGY_AGENT",
+  SLIDE_TEMPLATE_TYPE_AGENT: (code) => code === "SLIDE_TEMPLATE_TYPE_AGENT",
+  SLIDES_VISIBLE_COPY_AGENT: (code) => code === "SLIDES_VISIBLE_COPY_AGENT",
+  SLIDES_VISUAL_TEMPLATE_AGENT: (code) => code === "SLIDES_VISUAL_TEMPLATE_AGENT",
+  SLIDES_QA_AGENT: (code) => code === "SLIDES_QA_AGENT",
 };
-
-const PROMPT_SCOPE_ORDER = [
-  "Cursos",
-  "Modulos: Bundle",
-  "Modulos: Slides",
-  "General",
-];
 
 const PROMPT_SCOPE_METADATA: Record<
   string,
@@ -229,6 +236,22 @@ const PROMPT_HELP_TEXT: Record<string, string> = {
     "Funcion: genera ejercicios practicos independientes. Estructura: define instrucciones, HTML, resultado esperado y condiciones reproducibles en pantalla.",
   CLIP_GENERATION_PROMPTS:
     "Funcion: convierte escenas de storyboard en terminos de busqueda para clips externos. Estructura: devuelve JSON con prompts, scene_index, original_description y generated_prompt.",
+  BUNDLE_AGENT:
+    "Funcion: interpreta la conversacion de produccion visual y genera o ajusta la spec del bundle. Estructura: usa historial, artefacto objetivo, restricciones de layout y contrato Remotion para devolver una spec auditable.",
+  SLIDES_DECK_BRIEF_AGENT:
+    "Funcion: resume el encargo del deck HTML antes de planear slides. Estructura: identifica fuente del contenido, titulo, idioma, plantilla, restricciones y cantidad objetivo.",
+  SLIDES_EVIDENCE_AGENT:
+    "Funcion: construye el paquete de evidencia para slides desde fuentes aprobadas, guion y material del componente. Estructura: separa referencias, claims utilizables y senales de relleno por tipo de slide.",
+  SLIDES_STRATEGY_AGENT:
+    "Funcion: selecciona tipos de diapositiva segun el guion y la evidencia disponible. Estructura: decide cover, concept, worked_example, exercise, knowledge_check, summary o data_explainer sin elegir tipos que no puedan rellenarse.",
+  SLIDE_TEMPLATE_TYPE_AGENT:
+    "Funcion: define o ajusta los tipos de diapositiva disponibles para una plantilla HTML. Estructura: devuelve ids, labels, proposito, layouts soportados y campos requeridos sin inventar capacidades fuera del contrato.",
+  SLIDES_VISIBLE_COPY_AGENT:
+    "Funcion: redacta el texto visible de cada slide desde fuentes aprobadas. Estructura: produce titulo breve y bullets en espanol, sin transcribir avatar, guion, storyboard, B-roll ni instrucciones de produccion.",
+  SLIDES_VISUAL_TEMPLATE_AGENT:
+    "Funcion: asigna layout, densidad y direccion visual para cada slide. Estructura: usa tipos disponibles, tokens de diseno y restricciones HTML para mantener legibilidad y consistencia.",
+  SLIDES_QA_AGENT:
+    "Funcion: valida el deck HTML antes de guardarlo. Estructura: revisa seguridad, acentos, animaciones, overflow, narracion visible, graficas instruccionales y cumplimiento del contrato.",
 };
 
 const ALL_MODEL_OPTIONS = [
@@ -368,7 +391,10 @@ function resolveSettingScope(setting: CurationConfig) {
     return setting.scope.trim();
   }
 
-  if (setting.setting_type.startsWith("SLIDES_")) {
+  if (
+    setting.setting_type.startsWith("SLIDES_") ||
+    setting.setting_type.startsWith("SLIDE_TEMPLATE_")
+  ) {
     return "Modulos: Slides";
   }
   if (setting.setting_type.includes("BUNDLE")) {
@@ -421,61 +447,10 @@ function getPromptsForSetting(settingType: string, prompts: SystemPrompt[]) {
 
   return prompts
     .filter((prompt) => {
-      if (prompt.scope) {
-        return false;
-      }
       const code = prompt.code.toUpperCase();
       return !LEGACY_PROMPT_CODES.has(code) && matcher(code);
     })
     .sort((left, right) => left.code.localeCompare(right.code));
-}
-
-function resolvePromptScope(prompt: SystemPrompt) {
-  if (prompt.scope?.trim()) {
-    return prompt.scope.trim();
-  }
-
-  const code = prompt.code.toUpperCase();
-  if (code.includes("SLIDES_") || code.includes("SLIDE_DECK")) {
-    return "Modulos: Slides";
-  }
-  if (
-    code.includes("BUNDLE") ||
-    code.includes("BROLL") ||
-    code.includes("B_ROLL") ||
-    code.includes("CLIP_GENERATION") ||
-    code.includes("VIDEO_BROLL")
-  ) {
-    return "Modulos: Bundle";
-  }
-  if (Object.values(PROMPT_CODE_MATCHERS).some((matcher) => matcher(code))) {
-    return "Cursos";
-  }
-  return "General";
-}
-
-function groupPromptsByScope(prompts: SystemPrompt[]) {
-  const grouped = new Map<string, SystemPrompt[]>();
-
-  for (const prompt of prompts) {
-    const scope = resolvePromptScope(prompt);
-    grouped.set(scope, [...(grouped.get(scope) || []), prompt]);
-  }
-
-  return Array.from(grouped.entries())
-    .map(([scope, scopePrompts]) => ({
-      prompts: scopePrompts.sort((left, right) => left.code.localeCompare(right.code)),
-      scope,
-    }))
-    .sort((left, right) => {
-      const leftIndex = PROMPT_SCOPE_ORDER.indexOf(left.scope);
-      const rightIndex = PROMPT_SCOPE_ORDER.indexOf(right.scope);
-      return (
-        (leftIndex === -1 ? 999 : leftIndex) -
-        (rightIndex === -1 ? 999 : rightIndex) ||
-        left.scope.localeCompare(right.scope)
-      );
-    });
 }
 
 function getPromptHelpText(prompt: SystemPrompt) {
@@ -878,58 +853,6 @@ export function CurationSettingsManager() {
     setPromptRestoringId(null);
   };
 
-  const renderPromptScopeSection = (scope: string, scopePrompts: SystemPrompt[]) => {
-    const metadata = PROMPT_SCOPE_METADATA[scope] || {
-      description: "Prompts configurables de este ambito.",
-      icon: <Settings2 size={16} />,
-      title: scope,
-    };
-
-    return (
-      <section
-        key={scope}
-        className="space-y-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-[#6C757D]/10 dark:bg-[#151A21]"
-      >
-        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="rounded-lg bg-[#00D4B3]/10 p-2 text-[#00D4B3]">
-              {metadata.icon}
-            </div>
-            <div>
-              <h4 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">
-                {metadata.title}
-              </h4>
-              <p className="mt-1 text-sm text-gray-500 dark:text-[#94A3B8]">
-                {metadata.description}
-              </p>
-            </div>
-          </div>
-          <span className="rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-500 dark:border-[#6C757D]/20 dark:text-[#94A3B8]">
-            {scopePrompts.length} prompts
-          </span>
-        </div>
-
-        <div className="space-y-4">
-          {scopePrompts.map((prompt) => (
-            <PhasePromptEditor
-              key={`${prompt.code}-${prompt.version}-${prompt.id}`}
-              prompt={prompt}
-              history={promptHistories[prompt.code]}
-              historyLoading={promptHistoryLoadingCode === prompt.code}
-              saving={promptSavingId === prompt.id}
-              resetting={promptResettingCode === prompt.code}
-              restoringId={promptRestoringId}
-              onLoadHistory={loadPromptHistory}
-              onRestoreVersion={restorePromptVersion}
-              onSave={savePrompt}
-              onReset={resetPrompt}
-            />
-          ))}
-        </div>
-      </section>
-    );
-  };
-
   const renderModelScopeSection = (scope: string, scopeSettings: CurationConfig[]) => {
     const metadata = PROMPT_SCOPE_METADATA[scope] || {
       description: "Modelos configurables de este ambito.",
@@ -1096,7 +1019,7 @@ export function CurationSettingsManager() {
             </div>
           ) : (
             <div className="border border-dashed border-gray-200 dark:border-[#6C757D]/20 rounded-xl p-4 text-sm text-gray-500 dark:text-[#94A3B8] bg-gray-50 dark:bg-[#0F1419]/40">
-              Los prompts configurables se administran por ambito en el bloque inferior.
+              No hay prompts configurables asociados directamente a este paso.
             </div>
           )}
         </div>
@@ -1159,22 +1082,6 @@ export function CurationSettingsManager() {
         </button>
       </div>
 
-      <section className="space-y-5 border-t border-gray-100 pt-8 dark:border-[#6C757D]/10">
-        <div>
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-            Historial de prompts por ambito
-          </h3>
-          <p className="mt-1 text-sm text-gray-500 dark:text-[#94A3B8]">
-            Controla las instrucciones editables de cada flujo sin mezclar cursos, bundles y slides HTML.
-          </p>
-        </div>
-
-        <div className="space-y-5">
-          {groupPromptsByScope(prompts).map((group) =>
-            renderPromptScopeSection(group.scope, group.prompts),
-          )}
-        </div>
-      </section>
     </div>
   );
 }
