@@ -246,6 +246,7 @@ export default async function BundleAgentPreviewPage({ searchParams }: PreviewPa
   }
 
   const spec = bundleAgentSpecSchema.parse(specRow.spec_json);
+  const previewBlueprint = buildBundleBlueprint(spec);
 
   return (
     <main className="min-h-screen bg-slate-100 p-6">
@@ -285,10 +286,10 @@ export default async function BundleAgentPreviewPage({ searchParams }: PreviewPa
           <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 shadow-sm lg:col-span-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Plan visual compilado</p>
             <p className="mt-2 text-sm font-semibold text-slate-900">
-              {blueprint.designPlan.templateFamily} · {blueprint.designPlan.layoutStrategy} · {blueprint.designPlan.transition}
+              {previewBlueprint.designPlan.templateFamily} · {previewBlueprint.designPlan.layoutStrategy} · {previewBlueprint.designPlan.transition}
             </p>
             <p className="mt-1 text-sm leading-6 text-slate-700">
-              Fondo {blueprint.designPlan.backgroundTreatment}, superficies {blueprint.designPlan.surfaceTreatment} y ritmo {blueprint.designPlan.pace}.
+              Fondo {previewBlueprint.designPlan.backgroundTreatment}, superficies {previewBlueprint.designPlan.surfaceTreatment} y ritmo {previewBlueprint.designPlan.pace}.
             </p>
           </div>
         </section>

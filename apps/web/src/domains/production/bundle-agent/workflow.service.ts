@@ -570,10 +570,10 @@ export class BundleAgentWorkflowService {
 
     if (error) throw error;
 
-    const existingFingerprints = (data || [])
-      .map((row: { visual_fingerprint?: unknown }) => bundleVisualFingerprintSchema.safeParse(row.visual_fingerprint))
-      .filter((result) => result.success)
-      .map((result) => result.data);
+    const existingFingerprints: BundleVisualFingerprint[] = (data || []).flatMap((row: { visual_fingerprint?: unknown }) => {
+      const parsed = bundleVisualFingerprintSchema.safeParse(row.visual_fingerprint);
+      return parsed.success ? [parsed.data] : [];
+    });
 
     return evaluateBundleVisualSimilarity(candidate, existingFingerprints);
   }
