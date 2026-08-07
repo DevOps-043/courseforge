@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { bundleAgentSpecSchema, type BundleAgentSpec } from "./types";
+import { attachBundleDesignPlan } from "./design-plan.service";
 
 function slugifyCompositionId(value: string) {
   const normalized = value
@@ -391,14 +392,14 @@ export function normalizeBundleAgentSpecForRendering(spec: BundleAgentSpec): Bun
     inferDisplaySubtitle(`${spec.description} ${spec.visualStyle}`, spec.requiredAssets),
   );
 
-  return bundleAgentSpecSchema.parse({
+  return attachBundleDesignPlan(bundleAgentSpecSchema.parse({
     ...spec,
     defaultProps: {
       ...spec.defaultProps,
       title,
       subtitle,
     },
-  });
+  }));
 }
 
 export function buildSpecFromConversation(input: {

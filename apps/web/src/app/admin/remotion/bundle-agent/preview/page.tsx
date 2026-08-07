@@ -2,6 +2,7 @@ import type React from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { buildBundleBlueprint, type LayerBox } from "@/domains/production/bundle-agent/blueprint.service";
+import type { BundleTemplateFamily } from "@/domains/production/bundle-agent/types";
 import { BundleAgentConversationService } from "@/domains/production/bundle-agent/conversation.service";
 import { resolveBundleAgentAuthContext } from "@/domains/production/bundle-agent/route-context";
 import { bundleAgentSpecSchema, type BundleAgentSpec } from "@/domains/production/bundle-agent/types";
@@ -42,10 +43,9 @@ function getBoxStyle(box: LayerBox, spec: BundleAgentSpec, zIndex: number): Reac
   };
 }
 
-function getPreviewTheme(spec: BundleAgentSpec, accentColor: string) {
-  const text = `${spec.title} ${spec.description} ${spec.visualStyle}`.toLowerCase();
+function getPreviewTheme(spec: BundleAgentSpec, accentColor: string, family: BundleTemplateFamily) {
   const tokens = spec.creativeBrief?.colorTokens;
-  const isReferenceWireframe = spec.creativeBrief?.layoutSystem.toLowerCase().includes("reference wireframe");
+  const isReferenceWireframe = family === "reference-frame";
 
   if (isReferenceWireframe && tokens) {
     return {
@@ -57,7 +57,7 @@ function getPreviewTheme(spec: BundleAgentSpec, accentColor: string) {
     };
   }
 
-  if (text.includes("claro") || text.includes("minimal") || text.includes("white")) {
+  if (family === "editorial-rail") {
     return {
       background: `linear-gradient(135deg, #f8fafc 0%, #e2e8f0 58%, ${accentColor}22 100%)`,
       panel: "rgba(255,255,255,0.72)",
@@ -67,11 +67,41 @@ function getPreviewTheme(spec: BundleAgentSpec, accentColor: string) {
     };
   }
 
-  if (text.includes("cinematic") || text.includes("inmersivo") || text.includes("pantalla completa")) {
+  if (family === "cinematic-field") {
     return {
       background: `radial-gradient(circle at 72% 34%, ${accentColor}66, transparent 30%), linear-gradient(145deg, #020617 0%, #111827 46%, #030712 100%)`,
       panel: "rgba(15,23,42,0.48)",
       border: "rgba(255,255,255,0.16)",
+      title: "text-white",
+      subtitle: "text-white/82",
+    };
+  }
+
+  if (family === "floating-collage") {
+    return {
+      background: `linear-gradient(${accentColor}18 1px, transparent 1px), linear-gradient(90deg, ${accentColor}18 1px, transparent 1px), #09090f`,
+      panel: "rgba(15,23,42,0.76)",
+      border: `${accentColor}70`,
+      title: "text-white",
+      subtitle: "text-white/82",
+    };
+  }
+
+  if (family === "minimal-focus") {
+    return {
+      background: `radial-gradient(circle at 50% 42%, #1e293b 0%, #020617 74%)`,
+      panel: "rgba(15,23,42,0.84)",
+      border: `${accentColor}55`,
+      title: "text-white",
+      subtitle: "text-white/82",
+    };
+  }
+
+  if (family === "split-contrast") {
+    return {
+      background: `linear-gradient(90deg, #0f172a 0%, #0f172a 48%, ${accentColor}55 48%, #020617 100%)`,
+      panel: "rgba(15,23,42,0.76)",
+      border: `${accentColor}75`,
       title: "text-white",
       subtitle: "text-white/82",
     };
@@ -86,8 +116,9 @@ function getPreviewTheme(spec: BundleAgentSpec, accentColor: string) {
   };
 }
 
-function getTextBlockStyle(layout: string): React.CSSProperties {
-  if (layout === "media-only" || layout === "support-left-avatar-right") {
+function getTextBlockStyle(layout: string, family: BundleTemplateFamily): React.CSSProperties {
+  if (family === "minimal-focus") return { left: "8%", bottom: "10%", width: "44%" };
+  if (layout === "media-only" || layout === "cinematic-field" || layout === "support-left-avatar-right") {
     return { left: "6%", bottom: "9%", width: "42%" };
   }
 
@@ -107,7 +138,7 @@ function SpecPreviewCanvas({ spec }: { spec: BundleAgentSpec }) {
   const hasSlides = spec.requiredAssets.includes("slides");
   const hasBroll = spec.requiredAssets.includes("broll");
   const hasCaptions = spec.requiredAssets.includes("captions");
-  const theme = getPreviewTheme(spec, accentColor);
+  const theme = getPreviewTheme(spec, accentColor, blueprint.designPlan.templateFamily);
   const isReferenceFrameLayout = blueprint.layout === "reference-frame-avatar-left-stack-right";
 
   return (
@@ -169,7 +200,7 @@ function SpecPreviewCanvas({ spec }: { spec: BundleAgentSpec }) {
         ) : null}
 
         {!isReferenceFrameLayout ? (
-          <section className={`absolute z-10 ${theme.title}`} style={getTextBlockStyle(blueprint.layout)}>
+          <section className={`absolute z-10 ${theme.title}`} style={getTextBlockStyle(blueprint.layout, blueprint.designPlan.templateFamily)}>
             <div className="mb-5 h-2 w-24 rounded-full" style={{ backgroundColor: accentColor }} />
             <h1 className="text-5xl font-semibold leading-none tracking-normal">{title}</h1>
             <p className={`mt-5 text-2xl leading-snug ${theme.subtitle}`}>{subtitle}</p>
@@ -250,6 +281,15 @@ export default async function BundleAgentPreviewPage({ searchParams }: PreviewPa
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Descripcion</p>
             <p className="mt-2 text-sm leading-6 text-slate-700">{spec.description || spec.visualStyle}</p>
+          </div>
+          <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 shadow-sm lg:col-span-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Plan visual compilado</p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">
+              {blueprint.designPlan.templateFamily} · {blueprint.designPlan.layoutStrategy} · {blueprint.designPlan.transition}
+            </p>
+            <p className="mt-1 text-sm leading-6 text-slate-700">
+              Fondo {blueprint.designPlan.backgroundTreatment}, superficies {blueprint.designPlan.surfaceTreatment} y ritmo {blueprint.designPlan.pace}.
+            </p>
           </div>
         </section>
       </div>

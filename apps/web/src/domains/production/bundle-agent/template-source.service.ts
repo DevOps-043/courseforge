@@ -144,6 +144,24 @@ type DesignTokens = {
   typographyDisplay?: string;
 };
 
+type TemplateFamily =
+  | "asymmetric-studio"
+  | "cinematic-field"
+  | "editorial-rail"
+  | "floating-collage"
+  | "minimal-focus"
+  | "reference-frame"
+  | "split-contrast"
+  | "stacked-evidence";
+
+type DesignPlan = {
+  templateFamily: TemplateFamily;
+  backgroundTreatment: "canvas" | "frame" | "grid" | "halo" | "paper" | "spotlight" | "split" | "vignette";
+  surfaceTreatment: "flat" | "framed" | "glass" | "paper" | "shadowed";
+  transition: "crossfade" | "focus-shift" | "hard-cut" | "scene-swap" | "soft-wipe";
+  pace: "calm" | "measured" | "energetic";
+};
+
 type TemplateProps = {
   accentColor?: string;
   animationVariant?: string;
@@ -161,6 +179,7 @@ type TemplateProps = {
   slides?: SlideAsset[];
   timelineOverrides?: TimelineOverrideManifest[];
   totalDurationInFrames?: number;
+  templateFamily?: string;
   visualVariantId?: string;
   voiceAudioUrl?: string;
 };
@@ -172,6 +191,10 @@ const fallbackFps = ${blueprint.fps};
 const fallbackDurationInFrames = ${blueprint.fallbackDurationFrames};
 const accentColor = ${json(blueprint.accentColor)};
 const layoutMode = ${json(blueprint.layout)};
+const generatedDesignPlan: DesignPlan = ${json(blueprint.designPlan)};
+const generatedTemplateFamily: TemplateFamily = ${json(blueprint.designPlan.templateFamily)};
+const generatedVisualVariantId = ${json(blueprint.defaultVisualVariantId)};
+const generatedAnimationVariant = ${json(blueprint.defaultAnimationVariant)};
 const renderText = ${blueprint.renderText ? "true" : "false"};
 const isReferenceFrameLayout = layoutMode === "reference-frame-avatar-left-stack-right";
 const avatarBox = ${boxLiteral(blueprint.boxes.avatar)};
@@ -186,7 +209,7 @@ const defaultStackOrders = {
 } as const;
 const defaultProps: TemplateProps = {
   accentColor,
-  animationVariant: "measured",
+  animationVariant: generatedAnimationVariant,
   avatarClips: [],
   bgMusicVolume: 0.12,
   brollClips: [],
@@ -207,7 +230,8 @@ const defaultProps: TemplateProps = {
   slides: [],
   timelineOverrides: [],
   totalDurationInFrames: fallbackDurationInFrames,
-  visualVariantId: "variant-studio-asymmetric",
+  templateFamily: generatedTemplateFamily,
+  visualVariantId: generatedVisualVariantId,
 };
 
 const REMOTION_EDITABLE_LAYERS = {
@@ -220,6 +244,130 @@ const REMOTION_EDITABLE_LAYERS = {
 const AVATAR_CLIP_CROSSFADE_FRAMES = 12;
 const BROLL_FADE_FRAMES = 8;
 const REMOTE_VIDEO_END_PADDING_FRAMES = 15;
+
+const TEMPLATE_FAMILIES: TemplateFamily[] = [
+  "asymmetric-studio",
+  "cinematic-field",
+  "editorial-rail",
+  "floating-collage",
+  "minimal-focus",
+  "reference-frame",
+  "split-contrast",
+  "stacked-evidence",
+];
+
+function resolveTemplateFamily(requestedFamily?: string): TemplateFamily {
+  // Geometry is compiled with the family. Runtime props may confirm, but cannot
+  // silently switch to a family whose editable-layer contract is different.
+  return requestedFamily === generatedTemplateFamily && TEMPLATE_FAMILIES.includes(requestedFamily as TemplateFamily)
+    ? requestedFamily as TemplateFamily
+    : generatedTemplateFamily;
+}
+
+function resolveTransition(animationVariant: string | undefined, family: TemplateFamily) {
+  if (animationVariant === "scene-swap") return "scene-swap" as const;
+  if (animationVariant === "hard-cut" || animationVariant === "kinetic") return "hard-cut" as const;
+  if (animationVariant === "soft-wipe") return "soft-wipe" as const;
+  if (animationVariant === "focus-shift") return "focus-shift" as const;
+  if (animationVariant === "crossfade" || animationVariant === "measured") return "crossfade" as const;
+  if (family === "reference-frame") return "scene-swap" as const;
+  return generatedDesignPlan.transition;
+}
+
+function getBackgroundStyle(
+  family: TemplateFamily,
+  plan: DesignPlan,
+  background: string,
+  surface: string,
+  accent: string,
+): React.CSSProperties {
+  if (plan.backgroundTreatment === "frame" || family === "reference-frame") {
+    return { background, boxShadow: "inset 0 0 0 30px " + accent };
+  }
+  if (plan.backgroundTreatment === "paper" || family === "editorial-rail") {
+    return { background: "linear-gradient(135deg, " + background + " 0%, " + surface + " 74%, " + accent + "22 100%)" };
+  }
+  if (plan.backgroundTreatment === "grid" || family === "floating-collage") {
+    return {
+      backgroundColor: background,
+      backgroundImage: "linear-gradient(" + accent + "18 1px, transparent 1px), linear-gradient(90deg, " + accent + "18 1px, transparent 1px)",
+      backgroundSize: "48px 48px",
+    };
+  }
+  if (plan.backgroundTreatment === "vignette" || family === "cinematic-field") {
+    return { background: "radial-gradient(circle at 72% 28%, " + accent + "66 0%, transparent 32%), linear-gradient(145deg, " + background + " 0%, " + surface + " 52%, #020617 100%)" };
+  }
+  if (plan.backgroundTreatment === "split" || family === "split-contrast") {
+    return { background: "linear-gradient(90deg, " + surface + " 0%, " + surface + " 48%, " + accent + "36 48%, " + background + " 100%)" };
+  }
+  if (plan.backgroundTreatment === "spotlight" || family === "minimal-focus") {
+    return { background: "radial-gradient(circle at 50% 42%, " + surface + " 0%, " + background + " 70%)" };
+  }
+  return { background: "radial-gradient(circle at 80% 18%, " + accent + "35 0%, transparent 28%), " + background };
+}
+
+function getSurfaceStyle(
+  family: TemplateFamily,
+  plan: DesignPlan,
+  accent: string,
+  surface: string,
+): React.CSSProperties {
+  if (plan.surfaceTreatment === "framed" || family === "reference-frame") {
+    return { background: surface, border: "3px solid " + accent, borderRadius: 0, boxSizing: "border-box" };
+  }
+  if (plan.surfaceTreatment === "paper" || family === "editorial-rail") {
+    return { background: surface, border: "1px solid " + accent + "45", borderRadius: 8, boxShadow: "0 12px 28px rgba(15,23,42,0.12)" };
+  }
+  if (plan.surfaceTreatment === "glass" || family === "floating-collage") {
+    return { background: surface + "D9", border: "1px solid " + accent + "55", borderRadius: 28, boxShadow: "0 22px 54px rgba(2,6,23,0.32)" };
+  }
+  if (plan.surfaceTreatment === "shadowed" || family === "stacked-evidence") {
+    return { background: surface, border: "1px solid " + accent + "45", borderRadius: 18, boxShadow: "0 18px 42px rgba(2,6,23,0.28)" };
+  }
+  return { background: surface, border: "1px solid " + accent + "30", borderRadius: family === "minimal-focus" ? 4 : 14 };
+}
+
+function getTransitionStyle(
+  transition: ReturnType<typeof resolveTransition>,
+  localFrame: number,
+  durationInFrames: number,
+): React.CSSProperties {
+  const boundedDuration = Math.max(1, durationInFrames);
+  const transitionFrames = Math.min(16, Math.max(1, Math.floor(boundedDuration * 0.18)));
+  const progress = Math.min(1, Math.max(0, localFrame / transitionFrames));
+
+  if (transition === "hard-cut") return { opacity: localFrame > 0 ? 1 : 0 };
+  if (transition === "soft-wipe") return { clipPath: "inset(0 " + Math.round((1 - progress) * 100) + "% 0 0)", opacity: 0.86 + progress * 0.14 };
+  if (transition === "focus-shift") return { opacity: 0.62 + progress * 0.38, filter: "saturate(" + (0.78 + progress * 0.22).toFixed(2) + ")" };
+  return { opacity: 0.72 + progress * 0.28 };
+}
+
+function getVariantStyle(visualVariantId: string | undefined, accent: string): React.CSSProperties {
+  const variant = (visualVariantId || "").toLowerCase();
+  if (variant.includes("media") || variant.includes("kinetic")) {
+    return { boxShadow: "inset 0 0 0 2px " + accent + "80" };
+  }
+  if (variant.includes("editorial") || variant.includes("stacked")) {
+    return { outline: "1px solid " + accent + "55", outlineOffset: -1 };
+  }
+  return {};
+}
+
+function FamilyDecoration(props: { family: TemplateFamily; accent: string; width: number; height: number }) {
+  if (props.family === "reference-frame") {
+    return <div style={{ position: "absolute", inset: 0, border: "30px solid " + props.accent, zIndex: 90, pointerEvents: "none", boxSizing: "border-box" }} />;
+  }
+  if (props.family === "editorial-rail") {
+    return <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: Math.max(12, Math.round(props.width * 0.012)), background: props.accent, opacity: 0.9, zIndex: 1 }} />;
+  }
+  if (props.family === "split-contrast") {
+    return <div style={{ position: "absolute", left: Math.round(props.width * 0.5), top: 0, bottom: 0, width: 3, background: props.accent, opacity: 0.72, zIndex: 1 }} />;
+  }
+  if (props.family === "minimal-focus") {
+    return <div style={{ position: "absolute", left: Math.round(props.width * 0.5) - 44, bottom: 32, width: 88, height: 4, background: props.accent, opacity: 0.9, zIndex: 40 }} />;
+  }
+  return null;
+}
 
 function getAvatarClipItemLayerId(order: number) {
   return "avatar:" + Math.max(1, Math.round(order));
@@ -795,6 +943,8 @@ export const calculateMetadata: CalculateMetadataFunction<TemplateProps> = async
 export function CourseforgeGeneratedBundle(props: TemplateProps) {
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
+  const templateFamily = resolveTemplateFamily(props.templateFamily);
+  const transition = resolveTransition(props.animationVariant, templateFamily);
   const slides = orderedSlides(props.slides);
   const brollClips = orderedBrollClips(props.brollClips);
   const avatarClips = orderedAvatarClips(props.avatarClips);
@@ -820,18 +970,21 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
   const activeSceneStartFrame = activeSlideItem?.startFrame ?? activeBrollItem?.startFrame ?? 0;
   const sceneLocalFrame = Math.max(0, frame - activeSceneStartFrame);
   const sceneTransitionFrames = Math.min(18, Math.max(1, framesPerScene * 0.24));
-  const sceneProgress = props.sceneSwapOnSlideChange
+  const shouldSwapScenes = props.sceneSwapOnSlideChange === true || transition === "scene-swap";
+  const sceneProgress = shouldSwapScenes
     ? interpolate(sceneLocalFrame, [0, sceneTransitionFrames], [0, 1], {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
     })
     : 1;
-  const sceneMirrored = Boolean(props.sceneSwapOnSlideChange) && sceneIndex % 2 === 1;
-  const previousSceneMirrored = Boolean(props.sceneSwapOnSlideChange) && sceneIndex > 0 && (sceneIndex - 1) % 2 === 1;
+  const sceneMirrored = shouldSwapScenes && sceneIndex % 2 === 1;
+  const previousSceneMirrored = shouldSwapScenes && sceneIndex > 0 && (sceneIndex - 1) % 2 === 1;
   const supportUnionBox = unionBoxes(slidesBox, brollBox);
-  const shouldExpandSupport = props.expandMissingSupportMedia === true;
-  const effectiveSlidesBox = shouldExpandSupport && hasSlidesAsset && !hasBrollAsset ? supportUnionBox : slidesBox;
-  const effectiveBrollBox = shouldExpandSupport && hasBrollAsset && !hasSlidesAsset ? supportUnionBox : brollBox;
+  const familyExpandsSoloSupport = templateFamily === "cinematic-field" || templateFamily === "minimal-focus";
+  const shouldExpandSupport = props.expandMissingSupportMedia === true || familyExpandsSoloSupport;
+  const soloSupportBox = familyExpandsSoloSupport ? primaryVisualBox : supportUnionBox;
+  const effectiveSlidesBox = shouldExpandSupport && hasSlidesAsset && !hasBrollAsset ? soloSupportBox : slidesBox;
+  const effectiveBrollBox = shouldExpandSupport && hasBrollAsset && !hasSlidesAsset ? soloSupportBox : brollBox;
   const avatarSceneBox = buildSceneBox(avatarBox, sceneMirrored, previousSceneMirrored, sceneProgress);
   const slidesSceneBox = buildSceneBox(effectiveSlidesBox, sceneMirrored, previousSceneMirrored, sceneProgress);
   const brollSceneBox = buildSceneBox(effectiveBrollBox, sceneMirrored, previousSceneMirrored, sceneProgress);
@@ -844,6 +997,9 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
   const tokenBackground = props.designTokens?.backgroundColor || "#05070b";
   const tokenSurface = props.designTokens?.surfaceColor || "#090d14";
   const tokenBodyFont = props.designTokens?.typographyBody || "Inter, Arial, sans-serif";
+  const backgroundStyle = getBackgroundStyle(templateFamily, generatedDesignPlan, tokenBackground, tokenSurface, tokenAccent);
+  const surfaceStyle = getSurfaceStyle(templateFamily, generatedDesignPlan, tokenAccent, tokenSurface);
+  const variantStyle = getVariantStyle(props.visualVariantId, tokenAccent);
 
   const avatarOverride = buildLayoutOverrideStyle(props.layoutOverrides, REMOTION_EDITABLE_LAYERS.AVATAR);
   const primaryVisualOverride = buildLayoutOverrideStyle(props.layoutOverrides, REMOTION_EDITABLE_LAYERS.PRIMARY_VISUAL);
@@ -860,15 +1016,17 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
   return (
     <AbsoluteFill
       style={{
-        background: tokenBackground,
         fontFamily: tokenBodyFont,
         overflow: "hidden",
+        ...backgroundStyle,
+        ...variantStyle,
         ...backgroundOverride,
       }}
     >
       <DeckRuntimeStyles deckCss={props.deckCss} deckFonts={props.deckFonts} />
+      <FamilyDecoration family={templateFamily} accent={tokenAccent} width={compositionWidth} height={compositionHeight} />
 
-      <div style={buildBoxStyle(primaryVisualBox, { background: isReferenceFrameLayout ? "transparent" : tokenSurface, zIndex: defaultStackOrders.primaryVisual, ...primaryVisualOverride })} />
+      <div style={buildBoxStyle(primaryVisualBox, { ...(isReferenceFrameLayout ? { background: "transparent" } : surfaceStyle), zIndex: defaultStackOrders.primaryVisual, ...primaryVisualOverride })} />
 
       {hasAvatarClips ? (
         <>
@@ -878,7 +1036,7 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
 
             return (
               <Sequence key={avatarItem.id} from={avatarItem.startFrame} durationInFrames={avatarItem.durationInFrames}>
-                <div style={buildBoxStyle(avatarSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.avatar, opacity: avatarOpacity, ...avatarOverride, ...avatarItemOverride })}>
+                <div style={buildBoxStyle(avatarSceneBox, { ...(isReferenceFrameLayout ? { background: tokenSurface } : surfaceStyle), zIndex: defaultStackOrders.avatar, opacity: avatarOpacity, ...avatarOverride, ...avatarItemOverride })}>
                   <RenderVideo
                     src={avatarItem.clip.url}
                     muted={hasVoice}
@@ -895,7 +1053,7 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
           })}
         </>
       ) : hasAvatarVideo ? (
-        <div style={buildBoxStyle(avatarSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.avatar, ...avatarOverride })}>
+        <div style={buildBoxStyle(avatarSceneBox, { ...(isReferenceFrameLayout ? { background: tokenSurface } : surfaceStyle), zIndex: defaultStackOrders.avatar, ...avatarOverride })}>
           <RenderVideo
             src={props.avatarVideoUrl!}
             muted={hasVoice}
@@ -908,7 +1066,7 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
 
       {activeSlide && activeSlideItem ? (
         <Sequence from={activeSlideItem.startFrame} durationInFrames={activeSlideItem.durationInFrames}>
-          <div style={buildBoxStyle(slidesSceneBox, { background: tokenSurface, opacity: slideOpacity, zIndex: defaultStackOrders.slides, ...slidesOverride, ...activeSlideItemOverride })}>
+          <div style={buildBoxStyle(slidesSceneBox, { ...surfaceStyle, opacity: slideOpacity, zIndex: defaultStackOrders.slides, ...getTransitionStyle(transition, slideLocalFrame, activeSlideItem.durationInFrames), ...slidesOverride, ...activeSlideItemOverride })}>
             {renderSlideAsset(activeSlide, slidesSceneBox, slideLocalFrame, fallbackFps)}
           </div>
         </Sequence>
@@ -916,7 +1074,7 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
 
       {activeBroll && activeBrollItem ? (
         <Sequence from={activeBrollItem.startFrame} durationInFrames={activeBrollItem.durationInFrames}>
-          <div style={buildBoxStyle(brollSceneBox, { background: isReferenceFrameLayout ? tokenSurface : "transparent", zIndex: defaultStackOrders.broll, ...brollOverride, ...activeBrollItemOverride })}>
+          <div style={buildBoxStyle(brollSceneBox, { ...(isReferenceFrameLayout ? { background: tokenSurface } : surfaceStyle), zIndex: defaultStackOrders.broll, ...getTransitionStyle(transition, Math.max(0, frame - activeBrollItem.startFrame), activeBrollItem.durationInFrames), ...brollOverride, ...activeBrollItemOverride })}>
             <RenderVideo
               src={activeBroll.url}
               muted

@@ -11,6 +11,16 @@ import {
 } from "./types";
 import { generateBundleSpecWithAi } from "./ai-spec.service";
 import {
+  attachBundleDesignPlan,
+  bundleVisualFingerprintSchema,
+  createBundleVisualFingerprint,
+  type BundleVisualFingerprint,
+} from "./design-plan.service";
+import {
+  evaluateBundleVisualSimilarity,
+  type BundleSimilarityGuardResult,
+} from "./visual-similarity.service";
+import {
   buildSlideTemplatePackageZip,
   buildSlideTemplateSpecFromConversation,
   parseSlideTemplateAgentSpec,
@@ -24,6 +34,68 @@ import {
 
 const ACTIVE_CONVERSATION_LIMIT = 25;
 const HOURLY_GENERATION_LIMIT = 12;
+
+class VisualSimilarityBlockedError extends Error {
+  constructor(readonly guard: BundleSimilarityGuardResult) {
+    super(
+      `La plantilla coincide visualmente con una versión existente (${Math.round(guard.highestScore * 100)}%). Cambia la familia visual, el layout o la transición antes de generar otra versión.`,
+    );
+    this.name = "VisualSimilarityBlockedError";
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * User-facing overrides are intentionally merged at their nested contracts so
+ * choosing a family cannot accidentally erase AI-generated props or tokens.
+ */
+function mergeBundleSpecOverrides(base: BundleAgentSpec, overrides: unknown): BundleAgentSpec {
+  if (!isRecord(overrides)) return base;
+
+  const overrideDefaultProps = isRecord(overrides.defaultProps) ? overrides.defaultProps : {};
+  const overridePropsSchema = isRecord(overrides.propsSchema) ? overrides.propsSchema : {};
+  const baseProperties = isRecord(base.propsSchema.properties) ? base.propsSchema.properties : {};
+  const overrideProperties = isRecord(overridePropsSchema.properties) ? overridePropsSchema.properties : {};
+  const overrideCreativeBrief = isRecord(overrides.creativeBrief) ? overrides.creativeBrief : {};
+  const baseCreativeBrief = base.creativeBrief;
+
+  return bundleAgentSpecSchema.parse({
+    ...base,
+    ...overrides,
+    creativeBrief: {
+      ...baseCreativeBrief,
+      ...overrideCreativeBrief,
+      colorTokens: {
+        ...baseCreativeBrief.colorTokens,
+        ...(isRecord(overrideCreativeBrief.colorTokens) ? overrideCreativeBrief.colorTokens : {}),
+      },
+      typographyTokens: {
+        ...baseCreativeBrief.typographyTokens,
+        ...(isRecord(overrideCreativeBrief.typographyTokens) ? overrideCreativeBrief.typographyTokens : {}),
+      },
+      similarityCheck: {
+        ...baseCreativeBrief.similarityCheck,
+        ...(isRecord(overrideCreativeBrief.similarityCheck) ? overrideCreativeBrief.similarityCheck : {}),
+      },
+    },
+    propsSchema: {
+      ...base.propsSchema,
+      ...overridePropsSchema,
+      type: "object",
+      properties: {
+        ...baseProperties,
+        ...overrideProperties,
+      },
+    },
+    defaultProps: {
+      ...base.defaultProps,
+      ...overrideDefaultProps,
+    },
+  });
+}
 
 function getSpecAccentColor(spec: BundleAgentSpec) {
   const value = spec.defaultProps.accentColor;
@@ -73,12 +145,17 @@ export class BundleAgentWorkflowService {
           messages: messages || [],
         });
     const spec = artifactKind === "slide_template"
-      ? parseSlideTemplateAgentSpec(generated.spec)
-      : bundleAgentSpecSchema.parse({
+      ? parseSlideTemplateAgentSpec({
           ...generated.spec,
-          artifactKind,
           ...(overrides && typeof overrides === "object" ? overrides : {}),
-        });
+        })
+      : attachBundleDesignPlan(mergeBundleSpecOverrides(
+          bundleAgentSpecSchema.parse({
+            ...generated.spec,
+            artifactKind,
+          }),
+          overrides,
+        ));
     const specHash = computeSpecHash(spec);
     const { data: latest } = await this.context.admin
       .from("soflia_bundle_specs")
@@ -155,10 +232,44 @@ export class BundleAgentWorkflowService {
       return this.generateSlideTemplatePackage(conversationId, specRow.id, specRow.spec_json);
     }
 
-    const spec = bundleAgentSpecSchema.parse(specRow.spec_json);
+    const spec = attachBundleDesignPlan(bundleAgentSpecSchema.parse(specRow.spec_json));
+    const visualFingerprint = createBundleVisualFingerprint(spec);
+    const similarityGuard = await this.evaluateVisualSimilarity(visualFingerprint);
+
+    if (similarityGuard.decision === "block") {
+      const blockedRun = await this.createGenerationRun(conversationId, specRow.id, conversation.template_id, spec, {
+        designPlan: spec.designPlan,
+        visualFingerprint,
+        similarityGuard,
+      });
+      const blockedError = new VisualSimilarityBlockedError(similarityGuard);
+
+      await this.context.admin
+        .from("soflia_bundle_generation_runs")
+        .update({
+          status: "VALIDATION_FAILED",
+          error_sanitized: sanitizeErrorMessage(blockedError),
+          finished_at: new Date().toISOString(),
+        })
+        .eq("id", blockedRun.id)
+        .eq("organization_id", this.context.organizationId);
+
+      await this.context.admin
+        .from("soflia_bundle_conversations")
+        .update({ status: "READY_FOR_GENERATION", updated_at: new Date().toISOString() })
+        .eq("id", conversationId)
+        .eq("organization_id", this.context.organizationId);
+
+      throw blockedError;
+    }
+
     const templateId = conversation.template_id || (await this.createPrimaryTemplate(conversationId, spec));
     await this.refreshAgentTemplateDefaultConfig(templateId, spec);
-    const run = await this.createGenerationRun(conversationId, specRow.id, templateId, spec);
+    const run = await this.createGenerationRun(conversationId, specRow.id, templateId, spec, {
+      designPlan: spec.designPlan,
+      visualFingerprint,
+      similarityGuard,
+    });
 
     try {
       await this.context.admin
@@ -169,6 +280,11 @@ export class BundleAgentWorkflowService {
 
       const bundle = await buildControlledBundleZip(spec);
       const validationReport = await validateGeneratedRemotionBundle(bundle.buffer, bundle.originalFileName);
+      if (similarityGuard.decision === "review") {
+        validationReport.warnings.push(
+          `Similitud visual alta (${Math.round(similarityGuard.highestScore * 100)}%): ${similarityGuard.matchingTraits.join(", ") || "rasgos de composición compartidos"}.`,
+        );
+      }
       const storagePath = await this.uploadBundle(templateId, run.id, bundle.originalFileName, bundle.buffer);
       const parentTemplateVersionId = await this.getLatestTemplateVersionId(templateId);
       const { version } = await createTemplateVersionRecord({
@@ -216,10 +332,11 @@ export class BundleAgentWorkflowService {
 
       return { generationRunId: run.id, templateId, version, validationReport };
     } catch (error) {
+      const isSimilarityBlock = error instanceof VisualSimilarityBlockedError;
       await this.context.admin
         .from("soflia_bundle_generation_runs")
         .update({
-          status: "FAILED",
+          status: isSimilarityBlock ? "VALIDATION_FAILED" : "FAILED",
           error_sanitized: sanitizeErrorMessage(error),
           finished_at: new Date().toISOString(),
         })
@@ -228,7 +345,7 @@ export class BundleAgentWorkflowService {
 
       await this.context.admin
         .from("soflia_bundle_conversations")
-        .update({ status: "FAILED", updated_at: new Date().toISOString() })
+        .update({ status: isSimilarityBlock ? "READY_FOR_GENERATION" : "FAILED", updated_at: new Date().toISOString() })
         .eq("id", conversationId)
         .eq("organization_id", this.context.organizationId);
 
@@ -442,11 +559,35 @@ export class BundleAgentWorkflowService {
       .eq("organization_id", this.context.organizationId);
   }
 
+  private async evaluateVisualSimilarity(candidate: BundleVisualFingerprint): Promise<BundleSimilarityGuardResult> {
+    const { data, error } = await this.context.admin
+      .from("soflia_bundle_generation_runs")
+      .select("visual_fingerprint")
+      .eq("organization_id", this.context.organizationId)
+      .not("visual_fingerprint", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) throw error;
+
+    const existingFingerprints = (data || [])
+      .map((row: { visual_fingerprint?: unknown }) => bundleVisualFingerprintSchema.safeParse(row.visual_fingerprint))
+      .filter((result) => result.success)
+      .map((result) => result.data);
+
+    return evaluateBundleVisualSimilarity(candidate, existingFingerprints);
+  }
+
   private async createGenerationRun(
     conversationId: string,
     specId: string,
     templateId: string | null,
     spec: BundleAgentSpec | ReturnType<typeof parseSlideTemplateAgentSpec>,
+    audit?: {
+      designPlan: unknown;
+      visualFingerprint: BundleVisualFingerprint;
+      similarityGuard: BundleSimilarityGuardResult;
+    },
   ) {
     const { data, error } = await this.context.admin
       .from("soflia_bundle_generation_runs")
@@ -460,6 +601,11 @@ export class BundleAgentWorkflowService {
           ? "soflia-slide-template-package-v1"
           : "soflia-controlled-video-template-v1",
         input_hash: stableJsonHash(spec),
+        ...(audit ? {
+          design_plan: audit.designPlan,
+          visual_fingerprint: audit.visualFingerprint,
+          similarity_guard_result: audit.similarityGuard,
+        } : {}),
       })
       .select("*")
       .single();
