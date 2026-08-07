@@ -1,9 +1,20 @@
 import type { EditableLayerDefinition } from "@/remotion/layout-overrides";
 import type { BundleAgentSpec } from "./types";
+import {
+  buildBundleDesignPlan,
+  createBundleVisualFingerprint,
+  type BundleVisualFingerprint,
+} from "./design-plan.service";
+import type { BundleAgentDesignPlan } from "./types";
 
 export type BundleBlueprintLayout =
   | "avatar-left-slides-broll-right"
+  | "cinematic-field"
+  | "editorial-rail"
+  | "floating-collage"
+  | "minimal-focus"
   | "reference-frame-avatar-left-stack-right"
+  | "split-contrast"
   | "support-left-avatar-right"
   | "split-avatar-support"
   | "stacked-support"
@@ -27,8 +38,12 @@ export interface BundleBlueprint {
   height: number;
   fallbackDurationFrames: number;
   requiredAssets: BundleAgentSpec["requiredAssets"];
+  defaultVisualVariantId: string;
+  defaultAnimationVariant: string;
   layout: BundleBlueprintLayout;
   timeline: BundleBlueprintTimeline;
+  designPlan: BundleAgentDesignPlan;
+  visualFingerprint: BundleVisualFingerprint;
   renderText: boolean;
   accentColor: string;
   boxes: {
@@ -94,7 +109,7 @@ function shouldRenderText(spec: BundleAgentSpec) {
   return spec.requiredAssets.includes("captions");
 }
 
-function resolveLayout(spec: BundleAgentSpec): BundleBlueprintLayout {
+function resolveLayout(spec: BundleAgentSpec, designPlan: BundleAgentDesignPlan): BundleBlueprintLayout {
   const intent = getIntentText(spec);
   const hasAvatar = spec.requiredAssets.includes("avatar");
   const hasSlides = spec.requiredAssets.includes("slides");
@@ -113,8 +128,32 @@ function resolveLayout(spec: BundleAgentSpec): BundleBlueprintLayout {
     "slide region above and b-roll region below",
   ]);
 
-  if (hasAvatar && hasSlides && hasBroll && asksReferenceWireframe) {
+  if (designPlan.templateFamily === "reference-frame" || (hasAvatar && hasSlides && hasBroll && asksReferenceWireframe)) {
     return "reference-frame-avatar-left-stack-right";
+  }
+
+  if (designPlan.templateFamily === "cinematic-field") {
+    return "cinematic-field";
+  }
+
+  if (designPlan.templateFamily === "editorial-rail") {
+    return "editorial-rail";
+  }
+
+  if (designPlan.templateFamily === "floating-collage") {
+    return "floating-collage";
+  }
+
+  if (designPlan.templateFamily === "minimal-focus") {
+    return "minimal-focus";
+  }
+
+  if (designPlan.templateFamily === "stacked-evidence") {
+    return "stacked-support";
+  }
+
+  if (designPlan.templateFamily === "split-contrast" && !(hasAvatar && asksRightAvatar)) {
+    return "split-contrast";
   }
 
   if (asksFullscreen && (hasSlides || hasBroll) && !hasAvatar) {
@@ -140,7 +179,7 @@ function resolveLayout(spec: BundleAgentSpec): BundleBlueprintLayout {
   return "media-only";
 }
 
-function resolveTimeline(spec: BundleAgentSpec, layout: BundleBlueprintLayout): BundleBlueprintTimeline {
+function resolveTimeline(spec: BundleAgentSpec, layout: BundleBlueprintLayout, designPlan: BundleAgentDesignPlan): BundleBlueprintTimeline {
   const intent = getIntentText(spec);
   const asksEqualSlides = includesAny(intent, [
     "mismo tiempo",
@@ -149,7 +188,12 @@ function resolveTimeline(spec: BundleAgentSpec, layout: BundleBlueprintLayout): 
     "se vean todas las diapositivas",
   ]);
 
-  if (layout === "avatar-left-slides-broll-right" || layout === "reference-frame-avatar-left-stack-right" || asksEqualSlides) {
+  if (
+    layout === "avatar-left-slides-broll-right"
+    || layout === "reference-frame-avatar-left-stack-right"
+    || designPlan.sceneStrategy === "dual-support"
+    || asksEqualSlides
+  ) {
     return "equal-slides-with-indexed-broll";
   }
 
@@ -161,6 +205,54 @@ function box(x: number, y: number, width: number, height: number): LayerBox {
 }
 
 function buildBoxes(layout: BundleBlueprintLayout, width: number, height: number) {
+  if (layout === "cinematic-field") {
+    const margin = Math.round(Math.min(width, height) * 0.05);
+    const overlayWidth = Math.round(width * 0.34);
+    const overlayHeight = Math.round(height * 0.28);
+    return {
+      avatar: box(width - overlayWidth - margin, height - overlayHeight - margin, overlayWidth, overlayHeight),
+      primaryVisual: box(0, 0, width, height),
+      slides: box(margin, margin, Math.round(width * 0.58), Math.round(height * 0.64)),
+      broll: box(width - overlayWidth - margin, margin, overlayWidth, overlayHeight),
+    };
+  }
+
+  if (layout === "editorial-rail") {
+    const margin = Math.round(Math.min(width, height) * 0.045);
+    const railWidth = Math.round(width * 0.27);
+    const contentX = railWidth + margin * 2;
+    const contentWidth = width - contentX - margin;
+    const brollHeight = Math.round(height * 0.26);
+    return {
+      avatar: box(margin, margin, railWidth - margin, height - margin * 2),
+      primaryVisual: box(contentX, 0, width - contentX, height),
+      slides: box(contentX + margin, margin, contentWidth - margin * 2, height - brollHeight - margin * 3),
+      broll: box(contentX + margin, height - brollHeight - margin, contentWidth - margin * 2, brollHeight),
+    };
+  }
+
+  if (layout === "floating-collage") {
+    const margin = Math.round(Math.min(width, height) * 0.045);
+    return {
+      avatar: box(margin, Math.round(height * 0.18), Math.round(width * 0.31), Math.round(height * 0.66)),
+      primaryVisual: box(0, 0, width, height),
+      slides: box(Math.round(width * 0.35), margin, Math.round(width * 0.54), Math.round(height * 0.56)),
+      broll: box(Math.round(width * 0.57), Math.round(height * 0.57), Math.round(width * 0.36), Math.round(height * 0.34)),
+    };
+  }
+
+  if (layout === "minimal-focus") {
+    const margin = Math.round(Math.min(width, height) * 0.075);
+    const supportWidth = width - margin * 2;
+    const supportHeight = height - margin * 2;
+    return {
+      avatar: box(width - Math.round(width * 0.26) - margin, height - Math.round(height * 0.25) - margin, Math.round(width * 0.26), Math.round(height * 0.25)),
+      primaryVisual: box(0, 0, width, height),
+      slides: box(margin, margin, supportWidth, supportHeight),
+      broll: box(margin, margin, supportWidth, supportHeight),
+    };
+  }
+
   if (layout === "avatar-left-slides-broll-right") {
     const avatarWidth = width * 0.42;
     const rightX = avatarWidth;
@@ -194,6 +286,19 @@ function buildBoxes(layout: BundleBlueprintLayout, width: number, height: number
       primaryVisual: box(0, 0, width, height),
       slides: box(rightX, innerY, rightWidth, supportHeight),
       broll: box(rightX, innerY + supportHeight + gap, rightWidth, innerHeight - supportHeight - gap),
+    };
+  }
+
+  if (layout === "split-contrast") {
+    const margin = Math.round(Math.min(width, height) * 0.04);
+    const avatarWidth = Math.round(width * 0.46);
+    const supportWidth = width - avatarWidth - margin * 3;
+    const supportHeight = Math.round((height - margin * 3) / 2);
+    return {
+      avatar: box(width - avatarWidth - margin, margin, avatarWidth, height - margin * 2),
+      primaryVisual: box(0, 0, width - avatarWidth, height),
+      slides: box(margin, margin, supportWidth, supportHeight),
+      broll: box(margin, margin * 2 + supportHeight, supportWidth, height - supportHeight - margin * 3),
     };
   }
 
@@ -297,8 +402,9 @@ function getAccentColor(spec: BundleAgentSpec) {
 export function buildBundleBlueprint(spec: BundleAgentSpec): BundleBlueprint {
   const width = Number.isFinite(spec.width) ? spec.width : 1920;
   const height = Number.isFinite(spec.height) ? spec.height : 1080;
-  const layout = resolveLayout(spec);
-  const timeline = resolveTimeline(spec, layout);
+  const designPlan = buildBundleDesignPlan(spec);
+  const layout = resolveLayout(spec, designPlan);
+  const timeline = resolveTimeline(spec, layout, designPlan);
   const boxes = buildBoxes(layout, width, height);
 
   return {
@@ -310,8 +416,16 @@ export function buildBundleBlueprint(spec: BundleAgentSpec): BundleBlueprint {
     height,
     fallbackDurationFrames: Number.isFinite(spec.durationFrames) ? spec.durationFrames : 150,
     requiredAssets: spec.requiredAssets,
+    defaultVisualVariantId: typeof spec.defaultProps.visualVariantId === "string"
+      ? spec.defaultProps.visualVariantId
+      : spec.creativeBrief.visualVariants[0]?.id || "variant-studio-asymmetric",
+    defaultAnimationVariant: typeof spec.defaultProps.animationVariant === "string"
+      ? spec.defaultProps.animationVariant
+      : designPlan.transition,
     layout,
     timeline,
+    designPlan,
+    visualFingerprint: createBundleVisualFingerprint(spec, designPlan),
     renderText: shouldRenderText(spec),
     accentColor: getAccentColor(spec),
     boxes,

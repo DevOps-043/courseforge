@@ -207,6 +207,7 @@ function applyVisualReferenceConstraints(spec: BundleAgentSpec, messages: Messag
 
   return bundleAgentSpecSchema.parse({
     ...spec,
+    templateFamily: shouldLockReference ? "reference-frame" : spec.templateFamily,
     visualStyle,
     creativeBrief,
     requiredAssets,
@@ -358,6 +359,7 @@ Reglas estrictas:
 - La plantilla final debe resolver la duracion con calculateMetadata usando props.totalDurationInFrames y, cuando aplique, metadata real del avatar/audio.
 - Si el usuario pide colores, agrega props simples como accentColor en propsSchema/defaultProps.
 - propsSchema/defaultProps debe exponer visualVariantId, animationVariant y designTokens cuando creativeBrief exista.
+- templateFamily debe ser exactamente una de: asymmetric-studio, cinematic-field, editorial-rail, floating-collage, minimal-focus, reference-frame, split-contrast, stacked-evidence. Elige una sola familia que cambie de verdad composición, fondo y transición; si hay una referencia estructural, usa reference-frame.
 - Usa compositionId estable con letras, numeros, punto, guion, dos puntos o guion bajo.
 - durationFrames entre 30 y 900; fps entre 12 y 60; width max 3840; height max 2160.
 - propsSchema debe ser JSON Schema simple type=object con properties de tipos basicos.
@@ -368,6 +370,7 @@ Contrato exacto:
   "title": "string",
   "description": "string",
   "visualStyle": "string",
+  "templateFamily": "asymmetric-studio",
   "creativeBrief": {
     "directionName": "string",
     "visualReferences": ["string", "string"],

@@ -5,7 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowLeft, Bot, CheckCircle2, Download, ExternalLink, FileCode2, ImagePlus, Loader2, PackageCheck, Send, Sparkles, Trash2, User } from "lucide-react";
 import { uploadWithSignedUrl } from "@/lib/storage-upload";
-import type { BundleAgentVisualReference } from "@/domains/production/bundle-agent/types";
+import {
+  BUNDLE_TEMPLATE_FAMILY_OPTIONS,
+  type BundleAgentVisualReference,
+  type BundleTemplateFamily,
+} from "@/domains/production/bundle-agent/types";
 
 interface ConversationState {
   conversation: { id: string; title: string; status: string; template_id: string | null } | null;
@@ -17,7 +21,15 @@ interface ConversationState {
     created_at: string;
   }>;
   specs: Array<{ id: string; version_number: number; spec_json: Record<string, unknown>; spec_hash: string }>;
-  generationRuns: Array<{ id: string; status: string; bundle_storage_path: string | null; error_sanitized: string | null }>;
+  generationRuns: Array<{
+    id: string;
+    status: string;
+    bundle_storage_path: string | null;
+    error_sanitized: string | null;
+    design_plan?: Record<string, unknown> | null;
+    visual_fingerprint?: Record<string, unknown> | null;
+    similarity_guard_result?: Record<string, unknown> | null;
+  }>;
   versionLinks: Array<{ id: string; change_summary: string | null; template_version?: { id: string; status: string; build_status: string } }>;
 }
 
@@ -107,6 +119,31 @@ function formatCreativeBriefSummary(spec: Record<string, unknown> | undefined) {
     variantNames,
     differentiators,
   };
+}
+
+function formatDesignPlanSummary(spec: Record<string, unknown> | undefined) {
+  const plan = asRecord(spec?.designPlan);
+  if (!plan) return null;
+
+  return {
+    family: typeof plan.templateFamily === "string" ? plan.templateFamily : null,
+    layout: typeof plan.layoutStrategy === "string" ? plan.layoutStrategy : null,
+    transition: typeof plan.transition === "string" ? plan.transition : null,
+    background: typeof plan.backgroundTreatment === "string" ? plan.backgroundTreatment : null,
+  };
+}
+
+function formatSimilarityGuard(run: ConversationState["generationRuns"][number] | undefined) {
+  const guard = asRecord(run?.similarity_guard_result);
+  if (!guard) return null;
+
+  const score = typeof guard.highestScore === "number" ? Math.round(guard.highestScore * 100) : null;
+  const decision = typeof guard.decision === "string" ? guard.decision : null;
+  const traits = Array.isArray(guard.matchingTraits)
+    ? guard.matchingTraits.filter((trait): trait is string => typeof trait === "string").slice(0, 4)
+    : [];
+
+  return { score, decision, traits };
 }
 
 function getReferenceType(file: File): BundleAgentVisualReference["type"] | null {
@@ -292,6 +329,7 @@ export function BundleAgentClient({
   const [state, setState] = useState<ConversationState>(EMPTY_STATE);
   const [title, setTitle] = useState(initialArtifactKind === "slide_template" ? "Plantilla SofLIA Deck" : "Nuevo bundle de video");
   const [artifactKind, setArtifactKind] = useState<AgentArtifactKind>(initialArtifactKind);
+  const [templateFamily, setTemplateFamily] = useState<BundleTemplateFamily | "auto">("auto");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [uploadingReferences, setUploadingReferences] = useState(false);
@@ -306,6 +344,8 @@ export function BundleAgentClient({
   const hasRequestedTemplateConversation = !templateId || state.conversation?.template_id === templateId;
   const specSummary = useMemo(() => formatSpecSummary(latestSpec?.spec_json), [latestSpec]);
   const creativeBriefSummary = useMemo(() => formatCreativeBriefSummary(latestSpec?.spec_json), [latestSpec]);
+  const designPlanSummary = useMemo(() => formatDesignPlanSummary(latestSpec?.spec_json), [latestSpec]);
+  const similarityGuardSummary = useMemo(() => formatSimilarityGuard(latestRun), [latestRun]);
   const effectiveArtifactKind: AgentArtifactKind = templateId ? "video_bundle" : artifactKind;
   const baseBundleHref = effectiveArtifactKind === "slide_template"
     ? "/api/admin/remotion/bundle-agent/base-bundle?artifactKind=slide_template"
@@ -340,6 +380,10 @@ export function BundleAgentClient({
     });
     if (payload.conversation?.title) {
       setTitle(normalizeLegacySofliaName(payload.conversation.title));
+    }
+    const loadedFamily = payload.specs?.[0]?.spec_json?.templateFamily;
+    if (typeof loadedFamily === "string" && BUNDLE_TEMPLATE_FAMILY_OPTIONS.some((option) => option.id === loadedFamily)) {
+      setTemplateFamily(loadedFamily as BundleTemplateFamily);
     }
   }
 
@@ -411,7 +455,10 @@ export function BundleAgentClient({
       await readJson(await fetch(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/specs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ artifactKind: effectiveArtifactKind }),
+        body: JSON.stringify({
+          artifactKind: effectiveArtifactKind,
+          ...(templateFamily === "auto" ? {} : { overrides: { templateFamily } }),
+        }),
       }));
       await refresh(conversationId);
     });
@@ -574,6 +621,30 @@ export function BundleAgentClient({
               onChange={(event) => setTitle(event.target.value)}
               disabled={Boolean(state.conversation)}
             />
+            {effectiveArtifactKind === "video_bundle" ? (
+              <div className="mt-3 grid gap-1.5">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="template-family">
+                  Familia visual
+                </label>
+                <select
+                  id="template-family"
+                  value={templateFamily}
+                  onChange={(event) => setTemplateFamily(event.target.value as BundleTemplateFamily | "auto")}
+                  disabled={busy}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-[#00D4B3] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="auto">Automática según la dirección creativa</option>
+                  {BUNDLE_TEMPLATE_FAMILY_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label} — {option.description}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs leading-5 text-slate-500">
+                  La familia define la geometría, el fondo y el motion. No solo cambia el color.
+                </p>
+              </div>
+            ) : null}
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 px-5 py-6">
@@ -803,6 +874,17 @@ export function BundleAgentClient({
                     ) : null}
                   </div>
                 ) : null}
+                {designPlanSummary ? (
+                  <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Plan compilado</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {designPlanSummary.family || "Familia sin resolver"}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                      Layout: {designPlanSummary.layout || "—"} · Fondo: {designPlanSummary.background || "—"} · Transición: {designPlanSummary.transition || "—"}
+                    </p>
+                  </div>
+                ) : null}
                 {previewHref ? (
                   <a
                     href={previewHref}
@@ -834,6 +916,21 @@ export function BundleAgentClient({
                 <p className="mt-1 font-medium text-slate-900">{latestRun?.status || "Sin ZIP generado"}</p>
                 {latestRun?.bundle_storage_path || latestRun?.error_sanitized ? (
                   <p className="mt-1 break-all text-xs text-slate-500">{latestRun.bundle_storage_path || latestRun.error_sanitized}</p>
+                ) : null}
+                {similarityGuardSummary ? (
+                  <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${similarityGuardSummary.decision === "block"
+                    ? "border-red-200 bg-red-50 text-red-700"
+                    : similarityGuardSummary.decision === "review"
+                      ? "border-amber-200 bg-amber-50 text-amber-800"
+                      : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
+                    <p className="font-semibold">
+                      Guardia de similitud: {similarityGuardSummary.decision || "allow"}
+                      {similarityGuardSummary.score !== null ? ` (${similarityGuardSummary.score}%)` : ""}
+                    </p>
+                    {similarityGuardSummary.traits.length > 0 ? (
+                      <p className="mt-1">Coinciden: {similarityGuardSummary.traits.join(", ")}</p>
+                    ) : null}
+                  </div>
                 ) : null}
                 {generatedBundleHref ? (
                   <a

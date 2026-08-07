@@ -3,6 +3,54 @@ import { z } from "zod";
 export const bundleAgentMessageRoleSchema = z.enum(["USER", "ASSISTANT", "SYSTEM", "TOOL"]);
 export const bundleAgentArtifactKindSchema = z.enum(["video_bundle", "slide_template"]);
 
+/**
+ * Families are intentionally finite. The model can choose a direction, but the
+ * renderer only compiles it through one of these reviewed, safe visual systems.
+ */
+export const bundleTemplateFamilySchema = z.enum([
+  "asymmetric-studio",
+  "cinematic-field",
+  "editorial-rail",
+  "floating-collage",
+  "minimal-focus",
+  "reference-frame",
+  "split-contrast",
+  "stacked-evidence",
+]);
+
+export type BundleTemplateFamily = z.infer<typeof bundleTemplateFamilySchema>;
+
+export const BUNDLE_TEMPLATE_FAMILY_OPTIONS: ReadonlyArray<{
+  id: BundleTemplateFamily;
+  label: string;
+  description: string;
+}> = [
+  { id: "asymmetric-studio", label: "Estudio asimetrico", description: "Avatar estable con soporte visual dominante." },
+  { id: "cinematic-field", label: "Campo cinematografico", description: "Media a gran escala con overlays contenidos." },
+  { id: "editorial-rail", label: "Riel editorial", description: "Jerarquia de lectura y soporte ordenado." },
+  { id: "floating-collage", label: "Collage flotante", description: "Evidencias visuales en composicion modular." },
+  { id: "minimal-focus", label: "Foco minimal", description: "Una idea visual por escena con poco ruido." },
+  { id: "reference-frame", label: "Marco de referencia", description: "Respeta una estructura visual proporcionada." },
+  { id: "split-contrast", label: "Contraste dividido", description: "Dos planos con contraste y cambio de foco." },
+  { id: "stacked-evidence", label: "Evidencia apilada", description: "Slides y B-roll en lectura vertical." },
+];
+
+export const bundleAgentDesignPlanSchema = z.object({
+  version: z.literal(1),
+  templateFamily: bundleTemplateFamilySchema,
+  layoutStrategy: z.enum(["asymmetric", "cinematic", "editorial", "collage", "minimal", "reference", "split", "stacked"]),
+  backgroundTreatment: z.enum(["canvas", "frame", "grid", "halo", "paper", "spotlight", "split", "vignette"]),
+  surfaceTreatment: z.enum(["flat", "framed", "glass", "paper", "shadowed"]),
+  transition: z.enum(["crossfade", "focus-shift", "hard-cut", "scene-swap", "soft-wipe"]),
+  pace: z.enum(["calm", "measured", "energetic"]),
+  mediaPriority: z.enum(["avatar", "broll", "slides", "balanced"]),
+  sceneStrategy: z.enum(["asset-led", "chapter-led", "dual-support", "single-focus"]),
+  source: z.enum(["creative-brief", "explicit-family", "reference-constraint", "safe-fallback"]),
+  rationale: z.array(z.string().trim().min(1).max(180)).min(2).max(6),
+});
+
+export type BundleAgentDesignPlan = z.infer<typeof bundleAgentDesignPlanSchema>;
+
 export const BUNDLE_AGENT_VISUAL_REFERENCE_LIMIT = 6;
 
 export const bundleAgentVisualReferenceSchema = z.object({
@@ -142,7 +190,11 @@ export const bundleAgentSpecSchema = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(1000).default(""),
   visualStyle: z.string().trim().min(1).max(240),
+  /** Optional explicit family selected by the user or the AI creative direction. */
+  templateFamily: bundleTemplateFamilySchema.optional(),
   creativeBrief: bundleAgentCreativeBriefSchema.default(DEFAULT_BUNDLE_AGENT_CREATIVE_BRIEF),
+  /** Resolved deterministic plan used by the safe bundle compiler. */
+  designPlan: bundleAgentDesignPlanSchema.optional(),
   compositionId: z
     .string()
     .trim()

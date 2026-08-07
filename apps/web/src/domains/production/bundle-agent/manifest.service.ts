@@ -13,7 +13,9 @@ function getDefaultAnimationVariant(spec: BundleAgentSpec) {
 }
 
 export function buildBundleManifest(spec: BundleAgentSpec, blueprint: BundleBlueprint) {
-  const selectedVariant = spec.creativeBrief.visualVariants[0];
+  const selectedVariant = spec.creativeBrief.visualVariants.find(
+    (variant) => variant.id === spec.defaultProps.visualVariantId,
+  ) || spec.creativeBrief.visualVariants[0];
 
   return {
     name: blueprint.title,
@@ -26,6 +28,8 @@ export function buildBundleManifest(spec: BundleAgentSpec, blueprint: BundleBlue
     fps: blueprint.fps,
     width: blueprint.width,
     height: blueprint.height,
+    generationPlan: blueprint.designPlan,
+    visualFingerprint: blueprint.visualFingerprint,
     capabilities: {
       animatedDeck: true,
       htmlDeck: true,
@@ -52,6 +56,7 @@ export function buildBundleManifest(spec: BundleAgentSpec, blueprint: BundleBlue
         slides: { type: "array", description: "Slides renderizables normalizadas por SofLIA - Engine." },
         timelineOverrides: { type: "array", description: "Manifiestos de ajustes temporales no destructivos del editor de timeline." },
         totalDurationInFrames: { type: "integer", description: "Duracion total resuelta para el render." },
+        templateFamily: { type: "string", description: "Familia visual segura seleccionada para esta plantilla." },
         visualVariantId: { type: "string", description: "ID de variante visual declarada en creativeBrief.visualVariants." },
         voiceAudioUrl: { type: "string", description: "URL publica de la locucion principal." },
       },
@@ -80,6 +85,7 @@ export function buildBundleManifest(spec: BundleAgentSpec, blueprint: BundleBlue
       slides: Array.isArray(spec.defaultProps.slides) ? spec.defaultProps.slides : [],
       timelineOverrides: Array.isArray(spec.defaultProps.timelineOverrides) ? spec.defaultProps.timelineOverrides : [],
       totalDurationInFrames: blueprint.fallbackDurationFrames,
+      templateFamily: blueprint.designPlan.templateFamily,
       visualVariantId: typeof spec.defaultProps.visualVariantId === "string" ? spec.defaultProps.visualVariantId : selectedVariant.id,
     },
     editableLayers: blueprint.editableLayers,
