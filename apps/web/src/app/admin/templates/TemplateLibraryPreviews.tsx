@@ -160,20 +160,99 @@ function SlideLayoutSketch({ layout, index }: { layout: string; index: number })
   );
 }
 
+function SlideGeneratedPreview({
+  design,
+  slide,
+}: {
+  design: NonNullable<SlideTemplateLibraryItem["preview_design"]>;
+  slide: SlideTemplateLibraryItem["preview_slides"][number];
+}) {
+  const layout = slide.layout || "";
+  const isFramework = layout === "framework";
+  const isData = layout === "data" || slide.chart_points.length > 0;
+  const isSplit = layout.includes("split");
+  const chartMax = Math.max(...slide.chart_points, 1);
+
+  return (
+    <div
+      className="relative aspect-video overflow-hidden rounded-md border shadow-sm"
+      style={{
+        background: design.background,
+        borderColor: `${design.muted}33`,
+        color: design.text,
+      }}
+      title={`${slide.title} (${slide.type})`}
+    >
+      <div className="absolute left-[8%] top-[9%] flex w-[84%] items-center justify-between text-[7px] font-black uppercase tracking-wide" style={{ color: design.text }}>
+        <span>SofLIA</span>
+        <span>{slide.type.replace(/_/g, " ")}</span>
+      </div>
+      <span className="absolute left-[8%] top-[27%] h-1 w-[18%] rounded-full" style={{ background: design.accent }} />
+
+      {isData ? (
+        <div className="absolute inset-x-[8%] bottom-[15%] flex h-[38%] items-end gap-1.5 rounded-md p-2" style={{ background: design.surface }}>
+          {(slide.chart_points.length > 0 ? slide.chart_points : [4, 3, 5]).map((value, index) => (
+            <span
+              key={`${value}-${index}`}
+              className="flex-1 rounded-t-sm"
+              style={{
+                background: index % 2 === 0 ? design.accent : design.accent2,
+                height: `${Math.max(18, (value / chartMax) * 100)}%`,
+              }}
+            />
+          ))}
+        </div>
+      ) : isFramework ? (
+        <div className="absolute inset-x-[8%] bottom-[13%] grid h-[38%] grid-cols-3 gap-1.5">
+          {(slide.body_items.length > 0 ? slide.body_items : ["idea", "dato", "accion"]).slice(0, 3).map((item, index) => (
+            <div key={`${item}-${index}`} className="rounded-md p-1 shadow-sm" style={{ background: design.surface }}>
+              <span className="text-[7px] font-black" style={{ color: design.accent }}>0{index + 1}</span>
+              <div className="mt-1 h-1.5 w-4/5 rounded" style={{ background: design.text }} />
+              <div className="mt-1 h-1 w-3/5 rounded" style={{ background: design.muted }} />
+            </div>
+          ))}
+        </div>
+      ) : isSplit ? (
+        <>
+          <div className="absolute left-[8%] top-[41%] h-2 w-[39%] rounded" style={{ background: design.text }} />
+          <div className="absolute left-[8%] top-[55%] h-1.5 w-[31%] rounded" style={{ background: design.muted }} />
+          <div className="absolute right-[8%] top-[29%] h-[48%] w-[34%] rounded-md shadow-sm" style={{ background: `linear-gradient(135deg, ${design.accent}, ${design.accent2})` }} />
+        </>
+      ) : (
+        <>
+          <h3 className="absolute left-[8%] top-[38%] line-clamp-2 w-[76%] text-[11px] font-black leading-tight" style={{ color: design.text }}>
+            {slide.title}
+          </h3>
+          <div className="absolute left-[8%] top-[68%] h-1.5 w-[42%] rounded" style={{ background: design.muted }} />
+        </>
+      )}
+    </div>
+  );
+}
+
 export function SlideTemplatePreview({ item }: { item: SlideTemplateLibraryItem }) {
   const layouts = item.layouts.length > 0 ? item.layouts.slice(0, 4) : ["provocation", "split_text_media", "data_explainer", "closing"];
+  const hasGeneratedPreviews = item.preview_design && item.preview_slides.length > 0;
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-2 dark:border-white/10 dark:bg-[#0F1419]">
       <div className="grid grid-cols-2 gap-2">
-        {layouts.map((layout, index) => (
-          <SlideLayoutSketch key={`${layout}-${index}`} layout={layout} index={index} />
-        ))}
+        {hasGeneratedPreviews
+          ? item.preview_slides.slice(0, 4).map((slide) => (
+              <SlideGeneratedPreview
+                key={`${slide.order}-${slide.type}`}
+                design={item.preview_design!}
+                slide={slide}
+              />
+            ))
+          : layouts.map((layout, index) => (
+              <SlideLayoutSketch key={`${layout}-${index}`} layout={layout} index={index} />
+            ))}
       </div>
       <div className="mt-2 flex flex-wrap gap-1">
-        {layouts.slice(0, 3).map((layout) => (
-          <span key={layout} className="rounded-full bg-[#23AEA8]/10 px-2 py-0.5 text-[10px] font-semibold text-[#138A87]">
-            {layoutNames[layout] || layout.replace(/_/g, " ")}
+        {(hasGeneratedPreviews ? item.preview_slides.map((slide) => slide.type) : layouts).slice(0, 3).map((label) => (
+          <span key={label} className="rounded-full bg-[#23AEA8]/10 px-2 py-0.5 text-[10px] font-semibold text-[#138A87]">
+            {layoutNames[label] || label.replace(/_/g, " ")}
           </span>
         ))}
       </div>

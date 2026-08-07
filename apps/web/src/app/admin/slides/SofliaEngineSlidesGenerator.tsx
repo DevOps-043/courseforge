@@ -112,7 +112,7 @@ function parseSimpleSlides(rawValue: string) {
     return {
       bullets,
       title,
-      type: index === 0 ? "cover" : "content",
+      type: index === 0 ? "cover" : "concept",
     };
   });
 
@@ -146,6 +146,9 @@ export function SofliaEngineSlidesGenerator({
   const selectedCandidate = useMemo(
     () => candidates.find((candidate) => candidate.componentId === selectedComponentId),
     [candidates, selectedComponentId],
+  );
+  const hasManualComponentFallback = Boolean(
+    manualComponentId.trim() && !candidates.some((candidate) => candidate.componentId === manualComponentId.trim()),
   );
 
   const handleGenerate = async () => {
@@ -236,7 +239,7 @@ export function SofliaEngineSlidesGenerator({
         <div className="space-y-4">
           <label className="block">
             <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500">
-              Componente detectado
+              Fuente para generar slides
             </span>
             <select
               value={selectedComponentId}
@@ -244,7 +247,7 @@ export function SofliaEngineSlidesGenerator({
               className="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-[#00A98F] focus:ring-2 focus:ring-[#00D4B3]/20 dark:border-white/10 dark:bg-[#0F1419] dark:text-white"
             >
               {candidates.length === 0 ? (
-                <option value="">Sin componentes disponibles</option>
+                <option value="">No se pudo cargar el componente del artefacto</option>
               ) : (
                 candidates.map((candidate) => (
                   <option key={candidate.componentId} value={candidate.componentId}>
@@ -253,16 +256,25 @@ export function SofliaEngineSlidesGenerator({
                 ))
               )}
             </select>
+            <p className="mt-1 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+              Selecciona el material de la leccion que aportara guion, storyboard, fuentes y contexto.
+            </p>
           </label>
+
+          {hasManualComponentFallback && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+              No se pudo resolver este componente en la lista del artefacto. Se usara el ID manual como fuente para generar el deck.
+            </div>
+          )}
 
           <label className="block">
             <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500">
-              ComponentId manual
+              ID manual del componente
             </span>
             <input
               value={manualComponentId}
               onChange={(event) => setManualComponentId(event.target.value)}
-              placeholder="Opcional"
+              placeholder="Opcional, solo si la fuente no aparece arriba"
               className="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-[#00A98F] focus:ring-2 focus:ring-[#00D4B3]/20 dark:border-white/10 dark:bg-[#0F1419] dark:text-white"
             />
           </label>

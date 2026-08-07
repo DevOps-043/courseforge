@@ -16,7 +16,7 @@ import {
     StoryboardItem,
 } from '../types/materials.types';
 import { Loader2, Clapperboard, CheckCircle2, Clock, AlertCircle, Save } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { PRODUCTION_COMPLETION_RECHECK_DELAY_MS } from '@/shared/constants/timing';
 import { PRODUCTION_THEME } from './production-asset-ui';
 
@@ -39,11 +39,30 @@ interface PendingAssets {
 
 export function VisualProductionContainer({ artifactId, assetsComplete, onStatusChange }: VisualProductionContainerProps) {
     const router = useRouter();
+    const pathname = usePathname();
     const { materials, getLessonComponents, refresh } = useMaterials(artifactId);
     const [productionItems, setProductionItems] = useState<ProductionGroup[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSavingAll, setIsSavingAll] = useState(false);
     const [pendingAssets, setPendingAssets] = useState<PendingAssets>({});
+
+    const adminBasePath = useMemo(() => {
+        const adminIndex = pathname.indexOf('/admin');
+        return adminIndex >= 0 ? pathname.slice(0, adminIndex + '/admin'.length) : '/admin';
+    }, [pathname]);
+
+    const slideTemplatesHref = `${adminBasePath}/templates`;
+    const slideTemplateStudioHref = `${adminBasePath}/slides/templates`;
+
+    const buildSofliaSlidesHref = useCallback((componentId: string) => {
+        const params = new URLSearchParams({
+            artifactId,
+            componentId,
+            returnTo: pathname,
+        });
+
+        return `${adminBasePath}/slides?${params.toString()}`;
+    }, [adminBasePath, artifactId, pathname]);
 
     useEffect(() => {
         const fetchProductionItems = async () => {
@@ -350,6 +369,9 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
                                     onGeneratePrompts={handleGeneratePrompts}
                                     onSaveAssets={handleSaveAssets}
                                     onAssetChange={handleAssetChange}
+                                    slideTemplatesHref={slideTemplatesHref}
+                                    slideTemplateStudioHref={slideTemplateStudioHref}
+                                    sofliaSlidesHref={buildSofliaSlidesHref(component.id)}
                                 />
                             ))}
                         </div>

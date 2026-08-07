@@ -145,6 +145,8 @@ export const slidesSchema = z.object({
   html_public_url: z.string().url().optional(),
   qa_content_path: z.string().trim().optional(),
   qa_report: z.record(z.string(), z.unknown()).optional(),
+  selected_slide_template_run_id: z.string().trim().optional(),
+  selected_slide_template_title: z.string().trim().nullable().optional(),
   spec_content_path: z.string().trim().optional(),
   animated_deck: animatedDeckSchema.optional(),
   images: z.array(slideImageSchema).optional(),

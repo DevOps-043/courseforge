@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Volume2,
   VolumeX,
@@ -21,6 +21,8 @@ import {
   AlertTriangle,
   Eye,
   ListChecks,
+  LayoutTemplate,
+  PanelsTopLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -40,6 +42,7 @@ import type {
   CloudStorageFile,
   CloudStorageProvider,
 } from "@/domains/production/cloud-storage/types";
+import type { SlideTemplateLibraryItem } from "@/domains/production/actions/templates.actions";
 
 function formatSeconds(seconds: number) {
   if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
@@ -245,6 +248,14 @@ function AnimatedDeckPreview({
       </div>
     </div>
   );
+}
+
+function buildHtmlPreviewHref(slides: SlidesAsset | null) {
+  if (!slides?.html_content_path) {
+    return slides?.html_public_url;
+  }
+
+  return `/api/production/slides/html-preview?path=${encodeURIComponent(slides.html_content_path)}`;
 }
 
 // ---------------------------------------------------------
@@ -556,20 +567,23 @@ export function BackgroundMusicSection({
 }
 
 // ---------------------------------------------------------
-// 3. OPEN DESIGN SLIDES SECTION
+// 3. SOFLIA HTML SLIDES SECTION
 // ---------------------------------------------------------
-interface OpenDesignSlidesSectionProps {
+interface SofliaHtmlSlidesSectionProps {
   slides: SlidesAsset | null;
-  isExporting: boolean;
   isGeneratingSofliaSlides: boolean;
   isUploading: boolean;
   isPreparingAnimatedDeck: boolean;
-  showOpenDesignExport?: boolean;
+  isLoadingSlideTemplates?: boolean;
+  selectedSlideTemplateRunId?: string | null;
   showSofliaGeneration?: boolean;
+  slideTemplates?: SlideTemplateLibraryItem[];
+  slideTemplatesHref?: string;
+  slideTemplateStudioHref?: string;
   sofliaSlidesHref?: string;
   fileRef: React.RefObject<HTMLInputElement | null>;
-  onGenerateSofliaSlides: () => void;
-  onExport: () => void;
+  onGenerateSofliaSlides: (slideTemplateRunId?: string | null) => void;
+  onSelectSlideTemplate?: (slideTemplateRunId: string | null) => void;
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onPrepareAnimatedDeck: (htmlContentPath: string) => Promise<boolean>;
   onClear: () => void;
@@ -581,18 +595,23 @@ interface OpenDesignSlidesSectionProps {
   searchDrive: (query: string) => Promise<void>;
   importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   clearDriveSearchResults: () => void;
-}export function OpenDesignSlidesSection({
+}
+
+export function SofliaHtmlSlidesSection({
   slides,
-  isExporting,
   isGeneratingSofliaSlides,
   isUploading,
   isPreparingAnimatedDeck,
-  showOpenDesignExport = true,
+  isLoadingSlideTemplates = false,
+  selectedSlideTemplateRunId,
   showSofliaGeneration = true,
+  slideTemplates = [],
+  slideTemplatesHref,
+  slideTemplateStudioHref,
   sofliaSlidesHref,
   fileRef,
   onGenerateSofliaSlides,
-  onExport,
+  onSelectSlideTemplate,
   onUpload,
   onPrepareAnimatedDeck,
   onClear,
@@ -602,8 +621,9 @@ interface OpenDesignSlidesSectionProps {
   searchDrive,
   importDriveAsset,
   clearDriveSearchResults,
-}: OpenDesignSlidesSectionProps) {
+}: SofliaHtmlSlidesSectionProps) {
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
+  const templateSelectId = useId();
   const animatedDeck = slides?.animated_deck;
   const qaStatus = typeof slides?.qa_report?.status === "string"
     ? slides.qa_report.status
@@ -614,6 +634,9 @@ interface OpenDesignSlidesSectionProps {
   const renderableSlideCount = slides?.images?.length || 0;
   const hasSourceReference = Boolean(slides?.html_public_url || slides?.html_content_path);
   const canPrepareAnimatedDeck = Boolean(slides?.html_content_path);
+  const selectedSlideTemplate = slideTemplates.find(
+    (template) => template.id === selectedSlideTemplateRunId,
+  );
   const slideImages = useMemo(
     () => [...(slides?.images || [])].sort((left, right) => left.slide_index - right.slide_index),
     [slides?.images],
@@ -668,35 +691,46 @@ interface OpenDesignSlidesSectionProps {
           )}
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          {showSofliaGeneration && (
+            <button
+              onClick={() => onGenerateSofliaSlides(selectedSlideTemplateRunId || null)}
+              disabled={isGeneratingSofliaSlides}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-sm transition-all disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isGeneratingSofliaSlides ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+              <span>{isGeneratingSofliaSlides ? "Generando..." : "Generar HTML"}</span>
+            </button>
+          )}
+
           {sofliaSlidesHref ? (
             <a
               href={sofliaSlidesHref}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-sm transition-all"
+              className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 dark:border-purple-500/20 dark:bg-purple-500/10 dark:text-purple-300 transition-colors"
             >
-              <Sparkles size={10} />
-              <span>Slides con SofLIA</span>
+              <PanelsTopLeft size={10} />
+              <span>Abrir Slides</span>
             </a>
-          ) : showSofliaGeneration ? (
-            <button
-              onClick={onGenerateSofliaSlides}
-              disabled={isGeneratingSofliaSlides}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-sm transition-all"
-            >
-              {isGeneratingSofliaSlides ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
-              <span>{isGeneratingSofliaSlides ? "Generando..." : "Generar SofLIA"}</span>
-            </button>
           ) : null}
 
-          {showOpenDesignExport && (
-            <button
-              onClick={onExport}
-              disabled={isExporting}
+          {slideTemplatesHref && (
+            <a
+              href={slideTemplatesHref}
               className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg border border-gray-300 bg-white dark:bg-[#151A21] hover:bg-gray-50 dark:hover:bg-white/5 text-gray-650 dark:text-gray-300 transition-colors"
             >
-              {isExporting ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
-              <span>{isExporting ? "Creando..." : "OpenDesign"}</span>
-            </button>
+              <LayoutTemplate size={10} />
+              <span>Plantillas</span>
+            </a>
+          )}
+
+          {slideTemplateStudioHref && (
+            <a
+              href={slideTemplateStudioHref}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg border border-teal-200 bg-teal-50/70 hover:bg-teal-100 text-teal-700 dark:border-teal-500/20 dark:bg-teal-500/10 dark:text-teal-300 transition-colors"
+            >
+              <Wand2 size={10} />
+              <span>Nueva template</span>
+            </a>
           )}
           
           <button
@@ -726,6 +760,46 @@ interface OpenDesignSlidesSectionProps {
             <HardDrive size={10} />
             <span>Drive</span>
           </button>
+        </div>
+      </div>
+
+      <div className="mt-2 grid gap-1.5 rounded-lg border border-gray-100 bg-white/75 p-2 dark:border-[#6C757D]/10 dark:bg-[#151A21]/50">
+        <div className="flex items-center justify-between gap-2">
+          <label
+            htmlFor={templateSelectId}
+            className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400"
+          >
+            <LayoutTemplate size={11} />
+            Plantilla HTML
+          </label>
+          {slides?.selected_slide_template_title ? (
+            <span className="max-w-[180px] truncate rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-bold text-purple-700 dark:bg-purple-500/10 dark:text-purple-300">
+              {slides.selected_slide_template_title}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            id={templateSelectId}
+            value={selectedSlideTemplateRunId || ""}
+            onChange={(event) => onSelectSlideTemplate?.(event.target.value || null)}
+            disabled={isGeneratingSofliaSlides || isLoadingSlideTemplates}
+            className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 outline-none transition-colors focus:border-purple-300 focus:ring-2 focus:ring-purple-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-gray-200 dark:focus:ring-purple-500/10"
+          >
+            <option value="">
+              {isLoadingSlideTemplates ? "Cargando plantillas..." : "Automatica segun la leccion"}
+            </option>
+            {slideTemplates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.title}
+              </option>
+            ))}
+          </select>
+          {selectedSlideTemplate ? (
+            <span className="shrink-0 rounded-full bg-gray-100 px-2 py-1 text-[10px] font-bold text-gray-600 dark:bg-white/5 dark:text-gray-300">
+              {selectedSlideTemplate.layouts.length} layout(s)
+            </span>
+          ) : null}
         </div>
       </div>
 
@@ -774,7 +848,7 @@ interface OpenDesignSlidesSectionProps {
       {animatedDeck && animatedDeck.status !== "FAILED" && (
         <AnimatedDeckPreview
           deck={animatedDeck}
-          sourceUrl={slides?.html_public_url}
+          sourceUrl={buildHtmlPreviewHref(slides)}
         />
       )}
 

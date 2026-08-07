@@ -6,6 +6,10 @@ import { buildBundleBlueprint } from "../blueprint.service";
 import { redactSensitiveText, sanitizeErrorMessage } from "../redaction.service";
 import { buildSpecFromConversation, computeSpecHash } from "../spec.service";
 import { validateGeneratedRemotionBundle } from "../security-validator";
+import {
+  buildSlideTemplatePackageZip,
+  buildSlideTemplateSpecFromConversation,
+} from "../slide-template-package.service";
 import { DEFAULT_BUNDLE_AGENT_CREATIVE_BRIEF, bundleAgentMessageMetadataSchema, type BundleAgentSpec } from "../types";
 
 async function zipBuffer(files: Record<string, string>) {
@@ -91,6 +95,202 @@ describe("SofLIA Bundle Agent services", () => {
     assert.equal(spec.creativeBrief.similarityCheck.differentiators.length >= 4, true);
     assert.equal(spec.defaultProps.visualVariantId, spec.creativeBrief.visualVariants[0].id);
     assert.equal(computeSpecHash(spec), computeSpecHash(spec));
+  });
+
+  it("builds an editable slide-template blueprint and packages it as HTML assets", async () => {
+    const spec = buildSlideTemplateSpecFromConversation({
+      title: "Plantilla liderazgo corporativo",
+      messages: [
+        {
+          role: "USER",
+          content_redacted: [
+            "Necesito una plantilla corporativa para cursos de liderazgo.",
+            "Debe tener portada, objetivos, explicacion, ejemplo guiado, graficas solo cuando haya datos y resumen.",
+            "Usa colores sobrios, layout claro y personalizacion de colores antes de guardar.",
+          ].join(" "),
+        },
+      ],
+      overrides: {
+        templateBlueprint: {
+          designTokens: {
+            accent: "#0F766E",
+            accent2: "#2563EB",
+            background: "#F8FAFC",
+            muted: "#64748B",
+            surface: "#FFFFFF",
+            text: "#0F172A",
+          },
+          modifiers: {
+            cornerRadius: 6,
+            density: "compact",
+            fontPairing: "system_sans",
+            showBrandMark: true,
+          },
+        },
+      },
+    });
+    const packageZip = await buildSlideTemplatePackageZip(spec);
+    const zip = await JSZip.loadAsync(packageZip.buffer);
+    const blueprint = JSON.parse(await zip.file("blueprints/template-blueprint.json")!.async("text"));
+    const example = JSON.parse(await zip.file("examples/template-preview.deck.json")!.async("text"));
+
+    assert.equal(spec.artifactKind, "slide_template");
+    assert.equal(spec.templateBlueprint.designTokens.accent, "#0F766E");
+    assert.equal(spec.templateBlueprint.modifiers.density, "compact");
+    assert.equal(spec.templateBlueprint.slideTypes.some((slideType) => slideType.id === "worked_example"), true);
+    assert.equal(spec.templateBlueprint.slideTypes.some((slideType) => slideType.id === "data_explainer"), true);
+    assert.equal(spec.templateBlueprint.layouts.some((layout) => layout.id === "data"), true);
+    assert.equal(example.slides.some((slide: Record<string, unknown>) => slide.type === "data_explainer"), true);
+    assert.equal(blueprint.designTokens.accent, "#0F766E");
+    assert.equal(packageZip.validationReport.info.layoutCount, spec.templateBlueprint.layouts.length);
+    assert.equal(packageZip.validationReport.info.slideTypeCount, spec.templateBlueprint.slideTypes.length);
+  });
+
+  it("keeps slide-template blueprint contracts when overrides are partial", () => {
+    const spec = buildSlideTemplateSpecFromConversation({
+      title: "Template elegante",
+      messages: [
+        {
+          role: "USER",
+          content_redacted: "Quiero una plantilla elegante con colores gris claro, amarillo mostaza y morado oscuro.",
+        },
+      ],
+      overrides: {
+        templateBlueprint: {
+          designTokens: {
+            accent: "#D6A21E",
+            accent2: "#3B1D5C",
+            background: "#F7FAFC",
+            muted: "#65758B",
+            surface: "#FFFFFF",
+            text: "#0A2540",
+          },
+          modifiers: {
+            cornerRadius: 32,
+            density: "compact",
+            fontPairing: "system_sans",
+            showBrandMark: true,
+          },
+        },
+      },
+    });
+
+    assert.equal(spec.templateBlueprint.designTokens.accent, "#D6A21E");
+    assert.equal(spec.templateBlueprint.modifiers.cornerRadius, 32);
+    assert.equal(Boolean(spec.templateBlueprint.agents.typeSelector), true);
+    assert.equal(spec.templateBlueprint.layouts.length > 0, true);
+    assert.equal(spec.templateBlueprint.slideTypes.length > 0, true);
+  });
+
+  it("keeps clear text readable over a light gray slide-template background", () => {
+    const spec = buildSlideTemplateSpecFromConversation({
+      title: "Template elegante",
+      messages: [
+        {
+          role: "USER",
+          content_redacted: "Quiero una plantilla con gris claro, amarillo mostaza y morado oscuro, texto claro. Debe tener look elegante con detalles dorados.",
+        },
+      ],
+    });
+
+    assert.equal(spec.templateBlueprint.designTokens.background, "#F3F4F6");
+    assert.equal(spec.templateBlueprint.designTokens.accent, "#D6A21E");
+    assert.equal(spec.templateBlueprint.designTokens.accent2, "#3B1D5C");
+    assert.equal(spec.templateBlueprint.designTokens.text, "#0A2540");
+  });
+
+  it("uses white text only when explicitly requested for slide-template conversations", () => {
+    const spec = buildSlideTemplateSpecFromConversation({
+      title: "Template elegante",
+      messages: [
+        {
+          role: "USER",
+          content_redacted: "Quiero una plantilla con gris claro, amarillo mostaza y morado oscuro, texto blanco.",
+        },
+      ],
+    });
+
+    assert.equal(spec.templateBlueprint.designTokens.background, "#F3F4F6");
+    assert.equal(spec.templateBlueprint.designTokens.text, "#F8FAFC");
+  });
+
+  it("applies white primary and secondary text from explicit slide-template feedback", () => {
+    const spec = buildSlideTemplateSpecFromConversation({
+      title: "Template elegante",
+      messages: [
+        {
+          role: "USER",
+          content_redacted: "COLOR DE FONDO GRIS, COLOR DE LETRA PRIMARIA Y SECUNDARIA BLANCO",
+        },
+      ],
+    });
+
+    assert.equal(spec.templateBlueprint.designTokens.background, "#F3F4F6");
+    assert.equal(spec.templateBlueprint.designTokens.text, "#F8FAFC");
+    assert.equal(spec.templateBlueprint.designTokens.muted, "#F8FAFC");
+  });
+
+  it("honors explicitly requested slide-template slide types", () => {
+    const spec = buildSlideTemplateSpecFromConversation({
+      title: "Template elegante",
+      messages: [
+        {
+          role: "USER",
+          content_redacted: "Requerimos diapositivas de titulo, objetivos, conceptos, explicaciones, graficas, conclusiones, bibliografia/fuentes.",
+        },
+      ],
+    });
+
+    assert.deepEqual(
+      spec.templateBlueprint.slideTypes.map((slideType) => slideType.id),
+      ["cover", "objectives", "concept", "explanation", "data_explainer", "summary", "bibliography"],
+    );
+  });
+
+  it("removes requested slide-template types without restoring the default catalog", () => {
+    const spec = buildSlideTemplateSpecFromConversation({
+      title: "Template elegante",
+      messages: [
+        {
+          role: "USER",
+          content_redacted: "Requerimos diapositivas de titulo, objetivos, conceptos, explicaciones, graficas, conclusiones, bibliografia/fuentes.",
+        },
+        {
+          role: "TOOL",
+          content_redacted: "Spec de plantilla de slides generada con contrato SofLIA Deck.",
+        },
+        {
+          role: "USER",
+          content_redacted: "Eliminemos la de objetivos",
+        },
+      ],
+    });
+
+    assert.deepEqual(
+      spec.templateBlueprint.slideTypes.map((slideType) => slideType.id),
+      ["cover", "concept", "explanation", "data_explainer", "summary", "bibliography"],
+    );
+  });
+
+  it("allows generated slide-template types when the base catalog does not fit", () => {
+    const spec = buildSlideTemplateSpecFromConversation({
+      title: "Template consultivo",
+      messages: [
+        {
+          role: "USER",
+          content_redacted: "Necesitamos diapositivas de titulo, mapa de decision, comparativo de casos y cierre.",
+        },
+      ],
+    });
+
+    assert.deepEqual(
+      spec.templateBlueprint.slideTypes.map((slideType) => slideType.id),
+      ["cover", "mapa_decision", "comparativo_casos", "summary"],
+    );
+    assert.equal(
+      spec.templateBlueprint.slideTypes.find((slideType) => slideType.id === "comparativo_casos")?.defaultLayout,
+      "framework",
+    );
   });
 
   it("infers requested accent colors in deterministic specs", () => {

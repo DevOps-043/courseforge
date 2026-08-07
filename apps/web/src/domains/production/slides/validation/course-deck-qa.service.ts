@@ -2,6 +2,8 @@ import type {
   CourseDeckSpec,
   CourseSlideSpec,
 } from "../specs/course-deck.schema";
+import { isInstructionalChart } from "../charts/chart-eligibility.service";
+import { isLikelyNarrationLeak } from "../content/slide-visible-content.service";
 
 export type CourseDeckQaSeverity = "error" | "warning";
 export type CourseDeckQaStatus = "PASS" | "WARN" | "FAIL";
@@ -17,6 +19,7 @@ export interface CourseDeckQaReport {
   checks: {
     chartContracts: boolean;
     htmlSafety: boolean;
+    narrationLeakage: boolean;
     renderContract: boolean;
     slideOrder: boolean;
     textDensity: boolean;
@@ -53,6 +56,22 @@ function textLengthForSlide(slide: CourseSlideSpec) {
   );
 
   return bodyLength + slide.title.length + (slide.subtitle?.length || 0);
+}
+
+function visibleTextForBlock(block: CourseSlideSpec["bodyBlocks"][number]) {
+  if (block.kind === "bullets") {
+    return (block.items || []).join(" ");
+  }
+
+  return block.text || "";
+}
+
+function visibleTextForSlide(slide: CourseSlideSpec) {
+  return [
+    slide.title,
+    slide.subtitle || "",
+    ...slide.bodyBlocks.map(visibleTextForBlock),
+  ].join(" ");
 }
 
 function pushFinding(
@@ -158,6 +177,15 @@ function validateChartContracts(
       continue;
     }
 
+    if (!isInstructionalChart(slide.chart)) {
+      pushFinding(findings, {
+        code: "non_instructional_chart",
+        message: "La grafica describe ritmo/duracion de video en lugar de informacion pedagogica de la leccion.",
+        severity: "error",
+        slideId: slide.id,
+      });
+    }
+
     if (slide.chart.sourceRefs.length === 0) {
       pushFinding(findings, {
         code: "chart_without_source_refs",
@@ -174,6 +202,31 @@ function validateChartContracts(
       pushFinding(findings, {
         code: "invalid_proportion_chart",
         message: "La grafica proporcional tiene un valor mayor que el total.",
+        severity: "error",
+        slideId: slide.id,
+      });
+    }
+  }
+}
+
+function validateNarrationLeakage(
+  deckSpec: CourseDeckSpec,
+  findings: CourseDeckQaFinding[],
+) {
+  for (const slide of deckSpec.slides) {
+    if (!slide.speakerNotes) {
+      continue;
+    }
+
+    if (
+      isLikelyNarrationLeak({
+        narration: slide.speakerNotes,
+        visibleText: visibleTextForSlide(slide),
+      })
+    ) {
+      pushFinding(findings, {
+        code: "visible_avatar_narration",
+        message: "La slide parece incluir narracion del avatar como contenido visible.",
         severity: "error",
         slideId: slide.id,
       });
@@ -242,6 +295,7 @@ function buildChecks(findings: CourseDeckQaFinding[]) {
         "chart_render_mismatch",
         "data_slide_without_chart",
         "invalid_proportion_chart",
+        "non_instructional_chart",
       ].includes(finding.code),
     ),
     htmlSafety: !findings.some((finding) =>
@@ -254,6 +308,9 @@ function buildChecks(findings: CourseDeckQaFinding[]) {
         "object_tag",
         "script_tag",
       ].includes(finding.code),
+    ),
+    narrationLeakage: !findings.some((finding) =>
+      finding.severity === "error" && finding.code === "visible_avatar_narration",
     ),
     renderContract: !findings.some((finding) =>
       finding.severity === "error" &&
@@ -290,6 +347,7 @@ export function validateCourseDeckQuality(params: {
   validateSlideOrder(params.deckSpec, findings);
   validateTextDensity(params.deckSpec, findings);
   validateChartContracts(params.deckSpec, params.html, findings);
+  validateNarrationLeakage(params.deckSpec, findings);
   validateHtmlSafety(params.html, findings);
   validateRenderContract(params.deckSpec, params.html, findings);
 

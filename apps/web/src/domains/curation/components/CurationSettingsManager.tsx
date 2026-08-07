@@ -40,8 +40,22 @@ const SETTING_ORDER = [
   "INSTRUCTIONAL_PLAN",
   "CURATION",
   "MATERIALS",
+  "BUNDLE_AGENT",
+  "SLIDES_DECK_BRIEF_AGENT",
+  "SLIDES_EVIDENCE_AGENT",
+  "SLIDES_STRATEGY_AGENT",
+  "SLIDES_VISIBLE_COPY_AGENT",
+  "SLIDES_VISUAL_TEMPLATE_AGENT",
+  "SLIDES_QA_AGENT",
   "SEARCH",
   "DEFAULT",
+];
+
+const SETTING_SCOPE_ORDER = [
+  "Cursos",
+  "Modulos: Bundle",
+  "Modulos: Slides",
+  "General",
 ];
 
 const SETTING_METADATA: Record<
@@ -72,6 +86,41 @@ const SETTING_METADATA: Record<
     title: "Generacion de Materiales Educativos (Fase 5)",
     icon: <Box size={16} />,
     accent: "teal",
+  },
+  BUNDLE_AGENT: {
+    title: "Agente de Modulos: Bundle",
+    icon: <Box size={16} />,
+    accent: "teal",
+  },
+  SLIDES_DECK_BRIEF_AGENT: {
+    title: "Slides - Agente de Brief",
+    icon: <MessageSquareCode size={16} />,
+    accent: "teal",
+  },
+  SLIDES_EVIDENCE_AGENT: {
+    title: "Slides - Agente de Evidencia",
+    icon: <CheckCircle2 size={16} />,
+    accent: "green",
+  },
+  SLIDES_STRATEGY_AGENT: {
+    title: "Slides - Agente de Estrategia",
+    icon: <BrainCircuit size={16} />,
+    accent: "teal",
+  },
+  SLIDES_VISIBLE_COPY_AGENT: {
+    title: "Slides - Agente de Copy Visible",
+    icon: <MessageSquareCode size={16} />,
+    accent: "teal",
+  },
+  SLIDES_VISUAL_TEMPLATE_AGENT: {
+    title: "Slides - Agente Visual/Layout",
+    icon: <Settings2 size={16} />,
+    accent: "teal",
+  },
+  SLIDES_QA_AGENT: {
+    title: "Slides - Agente de QA",
+    icon: <CheckCircle2 size={16} />,
+    accent: "green",
   },
   SEARCH: {
     title: "Busqueda y Recuperacion",
@@ -104,6 +153,39 @@ const PROMPT_CODE_MATCHERS: Record<string, (code: string) => boolean> = {
     code.includes("B_ROLL") ||
     code.includes("VIDEO_PROMPT") ||
     code.includes("PRODUCTION"),
+};
+
+const PROMPT_SCOPE_ORDER = [
+  "Cursos",
+  "Modulos: Bundle",
+  "Modulos: Slides",
+  "General",
+];
+
+const PROMPT_SCOPE_METADATA: Record<
+  string,
+  { description: string; icon: React.ReactNode; title: string }
+> = {
+  Cursos: {
+    description: "Prompts del pipeline academico: base, syllabus, plan, curaduria y materiales.",
+    icon: <BrainCircuit size={16} />,
+    title: "Cursos",
+  },
+  "Modulos: Bundle": {
+    description: "Prompts para produccion visual, bundles, clips, B-roll y armado modular.",
+    icon: <Box size={16} />,
+    title: "Modulos: Bundle",
+  },
+  "Modulos: Slides": {
+    description: "Prompts de agentes para estrategia, evidencia, copy visible, layouts y QA de slides HTML.",
+    icon: <MessageSquareCode size={16} />,
+    title: "Modulos: Slides",
+  },
+  General: {
+    description: "Prompts transversales o pendientes de clasificar.",
+    icon: <Settings2 size={16} />,
+    title: "General",
+  },
 };
 
 const LEGACY_PROMPT_CODES = new Set([
@@ -281,6 +363,55 @@ function getMetadata(settingType: string) {
   );
 }
 
+function resolveSettingScope(setting: CurationConfig) {
+  if (setting.scope?.trim()) {
+    return setting.scope.trim();
+  }
+
+  if (setting.setting_type.startsWith("SLIDES_")) {
+    return "Modulos: Slides";
+  }
+  if (setting.setting_type.includes("BUNDLE")) {
+    return "Modulos: Bundle";
+  }
+  if (SETTING_METADATA[setting.setting_type]) {
+    return "Cursos";
+  }
+  return "General";
+}
+
+function groupSettingsByScope(settings: CurationConfig[]) {
+  const grouped = new Map<string, CurationConfig[]>();
+
+  for (const setting of settings) {
+    const scope = resolveSettingScope(setting);
+    grouped.set(scope, [...(grouped.get(scope) || []), setting]);
+  }
+
+  return Array.from(grouped.entries())
+    .map(([scope, scopeSettings]) => ({
+      scope,
+      settings: scopeSettings.sort((left, right) => {
+        const leftIndex = SETTING_ORDER.indexOf(left.setting_type);
+        const rightIndex = SETTING_ORDER.indexOf(right.setting_type);
+        return (
+          (leftIndex === -1 ? 999 : leftIndex) -
+          (rightIndex === -1 ? 999 : rightIndex) ||
+          left.setting_type.localeCompare(right.setting_type)
+        );
+      }),
+    }))
+    .sort((left, right) => {
+      const leftIndex = SETTING_SCOPE_ORDER.indexOf(left.scope);
+      const rightIndex = SETTING_SCOPE_ORDER.indexOf(right.scope);
+      return (
+        (leftIndex === -1 ? 999 : leftIndex) -
+        (rightIndex === -1 ? 999 : rightIndex) ||
+        left.scope.localeCompare(right.scope)
+      );
+    });
+}
+
 function getPromptsForSetting(settingType: string, prompts: SystemPrompt[]) {
   const matcher = PROMPT_CODE_MATCHERS[settingType];
 
@@ -290,10 +421,61 @@ function getPromptsForSetting(settingType: string, prompts: SystemPrompt[]) {
 
   return prompts
     .filter((prompt) => {
+      if (prompt.scope) {
+        return false;
+      }
       const code = prompt.code.toUpperCase();
       return !LEGACY_PROMPT_CODES.has(code) && matcher(code);
     })
     .sort((left, right) => left.code.localeCompare(right.code));
+}
+
+function resolvePromptScope(prompt: SystemPrompt) {
+  if (prompt.scope?.trim()) {
+    return prompt.scope.trim();
+  }
+
+  const code = prompt.code.toUpperCase();
+  if (code.includes("SLIDES_") || code.includes("SLIDE_DECK")) {
+    return "Modulos: Slides";
+  }
+  if (
+    code.includes("BUNDLE") ||
+    code.includes("BROLL") ||
+    code.includes("B_ROLL") ||
+    code.includes("CLIP_GENERATION") ||
+    code.includes("VIDEO_BROLL")
+  ) {
+    return "Modulos: Bundle";
+  }
+  if (Object.values(PROMPT_CODE_MATCHERS).some((matcher) => matcher(code))) {
+    return "Cursos";
+  }
+  return "General";
+}
+
+function groupPromptsByScope(prompts: SystemPrompt[]) {
+  const grouped = new Map<string, SystemPrompt[]>();
+
+  for (const prompt of prompts) {
+    const scope = resolvePromptScope(prompt);
+    grouped.set(scope, [...(grouped.get(scope) || []), prompt]);
+  }
+
+  return Array.from(grouped.entries())
+    .map(([scope, scopePrompts]) => ({
+      prompts: scopePrompts.sort((left, right) => left.code.localeCompare(right.code)),
+      scope,
+    }))
+    .sort((left, right) => {
+      const leftIndex = PROMPT_SCOPE_ORDER.indexOf(left.scope);
+      const rightIndex = PROMPT_SCOPE_ORDER.indexOf(right.scope);
+      return (
+        (leftIndex === -1 ? 999 : leftIndex) -
+        (rightIndex === -1 ? 999 : rightIndex) ||
+        left.scope.localeCompare(right.scope)
+      );
+    });
 }
 
 function getPromptHelpText(prompt: SystemPrompt) {
@@ -393,6 +575,11 @@ function PhasePromptEditor({
             {prompt.is_org_override && (
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20">
                 {prompt.is_restored_default ? "Default restaurado" : "Personalizado"}
+              </span>
+            )}
+            {prompt.scope && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                {prompt.scope}
               </span>
             )}
             {prompt.is_active && (
@@ -691,6 +878,96 @@ export function CurationSettingsManager() {
     setPromptRestoringId(null);
   };
 
+  const renderPromptScopeSection = (scope: string, scopePrompts: SystemPrompt[]) => {
+    const metadata = PROMPT_SCOPE_METADATA[scope] || {
+      description: "Prompts configurables de este ambito.",
+      icon: <Settings2 size={16} />,
+      title: scope,
+    };
+
+    return (
+      <section
+        key={scope}
+        className="space-y-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-[#6C757D]/10 dark:bg-[#151A21]"
+      >
+        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-lg bg-[#00D4B3]/10 p-2 text-[#00D4B3]">
+              {metadata.icon}
+            </div>
+            <div>
+              <h4 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">
+                {metadata.title}
+              </h4>
+              <p className="mt-1 text-sm text-gray-500 dark:text-[#94A3B8]">
+                {metadata.description}
+              </p>
+            </div>
+          </div>
+          <span className="rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-500 dark:border-[#6C757D]/20 dark:text-[#94A3B8]">
+            {scopePrompts.length} prompts
+          </span>
+        </div>
+
+        <div className="space-y-4">
+          {scopePrompts.map((prompt) => (
+            <PhasePromptEditor
+              key={`${prompt.code}-${prompt.version}-${prompt.id}`}
+              prompt={prompt}
+              history={promptHistories[prompt.code]}
+              historyLoading={promptHistoryLoadingCode === prompt.code}
+              saving={promptSavingId === prompt.id}
+              resetting={promptResettingCode === prompt.code}
+              restoringId={promptRestoringId}
+              onLoadHistory={loadPromptHistory}
+              onRestoreVersion={restorePromptVersion}
+              onSave={savePrompt}
+              onReset={resetPrompt}
+            />
+          ))}
+        </div>
+      </section>
+    );
+  };
+
+  const renderModelScopeSection = (scope: string, scopeSettings: CurationConfig[]) => {
+    const metadata = PROMPT_SCOPE_METADATA[scope] || {
+      description: "Modelos configurables de este ambito.",
+      icon: <Settings2 size={16} />,
+      title: scope,
+    };
+
+    return (
+      <section
+        key={scope}
+        className="space-y-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-[#6C757D]/10 dark:bg-[#151A21]"
+      >
+        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-lg bg-[#0A2540]/10 p-2 text-[#0A2540] dark:bg-[#00D4B3]/10 dark:text-[#00D4B3]">
+              {metadata.icon}
+            </div>
+            <div>
+              <h4 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">
+                Modelos: {metadata.title}
+              </h4>
+              <p className="mt-1 text-sm text-gray-500 dark:text-[#94A3B8]">
+                {metadata.description}
+              </p>
+            </div>
+          </div>
+          <span className="rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-500 dark:border-[#6C757D]/20 dark:text-[#94A3B8]">
+            {scopeSettings.length} configuraciones
+          </span>
+        </div>
+
+        <div className="space-y-8">
+          {scopeSettings.map((setting) => renderConfigSection(setting))}
+        </div>
+      </section>
+    );
+  };
+
   const renderConfigSection = (setting: CurationConfig) => {
     const metadata = getMetadata(setting.setting_type);
     const phasePrompts = getPromptsForSetting(setting.setting_type, prompts);
@@ -819,7 +1096,7 @@ export function CurationSettingsManager() {
             </div>
           ) : (
             <div className="border border-dashed border-gray-200 dark:border-[#6C757D]/20 rounded-xl p-4 text-sm text-gray-500 dark:text-[#94A3B8] bg-gray-50 dark:bg-[#0F1419]/40">
-              No hay prompts configurables asociados a esta fase.
+              Los prompts configurables se administran por ambito en el bloque inferior.
             </div>
           )}
         </div>
@@ -850,7 +1127,22 @@ export function CurationSettingsManager() {
 
   return (
     <div className="space-y-12">
-      {settingsList.map((setting) => renderConfigSection(setting))}
+      <section className="space-y-5">
+        <div>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+            Modelos por ambito
+          </h3>
+          <p className="mt-1 text-sm text-gray-500 dark:text-[#94A3B8]">
+            Define modelo, fallback, temperatura y razonamiento para cada flujo y agente configurable.
+          </p>
+        </div>
+
+        <div className="space-y-5">
+          {groupSettingsByScope(settingsList).map((group) =>
+            renderModelScopeSection(group.scope, group.settings),
+          )}
+        </div>
+      </section>
 
       <div className="pt-4 flex justify-end border-t border-gray-100 dark:border-[#6C757D]/10 mt-6">
         <button
@@ -866,6 +1158,23 @@ export function CurationSettingsManager() {
           Guardar Configuracion
         </button>
       </div>
+
+      <section className="space-y-5 border-t border-gray-100 pt-8 dark:border-[#6C757D]/10">
+        <div>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+            Historial de prompts por ambito
+          </h3>
+          <p className="mt-1 text-sm text-gray-500 dark:text-[#94A3B8]">
+            Controla las instrucciones editables de cada flujo sin mezclar cursos, bundles y slides HTML.
+          </p>
+        </div>
+
+        <div className="space-y-5">
+          {groupPromptsByScope(prompts).map((group) =>
+            renderPromptScopeSection(group.scope, group.prompts),
+          )}
+        </div>
+      </section>
     </div>
   );
 }

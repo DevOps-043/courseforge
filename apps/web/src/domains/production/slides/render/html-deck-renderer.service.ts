@@ -64,17 +64,15 @@ function renderNotes(slide: CourseSlideSpec) {
     : "";
 }
 
-function renderVisualPane(slide: CourseSlideSpec, deck: CourseDeckSpec) {
-  const label = slide.chart ? "GRAFICA SVG" : "ASSET / B-ROLL";
-  const detail = slide.chart
-    ? slide.chart.title
-    : slide.subtitle || deck.sourceSnapshot.title || deck.designSystem.brandLabel;
-
+function renderVisualPane() {
   return `<div class="image-pane">
     <div class="visual-grid"></div>
-    <div class="visual-object">
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(detail)}</strong>
+    <div class="visual-object" aria-hidden="true">
+      <div class="visual-orbit"></div>
+      <div class="visual-bar visual-bar-a"></div>
+      <div class="visual-bar visual-bar-b"></div>
+      <div class="visual-dot visual-dot-a"></div>
+      <div class="visual-dot visual-dot-b"></div>
     </div>
   </div>`;
 }
@@ -125,7 +123,7 @@ function renderSplitSlide(
       ${slide.subtitle ? `<p class="lead">${escapeHtml(slide.subtitle)}</p>` : ""}
       ${renderBodyBlocks(slide)}
     </div>
-    ${renderVisualPane(slide, deck)}
+    ${renderVisualPane()}
     <div class="brand-mark">${escapeHtml(brandMark(slide))}</div>
     ${renderNotes(slide)}
   </section>`;
@@ -190,6 +188,23 @@ function renderSlide(slide: CourseSlideSpec, deck: CourseDeckSpec, isActive: boo
     return renderDataSlide(slide, deck, isActive);
   }
 
+  const preferredLayout = slide.renderHints?.layout;
+  if (preferredLayout === "center") {
+    return renderCenterSlide(slide, deck, isActive);
+  }
+  if (preferredLayout === "closing") {
+    return renderClosingSlide(slide, deck, isActive);
+  }
+  if (preferredLayout === "framework" && bulletItems(slide).length >= 2) {
+    return renderFrameworkSlide(slide, deck, isActive);
+  }
+  if (preferredLayout === "split") {
+    return renderSplitSlide(slide, deck, isActive, false);
+  }
+  if (preferredLayout === "split_reverse") {
+    return renderSplitSlide(slide, deck, isActive, true);
+  }
+
   if (slide.type === "cover" || slide.type === "quote" || slide.type === "transition") {
     return renderCenterSlide(slide, deck, isActive);
   }
@@ -198,7 +213,7 @@ function renderSlide(slide: CourseSlideSpec, deck: CourseDeckSpec, isActive: boo
     return renderClosingSlide(slide, deck, isActive);
   }
 
-  if (["objectives", "exercise", "knowledge_check", "diagram"].includes(slide.type) && bulletItems(slide).length >= 2) {
+  if (["objectives", "exercise", "knowledge_check", "diagram", "bibliography"].includes(slide.type) && bulletItems(slide).length >= 2) {
     return renderFrameworkSlide(slide, deck, isActive);
   }
 
@@ -206,16 +221,24 @@ function renderSlide(slide: CourseSlideSpec, deck: CourseDeckSpec, isActive: boo
 }
 
 function renderCss(deck: CourseDeckSpec) {
+  const displayFont = deck.designSystem.fontPairing === "system_sans"
+    ? "Arial, Helvetica, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    : deck.designSystem.fontPairing === "technical_mono"
+      ? "'SFMono-Regular', Consolas, 'Liberation Mono', monospace"
+      : "Georgia, 'Times New Roman', Cambria, serif";
+  const bodyFont = deck.designSystem.fontPairing === "technical_mono"
+    ? "'SFMono-Regular', Consolas, 'Liberation Mono', monospace"
+    : "Arial, Helvetica, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
   return `:root {
-  --font-display: 'Newsreader', Georgia, 'Times New Roman', serif;
-  --font-ui: 'Inter Tight', Inter, Arial, Helvetica, sans-serif;
-  --bg: #F3F7F8;
+  --font-display: ${displayFont};
+  --font-ui: ${bodyFont};
+  --bg: ${deck.designSystem.background || "#F3F7F8"};
   --bg-positive: #E8FAF7;
-  --shell: #FFFFFF;
-  --blue-deep: #0A2540;
+  --shell: ${deck.designSystem.surface || "#FFFFFF"};
+  --blue-deep: ${deck.designSystem.text || "#0A2540"};
   --accent: ${deck.designSystem.accent || "#23AEA8"};
   --accent-accessible: ${deck.designSystem.accent2 || "#138A87"};
-  --muted: #6C7887;
+  --muted: ${deck.designSystem.muted || "#6C7887"};
   --grid-line: rgba(10, 37, 64, 0.10);
   --type-display-hero: 126px;
   --type-display-large: 86px;
@@ -325,19 +348,64 @@ html, body {
   flex-direction: column;
   justify-content: flex-end;
 }
-.visual-object span {
-  font-size: var(--type-label);
-  letter-spacing: .10em;
-  text-transform: uppercase;
-  color: var(--accent-accessible);
-  font-weight: 600;
-  margin-bottom: 22px;
+.visual-object::before {
+  content: '';
+  position: absolute;
+  inset: 34px;
+  border: 1px solid rgba(10,37,64,.12);
 }
-.visual-object strong {
-  font-size: 42px;
-  line-height: 1.08;
-  font-weight: 500;
-  letter-spacing: 0;
+.visual-orbit {
+  position: absolute;
+  width: 230px;
+  height: 230px;
+  left: 74px;
+  top: 58px;
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  opacity: .72;
+}
+.visual-orbit::after {
+  content: '';
+  position: absolute;
+  width: 112px;
+  height: 112px;
+  right: -58px;
+  bottom: -36px;
+  border: 2px solid var(--accent-accessible);
+  border-radius: 999px;
+  opacity: .72;
+}
+.visual-bar {
+  position: absolute;
+  right: 72px;
+  height: 12px;
+  background: var(--blue-deep);
+  border-radius: 999px;
+}
+.visual-bar-a {
+  top: 128px;
+  width: 188px;
+}
+.visual-bar-b {
+  top: 164px;
+  width: 132px;
+  background: var(--accent);
+}
+.visual-dot {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.visual-dot-a {
+  left: 116px;
+  bottom: 88px;
+}
+.visual-dot-b {
+  right: 122px;
+  bottom: 92px;
+  background: var(--accent-accessible);
 }
 .kicker {
   font-family: var(--font-ui);
@@ -374,14 +442,14 @@ html, body {
 .display-huge {
   max-width: 1320px;
   font-size: var(--type-display-hero);
-  line-height: .92;
-  letter-spacing: -0.04em;
+  line-height: .96;
+  letter-spacing: 0;
 }
 .display-large {
   max-width: 820px;
   font-size: var(--type-display-large);
-  line-height: .98;
-  letter-spacing: -0.035em;
+  line-height: 1.04;
+  letter-spacing: 0;
 }
 .lead {
   margin: 30px 0 0;
@@ -627,16 +695,11 @@ html, body {
 @keyframes draw-marker { to { width: 104%; } }
 @keyframes shift-color { to { color: var(--accent-accessible); } }
 .slide.active .anim-color { animation: shift-color .6s ease .45s forwards; }
-.anim-reveal { clip-path: inset(0 100% 0 0); }
-.slide.active .anim-reveal { animation: reveal-clip .7s cubic-bezier(.16,1,.3,1) .3s forwards; }
-@keyframes reveal-clip { to { clip-path: inset(0 0 0 0); } }
-.anim-typewriter { clip-path: inset(0 100% 0 0); }
-.slide.active .anim-typewriter { animation: reveal-clip .9s cubic-bezier(.4,0,.2,1) .35s forwards; }
-.anim-fade-up { opacity: 0; transform: translateY(20px); }
-.slide.active .anim-fade-up { animation: fade-up .6s cubic-bezier(.16,1,.3,1) .6s forwards; }
-.slide.active .stagger-1 { animation-delay: .45s; }
-.slide.active .stagger-2 { animation-delay: .6s; }
-.slide.active .stagger-3 { animation-delay: .75s; }
+.anim-reveal, .anim-typewriter { opacity: 1; }
+.slide.active .anim-reveal, .slide.active .anim-typewriter { animation: none; }
+.anim-fade-up { opacity: 1; transform: none; }
+.slide.active .anim-fade-up { animation: none; }
+.slide.active .stagger-1, .slide.active .stagger-2, .slide.active .stagger-3 { animation-delay: 0s; }
 @keyframes fade-up { to { opacity: 1; transform: translateY(0); } }
 .notes { display: none !important; }
 @media print {
@@ -738,9 +801,6 @@ export function renderCourseDeckHtml(deck: CourseDeckSpec) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=${deck.width}, initial-scale=1">
   <title>${escapeHtml(deck.sourceSnapshot.title || "SofLIA - Engine Deck")}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700&family=Newsreader:opsz,wght@6..72,300;6..72,400&display=swap">
   <style>${renderCss(deck)}</style>
 </head>
 <body>

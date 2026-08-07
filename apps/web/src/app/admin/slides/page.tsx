@@ -1,8 +1,10 @@
 import Link from "next/link";
 import {
+  ArrowLeft,
   AlertTriangle,
   BarChart3,
   CheckCircle2,
+  FileCode2,
   FileText,
   Gauge,
   GitBranch,
@@ -23,6 +25,7 @@ import {
 export const dynamic = "force-dynamic";
 
 type SlidesSearchParams = {
+  artifactId?: string | string[];
   componentId?: string | string[];
   returnTo?: string | string[];
 };
@@ -134,6 +137,46 @@ function normalizeStatus(value: unknown): RecentSlideDeck["status"] {
     : "UNKNOWN";
 }
 
+function toSlideGenerationCandidate(params: {
+  expectedArtifactId?: string | null;
+  organizationId?: string | null;
+  row: MaterialComponentCandidateRow;
+}): SlideGenerationCandidate | null {
+  const { artifact, artifactId, lesson } = getNestedCandidateData(params.row);
+  if (!artifactId) {
+    return null;
+  }
+
+  if (params.expectedArtifactId && artifactId !== params.expectedArtifactId) {
+    return null;
+  }
+
+  if (params.organizationId && artifact?.organization_id !== params.organizationId) {
+    return null;
+  }
+
+  const qaReport = (params.row.assets?.slides as Record<string, unknown> | undefined)?.qa_report as
+    | Record<string, unknown>
+    | undefined;
+  const slidesAssets = params.row.assets?.slides as Record<string, unknown> | undefined;
+  const courseTitle = artifact?.idea_central || "Artefacto sin titulo";
+  const lessonTitle = lesson?.lesson_title || "Leccion sin titulo";
+  const componentType = params.row.type || "VIDEO";
+
+  return {
+    artifactId,
+    componentId: params.row.id,
+    componentType,
+    hasPreparedSpec: Boolean(slidesAssets?.prepared_spec),
+    label: `${courseTitle} / ${lessonTitle} / ${componentType.replace(/_/g, " ")}`,
+    lessonTitle,
+    preparedSlideCount: typeof slidesAssets?.prepared_slide_count === "number"
+      ? slidesAssets.prepared_slide_count
+      : null,
+    qaStatus: typeof qaReport?.status === "string" ? qaReport.status : null,
+  };
+}
+
 async function getRecentSlideDecks(): Promise<RecentSlideDeck[]> {
   const tenant = await resolveActiveTenantContext();
   const admin = getServiceRoleClient();
@@ -215,38 +258,71 @@ async function getSlideGenerationCandidates(): Promise<SlideGenerationCandidate[
   }
 
   return ((data || []) as MaterialComponentCandidateRow[])
-    .map((row): SlideGenerationCandidate | null => {
-      const { artifact, artifactId, lesson } = getNestedCandidateData(row);
-      if (!artifactId) {
-        return null;
-      }
-
-      if (tenant?.organizationId && artifact?.organization_id !== tenant.organizationId) {
-        return null;
-      }
-
-      const qaReport = (row.assets?.slides as Record<string, unknown> | undefined)?.qa_report as
-        | Record<string, unknown>
-        | undefined;
-      const slidesAssets = row.assets?.slides as Record<string, unknown> | undefined;
-      const courseTitle = artifact?.idea_central || "Artefacto sin titulo";
-      const lessonTitle = lesson?.lesson_title || "Leccion sin titulo";
-      const componentType = row.type || "VIDEO";
-
-      return {
-        artifactId,
-        componentId: row.id,
-        componentType,
-        hasPreparedSpec: Boolean(slidesAssets?.prepared_spec),
-        label: `${courseTitle} / ${lessonTitle} / ${componentType.replace(/_/g, " ")}`,
-        lessonTitle,
-        preparedSlideCount: typeof slidesAssets?.prepared_slide_count === "number"
-          ? slidesAssets.prepared_slide_count
-          : null,
-        qaStatus: typeof qaReport?.status === "string" ? qaReport.status : null,
-      };
-    })
+    .map((row) => toSlideGenerationCandidate({
+      organizationId: tenant?.organizationId,
+      row,
+    }))
     .filter((candidate): candidate is SlideGenerationCandidate => Boolean(candidate));
+}
+
+async function getSlideGenerationCandidateByComponentId(params: {
+  artifactId?: string | null;
+  componentId: string | null;
+}): Promise<SlideGenerationCandidate | null> {
+  if (!params.componentId) {
+    return null;
+  }
+
+  const tenant = await resolveActiveTenantContext();
+  const admin = getServiceRoleClient();
+  const { data, error } = await admin
+    .from("material_components")
+    .select(`
+      id,
+      type,
+      assets,
+      material_lessons!inner (
+        lesson_title,
+        materials!inner (
+          artifact_id,
+          artifacts!inner (
+            idea_central,
+            organization_id
+          )
+        )
+      )
+    `)
+    .eq("id", params.componentId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("[admin/slides] Could not load URL slide component:", error.message);
+    return null;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return toSlideGenerationCandidate({
+    expectedArtifactId: params.artifactId,
+    organizationId: tenant?.organizationId,
+    row: data as MaterialComponentCandidateRow,
+  });
+}
+
+function mergeSlideGenerationCandidates(
+  candidates: SlideGenerationCandidate[],
+  preferredCandidate: SlideGenerationCandidate | null,
+) {
+  if (!preferredCandidate) {
+    return candidates;
+  }
+
+  return [
+    preferredCandidate,
+    ...candidates.filter((candidate) => candidate.componentId !== preferredCandidate.componentId),
+  ];
 }
 
 function StatusBadge({ status }: { status: RecentSlideDeck["status"] }) {
@@ -274,16 +350,28 @@ export default async function SofliaEngineSlidesPage({
   searchParams?: Promise<SlidesSearchParams>;
 }) {
   const params = searchParams ? await searchParams : {};
+  const initialArtifactId = getSearchParamValue(params.artifactId) || null;
   const initialComponentId = getSearchParamValue(params.componentId) || null;
   const returnTo = getSearchParamValue(params.returnTo) || null;
   const tenant = await resolveActiveTenantContext();
   const adminBasePath = tenant?.organizationSlug
     ? `/${tenant.organizationSlug}/admin`
     : "/admin";
-  const [recentDecks, generationCandidates] = await Promise.all([
+  const backHref = returnTo || (initialArtifactId
+    ? `${adminBasePath}/artifacts/${initialArtifactId}`
+    : `${adminBasePath}/artifacts`);
+  const [recentDecks, generationCandidates, directGenerationCandidate] = await Promise.all([
     getRecentSlideDecks(),
     getSlideGenerationCandidates(),
+    getSlideGenerationCandidateByComponentId({
+      artifactId: initialArtifactId,
+      componentId: initialComponentId,
+    }),
   ]);
+  const resolvedGenerationCandidates = mergeSlideGenerationCandidates(
+    generationCandidates,
+    directGenerationCandidate,
+  );
   const totalFindings = recentDecks.reduce(
     (total, deck) => total + deck.findingCount,
     0,
@@ -305,11 +393,18 @@ export default async function SofliaEngineSlidesPage({
           </h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-600 dark:text-gray-400">
             Consola del modulo hibrido para generar diapositivas de cursos con
-            estructura tipo OpenDesign, graficas SVG responsivas y QA automatico.
+            plantillas HTML SofLIA, graficas SVG responsivas y QA automatico.
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <Link
+            href={backHref}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:bg-[#151A21] dark:text-gray-200 dark:hover:bg-white/5"
+          >
+            <ArrowLeft size={16} />
+            Regresar
+          </Link>
           <Link
             href={`${adminBasePath}/artifacts`}
             className="inline-flex items-center gap-2 rounded-lg bg-[#0A2540] px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-[#10395f]"
@@ -323,6 +418,13 @@ export default async function SofliaEngineSlidesPage({
           >
             <FileText size={16} />
             Plantillas
+          </Link>
+          <Link
+            href={`${adminBasePath}/slides/templates`}
+            className="inline-flex items-center gap-2 rounded-lg border border-[#00D4B3]/30 bg-[#00D4B3]/10 px-3 py-2 text-sm font-bold text-[#007F6D] transition hover:bg-[#00D4B3]/15 dark:text-[#00D4B3]"
+          >
+            <FileCode2 size={16} />
+            Crear template HTML
           </Link>
         </div>
       </header>
@@ -352,7 +454,7 @@ export default async function SofliaEngineSlidesPage({
       </section>
 
       <SofliaEngineSlidesGenerator
-        candidates={generationCandidates}
+        candidates={resolvedGenerationCandidates}
         initialComponentId={initialComponentId}
         returnTo={returnTo}
       />

@@ -1,0 +1,221 @@
+import type { CourseSlideSpec, SlideDeckGenerateInput } from "../specs/course-deck.schema";
+import type { DeckBrief } from "./deck-brief-agent.service";
+import type { EvidencePack } from "./lesson-evidence-agent.service";
+
+export interface PlannedSlide {
+  id: string;
+  order: number;
+  purpose: string;
+  sourceRefs: string[];
+  type: CourseSlideSpec["type"];
+}
+
+export interface SlidePlan {
+  evidenceSourceCount: number;
+  slides: PlannedSlide[];
+  sourceMode: DeckBrief["sourceMode"];
+  template: DeckBrief["template"];
+}
+
+interface BuildSlidePlanParams {
+  brief: DeckBrief;
+  component: {
+    content?: unknown;
+  };
+  evidence: EvidencePack;
+  input: SlideDeckGenerateInput;
+}
+
+interface ScriptSectionLike {
+  best_practices?: unknown[];
+  common_errors?: unknown[];
+  on_screen_action?: string;
+  on_screen_text?: string;
+  reflection_question?: string;
+  section_number?: number;
+  section_type?: string;
+  success_criteria?: string;
+  visual_notes?: string;
+}
+
+interface StoryboardItemLike {
+  on_screen_action?: string;
+  on_screen_text?: string;
+  success_criteria_visible?: string;
+  take_number?: number;
+  visual_content?: string;
+  visual_type?: string;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function compactText(value: unknown): string {
+  return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+}
+
+function includesAny(value: string, patterns: string[]) {
+  const normalized = value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  return patterns.some((pattern) => normalized.includes(pattern));
+}
+
+function evidenceRefsForSlide(evidence: EvidencePack) {
+  return evidence.sourceRefs.slice(0, 4);
+}
+
+function planTypeFromScriptSection(
+  section: ScriptSectionLike,
+  index: number,
+): CourseSlideSpec["type"] {
+  const text = [
+    section.section_type,
+    section.on_screen_text,
+    section.on_screen_action,
+    section.visual_notes,
+    section.success_criteria,
+    section.reflection_question,
+  ].map(compactText).join(" ");
+
+  if (Array.isArray(section.common_errors) && section.common_errors.length > 0) {
+    return "knowledge_check";
+  }
+  if (Array.isArray(section.best_practices) && section.best_practices.length >= 2) {
+    return "objectives";
+  }
+  if (includesAny(text, ["pregunta", "reflexion", "quiz", "check", "evaluacion"])) {
+    return "knowledge_check";
+  }
+  if (includesAny(text, ["paso", "ejemplo", "aplicacion", "demostracion", "demo"])) {
+    return "worked_example";
+  }
+  if (includesAny(text, ["actividad", "ejercicio", "practica"])) {
+    return "exercise";
+  }
+
+  return index === 0 ? "concept" : "worked_example";
+}
+
+function planTypeFromStoryboardItem(
+  item: StoryboardItemLike,
+  index: number,
+): CourseSlideSpec["type"] {
+  const text = [
+    item.visual_type,
+    item.visual_content,
+    item.on_screen_action,
+    item.on_screen_text,
+    item.success_criteria_visible,
+  ].map(compactText).join(" ");
+
+  if (includesAny(text, ["quiz", "pregunta", "check", "evaluacion"])) {
+    return "knowledge_check";
+  }
+  if (includesAny(text, ["paso", "demo", "pantalla", "captura", "tutorial"])) {
+    return "worked_example";
+  }
+  if (includesAny(text, ["actividad", "ejercicio", "practica"])) {
+    return "exercise";
+  }
+
+  return index === 0 ? "concept" : "worked_example";
+}
+
+function planCustomSlides(
+  input: SlideDeckGenerateInput,
+  evidence: EvidencePack,
+): PlannedSlide[] {
+  return (input.customSlides || []).map((slide, index) => ({
+    id: `custom-slide-${index + 1}`,
+    order: index + 1,
+    purpose: slide.chart ? "Explicar datos proporcionados manualmente." : "Presentar contenido personalizado.",
+    sourceRefs: slide.chart?.sourceRefs.length ? slide.chart.sourceRefs : evidenceRefsForSlide(evidence),
+    type: slide.chart ? "data_explainer" : slide.type || (index === 0 ? "cover" : "concept"),
+  }));
+}
+
+function planScriptSlides(
+  componentContent: Record<string, unknown>,
+  evidence: EvidencePack,
+): PlannedSlide[] {
+  const script = asRecord(componentContent.script);
+  const sections = Array.isArray(script.sections)
+    ? script.sections as ScriptSectionLike[]
+    : [];
+
+  return [
+    {
+      id: "cover",
+      order: 1,
+      purpose: "Abrir la leccion y situar el objetivo.",
+      sourceRefs: ["component.content.script", ...evidenceRefsForSlide(evidence)],
+      type: "cover",
+    },
+    ...sections.slice(0, 8).map((section, index): PlannedSlide => ({
+      id: `script-section-${section.section_number || index + 1}`,
+      order: index + 2,
+      purpose: "Convertir una seccion del guion en apoyo visual breve.",
+      sourceRefs: ["component.content.script", ...evidenceRefsForSlide(evidence)],
+      type: planTypeFromScriptSection(section, index),
+    })),
+  ];
+}
+
+function planStoryboardSlides(
+  componentContent: Record<string, unknown>,
+  evidence: EvidencePack,
+): PlannedSlide[] {
+  const storyboard = Array.isArray(componentContent.storyboard)
+    ? componentContent.storyboard as StoryboardItemLike[]
+    : [];
+
+  return [
+    {
+      id: "cover",
+      order: 1,
+      purpose: "Abrir la secuencia visual aprobada.",
+      sourceRefs: ["component.content.storyboard", ...evidenceRefsForSlide(evidence)],
+      type: "cover",
+    },
+    ...storyboard.slice(0, 10).map((item, index): PlannedSlide => ({
+      id: `storyboard-${item.take_number || index + 1}`,
+      order: index + 2,
+      purpose: "Transformar una toma del storyboard en apoyo visual.",
+      sourceRefs: ["component.content.storyboard", ...evidenceRefsForSlide(evidence)],
+      type: planTypeFromStoryboardItem(item, index),
+    })),
+  ];
+}
+
+function planFallbackSlide(): PlannedSlide[] {
+  return [{
+    id: "fallback-cover",
+    order: 1,
+    purpose: "Crear una slide base cuando no hay guion ni storyboard.",
+    sourceRefs: [],
+    type: "cover",
+  }];
+}
+
+export function buildSlidePlan(params: BuildSlidePlanParams): SlidePlan {
+  const content = asRecord(params.component.content);
+  const slides = params.brief.sourceMode === "custom_request"
+    ? planCustomSlides(params.input, params.evidence)
+    : params.brief.sourceMode === "script"
+      ? planScriptSlides(content, params.evidence)
+      : params.brief.sourceMode === "storyboard"
+        ? planStoryboardSlides(content, params.evidence)
+        : planFallbackSlide();
+
+  return {
+    evidenceSourceCount: params.evidence.sourceRefs.length,
+    slides,
+    sourceMode: params.brief.sourceMode,
+    template: params.brief.template,
+  };
+}

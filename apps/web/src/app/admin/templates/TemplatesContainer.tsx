@@ -515,8 +515,11 @@ export default function TemplatesContainer({
   const bundleAgentHref = params?.empresaSlug
     ? `/${params.empresaSlug}/admin/remotion/bundle-agent`
     : "/admin/remotion/bundle-agent";
+  const slideTemplateStudioHref = params?.empresaSlug
+    ? `/${params.empresaSlug}/admin/slides/templates`
+    : "/admin/slides/templates";
   const createWithSofliaHref = libraryMode === "slide_templates"
-    ? `${bundleAgentHref}?artifactKind=slide_template`
+    ? slideTemplateStudioHref
     : bundleAgentHref;
   const baseBundleDownloadHref = "/api/admin/remotion/bundle-agent/base-bundle";
   const baseSlideTemplateDownloadHref = "/api/admin/remotion/bundle-agent/base-bundle?artifactKind=slide_template";
@@ -682,6 +685,7 @@ export default function TemplatesContainer({
               filteredSlideTemplates.map((template) => (
                 <SlideTemplateCard
                   key={template.id}
+                  editHref={`${slideTemplateStudioHref}?conversationId=${encodeURIComponent(template.conversation_id)}`}
                   template={template}
                 />
               ))
@@ -1529,7 +1533,13 @@ function getSlideTemplateStatusLabel(status: SlideTemplateLibraryItem["status"])
   }
 }
 
-function SlideTemplateCard({ template }: { template: SlideTemplateLibraryItem }) {
+function SlideTemplateCard({
+  editHref,
+  template,
+}: {
+  editHref: string;
+  template: SlideTemplateLibraryItem;
+}) {
   const isReady = template.status === "PACKAGED" && Boolean(template.bundle_storage_path);
   const hasFailed = template.status === "FAILED" || template.status === "VALIDATION_FAILED";
   const downloadHref = `/api/admin/remotion/bundle-agent/conversations/${template.conversation_id}/runs/${template.id}/download`;
@@ -1589,6 +1599,14 @@ function SlideTemplateCard({ template }: { template: SlideTemplateLibraryItem })
       </div>
 
       <div className="px-6 py-4 bg-gray-50/50 dark:bg-[#1E2329]/20 border-t border-gray-100 dark:border-[#6C757D]/5 flex justify-end items-center gap-2">
+        <Link
+          href={editHref}
+          className="flex items-center gap-1.5 rounded-lg border border-[#00D4B3]/30 bg-white px-4 py-2 text-xs font-semibold text-[#00796B] transition-all hover:bg-[#00D4B3]/10 dark:bg-[#0F1419] dark:text-[#00D4B3]"
+          title="Editar conversacion de esta plantilla"
+        >
+          <Sparkles size={14} />
+          Editar
+        </Link>
         <a
           href={isReady ? downloadHref : "#"}
           aria-disabled={!isReady}

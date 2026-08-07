@@ -73,10 +73,7 @@ export class BundleAgentWorkflowService {
           messages: messages || [],
         });
     const spec = artifactKind === "slide_template"
-      ? parseSlideTemplateAgentSpec({
-          ...generated.spec,
-          ...(overrides && typeof overrides === "object" ? overrides : {}),
-        })
+      ? parseSlideTemplateAgentSpec(generated.spec)
       : bundleAgentSpecSchema.parse({
           ...generated.spec,
           artifactKind,

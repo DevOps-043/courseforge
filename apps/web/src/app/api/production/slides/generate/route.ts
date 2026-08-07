@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { createClient } from "@/utils/supabase/server";
 import type { MaterialAssets } from "@/domains/materials/types/materials.types";
@@ -21,6 +22,11 @@ import {
   PRODUCTION_QA_STATUSES,
 } from "@/domains/production/types/production.types";
 import { generateCourseDeckWithQualityGate } from "@/domains/production/slides/generation/course-deck-generation-orchestrator.service";
+import { loadSlideSourcePack } from "@/domains/production/slides/data/slide-source-pack-loader.service";
+import {
+  resolveSlideAgentModelConfig,
+  resolveSlideAgentPromptConfig,
+} from "@/domains/production/slides/agents/slide-agent-prompt-resolver.service";
 import { renderCourseDeckHtml } from "@/domains/production/slides/render/html-deck-renderer.service";
 import {
   courseDeckSpecSchema,
@@ -36,6 +42,9 @@ const BUCKET = "production-assets";
 
 const requestBodySchema = slideDeckGenerateInputSchema.extend({
   componentId: z.string().min(1),
+  forceRegenerate: z.boolean().optional(),
+  regenerationRequestId: z.string().uuid().optional(),
+  slideTemplateRunId: z.string().uuid().optional(),
 });
 
 function deckBasePath(componentId: string) {
@@ -54,6 +63,88 @@ function getPreparedDeckSpec(assets: MaterialAssets, componentId: string): Cours
   }
 
   return parsed.data;
+}
+
+function canReusePreparedDeckSpec(params: {
+  assets: MaterialAssets;
+  componentId: string;
+  forceRegenerate: boolean;
+  slideTemplateRunId?: string;
+}) {
+  if (params.forceRegenerate) {
+    return false;
+  }
+
+  const requestedTemplateRunId = params.slideTemplateRunId || null;
+  const storedTemplateRunId = params.assets.slides?.selected_slide_template_run_id || null;
+  if (requestedTemplateRunId !== storedTemplateRunId) {
+    return false;
+  }
+
+  return Boolean(getPreparedDeckSpec(params.assets, params.componentId));
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+async function resolveSlideTemplateDesignSystem(params: {
+  admin: NonNullable<Awaited<ReturnType<typeof getAuthorizedMaterialComponentAdmin>>>["admin"];
+  organizationId: string;
+  slideTemplateRunId?: string;
+}) {
+  if (!params.slideTemplateRunId) return null;
+
+  const { data: run, error } = await params.admin
+    .from("soflia_bundle_generation_runs")
+    .select("id, organization_id, spec_id, status, bundle_storage_path, validation_report")
+    .eq("id", params.slideTemplateRunId)
+    .eq("organization_id", params.organizationId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!run) {
+    throw new Error("Plantilla de slides no encontrada para esta organizacion.");
+  }
+  if (run.status !== "PACKAGED" || !run.bundle_storage_path) {
+    throw new Error("La plantilla seleccionada aun no esta lista para generar slides.");
+  }
+
+  const validationInfo = asRecord(asRecord(run.validation_report)?.info);
+  if (validationInfo?.artifactKind && validationInfo.artifactKind !== "slide_template") {
+    throw new Error("La plantilla seleccionada no es una plantilla HTML de slides.");
+  }
+
+  const { data: specRow, error: specError } = await params.admin
+    .from("soflia_bundle_specs")
+    .select("spec_json")
+    .eq("id", run.spec_id)
+    .eq("organization_id", params.organizationId)
+    .maybeSingle();
+
+  if (specError) throw specError;
+  const spec = asRecord(specRow?.spec_json);
+  if (spec?.artifactKind !== "slide_template") {
+    throw new Error("La spec de la plantilla seleccionada no es valida para slides HTML.");
+  }
+
+  const blueprint = asRecord(spec.templateBlueprint);
+  const designTokens = asRecord(blueprint?.designTokens);
+  const modifiers = asRecord(blueprint?.modifiers);
+
+  return {
+    accent: typeof designTokens?.accent === "string" ? designTokens.accent : undefined,
+    accent2: typeof designTokens?.accent2 === "string" ? designTokens.accent2 : undefined,
+    background: typeof designTokens?.background === "string" ? designTokens.background : undefined,
+    fontPairing: typeof modifiers?.fontPairing === "string" ? modifiers.fontPairing : undefined,
+    muted: typeof designTokens?.muted === "string" ? designTokens.muted : undefined,
+    selectedSlideTemplateRunId: run.id as string,
+    surface: typeof designTokens?.surface === "string" ? designTokens.surface : undefined,
+    text: typeof designTokens?.text === "string" ? designTokens.text : undefined,
+    title: typeof spec.title === "string" ? spec.title : null,
+  };
 }
 
 async function uploadTextAsset(params: {
@@ -94,7 +185,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const { componentId, ...input } = parsed.data;
+  const {
+    componentId,
+    forceRegenerate = false,
+    regenerationRequestId,
+    slideTemplateRunId,
+    ...input
+  } = parsed.data;
   const supabase = await createClient();
   const authenticatedUser = await getAuthenticatedUser(supabase);
   if (!authenticatedUser) {
@@ -115,8 +212,11 @@ export async function POST(request: Request) {
   });
   const inputSnapshot = {
     component_id: componentId,
+    force_regenerate: forceRegenerate,
     input,
     job_type: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
+    regeneration_request_id: forceRegenerate ? regenerationRequestId || randomUUID() : null,
+    slide_template_run_id: slideTemplateRunId || null,
   };
   const idempotencyKey = buildProductionIdempotencyKey({
     componentId,
@@ -134,9 +234,12 @@ export async function POST(request: Request) {
   });
 
   if (
-    job.status === PRODUCTION_JOB_STATUSES.SUCCEEDED ||
-    job.status === PRODUCTION_JOB_STATUSES.RUNNING ||
-    job.status === PRODUCTION_JOB_STATUSES.WAITING_PROVIDER
+    !forceRegenerate &&
+    (
+      job.status === PRODUCTION_JOB_STATUSES.SUCCEEDED ||
+      job.status === PRODUCTION_JOB_STATUSES.RUNNING ||
+      job.status === PRODUCTION_JOB_STATUSES.WAITING_PROVIDER
+    )
   ) {
     return NextResponse.json({
       success: true,
@@ -153,9 +256,41 @@ export async function POST(request: Request) {
     });
 
     const currentAssets = (authorizedComponent.component.assets || {}) as MaterialAssets;
-    const preparedDeckSpec = input.customSlides?.length
+    const sourcePack = await loadSlideSourcePack({
+      artifactId: authorizedComponent.artifactId,
+      lessonId: context.lessonId,
+      sourceRefs: (authorizedComponent.component as { source_refs?: unknown }).source_refs,
+      supabase: authorizedComponent.admin,
+    });
+    if (slideTemplateRunId && !context.organizationId) {
+      throw new Error("No se pudo resolver la organizacion para seleccionar plantilla de slides.");
+    }
+    const selectedSlideTemplate = await resolveSlideTemplateDesignSystem({
+      admin: authorizedComponent.admin,
+      organizationId: context.organizationId || "",
+      slideTemplateRunId,
+    });
+    const preparedDeckSpec = input.customSlides?.length ||
+      !canReusePreparedDeckSpec({
+        assets: currentAssets,
+        componentId,
+        forceRegenerate,
+        slideTemplateRunId,
+      })
       ? null
       : getPreparedDeckSpec(currentAssets, componentId);
+    const agentPrompts = preparedDeckSpec
+      ? undefined
+      : await resolveSlideAgentPromptConfig(
+          authorizedComponent.admin,
+          context.organizationId,
+        );
+    const agentModels = preparedDeckSpec
+      ? undefined
+      : await resolveSlideAgentModelConfig(
+          authorizedComponent.admin,
+          context.organizationId,
+        );
     const deckGeneration = preparedDeckSpec
       ? (() => {
           const html = renderCourseDeckHtml(preparedDeckSpec);
@@ -210,10 +345,34 @@ export async function POST(request: Request) {
         })()
       : generateCourseDeckWithQualityGate({
           artifactId: authorizedComponent.artifactId,
-          component: authorizedComponent.component,
+          agentModels,
+          agentPrompts,
+          component: {
+            ...authorizedComponent.component,
+            sourcePack,
+          },
           input,
         });
-    const { deckSpec, html, qaReport, stages } = deckGeneration;
+    const { deckSpec: generatedDeckSpec, html: generatedHtml, qaReport: generatedQaReport, stages } = deckGeneration;
+    const deckSpec = selectedSlideTemplate
+      ? courseDeckSpecSchema.parse({
+          ...generatedDeckSpec,
+          designSystem: {
+            ...generatedDeckSpec.designSystem,
+            accent: selectedSlideTemplate.accent || generatedDeckSpec.designSystem.accent,
+            accent2: selectedSlideTemplate.accent2 || generatedDeckSpec.designSystem.accent2,
+            background: selectedSlideTemplate.background || generatedDeckSpec.designSystem.background,
+            fontPairing: selectedSlideTemplate.fontPairing || generatedDeckSpec.designSystem.fontPairing,
+            muted: selectedSlideTemplate.muted || generatedDeckSpec.designSystem.muted,
+            surface: selectedSlideTemplate.surface || generatedDeckSpec.designSystem.surface,
+            text: selectedSlideTemplate.text || generatedDeckSpec.designSystem.text,
+          },
+        })
+      : generatedDeckSpec;
+    const html = selectedSlideTemplate ? renderCourseDeckHtml(deckSpec) : generatedHtml;
+    const qaReport = selectedSlideTemplate
+      ? validateCourseDeckQuality({ deckSpec, html })
+      : generatedQaReport;
 
     if (qaReport.status === "FAIL") {
       const failingCodes = qaReport.findings
@@ -254,6 +413,8 @@ export async function POST(request: Request) {
         lesson_id: context.lessonId,
         metadata: {
           slide_count: deckSpec.slides.length,
+          slide_template_run_id: selectedSlideTemplate?.selectedSlideTemplateRunId || null,
+          slide_template_title: selectedSlideTemplate?.title || null,
           template: deckSpec.template,
           qa_status: qaReport.status,
         },
@@ -278,6 +439,8 @@ export async function POST(request: Request) {
         metadata: {
           qa_status: qaReport.status,
           renderer: "soflia-engine-slides-v1",
+          slide_template_run_id: selectedSlideTemplate?.selectedSlideTemplateRunId || null,
+          slide_template_title: selectedSlideTemplate?.title || null,
           template: deckSpec.template,
         },
         mime_type: "text/html",
@@ -331,6 +494,9 @@ export async function POST(request: Request) {
         open_design_project_id: `soflia-engine-slides-${componentId}`,
         qa_content_path: qaUpload.storagePath,
         qa_report: qaReport as unknown as Record<string, unknown>,
+        selected_slide_template_run_id: selectedSlideTemplate?.selectedSlideTemplateRunId,
+        selected_slide_template_title: selectedSlideTemplate?.title,
+        prepared_spec: deckSpec as unknown as Record<string, unknown>,
         spec_content_path: specUpload.storagePath,
       },
       updated_at: now,
@@ -353,6 +519,8 @@ export async function POST(request: Request) {
           html_storage_path: htmlUpload.storagePath,
           qa_status: qaReport.status,
           qa_storage_path: qaUpload.storagePath,
+          slide_template_run_id: selectedSlideTemplate?.selectedSlideTemplateRunId || null,
+          slide_template_title: selectedSlideTemplate?.title || null,
           spec_storage_path: specUpload.storagePath,
           slide_count: deckSpec.slides.length,
           stages,

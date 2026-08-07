@@ -1,10 +1,22 @@
 import { buildCourseDeckSpecFromComponent } from "../planning/course-deck-from-component.service";
 import { renderCourseDeckHtml } from "../render/html-deck-renderer.service";
+import { buildDeckBrief } from "../agents/deck-brief-agent.service";
+import { buildEvidencePack } from "../agents/lesson-evidence-agent.service";
+import {
+  SLIDE_AGENT_PROMPT_CODES,
+  SLIDE_AGENT_PROMPT_SCOPE,
+  type SlideAgentModelConfig,
+  type SlideAgentPromptConfig,
+  type SlideAgentPromptKey,
+} from "../agents/slide-agent-prompt-codes";
+import { buildSlidePlan } from "../agents/slide-strategy-agent.service";
+import { buildVisualAssignmentMap } from "../agents/visual-template-selection-agent.service";
 import type {
   CourseChartSpec,
   CourseDeckSpec,
   SlideDeckGenerateInput,
 } from "../specs/course-deck.schema";
+import type { SlideSourcePack } from "../content/slide-source-pack.service";
 import {
   validateCourseDeckQuality,
   type CourseDeckQaReport,
@@ -12,9 +24,10 @@ import {
 
 export type CourseDeckGenerationStageId =
   | "deck_brief"
+  | "evidence_pack"
   | "slide_plan"
-  | "chart_data"
   | "visual_direction"
+  | "chart_data"
   | "html_render"
   | "quality_gate";
 
@@ -33,50 +46,55 @@ export interface CourseDeckGenerationResult {
 }
 
 interface GenerateCourseDeckParams {
+  agentModels?: SlideAgentModelConfig;
+  agentPrompts?: SlideAgentPromptConfig;
   artifactId: string;
   component: {
     content?: unknown;
     id: string;
+    source_refs?: unknown;
+    sourcePack?: SlideSourcePack;
     type?: string | null;
   };
   input: SlideDeckGenerateInput;
 }
 
-interface ComponentContentSummary {
-  hasCustomSlides: boolean;
-  scriptSectionCount: number;
-  sourceMode: "custom_request" | "script" | "storyboard" | "fallback";
-  storyboardItemCount: number;
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null
-    ? value as Record<string, unknown>
-    : {};
-}
-
-function summarizeComponentContent(params: GenerateCourseDeckParams): ComponentContentSummary {
-  const content = asRecord(params.component.content);
-  const script = asRecord(content.script);
-  const scriptSectionCount = Array.isArray(script.sections)
-    ? script.sections.length
-    : 0;
-  const storyboardItemCount = Array.isArray(content.storyboard)
-    ? content.storyboard.length
-    : 0;
-  const hasCustomSlides = Boolean(params.input.customSlides?.length);
-
+function promptStageOutput(
+  agentPrompts: SlideAgentPromptConfig | undefined,
+  key: SlideAgentPromptKey,
+) {
+  const prompt = agentPrompts?.[key];
   return {
-    hasCustomSlides,
-    scriptSectionCount,
-    sourceMode: hasCustomSlides
-      ? "custom_request"
-      : scriptSectionCount > 0
-        ? "script"
-        : storyboardItemCount > 0
-          ? "storyboard"
-          : "fallback",
-    storyboardItemCount,
+    promptCode: SLIDE_AGENT_PROMPT_CODES[key],
+    promptConfigured: Boolean(prompt),
+    promptScope: prompt?.scope || SLIDE_AGENT_PROMPT_SCOPE,
+    promptSource: prompt?.source || null,
+    promptVersion: prompt?.version || null,
+  };
+}
+
+function modelStageOutput(
+  agentModels: SlideAgentModelConfig | undefined,
+  key: SlideAgentPromptKey,
+) {
+  const model = agentModels?.[key];
+  return {
+    modelConfigured: Boolean(model),
+    modelFallback: model?.fallbackModel || null,
+    modelName: model?.modelName || null,
+    modelSettingType: SLIDE_AGENT_PROMPT_CODES[key],
+    modelTemperature: model?.temperature ?? null,
+    modelThinkingLevel: model?.thinkingLevel || null,
+  };
+}
+
+function agentStageOutput(
+  params: GenerateCourseDeckParams,
+  key: SlideAgentPromptKey,
+) {
+  return {
+    ...promptStageOutput(params.agentPrompts, key),
+    ...modelStageOutput(params.agentModels, key),
   };
 }
 
@@ -127,50 +145,104 @@ export function generateCourseDeckWithQualityGate(
 ): CourseDeckGenerationResult {
   const stages: CourseDeckGenerationStage[] = [];
 
-  const contentSummary = runStage(stages, "deck_brief", () => {
-    const summary = summarizeComponentContent(params);
+  const brief = runStage(stages, "deck_brief", () => {
+    const deckBrief = buildDeckBrief({
+      component: params.component,
+      input: params.input,
+    });
 
     return {
       output: {
-        componentType: params.component.type || "UNKNOWN",
-        ...summary,
+        componentId: deckBrief.componentId,
+        componentType: deckBrief.componentType,
+        hasCustomSlides: deckBrief.hasCustomSlides,
+        ...agentStageOutput(params, "deckBrief"),
+        scriptSectionCount: deckBrief.scriptSectionCount,
+        sourceMode: deckBrief.sourceMode,
+        sourcePackCount: params.component.sourcePack?.items.length || 0,
+        storyboardItemCount: deckBrief.storyboardItemCount,
+        targetSlideCount: deckBrief.targetSlideCount,
       },
-      value: summary,
+      value: deckBrief,
     };
   });
 
-  const deckSpec = runStage(stages, "slide_plan", () => {
-    const plannedDeck = buildCourseDeckSpecFromComponent(params);
+  const evidence = runStage(stages, "evidence_pack", () => {
+    const evidencePack = buildEvidencePack({
+      component: params.component,
+    });
 
     return {
       output: {
+        claimCount: evidencePack.claimCount,
+        hasSourceRefs: evidencePack.hasSourceRefs,
+        ...agentStageOutput(params, "evidence"),
+        sourceRefCount: evidencePack.sourceRefs.length,
+      },
+      value: evidencePack,
+    };
+  });
+
+  const slidePlan = runStage(stages, "slide_plan", () => {
+    const plannedSlides = buildSlidePlan({
+      brief,
+      component: params.component,
+      evidence,
+      input: params.input,
+    });
+
+    return {
+      output: {
+        evidenceSourceCount: plannedSlides.evidenceSourceCount,
+        plannedSlideCount: plannedSlides.slides.length,
+        ...agentStageOutput(params, "slideStrategy"),
+        slideTypes: plannedSlides.slides.reduce<Record<string, number>>((totals, slide) => {
+          totals[slide.type] = (totals[slide.type] || 0) + 1;
+          return totals;
+        }, {}),
+        sourceMode: plannedSlides.sourceMode,
+        template: plannedSlides.template,
+      },
+      value: plannedSlides,
+    };
+  });
+
+  const visualAssignments = runStage(stages, "visual_direction", () => {
+    const assignments = buildVisualAssignmentMap(slidePlan);
+
+    return {
+      output: {
+        assignmentCount: assignments.assignments.length,
+        layoutCounts: assignments.layoutCounts,
+        ...agentStageOutput(params, "visualTemplate"),
+      },
+      value: assignments,
+    };
+  });
+
+  const deckSpec = runStage(stages, "chart_data", () => {
+    const plannedDeck = buildCourseDeckSpecFromComponent({
+      ...params,
+      planning: {
+        evidence,
+        slidePlan,
+        visualAssignments,
+      },
+    });
+    const chartSummary = summarizeCharts(plannedDeck);
+
+    return {
+      output: {
+        ...chartSummary,
         slideCount: plannedDeck.slides.length,
         source: plannedDeck.sourceSnapshot.source,
-        sourceMode: contentSummary.sourceMode,
+        sourceMode: brief.sourceMode,
         template: plannedDeck.template,
+        visibleCopyAgent: agentStageOutput(params, "visibleCopy"),
       },
       value: plannedDeck,
     };
   });
-
-  runStage(stages, "chart_data", () => {
-    const chartSummary = summarizeCharts(deckSpec);
-
-    return {
-      output: chartSummary,
-      value: chartSummary,
-    };
-  });
-
-  runStage(stages, "visual_direction", () => ({
-    output: {
-      brandLabel: deckSpec.designSystem.brandLabel,
-      canvas: `${deckSpec.width}x${deckSpec.height}`,
-      format: deckSpec.format,
-      tone: deckSpec.designSystem.tone,
-    },
-    value: deckSpec.designSystem,
-  }));
 
   const html = runStage(stages, "html_render", () => {
     const renderedHtml = renderCourseDeckHtml(deckSpec);
@@ -190,6 +262,7 @@ export function generateCourseDeckWithQualityGate(
     return {
       output: {
         findingCount: report.findings.length,
+        ...agentStageOutput(params, "qa"),
         status: report.status,
       },
       value: report,

@@ -6,7 +6,15 @@ export type PipelineModelSettingType =
   | "SYLLABUS"
   | "INSTRUCTIONAL_PLAN"
   | "CURATION"
-  | "MATERIALS";
+  | "MATERIALS"
+  | "BUNDLE_AGENT"
+  | "SLIDES_DECK_BRIEF_AGENT"
+  | "SLIDES_EVIDENCE_AGENT"
+  | "SLIDES_STRATEGY_AGENT"
+  | "SLIDE_TEMPLATE_TYPE_AGENT"
+  | "SLIDES_VISIBLE_COPY_AGENT"
+  | "SLIDES_VISUAL_TEMPLATE_AGENT"
+  | "SLIDES_QA_AGENT";
 
 export interface PipelineModelSettings {
   fallback_model: string | null;
@@ -58,6 +66,62 @@ const DEFAULT_MODEL_SETTINGS: Record<PipelineModelSettingType, PipelineModelSett
     setting_type: "MATERIALS",
     temperature: 0.7,
     thinking_level: "minimal",
+  },
+  BUNDLE_AGENT: {
+    fallback_model: "gemini-2.0-flash",
+    model_name: "gpt-4o",
+    setting_type: "BUNDLE_AGENT",
+    temperature: 0.4,
+    thinking_level: "medium",
+  },
+  SLIDES_DECK_BRIEF_AGENT: {
+    fallback_model: "gemini-2.0-flash",
+    model_name: "gpt-4o-mini",
+    setting_type: "SLIDES_DECK_BRIEF_AGENT",
+    temperature: 0.2,
+    thinking_level: "low",
+  },
+  SLIDES_EVIDENCE_AGENT: {
+    fallback_model: "gemini-2.0-flash",
+    model_name: "gpt-4o-mini",
+    setting_type: "SLIDES_EVIDENCE_AGENT",
+    temperature: 0.1,
+    thinking_level: "low",
+  },
+  SLIDES_STRATEGY_AGENT: {
+    fallback_model: "gemini-2.0-flash",
+    model_name: "gpt-4o",
+    setting_type: "SLIDES_STRATEGY_AGENT",
+    temperature: 0.3,
+    thinking_level: "medium",
+  },
+  SLIDE_TEMPLATE_TYPE_AGENT: {
+    fallback_model: "gemini-2.0-flash",
+    model_name: "gpt-4o",
+    setting_type: "SLIDE_TEMPLATE_TYPE_AGENT",
+    temperature: 0.45,
+    thinking_level: "medium",
+  },
+  SLIDES_VISIBLE_COPY_AGENT: {
+    fallback_model: "gemini-2.0-flash",
+    model_name: "gpt-4o-mini",
+    setting_type: "SLIDES_VISIBLE_COPY_AGENT",
+    temperature: 0.3,
+    thinking_level: "low",
+  },
+  SLIDES_VISUAL_TEMPLATE_AGENT: {
+    fallback_model: "gemini-2.0-flash",
+    model_name: "gpt-4o",
+    setting_type: "SLIDES_VISUAL_TEMPLATE_AGENT",
+    temperature: 0.5,
+    thinking_level: "medium",
+  },
+  SLIDES_QA_AGENT: {
+    fallback_model: "gemini-2.0-flash",
+    model_name: "gpt-4o-mini",
+    setting_type: "SLIDES_QA_AGENT",
+    temperature: 0.1,
+    thinking_level: "low",
   },
 };
 

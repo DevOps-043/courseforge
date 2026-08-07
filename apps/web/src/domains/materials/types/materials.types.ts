@@ -230,6 +230,8 @@ export interface MaterialAssets {
         prepared_spec?: Record<string, unknown>;
         qa_content_path?: string;
         qa_report?: Record<string, unknown>;
+        selected_slide_template_run_id?: string;
+        selected_slide_template_title?: string | null;
         spec_content_path?: string;
         animated_deck?: {
             status: 'PENDING' | 'VALIDATING' | 'READY_FOR_PREVIEW' | 'READY_FOR_RENDER' | 'FAILED';

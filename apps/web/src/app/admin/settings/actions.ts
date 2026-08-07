@@ -11,6 +11,7 @@ interface ModelSettingsUpdateInput {
   fallback_model?: string | null;
   id: number;
   model_name: string;
+  scope?: string | null;
   setting_type: string;
   temperature?: number | null;
   thinking_level?: string | null;
@@ -22,15 +23,23 @@ export interface ModelSettingsRecord extends ModelSettingsUpdateInput {
 }
 
 const SYSTEM_PROMPT_SELECT_FIELDS =
-  'id, code, version, organization_id, content, description, is_active, parent_prompt_id, source, change_summary, created_by, created_at, updated_at';
+  'id, code, scope, version, organization_id, content, description, is_active, parent_prompt_id, source, change_summary, created_by, created_at, updated_at';
 const MODEL_SETTINGS_SELECT_FIELDS =
-  'id, model_name, fallback_model, temperature, thinking_level, setting_type, is_active';
+  'id, model_name, fallback_model, temperature, thinking_level, scope, setting_type, is_active';
 const MODEL_SETTING_TYPES = [
   'ARTIFACT_BASE',
   'SYLLABUS',
   'INSTRUCTIONAL_PLAN',
   'CURATION',
   'MATERIALS',
+  'BUNDLE_AGENT',
+  'SLIDES_DECK_BRIEF_AGENT',
+  'SLIDES_EVIDENCE_AGENT',
+  'SLIDES_STRATEGY_AGENT',
+  'SLIDE_TEMPLATE_TYPE_AGENT',
+  'SLIDES_VISIBLE_COPY_AGENT',
+  'SLIDES_VISUAL_TEMPLATE_AGENT',
+  'SLIDES_QA_AGENT',
 ] as const;
 const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number], Omit<ModelSettingsRecord, 'id'>> = {
   ARTIFACT_BASE: {
@@ -38,6 +47,7 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     fallback_model: 'gpt-4o-mini',
     temperature: 0.7,
     thinking_level: 'medium',
+    scope: 'Cursos',
     setting_type: 'ARTIFACT_BASE',
     is_active: true,
   },
@@ -46,6 +56,7 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     fallback_model: 'gpt-4o-mini',
     temperature: 0.7,
     thinking_level: 'medium',
+    scope: 'Cursos',
     setting_type: 'SYLLABUS',
     is_active: true,
   },
@@ -54,6 +65,7 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     fallback_model: 'gpt-4o-mini',
     temperature: 0.7,
     thinking_level: 'medium',
+    scope: 'Cursos',
     setting_type: 'INSTRUCTIONAL_PLAN',
     is_active: true,
   },
@@ -62,6 +74,7 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     fallback_model: 'gemini-2.0-flash',
     temperature: 0.1,
     thinking_level: 'low',
+    scope: 'Cursos',
     setting_type: 'CURATION',
     is_active: true,
   },
@@ -70,7 +83,80 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     fallback_model: 'gemini-2.0-flash',
     temperature: 0.7,
     thinking_level: 'minimal',
+    scope: 'Cursos',
     setting_type: 'MATERIALS',
+    is_active: true,
+  },
+  BUNDLE_AGENT: {
+    model_name: 'gpt-4o',
+    fallback_model: 'gemini-2.0-flash',
+    temperature: 0.4,
+    thinking_level: 'medium',
+    scope: 'Modulos: Bundle',
+    setting_type: 'BUNDLE_AGENT',
+    is_active: true,
+  },
+  SLIDES_DECK_BRIEF_AGENT: {
+    model_name: 'gpt-4o-mini',
+    fallback_model: 'gemini-2.0-flash',
+    temperature: 0.2,
+    thinking_level: 'low',
+    scope: 'Modulos: Slides',
+    setting_type: 'SLIDES_DECK_BRIEF_AGENT',
+    is_active: true,
+  },
+  SLIDES_EVIDENCE_AGENT: {
+    model_name: 'gpt-4o-mini',
+    fallback_model: 'gemini-2.0-flash',
+    temperature: 0.1,
+    thinking_level: 'low',
+    scope: 'Modulos: Slides',
+    setting_type: 'SLIDES_EVIDENCE_AGENT',
+    is_active: true,
+  },
+  SLIDES_STRATEGY_AGENT: {
+    model_name: 'gpt-4o',
+    fallback_model: 'gemini-2.0-flash',
+    temperature: 0.3,
+    thinking_level: 'medium',
+    scope: 'Modulos: Slides',
+    setting_type: 'SLIDES_STRATEGY_AGENT',
+    is_active: true,
+  },
+  SLIDE_TEMPLATE_TYPE_AGENT: {
+    model_name: 'gpt-4o',
+    fallback_model: 'gemini-2.0-flash',
+    temperature: 0.45,
+    thinking_level: 'medium',
+    scope: 'Modulos: Slides',
+    setting_type: 'SLIDE_TEMPLATE_TYPE_AGENT',
+    is_active: true,
+  },
+  SLIDES_VISIBLE_COPY_AGENT: {
+    model_name: 'gpt-4o-mini',
+    fallback_model: 'gemini-2.0-flash',
+    temperature: 0.3,
+    thinking_level: 'low',
+    scope: 'Modulos: Slides',
+    setting_type: 'SLIDES_VISIBLE_COPY_AGENT',
+    is_active: true,
+  },
+  SLIDES_VISUAL_TEMPLATE_AGENT: {
+    model_name: 'gpt-4o',
+    fallback_model: 'gemini-2.0-flash',
+    temperature: 0.5,
+    thinking_level: 'medium',
+    scope: 'Modulos: Slides',
+    setting_type: 'SLIDES_VISUAL_TEMPLATE_AGENT',
+    is_active: true,
+  },
+  SLIDES_QA_AGENT: {
+    model_name: 'gpt-4o-mini',
+    fallback_model: 'gemini-2.0-flash',
+    temperature: 0.1,
+    thinking_level: 'low',
+    scope: 'Modulos: Slides',
+    setting_type: 'SLIDES_QA_AGENT',
     is_active: true,
   },
 };
@@ -237,6 +323,7 @@ async function insertPromptVersion(params: {
     .from('system_prompts')
     .insert({
       code: params.basePrompt.code,
+      scope: params.basePrompt.scope || 'Cursos',
       version: nextVersion,
       organization_id: params.organizationId,
       content: params.content,
@@ -704,14 +791,15 @@ export async function updateModelSettingsAction(settings: ModelSettingsUpdateInp
   const supabaseAdmin = getAdminClient();
   
   const updates = settings.map(async (setting) => {
-    const payload = {
-      model_name: setting.model_name,
-      fallback_model: setting.fallback_model,
-      temperature: setting.temperature,
-      thinking_level: setting.thinking_level,
-      is_active: true,
-      setting_type: setting.setting_type,
-      organization_id: activeOrgId || null,
+      const payload = {
+        model_name: setting.model_name,
+        fallback_model: setting.fallback_model,
+        temperature: setting.temperature,
+        thinking_level: setting.thinking_level,
+        scope: setting.scope || DEFAULT_MODEL_SETTINGS_BY_TYPE[setting.setting_type as keyof typeof DEFAULT_MODEL_SETTINGS_BY_TYPE]?.scope || 'Cursos',
+        is_active: true,
+        setting_type: setting.setting_type,
+        organization_id: activeOrgId || null,
     };
 
     if (!activeOrgId && setting.id > 0) {

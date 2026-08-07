@@ -7,32 +7,67 @@ import {
   type CourseSlideSpec,
   type SlideDeckGenerateInput,
 } from "../specs/course-deck.schema";
+import {
+  buildVisibleLinesFromScriptSection,
+  buildVisibleLinesFromStoryboardItem,
+  compactEducationalText,
+} from "../content/slide-visible-content.service";
+import { buildInstructionalChartsFromContent } from "../charts/instructional-chart-agent.service";
+import { buildDeckBrief } from "../agents/deck-brief-agent.service";
+import { buildEvidencePack, type EvidencePack } from "../agents/lesson-evidence-agent.service";
+import { buildSlidePlan, type SlidePlan } from "../agents/slide-strategy-agent.service";
+import { buildVisibleSlideCopy } from "../agents/visible-copy-agent.service";
+import {
+  buildVisualAssignmentMap,
+  visualAssignmentForSlide,
+  type VisualAssignmentMap,
+} from "../agents/visual-template-selection-agent.service";
+import {
+  firstSourceLead,
+  sourceLinesForSlide,
+  type SlideSourcePack,
+} from "../content/slide-source-pack.service";
 
 interface BuildCourseDeckSpecParams {
   artifactId: string;
   component: {
     content?: unknown;
     id: string;
+    source_refs?: unknown;
+    sourcePack?: SlideSourcePack;
     type?: string | null;
   };
   input: SlideDeckGenerateInput;
+  planning?: {
+    evidence: EvidencePack;
+    slidePlan: SlidePlan;
+    visualAssignments?: VisualAssignmentMap;
+  };
 }
 
 interface ScriptSectionLike {
+  best_practices?: string[];
+  common_errors?: string[];
   duration_seconds?: number;
   narration_text?: string;
+  on_screen_action?: string;
   on_screen_text?: string;
+  reflection_question?: string;
   section_number?: number;
+  success_criteria?: string;
   visual_notes?: string;
 }
 
 interface StoryboardItemLike {
   narration_text?: string;
+  on_screen_action?: string;
   on_screen_text?: string;
+  success_criteria_visible?: string;
   take_number?: number;
   timecode_end?: string;
   timecode_start?: string;
   visual_content?: string;
+  visual_type?: string;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -72,45 +107,190 @@ function limitItems(items: string[], maxItems = 4) {
     .slice(0, maxItems);
 }
 
-function splitVisibleText(value: string) {
-  return value
-    .split(/\n|•|- /)
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
 function titleFromContent(content: Record<string, unknown>, fallback: string) {
   const directTitle = compactText(content.title);
   const scriptTitle = compactText(asRecord(content.script).title);
   return limitText(directTitle || scriptTitle || fallback, 180);
 }
 
-function buildCustomSlides(input: SlideDeckGenerateInput): CourseSlideSpec[] | null {
+function firstEducationalText(values: unknown[]) {
+  for (const value of values) {
+    const text = compactEducationalText(value);
+    if (text) {
+      return text;
+    }
+  }
+
+  return "";
+}
+
+function firstScriptSection(content: Record<string, unknown>): ScriptSectionLike | null {
+  const script = asRecord(content.script);
+  const sections = Array.isArray(script.sections)
+    ? script.sections as ScriptSectionLike[]
+    : [];
+  return sections[0] || null;
+}
+
+function coverLeadFromContent(
+  content: Record<string, unknown>,
+  sourcePack?: SlideSourcePack,
+) {
+  const script = asRecord(content.script);
+  const firstSection = firstScriptSection(content);
+  const sourceLead = firstSourceLead(sourcePack);
+  const lead = firstEducationalText([
+    sourceLead,
+    content.learning_objective,
+    content.oa_text,
+    content.objective,
+    content.summary,
+    content.description,
+    script.learning_objective,
+    script.oa_text,
+    script.summary,
+    firstSection?.success_criteria,
+  ]);
+
+  return limitText(lead || "Contenido pendiente de sintetizar desde fuentes aprobadas para esta leccion.", 240);
+}
+
+function buildChartSlides(
+  content: Record<string, unknown>,
+  startOrder: number,
+  sourcePack?: SlideSourcePack,
+): CourseSlideSpec[] {
+  const evidenceSourceRefs = sourcePack?.sourceRefs || [];
+  return buildInstructionalChartsFromContent(content).map((chart, index): CourseSlideSpec => {
+    const chartSourceRefs = Array.from(new Set([
+      ...chart.sourceRefs,
+      ...evidenceSourceRefs.slice(0, 4),
+    ]));
+
+    return {
+      bodyBlocks: [{
+        kind: "paragraph",
+        text: "Grafica generada solo con datos estructurados de la leccion.",
+      }],
+      chart: {
+        ...chart,
+        sourceRefs: chartSourceRefs,
+      },
+      citations: [],
+      id: `instructional-chart-${index + 1}`,
+      order: startOrder + index,
+      renderHints: {
+        layout: "data",
+        purpose: "Explicar estadisticas educativas detectadas en la leccion.",
+      },
+      title: chart.title,
+      type: "data_explainer",
+      validationHints: {
+        mustKeepClaims: ["La grafica debe provenir de datos educativos estructurados, no del ritmo del video."],
+        sourceRefs: chartSourceRefs,
+      },
+    };
+  });
+}
+
+function resolvePlanning(params: BuildCourseDeckSpecParams) {
+  if (params.planning) {
+    return params.planning;
+  }
+
+  const brief = buildDeckBrief({
+    component: params.component,
+    input: params.input,
+  });
+  const evidence = buildEvidencePack({
+    component: params.component,
+  });
+  const slidePlan = buildSlidePlan({
+    brief,
+    component: params.component,
+    evidence,
+    input: params.input,
+  });
+
+  return {
+    evidence,
+    slidePlan,
+    visualAssignments: buildVisualAssignmentMap(slidePlan),
+  };
+}
+
+function resolveVisualAssignments(slidePlan: SlidePlan, visualAssignments?: VisualAssignmentMap) {
+  return visualAssignments || buildVisualAssignmentMap(slidePlan);
+}
+
+function plannedSlideById(slidePlan: SlidePlan, id: string) {
+  return slidePlan.slides.find((slide) => slide.id === id);
+}
+
+function sourceRefsForSlide(slidePlan: SlidePlan, id: string, fallback: string[] = []) {
+  const plannedSlide = plannedSlideById(slidePlan, id);
+  const sourceRefs = plannedSlide?.sourceRefs.length
+    ? plannedSlide.sourceRefs
+    : fallback;
+  return Array.from(new Set(sourceRefs)).slice(0, 8);
+}
+
+function renderHintsForSlide(
+  visualAssignments: VisualAssignmentMap,
+  slideId: string,
+): CourseSlideSpec["renderHints"] {
+  const assignment = visualAssignmentForSlide(visualAssignments, slideId);
+  return assignment
+    ? {
+        layout: assignment.layout,
+        purpose: assignment.purpose,
+      }
+    : undefined;
+}
+
+function buildCustomSlides(
+  input: SlideDeckGenerateInput,
+  slidePlan: SlidePlan,
+  visualAssignments: VisualAssignmentMap,
+): CourseSlideSpec[] | null {
   if (!input.customSlides?.length) {
     return null;
   }
 
-  return input.customSlides.map((slide, index) => ({
-    bodyBlocks: [{
-      items: slide.bullets?.length ? slide.bullets : [slide.subtitle || "Contenido personalizado pendiente de ampliar."],
-      kind: "bullets",
-    }],
-    chart: slide.chart,
-    citations: [],
-    id: `custom-slide-${index + 1}`,
-    order: index + 1,
-    speakerNotes: slide.speakerNotes,
-    subtitle: slide.subtitle,
-    title: slide.title,
-    type: slide.type || (index === 0 ? "cover" : "concept"),
-    validationHints: {
-      mustKeepClaims: [],
-      sourceRefs: [],
-    },
-  }));
+  return input.customSlides.map((slide, index) => {
+    const id = `custom-slide-${index + 1}`;
+    const plannedSlide = plannedSlideById(slidePlan, id);
+    const sourceRefs = sourceRefsForSlide(slidePlan, id, slide.chart?.sourceRefs || []);
+
+    return {
+      bodyBlocks: [{
+        items: slide.bullets?.length ? slide.bullets : [slide.subtitle || "Contenido personalizado pendiente de ampliar."],
+        kind: "bullets",
+      }],
+      chart: slide.chart,
+      citations: [],
+      id,
+      order: index + 1,
+      renderHints: renderHintsForSlide(visualAssignments, id),
+      speakerNotes: slide.speakerNotes,
+      subtitle: slide.subtitle,
+      title: slide.title,
+      type: slide.chart ? "data_explainer" : slide.type || plannedSlide?.type || (index === 0 ? "cover" : "concept"),
+      validationHints: {
+        mustKeepClaims: [],
+        sourceRefs,
+      },
+    };
+  });
 }
 
-function buildSlidesFromScript(content: Record<string, unknown>, title: string): CourseSlideSpec[] {
+function buildSlidesFromScript(
+  content: Record<string, unknown>,
+  title: string,
+  slidePlan: SlidePlan,
+  visualAssignments: VisualAssignmentMap,
+  sourcePack?: SlideSourcePack,
+): CourseSlideSpec[] {
   const script = asRecord(content.script);
   const sections = Array.isArray(script.sections)
     ? script.sections as ScriptSectionLike[]
@@ -121,93 +301,79 @@ function buildSlidesFromScript(content: Record<string, unknown>, title: string):
   }
 
   const contentSlides = sections.slice(0, 8).map((section, index): CourseSlideSpec => {
-    const visibleLines = splitVisibleText(compactText(section.on_screen_text));
-    const sectionTitle = limitText(visibleLines[0] || `Idea ${index + 1}`, 180);
-    const bullets = limitItems(visibleLines.slice(1, 5));
     const narration = compactText(section.narration_text);
-    const fallbackItem = limitText(
-      narration || compactText(section.visual_notes) || "Idea principal de la seccion.",
-      240,
-    );
+    const id = `script-section-${section.section_number || index + 1}`;
+    const plannedSlide = plannedSlideById(slidePlan, id);
+    const baseVisibleLines = buildVisibleLinesFromScriptSection(section);
+    const resolvedSlideType = plannedSlide?.type || (index === 0 ? "concept" : "worked_example");
+    const sourceVisibleLines = sourceLinesForSlide(sourcePack, index, {
+      slideType: resolvedSlideType,
+    });
+    const visibleLines = sourceVisibleLines.length > 0
+      ? sourceVisibleLines
+      : baseVisibleLines;
+    const sourceRefs = sourceRefsForSlide(slidePlan, id, ["component.content.script"]);
+    const copy = buildVisibleSlideCopy({
+      fallbackBody: "Contenido pendiente de sintetizar desde fuentes aprobadas.",
+      fallbackTitle: `Idea ${index + 1}`,
+      subtitle: sourceVisibleLines.length > 0
+        ? undefined
+        : compactEducationalText(section.visual_notes),
+      visibleLines,
+    });
 
     return {
       bodyBlocks: [{
-        items: bullets.length ? bullets : [fallbackItem],
+        items: limitItems(copy.bodyItems),
         kind: "bullets",
       }],
       citations: [],
-      id: `script-section-${section.section_number || index + 1}`,
+      id,
       order: index + 2,
+      renderHints: renderHintsForSlide(visualAssignments, id),
       speakerNotes: limitText(narration, 1800) || undefined,
-      subtitle: limitText(section.visual_notes, 240) || undefined,
-      title: sectionTitle,
-      type: index === 0 ? "concept" : "worked_example",
+      subtitle: copy.subtitle,
+      title: copy.title,
+      type: resolvedSlideType,
       validationHints: {
         mustKeepClaims: [],
-        sourceRefs: [],
+        sourceRefs,
       },
     };
   });
-
-  const durationPoints = sections
-    .filter((section) => typeof section.duration_seconds === "number" && section.duration_seconds > 0)
-    .slice(0, 8)
-    .map((section, index) => ({
-      label: `S${section.section_number || index + 1}`,
-      value: Math.round(section.duration_seconds || 0),
-    }));
-
-  const chartSlide: CourseSlideSpec[] = durationPoints.length >= 2
-    ? [{
-        bodyBlocks: [{
-          kind: "paragraph",
-          text: "Esta distribucion ayuda a validar el ritmo narrativo antes de usar las diapositivas en video.",
-        }],
-        chart: {
-          id: "duration-distribution",
-          points: durationPoints,
-          sourceRefs: ["script.sections.duration_seconds"],
-          subtitle: "Duracion estimada por seccion del guion generado",
-          title: "Ritmo del video",
-          type: "bar",
-          unit: "s",
-        },
-        citations: [],
-        id: "duration-distribution",
-        order: contentSlides.length + 2,
-        speakerNotes: "Usa esta slide para revisar si alguna seccion concentra demasiado tiempo frente al resto del guion.",
-        title: "Distribucion de tiempo por seccion",
-        type: "data_explainer",
-        validationHints: {
-          mustKeepClaims: ["Los valores provienen de duration_seconds del guion generado."],
-          sourceRefs: ["script.sections"],
-        },
-      }]
-    : [];
+  const coverSourceRefs = sourceRefsForSlide(slidePlan, "cover", ["component.content.script"]);
+  const chartSlides = buildChartSlides(content, contentSlides.length + 2, sourcePack);
 
   return [
     {
       bodyBlocks: [{
         kind: "paragraph",
-        text: "Diapositivas generadas desde el guion aprobado del componente. Puedes reemplazar esta informacion con contenido personalizado en la solicitud.",
+        text: coverLeadFromContent(content, sourcePack),
       }],
       citations: [],
       id: "cover",
       order: 1,
+      renderHints: renderHintsForSlide(visualAssignments, "cover"),
       subtitle: limitText(script.title, 240) || undefined,
       title: limitText(title, 180),
       type: "cover",
       validationHints: {
         mustKeepClaims: [],
-        sourceRefs: ["component.content.script"],
+        sourceRefs: coverSourceRefs,
       },
     },
     ...contentSlides,
-    ...chartSlide,
+    ...chartSlides,
   ];
 }
 
-function buildSlidesFromStoryboard(content: Record<string, unknown>, title: string): CourseSlideSpec[] {
+function buildSlidesFromStoryboard(
+  content: Record<string, unknown>,
+  title: string,
+  slidePlan: SlidePlan,
+  visualAssignments: VisualAssignmentMap,
+  sourcePack?: SlideSourcePack,
+): CourseSlideSpec[] {
   const storyboard = Array.isArray(content.storyboard)
     ? content.storyboard as StoryboardItemLike[]
     : [];
@@ -216,51 +382,67 @@ function buildSlidesFromStoryboard(content: Record<string, unknown>, title: stri
     return [];
   }
 
+  const coverSourceRefs = sourceRefsForSlide(slidePlan, "cover", ["component.content.storyboard"]);
+
   return [
     {
       bodyBlocks: [{
         kind: "paragraph",
-        text: "Secuencia visual generada desde el storyboard aprobado del componente.",
+        text: coverLeadFromContent(content, sourcePack),
       }],
       citations: [],
       id: "cover",
       order: 1,
+      renderHints: renderHintsForSlide(visualAssignments, "cover"),
       title: limitText(title, 180),
       type: "cover",
       validationHints: {
         mustKeepClaims: [],
-        sourceRefs: ["component.content.storyboard"],
+        sourceRefs: coverSourceRefs,
       },
     },
     ...storyboard.slice(0, 10).map((item, index): CourseSlideSpec => {
-      const visibleLines = splitVisibleText(compactText(item.on_screen_text));
-      const bodyItems = limitItems(visibleLines.slice(1, 5));
-      const fallbackItem = limitText(
-        compactText(item.visual_content) || compactText(item.narration_text) || "Accion visual de la escena.",
-        240,
-      );
+      const visibleLines = buildVisibleLinesFromStoryboardItem(item);
+      const id = `storyboard-${item.take_number || index + 1}`;
+      const plannedSlide = plannedSlideById(slidePlan, id);
+      const resolvedSlideType = plannedSlide?.type || "concept";
+      const sourceVisibleLines = sourceLinesForSlide(sourcePack, index, {
+        slideType: resolvedSlideType,
+      });
+      const resolvedVisibleLines = sourceVisibleLines.length > 0
+        ? sourceVisibleLines
+        : visibleLines;
+      const sourceRefs = sourceRefsForSlide(slidePlan, id, ["component.content.storyboard"]);
+      const copy = buildVisibleSlideCopy({
+        fallbackBody: "Contenido pendiente de sintetizar desde fuentes aprobadas.",
+        fallbackTitle: `Escena ${item.take_number || index + 1}`,
+        subtitle: undefined,
+        visibleLines: resolvedVisibleLines,
+      });
+
       return {
         bodyBlocks: [{
-          items: bodyItems.length ? bodyItems : [fallbackItem],
+          items: limitItems(copy.bodyItems),
           kind: "bullets",
         }],
         citations: [],
-        id: `storyboard-${item.take_number || index + 1}`,
+        id,
         order: index + 2,
+        renderHints: renderHintsForSlide(visualAssignments, id),
         speakerNotes: limitText(item.narration_text, 1800) || undefined,
-        subtitle: limitText(item.visual_content, 240) || undefined,
-        title: limitText(visibleLines[0] || `Escena ${item.take_number || index + 1}`, 180),
-        type: "concept",
+        subtitle: copy.subtitle,
+        title: copy.title,
+        type: resolvedSlideType,
         validationHints: {
           mustKeepClaims: [],
-          sourceRefs: ["component.content.storyboard"],
+          sourceRefs,
         },
       };
     }),
   ];
 }
 
-function fallbackSlides(title: string): CourseSlideSpec[] {
+function fallbackSlides(title: string, visualAssignments: VisualAssignmentMap): CourseSlideSpec[] {
   return [{
     bodyBlocks: [{
       items: [
@@ -273,6 +455,7 @@ function fallbackSlides(title: string): CourseSlideSpec[] {
     citations: [],
     id: "fallback-cover",
     order: 1,
+    renderHints: renderHintsForSlide(visualAssignments, "fallback-cover"),
     title: limitText(title, 180),
     type: "cover",
     validationHints: {
@@ -284,17 +467,35 @@ function fallbackSlides(title: string): CourseSlideSpec[] {
 
 export function buildCourseDeckSpecFromComponent(params: BuildCourseDeckSpecParams): CourseDeckSpec {
   const content = asRecord(params.component.content);
+  const { slidePlan, visualAssignments } = resolvePlanning(params);
+  const resolvedVisualAssignments = resolveVisualAssignments(slidePlan, visualAssignments);
   const componentType = params.component.type || "UNKNOWN";
   const title = params.input.metadata?.title ||
     titleFromContent(content, `Diapositivas ${componentType}`);
-  const customSlides = buildCustomSlides(params.input);
-  const scriptSlides = customSlides ? [] : buildSlidesFromScript(content, title);
+  const customSlides = buildCustomSlides(params.input, slidePlan, resolvedVisualAssignments);
+  const scriptSlides = customSlides
+    ? []
+    : buildSlidesFromScript(
+        content,
+        title,
+        slidePlan,
+        resolvedVisualAssignments,
+        params.component.sourcePack,
+      );
   const storyboardSlides = customSlides || scriptSlides.length > 0
     ? []
-    : buildSlidesFromStoryboard(content, title);
+    : buildSlidesFromStoryboard(
+        content,
+        title,
+        slidePlan,
+        resolvedVisualAssignments,
+        params.component.sourcePack,
+      );
   const generatedSlides = customSlides ||
     (scriptSlides.length > 0 ? scriptSlides : storyboardSlides);
-  const slides = generatedSlides.length > 0 ? generatedSlides : fallbackSlides(title);
+  const slides = generatedSlides.length > 0
+    ? generatedSlides
+    : fallbackSlides(title, resolvedVisualAssignments);
   const source = customSlides
     ? "custom_request"
     : params.input.metadata

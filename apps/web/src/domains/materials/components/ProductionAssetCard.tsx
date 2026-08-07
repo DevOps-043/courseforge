@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import type {
   MaterialAssets,
   MaterialComponent,
@@ -22,10 +23,14 @@ import {
 import {
   VoiceAudioSection,
   BackgroundMusicSection,
-  OpenDesignSlidesSection,
+  SofliaHtmlSlidesSection,
   BRollClipsSection,
   AvatarVideoSection,
 } from "./ProductionStructuredAssetSections";
+import {
+  getSlideTemplatePackagesAction,
+  type SlideTemplateLibraryItem,
+} from "@/domains/production/actions/templates.actions";
 
 interface ProductionAssetCardProps {
   component: MaterialComponent;
@@ -44,6 +49,8 @@ interface ProductionAssetCardProps {
     componentId: string,
     assets: Partial<MaterialAssets>,
   ) => Promise<void>;
+  slideTemplatesHref?: string;
+  slideTemplateStudioHref?: string;
   sofliaSlidesHref?: string;
 }
 
@@ -53,6 +60,30 @@ const VIDEO_SECTION_TYPES = new Set([
   "VIDEO_GUIDE",
 ]);
 
+let slideTemplateLibraryCache: SlideTemplateLibraryItem[] | null = null;
+let slideTemplateLibraryRequest: Promise<SlideTemplateLibraryItem[]> | null = null;
+
+async function loadSlideTemplateLibrary() {
+  if (slideTemplateLibraryCache) {
+    return slideTemplateLibraryCache;
+  }
+
+  slideTemplateLibraryRequest ||= getSlideTemplatePackagesAction()
+    .then((response) => {
+      if (!response.success) {
+        throw new Error(response.error || "No se pudieron cargar las plantillas de slides");
+      }
+      slideTemplateLibraryCache = response.slideTemplates || [];
+      return slideTemplateLibraryCache;
+    })
+    .catch((error) => {
+      slideTemplateLibraryRequest = null;
+      throw error;
+    });
+
+  return slideTemplateLibraryRequest;
+}
+
 export function ProductionAssetCard({
   component,
   hideGeneratedAssetTools = false,
@@ -61,6 +92,8 @@ export function ProductionAssetCard({
   onAssetChange,
   onGeneratePrompts,
   onSaveAssets,
+  slideTemplatesHref = "/admin/templates",
+  slideTemplateStudioHref = "/admin/slides/templates",
   sofliaSlidesHref,
 }: ProductionAssetCardProps) {
   const {
@@ -92,7 +125,6 @@ export function ProductionAssetCard({
     isUploadingBroll,
     isUploadingAvatar,
     isUploadingSlides,
-    isExportingOpenDesign,
     isGeneratingSofliaSlides,
     isPreparingAnimatedDeck,
 
@@ -133,7 +165,6 @@ export function ProductionAssetCard({
     handleMusicUpload,
     handleVolumeChange,
     handleSofliaEngineSlideGeneration,
-    handleOpenDesignExport,
     prepareUploadedHtmlSlidesAsAnimatedDeck,
     handleSlidesZipUpload,
     handleBrollClipUpload,
@@ -172,6 +203,47 @@ export function ProductionAssetCard({
   const { needsFinalVideo, needsScreencast, needsSlides, needsVideo } =
     getProductionRequirements(component.type);
   const requiresPrompts = VIDEO_SECTION_TYPES.has(component.type);
+  const [slideTemplates, setSlideTemplates] = useState<SlideTemplateLibraryItem[]>([]);
+  const [isLoadingSlideTemplates, setIsLoadingSlideTemplates] = useState(false);
+  const [selectedSlideTemplateRunId, setSelectedSlideTemplateRunId] = useState<string | null>(
+    slidesAsset?.selected_slide_template_run_id || null,
+  );
+  const availableSlideTemplates = useMemo(
+    () => slideTemplates.filter((template) => template.status === "PACKAGED" && template.bundle_storage_path),
+    [slideTemplates],
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSlideTemplates() {
+      setIsLoadingSlideTemplates(true);
+      try {
+        const templates = await loadSlideTemplateLibrary();
+        if (isMounted) {
+          setSlideTemplates(templates);
+        }
+      } catch (error) {
+        console.warn("Could not load slide templates:", error);
+      } finally {
+        if (isMounted) {
+          setIsLoadingSlideTemplates(false);
+        }
+      }
+    }
+
+    void loadSlideTemplates();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!slidesAsset?.selected_slide_template_run_id) return;
+    setSelectedSlideTemplateRunId((current) =>
+      current || slidesAsset.selected_slide_template_run_id || null,
+    );
+  }, [slidesAsset?.selected_slide_template_run_id]);
 
   return (
     <div
@@ -253,18 +325,21 @@ export function ProductionAssetCard({
                 clearDriveSearchResults={() => setGoogleDriveSearchResults([])}
               />
               
-              <OpenDesignSlidesSection
+              <SofliaHtmlSlidesSection
                 slides={slidesAsset}
-                isExporting={isExportingOpenDesign}
                 isGeneratingSofliaSlides={isGeneratingSofliaSlides}
                 isUploading={isUploadingSlides}
                 isPreparingAnimatedDeck={isPreparingAnimatedDeck}
-                showOpenDesignExport={!hideGeneratedAssetTools}
+                isLoadingSlideTemplates={isLoadingSlideTemplates}
+                selectedSlideTemplateRunId={selectedSlideTemplateRunId}
                 showSofliaGeneration={!hideGeneratedAssetTools}
+                slideTemplates={availableSlideTemplates}
+                slideTemplatesHref={slideTemplatesHref}
+                slideTemplateStudioHref={slideTemplateStudioHref}
                 sofliaSlidesHref={sofliaSlidesHref}
                 fileRef={slidesFileRef}
                 onGenerateSofliaSlides={handleSofliaEngineSlideGeneration}
-                onExport={handleOpenDesignExport}
+                onSelectSlideTemplate={setSelectedSlideTemplateRunId}
                 onUpload={handleSlidesZipUpload}
                 onPrepareAnimatedDeck={prepareUploadedHtmlSlidesAsAnimatedDeck}
                 onClear={clearSlidesAsset}
