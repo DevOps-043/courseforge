@@ -270,7 +270,7 @@ function inferDesignTokens(messages: Array<{ role: string; content_redacted: str
   const backgroundColor = (fallback: string) => wantsGrayBackground ? "#F3F4F6" : fallback;
   const textColor = (fallback: string) => wantsWhitePrimaryText ? "#F8FAFC" : fallback;
   const mutedColor = (fallback: string) => wantsWhiteSecondaryText ? "#F8FAFC" : fallback;
-  if (/(mostaza|dorado|amarillo|gold)/i.test(text) && /(morado|purpura|violeta|purple)/i.test(text)) {
+  if (/(mostaza|dorado|amarillo|gold)/i.test(text) && /(morad[oa]|purpura|violeta|purple)/i.test(text)) {
     return {
       accent: "#D6A21E",
       accent2: "#3B1D5C",
@@ -371,6 +371,13 @@ const KNOWN_SLIDE_TYPE_ALIASES: Array<{
   { id: "transition", match: /\b(transicion|separador|intermedio)\b/i },
 ];
 
+const STYLE_OR_ASSET_SEGMENT_PATTERNS = [
+  /\b(paleta|color|colores|fondo|background|letra|texto|tipografia|fuente)\b/i,
+  /\b(morad[oa]|purpura|violeta|mostaza|amarillo|beige|gris|blanco|negro|dorado|azul|verde|rojo)\b/i,
+  /\b(elegante|moderno|moderna|sobrio|corporativo|visual|look|estilo|detalles?)\b/i,
+  /\b(b-?rolls?|imagenes?|videos?|assets?|motion|animacion|animaciones)\b/i,
+];
+
 function findKnownSlideTypeId(value: string) {
   const normalized = normalizeForMatching(value);
   return KNOWN_SLIDE_TYPE_ALIASES.find((alias) => alias.match.test(normalized))?.id || null;
@@ -392,6 +399,7 @@ function createGeneratedSlideType(rawLabel: string): z.infer<typeof slideTemplat
     .replace(/\s+/g, " ")
     .trim();
   if (!normalized || normalized.length < 4) return null;
+  if (STYLE_OR_ASSET_SEGMENT_PATTERNS.some((pattern) => pattern.test(normalized))) return null;
 
   const id = normalized
     .replace(/\s+/g, "_")
@@ -417,13 +425,21 @@ function createGeneratedSlideType(rawLabel: string): z.infer<typeof slideTemplat
 
 function extractExplicitSlideTypeSegments(messages: Array<{ role: string; content_redacted: string }>) {
   const latest = latestUserText(messages);
-  const match = latest.match(/(?:diapositivas?\s+de|tipos?\s+de\s+diapositiva|requerimos|necesitamos)([\s\S]+)/i);
+  const match = [
+    latest.match(/(?:diapositivas?\s+de|tipos?\s+de\s+diapositivas?)([\s\S]+)/i),
+    latest.match(/(?:deck|plantilla)\s+que\s+(?:contenga|incluya|tenga)([\s\S]+)/i),
+    latest.match(/(?:debe\s+(?:tener|incluir)|requerimos|necesitamos)\s+diapositivas?\s+(?:de|con)?([\s\S]+)/i),
+  ].find((candidate) => candidate?.[1]);
   if (!match?.[1]) return [];
 
   return match[1]
     .split(/[,;\n]|\s+y\s+|\s+e\s+|\//i)
     .map((segment) => segment.trim())
-    .filter((segment) => segment.length > 0)
+    .filter((segment) => {
+      if (segment.length === 0) return false;
+      if (findKnownSlideTypeId(segment)) return true;
+      return !STYLE_OR_ASSET_SEGMENT_PATTERNS.some((pattern) => pattern.test(normalizeForMatching(segment)));
+    })
     .slice(0, 12);
 }
 

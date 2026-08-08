@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import type { Artifact } from "../artifacts-list.types";
+import { isStandaloneAssemblyArtifact } from "../artifacts-list.utils";
 
 type SetArtifacts = React.Dispatch<React.SetStateAction<Artifact[]>>;
 
@@ -36,12 +37,23 @@ export function useArtifactsSync(
           console.log("Realtime Event received:", payload);
 
           if (payload.eventType === "INSERT") {
+            if (isStandaloneAssemblyArtifact(payload.new as Artifact)) {
+              return;
+            }
+
             setArtifacts((prev) => [payload.new as Artifact, ...prev]);
             router.refresh();
             return;
           }
 
           if (payload.eventType === "UPDATE") {
+            if (isStandaloneAssemblyArtifact(payload.new as Artifact)) {
+              setArtifacts((prev) =>
+                prev.filter((artifact) => artifact.id !== payload.new.id),
+              );
+              return;
+            }
+
             setArtifacts((prev) =>
               prev.map((artifact) =>
                 artifact.id === payload.new.id
