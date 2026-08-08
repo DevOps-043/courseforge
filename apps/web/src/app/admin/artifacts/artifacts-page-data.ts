@@ -1,6 +1,7 @@
 import { createClient } from "@/utils/supabase/server";
 import { getActiveOrganizationId, getAuthBridgeUser } from "@/utils/auth/session";
 import type { Artifact } from "./artifacts-list.types";
+import { isStandaloneAssemblyArtifact } from "./artifacts-list.utils";
 
 interface ArtifactStateRelation {
   state?: string | null;
@@ -131,7 +132,9 @@ export async function loadArtifactsPageData(options?: {
   }
 
   const { data: artifactsData } = await query;
-  const artifacts = (artifactsData as ArtifactRow[] | null) || [];
+  const artifacts = ((artifactsData as ArtifactRow[] | null) || []).filter(
+    (artifact) => !isStandaloneAssemblyArtifact(artifact),
+  );
 
   const userIds = [...new Set(artifacts.map((artifact) => artifact.created_by))];
   let profiles: ProfileRow[] = [];

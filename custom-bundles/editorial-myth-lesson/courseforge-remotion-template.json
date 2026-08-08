@@ -1,0 +1,103 @@
+{
+  "name": "Lección editorial: avatar, evidencia y tesis",
+  "entryPoint": "src/index.tsx",
+  "compositionId": "editorial-myth-lesson-v1",
+  "exportMode": "root",
+  "layoutContractVersion": 2,
+  "layoutCoordinateSpace": "canvas",
+  "defaultDurationFrames": 4250,
+  "fps": 25,
+  "width": 1920,
+  "height": 1080,
+  "remotionVersion": "4.0.484",
+  "capabilities": {
+    "animatedDeck": true,
+    "htmlDeck": true,
+    "htmlSlides": true
+  },
+  "propsSchema": {
+    "type": "object",
+    "properties": {
+      "schemaVersion": { "type": "integer", "description": "Versión del contrato de escenas." },
+      "totalDurationInFrames": { "type": "integer", "description": "Duración total, en frames." },
+      "voiceAudioUrl": { "type": "string", "description": "Locución principal." },
+      "bgMusicUrl": { "type": "string", "description": "Música de fondo opcional." },
+      "bgMusicVolume": { "type": "number", "description": "Volumen de música entre 0 y 1." },
+      "avatarVideoUrl": { "type": "string", "description": "Fallback de avatar de un solo clip." },
+      "avatarClips": { "type": "array", "description": "Clips de avatar por order." },
+      "slides": { "type": "array", "description": "Slides de imagen o HTML por index." },
+      "brollClips": { "type": "array", "description": "B-roll por order." },
+      "captionCues": { "type": "array", "description": "Cues temporizados de subtítulos." },
+      "scenes": { "type": "array", "description": "Timeline explícito de SceneSpec." },
+      "layoutOverrides": { "type": "array", "description": "Ajustes no destructivos del editor de layout." },
+      "timelineOverrides": { "type": "array", "description": "Se conserva para compatibilidad con el editor de timeline." }
+    }
+  },
+  "defaultProps": {
+    "schemaVersion": 1,
+    "totalDurationInFrames": 4250,
+    "bgMusicVolume": 0.12,
+    "avatarClips": [],
+    "slides": [],
+    "brollClips": [],
+    "captionCues": [],
+    "scenes": [],
+    "layoutOverrides": [],
+    "timelineOverrides": []
+  },
+  "editableLayers": [
+    {
+      "layerId": "avatar",
+      "label": "Avatar",
+      "kind": "avatar",
+      "defaultBox": { "x": 0, "y": 0, "width": 1920, "height": 1080 },
+      "capabilities": { "canMove": true, "canResize": true, "canCrop": true, "canRotate": false, "canHide": true, "canReorder": true },
+      "defaultStackOrder": 20,
+      "stackGroup": "root",
+      "itemLayerIdPattern": "avatar:{order}",
+      "constraints": { "minWidth": 320, "minHeight": 360, "safeArea": "full" }
+    },
+    {
+      "layerId": "slides",
+      "label": "Slide",
+      "kind": "slides",
+      "defaultBox": { "x": 760, "y": 0, "width": 1160, "height": 1080 },
+      "capabilities": { "canMove": true, "canResize": true, "canCrop": true, "canRotate": false, "canHide": true, "canReorder": true },
+      "defaultStackOrder": 30,
+      "stackGroup": "root",
+      "itemLayerIdPattern": "slide:{index}",
+      "constraints": { "minWidth": 360, "minHeight": 220, "safeArea": "full" }
+    },
+    {
+      "layerId": "broll",
+      "label": "B-roll",
+      "kind": "broll",
+      "defaultBox": { "x": 0, "y": 0, "width": 760, "height": 1080 },
+      "capabilities": { "canMove": true, "canResize": true, "canCrop": true, "canRotate": false, "canHide": true, "canReorder": true },
+      "defaultStackOrder": 25,
+      "stackGroup": "root",
+      "itemLayerIdPattern": "broll:{order}",
+      "constraints": { "minWidth": 240, "minHeight": 135, "safeArea": "full" }
+    },
+    {
+      "layerId": "headline",
+      "label": "Titular",
+      "kind": "custom",
+      "defaultBox": { "x": 210, "y": 330, "width": 1500, "height": 360 },
+      "capabilities": { "canMove": true, "canResize": true, "canCrop": false, "canRotate": false, "canHide": true, "canReorder": true },
+      "defaultStackOrder": 40,
+      "stackGroup": "root",
+      "constraints": { "minWidth": 360, "minHeight": 100, "safeArea": "title-safe" }
+    },
+    {
+      "layerId": "captions",
+      "label": "Subtítulos",
+      "kind": "caption",
+      "defaultBox": { "x": 330, "y": 920, "width": 1260, "height": 96 },
+      "capabilities": { "canMove": true, "canResize": true, "canCrop": false, "canRotate": false, "canHide": true, "canReorder": true },
+      "defaultStackOrder": 60,
+      "stackGroup": "root",
+      "constraints": { "minWidth": 480, "minHeight": 56, "safeArea": "title-safe" }
+    }
+  ]
+}
