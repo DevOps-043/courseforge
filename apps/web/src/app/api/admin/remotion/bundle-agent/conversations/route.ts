@@ -10,6 +10,7 @@ export async function POST(request: Request) {
 
     const service = new BundleAgentConversationService(context);
     const conversation = await service.createConversation({
+      artifactKind: body?.artifactKind,
       title: typeof body?.title === "string" ? body.title : null,
       templateId: typeof body?.templateId === "string" ? body.templateId : null,
     });
@@ -17,6 +18,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, conversation }, { status: 201 });
   } catch (error) {
     const message = sanitizeErrorMessage(error);
-    return NextResponse.json({ success: false, error: message }, { status: message.includes("No autorizado") ? 401 : 400 });
+    const status = message.includes("No autorizado")
+      ? 401
+      : message.includes("limite de conversaciones activas")
+        ? 429
+        : 400;
+    return NextResponse.json({ success: false, error: message }, { status });
   }
 }

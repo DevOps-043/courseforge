@@ -1,9 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { AlertTriangle, ArrowLeft, Bot, CheckCircle2, Download, ExternalLink, FileCode2, ImagePlus, Loader2, PackageCheck, Send, Sparkles, Trash2, User } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Bot,
+  CheckCircle2,
+  Download,
+  ExternalLink,
+  FileCode2,
+  ImagePlus,
+  Loader2,
+  PackageCheck,
+  Send,
+  Settings2,
+  Sparkles,
+  Trash2,
+  User,
+} from "lucide-react";
 import { uploadWithSignedUrl } from "@/lib/storage-upload";
 import {
   BUNDLE_TEMPLATE_FAMILY_OPTIONS,
@@ -53,7 +69,43 @@ const QUICK_PROMPTS = [
   "Disena una plantilla sobria para videos teoricos con texto grande, fondo limpio y ritmo pausado.",
 ];
 
-type AgentArtifactKind = "video_bundle" | "slide_template";
+interface BundleDesignTokens {
+  accent: string;
+  background: string;
+  muted: string;
+  surface: string;
+  text: string;
+}
+
+interface BundleModifiers {
+  durationFrames: number;
+  fps: number;
+  height: number;
+  width: number;
+}
+
+const DEFAULT_BUNDLE_TOKENS: BundleDesignTokens = {
+  accent: "#00D4B3",
+  background: "#05070B",
+  muted: "#CBD5E1",
+  surface: "#111827",
+  text: "#F8FAFC",
+};
+
+const DEFAULT_BUNDLE_MODIFIERS: BundleModifiers = {
+  durationFrames: 150,
+  fps: 30,
+  height: 1080,
+  width: 1920,
+};
+
+const BUNDLE_COLOR_FIELDS: Array<{ key: keyof BundleDesignTokens; label: string }> = [
+  { key: "background", label: "Fondo" },
+  { key: "surface", label: "Superficie" },
+  { key: "accent", label: "Acento" },
+  { key: "text", label: "Texto" },
+  { key: "muted", label: "Secundario" },
+];
 
 const VISUAL_REFERENCE_LIMIT = 6;
 const VISUAL_REFERENCE_MAX_BYTES = 75 * 1024 * 1024;
@@ -169,6 +221,152 @@ function formatSimilarityGuard(run: ConversationState["generationRuns"][number] 
     : [];
 
   return { score, decision, traits };
+}
+
+function getSpecDesignTokens(spec: Record<string, unknown> | undefined): BundleDesignTokens {
+  const creativeBrief = asRecord(spec?.creativeBrief);
+  const colorTokens = asRecord(creativeBrief?.colorTokens);
+  const defaultProps = asRecord(spec?.defaultProps);
+  const propTokens = asRecord(defaultProps?.designTokens);
+
+  return {
+    accent: String(colorTokens?.accent || defaultProps?.accentColor || propTokens?.accentColor || DEFAULT_BUNDLE_TOKENS.accent),
+    background: String(colorTokens?.background || propTokens?.backgroundColor || DEFAULT_BUNDLE_TOKENS.background),
+    muted: String(colorTokens?.muted || propTokens?.mutedTextColor || DEFAULT_BUNDLE_TOKENS.muted),
+    surface: String(colorTokens?.surface || propTokens?.surfaceColor || DEFAULT_BUNDLE_TOKENS.surface),
+    text: String(colorTokens?.text || propTokens?.textColor || DEFAULT_BUNDLE_TOKENS.text),
+  };
+}
+
+function getSpecModifiers(spec: Record<string, unknown> | undefined): BundleModifiers {
+  return {
+    durationFrames: typeof spec?.durationFrames === "number" ? spec.durationFrames : DEFAULT_BUNDLE_MODIFIERS.durationFrames,
+    fps: typeof spec?.fps === "number" ? spec.fps : DEFAULT_BUNDLE_MODIFIERS.fps,
+    height: typeof spec?.height === "number" ? spec.height : DEFAULT_BUNDLE_MODIFIERS.height,
+    width: typeof spec?.width === "number" ? spec.width : DEFAULT_BUNDLE_MODIFIERS.width,
+  };
+}
+
+function buildBundleOverrides(
+  templateFamily: BundleTemplateFamily | "auto",
+  designTokens: BundleDesignTokens,
+  modifiers: BundleModifiers,
+) {
+  return {
+    ...(templateFamily === "auto" ? {} : { templateFamily }),
+    creativeBrief: {
+      colorTokens: {
+        accent: designTokens.accent,
+        background: designTokens.background,
+        muted: designTokens.muted,
+        surface: designTokens.surface,
+        text: designTokens.text,
+      },
+    },
+    defaultProps: {
+      accentColor: designTokens.accent,
+      designTokens: {
+        accentColor: designTokens.accent,
+        backgroundColor: designTokens.background,
+        mutedTextColor: designTokens.muted,
+        surfaceColor: designTokens.surface,
+        textColor: designTokens.text,
+      },
+    },
+    durationFrames: modifiers.durationFrames,
+    fps: modifiers.fps,
+    height: modifiers.height,
+    width: modifiers.width,
+  };
+}
+
+function BundleLivePreview({
+  modifiers,
+  spec,
+  templateFamily,
+  tokens,
+}: {
+  modifiers: BundleModifiers;
+  spec?: Record<string, unknown>;
+  templateFamily: BundleTemplateFamily | "auto";
+  tokens: BundleDesignTokens;
+}) {
+  const defaultProps = asRecord(spec?.defaultProps);
+  const title = normalizeLegacySofliaName(String(defaultProps?.title || spec?.title || "SofLIA Bundle"));
+  const subtitle = normalizeLegacySofliaName(String(defaultProps?.subtitle || "Plantilla visual para lecciones con soporte multimedia."));
+  const currentFamily = templateFamily === "auto"
+    ? String(spec?.templateFamily || "auto")
+    : templateFamily;
+  const previewStyle = {
+    "--bundle-preview-accent": tokens.accent,
+    "--bundle-preview-background": tokens.background,
+    "--bundle-preview-muted": tokens.muted,
+    "--bundle-preview-surface": tokens.surface,
+    "--bundle-preview-text": tokens.text,
+    aspectRatio: `${Math.max(1, modifiers.width)} / ${Math.max(1, modifiers.height)}`,
+  } as CSSProperties;
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+        <div>
+          <h2 className="font-semibold text-slate-950">Preview</h2>
+          <p className="text-xs text-slate-500">{modifiers.width}x{modifiers.height} - {modifiers.fps} fps</p>
+        </div>
+        <span className="rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-500">
+          {currentFamily}
+        </span>
+      </div>
+      <div className="p-4">
+        <div
+          className="relative overflow-hidden rounded-lg border border-black/10 bg-[var(--bundle-preview-background)] shadow-sm"
+          style={previewStyle}
+        >
+          <div className="absolute inset-0 opacity-30" style={{
+            backgroundImage: `linear-gradient(90deg, ${tokens.surface} 1px, transparent 1px), linear-gradient(0deg, ${tokens.surface} 1px, transparent 1px)`,
+            backgroundSize: "32px 32px",
+          }} />
+          <div className="absolute left-[7%] top-[12%] w-[46%]">
+            <div className="mb-2 h-1.5 w-14 rounded-full bg-[var(--bundle-preview-accent)]" />
+            <h3 className="line-clamp-2 text-[clamp(18px,2.2vw,30px)] font-black leading-tight text-[var(--bundle-preview-text)]">
+              {title}
+            </h3>
+            <p className="mt-2 line-clamp-2 text-xs leading-5 text-[var(--bundle-preview-muted)]">
+              {subtitle}
+            </p>
+          </div>
+          <div className="absolute bottom-[12%] left-[7%] h-[24%] w-[28%] rounded-lg border border-white/10 bg-[var(--bundle-preview-surface)] p-3 shadow-xl">
+            <div className="h-full rounded-md bg-gradient-to-br from-white/20 to-transparent" />
+            <span className="absolute bottom-2 left-3 text-[9px] font-bold uppercase tracking-wide text-[var(--bundle-preview-muted)]">Avatar</span>
+          </div>
+          <div className="absolute right-[7%] top-[14%] h-[36%] w-[34%] rounded-lg bg-white p-3 shadow-xl">
+            <div className="mb-3 h-1.5 w-16 rounded-full bg-[var(--bundle-preview-accent)]" />
+            <div className="space-y-2">
+              <div className="h-2 w-3/4 rounded bg-slate-900" />
+              <div className="h-2 w-1/2 rounded bg-[var(--bundle-preview-accent)]" />
+              <div className="h-2 w-2/3 rounded bg-slate-200" />
+            </div>
+            <span className="absolute bottom-2 right-3 text-[9px] font-bold uppercase tracking-wide text-slate-400">Slides</span>
+          </div>
+          <div className="absolute bottom-[14%] right-[7%] h-[24%] w-[34%] rounded-lg border border-white/10 bg-[var(--bundle-preview-surface)] p-3 shadow-xl">
+            <div className="flex h-full items-end gap-2">
+              {[45, 70, 38, 88].map((height, index) => (
+                <span
+                  key={`${height}-${index}`}
+                  className="flex-1 rounded-t"
+                  style={{
+                    backgroundColor: index % 2 === 0 ? tokens.accent : tokens.muted,
+                    height: `${height}%`,
+                  }}
+                />
+              ))}
+            </div>
+            <span className="absolute bottom-2 right-3 text-[9px] font-bold uppercase tracking-wide text-[var(--bundle-preview-muted)]">B-roll</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function getReferenceType(file: File): BundleAgentVisualReference["type"] | null {
@@ -343,18 +541,17 @@ async function analyzeImageReference(file: File) {
 }
 
 export function BundleAgentClient({
-  initialArtifactKind = "video_bundle",
   initialTemplateId = null,
 }: {
-  initialArtifactKind?: AgentArtifactKind;
   initialTemplateId?: string | null;
 }) {
   const pathname = usePathname();
   const templateId = initialTemplateId;
   const [state, setState] = useState<ConversationState>(EMPTY_STATE);
-  const [title, setTitle] = useState(initialArtifactKind === "slide_template" ? "Plantilla SofLIA Deck" : "Nuevo bundle de video");
-  const [artifactKind, setArtifactKind] = useState<AgentArtifactKind>(initialArtifactKind);
+  const [title, setTitle] = useState("Nuevo bundle de video");
   const [templateFamily, setTemplateFamily] = useState<BundleTemplateFamily | "auto">("auto");
+  const [designTokens, setDesignTokens] = useState<BundleDesignTokens>(DEFAULT_BUNDLE_TOKENS);
+  const [modifiers, setModifiers] = useState<BundleModifiers>(DEFAULT_BUNDLE_MODIFIERS);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [uploadingReferences, setUploadingReferences] = useState(false);
@@ -376,10 +573,7 @@ export function BundleAgentClient({
     .find((item) => item.role === "TOOL" && item.metadata?.specId === latestSpec?.id)
     ?.metadata || null, [latestSpec?.id, state.messages]);
   const similarityGuardSummary = useMemo(() => formatSimilarityGuard(latestRun), [latestRun]);
-  const effectiveArtifactKind: AgentArtifactKind = templateId ? "video_bundle" : artifactKind;
-  const baseBundleHref = effectiveArtifactKind === "slide_template"
-    ? "/api/admin/remotion/bundle-agent/base-bundle?artifactKind=slide_template"
-    : "/api/admin/remotion/bundle-agent/base-bundle";
+  const baseBundleHref = "/api/admin/remotion/bundle-agent/base-bundle";
   const templatesHref = useMemo(() => {
     const normalizedPath = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
     return normalizedPath.replace(/\/admin\/remotion\/bundle-agent$/, "/admin/templates");
@@ -415,6 +609,11 @@ export function BundleAgentClient({
     if (typeof loadedFamily === "string" && BUNDLE_TEMPLATE_FAMILY_OPTIONS.some((option) => option.id === loadedFamily)) {
       setTemplateFamily(loadedFamily as BundleTemplateFamily);
     }
+    const loadedSpec = payload.specs?.[0]?.spec_json as Record<string, unknown> | undefined;
+    if (loadedSpec) {
+      setDesignTokens(getSpecDesignTokens(loadedSpec));
+      setModifiers(getSpecModifiers(loadedSpec));
+    }
   }
 
   async function run(action: () => Promise<void>) {
@@ -435,7 +634,7 @@ export function BundleAgentClient({
     const payload = await readJson(await fetch("/api/admin/remotion/bundle-agent/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: normalizeLegacySofliaName(title), templateId }),
+      body: JSON.stringify({ artifactKind: "video_bundle", title: normalizeLegacySofliaName(title), templateId }),
     }));
     await refresh(payload.conversation.id);
     return payload.conversation.id as string;
@@ -449,13 +648,24 @@ export function BundleAgentClient({
       const payload = await readJson(await fetch("/api/admin/remotion/bundle-agent/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: normalizeLegacySofliaName(title), templateId }),
+        body: JSON.stringify({ artifactKind: "video_bundle", title: normalizeLegacySofliaName(title), templateId }),
       }));
       setTitle(normalizeLegacySofliaName(payload.conversation.title || title));
       await refresh(payload.conversation.id);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateId]);
+
+  async function requestSpec(conversationId: string) {
+    await readJson(await fetch(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/specs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        artifactKind: "video_bundle",
+        overrides: buildBundleOverrides(templateFamily, designTokens, modifiers),
+      }),
+    }));
+  }
 
   async function sendCurrentMessage(event?: FormEvent) {
     event?.preventDefault();
@@ -475,21 +685,7 @@ export function BundleAgentClient({
       }));
       setMessage("");
       setVisualReferences([]);
-      await refresh(conversationId);
-    });
-  }
-
-  async function generateSpec() {
-    await run(async () => {
-      const conversationId = await ensureConversation();
-      await readJson(await fetch(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/specs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          artifactKind: effectiveArtifactKind,
-          ...(templateFamily === "auto" ? {} : { overrides: { templateFamily } }),
-        }),
-      }));
+      await requestSpec(conversationId);
       await refresh(conversationId);
     });
   }
@@ -500,7 +696,7 @@ export function BundleAgentClient({
       await readJson(await fetch(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ artifactKind: effectiveArtifactKind }),
+        body: JSON.stringify({ artifactKind: "video_bundle" }),
       }));
       await refresh(conversationId);
     });
@@ -582,51 +778,23 @@ export function BundleAgentClient({
   }
 
   return (
-    <main className="mx-auto flex h-[calc(100vh-96px)] max-w-7xl flex-col gap-5 p-6">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <main className="mx-auto flex h-[calc(100vh-84px)] max-w-7xl flex-col gap-3 overflow-hidden p-4">
+      <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <Link
             href={templatesHref}
-            className="mb-4 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-[#00D4B3]/40 hover:text-[#009688]"
+            className="mb-3 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-[#00D4B3]/40 hover:text-[#009688]"
           >
             <ArrowLeft size={16} />
             Regresar a plantillas
           </Link>
           <p className="text-sm font-medium text-slate-500">Produccion visual</p>
-          <h1 className="text-3xl font-semibold text-slate-950">SofLIA Bundle Agent</h1>
-          <p className="mt-2 max-w-2xl text-sm text-slate-600">
+          <h1 className="text-2xl font-semibold text-slate-950">SofLIA Bundle Agent</h1>
+          <p className="mt-1 max-w-2xl text-sm text-slate-600">
             {isTemplateScoped
               ? "Edita este bundle manteniendo su conversacion, specs y versiones generadas dentro del mismo historial auditable."
-              : "Conversa con SofLIA para definir una plantilla de video o slides. El agente genera una spec auditable y un paquete ZIP validado segun el tipo seleccionado."}
+              : "Conversa con SofLIA para definir una plantilla de video. El agente genera una spec auditable y un paquete ZIP validado."}
           </p>
-          {!templateId ? (
-            <div className="mt-4 inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-              {[
-                { id: "video_bundle", label: "Bundle de video" },
-                { id: "slide_template", label: "Plantilla de slides" },
-              ].map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => {
-                    const nextKind = option.id as AgentArtifactKind;
-                    setArtifactKind(nextKind);
-                    if (!state.conversation) {
-                      setTitle(nextKind === "slide_template" ? "Plantilla SofLIA Deck" : "Nuevo bundle de video");
-                    }
-                  }}
-                  disabled={Boolean(state.conversation)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                    effectiveArtifactKind === option.id
-                      ? "bg-slate-950 text-white"
-                      : "text-slate-600 hover:bg-slate-50"
-                  } disabled:cursor-not-allowed disabled:opacity-60`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          ) : null}
         </div>
         <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 shadow-sm">
           <span className="h-2 w-2 rounded-full bg-emerald-500" />
@@ -638,9 +806,9 @@ export function BundleAgentClient({
         <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
       ) : null}
 
-      <section className="grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 px-5 py-4">
+      <section className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(390px,0.9fr)_minmax(420px,0.62fr)]">
+        <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 px-4 py-3">
             <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="conversation-title">
               Nombre de la conversacion
             </label>
@@ -651,49 +819,25 @@ export function BundleAgentClient({
               onChange={(event) => setTitle(event.target.value)}
               disabled={Boolean(state.conversation)}
             />
-            {effectiveArtifactKind === "video_bundle" ? (
-              <div className="mt-3 grid gap-1.5">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="template-family">
-                  Familia visual
-                </label>
-                <select
-                  id="template-family"
-                  value={templateFamily}
-                  onChange={(event) => setTemplateFamily(event.target.value as BundleTemplateFamily | "auto")}
-                  disabled={busy}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-[#00D4B3] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <option value="auto">Automática según la dirección creativa</option>
-                  {BUNDLE_TEMPLATE_FAMILY_OPTIONS.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label} — {option.description}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs leading-5 text-slate-500">
-                  La familia define la geometría, el fondo y el motion. No solo cambia el color.
-                </p>
-              </div>
-            ) : null}
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 px-5 py-6">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 px-4 py-4">
             {state.messages.length === 0 ? (
               <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center text-center">
-                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#00D4B3]/10 text-[#009688]">
-                  <Sparkles size={26} />
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[#00D4B3]/10 text-[#009688]">
+                  <Sparkles size={24} />
                 </div>
-                <h2 className="text-2xl font-semibold text-slate-950">Cuentame que plantilla quieres crear</h2>
+                <h2 className="text-lg font-semibold text-slate-950">Cuentame que bundle quieres crear</h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
                   Describe estilo, ritmo, assets, formato, tono visual o props esperadas. La conversacion se crea automaticamente al enviar tu primer mensaje.
                 </p>
-                <div className="mt-6 grid w-full gap-2">
+                <div className="mt-5 grid w-full gap-2">
                   {QUICK_PROMPTS.map((prompt) => (
                     <button
                       key={prompt}
                       type="button"
                       onClick={() => useQuickPrompt(prompt)}
-                      className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm text-slate-700 transition hover:border-[#00D4B3]/50 hover:bg-[#00D4B3]/5"
+                      className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-left text-sm text-slate-700 transition hover:border-[#00D4B3]/50 hover:bg-[#00D4B3]/5"
                     >
                       {prompt}
                     </button>
@@ -743,7 +887,7 @@ export function BundleAgentClient({
             )}
           </div>
 
-          <form onSubmit={sendCurrentMessage} className="border-t border-slate-100 bg-white p-4">
+          <form onSubmit={sendCurrentMessage} className="border-t border-slate-100 bg-white p-3">
             {visualReferences.length > 0 ? (
               <div className="mb-3 grid gap-2">
                 {visualReferences.map((reference) => (
@@ -774,7 +918,7 @@ export function BundleAgentClient({
                 ))}
               </div>
             ) : null}
-            <div className="flex gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-2 focus-within:border-[#00D4B3]">
+            <div className="flex gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2 focus-within:border-[#00D4B3]">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -817,8 +961,126 @@ export function BundleAgentClient({
           </form>
         </div>
 
-        <aside className="flex min-h-0 flex-col gap-4 overflow-y-auto">
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto">
+          <BundleLivePreview
+            modifiers={modifiers}
+            spec={latestSpec?.spec_json}
+            templateFamily={templateFamily}
+            tokens={designTokens}
+          />
+
+          <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+              <Settings2 className="text-[#009688]" size={18} />
+              <h2 className="font-semibold text-slate-950">Modificadores</h2>
+            </div>
+            <div className="space-y-3 p-4">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="template-family">
+                Familia visual
+                <select
+                  id="template-family"
+                  value={templateFamily}
+                  onChange={(event) => setTemplateFamily(event.target.value as BundleTemplateFamily | "auto")}
+                  disabled={busy}
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-700 outline-none transition focus:border-[#00D4B3] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="auto">Automatica segun la direccion creativa</option>
+                  {BUNDLE_TEMPLATE_FAMILY_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label} - {option.description}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="grid grid-cols-2 gap-2">
+                {BUNDLE_COLOR_FIELDS.map((field) => (
+                  <label key={field.key} className="text-xs font-semibold text-slate-600">
+                    {field.label}
+                    <div className="mt-1 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1.5">
+                      <input
+                        type="color"
+                        value={designTokens[field.key]}
+                        onChange={(event) => setDesignTokens((current) => ({
+                          ...current,
+                          [field.key]: event.target.value.toUpperCase(),
+                        }))}
+                        className="h-7 w-8 cursor-pointer border-0 bg-transparent p-0"
+                      />
+                      <span className="min-w-0 truncate font-mono text-[11px] text-slate-700">
+                        {designTokens[field.key]}
+                      </span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-xs font-semibold text-slate-600">
+                  Duracion
+                  <input
+                    type="number"
+                    min={30}
+                    max={900}
+                    step={15}
+                    value={modifiers.durationFrames}
+                    onChange={(event) => setModifiers((current) => ({
+                      ...current,
+                      durationFrames: Number(event.target.value),
+                    }))}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#00D4B3]"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-slate-600">
+                  FPS
+                  <input
+                    type="number"
+                    min={12}
+                    max={60}
+                    step={1}
+                    value={modifiers.fps}
+                    onChange={(event) => setModifiers((current) => ({
+                      ...current,
+                      fps: Number(event.target.value),
+                    }))}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#00D4B3]"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-slate-600">
+                  Ancho
+                  <input
+                    type="number"
+                    min={320}
+                    max={3840}
+                    step={160}
+                    value={modifiers.width}
+                    onChange={(event) => setModifiers((current) => ({
+                      ...current,
+                      width: Number(event.target.value),
+                    }))}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#00D4B3]"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-slate-600">
+                  Alto
+                  <input
+                    type="number"
+                    min={240}
+                    max={2160}
+                    step={90}
+                    value={modifiers.height}
+                    onChange={(event) => setModifiers((current) => ({
+                      ...current,
+                      height: Number(event.target.value),
+                    }))}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#00D4B3]"
+                  />
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-4 flex items-center gap-2">
               <Bot className="text-[#009688]" size={20} />
               <h2 className="font-semibold text-slate-950">Pasos del agente</h2>
@@ -826,35 +1088,13 @@ export function BundleAgentClient({
             <div className="grid gap-3">
               <button
                 type="button"
-                onClick={generateSpec}
-                disabled={busy || state.messages.filter((item) => item.role === "USER").length === 0}
-                className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-left text-sm transition hover:border-[#00D4B3]/60 hover:bg-[#00D4B3]/5 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <span>
-                  <span className="block font-semibold text-slate-900">Generar spec</span>
-                  <span className="text-slate-500">
-                    {effectiveArtifactKind === "slide_template"
-                      ? "Crea el contrato JSON SofLIA Deck."
-                      : "OpenAI/Gemini produce el contrato JSON."}
-                  </span>
-                </span>
-                {latestSpec ? <CheckCircle2 className="text-emerald-500" size={20} /> : <Sparkles size={20} />}
-              </button>
-              <button
-                type="button"
                 onClick={generateVersion}
                 disabled={busy || !latestSpec}
                 className="flex items-center justify-between rounded-xl bg-slate-950 px-4 py-3 text-left text-sm text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
                 <span>
-                  <span className="block font-semibold">
-                    {effectiveArtifactKind === "slide_template" ? "Generar plantilla ZIP" : "Generar version ZIP"}
-                  </span>
-                  <span className="text-slate-300">
-                    {effectiveArtifactKind === "slide_template"
-                      ? "Empaqueta skill, manifests, schemas y ejemplos."
-                      : "Crea borrador validado, no aprobado."}
-                  </span>
+                  <span className="block font-semibold">Generar version ZIP</span>
+                  <span className="text-slate-300">Crea borrador validado, no aprobado.</span>
                 </span>
                 <PackageCheck size={20} />
               </button>
@@ -863,14 +1103,8 @@ export function BundleAgentClient({
                 className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-left text-sm transition hover:border-[#5B21B6]/40 hover:bg-[#5B21B6]/5"
               >
                 <span>
-                  <span className="block font-semibold text-slate-900">
-                    {effectiveArtifactKind === "slide_template" ? "Descargar base slides" : "Descargar base ZIP"}
-                  </span>
-                  <span className="text-slate-500">
-                    {effectiveArtifactKind === "slide_template"
-                      ? "Skill y manifests base para plantillas de slides."
-                      : "Estructura minima para crear bundles por fuera."}
-                  </span>
+                  <span className="block font-semibold text-slate-900">Descargar base ZIP</span>
+                  <span className="text-slate-500">Estructura minima para crear bundles por fuera.</span>
                 </span>
                 <Download size={20} />
               </a>
@@ -997,7 +1231,7 @@ export function BundleAgentClient({
                     className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-[#5B21B6]/40 hover:text-[#4C1D95]"
                   >
                     <Download size={14} />
-                    {effectiveArtifactKind === "slide_template" ? "Descargar plantilla generada" : "Descargar bundle generado"}
+                    Descargar bundle generado
                   </a>
                 ) : null}
               </div>

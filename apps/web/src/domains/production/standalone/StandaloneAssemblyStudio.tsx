@@ -131,20 +131,21 @@ export function StandaloneAssemblyStudio() {
     if (!selectedProject) return "Sin video seleccionado";
     return selectedProject.title;
   }, [selectedProject]);
+  const adminBasePath = useMemo(() => {
+    const adminIndex = pathname.indexOf("/admin");
+    return adminIndex >= 0 ? pathname.slice(0, adminIndex + "/admin".length) : "/admin";
+  }, [pathname]);
   const sofliaSlidesHref = useMemo(() => {
     const componentId = componentView?.component.id;
     if (!componentId) return undefined;
 
-    const slidesPath = pathname.includes("/admin/assembly")
-      ? pathname.replace("/admin/assembly", "/admin/slides")
-      : "/admin/slides";
     const params = new URLSearchParams({
       componentId,
       returnTo: pathname,
     });
 
-    return `${slidesPath}?${params.toString()}`;
-  }, [componentView?.component.id, pathname]);
+    return `${adminBasePath}/slides?${params.toString()}`;
+  }, [adminBasePath, componentView?.component.id, pathname]);
 
   const handleCreateProject = async () => {
     const title = newTitle.trim();
@@ -375,6 +376,8 @@ export function StandaloneAssemblyStudio() {
                 lessonTitle={componentView.lessonTitle}
                 onGeneratePrompts={handleGeneratePrompts}
                 onSaveAssets={handleSaveAssets}
+                slideTemplatesHref={`${adminBasePath}/templates`}
+                slideTemplateStudioHref={`${adminBasePath}/slides/templates`}
                 sofliaSlidesHref={sofliaSlidesHref}
               />
 

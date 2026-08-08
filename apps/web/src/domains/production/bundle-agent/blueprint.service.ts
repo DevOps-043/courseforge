@@ -155,28 +155,30 @@ function resolveLayout(spec: BundleAgentSpec, designPlan: BundleAgentDesignPlan)
     return "reference-frame-avatar-left-stack-right";
   }
 
-  if (designPlan.templateFamily === "cinematic-field") {
-    return "cinematic-field";
-  }
+  if (designPlan.source === "explicit-family") {
+    if (designPlan.templateFamily === "cinematic-field") {
+      return "cinematic-field";
+    }
 
-  if (designPlan.templateFamily === "editorial-rail") {
-    return "editorial-rail";
-  }
+    if (designPlan.templateFamily === "editorial-rail") {
+      return "editorial-rail";
+    }
 
-  if (designPlan.templateFamily === "floating-collage") {
-    return "floating-collage";
-  }
+    if (designPlan.templateFamily === "floating-collage") {
+      return "floating-collage";
+    }
 
-  if (designPlan.templateFamily === "minimal-focus") {
-    return "minimal-focus";
-  }
+    if (designPlan.templateFamily === "minimal-focus") {
+      return "minimal-focus";
+    }
 
-  if (designPlan.templateFamily === "stacked-evidence") {
-    return "stacked-support";
-  }
+    if (designPlan.templateFamily === "stacked-evidence") {
+      return "stacked-support";
+    }
 
-  if (designPlan.templateFamily === "split-contrast" && !(hasAvatar && asksRightAvatar)) {
-    return "split-contrast";
+    if (designPlan.templateFamily === "split-contrast" && !(hasAvatar && asksRightAvatar)) {
+      return "split-contrast";
+    }
   }
 
   if (asksFullscreen && (hasSlides || hasBroll) && !hasAvatar) {
@@ -197,6 +199,30 @@ function resolveLayout(spec: BundleAgentSpec, designPlan: BundleAgentDesignPlan)
 
   if (hasAvatar && (hasSlides || hasBroll)) {
     return "split-avatar-support";
+  }
+
+  if (designPlan.templateFamily === "cinematic-field") {
+    return "cinematic-field";
+  }
+
+  if (designPlan.templateFamily === "editorial-rail") {
+    return "editorial-rail";
+  }
+
+  if (designPlan.templateFamily === "floating-collage") {
+    return "floating-collage";
+  }
+
+  if (designPlan.templateFamily === "minimal-focus") {
+    return "minimal-focus";
+  }
+
+  if (designPlan.templateFamily === "stacked-evidence") {
+    return "stacked-support";
+  }
+
+  if (designPlan.templateFamily === "split-contrast") {
+    return "split-contrast";
   }
 
   return "media-only";

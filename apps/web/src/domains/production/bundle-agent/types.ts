@@ -302,6 +302,7 @@ export interface BundleAgentAuthContext {
 
 export interface BundleAgentConversation {
   id: string;
+  artifact_kind?: BundleAgentArtifactKind | null;
   organization_id: string;
   created_by: string | null;
   template_id: string | null;

@@ -211,6 +211,23 @@ export interface SlideTemplateLibraryItem {
   finished_at: string | null;
   layouts: string[];
   example_slide_count: number;
+  preview_design: {
+    accent: string;
+    accent2: string;
+    background: string;
+    muted: string;
+    surface: string;
+    text: string;
+  } | null;
+  preview_slides: Array<{
+    body_items: string[];
+    chart_points: number[];
+    layout: string | null;
+    order: number;
+    subtitle: string | null;
+    title: string;
+    type: string;
+  }>;
   runtime_canvas: {
     width: number;
     height: number;
@@ -387,6 +404,23 @@ function getStringList(value: unknown): string[] {
 
 function getSlideTemplateLayouts(specJson: unknown): string[] {
   const spec = asRecord(specJson);
+  const blueprint = asRecord(spec?.templateBlueprint);
+  const blueprintLayouts = Array.isArray(blueprint?.layouts)
+    ? blueprint.layouts
+        .map((layout) => {
+          const record = asRecord(layout);
+          return typeof record?.label === "string"
+            ? record.label
+            : typeof record?.id === "string"
+              ? record.id
+              : null;
+        })
+        .filter((layout): layout is string => Boolean(layout))
+    : [];
+  if (blueprintLayouts.length > 0) {
+    return blueprintLayouts;
+  }
+
   const templateManifest = asRecord(spec?.templateManifest);
   const deckSpecSchema = asRecord(templateManifest?.deckSpecSchema);
   return getStringList(deckSpecSchema?.slideLayouts);
@@ -410,6 +444,65 @@ function getSlideTemplateExampleCount(specJson: unknown): number {
   const firstExample = asRecord(examples[0]);
   const slides = Array.isArray(firstExample?.slides) ? firstExample.slides : [];
   return slides.length;
+}
+
+function getSlideTemplatePreviewDesign(specJson: unknown): SlideTemplateLibraryItem["preview_design"] {
+  const spec = asRecord(specJson);
+  const blueprint = asRecord(spec?.templateBlueprint);
+  const designTokens = asRecord(blueprint?.designTokens);
+  const getColor = (key: string, fallback: string) => {
+    const value = designTokens?.[key];
+    return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value)
+      ? value
+      : fallback;
+  };
+
+  return {
+    accent: getColor("accent", "#00D4B3"),
+    accent2: getColor("accent2", "#2D7D6E"),
+    background: getColor("background", "#F7FAFC"),
+    muted: getColor("muted", "#65758B"),
+    surface: getColor("surface", "#FFFFFF"),
+    text: getColor("text", "#0A2540"),
+  };
+}
+
+function getSlideTemplatePreviewSlides(specJson: unknown): SlideTemplateLibraryItem["preview_slides"] {
+  const spec = asRecord(specJson);
+  const examples = Array.isArray(spec?.examples) ? spec.examples : [];
+  const firstExample = asRecord(examples[0]);
+  const slides = Array.isArray(firstExample?.slides) ? firstExample.slides : [];
+
+  return slides.slice(0, 4).map((slide, index) => {
+    const record = asRecord(slide) || {};
+    const renderHints = asRecord(record.renderHints);
+    const chart = asRecord(record.chart);
+    const chartPoints = Array.isArray(chart?.points)
+      ? chart.points
+          .map((point) => asRecord(point)?.value)
+          .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+          .slice(0, 4)
+      : [];
+    const bodyItems = Array.isArray(record.bodyBlocks)
+      ? record.bodyBlocks.flatMap((block) => {
+          const bodyBlock = asRecord(block);
+          if (Array.isArray(bodyBlock?.items)) {
+            return bodyBlock.items.filter((item): item is string => typeof item === "string");
+          }
+          return typeof bodyBlock?.text === "string" ? [bodyBlock.text] : [];
+        }).slice(0, 4)
+      : [];
+
+    return {
+      body_items: bodyItems,
+      chart_points: chartPoints,
+      layout: typeof renderHints?.layout === "string" ? renderHints.layout : null,
+      order: typeof record.order === "number" ? record.order : index + 1,
+      subtitle: typeof record.subtitle === "string" ? record.subtitle : null,
+      title: typeof record.title === "string" ? record.title : `Slide ${index + 1}`,
+      type: typeof record.type === "string" ? record.type : "slide",
+    };
+  });
 }
 
 function isSlideTemplateRun(run: Record<string, any>, specJson: unknown) {
@@ -890,6 +983,8 @@ export async function getSlideTemplatePackagesAction(): Promise<{
           finished_at: run.finished_at || null,
           layouts: getSlideTemplateLayouts(specJson),
           example_slide_count: getSlideTemplateExampleCount(specJson),
+          preview_design: getSlideTemplatePreviewDesign(specJson),
+          preview_slides: getSlideTemplatePreviewSlides(specJson),
           runtime_canvas: getSlideTemplateCanvas(specJson),
           validation_report: asRecord(run.validation_report),
         };

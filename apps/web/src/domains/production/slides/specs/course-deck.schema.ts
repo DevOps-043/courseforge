@@ -11,18 +11,19 @@ export const courseDeckTemplateSchema = z.enum([
   "demo-guide",
 ]);
 
-export const courseSlideTypeSchema = z.enum([
-  "cover",
-  "objectives",
-  "concept",
-  "worked_example",
-  "exercise",
-  "knowledge_check",
-  "summary",
-  "data_explainer",
-  "diagram",
-  "quote",
-  "transition",
+export const courseSlideTypeSchema = z.string()
+  .trim()
+  .regex(/^[a-z][a-z0-9_]*$/)
+  .min(2)
+  .max(48);
+
+export const courseSlideLayoutSchema = z.enum([
+  "center",
+  "closing",
+  "data",
+  "framework",
+  "split",
+  "split_reverse",
 ]);
 
 export const chartPointSchema = z.object({
@@ -89,6 +90,10 @@ export const courseSlideSpecSchema = z.object({
   citations: z.array(slideCitationSchema).default([]),
   id: z.string().min(1).max(80),
   order: z.number().int().positive(),
+  renderHints: z.object({
+    layout: courseSlideLayoutSchema,
+    purpose: z.string().max(240).optional(),
+  }).optional(),
   speakerNotes: z.string().max(1800).optional(),
   subtitle: z.string().max(240).optional(),
   title: z.string().min(1).max(180),
@@ -106,7 +111,12 @@ export const courseSlideSpecSchema = z.object({
 export const courseDeckDesignSystemSchema = z.object({
   accent: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#2d7d6e"),
   accent2: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#d88a3a"),
+  background: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   brandLabel: z.string().min(1).max(80).default("SofLIA - Engine"),
+  fontPairing: z.enum(["system_sans", "editorial_serif", "technical_mono"]).optional(),
+  muted: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  surface: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  text: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   tone: z.enum(["academic", "corporate", "editorial"]).default("academic"),
 });
 

@@ -1,6 +1,7 @@
 export interface SystemPrompt {
   id: string;
   code: string;
+  scope?: string | null;
   version: string;
   organization_id?: string | null;
   content: string;

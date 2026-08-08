@@ -570,18 +570,22 @@ export function useProductionAssetState({
   };
 
   // 3. Generated HTML export & Upload ZIP/HTML
-  const handleSofliaEngineSlideGeneration = async () => {
+  const handleSofliaEngineSlideGeneration = async (slideTemplateRunId?: string | null) => {
     setIsGeneratingSofliaSlides(true);
     try {
+      const regenerationRequestId = crypto.randomUUID();
       const response = await fetch("/api/production/slides/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           componentId: component.id,
+          forceRegenerate: true,
           locale: "es",
           metadata: {
             brandLabel: "SofLIA - Engine",
           },
+          regenerationRequestId,
+          ...(slideTemplateRunId ? { slideTemplateRunId } : {}),
           template: "course-module",
         }),
       });
@@ -612,7 +616,7 @@ export function useProductionAssetState({
       toast.success(
         data.reused
           ? "Deck SofLIA - Engine recuperado"
-          : "Deck SofLIA - Engine generado",
+          : "Deck SofLIA - Engine regenerado",
       );
     } catch (err: any) {
       toast.error(`Error al generar deck SofLIA - Engine: ${err.message}`);

@@ -1,29 +1,38 @@
 import {
+  bundleAgentArtifactKindSchema,
   bundleAgentMessageMetadataSchema,
   bundleAgentMessageRoleSchema,
+  type BundleAgentArtifactKind,
   type BundleAgentAuthContext,
 } from "./types";
 import { redactSensitiveText } from "./redaction.service";
 
 const ACTIVE_CONVERSATION_LIMIT = 25;
+const ACTIVE_SLIDE_TEMPLATE_CONVERSATION_LIMIT = 100;
 
 export class BundleAgentConversationService {
   constructor(private readonly context: BundleAgentAuthContext) {}
 
-  async createConversation(input: { title?: string | null; templateId?: string | null }) {
+  async createConversation(input: { artifactKind?: unknown; title?: string | null; templateId?: string | null }) {
+    const artifactKind = bundleAgentArtifactKindSchema
+      .catch("video_bundle")
+      .parse(input.artifactKind);
+
     if (input.templateId) {
       return this.getOrCreateConversationForTemplate({
+        artifactKind,
         templateId: input.templateId,
         title: input.title,
       });
     }
 
-    const title = input.title?.trim() || "SofLIA video bundle";
-    await this.enforceConversationLimit();
+    const title = input.title?.trim() || (artifactKind === "slide_template" ? "Plantilla HTML de slides" : "SofLIA video bundle");
+    await this.enforceConversationLimit(artifactKind);
 
     const { data, error } = await this.context.admin
       .from("soflia_bundle_conversations")
       .insert({
+        artifact_kind: artifactKind,
         organization_id: this.context.organizationId,
         created_by: this.context.userId,
         title,
@@ -36,13 +45,19 @@ export class BundleAgentConversationService {
     return data;
   }
 
-  async getOrCreateConversationForTemplate(input: { templateId: string; title?: string | null }) {
+  async getOrCreateConversationForTemplate(input: {
+    artifactKind?: BundleAgentArtifactKind;
+    templateId: string;
+    title?: string | null;
+  }) {
+    const artifactKind = input.artifactKind || "video_bundle";
     const template = await this.assertTemplateAccess(input.templateId);
 
     const { data: existing, error: existingError } = await this.context.admin
       .from("soflia_bundle_conversations")
       .select("*")
       .eq("organization_id", this.context.organizationId)
+      .eq("artifact_kind", artifactKind)
       .eq("template_id", template.id)
       .maybeSingle();
 
@@ -50,11 +65,12 @@ export class BundleAgentConversationService {
     if (existing) return existing;
 
     const title = input.title?.trim() || template.name || "SofLIA video bundle";
-    await this.enforceConversationLimit();
+    await this.enforceConversationLimit(artifactKind);
 
     const { data, error } = await this.context.admin
       .from("soflia_bundle_conversations")
       .insert({
+        artifact_kind: artifactKind,
         organization_id: this.context.organizationId,
         created_by: this.context.userId,
         template_id: template.id,
@@ -148,16 +164,20 @@ export class BundleAgentConversationService {
     return data;
   }
 
-  private async enforceConversationLimit() {
+  private async enforceConversationLimit(artifactKind: BundleAgentArtifactKind = "video_bundle") {
     const { count, error } = await this.context.admin
       .from("soflia_bundle_conversations")
       .select("id", { count: "exact", head: true })
       .eq("organization_id", this.context.organizationId)
+      .eq("artifact_kind", artifactKind)
       .in("status", ["DRAFTING", "READY_FOR_GENERATION", "GENERATING", "VERSION_PENDING_REVIEW", "ACTIVE"]);
 
     if (error) throw error;
-    if ((count || 0) >= ACTIVE_CONVERSATION_LIMIT) {
-      throw new Error("La organizacion alcanzo el limite de conversaciones activas de SofLIA Bundle Agent.");
+    const limit = artifactKind === "slide_template"
+      ? ACTIVE_SLIDE_TEMPLATE_CONVERSATION_LIMIT
+      : ACTIVE_CONVERSATION_LIMIT;
+    if ((count || 0) >= limit) {
+      throw new Error(`La organizacion alcanzo el limite de conversaciones activas para ${artifactKind}.`);
     }
   }
 
