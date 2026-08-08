@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { getOptionalGeminiApiKey, getOptionalOpenAIApiKey } from "@/lib/server/env";
-import { getPipelineModelSettings } from "@/lib/server/model-settings";
+import { getPipelineModelSettings, type PipelineModelSettings } from "@/lib/server/model-settings";
 import {
   bundleAgentMessageMetadataSchema,
   bundleAgentSpecSchema,
@@ -9,6 +9,8 @@ import {
 } from "./types";
 import { buildSpecFromConversation, normalizeBundleAgentSpecForRendering } from "./spec.service";
 import { sanitizeErrorMessage } from "./redaction.service";
+import { normalizeGeneratedBundleSpec } from "./ai-spec-normalizer.service";
+import { getBundleModelProvider, resolveGeminiBundleModel, resolveOpenAIBundleModel } from "./provider-model.service";
 
 interface MessageForSpec {
   role: string;
@@ -353,7 +355,7 @@ Reglas estrictas:
 - Si el usuario indica que cada cambio de escena ocurre al cambiar diapositiva, expone sceneSwapOnSlideChange=true y animationVariant="scene-swap".
 - Si el usuario indica que izquierda y derecha intercambian lados, creativeBrief.motionLanguage debe describir ese swap y defaultProps.sceneSwapOnSlideChange debe ser true.
 - Si el usuario indica que slide o B-roll debe ocupar el espacio del otro cuando falte, defaultProps.expandMissingSupportMedia debe ser true.
-- No bases la animacion esperada en transform/translate/scale/rotate sobre capas editables; el editor de layout de SofLIA - Engine controla posicion, tamano y recorte. Describe motion compatible con fades, cortes, ritmo visual y cambios de opacidad.
+- Las transiciones de empuje deben declararse como push-left o push-right y se aplican sobre el contenedor temporal; no alteran las coordenadas persistidas por el editor de layout.
 - No copies rutas internas, URLs de storage, nombres privados de archivo ni metadatos tecnicos dentro de defaultProps.
 - durationFrames es solo fallback/preview de la plantilla, no debe hardcodear la duracion final del render.
 - La plantilla final debe resolver la duracion con calculateMetadata usando props.totalDurationInFrames y, cuando aplique, metadata real del avatar/audio.
@@ -381,6 +383,7 @@ Contrato exacto:
       "background": "#05070B",
       "surface": "#111827",
       "accent": "#00D4B3",
+      "secondary": "#8B5CF6",
       "text": "#F8FAFC",
       "muted": "#CBD5E1"
     },
@@ -419,6 +422,17 @@ Contrato exacto:
         "motion": "string",
         "emphasis": "string"
       }
+    ]
+  },
+  "timelinePlan": {
+    "version": 1,
+    "mode": "staged",
+    "opening": { "asset": "avatar", "durationFrames": 150, "layout": "fullscreen" },
+    "main": { "asset": "slides", "layout": "fullscreen" },
+    "ending": { "asset": "avatar", "durationFrames": 150, "layout": "fullscreen" },
+    "transition": "push-left",
+    "overlays": [
+      { "asset": "broll", "layout": "right-half", "during": "main", "slideSelection": "alternating", "slideIndexes": [] }
     ]
   },
   "compositionId": "string",
@@ -507,10 +521,10 @@ function fallbackSpec(input: { title?: string | null; messages: MessageForSpec[]
 
 async function generateSpecWithOpenAI(input: {
   apiKey: string;
+  model: string;
   title?: string | null;
   messages: MessageForSpec[];
 }): Promise<AiSpecGenerationResult> {
-  const model = process.env.OPENAI_BUNDLE_AGENT_MODEL || "gpt-4.1-mini";
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -518,7 +532,7 @@ async function generateSpecWithOpenAI(input: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model,
+      model: input.model,
       input: buildOpenAIInput(input),
       temperature: 0.3,
       text: {
@@ -536,14 +550,18 @@ async function generateSpecWithOpenAI(input: {
 
   const payload = (await response.json()) as OpenAIResponsesPayload;
   const parsed = JSON.parse(extractJsonObject(getOpenAIOutputText(payload)));
+  const deterministicSpec = buildSpecFromConversation({
+    title: input.title,
+    messages: buildFallbackMessagesWithVisualContext(input.messages),
+  });
   const spec = normalizeBundleAgentSpecForRendering(applyVisualReferenceConstraints(
-    bundleAgentSpecSchema.parse(parsed),
+    normalizeGeneratedBundleSpec(parsed, deterministicSpec),
     input.messages,
   ));
 
   return {
     spec,
-    model,
+    model: input.model,
     source: "openai",
     warning: null,
   };
@@ -551,25 +569,32 @@ async function generateSpecWithOpenAI(input: {
 
 async function generateSpecWithGemini(input: {
   apiKey: string;
-  organizationId: string;
+  settings: PipelineModelSettings;
   title?: string | null;
   messages: MessageForSpec[];
 }): Promise<AiSpecGenerationResult> {
-  const settings = await getPipelineModelSettings("MATERIALS", input.organizationId);
-  const model = settings.model_name || settings.fallback_model || "gemini-2.5-flash";
+  const model = resolveGeminiBundleModel({
+    configuredModel: input.settings.model_name,
+    configuredFallback: input.settings.fallback_model,
+    environmentModel: process.env.GEMINI_BUNDLE_AGENT_MODEL || process.env.GEMINI_MODEL,
+  });
   const genAI = new GoogleGenAI({ apiKey: input.apiKey });
   const result = await genAI.models.generateContent({
     model,
     contents: buildGeminiContents(input) as any,
     config: {
-      temperature: Math.min(0.7, Math.max(0.1, settings.temperature || 0.4)),
+      temperature: Math.min(0.7, Math.max(0.1, input.settings.temperature || 0.4)),
       responseMimeType: "application/json",
     },
   });
 
   const parsed = JSON.parse(extractJsonObject(result.text || ""));
+  const deterministicSpec = buildSpecFromConversation({
+    title: input.title,
+    messages: buildFallbackMessagesWithVisualContext(input.messages),
+  });
   const spec = normalizeBundleAgentSpecForRendering(applyVisualReferenceConstraints(
-    bundleAgentSpecSchema.parse(parsed),
+    normalizeGeneratedBundleSpec(parsed, deterministicSpec),
     input.messages,
   ));
 
@@ -589,34 +614,55 @@ export async function generateBundleSpecWithAi(input: {
   const openAIApiKey = getOptionalOpenAIApiKey();
   const geminiApiKey = getOptionalGeminiApiKey();
   const warnings: string[] = [];
+  const settings: PipelineModelSettings = openAIApiKey || geminiApiKey
+    ? await getPipelineModelSettings("BUNDLE_AGENT", input.organizationId)
+    : {
+        fallback_model: "gpt-4.1-mini",
+        model_name: "gemini-2.5-flash",
+        setting_type: "BUNDLE_AGENT",
+        temperature: 0.3,
+        thinking_level: "medium",
+      };
 
-  if (openAIApiKey) {
-    try {
-      return await generateSpecWithOpenAI({
-        apiKey: openAIApiKey,
-        title: input.title,
-        messages: input.messages,
-      });
-    } catch (error) {
-      warnings.push(`OpenAI: ${sanitizeErrorMessage(error)}`);
-    }
-  }
+  const providerOrder = Array.from(new Set([
+    getBundleModelProvider(settings.model_name),
+    getBundleModelProvider(settings.fallback_model),
+    "gemini" as const,
+    "openai" as const,
+  ].filter((provider): provider is "gemini" | "openai" => Boolean(provider))));
 
-  if (geminiApiKey) {
+  for (const provider of providerOrder) {
     try {
-      const result = await generateSpecWithGemini({
-        apiKey: geminiApiKey,
-        organizationId: input.organizationId,
-        title: input.title,
-        messages: input.messages,
-      });
+      const result = provider === "gemini"
+        ? geminiApiKey
+          ? await generateSpecWithGemini({
+              apiKey: geminiApiKey,
+              settings,
+              title: input.title,
+              messages: input.messages,
+            })
+          : null
+        : openAIApiKey
+          ? await generateSpecWithOpenAI({
+              apiKey: openAIApiKey,
+              model: resolveOpenAIBundleModel({
+                configuredModel: settings.model_name,
+                configuredFallback: settings.fallback_model,
+                environmentModel: process.env.OPENAI_BUNDLE_AGENT_MODEL,
+              }),
+              title: input.title,
+              messages: input.messages,
+            })
+          : null;
+
+      if (!result) continue;
 
       return {
         ...result,
         warning: warnings.length > 0 ? warnings.join(" | ") : null,
       };
     } catch (error) {
-      warnings.push(`Gemini: ${sanitizeErrorMessage(error)}`);
+      warnings.push(`${provider === "gemini" ? "Gemini" : "OpenAI"}: ${sanitizeErrorMessage(error)}`);
     }
   }
 

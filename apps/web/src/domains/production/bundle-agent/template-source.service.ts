@@ -138,6 +138,7 @@ type DesignTokens = {
   accentColor?: string;
   backgroundColor?: string;
   mutedTextColor?: string;
+  secondaryColor?: string;
   surfaceColor?: string;
   textColor?: string;
   typographyBody?: string;
@@ -155,11 +156,35 @@ type TemplateFamily =
   | "stacked-evidence";
 
 type DesignPlan = {
+  version: 1;
   templateFamily: TemplateFamily;
+  layoutStrategy: "asymmetric" | "cinematic" | "editorial" | "collage" | "minimal" | "reference" | "split" | "stacked";
   backgroundTreatment: "canvas" | "frame" | "grid" | "halo" | "paper" | "spotlight" | "split" | "vignette";
   surfaceTreatment: "flat" | "framed" | "glass" | "paper" | "shadowed";
-  transition: "crossfade" | "focus-shift" | "hard-cut" | "scene-swap" | "soft-wipe";
+  transition: "crossfade" | "focus-shift" | "hard-cut" | "push-left" | "push-right" | "scene-swap" | "soft-wipe";
   pace: "calm" | "measured" | "energetic";
+  mediaPriority: "avatar" | "broll" | "slides" | "balanced";
+  sceneStrategy: "asset-led" | "chapter-led" | "dual-support" | "single-focus";
+  source: "creative-brief" | "explicit-family" | "reference-constraint" | "safe-fallback";
+  rationale: string[];
+};
+
+type SceneLayout = "fullscreen" | "primary" | "left-half" | "right-half" | "picture-in-picture";
+
+type TimelinePlan = {
+  version: 1;
+  mode: "continuous" | "staged";
+  opening: { asset: "avatar"; durationFrames: number; layout: SceneLayout } | null;
+  main: { asset: "avatar" | "slides" | "broll"; layout: SceneLayout };
+  ending: { asset: "avatar"; durationFrames: number; layout: SceneLayout } | null;
+  transition: DesignPlan["transition"];
+  overlays: Array<{
+    asset: "broll";
+    layout: SceneLayout;
+    during: "main";
+    slideSelection: "all" | "alternating" | "explicit";
+    slideIndexes: number[];
+  }>;
 };
 
 type TemplateProps = {
@@ -178,6 +203,7 @@ type TemplateProps = {
   sceneSwapOnSlideChange?: boolean;
   slides?: SlideAsset[];
   timelineOverrides?: TimelineOverrideManifest[];
+  timelinePlan?: TimelinePlan;
   totalDurationInFrames?: number;
   templateFamily?: string;
   visualVariantId?: string;
@@ -190,8 +216,10 @@ const compositionHeight = ${blueprint.height};
 const fallbackFps = ${blueprint.fps};
 const fallbackDurationInFrames = ${blueprint.fallbackDurationFrames};
 const accentColor = ${json(blueprint.accentColor)};
-const layoutMode = ${json(blueprint.layout)};
+const layoutMode: string = ${json(blueprint.layout)};
 const generatedDesignPlan: DesignPlan = ${json(blueprint.designPlan)};
+const generatedTimelinePlan: TimelinePlan = ${json(blueprint.timelinePlan)};
+const generatedDesignTokens: DesignTokens = ${json(blueprint.designTokens)};
 const generatedTemplateFamily: TemplateFamily = ${json(blueprint.designPlan.templateFamily)};
 const generatedVisualVariantId = ${json(blueprint.defaultVisualVariantId)};
 const generatedAnimationVariant = ${json(blueprint.defaultAnimationVariant)};
@@ -215,20 +243,13 @@ const defaultProps: TemplateProps = {
   brollClips: [],
   deckCss: "",
   deckFonts: [],
-  designTokens: {
-    accentColor,
-    backgroundColor: "#05070b",
-    surfaceColor: "#090d14",
-    textColor: "#f8fafc",
-    mutedTextColor: "#cbd5e1",
-    typographyBody: "Inter, Arial, sans-serif",
-    typographyDisplay: "Inter, Arial, sans-serif",
-  },
+  designTokens: generatedDesignTokens,
   expandMissingSupportMedia: false,
   layoutOverrides: [],
   sceneSwapOnSlideChange: false,
   slides: [],
   timelineOverrides: [],
+  timelinePlan: generatedTimelinePlan,
   totalDurationInFrames: fallbackDurationInFrames,
   templateFamily: generatedTemplateFamily,
   visualVariantId: generatedVisualVariantId,
@@ -265,6 +286,8 @@ function resolveTemplateFamily(requestedFamily?: string): TemplateFamily {
 }
 
 function resolveTransition(animationVariant: string | undefined, family: TemplateFamily) {
+  if (animationVariant === "push-left") return "push-left" as const;
+  if (animationVariant === "push-right") return "push-right" as const;
   if (animationVariant === "scene-swap") return "scene-swap" as const;
   if (animationVariant === "hard-cut" || animationVariant === "kinetic") return "hard-cut" as const;
   if (animationVariant === "soft-wipe") return "soft-wipe" as const;
@@ -591,6 +614,8 @@ function buildSlideTimeline(
   slides: SlideAsset[],
   durationInFrames: number,
   timelineOverrides: TimelineOverrideManifest[] | null | undefined,
+  startFrameOffset = 0,
+  totalDurationInFrames = durationInFrames + startFrameOffset,
 ): SlideTimelineItem[] {
   if (slides.length === 0 || durationInFrames <= 0) return [];
 
@@ -599,8 +624,8 @@ function buildSlideTimeline(
   const framesPerSlide = durationInFrames / ordered.length;
 
   return ordered.map((slide, position) => {
-    const startFrame = Math.floor(position * framesPerSlide);
-    const endFrame = position === ordered.length - 1 ? durationInFrames : Math.floor((position + 1) * framesPerSlide);
+    const startFrame = startFrameOffset + Math.floor(position * framesPerSlide);
+    const endFrame = startFrameOffset + (position === ordered.length - 1 ? durationInFrames : Math.floor((position + 1) * framesPerSlide));
     const index = normalizeItemIndex(slide.index, position);
     const item: SlideTimelineItem = {
       slide,
@@ -612,7 +637,7 @@ function buildSlideTimeline(
     };
     const override = findTimelineOverrideSegment(segments, item);
 
-    return override ? { ...item, ...resolveOverrideWindow(override, durationInFrames) } : item;
+    return override ? { ...item, ...resolveOverrideWindow(override, totalDurationInFrames) } : item;
   }).filter((item) => item.durationInFrames > 0);
 }
 
@@ -713,6 +738,8 @@ function buildBrollTimeline(
   clips: BrollClip[],
   durationInFrames: number,
   timelineOverrides: TimelineOverrideManifest[] | null | undefined,
+  startFrameOffset = 0,
+  totalDurationInFrames = durationInFrames + startFrameOffset,
 ): BrollTimelineItem[] {
   if (clips.length === 0 || durationInFrames <= 0) return [];
 
@@ -722,11 +749,12 @@ function buildBrollTimeline(
   const availableGapFrames = Math.max(0, durationInFrames - totalClipFrames);
   const gapFrames = availableGapFrames > 0 ? Math.floor(availableGapFrames / (ordered.length + 1)) : 0;
   const timeline: BrollTimelineItem[] = [];
-  let cursor = gapFrames;
+  let cursor = startFrameOffset + gapFrames;
+  const windowEndFrame = startFrameOffset + durationInFrames;
 
   for (const clip of ordered) {
-    if (cursor >= durationInFrames) break;
-    const remainingFrames = durationInFrames - cursor;
+    if (cursor >= windowEndFrame) break;
+    const remainingFrames = windowEndFrame - cursor;
     const clipDurationInFrames = Math.min(getClipDurationInFrames(clip), remainingFrames);
 
     if (clipDurationInFrames > 0) {
@@ -742,7 +770,7 @@ function buildBrollTimeline(
       const overriddenItem = override
         ? {
           ...item,
-          ...resolveOverrideWindow(override, durationInFrames),
+          ...resolveOverrideWindow(override, totalDurationInFrames),
           sourceStartFrame: normalizeOptionalFrame(override.sourceStartFrame),
           sourceEndFrame: normalizeOptionalFrame(override.sourceEndFrame),
           loopMode: override.loopMode,
@@ -856,6 +884,69 @@ function buildSceneBox(baseBox: Box, sceneMirrored: boolean, previousSceneMirror
   return lerpBox(from, to, progress);
 }
 
+function resolveTimelinePlan(value: TimelinePlan | undefined): TimelinePlan {
+  if (!value || value.version !== 1 || !value.main || !Array.isArray(value.overlays)) {
+    return generatedTimelinePlan;
+  }
+  return value;
+}
+
+function resolveTimelineWindow(plan: TimelinePlan, durationInFrames: number) {
+  if (plan.mode !== "staged") {
+    return { openingEndFrame: 0, mainStartFrame: 0, mainEndFrame: durationInFrames, endingStartFrame: durationInFrames };
+  }
+
+  const openingFrames = Math.min(Math.max(0, plan.opening?.durationFrames || 0), Math.max(0, durationInFrames - 1));
+  const remainingAfterOpening = Math.max(1, durationInFrames - openingFrames);
+  const endingFrames = Math.min(Math.max(0, plan.ending?.durationFrames || 0), Math.max(0, remainingAfterOpening - 1));
+  const endingStartFrame = durationInFrames - endingFrames;
+
+  return {
+    openingEndFrame: openingFrames,
+    mainStartFrame: openingFrames,
+    mainEndFrame: Math.max(openingFrames + 1, endingStartFrame),
+    endingStartFrame,
+  };
+}
+
+function resolveSceneLayoutBox(layout: SceneLayout, fallback: Box): Box {
+  if (layout === "fullscreen") return { x: 0, y: 0, width: compositionWidth, height: compositionHeight };
+  if (layout === "left-half") return { x: 0, y: 0, width: Math.round(compositionWidth / 2), height: compositionHeight };
+  if (layout === "right-half") return { x: Math.round(compositionWidth / 2), y: 0, width: Math.round(compositionWidth / 2), height: compositionHeight };
+  if (layout === "picture-in-picture") {
+    const width = Math.round(compositionWidth * 0.36);
+    const height = Math.round(width * 9 / 16);
+    const margin = Math.round(Math.min(compositionWidth, compositionHeight) * 0.04);
+    return { x: compositionWidth - width - margin, y: compositionHeight - height - margin, width, height };
+  }
+  return fallback;
+}
+
+function applyPushTransitionBox(
+  box: Box,
+  transition: ReturnType<typeof resolveTransition>,
+  localFrame: number,
+  transitionFrames: number,
+) {
+  if (transition !== "push-left" && transition !== "push-right") return box;
+  const progress = interpolate(localFrame, [0, Math.max(1, transitionFrames)], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const direction = transition === "push-left" ? 1 : -1;
+  return { ...box, x: Math.round(box.x + direction * compositionWidth * (1 - progress)) };
+}
+
+function isOverlayActive(
+  overlay: TimelinePlan["overlays"][number] | undefined,
+  activeSlideIndex: number,
+) {
+  if (!overlay) return false;
+  if (overlay.slideSelection === "all") return true;
+  if (overlay.slideSelection === "alternating") return activeSlideIndex >= 0 && activeSlideIndex % 2 === 1;
+  return overlay.slideIndexes.includes(activeSlideIndex);
+}
+
 function buildBoxStyle(box: Box, overrides: React.CSSProperties = {}): React.CSSProperties {
   return {
     position: "absolute",
@@ -944,12 +1035,27 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
   const templateFamily = resolveTemplateFamily(props.templateFamily);
-  const transition = resolveTransition(props.animationVariant, templateFamily);
+  const timelinePlan = resolveTimelinePlan(props.timelinePlan);
+  const transition = resolveTransition(timelinePlan.transition || props.animationVariant, templateFamily);
+  const timelineWindow = resolveTimelineWindow(timelinePlan, durationInFrames);
+  const mainDurationInFrames = Math.max(1, timelineWindow.mainEndFrame - timelineWindow.mainStartFrame);
   const slides = orderedSlides(props.slides);
   const brollClips = orderedBrollClips(props.brollClips);
   const avatarClips = orderedAvatarClips(props.avatarClips);
-  const slideTimeline = buildSlideTimeline(slides, durationInFrames, props.timelineOverrides);
-  const brollTimeline = buildBrollTimeline(brollClips, durationInFrames, props.timelineOverrides);
+  const slideTimeline = buildSlideTimeline(
+    slides,
+    mainDurationInFrames,
+    props.timelineOverrides,
+    timelineWindow.mainStartFrame,
+    durationInFrames,
+  );
+  const brollTimeline = buildBrollTimeline(
+    brollClips,
+    mainDurationInFrames,
+    props.timelineOverrides,
+    timelineWindow.mainStartFrame,
+    durationInFrames,
+  );
   const avatarTimeline = buildAvatarTimeline(avatarClips, durationInFrames, props.timelineOverrides);
   const activeSlideItem = getActiveSlideTimelineItem(frame, slideTimeline);
   const activeSlideIndex = activeSlideItem?.index ?? -1;
@@ -963,6 +1069,14 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
   const hasAvatar = hasAvatarClips || hasAvatarVideo;
   const hasSlidesAsset = slides.length > 0;
   const hasBrollAsset = brollClips.length > 0;
+  const isOpening = timelinePlan.mode === "staged" && frame < timelineWindow.openingEndFrame;
+  const isEnding = timelinePlan.mode === "staged" && frame >= timelineWindow.endingStartFrame;
+  const isMain = timelinePlan.mode === "continuous" || (!isOpening && !isEnding);
+  const overlayPlan = timelinePlan.overlays[0];
+  const overlayActive = isMain && isOverlayActive(overlayPlan, activeSlideIndex);
+  const showAvatar = timelinePlan.mode === "continuous" || isOpening || isEnding || (isMain && timelinePlan.main.asset === "avatar");
+  const showSlides = timelinePlan.mode === "continuous" || (isMain && timelinePlan.main.asset === "slides");
+  const showBroll = timelinePlan.mode === "continuous" || (isMain && (timelinePlan.main.asset === "broll" || overlayActive));
   const sceneItemCount = Math.max(1, slides.length, brollClips.length);
   const activeBrollIndex = activeBrollItem ? Math.max(0, normalizeClipOrder(activeBrollItem.clip.order, 1) - 1) : -1;
   const sceneIndex = Math.max(0, activeSlideIndex >= 0 ? activeSlideIndex : activeBrollIndex >= 0 ? activeBrollIndex : activeSupportIndex >= 0 ? activeSupportIndex : 0);
@@ -985,10 +1099,31 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
   const soloSupportBox = familyExpandsSoloSupport ? primaryVisualBox : supportUnionBox;
   const effectiveSlidesBox = shouldExpandSupport && hasSlidesAsset && !hasBrollAsset ? soloSupportBox : slidesBox;
   const effectiveBrollBox = shouldExpandSupport && hasBrollAsset && !hasSlidesAsset ? soloSupportBox : brollBox;
-  const avatarSceneBox = buildSceneBox(avatarBox, sceneMirrored, previousSceneMirrored, sceneProgress);
-  const slidesSceneBox = buildSceneBox(effectiveSlidesBox, sceneMirrored, previousSceneMirrored, sceneProgress);
-  const brollSceneBox = buildSceneBox(effectiveBrollBox, sceneMirrored, previousSceneMirrored, sceneProgress);
+  const activeAvatarLayout = isOpening
+    ? timelinePlan.opening?.layout
+    : isEnding
+      ? timelinePlan.ending?.layout
+      : timelinePlan.main.asset === "avatar"
+        ? timelinePlan.main.layout
+        : undefined;
+  const avatarPlanBox = timelinePlan.mode === "staged" && activeAvatarLayout
+    ? resolveSceneLayoutBox(activeAvatarLayout, avatarBox)
+    : avatarBox;
+  const slidesPlanBox = timelinePlan.mode === "staged"
+    ? resolveSceneLayoutBox(timelinePlan.main.layout, effectiveSlidesBox)
+    : effectiveSlidesBox;
+  const brollPlanBox = overlayActive && overlayPlan
+    ? resolveSceneLayoutBox(overlayPlan.layout, effectiveBrollBox)
+    : timelinePlan.mode === "staged" && timelinePlan.main.asset === "broll"
+      ? resolveSceneLayoutBox(timelinePlan.main.layout, effectiveBrollBox)
+      : effectiveBrollBox;
+  const avatarSceneBox = buildSceneBox(avatarPlanBox, sceneMirrored, previousSceneMirrored, sceneProgress);
+  const slidesSceneBox = buildSceneBox(slidesPlanBox, sceneMirrored, previousSceneMirrored, sceneProgress);
+  const brollSceneBox = buildSceneBox(brollPlanBox, sceneMirrored, previousSceneMirrored, sceneProgress);
   const slideLocalFrame = activeSlideItem ? Math.max(0, frame - activeSlideItem.startFrame) : 0;
+  const brollLocalFrame = activeBrollItem ? Math.max(0, frame - activeBrollItem.startFrame) : 0;
+  const slidesRenderBox = applyPushTransitionBox(slidesSceneBox, transition, slideLocalFrame, sceneTransitionFrames);
+  const brollRenderBox = applyPushTransitionBox(brollSceneBox, transition, brollLocalFrame, sceneTransitionFrames);
   const slideOpacity = interpolate(slideLocalFrame, [0, 10], [0.74, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
@@ -1028,7 +1163,7 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
 
       <div style={buildBoxStyle(primaryVisualBox, { ...(isReferenceFrameLayout ? { background: "transparent" } : surfaceStyle), zIndex: defaultStackOrders.primaryVisual, ...primaryVisualOverride })} />
 
-      {hasAvatarClips ? (
+      {showAvatar && hasAvatarClips ? (
         <>
           {avatarTimeline.map((avatarItem, avatarIndex) => {
             const avatarOpacity = getAvatarTimelineItemOpacity(frame, avatarItem, avatarIndex, avatarTimeline);
@@ -1052,7 +1187,7 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
             );
           })}
         </>
-      ) : hasAvatarVideo ? (
+      ) : showAvatar && hasAvatarVideo ? (
         <div style={buildBoxStyle(avatarSceneBox, { ...(isReferenceFrameLayout ? { background: tokenSurface } : surfaceStyle), zIndex: defaultStackOrders.avatar, ...avatarOverride })}>
           <RenderVideo
             src={props.avatarVideoUrl!}
@@ -1064,17 +1199,17 @@ export function CourseforgeGeneratedBundle(props: TemplateProps) {
         </div>
       ) : null}
 
-      {activeSlide && activeSlideItem ? (
+      {showSlides && activeSlide && activeSlideItem ? (
         <Sequence from={activeSlideItem.startFrame} durationInFrames={activeSlideItem.durationInFrames}>
-          <div style={buildBoxStyle(slidesSceneBox, { ...surfaceStyle, opacity: slideOpacity, zIndex: defaultStackOrders.slides, ...getTransitionStyle(transition, slideLocalFrame, activeSlideItem.durationInFrames), ...slidesOverride, ...activeSlideItemOverride })}>
-            {renderSlideAsset(activeSlide, slidesSceneBox, slideLocalFrame, fallbackFps)}
+          <div style={buildBoxStyle(slidesRenderBox, { ...surfaceStyle, opacity: slideOpacity, zIndex: defaultStackOrders.slides, ...getTransitionStyle(transition, slideLocalFrame, activeSlideItem.durationInFrames), ...slidesOverride, ...activeSlideItemOverride })}>
+            {renderSlideAsset(activeSlide, slidesRenderBox, slideLocalFrame, fallbackFps)}
           </div>
         </Sequence>
       ) : null}
 
-      {activeBroll && activeBrollItem ? (
+      {showBroll && activeBroll && activeBrollItem ? (
         <Sequence from={activeBrollItem.startFrame} durationInFrames={activeBrollItem.durationInFrames}>
-          <div style={buildBoxStyle(brollSceneBox, { ...(isReferenceFrameLayout ? { background: tokenSurface } : surfaceStyle), zIndex: defaultStackOrders.broll, ...getTransitionStyle(transition, Math.max(0, frame - activeBrollItem.startFrame), activeBrollItem.durationInFrames), ...brollOverride, ...activeBrollItemOverride })}>
+          <div style={buildBoxStyle(brollRenderBox, { ...(isReferenceFrameLayout ? { background: tokenSurface } : surfaceStyle), zIndex: defaultStackOrders.broll, ...getTransitionStyle(transition, brollLocalFrame, activeBrollItem.durationInFrames), ...brollOverride, ...activeBrollItemOverride })}>
             <RenderVideo
               src={activeBroll.url}
               muted

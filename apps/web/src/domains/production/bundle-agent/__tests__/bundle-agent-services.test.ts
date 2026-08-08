@@ -268,6 +268,7 @@ describe("SofLIA Bundle Agent services", () => {
     assert.equal(propsSchemaProperties?.layoutOverrides?.type, "array");
     assert.equal(propsSchemaProperties?.sceneSwapOnSlideChange?.type, "boolean");
     assert.equal(propsSchemaProperties?.timelineOverrides?.type, "array");
+    assert.equal(propsSchemaProperties?.timelinePlan?.type, "object");
     assert.equal(propsSchemaProperties?.totalDurationInFrames?.type, "integer");
     assert.equal(propsSchemaProperties?.visualVariantId?.type, "string");
     assert.match(source, /avatarVideoUrl/);
@@ -281,7 +282,7 @@ describe("SofLIA Bundle Agent services", () => {
     assert.match(source, /className="deck-scope"/);
     assert.equal(source.includes('className={`${slide.classes || "slide"} active`}'), true);
     assert.equal(source.includes('"--deck-t": String(Math.max(0, localFrame) / Math.max(1, fps))'), true);
-    assert.equal(source.includes("renderSlideAsset(activeSlide, slidesSceneBox, slideLocalFrame, fallbackFps)"), true);
+    assert.equal(source.includes("renderSlideAsset(activeSlide, slidesRenderBox, slideLocalFrame, fallbackFps)"), true);
     assert.match(source, /type DesignTokens/);
     assert.match(source, /animationVariant\?: string/);
     assert.match(source, /visualVariantId\?: string/);
@@ -294,6 +295,9 @@ describe("SofLIA Bundle Agent services", () => {
     assert.match(source, /supportUnionBox/);
     assert.match(source, /layoutOverrides\?: LayoutOverrideManifest\[\]/);
     assert.match(source, /timelineOverrides\?: TimelineOverrideManifest\[\]/);
+    assert.match(source, /timelinePlan\?: TimelinePlan/);
+    assert.match(source, /function resolveTimelineWindow/);
+    assert.match(source, /function applyPushTransitionBox/);
     assert.match(source, /type TimelineOverrideSegment/);
     assert.match(source, /buildSlideTimeline/);
     assert.match(source, /getTimelineOverrideSegments/);
@@ -414,10 +418,10 @@ describe("SofLIA Bundle Agent services", () => {
     assert.equal(cinematicReport.isValid, true);
     assert.equal(editorialReport.isValid, true);
     assert.notEqual(cinematicSource, editorialSource);
-    assert.match(cinematicSource, /const layoutMode = "media-only"/);
+    assert.match(cinematicSource, /const layoutMode(?:: string)? = "cinematic-field"/);
     assert.match(cinematicSource, /function buildBrollTimeline/);
     assert.match(cinematicSource, /getActiveBrollTimelineItem/);
-    assert.match(editorialSource, /const layoutMode = "media-only"/);
+    assert.match(editorialSource, /const layoutMode(?:: string)? = "editorial-rail"/);
     assert.match(editorialSource, /function buildBrollTimeline/);
     assert.match(editorialSource, /getActiveBrollTimelineItem/);
   });

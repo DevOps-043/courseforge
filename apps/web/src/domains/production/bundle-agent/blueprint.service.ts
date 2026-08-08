@@ -1,11 +1,12 @@
 import type { EditableLayerDefinition } from "@/remotion/layout-overrides";
-import type { BundleAgentSpec } from "./types";
+import type { BundleAgentSpec, BundleAgentTimelinePlan } from "./types";
 import {
   buildBundleDesignPlan,
   createBundleVisualFingerprint,
   type BundleVisualFingerprint,
 } from "./design-plan.service";
 import type { BundleAgentDesignPlan } from "./types";
+import { buildBundleTimelinePlan } from "./timeline-plan.service";
 
 export type BundleBlueprintLayout =
   | "avatar-left-slides-broll-right"
@@ -42,10 +43,21 @@ export interface BundleBlueprint {
   defaultAnimationVariant: string;
   layout: BundleBlueprintLayout;
   timeline: BundleBlueprintTimeline;
+  timelinePlan: BundleAgentTimelinePlan;
   designPlan: BundleAgentDesignPlan;
   visualFingerprint: BundleVisualFingerprint;
   renderText: boolean;
   accentColor: string;
+  designTokens: {
+    backgroundColor: string;
+    surfaceColor: string;
+    accentColor: string;
+    secondaryColor: string;
+    textColor: string;
+    mutedTextColor: string;
+    typographyDisplay: string;
+    typographyBody: string;
+  };
   boxes: {
     avatar: LayerBox;
     primaryVisual: LayerBox;
@@ -80,15 +92,26 @@ function includesAny(text: string, terms: string[]) {
 
 function getIntentText(spec: BundleAgentSpec) {
   const creativeBrief = spec.creativeBrief;
+  const latestInstruction = spec.authoringIntent?.latestUserInstruction.trim().toLowerCase() || "";
+  const conversationInstructions = spec.authoringIntent?.conversationInstructions.trim().toLowerCase() || "";
+  const layoutDirectives = [
+    "avatar a la derecha", "avatar del lado derecho", "avatar a la izquierda", "apilado",
+    "arriba y abajo", "diapositiva arriba", "fullscreen", "full screen", "mitad", "pantalla completa",
+    "vertical", "wireframe",
+  ];
+  const authorIntent = latestInstruction && includesAny(latestInstruction, layoutDirectives)
+    ? latestInstruction
+    : conversationInstructions || latestInstruction;
+
   return [
-    spec.title,
-    spec.description,
-    spec.visualStyle,
-    spec.changeSummary,
+    authorIntent,
+    authorIntent ? null : spec.title,
+    authorIntent ? null : spec.description,
+    authorIntent ? null : spec.visualStyle,
+    authorIntent ? null : spec.changeSummary,
     creativeBrief?.directionName,
     creativeBrief?.layoutSystem,
     creativeBrief?.motionLanguage,
-    creativeBrief?.visualVariants?.map((variant) => `${variant.name} ${variant.composition} ${variant.motion}`).join(" "),
   ].filter(Boolean).join(" ").toLowerCase();
 }
 
@@ -403,9 +426,13 @@ export function buildBundleBlueprint(spec: BundleAgentSpec): BundleBlueprint {
   const width = Number.isFinite(spec.width) ? spec.width : 1920;
   const height = Number.isFinite(spec.height) ? spec.height : 1080;
   const designPlan = buildBundleDesignPlan(spec);
+  const timelinePlan = buildBundleTimelinePlan(spec, designPlan.transition);
   const layout = resolveLayout(spec, designPlan);
   const timeline = resolveTimeline(spec, layout, designPlan);
   const boxes = buildBoxes(layout, width, height);
+  const stagedMinimumDuration = (timelinePlan.opening?.durationFrames || 0)
+    + (timelinePlan.ending?.durationFrames || 0)
+    + Math.max(30, Math.round(spec.fps));
 
   return {
     title: spec.title,
@@ -414,7 +441,7 @@ export function buildBundleBlueprint(spec: BundleAgentSpec): BundleBlueprint {
     fps: Number.isFinite(spec.fps) ? spec.fps : 30,
     width,
     height,
-    fallbackDurationFrames: Number.isFinite(spec.durationFrames) ? spec.durationFrames : 150,
+    fallbackDurationFrames: Math.max(Number.isFinite(spec.durationFrames) ? spec.durationFrames : 150, stagedMinimumDuration),
     requiredAssets: spec.requiredAssets,
     defaultVisualVariantId: typeof spec.defaultProps.visualVariantId === "string"
       ? spec.defaultProps.visualVariantId
@@ -424,10 +451,21 @@ export function buildBundleBlueprint(spec: BundleAgentSpec): BundleBlueprint {
       : designPlan.transition,
     layout,
     timeline,
+    timelinePlan,
     designPlan,
     visualFingerprint: createBundleVisualFingerprint(spec, designPlan),
     renderText: shouldRenderText(spec),
     accentColor: getAccentColor(spec),
+    designTokens: {
+      backgroundColor: spec.creativeBrief.colorTokens.background,
+      surfaceColor: spec.creativeBrief.colorTokens.surface,
+      accentColor: spec.creativeBrief.colorTokens.accent,
+      secondaryColor: spec.creativeBrief.colorTokens.secondary,
+      textColor: spec.creativeBrief.colorTokens.text,
+      mutedTextColor: spec.creativeBrief.colorTokens.muted,
+      typographyDisplay: spec.creativeBrief.typographyTokens.display,
+      typographyBody: spec.creativeBrief.typographyTokens.body,
+    },
     boxes,
     editableLayers: buildEditableLayers(boxes),
     changeSummary: spec.changeSummary,

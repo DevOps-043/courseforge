@@ -20,6 +20,55 @@ export const bundleTemplateFamilySchema = z.enum([
 
 export type BundleTemplateFamily = z.infer<typeof bundleTemplateFamilySchema>;
 
+export const bundleAgentTransitionSchema = z.enum([
+  "crossfade",
+  "focus-shift",
+  "hard-cut",
+  "push-left",
+  "push-right",
+  "scene-swap",
+  "soft-wipe",
+]);
+
+export type BundleAgentTransition = z.infer<typeof bundleAgentTransitionSchema>;
+
+export const bundleAgentSceneLayoutSchema = z.enum([
+  "fullscreen",
+  "primary",
+  "left-half",
+  "right-half",
+  "picture-in-picture",
+]);
+
+export const bundleAgentTimelinePlanSchema = z.object({
+  version: z.literal(1),
+  mode: z.enum(["continuous", "staged"]),
+  opening: z.object({
+    asset: z.literal("avatar"),
+    durationFrames: z.number().int().min(1).max(900),
+    layout: bundleAgentSceneLayoutSchema,
+  }).nullable(),
+  main: z.object({
+    asset: z.enum(["avatar", "slides", "broll"]),
+    layout: bundleAgentSceneLayoutSchema,
+  }),
+  ending: z.object({
+    asset: z.literal("avatar"),
+    durationFrames: z.number().int().min(1).max(900),
+    layout: bundleAgentSceneLayoutSchema,
+  }).nullable(),
+  transition: bundleAgentTransitionSchema,
+  overlays: z.array(z.object({
+    asset: z.literal("broll"),
+    layout: bundleAgentSceneLayoutSchema,
+    during: z.literal("main"),
+    slideSelection: z.enum(["all", "alternating", "explicit"]),
+    slideIndexes: z.array(z.number().int().min(0).max(999)).max(100).default([]),
+  })).max(4).default([]),
+});
+
+export type BundleAgentTimelinePlan = z.infer<typeof bundleAgentTimelinePlanSchema>;
+
 export const BUNDLE_TEMPLATE_FAMILY_OPTIONS: ReadonlyArray<{
   id: BundleTemplateFamily;
   label: string;
@@ -41,7 +90,7 @@ export const bundleAgentDesignPlanSchema = z.object({
   layoutStrategy: z.enum(["asymmetric", "cinematic", "editorial", "collage", "minimal", "reference", "split", "stacked"]),
   backgroundTreatment: z.enum(["canvas", "frame", "grid", "halo", "paper", "spotlight", "split", "vignette"]),
   surfaceTreatment: z.enum(["flat", "framed", "glass", "paper", "shadowed"]),
-  transition: z.enum(["crossfade", "focus-shift", "hard-cut", "scene-swap", "soft-wipe"]),
+  transition: bundleAgentTransitionSchema,
   pace: z.enum(["calm", "measured", "energetic"]),
   mediaPriority: z.enum(["avatar", "broll", "slides", "balanced"]),
   sceneStrategy: z.enum(["asset-led", "chapter-led", "dual-support", "single-focus"]),
@@ -121,6 +170,7 @@ export const DEFAULT_BUNDLE_AGENT_CREATIVE_BRIEF = {
     background: "#05070B",
     surface: "#111827",
     accent: "#00D4B3",
+    secondary: "#8B5CF6",
     text: "#F8FAFC",
     muted: "#CBD5E1",
   },
@@ -157,11 +207,12 @@ export const bundleAgentCreativeBriefSchema = z.object({
   motionLanguage: z.string().trim().min(1).max(500).default(DEFAULT_BUNDLE_AGENT_CREATIVE_BRIEF.motionLanguage),
   colorTokens: z.object({
     paletteName: z.string().trim().min(1).max(80).default("SofLIA dark accent"),
-    background: z.string().trim().min(1).max(40).default("#05070B"),
-    surface: z.string().trim().min(1).max(40).default("#111827"),
-    accent: z.string().trim().min(1).max(40).default("#00D4B3"),
-    text: z.string().trim().min(1).max(40).default("#F8FAFC"),
-    muted: z.string().trim().min(1).max(40).default("#CBD5E1"),
+    background: z.string().trim().regex(/^#[0-9A-F]{6}$/i).default("#05070B"),
+    surface: z.string().trim().regex(/^#[0-9A-F]{6}$/i).default("#111827"),
+    accent: z.string().trim().regex(/^#[0-9A-F]{6}$/i).default("#00D4B3"),
+    secondary: z.string().trim().regex(/^#[0-9A-F]{6}$/i).default("#8B5CF6"),
+    text: z.string().trim().regex(/^#[0-9A-F]{6}$/i).default("#F8FAFC"),
+    muted: z.string().trim().regex(/^#[0-9A-F]{6}$/i).default("#CBD5E1"),
   }).default(DEFAULT_BUNDLE_AGENT_CREATIVE_BRIEF.colorTokens),
   typographyTokens: z.object({
     display: z.string().trim().min(1).max(120).default("Condensed confident display"),
@@ -186,6 +237,7 @@ export const bundleAgentCreativeBriefSchema = z.object({
 });
 
 export const bundleAgentSpecSchema = z.object({
+  contractVersion: z.literal(2).optional(),
   artifactKind: bundleAgentArtifactKindSchema.default("video_bundle"),
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(1000).default(""),
@@ -193,8 +245,15 @@ export const bundleAgentSpecSchema = z.object({
   /** Optional explicit family selected by the user or the AI creative direction. */
   templateFamily: bundleTemplateFamilySchema.optional(),
   creativeBrief: bundleAgentCreativeBriefSchema.default(DEFAULT_BUNDLE_AGENT_CREATIVE_BRIEF),
+  /** Latest redacted author instruction. It is authoring metadata and is never rendered as visible copy. */
+  authoringIntent: z.object({
+    latestUserInstruction: z.string().trim().max(4000).default(""),
+    conversationInstructions: z.string().trim().max(8000).default(""),
+  }).optional(),
   /** Resolved deterministic plan used by the safe bundle compiler. */
   designPlan: bundleAgentDesignPlanSchema.optional(),
+  /** Temporal asset choreography compiled independently from the static visual family. */
+  timelinePlan: bundleAgentTimelinePlanSchema.optional(),
   compositionId: z
     .string()
     .trim()

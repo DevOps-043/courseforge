@@ -40,6 +40,7 @@ const SETTING_ORDER = [
   "INSTRUCTIONAL_PLAN",
   "CURATION",
   "MATERIALS",
+  "BUNDLE_AGENT",
   "SEARCH",
   "DEFAULT",
 ];
@@ -73,6 +74,11 @@ const SETTING_METADATA: Record<
     icon: <Box size={16} />,
     accent: "teal",
   },
+  BUNDLE_AGENT: {
+    title: "Generacion de Plantillas Remotion",
+    icon: <Settings2 size={16} />,
+    accent: "teal",
+  },
   SEARCH: {
     title: "Busqueda y Recuperacion",
     icon: <Search size={16} />,
@@ -104,6 +110,7 @@ const PROMPT_CODE_MATCHERS: Record<string, (code: string) => boolean> = {
     code.includes("B_ROLL") ||
     code.includes("VIDEO_PROMPT") ||
     code.includes("PRODUCTION"),
+  BUNDLE_AGENT: (code) => code.includes("BUNDLE_AGENT") || code.includes("REMOTION_TEMPLATE"),
 };
 
 const LEGACY_PROMPT_CODES = new Set([

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowLeft, Bot, CheckCircle2, Download, ExternalLink, FileCode2, ImagePlus, Loader2, PackageCheck, Send, Sparkles, Trash2, User } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bot, CheckCircle2, Download, ExternalLink, FileCode2, ImagePlus, Loader2, PackageCheck, Send, Sparkles, Trash2, User } from "lucide-react";
 import { uploadWithSignedUrl } from "@/lib/storage-upload";
 import {
   BUNDLE_TEMPLATE_FAMILY_OPTIONS,
@@ -17,7 +17,13 @@ interface ConversationState {
     id: string;
     role: string;
     content_redacted: string;
-    metadata?: { visualReferences?: BundleAgentVisualReference[] } | null;
+    metadata?: {
+      visualReferences?: BundleAgentVisualReference[];
+      source?: string;
+      model?: string;
+      warning?: string | null;
+      specId?: string;
+    } | null;
     created_at: string;
   }>;
   specs: Array<{ id: string; version_number: number; spec_json: Record<string, unknown>; spec_hash: string }>;
@@ -130,6 +136,25 @@ function formatDesignPlanSummary(spec: Record<string, unknown> | undefined) {
     layout: typeof plan.layoutStrategy === "string" ? plan.layoutStrategy : null,
     transition: typeof plan.transition === "string" ? plan.transition : null,
     background: typeof plan.backgroundTreatment === "string" ? plan.backgroundTreatment : null,
+  };
+}
+
+function formatTimelinePlanSummary(spec: Record<string, unknown> | undefined) {
+  const plan = asRecord(spec?.timelinePlan);
+  const main = asRecord(plan?.main);
+  const opening = asRecord(plan?.opening);
+  const ending = asRecord(plan?.ending);
+  const overlays = Array.isArray(plan?.overlays) ? plan.overlays : [];
+  if (!plan || !main) return null;
+
+  return {
+    mode: typeof plan.mode === "string" ? plan.mode : null,
+    transition: typeof plan.transition === "string" ? plan.transition : null,
+    mainAsset: typeof main.asset === "string" ? main.asset : null,
+    mainLayout: typeof main.layout === "string" ? main.layout : null,
+    openingFrames: typeof opening?.durationFrames === "number" ? opening.durationFrames : null,
+    endingFrames: typeof ending?.durationFrames === "number" ? ending.durationFrames : null,
+    overlayCount: overlays.length,
   };
 }
 
@@ -345,6 +370,11 @@ export function BundleAgentClient({
   const specSummary = useMemo(() => formatSpecSummary(latestSpec?.spec_json), [latestSpec]);
   const creativeBriefSummary = useMemo(() => formatCreativeBriefSummary(latestSpec?.spec_json), [latestSpec]);
   const designPlanSummary = useMemo(() => formatDesignPlanSummary(latestSpec?.spec_json), [latestSpec]);
+  const timelinePlanSummary = useMemo(() => formatTimelinePlanSummary(latestSpec?.spec_json), [latestSpec]);
+  const generationMetadata = useMemo(() => [...state.messages]
+    .reverse()
+    .find((item) => item.role === "TOOL" && item.metadata?.specId === latestSpec?.id)
+    ?.metadata || null, [latestSpec?.id, state.messages]);
   const similarityGuardSummary = useMemo(() => formatSimilarityGuard(latestRun), [latestRun]);
   const effectiveArtifactKind: AgentArtifactKind = templateId ? "video_bundle" : artifactKind;
   const baseBundleHref = effectiveArtifactKind === "slide_template"
@@ -856,6 +886,24 @@ export function BundleAgentClient({
                   <p className="mt-1 font-medium text-slate-900">{normalizeLegacySofliaName(String(latestSpec.spec_json.title || title))}</p>
                   {specSummary ? <p className="mt-1 text-slate-600">{specSummary}</p> : null}
                 </div>
+                {generationMetadata ? (
+                  <div className={`rounded-xl border p-3 ${generationMetadata.source === "deterministic_fallback"
+                    ? "border-amber-300 bg-amber-50 text-amber-900"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
+                    <div className="flex items-start gap-2">
+                      {generationMetadata.source === "deterministic_fallback" ? <AlertTriangle className="mt-0.5 shrink-0" size={16} /> : <CheckCircle2 className="mt-0.5 shrink-0" size={16} />}
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide">
+                          Origen: {generationMetadata.source || "desconocido"}
+                        </p>
+                        <p className="mt-1 text-xs">Modelo: {generationMetadata.model || "no registrado"}</p>
+                        {generationMetadata.warning ? (
+                          <p className="mt-2 break-words text-xs leading-5">{generationMetadata.warning}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 {creativeBriefSummary ? (
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Direccion creativa</p>
@@ -882,6 +930,17 @@ export function BundleAgentClient({
                     </p>
                     <p className="mt-1 text-xs leading-5 text-slate-600">
                       Layout: {designPlanSummary.layout || "—"} · Fondo: {designPlanSummary.background || "—"} · Transición: {designPlanSummary.transition || "—"}
+                    </p>
+                  </div>
+                ) : null}
+                {timelinePlanSummary ? (
+                  <div className="rounded-xl border border-cyan-200 bg-cyan-50/70 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-cyan-800">Secuencia temporal</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {timelinePlanSummary.mode || "continuous"} · {timelinePlanSummary.mainAsset || "media"} / {timelinePlanSummary.mainLayout || "primary"}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                      Apertura: {timelinePlanSummary.openingFrames ?? 0} frames · Cierre: {timelinePlanSummary.endingFrames ?? 0} frames · Transición: {timelinePlanSummary.transition || "—"} · Overlays: {timelinePlanSummary.overlayCount}
                     </p>
                   </div>
                 ) : null}

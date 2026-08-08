@@ -7,6 +7,7 @@ import {
   type BundleTemplateFamily,
 } from "./types";
 import { z } from "zod";
+import { buildBundleTimelinePlan } from "./timeline-plan.service";
 
 export const bundleVisualFingerprintSchema = z.object({
   version: z.literal(1),
@@ -14,10 +15,14 @@ export const bundleVisualFingerprintSchema = z.object({
   layoutStrategy: z.enum(["asymmetric", "cinematic", "editorial", "collage", "minimal", "reference", "split", "stacked"]),
   backgroundTreatment: z.enum(["canvas", "frame", "grid", "halo", "paper", "spotlight", "split", "vignette"]),
   surfaceTreatment: z.enum(["flat", "framed", "glass", "paper", "shadowed"]),
-  transition: z.enum(["crossfade", "focus-shift", "hard-cut", "scene-swap", "soft-wipe"]),
+  transition: z.enum(["crossfade", "focus-shift", "hard-cut", "push-left", "push-right", "scene-swap", "soft-wipe"]),
   pace: z.enum(["calm", "measured", "energetic"]),
   mediaPriority: z.enum(["avatar", "broll", "slides", "balanced"]),
   sceneStrategy: z.enum(["asset-led", "chapter-led", "dual-support", "single-focus"]),
+  timelineMode: z.enum(["continuous", "staged"]).default("continuous"),
+  mainAsset: z.enum(["avatar", "slides", "broll"]).default("slides"),
+  mainLayout: z.enum(["fullscreen", "primary", "left-half", "right-half", "picture-in-picture"]).default("primary"),
+  overlaySignature: z.enum(["none", "broll-left", "broll-right", "broll-pip", "broll-fullscreen"]).default("none"),
   accentColor: z.string().regex(/^#[0-9A-F]{6}$/i),
   requiredAssets: z.array(z.enum(["slides", "audio", "avatar", "broll", "captions"])).max(8),
 });
@@ -109,23 +114,37 @@ const FAMILY_DEFINITIONS: Record<BundleTemplateFamily, FamilyDefinition> = {
   },
 };
 
-function getIntentText(spec: BundleAgentSpec) {
+function getPrimaryIntentText(spec: BundleAgentSpec) {
+  const latestInstruction = spec.authoringIntent?.latestUserInstruction.trim().toLowerCase() || "";
+  const conversationInstructions = spec.authoringIntent?.conversationInstructions.trim().toLowerCase() || "";
+  const familyDirectives = [
+    "avatar a la derecha", "avatar del lado derecho", "cinematic", "cinematograf", "collage",
+    "editorial", "flotante", "fullscreen", "full screen", "minimal", "pantalla completa",
+    "apilado", "stacked", "vertical", "wireframe",
+  ];
+
+  if (latestInstruction && includesAny(latestInstruction, familyDirectives)) return latestInstruction;
+  if (conversationInstructions) return conversationInstructions;
+  if (latestInstruction) return latestInstruction;
+
+  return [spec.title, spec.description, spec.visualStyle, spec.changeSummary]
+    .join(" ")
+    .toLowerCase();
+}
+
+function getMotionIntentText(spec: BundleAgentSpec, primaryIntent: string) {
+  const selectedVariantId = typeof spec.defaultProps.visualVariantId === "string"
+    ? spec.defaultProps.visualVariantId
+    : null;
+  const selectedVariant = selectedVariantId
+    ? spec.creativeBrief.visualVariants.find((variant) => variant.id === selectedVariantId)
+    : null;
+
   return [
-    spec.title,
-    spec.description,
-    spec.visualStyle,
-    spec.changeSummary,
-    spec.creativeBrief.directionName,
-    spec.creativeBrief.layoutSystem,
+    primaryIntent,
     spec.creativeBrief.motionLanguage,
-    ...spec.creativeBrief.visualVariants.flatMap((variant) => [
-      variant.name,
-      variant.composition,
-      variant.palette,
-      variant.motion,
-      variant.emphasis,
-    ]),
-  ].join(" ").toLowerCase();
+    selectedVariant?.motion,
+  ].filter(Boolean).join(" ").toLowerCase();
 }
 
 function includesAny(text: string, terms: readonly string[]) {
@@ -144,9 +163,7 @@ function isReferenceLayout(intent: string) {
 }
 
 function resolveExplicitFamily(spec: BundleAgentSpec): BundleTemplateFamily | null {
-  const requested = spec.templateFamily
-    || (typeof spec.defaultProps.templateFamily === "string" ? spec.defaultProps.templateFamily : null)
-    || spec.designPlan?.templateFamily;
+  const requested = spec.templateFamily;
   const parsed = bundleTemplateFamilySchema.safeParse(requested);
   return parsed.success ? parsed.data : null;
 }
@@ -185,6 +202,8 @@ function inferTransition(spec: BundleAgentSpec, intent: string, fallback: Bundle
     return "scene-swap" as const;
   }
   if (includesAny(intent, ["wipe", "barrido", "cortina"])) return "soft-wipe" as const;
+  if (includesAny(intent, ["empuje hacia la derecha", "push right", "push-right"])) return "push-right" as const;
+  if (includesAny(intent, ["empuje", "push", "desplazamiento lateral"])) return "push-left" as const;
   if (includesAny(intent, ["cut", "corte", "quick cuts"])) return "hard-cut" as const;
   if (includesAny(intent, ["focus", "enfoque", "focus shift"])) return "focus-shift" as const;
   if (includesAny(intent, ["fade", "fundido", "crossfade"])) return "crossfade" as const;
@@ -219,20 +238,21 @@ function buildRationale(spec: BundleAgentSpec, family: BundleTemplateFamily, sou
  */
 export function buildBundleDesignPlan(spec: BundleAgentSpec): BundleAgentDesignPlan {
   const explicitFamily = resolveExplicitFamily(spec);
-  const intent = getIntentText(spec);
-  const referenceConstraint = isReferenceLayout(intent);
+  const primaryIntent = getPrimaryIntentText(spec);
+  const motionIntent = getMotionIntentText(spec, primaryIntent);
+  const referenceConstraint = isReferenceLayout(primaryIntent);
 
   if (!explicitFamily && spec.designPlan) {
     return bundleAgentDesignPlanSchema.parse(spec.designPlan);
   }
 
-  const templateFamily = explicitFamily || inferTemplateFamily(spec, intent);
+  const templateFamily = explicitFamily || inferTemplateFamily(spec, primaryIntent);
   const definition = FAMILY_DEFINITIONS[templateFamily];
   const source: BundleAgentDesignPlan["source"] = explicitFamily
     ? "explicit-family"
     : referenceConstraint
       ? "reference-constraint"
-      : intent.trim().length > 0
+      : primaryIntent.trim().length > 0
         ? "creative-brief"
         : "safe-fallback";
 
@@ -242,8 +262,8 @@ export function buildBundleDesignPlan(spec: BundleAgentSpec): BundleAgentDesignP
     layoutStrategy: definition.layoutStrategy,
     backgroundTreatment: definition.backgroundTreatment,
     surfaceTreatment: definition.surfaceTreatment,
-    transition: inferTransition(spec, intent, definition.defaultTransition),
-    pace: inferPace(intent, definition.defaultPace),
+    transition: inferTransition(spec, motionIntent, definition.defaultTransition),
+    pace: inferPace(motionIntent, definition.defaultPace),
     mediaPriority: definition.mediaPriority,
     sceneStrategy: definition.sceneStrategy,
     source,
@@ -255,6 +275,18 @@ export function createBundleVisualFingerprint(
   spec: BundleAgentSpec,
   designPlan = buildBundleDesignPlan(spec),
 ): BundleVisualFingerprint {
+  const timelinePlan = buildBundleTimelinePlan(spec, designPlan.transition);
+  const overlayLayout = timelinePlan.overlays[0]?.layout;
+  const overlaySignature = overlayLayout === "left-half"
+    ? "broll-left"
+    : overlayLayout === "right-half"
+      ? "broll-right"
+      : overlayLayout === "picture-in-picture"
+        ? "broll-pip"
+        : overlayLayout === "fullscreen"
+          ? "broll-fullscreen"
+          : "none";
+
   return bundleVisualFingerprintSchema.parse({
     version: 1,
     templateFamily: designPlan.templateFamily,
@@ -265,6 +297,10 @@ export function createBundleVisualFingerprint(
     pace: designPlan.pace,
     mediaPriority: designPlan.mediaPriority,
     sceneStrategy: designPlan.sceneStrategy,
+    timelineMode: timelinePlan.mode,
+    mainAsset: timelinePlan.main.asset,
+    mainLayout: timelinePlan.main.layout,
+    overlaySignature,
     accentColor: normalizeAccentColor(spec.defaultProps.accentColor || spec.creativeBrief.colorTokens.accent),
     requiredAssets: [...spec.requiredAssets].sort(),
   });
@@ -273,13 +309,16 @@ export function createBundleVisualFingerprint(
 /** Ensures every persisted and compiled video spec has an auditable resolved plan. */
 export function attachBundleDesignPlan(spec: BundleAgentSpec): BundleAgentSpec {
   const designPlan = buildBundleDesignPlan(spec);
+  const timelinePlan = buildBundleTimelinePlan(spec, designPlan.transition);
   const selectedVariant = spec.creativeBrief.visualVariants.find((variant) => variant.id === spec.defaultProps.visualVariantId)
     || spec.creativeBrief.visualVariants[0];
 
   return bundleAgentSpecSchema.parse({
     ...spec,
+    contractVersion: 2,
     templateFamily: designPlan.templateFamily,
     designPlan,
+    timelinePlan,
     propsSchema: {
       ...spec.propsSchema,
       type: "object" as const,
@@ -289,12 +328,17 @@ export function attachBundleDesignPlan(spec: BundleAgentSpec): BundleAgentSpec {
           type: "string",
           description: "Familia visual segura resuelta por el Bundle Agent.",
         },
+        timelinePlan: {
+          type: "object",
+          description: "Secuencia temporal segura para apertura, contenido, cierre y overlays.",
+        },
       },
     },
     defaultProps: {
       ...spec.defaultProps,
       templateFamily: designPlan.templateFamily,
       animationVariant: designPlan.transition,
+      timelinePlan,
       visualVariantId: typeof spec.defaultProps.visualVariantId === "string"
         ? spec.defaultProps.visualVariantId
         : selectedVariant?.id,

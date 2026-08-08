@@ -44,7 +44,7 @@ function getBoxStyle(box: LayerBox, spec: BundleAgentSpec, zIndex: number): Reac
 }
 
 function getPreviewTheme(spec: BundleAgentSpec, accentColor: string, family: BundleTemplateFamily) {
-  const tokens = spec.creativeBrief?.colorTokens;
+  const tokens = spec.creativeBrief.colorTokens;
   const isReferenceWireframe = family === "reference-frame";
 
   if (isReferenceWireframe && tokens) {
@@ -59,8 +59,8 @@ function getPreviewTheme(spec: BundleAgentSpec, accentColor: string, family: Bun
 
   if (family === "editorial-rail") {
     return {
-      background: `linear-gradient(135deg, #f8fafc 0%, #e2e8f0 58%, ${accentColor}22 100%)`,
-      panel: "rgba(255,255,255,0.72)",
+      background: `linear-gradient(135deg, ${tokens.background} 0%, ${tokens.surface} 58%, ${tokens.secondary}44 100%)`,
+      panel: tokens.surface,
       border: "rgba(15,23,42,0.14)",
       title: "text-slate-950",
       subtitle: "text-slate-700",
@@ -69,8 +69,8 @@ function getPreviewTheme(spec: BundleAgentSpec, accentColor: string, family: Bun
 
   if (family === "cinematic-field") {
     return {
-      background: `radial-gradient(circle at 72% 34%, ${accentColor}66, transparent 30%), linear-gradient(145deg, #020617 0%, #111827 46%, #030712 100%)`,
-      panel: "rgba(15,23,42,0.48)",
+      background: `radial-gradient(circle at 72% 34%, ${tokens.secondary}66, transparent 30%), linear-gradient(145deg, ${tokens.background} 0%, ${tokens.surface} 60%, ${tokens.background} 100%)`,
+      panel: `${tokens.surface}CC`,
       border: "rgba(255,255,255,0.16)",
       title: "text-white",
       subtitle: "text-white/82",
@@ -80,7 +80,7 @@ function getPreviewTheme(spec: BundleAgentSpec, accentColor: string, family: Bun
   if (family === "floating-collage") {
     return {
       background: `linear-gradient(${accentColor}18 1px, transparent 1px), linear-gradient(90deg, ${accentColor}18 1px, transparent 1px), #09090f`,
-      panel: "rgba(15,23,42,0.76)",
+      panel: `${tokens.surface}E6`,
       border: `${accentColor}70`,
       title: "text-white",
       subtitle: "text-white/82",
@@ -89,8 +89,8 @@ function getPreviewTheme(spec: BundleAgentSpec, accentColor: string, family: Bun
 
   if (family === "minimal-focus") {
     return {
-      background: `radial-gradient(circle at 50% 42%, #1e293b 0%, #020617 74%)`,
-      panel: "rgba(15,23,42,0.84)",
+      background: `radial-gradient(circle at 50% 42%, ${tokens.surface} 0%, ${tokens.background} 74%)`,
+      panel: `${tokens.surface}E6`,
       border: `${accentColor}55`,
       title: "text-white",
       subtitle: "text-white/82",
@@ -99,8 +99,8 @@ function getPreviewTheme(spec: BundleAgentSpec, accentColor: string, family: Bun
 
   if (family === "split-contrast") {
     return {
-      background: `linear-gradient(90deg, #0f172a 0%, #0f172a 48%, ${accentColor}55 48%, #020617 100%)`,
-      panel: "rgba(15,23,42,0.76)",
+      background: `linear-gradient(90deg, ${tokens.surface} 0%, ${tokens.surface} 48%, ${tokens.secondary}88 48%, ${tokens.background} 100%)`,
+      panel: `${tokens.surface}E6`,
       border: `${accentColor}75`,
       title: "text-white",
       subtitle: "text-white/82",
@@ -108,12 +108,25 @@ function getPreviewTheme(spec: BundleAgentSpec, accentColor: string, family: Bun
   }
 
   return {
-    background: `linear-gradient(135deg, #09090f 0%, #151022 48%, ${accentColor}88 140%)`,
-    panel: "rgba(255,255,255,0.1)",
+    background: `linear-gradient(135deg, ${tokens.background} 0%, ${tokens.surface} 48%, ${tokens.secondary}88 140%)`,
+    panel: `${tokens.surface}D9`,
     border: "rgba(255,255,255,0.15)",
     title: "text-white",
     subtitle: "text-white/82",
   };
+}
+
+function resolvePreviewSceneBox(layout: string | undefined, fallback: LayerBox, spec: BundleAgentSpec): LayerBox {
+  if (layout === "fullscreen") return { x: 0, y: 0, width: spec.width, height: spec.height };
+  if (layout === "left-half") return { x: 0, y: 0, width: Math.round(spec.width / 2), height: spec.height };
+  if (layout === "right-half") return { x: Math.round(spec.width / 2), y: 0, width: Math.round(spec.width / 2), height: spec.height };
+  if (layout === "picture-in-picture") {
+    const width = Math.round(spec.width * 0.36);
+    const height = Math.round(width * 9 / 16);
+    const margin = Math.round(Math.min(spec.width, spec.height) * 0.04);
+    return { x: spec.width - width - margin, y: spec.height - height - margin, width, height };
+  }
+  return fallback;
 }
 
 function getTextBlockStyle(layout: string, family: BundleTemplateFamily): React.CSSProperties {
@@ -140,16 +153,35 @@ function SpecPreviewCanvas({ spec }: { spec: BundleAgentSpec }) {
   const hasCaptions = spec.requiredAssets.includes("captions");
   const theme = getPreviewTheme(spec, accentColor, blueprint.designPlan.templateFamily);
   const isReferenceFrameLayout = blueprint.layout === "reference-frame-avatar-left-stack-right";
+  const isStaged = blueprint.timelinePlan.mode === "staged";
+  const overlay = blueprint.timelinePlan.overlays[0];
+  const showAvatar = hasAvatar && (!isStaged || blueprint.timelinePlan.main.asset === "avatar");
+  const showSlides = hasSlides && (!isStaged || blueprint.timelinePlan.main.asset === "slides");
+  const showBroll = hasBroll && (!isStaged || blueprint.timelinePlan.main.asset === "broll" || Boolean(overlay));
+  const avatarPreviewBox = isStaged
+    ? resolvePreviewSceneBox(blueprint.timelinePlan.main.layout, blueprint.boxes.avatar, spec)
+    : blueprint.boxes.avatar;
+  const slidesPreviewBox = isStaged
+    ? resolvePreviewSceneBox(blueprint.timelinePlan.main.layout, blueprint.boxes.slides, spec)
+    : blueprint.boxes.slides;
+  const brollPreviewBox = overlay
+    ? resolvePreviewSceneBox(overlay.layout, blueprint.boxes.broll, spec)
+    : isStaged
+      ? resolvePreviewSceneBox(blueprint.timelinePlan.main.layout, blueprint.boxes.broll, spec)
+      : blueprint.boxes.broll;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 p-4 shadow-2xl">
       <div className="relative aspect-video overflow-hidden rounded-xl" style={{ background: theme.background }}>
+        <div className="absolute left-4 top-4 z-[100] rounded-full bg-black/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
+          {isStaged ? "Fase principal" : "Composición continua"}
+        </div>
         <div style={getBoxStyle(blueprint.boxes.primaryVisual, spec, 1)} className={`overflow-hidden ${isReferenceFrameLayout ? "" : "rounded-xl border"}`}>
           <div className="h-full w-full" style={{ borderColor: theme.border, background: isReferenceFrameLayout ? "transparent" : theme.panel }} />
         </div>
 
-        {hasAvatar ? (
-          <div style={getBoxStyle(blueprint.boxes.avatar, spec, 2)} className="overflow-hidden border">
+        {showAvatar ? (
+          <div style={getBoxStyle(avatarPreviewBox, spec, 2)} className="overflow-hidden border">
             <div
               className="h-full w-full"
               style={{
@@ -162,8 +194,8 @@ function SpecPreviewCanvas({ spec }: { spec: BundleAgentSpec }) {
           </div>
         ) : null}
 
-        {hasSlides ? (
-          <div style={getBoxStyle(blueprint.boxes.slides, spec, 3)} className={`overflow-hidden border ${isReferenceFrameLayout ? "" : "rounded-xl shadow-2xl"}`}>
+        {showSlides ? (
+          <div style={getBoxStyle(slidesPreviewBox, spec, 3)} className={`overflow-hidden border ${isReferenceFrameLayout ? "" : "rounded-xl shadow-2xl"}`}>
             <div
               className="h-full w-full"
               style={{
@@ -185,8 +217,8 @@ function SpecPreviewCanvas({ spec }: { spec: BundleAgentSpec }) {
           </div>
         ) : null}
 
-        {hasBroll ? (
-          <div style={getBoxStyle(blueprint.boxes.broll, spec, 4)} className={`overflow-hidden border ${isReferenceFrameLayout ? "" : "rounded-xl shadow-2xl"}`}>
+        {showBroll ? (
+          <div style={getBoxStyle(brollPreviewBox, spec, 4)} className={`overflow-hidden border ${isReferenceFrameLayout ? "" : "rounded-xl shadow-2xl"}`}>
             <div
               className="h-full w-full"
               style={{
@@ -199,7 +231,7 @@ function SpecPreviewCanvas({ spec }: { spec: BundleAgentSpec }) {
           </div>
         ) : null}
 
-        {!isReferenceFrameLayout ? (
+        {!isReferenceFrameLayout && blueprint.renderText ? (
           <section className={`absolute z-10 ${theme.title}`} style={getTextBlockStyle(blueprint.layout, blueprint.designPlan.templateFamily)}>
             <div className="mb-5 h-2 w-24 rounded-full" style={{ backgroundColor: accentColor }} />
             <h1 className="text-5xl font-semibold leading-none tracking-normal">{title}</h1>
@@ -246,6 +278,7 @@ export default async function BundleAgentPreviewPage({ searchParams }: PreviewPa
   }
 
   const spec = bundleAgentSpecSchema.parse(specRow.spec_json);
+  const blueprint = buildBundleBlueprint(spec);
 
   return (
     <main className="min-h-screen bg-slate-100 p-6">
@@ -262,12 +295,12 @@ export default async function BundleAgentPreviewPage({ searchParams }: PreviewPa
             <p className="text-sm font-semibold uppercase tracking-wide text-[#5B21B6]">Vista estructural</p>
             <h1 className="mt-1 text-3xl font-semibold text-slate-950">{spec.title}</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Revision de layout, estilo y props antes de generar build cloud o usar assets reales.
+              Vista estructural de la fase principal. Los tiempos y transiciones se validan en el plan temporal antes de generar el ZIP.
             </p>
           </div>
           <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
             <p className="font-semibold text-slate-900">Spec v{specRow.version_number}</p>
-            <p>{spec.width}x{spec.height} - {spec.fps} fps - {spec.durationFrames} frames</p>
+            <p>{spec.width}x{spec.height} - {spec.fps} fps - {blueprint.fallbackDurationFrames} frames de preview</p>
           </div>
         </header>
 
@@ -290,6 +323,23 @@ export default async function BundleAgentPreviewPage({ searchParams }: PreviewPa
             <p className="mt-1 text-sm leading-6 text-slate-700">
               Fondo {blueprint.designPlan.backgroundTreatment}, superficies {blueprint.designPlan.surfaceTreatment} y ritmo {blueprint.designPlan.pace}.
             </p>
+          </div>
+          <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 shadow-sm lg:col-span-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-cyan-800">Plan temporal compilado</p>
+            <div className="mt-3 grid gap-3 text-sm text-slate-700 md:grid-cols-3">
+              <div className="rounded-xl bg-white/70 p-3">
+                <p className="font-semibold text-slate-900">Apertura</p>
+                <p className="mt-1">{blueprint.timelinePlan.opening ? `${blueprint.timelinePlan.opening.asset} · ${blueprint.timelinePlan.opening.durationFrames} frames · ${blueprint.timelinePlan.opening.layout}` : "Sin fase separada"}</p>
+              </div>
+              <div className="rounded-xl bg-white/70 p-3">
+                <p className="font-semibold text-slate-900">Contenido</p>
+                <p className="mt-1">{blueprint.timelinePlan.main.asset} · {blueprint.timelinePlan.main.layout} · {blueprint.timelinePlan.transition}</p>
+              </div>
+              <div className="rounded-xl bg-white/70 p-3">
+                <p className="font-semibold text-slate-900">Cierre y overlays</p>
+                <p className="mt-1">{blueprint.timelinePlan.ending ? `${blueprint.timelinePlan.ending.asset} · ${blueprint.timelinePlan.ending.durationFrames} frames` : "Sin cierre separado"} · {blueprint.timelinePlan.overlays.length} overlay(s)</p>
+              </div>
+            </div>
           </div>
         </section>
       </div>

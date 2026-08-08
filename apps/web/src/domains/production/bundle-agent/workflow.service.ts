@@ -156,6 +156,7 @@ export class BundleAgentWorkflowService {
           }),
           overrides,
         ));
+    const videoSpec = artifactKind === "video_bundle" ? bundleAgentSpecSchema.parse(spec) : null;
     const specHash = computeSpecHash(spec);
     const { data: latest } = await this.context.admin
       .from("soflia_bundle_specs")
@@ -199,6 +200,9 @@ export class BundleAgentWorkflowService {
           warning: generated.warning,
           specId: data.id,
           specHash,
+          contractVersion: videoSpec?.contractVersion,
+          templateFamily: videoSpec?.designPlan?.templateFamily,
+          timelineMode: videoSpec?.timelinePlan?.mode,
         },
         created_by: this.context.userId,
       });
@@ -218,7 +222,11 @@ export class BundleAgentWorkflowService {
     let specRow = input.specId
       ? await this.getSpec(input.specId, conversationId)
       : await this.getLatestSpec(conversationId);
-    if (!input.specId && (!specRow || await this.hasUserMessagesAfterSpec(conversationId, specRow.created_at))) {
+    const latestSpecPayload = isRecord(specRow?.spec_json) ? specRow.spec_json : null;
+    const requiresContractUpgrade = Boolean(specRow)
+      && latestSpecPayload?.artifactKind !== "slide_template"
+      && latestSpecPayload?.contractVersion !== 2;
+    if (!input.specId && (!specRow || requiresContractUpgrade || await this.hasUserMessagesAfterSpec(conversationId, specRow.created_at))) {
       specRow = await this.createSpec(conversationId, undefined, input.artifactKind);
     }
     if (!specRow) {
@@ -570,10 +578,10 @@ export class BundleAgentWorkflowService {
 
     if (error) throw error;
 
-    const existingFingerprints = (data || [])
-      .map((row: { visual_fingerprint?: unknown }) => bundleVisualFingerprintSchema.safeParse(row.visual_fingerprint))
-      .filter((result) => result.success)
-      .map((result) => result.data);
+    const existingFingerprints = (data || []).flatMap((row: { visual_fingerprint?: unknown }): BundleVisualFingerprint[] => {
+      const parsed = bundleVisualFingerprintSchema.safeParse(row.visual_fingerprint);
+      return parsed.success ? [parsed.data] : [];
+    });
 
     return evaluateBundleVisualSimilarity(candidate, existingFingerprints);
   }

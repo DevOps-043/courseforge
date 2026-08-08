@@ -31,6 +31,7 @@ const MODEL_SETTING_TYPES = [
   'INSTRUCTIONAL_PLAN',
   'CURATION',
   'MATERIALS',
+  'BUNDLE_AGENT',
 ] as const;
 const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number], Omit<ModelSettingsRecord, 'id'>> = {
   ARTIFACT_BASE: {
@@ -71,6 +72,14 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     temperature: 0.7,
     thinking_level: 'minimal',
     setting_type: 'MATERIALS',
+    is_active: true,
+  },
+  BUNDLE_AGENT: {
+    model_name: 'gemini-2.5-flash',
+    fallback_model: 'gpt-4.1-mini',
+    temperature: 0.3,
+    thinking_level: 'medium',
+    setting_type: 'BUNDLE_AGENT',
     is_active: true,
   },
 };

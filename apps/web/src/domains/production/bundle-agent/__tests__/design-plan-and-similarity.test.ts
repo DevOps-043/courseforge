@@ -90,4 +90,24 @@ describe("Bundle design plan and visual similarity", () => {
     assert.equal(result.decision, "allow");
     assert.equal(result.highestScore < result.threshold.review, true);
   });
+
+  it("does not block a different temporal choreography as an exact visual duplicate", () => {
+    const continuous = createBundleVisualFingerprint(attachBundleDesignPlan(createSpec({ templateFamily: "cinematic-field" })));
+    const staged = createBundleVisualFingerprint(attachBundleDesignPlan(createSpec({
+      templateFamily: "cinematic-field",
+      timelinePlan: {
+        version: 1,
+        mode: "staged",
+        opening: { asset: "avatar", durationFrames: 90, layout: "fullscreen" },
+        main: { asset: "slides", layout: "fullscreen" },
+        ending: { asset: "avatar", durationFrames: 90, layout: "fullscreen" },
+        transition: "push-left",
+        overlays: [],
+      },
+    })));
+    const result = evaluateBundleVisualSimilarity(staged, [continuous]);
+
+    assert.notEqual(result.decision, "block");
+    assert.equal(result.highestScore < result.threshold.block, true);
+  });
 });

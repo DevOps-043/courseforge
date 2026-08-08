@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import { bundleAgentSpecSchema, type BundleAgentSpec } from "./types";
 import { attachBundleDesignPlan } from "./design-plan.service";
+import { inferBundleColorTokens } from "./color-palette.service";
+import { inferBundleTimelinePlan } from "./timeline-plan.service";
 
 function slugifyCompositionId(value: string) {
   const normalized = value
@@ -130,27 +132,6 @@ function inferVisualStyle(userText: string) {
   return (styleParts.join("; ") || "Clean educational motion graphics with readable text and soft transitions.").slice(0, 240);
 }
 
-function inferAccentColor(userText: string) {
-  const explicitHex = userText.match(/#[0-9a-fA-F]{6}\b/);
-  if (explicitHex) return explicitHex[0].toUpperCase();
-
-  const normalized = userText.toLowerCase();
-  const colorHints: Array<[string[], string]> = [
-    [["turquesa", "cyan", "cian"], "#00D4B3"],
-    [["azul", "blue"], "#2563EB"],
-    [["verde", "green"], "#16A34A"],
-    [["rojo", "red"], "#DC2626"],
-    [["naranja", "orange"], "#F97316"],
-    [["amarillo", "yellow", "dorado"], "#F59E0B"],
-    [["rosa", "pink", "magenta"], "#DB2777"],
-    [["morado", "purpura", "purple", "violeta"], "#5B21B6"],
-    [["negro", "black"], "#111827"],
-    [["blanco", "white"], "#F8FAFC"],
-  ];
-
-  return colorHints.find(([terms]) => terms.some((term) => normalized.includes(term)))?.[1] || "#5B21B6";
-}
-
 function shouldSwapScenesOnSlideChange(userText: string) {
   const normalized = userText.toLowerCase();
 
@@ -199,23 +180,12 @@ function inferCreativeDirectionName(userText: string, requiredAssets: string[]) 
   return "Editorial Course Console";
 }
 
-function inferPaletteName(userText: string) {
-  const normalized = userText.toLowerCase();
-  if (normalized.includes("dominant frame/border color")) return "Reference frame color";
-  if (normalized.includes("azul")) return "Signal blue";
-  if (normalized.includes("verde") || normalized.includes("turquesa")) return "SofLIA teal";
-  if (normalized.includes("claro") || normalized.includes("minimal")) return "Editorial light";
-  if (normalized.includes("naranja") || normalized.includes("dorado")) return "Warm focus";
-  if (normalized.includes("morado") || normalized.includes("violeta")) return "Deep violet";
-  return "Dark learning console";
-}
-
 function buildCreativeBrief(input: {
   userText: string;
   revisionWeightedText: string;
   visualStyle: string;
   requiredAssets: string[];
-  accentColor: string;
+  colorTokens: BundleAgentSpec["creativeBrief"]["colorTokens"];
 }): BundleAgentSpec["creativeBrief"] {
   const normalized = input.revisionWeightedText.toLowerCase();
   const isLight = normalized.includes("claro") || normalized.includes("minimal") || normalized.includes("white");
@@ -258,14 +228,16 @@ function buildCreativeBrief(input: {
     sceneSwapOnSlideChange ? "Scene changes occur on slide changes; left and right regions trade sides with smooth positional interpolation." : null,
     expandMissingSupportMedia ? "When slide or B-roll is absent, the available support media expands to occupy both support regions." : null,
   ].filter(Boolean).join(" ").slice(0, 500);
-  const colorTokens = {
-    paletteName: inferPaletteName(input.revisionWeightedText),
-    background: usesReferenceWireframe ? input.accentColor : isLight ? "#F8FAFC" : "#05070B",
-    surface: usesReferenceWireframe ? "#FFFFFF" : isLight ? "#FFFFFF" : "#111827",
-    accent: input.accentColor,
-    text: usesReferenceWireframe || isLight ? "#0F172A" : "#F8FAFC",
-    muted: usesReferenceWireframe || isLight ? "#475569" : "#CBD5E1",
-  };
+  const colorTokens = usesReferenceWireframe
+    ? {
+        ...input.colorTokens,
+        paletteName: "Reference frame color",
+        background: input.colorTokens.accent,
+        surface: "#FFFFFF",
+        text: "#0F172A",
+        muted: "#475569",
+      }
+    : input.colorTokens;
   const typographyTokens = {
     display: isCinematic ? "Wide cinematic display" : isLight ? "Editorial serif-like display" : "Compact high-contrast sans display",
     body: "Readable humanist sans for lesson context",
@@ -316,7 +288,7 @@ function buildCreativeBrief(input: {
         id: "variant-media-field",
         name: "Media field",
         composition: "Full or near-full frame media with compact overlay copy and anchored accent marks.",
-        palette: `Cinematic neutrals with ${input.accentColor} as motion cue.`,
+        palette: `Cinematic neutrals with ${colorTokens.accent} as motion cue.`,
         motion: "Faster support-visual switches, short holds and overlay cuts.",
         emphasis: "Immersion, B-roll energy and large visual evidence.",
       },
@@ -337,6 +309,17 @@ function inferAnimationVariant(motionLanguage: string) {
   if (normalized.includes("quick") || normalized.includes("rapido") || normalized.includes("dinamico")) return "kinetic";
   if (normalized.includes("soft") || normalized.includes("suave") || normalized.includes("sobrio")) return "measured";
   return "adaptive";
+}
+
+function selectFallbackVisualVariantId(userText: string) {
+  const normalized = userText.toLowerCase();
+  if (normalized.includes("vertical") || normalized.includes("apilado") || normalized.includes("arriba y abajo")) {
+    return "variant-stacked-evidence";
+  }
+  if (normalized.includes("pantalla completa") || normalized.includes("fullscreen") || normalized.includes("full screen")) {
+    return "variant-media-field";
+  }
+  return "variant-studio-asymmetric";
 }
 
 export function stableJsonHash(value: unknown): string {
@@ -391,6 +374,10 @@ export function normalizeBundleAgentSpecForRendering(spec: BundleAgentSpec): Bun
     spec.defaultProps.subtitle,
     inferDisplaySubtitle(`${spec.description} ${spec.visualStyle}`, spec.requiredAssets),
   );
+  const existingDesignTokens = spec.defaultProps.designTokens && typeof spec.defaultProps.designTokens === "object" && !Array.isArray(spec.defaultProps.designTokens)
+    ? spec.defaultProps.designTokens as Record<string, unknown>
+    : {};
+  const colorTokens = spec.creativeBrief.colorTokens;
 
   return attachBundleDesignPlan(bundleAgentSpecSchema.parse({
     ...spec,
@@ -398,6 +385,16 @@ export function normalizeBundleAgentSpecForRendering(spec: BundleAgentSpec): Bun
       ...spec.defaultProps,
       title,
       subtitle,
+      accentColor: colorTokens.accent,
+      designTokens: {
+        ...existingDesignTokens,
+        backgroundColor: colorTokens.background,
+        surfaceColor: colorTokens.surface,
+        accentColor: colorTokens.accent,
+        secondaryColor: colorTokens.secondary,
+        textColor: colorTokens.text,
+        mutedTextColor: colorTokens.muted,
+      },
     },
   }));
 }
@@ -419,7 +416,9 @@ export function buildSpecFromConversation(input: {
   const inferredStyle = inferVisualStyle(revisionWeightedText);
   const requiredAssets = inferRequiredAssets(revisionWeightedText);
   const displaySubtitle = inferDisplaySubtitle(revisionWeightedText, requiredAssets);
-  const accentColor = inferAccentColor(revisionWeightedText);
+  const colorTokens = inferBundleColorTokens(revisionWeightedText);
+  const accentColor = colorTokens.accent;
+  const fps = 30;
   const sceneSwapOnSlideChange = shouldSwapScenesOnSlideChange(revisionWeightedText);
   const expandMissingSupportMedia = shouldExpandMissingSupportMedia(revisionWeightedText);
   const creativeBrief = buildCreativeBrief({
@@ -427,7 +426,13 @@ export function buildSpecFromConversation(input: {
     revisionWeightedText,
     visualStyle: inferredStyle,
     requiredAssets,
-    accentColor,
+    colorTokens,
+  });
+  const timelinePlan = inferBundleTimelinePlan({
+    userText: revisionWeightedText,
+    requiredAssets,
+    fps,
+    fallbackTransition: sceneSwapOnSlideChange ? "scene-swap" : "crossfade",
   });
   const changeSummary = input.messages.filter((message) => message.role === "USER").length > 1
     ? `SofLIA adjusted the bundle draft using the latest feedback: ${latestUserText.slice(0, 220)}`
@@ -438,9 +443,14 @@ export function buildSpecFromConversation(input: {
     description,
     visualStyle: inferredStyle,
     creativeBrief,
+    authoringIntent: {
+      latestUserInstruction: latestUserText.slice(0, 4000),
+      conversationInstructions: userText.slice(0, 8000),
+    },
+    timelinePlan,
     compositionId: slugifyCompositionId(title),
     durationFrames: 150,
-    fps: 30,
+    fps,
     width: 1920,
     height: 1080,
     requiredAssets,
@@ -453,6 +463,7 @@ export function buildSpecFromConversation(input: {
         backgroundColor: creativeBrief.colorTokens.background,
         surfaceColor: creativeBrief.colorTokens.surface,
         accentColor: creativeBrief.colorTokens.accent,
+        secondaryColor: creativeBrief.colorTokens.secondary,
         textColor: creativeBrief.colorTokens.text,
         mutedTextColor: creativeBrief.colorTokens.muted,
         typographyDisplay: creativeBrief.typographyTokens.display,
@@ -460,7 +471,7 @@ export function buildSpecFromConversation(input: {
       },
       expandMissingSupportMedia,
       sceneSwapOnSlideChange,
-      visualVariantId: creativeBrief.visualVariants[0].id,
+      visualVariantId: selectFallbackVisualVariantId(revisionWeightedText),
     },
     propsSchema: {
       type: "object",

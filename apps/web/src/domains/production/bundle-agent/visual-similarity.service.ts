@@ -13,7 +13,7 @@ export const bundleSimilarityGuardResultSchema = z.object({
   decision: z.enum(["allow", "review", "block"]),
   threshold: z.object({ review: z.number().min(0).max(1), block: z.number().min(0).max(1) }),
   highestScore: z.number().min(0).max(1),
-  matchingTraits: z.array(z.string().min(1).max(120)).max(10),
+  matchingTraits: z.array(z.string().min(1).max(120)).max(16),
   comparedFingerprintCount: z.number().int().min(0).max(500),
 });
 
@@ -30,14 +30,18 @@ const DEFAULT_THRESHOLDS: BundleSimilarityThresholds = {
 };
 
 const TRAIT_WEIGHTS = {
-  templateFamily: 0.24,
-  layoutStrategy: 0.18,
-  backgroundTreatment: 0.11,
-  surfaceTreatment: 0.08,
-  transition: 0.12,
-  pace: 0.07,
-  mediaPriority: 0.08,
-  sceneStrategy: 0.07,
+  templateFamily: 0.20,
+  layoutStrategy: 0.15,
+  backgroundTreatment: 0.09,
+  surfaceTreatment: 0.07,
+  transition: 0.10,
+  pace: 0.05,
+  mediaPriority: 0.07,
+  sceneStrategy: 0.06,
+  timelineMode: 0.06,
+  mainAsset: 0.03,
+  mainLayout: 0.05,
+  overlaySignature: 0.02,
   accentColor: 0.03,
   requiredAssets: 0.02,
 } as const;
@@ -81,6 +85,10 @@ export function compareBundleVisualFingerprints(
   score += sameTrait("ritmo", TRAIT_WEIGHTS.pace, candidate.pace, existing.pace, matchingTraits);
   score += sameTrait("prioridad de media", TRAIT_WEIGHTS.mediaPriority, candidate.mediaPriority, existing.mediaPriority, matchingTraits);
   score += sameTrait("estrategia de escenas", TRAIT_WEIGHTS.sceneStrategy, candidate.sceneStrategy, existing.sceneStrategy, matchingTraits);
+  score += sameTrait("modo temporal", TRAIT_WEIGHTS.timelineMode, candidate.timelineMode, existing.timelineMode, matchingTraits);
+  score += sameTrait("asset principal", TRAIT_WEIGHTS.mainAsset, candidate.mainAsset, existing.mainAsset, matchingTraits);
+  score += sameTrait("layout principal", TRAIT_WEIGHTS.mainLayout, candidate.mainLayout, existing.mainLayout, matchingTraits);
+  score += sameTrait("overlay temporal", TRAIT_WEIGHTS.overlaySignature, candidate.overlaySignature, existing.overlaySignature, matchingTraits);
   score += sameTrait("color de acento", TRAIT_WEIGHTS.accentColor, candidate.accentColor, existing.accentColor, matchingTraits);
 
   if (sameArray(candidate.requiredAssets, existing.requiredAssets)) {

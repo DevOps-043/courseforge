@@ -6,7 +6,8 @@ export type PipelineModelSettingType =
   | "SYLLABUS"
   | "INSTRUCTIONAL_PLAN"
   | "CURATION"
-  | "MATERIALS";
+  | "MATERIALS"
+  | "BUNDLE_AGENT";
 
 export interface PipelineModelSettings {
   fallback_model: string | null;
@@ -58,6 +59,13 @@ const DEFAULT_MODEL_SETTINGS: Record<PipelineModelSettingType, PipelineModelSett
     setting_type: "MATERIALS",
     temperature: 0.7,
     thinking_level: "minimal",
+  },
+  BUNDLE_AGENT: {
+    fallback_model: "gpt-4.1-mini",
+    model_name: "gemini-2.5-flash",
+    setting_type: "BUNDLE_AGENT",
+    temperature: 0.3,
+    thinking_level: "medium",
   },
 };
 
