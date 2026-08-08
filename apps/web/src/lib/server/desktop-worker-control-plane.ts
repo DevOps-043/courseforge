@@ -3430,38 +3430,6 @@ export class DesktopWorkerControlPlane {
     }
     const duration = reportedDuration || expectedDuration;
 
-    const { data: component } = await this.supabase
-      .from("material_components")
-      .select("assets")
-      .eq("id", job.material_component_id)
-      .maybeSingle();
-
-    await this.supabase
-      .from("material_components")
-      .update({
-        assets: {
-          ...(component?.assets || {}),
-          final_video_url: publicUrl,
-          final_video_source: "desktop_worker",
-          final_video_file_name: input.outputStoragePath.split("/").filter(Boolean).pop(),
-          final_video_storage_provider: "supabase",
-          final_video_storage_path: input.outputStoragePath,
-          final_video_layout_stale: false,
-          video_duration: duration,
-          production_status: "COMPLETED",
-          updated_at: new Date().toISOString(),
-        },
-      })
-      .eq("id", job.material_component_id);
-
-    await this.syncFinalVideoToPublicationRequest({
-      artifactId: job.artifact_id || null,
-      materialLessonId: job.material_lesson_id || null,
-      lessonId: job.lesson_id || null,
-      finalVideoUrl: publicUrl,
-      duration,
-    });
-
     const completedAt = new Date().toISOString();
     const outputSnapshot = {
       ...(job.output_snapshot || {}),
@@ -3501,17 +3469,128 @@ export class DesktopWorkerControlPlane {
       .eq("id", jobId);
 
     if (error) throw new Error(`JOB_COMPLETE_FAILED: ${error.message}`);
-    await this.closeRunningTelemetryRunsForProductionJob({
-      workerId: worker.id,
-      jobId,
-      status: "completed",
-      finishedAt: completedAt,
-      lastStage: "complete",
-      lastProgressPercent: 100,
+
+    // The render artifact is already uploaded and the authoritative job state is
+    // persisted above. These projections are useful, but must never turn a
+    // successfully rendered video into a recoverable/failed job when a legacy
+    // publication row or a secondary table has inconsistent data.
+    await this.runPostRenderCompletionSideEffects({
+      job,
+      worker,
+      publicUrl,
+      duration,
+      outputStoragePath: input.outputStoragePath,
+      completedAt,
     });
-    await this.updateBatchItemFromJob(job.id, "SUCCEEDED");
-    await this.heartbeat(worker, { status: "ONLINE" });
+
     return { finalVideoUrl: publicUrl, durationSeconds: duration };
+  }
+
+  private async runPostRenderCompletionSideEffects(input: {
+    job: any;
+    worker: WorkerAuthContext;
+    publicUrl: string;
+    duration: number;
+    outputStoragePath: string;
+    completedAt: string;
+  }) {
+    const tasks: Array<{ name: string; operation: () => Promise<void> }> = [
+      {
+        name: "material_component_projection",
+        operation: () => this.updateMaterialComponentFinalVideo({
+          componentId: input.job.material_component_id,
+          publicUrl: input.publicUrl,
+          duration: input.duration,
+          outputStoragePath: input.outputStoragePath,
+        }),
+      },
+      {
+        name: "publication_request_projection",
+        operation: () => this.syncFinalVideoToPublicationRequest({
+          artifactId: input.job.artifact_id || null,
+          materialLessonId: input.job.material_lesson_id || null,
+          lessonId: input.job.lesson_id || null,
+          finalVideoUrl: input.publicUrl,
+          duration: input.duration,
+        }),
+      },
+      {
+        name: "telemetry_completion",
+        operation: () => this.closeRunningTelemetryRunsForProductionJob({
+          workerId: input.worker.id,
+          jobId: input.job.id,
+          status: "completed",
+          finishedAt: input.completedAt,
+          lastStage: "complete",
+          lastProgressPercent: 100,
+        }),
+      },
+      {
+        name: "render_batch_projection",
+        operation: () => this.updateBatchItemFromJob(input.job.id, "SUCCEEDED"),
+      },
+      {
+        name: "worker_availability",
+        operation: async () => {
+          await this.heartbeat(input.worker, { status: "ONLINE" });
+        },
+      },
+    ];
+
+    for (const task of tasks) {
+      try {
+        await task.operation();
+      } catch (sideEffectError) {
+        console.error("[DesktopWorkerControlPlane] Post-render completion side effect failed", {
+          jobId: input.job.id,
+          workerId: input.worker.id,
+          sideEffect: task.name,
+          error: sanitizeText(
+            sideEffectError instanceof Error ? sideEffectError.message : String(sideEffectError),
+            "Unknown post-render completion error",
+          ),
+        });
+      }
+    }
+  }
+
+  private async updateMaterialComponentFinalVideo(input: {
+    componentId: string | null;
+    publicUrl: string;
+    duration: number;
+    outputStoragePath: string;
+  }) {
+    if (!input.componentId) return;
+
+    const { data: component, error: componentLookupError } = await this.supabase
+      .from("material_components")
+      .select("assets")
+      .eq("id", input.componentId)
+      .maybeSingle();
+    if (componentLookupError) {
+      throw new Error(`MATERIAL_COMPONENT_LOOKUP_FAILED: ${componentLookupError.message}`);
+    }
+
+    const { error: componentUpdateError } = await this.supabase
+      .from("material_components")
+      .update({
+        assets: {
+          ...(component?.assets || {}),
+          final_video_url: input.publicUrl,
+          final_video_source: "desktop_worker",
+          final_video_file_name: input.outputStoragePath.split("/").filter(Boolean).pop(),
+          final_video_storage_provider: "supabase",
+          final_video_storage_path: input.outputStoragePath,
+          final_video_layout_stale: false,
+          video_duration: input.duration,
+          production_status: "COMPLETED",
+          updated_at: new Date().toISOString(),
+        },
+      })
+      .eq("id", input.componentId);
+    if (componentUpdateError) {
+      throw new Error(`MATERIAL_COMPONENT_UPDATE_FAILED: ${componentUpdateError.message}`);
+    }
   }
 
   async failJob(worker: WorkerAuthContext, jobId: string, input: Record<string, unknown>) {
