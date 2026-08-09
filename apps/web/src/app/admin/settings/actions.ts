@@ -40,6 +40,7 @@ const MODEL_SETTING_TYPES = [
   'SLIDES_VISIBLE_COPY_AGENT',
   'SLIDES_VISUAL_TEMPLATE_AGENT',
   'SLIDES_QA_AGENT',
+  'SLIDES_IMAGE_GENERATION',
 ] as const;
 const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number], Omit<ModelSettingsRecord, 'id'>> = {
   ARTIFACT_BASE: {
@@ -157,6 +158,15 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     thinking_level: 'low',
     scope: 'Modulos: Slides',
     setting_type: 'SLIDES_QA_AGENT',
+    is_active: true,
+  },
+  SLIDES_IMAGE_GENERATION: {
+    model_name: 'gpt-image-2',
+    fallback_model: 'gpt-image-2',
+    temperature: 0,
+    thinking_level: 'minimal',
+    scope: 'Modulos: Slides',
+    setting_type: 'SLIDES_IMAGE_GENERATION',
     is_active: true,
   },
 };

@@ -34,6 +34,11 @@ import {
   type CourseDeckSpec,
 } from "@/domains/production/slides/specs/course-deck.schema";
 import { validateCourseDeckQuality } from "@/domains/production/slides/validation/course-deck-qa.service";
+import {
+  planDeckVisualAssets,
+  visualAssetPlanSummary,
+} from "@/domains/production/slides/visuals/slide-visual-asset-planning.service";
+import { generateSlideVisualAssets } from "@/domains/production/slides/visuals/slide-visual-asset-generation.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -133,6 +138,15 @@ async function resolveSlideTemplateDesignSystem(params: {
   const blueprint = asRecord(spec.templateBlueprint);
   const designTokens = asRecord(blueprint?.designTokens);
   const modifiers = asRecord(blueprint?.modifiers);
+  const visualSlots = Object.fromEntries(
+    (Array.isArray(blueprint?.layouts) ? blueprint.layouts : [])
+      .flatMap((rawLayout) => {
+        const layout = asRecord(rawLayout);
+        return layout && typeof layout.id === "string" && Array.isArray(layout.imageSlots)
+          ? [[layout.id, layout.imageSlots]]
+          : [];
+      }),
+  );
 
   return {
     accent: typeof designTokens?.accent === "string" ? designTokens.accent : undefined,
@@ -144,6 +158,10 @@ async function resolveSlideTemplateDesignSystem(params: {
     surface: typeof designTokens?.surface === "string" ? designTokens.surface : undefined,
     text: typeof designTokens?.text === "string" ? designTokens.text : undefined,
     title: typeof spec.title === "string" ? spec.title : null,
+    visualSlots: Object.keys(visualSlots).length > 0 ? visualSlots : undefined,
+    visualStyleGuide: typeof blueprint?.visualStyleGuide === "string"
+      ? blueprint.visualStyleGuide
+      : undefined,
   };
 }
 
@@ -353,8 +371,8 @@ export async function POST(request: Request) {
           },
           input,
         });
-    const { deckSpec: generatedDeckSpec, html: generatedHtml, qaReport: generatedQaReport, stages } = deckGeneration;
-    const deckSpec = selectedSlideTemplate
+    const { deckSpec: generatedDeckSpec, stages } = deckGeneration;
+    const deckSpecWithTemplate = selectedSlideTemplate
       ? courseDeckSpecSchema.parse({
           ...generatedDeckSpec,
           designSystem: {
@@ -366,13 +384,36 @@ export async function POST(request: Request) {
             muted: selectedSlideTemplate.muted || generatedDeckSpec.designSystem.muted,
             surface: selectedSlideTemplate.surface || generatedDeckSpec.designSystem.surface,
             text: selectedSlideTemplate.text || generatedDeckSpec.designSystem.text,
+            visualSlots: selectedSlideTemplate.visualSlots || generatedDeckSpec.designSystem.visualSlots,
+            visualStyleGuide: selectedSlideTemplate.visualStyleGuide || generatedDeckSpec.designSystem.visualStyleGuide,
           },
         })
       : generatedDeckSpec;
-    const html = selectedSlideTemplate ? renderCourseDeckHtml(deckSpec) : generatedHtml;
-    const qaReport = selectedSlideTemplate
-      ? validateCourseDeckQuality({ deckSpec, html })
-      : generatedQaReport;
+    const plannedDeckSpec = planDeckVisualAssets({
+      deckSpec: deckSpecWithTemplate,
+      forceRegenerate,
+    });
+    const backgroundVisuals = input.generateVisuals !== false
+      ? await generateSlideVisualAssets({
+          admin: authorizedComponent.admin,
+          context,
+          createdBy: authenticatedUser.userId,
+          deckSpec: plannedDeckSpec,
+          mode: "background",
+        })
+      : { deckSpec: plannedDeckSpec, generatedCount: 0, jobId: null };
+    const supportingVisuals = input.generateVisuals !== false
+      ? await generateSlideVisualAssets({
+          admin: authorizedComponent.admin,
+          context,
+          createdBy: authenticatedUser.userId,
+          deckSpec: backgroundVisuals.deckSpec,
+          mode: "supporting",
+        })
+      : { deckSpec: backgroundVisuals.deckSpec, generatedCount: 0, jobId: null };
+    const deckSpec = supportingVisuals.deckSpec;
+    const html = renderCourseDeckHtml(deckSpec);
+    const qaReport = validateCourseDeckQuality({ deckSpec, html });
 
     if (qaReport.status === "FAIL") {
       const failingCodes = qaReport.findings
@@ -417,6 +458,7 @@ export async function POST(request: Request) {
           slide_template_title: selectedSlideTemplate?.title || null,
           template: deckSpec.template,
           qa_status: qaReport.status,
+          visual_assets: visualAssetPlanSummary(deckSpec),
         },
         module_id: context.moduleId,
         organization_id: context.organizationId,
@@ -442,6 +484,7 @@ export async function POST(request: Request) {
           slide_template_run_id: selectedSlideTemplate?.selectedSlideTemplateRunId || null,
           slide_template_title: selectedSlideTemplate?.title || null,
           template: deckSpec.template,
+          visual_assets: visualAssetPlanSummary(deckSpec),
         },
         mime_type: "text/html",
         module_id: context.moduleId,
@@ -464,6 +507,7 @@ export async function POST(request: Request) {
           finding_count: qaReport.findings.length,
           stage_count: stages.length,
           status: qaReport.status,
+          visual_assets: visualAssetPlanSummary(deckSpec),
         },
         module_id: context.moduleId,
         organization_id: context.organizationId,
@@ -516,6 +560,8 @@ export async function POST(request: Request) {
       .update({
         completed_at: now,
         output_snapshot: {
+          background_visual_job_id: backgroundVisuals.jobId,
+          background_visuals_generated: backgroundVisuals.generatedCount,
           html_storage_path: htmlUpload.storagePath,
           qa_status: qaReport.status,
           qa_storage_path: qaUpload.storagePath,
@@ -524,6 +570,9 @@ export async function POST(request: Request) {
           spec_storage_path: specUpload.storagePath,
           slide_count: deckSpec.slides.length,
           stages,
+          supporting_visual_job_id: supportingVisuals.jobId,
+          supporting_visuals_generated: supportingVisuals.generatedCount,
+          visual_assets: visualAssetPlanSummary(deckSpec),
         },
         status: PRODUCTION_JOB_STATUSES.SUCCEEDED,
         updated_at: now,

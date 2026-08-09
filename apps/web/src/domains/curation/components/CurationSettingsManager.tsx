@@ -48,6 +48,7 @@ const SETTING_ORDER = [
   "SLIDES_VISIBLE_COPY_AGENT",
   "SLIDES_VISUAL_TEMPLATE_AGENT",
   "SLIDES_QA_AGENT",
+  "SLIDES_IMAGE_GENERATION",
   "SEARCH",
   "DEFAULT",
 ];
@@ -128,6 +129,11 @@ const SETTING_METADATA: Record<
     icon: <CheckCircle2 size={16} />,
     accent: "green",
   },
+  SLIDES_IMAGE_GENERATION: {
+    title: "Slides - Generacion de Imagenes",
+    icon: <Box size={16} />,
+    accent: "teal",
+  },
   SEARCH: {
     title: "Busqueda y Recuperacion",
     icon: <Search size={16} />,
@@ -167,6 +173,7 @@ const PROMPT_CODE_MATCHERS: Record<string, (code: string) => boolean> = {
   SLIDES_VISIBLE_COPY_AGENT: (code) => code === "SLIDES_VISIBLE_COPY_AGENT",
   SLIDES_VISUAL_TEMPLATE_AGENT: (code) => code === "SLIDES_VISUAL_TEMPLATE_AGENT",
   SLIDES_QA_AGENT: (code) => code === "SLIDES_QA_AGENT",
+  SLIDES_IMAGE_GENERATION: () => false,
 };
 
 const PROMPT_SCOPE_METADATA: Record<
@@ -255,26 +262,46 @@ const PROMPT_HELP_TEXT: Record<string, string> = {
 };
 
 const ALL_MODEL_OPTIONS = [
-  // Modelos Google Gemini
+  // Modelos Google Gemini vigentes
   {
-    value: "gemini-2.0-flash",
-    label: "Gemini 2.0 Flash",
-    description: "Rapido, estable y recomendado para la mayoria de pasos",
+    value: "gemini-3.6-flash",
+    label: "Gemini 3.6 Flash",
+    description: "Modelo Flash actual para tareas agenticas y multimodales",
   },
   {
-    value: "gemini-1.5-flash",
-    label: "Gemini 1.5 Flash",
-    description: "Eficiente y veloz",
+    value: "gemini-3.5-flash",
+    label: "Gemini 3.5 Flash",
+    description: "Alto rendimiento sostenido para tareas agenticas y de codigo",
   },
   {
-    value: "gemini-1.5-pro",
-    label: "Gemini 1.5 Pro",
-    description: "Razonamiento complejo y analisis profundo",
+    value: "gemini-3.5-flash-lite",
+    label: "Gemini 3.5 Flash-Lite",
+    description: "Opcion actual de alto volumen y menor costo",
   },
   {
-    value: "gemini-2.0-flash-lite",
-    label: "Gemini 2.0 Flash Lite",
-    description: "Alta escala y muy economico",
+    value: "gemini-3.1-flash-lite",
+    label: "Gemini 3.1 Flash-Lite",
+    description: "Modelo estable y eficiente para ejecucion de alto volumen",
+  },
+  {
+    value: "gemini-3.1-pro-preview",
+    label: "Gemini 3.1 Pro (Preview)",
+    description: "Razonamiento multimodal avanzado; usar con cautela por ser preview",
+  },
+  {
+    value: "gemini-2.5-flash",
+    label: "Gemini 2.5 Flash",
+    description: "Opcion vigente con buen balance de razonamiento, latencia y costo",
+  },
+  {
+    value: "gemini-2.5-flash-lite",
+    label: "Gemini 2.5 Flash-Lite",
+    description: "Modelo vigente, rapido y economico para alto volumen",
+  },
+  {
+    value: "gemini-2.5-pro",
+    label: "Gemini 2.5 Pro",
+    description: "Modelo vigente para razonamiento y tareas complejas",
   },
   // Modelos OpenAI GPT-5 & Next-Gen
   {
@@ -350,6 +377,14 @@ const ALL_MODEL_OPTIONS = [
   },
 ];
 
+const IMAGE_MODEL_OPTIONS = [
+  {
+    value: "gpt-image-2",
+    label: "GPT Image 2 (OpenAI)",
+    description: "Modelo actual de OpenAI para generacion y edicion de imagenes",
+  },
+];
+
 const REASONING_LEVEL_OPTIONS = [
   { value: "minimal", label: "Minimal", description: "Rapido" },
   { value: "low", label: "Low", description: "Rapido y balanceado" },
@@ -366,8 +401,10 @@ const OPENAI_REASONING_LEVEL_OPTIONS = [
   { value: "max", label: "Max", description: "Maxima exploracion" },
 ];
 
-function getModelOptions(_settingType: string) {
-  return ALL_MODEL_OPTIONS;
+function getModelOptions(settingType: string) {
+  return settingType === "SLIDES_IMAGE_GENERATION"
+    ? IMAGE_MODEL_OPTIONS
+    : ALL_MODEL_OPTIONS;
 }
 
 function getReasoningOptions(settingType: string) {

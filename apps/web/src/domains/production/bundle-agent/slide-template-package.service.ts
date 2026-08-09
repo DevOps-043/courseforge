@@ -55,8 +55,16 @@ const slideTemplateModifiersSchema = z.object({
   showBrandMark: z.boolean().default(true),
 });
 
+const slideTemplateImageSlotSchema = z.object({
+  id: z.string().trim().regex(/^[a-z][a-z0-9_]*$/).min(2).max(80),
+  opacity: z.number().min(0).max(1).optional(),
+  placement: z.enum(["background", "image_pane"]),
+  purpose: z.enum(["background", "supporting"]),
+});
+
 const slideTemplateLayoutDefinitionSchema = z.object({
   id: z.enum(["center", "closing", "data", "framework", "split", "split_reverse"]),
+  imageSlots: z.array(slideTemplateImageSlotSchema).max(4).default([]),
   label: z.string().trim().min(1).max(80),
   purpose: z.string().trim().min(1).max(240),
   regions: z.array(z.string().trim().min(1).max(80)).min(1).max(8),
@@ -89,6 +97,7 @@ const slideTemplateBlueprintSchema = z.object({
   layouts: z.array(slideTemplateLayoutDefinitionSchema).min(1).max(8),
   modifiers: slideTemplateModifiersSchema,
   slideTypes: z.array(slideTemplateTypeDefinitionSchema).min(1).max(12),
+  visualStyleGuide: z.string().trim().min(1).max(600).default("Editorial educational visual, refined and restrained, with clear subject hierarchy and no embedded text."),
 });
 
 const DEFAULT_LAYOUTS: z.infer<typeof slideTemplateLayoutDefinitionSchema>[] = [
@@ -97,30 +106,35 @@ const DEFAULT_LAYOUTS: z.infer<typeof slideTemplateLayoutDefinitionSchema>[] = [
     label: "Portada centrada",
     purpose: "Titulos, intros y transiciones con una sola idea dominante.",
     regions: ["kicker", "title", "subtitle", "support_points"],
+    imageSlots: [{ id: "atmospheric_background", placement: "background", purpose: "background", opacity: 0.14 }],
   },
   {
     id: "split",
     label: "Texto + visual",
     purpose: "Explicaciones con jerarquia clara entre concepto y evidencia visual.",
     regions: ["copy", "visual", "citation"],
+    imageSlots: [{ id: "supporting_visual", placement: "image_pane", purpose: "supporting" }],
   },
   {
     id: "framework",
     label: "Marco de ideas",
     purpose: "Modelos, pasos, listas cortas y estructuras de aprendizaje.",
     regions: ["header", "columns", "callout"],
+    imageSlots: [],
   },
   {
     id: "data",
     label: "Datos con contexto",
     purpose: "Graficas solo cuando la leccion contiene datos comparables o cuantitativos.",
     regions: ["chart", "insight", "source"],
+    imageSlots: [],
   },
   {
     id: "closing",
     label: "Cierre operativo",
     purpose: "Resumen, accion siguiente o recapitulacion de la leccion.",
     regions: ["title", "takeaways", "next_step"],
+    imageSlots: [{ id: "atmospheric_background", placement: "background", purpose: "background", opacity: 0.16 }],
   },
 ];
 

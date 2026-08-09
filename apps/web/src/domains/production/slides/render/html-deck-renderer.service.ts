@@ -64,7 +64,38 @@ function renderNotes(slide: CourseSlideSpec) {
     : "";
 }
 
-function renderVisualPane() {
+function readyAssetUrl(slide: CourseSlideSpec, purpose: "background" | "supporting") {
+  const asset = slide.visualAssets?.[purpose];
+  if (asset?.status !== "READY" || !asset.url) return null;
+
+  try {
+    const parsed = new URL(asset.url);
+    return parsed.protocol === "https:" ? asset.url : null;
+  } catch {
+    return null;
+  }
+}
+
+function renderBackgroundPane(slide: CourseSlideSpec) {
+  const asset = slide.visualAssets?.background;
+  const url = readyAssetUrl(slide, "background");
+  if (!asset || !url) return `<div class="bg-pane"></div>`;
+
+  const opacity = asset.slot.opacity ?? 0.14;
+  return `<div class="bg-pane has-generated-background" data-visual-asset="${escapeHtml(asset.id)}" style="--generated-background-opacity:${opacity}">
+    <img src="${escapeHtml(url)}" alt="" aria-hidden="true" />
+  </div>`;
+}
+
+function renderVisualPane(slide: CourseSlideSpec) {
+  const asset = slide.visualAssets?.supporting;
+  const url = readyAssetUrl(slide, "supporting");
+  if (asset && url) {
+    return `<div class="image-pane has-generated-supporting" data-visual-asset="${escapeHtml(asset.id)}">
+      <img src="${escapeHtml(url)}" alt="${escapeHtml(asset.altText)}" />
+    </div>`;
+  }
+
   return `<div class="image-pane">
     <div class="visual-grid"></div>
     <div class="visual-object" aria-hidden="true">
@@ -98,7 +129,7 @@ function renderCenterSlide(slide: CourseSlideSpec, deck: CourseDeckSpec, isActiv
     .join("");
 
   return `<section class="slide ${isActive ? "active " : ""}s-center" data-screen-label="${String(slide.order).padStart(2, "0")} ${escapeHtml(slide.title)}" data-title="${escapeHtml(slide.title)}">
-    <div class="bg-pane"></div>
+    ${renderBackgroundPane(slide)}
     ${renderCrosshairs()}
     <div class="center-copy">
       <div class="kicker">${escapeHtml(slideKicker(slide, deck))}</div>
@@ -123,7 +154,7 @@ function renderSplitSlide(
       ${slide.subtitle ? `<p class="lead">${escapeHtml(slide.subtitle)}</p>` : ""}
       ${renderBodyBlocks(slide)}
     </div>
-    ${renderVisualPane()}
+    ${renderVisualPane(slide)}
     <div class="brand-mark">${escapeHtml(brandMark(slide))}</div>
     ${renderNotes(slide)}
   </section>`;
@@ -172,7 +203,7 @@ function renderFrameworkSlide(slide: CourseSlideSpec, deck: CourseDeckSpec, isAc
 function renderClosingSlide(slide: CourseSlideSpec, deck: CourseDeckSpec, isActive: boolean) {
   const lead = slide.subtitle || firstTextBlock(slide);
   return `<section class="slide ${isActive ? "active " : ""}s-center closing-slide" data-screen-label="${String(slide.order).padStart(2, "0")} ${escapeHtml(slide.title)}" data-title="${escapeHtml(slide.title)}">
-    <div class="bg-pane"></div>
+    ${renderBackgroundPane(slide)}
     <div class="ch-tl crosshair"></div><div class="ch-br crosshair"></div>
     <div class="center-copy">
       <div class="kicker">${escapeHtml(deck.designSystem.brandLabel)}</div>
@@ -323,6 +354,13 @@ html, body {
   position: absolute;
   inset: 0;
   background: linear-gradient(90deg, var(--bg) 0%, transparent 38%);
+}
+.image-pane.has-generated-supporting > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  inset: 0;
 }
 .s-split-rev .image-pane::after { background: linear-gradient(-90deg, var(--bg) 0%, transparent 38%); }
 .visual-grid {
@@ -633,7 +671,14 @@ html, body {
 }
 .closing-slide .display-huge, .closing-slide .lead, .closing-slide .kicker { color: var(--shell); }
 .closing-slide .crosshair::before, .closing-slide .crosshair::after { background: var(--accent); opacity: .9; }
-.bg-pane { position: absolute; inset: 0; background: var(--bg); z-index: 0; }
+.bg-pane { position: absolute; inset: 0; background: var(--bg); z-index: 0; overflow: hidden; }
+.bg-pane.has-generated-background > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: var(--generated-background-opacity, .14);
+  filter: saturate(.78) contrast(1.06);
+}
 .center-copy { position: relative; z-index: 2; }
 .deck-counter {
   position: fixed;

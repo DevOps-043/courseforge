@@ -23,6 +23,7 @@ export interface CourseDeckQaReport {
     renderContract: boolean;
     slideOrder: boolean;
     textDensity: boolean;
+    visualAssets: boolean;
   };
   findings: CourseDeckQaFinding[];
   generatedAt: string;
@@ -209,6 +210,46 @@ function validateChartContracts(
   }
 }
 
+function validateVisualAssetContracts(
+  deckSpec: CourseDeckSpec,
+  html: string,
+  findings: CourseDeckQaFinding[],
+) {
+  for (const slide of deckSpec.slides) {
+    for (const asset of [slide.visualAssets?.background, slide.visualAssets?.supporting]) {
+      if (!asset || asset.status !== "READY") continue;
+
+      if (!asset.url || !asset.storagePath || !asset.checksum) {
+        pushFinding(findings, {
+          code: "incomplete_visual_asset",
+          message: "Una imagen lista debe declarar URL, ruta de storage y checksum.",
+          severity: "error",
+          slideId: slide.id,
+        });
+        continue;
+      }
+
+      if (asset.purpose === "supporting" && asset.sourceRefs.length === 0) {
+        pushFinding(findings, {
+          code: "supporting_visual_without_sources",
+          message: "Una imagen de apoyo debe conservar referencias de la fuente que la justifico.",
+          severity: "error",
+          slideId: slide.id,
+        });
+      }
+
+      if (!html.includes(`data-visual-asset="${asset.id}"`)) {
+        pushFinding(findings, {
+          code: "visual_asset_render_mismatch",
+          message: "Una imagen lista no fue insertada en el HTML del deck.",
+          severity: "error",
+          slideId: slide.id,
+        });
+      }
+    }
+  }
+}
+
 function validateNarrationLeakage(
   deckSpec: CourseDeckSpec,
   findings: CourseDeckQaFinding[],
@@ -323,6 +364,13 @@ function buildChecks(findings: CourseDeckQaFinding[]) {
     textDensity: !findings.some((finding) =>
       finding.severity === "error" && finding.code === "excessive_slide_text",
     ),
+    visualAssets: !findings.some((finding) =>
+      finding.severity === "error" && [
+        "incomplete_visual_asset",
+        "supporting_visual_without_sources",
+        "visual_asset_render_mismatch",
+      ].includes(finding.code),
+    ),
   };
 }
 
@@ -347,6 +395,7 @@ export function validateCourseDeckQuality(params: {
   validateSlideOrder(params.deckSpec, findings);
   validateTextDensity(params.deckSpec, findings);
   validateChartContracts(params.deckSpec, params.html, findings);
+  validateVisualAssetContracts(params.deckSpec, params.html, findings);
   validateNarrationLeakage(params.deckSpec, findings);
   validateHtmlSafety(params.html, findings);
   validateRenderContract(params.deckSpec, params.html, findings);

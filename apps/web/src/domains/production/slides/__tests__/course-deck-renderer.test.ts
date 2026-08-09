@@ -4,6 +4,7 @@ import { generateCourseDeckWithQualityGate } from "../generation/course-deck-gen
 import { buildCourseDeckSpecFromComponent } from "../planning/course-deck-from-component.service";
 import { renderCourseDeckHtml } from "../render/html-deck-renderer.service";
 import { validateCourseDeckQuality } from "../validation/course-deck-qa.service";
+import { planDeckVisualAssets } from "../visuals/slide-visual-asset-planning.service";
 
 describe("SofLIA - Engine slide deck generation", () => {
   it("builds a deck from existing script content without adding video-duration charts", () => {
@@ -297,6 +298,65 @@ describe("SofLIA - Engine slide deck generation", () => {
     assert.equal(generatedSlide?.type, "worked_example");
     assert.equal(generatedSlide?.renderHints?.layout, "split_reverse");
     assert.match(generatedSlide?.renderHints?.purpose || "", /apoyo visual/i);
+  });
+
+  it("plans decorative backgrounds separately from source-backed supporting visuals", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-1",
+      component: {
+        content: {
+          script: {
+            sections: [{
+              on_screen_text: "Aplicacion\nOrganiza tareas profundas en tus horas de mayor energia.",
+              section_number: 1,
+            }],
+            title: "Gestion de energia",
+          },
+        },
+        id: "component-1",
+        source_refs: ["source-energia-1"],
+        type: "VIDEO_THEORETICAL",
+      },
+      input: { locale: "es", template: "course-module" },
+    });
+    const planned = planDeckVisualAssets({ deckSpec: deck });
+    const cover = planned.slides.find((slide) => slide.id === "cover");
+    const content = planned.slides.find((slide) => slide.id === "script-section-1");
+
+    assert.equal(cover?.visualAssets?.background?.purpose, "background");
+    assert.deepEqual(cover?.visualAssets?.background?.sourceRefs, []);
+    assert.equal(content?.visualAssets?.supporting?.purpose, "supporting");
+    assert.deepEqual(content?.visualAssets?.supporting?.sourceRefs, ["source-energia-1"]);
+  });
+
+  it("renders ready visual assets and keeps their QA contract", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-1",
+      component: { content: {}, id: "component-1", type: "VIDEO_THEORETICAL" },
+      input: { locale: "es", template: "course-module" },
+    });
+    const planned = planDeckVisualAssets({ deckSpec: deck });
+    const cover = planned.slides[0];
+    assert.ok(cover?.visualAssets?.background);
+    const background = {
+      ...cover!.visualAssets!.background!,
+      checksum: "a".repeat(64),
+      status: "READY" as const,
+      storagePath: "production-assets/slides/component-1/visuals/background/cover.png",
+      url: "https://example.supabase.co/storage/v1/object/public/production-assets/cover.png",
+    };
+    const deckWithImage = {
+      ...planned,
+      slides: planned.slides.map((slide) => slide.id === cover?.id
+        ? { ...slide, visualAssets: { ...slide.visualAssets!, background } }
+        : slide),
+    };
+    const html = renderCourseDeckHtml(deckWithImage);
+    const report = validateCourseDeckQuality({ deckSpec: deckWithImage, html });
+
+    assert.match(html, /has-generated-background/);
+    assert.match(html, /data-visual-asset=/);
+    assert.equal(report.checks.visualAssets, true);
   });
 
   it("creates SVG charts only from instructional statistics", () => {

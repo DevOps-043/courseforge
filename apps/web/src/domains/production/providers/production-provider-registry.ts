@@ -27,6 +27,14 @@ const PROVIDERS: ProductionProviderDefinition[] = [
     jobTypes: [PRODUCTION_JOB_TYPES.BROLL_PROMPT_GENERATION],
   },
   {
+    key: PRODUCTION_PROVIDERS.OPENAI,
+    name: "OpenAI GPT Image",
+    jobTypes: [
+      PRODUCTION_JOB_TYPES.SLIDE_BACKGROUND_GENERATION,
+      PRODUCTION_JOB_TYPES.SLIDE_SUPPORTING_IMAGE_GENERATION,
+    ],
+  },
+  {
     key: PRODUCTION_PROVIDERS.MANUAL,
     name: "Manual Upload/Link",
     jobTypes: [],
