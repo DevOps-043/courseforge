@@ -12,6 +12,7 @@ import {
   buildVisibleLinesFromStoryboardItem,
   compactEducationalText,
 } from "../content/slide-visible-content.service";
+import { copyBudgetForSlideType, limitSlideCopy } from "../content/slide-copy-policy.service";
 import { buildInstructionalChartsFromContent } from "../charts/instructional-chart-agent.service";
 import { buildDeckBrief } from "../agents/deck-brief-agent.service";
 import { buildEvidencePack, type EvidencePack } from "../agents/lesson-evidence-agent.service";
@@ -110,7 +111,10 @@ function limitItems(items: string[], maxItems = 4) {
 function titleFromContent(content: Record<string, unknown>, fallback: string) {
   const directTitle = compactText(content.title);
   const scriptTitle = compactText(asRecord(content.script).title);
-  return limitText(directTitle || scriptTitle || fallback, 180);
+  return limitSlideCopy(
+    directTitle || scriptTitle || fallback,
+    copyBudgetForSlideType("cover").maxTitleCharacters,
+  );
 }
 
 function firstEducationalText(values: unknown[]) {
@@ -152,7 +156,10 @@ function coverLeadFromContent(
     firstSection?.success_criteria,
   ]);
 
-  return limitText(lead || "Contenido pendiente de sintetizar desde fuentes aprobadas para esta leccion.", 240);
+  return limitSlideCopy(
+    lead || "Contenido pendiente de sintetizar desde fuentes aprobadas para esta leccion.",
+    copyBudgetForSlideType("cover").maxBodyItemCharacters,
+  );
 }
 
 function buildChartSlides(
@@ -183,7 +190,7 @@ function buildChartSlides(
         layout: "data",
         purpose: "Explicar estadisticas educativas detectadas en la leccion.",
       },
-      title: chart.title,
+      title: limitSlideCopy(chart.title, copyBudgetForSlideType("data_explainer").maxTitleCharacters),
       type: "data_explainer",
       validationHints: {
         mustKeepClaims: ["La grafica debe provenir de datos educativos estructurados, no del ritmo del video."],
@@ -316,6 +323,7 @@ function buildSlidesFromScript(
     const copy = buildVisibleSlideCopy({
       fallbackBody: "Contenido pendiente de sintetizar desde fuentes aprobadas.",
       fallbackTitle: `Idea ${index + 1}`,
+      slideType: resolvedSlideType,
       subtitle: sourceVisibleLines.length > 0
         ? undefined
         : compactEducationalText(section.visual_notes),
@@ -354,8 +362,8 @@ function buildSlidesFromScript(
       id: "cover",
       order: 1,
       renderHints: renderHintsForSlide(visualAssignments, "cover"),
-      subtitle: limitText(script.title, 240) || undefined,
-      title: limitText(title, 180),
+      subtitle: limitSlideCopy(script.title, copyBudgetForSlideType("cover").maxSubtitleCharacters) || undefined,
+      title: limitSlideCopy(title, copyBudgetForSlideType("cover").maxTitleCharacters),
       type: "cover",
       validationHints: {
         mustKeepClaims: [],
@@ -394,7 +402,7 @@ function buildSlidesFromStoryboard(
       id: "cover",
       order: 1,
       renderHints: renderHintsForSlide(visualAssignments, "cover"),
-      title: limitText(title, 180),
+      title: limitSlideCopy(title, copyBudgetForSlideType("cover").maxTitleCharacters),
       type: "cover",
       validationHints: {
         mustKeepClaims: [],
@@ -413,9 +421,10 @@ function buildSlidesFromStoryboard(
         ? sourceVisibleLines
         : visibleLines;
       const sourceRefs = sourceRefsForSlide(slidePlan, id, ["component.content.storyboard"]);
-      const copy = buildVisibleSlideCopy({
-        fallbackBody: "Contenido pendiente de sintetizar desde fuentes aprobadas.",
-        fallbackTitle: `Escena ${item.take_number || index + 1}`,
+    const copy = buildVisibleSlideCopy({
+      fallbackBody: "Contenido pendiente de sintetizar desde fuentes aprobadas.",
+      fallbackTitle: `Escena ${item.take_number || index + 1}`,
+      slideType: resolvedSlideType,
         subtitle: undefined,
         visibleLines: resolvedVisibleLines,
       });
@@ -456,7 +465,7 @@ function fallbackSlides(title: string, visualAssignments: VisualAssignmentMap): 
     id: "fallback-cover",
     order: 1,
     renderHints: renderHintsForSlide(visualAssignments, "fallback-cover"),
-    title: limitText(title, 180),
+    title: limitSlideCopy(title, copyBudgetForSlideType("cover").maxTitleCharacters),
     type: "cover",
     validationHints: {
       mustKeepClaims: [],
@@ -516,7 +525,7 @@ export function buildCourseDeckSpecFromComponent(params: BuildCourseDeckSpecPara
     sourceSnapshot: {
       componentType,
       source,
-      title: limitText(title, 180),
+      title: limitSlideCopy(title, copyBudgetForSlideType("cover").maxTitleCharacters),
     },
     template: params.input.template,
     width: COURSE_DECK_WIDTH,

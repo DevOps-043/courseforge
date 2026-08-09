@@ -1,9 +1,10 @@
 "use client";
 
-import { Copy, KeyRound, Link2, Loader2, ShieldCheck } from "lucide-react";
+import { Copy, KeyRound, Link2, Loader2, ShieldCheck, Trash2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import {
+  clearWorkerCurrentJobsForOrganizationAction,
   createWorkerLinkCodeForOrganizationAction,
   setPrimaryBundleWorkerForOrganizationAction,
 } from "./actions";
@@ -47,7 +48,9 @@ export function WorkerLinkingPanel({
   const [deviceName, setDeviceName] = useState("");
   const [linkCode, setLinkCode] = useState(newLinkCode);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [cleanupWorkerId, setCleanupWorkerId] = useState<string | null>(null);
   const [primaryWorkerId, setPrimaryWorkerId] = useState<string | null>(null);
   const effectiveOrganizationSlug = useMemo(
     () => organizationSlug || resolveSlugFromPathname(pathname),
@@ -57,6 +60,7 @@ export function WorkerLinkingPanel({
 
   const handleCreateLinkCode = () => {
     setError(null);
+    setNotice(null);
     startTransition(async () => {
       const result = await createWorkerLinkCodeForOrganizationAction({
         deviceName,
@@ -76,6 +80,7 @@ export function WorkerLinkingPanel({
 
   const handleSetPrimary = (workerId: string) => {
     setError(null);
+    setNotice(null);
     setPrimaryWorkerId(workerId);
     startTransition(async () => {
       const result = await setPrimaryBundleWorkerForOrganizationAction({
@@ -90,6 +95,35 @@ export function WorkerLinkingPanel({
         router.refresh();
       }
       setPrimaryWorkerId(null);
+    });
+  };
+
+  const handleCleanupCurrentJobs = (worker: LinkedWorkerView) => {
+    const confirmed = window.confirm(
+      `¿Limpiar los jobs actuales de ${worker.name}? Se cancelarán renders, builds y previews activos o recuperables. Los jobs completados no se modificarán.`,
+    );
+    if (!confirmed) return;
+
+    setError(null);
+    setNotice(null);
+    setCleanupWorkerId(worker.id);
+    startTransition(async () => {
+      const result = await clearWorkerCurrentJobsForOrganizationAction({
+        organizationId,
+        organizationSlug: effectiveOrganizationSlug,
+        workerId: worker.id,
+      });
+
+      if (!result.success) {
+        setError(result.error || "No se pudieron limpiar los jobs del worker.");
+      } else {
+        const total = (result.cancelledRenders || 0) + (result.cancelledBuilds || 0) + (result.cancelledPreviews || 0);
+        setNotice(total > 0
+          ? `Se limpiaron ${total} job${total === 1 ? "" : "s"} del worker.`
+          : "No habia jobs activos o recuperables para limpiar en este worker.");
+        router.refresh();
+      }
+      setCleanupWorkerId(null);
     });
   };
 
@@ -138,6 +172,12 @@ export function WorkerLinkingPanel({
         {error && (
           <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-200">
             {error}
+          </div>
+        )}
+
+        {notice && (
+          <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200">
+            {notice}
           </div>
         )}
 
@@ -215,14 +255,29 @@ export function WorkerLinkingPanel({
                     Slots {worker.runningJobs}/{worker.maxConcurrentJobs} en uso · disponibles {worker.availableSlots}
                   </p>
                 </div>
-                <button
-                  className="inline-flex w-full items-center justify-center rounded-md border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5 md:w-auto"
-                  disabled={isPending || worker.isPrimaryBundleWorker || worker.status === "REVOKED"}
-                  onClick={() => handleSetPrimary(worker.id)}
-                  type="button"
-                >
-                  {primaryWorkerId === worker.id ? "Guardando..." : "Marcar principal"}
-                </button>
+                <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
+                  <button
+                    className="inline-flex w-full items-center justify-center rounded-md border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-500/20 dark:text-red-300 dark:hover:bg-red-500/10 md:w-auto"
+                    disabled={isPending || worker.status === "REVOKED"}
+                    onClick={() => handleCleanupCurrentJobs(worker)}
+                    type="button"
+                  >
+                    {cleanupWorkerId === worker.id ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="mr-2 h-4 w-4" />
+                    )}
+                    {cleanupWorkerId === worker.id ? "Limpiando..." : "Limpiar jobs actuales"}
+                  </button>
+                  <button
+                    className="inline-flex w-full items-center justify-center rounded-md border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5 md:w-auto"
+                    disabled={isPending || worker.isPrimaryBundleWorker || worker.status === "REVOKED"}
+                    onClick={() => handleSetPrimary(worker.id)}
+                    type="button"
+                  >
+                    {primaryWorkerId === worker.id ? "Guardando..." : "Marcar principal"}
+                  </button>
+                </div>
               </div>
             ))}
           </div>

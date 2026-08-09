@@ -1,3 +1,8 @@
+import {
+  copyBudgetForSlideType,
+  limitSlideCopy,
+} from "../content/slide-copy-policy.service";
+
 export interface VisibleSlideCopy {
   bodyItems: string[];
   subtitle?: string;
@@ -7,24 +12,9 @@ export interface VisibleSlideCopy {
 interface BuildVisibleCopyParams {
   fallbackBody: string;
   fallbackTitle: string;
-  maxBodyItems?: number;
+  slideType?: string;
   subtitle?: unknown;
   visibleLines: string[];
-}
-
-function compactText(value: unknown): string {
-  return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
-}
-
-function limitText(value: unknown, maxLength: number): string {
-  const compact = compactText(value);
-  if (compact.length <= maxLength) {
-    return compact;
-  }
-
-  const sliced = compact.slice(0, maxLength - 1).trimEnd();
-  const wordBreak = sliced.lastIndexOf(" ");
-  return `${sliced.slice(0, wordBreak > maxLength * 0.5 ? wordBreak : sliced.length).trimEnd()}...`;
 }
 
 function uniqueItems(items: string[]) {
@@ -44,18 +34,19 @@ function uniqueItems(items: string[]) {
 }
 
 export function buildVisibleSlideCopy(params: BuildVisibleCopyParams): VisibleSlideCopy {
-  const title = limitText(params.visibleLines[0] || params.fallbackTitle, 180);
+  const budget = copyBudgetForSlideType(params.slideType);
+  const title = limitSlideCopy(params.visibleLines[0] || params.fallbackTitle, budget.maxTitleCharacters);
   const bodyItems = uniqueItems(
     params.visibleLines
       .slice(1)
-      .map((line) => limitText(line, 240))
+      .map((line) => limitSlideCopy(line, budget.maxBodyItemCharacters))
       .filter((line) => line && line !== title),
-  ).slice(0, params.maxBodyItems ?? 4);
-  const fallbackBody = limitText(params.fallbackBody, 240);
+  ).slice(0, budget.maxBodyItems);
+  const fallbackBody = limitSlideCopy(params.fallbackBody, budget.maxBodyItemCharacters);
 
   return {
     bodyItems: bodyItems.length > 0 ? bodyItems : [fallbackBody],
-    subtitle: limitText(params.subtitle, 240) || undefined,
+    subtitle: limitSlideCopy(params.subtitle, budget.maxSubtitleCharacters) || undefined,
     title,
   };
 }

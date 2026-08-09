@@ -33,7 +33,7 @@ const SLIDE_AGENT_PROMPT_ENTRIES = Object.entries(SLIDE_AGENT_PROMPT_CODES) as A
 
 const DEFAULT_MODEL_SETTINGS: Record<SlideAgentPromptKey, SlideAgentModelSettingRecord> = {
   deckBrief: {
-    fallbackModel: "gemini-2.0-flash",
+    fallbackModel: "gemini-2.5-flash",
     modelName: "gpt-4o-mini",
     scope: SLIDE_AGENT_PROMPT_SCOPE,
     settingType: SLIDE_AGENT_PROMPT_CODES.deckBrief,
@@ -41,7 +41,7 @@ const DEFAULT_MODEL_SETTINGS: Record<SlideAgentPromptKey, SlideAgentModelSetting
     thinkingLevel: "low",
   },
   evidence: {
-    fallbackModel: "gemini-2.0-flash",
+    fallbackModel: "gemini-2.5-flash",
     modelName: "gpt-4o-mini",
     scope: SLIDE_AGENT_PROMPT_SCOPE,
     settingType: SLIDE_AGENT_PROMPT_CODES.evidence,
@@ -49,7 +49,7 @@ const DEFAULT_MODEL_SETTINGS: Record<SlideAgentPromptKey, SlideAgentModelSetting
     thinkingLevel: "low",
   },
   qa: {
-    fallbackModel: "gemini-2.0-flash",
+    fallbackModel: "gemini-2.5-flash",
     modelName: "gpt-4o-mini",
     scope: SLIDE_AGENT_PROMPT_SCOPE,
     settingType: SLIDE_AGENT_PROMPT_CODES.qa,
@@ -57,7 +57,7 @@ const DEFAULT_MODEL_SETTINGS: Record<SlideAgentPromptKey, SlideAgentModelSetting
     thinkingLevel: "low",
   },
   slideStrategy: {
-    fallbackModel: "gemini-2.0-flash",
+    fallbackModel: "gemini-2.5-flash",
     modelName: "gpt-4o",
     scope: SLIDE_AGENT_PROMPT_SCOPE,
     settingType: SLIDE_AGENT_PROMPT_CODES.slideStrategy,
@@ -65,7 +65,7 @@ const DEFAULT_MODEL_SETTINGS: Record<SlideAgentPromptKey, SlideAgentModelSetting
     thinkingLevel: "medium",
   },
   templateType: {
-    fallbackModel: "gemini-2.0-flash",
+    fallbackModel: "gemini-2.5-flash",
     modelName: "gpt-4o",
     scope: SLIDE_AGENT_PROMPT_SCOPE,
     settingType: SLIDE_AGENT_PROMPT_CODES.templateType,
@@ -73,7 +73,7 @@ const DEFAULT_MODEL_SETTINGS: Record<SlideAgentPromptKey, SlideAgentModelSetting
     thinkingLevel: "medium",
   },
   visibleCopy: {
-    fallbackModel: "gemini-2.0-flash",
+    fallbackModel: "gemini-2.5-flash",
     modelName: "gpt-4o-mini",
     scope: SLIDE_AGENT_PROMPT_SCOPE,
     settingType: SLIDE_AGENT_PROMPT_CODES.visibleCopy,
@@ -81,7 +81,7 @@ const DEFAULT_MODEL_SETTINGS: Record<SlideAgentPromptKey, SlideAgentModelSetting
     thinkingLevel: "low",
   },
   visualTemplate: {
-    fallbackModel: "gemini-2.0-flash",
+    fallbackModel: "gemini-2.5-flash",
     modelName: "gpt-4o",
     scope: SLIDE_AGENT_PROMPT_SCOPE,
     settingType: SLIDE_AGENT_PROMPT_CODES.visualTemplate,

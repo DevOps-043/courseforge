@@ -1083,7 +1083,11 @@ function buildRenderDiagnostics(params: {
   };
 }
 
-function assertWorkerCanAccessJob(worker: WorkerAuthContext, job: any) {
+function assertWorkerCanAccessJob(
+  worker: WorkerAuthContext,
+  job: any,
+  options: { allowCancelled?: boolean } = {},
+) {
   if (job.organization_id !== worker.organizationId) {
     throw new Error("JOB_FORBIDDEN_FOR_WORKER");
   }
@@ -1093,7 +1097,10 @@ function assertWorkerCanAccessJob(worker: WorkerAuthContext, job: any) {
   if (job.input_snapshot?.renderProvider !== "desktop_worker") {
     throw new Error("JOB_PROVIDER_NOT_DESKTOP_WORKER");
   }
-  if (!["PENDING", "QUEUED", "WAITING_PROVIDER", "RUNNING", "SUCCEEDED"].includes(job.status)) {
+  const allowedStatuses = options.allowCancelled
+    ? ["PENDING", "QUEUED", "WAITING_PROVIDER", "RUNNING", "SUCCEEDED", "CANCELLED"]
+    : ["PENDING", "QUEUED", "WAITING_PROVIDER", "RUNNING", "SUCCEEDED"];
+  if (!allowedStatuses.includes(job.status)) {
     throw new Error("JOB_NOT_CLAIMABLE");
   }
   if (job.worker_id && job.worker_id !== worker.id) {
@@ -3397,7 +3404,10 @@ export class DesktopWorkerControlPlane {
       return this.completeTemplatePreview(worker, templatePreview, input);
     }
 
-    const job = await this.getAuthorizedWorkerJob(worker, jobId);
+    const job = await this.getAuthorizedWorkerJob(worker, jobId, { allowCancelled: true });
+    if (job.status === "CANCELLED") {
+      return { discarded: true, reason: "JOB_CANCELLED" };
+    }
     if (!input.outputStoragePath || !input.outputStoragePath.startsWith("completed/")) {
       throw new Error("INVALID_OUTPUT_STORAGE_PATH");
     }
@@ -3947,7 +3957,11 @@ export class DesktopWorkerControlPlane {
     return preview;
   }
 
-  private async getAuthorizedWorkerJob(worker: WorkerAuthContext, jobId: string) {
+  private async getAuthorizedWorkerJob(
+    worker: WorkerAuthContext,
+    jobId: string,
+    options: { allowCancelled?: boolean } = {},
+  ) {
     const { data: job, error } = await this.supabase
       .from("production_jobs")
       .select("*")
@@ -3955,7 +3969,7 @@ export class DesktopWorkerControlPlane {
       .single();
 
     if (error || !job) throw new Error("JOB_NOT_FOUND");
-    assertWorkerCanAccessJob(worker, job);
+    assertWorkerCanAccessJob(worker, job, options);
     return job;
   }
 
