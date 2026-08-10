@@ -3196,17 +3196,31 @@ export class DesktopWorkerControlPlane {
     }
     const duration = reportedDuration || expectedDuration;
 
-    const { data: component } = await this.supabase
-      .from("material_components")
-      .select("assets")
-      .eq("id", job.material_component_id)
-      .maybeSingle();
+    // These reads are independent. Running them in parallel keeps this endpoint
+    // below the Netlify function timeout, which is especially important after a
+    // large desktop upload has finished.
+    const [componentResult, publicationRequestResult] = await Promise.all([
+      this.supabase
+        .from("material_components")
+        .select("assets")
+        .eq("id", job.material_component_id)
+        .maybeSingle(),
+      job.artifact_id
+        ? this.supabase
+          .from("publication_requests")
+          .select("id, lesson_videos")
+          .eq("artifact_id", job.artifact_id)
+          .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+    if (componentResult.error) throw new Error(`COMPONENT_LOOKUP_FAILED: ${componentResult.error.message}`);
+    if (publicationRequestResult.error) throw new Error(`PUBLICATION_REQUEST_LOOKUP_FAILED: ${publicationRequestResult.error.message}`);
 
-    await this.supabase
+    const componentUpdate = this.supabase
       .from("material_components")
       .update({
         assets: {
-          ...(component?.assets || {}),
+          ...(componentResult.data?.assets || {}),
           final_video_url: publicUrl,
           final_video_source: "desktop_worker",
           final_video_file_name: input.outputStoragePath.split("/").filter(Boolean).pop(),
@@ -3220,13 +3234,13 @@ export class DesktopWorkerControlPlane {
       })
       .eq("id", job.material_component_id);
 
-    await this.syncFinalVideoToPublicationRequest({
+    const publicationUpdate = this.syncFinalVideoToPublicationRequest({
       artifactId: job.artifact_id || null,
       materialLessonId: job.material_lesson_id || null,
       lessonId: job.lesson_id || null,
       finalVideoUrl: publicUrl,
       duration,
-    });
+    }, publicationRequestResult.data || undefined);
 
     const outputSnapshot = {
       ...(job.output_snapshot || {}),
@@ -3241,7 +3255,7 @@ export class DesktopWorkerControlPlane {
       logsRef: sanitizeText(input.logsRef, ""),
     };
 
-    const { error } = await this.supabase
+    const jobUpdate = this.supabase
       .from("production_jobs")
       .update({
         status: "SUCCEEDED",
@@ -3262,7 +3276,13 @@ export class DesktopWorkerControlPlane {
       })
       .eq("id", jobId);
 
-    if (error) throw new Error(`JOB_COMPLETE_FAILED: ${error.message}`);
+    const [componentUpdateResult, _publicationUpdateResult, jobUpdateResult] = await Promise.all([
+      componentUpdate,
+      publicationUpdate,
+      jobUpdate,
+    ]);
+    if (componentUpdateResult.error) throw new Error(`COMPONENT_COMPLETE_FAILED: ${componentUpdateResult.error.message}`);
+    if (jobUpdateResult.error) throw new Error(`JOB_COMPLETE_FAILED: ${jobUpdateResult.error.message}`);
     await this.updateBatchItemFromJob(job.id, "SUCCEEDED");
     await this.heartbeat(worker, { status: "ONLINE" });
     return { finalVideoUrl: publicUrl, durationSeconds: duration };
@@ -3776,7 +3796,7 @@ export class DesktopWorkerControlPlane {
     lessonId: string | null;
     finalVideoUrl: string;
     duration: number;
-  }) {
+  }, existingRequest?: { id?: string | null; lesson_videos?: unknown } | null) {
     if (!params.artifactId || !params.lessonId || !params.finalVideoUrl) return;
 
     let lessonTitle = params.lessonId;
@@ -3793,12 +3813,6 @@ export class DesktopWorkerControlPlane {
       moduleTitle = lesson?.module_title || "";
     }
 
-    const { data: existingRequest } = await this.supabase
-      .from("publication_requests")
-      .select("id, lesson_videos")
-      .eq("artifact_id", params.artifactId)
-      .maybeSingle();
-
     const currentLessonVideos = (existingRequest?.lesson_videos as Record<string, unknown> | null) || {};
     const nextLessonVideos = {
       ...currentLessonVideos,
@@ -3813,19 +3827,21 @@ export class DesktopWorkerControlPlane {
     };
 
     if (existingRequest?.id) {
-      await this.supabase
+      const { error } = await this.supabase
         .from("publication_requests")
         .update({ lesson_videos: nextLessonVideos, updated_at: new Date().toISOString() })
         .eq("id", existingRequest.id);
+      if (error) throw new Error(`PUBLICATION_REQUEST_UPDATE_FAILED: ${error.message}`);
       return;
     }
 
-    await this.supabase.from("publication_requests").insert({
+    const { error } = await this.supabase.from("publication_requests").insert({
       artifact_id: params.artifactId,
       lesson_videos: nextLessonVideos,
       status: "DRAFT",
       updated_at: new Date().toISOString(),
     });
+    if (error) throw new Error(`PUBLICATION_REQUEST_CREATE_FAILED: ${error.message}`);
   }
 }
 
