@@ -14,6 +14,7 @@ import {
   authenticateDesktopWorker,
   DesktopWorkerControlPlane,
 } from "@/lib/server/desktop-worker-control-plane";
+import { OutputDurationMismatchError } from "@/lib/server/desktop-worker-errors";
 
 export const WORKER_ROUTE_RUNTIME = "nodejs";
 
@@ -126,6 +127,12 @@ export async function authenticateWorkerRoute(request: Request) {
 }
 
 export function mapWorkerError(error: unknown) {
+  if (error instanceof OutputDurationMismatchError) {
+    return NextResponse.json(
+      { error: error.message, code: error.code, details: error.details },
+      { status: 422 },
+    );
+  }
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("UNAUTHORIZED")) return jsonError("Unauthorized", 401);
   if (message.includes("FORBIDDEN")) return jsonError(message, 403);

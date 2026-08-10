@@ -21,6 +21,7 @@ import {
   parseTimelineOverrideManifests,
 } from "@/remotion/timeline-overrides";
 import { mergeTemplateRenderConfigs } from "@/remotion/template-config";
+import { OutputDurationMismatchError } from "@/lib/server/desktop-worker-errors";
 
 const WORKER_TOKEN_PREFIX = "swk_";
 const LINK_CODE_PREFIX = "SLIA-";
@@ -33,6 +34,7 @@ const WORKER_JOB_STALE_MS = 2 * 60 * 1000;
 const WORKER_JOB_LEASE_SECONDS = 180;
 const ASSEMBLY_FPS = 30;
 const FALLBACK_DURATION_SECONDS = 10;
+const OUTPUT_DURATION_TOLERANCE_SECONDS = 2;
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 const INTERNAL_COMPOSITION_IDS = ["animated-deck-avatar", "full-slides", "split-avatar", "avatar-focus"] as const;
 const DEFAULT_INTERNAL_COMPOSITION_ID = "full-slides";
@@ -592,18 +594,42 @@ function hasUsableFinalVideoUrl(value: unknown): boolean {
   return typeof value === "string" && /^https?:\/\//i.test(value.trim());
 }
 
-function deriveDurationFromJob(job: any): number {
+function deriveDurationContractFromJob(job: any) {
   const props = job.input_snapshot?.resolvedProps;
-  const frames = Number(props?.totalDurationInFrames);
+  const frames = Number(props?.totalDurationFrames ?? props?.totalDurationInFrames);
   const fps = Number(props?.fps);
   if (Number.isFinite(frames) && Number.isFinite(fps) && frames > 0 && fps > 0) {
-    return Math.round(frames / fps);
+    return { frames: Math.round(frames), fps, durationSeconds: frames / fps };
   }
-  return 0;
+  return null;
+}
+
+function deriveDurationFromJob(job: any): number {
+  return deriveDurationContractFromJob(job)?.durationSeconds || 0;
 }
 
 function isPositiveFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function readOutputDurationMismatchDiagnostic(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const expectedFrames = Number(source.expectedFrames);
+  const expectedFps = Number(source.expectedFps);
+  const expectedDurationSeconds = Number(source.expectedDurationSeconds);
+  const receivedDurationSeconds = Number(source.receivedDurationSeconds);
+  const toleranceSeconds = Number(source.toleranceSeconds);
+  if (
+    !Number.isInteger(expectedFrames) || expectedFrames < 1
+    || !isPositiveFiniteNumber(expectedFps)
+    || !isPositiveFiniteNumber(expectedDurationSeconds)
+    || !isPositiveFiniteNumber(receivedDurationSeconds)
+    || !isPositiveFiniteNumber(toleranceSeconds)
+  ) {
+    return null;
+  }
+  return { expectedFrames, expectedFps, expectedDurationSeconds, receivedDurationSeconds, toleranceSeconds };
 }
 
 function resolveTimelineOverrideDurationSeconds(params: {
@@ -770,6 +796,7 @@ function buildAssemblyInputProps(params: {
     template: params.compositionId,
     fps: ASSEMBLY_FPS,
     totalDurationInFrames,
+    totalDurationFrames: totalDurationInFrames,
     voiceAudioUrl: normalized.voiceAudioUrl,
     bgMusicUrl: normalized.bgMusicUrl,
     bgMusicVolume: normalized.bgMusicVolume,
@@ -813,6 +840,7 @@ const PROTECTED_EXTERNAL_TEMPLATE_PROP_KEYS = new Set([
   "templateConfig",
   "timelineOverrides",
   "totalDurationInFrames",
+  "totalDurationFrames",
   "transitionType",
   "voiceAudioUrl",
 ]);
@@ -3429,14 +3457,26 @@ export class DesktopWorkerControlPlane {
       data: { publicUrl },
     } = this.supabase.storage.from(VIDEO_BUCKET).getPublicUrl(input.outputStoragePath);
 
-    const expectedDuration = deriveDurationFromJob(job);
+    const durationContract = deriveDurationContractFromJob(job);
+    const expectedDuration = durationContract?.durationSeconds || 0;
     const reportedDuration = Number.isFinite(input.durationSeconds)
-      ? Math.max(1, Math.round(input.durationSeconds || 0))
+      ? Math.max(1, Number(input.durationSeconds || 0))
       : null;
-    if (reportedDuration && expectedDuration > 0 && Math.abs(reportedDuration - expectedDuration) > 2) {
-      throw new Error(
-        `OUTPUT_DURATION_MISMATCH: el worker genero ${reportedDuration}s, pero el job esperaba ${expectedDuration}s.`,
-      );
+    if (reportedDuration && durationContract && Math.abs(reportedDuration - expectedDuration) > OUTPUT_DURATION_TOLERANCE_SECONDS) {
+      const durationMismatch = new OutputDurationMismatchError({
+        expectedFrames: durationContract.frames,
+        expectedFps: durationContract.fps,
+        expectedDurationSeconds: expectedDuration,
+        receivedDurationSeconds: reportedDuration,
+        toleranceSeconds: OUTPUT_DURATION_TOLERANCE_SECONDS,
+      });
+      await this.failJob(worker, jobId, {
+        errorCode: durationMismatch.code,
+        message: durationMismatch.message,
+        stage: "desktop_worker_output_duration_validation",
+        durationMismatch: durationMismatch.details,
+      });
+      throw durationMismatch;
     }
     const duration = reportedDuration || expectedDuration;
 
@@ -3619,6 +3659,7 @@ export class DesktopWorkerControlPlane {
     const message = sanitizeText(input.message, "El worker local no pudo completar el render");
     const code = sanitizeText(input.errorCode, "") || "DESKTOP_WORKER_RENDER_FAILED";
     const failureStage = sanitizeText(input.stage, "desktop_worker");
+    const durationMismatch = readOutputDurationMismatchDiagnostic(input.durationMismatch);
 
     const failedAt = new Date().toISOString();
     const currentProgress = Array.isArray(job.progress) ? job.progress : [];
@@ -3647,6 +3688,7 @@ export class DesktopWorkerControlPlane {
           renderProvider: "desktop_worker",
           stage: failureStage,
           workerId: worker.id,
+          ...(durationMismatch ? { durationMismatch } : {}),
         },
       })
       .eq("id", jobId);

@@ -45,6 +45,7 @@ export type LayoutOverrideManifest = { edits?: LayoutOverrideEdit[] };
 
 export type TemplateProps = {
   schemaVersion?: number;
+  totalDurationFrames?: number;
   totalDurationInFrames?: number;
   voiceAudioUrl?: string;
   bgMusicUrl?: string;

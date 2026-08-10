@@ -1,7 +1,7 @@
 import type React from "react";
 import type { Box, LayoutOverrideManifest, SceneLayout } from "./types";
 
-export const CANVAS = { width: 1920, height: 1080, fps: 25 };
+export const CANVAS = { width: 1920, height: 1080, fps: 30 };
 
 const layoutBoxes: Record<SceneLayout, Record<string, Box>> = {
   AVATAR_FULL: { avatar: { x: 0, y: 0, width: 1920, height: 1080 }, captions: { x: 330, y: 920, width: 1260, height: 96 } },

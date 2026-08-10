@@ -6,7 +6,7 @@
   "layoutContractVersion": 2,
   "layoutCoordinateSpace": "canvas",
   "defaultDurationFrames": 4250,
-  "fps": 25,
+  "fps": 30,
   "width": 1920,
   "height": 1080,
   "remotionVersion": "4.0.484",
@@ -19,6 +19,7 @@
     "type": "object",
     "properties": {
       "schemaVersion": { "type": "integer", "description": "Versión del contrato de escenas." },
+      "totalDurationFrames": { "type": "integer", "description": "Duración total canónica, en frames." },
       "totalDurationInFrames": { "type": "integer", "description": "Duración total, en frames." },
       "voiceAudioUrl": { "type": "string", "description": "Locución principal." },
       "bgMusicUrl": { "type": "string", "description": "Música de fondo opcional." },
@@ -35,6 +36,7 @@
   },
   "defaultProps": {
     "schemaVersion": 1,
+    "totalDurationFrames": 4250,
     "totalDurationInFrames": 4250,
     "bgMusicVolume": 0.12,
     "avatarClips": [],
