@@ -3532,7 +3532,6 @@ export class DesktopWorkerControlPlane {
       outputStoragePath: input.outputStoragePath,
       completedAt,
     });
-
     return { finalVideoUrl: publicUrl, durationSeconds: duration };
   }
 
@@ -3587,7 +3586,7 @@ export class DesktopWorkerControlPlane {
       },
     ];
 
-    for (const task of tasks) {
+    await Promise.all(tasks.map(async (task) => {
       try {
         await task.operation();
       } catch (sideEffectError) {
@@ -3601,7 +3600,7 @@ export class DesktopWorkerControlPlane {
           ),
         });
       }
-    }
+    }));
   }
 
   private async updateMaterialComponentFinalVideo(input: {
@@ -4211,7 +4210,7 @@ export class DesktopWorkerControlPlane {
     lessonId: string | null;
     finalVideoUrl: string;
     duration: number;
-  }) {
+  }, existingRequest?: { id?: string | null; lesson_videos?: unknown } | null) {
     if (!params.artifactId || !params.lessonId || !params.finalVideoUrl) return;
 
     let lessonTitle = params.lessonId;
@@ -4228,12 +4227,6 @@ export class DesktopWorkerControlPlane {
       moduleTitle = lesson?.module_title || "";
     }
 
-    const { data: existingRequest } = await this.supabase
-      .from("publication_requests")
-      .select("id, lesson_videos")
-      .eq("artifact_id", params.artifactId)
-      .maybeSingle();
-
     const currentLessonVideos = (existingRequest?.lesson_videos as Record<string, unknown> | null) || {};
     const nextLessonVideos = {
       ...currentLessonVideos,
@@ -4248,19 +4241,21 @@ export class DesktopWorkerControlPlane {
     };
 
     if (existingRequest?.id) {
-      await this.supabase
+      const { error } = await this.supabase
         .from("publication_requests")
         .update({ lesson_videos: nextLessonVideos, updated_at: new Date().toISOString() })
         .eq("id", existingRequest.id);
+      if (error) throw new Error(`PUBLICATION_REQUEST_UPDATE_FAILED: ${error.message}`);
       return;
     }
 
-    await this.supabase.from("publication_requests").insert({
+    const { error } = await this.supabase.from("publication_requests").insert({
       artifact_id: params.artifactId,
       lesson_videos: nextLessonVideos,
       status: "DRAFT",
       updated_at: new Date().toISOString(),
     });
+    if (error) throw new Error(`PUBLICATION_REQUEST_CREATE_FAILED: ${error.message}`);
   }
 }
 
