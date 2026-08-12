@@ -1,6 +1,6 @@
 import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { DesktopWorkerControlPlane } from "@/lib/server/desktop-worker-control-plane";
-import { normalizeAssemblyAssets } from "@/remotion/assembly-assets.normalizer";
+import { getAssemblyAssetReadiness } from "@/remotion/assembly-assets.normalizer";
 import type { MaterialAssets } from "@/domains/materials/types/materials.types";
 import {
   renderBatchRequestSchema,
@@ -36,15 +36,7 @@ function getLastLog(progress: unknown) {
 
 export function hasRenderableAssets(component: any) {
   const currentAssets = (component.assets || {}) as MaterialAssets;
-  const normalizedAssets = normalizeAssemblyAssets(currentAssets, 30);
-
-  return Boolean(
-    normalizedAssets.voiceAudioUrl ||
-      normalizedAssets.avatarVideoUrl ||
-      normalizedAssets.avatarClips.length > 0 ||
-      normalizedAssets.slides.length > 0 ||
-      normalizedAssets.brollClips.length > 0,
-  );
+  return getAssemblyAssetReadiness(currentAssets, 30).canRender;
 }
 
 export class RenderBatchService {
@@ -113,7 +105,11 @@ export class RenderBatchService {
         throw new Error(`COMPONENT_FORBIDDEN_FOR_BATCH: ${item.componentId}`);
       }
       if (!hasRenderableAssets(component)) {
-        throw new Error(`COMPONENT_NOT_RENDERABLE: ${getComponentLabel(component)}`);
+        const readiness = getAssemblyAssetReadiness((component.assets || {}) as MaterialAssets, 30);
+        const issue = readiness.blockingIssues[0];
+        throw new Error(
+          `${issue?.code || "COMPONENT_NOT_RENDERABLE"}: ${getComponentLabel(component)} - ${issue?.message || "assets incompletos"}`,
+        );
       }
 
       const template = templatesById.get(item.templateId || request.defaultTemplateId);

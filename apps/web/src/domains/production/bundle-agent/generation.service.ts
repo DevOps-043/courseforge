@@ -12,6 +12,7 @@ function buildPackageJson() {
     dependencies: {
       react: "19.2.3",
       "react-dom": "19.2.3",
+      "@remotion/media": "4.0.484",
       remotion: "4.0.484",
     },
   };

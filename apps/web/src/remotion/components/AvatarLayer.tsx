@@ -1,5 +1,6 @@
 import { CSSProperties } from "react";
-import { AbsoluteFill, Freeze, OffthreadVideo, Sequence } from "remotion";
+import { AbsoluteFill, Freeze, Sequence } from "remotion";
+import { Video } from "@remotion/media";
 import { REMOTE_MEDIA_RENDER_PROPS } from "../media-rendering.config";
 import { resolveSafeRemoteVideoRange } from "../remote-video-source-range";
 
@@ -26,15 +27,16 @@ export function AvatarLayer({
     sequenceDurationInFrames: durationInFrames,
   });
   const video = (
-    <OffthreadVideo
+    <Video
       {...REMOTE_MEDIA_RENDER_PROPS}
       src={url}
       muted={muted}
-      startFrom={sourceRange.sourceStartFrame}
-      endAt={sourceRange.sourceEndFrame}
+      trimBefore={sourceRange.sourceStartFrame}
+      trimAfter={sourceRange.sourceEndFrame}
       // En el Player, un hipo de reproduccion del avatar no debe tumbar el preview.
       onError={(err) => {
         console.warn("[Remotion preview] Avatar no reproducible:", url, err);
+        return "fallback";
       }}
       style={{ width: "100%", height: "100%", objectFit }}
     />

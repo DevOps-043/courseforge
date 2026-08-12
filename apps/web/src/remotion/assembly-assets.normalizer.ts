@@ -39,7 +39,29 @@ export interface AssemblyAssetReadiness {
   hasAnyAssetReference: boolean;
   hasRenderableAssets: boolean;
   hasRenderableVisualAssets: boolean;
+  canRender: boolean;
+  blockingIssues: AssemblyBlockingIssue[];
+  manifest: AssemblyAssetManifest;
   warnings: AssemblyAssetWarning[];
+}
+
+export type AssemblyBlockingIssueCode =
+  | "SLIDES_REFERENCE_NOT_RENDERIZABLE"
+  | "NO_RENDERABLE_ASSETS";
+
+export interface AssemblyBlockingIssue {
+  code: AssemblyBlockingIssueCode;
+  message: string;
+}
+
+export interface AssemblyAssetManifest {
+  slideCount: number;
+  brollClipCount: number;
+  avatarClipCount: number;
+  hasAvatarVideo: boolean;
+  hasVoiceAudio: boolean;
+  hasBackgroundMusic: boolean;
+  totalDurationSeconds: number;
 }
 
 function isPositiveNumber(value: unknown): value is number {
@@ -260,11 +282,37 @@ export function getAssemblyAssetReadiness(
       a.final_video_url ||
       a.b_roll_prompts,
   );
+  const blockingIssues: AssemblyBlockingIssue[] = [];
+  if (normalized.warnings.some((warning) => warning.code === "SLIDES_REFERENCE_NOT_RENDERIZABLE")) {
+    blockingIssues.push({
+      code: "SLIDES_REFERENCE_NOT_RENDERIZABLE",
+      message:
+        "Las diapositivas existen solo como referencia HTML/proyecto. Exportalas a imagenes o prepara el deck animado antes de renderizar.",
+    });
+  }
+  if (!hasRenderableAssets) {
+    blockingIssues.push({
+      code: "NO_RENDERABLE_ASSETS",
+      message:
+        "No hay assets renderizables. Sube voz, avatar, diapositivas renderizables o B-roll antes de ensamblar.",
+    });
+  }
 
   return {
     hasAnyAssetReference,
     hasRenderableAssets,
     hasRenderableVisualAssets,
+    canRender: blockingIssues.length === 0,
+    blockingIssues,
+    manifest: {
+      slideCount: normalized.slides.length,
+      brollClipCount: normalized.brollClips.length,
+      avatarClipCount: normalized.avatarClips.length,
+      hasAvatarVideo: Boolean(normalized.avatarVideoUrl),
+      hasVoiceAudio: Boolean(normalized.voiceAudioUrl),
+      hasBackgroundMusic: Boolean(normalized.bgMusicUrl),
+      totalDurationSeconds: normalized.totalDurationSeconds,
+    },
     warnings: normalized.warnings,
   };
 }

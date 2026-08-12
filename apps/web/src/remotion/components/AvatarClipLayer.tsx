@@ -2,11 +2,11 @@ import type { CSSProperties } from "react";
 import {
   AbsoluteFill,
   Freeze,
-  OffthreadVideo,
   Sequence,
   interpolate,
   useCurrentFrame,
 } from "remotion";
+import { Video } from "@remotion/media";
 import type { AssemblyAvatarClip } from "../types";
 import type { LayoutOverrideStyle } from "../layout-override-styles";
 import type { VisualTimelineSegment } from "../visual-timeline";
@@ -74,15 +74,16 @@ function AvatarClipVideo({
   const opacity = Math.min(fadeInOpacity, fadeOutOpacity);
 
   const video = (
-    <OffthreadVideo
+    <Video
       {...REMOTE_MEDIA_RENDER_PROPS}
       src={clip.url}
       muted={muted}
       volume={muted ? 0 : opacity}
-      startFrom={sourceRange.sourceStartFrame}
-      endAt={sourceRange.sourceEndFrame}
+      trimBefore={sourceRange.sourceStartFrame}
+      trimAfter={sourceRange.sourceEndFrame}
       onError={(err) => {
         console.warn("[Remotion preview] Clip de avatar no reproducible:", clip.url, err);
+        return "fallback";
       }}
       style={{ width: "100%", height: "100%", objectFit, opacity, ...style }}
     />

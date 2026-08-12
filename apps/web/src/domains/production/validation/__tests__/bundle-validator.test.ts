@@ -53,11 +53,12 @@ describe("validateRemotionBundle", () => {
     assert.doesNotMatch(templateSource, /gridTemplateColumns/);
     assert.match(templateSource, /activeSlideItemOverride/);
     assert.match(templateSource, /background: "transparent"/);
-    assert.match(templateSource, /<OffthreadVideo/);
-    assert.doesNotMatch(templateSource, /<Video/);
+    assert.match(templateSource, /from "@remotion\/media"/);
+    assert.match(templateSource, /<Video/);
+    assert.doesNotMatch(templateSource, /<OffthreadVideo/);
   });
 
-  it("keeps the production custom bundle compatible with avatar clips and off-thread media", async () => {
+  it("keeps the production custom bundle compatible with avatar clips and optimized media", async () => {
     const exampleRoot = path.resolve(
       process.cwd(),
       "../../custom-bundles/Nuevo-bundle-de-video-compatible",
@@ -82,8 +83,9 @@ describe("validateRemotionBundle", () => {
     assert.equal(result.isValid, true);
     assert.ok(parsedManifest.propsSchema?.properties?.avatarClips);
     assert.match(templateSource, /buildAvatarTimeline/);
-    assert.match(templateSource, /<OffthreadVideo/);
-    assert.doesNotMatch(templateSource, /<Video/);
+    assert.match(templateSource, /from "@remotion\/media"/);
+    assert.match(templateSource, /<Video/);
+    assert.doesNotMatch(templateSource, /<OffthreadVideo/);
   });
 
   it("accepts a minimal valid Remotion template bundle", async () => {

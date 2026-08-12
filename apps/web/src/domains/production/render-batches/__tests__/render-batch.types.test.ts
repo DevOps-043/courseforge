@@ -130,7 +130,8 @@ describe("render batch contracts", () => {
     assert.doesNotMatch(layoutOverridePreviewOverlaySource, /width:\s*Math\.max\(gridSize,\s*snapValueToGrid\(box\.width/);
     assert.match(productionActionsSource, /scopedTemplateId/);
     assert.match(productionActionsSource, /existingLayoutOverrides\.filter\(\(manifest\) => !isSameLayoutScope\(manifest\)\)/);
-    assert.match(renderBatchServiceSource, /normalizedAssets\.avatarClips\.length > 0/);
+    assert.match(renderBatchServiceSource, /getAssemblyAssetReadiness\(currentAssets, 30\)\.canRender/);
+    assert.match(renderBatchServiceSource, /SLIDES_REFERENCE_NOT_RENDERIZABLE|blockingIssues/);
     assert.match(desktopWorkerControlPlaneSource, /publishInternalBundle/);
     assert.match(desktopWorkerControlPlaneSource, /"animated-deck-avatar"/);
     assert.match(desktopWorkerControlPlaneSource, /deckCss: normalized\.deckCss/);

@@ -3,11 +3,11 @@ import {
   AbsoluteFill,
   Freeze,
   Loop,
-  OffthreadVideo,
   Sequence,
   interpolate,
   useCurrentFrame,
 } from "remotion";
+import { Video } from "@remotion/media";
 import type { AssemblyBrollClip } from "../types";
 import type { LayoutOverrideStyle } from "../layout-override-styles";
 import { buildBrollTimeline, type VisualTimelineSegment } from "../visual-timeline";
@@ -62,12 +62,12 @@ function OverlayVideo({
   });
   const opacity = getFadeOpacity(frame, durationInFrames);
   const video = (
-    <OffthreadVideo
+    <Video
       {...REMOTE_MEDIA_RENDER_PROPS}
       src={clip.url}
       muted
-      startFrom={sourceRange.sourceStartFrame}
-      endAt={sourceRange.sourceEndFrame}
+      trimBefore={sourceRange.sourceStartFrame}
+      trimAfter={sourceRange.sourceEndFrame}
       style={{
         width: "100%",
         height: "100%",

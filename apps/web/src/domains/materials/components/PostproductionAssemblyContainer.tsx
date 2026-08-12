@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { AlertTriangle, Check, CheckCircle2, Copy, Download, Film, Layers, Link2, Loader2, Monitor, Play, RefreshCw, Search, Sparkles, Square, Unlink } from 'lucide-react';
 import { buildAssemblyProps, hasPreviewableAssets } from '@/remotion/buildAssemblyProps';
+import { getAssemblyAssetReadiness } from '@/remotion/assembly-assets.normalizer';
+import { ASSEMBLY_FPS } from '@/remotion/types';
 import { verifyBrowserMediaDurationsFromUrls } from '@/remotion/browser-media-duration-verification';
 import { buildVisualTimeline, type VisualTimeline } from '@/remotion/visual-timeline';
 import {
@@ -666,6 +668,19 @@ export function PostproductionAssemblyContainer({
 
     const startAssemblyForComponents = async (targets: any[]) => {
         if (targets.length === 0) return;
+        const blockedTargets = targets
+            .map((component) => ({
+                label: getComponentLabel(component),
+                readiness: getAssemblyAssetReadiness(component.assets as MaterialAssets | null | undefined, ASSEMBLY_FPS),
+            }))
+            .filter((target) => !target.readiness.canRender);
+        if (blockedTargets.length > 0) {
+            const firstBlocked = blockedTargets[0];
+            alert(
+                `No se puede ensamblar ${firstBlocked.label}. ${firstBlocked.readiness.blockingIssues[0]?.message || 'El preflight encontro assets incompletos.'}`,
+            );
+            return;
+        }
         if (singleVideoOnly && targets.length !== 1) {
             alert('Este apartado solo permite ensamblar un video a la vez.');
             return;
@@ -845,6 +860,16 @@ export function PostproductionAssemblyContainer({
     const selectedTemplateBlocksFinalRender = selectedTemplateUsesExternalBundle || selectedTemplateNeedsCloudBuild;
     const selectedTemplateHasCustomBundleBlocked = selectedTemplateUsesExternalBundle || selectedTemplateNeedsCloudBuild;
     const activePreview = videoComponents.find((component) => component.id === activePreviewId) || videoComponents[0];
+    const activeAssetReadiness = useMemo(
+        () => getAssemblyAssetReadiness(activePreview?.assets as MaterialAssets | null | undefined, ASSEMBLY_FPS),
+        [activePreview?.assets],
+    );
+    const activeAssemblyBlocked = Boolean(activePreview && !activeAssetReadiness.canRender);
+    const selectedBatchTargets = componentsToAssemble.filter((component) => selectedBatchComponentIds.includes(component.id));
+    const effectiveBatchTargets = selectedBatchTargets.length > 0 ? selectedBatchTargets : componentsToAssemble;
+    const batchAssemblyBlocked = effectiveBatchTargets.some((component) => (
+        !getAssemblyAssetReadiness(component.assets as MaterialAssets | null | undefined, ASSEMBLY_FPS).canRender
+    ));
     const [verifiedActivePreviewAssets, setVerifiedActivePreviewAssets] = useState<MaterialAssets | null | undefined>(
         activePreview?.assets,
     );
@@ -2008,6 +2033,30 @@ export function PostproductionAssemblyContainer({
                                 </div>
                             )}
 
+                            {activePreview && (
+                                <div className={`mt-3 rounded-xl border p-3 text-xs ${
+                                    activeAssemblyBlocked
+                                        ? 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300'
+                                        : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200'
+                                }`}>
+                                    <div className="flex items-center gap-2 font-bold">
+                                        {activeAssemblyBlocked
+                                            ? <AlertTriangle className="h-4 w-4 shrink-0" />
+                                            : <CheckCircle2 className="h-4 w-4 shrink-0" />}
+                                        Preflight de assets: {activeAssemblyBlocked ? 'bloqueado' : 'listo'}
+                                    </div>
+                                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                        <span>Slides: <strong>{activeAssetReadiness.manifest.slideCount}</strong></span>
+                                        <span>B-roll: <strong>{activeAssetReadiness.manifest.brollClipCount}</strong></span>
+                                        <span>Avatar: <strong>{activeAssetReadiness.manifest.hasAvatarVideo ? 'video' : activeAssetReadiness.manifest.avatarClipCount}</strong></span>
+                                        <span>Duracion: <strong>{activeAssetReadiness.manifest.totalDurationSeconds.toFixed(1)}s</strong></span>
+                                    </div>
+                                    {activeAssetReadiness.blockingIssues.map((issue) => (
+                                        <p key={issue.code} className="mt-2 font-medium">{issue.message}</p>
+                                    ))}
+                                </div>
+                            )}
+
                         {!hasRequiredAssets ? (
                             <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-sm">
                                 No se encontraron componentes de video para ensamblar.
@@ -2022,7 +2071,7 @@ export function PostproductionAssemblyContainer({
                                 {activePreview && (
                                     <button
                                         onClick={() => startAssemblyForComponents([activePreview])}
-                                        disabled={isAssembling || workerGateBlocked}
+                                        disabled={isAssembling || workerGateBlocked || activeAssemblyBlocked}
                                         className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold border border-purple-500/40 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                                     >
                                         <RefreshCw className="w-4 h-4" />
@@ -2115,7 +2164,7 @@ export function PostproductionAssemblyContainer({
                                     <div className="flex flex-wrap gap-4">
                                         <button
                                             onClick={handleAssembleSelected}
-                                            disabled={!activePreviewPending || selectedTemplateBlocksFinalRender || workerGateBlocked}
+                                            disabled={!activePreviewPending || selectedTemplateBlocksFinalRender || workerGateBlocked || activeAssemblyBlocked}
                                             className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold bg-[#0A2540] hover:bg-[#0d2f4d] disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-[#0A2540]/20 transition-all active:scale-[0.98]"
                                         >
                                             <RefreshCw className="w-4 h-4" />
@@ -2124,7 +2173,7 @@ export function PostproductionAssemblyContainer({
                                         {!singleVideoOnly && (
                                             <button
                                                 onClick={handleAssembleAll}
-                                                disabled={selectedTemplateBlocksFinalRender || workerGateBlocked}
+                                                disabled={selectedTemplateBlocksFinalRender || workerGateBlocked || batchAssemblyBlocked}
                                                 className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold border border-[#00D4B3]/40 text-[#0A2540] hover:bg-[#00D4B3]/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all dark:text-[#00D4B3]"
                                             >
                                                 <RefreshCw className="w-4 h-4" />
