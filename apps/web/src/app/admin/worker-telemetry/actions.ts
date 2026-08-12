@@ -23,6 +23,12 @@ export interface WorkerMutationActionResult {
   success: boolean;
 }
 
+export interface WorkerJobCleanupActionResult extends WorkerMutationActionResult {
+  cancelledBuilds?: number;
+  cancelledPreviews?: number;
+  cancelledRenders?: number;
+}
+
 function isUuid(value: string | null): value is string {
   return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value));
 }
@@ -234,6 +240,137 @@ export async function setPrimaryBundleWorkerForOrganizationAction(input: {
     return {
       success: false,
       error: error instanceof Error ? error.message : "No se pudo marcar el worker principal.",
+    };
+  }
+}
+
+export async function clearWorkerCurrentJobsForOrganizationAction(input: {
+  organizationId?: string | null;
+  organizationSlug?: string | null;
+  workerId: string;
+}): Promise<WorkerJobCleanupActionResult> {
+  try {
+    const { admin, organizationId: resolvedOrganizationId } = await requireWorkerAdmin(
+      input.organizationId || null,
+      input.organizationSlug || null,
+    );
+    if (!isUuid(input.workerId)) {
+      return { success: false, error: "workerId must be a valid UUID" };
+    }
+
+    const { data: worker, error: workerError } = await admin
+      .from("render_workers")
+      .select("id")
+      .eq("id", input.workerId)
+      .eq("organization_id", resolvedOrganizationId)
+      .maybeSingle();
+    if (workerError || !worker) {
+      return { success: false, error: workerError?.message || "No se encontro el worker." };
+    }
+
+    const [renderResult, buildResult, previewResult] = await Promise.all([
+      admin
+        .from("production_jobs")
+        .select("id")
+        .eq("organization_id", resolvedOrganizationId)
+        .eq("worker_id", input.workerId)
+        .eq("job_type", "REMOTION_RENDER")
+        .in("status", ["PENDING", "QUEUED", "WAITING_PROVIDER", "RUNNING", "RETRY_SCHEDULED", "FAILED"]),
+      admin
+        .from("remotion_template_builds")
+        .select("id")
+        .eq("organization_id", resolvedOrganizationId)
+        .eq("worker_id", input.workerId)
+        .in("status", ["BUILDING", "BUILD_FAILED"]),
+      admin
+        .from("remotion_template_previews")
+        .select("id")
+        .eq("organization_id", resolvedOrganizationId)
+        .eq("worker_id", input.workerId)
+        .in("status", ["QUEUED", "RUNNING", "FAILED"]),
+    ]);
+
+    const lookupError = renderResult.error || buildResult.error || previewResult.error;
+    if (lookupError) return { success: false, error: lookupError.message };
+
+    const renderIds = (renderResult.data || []).map((job) => job.id);
+    const buildIds = (buildResult.data || []).map((build) => build.id);
+    const previewIds = (previewResult.data || []).map((preview) => preview.id);
+    const now = new Date().toISOString();
+    const reason = "Job limpiado manualmente desde la consola de workers.";
+
+    const updates = await Promise.all([
+      renderIds.length > 0
+        ? admin
+          .from("production_jobs")
+          .update({
+            status: "CANCELLED",
+            worker_id: null,
+            claimed_at: null,
+            worker_heartbeat_at: null,
+            lease_expires_at: null,
+            failed_at: now,
+            updated_at: now,
+            provider_error: {
+              code: "ADMIN_CLEARED_WORKER_JOB",
+              message: reason,
+              stage: "admin_worker_job_cleanup",
+              timestamp: now,
+            },
+          })
+          .in("id", renderIds)
+        : Promise.resolve({ error: null }),
+      buildIds.length > 0
+        ? admin
+          .from("remotion_template_builds")
+          .update({
+            status: "BUILD_FAILED",
+            worker_id: null,
+            claimed_at: null,
+            worker_heartbeat_at: null,
+            lease_expires_at: null,
+            build_failed_at: now,
+            build_error: reason,
+            provider_status: "ADMIN_CLEARED_WORKER_JOB",
+            provider_status_detail: reason,
+            updated_at: now,
+          })
+          .in("id", buildIds)
+        : Promise.resolve({ error: null }),
+      previewIds.length > 0
+        ? admin
+          .from("remotion_template_previews")
+          .update({
+            status: "CANCELLED",
+            worker_id: null,
+            claimed_at: null,
+            worker_heartbeat_at: null,
+            lease_expires_at: null,
+            failed_at: now,
+            error_code: "ADMIN_CLEARED_WORKER_JOB",
+            error_message: reason,
+            provider_status: "ADMIN_CLEARED_WORKER_JOB",
+            provider_status_detail: reason,
+            updated_at: now,
+          })
+          .in("id", previewIds)
+        : Promise.resolve({ error: null }),
+    ]);
+
+    const updateError = updates.find((result) => result.error)?.error;
+    if (updateError) return { success: false, error: updateError.message };
+
+    revalidatePath("/admin/worker-telemetry");
+    return {
+      success: true,
+      cancelledRenders: renderIds.length,
+      cancelledBuilds: buildIds.length,
+      cancelledPreviews: previewIds.length,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "No se pudieron limpiar los jobs del worker.",
     };
   }
 }

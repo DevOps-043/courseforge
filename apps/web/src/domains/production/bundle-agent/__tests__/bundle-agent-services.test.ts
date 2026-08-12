@@ -247,6 +247,35 @@ describe("SofLIA Bundle Agent services", () => {
     );
   });
 
+  it("does not turn slide-template style instructions into slide type labels", () => {
+    const spec = buildSlideTemplateSpecFromConversation({
+      title: "Template elegante",
+      messages: [
+        {
+          role: "USER",
+          content_redacted: [
+            "Hagamos una diapositiva con las siguientes caracteristicas:",
+            "Requerimos una paleta de color morada, amarillo mostaza, beige y gris principalmente como fondo.",
+            "Debe ser elegante en lugar de moderna.",
+            "Requerimos un deck que contenga titulo, objetivos, bibliografia, graficas, conceptos, b-rolls o imagenes y se muestre elegante.",
+          ].join(" "),
+        },
+      ],
+    });
+
+    assert.deepEqual(
+      spec.templateBlueprint.slideTypes.map((slideType) => slideType.id),
+      ["cover", "objectives", "bibliography", "data_explainer", "concept"],
+    );
+    assert.deepEqual(
+      spec.templateBlueprint.slideTypes.map((slideType) => slideType.label),
+      ["Titulo", "Objetivos", "Bibliografia / fuentes", "Grafica", "Conceptos"],
+    );
+    assert.equal(spec.templateBlueprint.designTokens.accent, "#D6A21E");
+    assert.equal(spec.templateBlueprint.designTokens.accent2, "#3B1D5C");
+    assert.equal(spec.templateBlueprint.slideTypes.some((slideType) => /paleta|mostaza|morado|beige|gris/i.test(slideType.label)), false);
+  });
+
   it("removes requested slide-template types without restoring the default catalog", () => {
     const spec = buildSlideTemplateSpecFromConversation({
       title: "Template elegante",

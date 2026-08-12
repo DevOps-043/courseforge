@@ -81,7 +81,8 @@ interface RenderWorkerLinkCodeRow {
 
 interface ArtifactRow {
   id: string;
-  title?: string | null;
+  idea_central?: string | null;
+  nombres?: unknown;
 }
 
 interface MaterialComponentRow {
@@ -438,6 +439,21 @@ function resolveElapsedMs(row: WorkerTelemetryRunRow, finishedAt: string | null)
     : storedElapsedMs;
 }
 
+function resolveArtifactTitle(artifact?: ArtifactRow | null) {
+  if (!artifact) return null;
+
+  if (Array.isArray(artifact.nombres)) {
+    const firstName = artifact.nombres.find((name) => typeof name === "string" && name.trim().length > 0);
+    if (typeof firstName === "string") return firstName.trim();
+  }
+
+  if (typeof artifact.idea_central === "string" && artifact.idea_central.trim().length > 0) {
+    return artifact.idea_central.trim();
+  }
+
+  return null;
+}
+
 async function loadRowsById<T extends { id: string }>(
   admin: SupabaseAdminClient,
   table: string,
@@ -597,7 +613,7 @@ export async function loadWorkerTelemetryPageData(organizationSlug?: string | nu
   const artifactsById = await loadRowsById<ArtifactRow>(
     admin,
     "artifacts",
-    "id, title",
+    "id, idea_central, nombres",
     uniq(rows.map((row) => row.artifact_id)),
   );
   const componentsById = await loadRowsById<MaterialComponentRow>(
@@ -678,7 +694,7 @@ export async function loadWorkerTelemetryPageData(organizationSlug?: string | nu
         row.chromium_gl ? `GL ${row.chromium_gl}` : null,
         row.video_bitrate ? `bitrate ${row.video_bitrate}` : null,
       ].filter(Boolean).join(" · ") || "Config render no reportada",
-      artifactTitle: artifact?.title || null,
+      artifactTitle: resolveArtifactTitle(artifact),
       componentType: component?.type || null,
       platformLabel: [worker?.platform || row.platform, worker?.arch || row.arch, worker?.app_version]
         .filter(Boolean)

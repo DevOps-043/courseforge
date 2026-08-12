@@ -99,6 +99,9 @@ function getComponentLabel(component: any) {
 }
 
 function getAssemblyFailureMessage(job: AssemblyJobTracker) {
+    if (job.errorCode === 'OUTPUT_DURATION_MISMATCH') {
+        return 'El video generado no coincide con la duración contratada por la plantilla. Se bloqueó su publicación; actualiza la plantilla y vuelve a encolar el ensamblado.';
+    }
     if (job.errorCode === 'OUTPUT_NOT_ACCESSIBLE') {
         return 'El render termino, pero el video final no quedo disponible como URL HTTPS reproducible.';
     }

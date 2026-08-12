@@ -26,6 +26,40 @@ export const courseSlideLayoutSchema = z.enum([
   "split_reverse",
 ]);
 
+export const courseVisualAssetPurposeSchema = z.enum(["background", "supporting"]);
+
+export const courseVisualAssetStatusSchema = z.enum([
+  "NOT_NEEDED",
+  "PLANNED",
+  "GENERATING",
+  "READY",
+  "FAILED",
+  "REJECTED",
+]);
+
+export const courseVisualAssetSlotSchema = z.object({
+  id: z.string().trim().regex(/^[a-z][a-z0-9_]*$/).min(2).max(80),
+  opacity: z.number().min(0).max(1).optional(),
+  placement: z.enum(["background", "image_pane"]),
+  purpose: courseVisualAssetPurposeSchema,
+});
+
+export const courseVisualAssetSchema = z.object({
+  altText: z.string().max(240),
+  checksum: z.string().max(128).optional(),
+  failureReason: z.string().max(500).optional(),
+  id: z.string().min(1).max(120),
+  prompt: z.string().max(4000),
+  promptHash: z.string().min(16).max(128),
+  purpose: courseVisualAssetPurposeSchema,
+  reason: z.string().max(360),
+  slot: courseVisualAssetSlotSchema,
+  sourceRefs: z.array(z.string().min(1).max(180)).max(8).default([]),
+  status: courseVisualAssetStatusSchema,
+  storagePath: z.string().max(500).optional(),
+  url: z.string().url().max(2000).optional(),
+});
+
 export const chartPointSchema = z.object({
   label: z.string().min(1).max(80),
   value: z.number().finite(),
@@ -98,6 +132,10 @@ export const courseSlideSpecSchema = z.object({
   subtitle: z.string().max(240).optional(),
   title: z.string().min(1).max(180),
   type: courseSlideTypeSchema,
+  visualAssets: z.object({
+    background: courseVisualAssetSchema.nullable().default(null),
+    supporting: courseVisualAssetSchema.nullable().default(null),
+  }).optional(),
   validationHints: z.object({
     learningObjectiveId: z.string().max(120).optional(),
     mustKeepClaims: z.array(z.string().min(1).max(240)).default([]),
@@ -118,6 +156,11 @@ export const courseDeckDesignSystemSchema = z.object({
   surface: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   text: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   tone: z.enum(["academic", "corporate", "editorial"]).default("academic"),
+  visualSlots: z.record(
+    courseSlideLayoutSchema,
+    z.array(courseVisualAssetSlotSchema).max(4),
+  ).optional(),
+  visualStyleGuide: z.string().trim().max(600).optional(),
 });
 
 export const courseDeckSourceSnapshotSchema = z.object({
@@ -151,6 +194,7 @@ export const customSlideInputSchema = z.object({
 
 export const slideDeckGenerateInputSchema = z.object({
   customSlides: z.array(customSlideInputSchema).max(24).optional(),
+  generateVisuals: z.boolean().optional(),
   locale: z.enum(["es", "en"]).default("es"),
   metadata: z.object({
     brandLabel: z.string().min(1).max(80).optional(),
@@ -163,4 +207,7 @@ export const slideDeckGenerateInputSchema = z.object({
 export type CourseChartSpec = z.infer<typeof courseChartSpecSchema>;
 export type CourseDeckSpec = z.infer<typeof courseDeckSpecSchema>;
 export type CourseSlideSpec = z.infer<typeof courseSlideSpecSchema>;
+export type CourseVisualAsset = z.infer<typeof courseVisualAssetSchema>;
+export type CourseVisualAssetPurpose = z.infer<typeof courseVisualAssetPurposeSchema>;
+export type CourseVisualAssetSlot = z.infer<typeof courseVisualAssetSlotSchema>;
 export type SlideDeckGenerateInput = z.infer<typeof slideDeckGenerateInputSchema>;

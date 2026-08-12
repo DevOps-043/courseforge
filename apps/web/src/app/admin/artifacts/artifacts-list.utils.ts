@@ -189,3 +189,25 @@ export function getArtifactTitle(ideaCentral: string) {
     .split(/IDEA PRINCIPAL:/i)[0]
     .trim();
 }
+
+export function isStandaloneAssemblyArtifact(artifact: Pick<Artifact, "idea_central">) {
+  const rawIdea = artifact.idea_central?.trim();
+
+  if (!rawIdea) {
+    return false;
+  }
+
+  if (
+    rawIdea.includes('"mode":"standalone_assembly"') ||
+    rawIdea.includes('"mode": "standalone_assembly"')
+  ) {
+    return true;
+  }
+
+  try {
+    const parsedIdea = JSON.parse(rawIdea) as { mode?: unknown };
+    return parsedIdea.mode === "standalone_assembly";
+  } catch {
+    return false;
+  }
+}

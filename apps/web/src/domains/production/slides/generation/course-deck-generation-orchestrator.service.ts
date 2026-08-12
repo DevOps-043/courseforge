@@ -11,6 +11,7 @@ import {
 } from "../agents/slide-agent-prompt-codes";
 import { buildSlidePlan } from "../agents/slide-strategy-agent.service";
 import { buildVisualAssignmentMap } from "../agents/visual-template-selection-agent.service";
+import { synthesizeDeckVisibleCopy } from "../agents/visible-copy-synthesis-agent.service";
 import type {
   CourseChartSpec,
   CourseDeckSpec,
@@ -28,6 +29,7 @@ export type CourseDeckGenerationStageId =
   | "slide_plan"
   | "visual_direction"
   | "chart_data"
+  | "visible_copy_synthesis"
   | "html_render"
   | "quality_gate";
 
@@ -275,5 +277,77 @@ export function generateCourseDeckWithQualityGate(
     html,
     qaReport,
     stages,
+  };
+}
+
+/**
+ * Production path: build the auditable deterministic draft first, then let the
+ * configured visible-copy agent synthesize compact, source-backed copy.
+ */
+export async function generateCourseDeckWithCopySynthesisQualityGate(
+  params: GenerateCourseDeckParams,
+): Promise<CourseDeckGenerationResult> {
+  const draft = generateCourseDeckWithQualityGate(params);
+  const startedAt = Date.now();
+  const synthesis = params.input.customSlides?.length
+    ? {
+        deckSpec: draft.deckSpec,
+        trace: {
+          appliedSlideCount: 0,
+          model: "manual-input",
+          provider: "deterministic_fallback" as const,
+          warning: "El copy manual se conserva sin reescritura automatica.",
+        },
+      }
+    : await synthesizeDeckVisibleCopy({
+        deckSpec: draft.deckSpec,
+        model: params.agentModels?.visibleCopy,
+        prompt: params.agentPrompts?.visibleCopy,
+        sourcePack: params.component.sourcePack,
+      });
+  const html = renderCourseDeckHtml(synthesis.deckSpec);
+  const qaReport = validateCourseDeckQuality({ deckSpec: synthesis.deckSpec, html });
+  const retainedStages = draft.stages.filter((stage) =>
+    stage.id !== "html_render" && stage.id !== "quality_gate",
+  );
+
+  return {
+    deckSpec: synthesis.deckSpec,
+    html,
+    qaReport,
+    stages: [
+      ...retainedStages,
+      {
+        durationMs: Date.now() - startedAt,
+        id: "visible_copy_synthesis",
+        output: {
+          ...agentStageOutput(params, "visibleCopy"),
+          appliedSlideCount: synthesis.trace.appliedSlideCount,
+          model: synthesis.trace.model,
+          provider: synthesis.trace.provider,
+          warning: synthesis.trace.warning,
+        },
+        status: "SUCCEEDED",
+      },
+      {
+        durationMs: 0,
+        id: "html_render",
+        output: {
+          htmlBytes: new TextEncoder().encode(html).length,
+          renderer: "soflia-engine-slides-v1",
+        },
+        status: "SUCCEEDED",
+      },
+      {
+        durationMs: 0,
+        id: "quality_gate",
+        output: {
+          findingCount: qaReport.findings.length,
+          ...agentStageOutput(params, "qa"),
+          status: qaReport.status,
+        },
+        status: "SUCCEEDED",
+      },
+    ],
   };
 }

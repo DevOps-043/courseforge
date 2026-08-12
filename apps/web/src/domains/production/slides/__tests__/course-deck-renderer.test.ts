@@ -1,11 +1,79 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { generateCourseDeckWithQualityGate } from "../generation/course-deck-generation-orchestrator.service";
+import {
+  generateCourseDeckWithCopySynthesisQualityGate,
+  generateCourseDeckWithQualityGate,
+} from "../generation/course-deck-generation-orchestrator.service";
 import { buildCourseDeckSpecFromComponent } from "../planning/course-deck-from-component.service";
 import { renderCourseDeckHtml } from "../render/html-deck-renderer.service";
 import { validateCourseDeckQuality } from "../validation/course-deck-qa.service";
+import { planDeckVisualAssets } from "../visuals/slide-visual-asset-planning.service";
 
 describe("SofLIA - Engine slide deck generation", () => {
+  it("keeps generated visual support copy within the compact reading budget", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-1",
+      component: {
+        content: {
+          script: {
+            sections: [{
+              on_screen_text: "Enfoque\nUna explicacion deliberadamente extensa para comprobar que el texto visible se transforma en una pista breve y facilmente legible durante la narracion del video educativo.",
+              section_number: 1,
+            }],
+          },
+        },
+        id: "component-1",
+        type: "VIDEO_THEORETICAL",
+      },
+      input: { locale: "es", template: "course-module" },
+    });
+    const slide = deck.slides.find((item) => item.id === "script-section-1");
+
+    assert.ok(slide);
+    assert.ok(slide.title.length <= 58);
+    assert.ok((slide.bodyBlocks[0]?.items || []).length <= 3);
+    assert.ok((slide.bodyBlocks[0]?.items || []).every((item) => item.length <= 68));
+  });
+
+  it("fails QA when visible copy conflicts with the requested locale", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-1",
+      component: { content: {}, id: "component-1", type: "VIDEO_THEORETICAL" },
+      input: {
+        customSlides: [{
+          bullets: ["The learner should focus on this lesson and use the source with care."],
+          title: "Focus and learning",
+        }],
+        locale: "es",
+        template: "course-module",
+      },
+    });
+    const report = validateCourseDeckQuality({ deckSpec: deck, html: renderCourseDeckHtml(deck) });
+
+    assert.equal(report.status, "FAIL");
+    assert.equal(report.checks.visibleLanguage, false);
+    assert.equal(report.findings.some((finding) => finding.code === "visible_copy_wrong_language"), true);
+  });
+
+  it("records the synthesis stage while preserving explicitly supplied manual copy", async () => {
+    const result = await generateCourseDeckWithCopySynthesisQualityGate({
+      artifactId: "artifact-1",
+      component: { content: {}, id: "component-1", type: "VIDEO_THEORETICAL" },
+      input: {
+        customSlides: [{
+          bullets: ["Prioriza una sola accion visible."],
+          title: "Prioriza la accion",
+        }],
+        locale: "es",
+        template: "course-module",
+      },
+    });
+    const synthesis = result.stages.find((stage) => stage.id === "visible_copy_synthesis");
+
+    assert.equal(synthesis?.output.model, "manual-input");
+    assert.deepEqual(result.deckSpec.slides[0]?.bodyBlocks[0]?.items, ["Prioriza una sola accion visible."]);
+  });
+
   it("builds a deck from existing script content without adding video-duration charts", () => {
     const deck = buildCourseDeckSpecFromComponent({
       artifactId: "artifact-1",
@@ -82,7 +150,8 @@ describe("SofLIA - Engine slide deck generation", () => {
 
     assert.equal(generatedSlide?.speakerNotes, narration);
     assert.equal(generatedSlide?.title, "Alinea tareas con energía cognitiva");
-    assert.deepEqual(generatedSlide?.bodyBlocks[0]?.items, ["Los picos de energia cognitiva ayudan a programar tareas profundas en los momentos de mayor claridad mental."]);
+    assert.equal(generatedSlide?.bodyBlocks[0]?.items?.[0], "Los picos de energia cognitiva ayudan a programar tareas…");
+    assert.ok((generatedSlide?.bodyBlocks[0]?.items?.[0].length || 0) <= 68);
   });
 
   it("keeps video production and b-roll directions out of visible slide copy", () => {
@@ -297,6 +366,65 @@ describe("SofLIA - Engine slide deck generation", () => {
     assert.equal(generatedSlide?.type, "worked_example");
     assert.equal(generatedSlide?.renderHints?.layout, "split_reverse");
     assert.match(generatedSlide?.renderHints?.purpose || "", /apoyo visual/i);
+  });
+
+  it("plans decorative backgrounds separately from source-backed supporting visuals", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-1",
+      component: {
+        content: {
+          script: {
+            sections: [{
+              on_screen_text: "Aplicacion\nOrganiza tareas profundas en tus horas de mayor energia.",
+              section_number: 1,
+            }],
+            title: "Gestion de energia",
+          },
+        },
+        id: "component-1",
+        source_refs: ["source-energia-1"],
+        type: "VIDEO_THEORETICAL",
+      },
+      input: { locale: "es", template: "course-module" },
+    });
+    const planned = planDeckVisualAssets({ deckSpec: deck });
+    const cover = planned.slides.find((slide) => slide.id === "cover");
+    const content = planned.slides.find((slide) => slide.id === "script-section-1");
+
+    assert.equal(cover?.visualAssets?.background?.purpose, "background");
+    assert.deepEqual(cover?.visualAssets?.background?.sourceRefs, []);
+    assert.equal(content?.visualAssets?.supporting?.purpose, "supporting");
+    assert.deepEqual(content?.visualAssets?.supporting?.sourceRefs, ["source-energia-1"]);
+  });
+
+  it("renders ready visual assets and keeps their QA contract", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-1",
+      component: { content: {}, id: "component-1", type: "VIDEO_THEORETICAL" },
+      input: { locale: "es", template: "course-module" },
+    });
+    const planned = planDeckVisualAssets({ deckSpec: deck });
+    const cover = planned.slides[0];
+    assert.ok(cover?.visualAssets?.background);
+    const background = {
+      ...cover!.visualAssets!.background!,
+      checksum: "a".repeat(64),
+      status: "READY" as const,
+      storagePath: "production-assets/slides/component-1/visuals/background/cover.png",
+      url: "https://example.supabase.co/storage/v1/object/public/production-assets/cover.png",
+    };
+    const deckWithImage = {
+      ...planned,
+      slides: planned.slides.map((slide) => slide.id === cover?.id
+        ? { ...slide, visualAssets: { ...slide.visualAssets!, background } }
+        : slide),
+    };
+    const html = renderCourseDeckHtml(deckWithImage);
+    const report = validateCourseDeckQuality({ deckSpec: deckWithImage, html });
+
+    assert.match(html, /has-generated-background/);
+    assert.match(html, /data-visual-asset=/);
+    assert.equal(report.checks.visualAssets, true);
   });
 
   it("creates SVG charts only from instructional statistics", () => {

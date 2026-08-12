@@ -4,6 +4,11 @@ import type {
 } from "../specs/course-deck.schema";
 import { isInstructionalChart } from "../charts/chart-eligibility.service";
 import { isLikelyNarrationLeak } from "../content/slide-visible-content.service";
+import {
+  copyBudgetForSlideType,
+  hasUnexpectedVisibleLanguage,
+  textLengthForVisibleSlide,
+} from "../content/slide-copy-policy.service";
 
 export type CourseDeckQaSeverity = "error" | "warning";
 export type CourseDeckQaStatus = "PASS" | "WARN" | "FAIL";
@@ -23,6 +28,8 @@ export interface CourseDeckQaReport {
     renderContract: boolean;
     slideOrder: boolean;
     textDensity: boolean;
+    visibleLanguage: boolean;
+    visualAssets: boolean;
   };
   findings: CourseDeckQaFinding[];
   generatedAt: string;
@@ -37,25 +44,11 @@ export interface CourseDeckQaReport {
   };
 }
 
-const MAX_RECOMMENDED_SLIDE_TEXT_CHARS = 900;
-const MAX_BLOCKING_SLIDE_TEXT_CHARS = 1500;
-const MAX_RECOMMENDED_TITLE_CHARS = 96;
-
-function textLengthForBlock(block: CourseSlideSpec["bodyBlocks"][number]) {
-  if (block.kind === "bullets") {
-    return (block.items || []).join(" ").length;
-  }
-
-  return (block.text || "").length;
-}
+const MAX_RECOMMENDED_SLIDE_TEXT_CHARS = 260;
+const MAX_BLOCKING_SLIDE_TEXT_CHARS = 340;
 
 function textLengthForSlide(slide: CourseSlideSpec) {
-  const bodyLength = slide.bodyBlocks.reduce(
-    (total, block) => total + textLengthForBlock(block),
-    0,
-  );
-
-  return bodyLength + slide.title.length + (slide.subtitle?.length || 0);
+  return textLengthForVisibleSlide(slide);
 }
 
 function visibleTextForBlock(block: CourseSlideSpec["bodyBlocks"][number]) {
@@ -116,12 +109,42 @@ function validateTextDensity(
 ) {
   for (const slide of deckSpec.slides) {
     const slideTextLength = textLengthForSlide(slide);
+    const budget = copyBudgetForSlideType(slide.type);
 
-    if (slide.title.length > MAX_RECOMMENDED_TITLE_CHARS) {
+    if (slide.title.length > budget.maxTitleCharacters) {
       pushFinding(findings, {
         code: "long_slide_title",
-        message: "El titulo de la slide podria desbordarse en layouts compactos.",
-        severity: "warning",
+        message: "El titulo excede el presupuesto de apoyo visual breve.",
+        severity: "error",
+        slideId: slide.id,
+      });
+    }
+
+    if ((slide.subtitle?.length || 0) > budget.maxSubtitleCharacters) {
+      pushFinding(findings, {
+        code: "long_slide_subtitle",
+        message: "El subtitulo excede el presupuesto de apoyo visual breve.",
+        severity: "error",
+        slideId: slide.id,
+      });
+    }
+
+    const bodyItems = slide.bodyBlocks.flatMap((block) =>
+      block.kind === "bullets" ? block.items || [] : block.text ? [block.text] : [],
+    );
+    if (bodyItems.length > budget.maxBodyItems) {
+      pushFinding(findings, {
+        code: "too_many_slide_points",
+        message: "La slide tiene mas puntos de los permitidos para apoyo visual.",
+        severity: "error",
+        slideId: slide.id,
+      });
+    }
+    if (bodyItems.some((item) => item.length > budget.maxBodyItemCharacters)) {
+      pushFinding(findings, {
+        code: "long_slide_point",
+        message: "Un punto visible excede el presupuesto de lectura rapida.",
+        severity: "error",
         slideId: slide.id,
       });
     }
@@ -205,6 +228,59 @@ function validateChartContracts(
         severity: "error",
         slideId: slide.id,
       });
+    }
+  }
+}
+
+function validateVisibleLanguage(deckSpec: CourseDeckSpec, findings: CourseDeckQaFinding[]) {
+  for (const slide of deckSpec.slides) {
+    if (hasUnexpectedVisibleLanguage(visibleTextForSlide(slide), deckSpec.locale)) {
+      pushFinding(findings, {
+        code: "visible_copy_wrong_language",
+        message: `El texto visible no cumple el idioma solicitado (${deckSpec.locale}).`,
+        severity: "error",
+        slideId: slide.id,
+      });
+    }
+  }
+}
+
+function validateVisualAssetContracts(
+  deckSpec: CourseDeckSpec,
+  html: string,
+  findings: CourseDeckQaFinding[],
+) {
+  for (const slide of deckSpec.slides) {
+    for (const asset of [slide.visualAssets?.background, slide.visualAssets?.supporting]) {
+      if (!asset || asset.status !== "READY") continue;
+
+      if (!asset.url || !asset.storagePath || !asset.checksum) {
+        pushFinding(findings, {
+          code: "incomplete_visual_asset",
+          message: "Una imagen lista debe declarar URL, ruta de storage y checksum.",
+          severity: "error",
+          slideId: slide.id,
+        });
+        continue;
+      }
+
+      if (asset.purpose === "supporting" && asset.sourceRefs.length === 0) {
+        pushFinding(findings, {
+          code: "supporting_visual_without_sources",
+          message: "Una imagen de apoyo debe conservar referencias de la fuente que la justifico.",
+          severity: "error",
+          slideId: slide.id,
+        });
+      }
+
+      if (!html.includes(`data-visual-asset="${asset.id}"`)) {
+        pushFinding(findings, {
+          code: "visual_asset_render_mismatch",
+          message: "Una imagen lista no fue insertada en el HTML del deck.",
+          severity: "error",
+          slideId: slide.id,
+        });
+      }
     }
   }
 }
@@ -296,6 +372,10 @@ function buildChecks(findings: CourseDeckQaFinding[]) {
         "data_slide_without_chart",
         "invalid_proportion_chart",
         "non_instructional_chart",
+        "long_slide_point",
+        "long_slide_subtitle",
+        "long_slide_title",
+        "too_many_slide_points",
       ].includes(finding.code),
     ),
     htmlSafety: !findings.some((finding) =>
@@ -321,7 +401,23 @@ function buildChecks(findings: CourseDeckQaFinding[]) {
       ["duplicate_slide_order", "non_contiguous_slide_order"].includes(finding.code),
     ),
     textDensity: !findings.some((finding) =>
-      finding.severity === "error" && finding.code === "excessive_slide_text",
+      finding.severity === "error" && [
+        "excessive_slide_text",
+        "long_slide_point",
+        "long_slide_subtitle",
+        "long_slide_title",
+        "too_many_slide_points",
+      ].includes(finding.code),
+    ),
+    visibleLanguage: !findings.some((finding) =>
+      finding.severity === "error" && finding.code === "visible_copy_wrong_language",
+    ),
+    visualAssets: !findings.some((finding) =>
+      finding.severity === "error" && [
+        "incomplete_visual_asset",
+        "supporting_visual_without_sources",
+        "visual_asset_render_mismatch",
+      ].includes(finding.code),
     ),
   };
 }
@@ -346,7 +442,9 @@ export function validateCourseDeckQuality(params: {
 
   validateSlideOrder(params.deckSpec, findings);
   validateTextDensity(params.deckSpec, findings);
+  validateVisibleLanguage(params.deckSpec, findings);
   validateChartContracts(params.deckSpec, params.html, findings);
+  validateVisualAssetContracts(params.deckSpec, params.html, findings);
   validateNarrationLeakage(params.deckSpec, findings);
   validateHtmlSafety(params.html, findings);
   validateRenderContract(params.deckSpec, params.html, findings);

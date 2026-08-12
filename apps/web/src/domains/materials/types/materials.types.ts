@@ -228,6 +228,8 @@ export interface MaterialAssets {
         prepared_from_storyboard?: boolean;
         prepared_slide_count?: number;
         prepared_spec?: Record<string, unknown>;
+        copy_pipeline_version?: string;
+        copy_synthesis_signature?: string;
         qa_content_path?: string;
         qa_report?: Record<string, unknown>;
         selected_slide_template_run_id?: string;

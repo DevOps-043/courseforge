@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { createClient } from "@/utils/supabase/server";
 import type { MaterialAssets } from "@/domains/materials/types/materials.types";
@@ -21,7 +21,7 @@ import {
   PRODUCTION_PROVIDERS,
   PRODUCTION_QA_STATUSES,
 } from "@/domains/production/types/production.types";
-import { generateCourseDeckWithQualityGate } from "@/domains/production/slides/generation/course-deck-generation-orchestrator.service";
+import { generateCourseDeckWithCopySynthesisQualityGate } from "@/domains/production/slides/generation/course-deck-generation-orchestrator.service";
 import { loadSlideSourcePack } from "@/domains/production/slides/data/slide-source-pack-loader.service";
 import {
   resolveSlideAgentModelConfig,
@@ -34,11 +34,17 @@ import {
   type CourseDeckSpec,
 } from "@/domains/production/slides/specs/course-deck.schema";
 import { validateCourseDeckQuality } from "@/domains/production/slides/validation/course-deck-qa.service";
+import {
+  planDeckVisualAssets,
+  visualAssetPlanSummary,
+} from "@/domains/production/slides/visuals/slide-visual-asset-planning.service";
+import { generateSlideVisualAssets } from "@/domains/production/slides/visuals/slide-visual-asset-generation.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const BUCKET = "production-assets";
+const SLIDE_COPY_PIPELINE_VERSION = "visible-copy-synthesis-v4";
 
 const requestBodySchema = slideDeckGenerateInputSchema.extend({
   componentId: z.string().min(1),
@@ -49,6 +55,34 @@ const requestBodySchema = slideDeckGenerateInputSchema.extend({
 
 function deckBasePath(componentId: string) {
   return `slides/${componentId}-soflia-engine-deck`;
+}
+
+function stableFingerprint(value: unknown) {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 32);
+}
+
+function copySynthesisSignature(params: {
+  locale: "es" | "en";
+  model?: { fallbackModel: string | null; modelName: string; temperature: number; thinkingLevel: string | null };
+  prompt?: { code: string; content: string; version: string };
+  sourcePack: Awaited<ReturnType<typeof loadSlideSourcePack>>;
+}) {
+  return stableFingerprint({
+    locale: params.locale,
+    model: params.model,
+    pipelineVersion: SLIDE_COPY_PIPELINE_VERSION,
+    prompt: params.prompt && {
+      code: params.prompt.code,
+      contentHash: stableFingerprint(params.prompt.content),
+      version: params.prompt.version,
+    },
+    sources: params.sourcePack.items.map((item) => ({
+      excerpt: item.excerpt,
+      notes: item.notes,
+      rationale: item.rationale,
+      ref: item.ref,
+    })),
+  });
 }
 
 function getPreparedDeckSpec(assets: MaterialAssets, componentId: string): CourseDeckSpec | null {
@@ -68,10 +102,15 @@ function getPreparedDeckSpec(assets: MaterialAssets, componentId: string): Cours
 function canReusePreparedDeckSpec(params: {
   assets: MaterialAssets;
   componentId: string;
+  copySynthesisSignature: string;
   forceRegenerate: boolean;
   slideTemplateRunId?: string;
 }) {
   if (params.forceRegenerate) {
+    return false;
+  }
+
+  if (params.assets.slides?.copy_synthesis_signature !== params.copySynthesisSignature) {
     return false;
   }
 
@@ -133,6 +172,15 @@ async function resolveSlideTemplateDesignSystem(params: {
   const blueprint = asRecord(spec.templateBlueprint);
   const designTokens = asRecord(blueprint?.designTokens);
   const modifiers = asRecord(blueprint?.modifiers);
+  const visualSlots = Object.fromEntries(
+    (Array.isArray(blueprint?.layouts) ? blueprint.layouts : [])
+      .flatMap((rawLayout) => {
+        const layout = asRecord(rawLayout);
+        return layout && typeof layout.id === "string" && Array.isArray(layout.imageSlots)
+          ? [[layout.id, layout.imageSlots]]
+          : [];
+      }),
+  );
 
   return {
     accent: typeof designTokens?.accent === "string" ? designTokens.accent : undefined,
@@ -144,6 +192,10 @@ async function resolveSlideTemplateDesignSystem(params: {
     surface: typeof designTokens?.surface === "string" ? designTokens.surface : undefined,
     text: typeof designTokens?.text === "string" ? designTokens.text : undefined,
     title: typeof spec.title === "string" ? spec.title : null,
+    visualSlots: Object.keys(visualSlots).length > 0 ? visualSlots : undefined,
+    visualStyleGuide: typeof blueprint?.visualStyleGuide === "string"
+      ? blueprint.visualStyleGuide
+      : undefined,
   };
 }
 
@@ -210,8 +262,33 @@ export async function POST(request: Request) {
     componentId,
     supabase: authorizedComponent.admin,
   });
+  const currentAssets = (authorizedComponent.component.assets || {}) as MaterialAssets;
+  const sourcePack = await loadSlideSourcePack({
+    artifactId: authorizedComponent.artifactId,
+    lessonId: context.lessonId,
+    sourceRefs: (authorizedComponent.component as { source_refs?: unknown }).source_refs,
+    supabase: authorizedComponent.admin,
+  });
+  const agentPrompts = await resolveSlideAgentPromptConfig(
+    authorizedComponent.admin,
+    context.organizationId,
+  );
+  const agentModels = await resolveSlideAgentModelConfig(
+    authorizedComponent.admin,
+    context.organizationId,
+  );
+  const synthesisSignature = copySynthesisSignature({
+    locale: input.locale,
+    model: agentModels.visibleCopy,
+    prompt: agentPrompts.visibleCopy,
+    sourcePack,
+  });
   const inputSnapshot = {
     component_id: componentId,
+    copy_synthesis: {
+      signature: synthesisSignature,
+      version: SLIDE_COPY_PIPELINE_VERSION,
+    },
     force_regenerate: forceRegenerate,
     input,
     job_type: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
@@ -255,13 +332,6 @@ export async function POST(request: Request) {
       supabase: authorizedComponent.admin,
     });
 
-    const currentAssets = (authorizedComponent.component.assets || {}) as MaterialAssets;
-    const sourcePack = await loadSlideSourcePack({
-      artifactId: authorizedComponent.artifactId,
-      lessonId: context.lessonId,
-      sourceRefs: (authorizedComponent.component as { source_refs?: unknown }).source_refs,
-      supabase: authorizedComponent.admin,
-    });
     if (slideTemplateRunId && !context.organizationId) {
       throw new Error("No se pudo resolver la organizacion para seleccionar plantilla de slides.");
     }
@@ -274,23 +344,12 @@ export async function POST(request: Request) {
       !canReusePreparedDeckSpec({
         assets: currentAssets,
         componentId,
+        copySynthesisSignature: synthesisSignature,
         forceRegenerate,
         slideTemplateRunId,
       })
       ? null
       : getPreparedDeckSpec(currentAssets, componentId);
-    const agentPrompts = preparedDeckSpec
-      ? undefined
-      : await resolveSlideAgentPromptConfig(
-          authorizedComponent.admin,
-          context.organizationId,
-        );
-    const agentModels = preparedDeckSpec
-      ? undefined
-      : await resolveSlideAgentModelConfig(
-          authorizedComponent.admin,
-          context.organizationId,
-        );
     const deckGeneration = preparedDeckSpec
       ? (() => {
           const html = renderCourseDeckHtml(preparedDeckSpec);
@@ -343,7 +402,7 @@ export async function POST(request: Request) {
             ],
           };
         })()
-      : generateCourseDeckWithQualityGate({
+      : await generateCourseDeckWithCopySynthesisQualityGate({
           artifactId: authorizedComponent.artifactId,
           agentModels,
           agentPrompts,
@@ -353,8 +412,8 @@ export async function POST(request: Request) {
           },
           input,
         });
-    const { deckSpec: generatedDeckSpec, html: generatedHtml, qaReport: generatedQaReport, stages } = deckGeneration;
-    const deckSpec = selectedSlideTemplate
+    const { deckSpec: generatedDeckSpec, stages } = deckGeneration;
+    const deckSpecWithTemplate = selectedSlideTemplate
       ? courseDeckSpecSchema.parse({
           ...generatedDeckSpec,
           designSystem: {
@@ -366,13 +425,36 @@ export async function POST(request: Request) {
             muted: selectedSlideTemplate.muted || generatedDeckSpec.designSystem.muted,
             surface: selectedSlideTemplate.surface || generatedDeckSpec.designSystem.surface,
             text: selectedSlideTemplate.text || generatedDeckSpec.designSystem.text,
+            visualSlots: selectedSlideTemplate.visualSlots || generatedDeckSpec.designSystem.visualSlots,
+            visualStyleGuide: selectedSlideTemplate.visualStyleGuide || generatedDeckSpec.designSystem.visualStyleGuide,
           },
         })
       : generatedDeckSpec;
-    const html = selectedSlideTemplate ? renderCourseDeckHtml(deckSpec) : generatedHtml;
-    const qaReport = selectedSlideTemplate
-      ? validateCourseDeckQuality({ deckSpec, html })
-      : generatedQaReport;
+    const plannedDeckSpec = planDeckVisualAssets({
+      deckSpec: deckSpecWithTemplate,
+      forceRegenerate,
+    });
+    const backgroundVisuals = input.generateVisuals !== false
+      ? await generateSlideVisualAssets({
+          admin: authorizedComponent.admin,
+          context,
+          createdBy: authenticatedUser.userId,
+          deckSpec: plannedDeckSpec,
+          mode: "background",
+        })
+      : { deckSpec: plannedDeckSpec, generatedCount: 0, jobId: null };
+    const supportingVisuals = input.generateVisuals !== false
+      ? await generateSlideVisualAssets({
+          admin: authorizedComponent.admin,
+          context,
+          createdBy: authenticatedUser.userId,
+          deckSpec: backgroundVisuals.deckSpec,
+          mode: "supporting",
+        })
+      : { deckSpec: backgroundVisuals.deckSpec, generatedCount: 0, jobId: null };
+    const deckSpec = supportingVisuals.deckSpec;
+    const html = renderCourseDeckHtml(deckSpec);
+    const qaReport = validateCourseDeckQuality({ deckSpec, html });
 
     if (qaReport.status === "FAIL") {
       const failingCodes = qaReport.findings
@@ -412,11 +494,14 @@ export async function POST(request: Request) {
         material_lesson_id: context.materialLessonId,
         lesson_id: context.lessonId,
         metadata: {
+          copy_pipeline_version: SLIDE_COPY_PIPELINE_VERSION,
+          copy_synthesis_signature: synthesisSignature,
           slide_count: deckSpec.slides.length,
           slide_template_run_id: selectedSlideTemplate?.selectedSlideTemplateRunId || null,
           slide_template_title: selectedSlideTemplate?.title || null,
           template: deckSpec.template,
           qa_status: qaReport.status,
+          visual_assets: visualAssetPlanSummary(deckSpec),
         },
         module_id: context.moduleId,
         organization_id: context.organizationId,
@@ -437,11 +522,14 @@ export async function POST(request: Request) {
         material_lesson_id: context.materialLessonId,
         lesson_id: context.lessonId,
         metadata: {
+          copy_pipeline_version: SLIDE_COPY_PIPELINE_VERSION,
+          copy_synthesis_signature: synthesisSignature,
           qa_status: qaReport.status,
           renderer: "soflia-engine-slides-v1",
           slide_template_run_id: selectedSlideTemplate?.selectedSlideTemplateRunId || null,
           slide_template_title: selectedSlideTemplate?.title || null,
           template: deckSpec.template,
+          visual_assets: visualAssetPlanSummary(deckSpec),
         },
         mime_type: "text/html",
         module_id: context.moduleId,
@@ -461,9 +549,12 @@ export async function POST(request: Request) {
         material_lesson_id: context.materialLessonId,
         lesson_id: context.lessonId,
         metadata: {
+          copy_pipeline_version: SLIDE_COPY_PIPELINE_VERSION,
+          copy_synthesis_signature: synthesisSignature,
           finding_count: qaReport.findings.length,
           stage_count: stages.length,
           status: qaReport.status,
+          visual_assets: visualAssetPlanSummary(deckSpec),
         },
         module_id: context.moduleId,
         organization_id: context.organizationId,
@@ -489,6 +580,8 @@ export async function POST(request: Request) {
       slides_url: htmlUpload.publicUrl,
       slides: {
         ...(currentAssets.slides || {}),
+        copy_pipeline_version: SLIDE_COPY_PIPELINE_VERSION,
+        copy_synthesis_signature: synthesisSignature,
         html_content_path: htmlUpload.storagePath,
         html_public_url: htmlUpload.publicUrl,
         open_design_project_id: `soflia-engine-slides-${componentId}`,
@@ -516,7 +609,11 @@ export async function POST(request: Request) {
       .update({
         completed_at: now,
         output_snapshot: {
+          background_visual_job_id: backgroundVisuals.jobId,
+          background_visuals_generated: backgroundVisuals.generatedCount,
           html_storage_path: htmlUpload.storagePath,
+          copy_pipeline_version: SLIDE_COPY_PIPELINE_VERSION,
+          copy_synthesis_signature: synthesisSignature,
           qa_status: qaReport.status,
           qa_storage_path: qaUpload.storagePath,
           slide_template_run_id: selectedSlideTemplate?.selectedSlideTemplateRunId || null,
@@ -524,6 +621,9 @@ export async function POST(request: Request) {
           spec_storage_path: specUpload.storagePath,
           slide_count: deckSpec.slides.length,
           stages,
+          supporting_visual_job_id: supportingVisuals.jobId,
+          supporting_visuals_generated: supportingVisuals.generatedCount,
+          visual_assets: visualAssetPlanSummary(deckSpec),
         },
         status: PRODUCTION_JOB_STATUSES.SUCCEEDED,
         updated_at: now,

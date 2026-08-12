@@ -21,6 +21,7 @@ import {
   parseTimelineOverrideManifests,
 } from "@/remotion/timeline-overrides";
 import { mergeTemplateRenderConfigs } from "@/remotion/template-config";
+import { OutputDurationMismatchError } from "@/lib/server/desktop-worker-errors";
 
 const WORKER_TOKEN_PREFIX = "swk_";
 const LINK_CODE_PREFIX = "SLIA-";
@@ -33,6 +34,7 @@ const WORKER_JOB_STALE_MS = 2 * 60 * 1000;
 const WORKER_JOB_LEASE_SECONDS = 180;
 const ASSEMBLY_FPS = 30;
 const FALLBACK_DURATION_SECONDS = 10;
+const OUTPUT_DURATION_TOLERANCE_SECONDS = 2;
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 const INTERNAL_COMPOSITION_IDS = ["animated-deck-avatar", "full-slides", "split-avatar", "avatar-focus"] as const;
 const DEFAULT_INTERNAL_COMPOSITION_ID = "full-slides";
@@ -592,18 +594,42 @@ function hasUsableFinalVideoUrl(value: unknown): boolean {
   return typeof value === "string" && /^https?:\/\//i.test(value.trim());
 }
 
-function deriveDurationFromJob(job: any): number {
+function deriveDurationContractFromJob(job: any) {
   const props = job.input_snapshot?.resolvedProps;
-  const frames = Number(props?.totalDurationInFrames);
+  const frames = Number(props?.totalDurationFrames ?? props?.totalDurationInFrames);
   const fps = Number(props?.fps);
   if (Number.isFinite(frames) && Number.isFinite(fps) && frames > 0 && fps > 0) {
-    return Math.round(frames / fps);
+    return { frames: Math.round(frames), fps, durationSeconds: frames / fps };
   }
-  return 0;
+  return null;
+}
+
+function deriveDurationFromJob(job: any): number {
+  return deriveDurationContractFromJob(job)?.durationSeconds || 0;
 }
 
 function isPositiveFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function readOutputDurationMismatchDiagnostic(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const expectedFrames = Number(source.expectedFrames);
+  const expectedFps = Number(source.expectedFps);
+  const expectedDurationSeconds = Number(source.expectedDurationSeconds);
+  const receivedDurationSeconds = Number(source.receivedDurationSeconds);
+  const toleranceSeconds = Number(source.toleranceSeconds);
+  if (
+    !Number.isInteger(expectedFrames) || expectedFrames < 1
+    || !isPositiveFiniteNumber(expectedFps)
+    || !isPositiveFiniteNumber(expectedDurationSeconds)
+    || !isPositiveFiniteNumber(receivedDurationSeconds)
+    || !isPositiveFiniteNumber(toleranceSeconds)
+  ) {
+    return null;
+  }
+  return { expectedFrames, expectedFps, expectedDurationSeconds, receivedDurationSeconds, toleranceSeconds };
 }
 
 function resolveTimelineOverrideDurationSeconds(params: {
@@ -770,6 +796,7 @@ function buildAssemblyInputProps(params: {
     template: params.compositionId,
     fps: ASSEMBLY_FPS,
     totalDurationInFrames,
+    totalDurationFrames: totalDurationInFrames,
     voiceAudioUrl: normalized.voiceAudioUrl,
     bgMusicUrl: normalized.bgMusicUrl,
     bgMusicVolume: normalized.bgMusicVolume,
@@ -813,6 +840,7 @@ const PROTECTED_EXTERNAL_TEMPLATE_PROP_KEYS = new Set([
   "templateConfig",
   "timelineOverrides",
   "totalDurationInFrames",
+  "totalDurationFrames",
   "transitionType",
   "voiceAudioUrl",
 ]);
@@ -1083,7 +1111,11 @@ function buildRenderDiagnostics(params: {
   };
 }
 
-function assertWorkerCanAccessJob(worker: WorkerAuthContext, job: any) {
+function assertWorkerCanAccessJob(
+  worker: WorkerAuthContext,
+  job: any,
+  options: { allowCancelled?: boolean } = {},
+) {
   if (job.organization_id !== worker.organizationId) {
     throw new Error("JOB_FORBIDDEN_FOR_WORKER");
   }
@@ -1093,7 +1125,10 @@ function assertWorkerCanAccessJob(worker: WorkerAuthContext, job: any) {
   if (job.input_snapshot?.renderProvider !== "desktop_worker") {
     throw new Error("JOB_PROVIDER_NOT_DESKTOP_WORKER");
   }
-  if (!["PENDING", "QUEUED", "WAITING_PROVIDER", "RUNNING", "SUCCEEDED"].includes(job.status)) {
+  const allowedStatuses = options.allowCancelled
+    ? ["PENDING", "QUEUED", "WAITING_PROVIDER", "RUNNING", "SUCCEEDED", "CANCELLED"]
+    : ["PENDING", "QUEUED", "WAITING_PROVIDER", "RUNNING", "SUCCEEDED"];
+  if (!allowedStatuses.includes(job.status)) {
     throw new Error("JOB_NOT_CLAIMABLE");
   }
   if (job.worker_id && job.worker_id !== worker.id) {
@@ -3397,7 +3432,10 @@ export class DesktopWorkerControlPlane {
       return this.completeTemplatePreview(worker, templatePreview, input);
     }
 
-    const job = await this.getAuthorizedWorkerJob(worker, jobId);
+    const job = await this.getAuthorizedWorkerJob(worker, jobId, { allowCancelled: true });
+    if (job.status === "CANCELLED") {
+      return { discarded: true, reason: "JOB_CANCELLED" };
+    }
     if (!input.outputStoragePath || !input.outputStoragePath.startsWith("completed/")) {
       throw new Error("INVALID_OUTPUT_STORAGE_PATH");
     }
@@ -3419,48 +3457,28 @@ export class DesktopWorkerControlPlane {
       data: { publicUrl },
     } = this.supabase.storage.from(VIDEO_BUCKET).getPublicUrl(input.outputStoragePath);
 
-    const expectedDuration = deriveDurationFromJob(job);
+    const durationContract = deriveDurationContractFromJob(job);
+    const expectedDuration = durationContract?.durationSeconds || 0;
     const reportedDuration = Number.isFinite(input.durationSeconds)
-      ? Math.max(1, Math.round(input.durationSeconds || 0))
+      ? Math.max(1, Number(input.durationSeconds || 0))
       : null;
-    if (reportedDuration && expectedDuration > 0 && Math.abs(reportedDuration - expectedDuration) > 2) {
-      throw new Error(
-        `OUTPUT_DURATION_MISMATCH: el worker genero ${reportedDuration}s, pero el job esperaba ${expectedDuration}s.`,
-      );
+    if (reportedDuration && durationContract && Math.abs(reportedDuration - expectedDuration) > OUTPUT_DURATION_TOLERANCE_SECONDS) {
+      const durationMismatch = new OutputDurationMismatchError({
+        expectedFrames: durationContract.frames,
+        expectedFps: durationContract.fps,
+        expectedDurationSeconds: expectedDuration,
+        receivedDurationSeconds: reportedDuration,
+        toleranceSeconds: OUTPUT_DURATION_TOLERANCE_SECONDS,
+      });
+      await this.failJob(worker, jobId, {
+        errorCode: durationMismatch.code,
+        message: durationMismatch.message,
+        stage: "desktop_worker_output_duration_validation",
+        durationMismatch: durationMismatch.details,
+      });
+      throw durationMismatch;
     }
     const duration = reportedDuration || expectedDuration;
-
-    const { data: component } = await this.supabase
-      .from("material_components")
-      .select("assets")
-      .eq("id", job.material_component_id)
-      .maybeSingle();
-
-    await this.supabase
-      .from("material_components")
-      .update({
-        assets: {
-          ...(component?.assets || {}),
-          final_video_url: publicUrl,
-          final_video_source: "desktop_worker",
-          final_video_file_name: input.outputStoragePath.split("/").filter(Boolean).pop(),
-          final_video_storage_provider: "supabase",
-          final_video_storage_path: input.outputStoragePath,
-          final_video_layout_stale: false,
-          video_duration: duration,
-          production_status: "COMPLETED",
-          updated_at: new Date().toISOString(),
-        },
-      })
-      .eq("id", job.material_component_id);
-
-    await this.syncFinalVideoToPublicationRequest({
-      artifactId: job.artifact_id || null,
-      materialLessonId: job.material_lesson_id || null,
-      lessonId: job.lesson_id || null,
-      finalVideoUrl: publicUrl,
-      duration,
-    });
 
     const completedAt = new Date().toISOString();
     const outputSnapshot = {
@@ -3501,17 +3519,127 @@ export class DesktopWorkerControlPlane {
       .eq("id", jobId);
 
     if (error) throw new Error(`JOB_COMPLETE_FAILED: ${error.message}`);
-    await this.closeRunningTelemetryRunsForProductionJob({
-      workerId: worker.id,
-      jobId,
-      status: "completed",
-      finishedAt: completedAt,
-      lastStage: "complete",
-      lastProgressPercent: 100,
+
+    // The render artifact is already uploaded and the authoritative job state is
+    // persisted above. These projections are useful, but must never turn a
+    // successfully rendered video into a recoverable/failed job when a legacy
+    // publication row or a secondary table has inconsistent data.
+    await this.runPostRenderCompletionSideEffects({
+      job,
+      worker,
+      publicUrl,
+      duration,
+      outputStoragePath: input.outputStoragePath,
+      completedAt,
     });
-    await this.updateBatchItemFromJob(job.id, "SUCCEEDED");
-    await this.heartbeat(worker, { status: "ONLINE" });
     return { finalVideoUrl: publicUrl, durationSeconds: duration };
+  }
+
+  private async runPostRenderCompletionSideEffects(input: {
+    job: any;
+    worker: WorkerAuthContext;
+    publicUrl: string;
+    duration: number;
+    outputStoragePath: string;
+    completedAt: string;
+  }) {
+    const tasks: Array<{ name: string; operation: () => Promise<void> }> = [
+      {
+        name: "material_component_projection",
+        operation: () => this.updateMaterialComponentFinalVideo({
+          componentId: input.job.material_component_id,
+          publicUrl: input.publicUrl,
+          duration: input.duration,
+          outputStoragePath: input.outputStoragePath,
+        }),
+      },
+      {
+        name: "publication_request_projection",
+        operation: () => this.syncFinalVideoToPublicationRequest({
+          artifactId: input.job.artifact_id || null,
+          materialLessonId: input.job.material_lesson_id || null,
+          lessonId: input.job.lesson_id || null,
+          finalVideoUrl: input.publicUrl,
+          duration: input.duration,
+        }),
+      },
+      {
+        name: "telemetry_completion",
+        operation: () => this.closeRunningTelemetryRunsForProductionJob({
+          workerId: input.worker.id,
+          jobId: input.job.id,
+          status: "completed",
+          finishedAt: input.completedAt,
+          lastStage: "complete",
+          lastProgressPercent: 100,
+        }),
+      },
+      {
+        name: "render_batch_projection",
+        operation: () => this.updateBatchItemFromJob(input.job.id, "SUCCEEDED"),
+      },
+      {
+        name: "worker_availability",
+        operation: async () => {
+          await this.heartbeat(input.worker, { status: "ONLINE" });
+        },
+      },
+    ];
+
+    await Promise.all(tasks.map(async (task) => {
+      try {
+        await task.operation();
+      } catch (sideEffectError) {
+        console.error("[DesktopWorkerControlPlane] Post-render completion side effect failed", {
+          jobId: input.job.id,
+          workerId: input.worker.id,
+          sideEffect: task.name,
+          error: sanitizeText(
+            sideEffectError instanceof Error ? sideEffectError.message : String(sideEffectError),
+            "Unknown post-render completion error",
+          ),
+        });
+      }
+    }));
+  }
+
+  private async updateMaterialComponentFinalVideo(input: {
+    componentId: string | null;
+    publicUrl: string;
+    duration: number;
+    outputStoragePath: string;
+  }) {
+    if (!input.componentId) return;
+
+    const { data: component, error: componentLookupError } = await this.supabase
+      .from("material_components")
+      .select("assets")
+      .eq("id", input.componentId)
+      .maybeSingle();
+    if (componentLookupError) {
+      throw new Error(`MATERIAL_COMPONENT_LOOKUP_FAILED: ${componentLookupError.message}`);
+    }
+
+    const { error: componentUpdateError } = await this.supabase
+      .from("material_components")
+      .update({
+        assets: {
+          ...(component?.assets || {}),
+          final_video_url: input.publicUrl,
+          final_video_source: "desktop_worker",
+          final_video_file_name: input.outputStoragePath.split("/").filter(Boolean).pop(),
+          final_video_storage_provider: "supabase",
+          final_video_storage_path: input.outputStoragePath,
+          final_video_layout_stale: false,
+          video_duration: input.duration,
+          production_status: "COMPLETED",
+          updated_at: new Date().toISOString(),
+        },
+      })
+      .eq("id", input.componentId);
+    if (componentUpdateError) {
+      throw new Error(`MATERIAL_COMPONENT_UPDATE_FAILED: ${componentUpdateError.message}`);
+    }
   }
 
   async failJob(worker: WorkerAuthContext, jobId: string, input: Record<string, unknown>) {
@@ -3530,6 +3658,7 @@ export class DesktopWorkerControlPlane {
     const message = sanitizeText(input.message, "El worker local no pudo completar el render");
     const code = sanitizeText(input.errorCode, "") || "DESKTOP_WORKER_RENDER_FAILED";
     const failureStage = sanitizeText(input.stage, "desktop_worker");
+    const durationMismatch = readOutputDurationMismatchDiagnostic(input.durationMismatch);
 
     const failedAt = new Date().toISOString();
     const currentProgress = Array.isArray(job.progress) ? job.progress : [];
@@ -3558,6 +3687,7 @@ export class DesktopWorkerControlPlane {
           renderProvider: "desktop_worker",
           stage: failureStage,
           workerId: worker.id,
+          ...(durationMismatch ? { durationMismatch } : {}),
         },
       })
       .eq("id", jobId);
@@ -3868,7 +3998,11 @@ export class DesktopWorkerControlPlane {
     return preview;
   }
 
-  private async getAuthorizedWorkerJob(worker: WorkerAuthContext, jobId: string) {
+  private async getAuthorizedWorkerJob(
+    worker: WorkerAuthContext,
+    jobId: string,
+    options: { allowCancelled?: boolean } = {},
+  ) {
     const { data: job, error } = await this.supabase
       .from("production_jobs")
       .select("*")
@@ -3876,7 +4010,7 @@ export class DesktopWorkerControlPlane {
       .single();
 
     if (error || !job) throw new Error("JOB_NOT_FOUND");
-    assertWorkerCanAccessJob(worker, job);
+    assertWorkerCanAccessJob(worker, job, options);
     return job;
   }
 
@@ -4076,7 +4210,7 @@ export class DesktopWorkerControlPlane {
     lessonId: string | null;
     finalVideoUrl: string;
     duration: number;
-  }) {
+  }, existingRequest?: { id?: string | null; lesson_videos?: unknown } | null) {
     if (!params.artifactId || !params.lessonId || !params.finalVideoUrl) return;
 
     let lessonTitle = params.lessonId;
@@ -4093,12 +4227,6 @@ export class DesktopWorkerControlPlane {
       moduleTitle = lesson?.module_title || "";
     }
 
-    const { data: existingRequest } = await this.supabase
-      .from("publication_requests")
-      .select("id, lesson_videos")
-      .eq("artifact_id", params.artifactId)
-      .maybeSingle();
-
     const currentLessonVideos = (existingRequest?.lesson_videos as Record<string, unknown> | null) || {};
     const nextLessonVideos = {
       ...currentLessonVideos,
@@ -4113,19 +4241,21 @@ export class DesktopWorkerControlPlane {
     };
 
     if (existingRequest?.id) {
-      await this.supabase
+      const { error } = await this.supabase
         .from("publication_requests")
         .update({ lesson_videos: nextLessonVideos, updated_at: new Date().toISOString() })
         .eq("id", existingRequest.id);
+      if (error) throw new Error(`PUBLICATION_REQUEST_UPDATE_FAILED: ${error.message}`);
       return;
     }
 
-    await this.supabase.from("publication_requests").insert({
+    const { error } = await this.supabase.from("publication_requests").insert({
       artifact_id: params.artifactId,
       lesson_videos: nextLessonVideos,
       status: "DRAFT",
       updated_at: new Date().toISOString(),
     });
+    if (error) throw new Error(`PUBLICATION_REQUEST_CREATE_FAILED: ${error.message}`);
   }
 }
 

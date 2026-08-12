@@ -14,7 +14,8 @@ export type PipelineModelSettingType =
   | "SLIDE_TEMPLATE_TYPE_AGENT"
   | "SLIDES_VISIBLE_COPY_AGENT"
   | "SLIDES_VISUAL_TEMPLATE_AGENT"
-  | "SLIDES_QA_AGENT";
+  | "SLIDES_QA_AGENT"
+  | "SLIDES_IMAGE_GENERATION";
 
 export interface PipelineModelSettings {
   fallback_model: string | null;
@@ -122,6 +123,13 @@ const DEFAULT_MODEL_SETTINGS: Record<PipelineModelSettingType, PipelineModelSett
     setting_type: "SLIDES_QA_AGENT",
     temperature: 0.1,
     thinking_level: "low",
+  },
+  SLIDES_IMAGE_GENERATION: {
+    fallback_model: "gpt-image-2",
+    model_name: "gpt-image-2",
+    setting_type: "SLIDES_IMAGE_GENERATION",
+    temperature: 0,
+    thinking_level: "minimal",
   },
 };
 

@@ -55,8 +55,16 @@ const slideTemplateModifiersSchema = z.object({
   showBrandMark: z.boolean().default(true),
 });
 
+const slideTemplateImageSlotSchema = z.object({
+  id: z.string().trim().regex(/^[a-z][a-z0-9_]*$/).min(2).max(80),
+  opacity: z.number().min(0).max(1).optional(),
+  placement: z.enum(["background", "image_pane"]),
+  purpose: z.enum(["background", "supporting"]),
+});
+
 const slideTemplateLayoutDefinitionSchema = z.object({
   id: z.enum(["center", "closing", "data", "framework", "split", "split_reverse"]),
+  imageSlots: z.array(slideTemplateImageSlotSchema).max(4).default([]),
   label: z.string().trim().min(1).max(80),
   purpose: z.string().trim().min(1).max(240),
   regions: z.array(z.string().trim().min(1).max(80)).min(1).max(8),
@@ -89,6 +97,7 @@ const slideTemplateBlueprintSchema = z.object({
   layouts: z.array(slideTemplateLayoutDefinitionSchema).min(1).max(8),
   modifiers: slideTemplateModifiersSchema,
   slideTypes: z.array(slideTemplateTypeDefinitionSchema).min(1).max(12),
+  visualStyleGuide: z.string().trim().min(1).max(600).default("Editorial educational visual, refined and restrained, with clear subject hierarchy and no embedded text."),
 });
 
 const DEFAULT_LAYOUTS: z.infer<typeof slideTemplateLayoutDefinitionSchema>[] = [
@@ -97,30 +106,35 @@ const DEFAULT_LAYOUTS: z.infer<typeof slideTemplateLayoutDefinitionSchema>[] = [
     label: "Portada centrada",
     purpose: "Titulos, intros y transiciones con una sola idea dominante.",
     regions: ["kicker", "title", "subtitle", "support_points"],
+    imageSlots: [{ id: "atmospheric_background", placement: "background", purpose: "background", opacity: 0.14 }],
   },
   {
     id: "split",
     label: "Texto + visual",
     purpose: "Explicaciones con jerarquia clara entre concepto y evidencia visual.",
     regions: ["copy", "visual", "citation"],
+    imageSlots: [{ id: "supporting_visual", placement: "image_pane", purpose: "supporting" }],
   },
   {
     id: "framework",
     label: "Marco de ideas",
     purpose: "Modelos, pasos, listas cortas y estructuras de aprendizaje.",
     regions: ["header", "columns", "callout"],
+    imageSlots: [],
   },
   {
     id: "data",
     label: "Datos con contexto",
     purpose: "Graficas solo cuando la leccion contiene datos comparables o cuantitativos.",
     regions: ["chart", "insight", "source"],
+    imageSlots: [],
   },
   {
     id: "closing",
     label: "Cierre operativo",
     purpose: "Resumen, accion siguiente o recapitulacion de la leccion.",
     regions: ["title", "takeaways", "next_step"],
+    imageSlots: [{ id: "atmospheric_background", placement: "background", purpose: "background", opacity: 0.16 }],
   },
 ];
 
@@ -270,7 +284,7 @@ function inferDesignTokens(messages: Array<{ role: string; content_redacted: str
   const backgroundColor = (fallback: string) => wantsGrayBackground ? "#F3F4F6" : fallback;
   const textColor = (fallback: string) => wantsWhitePrimaryText ? "#F8FAFC" : fallback;
   const mutedColor = (fallback: string) => wantsWhiteSecondaryText ? "#F8FAFC" : fallback;
-  if (/(mostaza|dorado|amarillo|gold)/i.test(text) && /(morado|purpura|violeta|purple)/i.test(text)) {
+  if (/(mostaza|dorado|amarillo|gold)/i.test(text) && /(morad[oa]|purpura|violeta|purple)/i.test(text)) {
     return {
       accent: "#D6A21E",
       accent2: "#3B1D5C",
@@ -371,6 +385,13 @@ const KNOWN_SLIDE_TYPE_ALIASES: Array<{
   { id: "transition", match: /\b(transicion|separador|intermedio)\b/i },
 ];
 
+const STYLE_OR_ASSET_SEGMENT_PATTERNS = [
+  /\b(paleta|color|colores|fondo|background|letra|texto|tipografia|fuente)\b/i,
+  /\b(morad[oa]|purpura|violeta|mostaza|amarillo|beige|gris|blanco|negro|dorado|azul|verde|rojo)\b/i,
+  /\b(elegante|moderno|moderna|sobrio|corporativo|visual|look|estilo|detalles?)\b/i,
+  /\b(b-?rolls?|imagenes?|videos?|assets?|motion|animacion|animaciones)\b/i,
+];
+
 function findKnownSlideTypeId(value: string) {
   const normalized = normalizeForMatching(value);
   return KNOWN_SLIDE_TYPE_ALIASES.find((alias) => alias.match.test(normalized))?.id || null;
@@ -392,6 +413,7 @@ function createGeneratedSlideType(rawLabel: string): z.infer<typeof slideTemplat
     .replace(/\s+/g, " ")
     .trim();
   if (!normalized || normalized.length < 4) return null;
+  if (STYLE_OR_ASSET_SEGMENT_PATTERNS.some((pattern) => pattern.test(normalized))) return null;
 
   const id = normalized
     .replace(/\s+/g, "_")
@@ -417,13 +439,21 @@ function createGeneratedSlideType(rawLabel: string): z.infer<typeof slideTemplat
 
 function extractExplicitSlideTypeSegments(messages: Array<{ role: string; content_redacted: string }>) {
   const latest = latestUserText(messages);
-  const match = latest.match(/(?:diapositivas?\s+de|tipos?\s+de\s+diapositiva|requerimos|necesitamos)([\s\S]+)/i);
+  const match = [
+    latest.match(/(?:diapositivas?\s+de|tipos?\s+de\s+diapositivas?)([\s\S]+)/i),
+    latest.match(/(?:deck|plantilla)\s+que\s+(?:contenga|incluya|tenga)([\s\S]+)/i),
+    latest.match(/(?:debe\s+(?:tener|incluir)|requerimos|necesitamos)\s+diapositivas?\s+(?:de|con)?([\s\S]+)/i),
+  ].find((candidate) => candidate?.[1]);
   if (!match?.[1]) return [];
 
   return match[1]
     .split(/[,;\n]|\s+y\s+|\s+e\s+|\//i)
     .map((segment) => segment.trim())
-    .filter((segment) => segment.length > 0)
+    .filter((segment) => {
+      if (segment.length === 0) return false;
+      if (findKnownSlideTypeId(segment)) return true;
+      return !STYLE_OR_ASSET_SEGMENT_PATTERNS.some((pattern) => pattern.test(normalizeForMatching(segment)));
+    })
     .slice(0, 12);
 }
 
