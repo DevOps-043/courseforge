@@ -5,6 +5,7 @@ import {
   getAuthorizedMaterialComponentAdmin,
 } from "@/lib/server/artifact-action-auth";
 import { GoogleDriveService } from "@/domains/production/providers/google-drive.service";
+import { registerImportedHyperframesSourceAsset } from "@/domains/production/hyperframes/hyperframes-source-asset.service";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import {
   isHtmlSlideSource,
@@ -87,6 +88,15 @@ export async function POST(request: Request) {
       authenticatedUser.userId,
       tenant.organizationId,
     );
+    const productionAssetId = await registerImportedHyperframesSourceAsset({
+      componentId,
+      createdBy: authenticatedUser.userId,
+      importedAsset: result,
+      importType: type,
+      organizationId: tenant.organizationId,
+      provider: "google_drive",
+      supabase: admin,
+    });
 
     const currentAssets = authorizedComponent.component.assets || {};
     const updatedAssets = { ...currentAssets };
@@ -214,6 +224,7 @@ export async function POST(request: Request) {
       success: true,
       publicUrl: result.publicUrl,
       storagePath: result.storagePath,
+      productionAssetId,
       assets: updatedAssets,
     });
   } catch (error: unknown) {

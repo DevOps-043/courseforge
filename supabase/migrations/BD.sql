@@ -559,6 +559,10 @@ CREATE TABLE public.remotion_template_builds (
   worker_heartbeat_at timestamp with time zone,
   lease_expires_at timestamp with time zone,
   output_checksum text,
+  preview_runtime_version text,
+  preview_runtime_entry_path text,
+  preview_runtime_artifact_storage_path text,
+  preview_runtime_artifact_hash text,
   CONSTRAINT remotion_template_builds_pkey PRIMARY KEY (id),
   CONSTRAINT remotion_template_builds_worker_id_fkey FOREIGN KEY (worker_id) REFERENCES public.render_workers(id),
   CONSTRAINT remotion_template_builds_template_version_id_fkey FOREIGN KEY (template_version_id) REFERENCES public.remotion_template_versions(id),
@@ -964,4 +968,31 @@ CREATE TABLE public.standalone_assembly_projects (
   CONSTRAINT standalone_assembly_projects_backing_material_id_fkey FOREIGN KEY (backing_material_id) REFERENCES public.materials(id),
   CONSTRAINT standalone_assembly_projects_backing_lesson_id_fkey FOREIGN KEY (backing_lesson_id) REFERENCES public.material_lessons(id),
   CONSTRAINT standalone_assembly_projects_backing_component_id_fkey FOREIGN KEY (backing_component_id) REFERENCES public.material_components(id)
+);
+CREATE TABLE public.slide_documents (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  organization_id uuid,
+  artifact_id uuid NOT NULL,
+  material_component_id uuid NOT NULL UNIQUE,
+  current_version_number integer NOT NULL DEFAULT 0 CHECK (current_version_number >= 0),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT slide_documents_pkey PRIMARY KEY (id),
+  CONSTRAINT slide_documents_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id),
+  CONSTRAINT slide_documents_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id),
+  CONSTRAINT slide_documents_material_component_id_fkey FOREIGN KEY (material_component_id) REFERENCES public.material_components(id)
+);
+CREATE TABLE public.slide_document_versions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  document_id uuid NOT NULL,
+  version_number integer NOT NULL CHECK (version_number > 0),
+  parent_version_number integer CHECK (parent_version_number IS NULL OR parent_version_number > 0),
+  document jsonb NOT NULL,
+  checksum text NOT NULL CHECK (checksum ~ '^[0-9a-f]{64}$'::text),
+  change_type text NOT NULL CHECK (change_type = ANY (ARRAY['INITIAL'::text, 'EDIT'::text, 'RESTORE'::text, 'SYSTEM_MIGRATION'::text])),
+  change_summary text CHECK (change_summary IS NULL OR char_length(change_summary) <= 500),
+  created_by uuid,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT slide_document_versions_pkey PRIMARY KEY (id),
+  CONSTRAINT slide_document_versions_document_id_fkey FOREIGN KEY (document_id) REFERENCES public.slide_documents(id)
 );

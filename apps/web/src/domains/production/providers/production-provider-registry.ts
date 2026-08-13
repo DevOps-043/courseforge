@@ -47,6 +47,11 @@ const PROVIDERS: ProductionProviderDefinition[] = [
       PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_VIDEO,
     ],
   },
+  {
+    key: PRODUCTION_PROVIDERS.HYPERFRAMES,
+    name: "HyperFrames Cloud",
+    jobTypes: [PRODUCTION_JOB_TYPES.HYPERFRAMES_RENDER],
+  },
 ];
 
 export function getProductionProvider(provider: ProductionProvider) {

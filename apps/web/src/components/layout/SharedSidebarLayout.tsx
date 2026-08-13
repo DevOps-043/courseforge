@@ -294,12 +294,13 @@ export default function SharedSidebarLayout({
             </motion.aside>
 
             <motion.main
-                animate={{ marginLeft: isOpen ? 280 : 64, paddingLeft: 32 }}
+                id="application-content"
+                animate={{ marginLeft: isOpen ? 280 : 64, paddingLeft: isFocusModeRequested ? 0 : 32 }}
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                className="flex-1 py-8 pr-8 min-h-screen"
+                className={`flex-1 ${isFocusModeRequested ? 'h-screen overflow-hidden p-0' : 'min-h-screen py-8 pr-8'}`}
                 onClick={() => setIsUserMenuOpen(false)}
             >
-                <div className={isFocusModeRequested ? "max-w-none" : "max-w-7xl mx-auto"}>
+                <div className={isFocusModeRequested ? "h-full max-w-none" : "max-w-7xl mx-auto"}>
                     {children}
                 </div>
             </motion.main>

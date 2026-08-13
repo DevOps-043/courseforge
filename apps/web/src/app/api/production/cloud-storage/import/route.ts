@@ -5,6 +5,7 @@ import {
   getAuthorizedMaterialComponentAdmin,
 } from "@/lib/server/artifact-action-auth";
 import { getCloudStorageService } from "@/domains/production/cloud-storage/cloud-storage.service";
+import { registerImportedHyperframesSourceAsset } from "@/domains/production/hyperframes/hyperframes-source-asset.service";
 import {
   isCloudStorageProvider,
   type ProductionAssetType,
@@ -93,6 +94,15 @@ export async function POST(request: Request) {
       tenant.organizationId,
       accessToken,
     );
+    const productionAssetId = await registerImportedHyperframesSourceAsset({
+      componentId,
+      createdBy: authenticatedUser.userId,
+      importedAsset: result,
+      importType: type,
+      organizationId: tenant.organizationId,
+      provider: body.provider,
+      supabase: admin,
+    });
 
     const currentAssets = authorizedComponent.component.assets || {};
     const updatedAssets = { ...currentAssets };
@@ -244,6 +254,7 @@ export async function POST(request: Request) {
       success: true,
       publicUrl: result.publicUrl,
       storagePath: result.storagePath,
+      productionAssetId,
       assets: updatedAssets,
     });
   } catch (error: unknown) {

@@ -128,6 +128,13 @@ export default function ArtifactClientView({
 
   useEffect(() => {
     const enabled = currentStep === 7;
+    document.documentElement.classList.toggle("courseforge-assembly-focus", enabled);
+    const page = document.getElementById("artifact-detail-page");
+    const breadcrumbs = document.getElementById("artifact-detail-breadcrumbs");
+    if (enabled && page) {
+      page.style.cssText = "display:flex; flex-direction:column; height:100%; max-width:none; margin:0; padding:0; transition:all 420ms cubic-bezier(.22,1,.36,1);";
+    }
+    if (enabled && breadcrumbs) breadcrumbs.style.display = "none";
     window.dispatchEvent(
       new CustomEvent("courseforge:admin-focus-mode", {
         detail: { enabled },
@@ -135,6 +142,9 @@ export default function ArtifactClientView({
     );
 
     return () => {
+      document.documentElement.classList.remove("courseforge-assembly-focus");
+      if (page) page.style.cssText = "";
+      if (breadcrumbs) breadcrumbs.style.display = "";
       window.dispatchEvent(
         new CustomEvent("courseforge:admin-focus-mode", {
           detail: { enabled: false },
@@ -296,69 +306,76 @@ export default function ArtifactClientView({
   const canAccessProductionStep = materialsDone;
   const canAccessPostproductionStep = productionDone;
   const canAccessPublicationStep = postproductionDone;
+  const isAssemblyStudio = currentStep === 7;
 
   return (
-    <div className="space-y-8 relative">
+    <div className={`relative ${isAssemblyStudio ? "flex h-full min-h-0 flex-col gap-2 overflow-hidden" : "space-y-8"}`}>
       <ArtifactToast
         toast={toast}
         onClose={() => setToast((previous) => ({ ...previous, show: false }))}
       />
 
-      <ArtifactWorkflowHeader
-        artifact={artifact}
-        currentStatusStyle={currentStatusStyle}
-        displayState={displayState}
-      />
+      <div id={isAssemblyStudio ? "assembly-workspace-toolbar" : undefined} className={isAssemblyStudio ? "flex h-16 shrink-0 items-center gap-5 border-b border-slate-200 bg-white px-5 text-slate-900 shadow-sm" : "space-y-8"}>
+        <ArtifactWorkflowHeader
+          artifact={artifact}
+          compact={isAssemblyStudio}
+          currentStatusStyle={currentStatusStyle}
+          displayState={displayState}
+        />
 
-      <ArtifactWorkflowStepper
-        canAccessMaterialsStep={canAccessMaterialsStep}
-        canAccessProductionStep={canAccessProductionStep}
-        canAccessPostproductionStep={canAccessPostproductionStep}
-        canAccessPublicationStep={canAccessPublicationStep}
-        canAccessSourcesStep={canAccessSourcesStep}
-        currentStep={currentStep}
-        onStepChange={setCurrentStep}
-        stepStatus={{
-          baseDone,
-          syllabusDone,
-          planDone,
-          curationDone,
-          materialsDone,
-          productionDone,
-          postproductionDone,
-          publicationDone:
-            publicationRequest?.status === "SENT" ||
-            publicationRequest?.status === "APPROVED",
-        }}
-      />
+        <ArtifactWorkflowStepper
+          canAccessMaterialsStep={canAccessMaterialsStep}
+          canAccessProductionStep={canAccessProductionStep}
+          canAccessPostproductionStep={canAccessPostproductionStep}
+          canAccessPublicationStep={canAccessPublicationStep}
+          canAccessSourcesStep={canAccessSourcesStep}
+          currentStep={currentStep}
+          compact={isAssemblyStudio}
+          onStepChange={setCurrentStep}
+          stepStatus={{
+            baseDone,
+            syllabusDone,
+            planDone,
+            curationDone,
+            materialsDone,
+            productionDone,
+            postproductionDone,
+            publicationDone:
+              publicationRequest?.status === "SENT" ||
+              publicationRequest?.status === "APPROVED",
+          }}
+        />
+      </div>
 
-      <ArtifactStageContent
-        activeTab={activeTab}
-        artifact={artifact}
-        basePath={basePath}
-        currentStep={currentStep}
-        editedContent={editedContent}
-        editingSection={editingSection}
-        feedback={feedback}
-        isRegenerating={isRegenerating}
-        onApproveBase={handleApproveBase}
-        onCancelEdit={handleCancelEdit}
-        onLocalProductionStatusChange={setLocalProductionComplete}
-        onRejectBase={handleRejectBase}
-        onRegenerate={handleRegenerate}
-        onSaveContent={handleSaveContent}
-        profile={profile}
-        assetsComplete={assetsComplete}
-        publicationLessons={publicationLessons}
-        publicationRequest={publicationRequest}
-        reviewState={reviewState}
-        setActiveTab={setActiveTab}
-        setCurrentStep={setCurrentStep}
-        setEditedContent={setEditedContent}
-        setEditingSection={setEditingSection}
-        setFeedback={setFeedback}
-        validation={validation}
-      />
+      <div className={isAssemblyStudio ? "min-h-0 flex-1 overflow-hidden" : ""}>
+        <ArtifactStageContent
+          activeTab={activeTab}
+          artifact={artifact}
+          basePath={basePath}
+          currentStep={currentStep}
+          editedContent={editedContent}
+          editingSection={editingSection}
+          feedback={feedback}
+          isRegenerating={isRegenerating}
+          onApproveBase={handleApproveBase}
+          onCancelEdit={handleCancelEdit}
+          onLocalProductionStatusChange={setLocalProductionComplete}
+          onRejectBase={handleRejectBase}
+          onRegenerate={handleRegenerate}
+          onSaveContent={handleSaveContent}
+          profile={profile}
+          assetsComplete={assetsComplete}
+          publicationLessons={publicationLessons}
+          publicationRequest={publicationRequest}
+          reviewState={reviewState}
+          setActiveTab={setActiveTab}
+          setCurrentStep={setCurrentStep}
+          setEditedContent={setEditedContent}
+          setEditingSection={setEditingSection}
+          setFeedback={setFeedback}
+          validation={validation}
+        />
+      </div>
     </div>
   );
 }

@@ -30,8 +30,8 @@ export default async function TenantAdminArtifactDetailPage({
   const { artifact, publicationRequest, publicationLessons, displayProfile } = detail;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-20">
-      <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-[#94A3B8]">
+    <div id="artifact-detail-page" className="max-w-6xl mx-auto space-y-6 pb-20 transition-all duration-300">
+      <div id="artifact-detail-breadcrumbs" className="flex items-center gap-4 text-sm text-gray-500 dark:text-[#94A3B8]">
         <Link href={`${basePath}/artifacts`} className="hover:text-gray-900 dark:hover:text-white flex items-center gap-1 transition-colors">
           <ArrowLeft size={16} />
           Volver a Artefactos

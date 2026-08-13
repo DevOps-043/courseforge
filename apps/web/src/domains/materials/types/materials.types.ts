@@ -166,7 +166,7 @@ export interface MaterialAssets {
     notes?: string;
     // Campo de video final (post-producción)
     final_video_url?: string;
-    final_video_source?: 'upload' | 'link' | 'desktop_worker'; // Tracks how the final video was provided
+    final_video_source?: 'upload' | 'link' | 'desktop_worker' | 'hyperframes_cloud'; // Tracks how the final video was provided
     final_video_file_name?: string;
     final_video_storage_path?: string;
     final_video_layout_stale?: boolean;

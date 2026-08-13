@@ -1,4 +1,5 @@
 import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
+import { createHash } from "node:crypto";
 import type { ImportedCloudAsset, ProductionAssetType } from "./types";
 
 function getStorageTarget(type: ProductionAssetType, fileName: string, mimeType: string) {
@@ -55,7 +56,9 @@ export async function uploadImportedAssetToStorage(params: {
   } = admin.storage.from("production-assets").getPublicUrl(storagePath);
 
   return {
+    checksum: createHash("sha256").update(params.buffer).digest("hex"),
     fileName: params.fileName,
+    fileSizeBytes: params.buffer.byteLength,
     mimeType: target.mimeType,
     publicUrl,
     storagePath: `production-assets/${storagePath}`,

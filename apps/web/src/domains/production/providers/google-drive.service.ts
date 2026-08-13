@@ -17,6 +17,7 @@ import { uploadImportedAssetToStorage } from "@/domains/production/cloud-storage
 import type {
   CloudStorageLessonInput,
   CloudStorageMaterialsLesson,
+  ImportedCloudAsset,
   ProductionAssetType,
 } from "@/domains/production/cloud-storage/types";
 import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
@@ -161,13 +162,7 @@ export class GoogleDriveService {
     accessToken?: string,
     userId?: string,
     organizationId?: string,
-  ): Promise<{
-    publicUrl: string;
-    storagePath: string;
-    duration?: number;
-    mimeType?: string;
-    fileName?: string;
-  }> {
+  ): Promise<ImportedCloudAsset> {
     const fileId = this.parseFileId(urlOrId);
     let buffer: Buffer | null = null;
     let fileName = `drive-${fileId}`;

@@ -13,13 +13,12 @@ import {
 import { createClient } from '@/utils/supabase/server';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 
-const ALLOWED_BUCKETS = new Set(['thumbnails', 'production-videos', 'production-assets', 'template-bundles', 'curation-sources']);
-const TEMPLATE_BUNDLE_MAX_BYTES = 10 * 1024 * 1024;
+const ALLOWED_BUCKETS = new Set(['thumbnails', 'production-videos', 'production-assets', 'curation-sources']);
 const BUNDLE_AGENT_REFERENCE_MAX_BYTES = 75 * 1024 * 1024;
 const CURATION_SOURCE_PDF_MAX_BYTES = 25 * 1024 * 1024;
 const GENERAL_UPLOAD_MAX_BYTES = 500 * 1024 * 1024;
 
-type UploadPurpose = 'template-bundle' | 'production-asset' | 'thumbnail' | 'production-video' | 'bundle-agent-reference' | 'curation-source-pdf';
+type UploadPurpose = 'production-asset' | 'thumbnail' | 'production-video' | 'bundle-agent-reference' | 'curation-source-pdf';
 
 interface SignedUploadUrlRequestBody {
     bucket?: string;
@@ -42,35 +41,9 @@ function hasUnsafePathSegment(filePath: string) {
     );
 }
 
-function isZipContentType(contentType: string | undefined) {
-    if (!contentType) return true;
-    return ['application/zip', 'application/x-zip-compressed', 'application/octet-stream'].includes(contentType);
-}
-
 function isBundleAgentReferenceContentType(contentType: string | undefined) {
     if (!contentType) return false;
     return contentType.startsWith('image/') || contentType.startsWith('video/');
-}
-
-async function ensureTemplateBundlesBucket(admin: ReturnType<typeof getServiceRoleClient>) {
-    const { data: existingBucket, error: getBucketError } = await admin.storage.getBucket('template-bundles');
-    if (existingBucket && !getBucketError) {
-        return;
-    }
-
-    const { error: createBucketError } = await admin.storage.createBucket('template-bundles', {
-        public: false,
-        fileSizeLimit: TEMPLATE_BUNDLE_MAX_BYTES,
-        allowedMimeTypes: [
-            'application/zip',
-            'application/x-zip-compressed',
-            'application/octet-stream',
-        ],
-    });
-
-    if (createBucketError) {
-        throw new Error(`No se pudo asegurar el bucket privado template-bundles: ${createBucketError.message}`);
-    }
 }
 
 async function ensureCurationSourcesBucket(admin: ReturnType<typeof getServiceRoleClient>) {
@@ -160,43 +133,7 @@ export async function POST(request: Request) {
 
         let authorizedFilePath = filePath;
 
-        if (purpose === 'template-bundle') {
-            if (bucket !== 'template-bundles') {
-                return NextResponse.json(
-                    { error: 'Los bundles de plantilla deben subirse al bucket privado template-bundles' },
-                    { status: 400 },
-                );
-            }
-
-            if (!activeOrgId) {
-                return NextResponse.json(
-                    { error: 'No se encontro organizacion activa para el upload del bundle' },
-                    { status: 400 },
-                );
-            }
-
-            const expectedPrefix = `organizations/${activeOrgId}/templates/`;
-            if (!filePath.startsWith(expectedPrefix)) {
-                return NextResponse.json(
-                    { error: 'Ruta de bundle fuera del prefijo autorizado para la organizacion' },
-                    { status: 400 },
-                );
-            }
-
-            if (!filePath.toLowerCase().endsWith('.zip') || !isZipContentType(contentType)) {
-                return NextResponse.json(
-                    { error: 'El bundle debe ser un archivo .zip valido' },
-                    { status: 400 },
-                );
-            }
-
-            if (typeof fileSizeBytes !== 'number' || fileSizeBytes <= 0 || fileSizeBytes > TEMPLATE_BUNDLE_MAX_BYTES) {
-                return NextResponse.json(
-                    { error: 'El bundle debe pesar entre 1 byte y 10 MB' },
-                    { status: 400 },
-                );
-            }
-        } else if (purpose === 'bundle-agent-reference') {
+        if (purpose === 'bundle-agent-reference') {
             if (bucket !== 'production-assets') {
                 return NextResponse.json(
                     { error: 'Las referencias visuales del Bundle Agent deben subirse a production-assets' },
@@ -294,9 +231,7 @@ export async function POST(request: Request) {
         }
 
         const admin = getServiceRoleClient();
-        if (purpose === 'template-bundle') {
-            await ensureTemplateBundlesBucket(admin);
-        } else if (purpose === 'curation-source-pdf') {
+        if (purpose === 'curation-source-pdf') {
             await ensureCurationSourcesBucket(admin);
         }
 

@@ -58,7 +58,9 @@ export interface CloudStorageMaterialsLesson {
 }
 
 export interface ImportedCloudAsset {
+  checksum: string;
   fileName?: string;
+  fileSizeBytes: number;
   mimeType?: string;
   publicUrl: string;
   storagePath: string;

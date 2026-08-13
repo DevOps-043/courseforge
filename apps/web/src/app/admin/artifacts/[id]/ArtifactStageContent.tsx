@@ -168,7 +168,7 @@ export function ArtifactStageContent({
 
   if (currentStep === 7) {
     return (
-      <div className={STAGE_WRAPPER}>
+      <div className={`${STAGE_WRAPPER} h-full min-h-0`}>
         <PostproductionAssemblyContainer
           artifactId={artifact.id}
           onNext={() => setCurrentStep(8)}

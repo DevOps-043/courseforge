@@ -9,6 +9,7 @@ interface ArtifactWorkflowStepperProps {
   canAccessPublicationStep: boolean;
   canAccessSourcesStep: boolean;
   currentStep: number;
+  compact?: boolean;
   onStepChange: (step: number) => void;
   stepStatus: {
     baseDone: boolean;
@@ -89,6 +90,7 @@ export function ArtifactWorkflowStepper({
   canAccessPublicationStep,
   canAccessSourcesStep,
   currentStep,
+  compact = false,
   onStepChange,
   stepStatus,
 }: ArtifactWorkflowStepperProps) {
@@ -105,8 +107,8 @@ export function ArtifactWorkflowStepper({
     ][currentStep - 1] ?? "Curso";
 
   return (
-    <div className="sticky top-0 z-50 rounded-b-xl border-b border-x border-gray-200 bg-[#F8FAFC] px-3 py-2 shadow-[0_14px_30px_rgba(15,23,42,0.10)] dark:border-[#6C757D]/10 dark:bg-[#10151C]">
-      <div className="mb-2 flex items-center justify-between gap-3">
+    <div className={compact ? "min-w-0 flex-1" : "sticky top-0 z-50 rounded-b-xl border-b border-x border-gray-200 bg-[#F8FAFC] px-3 py-2 shadow-[0_14px_30px_rgba(15,23,42,0.10)] dark:border-[#6C757D]/10 dark:bg-[#10151C]"}>
+      <div className={compact ? "hidden" : "mb-2 flex items-center justify-between gap-3"}>
         <div className="min-w-0">
           <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">
             Flujo del curso
@@ -120,7 +122,7 @@ export function ArtifactWorkflowStepper({
         </span>
       </div>
 
-      <div className="flex items-center overflow-x-auto pb-1">
+      <div className={compact ? "flex items-center justify-end overflow-x-auto" : "flex items-center overflow-x-auto pb-1"}>
         <StepItem
           label="Base"
           active={currentStep === 1}

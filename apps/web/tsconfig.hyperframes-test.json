@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "baseUrl": ".",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "outDir": ".tmp/hyperframes-tests",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": [
+    "src/domains/production/hyperframes/**/*.ts",
+    "src/domains/production/composition-editor/**/*.ts",
+    "src/app/api/production/hyperframes/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}

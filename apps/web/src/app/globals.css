@@ -14,6 +14,106 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* The assembly stage is an application workspace, not a scrolling document. */
+html.courseforge-assembly-focus,
+html.courseforge-assembly-focus body {
+  height: 100%;
+  overflow: hidden;
+}
+
+html.courseforge-assembly-focus #artifact-detail-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+html.courseforge-assembly-focus #artifact-detail-page > #artifact-detail-breadcrumbs + * {
+  flex: 1;
+  min-height: 0;
+  margin-top: 0;
+}
+
+html.courseforge-assembly-focus #artifact-detail-breadcrumbs {
+  display: none;
+}
+
+/* The workspace is present before client effects run. :has() makes its canvas
+   fill the shell immediately, including a hard refresh of the assembly stage. */
+body:has(#assembly-workspace-toolbar) #application-content {
+  height: 100vh !important;
+  margin-left: 64px !important;
+  padding: 0 !important;
+}
+
+body:has(#assembly-workspace-toolbar) {
+  overflow: hidden;
+}
+
+body:has(#assembly-workspace-toolbar) #artifact-detail-page {
+  display: flex !important;
+  flex-direction: column;
+  height: 100% !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+body:has(#assembly-workspace-toolbar) #artifact-detail-breadcrumbs {
+  display: none !important;
+}
+
+body:has(#assembly-workspace-toolbar) #artifact-detail-page > #artifact-detail-breadcrumbs + * {
+  flex: 1;
+  min-height: 0;
+  margin-top: 0 !important;
+}
+
+#assembly-workspace-toolbar {
+  animation: assembly-workspace-toolbar-in 420ms cubic-bezier(.22, 1, .36, 1) both;
+}
+
+@keyframes assembly-workspace-toolbar-in {
+  from {
+    opacity: 0;
+    transform: translateY(-18px) scale(.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+html.courseforge-assembly-focus [data-timeline-lane] {
+  min-height: 52px;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  background-color: rgba(15, 23, 42, 0.05);
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(100, 116, 139, 0.16) 0,
+    rgba(100, 116, 139, 0.16) 1px,
+    transparent 1px,
+    transparent 6.25%
+  );
+}
+
+html.courseforge-assembly-focus [data-timeline-lane] > button {
+  border: 1px solid rgba(8, 47, 73, 0.52);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.24);
+}
+
+html.dark.courseforge-assembly-focus [data-timeline-lane] {
+  border-color: rgba(148, 163, 184, 0.28);
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+html.dark.courseforge-assembly-focus [data-timeline-lane] > button {
+  border-color: rgba(186, 230, 253, 0.5);
+}
+
 /* Glassmorphism Utilities */
 .glass {
   background: rgba(15, 23, 42, 0.6);
