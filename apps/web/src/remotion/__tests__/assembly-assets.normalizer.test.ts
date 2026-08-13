@@ -163,6 +163,8 @@ describe("normalizeAssemblyAssets", () => {
 
     assert.equal(readiness.hasAnyAssetReference, true);
     assert.equal(readiness.hasRenderableAssets, false);
+    assert.equal(readiness.canRender, false);
+    assert.equal(readiness.manifest.slideCount, 0);
     assert.equal(
       readiness.warnings.some(
         (warning) => warning.code === "SLIDES_REFERENCE_NOT_RENDERIZABLE",
@@ -170,6 +172,22 @@ describe("normalizeAssemblyAssets", () => {
       true,
     );
     assert.equal(hasPreviewableAssets(assets), true);
+  });
+
+  it("blocks an avatar render when referenced slides would silently disappear", () => {
+    const readiness = getAssemblyAssetReadiness({
+      slides_url: "https://cdn.example.com/slides.html",
+      avatar_video: {
+        public_url: VIDEO_URL,
+        storage_path: "production-assets/avatar.mp4",
+        duration: 20,
+      },
+    }, ASSEMBLY_FPS);
+
+    assert.equal(readiness.hasRenderableAssets, true);
+    assert.equal(readiness.canRender, false);
+    assert.equal(readiness.manifest.hasAvatarVideo, true);
+    assert.equal(readiness.blockingIssues[0]?.code, "SLIDES_REFERENCE_NOT_RENDERIZABLE");
   });
 
   it("treats slide references with generated images as renderable", () => {
@@ -190,6 +208,8 @@ describe("normalizeAssemblyAssets", () => {
     const readiness = getAssemblyAssetReadiness(assets, ASSEMBLY_FPS);
 
     assert.equal(readiness.hasRenderableAssets, true);
+    assert.equal(readiness.canRender, true);
+    assert.equal(readiness.manifest.slideCount, 1);
     assert.equal(
       readiness.warnings.some(
         (warning) => warning.code === "SLIDES_REFERENCE_NOT_RENDERIZABLE",

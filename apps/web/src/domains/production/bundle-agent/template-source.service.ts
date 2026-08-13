@@ -20,7 +20,6 @@ import {
   Composition,
   Freeze,
   Img,
-  OffthreadVideo,
   Sequence,
   interpolate,
   registerRoot,
@@ -28,6 +27,7 @@ import {
   useVideoConfig,
   type CalculateMetadataFunction,
 } from "remotion";
+import { Video } from "@remotion/media";
 
 type SlideAsset = {
   animationCount?: number;
@@ -552,12 +552,12 @@ function RenderVideo(props: {
     sequenceDurationInFrames: props.durationInFrames,
   });
   const video = (
-    <OffthreadVideo
+    <Video
       src={props.src}
       muted={props.muted}
       volume={props.volume}
-      startFrom={sourceRange.sourceStartFrame}
-      endAt={sourceRange.sourceEndFrame}
+      trimBefore={sourceRange.sourceStartFrame}
+      trimAfter={sourceRange.sourceEndFrame}
       delayRenderTimeoutInMilliseconds={45_000}
       delayRenderRetries={1}
       style={props.style}

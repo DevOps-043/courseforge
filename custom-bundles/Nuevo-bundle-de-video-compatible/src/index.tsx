@@ -6,7 +6,6 @@ import {
   Freeze,
   Img,
   Loop,
-  OffthreadVideo,
   Sequence,
   interpolate,
   registerRoot,
@@ -14,6 +13,7 @@ import {
   useVideoConfig,
   type CalculateMetadataFunction,
 } from "remotion";
+import { Video } from "@remotion/media";
 
 type SlideAsset = {
   index?: number;
@@ -367,11 +367,11 @@ function SafeRenderVideo({
     : requestedEndFrame;
   const sourceDurationInFrames = Math.max(1, safeEndFrame - sourceStartFrame);
   const video = (
-    <OffthreadVideo
+    <Video
       src={src}
       muted={muted}
-      startFrom={sourceStartFrame}
-      endAt={safeEndFrame}
+      trimBefore={sourceStartFrame}
+      trimAfter={safeEndFrame}
       delayRenderTimeoutInMilliseconds={45_000}
       delayRenderRetries={1}
       style={style}

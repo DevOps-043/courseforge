@@ -19,7 +19,7 @@ import {
   type RenderBatchRequest,
   type RenderBatchStatusView,
 } from "@/domains/production/render-batches/render-batch.types";
-import { normalizeAssemblyAssets } from "@/remotion/assembly-assets.normalizer";
+import { getAssemblyAssetReadiness, normalizeAssemblyAssets } from "@/remotion/assembly-assets.normalizer";
 import { safeParseLayoutOverrideManifests } from "@/remotion/layout-overrides";
 import {
   normalizeTimelineOverrideManifestsForDuration,
@@ -1035,18 +1035,15 @@ export async function assembleRemotionVideoAction(
   const component = rawComponent as ProductionComponentRecord | null;
   const currentAssets = (component?.assets || {}) as MaterialAssets;
   const normalizedAssets = normalizeAssemblyAssets(currentAssets, 30);
-  const hasPrimaryRenderableAssets = Boolean(
-    normalizedAssets.voiceAudioUrl ||
-      normalizedAssets.avatarVideoUrl ||
-      normalizedAssets.slides.length > 0 ||
-      normalizedAssets.brollClips.length > 0,
-  );
+  const assetReadiness = getAssemblyAssetReadiness(currentAssets, ASSEMBLY_FPS);
 
-  if (!hasPrimaryRenderableAssets) {
+  if (!assetReadiness.canRender) {
+    const blockingIssue = assetReadiness.blockingIssues[0];
     return {
       success: false,
-      error:
-        "No hay assets renderizables para ensamblado. Sube voz, avatar, slides renderizables o B-roll antes de ensamblar.",
+      code: blockingIssue?.code || "ASSEMBLY_PREFLIGHT_FAILED",
+      error: blockingIssue?.message || "El preflight de ensamblado encontro assets incompletos.",
+      preflight: assetReadiness,
     };
   }
 
@@ -1085,6 +1082,7 @@ export async function assembleRemotionVideoAction(
         voiceDurationSeconds: typeof currentAssets.voice_audio?.duration === "number"
           ? currentAssets.voice_audio.duration
           : null,
+        preflightManifest: assetReadiness.manifest,
       },
       variablesKeys: Object.keys(variables || {}),
     });
