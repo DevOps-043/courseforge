@@ -24,13 +24,22 @@ export async function POST(_request: Request, context: RouteContext) {
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: "Identificador de composición inválido." }, { status: 400 });
     if (error instanceof HyperframesDraftError) return NextResponse.json({ error: error.message }, { status: error.status });
-    console.error("[API /production/hyperframes/compositions/:id/draft] Unexpected error:", {
-      cause: error instanceof Error && error.cause ? String(error.cause) : null,
-      message: getErrorMessage(error),
-      stack: error instanceof Error ? error.stack : null,
-    });
+    console.error("[API /production/hyperframes/compositions/:id/draft] Unexpected error:", serializeError(error));
     return NextResponse.json({ error: "No se pudo preparar el proyecto de edición." }, { status: 500 });
   }
+}
+
+function serializeError(error: unknown) {
+  if (error && typeof error === "object") {
+    const candidate = error as Record<string, unknown>;
+    return {
+      code: typeof candidate.code === "string" ? candidate.code : null,
+      details: typeof candidate.details === "string" ? candidate.details.slice(0, 500) : null,
+      hint: typeof candidate.hint === "string" ? candidate.hint.slice(0, 300) : null,
+      message: typeof candidate.message === "string" ? candidate.message.slice(0, 500) : getErrorMessage(error),
+    };
+  }
+  return { message: getErrorMessage(error) };
 }
 
 async function authorize() {

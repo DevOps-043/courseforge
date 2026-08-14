@@ -20,6 +20,8 @@ test("compiles the native document into a seekable preview with stable visual id
   assert.match(html, /courseforge-composition-selection/);
   assert.match(html, /composition-viewport/);
   assert.match(html, /fitCompositionToViewport/);
+  assert.match(html, /class="deck-scope"/);
+  assert.match(html, /<section class="slide">/);
   assert.match(html, /<h1>Uno<\/h1>/);
 });
 
@@ -30,4 +32,16 @@ test("fails closed when a document references an asset without a preview URL", a
     plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Video" },
   });
   await assert.rejects(() => compileCompositionPreview({ assetUrls: new Map(), document }));
+});
+
+test("creates a separate synchronized audio element for an avatar video", async () => {
+  const avatarId = "00000000-0000-4000-8000-000000000005";
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "b".repeat(64), durationSeconds: 30, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: avatarId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/avatar.mp4", timelineRole: "AVATAR" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Avatar" },
+  });
+  const html = await compileCompositionPreview({ assetUrls: new Map([[avatarId, "https://example.test/avatar.mp4"]]), document });
+  assert.match(html, /asset-00000000-0000-4000-8000-000000000005-audio/);
+  assert.match(html, /data-volume="1"/);
 });

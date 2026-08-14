@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 export const COMPOSITION_DOCUMENT_FORMAT = "courseforge-composition-v1";
-export const COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS = 120;
+/** Supports full source media such as a 2–3 minute avatar without truncating it. */
+export const COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS = 600;
 
 const editorIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i);
 const uuidSchema = z.string().uuid();
@@ -27,6 +28,7 @@ export const compositionLayoutSchema = z.object({
 }).strict();
 
 const deckSourceSchema = z.object({
+  classes: z.string().trim().min(1).max(2_000).default("slide active"),
   html: z.string().min(1).max(100_000),
   slideIndex: z.number().int().min(0).max(1_000),
 }).strict();

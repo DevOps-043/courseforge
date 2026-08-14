@@ -167,7 +167,7 @@ export function PostproductionAssemblyContainer({
 
       {onNext && (
         <div className="absolute bottom-4 right-4 z-20 flex items-center gap-2">
-          <button type="button" onClick={() => setAssistantRequestKey((current) => current + 1)} disabled={!activeComponent} className="flex items-center gap-2 rounded-xl border border-violet-300 bg-white px-4 py-3 text-sm font-bold text-violet-800 shadow-sm hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-400/40 dark:bg-[#101720] dark:text-violet-200 dark:hover:bg-violet-400/10"><MessageSquareText size={17} /> Modificar con SofLIA</button>
+          <button type="button" onClick={() => setAssistantRequestKey((current) => current + 1)} disabled={!activeComponent} className="flex items-center gap-2 rounded-xl border border-[#00D4B3] bg-white px-4 py-3 text-sm font-bold text-[#0A2540] shadow-sm transition-colors hover:bg-[#00D4B3]/10 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-[#1E2329] dark:text-[#00D4B3]"><MessageSquareText size={17} /> Modificar con SofLIA</button>
           <button type="button" onClick={onNext} className="flex items-center gap-2 rounded-xl bg-cyan-400 px-5 py-3 text-sm font-bold text-[#062036] hover:bg-cyan-300"><PlayCircle size={17} /> Continuar a publicación</button>
         </div>
       )}

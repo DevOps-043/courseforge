@@ -21,4 +21,13 @@ describe("HyperFrames generation settings", () => {
       false,
     );
   });
+
+  it("allows supported Gemini and GPT models but rejects arbitrary provider names", () => {
+    assert.equal(hyperframesGenerationSettingsSchema.safeParse({ agentModel: "gemini-2.5-flash" }).success, true);
+    assert.equal(hyperframesGenerationSettingsSchema.safeParse({ agentModel: "gemini-3.6-flash" }).success, true);
+    assert.equal(hyperframesGenerationSettingsSchema.safeParse({ agentModel: "gpt-4.1-mini" }).success, true);
+    assert.equal(hyperframesGenerationSettingsSchema.safeParse({ agentModel: "gpt-5.6-terra" }).success, true);
+    assert.equal(hyperframesGenerationSettingsSchema.safeParse({ agentModel: "o3-mini" }).success, true);
+    assert.equal(hyperframesGenerationSettingsSchema.safeParse({ agentModel: "gpt-unlisted-model" }).success, false);
+  });
 });

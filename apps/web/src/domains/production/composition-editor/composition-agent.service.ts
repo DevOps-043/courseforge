@@ -1,7 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
-import { getOptionalGeminiApiKey } from "@/lib/server/env";
+import { getOptionalGeminiApiKey, getOptionalOpenAIApiKey } from "@/lib/server/env";
 import { getHyperframesGenerationSettings } from "../hyperframes/hyperframes-generation-settings.service";
+import { getVideoStudioModelProvider, isVideoStudioReasoningModel } from "../hyperframes/video-studio-model-options";
 import type { CompositionEditorDocument } from "./composition-document.types";
 import { applyCompositionEditorPatches } from "./editor-patch.service";
 import { compositionEditorPatchRequestSchema } from "./editor-patch.types";
@@ -34,9 +35,13 @@ export async function proposeCompositionEdits(params: {
   if (!settings.agentAssistedGenerationEnabled) {
     throw new CompositionAgentProposalError("La edici\u00f3n asistida est\u00e1 deshabilitada para esta empresa.", 409);
   }
-  const apiKey = getOptionalGeminiApiKey();
+  const provider = getVideoStudioModelProvider(settings.agentModel);
+  if (!provider) {
+    throw new CompositionAgentProposalError("El modelo de edición configurado no es compatible.", 400);
+  }
+  const apiKey = provider === "gemini" ? getOptionalGeminiApiKey() : getOptionalOpenAIApiKey();
   if (!apiKey) {
-    throw new CompositionAgentProposalError("No hay un modelo configurado para proponer esta edici\u00f3n.", 503);
+    throw new CompositionAgentProposalError(`No hay una API key configurada para ${provider === "openai" ? "OpenAI" : "Gemini"}.`, 503);
   }
 
   const selected = input.selectedClipId
@@ -58,20 +63,10 @@ export async function proposeCompositionEdits(params: {
     tracks: params.document.tracks.map((track) => ({ id: track.id, kind: track.kind, locked: track.locked, label: track.label })),
   };
   try {
-    const client = new GoogleGenAI({ apiKey });
-    const result = await client.models.generateContent({
-      model: settings.agentModel,
-      contents: [{ role: "user", parts: [{ text: [
-        "Eres un asistente de edici\u00f3n de video. Prop\u00f3n cambios seguros para un documento de composici\u00f3n.",
-        "Responde SOLO JSON con {summary, operations}. summary debe explicar en espa\u00f1ol, de forma concreta y en futuro, qu\u00e9 har\u00e1s antes de que el usuario confirme. Cada operaci\u00f3n debe ser una de: clip.move, clip.duration, clip.layout, clip.visibility.",
-        "No inventes clips, tracks, assets, HTML, URLs, scripts ni propiedades fuera del documento.",
-        "La propuesta NO se guarda todav\u00eda. Mant\u00e9n el resultado entre 1 y 12 operaciones.",
-        `Solicitud del usuario: ${input.instruction}`,
-        `Documento disponible: ${JSON.stringify(compactDocument)}`,
-      ].join("\n") }] }],
-      config: { responseMimeType: "application/json", temperature: settings.temperature },
-    });
-    const raw = JSON.parse(extractJson(result.text || ""));
+    const prompt = buildCompositionProposalPrompt(input.instruction, compactDocument);
+    const raw = JSON.parse(extractJson(provider === "gemini"
+      ? await requestGeminiProposal({ apiKey, model: settings.agentModel, prompt, temperature: settings.temperature })
+      : await requestOpenAiProposal({ apiKey, model: settings.agentModel, prompt, temperature: settings.temperature })));
     const proposal = compositionEditorPatchRequestSchema.parse({ ...raw, source: "AGENT" });
     // Apply once on the server now, so an invalid proposal cannot reach the approval UI.
     applyCompositionEditorPatches(params.document, proposal.operations);
@@ -80,6 +75,49 @@ export async function proposeCompositionEdits(params: {
     if (error instanceof CompositionAgentProposalError || error instanceof z.ZodError) throw error;
     throw new CompositionAgentProposalError("El agente no produjo una propuesta de edici\u00f3n v\u00e1lida. Puedes ajustar la instrucci\u00f3n y reintentar.", 422);
   }
+}
+
+function buildCompositionProposalPrompt(instruction: string, document: unknown) {
+  return [
+    "Eres un asistente de edición de video. Propón cambios seguros para un documento de composición.",
+    "Responde SOLO JSON con {summary, operations}. summary debe explicar en español, de forma concreta y en futuro, qué harás antes de que el usuario confirme. Cada operación debe ser una de: clip.move, clip.duration, clip.layout, clip.visibility.",
+    "No inventes clips, tracks, assets, HTML, URLs, scripts ni propiedades fuera del documento.",
+    "La propuesta NO se guarda todavía. Mantén el resultado entre 1 y 12 operaciones.",
+    `Solicitud del usuario: ${instruction}`,
+    `Documento disponible: ${JSON.stringify(document)}`,
+  ].join("\n");
+}
+
+async function requestGeminiProposal(params: { apiKey: string; model: string; prompt: string; temperature: number }) {
+  const client = new GoogleGenAI({ apiKey: params.apiKey });
+  const result = await client.models.generateContent({
+    model: params.model,
+    contents: [{ role: "user", parts: [{ text: params.prompt }] }],
+    config: { responseMimeType: "application/json", temperature: params.temperature },
+  });
+  return result.text || "";
+}
+
+async function requestOpenAiProposal(params: { apiKey: string; model: string; prompt: string; temperature: number }) {
+  const request: Record<string, unknown> = {
+    input: params.prompt,
+    model: params.model,
+    text: { format: { type: "json_object" } },
+  };
+  // Reasoning models do not all accept temperature. Keeping it out makes every
+  // model shown in Settings usable with the same proposal endpoint.
+  if (!isVideoStudioReasoningModel(params.model)) request.temperature = params.temperature;
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${params.apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) throw new Error(`OpenAI proposal failed with HTTP ${response.status}`);
+  const payload = await response.json() as { output_text?: unknown; output?: Array<{ content?: Array<{ text?: unknown; type?: unknown }> }> };
+  if (typeof payload.output_text === "string") return payload.output_text;
+  const text = payload.output?.flatMap((item) => item.content || []).find((item) => item.type === "output_text" && typeof item.text === "string")?.text;
+  if (typeof text !== "string") throw new Error("OpenAI no devolvió una propuesta de texto.");
+  return text;
 }
 
 function extractJson(value: string) {

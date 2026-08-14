@@ -94,6 +94,7 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
 }) {
   const current = await getCurrentCompositionDocument(params);
   if (current.documentHash !== params.expectedDocumentHash) throw new CompositionDocumentConflictError(current);
+  await assertAddedAssetsBelongToDraft(params);
 
   let nextDocument: CompositionEditorDocument;
   try {
@@ -129,6 +130,33 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
   };
 }
 
+/** Prevents a client from inserting an arbitrary asset id into a draft document. */
+async function assertAddedAssetsBelongToDraft(params: {
+  draftId: string;
+  organizationId: string;
+  patch: CompositionEditorPatchRequest;
+  supabase: SupabaseClient<any, "public", any>;
+}) {
+  const assetIds = [...new Set(params.patch.operations.flatMap((operation) => (
+    operation.type === "clip.add" && operation.clip.source.type === "PRODUCTION_ASSET"
+      ? [operation.clip.source.productionAssetId]
+      : []
+  )))];
+  if (assetIds.length === 0) return;
+
+  const { data, error } = await params.supabase
+    .from("video_composition_draft_assets")
+    .select("production_asset_id")
+    .eq("draft_id", params.draftId)
+    .eq("organization_id", params.organizationId)
+    .in("production_asset_id", assetIds);
+  if (error) throw error;
+  const linkedIds = new Set((data || []).map((row: { production_asset_id: string }) => row.production_asset_id));
+  if (assetIds.some((assetId) => !linkedIds.has(assetId))) {
+    throw new CompositionDocumentError("El asset seleccionado no está vinculado a este borrador.");
+  }
+}
+
 function normalizeCompositionPersistenceError(error: unknown) {
   const candidate = error && typeof error === "object" ? error as {
     code?: unknown;
@@ -157,6 +185,14 @@ function normalizeCompositionPersistenceError(error: unknown) {
       "El borrador ya no est\u00e1 disponible para edici\u00f3n.",
       "COMPOSITION_DRAFT_NOT_EDITABLE",
       409,
+    );
+  }
+  if (code === "55P03") {
+    return new CompositionDocumentPersistenceError(
+      "Ya hay otro cambio guardándose en esta composición. Espera un momento y vuelve a intentarlo.",
+      "COMPOSITION_SAVE_BUSY",
+      409,
+      true,
     );
   }
   if (code === "22023") {

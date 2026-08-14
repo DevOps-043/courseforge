@@ -41,6 +41,7 @@ export async function compileCompositionPreview(params: {
     .composition-media { width: 100%; height: 100%; object-fit: cover; display: block; }
     .composition-audio { display: none; }
     .deck-content { overflow: hidden; }
+    .deck-content .deck-scope, .deck-content .deck-scope > .slide { width: 100%; height: 100%; }
     ${deckStyles}
   </style>
 </head>
@@ -61,15 +62,15 @@ function renderClip(clip: CompositionClip, assetUrls: Map<string, string>) {
   const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}" style="${layout}"`;
   const timing = `data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${trackIndex(clip.trackId)}"`;
   if (clip.source.type === "DECK_SLIDE") {
-    return `<section class="clip" ${timing}><div ${common} class="clip-content deck-content">${clip.source.html}</div></section>`;
+    return `<section class="clip" ${timing}><div ${common} class="clip-content deck-content"><div class="deck-scope"><section class="${escapeAttribute(clip.source.classes)}">${clip.source.html}</section></div></div></section>`;
   }
   const sourceUrl = assetUrls.get(clip.source.productionAssetId);
   if (!sourceUrl) throw new CompositionPreviewCompilerError(`No existe URL de preview para el asset ${clip.source.productionAssetId}.`);
   if (clip.kind === "AUDIO") {
-    return `<audio id="${escapeAttribute(clip.id)}" class="composition-audio" data-hf-id="${escapeAttribute(clip.hfId)}" src="${escapeAttribute(sourceUrl)}" ${timing}></audio>`;
+    return `<audio id="${escapeAttribute(clip.id)}" class="composition-audio" data-hf-id="${escapeAttribute(clip.hfId)}" data-clip-hidden="${clip.hidden}" src="${escapeAttribute(sourceUrl)}" ${timing}></audio>`;
   }
   const media = clip.kind === "VIDEO"
-    ? `<video class="composition-media" src="${escapeAttribute(sourceUrl)}" muted playsinline preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}"></video>`
+    ? `<video class="composition-media" src="${escapeAttribute(sourceUrl)}" muted playsinline preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}"></video>${clip.trackId === "avatar" ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio" data-clip-hidden="${clip.hidden}" src="${escapeAttribute(sourceUrl)}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-volume="1"></audio>` : ""}`
     : `<img class="composition-media" src="${escapeAttribute(sourceUrl)}" alt="" />`;
   return `<section class="clip" ${timing}><div ${common} class="clip-content">${media}</div></section>`;
 }
@@ -78,6 +79,7 @@ function renderPreviewController(document: CompositionEditorDocument) {
   const clipMetadata = document.clips.map((clip) => ({
     duration: clip.durationSeconds,
     hfId: clip.hfId,
+    hidden: clip.hidden,
     id: clip.id,
     kind: clip.kind,
     start: clip.startSeconds,
@@ -92,6 +94,7 @@ function renderPreviewController(document: CompositionEditorDocument) {
         if (clip.kind === "AUDIO") continue;
         const element = document.getElementById(clip.id);
         if (!element) continue;
+        if (clip.hidden) { timeline.set(element, { autoAlpha: 0 }, 0); continue; }
         timeline.set(element, { autoAlpha: 1 }, clip.start);
         timeline.set(element, { autoAlpha: 0 }, clip.start + clip.duration + 0.0001);
       }
@@ -111,7 +114,7 @@ function renderPreviewController(document: CompositionEditorDocument) {
         document.querySelectorAll("video[data-start], audio[data-start]").forEach((media) => {
           const start = Number(media.dataset.start || 0);
           const clipDuration = Number(media.dataset.duration || 0);
-          const active = time >= start && time <= start + clipDuration;
+          const active = media.dataset.clipHidden !== "true" && time >= start && time <= start + clipDuration;
           if (media.tagName === "AUDIO") {
             active ? media.play().catch(() => {}) : media.pause();
           }

@@ -56,3 +56,36 @@ test("respeta tracks bloqueados", () => {
     CompositionEditorPatchError,
   );
 });
+
+test("agrega y quita un clip del timeline sin borrar el asset de origen", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+
+  const withoutVideo = applyCompositionEditorPatches(document, [{
+    clipId: video.id,
+    type: "clip.remove",
+  }]);
+  assert.equal(withoutVideo.clips.some((clip) => clip.id === video.id), false);
+  assert.equal(withoutVideo.clips.some((clip) => clip.kind === "DECK_SLIDE"), true);
+
+  const restored = applyCompositionEditorPatches(withoutVideo, [{
+    clip: video,
+    clipId: video.id,
+    type: "clip.add",
+  }]);
+  assert.deepEqual(restored.clips.find((clip) => clip.id === video.id)?.source, video.source);
+});
+
+test("aplica una plantilla de tiempo después de ampliar el canvas", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  const edited = applyCompositionEditorPatches(document, [
+    { clipId: "canvas", durationSeconds: 45, type: "composition.canvas-duration" },
+    { clipId: video.id, durationSeconds: 12, layout: { ...video.layout, x: 24, y: 36 }, startSeconds: 8, type: "clip.template" },
+  ]);
+  const result = edited.clips.find((clip) => clip.id === video.id)!;
+  assert.equal(edited.canvas.durationSeconds, 45);
+  assert.equal(result.startSeconds, 8);
+  assert.equal(result.durationSeconds, 12);
+  assert.equal(result.layout.x, 24);
+});

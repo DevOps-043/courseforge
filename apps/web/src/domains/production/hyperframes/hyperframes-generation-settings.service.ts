@@ -1,9 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import { VIDEO_STUDIO_MODEL_IDS } from "./video-studio-model-options";
 
 export const hyperframesGenerationSettingsSchema = z.object({
   agentAssistedGenerationEnabled: z.boolean().default(true),
-  agentModel: z.string().trim().min(1).max(128),
+  agentModel: z.enum(VIDEO_STUDIO_MODEL_IDS),
   automaticGenerationEnabled: z.boolean().default(true),
   fallbackModel: z.string().trim().min(1).max(128).nullable().optional(),
   temperature: z.number().min(0).max(2).default(0.3),
@@ -59,9 +60,12 @@ export async function saveHyperframesGenerationSettings(params: {
 }
 
 function mapSettingsRow(row: Record<string, unknown>): HyperframesGenerationSettings {
+  const agentModel = typeof row.agent_model === "string" && VIDEO_STUDIO_MODEL_IDS.includes(row.agent_model as typeof VIDEO_STUDIO_MODEL_IDS[number])
+    ? row.agent_model
+    : DEFAULT_HYPERFRAMES_GENERATION_SETTINGS.agentModel;
   return hyperframesGenerationSettingsSchema.parse({
     agentAssistedGenerationEnabled: row.agent_assisted_generation_enabled,
-    agentModel: row.agent_model,
+    agentModel,
     automaticGenerationEnabled: row.automatic_generation_enabled,
     fallbackModel: row.fallback_model || null,
     temperature: Number(row.temperature),

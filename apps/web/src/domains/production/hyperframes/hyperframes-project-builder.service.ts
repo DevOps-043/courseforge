@@ -6,9 +6,11 @@ import type { HyperframesAnimatedDeckSource, HyperframesAssetManifestItem } from
 import type { HyperframesPlan } from "./hyperframes-plan.service";
 
 export interface HyperframesProjectAsset extends HyperframesAssetManifestItem {
+  durationSeconds?: number;
   label?: string;
   publicUrl: string | null;
   storageBucket: string;
+  timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL";
 }
 
 export interface BuiltHyperframesProject {

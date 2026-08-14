@@ -11,12 +11,14 @@ import {
 
 interface VideoAsset {
   checksum: string;
+  durationSeconds?: number;
   eligibleForRevision: boolean;
   metadata: { file_name?: string | null; source_provider?: string | null };
   mimeType: string;
   productionAssetId: string;
   fileSizeBytes: number;
   sourceType: "DECK_DEPENDENCY" | "PRODUCTION_MEDIA";
+  timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL";
   validationErrors: string[];
 }
 
@@ -67,7 +69,8 @@ export function HyperframesCompositionPanel({
   ), [assets]);
   const blockedAssets = useMemo(() => assets.filter((asset) => !asset.eligibleForRevision), [assets]);
   const hasAggregateSizeError = totalAssetBytes > CLOUD_ASSET_LIMIT_BYTES;
-  const studioAssets = useMemo<CompositionStudioAsset[]>(() => assets.map((asset) => ({
+  const studioAssets = useMemo<CompositionStudioAsset[]>(() => assets.filter((asset) => asset.sourceType === "PRODUCTION_MEDIA").map((asset) => ({
+    durationSeconds: asset.durationSeconds,
     id: asset.productionAssetId,
     isEditable: asset.sourceType === "PRODUCTION_MEDIA",
     label: asset.metadata.file_name || asset.mimeType,
@@ -75,6 +78,7 @@ export function HyperframesCompositionPanel({
     previewUrl: draftId ? `/api/production/hyperframes/drafts/${draftId}/assets/${asset.productionAssetId}` : null,
     sizeLabel: formatBytes(asset.fileSizeBytes),
     sourceLabel: asset.sourceType === "DECK_DEPENDENCY" ? "Recurso interno del deck" : "Medio de ProducciÃ³n",
+    timelineRole: asset.timelineRole,
     valid: asset.eligibleForRevision,
   })), [assets, draftId]);
   const hasAssetSizeErrors = blockedAssets.some((asset) => asset.fileSizeBytes > CLOUD_ASSET_LIMIT_BYTES) || hasAggregateSizeError;
@@ -238,10 +242,10 @@ export function HyperframesCompositionPanel({
   void submitRender;
 
   return (
-    <section className={draftId ? "flex h-full min-h-0 flex-col [&>p]:hidden" : "space-y-5 rounded-xl border border-cyan-200 bg-cyan-50/40 p-4 dark:border-cyan-500/20 dark:bg-cyan-500/[0.04]"}>
+    <section className={draftId ? "flex h-full min-h-0 flex-col [&>p]:hidden" : "space-y-5 rounded-xl border border-[#00D4B3]/40 bg-[#00D4B3]/5 p-4 dark:border-[#00D4B3]/25 dark:bg-[#00D4B3]/[0.04]"}>
       <div className={draftId ? "hidden" : "flex flex-wrap items-start justify-between gap-3"}>
         <div>
-          <h4 className="flex items-center gap-2 text-base font-bold text-cyan-700 dark:text-cyan-300"><Sparkles size={17} /> Estudio de video</h4>
+          <h4 className="flex items-center gap-2 text-base font-bold text-[#0A2540] dark:text-[#00D4B3]"><Sparkles size={17} /> Estudio de video</h4>
           <p className="mt-1 text-xs text-slate-600 dark:text-gray-400">Los assets vienen del paso de Producción y se vinculan automáticamente al video seleccionado.</p>
         </div>
         <button type="button" onClick={() => void loadInitialData()} disabled={busy !== null} className="rounded-lg p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white" title="Actualizar assets"><RefreshCw className={busy === "prepare" ? "animate-spin" : ""} size={15} /></button>
@@ -271,7 +275,7 @@ export function HyperframesCompositionPanel({
 }
 
 function ActionButton({ active, disabled, label, onClick, primary = false }: { active: boolean; disabled: boolean; label: string; onClick: () => void; primary?: boolean }) {
-  return <button type="button" disabled={disabled} onClick={onClick} className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${primary ? "bg-cyan-600 text-white hover:bg-cyan-500 dark:bg-cyan-400 dark:text-[#062036] dark:hover:bg-cyan-300" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-[#0F1419] dark:text-gray-200 dark:hover:bg-white/10"}`}>{active ? <Loader2 className="animate-spin" size={14} /> : <Clapperboard size={14} />}{label}</button>;
+  return <button type="button" disabled={disabled} onClick={onClick} className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${primary ? "bg-[#0A2540] text-white hover:bg-[#0d2f4d]" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-[#0F1419] dark:text-gray-200 dark:hover:bg-white/10"}`}>{active ? <Loader2 className="animate-spin" size={14} /> : <Clapperboard size={14} />}{label}</button>;
 }
 
 void ActionButton;

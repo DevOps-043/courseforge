@@ -1,9 +1,6 @@
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import {
-  appendMissingProductionAssetClips,
-  createInitialCompositionDocument,
-} from "../composition-editor/composition-document.factory";
+import { createInitialCompositionDocument } from "../composition-editor/composition-document.factory";
 import { ensureInitialCompositionDocument, hashCompositionDocument } from "../composition-editor/composition-document.service";
 import { buildDeterministicPlan } from "./hyperframes-plan.service";
 import {
@@ -128,6 +125,7 @@ export async function initializeHyperframesDraft(params: {
     .filter((asset) => asset.sourceType === "PRODUCTION_MEDIA")
     .map((asset) => ({
       checksum: asset.checksum,
+      durationSeconds: asset.durationSeconds,
       fileSizeBytes: asset.fileSizeBytes,
       label: typeof asset.metadata.file_name === "string" ? asset.metadata.file_name : undefined,
       mimeType: asset.mimeType,
@@ -135,10 +133,11 @@ export async function initializeHyperframesDraft(params: {
       publicUrl: null,
       storageBucket: "production-assets",
       storagePath: asset.storagePath,
+      timelineRole: asset.timelineRole,
     }));
   const animatedDeck = extractHyperframesAnimatedDeck(component.assets);
   const plan = buildDeterministicPlan({ assetCount: assets.length, title: composition.name });
-  if (animatedDeck) plan.durationSeconds = Math.min(120, Math.max(plan.durationSeconds, animatedDeck.slides.length * 5));
+  if (animatedDeck) plan.durationSeconds = Math.min(600, Math.max(plan.durationSeconds, animatedDeck.slides.length * 5));
   const document = createInitialCompositionDocument({ animatedDeck, assets, plan });
   const persistedDocument = await ensureInitialCompositionDocument({
     document,
@@ -147,27 +146,10 @@ export async function initializeHyperframesDraft(params: {
     supabase: params.supabase,
     userId: params.userId,
   });
-  const reconciledDocument = appendMissingProductionAssetClips(persistedDocument.document, assets);
-  if (!persistedDocument.created && reconciledDocument.changed) {
-    const expectedHash = hashCompositionDocument(persistedDocument.document);
-    const nextHash = hashCompositionDocument(reconciledDocument.document);
-    const { error: reconcileError } = await params.supabase.rpc("append_video_composition_draft_document", {
-      p_actor_id: params.userId,
-      p_document: reconciledDocument.document,
-      p_document_hash: nextHash,
-      p_draft_id: typedDraft.id,
-      p_expected_document_hash: expectedHash,
-      p_format: reconciledDocument.document.format,
-      p_metadata: {
-        addedAssetCount: reconciledDocument.document.clips.length - persistedDocument.document.clips.length,
-        documentHash: nextHash,
-      },
-      p_organization_id: params.organizationId,
-      p_source: "SYSTEM",
-      p_summary: "Documento sincronizado con nuevos assets de Producción.",
-    });
-    if (reconcileError && reconcileError.code !== "40001") throw reconcileError;
-  }
+  // Never append a maintenance version while opening the editor. A pending
+  // database lock or migration must not make the author wait minutes before
+  // seeing the current composition. The versioned repair is deliberately
+  // deferred to an explicit document update after the editor is available.
 
   // A draft can predate a re-sync. Link assets on every initialization so an
   // older draft never hides assets that are already available in Production.

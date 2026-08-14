@@ -18,11 +18,13 @@ import {
 const SUPPORTED_HYPERFRAMES_MIME = /^(audio|font|image|video)\/[a-z0-9.+-]+$/i;
 
 interface InternalMaterialAssetReference {
+  durationSeconds?: number;
   fileName: string | null;
   mimeType: string | null;
   publicUrl: string | null;
   sourceType: "DECK_DEPENDENCY" | "PRODUCTION_MEDIA";
   storagePath: string;
+  timelineRole: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL";
 }
 
 export function isSupportedHyperframesSourceMime(mimeType: string | null | undefined) {
@@ -30,10 +32,12 @@ export function isSupportedHyperframesSourceMime(mimeType: string | null | undef
 }
 
 export interface HyperframesSourceAssetCandidate extends HyperframesAssetManifestItem {
+  durationSeconds?: number;
   eligibleForRevision: boolean;
   metadata: Record<string, unknown>;
   qaStatus: string;
   sourceType: "DECK_DEPENDENCY" | "PRODUCTION_MEDIA";
+  timelineRole: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL";
   validationErrors: string[];
 }
 
@@ -44,6 +48,7 @@ export interface HyperframesSourceAssetCandidate extends HyperframesAssetManifes
  */
 export function inspectHyperframesSourceAsset(input: {
   checksum: string | null;
+  durationSeconds?: number | null;
   fileSizeBytes: number | null;
   metadata?: Record<string, unknown> | null;
   mimeType: string | null;
@@ -51,6 +56,7 @@ export function inspectHyperframesSourceAsset(input: {
   qaStatus?: string | null;
   sourceType: "DECK_DEPENDENCY" | "PRODUCTION_MEDIA";
   storagePath: string | null;
+  timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL";
 }): HyperframesSourceAssetCandidate | null {
   if (!isSupportedHyperframesSourceMime(input.mimeType)) return null;
 
@@ -75,10 +81,14 @@ export function inspectHyperframesSourceAsset(input: {
 
   return {
     ...item,
+    durationSeconds: typeof input.durationSeconds === "number" && Number.isFinite(input.durationSeconds) && input.durationSeconds > 0
+      ? input.durationSeconds
+      : undefined,
     eligibleForRevision: parsed.success,
     metadata: input.metadata || {},
     qaStatus: input.qaStatus || "PENDING",
     sourceType: input.sourceType,
+    timelineRole: input.timelineRole || "VISUAL",
     validationErrors,
   } as HyperframesSourceAssetCandidate;
 }
@@ -91,30 +101,42 @@ export function collectInternalMaterialAssetReferences(rawAssets: unknown): Inte
     value: unknown,
     mimeType?: string | null,
     sourceType: InternalMaterialAssetReference["sourceType"] = "PRODUCTION_MEDIA",
+    timelineRole: InternalMaterialAssetReference["timelineRole"] = "VISUAL",
   ) => {
     if (!isRecord(value) || typeof value.storage_path !== "string") return;
     if (!value.storage_path.startsWith("production-assets/")) return;
+    const durationSeconds = positiveDuration(value.duration);
     references.push({
+      ...(durationSeconds ? { durationSeconds } : {}),
       fileName: typeof value.file_name === "string" ? value.file_name : null,
       mimeType: typeof value.content_type === "string" ? value.content_type : mimeType || null,
       publicUrl: typeof value.public_url === "string" ? value.public_url : null,
       sourceType,
       storagePath: value.storage_path,
+      timelineRole,
     });
   };
 
-  add(assets.voice_audio, "audio/mpeg");
-  add(assets.background_music, "audio/mpeg");
-  for (const item of asArray(assets.b_roll_clips)) add(item, "video/mp4");
-  add(assets.avatar_video, "video/mp4");
+  add(assets.voice_audio, "audio/mpeg", "PRODUCTION_MEDIA", "AUDIO");
+  add(assets.background_music, "audio/mpeg", "PRODUCTION_MEDIA", "AUDIO");
+  for (const item of asArray(assets.b_roll_clips)) add(item, "video/mp4", "PRODUCTION_MEDIA", "BROLL");
+  add(assets.avatar_video, "video/mp4", "PRODUCTION_MEDIA", "AVATAR");
   for (const item of asArray(assets.avatar_clips)) {
     if (!isRecord(item) || item.deleted === true) continue;
-    add(item, "video/mp4");
+    add(item, "video/mp4", "PRODUCTION_MEDIA", "AVATAR");
   }
   const slides = isRecord(assets.slides) ? assets.slides : {};
-  for (const item of asArray(slides.images)) add(item, "image/png");
+  // A ready HTML deck owns its exported raster slides. Keep those files
+  // traceable for preview/render, but never expose them as independent media.
+  const hasReadyAnimatedDeck = Boolean(extractHyperframesAnimatedDeck(assets));
+  for (const item of asArray(slides.images)) add(
+    item,
+    "image/png",
+    hasReadyAnimatedDeck ? "DECK_DEPENDENCY" : "PRODUCTION_MEDIA",
+    "VISUAL",
+  );
   const animatedDeck = isRecord(slides.animated_deck) ? slides.animated_deck : {};
-  for (const item of asArray(animatedDeck.remote_assets)) add(item, null, "DECK_DEPENDENCY");
+  for (const item of asArray(animatedDeck.remote_assets)) add(item, null, "DECK_DEPENDENCY", "VISUAL");
 
   return [...new Map(references.map((item) => [item.storagePath, item])).values()];
 }
@@ -250,7 +272,7 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
     const stored = parseStoredPath(reference.storagePath);
     const { data: existing, error: existingError } = await params.supabase
       .from("production_assets")
-      .select("id, checksum, file_size_bytes, mime_type")
+      .select("id, checksum, duration_seconds, file_size_bytes, mime_type")
       .eq("organization_id", params.organizationId)
       .eq("material_component_id", params.componentId)
       .eq("asset_type", PRODUCTION_ASSET_TYPES.SOURCE_MEDIA)
@@ -279,6 +301,7 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
       && existing.file_size_bytes === fileSizeBytes
       && existing.mime_type === mimeType
       && existing.checksum
+      && (reference.durationSeconds === undefined || existing.duration_seconds === Math.round(reference.durationSeconds))
     ) continue;
 
     bytes = bytes || await downloadStoredAssetBytes(params.supabase, stored);
@@ -289,6 +312,7 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
       checksum,
       content: { imported_from: "production_step" },
       created_by: params.createdBy,
+      ...(reference.durationSeconds ? { duration_seconds: Math.round(reference.durationSeconds) } : {}),
       file_size_bytes: fileSizeBytes,
       lesson_id: context.lessonId,
       material_component_id: context.componentId,
@@ -297,6 +321,7 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
         assembly_source_type: reference.sourceType,
         file_name: reference.fileName || stored.fileName,
         source_provider: "production_step",
+        timeline_role: reference.timelineRole,
       },
       mime_type: mimeType,
       module_id: context.moduleId,
@@ -343,7 +368,7 @@ export async function listHyperframesSourceAssets(params: {
 
   const { data, error } = await params.supabase
     .from("production_assets")
-    .select("id, asset_type, checksum, file_size_bytes, mime_type, storage_path, storage_bucket, qa_status, created_at, metadata")
+    .select("id, asset_type, checksum, duration_seconds, file_size_bytes, mime_type, storage_path, storage_bucket, qa_status, created_at, metadata")
     .eq("organization_id", params.organizationId)
     .eq("material_component_id", params.componentId)
     .in("asset_type", [
@@ -369,6 +394,7 @@ export async function listHyperframesSourceAssets(params: {
     seenStoragePaths.add(asset.storage_path);
     const candidate = inspectHyperframesSourceAsset({
       checksum: asset.checksum,
+      durationSeconds: asset.duration_seconds,
       fileSizeBytes: asset.file_size_bytes,
       metadata: isRecord(asset.metadata) ? asset.metadata : {},
       mimeType: asset.mime_type,
@@ -376,6 +402,7 @@ export async function listHyperframesSourceAssets(params: {
       qaStatus: asset.qa_status,
       sourceType: reference?.sourceType || "PRODUCTION_MEDIA",
       storagePath: asset.storage_path,
+      timelineRole: reference?.timelineRole || (isAvatarRegistryAsset ? "AVATAR" : "VISUAL"),
     });
     return candidate ? [candidate] : [];
   });
@@ -428,6 +455,10 @@ function mimeTypeFromFileName(fileName: string) {
 
 function asArray(value: unknown) {
   return Array.isArray(value) ? value : [];
+}
+
+function positiveDuration(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

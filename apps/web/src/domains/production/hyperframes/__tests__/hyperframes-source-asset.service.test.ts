@@ -34,6 +34,24 @@ describe("HyperFrames source assets", () => {
     assert.equal(deck?.slides[0]?.animationCount, 2);
   });
 
+  it("marks rasterized slides as deck dependencies when the HTML deck is ready", () => {
+    const references = collectInternalMaterialAssetReferences({
+      slides: {
+        animated_deck: {
+          css: ".slide { color: white; }",
+          fonts: [],
+          height: 1080,
+          slides: [{ animationCount: 0, classes: "slide active", html: "<h1>Uno</h1>", index: 1, label: "Uno" }],
+          status: "READY_FOR_PREVIEW",
+          width: 1920,
+        },
+        images: [{ storage_path: "production-assets/slides/rasterized.png" }],
+      },
+    });
+
+    assert.equal(references[0]?.sourceType, "DECK_DEPENDENCY");
+  });
+
   it("identifies images embedded by the deck separately from uploaded production media", () => {
     const references = collectInternalMaterialAssetReferences({
       avatar_video: { storage_path: "production-assets/avatars/avatar.mp4" },
@@ -79,6 +97,18 @@ describe("HyperFrames source assets", () => {
       "production-assets/avatars/component-avatar.mp4",
       "production-assets/slides/component-slide-01.png",
     ]);
+  });
+
+  it("keeps an authored avatar duration so the assembly template can use it", () => {
+    const references = collectInternalMaterialAssetReferences({
+      avatar_video: {
+        duration: 160,
+        storage_path: "production-assets/avatars/component-avatar.mp4",
+      },
+    });
+
+    assert.equal(references[0]?.durationSeconds, 160);
+    assert.equal(references[0]?.timelineRole, "AVATAR");
   });
 
   it("keeps an oversized file visible with a clear preflight warning", () => {
