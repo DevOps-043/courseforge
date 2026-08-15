@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getErrorMessage } from "@/lib/errors";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
+import { COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS } from "@/domains/production/composition-editor/composition-preview-assets.service";
 import { createClient } from "@/utils/supabase/server";
 
 interface RouteContext { params: Promise<{ assetId: string; draftId: string }>; }
@@ -38,9 +39,12 @@ export async function GET(_request: Request, context: RouteContext) {
     const storagePath = toBucketRelativePath(asset.storage_bucket, asset.storage_path);
     const { data: signed, error: signedError } = await authorization.admin.storage
       .from(asset.storage_bucket)
-      .createSignedUrl(storagePath, 60 * 5);
+      .createSignedUrl(storagePath, COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS);
     if (signedError) throw signedError;
-    return NextResponse.redirect(signed.signedUrl, { status: 302 });
+    return NextResponse.redirect(signed.signedUrl, {
+      headers: { "Cache-Control": "private, no-store" },
+      status: 302,
+    });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: "Identificador de asset inválido." }, { status: 400 });
     console.error("[API /production/hyperframes/drafts/:id/assets/:assetId] Unexpected error:", { message: getErrorMessage(error) });

@@ -3,6 +3,7 @@ import type { HyperframesProjectAsset } from "../hyperframes/hyperframes-project
 import type { HyperframesPlan } from "../hyperframes/hyperframes-plan.service";
 import {
   COMPOSITION_DOCUMENT_FORMAT,
+  DEFAULT_COMPOSITION_DUCKING_SETTINGS,
   compositionEditorDocumentSchema,
   type CompositionClip,
   type CompositionEditorDocument,
@@ -11,6 +12,10 @@ import {
   resolveCompositionDuration,
   type CompositionDurationResolution,
 } from "./composition-duration.service";
+import {
+  getCompositionTrackDefinition,
+  resolveCompositionTrackDefinition,
+} from "./composition-track-registry";
 
 /**
  * Creates the first editable document from internal Production sources.
@@ -24,7 +29,7 @@ export function createInitialCompositionDocument(params: {
 }): CompositionEditorDocument {
   const duration = resolveCanvasDuration(params);
   const durationSeconds = duration.durationSeconds;
-  const timelineAssets = selectInitialTimelineAssets(params.assets);
+  const timelineAssets = selectAuthoritativeTimelineAssets(params.assets);
   const tracks = buildTracks(timelineAssets, params.animatedDeck);
   const clips = [
     ...buildDeckClips(params.animatedDeck, durationSeconds),
@@ -32,6 +37,12 @@ export function createInitialCompositionDocument(params: {
   ];
   if (clips.length === 0) throw new Error("No hay fuentes internas para crear la composición.");
   return compositionEditorDocumentSchema.parse({
+    audioMix: {
+      ducking: {
+        ...DEFAULT_COMPOSITION_DUCKING_SETTINGS,
+        triggerRoles: [...DEFAULT_COMPOSITION_DUCKING_SETTINGS.triggerRoles],
+      },
+    },
     canvas: {
       durationMode: "AUTO",
       durationSeconds,
@@ -55,6 +66,7 @@ export function appendMissingProductionAssetClips(
   document: CompositionEditorDocument,
   assets: HyperframesProjectAsset[],
 ) {
+  assets = selectAuthoritativeTimelineAssets(assets);
   const existingAssetIds = new Set(document.clips.flatMap((clip) => (
     clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []
   )));
@@ -64,7 +76,7 @@ export function appendMissingProductionAssetClips(
   const tracks = [...document.tracks];
   for (const requiredTrack of buildTracks(missingAssets, null)) {
     if (!tracks.some((track) => track.id === requiredTrack.id)) {
-      tracks.push({ ...requiredTrack, order: nextTrackOrder(tracks) });
+      tracks.push(requiredTrack);
     }
   }
 
@@ -95,7 +107,8 @@ export function reconcileCompositionDocument(params: {
     clip.source.type !== "PRODUCTION_ASSET" || !params.deckDependencyAssetIds.has(clip.source.productionAssetId)
   ));
   const removedDeckDependencyCount = params.document.clips.length - withoutDeckDependencies.length;
-  const productionAssetById = new Map(params.productionAssets.map((asset) => [asset.productionAssetId, asset]));
+  const productionAssets = selectAuthoritativeTimelineAssets(params.productionAssets);
+  const productionAssetById = new Map(productionAssets.map((asset) => [asset.productionAssetId, asset]));
   const synchronizedClips = withoutDeckDependencies.map((clip) => {
     if (clip.source.type !== "PRODUCTION_ASSET") return clip;
     const source = productionAssetById.get(clip.source.productionAssetId);
@@ -103,9 +116,9 @@ export function reconcileCompositionDocument(params: {
   });
   const trackAssignmentChanged = synchronizedClips.some((clip, index) => clip.trackId !== withoutDeckDependencies[index]?.trackId);
   const synchronizedTracks = [...params.document.tracks];
-  for (const requiredTrack of buildTracks(params.productionAssets, null)) {
+  for (const requiredTrack of buildTracks(productionAssets, null)) {
     if (!synchronizedTracks.some((track) => track.id === requiredTrack.id)) {
-      synchronizedTracks.push({ ...requiredTrack, order: nextTrackOrder(synchronizedTracks) });
+      synchronizedTracks.push(requiredTrack);
     }
   }
   const documentWithoutDeckDependencies = compositionEditorDocumentSchema.parse({
@@ -115,7 +128,7 @@ export function reconcileCompositionDocument(params: {
       track.kind === "DECK" || synchronizedClips.some((clip) => clip.trackId === track.id)
     )),
   });
-  const appended = appendMissingProductionAssetClips(documentWithoutDeckDependencies, params.productionAssets);
+  const appended = appendMissingProductionAssetClips(documentWithoutDeckDependencies, productionAssets);
   return {
     addedProductionAssetCount: appended.document.clips.length - documentWithoutDeckDependencies.clips.length,
     changed: removedDeckDependencyCount > 0 || trackAssignmentChanged || appended.changed,
@@ -137,16 +150,11 @@ export function resolveCanvasDuration(params: {
 
 function buildTracks(assets: HyperframesProjectAsset[], deck: HyperframesAnimatedDeckSource | null) {
   const tracks = [];
-  if (deck) tracks.push({ id: "deck", kind: "DECK" as const, label: "Deck HTML", locked: false, order: 0 });
-  const definitions = [
-    { id: "avatar", kind: "VISUAL" as const, label: "Avatar" },
-    { id: "broll", kind: "VISUAL" as const, label: "B-roll" },
-    { id: "visual", kind: "VISUAL" as const, label: "Medios visuales" },
-    { id: "audio", kind: "AUDIO" as const, label: "Audio" },
-  ];
-  for (const definition of definitions) {
-    if (assets.some((asset) => resolveTrackId(asset) === definition.id)) {
-      tracks.push({ ...definition, locked: false, order: tracks.length });
+  if (deck) tracks.push(getCompositionTrackDefinition("DECK"));
+  for (const asset of assets) {
+    const definition = resolveCompositionTrackDefinition(asset);
+    if (!tracks.some((track) => track.id === definition.id)) {
+      tracks.push(definition);
     }
   }
   return tracks;
@@ -189,15 +197,14 @@ function buildAssetClips(assets: HyperframesProjectAsset[], durationSeconds: num
   for (const [trackId, groupedAssets] of assetsByTrack) {
     const preferredDurations = groupedAssets.map((asset) => resolveInitialAssetDuration(asset, durationSeconds, trackId));
     const totalPreferredDuration = preferredDurations.reduce((total, value) => total + value, 0);
-    const durationScale = trackId !== "audio" && totalPreferredDuration > durationSeconds
+    const durationScale = trackId !== "music" && totalPreferredDuration > durationSeconds
       ? durationSeconds / totalPreferredDuration
       : 1;
     let cursor = 0;
     for (let index = 0; index < groupedAssets.length; index++) {
       const asset = groupedAssets[index]!;
       const preferredDuration = preferredDurations[index]!;
-      const isSequentialVoice = trackId === "audio" && asset.timelineRole === "VOICE";
-      const isSequential = trackId !== "audio" || isSequentialVoice;
+      const isSequential = trackId !== "music";
       const duration = isSequential
         ? Math.max(0.05, Math.min(preferredDuration * durationScale, durationSeconds - cursor))
         : preferredDuration;
@@ -216,7 +223,7 @@ function buildAssetClips(assets: HyperframesProjectAsset[], durationSeconds: num
         ? "VIDEO" as const
         : "IMAGE" as const;
     const trackId = resolveTrackId(asset);
-    const isAudio = trackId === "audio";
+    const isAudio = trackId === "voice" || trackId === "music";
     const timing = timingByAssetId.get(asset.productionAssetId)!;
     const avatarWidth = Math.round(canvasWidth * 0.32);
     const avatarHeight = Math.round(canvasHeight * 0.65);
@@ -248,21 +255,18 @@ function buildAssetClips(assets: HyperframesProjectAsset[], durationSeconds: num
 
 function resolveInitialAssetDuration(asset: HyperframesProjectAsset, canvasDuration: number, trackId: string) {
   const measuredDuration = asset.durationSeconds && asset.durationSeconds > 0 ? asset.durationSeconds : null;
-  const fallbackDuration = trackId === "avatar" || trackId === "audio"
+  const fallbackDuration = trackId === "avatar" || trackId === "voice" || trackId === "music"
     ? canvasDuration
     : asset.mimeType.startsWith("image/") ? 5 : 8;
   return Math.min(canvasDuration, measuredDuration || fallbackDuration);
 }
 
 function resolveTrackId(asset: HyperframesProjectAsset) {
-  if (asset.mimeType.startsWith("audio/") || asset.timelineRole === "AUDIO" || asset.timelineRole === "VOICE") return "audio";
-  if (asset.timelineRole === "AVATAR") return "avatar";
-  if (asset.timelineRole === "BROLL") return "broll";
-  return "visual";
+  return resolveCompositionTrackDefinition(asset).id;
 }
 
 /** A complete avatar is authoritative and must not overlap generated avatar fragments. */
-function selectInitialTimelineAssets(assets: HyperframesProjectAsset[]) {
+export function selectAuthoritativeTimelineAssets(assets: HyperframesProjectAsset[]) {
   const authoritativeFullAvatar = assets
     .filter((asset) => asset.timelineRole === "AVATAR" && asset.timelineVariant === "FULL")
     .sort((left, right) => (right.durationSeconds || 0) - (left.durationSeconds || 0))[0];
@@ -270,10 +274,6 @@ function selectInitialTimelineAssets(assets: HyperframesProjectAsset[]) {
   return assets.filter((asset) => (
     asset.timelineRole !== "AVATAR" || asset.productionAssetId === authoritativeFullAvatar.productionAssetId
   ));
-}
-
-function nextTrackOrder(tracks: CompositionEditorDocument["tracks"]) {
-  return tracks.reduce((highest, track) => Math.max(highest, track.order), -1) + 1;
 }
 
 function roundSeconds(value: number) {

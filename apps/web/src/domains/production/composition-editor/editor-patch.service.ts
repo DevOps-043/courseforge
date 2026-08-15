@@ -10,6 +10,62 @@ export class CompositionEditorPatchError extends Error {
   }
 }
 
+/**
+ * Keeps timing edits atomic. A clip may extend the composition, but callers
+ * should not have to issue a separate canvas edit first (which would leave a
+ * partially-saved state if the second request failed).
+ */
+export function ensureCanvasDurationForClipPatches(
+  document: CompositionEditorDocument,
+  operations: CompositionEditorPatchOperation[],
+): CompositionEditorPatchOperation[] {
+  if (operations.some((operation) => operation.type === "composition.canvas-duration")) {
+    return operations;
+  }
+
+  const timings = new Map(document.clips.map((clip) => [clip.id, {
+    durationSeconds: clip.durationSeconds,
+    startSeconds: clip.startSeconds,
+  }]));
+
+  for (const operation of operations) {
+    if (operation.type === "clip.add") {
+      timings.set(operation.clip.id, {
+        durationSeconds: operation.clip.durationSeconds,
+        startSeconds: operation.clip.startSeconds,
+      });
+    } else if (operation.type === "clip.remove") {
+      timings.delete(operation.clipId);
+    } else if (operation.type === "clip.move") {
+      const timing = timings.get(operation.clipId);
+      if (timing) timing.startSeconds = operation.startSeconds;
+    } else if (operation.type === "clip.duration") {
+      const timing = timings.get(operation.clipId);
+      if (timing) timing.durationSeconds = operation.durationSeconds;
+    } else if (operation.type === "clip.trim" || operation.type === "clip.template") {
+      const timing = timings.get(operation.clipId);
+      if (timing) {
+        timing.startSeconds = operation.startSeconds;
+        timing.durationSeconds = operation.durationSeconds;
+      }
+    }
+  }
+
+  const requiredDuration = Math.max(
+    document.canvas.durationSeconds,
+    ...Array.from(timings.values(), (timing) => timing.startSeconds + timing.durationSeconds),
+  );
+  if (requiredDuration <= document.canvas.durationSeconds + 0.001) return operations;
+
+  return [{
+    clipId: "canvas",
+    durationMode: "USER_EDITED",
+    durationSeconds: Math.round(requiredDuration * 1_000) / 1_000,
+    ...(document.canvas.durationSource ? { durationSource: document.canvas.durationSource } : {}),
+    type: "composition.canvas-duration",
+  }, ...operations];
+}
+
 /** Applies a small, allow-listed edit while retaining the immutable source references. */
 export function applyCompositionEditorPatches(
   document: CompositionEditorDocument,
@@ -18,6 +74,16 @@ export function applyCompositionEditorPatches(
   const next = structuredClone(document);
 
   for (const operation of operations) {
+    if (operation.type === "audio-mix.update") {
+      Object.assign(next.audioMix.ducking, operation.settings);
+      continue;
+    }
+    if (operation.type === "track.update") {
+      const track = next.tracks.find((candidate) => candidate.id === operation.trackId);
+      if (!track) throw new CompositionEditorPatchError("La capa que intentas editar ya no existe.");
+      Object.assign(track, operation.settings);
+      continue;
+    }
     if (operation.type === "composition.canvas-duration") {
       if (operation.clipId !== "canvas") {
         throw new CompositionEditorPatchError("La operación de duración debe dirigirse al canvas.");

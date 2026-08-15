@@ -401,7 +401,9 @@ export async function listHyperframesSourceAssets(params: {
     const isAvatarRegistryAsset =
       asset.asset_type === PRODUCTION_ASSET_TYPES.AVATAR_VIDEO
       || asset.asset_type === PRODUCTION_ASSET_TYPES.AVATAR_VIDEO_CLIP;
-    if (!reference && !isAvatarRegistryAsset) return [];
+    // Material assets are the mutable Production source of truth. Registry
+    // rows are provenance and may outlive a video cleared for regeneration.
+    if (!reference) return [];
     if (typeof asset.storage_path !== "string" || seenStoragePaths.has(asset.storage_path)) return [];
     seenStoragePaths.add(asset.storage_path);
     const candidate = inspectHyperframesSourceAsset({

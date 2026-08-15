@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { compositionEditorDocumentSchema, type CompositionEditorDocument } from "./composition-document.types";
 import { applyCompositionEditorPatches, CompositionEditorPatchError } from "./editor-patch.service";
 import type { CompositionEditorPatchRequest } from "./editor-patch.types";
+import { normalizeCompositionTrackTopology } from "./composition-track-registry";
 
 export class CompositionDocumentError extends Error {
   constructor(message: string, readonly status = 400) {
@@ -86,6 +87,7 @@ export function hashCompositionDocument(document: CompositionEditorDocument) {
 }
 
 export async function applyAndAppendCompositionDocumentPatches(params: {
+  auditSource?: "SYSTEM";
   draftId: string;
   expectedDocumentHash: string;
   organizationId: string;
@@ -117,7 +119,7 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
     p_format: nextDocument.format,
     p_metadata: { operations: params.patch.operations.map((operation) => operation.type) },
     p_organization_id: params.organizationId,
-    p_source: params.patch.source,
+    p_source: params.auditSource || params.patch.source,
     p_summary: params.patch.summary,
   }).retry(false);
   if (params.signal) appendRequest = appendRequest.abortSignal(params.signal);
@@ -341,6 +343,12 @@ async function getLatestCompositionDocument(params: {
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
+  const { data: assetLinks, error: assetLinksError } = await params.supabase
+    .from("video_composition_draft_assets")
+    .select("production_asset_id, role")
+    .eq("draft_id", params.draftId)
+    .eq("organization_id", params.organizationId);
+  if (assetLinksError) throw assetLinksError;
   const documentHash = String(data.document_hash || "");
   if (!/^[a-f0-9]{64}$/.test(documentHash)) {
     throw new CompositionDocumentPersistenceError(
@@ -350,8 +358,13 @@ async function getLatestCompositionDocument(params: {
       false,
     );
   }
+  const parsedDocument = compositionEditorDocumentSchema.parse(data.document);
+  const assetRoles = new Map((assetLinks || []).map((link: { production_asset_id: string; role: string }) => [
+    link.production_asset_id,
+    link.role,
+  ]));
   return {
-    document: compositionEditorDocumentSchema.parse(data.document),
+    document: compositionEditorDocumentSchema.parse(normalizeCompositionTrackTopology(parsedDocument, assetRoles)),
     documentHash,
     version: data.version as number,
   };

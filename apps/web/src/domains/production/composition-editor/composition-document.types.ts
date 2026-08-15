@@ -11,6 +11,16 @@ export const COMPOSITION_DURATION_SOURCES = [
   "slides",
 ] as const;
 export type CompositionDurationSource = typeof COMPOSITION_DURATION_SOURCES[number];
+export const COMPOSITION_TRACK_ROLES = ["DECK", "AVATAR", "VOICE", "MUSIC", "BROLL", "VISUAL", "OVERLAY"] as const;
+export type CompositionTrackRole = typeof COMPOSITION_TRACK_ROLES[number];
+export const DEFAULT_COMPOSITION_DUCKING_SETTINGS = {
+  attackSeconds: 0.2,
+  duckedVolumeRatio: 0.35,
+  enabled: true,
+  releaseSeconds: 0.35,
+  targetRole: "MUSIC" as const,
+  triggerRoles: ["VOICE", "AVATAR"] as const,
+};
 
 const editorIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i);
 const uuidSchema = z.string().uuid();
@@ -19,11 +29,15 @@ const boundedSecondsSchema = finiteNumberSchema.min(0).max(COMPOSITION_DOCUMENT_
 const sourceMediaSecondsSchema = finiteNumberSchema.min(0).max(86_400);
 
 export const compositionTrackSchema = z.object({
+  hidden: z.boolean().optional(),
   id: editorIdSchema,
   kind: z.enum(["AUDIO", "DECK", "OVERLAY", "VISUAL"]),
   label: z.string().trim().min(1).max(120),
   locked: z.boolean().default(false),
+  muted: z.boolean().optional(),
   order: z.number().int().min(0).max(99),
+  semanticRole: z.enum(COMPOSITION_TRACK_ROLES).optional(),
+  volume: finiteNumberSchema.min(0).max(1).optional(),
 }).strict();
 
 export const compositionLayoutSchema = z.object({
@@ -35,6 +49,19 @@ export const compositionLayoutSchema = z.object({
   y: finiteNumberSchema.min(-8_192).max(8_192),
   zIndex: z.number().int().min(-100).max(100).default(0),
 }).strict();
+
+export const compositionAudioMixSchema = z.object({
+  ducking: z.object({
+    attackSeconds: finiteNumberSchema.min(0).max(5).default(DEFAULT_COMPOSITION_DUCKING_SETTINGS.attackSeconds),
+    duckedVolumeRatio: finiteNumberSchema.min(0).max(1).default(DEFAULT_COMPOSITION_DUCKING_SETTINGS.duckedVolumeRatio),
+    enabled: z.boolean().default(DEFAULT_COMPOSITION_DUCKING_SETTINGS.enabled),
+    releaseSeconds: finiteNumberSchema.min(0).max(5).default(DEFAULT_COMPOSITION_DUCKING_SETTINGS.releaseSeconds),
+    targetRole: z.literal("MUSIC").default(DEFAULT_COMPOSITION_DUCKING_SETTINGS.targetRole),
+    triggerRoles: z.array(z.enum(["VOICE", "AVATAR"])).min(1).max(2).default([...DEFAULT_COMPOSITION_DUCKING_SETTINGS.triggerRoles]),
+  }).strict().default({ ...DEFAULT_COMPOSITION_DUCKING_SETTINGS, triggerRoles: [...DEFAULT_COMPOSITION_DUCKING_SETTINGS.triggerRoles] }),
+}).strict().default({
+  ducking: { ...DEFAULT_COMPOSITION_DUCKING_SETTINGS, triggerRoles: [...DEFAULT_COMPOSITION_DUCKING_SETTINGS.triggerRoles] },
+});
 
 const deckSourceSchema = z.object({
   classes: z.string().trim().min(1).max(2_000).default("slide active"),
@@ -87,6 +114,7 @@ export const compositionClipSchema = z.object({
 });
 
 export const compositionEditorDocumentSchema = z.object({
+  audioMix: compositionAudioMixSchema,
   canvas: z.object({
     durationMode: z.enum(["AUTO", "USER_EDITED"]).optional(),
     durationSource: z.enum(COMPOSITION_DURATION_SOURCES).optional(),
@@ -121,5 +149,6 @@ export const compositionEditorDocumentSchema = z.object({
 });
 
 export type CompositionClip = z.infer<typeof compositionClipSchema>;
+export type CompositionAudioMix = z.infer<typeof compositionAudioMixSchema>;
 export type CompositionEditorDocument = z.infer<typeof compositionEditorDocumentSchema>;
 export type CompositionTrack = z.infer<typeof compositionTrackSchema>;

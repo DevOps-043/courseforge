@@ -1,10 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clapperboard, Eye, EyeOff, FileQuestion, Image as ImageIcon, Loader2, Music2, PanelRight, Pause, Play, Plus, RefreshCw, Save, Send, Trash2, Video, X } from "lucide-react";
-import type { CompositionClip, CompositionEditorDocument } from "@/domains/production/composition-editor/composition-document.types";
+import type { ReactNode } from "react";
+import { AlertTriangle, CheckCircle2, Clapperboard, Crop, Eye, EyeOff, FileQuestion, Grid3X3, Image as ImageIcon, Loader2, Magnet, Maximize2, Minus, MousePointer2, Music2, PanelRight, Pause, Play, Plus, RefreshCw, Save, Send, Trash2, Video, X } from "lucide-react";
+import type { CompositionClip, CompositionEditorDocument, CompositionTrack } from "@/domains/production/composition-editor/composition-document.types";
+import { formatCompositionTimecode, parseCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
-import { applyCompositionEditorPatches } from "@/domains/production/composition-editor/editor-patch.service";
+import { applyCompositionEditorPatches, ensureCanvasDurationForClipPatches } from "@/domains/production/composition-editor/editor-patch.service";
+import { resolveCompositionTrackDefinition } from "@/domains/production/composition-editor/composition-track-registry";
+import { CompositionTimeline } from "./CompositionTimeline";
+import { AudioMixControls } from "./AudioMixControls";
+import { LayerDepthControls } from "./LayerDepthControls";
 import {
   CompositionDurationResolutionError,
   resolveCompositionDuration,
@@ -64,10 +70,15 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const payloadRef = useRef<DocumentPayload | null>(null);
   const saveInFlightRef = useRef(false);
+  const mediaRecoveryHashRef = useRef<string | null>(null);
+  const playheadSecondsRef = useRef(0);
+  const pendingPreviewRestoreSecondsRef = useRef<number | null>(null);
   const [payload, setPayload] = useState<DocumentPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState(false);
+  const [previewReady, setPreviewReady] = useState(false);
+  const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -82,6 +93,10 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const [selectedHfId, setSelectedHfId] = useState<string | null>(null);
   const [manualInspectorOpen, setManualInspectorOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<"assistant" | "properties">("properties");
+  const [directEditingEnabled, setDirectEditingEnabled] = useState(true);
+  const [gridVisible, setGridVisible] = useState(false);
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [trimToolEnabled, setTrimToolEnabled] = useState(false);
 
   const loadDocument = useCallback(async () => {
     setLoading(true);
@@ -94,6 +109,10 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
       setSeconds(0);
+      playheadSecondsRef.current = 0;
+      pendingPreviewRestoreSecondsRef.current = null;
+      setPlaying(false);
+      setPreviewReady(false);
       setPlaybackError(null);
       setSelectedHfId(null);
       setManualInspectorOpen(false);
@@ -115,15 +134,46 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       if (event.source !== frameRef.current?.contentWindow) return;
       const message = event.data;
       if (!message || typeof message.type !== "string") return;
-      if (message.type === "courseforge-composition-time") setSeconds(message.seconds);
+      if (message.type === "courseforge-composition-time") {
+        playheadSecondsRef.current = message.seconds;
+        setSeconds(message.seconds);
+      }
       if (message.type === "courseforge-composition-playback") {
         setPlaying(message.playing);
         if (message.playing) setPlaybackError(null);
       }
+      if (message.type === "courseforge-composition-ready") {
+        setPreviewReady(true);
+        setPlaybackError(null);
+        const restoreSeconds = pendingPreviewRestoreSecondsRef.current;
+        if (restoreSeconds !== null) {
+          pendingPreviewRestoreSecondsRef.current = null;
+          const clampedSeconds = Math.max(0, Math.min(message.duration, restoreSeconds));
+          playheadSecondsRef.current = clampedSeconds;
+          setSeconds(clampedSeconds);
+          frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-seek", seconds: clampedSeconds }, "*");
+        }
+        if (selectedHfId) {
+          frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-select", hfId: selectedHfId }, "*");
+        }
+      }
       if (message.type === "courseforge-composition-media-error") {
-        setPlaybackError(message.code === "NotAllowedError"
-          ? "El navegador bloqueó el audio. Pulsa “Activar audio y reproducir” dentro del preview."
-          : `No se pudo reproducir ${message.mediaId}: ${message.message}`);
+        if (message.code === "AbortError") return;
+        if (message.code === "NotAllowedError") {
+          setPlaybackError("El navegador bloqueó el audio. Pulsa “Activar audio y reproducir” dentro del preview.");
+          return;
+        }
+        const currentHash = payloadRef.current?.documentHash || null;
+        if (currentHash && mediaRecoveryHashRef.current !== currentHash) {
+          mediaRecoveryHashRef.current = currentHash;
+          frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-pause" }, "*");
+          setPlaying(false);
+          setPreviewReady(false);
+          setPlaybackError("El enlace del medio dejó de responder. Renovando el acceso al preview…");
+          setPreviewRefreshKey((current) => current + 1);
+          return;
+        }
+        setPlaybackError(`No se pudo reproducir ${message.mediaId}: ${message.message}`);
       }
       if (message.type === "courseforge-composition-selection") {
         setSelectedHfId(message.hfId);
@@ -144,13 +194,38 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const durationSourceLabel = payload?.document.canvas.durationSource
     ? DURATION_SOURCE_LABELS[payload.document.canvas.durationSource]
     : null;
-  const previewUrl = useMemo(() => payload ? `/api/production/hyperframes/drafts/${draftId}/preview?v=${encodeURIComponent(payload.documentHash)}` : null, [draftId, payload]);
+  const previewUrl = useMemo(() => payload ? `/api/production/hyperframes/drafts/${draftId}/preview?v=${encodeURIComponent(payload.documentHash)}&r=${previewRefreshKey}` : null, [draftId, payload?.documentHash, previewRefreshKey]);
+  useEffect(() => {
+    setPlaying(false);
+    setPreviewReady(false);
+  }, [previewUrl]);
+  useEffect(() => {
+    mediaRecoveryHashRef.current = null;
+  }, [payload?.documentHash]);
   const estimatedClipCount = payload?.document.clips.filter((clip) => clip.timingSource === "ESTIMATED").length || 0;
   const selectedClip = payload?.document.clips.find((clip) => clip.hfId === selectedHfId) ?? null;
   const inspectorOpen = manualInspectorOpen || Boolean(selectedClip);
 
   const postPreviewMessage = (message: Record<string, unknown>) => frameRef.current?.contentWindow?.postMessage(message, "*");
+  useEffect(() => {
+    if (!previewReady) return;
+    postPreviewMessage({
+      editingEnabled: directEditingEnabled,
+      gridVisible,
+      snapEnabled,
+      type: "courseforge-composition-editor-settings",
+    });
+  }, [directEditingEnabled, gridVisible, previewReady, snapEnabled]);
+  const refreshPreviewMedia = () => {
+    postPreviewMessage({ type: "courseforge-composition-pause" });
+    mediaRecoveryHashRef.current = null;
+    setPlaying(false);
+    setPreviewReady(false);
+    setPlaybackError("Renovando el acceso a los medios del preview…");
+    setPreviewRefreshKey((current) => current + 1);
+  };
   const seek = (nextSeconds: number) => {
+    playheadSecondsRef.current = nextSeconds;
     setSeconds(nextSeconds);
     postPreviewMessage({ type: "courseforge-composition-seek", seconds: nextSeconds });
   };
@@ -165,16 +240,25 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     setManualInspectorOpen(false);
     postPreviewMessage({ type: "courseforge-composition-select", hfId: null });
   };
+  const pausePreviewForMutation = () => {
+    pendingPreviewRestoreSecondsRef.current = playheadSecondsRef.current;
+    postPreviewMessage({ type: "courseforge-composition-pause" });
+    setPlaying(false);
+    setPreviewReady(false);
+    setPlaybackError(null);
+  };
   async function savePatch(operations: CompositionEditorPatchOperation[], summary: string, source: "AGENT" | "USER" = "USER"): Promise<boolean> {
     const currentPayload = payloadRef.current;
     if (!currentPayload || saveInFlightRef.current) return false;
+    const effectiveOperations = ensureCanvasDurationForClipPatches(currentPayload.document, operations);
     let optimisticDocument: CompositionEditorDocument;
     try {
-      optimisticDocument = applyCompositionEditorPatches(currentPayload.document, operations);
+      optimisticDocument = applyCompositionEditorPatches(currentPayload.document, effectiveOperations);
     } catch (caught) {
       setSaveError(caught instanceof Error ? caught.message : "El cambio solicitado no es válido.");
       return false;
     }
+    pausePreviewForMutation();
     saveInFlightRef.current = true;
     setSaving(true);
     setSaveError(null);
@@ -184,7 +268,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     setPayload(optimisticPayload);
     try {
       const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/document`, {
-        body: JSON.stringify({ operations, source, summary }),
+        body: JSON.stringify({ operations: effectiveOperations, source, summary }),
         headers: { "Content-Type": "application/json", "If-Match": `"${currentPayload.documentHash}"` },
         method: "PUT",
       });
@@ -193,7 +277,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
         const nextPayload = body.data as DocumentPayload;
         payloadRef.current = nextPayload;
         setPayload(nextPayload);
-        setFailedSave({ operations, source, summary });
+        setFailedSave({ operations: effectiveOperations, source, summary });
         setSaveError(body.error || "La composición cambió en otra sesión. El preview se actualizó con la última versión.");
         return false;
       }
@@ -201,11 +285,17 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       const nextPayload = body.data as DocumentPayload;
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
+      if (nextPayload.documentHash === currentPayload.documentHash) {
+        pendingPreviewRestoreSecondsRef.current = null;
+        setPreviewReady(true);
+      }
       return true;
     } catch (caught) {
+      pendingPreviewRestoreSecondsRef.current = null;
       payloadRef.current = currentPayload;
       setPayload(currentPayload);
-      setFailedSave({ operations, source, summary });
+      setPreviewReady(true);
+      setFailedSave({ operations: effectiveOperations, source, summary });
       setSaveError(caught instanceof Error ? caught.message : "No se pudo guardar el cambio.");
       return false;
     } finally {
@@ -223,13 +313,13 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       return;
     }
 
-    const isAudio = asset.mimeType.startsWith("audio/") || asset.timelineRole === "AUDIO" || asset.timelineRole === "VOICE";
-    const trackId = isAudio ? "audio" : asset.timelineRole === "AVATAR" ? "avatar" : asset.timelineRole === "BROLL" ? "broll" : "visual";
-    const trackLabels: Record<string, string> = { audio: "Audio", avatar: "Avatar", broll: "B-roll", visual: "Medios visuales" };
+    const trackDefinition = resolveCompositionTrackDefinition(asset);
+    const trackId = trackDefinition.id;
+    const isAudio = trackDefinition.kind === "AUDIO";
     const existingTrack = payload.document.tracks.find((track) => track.id === trackId);
-    const isBackgroundAudio = trackId === "audio" && asset.timelineRole !== "VOICE";
+    const isBackgroundAudio = trackDefinition.semanticRole === "MUSIC";
     const isSequential = !isBackgroundAudio;
-    const preferredDuration = asset.durationSeconds || (trackId === "audio" ? payload.document.canvas.durationSeconds : asset.mimeType.startsWith("image/") ? 5 : 8);
+    const preferredDuration = asset.durationSeconds || (isAudio ? payload.document.canvas.durationSeconds : asset.mimeType.startsWith("image/") ? 5 : 8);
     const occupiedUntil = payload.document.clips
       .filter((candidate) => candidate.trackId === trackId)
       .reduce((latest, candidate) => Math.max(latest, candidate.startSeconds + candidate.durationSeconds), 0);
@@ -269,13 +359,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     const added = await savePatch([{
       clip,
       clipId,
-      track: existingTrack ? undefined : {
-        id: trackId,
-        kind: isAudio ? "AUDIO" : "VISUAL",
-        label: trackLabels[trackId],
-        locked: false,
-        order: payload.document.tracks.reduce((highest, track) => Math.max(highest, track.order), -1) + 1,
-      },
+      track: existingTrack ? undefined : trackDefinition,
       type: "clip.add",
     }], `Agregó ${asset.label} a la línea de tiempo.`);
     if (added) selectClip(clip.hfId);
@@ -284,6 +368,10 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   async function removeClipFromTimeline(clip: CompositionClip) {
     const removed = await savePatch([{ clipId: clip.id, type: "clip.remove" }], `Quitó ${clip.label} de la línea de tiempo.`);
     if (removed) clearSelection();
+  }
+
+  async function updateTrack(track: CompositionTrack, settings: { hidden?: boolean; locked?: boolean; muted?: boolean; volume?: number }, summary: string) {
+    await savePatch([{ settings, trackId: track.id, type: "track.update" }], summary);
   }
 
   async function applyBaseTemplate() {
@@ -361,7 +449,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       const endSeconds = index === deckClips.length - 1 ? canvasDuration : Math.round((canvasDuration * (index + 1) / deckClips.length) * 20) / 20;
       clipOperations.push({ clipId: clip.id, durationSeconds: Math.max(0.05, endSeconds - startSeconds), layout: { ...clip.layout, height: payload.document.canvas.height, width: payload.document.canvas.width, x: 0, y: 0, zIndex: 0 }, startSeconds, timingSource: "ESTIMATED", type: "clip.template" });
     }
-    for (const trackId of ["avatar", "audio", "broll", "visual"]) {
+    for (const trackId of ["avatar", "voice", "music", "broll", "visual"]) {
       const clips = payload.document.clips.filter((clip) => (
         clip.source.type === "PRODUCTION_ASSET"
         && clip.trackId === trackId
@@ -371,26 +459,24 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       const preferredDurations = clips.map((clip) => {
         if (clip.source.type !== "PRODUCTION_ASSET") return clip.durationSeconds;
         const asset = sourceById.get(clip.source.productionAssetId);
-        return Math.min(canvasDuration, asset?.durationSeconds || (trackId === "audio" || trackId === "avatar" ? canvasDuration : clip.kind === "IMAGE" ? 5 : 8));
+        return Math.min(canvasDuration, asset?.durationSeconds || (trackId === "voice" || trackId === "music" || trackId === "avatar" ? canvasDuration : clip.kind === "IMAGE" ? 5 : 8));
       });
       const totalPreferredDuration = preferredDurations.reduce((total, value) => total + value, 0);
-      const durationScale = trackId !== "audio" && totalPreferredDuration > canvasDuration
+      const durationScale = trackId !== "music" && totalPreferredDuration > canvasDuration
         ? canvasDuration / totalPreferredDuration
         : 1;
       let cursor = 0;
       for (let index = 0; index < clips.length; index++) {
         const clip = clips[index]!;
         if (clip.source.type !== "PRODUCTION_ASSET") continue;
-        const asset = sourceById.get(clip.source.productionAssetId);
         const preferredDuration = preferredDurations[index]!;
-        const isSequentialVoice = trackId === "audio" && asset?.timelineRole === "VOICE";
-        const isSequential = trackId !== "audio" || isSequentialVoice;
+        const isSequential = trackId !== "music";
         const durationSeconds = isSequential
           ? Math.max(0.05, Math.min(preferredDuration * durationScale, canvasDuration - cursor))
           : preferredDuration;
         const avatarWidth = Math.round(payload.document.canvas.width * 0.32);
         const avatarHeight = Math.round(payload.document.canvas.height * 0.65);
-        clipOperations.push({ clipId: clip.id, durationSeconds, layout: trackId === "avatar" ? { ...clip.layout, height: avatarHeight, width: avatarWidth, x: payload.document.canvas.width - avatarWidth - 48, y: payload.document.canvas.height - avatarHeight - 48, zIndex: 10 } : trackId === "audio" ? { ...clip.layout, height: 1, width: 1, x: 0, y: 0, zIndex: 0 } : { ...clip.layout, height: payload.document.canvas.height, width: payload.document.canvas.width, x: 0, y: 0, zIndex: trackId === "broll" ? 5 : 4 }, startSeconds: isSequential ? cursor : 0, timingSource: "ESTIMATED", type: "clip.template" });
+        clipOperations.push({ clipId: clip.id, durationSeconds, layout: trackId === "avatar" ? { ...clip.layout, height: avatarHeight, width: avatarWidth, x: payload.document.canvas.width - avatarWidth - 48, y: payload.document.canvas.height - avatarHeight - 48, zIndex: 10 } : trackId === "voice" || trackId === "music" ? { ...clip.layout, height: 1, width: 1, x: 0, y: 0, zIndex: 0 } : { ...clip.layout, height: payload.document.canvas.height, width: payload.document.canvas.width, x: 0, y: 0, zIndex: trackId === "broll" ? 5 : 4 }, startSeconds: isSequential ? cursor : 0, timingSource: "ESTIMATED", type: "clip.template" });
         if (isSequential) cursor += durationSeconds;
       }
     }
@@ -449,6 +535,34 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     finally { setAssembling(false); }
   }
 
+  async function scaleSelectedClip(factor: number) {
+    if (!selectedClip || selectedClip.kind === "AUDIO" || !payload) return;
+    const centerX = selectedClip.layout.x + selectedClip.layout.width / 2;
+    const centerY = selectedClip.layout.y + selectedClip.layout.height / 2;
+    const width = Math.max(24, Math.min(8_192, Math.round(selectedClip.layout.width * factor)));
+    const height = Math.max(24, Math.min(8_192, Math.round(selectedClip.layout.height * factor)));
+    await savePatch([{ clipId: selectedClip.id, layout: {
+      height,
+      width,
+      x: Math.round(centerX - width / 2),
+      y: Math.round(centerY - height / 2),
+    }, type: "clip.layout" }], `${factor > 1 ? "Aumentó" : "Redujo"} el tamaño de ${selectedClip.label}.`);
+  }
+
+  async function fitSelectedClip() {
+    if (!selectedClip || selectedClip.kind === "AUDIO" || !payload) return;
+    const { height: canvasHeight, width: canvasWidth } = payload.document.canvas;
+    const scale = Math.min((canvasWidth * 0.9) / selectedClip.layout.width, (canvasHeight * 0.9) / selectedClip.layout.height);
+    const width = Math.max(24, Math.round(selectedClip.layout.width * scale));
+    const height = Math.max(24, Math.round(selectedClip.layout.height * scale));
+    await savePatch([{ clipId: selectedClip.id, layout: {
+      height,
+      width,
+      x: Math.round((canvasWidth - width) / 2),
+      y: Math.round((canvasHeight - height) / 2),
+    }, type: "clip.layout" }], `Ajustó ${selectedClip.label} al canvas.`);
+  }
+
   if (loading) return <LoadingPreview />;
   if (error || !payload || !previewUrl) return <PreviewError error={error || "No hay composición disponible."} onRetry={() => void loadDocument()} />;
 
@@ -474,22 +588,36 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
         <StudioLibrary assets={assets} lessons={lessons} onAddAsset={addAssetToTimeline} onSelectLesson={onSelectLesson} selectedLessonId={selectedLessonId} onSelectAsset={selectClip} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))} />
 
         <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-[#0F1419] dark:border-white/10 lg:col-start-2 lg:row-start-1">
-          <div className="flex items-center justify-between border-b border-white/10 px-3 py-2 text-xs text-slate-300"><span className="font-semibold">Preview completo</span><span>{formatSeconds(seconds)} / {formatSeconds(duration)}</span></div>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-3 py-2 text-xs text-slate-300">
+            <span className="font-semibold">Preview completo</span>
+            <div className="flex flex-wrap items-center gap-1">
+              <PreviewToolButton active={directEditingEnabled} label="Editar" title="Activar selección, arrastre y tiradores" onClick={() => setDirectEditingEnabled((current) => !current)}><MousePointer2 size={13} /></PreviewToolButton>
+              <PreviewToolButton active={snapEnabled} label="Snap" title="Ajustar movimientos y tamaños a la rejilla" onClick={() => setSnapEnabled((current) => !current)}><Magnet size={13} /></PreviewToolButton>
+              <PreviewToolButton active={gridVisible} label="Rejilla" title="Mostrar guías visuales en el canvas" onClick={() => setGridVisible((current) => !current)}><Grid3X3 size={13} /></PreviewToolButton>
+              <PreviewToolButton active={trimToolEnabled} label="Recorte" title="Resaltar los tiradores de recorte temporal en la timeline" onClick={() => setTrimToolEnabled((current) => !current)}><Crop size={13} /></PreviewToolButton>
+              <span className="mx-1 h-5 w-px bg-white/15" />
+              <button type="button" disabled={!selectedClip || selectedClip.kind === "AUDIO" || saving} onClick={() => void scaleSelectedClip(0.9)} title="Reducir 10%" className="rounded p-1.5 hover:bg-white/10 disabled:opacity-30"><Minus size={13} /></button>
+              <button type="button" disabled={!selectedClip || selectedClip.kind === "AUDIO" || saving} onClick={() => void scaleSelectedClip(1.1)} title="Aumentar 10%" className="rounded p-1.5 hover:bg-white/10 disabled:opacity-30"><Plus size={13} /></button>
+              <button type="button" disabled={!selectedClip || selectedClip.kind === "AUDIO" || saving} onClick={() => void fitSelectedClip()} title="Ajustar y centrar en el canvas" className="rounded p-1.5 hover:bg-white/10 disabled:opacity-30"><Maximize2 size={13} /></button>
+              <span className="ml-1 font-mono text-[10px] text-slate-400">{formatSeconds(seconds)} / {formatSeconds(duration)}</span>
+            </div>
+          </div>
           <div className="flex min-h-0 flex-1 items-center justify-center p-2">
             <div className="relative aspect-video h-full max-h-full max-w-full overflow-hidden rounded-lg bg-black shadow-2xl">
               <iframe ref={frameRef} title="Preview completo de composición" src={previewUrl} sandbox="allow-scripts" allow="autoplay" className="absolute inset-0 h-full w-full" />
             </div>
           </div>
-          {playbackError && <p role="alert" className="border-t border-amber-300/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-100">{playbackError}</p>}
+          {playbackError && <div role="alert" className="flex items-center justify-between gap-3 border-t border-amber-300/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-100"><span>{playbackError}</span><button type="button" onClick={refreshPreviewMedia} className="shrink-0 rounded border border-amber-200/50 px-2 py-1 font-semibold hover:bg-amber-200/10">Recargar medios</button></div>}
           <div className="flex items-center gap-3 border-t border-white/10 bg-[#0A2540] px-3 py-2.5">
-            <button type="button" onClick={() => postPreviewMessage({ type: playing ? "courseforge-composition-pause" : "courseforge-composition-play" })} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#00D4B3] text-[#0A2540] hover:bg-[#10B981]">{playing ? <Pause size={15} /> : <Play size={15} />}</button>
-            <input aria-label="Posición del preview" type="range" min="0" max={duration} step="0.05" value={Math.min(seconds, duration)} onChange={(event) => seek(Number(event.target.value))} className="w-full accent-[#00D4B3]" />
+            <button type="button" disabled={saving || !previewReady} onClick={() => postPreviewMessage({ type: playing ? "courseforge-composition-pause" : "courseforge-composition-play" })} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#00D4B3] text-[#0A2540] hover:bg-[#10B981] disabled:cursor-wait disabled:opacity-50">{playing ? <Pause size={15} /> : <Play size={15} />}</button>
+            <input aria-label="Posición del preview" disabled={saving || !previewReady} type="range" min="0" max={duration} step="0.05" value={Math.min(seconds, duration)} onChange={(event) => seek(Number(event.target.value))} className="w-full accent-[#00D4B3] disabled:cursor-wait disabled:opacity-50" />
           </div>
         </section>
 
         <section className="min-h-0 min-w-0 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-[#101720] lg:col-span-2 lg:row-start-2">
-          <div className={`mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs ${durationSourceLabel ? "border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5" : "border-amber-300 bg-amber-50 dark:border-amber-400/30 dark:bg-amber-400/10"}`}><span className="text-slate-600 dark:text-gray-300">{durationSourceLabel ? `Duración final: ${formatPreciseSeconds(duration)} determinada por ${durationSourceLabel}.` : "Esta composición aún no registra qué asset determina su duración. Aplica el cálculo automático para normalizarla."}</span><button type="button" disabled={saving} onClick={() => void applyBaseTemplate()} className="rounded-md border border-[#00D4B3] px-2.5 py-1 font-bold text-[#0A2540] hover:bg-[#00D4B3]/10 disabled:opacity-50 dark:text-[#00D4B3]">Calcular y organizar</button></div>
-          <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedHfId={selectedHfId} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Recortó el inicio de ${clip.label} desde la timeline.`)} />
+          <div className={`mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs ${durationSourceLabel ? "border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5" : "border-amber-300 bg-amber-50 dark:border-amber-400/30 dark:bg-amber-400/10"}`}><span className="text-slate-600 dark:text-gray-300">{durationSourceLabel ? `Duración final: ${formatCompositionTimecode(duration)} determinada por ${durationSourceLabel}.` : "Esta composición aún no registra qué asset determina su duración. Aplica el cálculo automático para normalizarla."}</span><button type="button" disabled={saving} onClick={() => void applyBaseTemplate()} className="rounded-md border border-[#00D4B3] px-2.5 py-1 font-bold text-[#0A2540] hover:bg-[#00D4B3]/10 disabled:opacity-50 dark:text-[#00D4B3]">Calcular y organizar</button></div>
+          <AudioMixControls audioMix={payload.document.audioMix} disabled={saving} onUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)} />
+          <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Recortó el inicio de ${clip.label} desde la timeline.`)} />
           {estimatedClipCount > 0 && <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
           {saveError && <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800 dark:bg-red-500/10 dark:text-red-100"><span>{saveError}</span>{failedSave && <button type="button" disabled={saving} onClick={() => void savePatch(failedSave.operations, failedSave.summary, failedSave.source)} className="rounded border border-current px-2 py-1 font-bold disabled:opacity-50">Reintentar</button>}</div>}
           <AssemblyActions assembly={assembly} busy={assembling} error={assemblyError} renderStatus={renderStatus} onApprove={approveAssembly} onPrepare={prepareAssembly} onRender={submitAssemblyRender} />
@@ -504,44 +632,10 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   );
 }
 
-function AgentEditProposal({ onApprove, onDismiss, onPropose, proposal, proposing, saving }: { onApprove: () => void; onDismiss: () => void; onPropose: (instruction: string) => Promise<void>; proposal: AgentProposal | null; proposing: boolean; saving: boolean }) {
-  const [instruction, setInstruction] = useState("");
-  return <section className="mt-5 border-t border-slate-200 pt-4 dark:border-white/10"><p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-gray-400">EdiciÃ³n asistida</p><p className="mt-1 text-[11px] leading-4 text-slate-500 dark:text-gray-400">Describe un cambio. Se generarÃ¡ una propuesta antes de modificar la composiciÃ³n.</p><textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} maxLength={1500} rows={3} placeholder="Ej. centra el avatar y deja 6 segundos al inicio" className="mt-2 w-full resize-y rounded-md border border-slate-300 bg-white p-2 text-xs text-slate-900 placeholder:text-slate-400 dark:border-white/15 dark:bg-slate-950 dark:text-white" />{proposal ? <div className="mt-2 rounded-lg border border-violet-200 bg-violet-50 p-2.5 text-xs text-violet-950 dark:border-violet-400/30 dark:bg-violet-400/10 dark:text-violet-100"><p className="font-bold">Propuesta lista</p><p className="mt-1 leading-4">{proposal.summary}</p><p className="mt-1 text-[10px] opacity-75">{proposal.operations.length} cambio(s) propuesto(s)</p><div className="mt-2 flex gap-2"><button type="button" disabled={saving} onClick={onApprove} className="rounded bg-violet-700 px-2 py-1 font-bold text-white disabled:opacity-50">Aplicar</button><button type="button" disabled={saving} onClick={onDismiss} className="rounded border border-current px-2 py-1 font-bold disabled:opacity-50">Descartar</button></div></div> : <button type="button" disabled={proposing || instruction.trim().length < 3} onClick={() => void onPropose(instruction)} className="mt-2 inline-flex items-center gap-1 rounded-md border border-violet-300 px-2.5 py-1.5 text-xs font-bold text-violet-800 disabled:opacity-50 dark:border-violet-400/40 dark:text-violet-200">{proposing && <Loader2 className="animate-spin" size={13} />}{proposing ? "Preparando propuesta…" : "Proponer cambios"}</button>}</section>;
+function PreviewToolButton({ active, children, label, onClick, title }: { active: boolean; children: ReactNode; label: string; onClick: () => void; title: string }) {
+  return <button type="button" aria-pressed={active} onClick={onClick} title={title} className={`inline-flex items-center gap-1 rounded px-1.5 py-1 font-semibold transition-colors ${active ? "bg-cyan-400 text-slate-950" : "bg-white/5 text-slate-300 hover:bg-white/10"}`}>{children}<span className="hidden xl:inline">{label}</span></button>;
 }
 
-function AgentChat({ onApprove, onDismiss, onPropose, proposal, proposing, saving }: { onApprove: () => void; onDismiss: () => void; onPropose: (instruction: string) => Promise<void>; proposal: AgentProposal | null; proposing: boolean; saving: boolean }) {
-  const [instruction, setInstruction] = useState("");
-  const [messages, setMessages] = useState<Array<{ id: string; role: "assistant" | "user"; text: string }>>([
-    { id: "welcome", role: "assistant", text: "Cuéntame qué deseas modificar. Primero revisaré la composición y te explicaré el plan; sólo haré cambios cuando los confirmes." },
-  ]);
-  const lastProposal = useRef<string | null>(null);
-  useEffect(() => {
-    if (!proposal || lastProposal.current === proposal.summary) return;
-    lastProposal.current = proposal.summary;
-    setMessages((current) => [...current, { id: `proposal-${proposal.documentHash}`, role: "assistant", text: `Así lo haré: ${proposal.summary} Esto implica ${proposal.operations.length} cambio(s). ¿Confirmas que los aplique?` }]);
-  }, [proposal]);
-  const send = async () => {
-    const text = instruction.trim();
-    if (text.length < 3 || proposing || proposal) return;
-    setMessages((current) => [...current, { id: `user-${Date.now()}`, role: "user", text }]);
-    setInstruction("");
-    await onPropose(text);
-  };
-  const approve = () => {
-    if (!proposal) return;
-    setMessages((current) => [...current, { id: `approve-${Date.now()}`, role: "assistant", text: "Perfecto. Aplicaré los cambios aprobados y actualizaré el preview." }]);
-    onApprove();
-  };
-  const dismiss = () => {
-    setMessages((current) => [...current, { id: `reject-${Date.now()}`, role: "assistant", text: "Propuesta descartada. Indícame cómo prefieres modificar la composición." }]);
-    lastProposal.current = null;
-    onDismiss();
-  };
-  return <section className="flex min-h-0 flex-1 flex-col"><div className="border-b border-slate-200 pb-3 dark:border-white/10"><p className="text-xs font-bold uppercase tracking-wide text-violet-700 dark:text-violet-300">SofLIA · edición asistida</p><p className="mt-1 text-[11px] leading-4 text-slate-500 dark:text-gray-400">SofLIA primero propone el plan. El documento sólo se actualiza cuando confirmas.</p></div><div className="min-h-36 flex-1 space-y-2 overflow-y-auto py-3">{messages.map((message) => <div key={message.id} className={`max-w-[94%] rounded-xl px-3 py-2 text-xs leading-5 ${message.role === "user" ? "ml-auto bg-violet-600 text-white" : "bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-gray-100"}`}>{message.text}</div>)}{proposing && <div className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-600 dark:bg-white/10 dark:text-gray-300"><Loader2 className="animate-spin" size={13} /> Revisando la composición…</div>}{proposal && <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-xs text-violet-950 dark:border-violet-400/30 dark:bg-violet-400/10 dark:text-violet-100"><p className="font-bold">Esperando tu confirmación</p><div className="mt-2 flex gap-2"><button type="button" disabled={saving} onClick={approve} className="rounded-md bg-violet-700 px-2.5 py-1.5 font-bold text-white disabled:opacity-50">Confirmar y aplicar</button><button type="button" disabled={saving} onClick={dismiss} className="rounded-md border border-current px-2.5 py-1.5 font-bold disabled:opacity-50">Rechazar</button></div></div>}</div><div className="border-t border-slate-200 pt-3 dark:border-white/10"><textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} maxLength={1500} rows={3} placeholder="Ej. centra el avatar y deja seis segundos al inicio" className="w-full resize-none rounded-lg border border-slate-300 bg-white p-2 text-xs text-slate-900 placeholder:text-slate-400 dark:border-white/15 dark:bg-slate-950 dark:text-white" /><button type="button" disabled={proposing || Boolean(proposal) || instruction.trim().length < 3} onClick={() => void send()} className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"><Send size={13} /> Enviar</button></div></section>;
-}
-
-void AgentEditProposal;
-void AgentChat;
 
 function AgentConversation({ onApprove, onDismiss, onPropose, proposal, proposing, saving }: { onApprove: () => void; onDismiss: () => void; onPropose: (instruction: string) => Promise<void>; proposal: AgentProposal | null; proposing: boolean; saving: boolean }) {
   type Message = { id: string; role: "assistant" | "user"; text: string };
@@ -607,7 +701,7 @@ function AgentConversation({ onApprove, onDismiss, onPropose, proposal, proposin
 
 function AssemblyActions({ assembly, busy, error, onApprove, onPrepare, onRender, renderStatus }: { assembly: { revisionId: string; status: "READY_FOR_PREVIEW" | "READY_FOR_RENDER" } | null; busy: boolean; error: string | null; onApprove: () => void; onPrepare: () => void; onRender: () => void; renderStatus: "idle" | "validating" | "sending" | "rendering" | "completed" | "failed" }) {
   const label = renderStatus === "validating" ? "Validando snapshot…" : renderStatus === "sending" ? "Enviando render…" : renderStatus === "rendering" ? "Renderizando" : "";
-  return <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3 dark:border-cyan-400/20 dark:bg-cyan-400/10"><div className="text-xs text-cyan-950 dark:text-cyan-100"><p className="font-bold">Ensamble del video</p><p className="mt-0.5">{assembly ? assembly.status === "READY_FOR_RENDER" ? "Snapshot aprobado. Puedes enviar el render." : "Snapshot listo. Revísalo y apruébalo para renderizar." : "Congela la versión guardada antes de enviar un render."}</p>{label && <p className="mt-1 font-medium">{label}</p>}{error && <p role="alert" className="mt-1 text-red-700 dark:text-red-200">{error}</p>}</div><div className="flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => void onPrepare()} className="inline-flex items-center gap-1.5 rounded-md bg-cyan-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Clapperboard size={14} /> {busy && renderStatus === "validating" ? "Preparando…" : "Preparar ensamble"}</button>{assembly?.status === "READY_FOR_PREVIEW" && <button type="button" disabled={busy} onClick={() => void onApprove()} className="inline-flex items-center gap-1.5 rounded-md border border-cyan-700 px-3 py-2 text-xs font-bold text-cyan-900 disabled:opacity-50 dark:border-cyan-300 dark:text-cyan-100"><CheckCircle2 size={14} /> Aprobar snapshot</button>}{assembly?.status === "READY_FOR_RENDER" && <button type="button" disabled={busy || renderStatus === "rendering"} onClick={() => void onRender()} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50 dark:bg-white dark:text-slate-950"><Send size={14} /> Renderizar video</button>}</div></div>;
+  return <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3 dark:border-cyan-400/20 dark:bg-cyan-400/10"><div className="text-xs text-cyan-950 dark:text-cyan-100"><p className="font-bold">Ensamble del video</p><p className="mt-0.5">{assembly ? assembly.status === "READY_FOR_RENDER" ? "Snapshot aprobado. Puedes enviar el render." : "Snapshot listo. Revísalo y apruébalo para renderizar." : "Congela la versión guardada antes de enviar un render."}</p>{label && <p className="mt-1 font-medium">{label}</p>}{error && <p role="alert" className="mt-1 text-red-700 dark:text-red-200">{error}</p>}</div><div className="flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => void onPrepare()} className="inline-flex items-center gap-1.5 rounded-md bg-cyan-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Clapperboard size={14} /> {busy && renderStatus === "validating" ? "Congelando…" : assembly ? "Regenerar snapshot" : "Congelar snapshot"}</button>{assembly?.status === "READY_FOR_PREVIEW" && <button type="button" disabled={busy} onClick={() => void onApprove()} className="inline-flex items-center gap-1.5 rounded-md border border-cyan-700 px-3 py-2 text-xs font-bold text-cyan-900 disabled:opacity-50 dark:border-cyan-300 dark:text-cyan-100"><CheckCircle2 size={14} /> Aprobar snapshot</button>}{assembly?.status === "READY_FOR_RENDER" && <button type="button" disabled={busy || renderStatus === "rendering"} onClick={() => void onRender()} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50 dark:bg-white dark:text-slate-950"><Send size={14} /> Renderizar video</button>}</div></div>;
 }
 
 function StudioLibrary({ assets, lessons, onAddAsset, onSelectAsset, onSelectLesson, selectedHfId, selectedLessonId, timelineAssetIds }: {
@@ -667,175 +761,21 @@ function CompositionInspector({ clip, onPatch, onRemove, saving }: { clip: Compo
   const [height, setHeight] = useState("");
   const [rotation, setRotation] = useState("");
   const [opacity, setOpacity] = useState("");
-  useEffect(() => { setStartSeconds(clip ? String(clip.startSeconds) : ""); setDurationSeconds(clip ? String(clip.durationSeconds) : ""); setX(clip ? String(clip.layout.x) : ""); setY(clip ? String(clip.layout.y) : ""); }, [clip?.id, clip?.startSeconds, clip?.durationSeconds, clip?.layout.x, clip?.layout.y]);
+  useEffect(() => { setStartSeconds(clip ? formatCompositionTimecode(clip.startSeconds) : ""); setDurationSeconds(clip ? formatCompositionTimecode(clip.durationSeconds) : ""); setX(clip ? String(clip.layout.x) : ""); setY(clip ? String(clip.layout.y) : ""); }, [clip?.id, clip?.startSeconds, clip?.durationSeconds, clip?.layout.x, clip?.layout.y]);
   useEffect(() => { setWidth(clip ? String(clip.layout.width) : ""); setHeight(clip ? String(clip.layout.height) : ""); setRotation(clip ? String(clip.layout.rotation) : ""); setOpacity(clip ? String(clip.layout.opacity) : ""); }, [clip?.id, clip?.layout.height, clip?.layout.opacity, clip?.layout.rotation, clip?.layout.width]);
   if (!clip) return <p className="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-xs leading-5 text-slate-500 dark:border-white/10 dark:text-gray-400">Selecciona un clip en la timeline o directamente en el preview para editar su layout, visibilidad o duración.</p>;
   const numberOrNull = (value: string) => { const result = Number(value); return Number.isFinite(result) ? result : null; };
-  const saveTiming = async () => { const start = numberOrNull(startSeconds); const duration = numberOrNull(durationSeconds); if (start === null || duration === null) return; await onPatch([{ clipId: clip.id, durationSeconds: duration, type: "clip.duration" }, { clipId: clip.id, startSeconds: start, type: "clip.move" }], `Ajustó la ubicación y duración de ${clip.label}.`); };
+  const saveTiming = async () => { const start = parseCompositionTimecode(startSeconds); const duration = parseCompositionTimecode(durationSeconds); if (start === null || duration === null || duration < 0.05) return; await onPatch([{ clipId: clip.id, durationSeconds: duration, type: "clip.duration" }, { clipId: clip.id, startSeconds: start, type: "clip.move" }], `Ajustó la ubicación y duración de ${clip.label}.`); };
   const savePosition = async () => { const nextX = numberOrNull(x); const nextY = numberOrNull(y); if (nextX === null || nextY === null) return; await onPatch([{ clipId: clip.id, layout: { x: nextX, y: nextY }, type: "clip.layout" }], `Ajustó la posición de ${clip.label}.`); };
   const saveTransform = async () => { const next = { height: numberOrNull(height), opacity: numberOrNull(opacity), rotation: numberOrNull(rotation), width: numberOrNull(width) }; if (Object.values(next).some((value) => value === null)) return; await onPatch([{ clipId: clip.id, layout: next as { height: number; opacity: number; rotation: number; width: number }, type: "clip.layout" }], `Transformación de ${clip.label}.`); };
-  return <div className="space-y-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold text-slate-900 dark:text-white">{clip.label}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-400">{clip.kind} · pista {clip.trackId}</p></div><div className="flex flex-wrap gap-1"><button type="button" disabled={saving} onClick={() => void onPatch([{ clipId: clip.id, hidden: !clip.hidden, type: "clip.visibility" }], `${clip.hidden ? "Mostró" : "Ocultó"} ${clip.label}.`)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">{clip.hidden ? <Eye size={13} /> : <EyeOff size={13} />}{clip.hidden ? "Mostrar" : "Ocultar"}</button><button type="button" disabled={saving} onClick={() => void onRemove(clip)} className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-400/40 dark:text-red-200 dark:hover:bg-red-400/10"><Trash2 size={13} /> Quitar</button></div></div><p className="rounded-md bg-slate-50 px-2 py-1.5 text-[10px] text-slate-500 dark:bg-white/5 dark:text-gray-400">Quitar solo retira este clip de la línea de tiempo; los assets y el deck original permanecen disponibles.</p><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><InspectorField label="Inicio (s)" value={startSeconds} onChange={setStartSeconds} min={0} /><InspectorField label="Duración (s)" value={durationSeconds} onChange={setDurationSeconds} min={0.05} /><InspectorField label="Posición X" value={x} onChange={setX} /><InspectorField label="Posición Y" value={y} onChange={setY} /></div><div className="border-t border-slate-200 pt-3 dark:border-white/10"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Transformación</p><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><InspectorField label="Ancho" value={width} onChange={setWidth} min={1} /><InspectorField label="Alto" value={height} onChange={setHeight} min={1} /><InspectorField label="Rotación" value={rotation} onChange={setRotation} min={-360} /><InspectorField label="Opacidad" value={opacity} onChange={setOpacity} min={0} /></div><p className="mt-2 text-[10px] text-slate-500">Arrastra en el preview para mover; usa el tirador para redimensionar. Mantén Alt para liberar proporciones.</p></div><div className="flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => void saveTiming()} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50 dark:bg-cyan-400 dark:text-slate-950"><Save size={13} /> Guardar tiempo</button><button type="button" disabled={saving} onClick={() => void savePosition()} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-bold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">Guardar posición</button><button type="button" disabled={saving} onClick={() => void saveTransform()} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-bold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">Guardar transformación</button>{saving && <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-gray-400"><Loader2 className="animate-spin" size={13} /> Actualizando preview…</span>}</div></div>;
+  return <div className="space-y-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold text-slate-900 dark:text-white">{clip.label}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-400">{clip.kind} · pista {clip.trackId}</p></div><div className="flex flex-wrap gap-1"><button type="button" disabled={saving} onClick={() => void onPatch([{ clipId: clip.id, hidden: !clip.hidden, type: "clip.visibility" }], `${clip.hidden ? "Mostró" : "Ocultó"} ${clip.label}.`)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">{clip.hidden ? <Eye size={13} /> : <EyeOff size={13} />}{clip.hidden ? "Mostrar" : "Ocultar"}</button><button type="button" disabled={saving} onClick={() => void onRemove(clip)} className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-400/40 dark:text-red-200 dark:hover:bg-red-400/10"><Trash2 size={13} /> Quitar</button></div></div><p className="rounded-md bg-slate-50 px-2 py-1.5 text-[10px] text-slate-500 dark:bg-white/5 dark:text-gray-400">Quitar solo retira este clip de la línea de tiempo; los assets y el deck original permanecen disponibles.</p>{clip.kind !== "AUDIO" && <LayerDepthControls clip={clip} disabled={saving} onPatch={onPatch} />}<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><TimecodeField label="Inicio (mm:ss)" value={startSeconds} onChange={setStartSeconds} /><TimecodeField label="Duración (mm:ss)" value={durationSeconds} onChange={setDurationSeconds} /><InspectorField label="Posición X" value={x} onChange={setX} /><InspectorField label="Posición Y" value={y} onChange={setY} /></div><p className="text-[10px] text-slate-500 dark:text-gray-400">Formato: 01:05 = 1 minuto y 5 segundos; 00:01.050 incluye milisegundos.</p><div className="border-t border-slate-200 pt-3 dark:border-white/10"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Transformación</p><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><InspectorField label="Ancho" value={width} onChange={setWidth} min={1} /><InspectorField label="Alto" value={height} onChange={setHeight} min={1} /><InspectorField label="Rotación" value={rotation} onChange={setRotation} min={-360} /><InspectorField label="Opacidad" value={opacity} onChange={setOpacity} min={0} /></div><p className="mt-2 text-[10px] text-slate-500">Arrastra en el preview para mover; usa el tirador para redimensionar. Mantén Alt para liberar proporciones.</p></div><div className="flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => void saveTiming()} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50 dark:bg-cyan-400 dark:text-slate-950"><Save size={13} /> Guardar tiempo</button><button type="button" disabled={saving} onClick={() => void savePosition()} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-bold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">Guardar posición</button><button type="button" disabled={saving} onClick={() => void saveTransform()} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-bold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">Guardar transformación</button>{saving && <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-gray-400"><Loader2 className="animate-spin" size={13} /> Actualizando preview…</span>}</div></div>;
 }
+
+function TimecodeField({ label, onChange, value }: { label: string; onChange: (value: string) => void; value: string }) { return <label className="text-xs font-medium text-slate-600 dark:text-gray-300"><span>{label}</span><input type="text" inputMode="decimal" placeholder="00:00" value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 font-mono text-sm text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-white" /></label>; }
 
 function InspectorField({ label, min, onChange, value }: { label: string; min?: number; onChange: (value: string) => void; value: string }) { return <label className="text-xs font-medium text-slate-600 dark:text-gray-300"><span>{label}</span><input type="number" step="0.05" min={min} value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-white" /></label>; }
 
-function buildTimelineRuler(durationSeconds: number) {
-  const safeDuration = Math.max(durationSeconds, 0.05);
-  const majorCandidates = [0.5, 1, 2, 5, 10, 15, 30, 60];
-  const majorInterval = majorCandidates.find((candidate) => safeDuration / candidate <= 8) || 60;
-  const minorInterval = majorInterval >= 2 ? majorInterval / 2 : majorInterval / 5;
-  const major: number[] = [];
-  const minor: number[] = [];
-  for (let time = 0; time <= safeDuration + 0.001; time += minorInterval) {
-    const rounded = Math.round(time * 100) / 100;
-    if (Math.abs((rounded / majorInterval) - Math.round(rounded / majorInterval)) < 0.001) major.push(rounded);
-    else minor.push(rounded);
-  }
-  if (major[major.length - 1] !== safeDuration) major.push(safeDuration);
-  return { major, minor };
-}
-
-type TimelineGesture = {
-  clip: CompositionClip;
-  durationSeconds: number;
-  kind: "move" | "trim-end" | "trim-start";
-  pointerStartX: number;
-  sourceOffsetSeconds: number;
-  startSeconds: number;
-};
-
-function CompositionTimeline({ assetLabels, currentTime, document, onClearSelection, onDurationChange, onMove, onSeek, onSelect, onTrim, saving, selectedHfId }: { assetLabels: Record<string, string>; currentTime: number; document: CompositionEditorDocument; onClearSelection: () => void; onDurationChange: (clip: CompositionClip, durationSeconds: number) => void; onMove: (clip: CompositionClip, startSeconds: number) => void; onSeek: (seconds: number) => void; onSelect: (hfId: string) => void; onTrim: (clip: CompositionClip, startSeconds: number, durationSeconds: number, sourceOffsetSeconds: number) => void; saving: boolean; selectedHfId: string | null }) {
-  const [gesture, setGesture] = useState<TimelineGesture | null>(null);
-  const [scrubbing, setScrubbing] = useState(false);
-  const didDragRef = useRef(false);
-  const tracks = document.tracks.slice().sort((left, right) => left.order - right.order);
-  const maxDuration = document.canvas.durationSeconds;
-  const ruler = useMemo(() => buildTimelineRuler(maxDuration), [maxDuration]);
-  const beginGesture = (event: React.PointerEvent<HTMLElement>, clip: CompositionClip, kind: TimelineGesture["kind"]) => {
-    if (saving) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const captureTarget = kind === "move" ? event.currentTarget : event.currentTarget.parentElement;
-    captureTarget?.setPointerCapture?.(event.pointerId);
-    didDragRef.current = false;
-    onSelect(clip.hfId);
-    setGesture({
-      clip,
-      durationSeconds: clip.durationSeconds,
-      kind,
-      pointerStartX: event.clientX,
-      sourceOffsetSeconds: clip.sourceOffsetSeconds || 0,
-      startSeconds: clip.startSeconds,
-    });
-  };
-  const updateGesture = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (!gesture || gesture.clip.id !== event.currentTarget.dataset.clipId) return;
-    const lane = event.currentTarget.parentElement;
-    if (!lane) return;
-    const laneWidth = Math.max(lane.getBoundingClientRect().width, 1);
-    const deltaSeconds = ((event.clientX - gesture.pointerStartX) / laneWidth) * maxDuration;
-    if (Math.abs(event.clientX - gesture.pointerStartX) >= 3) didDragRef.current = true;
-    if (gesture.kind === "move") {
-      const startSeconds = snapTimelineSeconds(Math.max(0, Math.min(maxDuration - gesture.clip.durationSeconds, gesture.clip.startSeconds + deltaSeconds)));
-      setGesture((current) => current ? { ...current, startSeconds } : current);
-      return;
-    }
-    if (gesture.kind === "trim-end") {
-      const sourceLimit = gesture.clip.sourceDurationSeconds === undefined
-        ? maxDuration
-        : gesture.clip.sourceDurationSeconds - (gesture.clip.sourceOffsetSeconds || 0);
-      const durationSeconds = snapTimelineSeconds(Math.max(0.05, Math.min(
-        maxDuration - gesture.clip.startSeconds,
-        sourceLimit,
-        gesture.clip.durationSeconds + deltaSeconds,
-      )));
-      setGesture((current) => current ? { ...current, durationSeconds } : current);
-      return;
-    }
-    const originalEnd = gesture.clip.startSeconds + gesture.clip.durationSeconds;
-    const earliestStart = Math.max(0, gesture.clip.startSeconds - (gesture.clip.sourceOffsetSeconds || 0));
-    const startSeconds = snapTimelineSeconds(Math.max(earliestStart, Math.min(originalEnd - 0.05, gesture.clip.startSeconds + deltaSeconds)));
-    setGesture((current) => current ? {
-      ...current,
-      durationSeconds: snapTimelineSeconds(originalEnd - startSeconds),
-      sourceOffsetSeconds: Math.max(0, snapTimelineSeconds((gesture.clip.sourceOffsetSeconds || 0) + startSeconds - gesture.clip.startSeconds)),
-      startSeconds,
-    } : current);
-  };
-  const finishGesture = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (!gesture || gesture.clip.id !== event.currentTarget.dataset.clipId) return;
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-    const current = gesture;
-    setGesture(null);
-    if (!didDragRef.current) return;
-    if (current.kind === "move" && Math.abs(current.startSeconds - current.clip.startSeconds) >= 0.05) {
-      onMove(current.clip, current.startSeconds);
-    } else if (current.kind === "trim-end" && Math.abs(current.durationSeconds - current.clip.durationSeconds) >= 0.05) {
-      onDurationChange(current.clip, current.durationSeconds);
-    } else if (current.kind === "trim-start") {
-      onTrim(current.clip, current.startSeconds, current.durationSeconds, current.sourceOffsetSeconds);
-    }
-  };
-  const seekFromPointer = (event: React.PointerEvent<HTMLDivElement>) => {
-    const box = event.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (event.clientX - box.left) / Math.max(box.width, 1)));
-    onSeek(Math.round(ratio * maxDuration * 20) / 20);
-  };
-  const beginScrub = (event: React.PointerEvent<HTMLDivElement>) => {
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setScrubbing(true);
-    seekFromPointer(event);
-  };
-  const continueScrub = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (scrubbing) seekFromPointer(event);
-  };
-  const endScrub = () => setScrubbing(false);
-
-  return <div className="space-y-2">
-    <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-gray-400"><span>Timeline</span><span>{formatSeconds(currentTime)} · {document.clips.length} clips · mueve el bloque o recorta sus bordes</span></div>
-    <div className="grid grid-cols-[105px_minmax(0,1fr)] items-end gap-2"><span className="pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-gray-400">Tiempo</span><div role="slider" aria-label="Cursor de la composición" aria-valuemax={maxDuration} aria-valuemin={0} aria-valuenow={currentTime} tabIndex={0} onKeyDown={(event) => { if (event.key === "ArrowLeft") { event.preventDefault(); onSeek(Math.max(0, currentTime - 0.5)); } if (event.key === "ArrowRight") { event.preventDefault(); onSeek(Math.min(maxDuration, currentTime + 0.5)); } }} onPointerDown={beginScrub} onPointerMove={continueScrub} onPointerUp={endScrub} onPointerCancel={endScrub} className="relative h-8 cursor-ew-resize select-none overflow-hidden rounded-t-md border border-b-0 border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5">{ruler.minor.map((time) => <span key={`minor-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute bottom-0 h-2 w-px bg-slate-300 dark:bg-white/20" />)}{ruler.major.map((time) => <span key={`major-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute inset-y-0 w-px bg-slate-300 dark:bg-white/20"><span className="absolute left-1 top-1 whitespace-nowrap font-mono text-[9px] text-slate-500 dark:text-gray-400">{formatSeconds(time)}</span></span>)}<span aria-hidden="true" style={{ left: `${(currentTime / maxDuration) * 100}%` }} className={`absolute inset-y-0 z-30 w-0.5 bg-cyan-600 shadow-[0_0_7px_rgba(8,145,178,0.75)] dark:bg-cyan-300 ${scrubbing ? "opacity-100" : "opacity-90"}`}><span className="absolute -left-1.5 top-0 h-3 w-3 rotate-45 border border-cyan-700 bg-cyan-100 dark:border-cyan-100 dark:bg-cyan-400" /></span></div></div>
-    {tracks.map((track) => {
-      const clips = document.clips.filter((clip) => clip.trackId === track.id);
-      // Visual and audio sources frequently start at the same instant. Showing
-      // one lane per source prevents a later clip from hiding an avatar clip.
-      const lanes = track.kind === "DECK" ? [clips] : clips.map((clip) => [clip]);
-      return <div key={track.id} className="grid grid-cols-[105px_minmax(0,1fr)] items-start gap-2">
-        <span className="pt-2 text-xs font-medium text-slate-600 dark:text-gray-300">{track.label}</span>
-        <div className="space-y-1">
-          {lanes.map((lane, laneIndex) => <div key={`${track.id}-${laneIndex}`} data-timeline-lane onClick={(event) => { if (event.target === event.currentTarget) onClearSelection(); }} onPointerDown={(event) => { if (event.target === event.currentTarget) beginScrub(event); }} onPointerMove={(event) => { if (scrubbing) continueScrub(event); }} onPointerUp={() => { if (scrubbing) endScrub(); }} onPointerCancel={() => { if (scrubbing) endScrub(); }} className="relative h-9 overflow-hidden rounded-md border border-slate-200 bg-slate-100 dark:border-white/10 dark:bg-white/5">
-            {ruler.minor.map((time) => <span key={`minor-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute inset-y-0 w-px bg-slate-300/50 dark:bg-white/5" />)}
-            {ruler.major.map((time) => <span key={`major-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute inset-y-0 w-px bg-slate-300 dark:bg-white/15" />)}
-            <span aria-hidden="true" style={{ left: `${(currentTime / maxDuration) * 100}%` }} className="absolute inset-y-0 z-20 w-0.5 bg-[#00D4B3] shadow-[0_0_5px_rgba(0,212,179,0.75)]" />
-            {lane.map((clip) => {
-              const activeGesture = gesture?.clip.id === clip.id ? gesture : null;
-              const clipDuration = activeGesture?.durationSeconds ?? clip.durationSeconds;
-              const clipStart = activeGesture?.startSeconds ?? clip.startSeconds;
-              const label = clip.source.type === "PRODUCTION_ASSET" ? assetLabels[clip.source.productionAssetId] || clip.label : clip.label;
-              return <button key={clip.id} data-clip-id={clip.id} disabled={saving} type="button" onClick={() => { if (didDragRef.current) { didDragRef.current = false; return; } onSeek(clipStart); onSelect(clip.hfId); }} onPointerDown={(event) => beginGesture(event, clip, "move")} onPointerMove={updateGesture} onPointerUp={finishGesture} onPointerCancel={finishGesture} title={`${label}: ${formatSeconds(clipStart)} – ${formatSeconds(clipStart + clipDuration)}`} style={{ left: `${(clipStart / maxDuration) * 100}%`, width: `${(clipDuration / maxDuration) * 100}%` }} className={`absolute inset-y-1 min-w-5 touch-none select-none truncate rounded border px-3 text-left text-[10px] font-semibold shadow-sm transition-colors disabled:cursor-wait ${selectedHfId === clip.hfId ? "border-[#0A2540] bg-[#0A2540] text-white" : clip.timingSource === "ESTIMATED" ? "border-[#F59E0B] bg-[#F59E0B]/30 text-[#0A2540] hover:bg-[#F59E0B]/40" : "border-[#00D4B3] bg-[#00D4B3]/20 text-[#0A2540] hover:bg-[#00D4B3]/30 dark:text-[#E9ECEF]"}`}><span aria-label={`Recortar inicio de ${label}`} onPointerDown={(event) => beginGesture(event, clip, "trim-start")} className="absolute inset-y-0 left-0 w-2 cursor-ew-resize border-r border-black/20 hover:bg-black/10" /><span>{label}</span><span aria-label={`Cambiar duración de ${label}`} onPointerDown={(event) => beginGesture(event, clip, "trim-end")} className="absolute inset-y-0 right-0 w-2 cursor-ew-resize border-l border-black/20 hover:bg-black/10" /></button>;
-            })}
-          </div>)}
-          {lanes.length === 0 && <div className="flex h-9 items-center rounded-md border border-dashed border-slate-200 px-2 text-[10px] text-slate-400 dark:border-white/10">Sin clips</div>}
-        </div>
-      </div>;
-    })}
-  </div>;
-}
-
-function snapTimelineSeconds(value: number) {
-  return Math.round(value * 20) / 20;
-}
-
-function LegacyCompositionTimeline({ currentTime, document, onClearSelection, onDurationChange, onSeek, onSelect, selectedHfId }: { currentTime: number; document: CompositionEditorDocument; onClearSelection: () => void; onDurationChange: (clip: CompositionClip, durationSeconds: number) => void; onSeek: (seconds: number) => void; onSelect: (hfId: string) => void; selectedHfId: string | null }) {
-  const [resizing, setResizing] = useState<{ clip: CompositionClip; durationSeconds: number } | null>(null);
-  const tracks = document.tracks.slice().sort((left, right) => left.order - right.order);
-  const maxDuration = document.canvas.durationSeconds;
-  const finishResize = () => { if (!resizing) return; if (Math.abs(resizing.durationSeconds - resizing.clip.durationSeconds) >= 0.05) onDurationChange(resizing.clip, resizing.durationSeconds); setResizing(null); };
-  return <div className="space-y-2"><div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-gray-400"><span>Timeline</span><span>{document.clips.length} clips · arrastra el borde derecho para duración</span></div>{tracks.map((track) => { const clips = document.clips.filter((clip) => clip.trackId === track.id); return <div key={track.id} className="grid grid-cols-[105px_minmax(0,1fr)] items-center gap-2"><span className="truncate text-xs font-medium text-slate-600 dark:text-gray-300">{track.label}</span><div data-timeline-lane onClick={(event) => { if (event.target === event.currentTarget) onClearSelection(); }} onPointerMove={(event) => { if (!resizing) return; const box = event.currentTarget.getBoundingClientRect(); const endSeconds = Math.max(resizing.clip.startSeconds + 0.05, Math.min(maxDuration, ((event.clientX - box.left) / box.width) * maxDuration)); setResizing({ ...resizing, durationSeconds: Math.round((endSeconds - resizing.clip.startSeconds) * 20) / 20 }); }} onPointerUp={finishResize} onPointerCancel={finishResize} className="relative h-10 overflow-hidden rounded-md bg-slate-100 dark:bg-white/5"><span aria-hidden="true" style={{ left: `${(currentTime / maxDuration) * 100}%` }} className="absolute inset-y-0 z-20 w-px bg-cyan-600 dark:bg-cyan-300" />{clips.map((clip) => { const clipDuration = resizing?.clip.id === clip.id ? resizing.durationSeconds : clip.durationSeconds; return <button key={clip.id} type="button" onClick={() => { onSeek(clip.startSeconds); onSelect(clip.hfId); }} title={`${clip.label}: ${formatSeconds(clip.startSeconds)} – ${formatSeconds(clip.startSeconds + clipDuration)}`} style={{ left: `${(clip.startSeconds / maxDuration) * 100}%`, width: `${(clipDuration / maxDuration) * 100}%` }} className={`absolute inset-y-1 min-w-5 truncate rounded px-2 pr-3 text-left text-[10px] font-semibold transition-colors ${selectedHfId === clip.hfId ? "bg-cyan-600 text-white dark:bg-cyan-300 dark:text-slate-950" : clip.timingSource === "ESTIMATED" ? "bg-amber-200 text-amber-950 hover:bg-amber-300 dark:bg-amber-300/30 dark:text-amber-100" : "bg-cyan-200 text-cyan-950 hover:bg-cyan-300 dark:bg-cyan-400/30 dark:text-cyan-100"}`}><span>{clip.label}</span><span aria-label={`Cambiar duración de ${clip.label}`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); setResizing({ clip, durationSeconds: clip.durationSeconds }); }} className="absolute inset-y-0 right-0 w-2 cursor-ew-resize border-l border-black/20 hover:bg-black/10" /></button>; })}</div></div>; })}</div>;
-}
-
-void LegacyCompositionTimeline;
 
 function LoadingPreview() { return <div className="flex min-h-72 items-center justify-center rounded-xl border border-slate-200 bg-white text-sm text-slate-600 dark:border-white/10 dark:bg-[#0B1119] dark:text-gray-300"><Loader2 className="mr-2 animate-spin" size={18} /> Preparando editor de composición…</div>; }
 function PreviewError({ error, onRetry }: { error: string; onRetry: () => void }) { return <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-100"><p className="font-bold">No se pudo cargar el preview</p><p className="mt-1">{error}</p><button type="button" onClick={onRetry} className="mt-3 rounded-lg border border-current px-3 py-1.5 text-xs font-bold">Reintentar</button></div>; }
 function formatSeconds(value: number) { const seconds = Math.max(0, Math.floor(value)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`; }
-function formatPreciseSeconds(value: number) { return `${Math.round(value * 100) / 100} s`; }

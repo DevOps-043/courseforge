@@ -2,9 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CompositionEditorDocument } from "./composition-document.types";
 import { CompositionPreviewCompilerError } from "./composition-preview-compiler.service";
 
-const PREVIEW_ASSET_URL_TTL_SECONDS = 5 * 60;
+export const COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS = 60 * 60;
 
-/** Resolves only assets linked to this draft into short-lived preview URLs. */
+/** Resolves only linked assets into scoped Storage URLs renewed on every preview load. */
 export async function resolveCompositionPreviewAssetUrls(params: {
   document: CompositionEditorDocument;
   draftId: string;
@@ -42,7 +42,10 @@ export async function resolveCompositionPreviewAssetUrls(params: {
     }
     const { data: signed, error: signedError } = await params.supabase.storage
       .from(asset.storage_bucket)
-      .createSignedUrl(toBucketRelativePath(asset.storage_bucket, asset.storage_path), PREVIEW_ASSET_URL_TTL_SECONDS);
+      .createSignedUrl(
+        toBucketRelativePath(asset.storage_bucket, asset.storage_path),
+        COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS,
+      );
     if (signedError) throw signedError;
     urls.set(asset.id, signed.signedUrl);
   }

@@ -6,6 +6,10 @@ import { getVideoStudioModelProvider, isVideoStudioReasoningModel } from "../hyp
 import type { CompositionEditorDocument } from "./composition-document.types";
 import { applyCompositionEditorPatches } from "./editor-patch.service";
 import { compositionEditorPatchRequestSchema } from "./editor-patch.types";
+import {
+  buildCompositionAgentContext,
+  buildCompositionProposalPrompt,
+} from "./composition-agent-prompt.service";
 
 export class CompositionAgentProposalError extends Error {
   constructor(message: string, readonly status = 400) {
@@ -47,23 +51,13 @@ export async function proposeCompositionEdits(params: {
   const selected = input.selectedClipId
     ? params.document.clips.find((clip) => clip.id === input.selectedClipId) || null
     : null;
-  const compactDocument = {
-    canvas: params.document.canvas,
-    clips: params.document.clips.map((clip) => ({
-      durationSeconds: clip.durationSeconds,
-      hidden: clip.hidden,
-      id: clip.id,
-      kind: clip.kind,
-      label: clip.label,
-      layout: clip.layout,
-      startSeconds: clip.startSeconds,
-      trackId: clip.trackId,
-    })),
-    selectedClipId: selected?.id || null,
-    tracks: params.document.tracks.map((track) => ({ id: track.id, kind: track.kind, locked: track.locked, label: track.label })),
-  };
+  const context = buildCompositionAgentContext(params.document);
   try {
-    const prompt = buildCompositionProposalPrompt(input.instruction, compactDocument);
+    const prompt = buildCompositionProposalPrompt({
+      context,
+      instruction: input.instruction,
+      selectedClipId: selected?.id || null,
+    });
     const raw = JSON.parse(extractJson(provider === "gemini"
       ? await requestGeminiProposal({ apiKey, model: settings.agentModel, prompt, temperature: settings.temperature })
       : await requestOpenAiProposal({ apiKey, model: settings.agentModel, prompt, temperature: settings.temperature })));
@@ -75,17 +69,6 @@ export async function proposeCompositionEdits(params: {
     if (error instanceof CompositionAgentProposalError || error instanceof z.ZodError) throw error;
     throw new CompositionAgentProposalError("El agente no produjo una propuesta de edici\u00f3n v\u00e1lida. Puedes ajustar la instrucci\u00f3n y reintentar.", 422);
   }
-}
-
-function buildCompositionProposalPrompt(instruction: string, document: unknown) {
-  return [
-    "Eres un asistente de edición de video. Propón cambios seguros para un documento de composición.",
-    "Responde SOLO JSON con {summary, operations}. summary debe explicar en español, de forma concreta y en futuro, qué harás antes de que el usuario confirme. Cada operación debe ser una de: clip.move, clip.duration, clip.layout, clip.visibility.",
-    "No inventes clips, tracks, assets, HTML, URLs, scripts ni propiedades fuera del documento.",
-    "La propuesta NO se guarda todavía. Mantén el resultado entre 1 y 12 operaciones.",
-    `Solicitud del usuario: ${instruction}`,
-    `Documento disponible: ${JSON.stringify(document)}`,
-  ].join("\n");
 }
 
 async function requestGeminiProposal(params: { apiKey: string; model: string; prompt: string; temperature: number }) {

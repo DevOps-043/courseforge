@@ -31,7 +31,7 @@ export async function GET(_request: Request, context: RouteContext) {
     return new NextResponse(previewHtml, {
       headers: {
         "Cache-Control": "private, no-store",
-        "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src https: data:; media-src https: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'",
+        "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src https: data:; media-src 'self' https: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'",
         "Content-Type": "text/html; charset=utf-8",
         "X-Content-Type-Options": "nosniff",
       },

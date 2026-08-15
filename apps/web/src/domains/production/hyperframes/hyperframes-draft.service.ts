@@ -1,8 +1,14 @@
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createInitialCompositionDocument } from "../composition-editor/composition-document.factory";
+import {
+  appendMissingProductionAssetClips,
+  createInitialCompositionDocument,
+  selectAuthoritativeTimelineAssets,
+} from "../composition-editor/composition-document.factory";
 import { CompositionDurationResolutionError } from "../composition-editor/composition-duration.service";
 import {
+  applyAndAppendCompositionDocumentPatches,
+  CompositionDocumentConflictError,
   CompositionDocumentError,
   ensureInitialCompositionDocument,
   getCurrentCompositionDocument,
@@ -30,6 +36,41 @@ type DraftRow = {
   project_storage_bucket: string;
   project_storage_prefix: string;
 };
+
+/** Builds the smallest versioned patch required to mirror active Production media. */
+export function buildProductionAssetReconciliationOperations(
+  document: Parameters<typeof appendMissingProductionAssetClips>[0],
+  assets: Parameters<typeof appendMissingProductionAssetClips>[1],
+) {
+  const timelineAssets = selectAuthoritativeTimelineAssets(assets);
+  const activeAssetIds = new Set(timelineAssets.map((asset) => asset.productionAssetId));
+  const staleClipIds = document.clips.flatMap((clip) => (
+    clip.source.type === "PRODUCTION_ASSET" && !activeAssetIds.has(clip.source.productionAssetId)
+      ? [clip.id]
+      : []
+  ));
+  const reconciled = appendMissingProductionAssetClips(document, timelineAssets);
+  const currentAssetIds = new Set(document.clips.flatMap((clip) => (
+    clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []
+  )));
+  const currentTrackIds = new Set(document.tracks.map((track) => track.id));
+  const suppliedTrackIds = new Set<string>();
+  const removalOperations = staleClipIds.map((clipId) => ({ clipId, type: "clip.remove" as const }));
+  const additionOperations = reconciled.document.clips.flatMap((clip) => {
+    if (clip.source.type !== "PRODUCTION_ASSET" || currentAssetIds.has(clip.source.productionAssetId)) return [];
+    const track = !currentTrackIds.has(clip.trackId) && !suppliedTrackIds.has(clip.trackId)
+      ? reconciled.document.tracks.find((candidate) => candidate.id === clip.trackId)
+      : undefined;
+    if (track) suppliedTrackIds.add(track.id);
+    return [{
+      clip,
+      clipId: clip.id,
+      ...(track ? { track } : {}),
+      type: "clip.add" as const,
+    }];
+  });
+  return [...removalOperations, ...additionOperations];
+}
 
 /**
  * Resolves the persistent project identity for the full visual editor.
@@ -143,20 +184,6 @@ export async function initializeHyperframesDraft(params: {
       timelineVariant: asset.timelineVariant,
     }));
   const animatedDeck = extractHyperframesAnimatedDeck(component.assets);
-  const persistedDocument = await loadOrCreateInitialDocument({
-    animatedDeck,
-    assets,
-    compositionName: composition.name,
-    draftId: typedDraft.id,
-    organizationId: params.organizationId,
-    supabase: params.supabase,
-    userId: params.userId,
-  });
-  // Never append a maintenance version while opening the editor. A pending
-  // database lock or migration must not make the author wait minutes before
-  // seeing the current composition. The versioned repair is deliberately
-  // deferred to an explicit document update after the editor is available.
-
   // A draft can predate a re-sync. Link assets on every initialization so an
   // older draft never hides assets that are already available in Production.
   if (candidates.length > 0) {
@@ -166,11 +193,40 @@ export async function initializeHyperframesDraft(params: {
         draft_id: typedDraft.id,
         organization_id: params.organizationId,
         production_asset_id: asset.productionAssetId,
-        role: inferAssetRole(asset.mimeType),
+        role: asset.timelineRole || inferAssetRole(asset.mimeType),
         source_reference: asset.sourceType,
       })), { onConflict: "draft_id,production_asset_id" });
     if (assetLinkError) throw assetLinkError;
   }
+  const activeAssetIds = new Set(candidates.map((asset) => asset.productionAssetId));
+  const { data: existingAssetLinks, error: existingAssetLinksError } = await params.supabase
+    .from("video_composition_draft_assets")
+    .select("production_asset_id")
+    .eq("draft_id", typedDraft.id)
+    .eq("organization_id", params.organizationId);
+  if (existingAssetLinksError) throw existingAssetLinksError;
+  const staleAssetIds = (existingAssetLinks || [])
+    .map((link) => link.production_asset_id as string)
+    .filter((assetId) => !activeAssetIds.has(assetId));
+  if (staleAssetIds.length > 0) {
+    const { error: staleAssetLinkError } = await params.supabase
+      .from("video_composition_draft_assets")
+      .delete()
+      .eq("draft_id", typedDraft.id)
+      .eq("organization_id", params.organizationId)
+      .in("production_asset_id", staleAssetIds);
+    if (staleAssetLinkError) throw staleAssetLinkError;
+  }
+
+  const persistedDocument = await loadOrCreateInitialDocument({
+    animatedDeck,
+    assets,
+    compositionName: composition.name,
+    draftId: typedDraft.id,
+    organizationId: params.organizationId,
+    supabase: params.supabase,
+    userId: params.userId,
+  });
 
   if (persistedDocument.created) {
     const { error: changeError } = await params.supabase
@@ -201,7 +257,33 @@ async function loadOrCreateInitialDocument(params: {
 }) {
   try {
     const current = await getCurrentCompositionDocument(params);
-    return { created: false, document: current.document, version: current.version };
+    const operations = buildProductionAssetReconciliationOperations(current.document, params.assets);
+    if (operations.length === 0) {
+      return { created: false, document: current.document, version: current.version };
+    }
+
+    try {
+      const updated = await applyAndAppendCompositionDocumentPatches({
+        auditSource: "SYSTEM",
+        draftId: params.draftId,
+        expectedDocumentHash: current.documentHash,
+        organizationId: params.organizationId,
+        patch: {
+          operations,
+          source: "AGENT",
+          summary: `Sincronizó ${operations.length} cambio(s) de assets desde Producción.`,
+        },
+        supabase: params.supabase,
+        userId: params.userId,
+      });
+      return { created: false, document: updated.document, version: updated.version };
+    } catch (error) {
+      if (error instanceof CompositionDocumentConflictError) {
+        const latest = await getCurrentCompositionDocument(params);
+        return { created: false, document: latest.document, version: latest.version };
+      }
+      throw error;
+    }
   } catch (error) {
     if (!(error instanceof CompositionDocumentError) || error.status !== 404) throw error;
   }

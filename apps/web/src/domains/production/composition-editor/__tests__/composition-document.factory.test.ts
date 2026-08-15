@@ -10,6 +10,8 @@ import {
   CompositionDurationResolutionError,
   resolveCompositionDuration,
 } from "../composition-duration.service";
+import { normalizeCompositionTrackTopology } from "../composition-track-registry";
+import { formatCompositionTimecode, parseCompositionTimecode } from "../composition-timecode";
 
 test("preserves deck HTML as editable clips and labels missing timings as estimated", () => {
   const document = createInitialCompositionDocument({
@@ -34,6 +36,17 @@ test("preserves deck HTML as editable clips and labels missing timings as estima
   assert.equal(document.clips[1]?.startSeconds, 5);
 });
 
+test("formats and parses editor timecodes without decimal ambiguity", () => {
+  assert.equal(formatCompositionTimecode(1.05), "00:01.050");
+  assert.equal(formatCompositionTimecode(65), "01:05");
+  assert.equal(formatCompositionTimecode(3661.25), "01:01:01.250");
+  assert.equal(parseCompositionTimecode("01:05"), 65);
+  assert.equal(parseCompositionTimecode("2:40"), 160);
+  assert.equal(parseCompositionTimecode("00:01.050"), 1.05);
+  assert.equal(parseCompositionTimecode("1,5"), 1.5);
+  assert.equal(parseCompositionTimecode("00:65"), null);
+});
+
 test("keeps production media as references instead of copying files", () => {
   const document = createInitialCompositionDocument({
     animatedDeck: null,
@@ -53,6 +66,37 @@ test("keeps production media as references instead of copying files", () => {
 
   assert.equal(document.clips[0]?.source.type, "PRODUCTION_ASSET");
   assert.equal(document.clips[0]?.source.productionAssetId, "00000000-0000-4000-8000-000000000001");
+});
+
+test("separates voice and music into semantic layers the agent can identify", () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [
+      { checksum: "1".repeat(64), durationSeconds: 10, fileSizeBytes: 4, mimeType: "audio/mpeg", productionAssetId: "00000000-0000-4000-8000-000000000031", publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/voice.mp3", timelineRole: "VOICE" },
+      { checksum: "2".repeat(64), durationSeconds: 30, fileSizeBytes: 4, mimeType: "audio/mpeg", productionAssetId: "00000000-0000-4000-8000-000000000032", publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/music.mp3", timelineRole: "AUDIO" },
+    ],
+    plan: { accentColor: "#38BDF8", durationSeconds: 10, subtitle: "Prueba", title: "Audio" },
+  });
+
+  assert.equal(document.clips.find((clip) => clip.label.includes("Asset 1"))?.trackId, "voice");
+  assert.equal(document.clips.find((clip) => clip.label.includes("Asset 2"))?.trackId, "music");
+  assert.equal(document.tracks.find((track) => track.id === "voice")?.semanticRole, "VOICE");
+  assert.equal(document.tracks.find((track) => track.id === "music")?.semanticRole, "MUSIC");
+});
+
+test("preserves persisted layer controls while normalizing the track topology", () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: { css: ".slide { color: white; }", fonts: [], height: 1080, slides: [{ animationCount: 0, classes: "slide active", html: "<h1>Audio</h1>", index: 0, label: "Audio" }], width: 1920 },
+    assets: [{ checksum: "3".repeat(64), durationSeconds: 20, fileSizeBytes: 4, mimeType: "audio/mpeg", productionAssetId: "00000000-0000-4000-8000-000000000033", publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/music.mp3", timelineRole: "AUDIO" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 20, subtitle: "Prueba", title: "Música" },
+  });
+  const music = document.tracks.find((track) => track.id === "music")!;
+  Object.assign(music, { hidden: true, locked: true, muted: true, volume: 0.4 });
+
+  const normalized = normalizeCompositionTrackTopology(document, new Map([["00000000-0000-4000-8000-000000000033", "AUDIO"]]));
+  const stored = normalized.tracks.find((track) => track.id === "music")!;
+
+  assert.deepEqual({ hidden: stored.hidden, locked: stored.locked, muted: stored.muted, volume: stored.volume }, { hidden: true, locked: true, muted: true, volume: 0.4 });
 });
 
 test("preserves the production asset name so an avatar clip is identifiable in the timeline", () => {
@@ -205,6 +249,27 @@ test("reconciles newly available avatar media into an existing draft document", 
     true,
   );
   assert.equal(reconciled.document.tracks.some((track) => track.id === "visual"), true);
+});
+
+test("reconciliation prefers one full avatar over its generated fragments", () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: { css: "", fonts: [], height: 1080, slides: [{ animationCount: 0, classes: "slide", html: "<h1>Uno</h1>", index: 0, label: "Uno" }], width: 1920 },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 5, subtitle: "Prueba", title: "Deck" },
+  });
+  const assets = [
+    { checksum: "1".repeat(64), durationSeconds: 40, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: "00000000-0000-4000-8000-000000000041", publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/avatar-full.mp4", timelineRole: "AVATAR" as const, timelineVariant: "FULL" as const },
+    { checksum: "2".repeat(64), durationSeconds: 10, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: "00000000-0000-4000-8000-000000000042", publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/avatar-clip.mp4", timelineRole: "AVATAR" as const, timelineVariant: "CLIP" as const },
+  ];
+
+  const reconciled = appendMissingProductionAssetClips(document, assets);
+  const avatarIds = reconciled.document.clips.flatMap((clip) => (
+    clip.trackId === "avatar" && clip.source.type === "PRODUCTION_ASSET"
+      ? [clip.source.productionAssetId]
+      : []
+  ));
+
+  assert.deepEqual(avatarIds, [assets[0]!.productionAssetId]);
 });
 
 test("removes only deck-owned raster assets from an existing timeline", () => {

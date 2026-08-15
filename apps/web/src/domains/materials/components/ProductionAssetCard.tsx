@@ -172,6 +172,7 @@ export function ProductionAssetCard({
     clearVoiceAudio,
     clearBackgroundMusic,
     clearAvatarVideo,
+    removeAvatarClip,
     clearSlidesAsset,
     handleAvatarUpload,
 
@@ -398,6 +399,7 @@ export function ProductionAssetCard({
                 onHeygenStatusCheck={handleHeygenStatusCheck}
                 onRefreshPresets={loadHeygenPresets}
                 onClear={clearAvatarVideo}
+                onDeleteClip={removeAvatarClip}
                 onAspectRatioChange={setHeygenAspectRatio}
                 onAvatarPresetChange={setSelectedHeygenAvatarPresetId}
                 onCaptionEnabledChange={setHeygenCaptionEnabled}

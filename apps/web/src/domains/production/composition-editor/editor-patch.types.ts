@@ -68,7 +68,28 @@ const canvasDurationOperationSchema = z.object({
   type: z.literal("composition.canvas-duration"),
 }).strict();
 
-export const compositionEditorPatchOperationSchema = z.discriminatedUnion("type", [
+const trackUpdateOperationSchema = z.object({
+  settings: z.object({
+    hidden: z.boolean().optional(),
+    locked: z.boolean().optional(),
+    muted: z.boolean().optional(),
+    volume: z.number().finite().min(0).max(1).optional(),
+  }).strict().refine((settings) => Object.keys(settings).length > 0, "Debes indicar al menos un ajuste de capa."),
+  trackId: editorIdSchema,
+  type: z.literal("track.update"),
+}).strict();
+
+const audioMixUpdateOperationSchema = z.object({
+  settings: z.object({
+    attackSeconds: z.number().finite().min(0).max(5).optional(),
+    duckedVolumeRatio: z.number().finite().min(0).max(1).optional(),
+    enabled: z.boolean().optional(),
+    releaseSeconds: z.number().finite().min(0).max(5).optional(),
+  }).strict().refine((settings) => Object.keys(settings).length > 0, "Debes indicar al menos un ajuste de mezcla."),
+  type: z.literal("audio-mix.update"),
+}).strict();
+
+const clipPatchOperationSchema = z.discriminatedUnion("type", [
   clipAddOperationSchema,
   canvasDurationOperationSchema,
   clipMoveOperationSchema,
@@ -79,6 +100,12 @@ export const compositionEditorPatchOperationSchema = z.discriminatedUnion("type"
   clipTrimOperationSchema,
   clipVisibilityOperationSchema,
 ]).and(z.object({ clipId: editorIdSchema }).strict());
+
+export const compositionEditorPatchOperationSchema = z.union([
+  audioMixUpdateOperationSchema,
+  clipPatchOperationSchema,
+  trackUpdateOperationSchema,
+]);
 
 export const compositionEditorPatchRequestSchema = z.object({
   operations: z.array(compositionEditorPatchOperationSchema).min(1).max(100),

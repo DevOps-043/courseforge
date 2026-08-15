@@ -23,6 +23,7 @@ import {
   ListChecks,
   LayoutTemplate,
   PanelsTopLeft,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -1079,6 +1080,7 @@ interface AvatarVideoSectionProps {
   onAvatarPresetChange: (value: string) => void;
   onCaptionEnabledChange: (value: boolean) => void;
   onClear: () => void;
+  onDeleteClip: (clipId: string) => void;
   onEngineChange: (value: "avatar_iv" | "avatar_v") => void;
   onHeygenStatusCheck: () => void;
   onRefreshPresets: () => Promise<void>;
@@ -1118,6 +1120,7 @@ export function AvatarVideoSection({
   fileRef,
   onUpload,
   onClear,
+  onDeleteClip,
   onAspectRatioChange,
   onAvatarPresetChange,
   onCaptionEnabledChange,
@@ -1175,7 +1178,7 @@ export function AvatarVideoSection({
             className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white dark:bg-[#151A21] px-2.5 py-1.5 text-[10px] font-bold text-gray-650 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all cursor-pointer disabled:opacity-50"
           >
             {isUploading ? <Loader2 size={10} className="animate-spin" /> : <Upload size={10} />}
-            <span>MP4</span>
+            <span>Video completo</span>
           </button>
           
           <button
@@ -1373,14 +1376,28 @@ export function AvatarVideoSection({
                     Escena {clip.order}
                     {clip.duration ? ` - ${formatSeconds(clip.duration)}` : ""}
                   </span>
-                  <a
-                    href={clip.public_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="shrink-0 font-bold text-rose-500 hover:text-rose-400"
-                  >
-                    Abrir
-                  </a>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <a
+                      href={clip.public_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-bold text-rose-500 hover:text-rose-400"
+                    >
+                      Abrir
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm("¿Retirar este video de avatar para volver a generarlo? La escena y el historial se conservarán.")) {
+                          onDeleteClip(clip.id);
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 font-bold text-red-500 hover:text-red-700"
+                      title="Retirar video y conservar la escena"
+                    >
+                      <Trash2 size={11} /> Borrar
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

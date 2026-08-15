@@ -851,6 +851,24 @@ export function useProductionAssetState({
     toast.info("Video de avatar removido");
   };
 
+  const removeAvatarClip = (clipId: string) => {
+    const updatedClips = avatarClips.map((clip) => clip.id === clipId
+      ? {
+          ...clip,
+          error_message: undefined,
+          external_id: undefined,
+          file_name: undefined,
+          job_id: undefined,
+          public_url: undefined,
+          status: "DRAFT" as const,
+          storage_path: undefined,
+        }
+      : clip);
+    setAvatarClips(updatedClips);
+    onAssetChange?.(component.id, { avatar_clips: updatedClips });
+    toast.info("Video de avatar retirado; la escena queda disponible para regenerar");
+  };
+
   const clearSlidesAsset = () => {
     setSlidesAsset(null);
     setSlidesUrl("");
@@ -893,34 +911,21 @@ export function useProductionAssetState({
         provider: 'upload',
       };
 
-      if (avatarGenerationMode === "scene_clips") {
-        const newClip: AvatarClip = {
-          id: `manual-${Date.now()}`,
-          order: avatarClips.length + 1,
-          script_text: file.name,
-          storage_path: storagePath,
-          public_url: publicUrl,
-          file_name: file.name,
-          duration: duration || undefined,
-          provider: "upload",
-          status: "COMPLETED",
-        };
-        const updatedClips = [...avatarClips, newClip];
-        setAvatarClips(updatedClips);
-        onAssetChange?.(component.id, {
-          avatar_generation_mode: "scene_clips",
-          avatar_clips: updatedClips,
-        });
-        toast.success("Clip de avatar subido");
-        return;
-      }
-
+      // This picker represents the authoritative full-avatar source. Scene
+      // clips are managed in the avatar module; inheriting its previous mode
+      // here silently classified complete uploads as fragments.
+      setAvatarGenerationMode("single_video");
       setAvatarVideo(newAvatar);
-      onAssetChange?.(component.id, {
+      const avatarUpdate: Partial<MaterialAssets> = {
         avatar_generation_mode: "single_video",
         avatar_video: newAvatar,
-      });
-      toast.success('Video de avatar subido');
+      };
+      onAssetChange?.(component.id, avatarUpdate);
+      // HeyGen clips are persisted by their provider flow. Manual full-video
+      // uploads must do the same so the editor, which reads the database rather
+      // than this component's pending state, can synchronize them immediately.
+      await onSaveAssets(component.id, avatarUpdate);
+      toast.success('Video completo de avatar subido');
     } catch (err: any) {
       toast.error(`Error al subir avatar: ${err.message}`);
     } finally {
@@ -1456,6 +1461,7 @@ export function useProductionAssetState({
     clearVoiceAudio,
     clearBackgroundMusic,
     clearAvatarVideo,
+    removeAvatarClip,
     clearSlidesAsset,
     handleAvatarUpload,
     // Artlist states and handlers

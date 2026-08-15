@@ -6,6 +6,55 @@ import {
   COMPOSITION_COMPILATION_TARGETS,
   compileCompositionPreview,
 } from "../composition-preview-compiler.service";
+import {
+  COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS,
+  resolveCompositionPreviewAssetUrls,
+} from "../composition-preview-assets.service";
+
+test("uses one-hour scoped signatures so a preview can renew media without iframe authentication", () => {
+  assert.equal(COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS, 60 * 60);
+});
+
+test("embeds a freshly signed Storage URL instead of an authenticated iframe asset route", async () => {
+  const assetId = "00000000-0000-4000-8000-000000000041";
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "4".repeat(64), durationSeconds: 8, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: assetId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/broll.mp4", timelineRole: "BROLL" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Preview" },
+  });
+  const query = (data: unknown) => {
+    const builder = {
+      eq: () => builder,
+      in: () => builder,
+      select: () => builder,
+      then: (resolve: (value: unknown) => unknown) => resolve({ data, error: null }),
+    };
+    return builder;
+  };
+  const supabase = {
+    from: (table: string) => table === "video_composition_draft_assets"
+      ? query([{ production_asset_id: assetId }])
+      : query([{ id: assetId, storage_bucket: "production-assets", storage_path: "production-assets/broll.mp4" }]),
+    storage: {
+      from: () => ({
+        createSignedUrl: async (path: string, ttl: number) => {
+          assert.equal(path, "broll.mp4");
+          assert.equal(ttl, COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS);
+          return { data: { signedUrl: "https://storage.test/signed-broll.mp4?token=scoped" }, error: null };
+        },
+      }),
+    },
+  };
+
+  const urls = await resolveCompositionPreviewAssetUrls({
+    document,
+    draftId: "f7d8853b-49cb-4a46-acd9-2c21696686c3",
+    organizationId: "550e8400-e29b-41d4-a716-446655440000",
+    supabase: supabase as never,
+  });
+
+  assert.equal(urls.get(assetId), "https://storage.test/signed-broll.mp4?token=scoped");
+});
 
 test("compiles the native document into a seekable preview with stable visual ids", async () => {
   const document = createInitialCompositionDocument({
@@ -28,6 +77,9 @@ test("compiles the native document into a seekable preview with stable visual id
   assert.match(html, /data-hf-id="deck-slide-0"/);
   assert.match(html, /window\.__timelines\["courseforge-composition"\]/);
   assert.match(html, /courseforge-composition-selection/);
+  assert.match(html, /courseforge-composition-editor-settings/);
+  assert.match(html, /composition-editor-grid/);
+  assert.match(html, /snapEnabled/);
   assert.match(html, /composition-viewport/);
   assert.match(html, /fitCompositionToViewport/);
   assert.match(html, /class="deck-scope"/);
@@ -85,12 +137,17 @@ test("creates a separate synchronized audio element for an avatar video", async 
     assets: [{ checksum: "b".repeat(64), durationSeconds: 30, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: avatarId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/avatar.mp4", timelineRole: "AVATAR" }],
     plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Avatar" },
   });
+  document.tracks.find((track) => track.id === "avatar")!.volume = 0.35;
   const html = await compileCompositionPreview({ assetUrls: new Map([[avatarId, "https://example.test/avatar.mp4"]]), document });
   assert.match(html, /asset-00000000-0000-4000-8000-000000000005-audio/);
-  assert.match(html, /data-volume="1"/);
   assert.match(html, /courseforge-composition-media-error/);
   assert.match(html, /composition-audio-unlock/);
   assert.match(html, /media\.play\(\)/);
+  assert.match(html, /pendingMediaPlayback\.has\(media\)/);
+  assert.match(html, /error\?\.name === "AbortError"/);
+  assert.match(html, /id="asset-00000000-0000-4000-8000-000000000005-media"/);
+  assert.doesNotMatch(html, /media\.getAttribute\("src"\)/);
+  assert.match(html, /data-volume="0\.35"/);
 
   const renderHtml = await compileCompositionPreview({
     assetUrls: new Map([[avatarId, "assets/avatar.mp4"]]),
@@ -101,4 +158,37 @@ test("creates a separate synchronized audio element for an avatar video", async 
   assert.match(renderHtml, /data-media-start="0"/);
   assert.match(renderHtml, /id="asset-00000000-0000-4000-8000-000000000005-audio" class="composition-audio clip"/);
   assert.doesNotMatch(renderHtml, /media\.play\(\)|composition-audio-unlock/);
+});
+
+test("compiles the same seek-safe music ducking envelope for preview and render", async () => {
+  const musicId = "00000000-0000-4000-8000-000000000006";
+  const voiceId = "00000000-0000-4000-8000-000000000007";
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [
+      { checksum: "c".repeat(64), durationSeconds: 10, fileSizeBytes: 4, mimeType: "audio/mpeg", productionAssetId: musicId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/music.mp3", timelineRole: "AUDIO" },
+      { checksum: "d".repeat(64), durationSeconds: 2, fileSizeBytes: 4, mimeType: "audio/mpeg", productionAssetId: voiceId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/voice.mp3", timelineRole: "VOICE" },
+    ],
+    plan: { accentColor: "#38BDF8", durationSeconds: 10, subtitle: "Prueba", title: "Audio" },
+  });
+  document.canvas.durationSeconds = 10;
+  const musicClip = document.clips.find((clip) => clip.trackId === "music")!;
+  musicClip.durationSeconds = 10;
+  const voiceClip = document.clips.find((clip) => clip.trackId === "voice")!;
+  voiceClip.startSeconds = 3;
+  const assetUrls = new Map([[musicId, "assets/music.mp3"], [voiceId, "assets/voice.mp3"]]);
+
+  const previewHtml = await compileCompositionPreview({ assetUrls, document });
+  const renderHtml = await compileCompositionPreview({
+    assetUrls,
+    document,
+    target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+  });
+
+  for (const html of [previewHtml, renderHtml]) {
+    assert.match(html, /data-volume-automated="true"/);
+    assert.match(html, /"timeSeconds":3,"volume":0\.0875/);
+    assert.match(html, /timeline\.fromTo\(/);
+  }
+  assert.match(previewHtml, /media\.dataset\.volumeAutomated !== "true"/);
 });
