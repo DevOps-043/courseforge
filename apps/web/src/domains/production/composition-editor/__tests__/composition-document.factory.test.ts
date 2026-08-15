@@ -6,6 +6,10 @@ import {
   reconcileCompositionDocument,
 } from "../composition-document.factory";
 import { hashCompositionDocument } from "../composition-document.service";
+import {
+  CompositionDurationResolutionError,
+  resolveCompositionDuration,
+} from "../composition-duration.service";
 
 test("preserves deck HTML as editable clips and labels missing timings as estimated", () => {
   const document = createInitialCompositionDocument({
@@ -35,12 +39,14 @@ test("keeps production media as references instead of copying files", () => {
     animatedDeck: null,
     assets: [{
       checksum: "a".repeat(64),
+      durationSeconds: 8,
       fileSizeBytes: 40,
       mimeType: "video/mp4",
       productionAssetId: "00000000-0000-4000-8000-000000000001",
       publicUrl: null,
       storageBucket: "production-assets",
       storagePath: "production-assets/demo.mp4",
+      timelineRole: "BROLL",
     }],
     plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Video" },
   });
@@ -54,6 +60,7 @@ test("preserves the production asset name so an avatar clip is identifiable in t
     animatedDeck: null,
     assets: [{
       checksum: "d".repeat(64),
+      durationSeconds: 8,
       fileSizeBytes: 40,
       label: "Presentador avatar.mp4",
       mimeType: "video/mp4",
@@ -61,6 +68,8 @@ test("preserves the production asset name so an avatar clip is identifiable in t
       publicUrl: null,
       storageBucket: "production-assets",
       storagePath: "production-assets/avatar.mp4",
+      timelineRole: "AVATAR",
+      timelineVariant: "FULL",
     }],
     plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Avatar" },
   });
@@ -92,15 +101,73 @@ test("hashes one document deterministically regardless of object key order", () 
   const document = createInitialCompositionDocument({
     animatedDeck: null,
     assets: [{
-      checksum: "b".repeat(64), fileSizeBytes: 4, mimeType: "image/png",
+      checksum: "b".repeat(64), durationSeconds: 5, fileSizeBytes: 4, mimeType: "image/png",
       productionAssetId: "00000000-0000-4000-8000-000000000003", publicUrl: null,
-      storageBucket: "production-assets", storagePath: "production-assets/image.png",
+      storageBucket: "production-assets", storagePath: "production-assets/image.png", timelineRole: "BROLL",
     }],
     plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Imagen" },
   });
   const reordered = JSON.parse(JSON.stringify(document));
   reordered.variables = { title: document.variables.title, accent: document.variables.accent, subtitle: document.variables.subtitle };
   assert.equal(hashCompositionDocument(document), hashCompositionDocument(reordered));
+});
+
+test("resolves duration with the strict voice, avatar, b-roll and slides priority", () => {
+  assert.deepEqual(resolveCompositionDuration({
+    assets: [
+      { durationSeconds: 70, timelineRole: "VOICE" },
+      { durationSeconds: 90, timelineRole: "AVATAR", timelineVariant: "FULL" },
+      { durationSeconds: 20, timelineRole: "BROLL" },
+      { durationSeconds: 500, timelineRole: "VISUAL" },
+    ],
+    slideCount: 30,
+  }), { durationSeconds: 70, source: "voice" });
+
+  assert.deepEqual(resolveCompositionDuration({
+    assets: [
+      { durationSeconds: 30, timelineRole: "AVATAR", timelineVariant: "CLIP" },
+      { durationSeconds: 45, timelineRole: "AVATAR", timelineVariant: "CLIP" },
+      { durationSeconds: 20, timelineRole: "BROLL" },
+    ],
+    slideCount: 30,
+  }), { durationSeconds: 75, source: "avatar_clips" });
+
+  assert.deepEqual(resolveCompositionDuration({
+    assets: [{ durationSeconds: 8, timelineRole: "BROLL" }, { durationSeconds: 7, timelineRole: "BROLL" }],
+    slideCount: 30,
+  }), { durationSeconds: 15, source: "b_roll" });
+
+  assert.deepEqual(resolveCompositionDuration({ assets: [], slideCount: 3 }), {
+    durationSeconds: 15,
+    source: "slides",
+  });
+});
+
+test("rejects a composition without an eligible duration source", () => {
+  assert.throws(
+    () => resolveCompositionDuration({
+      assets: [{ durationSeconds: 99, timelineRole: "VISUAL" }],
+      slideCount: 0,
+    }),
+    CompositionDurationResolutionError,
+  );
+});
+
+test("places multiple avatar clips consecutively and records their source duration", () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [
+      { checksum: "1".repeat(64), durationSeconds: 12, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: "00000000-0000-4000-8000-000000000021", publicUrl: null, storageBucket: "production-assets", storagePath: "avatar-1.mp4", timelineRole: "AVATAR", timelineVariant: "CLIP" },
+      { checksum: "2".repeat(64), durationSeconds: 8, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: "00000000-0000-4000-8000-000000000022", publicUrl: null, storageBucket: "production-assets", storagePath: "avatar-2.mp4", timelineRole: "AVATAR", timelineVariant: "CLIP" },
+    ],
+    plan: { accentColor: "#38BDF8", durationSeconds: 999, subtitle: "Prueba", title: "Avatar" },
+  });
+  const avatarClips = document.clips.filter((clip) => clip.trackId === "avatar");
+
+  assert.equal(document.canvas.durationSeconds, 20);
+  assert.equal(document.canvas.durationSource, "avatar_clips");
+  assert.deepEqual(avatarClips.map((clip) => clip.startSeconds), [0, 12]);
+  assert.deepEqual(avatarClips.map((clip) => clip.sourceDurationSeconds), [12, 8]);
 });
 
 test("reconciles newly available avatar media into an existing draft document", () => {

@@ -3,11 +3,20 @@ import { z } from "zod";
 export const COMPOSITION_DOCUMENT_FORMAT = "courseforge-composition-v1";
 /** Supports full source media such as a 2–3 minute avatar without truncating it. */
 export const COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS = 600;
+export const COMPOSITION_DURATION_SOURCES = [
+  "voice",
+  "avatar_full",
+  "avatar_clips",
+  "b_roll",
+  "slides",
+] as const;
+export type CompositionDurationSource = typeof COMPOSITION_DURATION_SOURCES[number];
 
 const editorIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i);
 const uuidSchema = z.string().uuid();
 const finiteNumberSchema = z.number().finite();
 const boundedSecondsSchema = finiteNumberSchema.min(0).max(COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS);
+const sourceMediaSecondsSchema = finiteNumberSchema.min(0).max(86_400);
 
 export const compositionTrackSchema = z.object({
   id: editorIdSchema,
@@ -54,12 +63,20 @@ export const compositionClipSchema = z.object({
     deckSourceSchema.extend({ type: z.literal("DECK_SLIDE") }),
     productionAssetSourceSchema.extend({ type: z.literal("PRODUCTION_ASSET") }),
   ]),
+  sourceDurationSeconds: sourceMediaSecondsSchema.positive().optional(),
+  sourceOffsetSeconds: sourceMediaSecondsSchema.optional(),
   startSeconds: boundedSecondsSchema,
   timingSource: z.enum(["ESTIMATED", "USER_EDITED"]),
   trackId: editorIdSchema,
 }).strict().superRefine((clip, context) => {
   if (clip.startSeconds + clip.durationSeconds > COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS) {
     context.addIssue({ code: "custom", message: "El clip excede la duración máxima de la composición." });
+  }
+  if (
+    clip.sourceDurationSeconds !== undefined
+    && (clip.sourceOffsetSeconds || 0) + clip.durationSeconds > clip.sourceDurationSeconds + 0.001
+  ) {
+    context.addIssue({ code: "custom", message: "El recorte excede la duración disponible del asset." });
   }
   if (clip.kind === "DECK_SLIDE" && clip.source.type !== "DECK_SLIDE") {
     context.addIssue({ code: "custom", message: "Un clip de deck debe conservar su fuente HTML." });
@@ -71,6 +88,8 @@ export const compositionClipSchema = z.object({
 
 export const compositionEditorDocumentSchema = z.object({
   canvas: z.object({
+    durationMode: z.enum(["AUTO", "USER_EDITED"]).optional(),
+    durationSource: z.enum(COMPOSITION_DURATION_SOURCES).optional(),
     durationSeconds: boundedSecondsSchema.positive(),
     fps: z.union([z.literal(24), z.literal(30), z.literal(60)]).default(30),
     height: z.number().int().positive().max(8_192),

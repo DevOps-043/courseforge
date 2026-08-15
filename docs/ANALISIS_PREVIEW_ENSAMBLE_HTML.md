@@ -1,5 +1,58 @@
 # Análisis del preview y ensamblaje de video
 
+## Correcciones de paridad del preview (2026-08-14)
+
+La revisión contra el contrato de HyperFrames confirmó que Courseforge usa un
+adaptador de preview propio dentro de un `iframe`; no estaba reproduciendo el
+proyecto mediante HyperFrames Studio. Se corrigieron las brechas inmediatas sin
+cambiar el documento editable ni la API de patches:
+
+- La timeline GSAP ahora impulsa `--deck-t` para que las animaciones CSS
+  preparadas sean determinísticas al reproducir y hacer seek.
+- Audio y video ya no reciben `play()` en cada frame. El runtime reproduce al
+  entrar en un segmento y sólo corrige `currentTime` en seek o ante drift real.
+- Los bloqueos de autoplay y errores de media se reportan al editor; cuando el
+  navegador exige interacción directa aparece una acción dentro del iframe.
+- Las slides recuperan la jerarquía canónica
+  `deck-scope > deck-shell > deck-stage > slide`, necesaria para conservar
+  selectores y pseudo-elementos del deck fuente.
+- Al congelar una revisión, las dependencias visuales del deck efectivamente
+  referenciadas se incluyen en el ZIP y sus URLs se reescriben a rutas locales.
+- La raíz que descubre HyperFrames ahora es el mismo nodo que declara
+  `data-composition-id`, dimensiones, duración y FPS. Los segmentos temporizados
+  también exponen IDs estables para inspección.
+
+### Evidencia visual reproducible
+
+`npm run qa:composition-preview --workspace=apps/web` construye un fixture desde
+el template SofLIA real, sustituye sus tres imágenes remotas por placeholders
+locales y conserva el HTML/CSS procesado por Courseforge. El 2026-08-14 se
+validó ese resultado con la CLI fuente de HyperFrames en 2.5, 7.5, 12.5, 17.5
+y 22.5 segundos:
+
+- 5/5 snapshots fueron generados y mostraron la slide esperada.
+- La inspección reportó duración de 25 s y cero errores o warnings de layout.
+- Sólo apareció un `container_overflow` informativo en la imagen `cover` de la
+  segunda slide (24–27 px), intencional por diseño y contenido por el clipping.
+- El runtime del navegador reportó cero errores y cero warnings.
+
+El compilador mantiene ahora dos salidas explícitas desde el mismo documento:
+
+- `INTERACTIVE_PREVIEW` embebe GSAP y conserva los controles del iframe,
+  edición, playback, desbloqueo de audio y reporte de errores.
+- `HYPERFRAMES_RENDER` registra únicamente la timeline pausada y delega seek,
+  visibilidad y media al framework. El snapshot añade GSAP como
+  `assets/gsap.min.js`, sin CDN ni reloj de pared. Audio y video usan timing
+  directo, `data-media-start` para recortes y pistas independientes para evitar
+  audio duplicado o perdido.
+
+El gate completo de HyperFrames pasa sobre la segunda salida con cero errores
+de lint, runtime, layout y contraste. Registra tres warnings WCAG procedentes de
+los colores del template SofLIA, pero ninguno bloquea el gate. El fixture de QA escribe cada superficie en un
+directorio separado para que nunca existan dos composiciones raíz en el mismo
+proyecto. Las Google Fonts todavía deben congelarse en el snapshot si se
+requiere reproducción totalmente offline.
+
 ## Hallazgo y corrección inmediata
 
 El `400` al crear una revisión ocurría cuando el componente no tenía filas

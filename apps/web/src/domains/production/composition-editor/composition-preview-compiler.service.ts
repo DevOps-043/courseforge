@@ -4,24 +4,37 @@ import type { CompositionClip, CompositionEditorDocument } from "./composition-d
 
 export class CompositionPreviewCompilerError extends Error {}
 
+export const COMPOSITION_COMPILATION_TARGETS = {
+  HYPERFRAMES_RENDER: "HYPERFRAMES_RENDER",
+  INTERACTIVE_PREVIEW: "INTERACTIVE_PREVIEW",
+} as const;
+export type CompositionCompilationTarget = typeof COMPOSITION_COMPILATION_TARGETS[keyof typeof COMPOSITION_COMPILATION_TARGETS];
+
 /**
  * Compiles the native document into an isolated, seekable review document.
  * The document is not persisted and never becomes the editable source of truth.
  */
 export async function compileCompositionPreview(params: {
   assetUrls: Map<string, string>;
+  deckAssetUrls?: Map<string, string>;
   document: CompositionEditorDocument;
+  target?: CompositionCompilationTarget;
 }) {
-  const animationRuntime = await readAnimationRuntime();
+  const target = params.target || COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW;
+  const isInteractivePreview = target === COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW;
+  const animationRuntime = isInteractivePreview ? await readCompositionAnimationRuntime() : null;
   const { document } = params;
   const deckStyles = document.deckStyles
-    ? `${document.deckStyles.fontUrls.map((url) => `@import url(${JSON.stringify(url)});`).join("\n")}\n${document.deckStyles.css}`
+    ? `${document.deckStyles.fontUrls.map((url) => `@import url(${JSON.stringify(replaceUrls(url, params.deckAssetUrls))});`).join("\n")}\n${replaceUrls(document.deckStyles.css, params.deckAssetUrls)}`
     : "";
   const clips = document.clips
     .slice()
     .sort((left, right) => left.layout.zIndex - right.layout.zIndex || left.startSeconds - right.startSeconds)
-    .map((clip) => renderClip(clip, params.assetUrls))
+    .map((clip, index) => renderClip(clip, params.assetUrls, params.deckAssetUrls, target, index))
     .join("\n");
+  const hasAudibleMedia = document.clips.some((clip) => (
+    clip.kind === "AUDIO" || (clip.kind === "VIDEO" && clip.trackId === "avatar")
+  ));
   return `<!doctype html>
 <html lang="es">
 <head>
@@ -33,49 +46,78 @@ export async function compileCompositionPreview(params: {
     html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #020617; }
     #composition-viewport { position: fixed; inset: 0; overflow: hidden; background: #020617; }
     #composition-root { --preview-scale: 1; position: absolute; left: 50%; top: 50%; width: ${document.canvas.width}px; height: ${document.canvas.height}px; overflow: hidden; background: #020617; transform: translate(-50%, -50%) scale(var(--preview-scale)); transform-origin: center; }
-    .clip { position: absolute; inset: 0; pointer-events: none; }
-    .clip-content { position: absolute; transform-origin: top left; pointer-events: auto; visibility: hidden; }
-    .clip-content[data-selected="true"] { outline: 4px solid #22d3ee; outline-offset: -4px; }
+    .clip { position: absolute; inset: 0;${isInteractivePreview ? " pointer-events: none;" : ""} }
+    .clip-content { position: absolute; transform-origin: top left;${isInteractivePreview ? " pointer-events: auto;" : ""} visibility: hidden; }
+    ${isInteractivePreview ? `.clip-content[data-selected="true"] { outline: 4px solid #22d3ee; outline-offset: -4px; }
     .clip-content[data-selected="true"]::after { content: ""; position: absolute; inset: 0; border: 1px solid rgba(8,145,178,.9); pointer-events: none; }
-    .composition-resize-handle { position: absolute; right: -7px; bottom: -7px; width: 16px; height: 16px; border: 2px solid #fff; border-radius: 3px; background: #0891b2; box-shadow: 0 1px 4px rgba(0,0,0,.45); cursor: nwse-resize; z-index: 2147483647; }
+    .composition-resize-handle { position: absolute; right: -7px; bottom: -7px; width: 16px; height: 16px; border: 2px solid #fff; border-radius: 3px; background: #0891b2; box-shadow: 0 1px 4px rgba(0,0,0,.45); cursor: nwse-resize; z-index: 2147483647; }` : ""}
     .composition-media { width: 100%; height: 100%; object-fit: cover; display: block; }
     .composition-audio { display: none; }
+    ${isInteractivePreview ? `.composition-audio-unlock { position: absolute; left: 50%; bottom: 28px; z-index: 2147483647; display: none; transform: translateX(-50%); border: 1px solid rgba(255,255,255,.55); border-radius: 999px; background: rgba(2,6,23,.92); color: #fff; padding: 12px 18px; font: 700 16px/1 system-ui, sans-serif; box-shadow: 0 10px 30px rgba(0,0,0,.4); cursor: pointer; }
+    .composition-audio-unlock[data-visible="true"] { display: block; }` : ""}
     .deck-content { overflow: hidden; }
-    .deck-content .deck-scope, .deck-content .deck-scope > .slide { width: 100%; height: 100%; }
+    .deck-content .deck-scope, .deck-content .deck-shell, .deck-content .deck-stage, .deck-content .deck-stage > .slide { width: 100%; height: 100%; }
     ${deckStyles}
   </style>
 </head>
 <body>
-  <div id="composition-viewport">
-    <div id="composition-root" data-composition-id="courseforge-composition" data-start="0" data-width="${document.canvas.width}" data-height="${document.canvas.height}" data-duration="${document.canvas.durationSeconds}" data-fps="${document.canvas.fps}">
+  <div id="composition-viewport" data-composition-id="courseforge-composition" data-start="0" data-width="${document.canvas.width}" data-height="${document.canvas.height}" data-duration="${document.canvas.durationSeconds}" data-fps="${document.canvas.fps}">
+    <div id="composition-root">
       ${clips}
     </div>
+    ${isInteractivePreview && hasAudibleMedia ? '<button id="composition-audio-unlock" class="composition-audio-unlock" type="button">Activar audio y reproducir</button>' : ""}
   </div>
-  <script>${animationRuntime}</script>
-  ${renderPreviewController(document)}
+  ${animationRuntime ? `<script>${animationRuntime}</script>` : '<script src="assets/gsap.min.js"></script>'}
+  ${renderTimelineInitializer(document)}
+  ${isInteractivePreview ? renderInteractivePreviewController(document) : ""}
 </body>
 </html>`;
 }
 
-function renderClip(clip: CompositionClip, assetUrls: Map<string, string>) {
+function renderClip(
+  clip: CompositionClip,
+  assetUrls: Map<string, string>,
+  deckAssetUrls: Map<string, string> | undefined,
+  target: CompositionCompilationTarget,
+  clipIndex: number,
+) {
+  const isHyperframesRender = target === COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER;
   const layout = `left:${clip.layout.x}px;top:${clip.layout.y}px;width:${clip.layout.width}px;height:${clip.layout.height}px;opacity:${clip.layout.opacity};z-index:${clip.layout.zIndex};transform:rotate(${clip.layout.rotation}deg);`;
   const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}" style="${layout}"`;
-  const timing = `data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${trackIndex(clip.trackId)}"`;
+  const timing = `data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${trackIndex(clip.trackId, clipIndex)}"`;
+  const mediaOffset = `data-source-offset="${clip.sourceOffsetSeconds || 0}"${isHyperframesRender ? ` data-media-start="${clip.sourceOffsetSeconds || 0}"` : ""}`;
+  const hidden = clip.hidden ? (isHyperframesRender ? ' data-hidden="true"' : ' data-clip-hidden="true"') : "";
   if (clip.source.type === "DECK_SLIDE") {
-    return `<section class="clip" ${timing}><div ${common} class="clip-content deck-content"><div class="deck-scope"><section class="${escapeAttribute(clip.source.classes)}">${clip.source.html}</section></div></div></section>`;
+    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content deck-content"><div class="deck-scope"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></section>`;
   }
   const sourceUrl = assetUrls.get(clip.source.productionAssetId);
   if (!sourceUrl) throw new CompositionPreviewCompilerError(`No existe URL de preview para el asset ${clip.source.productionAssetId}.`);
   if (clip.kind === "AUDIO") {
-    return `<audio id="${escapeAttribute(clip.id)}" class="composition-audio" data-hf-id="${escapeAttribute(clip.hfId)}" data-clip-hidden="${clip.hidden}" src="${escapeAttribute(sourceUrl)}" ${timing}></audio>`;
+    return `<audio id="${escapeAttribute(clip.id)}" class="composition-audio${isHyperframesRender ? " clip" : ""}" data-hf-id="${escapeAttribute(clip.hfId)}"${hidden} ${mediaOffset} data-volume="1" src="${escapeAttribute(sourceUrl)}" ${timing}></audio>`;
+  }
+  if (clip.kind === "VIDEO" && isHyperframesRender) {
+    const video = `<video id="${escapeAttribute(clip.id)}-media" class="composition-media clip" src="${escapeAttribute(sourceUrl)}" muted playsinline preload="metadata" ${mediaOffset}${hidden} ${timing}></video>`;
+    const audio = clip.trackId === "avatar"
+      ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio clip" src="${escapeAttribute(sourceUrl)}" ${mediaOffset}${hidden} data-volume="1" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${10 + clipIndex}"></audio>`
+      : "";
+    return `<div ${common} class="clip-content">${video}</div>${audio}`;
   }
   const media = clip.kind === "VIDEO"
-    ? `<video class="composition-media" src="${escapeAttribute(sourceUrl)}" muted playsinline preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}"></video>${clip.trackId === "avatar" ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio" data-clip-hidden="${clip.hidden}" src="${escapeAttribute(sourceUrl)}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-volume="1"></audio>` : ""}`
+    ? `<video class="composition-media" src="${escapeAttribute(sourceUrl)}" muted playsinline preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset}></video>${clip.trackId === "avatar" ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${hidden} src="${escapeAttribute(sourceUrl)}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset} data-volume="1"></audio>` : ""}`
     : `<img class="composition-media" src="${escapeAttribute(sourceUrl)}" alt="" />`;
-  return `<section class="clip" ${timing}><div ${common} class="clip-content">${media}</div></section>`;
+  return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content">${media}</div></section>`;
 }
 
-function renderPreviewController(document: CompositionEditorDocument) {
+function replaceUrls(value: string, replacements?: Map<string, string>) {
+  if (!replacements || replacements.size === 0) return value;
+  let result = value;
+  for (const [sourceUrl, replacementUrl] of replacements) {
+    result = result.split(sourceUrl).join(replacementUrl);
+  }
+  return result;
+}
+
+function renderTimelineInitializer(document: CompositionEditorDocument) {
   const clipMetadata = document.clips.map((clip) => ({
     duration: clip.durationSeconds,
     hfId: clip.hfId,
@@ -86,8 +128,6 @@ function renderPreviewController(document: CompositionEditorDocument) {
   }));
   return `<script>
     (() => {
-      const root = document.getElementById("composition-root");
-      const viewport = document.getElementById("composition-viewport");
       const clips = ${JSON.stringify(clipMetadata)};
       const timeline = gsap.timeline({ paused: true });
       for (const clip of clips) {
@@ -96,50 +136,121 @@ function renderPreviewController(document: CompositionEditorDocument) {
         if (!element) continue;
         if (clip.hidden) { timeline.set(element, { autoAlpha: 0 }, 0); continue; }
         timeline.set(element, { autoAlpha: 1 }, clip.start);
+        if (clip.kind === "DECK_SLIDE") {
+          const deckScope = element.querySelector(".deck-scope");
+          if (deckScope) {
+            timeline.fromTo(
+              deckScope,
+              { "--deck-t": 0 },
+              { "--deck-t": clip.duration, duration: clip.duration, ease: "none", immediateRender: false },
+              clip.start,
+            );
+          }
+        }
         timeline.set(element, { autoAlpha: 0 }, clip.start + clip.duration + 0.0001);
       }
       window.__timelines = window.__timelines || {};
       window.__timelines["courseforge-composition"] = timeline;
+    })();
+  </script>`;
+}
+
+function renderInteractivePreviewController(document: CompositionEditorDocument) {
+  return `<script>
+    (() => {
+      const root = document.getElementById("composition-root");
+      const viewport = document.getElementById("composition-viewport");
+      const audioUnlock = document.getElementById("composition-audio-unlock");
+      const timeline = window.__timelines["courseforge-composition"];
       let selectedHfId = null;
       let activeTransform = null;
       let playbackTimer = null;
+      let playbackActive = false;
       let currentTime = 0;
+      const activeMedia = new Set();
+      const reportedMediaErrors = new WeakSet();
       const duration = ${document.canvas.durationSeconds};
       const fitCompositionToViewport = () => {
         if (!root || !viewport) return;
         const scale = Math.min(viewport.clientWidth / ${document.canvas.width}, viewport.clientHeight / ${document.canvas.height});
         root.style.setProperty("--preview-scale", String(Math.max(0, scale)));
       };
-      const syncMedia = (time) => {
-        document.querySelectorAll("video[data-start], audio[data-start]").forEach((media) => {
-          const start = Number(media.dataset.start || 0);
-          const clipDuration = Number(media.dataset.duration || 0);
-          const active = media.dataset.clipHidden !== "true" && time >= start && time <= start + clipDuration;
-          if (media.tagName === "AUDIO") {
-            active ? media.play().catch(() => {}) : media.pause();
-          }
-          if (active && Number.isFinite(media.duration)) {
-            const next = Math.max(0, Math.min(media.duration, time - start));
-            if (Math.abs(media.currentTime - next) > 0.12) media.currentTime = next;
+      const mediaIdentity = (media) => media.id || media.getAttribute("src") || media.tagName.toLowerCase();
+      const reportMediaError = (media, error) => {
+        if (reportedMediaErrors.has(media)) return;
+        reportedMediaErrors.add(media);
+        const code = error?.name || (media.error ? "MEDIA_ERROR_" + media.error.code : "MEDIA_PLAYBACK_ERROR");
+        const message = error?.message || media.error?.message || "El navegador no pudo reproducir este medio.";
+        window.parent.postMessage({
+          type: "courseforge-composition-media-error",
+          code,
+          mediaId: mediaIdentity(media),
+          message,
+        }, "*");
+      };
+      const requestMediaPlayback = (media) => {
+        if (!playbackActive || !media.paused) return;
+        const playRequest = media.play();
+        if (!playRequest || typeof playRequest.catch !== "function") return;
+        playRequest.then(() => {
+          reportedMediaErrors.delete(media);
+          if (audioUnlock) audioUnlock.dataset.visible = "false";
+        }).catch((error) => {
+          reportMediaError(media, error);
+          if (error?.name === "NotAllowedError") {
+            playbackActive = false;
+            if (playbackTimer) window.cancelAnimationFrame(playbackTimer);
+            playbackTimer = null;
+            if (audioUnlock) audioUnlock.dataset.visible = "true";
+            document.querySelectorAll("audio, video").forEach((candidate) => candidate.pause());
+            window.parent.postMessage({ type: "courseforge-composition-playback", playing: false }, "*");
           }
         });
       };
-      const seek = (time) => {
+      const syncMedia = (time, forceSeek = false) => {
+        document.querySelectorAll("video[data-start], audio[data-start]").forEach((media) => {
+          const start = Number(media.dataset.start || 0);
+          const clipDuration = Number(media.dataset.duration || 0);
+          const sourceOffset = Number(media.dataset.sourceOffset || 0);
+          const active = media.dataset.clipHidden !== "true" && time >= start && time <= start + clipDuration;
+          if (!active) {
+            media.pause();
+            activeMedia.delete(media);
+            return;
+          }
+          const entered = !activeMedia.has(media);
+          activeMedia.add(media);
+          const volume = Number(media.dataset.volume || 1);
+          media.volume = Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1;
+          if (Number.isFinite(media.duration)) {
+            const next = Math.max(0, Math.min(media.duration, sourceOffset + time - start));
+            if (forceSeek || entered || Math.abs(media.currentTime - next) > 0.35) media.currentTime = next;
+          }
+          if (playbackActive) requestMediaPlayback(media);
+          else media.pause();
+        });
+      };
+      const seek = (time, forceMediaSeek = false) => {
         currentTime = Math.max(0, Math.min(duration, Number(time) || 0));
         timeline.seek(currentTime, false);
-        syncMedia(currentTime);
+        syncMedia(currentTime, forceMediaSeek);
         window.parent.postMessage({ type: "courseforge-composition-time", seconds: currentTime }, "*");
       };
       const pause = () => {
+        playbackActive = false;
         if (playbackTimer) window.cancelAnimationFrame(playbackTimer);
         playbackTimer = null;
         document.querySelectorAll("audio, video").forEach((media) => media.pause());
         window.parent.postMessage({ type: "courseforge-composition-playback", playing: false }, "*");
       };
       const play = () => {
-        pause();
+        if (playbackTimer) window.cancelAnimationFrame(playbackTimer);
+        playbackTimer = null;
+        playbackActive = true;
+        syncMedia(currentTime, true);
         let last = performance.now();
         const tick = (now) => {
+          if (!playbackActive) return;
           const next = currentTime + (now - last) / 1000;
           last = now;
           if (next >= duration) { seek(duration); pause(); return; }
@@ -149,6 +260,7 @@ function renderPreviewController(document: CompositionEditorDocument) {
         playbackTimer = window.requestAnimationFrame(tick);
         window.parent.postMessage({ type: "courseforge-composition-playback", playing: true }, "*");
       };
+      audioUnlock?.addEventListener("click", () => play());
       const selectTarget = (target) => {
         if (!target) return;
         document.querySelectorAll("[data-selected='true']").forEach((node) => node.removeAttribute("data-selected"));
@@ -238,7 +350,7 @@ function renderPreviewController(document: CompositionEditorDocument) {
       window.addEventListener("message", (event) => {
         const message = event.data;
         if (!message || typeof message.type !== "string") return;
-        if (message.type === "courseforge-composition-seek") seek(message.seconds);
+        if (message.type === "courseforge-composition-seek") seek(message.seconds, true);
         if (message.type === "courseforge-composition-play") play();
         if (message.type === "courseforge-composition-pause") pause();
         if (message.type === "courseforge-composition-select") {
@@ -259,14 +371,14 @@ function renderPreviewController(document: CompositionEditorDocument) {
   </script>`;
 }
 
-function trackIndex(trackId: string) {
+function trackIndex(trackId: string, clipIndex = 0) {
   if (trackId === "deck") return 0;
   if (trackId === "visual") return 1;
-  if (trackId === "audio") return 2;
+  if (trackId === "audio") return 10 + clipIndex;
   return 3;
 }
 
-async function readAnimationRuntime() {
+export async function readCompositionAnimationRuntime() {
   const candidates = [
     resolve(process.cwd(), "node_modules/gsap/dist/gsap.min.js"),
     resolve(process.cwd(), "../node_modules/gsap/dist/gsap.min.js"),

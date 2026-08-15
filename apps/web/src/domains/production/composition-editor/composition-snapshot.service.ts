@@ -2,7 +2,11 @@ import { createHash } from "node:crypto";
 import JSZip from "jszip";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getCurrentCompositionDocument } from "./composition-document.service";
-import { compileCompositionPreview } from "./composition-preview-compiler.service";
+import {
+  COMPOSITION_COMPILATION_TARGETS,
+  compileCompositionPreview,
+  readCompositionAnimationRuntime,
+} from "./composition-preview-compiler.service";
 import { validateHyperframesPreflight } from "../hyperframes/hyperframes-preflight.service";
 import { HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES, HYPERFRAMES_COMPOSITION_FORMAT, hyperframesAssetManifestSchema } from "../hyperframes/hyperframes.types";
 
@@ -12,7 +16,7 @@ export class CompositionSnapshotError extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
 }
 
-type AssetRow = { checksum: string; file_size_bytes: number; id: string; mime_type: string; storage_bucket: string; storage_path: string };
+type AssetRow = { checksum: string; file_size_bytes: number; id: string; mime_type: string; public_url: string | null; storage_bucket: string; storage_path: string };
 
 /** Freezes exactly one saved native document into the immutable render revision contract. */
 export async function snapshotCompositionDocument(params: {
@@ -31,6 +35,12 @@ export async function snapshotCompositionDocument(params: {
   if (compositionError) throw compositionError;
   if (!draft || draft.composition_id !== params.compositionId || draft.state !== "ACTIVE") throw new CompositionSnapshotError("El borrador no pertenece a una composici\u00f3n editable.", 409);
   if (!composition) throw new CompositionSnapshotError("La composici\u00f3n no existe.", 404);
+  if (!current.document.canvas.durationSource && current.document.canvas.durationMode !== "USER_EDITED") {
+    throw new CompositionSnapshotError(
+      "La duración todavía no tiene un origen verificable. Usa ‘Calcular y organizar’ en el timeline antes de preparar el ensamble.",
+      409,
+    );
+  }
 
   const { data: existing, error: existingError } = await params.supabase
     .from("video_composition_revisions")
@@ -42,7 +52,11 @@ export async function snapshotCompositionDocument(params: {
   if (existing) return { ...existing, documentHash: current.documentHash, reused: true, version: current.version };
 
   const referencedAssetIds = [...new Set(current.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))];
-  const assets = await readSnapshotAssets(params, referencedAssetIds);
+  const [clipAssets, deckDependencies] = await Promise.all([
+    readSnapshotAssets(params, referencedAssetIds),
+    readReferencedDeckDependencies(params, current.document),
+  ]);
+  const assets = [...new Map([...clipAssets, ...deckDependencies].map((asset) => [asset.id, asset])).values()];
   const manifest = hyperframesAssetManifestSchema.parse(assets.map((asset) => ({
     checksum: asset.checksum,
     fileSizeBytes: asset.file_size_bytes,
@@ -56,8 +70,20 @@ export async function snapshotCompositionDocument(params: {
   const zip = new JSZip();
   const assetFiles = new Map<string, string>();
   for (const asset of assets) assetFiles.set(asset.id, `assets/${asset.id}.${fileExtension(asset.mime_type)}`);
-  const snapshotHtml = await compileCompositionPreview({ document: current.document, assetUrls: assetFiles });
+  const deckAssetUrls = new Map(deckDependencies.flatMap((asset) => (
+    asset.public_url ? [[asset.public_url, assetFiles.get(asset.id)!] as const] : []
+  )));
+  const [snapshotHtml, animationRuntime] = await Promise.all([
+    compileCompositionPreview({
+      assetUrls: assetFiles,
+      deckAssetUrls,
+      document: current.document,
+      target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+    }),
+    readCompositionAnimationRuntime(),
+  ]);
   zip.file("index.html", snapshotHtml);
+  zip.file("assets/gsap.min.js", animationRuntime);
   zip.file("composition-document.json", JSON.stringify(current.document, null, 2));
   zip.file("asset-manifest.json", JSON.stringify(manifest, null, 2));
   for (const asset of assets) {
@@ -113,10 +139,39 @@ async function readSnapshotAssets(params: { draftId: string; organizationId: str
   const { data: linked, error: linkError } = await params.supabase.from("video_composition_draft_assets").select("production_asset_id").eq("draft_id", params.draftId).eq("organization_id", params.organizationId).in("production_asset_id", ids);
   if (linkError) throw linkError;
   if ((linked || []).length !== ids.length) throw new CompositionSnapshotError("El documento contiene assets que no pertenecen al borrador.", 409);
-  const { data, error } = await params.supabase.from("production_assets").select("id, checksum, file_size_bytes, mime_type, storage_bucket, storage_path").eq("organization_id", params.organizationId).in("id", ids);
+  const { data, error } = await params.supabase.from("production_assets").select("id, checksum, file_size_bytes, mime_type, public_url, storage_bucket, storage_path").eq("organization_id", params.organizationId).in("id", ids);
   if (error) throw error;
   if ((data || []).length !== ids.length) throw new CompositionSnapshotError("No se pudo resolver uno o m\u00e1s assets del snapshot.", 409);
   return data as AssetRow[];
+}
+
+async function readReferencedDeckDependencies(
+  params: { draftId: string; organizationId: string; supabase: SupabaseClient<any, "public", any> },
+  document: Awaited<ReturnType<typeof getCurrentCompositionDocument>>["document"],
+) {
+  const { data: links, error: linksError } = await params.supabase
+    .from("video_composition_draft_assets")
+    .select("production_asset_id")
+    .eq("draft_id", params.draftId)
+    .eq("organization_id", params.organizationId)
+    .eq("source_reference", "DECK_DEPENDENCY");
+  if (linksError) throw linksError;
+  const dependencyIds = [...new Set((links || []).map((link) => link.production_asset_id as string))];
+  if (dependencyIds.length === 0) return [] as AssetRow[];
+
+  const { data, error } = await params.supabase
+    .from("production_assets")
+    .select("id, checksum, file_size_bytes, mime_type, public_url, storage_bucket, storage_path")
+    .eq("organization_id", params.organizationId)
+    .in("id", dependencyIds);
+  if (error) throw error;
+  const deckSource = JSON.stringify({
+    deckStyles: document.deckStyles,
+    slides: document.clips.flatMap((clip) => clip.source.type === "DECK_SLIDE" ? [clip.source.html] : []),
+  });
+  return (data || []).filter((asset) => (
+    typeof asset.public_url === "string" && asset.public_url.length > 0 && deckSource.includes(asset.public_url)
+  )) as AssetRow[];
 }
 
 async function downloadAndVerify(supabase: SupabaseClient<any, "public", any>, asset: AssetRow) {

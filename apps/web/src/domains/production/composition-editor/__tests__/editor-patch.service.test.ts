@@ -28,12 +28,12 @@ test("edita la lÃ­nea de tiempo sin alterar la referencia del asset", () => {
   const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
   const edited = applyCompositionEditorPatches(document, [{
     clipId: video.id,
-    durationSeconds: 8,
+    durationSeconds: 4,
     type: "clip.duration",
   }]);
 
   const result = edited.clips.find((clip) => clip.id === video.id)!;
-  assert.equal(result.durationSeconds, 8);
+  assert.equal(result.durationSeconds, 4);
   assert.equal(result.timingSource, "USER_EDITED");
   assert.deepEqual(result.source, video.source);
 });
@@ -88,4 +88,23 @@ test("aplica una plantilla de tiempo después de ampliar el canvas", () => {
   assert.equal(result.startSeconds, 8);
   assert.equal(result.durationSeconds, 12);
   assert.equal(result.layout.x, 24);
+});
+
+test("persiste un recorte atómico con offset de fuente", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  video.sourceDurationSeconds = 20;
+  const edited = applyCompositionEditorPatches(document, [{
+    clipId: video.id,
+    durationSeconds: 4,
+    sourceOffsetSeconds: 3,
+    startSeconds: 1,
+    type: "clip.trim",
+  }]);
+  const result = edited.clips.find((clip) => clip.id === video.id)!;
+
+  assert.equal(result.startSeconds, 1);
+  assert.equal(result.durationSeconds, 4);
+  assert.equal(result.sourceOffsetSeconds, 3);
+  assert.equal(result.timingSource, "USER_EDITED");
 });

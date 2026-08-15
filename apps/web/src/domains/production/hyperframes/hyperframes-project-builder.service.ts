@@ -10,7 +10,8 @@ export interface HyperframesProjectAsset extends HyperframesAssetManifestItem {
   label?: string;
   publicUrl: string | null;
   storageBucket: string;
-  timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL";
+  timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL" | "VOICE";
+  timelineVariant?: "CLIP" | "FULL";
 }
 
 export interface BuiltHyperframesProject {
@@ -207,7 +208,7 @@ function renderAnimatedDeckClips(deck: HyperframesAnimatedDeckSource, durationSe
     const start = roundSeconds(position * slideDuration);
     const duration = roundSeconds(position === deck.slides.length - 1 ? durationSeconds - start : slideDuration);
     const classes = normalizeDeckClasses(slide.classes);
-    return `<section id="deck-slide-${slide.index}" class="clip deck-clip" data-start="${start}" data-duration="${duration}" data-track-index="1"><div class="deck-scope" data-deck-start="${start}" data-deck-duration="${duration}" style="--deck-t:0;position:absolute;width:${deck.width}px;height:${deck.height}px;left:${offsetX}px;top:${offsetY}px;transform:scale(${scale});transform-origin:top left;overflow:hidden"><section class="${escapeAttribute(classes)}">${slide.html}</section></div></section>`;
+    return `<section id="deck-slide-${slide.index}" class="clip deck-clip" data-start="${start}" data-duration="${duration}" data-track-index="1"><div class="deck-scope" data-deck-start="${start}" data-deck-duration="${duration}" style="--deck-t:0;position:absolute;width:${deck.width}px;height:${deck.height}px;left:${offsetX}px;top:${offsetY}px;transform:scale(${scale});transform-origin:top left;overflow:hidden"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(classes)}">${slide.html}</section></main></div></div></section>`;
   }).join("")}`;
 }
 

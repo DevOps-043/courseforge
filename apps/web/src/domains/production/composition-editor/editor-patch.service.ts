@@ -26,6 +26,8 @@ export function applyCompositionEditorPatches(
         throw new CompositionEditorPatchError("Reduce primero los clips que terminan después de la nueva duración.");
       }
       next.canvas.durationSeconds = operation.durationSeconds;
+      next.canvas.durationMode = operation.durationMode || "USER_EDITED";
+      if (operation.durationSource) next.canvas.durationSource = operation.durationSource;
       continue;
     }
 
@@ -58,7 +60,7 @@ export function applyCompositionEditorPatches(
     if (!clip) throw new CompositionEditorPatchError("El clip que intentas editar ya no existe.");
 
     const currentTrack = next.tracks.find((track) => track.id === clip.trackId);
-    if (!currentTrack) throw new CompositionEditorPatchError("El clip no tiene un track vÃ¡lido.");
+    if (!currentTrack) throw new CompositionEditorPatchError("El clip no tiene un track válido.");
 
     if (operation.type === "clip.remove") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes quitar un clip de un track bloqueado.");
@@ -79,8 +81,16 @@ export function applyCompositionEditorPatches(
     }
 
     if (operation.type === "clip.duration") {
-      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes cambiar la duraciÃ³n de un track bloqueado.");
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes cambiar la duración de un track bloqueado.");
       clip.durationSeconds = operation.durationSeconds;
+      clip.timingSource = "USER_EDITED";
+    }
+
+    if (operation.type === "clip.trim") {
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes recortar un track bloqueado.");
+      clip.durationSeconds = operation.durationSeconds;
+      clip.sourceOffsetSeconds = operation.sourceOffsetSeconds;
+      clip.startSeconds = operation.startSeconds;
       clip.timingSource = "USER_EDITED";
     }
 
@@ -99,13 +109,19 @@ export function applyCompositionEditorPatches(
       clip.durationSeconds = operation.durationSeconds;
       clip.layout = operation.layout;
       clip.startSeconds = operation.startSeconds;
-      clip.timingSource = "USER_EDITED";
+      clip.timingSource = operation.timingSource || "USER_EDITED";
     }
 
     if (clip.startSeconds + clip.durationSeconds > next.canvas.durationSeconds) {
-      throw new CompositionEditorPatchError("El clip no puede terminar despuÃ©s del final del video.");
+      throw new CompositionEditorPatchError("El clip no puede terminar después del final del video.");
     }
   }
 
-  return compositionEditorDocumentSchema.parse(next);
+  const parsed = compositionEditorDocumentSchema.safeParse(next);
+  if (!parsed.success) {
+    throw new CompositionEditorPatchError(
+      parsed.error.issues[0]?.message || "El documento resultante no es válido.",
+    );
+  }
+  return parsed.data;
 }

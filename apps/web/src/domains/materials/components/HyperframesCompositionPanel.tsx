@@ -18,7 +18,8 @@ interface VideoAsset {
   productionAssetId: string;
   fileSizeBytes: number;
   sourceType: "DECK_DEPENDENCY" | "PRODUCTION_MEDIA";
-  timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL";
+  timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL" | "VOICE";
+  timelineVariant?: "CLIP" | "FULL";
   validationErrors: string[];
 }
 
@@ -77,8 +78,9 @@ export function HyperframesCompositionPanel({
     mimeType: asset.mimeType,
     previewUrl: draftId ? `/api/production/hyperframes/drafts/${draftId}/assets/${asset.productionAssetId}` : null,
     sizeLabel: formatBytes(asset.fileSizeBytes),
-    sourceLabel: asset.sourceType === "DECK_DEPENDENCY" ? "Recurso interno del deck" : "Medio de ProducciÃ³n",
+    sourceLabel: asset.sourceType === "DECK_DEPENDENCY" ? "Recurso interno del deck" : "Medio de Producción",
     timelineRole: asset.timelineRole,
+    timelineVariant: asset.timelineVariant,
     valid: asset.eligibleForRevision,
   })), [assets, draftId]);
   const hasAssetSizeErrors = blockedAssets.some((asset) => asset.fileSizeBytes > CLOUD_ASSET_LIMIT_BYTES) || hasAggregateSizeError;

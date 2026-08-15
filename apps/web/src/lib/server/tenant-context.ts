@@ -40,6 +40,15 @@ function normalizePathSegment(segment: string | null | undefined) {
   return segment?.trim().toLowerCase() || null;
 }
 
+export class TenantContextLookupError extends Error {
+  readonly code = "TENANT_LOOKUP_UNAVAILABLE";
+  readonly retryable = true;
+
+  constructor() {
+    super("No se pudo verificar temporalmente la empresa y sus permisos. Intenta de nuevo.");
+  }
+}
+
 function getErrorMessage(error: unknown) {
   if (typeof error === "object" && error !== null && "message" in error) {
     return String(error.message);
@@ -91,6 +100,7 @@ async function getProfilePlatformRole(userId: string) {
 
   if (error) {
     logTenantLookupError("Error loading profile role", error);
+    throw new TenantContextLookupError();
   }
 
   return ((data || null) as ProfileRoleRecord | null)?.platform_role || null;
@@ -110,6 +120,7 @@ export async function getOrganizationPlatformRole(
 
   if (error) {
     logTenantLookupError("Error loading organization role", error);
+    throw new TenantContextLookupError();
   }
 
   return ((data || null) as OrganizationUserRoleRecord | null)?.platform_role || null;

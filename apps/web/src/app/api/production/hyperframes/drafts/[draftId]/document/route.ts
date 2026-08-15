@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getErrorMessage } from "@/lib/errors";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
-import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
+import { resolveActiveTenantContext, TenantContextLookupError } from "@/lib/server/tenant-context";
 import {
   applyAndAppendCompositionDocumentPatches,
   CompositionDocumentConflictError,
@@ -30,9 +30,11 @@ export async function GET(_request: Request, context: RouteContext) {
       headers: { ETag: `"${data.documentHash}"`, "Cache-Control": "private, no-store" },
     });
   } catch (error) {
+    if (error instanceof TenantContextLookupError) return tenantUnavailableResponse(error);
     if (error instanceof z.ZodError) return NextResponse.json({ error: "Identificador de borrador inválido." }, { status: 400 });
     if (error instanceof CompositionDocumentPersistenceError) return compositionErrorResponse(error);
     if (error instanceof CompositionDocumentError) return NextResponse.json({ error: error.message, code: "COMPOSITION_DOCUMENT_ERROR", retryable: false }, { status: error.status });
+    if (isTransientStorageError(error)) return storageUnavailableResponse();
     console.error("[API /production/hyperframes/drafts/:id/document] Unexpected error:", serializeError(error));
     return NextResponse.json({ error: "No se pudo cargar el documento de composición." }, { status: 500 });
   }
@@ -46,14 +48,16 @@ export async function PUT(request: Request, context: RouteContext) {
     const { draftId } = await context.params;
     const expectedDocumentHash = request.headers.get("if-match")?.replaceAll('"', "").trim();
     if (!expectedDocumentHash || !/^[a-f0-9]{64}$/i.test(expectedDocumentHash)) {
-      return NextResponse.json({ error: "Falta la versiÃ³n actual del documento (If-Match)." }, { status: 428 });
+      return NextResponse.json({ error: "Falta la versión actual del documento (If-Match)." }, { status: 428 });
     }
     const body = compositionEditorPatchRequestSchema.parse(await request.json());
+    const persistenceSignal = AbortSignal.any([request.signal, AbortSignal.timeout(15_000)]);
     const data = await applyAndAppendCompositionDocumentPatches({
       draftId: z.string().uuid().parse(draftId),
       expectedDocumentHash: expectedDocumentHash.toLowerCase(),
       organizationId: authorization.organizationId,
       patch: body,
+      signal: persistenceSignal,
       supabase: authorization.admin,
       userId: authorization.userId,
     });
@@ -61,19 +65,44 @@ export async function PUT(request: Request, context: RouteContext) {
       headers: { ETag: `"${data.documentHash}"`, "Cache-Control": "private, no-store" },
     });
   } catch (error) {
-    if (error instanceof z.ZodError) return NextResponse.json({ error: "La ediciÃ³n solicitada no es vÃ¡lida." }, { status: 400 });
+    if (error instanceof TenantContextLookupError) return tenantUnavailableResponse(error);
+    if (error instanceof z.ZodError) return NextResponse.json({ error: "La edición solicitada no es válida." }, { status: 400 });
     if (error instanceof CompositionDocumentConflictError) {
       return NextResponse.json({ error: error.message, code: "COMPOSITION_VERSION_CONFLICT", data: error.current, retryable: true }, { status: error.status });
     }
     if (error instanceof CompositionDocumentPersistenceError) return compositionErrorResponse(error);
     if (error instanceof CompositionDocumentError) return NextResponse.json({ error: error.message, code: "COMPOSITION_DOCUMENT_ERROR", retryable: false }, { status: error.status });
+    if (isTransientStorageError(error)) return storageUnavailableResponse();
     console.error("[API /production/hyperframes/drafts/:id/document] Unexpected update error:", serializeError(error));
-    return NextResponse.json({ error: "No se pudo guardar la ediciÃ³n de la composiciÃ³n." }, { status: 500 });
+    return NextResponse.json({ error: "No se pudo guardar la edición de la composición." }, { status: 500 });
   }
 }
 
 function compositionErrorResponse(error: CompositionDocumentPersistenceError) {
-  return NextResponse.json({ error: error.message, code: error.code, retryable: error.retryable }, { status: error.status });
+  return NextResponse.json({
+    error: error.message,
+    code: error.code,
+    retryable: error.retryable,
+    ...(error.diagnosticId ? { diagnosticId: error.diagnosticId } : {}),
+  }, { status: error.status });
+}
+
+function tenantUnavailableResponse(error: TenantContextLookupError) {
+  return NextResponse.json({ error: error.message, code: error.code, retryable: true }, { status: 503 });
+}
+
+function storageUnavailableResponse() {
+  return NextResponse.json({
+    error: "El almacenamiento está ocupado y no respondió a tiempo. Tus cambios no se descartaron; vuelve a intentar.",
+    code: "COMPOSITION_STORAGE_UNAVAILABLE",
+    retryable: true,
+  }, { status: 503 });
+}
+
+function isTransientStorageError(error: unknown) {
+  const serialized = serializeError(error);
+  return serialized.code === "PGRST003"
+    || /timed out acquiring connection|connection pool|pool timeout|fetch failed/i.test(serialized.message);
 }
 
 function serializeError(error: unknown) {
@@ -93,8 +122,8 @@ async function authorize() {
   const supabase = await createClient();
   const user = await getAuthenticatedUser(supabase);
   if (!user) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
-  if (!(await canReviewContent(user.userId))) return NextResponse.json({ error: "No tienes permisos para editar videos." }, { status: 403 });
   const tenant = await resolveActiveTenantContext();
   if (!tenant) return NextResponse.json({ error: "Empresa no válida o no autorizada." }, { status: 403 });
+  if (!(await canReviewContent(user.userId, tenant))) return NextResponse.json({ error: "No tienes permisos para editar videos." }, { status: 403 });
   return { admin: getServiceRoleClient(), organizationId: tenant.organizationId, userId: user.userId };
 }

@@ -3,11 +3,14 @@ import type { HyperframesProjectAsset } from "../hyperframes/hyperframes-project
 import type { HyperframesPlan } from "../hyperframes/hyperframes-plan.service";
 import {
   COMPOSITION_DOCUMENT_FORMAT,
-  COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS,
   compositionEditorDocumentSchema,
   type CompositionClip,
   type CompositionEditorDocument,
 } from "./composition-document.types";
+import {
+  resolveCompositionDuration,
+  type CompositionDurationResolution,
+} from "./composition-duration.service";
 
 /**
  * Creates the first editable document from internal Production sources.
@@ -19,15 +22,24 @@ export function createInitialCompositionDocument(params: {
   assets: HyperframesProjectAsset[];
   plan: HyperframesPlan;
 }): CompositionEditorDocument {
-  const durationSeconds = resolveCanvasDuration(params);
-  const tracks = buildTracks(params.assets, params.animatedDeck);
+  const duration = resolveCanvasDuration(params);
+  const durationSeconds = duration.durationSeconds;
+  const timelineAssets = selectInitialTimelineAssets(params.assets);
+  const tracks = buildTracks(timelineAssets, params.animatedDeck);
   const clips = [
     ...buildDeckClips(params.animatedDeck, durationSeconds),
-    ...buildAssetClips(params.assets, durationSeconds, 0, params.animatedDeck?.width || 1920, params.animatedDeck?.height || 1080),
+    ...buildAssetClips(timelineAssets, durationSeconds, 0, params.animatedDeck?.width || 1920, params.animatedDeck?.height || 1080),
   ];
   if (clips.length === 0) throw new Error("No hay fuentes internas para crear la composición.");
   return compositionEditorDocumentSchema.parse({
-    canvas: { durationSeconds, fps: 30, height: params.animatedDeck?.height || 1080, width: params.animatedDeck?.width || 1920 },
+    canvas: {
+      durationMode: "AUTO",
+      durationSeconds,
+      durationSource: duration.source,
+      fps: 30,
+      height: params.animatedDeck?.height || 1080,
+      width: params.animatedDeck?.width || 1920,
+    },
     clips,
     deckStyles: params.animatedDeck ? {
       css: params.animatedDeck.css,
@@ -112,14 +124,15 @@ export function reconcileCompositionDocument(params: {
   };
 }
 
-function resolveCanvasDuration(params: {
+export function resolveCanvasDuration(params: {
   animatedDeck: HyperframesAnimatedDeckSource | null;
   assets: HyperframesProjectAsset[];
   plan: HyperframesPlan;
-}) {
-  const deckMinimum = params.animatedDeck ? params.animatedDeck.slides.length * 5 : 0;
-  const sourceDuration = params.assets.reduce((longest, asset) => Math.max(longest, asset.durationSeconds || 0), 0);
-  return Math.min(COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS, Math.max(params.plan.durationSeconds, deckMinimum, sourceDuration, 3));
+}): CompositionDurationResolution {
+  return resolveCompositionDuration({
+    assets: params.assets,
+    slideCount: params.animatedDeck?.slides.length || 0,
+  });
 }
 
 function buildTracks(assets: HyperframesProjectAsset[], deck: HyperframesAnimatedDeckSource | null) {
@@ -174,19 +187,25 @@ function buildAssetClips(assets: HyperframesProjectAsset[], durationSeconds: num
   }
   const timingByAssetId = new Map<string, { durationSeconds: number; startSeconds: number }>();
   for (const [trackId, groupedAssets] of assetsByTrack) {
+    const preferredDurations = groupedAssets.map((asset) => resolveInitialAssetDuration(asset, durationSeconds, trackId));
+    const totalPreferredDuration = preferredDurations.reduce((total, value) => total + value, 0);
+    const durationScale = trackId !== "audio" && totalPreferredDuration > durationSeconds
+      ? durationSeconds / totalPreferredDuration
+      : 1;
     let cursor = 0;
     for (let index = 0; index < groupedAssets.length; index++) {
       const asset = groupedAssets[index]!;
-      const remainingAssets = groupedAssets.length - index;
-      const preferredDuration = resolveInitialAssetDuration(asset, durationSeconds, trackId);
-      const duration = trackId === "avatar" || trackId === "audio"
-        ? preferredDuration
-        : Math.max(0.05, Math.min(preferredDuration, (durationSeconds - cursor) / remainingAssets));
+      const preferredDuration = preferredDurations[index]!;
+      const isSequentialVoice = trackId === "audio" && asset.timelineRole === "VOICE";
+      const isSequential = trackId !== "audio" || isSequentialVoice;
+      const duration = isSequential
+        ? Math.max(0.05, Math.min(preferredDuration * durationScale, durationSeconds - cursor))
+        : preferredDuration;
       timingByAssetId.set(asset.productionAssetId, {
         durationSeconds: roundSeconds(duration),
-        startSeconds: roundSeconds(trackId === "avatar" || trackId === "audio" ? 0 : cursor),
+        startSeconds: roundSeconds(isSequential ? cursor : 0),
       });
-      if (trackId !== "avatar" && trackId !== "audio") cursor += duration;
+      if (isSequential) cursor += duration;
     }
   }
 
@@ -218,6 +237,8 @@ function buildAssetClips(assets: HyperframesProjectAsset[], durationSeconds: num
         zIndex: isAudio ? 0 : trackId === "avatar" ? 10 : trackId === "broll" ? 5 : -1,
       },
       source: { productionAssetId: asset.productionAssetId, type: "PRODUCTION_ASSET" as const },
+      ...(asset.durationSeconds && asset.durationSeconds > 0 ? { sourceDurationSeconds: roundSeconds(asset.durationSeconds) } : {}),
+      sourceOffsetSeconds: 0,
       startSeconds: timing.startSeconds,
       timingSource: "ESTIMATED" as const,
       trackId,
@@ -234,10 +255,21 @@ function resolveInitialAssetDuration(asset: HyperframesProjectAsset, canvasDurat
 }
 
 function resolveTrackId(asset: HyperframesProjectAsset) {
-  if (asset.mimeType.startsWith("audio/") || asset.timelineRole === "AUDIO") return "audio";
+  if (asset.mimeType.startsWith("audio/") || asset.timelineRole === "AUDIO" || asset.timelineRole === "VOICE") return "audio";
   if (asset.timelineRole === "AVATAR") return "avatar";
   if (asset.timelineRole === "BROLL") return "broll";
   return "visual";
+}
+
+/** A complete avatar is authoritative and must not overlap generated avatar fragments. */
+function selectInitialTimelineAssets(assets: HyperframesProjectAsset[]) {
+  const authoritativeFullAvatar = assets
+    .filter((asset) => asset.timelineRole === "AVATAR" && asset.timelineVariant === "FULL")
+    .sort((left, right) => (right.durationSeconds || 0) - (left.durationSeconds || 0))[0];
+  if (!authoritativeFullAvatar) return assets;
+  return assets.filter((asset) => (
+    asset.timelineRole !== "AVATAR" || asset.productionAssetId === authoritativeFullAvatar.productionAssetId
+  ));
 }
 
 function nextTrackOrder(tracks: CompositionEditorDocument["tracks"]) {

@@ -68,9 +68,12 @@ export function getServiceRoleClient() {
   );
 }
 
-export async function canReviewContent(userId: string) {
-  const tenant = await resolveActiveTenantContext();
+export async function canReviewContent(userId: string, resolvedTenant?: TenantContext | null) {
+  const tenant = resolvedTenant === undefined ? await resolveActiveTenantContext() : resolvedTenant;
   if (tenant?.organizationId) {
+    if (tenant.userId === userId) {
+      return Boolean(tenant.platformRole && REVIEWER_ROLE_SET.has(tenant.platformRole));
+    }
     const organizationRole = await getOrganizationPlatformRole(
       userId,
       tenant.organizationId,

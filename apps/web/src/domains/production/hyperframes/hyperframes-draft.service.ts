@@ -1,7 +1,13 @@
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createInitialCompositionDocument } from "../composition-editor/composition-document.factory";
-import { ensureInitialCompositionDocument, hashCompositionDocument } from "../composition-editor/composition-document.service";
+import { CompositionDurationResolutionError } from "../composition-editor/composition-duration.service";
+import {
+  CompositionDocumentError,
+  ensureInitialCompositionDocument,
+  getCurrentCompositionDocument,
+  hashCompositionDocument,
+} from "../composition-editor/composition-document.service";
 import { buildDeterministicPlan } from "./hyperframes-plan.service";
 import {
   extractHyperframesAnimatedDeck,
@@ -134,13 +140,13 @@ export async function initializeHyperframesDraft(params: {
       storageBucket: "production-assets",
       storagePath: asset.storagePath,
       timelineRole: asset.timelineRole,
+      timelineVariant: asset.timelineVariant,
     }));
   const animatedDeck = extractHyperframesAnimatedDeck(component.assets);
-  const plan = buildDeterministicPlan({ assetCount: assets.length, title: composition.name });
-  if (animatedDeck) plan.durationSeconds = Math.min(600, Math.max(plan.durationSeconds, animatedDeck.slides.length * 5));
-  const document = createInitialCompositionDocument({ animatedDeck, assets, plan });
-  const persistedDocument = await ensureInitialCompositionDocument({
-    document,
+  const persistedDocument = await loadOrCreateInitialDocument({
+    animatedDeck,
+    assets,
+    compositionName: composition.name,
     draftId: typedDraft.id,
     organizationId: params.organizationId,
     supabase: params.supabase,
@@ -182,6 +188,45 @@ export async function initializeHyperframesDraft(params: {
   }
 
   return { ...descriptor, initialized: persistedDocument.created, documentVersion: persistedDocument.version };
+}
+
+async function loadOrCreateInitialDocument(params: {
+  animatedDeck: ReturnType<typeof extractHyperframesAnimatedDeck>;
+  assets: Parameters<typeof createInitialCompositionDocument>[0]["assets"];
+  compositionName: string;
+  draftId: string;
+  organizationId: string;
+  supabase: SupabaseClient<any, "public", any>;
+  userId: string;
+}) {
+  try {
+    const current = await getCurrentCompositionDocument(params);
+    return { created: false, document: current.document, version: current.version };
+  } catch (error) {
+    if (!(error instanceof CompositionDocumentError) || error.status !== 404) throw error;
+  }
+
+  const plan = buildDeterministicPlan({ assetCount: params.assets.length, title: params.compositionName });
+  let document;
+  try {
+    document = createInitialCompositionDocument({
+      animatedDeck: params.animatedDeck,
+      assets: params.assets,
+      plan,
+    });
+  } catch (error) {
+    if (error instanceof CompositionDurationResolutionError) {
+      throw new HyperframesDraftError(error.message, 422);
+    }
+    throw error;
+  }
+  return ensureInitialCompositionDocument({
+    document,
+    draftId: params.draftId,
+    organizationId: params.organizationId,
+    supabase: params.supabase,
+    userId: params.userId,
+  });
 }
 
 async function findActiveDraft(params: {

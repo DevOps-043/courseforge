@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS,
+  COMPOSITION_DURATION_SOURCES,
   compositionClipSchema,
   compositionLayoutSchema,
   compositionTrackSchema,
@@ -18,6 +19,13 @@ const clipMoveOperationSchema = z.object({
 const clipDurationOperationSchema = z.object({
   durationSeconds: boundedSecondsSchema.positive(),
   type: z.literal("clip.duration"),
+}).strict();
+
+const clipTrimOperationSchema = z.object({
+  durationSeconds: boundedSecondsSchema.positive(),
+  sourceOffsetSeconds: z.number().finite().min(0).max(86_400),
+  startSeconds: boundedSecondsSchema,
+  type: z.literal("clip.trim"),
 }).strict();
 
 const clipLayoutOperationSchema = z.object({
@@ -49,11 +57,14 @@ const clipTemplateOperationSchema = z.object({
   durationSeconds: boundedSecondsSchema.positive(),
   layout: compositionLayoutSchema,
   startSeconds: boundedSecondsSchema,
+  timingSource: z.enum(["ESTIMATED", "USER_EDITED"]).optional(),
   type: z.literal("clip.template"),
 }).strict();
 
 const canvasDurationOperationSchema = z.object({
+  durationMode: z.enum(["AUTO", "USER_EDITED"]).optional(),
   durationSeconds: boundedSecondsSchema.positive(),
+  durationSource: z.enum(COMPOSITION_DURATION_SOURCES).optional(),
   type: z.literal("composition.canvas-duration"),
 }).strict();
 
@@ -65,6 +76,7 @@ export const compositionEditorPatchOperationSchema = z.discriminatedUnion("type"
   clipLayoutOperationSchema,
   clipRemoveOperationSchema,
   clipTemplateOperationSchema,
+  clipTrimOperationSchema,
   clipVisibilityOperationSchema,
 ]).and(z.object({ clipId: editorIdSchema }).strict());
 

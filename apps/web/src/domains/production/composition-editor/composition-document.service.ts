@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { compositionEditorDocumentSchema, type CompositionEditorDocument } from "./composition-document.types";
 import { applyCompositionEditorPatches, CompositionEditorPatchError } from "./editor-patch.service";
@@ -12,7 +12,7 @@ export class CompositionDocumentError extends Error {
 
 export class CompositionDocumentConflictError extends CompositionDocumentError {
   constructor(readonly current: Awaited<ReturnType<typeof getCurrentCompositionDocument>>) {
-    super("La composiciÃ³n cambiÃ³ en otra sesiÃ³n. Recarga el preview antes de volver a editar.", 409);
+    super("La composición cambió en otra sesión. Recarga el preview antes de volver a editar.", 409);
   }
 }
 
@@ -27,6 +27,7 @@ export class CompositionDocumentPersistenceError extends CompositionDocumentErro
     readonly code: string,
     status = 500,
     readonly retryable = false,
+    readonly diagnosticId?: string,
   ) {
     super(message, status);
   }
@@ -75,7 +76,7 @@ export async function getCurrentCompositionDocument(params: {
   if (!current) throw new CompositionDocumentError("El documento de composición aún no está disponible.", 404);
   return {
     document: current.document,
-    documentHash: hashCompositionDocument(current.document),
+    documentHash: current.documentHash,
     version: current.version,
   };
 }
@@ -89,6 +90,7 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
   expectedDocumentHash: string;
   organizationId: string;
   patch: CompositionEditorPatchRequest;
+  signal?: AbortSignal;
   supabase: SupabaseClient<any, "public", any>;
   userId: string;
 }) {
@@ -104,7 +106,9 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
     throw error;
   }
   const nextHash = hashCompositionDocument(nextDocument);
-  const { data, error } = await params.supabase.rpc("append_video_composition_draft_document", {
+  const documentBytes = Buffer.byteLength(JSON.stringify(nextDocument), "utf8");
+  const rpcStartedAt = Date.now();
+  let appendRequest = params.supabase.rpc("append_video_composition_draft_document_v2", {
     p_actor_id: params.userId,
     p_document: nextDocument,
     p_document_hash: nextHash,
@@ -115,14 +119,52 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
     p_organization_id: params.organizationId,
     p_source: params.patch.source,
     p_summary: params.patch.summary,
-  });
+  }).retry(false);
+  if (params.signal) appendRequest = appendRequest.abortSignal(params.signal);
+  const { data, error } = await appendRequest;
 
-  if (error?.code === "40001" || error?.code === "23505") {
+  if (error) {
+    const diagnosticId = randomUUID();
+    logCompositionPersistenceFailure({
+      diagnosticId,
+      documentBytes,
+      elapsedMs: Date.now() - rpcStartedAt,
+      error,
+      clipCount: nextDocument.clips.length,
+      operationTypes: [...new Set(params.patch.operations.map((operation) => operation.type))],
+    });
+    throw normalizeCompositionPersistenceError(error, diagnosticId);
+  }
+  const result = Array.isArray(data) ? data[0] : data;
+  if (!result) throw new CompositionDocumentError("No se pudo guardar la nueva versión de la composición.", 500);
+  const outcome = result.outcome as string;
+  if (outcome === "CONFLICT") {
     throw new CompositionDocumentConflictError(await getCurrentCompositionDocument(params));
   }
-  if (error) throw normalizeCompositionPersistenceError(error);
-  const result = Array.isArray(data) ? data[0] : data;
-  if (!result) throw new CompositionDocumentError("No se pudo guardar la nueva versiÃ³n de la composiciÃ³n.", 500);
+  if (outcome === "BUSY") {
+    throw new CompositionDocumentPersistenceError(
+      "Ya hay otro cambio guardándose en esta composición. Espera un momento y vuelve a intentarlo.",
+      "COMPOSITION_SAVE_BUSY",
+      409,
+      true,
+    );
+  }
+  if (outcome === "NOT_EDITABLE") {
+    throw new CompositionDocumentPersistenceError(
+      "El borrador ya no está disponible para edición.",
+      "COMPOSITION_DRAFT_NOT_EDITABLE",
+      409,
+      false,
+    );
+  }
+  if (outcome !== "APPENDED" && outcome !== "UNCHANGED") {
+    throw new CompositionDocumentPersistenceError(
+      "El almacenamiento devolvió un resultado de guardado desconocido.",
+      "COMPOSITION_APPEND_OUTCOME_INVALID",
+      500,
+      false,
+    );
+  }
   return {
     document: nextDocument,
     documentHash: result.document_hash as string,
@@ -157,7 +199,7 @@ async function assertAddedAssetsBelongToDraft(params: {
   }
 }
 
-function normalizeCompositionPersistenceError(error: unknown) {
+export function normalizeCompositionPersistenceError(error: unknown, diagnosticId?: string) {
   const candidate = error && typeof error === "object" ? error as {
     code?: unknown;
     message?: unknown;
@@ -171,6 +213,28 @@ function normalizeCompositionPersistenceError(error: unknown) {
       "COMPOSITION_STORAGE_NOT_READY",
       503,
       true,
+      diagnosticId,
+    );
+  }
+  if (
+    code === "PGRST003"
+    || /timed out acquiring connection|connection pool|pool timeout|fetch failed|upstream request timeout|gateway timeout/i.test(message)
+  ) {
+    return new CompositionDocumentPersistenceError(
+      "El almacenamiento está ocupado y no pudo guardar a tiempo. Tus cambios siguen en el editor; reintenta en unos segundos.",
+      "COMPOSITION_STORAGE_UNAVAILABLE",
+      503,
+      true,
+      diagnosticId,
+    );
+  }
+  if (code === "57014") {
+    return new CompositionDocumentPersistenceError(
+      "El guardado excedió el tiempo permitido. Tus cambios siguen en el editor; vuelve a intentar una vez.",
+      "COMPOSITION_SAVE_TIMEOUT",
+      503,
+      true,
+      diagnosticId,
     );
   }
   if (code === "42501") {
@@ -178,6 +242,8 @@ function normalizeCompositionPersistenceError(error: unknown) {
       "No tienes permisos para guardar cambios en esta composici\u00f3n.",
       "COMPOSITION_SAVE_FORBIDDEN",
       403,
+      false,
+      diagnosticId,
     );
   }
   if (code === "P0002") {
@@ -185,6 +251,8 @@ function normalizeCompositionPersistenceError(error: unknown) {
       "El borrador ya no est\u00e1 disponible para edici\u00f3n.",
       "COMPOSITION_DRAFT_NOT_EDITABLE",
       409,
+      false,
+      diagnosticId,
     );
   }
   if (code === "55P03") {
@@ -193,6 +261,7 @@ function normalizeCompositionPersistenceError(error: unknown) {
       "COMPOSITION_SAVE_BUSY",
       409,
       true,
+      diagnosticId,
     );
   }
   if (code === "22023") {
@@ -200,6 +269,8 @@ function normalizeCompositionPersistenceError(error: unknown) {
       "La versi\u00f3n o los datos de auditor\u00eda de la edici\u00f3n no son v\u00e1lidos.",
       "COMPOSITION_AUDIT_INVALID",
       400,
+      false,
+      diagnosticId,
     );
   }
   if (code === "42702") {
@@ -208,6 +279,7 @@ function normalizeCompositionPersistenceError(error: unknown) {
       "COMPOSITION_STORAGE_MIGRATION_REQUIRED",
       503,
       true,
+      diagnosticId,
     );
   }
   return new CompositionDocumentPersistenceError(
@@ -215,7 +287,43 @@ function normalizeCompositionPersistenceError(error: unknown) {
     "COMPOSITION_PERSISTENCE_FAILED",
     500,
     true,
+    diagnosticId,
   );
+}
+
+function logCompositionPersistenceFailure(params: {
+  clipCount: number;
+  diagnosticId: string;
+  documentBytes: number;
+  elapsedMs: number;
+  error: unknown;
+  operationTypes: string[];
+}) {
+  const candidate = params.error && typeof params.error === "object"
+    ? params.error as Record<string, unknown>
+    : {};
+  console.error("[CompositionDocumentPersistence] RPC failed", {
+    clipCount: params.clipCount,
+    diagnosticId: params.diagnosticId,
+    documentBytes: params.documentBytes,
+    elapsedMs: params.elapsedMs,
+    event: "composition_document_append_failed",
+    operationTypes: params.operationTypes,
+    postgres: {
+      code: safeDiagnosticText(candidate.code, 32),
+      details: safeDiagnosticText(candidate.details, 500),
+      hint: safeDiagnosticText(candidate.hint, 300),
+      message: safeDiagnosticText(candidate.message, 500),
+    },
+  });
+}
+
+function safeDiagnosticText(value: unknown, maxLength: number) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  return value
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi, "[redacted-uuid]")
+    .replace(/(bearer\s+)[^\s]+/gi, "$1[redacted]")
+    .slice(0, maxLength);
 }
 
 async function getLatestCompositionDocument(params: {
@@ -225,14 +333,28 @@ async function getLatestCompositionDocument(params: {
 }) {
   const { data, error } = await params.supabase
     .from("video_composition_draft_documents")
-    .select("document, version")
+    .select("document, document_hash, version")
     .eq("draft_id", params.draftId)
     .eq("organization_id", params.organizationId)
     .order("version", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) throw error;
-  return data ? { document: compositionEditorDocumentSchema.parse(data.document), version: data.version as number } : null;
+  if (!data) return null;
+  const documentHash = String(data.document_hash || "");
+  if (!/^[a-f0-9]{64}$/.test(documentHash)) {
+    throw new CompositionDocumentPersistenceError(
+      "La versión almacenada de la composición no tiene un identificador válido.",
+      "COMPOSITION_DOCUMENT_HASH_INVALID",
+      500,
+      false,
+    );
+  }
+  return {
+    document: compositionEditorDocumentSchema.parse(data.document),
+    documentHash,
+    version: data.version as number,
+  };
 }
 
 function stableStringify(value: unknown): string {
