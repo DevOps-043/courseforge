@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, MonitorPlay, Save, Video } from "lucide-react";
+import { MonitorPlay, Video } from "lucide-react";
 import type { ProductionStatus } from "../types/materials.types";
 import {
   DodIndicator,
@@ -13,7 +13,6 @@ interface ProductionAssetHeaderProps {
   componentType: string;
   lessonTitle: string;
   productionStatus: ProductionStatus;
-  isSaving: boolean;
   needsFinalVideo: boolean;
   needsScreencast: boolean;
   needsSlides: boolean;
@@ -26,14 +25,12 @@ interface ProductionAssetHeaderProps {
   backgroundMusic?: any;
   bRollClips?: any[];
   avatarVideo?: any;
-  onSave: () => Promise<void>;
 }
 
 export function ProductionAssetHeader({
   componentType,
   lessonTitle,
   productionStatus,
-  isSaving,
   needsFinalVideo,
   needsScreencast,
   needsSlides,
@@ -46,7 +43,6 @@ export function ProductionAssetHeader({
   backgroundMusic,
   bRollClips,
   avatarVideo,
-  onSave,
 }: ProductionAssetHeaderProps) {
   const statusBadge = getProductionStatusBadge(productionStatus, finalVideoUrl);
   const StatusIcon = statusBadge.icon;
@@ -85,19 +81,6 @@ export function ProductionAssetHeader({
             <StatusIcon size={12} />
             {statusBadge.label}
           </div>
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={isSaving}
-            className="flex items-center gap-2 rounded-lg bg-[#00D4B3]/10 px-3 py-1.5 text-xs font-bold text-[#00D4B3] transition-colors hover:bg-[#00D4B3]/20"
-          >
-            {isSaving ? (
-              <Loader2 className="animate-spin" size={14} />
-            ) : (
-              <Save size={14} />
-            )}
-            Guardar
-          </button>
         </div>
       </div>
 

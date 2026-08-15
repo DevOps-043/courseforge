@@ -1,8 +1,10 @@
 import {
+  COMPOSITION_DOCUMENT_FORMAT,
   compositionEditorDocumentSchema,
   type CompositionEditorDocument,
 } from "./composition-document.types";
 import type { CompositionEditorPatchOperation } from "./editor-patch.types";
+import { createCompositionPresetAnimation } from "./composition-motion-preset.service";
 
 export class CompositionEditorPatchError extends Error {
   constructor(message: string) {
@@ -42,7 +44,7 @@ export function ensureCanvasDurationForClipPatches(
     } else if (operation.type === "clip.duration") {
       const timing = timings.get(operation.clipId);
       if (timing) timing.durationSeconds = operation.durationSeconds;
-    } else if (operation.type === "clip.trim" || operation.type === "clip.template") {
+    } else if (operation.type === "clip.trim" || operation.type === "clip.template" || operation.type === "clip.estimated-timing") {
       const timing = timings.get(operation.clipId);
       if (timing) {
         timing.startSeconds = operation.startSeconds;
@@ -70,10 +72,51 @@ export function ensureCanvasDurationForClipPatches(
 export function applyCompositionEditorPatches(
   document: CompositionEditorDocument,
   operations: CompositionEditorPatchOperation[],
+  source: "AGENT" | "SYSTEM" | "USER" = "USER",
 ) {
   const next = structuredClone(document);
+  next.format = COMPOSITION_DOCUMENT_FORMAT;
 
   for (const operation of operations) {
+    if (operation.type === "animation.add-preset") {
+      const clip = next.clips.find((candidate) => candidate.id === operation.clipId);
+      if (!clip) throw new CompositionEditorPatchError("El clip que intentas animar ya no existe.");
+      if (clip.kind === "AUDIO") throw new CompositionEditorPatchError("Los clips de audio no admiten animaciones visuales.");
+      const track = next.tracks.find((candidate) => candidate.id === clip.trackId);
+      if (track?.locked) throw new CompositionEditorPatchError("No puedes animar un clip de un track bloqueado.");
+      if (next.motion.animations.some((animation) => animation.id === operation.animationId)) {
+        throw new CompositionEditorPatchError("El identificador de animación ya existe.");
+      }
+      next.motion.animations.push(createCompositionPresetAnimation({
+        animationId: operation.animationId,
+        clipId: clip.id,
+        durationSeconds: Math.min(operation.durationSeconds, clip.durationSeconds),
+        origin: source === "AGENT" ? "AGENT" : "PRESET",
+        presetId: operation.presetId,
+      }));
+      continue;
+    }
+    if (operation.type === "animation.remove" || operation.type === "animation.update-keyframe" || operation.type === "animation.update-timing") {
+      const animationIndex = next.motion.animations.findIndex((candidate) => candidate.id === operation.animationId);
+      if (animationIndex < 0) throw new CompositionEditorPatchError("La animación que intentas editar ya no existe.");
+      const animation = next.motion.animations[animationIndex]!;
+      const clip = next.clips.find((candidate) => candidate.id === animation.target.clipId);
+      const track = clip ? next.tracks.find((candidate) => candidate.id === clip.trackId) : null;
+      if (track?.locked) throw new CompositionEditorPatchError("No puedes editar animaciones de un track bloqueado.");
+      if (operation.type === "animation.remove") {
+        next.motion.animations.splice(animationIndex, 1);
+      } else if (operation.type === "animation.update-timing") {
+        animation.timing = { ...animation.timing, ...operation.timing };
+      } else {
+        const keyframe = animation.keyframes[operation.keyframeIndex];
+        if (!keyframe) throw new CompositionEditorPatchError("El keyframe que intentas editar ya no existe.");
+        if (operation.values) keyframe.values = operation.values;
+        if (operation.ease === null) delete keyframe.ease;
+        else if (operation.ease) keyframe.ease = operation.ease;
+        animation.origin = "USER";
+      }
+      continue;
+    }
     if (operation.type === "audio-mix.update") {
       Object.assign(next.audioMix.ducking, operation.settings);
       continue;
@@ -132,6 +175,7 @@ export function applyCompositionEditorPatches(
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes quitar un clip de un track bloqueado.");
       if (next.clips.length === 1) throw new CompositionEditorPatchError("La composición debe conservar al menos un clip.");
       next.clips = next.clips.filter((candidate) => candidate.id !== clip.id);
+      next.motion.animations = next.motion.animations.filter((animation) => animation.target.clipId !== clip.id);
       continue;
     }
 
@@ -150,6 +194,16 @@ export function applyCompositionEditorPatches(
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes cambiar la duración de un track bloqueado.");
       clip.durationSeconds = operation.durationSeconds;
       clip.timingSource = "USER_EDITED";
+    }
+
+    if (operation.type === "clip.estimated-timing") {
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes recalcular un track bloqueado.");
+      if (clip.timingSource === "USER_EDITED") {
+        throw new CompositionEditorPatchError("El tiempo editado manualmente no puede reemplazarse con un cálculo automático.");
+      }
+      clip.durationSeconds = operation.durationSeconds;
+      clip.startSeconds = operation.startSeconds;
+      clip.timingSource = "ESTIMATED";
     }
 
     if (operation.type === "clip.trim") {

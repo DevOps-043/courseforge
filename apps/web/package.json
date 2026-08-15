@@ -15,8 +15,8 @@
   },
   "dependencies": {
     "@google/genai": "^1.38.0",
-    "@hyperframes/studio": "^0.7.106",
-    "@hyperframes/studio-server": "^0.7.106",
+    "@hyperframes/studio": "0.7.106",
+    "@hyperframes/studio-server": "0.7.106",
     "@netlify/functions": "^5.1.2",
     "@remotion/bundler": "4.0.484",
     "@remotion/media": "4.0.484",

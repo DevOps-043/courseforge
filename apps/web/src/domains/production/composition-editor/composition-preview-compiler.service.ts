@@ -65,6 +65,7 @@ export async function compileCompositionPreview(params: {
     #composition-root { --preview-scale: 1; position: absolute; left: 50%; top: 50%; width: ${document.canvas.width}px; height: ${document.canvas.height}px; overflow: hidden; background: #020617; transform: translate(-50%, -50%) scale(var(--preview-scale)); transform-origin: center; }
     .clip { position: absolute; inset: 0;${isInteractivePreview ? " pointer-events: none;" : ""} }
     .clip-content { position: absolute; transform-origin: top left;${isInteractivePreview ? " pointer-events: auto;" : ""} visibility: hidden; }
+    .motion-subject { position: relative; width: 100%; height: 100%; transform-origin: center; }
     ${isInteractivePreview ? `.clip-content[data-selected="true"] { outline: 4px solid #22d3ee; outline-offset: -4px; }
     .clip-content[data-selected="true"]::after { content: ""; position: absolute; inset: 0; border: 1px solid rgba(8,145,178,.9); pointer-events: none; }
     .composition-resize-handle { position: absolute; right: -7px; bottom: -7px; width: 16px; height: 16px; border: 2px solid #fff; border-radius: 3px; background: #0891b2; box-shadow: 0 1px 4px rgba(0,0,0,.45); cursor: nwse-resize; z-index: 2147483647; }
@@ -106,13 +107,14 @@ function renderClip(
   const isHyperframesRender = target === COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER;
   const layout = `left:${clip.layout.x}px;top:${clip.layout.y}px;width:${clip.layout.width}px;height:${clip.layout.height}px;opacity:${clip.layout.opacity};z-index:${clip.layout.zIndex};transform:rotate(${clip.layout.rotation}deg);`;
   const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}" style="${layout}"`;
+  const motionId = `${escapeAttribute(clip.id)}-motion`;
   const timing = `data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${trackIndex(clip.trackId, clipIndex)}"`;
   const mediaOffset = `data-source-offset="${clip.sourceOffsetSeconds || 0}"${isHyperframesRender ? ` data-media-start="${clip.sourceOffsetSeconds || 0}"` : ""}`;
   const hidden = clip.hidden || track?.hidden ? (isHyperframesRender ? ' data-hidden="true"' : ' data-clip-hidden="true"') : "";
   const volumeAutomation = hasVolumeAutomation ? ' data-volume-automated="true"' : "";
   const volume = track?.muted ? 0 : track?.volume ?? 1;
   if (clip.source.type === "DECK_SLIDE") {
-    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content deck-content"><div class="deck-scope"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></section>`;
+    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content"><div class="deck-scope"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
   }
   const sourceUrl = assetUrls.get(clip.source.productionAssetId);
   if (!sourceUrl) throw new CompositionPreviewCompilerError(`No existe URL de preview para el asset ${clip.source.productionAssetId}.`);
@@ -124,12 +126,12 @@ function renderClip(
     const audio = clip.trackId === "avatar"
       ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio clip" src="${escapeAttribute(sourceUrl)}" ${mediaOffset}${hidden} data-volume="${volume}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${10 + clipIndex}"></audio>`
       : "";
-    return `<div ${common} class="clip-content">${video}</div>${audio}`;
+    return `<div ${common} class="clip-content"><div id="${motionId}" class="motion-subject">${video}</div></div>${audio}`;
   }
   const media = clip.kind === "VIDEO"
     ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" src="${escapeAttribute(sourceUrl)}" muted playsinline preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset}${hidden}></video>${clip.trackId === "avatar" ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${hidden} src="${escapeAttribute(sourceUrl)}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset} data-volume="${volume}"></audio>` : ""}`
     : `<img class="composition-media" src="${escapeAttribute(sourceUrl)}" alt="" />`;
-  return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content">${media}</div></section>`;
+  return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject">${media}</div></div></section>`;
 }
 
 function replaceUrls(value: string, replacements?: Map<string, string>) {
@@ -154,9 +156,23 @@ function renderTimelineInitializer(
     kind: clip.kind,
     start: clip.startSeconds,
   }));
+  const motionAnimations = document.motion.animations.map((animation) => {
+    const clip = document.clips.find((candidate) => candidate.id === animation.target.clipId)!;
+    const relativeStart = animation.timing.anchor === "CLIP_START"
+      ? animation.timing.offsetSeconds
+      : clip.durationSeconds - animation.timing.offsetSeconds - animation.timing.durationSeconds;
+    return {
+      duration: animation.timing.durationSeconds,
+      id: animation.id,
+      keyframes: animation.keyframes,
+      start: clip.startSeconds + relativeStart,
+      targetId: `${clip.id}-motion`,
+    };
+  });
   return `<script>
     (() => {
       const clips = ${JSON.stringify(clipMetadata)};
+      const motionAnimations = ${JSON.stringify(motionAnimations)};
       const volumeAutomations = ${JSON.stringify(volumeAutomations)};
       const timeline = gsap.timeline({ paused: true });
       for (const clip of clips) {
@@ -196,6 +212,22 @@ function renderTimelineInitializer(
             { volume: point.volume, duration: transitionDuration, ease: "none", immediateRender: false },
             previous.timeSeconds,
           );
+        }
+      }
+      for (const animation of motionAnimations) {
+        const target = document.getElementById(animation.targetId);
+        const first = animation.keyframes[0];
+        if (!target || !first) continue;
+        timeline.set(target, first.values, animation.start);
+        for (let index = 1; index < animation.keyframes.length; index += 1) {
+          const previous = animation.keyframes[index - 1];
+          const keyframe = animation.keyframes[index];
+          const segmentDuration = (keyframe.offset - previous.offset) * animation.duration;
+          timeline.to(target, {
+            ...keyframe.values,
+            duration: segmentDuration,
+            ease: keyframe.ease || "none",
+          }, animation.start + previous.offset * animation.duration);
         }
       }
       window.__timelines = window.__timelines || {};

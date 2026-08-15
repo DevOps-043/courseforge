@@ -6,6 +6,7 @@ import {
   compositionLayoutSchema,
   compositionTrackSchema,
 } from "./composition-document.types";
+import { COMPOSITION_MOTION_EASES, COMPOSITION_MOTION_PRESET_IDS, compositionMotionValuesSchema } from "./composition-motion.types";
 
 const editorIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i);
 const boundedSecondsSchema = z.number().finite().min(0).max(COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS);
@@ -61,6 +62,13 @@ const clipTemplateOperationSchema = z.object({
   type: z.literal("clip.template"),
 }).strict();
 
+/** Recalculates generated timing without changing layout or any other clip state. */
+const clipEstimatedTimingOperationSchema = z.object({
+  durationSeconds: boundedSecondsSchema.positive(),
+  startSeconds: boundedSecondsSchema,
+  type: z.literal("clip.estimated-timing"),
+}).strict();
+
 const canvasDurationOperationSchema = z.object({
   durationMode: z.enum(["AUTO", "USER_EDITED"]).optional(),
   durationSeconds: boundedSecondsSchema.positive(),
@@ -89,11 +97,43 @@ const audioMixUpdateOperationSchema = z.object({
   type: z.literal("audio-mix.update"),
 }).strict();
 
+const animationAddPresetOperationSchema = z.object({
+  animationId: editorIdSchema,
+  clipId: editorIdSchema,
+  durationSeconds: boundedSecondsSchema.positive().max(2),
+  presetId: z.enum(COMPOSITION_MOTION_PRESET_IDS),
+  type: z.literal("animation.add-preset"),
+}).strict();
+
+const animationRemoveOperationSchema = z.object({
+  animationId: editorIdSchema,
+  type: z.literal("animation.remove"),
+}).strict();
+
+const animationUpdateTimingOperationSchema = z.object({
+  animationId: editorIdSchema,
+  timing: z.object({
+    anchor: z.enum(["CLIP_END", "CLIP_START"]).optional(),
+    durationSeconds: boundedSecondsSchema.positive().optional(),
+    offsetSeconds: boundedSecondsSchema.optional(),
+  }).strict().refine((timing) => Object.keys(timing).length > 0, "Debes indicar al menos un ajuste de tiempo."),
+  type: z.literal("animation.update-timing"),
+}).strict();
+
+const animationUpdateKeyframeOperationSchema = z.object({
+  animationId: editorIdSchema,
+  ease: z.enum(COMPOSITION_MOTION_EASES).nullable().optional(),
+  keyframeIndex: z.number().int().min(0).max(49),
+  values: compositionMotionValuesSchema.optional(),
+  type: z.literal("animation.update-keyframe"),
+}).strict().refine((operation) => operation.values !== undefined || operation.ease !== undefined, "Debes modificar valores o easing.");
+
 const clipPatchOperationSchema = z.discriminatedUnion("type", [
   clipAddOperationSchema,
   canvasDurationOperationSchema,
   clipMoveOperationSchema,
   clipDurationOperationSchema,
+  clipEstimatedTimingOperationSchema,
   clipLayoutOperationSchema,
   clipRemoveOperationSchema,
   clipTemplateOperationSchema,
@@ -103,6 +143,10 @@ const clipPatchOperationSchema = z.discriminatedUnion("type", [
 
 export const compositionEditorPatchOperationSchema = z.union([
   audioMixUpdateOperationSchema,
+  animationAddPresetOperationSchema,
+  animationRemoveOperationSchema,
+  animationUpdateKeyframeOperationSchema,
+  animationUpdateTimingOperationSchema,
   clipPatchOperationSchema,
   trackUpdateOperationSchema,
 ]);

@@ -4,6 +4,7 @@ import { compositionEditorDocumentSchema, type CompositionEditorDocument } from 
 import { applyCompositionEditorPatches, CompositionEditorPatchError } from "./editor-patch.service";
 import type { CompositionEditorPatchRequest } from "./editor-patch.types";
 import { normalizeCompositionTrackTopology } from "./composition-track-registry";
+import { COMPOSITION_MOTION_ENABLED, isCompositionMotionOperation } from "./composition-motion.config";
 
 export class CompositionDocumentError extends Error {
   constructor(message: string, readonly status = 400) {
@@ -96,13 +97,16 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
   supabase: SupabaseClient<any, "public", any>;
   userId: string;
 }) {
+  if (!COMPOSITION_MOTION_ENABLED && params.patch.operations.some((operation) => isCompositionMotionOperation(operation.type))) {
+    throw new CompositionDocumentError("La edición de animaciones está deshabilitada temporalmente para este despliegue.", 409);
+  }
   const current = await getCurrentCompositionDocument(params);
   if (current.documentHash !== params.expectedDocumentHash) throw new CompositionDocumentConflictError(current);
   await assertAddedAssetsBelongToDraft(params);
 
   let nextDocument: CompositionEditorDocument;
   try {
-    nextDocument = applyCompositionEditorPatches(current.document, params.patch.operations);
+    nextDocument = applyCompositionEditorPatches(current.document, params.patch.operations, params.auditSource || params.patch.source);
   } catch (error) {
     if (error instanceof CompositionEditorPatchError) throw new CompositionDocumentError(error.message);
     throw error;
@@ -117,7 +121,11 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
     p_draft_id: params.draftId,
     p_expected_document_hash: params.expectedDocumentHash,
     p_format: nextDocument.format,
-    p_metadata: { operations: params.patch.operations.map((operation) => operation.type) },
+    p_metadata: {
+      motionAnimationCount: nextDocument.motion.animations.length,
+      motionKeyframeCount: nextDocument.motion.animations.reduce((total, animation) => total + animation.keyframes.length, 0),
+      operations: params.patch.operations.map((operation) => operation.type),
+    },
     p_organization_id: params.organizationId,
     p_source: params.auditSource || params.patch.source,
     p_summary: params.patch.summary,

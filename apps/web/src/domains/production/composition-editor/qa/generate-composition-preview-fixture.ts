@@ -6,6 +6,7 @@ import {
   rewriteAnimatedDeckRemoteAssetUrls,
 } from "../../validation/animated-deck-preprocessor.service";
 import { createInitialCompositionDocument } from "../composition-document.factory";
+import { applyCompositionEditorPatches } from "../editor-patch.service";
 import {
   COMPOSITION_COMPILATION_TARGETS,
   compileCompositionPreview,
@@ -33,7 +34,7 @@ async function main() {
     css: prepared.css,
     fonts: prepared.fonts,
   };
-  const document = createInitialCompositionDocument({
+  const baseDocument = createInitialCompositionDocument({
     animatedDeck,
     assets: [],
     plan: {
@@ -43,6 +44,11 @@ async function main() {
       title: "SofLIA preview QA",
     },
   });
+  const firstClip = baseDocument.clips[0]!;
+  const document = applyCompositionEditorPatches(baseDocument, [
+    { animationId: "motion-qa-fade-in", clipId: firstClip.id, durationSeconds: 0.7, presetId: "FADE_IN", type: "animation.add-preset" },
+    { animationId: "motion-qa-fade-out", clipId: firstClip.id, durationSeconds: 0.7, presetId: "FADE_OUT", type: "animation.add-preset" },
+  ]);
   const fontDataUrls = new Map(
     prepared.fonts.map((font) => [font.href, "data:text/css;charset=utf-8,"]),
   );
@@ -69,6 +75,7 @@ async function main() {
     })),
     fixtureSourcePath,
     generatedAt: new Date().toISOString(),
+    motion: document.motion,
     preprocessing: {
       animatedSlideCount: prepared.animatedSlideCount,
       cleanup: prepared.cleanup,

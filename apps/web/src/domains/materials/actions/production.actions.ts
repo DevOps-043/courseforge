@@ -386,9 +386,81 @@ function clearFinalVideoMetadata(assets: MaterialAssets) {
   delete (cleaned as any).final_video_assembly_stale;
   delete (cleaned as any).video_duration;
   delete (cleaned as any).assembly_target_duration_seconds;
+  delete (cleaned as any).layout_overrides;
+  delete (cleaned as any).layout_overrides_updated_at;
   delete (cleaned as any).timeline_overrides;
   delete (cleaned as any).timeline_overrides_updated_at;
   return cleaned;
+}
+
+function slideSourceSignature(assets: Partial<MaterialAssets>) {
+  return JSON.stringify({
+    slidesUrl: assets.slides_url || "",
+    htmlUrl: assets.slides?.html_public_url || "",
+    htmlPath: assets.slides?.html_content_path || "",
+    images: (assets.slides?.images || []).map((slide) => ({
+      index: slide.slide_index,
+      ref: assetReferenceKey(slide),
+    })),
+  });
+}
+
+function normalizeProductionStoragePath(value: unknown) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().replace(/^\/+/, "");
+  if (!normalized || /^https?:\/\//i.test(normalized)) return null;
+  return normalized.startsWith("production-assets/")
+    ? normalized.slice("production-assets/".length)
+    : normalized;
+}
+
+function collectProductionStoragePaths(assets: Partial<MaterialAssets>) {
+  const paths = new Set<string>();
+  const add = (value: unknown) => {
+    const path = normalizeProductionStoragePath(value);
+    if (path) paths.add(path);
+  };
+
+  add(assets.voice_audio?.storage_path);
+  add(assets.background_music?.storage_path);
+  for (const clip of assets.b_roll_clips || []) add(clip.storage_path);
+  add(assets.avatar_video?.storage_path);
+  for (const clip of assets.avatar_clips || []) add(clip.storage_path);
+  add(assets.slides?.html_content_path);
+  add(assets.slides?.qa_content_path);
+  add(assets.slides?.spec_content_path);
+  for (const image of assets.slides?.images || []) add(image.storage_path);
+  add(assets.slides?.animated_deck?.source_html_path);
+  add(assets.slides?.animated_deck?.deck_json_path);
+  add(assets.slides?.animated_deck?.deck_css_path);
+  for (const remote of assets.slides?.animated_deck?.remote_assets || []) add(remote.storage_path);
+  add((assets as any).final_video_storage_path);
+  add((assets as any).final_video_source_storage_path);
+  add(assets.png_export_path);
+
+  return paths;
+}
+
+async function cleanupOrphanedProductionStorage(
+  supabase: Awaited<ReturnType<typeof getServiceRoleClient>>,
+  previousAssets: Partial<MaterialAssets>,
+  nextAssets: Partial<MaterialAssets>,
+) {
+  const nextPaths = collectProductionStoragePaths(nextAssets);
+  const orphanedPaths = [...collectProductionStoragePaths(previousAssets)]
+    .filter((path) => !nextPaths.has(path));
+  if (orphanedPaths.length === 0) return;
+
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const { error } = await supabase.storage
+      .from("production-assets")
+      .remove(orphanedPaths);
+    if (!error) return;
+    lastError = error;
+  }
+
+  console.error("[ProductionActions] Error cleaning orphaned production assets:", lastError);
 }
 
 function sanitizeMaterialAssetMetadata(params: {
@@ -437,6 +509,11 @@ function sanitizeMaterialAssetMetadata(params: {
       incomingAssets.avatar_clips,
       sanitizedAssets.avatar_clips,
     ) as MaterialAssets["avatar_clips"];
+  }
+
+  if (slideSourceSignature(currentAssets) !== slideSourceSignature(sanitizedAssets)) {
+    delete (sanitizedAssets as any).gamma_deck_id;
+    delete (sanitizedAssets as any).png_export_path;
   }
 
   if (sourceSignature(currentAssets) !== sourceSignature(sanitizedAssets)) {
@@ -590,6 +667,34 @@ async function syncVideoToPublicationRequests(
   }
 }
 
+async function removeVideoFromPublicationRequests(
+  supabase: Awaited<ReturnType<typeof getServiceRoleClient>>,
+  artifactId: string,
+  lessonId: string,
+) {
+  const { data: existingRequest } = await supabase
+    .from("publication_requests")
+    .select("id, lesson_videos")
+    .eq("artifact_id", artifactId)
+    .maybeSingle();
+
+  if (!existingRequest?.id) return;
+
+  const currentLessonVideos =
+    (existingRequest.lesson_videos as Record<string, LessonVideoData> | null) || {};
+  if (!hasOwnProperty(currentLessonVideos, lessonId)) return;
+
+  const nextLessonVideos = { ...currentLessonVideos };
+  delete nextLessonVideos[lessonId];
+  await supabase
+    .from("publication_requests")
+    .update({
+      lesson_videos: nextLessonVideos,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", existingRequest.id);
+}
+
 export async function saveMaterialAssetsAction(
   componentId: string,
   assets: Partial<MaterialAssets>,
@@ -649,6 +754,12 @@ export async function saveMaterialAssetsAction(
   if (updateError) {
     console.error("[ProductionActions] Error saving material assets:", updateError);
     return { success: false, error: updateError.message };
+  }
+
+  await cleanupOrphanedProductionStorage(supabase, currentAssets, finalAssets);
+
+  if (artifactId && lesson?.lesson_id && currentAssets.final_video_url && !finalAssets.final_video_url) {
+    await removeVideoFromPublicationRequests(supabase, artifactId, lesson.lesson_id);
   }
 
   if (artifactId && lesson) {
@@ -1505,16 +1616,8 @@ export async function deleteFinalVideoForPublicationAction(componentId: string) 
     const lesson = firstRelation(component?.material_lessons);
     const materials = firstRelation(lesson?.materials);
     const artifactId = materials?.artifact_id || undefined;
-    const cleanedAssets = { ...((component?.assets || {}) as MaterialAssets) };
-
-    delete (cleanedAssets as any).final_video_url;
-    delete (cleanedAssets as any).final_video_source;
-    delete (cleanedAssets as any).final_video_file_name;
-    delete (cleanedAssets as any).final_video_storage_provider;
-    delete (cleanedAssets as any).final_video_storage_path;
-    delete (cleanedAssets as any).final_video_source_storage_path;
-    delete (cleanedAssets as any).final_video_url_expires_at;
-    delete (cleanedAssets as any).final_video_layout_stale;
+    const currentAssets = (component?.assets || {}) as MaterialAssets;
+    const cleanedAssets = clearFinalVideoMetadata(currentAssets);
 
     const productionStatus = resolveProductionStatus(component?.type || "", cleanedAssets);
     cleanedAssets.production_status = productionStatus;
@@ -1530,27 +1633,10 @@ export async function deleteFinalVideoForPublicationAction(componentId: string) 
       return { success: false, error: updateError.message };
     }
 
+    await cleanupOrphanedProductionStorage(supabase, currentAssets, cleanedAssets);
+
     if (artifactId && lesson?.lesson_id) {
-      const { data: existingRequest } = await supabase
-        .from("publication_requests")
-        .select("id, lesson_videos")
-        .eq("artifact_id", artifactId)
-        .maybeSingle();
-
-      if (existingRequest?.id) {
-        const currentLessonVideos =
-          (existingRequest.lesson_videos as Record<string, LessonVideoData> | null) || {};
-        const nextLessonVideos = { ...currentLessonVideos };
-        delete nextLessonVideos[lesson.lesson_id];
-
-        await supabase
-          .from("publication_requests")
-          .update({
-            lesson_videos: nextLessonVideos,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existingRequest.id);
-      }
+      await removeVideoFromPublicationRequests(supabase, artifactId, lesson.lesson_id);
 
       await markDownstreamDirtyAction(
         artifactId,

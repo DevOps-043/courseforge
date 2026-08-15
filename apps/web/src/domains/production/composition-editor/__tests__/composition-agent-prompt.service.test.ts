@@ -43,6 +43,8 @@ test("documents the allow-listed depth and ducking operations for the agent", ()
   assert.match(prompt, /audio-mix\.update/);
   assert.match(prompt, /layout\.zIndex/);
   assert.match(prompt, /track\.order no controla/);
+  assert.match(prompt, /animation\.add-preset/);
+  assert.match(prompt, /FADE_IN/);
   assert.match(prompt, new RegExp(`Clip seleccionado: ${selectedClipId}`));
 });
 

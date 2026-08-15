@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createInitialCompositionDocument } from "../composition-document.factory";
+import { buildCompositionAutoOrganizePatch } from "../composition-auto-organize.service";
+import { COMPOSITION_DOCUMENT_FORMAT, compositionEditorDocumentSchema, LEGACY_COMPOSITION_DOCUMENT_FORMAT } from "../composition-document.types";
 import {
   applyCompositionEditorPatches,
   CompositionEditorPatchError,
@@ -199,4 +201,60 @@ test("acumula ediciones sucesivas sin reiniciar propiedades previamente guardada
     y: 208,
     zIndex: 12,
   });
+});
+
+test("actualiza documentos V1 a V2 sin perder su estado existente", () => {
+  const original = baseDocument();
+  const legacy = structuredClone(original) as unknown as Record<string, unknown>;
+  legacy.format = LEGACY_COMPOSITION_DOCUMENT_FORMAT;
+  delete legacy.motion;
+  const parsed = compositionEditorDocumentSchema.parse(legacy);
+  assert.deepEqual(parsed.motion.animations, []);
+
+  const clip = parsed.clips[0]!;
+  const updated = applyCompositionEditorPatches(parsed, [{ clipId: clip.id, hidden: true, type: "clip.visibility" }]);
+  assert.equal(updated.format, COMPOSITION_DOCUMENT_FORMAT);
+  assert.equal(updated.clips.find((candidate) => candidate.id === clip.id)?.hidden, true);
+});
+
+test("añade motion sin modificar layout ni timing y lo elimina en cascada con el clip", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  const layoutBefore = structuredClone(video.layout);
+  const timingBefore = { durationSeconds: video.durationSeconds, startSeconds: video.startSeconds };
+  const animated = applyCompositionEditorPatches(document, [{
+    animationId: "motion-fade-in-test",
+    clipId: video.id,
+    durationSeconds: 0.7,
+    presetId: "FADE_IN",
+    type: "animation.add-preset",
+  }]);
+  const stored = animated.clips.find((clip) => clip.id === video.id)!;
+  assert.deepEqual(stored.layout, layoutBefore);
+  assert.deepEqual({ durationSeconds: stored.durationSeconds, startSeconds: stored.startSeconds }, timingBefore);
+  assert.equal(animated.motion.animations[0]?.target.clipId, video.id);
+
+  const removed = applyCompositionEditorPatches(animated, [{ clipId: video.id, type: "clip.remove" }]);
+  assert.equal(removed.motion.animations.length, 0);
+});
+
+test("el cálculo automático conserva layout, visibilidad y tiempos manuales", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  video.layout = { ...video.layout, x: 417, y: 208, width: 900 };
+  video.hidden = true;
+  video.startSeconds = 2;
+  video.durationSeconds = 4;
+  video.timingSource = "USER_EDITED";
+  const layoutBefore = structuredClone(video.layout);
+  const { operations } = buildCompositionAutoOrganizePatch({
+    assets: [{ durationSeconds: 8, id: "11111111-1111-4111-8111-111111111111", label: "Avatar", timelineRole: "VISUAL" }],
+    document,
+  });
+  const updated = applyCompositionEditorPatches(document, operations);
+  const stored = updated.clips.find((clip) => clip.id === video.id)!;
+  assert.deepEqual(stored.layout, layoutBefore);
+  assert.equal(stored.hidden, true);
+  assert.equal(stored.startSeconds, 2);
+  assert.equal(stored.durationSeconds, 4);
 });

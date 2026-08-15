@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useMaterials } from '../hooks/useMaterials';
 import { ProductionAssetCard } from './ProductionAssetCard';
 import {
@@ -15,7 +15,8 @@ import {
     ProductionStatus,
     StoryboardItem,
 } from '../types/materials.types';
-import { Loader2, Clapperboard, CheckCircle2, Clock, AlertCircle, Save } from 'lucide-react';
+import { Loader2, Clapperboard, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { toast } from 'sonner';
 import { usePathname, useRouter } from 'next/navigation';
 import { PRODUCTION_COMPLETION_RECHECK_DELAY_MS } from '@/shared/constants/timing';
 import { PRODUCTION_THEME } from './production-asset-ui';
@@ -32,19 +33,14 @@ interface ProductionGroup {
     components: MaterialComponent[];
 }
 
-// Track pending changes for each component
-interface PendingAssets {
-    [componentId: string]: Partial<MaterialAssets>;
-}
-
 export function VisualProductionContainer({ artifactId, assetsComplete, onStatusChange }: VisualProductionContainerProps) {
     const router = useRouter();
     const pathname = usePathname();
     const { materials, getLessonComponents, refresh } = useMaterials(artifactId);
     const [productionItems, setProductionItems] = useState<ProductionGroup[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isSavingAll, setIsSavingAll] = useState(false);
-    const [pendingAssets, setPendingAssets] = useState<PendingAssets>({});
+    const pendingAssetsRef = useRef<Record<string, Partial<MaterialAssets>>>({});
+    const saveQueuesRef = useRef<Map<string, Promise<void>>>(new Map());
 
     const adminBasePath = useMemo(() => {
         const adminIndex = pathname.indexOf('/admin');
@@ -127,55 +123,51 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
         return result.prompts || "";
     };
 
-    // Track changes from individual cards
+    // Every section persists automatically. Changes for the same component are
+    // coalesced and serialized so a fast delete -> replace sequence cannot be
+    // committed out of order.
     const handleAssetChange = useCallback((componentId: string, assets: Partial<MaterialAssets>) => {
-        setPendingAssets(prev => ({
-            ...prev,
-            [componentId]: { ...prev[componentId], ...assets }
-        }));
-    }, []);
+        pendingAssetsRef.current[componentId] = {
+            ...pendingAssetsRef.current[componentId],
+            ...assets,
+        };
 
-    const handleSaveAssets = async (componentId: string, assets: Partial<MaterialAssets>) => {
-        const result = await saveMaterialAssetsAction(componentId, assets);
-        if (!result.success) throw new Error(result.error);
-        // Clear pending for this component
-        setPendingAssets(prev => {
-            const next = { ...prev };
-            delete next[componentId];
-            return next;
-        });
-        // Refresh materials data + server component (to update stepper check)
-        await refresh();
-        router.refresh();
-    };
+        const activeQueue = saveQueuesRef.current.get(componentId);
+        if (activeQueue) return activeQueue;
 
-    // Save all pending changes
-    const handleSaveAll = async () => {
-        setIsSavingAll(true);
-        try {
-            const componentIds = Object.keys(pendingAssets);
+        const queue = (async () => {
+            let saved = false;
 
-            // Save all components in parallel
-            await Promise.all(
-                componentIds.map(componentId =>
-                    saveMaterialAssetsAction(componentId, pendingAssets[componentId])
-                )
-            );
+            while (pendingAssetsRef.current[componentId]) {
+                const nextAssets = pendingAssetsRef.current[componentId];
+                delete pendingAssetsRef.current[componentId];
 
-            // Clear all pending
-            setPendingAssets({});
-            // Refresh materials data + server component (to update stepper check)
-            await refresh();
-            router.refresh();
-        } catch (err) {
-            console.error('Error saving all:', err);
-            alert('Error al guardar algunos datos');
-        } finally {
-            setIsSavingAll(false);
-        }
-    };
+                const result = await saveMaterialAssetsAction(componentId, nextAssets);
+                if (!result.success) {
+                    pendingAssetsRef.current[componentId] = {
+                        ...nextAssets,
+                        ...pendingAssetsRef.current[componentId],
+                    };
+                    throw new Error(result.error);
+                }
+                saved = true;
+            }
 
-    const hasPendingChanges = Object.keys(pendingAssets).length > 0;
+            if (saved) {
+                void refresh().then(() => router.refresh());
+            }
+        })()
+            .catch((error) => {
+                console.error('Error auto-saving production assets:', error);
+                toast.error('No se pudo guardar automáticamente el cambio');
+            })
+            .finally(() => {
+                saveQueuesRef.current.delete(componentId);
+            });
+
+        saveQueuesRef.current.set(componentId, queue);
+        return queue;
+    }, [refresh, router]);
 
     // Calculate global production progress
     const progressStats = useMemo(() => {
@@ -293,41 +285,6 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
                         <div className="h-6 w-px bg-gray-300 dark:bg-[#6C757D]/30" />
                         <span className={`font-bold ${PRODUCTION_THEME.primaryText}`}>{progressStats.percentage}%</span>
                     </div>
-                    <div className="flex gap-2">
-                        {/* Partial Production Button */}
-                        {progressStats.percentage > 0 && progressStats.percentage < 100 && !assetsComplete && (
-                            <button
-                                onClick={async () => {
-                                    if(confirm('¿Estás seguro de marcar la producción como completa aunque falten videos? Esto te permitirá avanzar a la publicación parcial.')) {
-                                        const result = await updateArtifactAssetsCompleteAction(artifactId, true);
-                                        if (result.success) {
-                                            if (onStatusChange) onStatusChange(true);
-                                            router.refresh();
-                                        }
-                                    }
-                                }}
-                                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all bg-[#00D4B3]/10 hover:bg-[#00D4B3]/20 text-[#00D4B3] border border-[#00D4B3]/20"
-                            >
-                                Completar Parcial
-                            </button>
-                        )}
-                        {/* Save All Button */}
-                        <button
-                            onClick={handleSaveAll}
-                            disabled={isSavingAll || !hasPendingChanges}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${hasPendingChanges
-                                ? 'bg-[#1F5AF6] hover:bg-[#1a4bd6] text-white shadow-lg shadow-[#1F5AF6]/20'
-                                : 'bg-gray-100 text-gray-500 border border-gray-300 cursor-not-allowed dark:bg-[#0F1419] dark:text-[#6C757D] dark:border-[#6C757D]/20'
-                                }`}
-                        >
-                            {isSavingAll ? (
-                                <Loader2 className="animate-spin" size={16} />
-                            ) : (
-                                <Save size={16} />
-                            )}
-                            Guardar Todo
-                        </button>
-                    </div>
                 </div>
 
                 {/* Progress Bar */}
@@ -367,7 +324,6 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
                                     component={component}
                                     lessonTitle={group.lesson.lesson_title}
                                     onGeneratePrompts={handleGeneratePrompts}
-                                    onSaveAssets={handleSaveAssets}
                                     onAssetChange={handleAssetChange}
                                     slideTemplatesHref={slideTemplatesHref}
                                     slideTemplateStudioHref={slideTemplateStudioHref}

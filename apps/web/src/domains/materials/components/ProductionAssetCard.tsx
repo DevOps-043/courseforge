@@ -40,15 +40,11 @@ interface ProductionAssetCardProps {
   onAssetChange?: (
     componentId: string,
     assets: Partial<MaterialAssets>,
-  ) => void;
+  ) => Promise<void> | void;
   onGeneratePrompts: (
     componentId: string,
     storyboard: StoryboardItem[],
   ) => Promise<string>;
-  onSaveAssets: (
-    componentId: string,
-    assets: Partial<MaterialAssets>,
-  ) => Promise<void>;
   slideTemplatesHref?: string;
   slideTemplateStudioHref?: string;
   sofliaSlidesHref?: string;
@@ -91,7 +87,6 @@ export function ProductionAssetCard({
   lessonTitle,
   onAssetChange,
   onGeneratePrompts,
-  onSaveAssets,
   slideTemplatesHref = "/admin/templates",
   slideTemplateStudioHref = "/admin/slides/templates",
   sofliaSlidesHref,
@@ -101,9 +96,7 @@ export function ProductionAssetCard({
     copyToClipboard,
     finalVideoUrl,
     handleGeneratePrompts,
-    handleSave,
     isGenerating,
-    isSaving,
     screencastUrl,
     setBRollPrompts,
     setShowPreview,
@@ -195,7 +188,6 @@ export function ProductionAssetCard({
     component,
     onAssetChange,
     onGeneratePrompts,
-    onSaveAssets,
   });
 
   const productionStatus =
@@ -258,7 +250,6 @@ export function ProductionAssetCard({
         componentType={component.type}
         lessonTitle={lessonTitle}
         productionStatus={productionStatus}
-        isSaving={isSaving}
         needsFinalVideo={needsFinalVideo}
         needsScreencast={needsScreencast}
         needsSlides={needsSlides}
@@ -271,7 +262,6 @@ export function ProductionAssetCard({
         backgroundMusic={backgroundMusic}
         bRollClips={bRollClips}
         avatarVideo={avatarVideo}
-        onSave={handleSave}
       />
 
       <div className={`grid grid-cols-1 gap-6 p-6 ${hideStoryboard ? "" : "md:grid-cols-2"}`}>

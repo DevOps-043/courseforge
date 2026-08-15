@@ -10,6 +10,7 @@ import {
   buildCompositionAgentContext,
   buildCompositionProposalPrompt,
 } from "./composition-agent-prompt.service";
+import { COMPOSITION_MOTION_ENABLED, isCompositionMotionOperation } from "./composition-motion.config";
 
 export class CompositionAgentProposalError extends Error {
   constructor(message: string, readonly status = 400) {
@@ -62,8 +63,11 @@ export async function proposeCompositionEdits(params: {
       ? await requestGeminiProposal({ apiKey, model: settings.agentModel, prompt, temperature: settings.temperature })
       : await requestOpenAiProposal({ apiKey, model: settings.agentModel, prompt, temperature: settings.temperature })));
     const proposal = compositionEditorPatchRequestSchema.parse({ ...raw, source: "AGENT" });
+    if (!COMPOSITION_MOTION_ENABLED && proposal.operations.some((operation) => isCompositionMotionOperation(operation.type))) {
+      throw new CompositionAgentProposalError("La edición de animaciones está deshabilitada temporalmente.", 409);
+    }
     // Apply once on the server now, so an invalid proposal cannot reach the approval UI.
-    applyCompositionEditorPatches(params.document, proposal.operations);
+    applyCompositionEditorPatches(params.document, proposal.operations, "AGENT");
     return { ...proposal, model: settings.agentModel };
   } catch (error) {
     if (error instanceof CompositionAgentProposalError || error instanceof z.ZodError) throw error;

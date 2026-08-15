@@ -192,3 +192,27 @@ test("compiles the same seek-safe music ducking envelope for preview and render"
   }
   assert.match(previewHtml, /media\.dataset\.volumeAutomated !== "true"/);
 });
+
+test("compiles motion on an inner subject without replacing the editable layout", async () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: { css: "", fonts: [], height: 1080, width: 1920, slides: [{ animationCount: 0, classes: "slide", html: "<h1>Motion</h1>", index: 0, label: "Motion" }] },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 5, subtitle: "Prueba", title: "Motion" },
+  });
+  const clip = document.clips[0]!;
+  document.motion.animations.push({
+    id: "motion-fade-in-preview",
+    keyframes: [{ offset: 0, values: { opacity: 0 } }, { ease: "power2.out", offset: 1, values: { opacity: 1 } }],
+    origin: "PRESET",
+    preset: { id: "FADE_IN", version: 1 },
+    propertyGroup: "OPACITY",
+    target: { clipId: clip.id, part: "CONTENT" },
+    timing: { anchor: "CLIP_START", durationSeconds: 0.7, offsetSeconds: 0 },
+  });
+  const html = await compileCompositionPreview({ assetUrls: new Map(), document });
+  assert.match(html, new RegExp(`id="${clip.id}" data-hf-id="${clip.hfId}"`));
+  assert.match(html, new RegExp(`id="${clip.id}-motion" class="motion-subject deck-content"`));
+  assert.match(html, /const motionAnimations =/);
+  assert.match(html, /timeline\.set\(target, first\.values, animation\.start\)/);
+  assert.match(html, /timeline\.to\(target/);
+});

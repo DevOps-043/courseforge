@@ -303,9 +303,11 @@ export default function ArtifactClientView({
   // Progresión lineal estricta: cada paso requiere que su predecesor esté done
   const canAccessSourcesStep = planDone;
   const canAccessMaterialsStep = curationDone;
+  // Production, assembly and publication are parallel workspaces once
+  // materials are approved. Completion in one must not gate access to another.
   const canAccessProductionStep = materialsDone;
-  const canAccessPostproductionStep = productionDone;
-  const canAccessPublicationStep = postproductionDone;
+  const canAccessPostproductionStep = materialsDone;
+  const canAccessPublicationStep = materialsDone;
   const isAssemblyStudio = currentStep === 7;
 
   return (

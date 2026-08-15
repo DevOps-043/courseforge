@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
   CheckCircle2,
@@ -69,6 +69,8 @@ export function StandaloneAssemblyStudio() {
   const [newTitle, setNewTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [assemblyVersion, setAssemblyVersion] = useState(0);
+  const pendingAssetsRef = useRef<Record<string, Partial<MaterialAssets>>>({});
+  const saveQueuesRef = useRef<Map<string, Promise<void>>>(new Map());
 
   const selectedProjectId = selectedProject?.id || null;
 
@@ -184,18 +186,53 @@ export function StandaloneAssemblyStudio() {
     componentId: string,
     assets: Partial<MaterialAssets>,
   ) => {
-    const projectId = componentView?.project.id;
-    const result = await saveMaterialAssetsAction(componentId, assets);
-    if (!result.success) {
-      throw new Error(result.error || "No se pudieron guardar assets.");
-    }
+    pendingAssetsRef.current[componentId] = {
+      ...pendingAssetsRef.current[componentId],
+      ...assets,
+    };
 
-    if (projectId) {
-      await syncStandaloneAssemblyProjectAction(projectId);
-      await loadSelectedProject(projectId);
-      await loadProjects(query, projectId);
-    }
-    setAssemblyVersion((value) => value + 1);
+    const activeQueue = saveQueuesRef.current.get(componentId);
+    if (activeQueue) return activeQueue;
+
+    const projectId = componentView?.project.id;
+    const queue = (async () => {
+      while (true) {
+        let saved = false;
+        while (pendingAssetsRef.current[componentId]) {
+          const nextAssets = pendingAssetsRef.current[componentId];
+          delete pendingAssetsRef.current[componentId];
+
+          const result = await saveMaterialAssetsAction(componentId, nextAssets);
+          if (!result.success) {
+            pendingAssetsRef.current[componentId] = {
+              ...nextAssets,
+              ...pendingAssetsRef.current[componentId],
+            };
+            throw new Error(result.error || "No se pudieron guardar assets.");
+          }
+          saved = true;
+        }
+
+        if (projectId && saved) {
+          await syncStandaloneAssemblyProjectAction(projectId);
+          await loadSelectedProject(projectId);
+          await loadProjects(query, projectId);
+        }
+
+        if (!pendingAssetsRef.current[componentId]) break;
+      }
+      setAssemblyVersion((value) => value + 1);
+    })()
+      .catch((saveError) => {
+        console.error("Error auto-saving standalone production assets:", saveError);
+        setError(saveError instanceof Error ? saveError.message : "No se pudieron guardar assets.");
+      })
+      .finally(() => {
+        saveQueuesRef.current.delete(componentId);
+      });
+
+    saveQueuesRef.current.set(componentId, queue);
+    return queue;
   };
 
   return (
@@ -375,7 +412,7 @@ export function StandaloneAssemblyStudio() {
                 hideStoryboard
                 lessonTitle={componentView.lessonTitle}
                 onGeneratePrompts={handleGeneratePrompts}
-                onSaveAssets={handleSaveAssets}
+                onAssetChange={handleSaveAssets}
                 slideTemplatesHref={`${adminBasePath}/templates`}
                 slideTemplateStudioHref={`${adminBasePath}/slides/templates`}
                 sofliaSlidesHref={sofliaSlidesHref}

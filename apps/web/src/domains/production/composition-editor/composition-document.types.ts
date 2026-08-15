@@ -1,8 +1,11 @@
 import { z } from "zod";
+import { COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS } from "./composition-document.types.constants";
+import { compositionMotionSchema } from "./composition-motion.types";
 
-export const COMPOSITION_DOCUMENT_FORMAT = "courseforge-composition-v1";
+export const LEGACY_COMPOSITION_DOCUMENT_FORMAT = "courseforge-composition-v1";
+export const COMPOSITION_DOCUMENT_FORMAT = "courseforge-composition-v2";
 /** Supports full source media such as a 2–3 minute avatar without truncating it. */
-export const COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS = 600;
+export { COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS } from "./composition-document.types.constants";
 export const COMPOSITION_DURATION_SOURCES = [
   "voice",
   "avatar_full",
@@ -125,7 +128,8 @@ export const compositionEditorDocumentSchema = z.object({
   }).strict(),
   clips: z.array(compositionClipSchema).min(1).max(500),
   deckStyles: deckStylesSchema.nullable(),
-  format: z.literal(COMPOSITION_DOCUMENT_FORMAT),
+  format: z.enum([LEGACY_COMPOSITION_DOCUMENT_FORMAT, COMPOSITION_DOCUMENT_FORMAT]),
+  motion: compositionMotionSchema,
   tracks: z.array(compositionTrackSchema).min(1).max(32),
   variables: z.object({
     accent: z.string().regex(/^#[0-9a-f]{6}$/i),
@@ -145,6 +149,31 @@ export const compositionEditorDocumentSchema = z.object({
     if (hfIds.has(clip.hfId)) context.addIssue({ code: "custom", message: `El id visual ${clip.hfId} está duplicado.` });
     clipIds.add(clip.id);
     hfIds.add(clip.hfId);
+  }
+  const animationIds = new Set<string>();
+  const animationsByTargetAndGroup = new Map<string, Array<{ end: number; id: string; start: number }>>();
+  for (const animation of document.motion.animations) {
+    if (animationIds.has(animation.id)) context.addIssue({ code: "custom", message: `El id de animación ${animation.id} está duplicado.` });
+    animationIds.add(animation.id);
+    const clip = document.clips.find((candidate) => candidate.id === animation.target.clipId);
+    if (!clip) {
+      context.addIssue({ code: "custom", message: `La animación ${animation.id} apunta a un clip inexistente.` });
+      continue;
+    }
+    const relativeStart = animation.timing.anchor === "CLIP_START"
+      ? animation.timing.offsetSeconds
+      : clip.durationSeconds - animation.timing.offsetSeconds - animation.timing.durationSeconds;
+    const relativeEnd = relativeStart + animation.timing.durationSeconds;
+    if (relativeStart < -0.001 || relativeEnd > clip.durationSeconds + 0.001) {
+      context.addIssue({ code: "custom", message: `La animación ${animation.id} excede la duración de ${clip.label}.` });
+    }
+    const groupKey = `${clip.id}:${animation.propertyGroup}`;
+    const siblings = animationsByTargetAndGroup.get(groupKey) || [];
+    if (siblings.some((sibling) => relativeStart < sibling.end - 0.001 && relativeEnd > sibling.start + 0.001)) {
+      context.addIssue({ code: "custom", message: `La animación ${animation.id} se solapa con otra del mismo grupo de propiedades.` });
+    }
+    siblings.push({ end: relativeEnd, id: animation.id, start: relativeStart });
+    animationsByTargetAndGroup.set(groupKey, siblings);
   }
 });
 

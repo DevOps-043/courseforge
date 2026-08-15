@@ -33,15 +33,11 @@ interface UseProductionAssetStateParams {
   onAssetChange?: (
     componentId: string,
     assets: Partial<MaterialAssets>,
-  ) => void;
+  ) => Promise<void> | void;
   onGeneratePrompts: (
     componentId: string,
     storyboard: StoryboardItem[],
   ) => Promise<string>;
-  onSaveAssets: (
-    componentId: string,
-    assets: Partial<MaterialAssets>,
-  ) => Promise<void>;
 }
 
 function isValidHttpUrl(url: string) {
@@ -203,16 +199,15 @@ export function useProductionAssetState({
   component,
   onAssetChange,
   onGeneratePrompts,
-  onSaveAssets,
 }: UseProductionAssetStateParams) {
   // Legacy states (kept for compatibility and fallback)
   const [bRollPrompts, setBRollPrompts] = useState(component.assets?.b_roll_prompts || "");
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
-  const [finalVideoSource, setFinalVideoSource] = useState<"upload" | "link" | "desktop_worker" | null>(
+  const [finalVideoSource, setFinalVideoSource] = useState<
+    "upload" | "link" | "desktop_worker" | "hyperframes_cloud" | null
+  >(
     component.assets?.final_video_source || (component.assets?.final_video_url ? "link" : null)
   );
-  const [finalVideoFileName, setFinalVideoFileName] = useState(component.assets?.final_video_file_name || "");
-  const [finalVideoStoragePath, setFinalVideoStoragePath] = useState(component.assets?.final_video_storage_path || "");
   const [finalVideoUrl, setFinalVideoUrl] = useState(component.assets?.final_video_url || "");
   const [screencastUrl, setScreencastUrl] = useState(component.assets?.screencast_url || "");
   const [slidesUrl, setSlidesUrl] = useState(component.assets?.slides_url || "");
@@ -245,7 +240,6 @@ export function useProductionAssetState({
 
   // Loader states
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isUploadingVoice, setIsUploadingVoice] = useState(false);
   const [isUploadingMusic, setIsUploadingMusic] = useState(false);
@@ -426,7 +420,7 @@ export function useProductionAssetState({
 
     setIsUploadingVoice(true);
     try {
-      const fileName = `voices/${component.id}-voice.${file.name.split('.').pop()}`;
+      const fileName = `voices/${component.id}-voice-${Date.now()}.${file.name.split('.').pop()}`;
       const { publicUrl, path } = await uploadWithSignedUrl('production-assets', fileName, file, {
         componentId: component.id,
       });
@@ -471,7 +465,7 @@ export function useProductionAssetState({
 
     setIsUploadingMusic(true);
     try {
-      const fileName = `music/${component.id}-bg.${file.name.split('.').pop()}`;
+      const fileName = `music/${component.id}-bg-${Date.now()}.${file.name.split('.').pop()}`;
       const { publicUrl, path } = await uploadWithSignedUrl('production-assets', fileName, file, {
         componentId: component.id,
       });
@@ -687,6 +681,7 @@ export function useProductionAssetState({
       const uploadedImages: NonNullable<SlidesAsset["images"]> = [];
       let referenceUrl = "";
       let referencePath = "";
+      const uploadVersion = Date.now();
 
       for (const [index, file] of files.entries()) {
         const extension = file.name.split(".").pop()?.toLowerCase() || "bin";
@@ -697,8 +692,8 @@ export function useProductionAssetState({
           .replace(/^-|-$/g, "")
           .slice(0, 40) || `slide-${index + 1}`;
         const fileName = isRenderableSlideImage(file)
-          ? `slides/${component.id}-slide-${String(index + 1).padStart(2, "0")}-${safeName}.${extension}`
-          : `slides/${component.id}-slides-source.${extension}`;
+          ? `slides/${component.id}-${uploadVersion}-slide-${String(index + 1).padStart(2, "0")}-${safeName}.${extension}`
+          : `slides/${component.id}-${uploadVersion}-slides-source.${extension}`;
         const { publicUrl, path } = await uploadWithSignedUrl('production-assets', fileName, file, {
           componentId: component.id,
         });
@@ -724,10 +719,9 @@ export function useProductionAssetState({
       if (uploadedImages.length === 0) {
         const hasHtmlSource = files.some(isHtmlSlideFile);
         const refSlides: SlidesAsset = {
-          ...slidesAsset,
           html_public_url: referenceUrl,
           html_content_path: referencePath,
-          images: slidesAsset?.images || [],
+          images: [],
         };
         setSlidesAsset(refSlides);
         setSlidesUrl(referenceUrl);
@@ -751,7 +745,6 @@ export function useProductionAssetState({
       }
 
       const newSlides: SlidesAsset = {
-        ...slidesAsset,
         images: uploadedImages,
       };
       setSlidesAsset(newSlides);
@@ -839,16 +832,13 @@ export function useProductionAssetState({
   };
 
   const clearAvatarVideo = () => {
-    if (avatarGenerationMode === "scene_clips") {
-      setAvatarClips([]);
-      onAssetChange?.(component.id, { avatar_clips: [] });
-      toast.info("Clips de avatar removidos");
-      return;
-    }
-
     setAvatarVideo(null);
-    onAssetChange?.(component.id, { avatar_video: null as any });
-    toast.info("Video de avatar removido");
+    setAvatarClips([]);
+    onAssetChange?.(component.id, {
+      avatar_clips: [],
+      avatar_video: null as any,
+    });
+    toast.info("Videos de avatar removidos");
   };
 
   const removeAvatarClip = (clipId: string) => {
@@ -860,6 +850,9 @@ export function useProductionAssetState({
           file_name: undefined,
           job_id: undefined,
           public_url: undefined,
+          duration: undefined,
+          provider: undefined,
+          source_hash: undefined,
           status: "DRAFT" as const,
           storage_path: undefined,
         }
@@ -883,7 +876,7 @@ export function useProductionAssetState({
 
     setIsUploadingAvatar(true);
     try {
-      const fileName = `avatars/${component.id}-avatar.${file.name.split('.').pop()}`;
+      const fileName = `avatars/${component.id}-avatar-${Date.now()}.${file.name.split('.').pop()}`;
       const { publicUrl, path } = await uploadWithSignedUrl('production-assets', fileName, file, {
         componentId: component.id,
       });
@@ -915,16 +908,14 @@ export function useProductionAssetState({
       // clips are managed in the avatar module; inheriting its previous mode
       // here silently classified complete uploads as fragments.
       setAvatarGenerationMode("single_video");
+      setAvatarClips([]);
       setAvatarVideo(newAvatar);
       const avatarUpdate: Partial<MaterialAssets> = {
         avatar_generation_mode: "single_video",
+        avatar_clips: [],
         avatar_video: newAvatar,
       };
-      onAssetChange?.(component.id, avatarUpdate);
-      // HeyGen clips are persisted by their provider flow. Manual full-video
-      // uploads must do the same so the editor, which reads the database rather
-      // than this component's pending state, can synchronize them immediately.
-      await onSaveAssets(component.id, avatarUpdate);
+      await onAssetChange?.(component.id, avatarUpdate);
       toast.success('Video completo de avatar subido');
     } catch (err: any) {
       toast.error(`Error al subir avatar: ${err.message}`);
@@ -1024,8 +1015,10 @@ export function useProductionAssetState({
             setHeygenSyncProgress(100);
             setAvatarVideo(newAvatar);
             setAvatarGenerationMode("single_video");
+            setAvatarClips([]);
             onAssetChange?.(component.id, {
               avatar_generation_mode: "single_video",
+              avatar_clips: [],
               avatar_video: newAvatar,
             });
             setIsSyncingHeygen(false);
@@ -1120,8 +1113,6 @@ export function useProductionAssetState({
 
       setFinalVideoUrl(publicUrl);
       setFinalVideoSource("upload");
-      setFinalVideoFileName(file.name);
-      setFinalVideoStoragePath(`production-assets/${path}`);
       onAssetChange?.(component.id, {
         final_video_file_name: file.name,
         final_video_source: "upload",
@@ -1141,41 +1132,6 @@ export function useProductionAssetState({
     }
   };
 
-  // General save action that submits all structured data to backend
-  const handleSave = async () => {
-    setIsSaving(true);
-
-    try {
-      const assets: Partial<MaterialAssets> = {
-        // Legacy compatibility
-        slides_url: slidesUrl || undefined,
-        video_url: videoUrl || undefined,
-        screencast_url: screencastUrl || undefined,
-        b_roll_prompts: bRollPrompts || undefined,
-        final_video_url: finalVideoUrl || undefined,
-        final_video_source: finalVideoSource || undefined,
-        final_video_file_name: finalVideoFileName || undefined,
-        final_video_storage_path: finalVideoStoragePath || undefined,
-
-        // Structured assets
-        voice_audio: voiceAudio || null as any,
-        background_music: backgroundMusic || null as any,
-        b_roll_clips: bRollClips.length > 0 ? bRollClips : null as any,
-        avatar_generation_mode: avatarGenerationMode,
-        avatar_clips: avatarClips.length > 0 ? avatarClips : null as any,
-        avatar_video: avatarVideo || null as any,
-        slides: slidesAsset || null as any,
-      };
-
-      await onSaveAssets(component.id, assets);
-      toast.success("Assets guardados correctamente");
-    } catch (error) {
-      console.error(error);
-      toast.error("Error al guardar los assets");
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   // Artlist Catalog search
   const searchArtlist = async (query: string, type: "music" | "video") => {
@@ -1376,10 +1332,8 @@ export function useProductionAssetState({
     finalVideoSource,
     finalVideoUrl,
     handleGeneratePrompts,
-    handleSave,
     handleVideoUpload,
     isGenerating,
-    isSaving,
     isUploading,
     openInGamma,
     screencastUrl,
