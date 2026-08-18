@@ -23,25 +23,17 @@ export function normalizeCompositionDocumentHash(value: unknown): string | null 
   return DOCUMENT_HASH_PATTERN.test(normalizedHash) ? normalizedHash : null;
 }
 
-export function resolveCompositionDocumentVersion(params: {
-  bodyDocumentHash: unknown;
-  responseEtag: string | null;
-}): string {
-  const bodyDocumentHash = normalizeCompositionDocumentHash(params.bodyDocumentHash);
-  if (!bodyDocumentHash) {
+/**
+ * The JSON representation is the client-facing concurrency contract. CDNs may
+ * generate, normalize, or remove HTTP ETags for dynamic responses, so a
+ * response ETag must never prevent the editor from using its persisted hash.
+ */
+export function resolveCompositionDocumentVersion(bodyDocumentHash: unknown): string {
+  const normalizedDocumentHash = normalizeCompositionDocumentHash(bodyDocumentHash);
+  if (!normalizedDocumentHash) {
     throw new Error("La respuesta del documento no incluyó una versión válida. Recarga el editor.");
   }
-
-  // Netlify/Next deployment paths can omit ETag from a dynamic response. The
-  // authenticated, no-store JSON representation is therefore the transport
-  // fallback; a received ETag remains an integrity cross-check, never a
-  // prerequisite for opening an existing document.
-  if (!params.responseEtag) return bodyDocumentHash;
-  const responseEtag = parseCompositionDocumentEtag(params.responseEtag);
-  if (!responseEtag || bodyDocumentHash !== responseEtag) {
-    throw new Error("La respuesta del documento incluyó versiones inconsistentes. Recarga el editor.");
-  }
-  return bodyDocumentHash;
+  return normalizedDocumentHash;
 }
 
 /** Produces a safe diagnostic value without persisting a whole content hash. */

@@ -129,10 +129,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "No se pudo cargar la composición.");
       const nextPayload = body.data as DocumentPayload;
-      nextPayload.documentHash = resolveCompositionDocumentVersion({
-        bodyDocumentHash: nextPayload.documentHash,
-        responseEtag: response.headers.get("etag"),
-      });
+      nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
       setSeconds(0);
@@ -338,10 +335,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       }
       if (!response.ok) throw new Error(body.error || "No se pudo guardar el cambio.");
       const nextPayload = body.data as DocumentPayload;
-      nextPayload.documentHash = resolveCompositionDocumentVersion({
-        bodyDocumentHash: nextPayload.documentHash,
-        responseEtag: response.headers.get("etag"),
-      });
+      nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
       if (source === "USER") setLastAppliedAgentProposal(null);
@@ -576,10 +570,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "No se pudo aplicar la propuesta.");
       const nextPayload = body.data as DocumentPayload;
-      nextPayload.documentHash = resolveCompositionDocumentVersion({
-        bodyDocumentHash: nextPayload.documentHash,
-        responseEtag: response.headers.get("etag"),
-      });
+      nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
       setLastAppliedAgentProposal(proposal);
@@ -635,10 +626,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "No se pudo deshacer la edición.");
       const nextPayload = body.data as DocumentPayload;
-      nextPayload.documentHash = resolveCompositionDocumentVersion({
-        bodyDocumentHash: nextPayload.documentHash,
-        responseEtag: response.headers.get("etag"),
-      });
+      nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
       setLastAppliedAgentProposal(null);

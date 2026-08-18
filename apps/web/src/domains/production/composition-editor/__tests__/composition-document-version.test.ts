@@ -13,16 +13,16 @@ test("uses a strong quoted ETag for the document concurrency token", () => {
   assert.equal(parseCompositionDocumentEtag(`"${DOCUMENT_HASH.toUpperCase()}"`), DOCUMENT_HASH);
 });
 
-test("rejects weak, unquoted, and inconsistent ETags when one is returned", () => {
+test("parses only a strong quoted ETag when an HTTP client needs one", () => {
   assert.equal(parseCompositionDocumentEtag(`W/"${DOCUMENT_HASH}"`), null);
   assert.equal(parseCompositionDocumentEtag(DOCUMENT_HASH), null);
-  assert.throws(() => resolveCompositionDocumentVersion({ bodyDocumentHash: DOCUMENT_HASH, responseEtag: `"${"b".repeat(64)}"` }));
 });
 
-test("uses the authenticated document hash when a dynamic response omits ETag", () => {
-  assert.equal(resolveCompositionDocumentVersion({ bodyDocumentHash: DOCUMENT_HASH, responseEtag: null }), DOCUMENT_HASH);
+test("uses the persisted document hash regardless of CDN-managed response ETag", () => {
+  assert.equal(resolveCompositionDocumentVersion(DOCUMENT_HASH), DOCUMENT_HASH);
 });
 
-test("accepts a consistent version returned by the document endpoint", () => {
-  assert.equal(resolveCompositionDocumentVersion({ bodyDocumentHash: DOCUMENT_HASH, responseEtag: `"${DOCUMENT_HASH}"` }), DOCUMENT_HASH);
+test("rejects a missing or malformed persisted document hash", () => {
+  assert.throws(() => resolveCompositionDocumentVersion(null));
+  assert.throws(() => resolveCompositionDocumentVersion("not-a-hash"));
 });
