@@ -7,6 +7,9 @@ describe("HyperFrames final-video import", () => {
     assert.doesNotThrow(() => {
       assertSafeHyperframesVideoUrl("https://cdn.heygen.com/renders/final.mp4");
     });
+    assert.doesNotThrow(() => {
+      assertSafeHyperframesVideoUrl("https://heygen-product.s3.amazonaws.com/renders/final.mp4");
+    });
     assert.throws(
       () => assertSafeHyperframesVideoUrl("https://cdn.heygen.com.evil.example/final.mp4"),
       /host permitido/i,
@@ -14,6 +17,10 @@ describe("HyperFrames final-video import", () => {
     assert.throws(
       () => assertSafeHyperframesVideoUrl("http://cdn.heygen.com/final.mp4"),
       /HTTPS/i,
+    );
+    assert.throws(
+      () => assertSafeHyperframesVideoUrl("https://untrusted-bucket.s3.amazonaws.com/final.mp4"),
+      /host permitido/i,
     );
   });
 });

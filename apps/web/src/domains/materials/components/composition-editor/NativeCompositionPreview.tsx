@@ -70,16 +70,18 @@ interface NativeCompositionPreviewProps {
   compositionId: string;
   draftId: string;
   lessons: CompositionStudioLesson[];
+  onVideoCompleted?: () => void;
   onSelectLesson: (lessonId: string) => void;
   selectedLessonId: string | null;
 }
 
 /** The native assembly studio: library, full preview, timeline and contextual inspector. */
-export function NativeCompositionPreview({ assistantRequestKey = 0, assets, compositionId, draftId, lessons, onSelectLesson, selectedLessonId }: NativeCompositionPreviewProps) {
+export function NativeCompositionPreview({ assistantRequestKey = 0, assets, compositionId, draftId, lessons, onSelectLesson, onVideoCompleted, selectedLessonId }: NativeCompositionPreviewProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const previewShellRef = useRef<HTMLDivElement | null>(null);
   const payloadRef = useRef<DocumentPayload | null>(null);
   const saveInFlightRef = useRef(false);
+  const renderPollInFlightRef = useRef(false);
   const mediaRecoveryHashRef = useRef<string | null>(null);
   const playheadSecondsRef = useRef(0);
   const pendingPreviewRestoreSecondsRef = useRef<number | null>(null);
@@ -100,6 +102,8 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const [assemblyError, setAssemblyError] = useState<string | null>(null);
   const [assembling, setAssembling] = useState(false);
   const [renderStatus, setRenderStatus] = useState<"idle" | "validating" | "sending" | "rendering" | "completed" | "failed">("idle");
+  const [renderRequestId, setRenderRequestId] = useState<string | null>(null);
+  const [renderProviderStatus, setRenderProviderStatus] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [selectedHfId, setSelectedHfId] = useState<string | null>(null);
   const [manualInspectorOpen, setManualInspectorOpen] = useState(false);
@@ -646,9 +650,55 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     catch (caught) { setAssemblyError(caught instanceof Error ? caught.message : "No se pudo aprobar el ensamble."); }
     finally { setAssembling(false); }
   }
+  const pollAssemblyRender = useCallback(async (requestId: string) => {
+    if (renderPollInFlightRef.current) return;
+    renderPollInFlightRef.current = true;
+    try {
+      const response = await fetch(`/api/production/hyperframes/renders/${requestId}/poll`, { method: "POST" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "No se pudo consultar el render.");
+
+      setRenderProviderStatus(body.data.providerStatus as string);
+      if (body.data.action === "COMPLETE") {
+        setRenderStatus("completed");
+        setAssemblyError(null);
+        onVideoCompleted?.();
+      } else if (body.data.action === "FAIL") {
+        setRenderStatus("failed");
+        setAssemblyError("HeyGen reportó que el render falló. Regenera el snapshot antes de reintentar.");
+      } else {
+        setRenderStatus("rendering");
+        setAssemblyError(null);
+      }
+    } catch (caught) {
+      // A transient polling failure must not turn a running provider job into a
+      // failed render. Keep polling and expose the recoverable status to the user.
+      setAssemblyError(`${caught instanceof Error ? caught.message : "No se pudo consultar el render."} Se volverá a intentar automáticamente.`);
+    } finally {
+      renderPollInFlightRef.current = false;
+    }
+  }, [onVideoCompleted]);
+
+  useEffect(() => {
+    if (!renderRequestId || renderStatus !== "rendering") return;
+    const timer = window.setInterval(() => {
+      void pollAssemblyRender(renderRequestId);
+    }, 10_000);
+    return () => window.clearInterval(timer);
+  }, [pollAssemblyRender, renderRequestId, renderStatus]);
+
   async function submitAssemblyRender() {
     if (!assembly || assembly.status !== "READY_FOR_RENDER") return; setAssembling(true); setAssemblyError(null); setRenderStatus("sending");
-    try { const response = await fetch("/api/production/hyperframes/renders", { body: JSON.stringify({ aspectRatio: "16:9", format: "mp4", quality: "high", resolution: "1080p", revisionId: assembly.revisionId }), headers: { "Content-Type": "application/json" }, method: "POST" }); const body = await response.json(); if (!response.ok) throw new Error(body.error || "No se pudo enviar el render."); setRenderStatus("rendering"); }
+    try {
+      const response = await fetch("/api/production/hyperframes/renders", { body: JSON.stringify({ aspectRatio: "16:9", format: "mp4", quality: "high", resolution: "1080p", revisionId: assembly.revisionId }), headers: { "Content-Type": "application/json" }, method: "POST" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "No se pudo enviar el render.");
+      const requestId = body.data.renderRequestId as string;
+      setRenderRequestId(requestId);
+      setRenderProviderStatus(body.data.providerStatus as string);
+      setRenderStatus("rendering");
+      void pollAssemblyRender(requestId);
+    }
     catch (caught) { setAssemblyError(caught instanceof Error ? caught.message : "No se pudo enviar el render."); setRenderStatus("failed"); }
     finally { setAssembling(false); }
   }
@@ -733,7 +783,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Recortó el inicio de ${clip.label} desde la timeline.`)} />
           {estimatedClipCount > 0 && <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
           {saveError && <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800 dark:bg-red-500/10 dark:text-red-100"><span>{saveError}</span>{failedSave && <button type="button" disabled={saving} onClick={() => void savePatch(failedSave.operations, failedSave.summary, failedSave.source)} className="rounded border border-current px-2 py-1 font-bold disabled:opacity-50">Reintentar</button>}</div>}
-          <AssemblyActions assembly={assembly} busy={assembling} error={assemblyError} renderStatus={renderStatus} onApprove={approveAssembly} onPrepare={prepareAssembly} onRender={submitAssemblyRender} />
+          <AssemblyActions assembly={assembly} busy={assembling} error={assemblyError} providerStatus={renderProviderStatus} renderStatus={renderStatus} onApprove={approveAssembly} onPrepare={prepareAssembly} onRender={submitAssemblyRender} />
         </section>
 
         {inspectorOpen && <aside className="min-w-0 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-[#1E2329] lg:col-start-3 lg:row-span-2 lg:row-start-1">
@@ -818,9 +868,16 @@ function AgentConversation({ lastAppliedProposal, onApprove, onDismiss, onPropos
   </section>;
 }
 
-function AssemblyActions({ assembly, busy, error, onApprove, onPrepare, onRender, renderStatus }: { assembly: { revisionId: string; status: "READY_FOR_PREVIEW" | "READY_FOR_RENDER" } | null; busy: boolean; error: string | null; onApprove: () => void; onPrepare: () => void; onRender: () => void; renderStatus: "idle" | "validating" | "sending" | "rendering" | "completed" | "failed" }) {
-  const label = renderStatus === "validating" ? "Validando snapshot…" : renderStatus === "sending" ? "Enviando render…" : renderStatus === "rendering" ? "Renderizando" : "";
-  return <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3 dark:border-cyan-400/20 dark:bg-cyan-400/10"><div className="text-xs text-cyan-950 dark:text-cyan-100"><p className="font-bold">Ensamble del video</p><p className="mt-0.5">{assembly ? assembly.status === "READY_FOR_RENDER" ? "Snapshot aprobado. Puedes enviar el render." : "Snapshot listo. Revísalo y apruébalo para renderizar." : "Congela la versión guardada antes de enviar un render."}</p>{label && <p className="mt-1 font-medium">{label}</p>}{error && <p role="alert" className="mt-1 text-red-700 dark:text-red-200">{error}</p>}</div><div className="flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => void onPrepare()} className="inline-flex items-center gap-1.5 rounded-md bg-cyan-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Clapperboard size={14} /> {busy && renderStatus === "validating" ? "Congelando…" : assembly ? "Regenerar snapshot" : "Congelar snapshot"}</button>{assembly?.status === "READY_FOR_PREVIEW" && <button type="button" disabled={busy} onClick={() => void onApprove()} className="inline-flex items-center gap-1.5 rounded-md border border-cyan-700 px-3 py-2 text-xs font-bold text-cyan-900 disabled:opacity-50 dark:border-cyan-300 dark:text-cyan-100"><CheckCircle2 size={14} /> Aprobar snapshot</button>}{assembly?.status === "READY_FOR_RENDER" && <button type="button" disabled={busy || renderStatus === "rendering"} onClick={() => void onRender()} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50 dark:bg-white dark:text-slate-950"><Send size={14} /> Renderizar video</button>}</div></div>;
+function AssemblyActions({ assembly, busy, error, onApprove, onPrepare, onRender, providerStatus, renderStatus }: { assembly: { revisionId: string; status: "READY_FOR_PREVIEW" | "READY_FOR_RENDER" } | null; busy: boolean; error: string | null; onApprove: () => void; onPrepare: () => void; onRender: () => void; providerStatus: string | null; renderStatus: "idle" | "validating" | "sending" | "rendering" | "completed" | "failed" }) {
+  const label = renderStatus === "validating" ? "Validando snapshot…" : renderStatus === "sending" ? "Subiendo proyecto y enviando a HeyGen…" : renderStatus === "rendering" ? `HeyGen está procesando el video${providerStatus ? ` (${providerStatus.toLowerCase()})` : ""}. Courseforge lo importará al terminar.` : renderStatus === "completed" ? "Video completado e importado en Courseforge." : "";
+  const summary = renderStatus === "completed"
+    ? "El video final ya está disponible."
+    : assembly
+      ? assembly.status === "READY_FOR_RENDER"
+        ? "Snapshot aprobado. Puedes enviar el render."
+        : "Snapshot listo. Revísalo y apruébalo para renderizar."
+      : "Congela la versión guardada antes de enviar un render.";
+  return <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3 dark:border-cyan-400/20 dark:bg-cyan-400/10"><div className="text-xs text-cyan-950 dark:text-cyan-100"><p className="font-bold">Ensamble del video</p><p className="mt-0.5">{summary}</p>{label && <p className="mt-1 font-medium">{label}</p>}{error && <p role="alert" className="mt-1 text-red-700 dark:text-red-200">{error}</p>}</div><div className="flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => void onPrepare()} className="inline-flex items-center gap-1.5 rounded-md bg-cyan-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Clapperboard size={14} /> {busy && renderStatus === "validating" ? "Congelando…" : assembly ? "Regenerar snapshot" : "Congelar snapshot"}</button>{assembly?.status === "READY_FOR_PREVIEW" && <button type="button" disabled={busy} onClick={() => void onApprove()} className="inline-flex items-center gap-1.5 rounded-md border border-cyan-700 px-3 py-2 text-xs font-bold text-cyan-900 disabled:opacity-50 dark:border-cyan-300 dark:text-cyan-100"><CheckCircle2 size={14} /> Aprobar snapshot</button>}{assembly?.status === "READY_FOR_RENDER" && <button type="button" disabled={busy || renderStatus === "sending" || renderStatus === "rendering" || renderStatus === "completed"} onClick={() => void onRender()} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50 dark:bg-white dark:text-slate-950"><Send size={14} /> Renderizar video</button>}</div></div>;
 }
 
 function StudioLibrary({ assets, lessons, onAddAsset, onSelectAsset, onSelectLesson, selectedHfId, selectedLessonId, timelineAssetIds }: {

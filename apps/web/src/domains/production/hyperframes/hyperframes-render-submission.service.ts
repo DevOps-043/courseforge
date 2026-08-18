@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getErrorMessage } from "@/lib/errors";
 import {
   buildProductionIdempotencyKey,
   createOrReuseProductionJob,
@@ -20,6 +21,14 @@ import {
 } from "./hyperframes.types";
 
 const PROJECT_ARCHIVE_BUCKET = "production-assets";
+
+/**
+ * Both composition_id and active_revision_id connect these tables. PostgREST
+ * therefore requires the intended FK name; a bare `video_compositions!inner`
+ * fails with PGRST201 before a production job can be created.
+ */
+export const HYPERFRAMES_RENDER_REVISION_SELECT =
+  "id, composition_id, format, entry_point, project_storage_bucket, project_storage_path, project_archive_size_bytes, project_hash, variables_values, manifest, video_compositions!video_composition_revisions_composition_id_fkey(organization_id, artifact_id, material_component_id, name, status, active_revision_id)";
 
 type StoredComposition = {
   active_revision_id: string | null;
@@ -207,9 +216,7 @@ export class HyperframesRenderSubmissionService {
   private async getRevision(input: HyperframesRenderSubmissionInput) {
     const { data, error } = await this.supabase
       .from("video_composition_revisions")
-      .select(
-        "id, composition_id, format, entry_point, project_storage_bucket, project_storage_path, project_archive_size_bytes, project_hash, variables_values, manifest, video_compositions!inner(organization_id, artifact_id, material_component_id, name, status, active_revision_id)",
-      )
+      .select(HYPERFRAMES_RENDER_REVISION_SELECT)
       .eq("id", input.revisionId)
       .eq("organization_id", input.organizationId)
       .maybeSingle();
@@ -354,7 +361,7 @@ export class HyperframesRenderSubmissionService {
     error: unknown,
   ) {
     const now = new Date().toISOString();
-    const message = error instanceof Error ? error.message.slice(0, 500) : "No se pudo enviar el render a HyperFrames.";
+    const message = getErrorMessage(error, "No se pudo enviar el render a HyperFrames.").slice(0, 500);
     const { error: updateError } = await this.supabase
       .from("production_jobs")
       .update({

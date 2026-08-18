@@ -6,6 +6,10 @@ import type {
   PublicationVideoLesson,
 } from "@/domains/publication/types/publication.types";
 import { DIRECT_VIDEO_METADATA_TIMEOUT_MS } from "@/shared/constants/timing";
+import {
+  reconcileSelectedLessonIds,
+  shouldRestoreDraftVideoMapping,
+} from "./publication-video-reconciliation";
 
 const DEFAULT_COURSE_DATA: PublicationCourseData = {
   category: "ia",
@@ -102,7 +106,10 @@ export function buildInitialVideoMappings(
   for (const lesson of lessons) {
     const draft = draftMappings[lesson.id];
 
-    if (draft?.video_id) {
+    // Direct mappings are mirrors of the internal Production output. If that
+    // output was deleted, retaining the draft URL creates a ghost video in the
+    // Send step. External mappings remain user-owned and are preserved.
+    if (draft?.video_id && shouldRestoreDraftVideoMapping(draft)) {
       initialMappings[lesson.id] = draft;
       continue;
     }
@@ -112,7 +119,7 @@ export function buildInitialVideoMappings(
       continue;
     }
 
-    if (draft) {
+    if (draft && shouldRestoreDraftVideoMapping(draft)) {
       initialMappings[lesson.id] = draft;
       continue;
     }
@@ -132,7 +139,11 @@ export function buildInitialSelectedLessons(
     existingRequest?.selected_lessons &&
     Array.isArray(existingRequest.selected_lessons)
   ) {
-    return new Set(existingRequest.selected_lessons);
+    return new Set(reconcileSelectedLessonIds({
+      lessons,
+      mappings,
+      selectedLessonIds: existingRequest.selected_lessons,
+    }));
   }
 
   const autoSelected = new Set<string>();

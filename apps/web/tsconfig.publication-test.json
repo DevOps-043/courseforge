@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "baseUrl": ".",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "outDir": ".tmp/publication-tests",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": [
+    "src/domains/publication/lib/publication-video-reconciliation.ts",
+    "src/domains/publication/lib/__tests__/publication-client.test.ts"
+  ],
+  "exclude": ["node_modules"]
+}

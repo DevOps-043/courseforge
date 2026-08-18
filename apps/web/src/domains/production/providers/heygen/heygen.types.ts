@@ -10,6 +10,9 @@ export const HEYGEN_ALLOWED_VIDEO_HOSTS = [
   "heygen.com",
   "heygen.ai",
   "cdn.heygen.com",
+  // HyperFrames completed renders currently use this exact HeyGen-owned S3
+  // endpoint. Keep it explicit; allowing amazonaws.com would weaken SSRF controls.
+  "heygen-product.s3.amazonaws.com",
   "resource.heygen.com",
   "files2.heygen.ai",
 ] as const;

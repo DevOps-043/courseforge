@@ -268,7 +268,7 @@ export function HyperframesCompositionPanel({
       {editorError && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">Los assets de Producción ya se muestran arriba. Falta preparar el editor: {editorError}</p>}
       {draftId && (
         <div className="min-h-0 flex-1">
-          <NativeCompositionPreview assistantRequestKey={assistantRequestKey} assets={studioAssets} compositionId={composition?.id || ""} draftId={draftId} lessons={lessonLibrary} onSelectLesson={onSelectLesson} selectedLessonId={selectedLessonId} />
+          <NativeCompositionPreview assistantRequestKey={assistantRequestKey} assets={studioAssets} compositionId={composition?.id || ""} draftId={draftId} lessons={lessonLibrary} onSelectLesson={onSelectLesson} onVideoCompleted={onVideoCompleted} selectedLessonId={selectedLessonId} />
         </div>
       )}
       {renderRequest?.providerStatus.toLowerCase() === "completed" && <p className="flex items-center gap-2 text-xs font-medium text-green-700 dark:text-green-400"><CheckCircle2 size={15} /> Video final importado en Courseforge.</p>}

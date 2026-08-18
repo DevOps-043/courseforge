@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getErrorMessage } from "@/lib/errors";
+import { getErrorDetails, getErrorMessage } from "@/lib/errors";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -95,6 +95,7 @@ export async function POST(_request: Request, context: RouteContext) {
     }
 
     console.error("[API /production/hyperframes/renders/:requestId/poll] Unexpected error:", {
+      ...getErrorDetails(error),
       message: getErrorMessage(error),
     });
     return NextResponse.json(
