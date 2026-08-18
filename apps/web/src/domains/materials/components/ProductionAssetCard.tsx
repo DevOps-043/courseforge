@@ -30,7 +30,7 @@ import {
 import {
   getSlideTemplatePackagesAction,
   type SlideTemplateLibraryItem,
-} from "@/domains/production/actions/templates.actions";
+} from "@/domains/production/slides/slide-template-library.actions";
 
 interface ProductionAssetCardProps {
   component: MaterialComponent;
@@ -87,7 +87,7 @@ export function ProductionAssetCard({
   lessonTitle,
   onAssetChange,
   onGeneratePrompts,
-  slideTemplatesHref = "/admin/templates",
+  slideTemplatesHref = "/admin/slides/templates",
   slideTemplateStudioHref = "/admin/slides/templates",
   sofliaSlidesHref,
 }: ProductionAssetCardProps) {

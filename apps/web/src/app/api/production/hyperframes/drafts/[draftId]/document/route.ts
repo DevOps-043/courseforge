@@ -13,6 +13,11 @@ import {
 } from "@/domains/production/composition-editor/composition-document.service";
 import { compositionEditorPatchRequestSchema } from "@/domains/production/composition-editor/editor-patch.types";
 import { createClient } from "@/utils/supabase/server";
+import {
+  describeCompositionDocumentVersion,
+  formatCompositionDocumentEtag,
+  parseCompositionDocumentEtag,
+} from "@/domains/production/composition-editor/composition-document-version";
 
 interface RouteContext { params: Promise<{ draftId: string }>; }
 
@@ -37,7 +42,7 @@ export async function GET(request: Request, context: RouteContext) {
       supabase: authorization.admin,
     });
     return NextResponse.json({ success: true, data }, {
-      headers: { ETag: `"${data.documentHash}"`, "Cache-Control": "private, no-store" },
+      headers: { ETag: formatCompositionDocumentEtag(data.documentHash), "Cache-Control": "private, no-store" },
     });
   } catch (error) {
     if (error instanceof TenantContextLookupError) return tenantUnavailableResponse(error);
@@ -56,15 +61,26 @@ export async function PUT(request: Request, context: RouteContext) {
     const authorization = await authorize();
     if (authorization instanceof NextResponse) return authorization;
     const { draftId } = await context.params;
-    const expectedDocumentHash = request.headers.get("if-match")?.replaceAll('"', "").trim();
-    if (!expectedDocumentHash || !/^[a-f0-9]{64}$/i.test(expectedDocumentHash)) {
-      return NextResponse.json({ error: "Falta la versión actual del documento (If-Match)." }, { status: 428 });
+    const rawIfMatch = request.headers.get("if-match");
+    const expectedDocumentHash = parseCompositionDocumentEtag(rawIfMatch);
+    if (!expectedDocumentHash) {
+      console.warn("[CompositionDocumentVersion] Rejected update without a valid If-Match", {
+        documentId: draftId,
+        event: "composition_document_precondition_rejected",
+        receivedVersion: describeCompositionDocumentVersion(rawIfMatch?.replaceAll('"', "") ?? null),
+        rejectionReason: rawIfMatch ? "INVALID_IF_MATCH" : "MISSING_IF_MATCH",
+      });
+      return NextResponse.json({
+        error: rawIfMatch ? "La versión del documento (If-Match) no tiene el formato esperado." : "Falta la versión actual del documento (If-Match).",
+        code: rawIfMatch ? "COMPOSITION_IF_MATCH_INVALID" : "COMPOSITION_IF_MATCH_REQUIRED",
+        retryable: true,
+      }, { status: 428 });
     }
     const body = compositionEditorPatchRequestSchema.parse(await request.json());
     const persistenceSignal = AbortSignal.any([request.signal, AbortSignal.timeout(15_000)]);
     const data = await applyAndAppendCompositionDocumentPatches({
       draftId: z.string().uuid().parse(draftId),
-      expectedDocumentHash: expectedDocumentHash.toLowerCase(),
+      expectedDocumentHash,
       organizationId: authorization.organizationId,
       patch: body,
       signal: persistenceSignal,
@@ -72,7 +88,7 @@ export async function PUT(request: Request, context: RouteContext) {
       userId: authorization.userId,
     });
     return NextResponse.json({ success: true, data }, {
-      headers: { ETag: `"${data.documentHash}"`, "Cache-Control": "private, no-store" },
+      headers: { ETag: formatCompositionDocumentEtag(data.documentHash), "Cache-Control": "private, no-store" },
     });
   } catch (error) {
     if (error instanceof TenantContextLookupError) return tenantUnavailableResponse(error);

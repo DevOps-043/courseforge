@@ -17,6 +17,10 @@ import { CompositionTimeline } from "./CompositionTimeline";
 import { AudioMixControls } from "./AudioMixControls";
 import { LayerDepthControls } from "./LayerDepthControls";
 import { buildCompositionAutoOrganizePatch } from "@/domains/production/composition-editor/composition-auto-organize.service";
+import {
+  formatCompositionDocumentEtag,
+  resolveCompositionDocumentVersion,
+} from "@/domains/production/composition-editor/composition-document-version";
 
 type PreviewMessage =
   | { type: "courseforge-composition-ready"; duration: number }
@@ -125,6 +129,10 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "No se pudo cargar la composición.");
       const nextPayload = body.data as DocumentPayload;
+      nextPayload.documentHash = resolveCompositionDocumentVersion({
+        bodyDocumentHash: nextPayload.documentHash,
+        responseEtag: response.headers.get("etag"),
+      });
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
       setSeconds(0);
@@ -316,7 +324,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     try {
       const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/document`, {
         body: JSON.stringify({ operations: effectiveOperations, source, summary }),
-        headers: { "Content-Type": "application/json", "If-Match": `"${currentPayload.documentHash}"` },
+        headers: { "Content-Type": "application/json", "If-Match": formatCompositionDocumentEtag(currentPayload.documentHash) },
         method: "PUT",
       });
       const body = await response.json();
@@ -330,6 +338,10 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       }
       if (!response.ok) throw new Error(body.error || "No se pudo guardar el cambio.");
       const nextPayload = body.data as DocumentPayload;
+      nextPayload.documentHash = resolveCompositionDocumentVersion({
+        bodyDocumentHash: nextPayload.documentHash,
+        responseEtag: response.headers.get("etag"),
+      });
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
       if (source === "USER") setLastAppliedAgentProposal(null);
@@ -558,12 +570,16 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     try {
       const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/agent-proposals/${proposal.proposalId}/apply`, {
         body: JSON.stringify({ reinforcedConfirmation }),
-        headers: { "Content-Type": "application/json", "If-Match": `"${currentPayload.documentHash}"` },
+        headers: { "Content-Type": "application/json", "If-Match": formatCompositionDocumentEtag(currentPayload.documentHash) },
         method: "POST",
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "No se pudo aplicar la propuesta.");
       const nextPayload = body.data as DocumentPayload;
+      nextPayload.documentHash = resolveCompositionDocumentVersion({
+        bodyDocumentHash: nextPayload.documentHash,
+        responseEtag: response.headers.get("etag"),
+      });
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
       setLastAppliedAgentProposal(proposal);
@@ -613,12 +629,16 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     setPayload(optimisticPayload);
     try {
       const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/agent-proposals/${proposal.proposalId}/undo`, {
-        headers: { "If-Match": `"${currentPayload.documentHash}"` },
+        headers: { "If-Match": formatCompositionDocumentEtag(currentPayload.documentHash) },
         method: "POST",
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "No se pudo deshacer la edición.");
       const nextPayload = body.data as DocumentPayload;
+      nextPayload.documentHash = resolveCompositionDocumentVersion({
+        bodyDocumentHash: nextPayload.documentHash,
+        responseEtag: response.headers.get("etag"),
+      });
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
       setLastAppliedAgentProposal(null);

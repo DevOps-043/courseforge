@@ -43,7 +43,7 @@ import type {
   CloudStorageFile,
   CloudStorageProvider,
 } from "@/domains/production/cloud-storage/types";
-import type { SlideTemplateLibraryItem } from "@/domains/production/actions/templates.actions";
+import type { SlideTemplateLibraryItem } from "@/domains/production/slides/slide-template-library.actions";
 
 function formatSeconds(seconds: number) {
   if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
