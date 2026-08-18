@@ -148,6 +148,19 @@ export function VideoStudioSettings() {
             />
           </div>
 
+          <div className="mt-3">
+            <PremiumSelect
+              icon={<Sparkles size={12} className="text-[#00D4B3]" />}
+              label="Modelo de respaldo"
+              options={[
+                { value: "", label: "Sin modelo de respaldo", description: "Detenerse si el modelo principal no se recupera." },
+                ...VIDEO_STUDIO_MODEL_OPTIONS.filter((option) => option.value !== settings.agentModel),
+              ]}
+              value={settings.fallbackModel || ""}
+              onChange={(fallbackModel) => setSettings({ ...settings, fallbackModel: fallbackModel || null })}
+            />
+          </div>
+
           <label className="mt-3 block text-xs font-semibold text-slate-700 dark:text-gray-200">
             Temperatura: {settings.temperature.toFixed(2)}
             <input

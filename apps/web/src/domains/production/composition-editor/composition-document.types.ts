@@ -43,14 +43,32 @@ export const compositionTrackSchema = z.object({
   volume: finiteNumberSchema.min(0).max(1).optional(),
 }).strict();
 
-export const compositionLayoutSchema = z.object({
+const compositionLayoutFieldSchemas = {
   height: finiteNumberSchema.positive().max(8_192),
-  opacity: finiteNumberSchema.min(0).max(1).default(1),
-  rotation: finiteNumberSchema.min(-360).max(360).default(0),
+  opacity: finiteNumberSchema.min(0).max(1),
+  rotation: finiteNumberSchema.min(-360).max(360),
   width: finiteNumberSchema.positive().max(8_192),
   x: finiteNumberSchema.min(-8_192).max(8_192),
   y: finiteNumberSchema.min(-8_192).max(8_192),
-  zIndex: z.number().int().min(-100).max(100).default(0),
+  zIndex: z.number().int().min(-100).max(100),
+};
+
+export const compositionLayoutSchema = z.object({
+  ...compositionLayoutFieldSchemas,
+  opacity: compositionLayoutFieldSchemas.opacity.default(1),
+  rotation: compositionLayoutFieldSchemas.rotation.default(0),
+  zIndex: compositionLayoutFieldSchemas.zIndex.default(0),
+}).strict();
+
+/** Patch-specific layout schema; optional fields must never inject document defaults. */
+export const compositionLayoutPatchSchema = z.object({
+  height: compositionLayoutFieldSchemas.height.optional(),
+  opacity: compositionLayoutFieldSchemas.opacity.optional(),
+  rotation: compositionLayoutFieldSchemas.rotation.optional(),
+  width: compositionLayoutFieldSchemas.width.optional(),
+  x: compositionLayoutFieldSchemas.x.optional(),
+  y: compositionLayoutFieldSchemas.y.optional(),
+  zIndex: compositionLayoutFieldSchemas.zIndex.optional(),
 }).strict();
 
 export const compositionAudioMixSchema = z.object({
@@ -104,9 +122,16 @@ export const compositionClipSchema = z.object({
   }
   if (
     clip.sourceDurationSeconds !== undefined
+    && (clip.sourceOffsetSeconds || 0) >= clip.sourceDurationSeconds
+  ) {
+    context.addIssue({ code: "custom", message: "El inicio del recorte debe quedar dentro de la duración del asset." });
+  }
+  if (
+    clip.kind === "AUDIO"
+    && clip.sourceDurationSeconds !== undefined
     && (clip.sourceOffsetSeconds || 0) + clip.durationSeconds > clip.sourceDurationSeconds + 0.001
   ) {
-    context.addIssue({ code: "custom", message: "El recorte excede la duración disponible del asset." });
+    context.addIssue({ code: "custom", message: "El recorte de audio excede la duración disponible del asset." });
   }
   if (clip.kind === "DECK_SLIDE" && clip.source.type !== "DECK_SLIDE") {
     context.addIssue({ code: "custom", message: "Un clip de deck debe conservar su fuente HTML." });

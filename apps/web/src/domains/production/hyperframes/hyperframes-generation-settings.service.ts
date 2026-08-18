@@ -6,15 +6,23 @@ export const hyperframesGenerationSettingsSchema = z.object({
   agentAssistedGenerationEnabled: z.boolean().default(true),
   agentModel: z.enum(VIDEO_STUDIO_MODEL_IDS),
   automaticGenerationEnabled: z.boolean().default(true),
-  fallbackModel: z.string().trim().min(1).max(128).nullable().optional(),
+  fallbackModel: z.enum(VIDEO_STUDIO_MODEL_IDS).nullable().default(null),
   temperature: z.number().min(0).max(2).default(0.3),
-}).strict();
+}).strict().superRefine((settings, context) => {
+  if (settings.fallbackModel === settings.agentModel) {
+    context.addIssue({
+      code: "custom",
+      message: "El modelo de respaldo debe ser distinto del modelo principal.",
+      path: ["fallbackModel"],
+    });
+  }
+});
 
 export type HyperframesGenerationSettings = z.infer<typeof hyperframesGenerationSettingsSchema>;
 
 export const DEFAULT_HYPERFRAMES_GENERATION_SETTINGS: HyperframesGenerationSettings = {
   agentAssistedGenerationEnabled: true,
-  agentModel: "gemini-2.0-flash",
+  agentModel: "gemini-3.5-flash",
   automaticGenerationEnabled: true,
   fallbackModel: null,
   temperature: 0.3,
@@ -63,11 +71,16 @@ function mapSettingsRow(row: Record<string, unknown>): HyperframesGenerationSett
   const agentModel = typeof row.agent_model === "string" && VIDEO_STUDIO_MODEL_IDS.includes(row.agent_model as typeof VIDEO_STUDIO_MODEL_IDS[number])
     ? row.agent_model
     : DEFAULT_HYPERFRAMES_GENERATION_SETTINGS.agentModel;
+  const fallbackModel = typeof row.fallback_model === "string"
+    && row.fallback_model !== agentModel
+    && VIDEO_STUDIO_MODEL_IDS.includes(row.fallback_model as typeof VIDEO_STUDIO_MODEL_IDS[number])
+    ? row.fallback_model
+    : null;
   return hyperframesGenerationSettingsSchema.parse({
     agentAssistedGenerationEnabled: row.agent_assisted_generation_enabled,
     agentModel,
     automaticGenerationEnabled: row.automatic_generation_enabled,
-    fallbackModel: row.fallback_model || null,
+    fallbackModel,
     temperature: Number(row.temperature),
   });
 }

@@ -6,12 +6,9 @@
     "dev": "ts-node-dev src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "lint": "tsc --noEmit",
-    "test:remotion": "tsc -p tsconfig.remotion-test.json && node .tmp/remotion-tests/features/production/__tests__/remotion-assembly-props.service.test.js && node .tmp/remotion-tests/features/production/__tests__/media-duration-verification.service.test.js && node .tmp/remotion-tests/features/production/__tests__/resolved-props.service.test.js && node .tmp/remotion-tests/features/production/__tests__/external-template-props.service.test.js && node .tmp/remotion-tests/features/production/__tests__/external-render-target.service.test.js && node .tmp/remotion-tests/features/production/__tests__/template-manifest.service.test.js && node .tmp/remotion-tests/features/production/__tests__/remotion-render-config.test.js && node .tmp/remotion-tests/features/production/__tests__/remotion-render-diagnostics.service.test.js && node .tmp/remotion-tests/features/production/__tests__/desktop-worker.provider.test.js"
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@remotion/bundler": "4.0.484",
-    "@remotion/renderer": "4.0.484",
     "@supabase/supabase-js": "^2.107.0",
     "cors": "2.8.5",
     "dotenv": "16.4.1",
@@ -20,7 +17,6 @@
     "jose": "^6.2.0",
     "jszip": "^3.10.1",
     "morgan": "1.10.0",
-    "remotion": "4.0.484",
     "ws": "^8.21.0",
     "zod": "3.25.76"
   },

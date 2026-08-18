@@ -12,7 +12,8 @@
     "build": "npm run build -w apps/web",
     "build:legacy-api": "npm run build -w apps/api",
     "lint": "npm run lint -w apps/web",
-    "lint:legacy-api": "npm run lint -w apps/api"
+    "lint:legacy-api": "npm run lint -w apps/api",
+    "docs:audit": "powershell -ExecutionPolicy Bypass -File scripts/audit-documentation.ps1"
   },
   "devDependencies": {
     "@netlify/functions": "^5.1.2",

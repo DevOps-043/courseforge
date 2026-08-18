@@ -3,6 +3,8 @@ import {
   COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS,
   COMPOSITION_DURATION_SOURCES,
   compositionClipSchema,
+  compositionEditorDocumentSchema,
+  compositionLayoutPatchSchema,
   compositionLayoutSchema,
   compositionTrackSchema,
 } from "./composition-document.types";
@@ -29,8 +31,40 @@ const clipTrimOperationSchema = z.object({
   type: z.literal("clip.trim"),
 }).strict();
 
+/**
+ * Non-destructively divides a media clip at an absolute timeline time. Both
+ * resulting clips retain the same production asset reference; only their
+ * timeline window and source offset differ.
+ */
+const clipSplitOperationSchema = z.object({
+  atSeconds: boundedSecondsSchema,
+  newClipId: editorIdSchema,
+  newHfId: editorIdSchema,
+  type: z.literal("clip.split"),
+}).strict();
+
+/**
+ * Removes a temporal interval from one media clip without touching its source
+ * asset. A middle removal needs identities for the right-hand derived clip.
+ */
+const clipRemoveRangeOperationSchema = z.object({
+  endSeconds: boundedSecondsSchema,
+  newClipId: editorIdSchema.optional(),
+  newHfId: editorIdSchema.optional(),
+  ripple: z.boolean().default(true),
+  startSeconds: boundedSecondsSchema,
+  type: z.literal("clip.remove-range"),
+}).strict().superRefine((operation, context) => {
+  if (operation.endSeconds <= operation.startSeconds) {
+    context.addIssue({ code: "custom", message: "El final del intervalo debe ser posterior al inicio." });
+  }
+  if ((operation.newClipId == null) !== (operation.newHfId == null)) {
+    context.addIssue({ code: "custom", message: "El clip derivado requiere id y hfId." });
+  }
+});
+
 const clipLayoutOperationSchema = z.object({
-  layout: compositionLayoutSchema.partial().refine(
+  layout: compositionLayoutPatchSchema.refine(
     (layout) => Object.keys(layout).length > 0,
     "Debes indicar al menos una propiedad de layout.",
   ),
@@ -97,6 +131,12 @@ const audioMixUpdateOperationSchema = z.object({
   type: z.literal("audio-mix.update"),
 }).strict();
 
+/** Restores an earlier immutable document as one newly appended version. */
+const documentRestoreOperationSchema = z.object({
+  document: compositionEditorDocumentSchema,
+  type: z.literal("document.restore"),
+}).strict();
+
 const animationAddPresetOperationSchema = z.object({
   animationId: editorIdSchema,
   clipId: editorIdSchema,
@@ -138,11 +178,14 @@ const clipPatchOperationSchema = z.discriminatedUnion("type", [
   clipRemoveOperationSchema,
   clipTemplateOperationSchema,
   clipTrimOperationSchema,
+  clipSplitOperationSchema,
+  clipRemoveRangeOperationSchema,
   clipVisibilityOperationSchema,
 ]).and(z.object({ clipId: editorIdSchema }).strict());
 
 export const compositionEditorPatchOperationSchema = z.union([
   audioMixUpdateOperationSchema,
+  documentRestoreOperationSchema,
   animationAddPresetOperationSchema,
   animationRemoveOperationSchema,
   animationUpdateKeyframeOperationSchema,

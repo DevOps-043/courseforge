@@ -20,7 +20,6 @@ export const VIDEO_STUDIO_MODEL_OPTIONS: readonly VideoStudioModelOption[] = [
   { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash", provider: "gemini", description: "Balance de razonamiento, latencia y costo." },
   { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite", provider: "gemini", description: "Rápido y económico para alto volumen." },
   { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro", provider: "gemini", description: "Razonamiento y ajustes complejos." },
-  { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash", provider: "gemini", description: "Opción compatible con configuraciones anteriores." },
   { value: "gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai", description: "Máxima calidad y capacidad analítica." },
   { value: "gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", description: "Alta capacidad con costo eficiente." },
   { value: "gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", description: "Balance entre calidad y costo." },

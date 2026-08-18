@@ -6,6 +6,7 @@ import {
   COMPOSITION_COMPILATION_TARGETS,
   compileCompositionPreview,
 } from "../composition-preview-compiler.service";
+import { applyCompositionEditorPatches } from "../editor-patch.service";
 import {
   COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS,
   resolveCompositionPreviewAssetUrls,
@@ -80,6 +81,11 @@ test("compiles the native document into a seekable preview with stable visual id
   assert.match(html, /courseforge-composition-editor-settings/);
   assert.match(html, /composition-editor-grid/);
   assert.match(html, /snapEnabled/);
+  assert.match(html, /background-size: 16px 16px/);
+  assert.match(html, /composition-move-handle/);
+  assert.match(html, /Mover elemento/);
+  assert.match(html, /courseforge-composition-preview-zoom/);
+  assert.match(html, /--preview-user-scale/);
   assert.match(html, /composition-viewport/);
   assert.match(html, /fitCompositionToViewport/);
   assert.match(html, /class="deck-scope"/);
@@ -139,12 +145,31 @@ test("creates a separate synchronized audio element for an avatar video", async 
   });
   document.tracks.find((track) => track.id === "avatar")!.volume = 0.35;
   const html = await compileCompositionPreview({ assetUrls: new Map([[avatarId, "https://example.test/avatar.mp4"]]), document });
+  assert.match(html, /data-preserve-aspect="true"/);
+  assert.match(html, /data-preserve-aspect="true"\] \.composition-media \{ object-fit: contain; \}/);
+  assert.match(html, /courseforge-composition-aspect-corrections/);
+  assert.match(html, /media\.videoWidth \|\| media\.naturalWidth/);
+  assert.match(html, /usesLegacyAvatarBox/);
+  assert.match(html, /playsinline loop preload="metadata"/);
+  assert.match(html, /media\.loop \? sourceTime % media\.duration/);
+  assert.match(html, /--editor-control-scale/);
+  assert.match(html, /transform-origin: bottom right/);
+  assert.match(html, /Arrastra para cambiar el tamaño/);
   assert.match(html, /asset-00000000-0000-4000-8000-000000000005-audio/);
   assert.match(html, /courseforge-composition-media-error/);
   assert.match(html, /composition-audio-unlock/);
   assert.match(html, /media\.play\(\)/);
   assert.match(html, /pendingMediaPlayback\.has\(media\)/);
   assert.match(html, /error\?\.name === "AbortError"/);
+  assert.match(html, /const blockedAudioMedia = new Set\(\)/);
+  assert.match(html, /error\?\.name !== "NotAllowedError" \|\| media\.tagName !== "AUDIO"/);
+  assert.match(html, /blockedAudioMedia\.add\(media\)/);
+  assert.match(html, /blockedAudioMedia\.has\(media\)/);
+  assert.match(html, /blockedAudioMedia\.clear\(\);[\s\S]*syncMedia\(currentTime, true\)/);
+  assert.doesNotMatch(html, /error\?\.name === "NotAllowedError"\) \{[\s\S]*playbackActive = false/);
+  assert.match(html, /preload="metadata"/);
+  assert.match(html, /time >= start && time <= start \+ clipDuration/);
+  assert.match(html, /> 0\.35/);
   assert.match(html, /id="asset-00000000-0000-4000-8000-000000000005-media"/);
   assert.doesNotMatch(html, /media\.getAttribute\("src"\)/);
   assert.match(html, /data-volume="0\.35"/);
@@ -158,6 +183,84 @@ test("creates a separate synchronized audio element for an avatar video", async 
   assert.match(renderHtml, /data-media-start="0"/);
   assert.match(renderHtml, /id="asset-00000000-0000-4000-8000-000000000005-audio" class="composition-audio clip"/);
   assert.doesNotMatch(renderHtml, /media\.play\(\)|composition-audio-unlock/);
+});
+
+test("compiles derived video clips with the same source and their distinct media offsets", async () => {
+  const avatarId = "00000000-0000-4000-8000-000000000015";
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "e".repeat(64), durationSeconds: 30, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: avatarId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/avatar.mp4", timelineRole: "AVATAR" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 30, subtitle: "Prueba", title: "Cortes" },
+  });
+  const avatar = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  const split = applyCompositionEditorPatches(document, [{
+    atSeconds: 12,
+    clipId: avatar.id,
+    newClipId: "avatar-second-cut",
+    newHfId: "avatar-second-cut-hf",
+    type: "clip.split",
+  }]);
+
+  const html = await compileCompositionPreview({
+    assetUrls: new Map([[avatarId, "assets/avatar.mp4"]]),
+    document: split,
+    target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+  });
+
+  assert.equal((html.match(/src="assets\/avatar\.mp4"/g) || []).length, 4);
+  assert.match(html, /id="avatar-second-cut-media"[\s\S]*data-media-start="12"/);
+  assert.match(html, /id="avatar-second-cut-audio"[\s\S]*data-media-start="12"/);
+});
+
+test("mantiene preview y render en paridad para dividir a 01:30 y eliminar un intervalo intermedio", async () => {
+  const avatarId = "00000000-0000-4000-8000-000000000016";
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "f".repeat(64), durationSeconds: 180, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: avatarId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/avatar.mp4", timelineRole: "AVATAR" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 180, subtitle: "Prueba", title: "Edición no destructiva" },
+  });
+  document.canvas.durationSeconds = 180;
+  const avatar = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  avatar.durationSeconds = 180;
+  avatar.sourceDurationSeconds = 180;
+
+  const split = applyCompositionEditorPatches(document, [{
+    atSeconds: 90,
+    clipId: avatar.id,
+    newClipId: "avatar-after-0130",
+    newHfId: "avatar-after-0130-hf",
+    type: "clip.split",
+  }]);
+  const afterSplit = split.clips.find((clip) => clip.id === "avatar-after-0130")!;
+  const edited = applyCompositionEditorPatches(split, [{
+    clipId: afterSplit.id,
+    endSeconds: 110,
+    newClipId: "avatar-after-gap",
+    newHfId: "avatar-after-gap-hf",
+    ripple: true,
+    startSeconds: 100,
+    type: "clip.remove-range",
+  }]);
+  const assetUrls = new Map([[avatarId, "assets/avatar.mp4"]]);
+  const previewHtml = await compileCompositionPreview({ assetUrls, document: edited });
+  const renderHtml = await compileCompositionPreview({
+    assetUrls,
+    document: edited,
+    target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+  });
+
+  const sourceWindows = edited.clips
+    .filter((clip) => clip.kind === "VIDEO")
+    .map((clip) => [clip.sourceOffsetSeconds || 0, clip.durationSeconds, clip.startSeconds]);
+  assert.deepEqual(sourceWindows, [[0, 90, 0], [90, 10, 90], [110, 70, 100]]);
+  assert.equal((renderHtml.match(/src="assets\/avatar\.mp4"/g) || []).length, 6);
+  for (const html of [previewHtml, renderHtml]) {
+    assert.match(html, /data-source-offset="90"/);
+    assert.match(html, /data-source-offset="110"/);
+  }
+  assert.match(renderHtml, /id="avatar-after-0130-media"[\s\S]*data-media-start="90"/);
+  assert.match(renderHtml, /id="avatar-after-gap-media"[\s\S]*data-media-start="110"/);
+  assert.match(renderHtml, /id="avatar-after-gap-audio"[\s\S]*data-media-start="110"/);
 });
 
 test("compiles the same seek-safe music ducking envelope for preview and render", async () => {

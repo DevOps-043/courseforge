@@ -11,6 +11,12 @@ SofLIA - Engine es una plataforma multi-tenant para crear, validar, producir y p
 - **DB/Auth**: Supabase PostgreSQL con RLS, tabla `profiles`, Auth Bridge JWT HS256 y soporte multi-organizacion.
 - **IA**: Google Gemini como proveedor principal; OpenAI como fallback y para el bundle agent de Remotion.
 - **Servicios**: Gamma API, Google Search grounding, SofLIA API, Google Drive, Microsoft Graph/OneDrive, Artlist, AWS Remotion Lambda, S3, CodeBuild y CloudFront para templates externos.
+- **Editor de composicion**: el dominio `production/composition-editor` gestiona documento, assets, pistas, mezcla de audio, profundidad de capas, presets de movimiento, auto-organizacion y patches validados de propuestas del agente. El documento se persiste como versiones inmutables con hash y auditoria; el RPC `append_video_composition_draft_document_v2` devuelve resultados explicitos de guardado y evita colas de bloqueo.
+- **HyperFrames**: el dominio `production/hyperframes` cubre borradores, composiciones, preflight, revisiones, preview, render y sincronizacion de assets; sus rutas viven bajo `/api/production/hyperframes`.
+
+## Protocolo De Sincronizacion Documental
+
+Antes de declarar vigente esta guia o `README.md`, aplicar [docs/PROTOCOLO_DE_INVESTIGACION_Y_SINCRONIZACION.md](docs/PROTOCOLO_DE_INVESTIGACION_Y_SINCRONIZACION.md): ejecutar `npm run docs:audit`, contrastar con evidencia primaria y actualizar ambos documentos solo con hechos verificables. La auditoria generada en `docs/documentation-audit.md` es evidencia temporal, no una tercera fuente de verdad.
 
 ## Comandos
 
@@ -374,3 +380,4 @@ API/Remotion legacy, solo si se usa `apps/api`:
 - No renombrar variables legacy aun usadas por codigo.
 - Preferir validadores Zod y servicios de dominio sobre logica en componentes.
 - Mantener business rules fuera de route handlers cuando exista dominio equivalente.
+- Mantener `courseforge-composition-v2` como unica fuente editable para motion: `document.motion` es canonico y el HTML/timeline se compila desde ese documento. Ver [ADR de motion](docs/architecture/adr-composition-motion-source-of-truth.md).

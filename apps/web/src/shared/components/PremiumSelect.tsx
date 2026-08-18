@@ -12,7 +12,7 @@ export interface Option {
 }
 
 interface PremiumSelectProps {
-  options: Option[];
+  options: readonly Option[];
   value: string;
   onChange: (value: string) => void;
   label?: string;

@@ -5,6 +5,9 @@ import { applyCompositionEditorPatches, CompositionEditorPatchError } from "./ed
 import type { CompositionEditorPatchRequest } from "./editor-patch.types";
 import { normalizeCompositionTrackTopology } from "./composition-track-registry";
 import { COMPOSITION_MOTION_ENABLED, isCompositionMotionOperation } from "./composition-motion.config";
+import { buildCompositionAgentDiff } from "./composition-agent-diff.service";
+import { assertCompositionAgentOperationsAllowed, CompositionAgentPolicyError } from "./composition-agent-policy.service";
+import { validateCompositionAgentSimulation, CompositionAgentValidationError } from "./composition-agent-validation.service";
 
 export class CompositionDocumentError extends Error {
   constructor(message: string, readonly status = 400) {
@@ -83,6 +86,33 @@ export async function getCurrentCompositionDocument(params: {
   };
 }
 
+/** Returns immutable prior states for explicit user-directed restoration. */
+export async function listCompositionDocumentHistory(params: {
+  draftId: string;
+  organizationId: string;
+  supabase: SupabaseClient<any, "public", any>;
+}) {
+  const { data, error } = await params.supabase
+    .from("video_composition_draft_documents")
+    .select("created_at, document, document_hash, version")
+    .eq("draft_id", params.draftId)
+    .eq("organization_id", params.organizationId)
+    .order("version", { ascending: false })
+    .limit(20);
+  if (error) throw error;
+  return (data || []).map((row: {
+    created_at: string;
+    document: unknown;
+    document_hash: string;
+    version: number;
+  }) => ({
+    createdAt: row.created_at,
+    document: compositionEditorDocumentSchema.parse(row.document),
+    documentHash: row.document_hash,
+    version: row.version,
+  }));
+}
+
 export function hashCompositionDocument(document: CompositionEditorDocument) {
   return createHash("sha256").update(stableStringify(document)).digest("hex");
 }
@@ -106,9 +136,23 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
 
   let nextDocument: CompositionEditorDocument;
   try {
+    if (params.patch.source === "AGENT") {
+      assertCompositionAgentOperationsAllowed(params.patch.operations);
+    }
     nextDocument = applyCompositionEditorPatches(current.document, params.patch.operations, params.auditSource || params.patch.source);
+    if (params.patch.source === "AGENT") {
+      validateCompositionAgentSimulation({
+        after: nextDocument,
+        before: current.document,
+        diff: buildCompositionAgentDiff(current.document, nextDocument),
+      });
+    }
   } catch (error) {
-    if (error instanceof CompositionEditorPatchError) throw new CompositionDocumentError(error.message);
+    if (
+      error instanceof CompositionEditorPatchError
+      || error instanceof CompositionAgentPolicyError
+      || error instanceof CompositionAgentValidationError
+    ) throw new CompositionDocumentError(error.message);
     throw error;
   }
   const nextHash = hashCompositionDocument(nextDocument);
@@ -189,11 +233,17 @@ async function assertAddedAssetsBelongToDraft(params: {
   patch: CompositionEditorPatchRequest;
   supabase: SupabaseClient<any, "public", any>;
 }) {
-  const assetIds = [...new Set(params.patch.operations.flatMap((operation) => (
-    operation.type === "clip.add" && operation.clip.source.type === "PRODUCTION_ASSET"
-      ? [operation.clip.source.productionAssetId]
-      : []
-  )))];
+  const assetIds = [...new Set(params.patch.operations.flatMap((operation) => {
+    if (operation.type === "clip.add" && operation.clip.source.type === "PRODUCTION_ASSET") {
+      return [operation.clip.source.productionAssetId];
+    }
+    if (operation.type === "document.restore") {
+      return operation.document.clips.flatMap((clip) => (
+        clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []
+      ));
+    }
+    return [];
+  }))];
   if (assetIds.length === 0) return;
 
   const { data, error } = await params.supabase

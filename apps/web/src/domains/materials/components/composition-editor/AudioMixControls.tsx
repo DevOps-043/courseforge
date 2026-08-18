@@ -30,7 +30,7 @@ export function AudioMixControls({ audioMix, disabled, onUpdate }: AudioMixContr
   };
 
   return (
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-white/10 dark:bg-white/5">
+    <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 dark:border-white/10 dark:bg-white/5">
       <div className="flex min-w-0 items-center gap-2">
         <AudioLines className="shrink-0 text-[#00A98F]" size={16} />
         <div className="min-w-0">
@@ -38,7 +38,7 @@ export function AudioMixControls({ audioMix, disabled, onUpdate }: AudioMixContr
           <p className="truncate text-[10px] text-slate-500 dark:text-gray-400">La voz y el avatar atenúan la música con transiciones seek-safe.</p>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           disabled={disabled}

@@ -19,11 +19,11 @@ test("exposes semantic layers, audio mix and visual depth without source interna
 
   const context = buildCompositionAgentContext(document);
 
-  assert.equal(context.audioMix.ducking.enabled, true);
-  assert.equal(context.tracks.find((track) => track.id === "music")?.semanticRole, "MUSIC");
-  assert.equal(context.tracks.find((track) => track.id === "broll")?.semanticRole, "BROLL");
-  assert.equal(context.clips.find((clip) => clip.trackId === "broll")?.layout.zIndex, 5);
-  assert.equal("source" in context.clips[0]!, false);
+  assert.equal(context.composition.audioMix.ducking.enabled, true);
+  assert.equal(context.composition.tracks.find((track) => track.id === "music")?.semanticRole, "MUSIC");
+  assert.equal(context.composition.tracks.find((track) => track.id === "broll")?.semanticRole, "BROLL");
+  assert.equal(context.composition.clips.find((clip) => clip.trackId === "broll")?.layout.zIndex, 5);
+  assert.equal("source" in context.composition.clips[0]!, false);
   assert.doesNotMatch(JSON.stringify(context), /storagePath|publicUrl|productionAssetId/);
 });
 
@@ -45,6 +45,10 @@ test("documents the allow-listed depth and ducking operations for the agent", ()
   assert.match(prompt, /track\.order no controla/);
   assert.match(prompt, /animation\.add-preset/);
   assert.match(prompt, /FADE_IN/);
+  assert.doesNotMatch(prompt, /Para animation\.remove/);
+  assert.match(prompt, /No propongas restaurar documentos/);
+  assert.match(prompt, /información no confiable/);
+  assert.match(prompt, /READ_TOOL_RESULTS/);
   assert.match(prompt, new RegExp(`Clip seleccionado: ${selectedClipId}`));
 });
 

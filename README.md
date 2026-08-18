@@ -13,7 +13,7 @@ El producto ya no es solo un generador de cursos. Es un flujo operativo con apro
 3. [Como Correrlo](#como-correrlo)
 4. [Arquitectura Actual](#arquitectura-actual)
 5. [Pipeline Educativo](#pipeline-educativo)
-6. [Produccion Visual y Remotion](#produccion-visual-y-remotion)
+6. [Produccion Visual, HyperFrames y Remotion](#produccion-visual-hyperframes-y-remotion)
 7. [Auth, Tenancy y Publicacion](#auth-tenancy-y-publicacion)
 8. [APIs y Jobs](#apis-y-jobs)
 9. [Datos y Storage](#datos-y-storage)
@@ -203,7 +203,14 @@ Incluye:
 
 ---
 
-## Produccion Visual y Remotion
+## Produccion Visual, HyperFrames y Remotion
+
+La produccion visual combina dos rutas complementarias:
+
+- **HyperFrames**: borradores, composiciones, preflight, revisiones, preview, renders y sincronizacion de assets mediante `/api/production/hyperframes/...`.
+- **Remotion**: templates internos/externos y el control plane de renders con `desktop_worker` en `/api/v1/production`.
+
+El editor de composicion permite gestionar assets, pistas, timecodes, profundidad de capas, mezcla de audio, autoorganizacion y presets de movimiento. Las propuestas del agente se convierten en patches validados antes de actualizar un documento de composicion versionado; cada version se identifica con un hash para detectar conflictos de edicion y producir previews reproducibles.
 
 El sistema activo usa `desktop_worker`. Los caminos `local` y `lambda` quedan como legado en `apps/api`.
 
@@ -345,7 +352,7 @@ Publicacion:
 - `GET /api/admin/remotion/template-versions/:versionId/download`
 - `POST /api/admin/slides/html-preview`
 
-Todos los endpoints bajo `/api/v1/production/...` (control plane del worker de escritorio) estan documentados en [Produccion Visual y Remotion](#produccion-visual-y-remotion).
+Todos los endpoints bajo `/api/v1/production/...` (control plane del worker de escritorio) estan documentados en [Produccion Visual, HyperFrames y Remotion](#produccion-visual-hyperframes-y-remotion).
 
 ### Netlify Functions
 
@@ -517,3 +524,4 @@ curl http://localhost:3000/api/v1/production/remotion/readiness
 - Propagar `organization_id` en rutas, acciones, OAuth state, credenciales y jobs.
 - Mantener los contratos publicables de `SOFLIA_DIALOGUE`.
 - Separar preview interno, preview externo sandbox y render final al diagnosticar produccion visual.
+- Aplicar [el protocolo de investigacion y sincronizacion](docs/PROTOCOLO_DE_INVESTIGACION_Y_SINCRONIZACION.md) antes de declarar vigente esta documentacion o `CLAUDE.md`.

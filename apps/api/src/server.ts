@@ -12,14 +12,10 @@ import morgan from 'morgan';
 import { errorHandler } from './core/middleware/errorHandler';
 import { getApiPort } from './config/env';
 import { authRoutes } from './features/auth/auth.routes';
-import { productionRoutes } from './features/production/production.routes';
-import { RemotionQueueService } from './features/production/remotion-queue.service';
-import { getRemotionRenderConfig } from './features/production/remotion-render.config';
 import { getCorsOptions } from './config/cors';
 
-// Guardas globales: una excepción/rechazo no manejado durante un render de Remotion
-// no debe tumbar silenciosamente toda la API (lo que se manifiesta como "fetch failed"
-// en el polling del cliente). Registramos y mantenemos el proceso vivo.
+// Las guardas globales evitan que una excepción o rechazo no manejado derribe
+// silenciosamente el API legado de autenticación.
 process.on('unhandledRejection', (reason) => {
   console.error('[Process] Unhandled promise rejection:', reason);
 });
@@ -40,20 +36,8 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/production', productionRoutes);
-
 app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`🚀 API running on port ${PORT}`);
-
-  // Pre-calienta el bundle de Remotion fuera de la ruta de petición para que el
-  // primer ensamblado no sature el event-loop ni provoque fallos de polling.
-  if (getRemotionRenderConfig().provider === 'local') {
-    RemotionQueueService.getInstance()
-      .prewarm()
-      .catch((err) => console.warn('[API] Fallo al pre-calentar Remotion:', err));
-  } else {
-    console.log('[API] Desktop worker provider enabled; local bundle prewarm skipped.');
-  }
 });

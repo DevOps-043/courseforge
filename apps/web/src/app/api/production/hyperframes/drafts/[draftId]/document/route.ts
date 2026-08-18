@@ -9,6 +9,7 @@ import {
   CompositionDocumentError,
   CompositionDocumentPersistenceError,
   getCurrentCompositionDocument,
+  listCompositionDocumentHistory,
 } from "@/domains/production/composition-editor/composition-document.service";
 import { compositionEditorPatchRequestSchema } from "@/domains/production/composition-editor/editor-patch.types";
 import { createClient } from "@/utils/supabase/server";
@@ -16,13 +17,22 @@ import { createClient } from "@/utils/supabase/server";
 interface RouteContext { params: Promise<{ draftId: string }>; }
 
 /** Returns the native editor document; no source HTML or Storage path is exposed. */
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   try {
     const authorization = await authorize();
     if (authorization instanceof NextResponse) return authorization;
     const { draftId } = await context.params;
+    const parsedDraftId = z.string().uuid().parse(draftId);
+    if (new URL(request.url).searchParams.get("history") === "1") {
+      const data = await listCompositionDocumentHistory({
+        draftId: parsedDraftId,
+        organizationId: authorization.organizationId,
+        supabase: authorization.admin,
+      });
+      return NextResponse.json({ success: true, data }, { headers: { "Cache-Control": "private, no-store" } });
+    }
     const data = await getCurrentCompositionDocument({
-      draftId: z.string().uuid().parse(draftId),
+      draftId: parsedDraftId,
       organizationId: authorization.organizationId,
       supabase: authorization.admin,
     });
@@ -66,7 +76,13 @@ export async function PUT(request: Request, context: RouteContext) {
     });
   } catch (error) {
     if (error instanceof TenantContextLookupError) return tenantUnavailableResponse(error);
-    if (error instanceof z.ZodError) return NextResponse.json({ error: "La edición solicitada no es válida." }, { status: 400 });
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({
+        error: error.issues[0]?.message || "La edición solicitada no es válida.",
+        code: "COMPOSITION_PATCH_INVALID",
+        retryable: false,
+      }, { status: 400 });
+    }
     if (error instanceof CompositionDocumentConflictError) {
       return NextResponse.json({ error: error.message, code: "COMPOSITION_VERSION_CONFLICT", data: error.current, retryable: true }, { status: error.status });
     }

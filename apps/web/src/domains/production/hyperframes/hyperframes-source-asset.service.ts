@@ -280,7 +280,7 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
     const stored = parseStoredPath(reference.storagePath);
     const { data: existing, error: existingError } = await params.supabase
       .from("production_assets")
-      .select("id, checksum, duration_seconds, file_size_bytes, mime_type, metadata")
+      .select("id, checksum, duration_milliseconds, duration_seconds, file_size_bytes, mime_type, metadata")
       .eq("organization_id", params.organizationId)
       .eq("material_component_id", params.componentId)
       .eq("asset_type", PRODUCTION_ASSET_TYPES.SOURCE_MEDIA)
@@ -309,7 +309,7 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
       && existing.file_size_bytes === fileSizeBytes
       && existing.mime_type === mimeType
       && existing.checksum
-      && (reference.durationSeconds === undefined || existing.duration_seconds === Math.round(reference.durationSeconds))
+      && (reference.durationSeconds === undefined || preciseDurationSeconds(existing.duration_milliseconds, existing.duration_seconds) === reference.durationSeconds)
       && isRecord(existing.metadata)
       && existing.metadata.timeline_role === reference.timelineRole
       && (reference.timelineVariant === undefined || existing.metadata.timeline_variant === reference.timelineVariant)
@@ -323,7 +323,10 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
       checksum,
       content: { imported_from: "production_step" },
       created_by: params.createdBy,
-      ...(reference.durationSeconds ? { duration_seconds: Math.round(reference.durationSeconds) } : {}),
+      ...(reference.durationSeconds ? {
+        duration_milliseconds: Math.round(reference.durationSeconds * 1_000),
+        duration_seconds: Math.round(reference.durationSeconds),
+      } : {}),
       file_size_bytes: fileSizeBytes,
       lesson_id: context.lessonId,
       material_component_id: context.componentId,
@@ -380,7 +383,7 @@ export async function listHyperframesSourceAssets(params: {
 
   const { data, error } = await params.supabase
     .from("production_assets")
-    .select("id, asset_type, checksum, duration_seconds, file_size_bytes, mime_type, storage_path, storage_bucket, qa_status, created_at, metadata")
+    .select("id, asset_type, checksum, duration_milliseconds, duration_seconds, file_size_bytes, mime_type, storage_path, storage_bucket, qa_status, created_at, metadata")
     .eq("organization_id", params.organizationId)
     .eq("material_component_id", params.componentId)
     .in("asset_type", [
@@ -408,7 +411,7 @@ export async function listHyperframesSourceAssets(params: {
     seenStoragePaths.add(asset.storage_path);
     const candidate = inspectHyperframesSourceAsset({
       checksum: asset.checksum,
-      durationSeconds: asset.duration_seconds,
+      durationSeconds: preciseDurationSeconds(asset.duration_milliseconds, asset.duration_seconds),
       fileSizeBytes: asset.file_size_bytes,
       metadata: isRecord(asset.metadata) ? asset.metadata : {},
       mimeType: asset.mime_type,
@@ -476,6 +479,13 @@ function asArray(value: unknown) {
 
 function positiveDuration(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function preciseDurationSeconds(milliseconds: unknown, legacySeconds: unknown) {
+  const precise = typeof milliseconds === "number" && Number.isFinite(milliseconds) && milliseconds > 0
+    ? milliseconds / 1_000
+    : null;
+  return precise ?? positiveDuration(legacySeconds);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

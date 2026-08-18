@@ -88,7 +88,7 @@ body:has(#assembly-workspace-toolbar) #artifact-detail-page > #artifact-detail-b
 }
 
 html.courseforge-assembly-focus [data-timeline-lane] {
-  min-height: 52px;
+  min-height: 40px;
   border: 1px solid rgba(148, 163, 184, 0.36);
   background-color: rgba(15, 23, 42, 0.05);
   background-image: repeating-linear-gradient(

@@ -62,16 +62,19 @@ export async function compileCompositionPreview(params: {
     * { box-sizing: border-box; }
     html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #020617; }
     #composition-viewport { position: fixed; inset: 0; overflow: hidden; background: #020617; }
-    #composition-root { --preview-scale: 1; position: absolute; left: 50%; top: 50%; width: ${document.canvas.width}px; height: ${document.canvas.height}px; overflow: hidden; background: #020617; transform: translate(-50%, -50%) scale(var(--preview-scale)); transform-origin: center; }
+    #composition-root { --preview-scale: 1; --preview-user-scale: 1; --editor-control-scale: 1; --editor-outline-width: 3px; position: absolute; left: 50%; top: 50%; width: ${document.canvas.width}px; height: ${document.canvas.height}px; overflow: hidden; background: #020617; transform: translate(-50%, -50%) scale(calc(var(--preview-scale) * var(--preview-user-scale))); transform-origin: center; }
     .clip { position: absolute; inset: 0;${isInteractivePreview ? " pointer-events: none;" : ""} }
     .clip-content { position: absolute; transform-origin: top left;${isInteractivePreview ? " pointer-events: auto;" : ""} visibility: hidden; }
     .motion-subject { position: relative; width: 100%; height: 100%; transform-origin: center; }
-    ${isInteractivePreview ? `.clip-content[data-selected="true"] { outline: 4px solid #22d3ee; outline-offset: -4px; }
-    .clip-content[data-selected="true"]::after { content: ""; position: absolute; inset: 0; border: 1px solid rgba(8,145,178,.9); pointer-events: none; }
-    .composition-resize-handle { position: absolute; right: -7px; bottom: -7px; width: 16px; height: 16px; border: 2px solid #fff; border-radius: 3px; background: #0891b2; box-shadow: 0 1px 4px rgba(0,0,0,.45); cursor: nwse-resize; z-index: 2147483647; }
-    .composition-editor-grid { position: absolute; inset: 0; z-index: 2147483646; display: none; pointer-events: none; background-image: linear-gradient(to right, transparent calc(33.333% - 1px), rgba(34,211,238,.48) 33.333%, transparent calc(33.333% + 1px), transparent calc(66.666% - 1px), rgba(34,211,238,.48) 66.666%, transparent calc(66.666% + 1px)), linear-gradient(to bottom, transparent calc(33.333% - 1px), rgba(34,211,238,.48) 33.333%, transparent calc(33.333% + 1px), transparent calc(66.666% - 1px), rgba(34,211,238,.48) 66.666%, transparent calc(66.666% + 1px)); box-shadow: inset 0 0 0 1px rgba(34,211,238,.35); }
+    ${isInteractivePreview ? `.clip-content[data-selected="true"] { outline: var(--editor-outline-width) solid #22d3ee; outline-offset: calc(-1 * var(--editor-outline-width)); box-shadow: 0 0 0 var(--editor-outline-width) rgba(255,255,255,.75), 0 0 18px rgba(34,211,238,.75); }
+    .clip-content[data-selected="true"]::after { content: ""; position: absolute; inset: 0; border: var(--editor-outline-width) solid rgba(8,145,178,.9); pointer-events: none; }
+    .composition-editor-control { position: absolute; z-index: 2147483647; display: grid; width: 22px; height: 22px; padding: 0; place-items: center; border: 2px solid #fff; border-radius: 5px; color: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.65); cursor: pointer; }
+    .composition-move-handle { left: 0; top: 0; background: #0e7490; font: 700 15px/1 system-ui, sans-serif; cursor: move; transform: scale(var(--editor-control-scale)); transform-origin: top left; }
+    .composition-resize-handle { right: 0; bottom: 0; background: #0891b2; font: 800 14px/1 system-ui, sans-serif; cursor: nwse-resize; transform: scale(var(--editor-control-scale)); transform-origin: bottom right; }
+    .composition-editor-grid { position: absolute; inset: 0; z-index: 2147483646; display: none; pointer-events: none; background-image: linear-gradient(to right, rgba(34,211,238,.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(34,211,238,.18) 1px, transparent 1px), linear-gradient(to right, rgba(34,211,238,.38) 1px, transparent 1px), linear-gradient(to bottom, rgba(34,211,238,.38) 1px, transparent 1px); background-size: 16px 16px, 16px 16px, 80px 80px, 80px 80px; box-shadow: inset 0 0 0 1px rgba(34,211,238,.5); }
     .composition-editor-grid[data-visible="true"] { display: block; }` : ""}
     .composition-media { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .clip-content[data-preserve-aspect="true"] .composition-media { object-fit: contain; }
     .composition-audio { display: none; }
     ${isInteractivePreview ? `.composition-audio-unlock { position: absolute; left: 50%; bottom: 28px; z-index: 2147483647; display: none; transform: translateX(-50%); border: 1px solid rgba(255,255,255,.55); border-radius: 999px; background: rgba(2,6,23,.92); color: #fff; padding: 12px 18px; font: 700 16px/1 system-ui, sans-serif; box-shadow: 0 10px 30px rgba(0,0,0,.4); cursor: pointer; }
     .composition-audio-unlock[data-visible="true"] { display: block; }` : ""}
@@ -106,7 +109,8 @@ function renderClip(
 ) {
   const isHyperframesRender = target === COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER;
   const layout = `left:${clip.layout.x}px;top:${clip.layout.y}px;width:${clip.layout.width}px;height:${clip.layout.height}px;opacity:${clip.layout.opacity};z-index:${clip.layout.zIndex};transform:rotate(${clip.layout.rotation}deg);`;
-  const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}" style="${layout}"`;
+  const preservesSourceAspect = track?.semanticRole === "AVATAR" || track?.id === "avatar";
+  const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}"${preservesSourceAspect ? ' data-preserve-aspect="true"' : ""} style="${layout}"`;
   const motionId = `${escapeAttribute(clip.id)}-motion`;
   const timing = `data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${trackIndex(clip.trackId, clipIndex)}"`;
   const mediaOffset = `data-source-offset="${clip.sourceOffsetSeconds || 0}"${isHyperframesRender ? ` data-media-start="${clip.sourceOffsetSeconds || 0}"` : ""}`;
@@ -122,14 +126,14 @@ function renderClip(
     return `<audio id="${escapeAttribute(clip.id)}" class="composition-audio${isHyperframesRender ? " clip" : ""}" data-hf-id="${escapeAttribute(clip.hfId)}"${hidden}${volumeAutomation} ${mediaOffset} data-volume="${volume}" src="${escapeAttribute(sourceUrl)}" ${timing}></audio>`;
   }
   if (clip.kind === "VIDEO" && isHyperframesRender) {
-    const video = `<video id="${escapeAttribute(clip.id)}-media" class="composition-media clip" src="${escapeAttribute(sourceUrl)}" muted playsinline preload="metadata" ${mediaOffset}${hidden} ${timing}></video>`;
+    const video = `<video id="${escapeAttribute(clip.id)}-media" class="composition-media clip" src="${escapeAttribute(sourceUrl)}" muted playsinline loop preload="metadata" ${mediaOffset}${hidden} ${timing}></video>`;
     const audio = clip.trackId === "avatar"
-      ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio clip" src="${escapeAttribute(sourceUrl)}" ${mediaOffset}${hidden} data-volume="${volume}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${10 + clipIndex}"></audio>`
+      ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio clip" src="${escapeAttribute(sourceUrl)}" loop ${mediaOffset}${hidden} data-volume="${volume}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${10 + clipIndex}"></audio>`
       : "";
     return `<div ${common} class="clip-content"><div id="${motionId}" class="motion-subject">${video}</div></div>${audio}`;
   }
   const media = clip.kind === "VIDEO"
-    ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" src="${escapeAttribute(sourceUrl)}" muted playsinline preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset}${hidden}></video>${clip.trackId === "avatar" ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${hidden} src="${escapeAttribute(sourceUrl)}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset} data-volume="${volume}"></audio>` : ""}`
+    ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" src="${escapeAttribute(sourceUrl)}" muted playsinline loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset}${hidden}></video>${clip.trackId === "avatar" ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${hidden} src="${escapeAttribute(sourceUrl)}" loop data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset} data-volume="${volume}"></audio>` : ""}`
     : `<img class="composition-media" src="${escapeAttribute(sourceUrl)}" alt="" />`;
   return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject">${media}</div></div></section>`;
 }
@@ -246,21 +250,88 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
       const timeline = window.__timelines["courseforge-composition"];
       let editingEnabled = true;
       let snapEnabled = true;
+      let previewUserScale = 1;
       let selectedHfId = null;
       let activeTransform = null;
+      let aspectCorrectionTimer = null;
       let playbackTimer = null;
       let playbackActive = false;
       let currentTime = 0;
       const activeMedia = new Set();
+      // Browser autoplay policy may reject audible media in the sandboxed iframe.
+      // That is an audio-permission issue, not a transport failure: the muted
+      // video and the composition clock must keep running.
+      const blockedAudioMedia = new Set();
       const pendingMediaPlayback = new WeakMap();
       const reportedMediaErrors = new WeakSet();
       const duration = ${document.canvas.durationSeconds};
+      const canvasWidth = ${document.canvas.width};
+      const canvasHeight = ${document.canvas.height};
+      const pendingAspectCorrections = new Map();
       const fitCompositionToViewport = () => {
         if (!root || !viewport) return;
         const scale = Math.min(viewport.clientWidth / ${document.canvas.width}, viewport.clientHeight / ${document.canvas.height});
-        root.style.setProperty("--preview-scale", String(Math.max(0, scale)));
+        const safeScale = Math.max(.01, scale);
+        const renderedScale = safeScale * previewUserScale;
+        root.style.setProperty("--preview-scale", String(safeScale));
+        root.style.setProperty("--preview-user-scale", String(previewUserScale));
+        root.style.setProperty("--editor-control-scale", String(1 / renderedScale));
+        root.style.setProperty("--editor-outline-width", (2 / renderedScale) + "px");
       };
       const mediaIdentity = (media) => media.id || media.closest("[data-hf-id]")?.dataset.hfId || media.tagName.toLowerCase();
+      const queueAspectCorrection = (target, layout) => {
+        const hfId = target.dataset.hfId;
+        if (!hfId) return;
+        pendingAspectCorrections.set(hfId, { hfId, layout });
+        if (aspectCorrectionTimer) window.clearTimeout(aspectCorrectionTimer);
+        aspectCorrectionTimer = window.setTimeout(() => {
+          const corrections = [...pendingAspectCorrections.values()];
+          pendingAspectCorrections.clear();
+          aspectCorrectionTimer = null;
+          if (corrections.length > 0) {
+            window.parent.postMessage({ type: "courseforge-composition-aspect-corrections", corrections }, "*");
+          }
+        }, 50);
+      };
+      const preserveLegacyAvatarAspect = (media) => {
+        const target = media.closest('.clip-content[data-preserve-aspect="true"]');
+        if (!target || !(target instanceof HTMLElement)) return;
+        const sourceWidth = Number(media.videoWidth || media.naturalWidth || 0);
+        const sourceHeight = Number(media.videoHeight || media.naturalHeight || 0);
+        if (sourceWidth <= 0 || sourceHeight <= 0) return;
+        const layout = {
+          height: Number.parseFloat(target.style.height),
+          width: Number.parseFloat(target.style.width),
+          x: Number.parseFloat(target.style.left),
+          y: Number.parseFloat(target.style.top),
+        };
+        if (Object.values(layout).some((value) => !Number.isFinite(value))) return;
+        const legacyWidth = Math.round(canvasWidth * .32);
+        const legacyHeight = Math.round(canvasHeight * .65);
+        const usesLegacyAvatarBox = Math.abs(layout.width - legacyWidth) <= 2
+          && Math.abs(layout.height - legacyHeight) <= 2
+          && Math.abs(layout.x - (canvasWidth - legacyWidth - 48)) <= 2
+          && Math.abs(layout.y - (canvasHeight - legacyHeight - 48)) <= 2;
+        if (!usesLegacyAvatarBox) return;
+        const sourceRatio = sourceWidth / sourceHeight;
+        const layoutRatio = layout.width / layout.height;
+        if (Math.abs(sourceRatio - layoutRatio) <= .01) return;
+        const width = sourceRatio >= layoutRatio ? layout.width : Math.round(layout.height * sourceRatio);
+        const height = sourceRatio >= layoutRatio ? Math.round(layout.width / sourceRatio) : layout.height;
+        const correctedLayout = {
+          height,
+          width,
+          x: layout.x + layout.width - width,
+          y: layout.y + layout.height - height,
+        };
+        Object.assign(target.style, {
+          height: correctedLayout.height + "px",
+          left: correctedLayout.x + "px",
+          top: correctedLayout.y + "px",
+          width: correctedLayout.width + "px",
+        });
+        queueAspectCorrection(target, correctedLayout);
+      };
       const reportMediaError = (media, error) => {
         if (reportedMediaErrors.has(media)) return;
         reportedMediaErrors.add(media);
@@ -273,31 +344,30 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
           message,
         }, "*");
       };
+      const handleMediaPlaybackFailure = (media, error) => {
+        if (error?.name === "AbortError") return;
+        reportMediaError(media, error);
+        if (error?.name !== "NotAllowedError" || media.tagName !== "AUDIO") return;
+        blockedAudioMedia.add(media);
+        if (audioUnlock) audioUnlock.dataset.visible = "true";
+      };
       const requestMediaPlayback = (media) => {
-        if (!playbackActive || !media.paused || pendingMediaPlayback.has(media)) return;
+        if (!playbackActive || !media.paused || pendingMediaPlayback.has(media) || blockedAudioMedia.has(media)) return;
         let playRequest;
         try {
           playRequest = media.play();
         } catch (error) {
-          reportMediaError(media, error);
+          handleMediaPlaybackFailure(media, error);
           return;
         }
         if (!playRequest || typeof playRequest.catch !== "function") return;
         pendingMediaPlayback.set(media, playRequest);
         playRequest.then(() => {
           reportedMediaErrors.delete(media);
-          if (audioUnlock) audioUnlock.dataset.visible = "false";
+          blockedAudioMedia.delete(media);
+          if (audioUnlock && blockedAudioMedia.size === 0) audioUnlock.dataset.visible = "false";
         }).catch((error) => {
-          if (error?.name === "AbortError") return;
-          reportMediaError(media, error);
-          if (error?.name === "NotAllowedError") {
-            playbackActive = false;
-            if (playbackTimer) window.cancelAnimationFrame(playbackTimer);
-            playbackTimer = null;
-            if (audioUnlock) audioUnlock.dataset.visible = "true";
-            document.querySelectorAll("audio, video").forEach((candidate) => candidate.pause());
-            window.parent.postMessage({ type: "courseforge-composition-playback", playing: false }, "*");
-          }
+          handleMediaPlaybackFailure(media, error);
         }).finally(() => {
           if (pendingMediaPlayback.get(media) === playRequest) pendingMediaPlayback.delete(media);
         });
@@ -319,8 +389,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
             const volume = Number(media.dataset.volume || 1);
             media.volume = Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1;
           }
-          if (Number.isFinite(media.duration)) {
-            const next = Math.max(0, Math.min(media.duration, sourceOffset + time - start));
+          if (Number.isFinite(media.duration) && media.duration > 0) {
+            const sourceTime = Math.max(0, sourceOffset + time - start);
+            const next = media.loop ? sourceTime % media.duration : Math.min(media.duration, sourceTime);
             if (forceSeek || entered || Math.abs(media.currentTime - next) > 0.35) media.currentTime = next;
           }
           if (playbackActive) requestMediaPlayback(media);
@@ -357,17 +428,35 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         playbackTimer = window.requestAnimationFrame(tick);
         window.parent.postMessage({ type: "courseforge-composition-playback", playing: true }, "*");
       };
-      audioUnlock?.addEventListener("click", () => play());
+      audioUnlock?.addEventListener("click", () => {
+        // This handler executes inside the iframe under a real user gesture,
+        // which lets the browser grant playback to its previously blocked audio.
+        blockedAudioMedia.clear();
+        syncMedia(currentTime, true);
+      });
+      document.querySelectorAll('.clip-content[data-preserve-aspect="true"] video').forEach((media) => {
+        if (media.readyState >= 1) preserveLegacyAvatarAspect(media);
+        else media.addEventListener("loadedmetadata", () => preserveLegacyAvatarAspect(media), { once: true });
+      });
       const selectTarget = (target) => {
         if (!target) return;
         document.querySelectorAll("[data-selected='true']").forEach((node) => node.removeAttribute("data-selected"));
-        document.querySelectorAll(".composition-resize-handle").forEach((node) => node.remove());
+        document.querySelectorAll(".composition-editor-control").forEach((node) => node.remove());
         target.setAttribute("data-selected", "true");
         if (editingEnabled) {
+          const moveHandle = document.createElement("button");
+          moveHandle.type = "button";
+          moveHandle.className = "composition-editor-control composition-move-handle";
+          moveHandle.setAttribute("aria-label", "Mover elemento");
+          moveHandle.title = "Arrastra para mover";
+          moveHandle.textContent = "✥";
+          target.appendChild(moveHandle);
           const handle = document.createElement("button");
           handle.type = "button";
-          handle.className = "composition-resize-handle";
+          handle.className = "composition-editor-control composition-resize-handle";
           handle.setAttribute("aria-label", "Redimensionar elemento");
+          handle.title = "Arrastra para cambiar el tamaño";
+          handle.textContent = "↘";
           target.appendChild(handle);
         }
         selectedHfId = target.dataset.hfId || null;
@@ -376,7 +465,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
       };
       const clearTarget = () => {
         document.querySelectorAll("[data-selected='true']").forEach((node) => node.removeAttribute("data-selected"));
-        document.querySelectorAll(".composition-resize-handle").forEach((node) => node.remove());
+        document.querySelectorAll(".composition-editor-control").forEach((node) => node.remove());
         selectedHfId = null;
         window.parent.postMessage({ type: "courseforge-composition-selection", hfId: null }, "*");
       };
@@ -417,18 +506,27 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         if (Math.abs(dx) > .25 || Math.abs(dy) > .25) activeTransform.moved = true;
         const target = activeTransform.target;
         if (activeTransform.mode === "move") {
-          const x = activeTransform.layout.x + dx;
-          const y = activeTransform.layout.y + dy;
-          target.style.left = (snapEnabled ? Math.round(x / 16) * 16 : Math.round(x)) + "px";
-          target.style.top = (snapEnabled ? Math.round(y / 16) * 16 : Math.round(y)) + "px";
+          const maxX = Math.max(0, canvasWidth - activeTransform.layout.width);
+          const maxY = Math.max(0, canvasHeight - activeTransform.layout.height);
+          const x = Math.max(0, Math.min(maxX, activeTransform.layout.x + dx));
+          const y = Math.max(0, Math.min(maxY, activeTransform.layout.y + dy));
+          const nextX = snapEnabled ? Math.min(maxX, Math.round(x / 16) * 16) : Math.round(x);
+          const nextY = snapEnabled ? Math.min(maxY, Math.round(y / 16) * 16) : Math.round(y);
+          target.style.left = nextX + "px";
+          target.style.top = nextY + "px";
           return;
         }
-        const width = Math.max(24, activeTransform.layout.width + dx);
+        const width = Math.max(24, Math.min(canvasWidth - activeTransform.layout.x, activeTransform.layout.width + dx));
         const height = activeTransform.preserveRatio
           ? Math.max(24, width * (activeTransform.layout.height / activeTransform.layout.width))
           : Math.max(24, activeTransform.layout.height + dy);
-        target.style.width = (snapEnabled ? Math.max(24, Math.round(width / 16) * 16) : Math.round(width)) + "px";
-        target.style.height = (snapEnabled ? Math.max(24, Math.round(height / 16) * 16) : Math.round(height)) + "px";
+        const boundedHeight = Math.min(canvasHeight - activeTransform.layout.y, height);
+        const maxWidth = Math.max(24, canvasWidth - activeTransform.layout.x);
+        const maxHeight = Math.max(24, canvasHeight - activeTransform.layout.y);
+        const nextWidth = snapEnabled ? Math.min(maxWidth, Math.max(24, Math.round(width / 16) * 16)) : Math.round(width);
+        const nextHeight = snapEnabled ? Math.min(maxHeight, Math.max(24, Math.round(boundedHeight / 16) * 16)) : Math.round(boundedHeight);
+        target.style.width = nextWidth + "px";
+        target.style.height = nextHeight + "px";
       });
       const finishTransform = (event) => {
         if (!activeTransform) return;
@@ -459,9 +557,13 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
           editingEnabled = message.editingEnabled !== false;
           snapEnabled = message.snapEnabled !== false;
           if (editorGrid) editorGrid.setAttribute("data-visible", message.gridVisible === true ? "true" : "false");
-          document.querySelectorAll(".composition-resize-handle").forEach((node) => node.remove());
+          document.querySelectorAll(".composition-editor-control").forEach((node) => node.remove());
           const selectedTarget = selectedHfId ? document.querySelector('[data-hf-id="' + CSS.escape(selectedHfId) + '"]') : null;
           if (selectedTarget) selectTarget(selectedTarget);
+        }
+        if (message.type === "courseforge-composition-preview-zoom") {
+          previewUserScale = Math.max(.5, Math.min(2, Number(message.scale) || 1));
+          fitCompositionToViewport();
         }
         if (message.type === "courseforge-composition-select") {
           if (message.hfId === null) {

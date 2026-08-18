@@ -12,6 +12,37 @@ export class CompositionEditorPatchError extends Error {
   }
 }
 
+const CLIP_BOUNDARY_EPSILON_SECONDS = 0.001;
+
+function assertDerivableMediaClip(document: CompositionEditorDocument, clip: CompositionEditorDocument["clips"][number]) {
+  if (clip.source.type !== "PRODUCTION_ASSET" || (clip.kind !== "VIDEO" && clip.kind !== "AUDIO")) {
+    throw new CompositionEditorPatchError("Solo los clips de video o audio pueden dividirse o recortarse por intervalos.");
+  }
+  if (document.motion.animations.some((animation) => animation.target.clipId === clip.id)) {
+    throw new CompositionEditorPatchError("Quita o ajusta las animaciones del clip antes de dividirlo o eliminar un intervalo.");
+  }
+}
+
+function assertNewDerivedClipIdentity(
+  document: CompositionEditorDocument,
+  clipId: string,
+  hfId: string,
+) {
+  if (document.clips.some((clip) => clip.id === clipId || clip.hfId === hfId)) {
+    throw new CompositionEditorPatchError("El identificador del clip derivado ya existe.");
+  }
+}
+
+function removeClipOrThrow(document: CompositionEditorDocument, clipId: string) {
+  if (document.clips.length === 1) {
+    throw new CompositionEditorPatchError("La composición debe conservar al menos un clip.");
+  }
+  document.clips = document.clips.filter((candidate) => candidate.id !== clipId);
+  document.motion.animations = document.motion.animations.filter(
+    (animation) => animation.target.clipId !== clipId,
+  );
+}
+
 /**
  * Keeps timing edits atomic. A clip may extend the composition, but callers
  * should not have to issue a separate canvas edit first (which would leave a
@@ -74,10 +105,18 @@ export function applyCompositionEditorPatches(
   operations: CompositionEditorPatchOperation[],
   source: "AGENT" | "SYSTEM" | "USER" = "USER",
 ) {
-  const next = structuredClone(document);
+  let next = structuredClone(document);
   next.format = COMPOSITION_DOCUMENT_FORMAT;
 
   for (const operation of operations) {
+    if (operation.type === "document.restore") {
+      if (source !== "USER") {
+        throw new CompositionEditorPatchError("Solo una acción explícita del usuario puede restaurar una versión anterior.");
+      }
+      next = structuredClone(operation.document);
+      next.format = COMPOSITION_DOCUMENT_FORMAT;
+      continue;
+    }
     if (operation.type === "animation.add-preset") {
       const clip = next.clips.find((candidate) => candidate.id === operation.clipId);
       if (!clip) throw new CompositionEditorPatchError("El clip que intentas animar ya no existe.");
@@ -171,11 +210,86 @@ export function applyCompositionEditorPatches(
     const currentTrack = next.tracks.find((track) => track.id === clip.trackId);
     if (!currentTrack) throw new CompositionEditorPatchError("El clip no tiene un track válido.");
 
+    if (operation.type === "clip.split") {
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes dividir un clip de un track bloqueado.");
+      assertDerivableMediaClip(next, clip);
+      assertNewDerivedClipIdentity(next, operation.newClipId, operation.newHfId);
+      const splitAtSeconds = quantizeToDocumentFrame(operation.atSeconds, next.canvas.fps);
+      const splitOffset = splitAtSeconds - clip.startSeconds;
+      const minimumClipDuration = minimumDerivedClipDuration(next.canvas.fps);
+      if (
+        splitOffset < minimumClipDuration - CLIP_BOUNDARY_EPSILON_SECONDS ||
+        splitOffset > clip.durationSeconds - minimumClipDuration + CLIP_BOUNDARY_EPSILON_SECONDS
+      ) {
+        throw new CompositionEditorPatchError("El corte debe dejar al menos un frame válido a ambos lados del clip.");
+      }
+      const rightClip = structuredClone(clip);
+      rightClip.id = operation.newClipId;
+      rightClip.hfId = operation.newHfId;
+      rightClip.durationSeconds = quantizeToDocumentFrame(clip.durationSeconds - splitOffset, next.canvas.fps);
+      rightClip.sourceOffsetSeconds = normalizeVideoSourceOffset(
+        clip,
+        quantizeToDocumentFrame((clip.sourceOffsetSeconds || 0) + splitOffset, next.canvas.fps),
+      );
+      rightClip.startSeconds = splitAtSeconds;
+      rightClip.timingSource = "USER_EDITED";
+      clip.durationSeconds = quantizeToDocumentFrame(splitOffset, next.canvas.fps);
+      clip.timingSource = "USER_EDITED";
+      next.clips.push(rightClip);
+      continue;
+    }
+
+    if (operation.type === "clip.remove-range") {
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes eliminar un intervalo de un track bloqueado.");
+      assertDerivableMediaClip(next, clip);
+      const clipEnd = clip.startSeconds + clip.durationSeconds;
+      const rangeStartSeconds = quantizeToDocumentFrame(operation.startSeconds, next.canvas.fps);
+      const rangeEndSeconds = quantizeToDocumentFrame(operation.endSeconds, next.canvas.fps);
+      if (
+        rangeStartSeconds < clip.startSeconds + CLIP_BOUNDARY_EPSILON_SECONDS ||
+        rangeEndSeconds > clipEnd - CLIP_BOUNDARY_EPSILON_SECONDS ||
+        rangeEndSeconds <= rangeStartSeconds
+      ) {
+        throw new CompositionEditorPatchError("El intervalo debe quedar dentro del clip seleccionado.");
+      }
+      const leftDuration = rangeStartSeconds - clip.startSeconds;
+      const rightDuration = clipEnd - rangeEndSeconds;
+      const minimumClipDuration = minimumDerivedClipDuration(next.canvas.fps);
+      if (
+        leftDuration < minimumClipDuration ||
+        rightDuration < minimumClipDuration
+      ) {
+        throw new CompositionEditorPatchError("El intervalo debe dejar al menos un frame válido a ambos lados.");
+      }
+      if (!operation.newClipId || !operation.newHfId) {
+        throw new CompositionEditorPatchError("Eliminar un segmento intermedio requiere un identificador para el clip restante.");
+      }
+      assertNewDerivedClipIdentity(next, operation.newClipId, operation.newHfId);
+      const rightClip = structuredClone(clip);
+      rightClip.id = operation.newClipId;
+      rightClip.hfId = operation.newHfId;
+      rightClip.durationSeconds = quantizeToDocumentFrame(rightDuration, next.canvas.fps);
+      rightClip.sourceOffsetSeconds = normalizeVideoSourceOffset(
+        clip,
+        quantizeToDocumentFrame(
+          (clip.sourceOffsetSeconds || 0) + (rangeEndSeconds - clip.startSeconds),
+          next.canvas.fps,
+        ),
+      );
+      rightClip.startSeconds = quantizeToDocumentFrame(
+        operation.ripple ? rangeStartSeconds : rangeEndSeconds,
+        next.canvas.fps,
+      );
+      rightClip.timingSource = "USER_EDITED";
+      clip.durationSeconds = quantizeToDocumentFrame(leftDuration, next.canvas.fps);
+      clip.timingSource = "USER_EDITED";
+      next.clips.push(rightClip);
+      continue;
+    }
+
     if (operation.type === "clip.remove") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes quitar un clip de un track bloqueado.");
-      if (next.clips.length === 1) throw new CompositionEditorPatchError("La composición debe conservar al menos un clip.");
-      next.clips = next.clips.filter((candidate) => candidate.id !== clip.id);
-      next.motion.animations = next.motion.animations.filter((animation) => animation.target.clipId !== clip.id);
+      removeClipOrThrow(next, clip.id);
       continue;
     }
 
@@ -209,7 +323,7 @@ export function applyCompositionEditorPatches(
     if (operation.type === "clip.trim") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes recortar un track bloqueado.");
       clip.durationSeconds = operation.durationSeconds;
-      clip.sourceOffsetSeconds = operation.sourceOffsetSeconds;
+      clip.sourceOffsetSeconds = normalizeVideoSourceOffset(clip, operation.sourceOffsetSeconds);
       clip.startSeconds = operation.startSeconds;
       clip.timingSource = "USER_EDITED";
     }
@@ -244,4 +358,20 @@ export function applyCompositionEditorPatches(
     );
   }
   return parsed.data;
+}
+
+function minimumDerivedClipDuration(fps: number) {
+  return Math.max(0.05, 1 / fps);
+}
+
+function quantizeToDocumentFrame(value: number, fps: number) {
+  return Math.round(value * fps) / fps;
+}
+
+function normalizeVideoSourceOffset(
+  clip: CompositionEditorDocument["clips"][number],
+  sourceOffsetSeconds: number,
+) {
+  if (clip.kind !== "VIDEO" || !clip.sourceDurationSeconds) return sourceOffsetSeconds;
+  return sourceOffsetSeconds % clip.sourceDurationSeconds;
 }
