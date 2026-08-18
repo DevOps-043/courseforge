@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getErrorMessage } from "@/lib/errors";
 import { undoStoredCompositionAgentProposal, CompositionAgentProposalStoreError } from "@/domains/production/composition-editor/composition-agent-proposal-store.service";
 import { authorizeCompositionAgentRequest, compositionAgentStoreErrorResponse } from "../../_route-support";
+import { COMPOSITION_VERSION_FALLBACK_HEADER, resolveCompositionDocumentPrecondition } from "@/domains/production/composition-editor/composition-document-version";
 
 interface RouteContext { params: Promise<{ draftId: string; proposalId: string }>; }
 
@@ -11,13 +12,19 @@ export async function POST(request: Request, context: RouteContext) {
     const authorization = await authorizeCompositionAgentRequest();
     if (authorization instanceof NextResponse) return authorization;
     const routeParams = await context.params;
-    const expectedDocumentHash = request.headers.get("if-match")?.replaceAll('"', "").trim();
-    if (!expectedDocumentHash || !/^[a-f0-9]{64}$/i.test(expectedDocumentHash)) {
-      return NextResponse.json({ error: "Falta la versión aplicada de la propuesta (If-Match)." }, { status: 428 });
+    const precondition = resolveCompositionDocumentPrecondition({
+      fallbackHeader: request.headers.get(COMPOSITION_VERSION_FALLBACK_HEADER),
+      ifMatchHeader: request.headers.get("if-match"),
+    });
+    if (!precondition.ok) {
+      return NextResponse.json({ error: "Falta una versión aplicada válida y consistente para la propuesta." }, {
+        status: 428,
+        headers: { "Cache-Control": "private, no-store" },
+      });
     }
     const data = await undoStoredCompositionAgentProposal({
       draftId: z.string().uuid().parse(routeParams.draftId),
-      expectedDocumentHash: expectedDocumentHash.toLowerCase(),
+      expectedDocumentHash: precondition.documentHash,
       organizationId: authorization.organizationId,
       proposalId: z.string().uuid().parse(routeParams.proposalId),
       signal: AbortSignal.any([request.signal, AbortSignal.timeout(15_000)]),

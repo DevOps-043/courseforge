@@ -18,6 +18,7 @@ import { AudioMixControls } from "./AudioMixControls";
 import { LayerDepthControls } from "./LayerDepthControls";
 import { buildCompositionAutoOrganizePatch } from "@/domains/production/composition-editor/composition-auto-organize.service";
 import {
+  COMPOSITION_VERSION_FALLBACK_HEADER,
   formatCompositionDocumentEtag,
   resolveCompositionDocumentVersion,
 } from "@/domains/production/composition-editor/composition-document-version";
@@ -321,7 +322,11 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     try {
       const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/document`, {
         body: JSON.stringify({ operations: effectiveOperations, source, summary }),
-        headers: { "Content-Type": "application/json", "If-Match": formatCompositionDocumentEtag(currentPayload.documentHash) },
+        headers: {
+          "Content-Type": "application/json",
+          "If-Match": formatCompositionDocumentEtag(currentPayload.documentHash),
+          [COMPOSITION_VERSION_FALLBACK_HEADER]: currentPayload.documentHash,
+        },
         method: "PUT",
       });
       const body = await response.json();
@@ -564,7 +569,11 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     try {
       const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/agent-proposals/${proposal.proposalId}/apply`, {
         body: JSON.stringify({ reinforcedConfirmation }),
-        headers: { "Content-Type": "application/json", "If-Match": formatCompositionDocumentEtag(currentPayload.documentHash) },
+        headers: {
+          "Content-Type": "application/json",
+          "If-Match": formatCompositionDocumentEtag(currentPayload.documentHash),
+          [COMPOSITION_VERSION_FALLBACK_HEADER]: currentPayload.documentHash,
+        },
         method: "POST",
       });
       const body = await response.json();
@@ -620,7 +629,10 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     setPayload(optimisticPayload);
     try {
       const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/agent-proposals/${proposal.proposalId}/undo`, {
-        headers: { "If-Match": formatCompositionDocumentEtag(currentPayload.documentHash) },
+        headers: {
+          "If-Match": formatCompositionDocumentEtag(currentPayload.documentHash),
+          [COMPOSITION_VERSION_FALLBACK_HEADER]: currentPayload.documentHash,
+        },
         method: "POST",
       });
       const body = await response.json();

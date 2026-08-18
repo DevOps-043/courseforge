@@ -14,9 +14,10 @@ import {
 import { compositionEditorPatchRequestSchema } from "@/domains/production/composition-editor/editor-patch.types";
 import { createClient } from "@/utils/supabase/server";
 import {
+  COMPOSITION_VERSION_FALLBACK_HEADER,
   describeCompositionDocumentVersion,
   formatCompositionDocumentEtag,
-  parseCompositionDocumentEtag,
+  resolveCompositionDocumentPrecondition,
 } from "@/domains/production/composition-editor/composition-document-version";
 
 interface RouteContext { params: Promise<{ draftId: string }>; }
@@ -62,25 +63,44 @@ export async function PUT(request: Request, context: RouteContext) {
     if (authorization instanceof NextResponse) return authorization;
     const { draftId } = await context.params;
     const rawIfMatch = request.headers.get("if-match");
-    const expectedDocumentHash = parseCompositionDocumentEtag(rawIfMatch);
-    if (!expectedDocumentHash) {
+    const rawFallbackVersion = request.headers.get(COMPOSITION_VERSION_FALLBACK_HEADER);
+    const precondition = resolveCompositionDocumentPrecondition({
+      fallbackHeader: rawFallbackVersion,
+      ifMatchHeader: rawIfMatch,
+    });
+    if (!precondition.ok) {
       console.warn("[CompositionDocumentVersion] Rejected update without a valid If-Match", {
         documentId: draftId,
         event: "composition_document_precondition_rejected",
-        receivedVersion: describeCompositionDocumentVersion(rawIfMatch?.replaceAll('"', "") ?? null),
-        rejectionReason: rawIfMatch ? "INVALID_IF_MATCH" : "MISSING_IF_MATCH",
+        receivedVersion: describeCompositionDocumentVersion(rawIfMatch?.replaceAll('"', "") ?? rawFallbackVersion),
+        rejectionReason: precondition.reason,
       });
       return NextResponse.json({
-        error: rawIfMatch ? "La versión del documento (If-Match) no tiene el formato esperado." : "Falta la versión actual del documento (If-Match).",
-        code: rawIfMatch ? "COMPOSITION_IF_MATCH_INVALID" : "COMPOSITION_IF_MATCH_REQUIRED",
+        error: precondition.reason === "MISSING"
+          ? "Falta la versión actual del documento (If-Match)."
+          : precondition.reason === "MISMATCH"
+            ? "Los identificadores de versión del documento no coinciden. Recarga el editor."
+            : "La versión del documento no tiene el formato esperado.",
+        code: precondition.reason === "MISSING"
+          ? "COMPOSITION_IF_MATCH_REQUIRED"
+          : precondition.reason === "MISMATCH"
+            ? "COMPOSITION_VERSION_MISMATCH"
+            : "COMPOSITION_IF_MATCH_INVALID",
         retryable: true,
-      }, { status: 428 });
+      }, { status: 428, headers: { "Cache-Control": "private, no-store" } });
+    }
+    if (precondition.source === "X_COMPOSITION_VERSION") {
+      console.warn("[CompositionDocumentVersion] Used transport fallback after If-Match was unavailable", {
+        documentId: draftId,
+        event: "composition_document_precondition_fallback_used",
+        receivedVersion: describeCompositionDocumentVersion(precondition.documentHash),
+      });
     }
     const body = compositionEditorPatchRequestSchema.parse(await request.json());
     const persistenceSignal = AbortSignal.any([request.signal, AbortSignal.timeout(15_000)]);
     const data = await applyAndAppendCompositionDocumentPatches({
       draftId: z.string().uuid().parse(draftId),
-      expectedDocumentHash,
+      expectedDocumentHash: precondition.documentHash,
       organizationId: authorization.organizationId,
       patch: body,
       signal: persistenceSignal,
