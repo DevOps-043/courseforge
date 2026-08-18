@@ -19,7 +19,7 @@ La fuente oficial de versión es `video_composition_draft_documents.document_has
 | PUT documento | `If-Match: "<sha256>"` fuerte y exacto | Nueva versión y el ETag actualizado |
 | Aplicar/deshacer propuesta | Mismo `If-Match` | Nueva versión y el ETag actualizado |
 
-No se aceptan ETags débiles (`W/`), listas de ETags, `*`, valores sin comillas o hashes que no sean SHA-256. El frontend no permite guardar si el hash del cuerpo y el ETag de lectura/respuesta no coinciden.
+No se aceptan ETags débiles (`W/`), listas de ETags, `*`, valores sin comillas o hashes que no sean SHA-256. El hash autenticado del cuerpo es el token de respaldo si una ruta dinámica de despliegue omite `ETag`; cuando el header existe, debe coincidir exactamente con el cuerpo.
 
 ## Semántica de errores
 
@@ -35,7 +35,7 @@ El contrato existente usa 409 para conflictos y devuelve la versión actual; el 
 ## Cambio aplicado
 
 - Se creó un módulo único para formatear, analizar y validar el ETag fuerte.
-- El editor toma el ETag de GET/PUT/aplicar/deshacer como token canónico, verificándolo contra el cuerpo antes de actualizar su estado.
+- El editor conserva `documentHash` del cuerpo como token canónico y verifica el ETag contra él cuando el header está disponible.
 - Las rutas devuelven un ETag formateado mediante el mismo módulo.
 - Los 428 ahora incluyen un código accionable y generan un log estructurado con `documentId`, causa y solo el prefijo no sensible de la versión recibida.
 - Se añadieron pruebas unitarias del contrato de ETag.
