@@ -23,11 +23,15 @@ import {
   formatCompositionDocumentEtag,
   resolveCompositionDocumentVersion,
 } from "@/domains/production/composition-editor/composition-document-version";
+import { CompositionPreviewTelemetryBuffer } from "@/domains/production/composition-editor/composition-preview-telemetry.client";
+import type { CompositionPreviewMetric } from "@/domains/production/composition-editor/composition-preview-telemetry";
 
 type PreviewMessage =
   | { type: "courseforge-composition-ready"; duration: number }
   | { type: "courseforge-composition-time"; seconds: number }
   | { type: "courseforge-composition-playback"; playing: boolean }
+  | { type: "courseforge-composition-media-state"; state: "BUFFERING" | "PLAYING" | "PREPARING" | "READY"; pendingMediaIds: string[] }
+  | { type: "courseforge-composition-media-metric"; metric: CompositionPreviewMetric }
   | { type: "courseforge-composition-media-error"; code: string; mediaId: string; message: string }
   | { type: "courseforge-composition-selection"; hfId: string | null }
   | { type: "courseforge-composition-layout-commit"; hfId: string; layout: { height: number; width: number; x: number; y: number } }
@@ -92,13 +96,18 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const renderPollInFlightRef = useRef(false);
   const mediaRecoveryHashRef = useRef<string | null>(null);
   const playheadSecondsRef = useRef(0);
+  const pendingSeekSecondsRef = useRef<number | null>(null);
   const pendingPreviewRestoreSecondsRef = useRef<number | null>(null);
+  const previewTelemetryRef = useRef<CompositionPreviewTelemetryBuffer | null>(null);
   const [payload, setPayload] = useState<DocumentPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState(false);
   const [previewReady, setPreviewReady] = useState(false);
+  const [previewMediaState, setPreviewMediaState] = useState<"BUFFERING" | "PLAYING" | "PREPARING" | "READY">("PREPARING");
+  const [pendingPreviewMediaIds, setPendingPreviewMediaIds] = useState<string[]>([]);
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
+  const [preservedPreviewHash, setPreservedPreviewHash] = useState<string | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -154,6 +163,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
+      setPreservedPreviewHash(null);
       setSeconds(0);
       playheadSecondsRef.current = 0;
       pendingPreviewRestoreSecondsRef.current = null;
@@ -176,6 +186,14 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
 
   useEffect(() => { void loadDocument(); }, [loadDocument]);
   useEffect(() => {
+    const telemetry = new CompositionPreviewTelemetryBuffer({ draftId });
+    previewTelemetryRef.current = telemetry;
+    return () => {
+      previewTelemetryRef.current = null;
+      void telemetry.dispose();
+    };
+  }, [draftId]);
+  useEffect(() => {
     if (assistantRequestKey <= 0) return;
     setManualInspectorOpen(true);
     setInspectorTab("assistant");
@@ -186,6 +204,9 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       const message = event.data;
       if (!message || typeof message.type !== "string") return;
       if (message.type === "courseforge-composition-time") {
+        const pendingSeekSeconds = pendingSeekSecondsRef.current;
+        if (pendingSeekSeconds !== null && Math.abs(message.seconds - pendingSeekSeconds) > 0.05) return;
+        pendingSeekSecondsRef.current = null;
         playheadSecondsRef.current = message.seconds;
         setSeconds(message.seconds);
       }
@@ -193,13 +214,23 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
         setPlaying(message.playing);
         if (message.playing) setPlaybackError(null);
       }
+      if (message.type === "courseforge-composition-media-state") {
+        setPreviewMediaState(message.state);
+        setPendingPreviewMediaIds(message.pendingMediaIds);
+      }
+      if (message.type === "courseforge-composition-media-metric") {
+        previewTelemetryRef.current?.record(message.metric);
+      }
       if (message.type === "courseforge-composition-ready") {
         setPreviewReady(true);
+        setPreviewMediaState("READY");
+        setPendingPreviewMediaIds([]);
         setPlaybackError(null);
         const restoreSeconds = pendingPreviewRestoreSecondsRef.current;
         if (restoreSeconds !== null) {
           pendingPreviewRestoreSecondsRef.current = null;
           const clampedSeconds = Math.max(0, Math.min(message.duration, restoreSeconds));
+          pendingSeekSecondsRef.current = clampedSeconds;
           playheadSecondsRef.current = clampedSeconds;
           setSeconds(clampedSeconds);
           frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-seek", seconds: clampedSeconds }, "*");
@@ -215,6 +246,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           return;
         }
         const currentHash = payloadRef.current?.documentHash || null;
+        setPreviewMediaState("PREPARING");
         if (currentHash && mediaRecoveryHashRef.current !== currentHash) {
           mediaRecoveryHashRef.current = currentHash;
           frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-pause" }, "*");
@@ -235,12 +267,12 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       if (message.type === "courseforge-composition-layout-commit") {
         const clip = payload?.document.clips.find((candidate) => candidate.hfId === message.hfId);
         if (!clip) return;
-        void savePatch([{ clipId: clip.id, layout: message.layout, type: "clip.layout" }], `Layout editado desde el preview: ${clip.label}.`);
+        void savePatch([{ clipId: clip.id, layout: message.layout, type: "clip.layout" }], `Layout editado desde el preview: ${clip.label}.`, "USER", { preservePreviewRuntime: true });
       }
       if (message.type === "courseforge-composition-crop-commit") {
         const clip = payload?.document.clips.find((candidate) => candidate.hfId === message.hfId);
         if (!clip) return;
-        void savePatch([{ clipId: clip.id, crop: message.crop, type: "clip.crop" }], `Ajustó el recorte visual de ${clip.label}.`);
+        void savePatch([{ clipId: clip.id, crop: message.crop, type: "clip.crop" }], `Ajustó el recorte visual de ${clip.label}.`, "USER", { preservePreviewRuntime: true });
       }
       if (message.type === "courseforge-composition-aspect-corrections") {
         const operations = message.corrections.flatMap((correction) => {
@@ -257,16 +289,20 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   }, [payload]);
 
   const duration = payload?.document.canvas.durationSeconds || 0;
+  const transportActive = playing || previewMediaState === "BUFFERING";
   const durationSourceLabel = payload?.document.canvas.durationSource
     ? DURATION_SOURCE_LABELS[payload.document.canvas.durationSource]
     : null;
-  const savedPreviewUrl = useMemo(() => payload ? `/api/production/hyperframes/drafts/${draftId}/preview?v=${encodeURIComponent(payload.documentHash)}&r=${previewRefreshKey}` : null, [draftId, payload?.documentHash, previewRefreshKey]);
+  const savedPreviewUrl = useMemo(() => payload ? `/api/production/hyperframes/drafts/${draftId}/preview?v=${encodeURIComponent(preservedPreviewHash || payload.documentHash)}&r=${previewRefreshKey}` : null, [draftId, payload?.documentHash, preservedPreviewHash, previewRefreshKey]);
   const previewUrl = agentProposal
     ? `/api/production/hyperframes/drafts/${draftId}/agent-proposals/${agentProposal.proposalId}/preview`
     : savedPreviewUrl;
   useEffect(() => {
+    pendingSeekSecondsRef.current = null;
     setPlaying(false);
     setPreviewReady(false);
+    setPreviewMediaState("PREPARING");
+    setPendingPreviewMediaIds([]);
   }, [previewUrl]);
   useEffect(() => {
     mediaRecoveryHashRef.current = null;
@@ -299,13 +335,20 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     mediaRecoveryHashRef.current = null;
     setPlaying(false);
     setPreviewReady(false);
+    setPreviewMediaState("PREPARING");
+    setPendingPreviewMediaIds([]);
     setPlaybackError("Renovando el acceso a los medios del preview…");
     setPreviewRefreshKey((current) => current + 1);
   };
   const seek = (nextSeconds: number) => {
+    pendingSeekSecondsRef.current = nextSeconds;
     playheadSecondsRef.current = nextSeconds;
     setSeconds(nextSeconds);
     postPreviewMessage({ type: "courseforge-composition-seek", seconds: nextSeconds });
+  };
+  const beginScrub = () => {
+    postPreviewMessage({ type: "courseforge-composition-pause" });
+    setPlaying(false);
   };
   const selectClip = (hfId: string) => {
     const nextClip = payloadRef.current?.document.clips.find((clip) => clip.hfId === hfId);
@@ -326,14 +369,26 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     setManualInspectorOpen(false);
     postPreviewMessage({ type: "courseforge-composition-select", hfId: null });
   };
+  const restoreReadyPreviewState = () => {
+    setPreviewReady(true);
+    setPreviewMediaState("READY");
+    setPendingPreviewMediaIds([]);
+  };
   const pausePreviewForMutation = () => {
     pendingPreviewRestoreSecondsRef.current = playheadSecondsRef.current;
     postPreviewMessage({ type: "courseforge-composition-pause" });
     setPlaying(false);
     setPreviewReady(false);
+    setPreviewMediaState("PREPARING");
+    setPendingPreviewMediaIds([]);
     setPlaybackError(null);
   };
-  async function savePatch(operations: CompositionEditorPatchOperation[], summary: string, source: "AGENT" | "USER" = "USER"): Promise<boolean> {
+  async function savePatch(
+    operations: CompositionEditorPatchOperation[],
+    summary: string,
+    source: "AGENT" | "USER" = "USER",
+    options: { preservePreviewRuntime?: boolean } = {},
+  ): Promise<boolean> {
     const currentPayload = payloadRef.current;
     if (!currentPayload || saveInFlightRef.current) return false;
     if (agentProposal && source !== "AGENT") {
@@ -348,7 +403,11 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       setSaveError(caught instanceof Error ? caught.message : "El cambio solicitado no es válido.");
       return false;
     }
-    pausePreviewForMutation();
+    if (options.preservePreviewRuntime) {
+      setPreservedPreviewHash(currentPayload.documentHash);
+    } else {
+      pausePreviewForMutation();
+    }
     saveInFlightRef.current = true;
     setSaving(true);
     setSaveError(null);
@@ -371,6 +430,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
         const nextPayload = body.data as DocumentPayload;
         payloadRef.current = nextPayload;
         setPayload(nextPayload);
+        setPreservedPreviewHash(null);
         setFailedSave({ operations: effectiveOperations, source, summary });
         setSaveError(body.error || "La composición cambió en otra sesión. El preview se actualizó con la última versión.");
         return false;
@@ -380,17 +440,23 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
+      if (!options.preservePreviewRuntime) setPreservedPreviewHash(null);
       if (source === "USER") setLastAppliedAgentProposal(null);
-      if (nextPayload.documentHash === currentPayload.documentHash) {
+      if (!options.preservePreviewRuntime && nextPayload.documentHash === currentPayload.documentHash) {
         pendingPreviewRestoreSecondsRef.current = null;
-        setPreviewReady(true);
+        restoreReadyPreviewState();
       }
       return true;
     } catch (caught) {
       pendingPreviewRestoreSecondsRef.current = null;
       payloadRef.current = currentPayload;
       setPayload(currentPayload);
-      setPreviewReady(true);
+      if (options.preservePreviewRuntime) {
+        setPreservedPreviewHash(null);
+        setPreviewRefreshKey((current) => current + 1);
+      } else {
+        restoreReadyPreviewState();
+      }
       setFailedSave({ operations: effectiveOperations, source, summary });
       setSaveError(caught instanceof Error ? caught.message : "No se pudo guardar el cambio.");
       return false;
@@ -601,6 +667,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       const proposal = body.data as AgentProposal;
       if (proposal.documentHash !== payload.documentHash) throw new Error("La composicion cambio antes de recibir la propuesta. Vuelve a solicitarla.");
       setLastAppliedAgentProposal(null);
+      setPreservedPreviewHash(null);
       setAgentProposal(proposal);
     } catch (caught) {
       setSaveError(caught instanceof Error ? caught.message : "No se pudo preparar la propuesta.");
@@ -649,13 +716,14 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
+      setPreservedPreviewHash(null);
       setLastAppliedAgentProposal(proposal);
       setAgentProposal(null);
     } catch (caught) {
       pendingPreviewRestoreSecondsRef.current = null;
       payloadRef.current = currentPayload;
       setPayload(currentPayload);
-      setPreviewReady(true);
+      restoreReadyPreviewState();
       setSaveError(caught instanceof Error ? caught.message : "No se pudo aplicar la propuesta.");
     } finally {
       saveInFlightRef.current = false;
@@ -708,12 +776,13 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
+      setPreservedPreviewHash(null);
       setLastAppliedAgentProposal(null);
     } catch (caught) {
       pendingPreviewRestoreSecondsRef.current = null;
       payloadRef.current = currentPayload;
       setPayload(currentPayload);
-      setPreviewReady(true);
+      restoreReadyPreviewState();
       setSaveError(caught instanceof Error ? caught.message : "No se pudo deshacer la edición.");
     } finally {
       saveInFlightRef.current = false;
@@ -812,6 +881,19 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm dark:border-white/10 dark:bg-[#0F1419]">
+      {saveError && (
+        <CompositionErrorToast
+          message={saveError}
+          onDismiss={() => {
+            setSaveError(null);
+            setFailedSave(null);
+          }}
+          onRetry={failedSave
+            ? () => void savePatch(failedSave.operations, failedSave.summary, failedSave.source)
+            : undefined}
+          retrying={saving}
+        />
+      )}
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-[#1E2329]">
         <div>
           <h5 className="text-sm font-bold text-slate-900 dark:text-white">Estudio de edición</h5>
@@ -863,12 +945,14 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           <div className="flex min-h-0 flex-1 items-center justify-center p-1.5">
             <div className="relative aspect-video h-full max-h-full max-w-full overflow-hidden rounded-lg bg-black shadow-2xl">
               <iframe ref={frameRef} title="Preview completo de composición" src={previewUrl} sandbox="allow-scripts" allow="autoplay" className="absolute inset-0 h-full w-full" />
+              {previewMediaState === "PREPARING" && <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/70 text-white"><div className="flex items-center gap-2 rounded-full bg-slate-900/90 px-4 py-2 text-xs font-semibold shadow-xl"><Loader2 className="animate-spin" size={15} /> Preparando medios{pendingPreviewMediaIds.length > 0 ? ` (${pendingPreviewMediaIds.length})` : ""}…</div></div>}
+              {previewMediaState === "BUFFERING" && <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-slate-950/90 px-3 py-1.5 text-[11px] font-semibold text-white shadow-xl"><span className="inline-flex items-center gap-2"><Loader2 className="animate-spin" size={13} /> Cargando el siguiente medio{pendingPreviewMediaIds.length > 1 ? ` (${pendingPreviewMediaIds.length})` : ""}…</span></div>}
             </div>
           </div>
           {playbackError && <div role="alert" className="flex items-center justify-between gap-3 border-t border-amber-300/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-100"><span>{playbackError}</span><button type="button" onClick={refreshPreviewMedia} className="shrink-0 rounded border border-amber-200/50 px-2 py-1 font-semibold hover:bg-amber-200/10">Recargar medios</button></div>}
           <div className="flex shrink-0 items-center gap-2 border-t border-white/10 bg-[#0A2540] px-2 py-1.5">
-            <button type="button" disabled={saving || !previewReady} onClick={() => postPreviewMessage({ type: playing ? "courseforge-composition-pause" : "courseforge-composition-play" })} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#00D4B3] text-[#0A2540] hover:bg-[#10B981] disabled:cursor-wait disabled:opacity-50">{playing ? <Pause size={14} /> : <Play size={14} />}</button>
-            <input aria-label="Posición del preview" disabled={saving || !previewReady} type="range" min="0" max={duration} step="0.05" value={Math.min(seconds, duration)} onChange={(event) => seek(Number(event.target.value))} className="w-full accent-[#00D4B3] disabled:cursor-wait disabled:opacity-50" />
+            <button type="button" disabled={saving || !previewReady || previewMediaState === "PREPARING"} onClick={() => postPreviewMessage({ type: transportActive ? "courseforge-composition-pause" : "courseforge-composition-play" })} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#00D4B3] text-[#0A2540] hover:bg-[#10B981] disabled:cursor-wait disabled:opacity-50">{transportActive ? <Pause size={14} /> : <Play size={14} />}</button>
+            <input aria-label="Posición del preview" disabled={saving || !previewReady} type="range" min="0" max={duration} step="0.05" value={Math.min(seconds, duration)} onPointerDown={beginScrub} onChange={(event) => seek(Number(event.target.value))} className="w-full accent-[#00D4B3] disabled:cursor-wait disabled:opacity-50" />
           </div>
         </section>
 
@@ -912,7 +996,6 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           <AudioMixControls audioMix={payload.document.audioMix} disabled={saving} onUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)} />
           <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedAnimationId={selectedAnimationId} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={selectAnimation} onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Recortó el inicio de ${clip.label} desde la timeline.`)} />
           {estimatedClipCount > 0 && <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
-          {saveError && <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800 dark:bg-red-500/10 dark:text-red-100"><span>{saveError}</span>{failedSave && <button type="button" disabled={saving} onClick={() => void savePatch(failedSave.operations, failedSave.summary, failedSave.source)} className="rounded border border-current px-2 py-1 font-bold disabled:opacity-50">Reintentar</button>}</div>}
           <AssemblyActions assembly={assembly} busy={assembling} error={assemblyError} providerStatus={renderProviderStatus} renderStatus={renderStatus} onApprove={approveAssembly} onPrepare={prepareAssembly} onRender={submitAssemblyRender} />
         </section>
 
@@ -922,6 +1005,58 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
         </aside>}
       </div>
     </section>
+  );
+}
+
+function CompositionErrorToast({
+  message,
+  onDismiss,
+  onRetry,
+  retrying,
+}: {
+  message: string;
+  onDismiss: () => void;
+  onRetry?: () => void;
+  retrying: boolean;
+}) {
+  return (
+    <div
+      aria-atomic="true"
+      aria-live="assertive"
+      role="alert"
+      className="fixed right-4 top-20 z-[100] w-[calc(100vw-2rem)] max-w-md overflow-hidden rounded-xl border border-red-200 bg-white shadow-2xl shadow-slate-950/20 dark:border-red-400/30 dark:bg-[#1E2329]"
+    >
+      <div className="h-1 bg-red-500" />
+      <div className="flex items-start gap-3 p-4">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-300">
+          <AlertTriangle aria-hidden="true" size={18} strokeWidth={2} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold text-[#0A2540] dark:text-white">No se pudo completar el cambio</p>
+          <p className="mt-1 break-words text-xs leading-5 text-slate-600 dark:text-gray-300">{message}</p>
+          {onRetry && (
+            <button
+              type="button"
+              disabled={retrying}
+              onClick={onRetry}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[#0A2540] px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-[#0d2f4d] disabled:cursor-not-allowed disabled:opacity-50 dark:bg-[#00D4B3] dark:text-[#0A2540] dark:hover:bg-[#18e0c0]"
+            >
+              {retrying && <Loader2 aria-hidden="true" className="animate-spin" size={13} />}
+              {retrying ? "Reintentando…" : "Reintentar"}
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Cerrar mensaje de error"
+          title="Cerrar"
+          className="-mr-1 -mt-1 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#0A2540] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00D4B3] dark:hover:bg-white/10 dark:hover:text-white"
+        >
+          <X aria-hidden="true" size={16} />
+        </button>
+      </div>
+    </div>
   );
 }
 

@@ -1,4 +1,5 @@
 import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
+import { PRODUCTION_MEDIA_CACHE_CONTROL_SECONDS } from "../media-storage.config";
 
 export interface ArtlistTrack {
   id: string;
@@ -233,6 +234,7 @@ export class ArtlistService {
     const { error: uploadError } = await admin.storage
       .from("production-assets")
       .upload(storagePath, buffer, {
+        cacheControl: String(PRODUCTION_MEDIA_CACHE_CONTROL_SECONDS),
         contentType: type === "music" ? "audio/mp3" : "video/mp4",
         upsert: true,
       });

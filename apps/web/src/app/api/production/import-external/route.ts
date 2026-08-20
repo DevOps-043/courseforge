@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { PRODUCTION_MEDIA_CACHE_CONTROL_SECONDS } from '@/domains/production/media-storage.config';
 import { createClient } from '@/utils/supabase/server';
 import {
     getAuthenticatedUser,
@@ -138,6 +139,7 @@ export async function POST(request: Request) {
         const { error: uploadError } = await admin.storage
             .from('production-assets')
             .upload(storagePath, buffer, {
+                cacheControl: String(PRODUCTION_MEDIA_CACHE_CONTROL_SECONDS),
                 contentType: 'video/mp4',
                 upsert: true,
             });

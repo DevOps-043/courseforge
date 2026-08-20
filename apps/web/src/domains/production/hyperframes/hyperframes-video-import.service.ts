@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { HEYGEN_ALLOWED_VIDEO_HOSTS } from "../providers/heygen/heygen.types";
+import { PRODUCTION_MEDIA_CACHE_CONTROL_SECONDS } from "../media-storage.config";
 import {
   PRODUCTION_ASSET_TYPES,
   PRODUCTION_PROVIDERS,
@@ -62,6 +63,7 @@ export class HyperframesVideoImportService {
     const { error: uploadError } = await this.supabase.storage
       .from(FINAL_VIDEO_BUCKET)
       .upload(objectPath, downloaded.buffer, {
+        cacheControl: String(PRODUCTION_MEDIA_CACHE_CONTROL_SECONDS),
         contentType: downloaded.contentType,
         upsert: false,
       });

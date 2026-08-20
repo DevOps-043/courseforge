@@ -9,6 +9,7 @@ import {
   getCompositionMotionPresetDefinition,
 } from "./composition-motion-preset.service";
 import { resolveDefaultCompositionClipLayout } from "./composition-default-layout.service";
+import { deriveCompositionAnimationsForRetainedSegments } from "./composition-motion-derivation.service";
 
 export class CompositionEditorPatchError extends Error {
   constructor(message: string) {
@@ -18,13 +19,27 @@ export class CompositionEditorPatchError extends Error {
 
 const CLIP_BOUNDARY_EPSILON_SECONDS = 0.001;
 
-function assertDerivableMediaClip(document: CompositionEditorDocument, clip: CompositionEditorDocument["clips"][number]) {
+function assertDerivableMediaClip(clip: CompositionEditorDocument["clips"][number]) {
   if (clip.source.type !== "PRODUCTION_ASSET" || (clip.kind !== "VIDEO" && clip.kind !== "AUDIO")) {
     throw new CompositionEditorPatchError("Solo los clips de video o audio pueden dividirse o recortarse por intervalos.");
   }
-  if (document.motion.animations.some((animation) => animation.target.clipId === clip.id)) {
-    throw new CompositionEditorPatchError("Quita o ajusta las animaciones del clip antes de dividirlo o eliminar un intervalo.");
+}
+
+function applyDerivedAnimationsOrThrow(
+  document: CompositionEditorDocument,
+  params: Parameters<typeof deriveCompositionAnimationsForRetainedSegments>[0],
+  operationLabel: "corte" | "intervalo",
+) {
+  const derived = deriveCompositionAnimationsForRetainedSegments(params);
+  if (derived.conflicts.length > 0) {
+    const firstConflict = derived.conflicts[0]!;
+    throw new CompositionEditorPatchError(
+      operationLabel === "corte"
+        ? `El corte atraviesa la animación ${firstConflict.id}. Mueve el cursor fuera de esa animación o ajusta su duración.`
+        : `El intervalo contiene o atraviesa la animación ${firstConflict.id}. Ajusta las marcas o la duración de esa animación.`,
+    );
   }
+  document.motion.animations = derived.animations;
 }
 
 function assertNewDerivedClipIdentity(
@@ -300,7 +315,7 @@ export function applyCompositionEditorPatches(
 
     if (operation.type === "clip.split") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes dividir un clip de un track bloqueado.");
-      assertDerivableMediaClip(next, clip);
+      assertDerivableMediaClip(clip);
       assertNewDerivedClipIdentity(next, operation.newClipId, operation.newHfId);
       const splitAtSeconds = quantizeToDocumentFrame(operation.atSeconds, next.canvas.fps);
       const splitOffset = splitAtSeconds - clip.startSeconds;
@@ -321,7 +336,27 @@ export function applyCompositionEditorPatches(
       );
       rightClip.startSeconds = splitAtSeconds;
       rightClip.timingSource = "USER_EDITED";
-      clip.durationSeconds = quantizeToDocumentFrame(splitOffset, next.canvas.fps);
+      const leftClipDuration = quantizeToDocumentFrame(splitOffset, next.canvas.fps);
+      applyDerivedAnimationsOrThrow(next, {
+        animations: next.motion.animations,
+        clipDurationSeconds: clip.durationSeconds,
+        clipId: clip.id,
+        segments: [
+          {
+            sourceEndSeconds: leftClipDuration,
+            sourceStartSeconds: 0,
+            targetClipDurationSeconds: leftClipDuration,
+            targetClipId: clip.id,
+          },
+          {
+            sourceEndSeconds: clip.durationSeconds,
+            sourceStartSeconds: splitOffset,
+            targetClipDurationSeconds: rightClip.durationSeconds,
+            targetClipId: rightClip.id,
+          },
+        ],
+      }, "corte");
+      clip.durationSeconds = leftClipDuration;
       clip.timingSource = "USER_EDITED";
       next.clips.push(rightClip);
       continue;
@@ -329,7 +364,7 @@ export function applyCompositionEditorPatches(
 
     if (operation.type === "clip.remove-range") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes eliminar un intervalo de un track bloqueado.");
-      assertDerivableMediaClip(next, clip);
+      assertDerivableMediaClip(clip);
       const clipEnd = clip.startSeconds + clip.durationSeconds;
       const rangeStartSeconds = Math.max(clip.startSeconds, quantizeToDocumentFrame(operation.startSeconds, next.canvas.fps));
       const rangeEndSeconds = Math.min(clipEnd, quantizeToDocumentFrame(operation.endSeconds, next.canvas.fps));
@@ -355,7 +390,19 @@ export function applyCompositionEditorPatches(
       }
 
       if (removesFromStart) {
-        clip.durationSeconds = quantizeToDocumentFrame(rightDuration, next.canvas.fps);
+        const retainedDuration = quantizeToDocumentFrame(rightDuration, next.canvas.fps);
+        applyDerivedAnimationsOrThrow(next, {
+          animations: next.motion.animations,
+          clipDurationSeconds: clip.durationSeconds,
+          clipId: clip.id,
+          segments: [{
+            sourceEndSeconds: clip.durationSeconds,
+            sourceStartSeconds: rangeEndSeconds - clip.startSeconds,
+            targetClipDurationSeconds: retainedDuration,
+            targetClipId: clip.id,
+          }],
+        }, "intervalo");
+        clip.durationSeconds = retainedDuration;
         clip.sourceOffsetSeconds = normalizeVideoSourceOffset(
           clip,
           quantizeToDocumentFrame((clip.sourceOffsetSeconds || 0) + (rangeEndSeconds - clip.startSeconds), next.canvas.fps),
@@ -366,7 +413,19 @@ export function applyCompositionEditorPatches(
       }
 
       if (removesThroughEnd) {
-        clip.durationSeconds = quantizeToDocumentFrame(leftDuration, next.canvas.fps);
+        const retainedDuration = quantizeToDocumentFrame(leftDuration, next.canvas.fps);
+        applyDerivedAnimationsOrThrow(next, {
+          animations: next.motion.animations,
+          clipDurationSeconds: clip.durationSeconds,
+          clipId: clip.id,
+          segments: [{
+            sourceEndSeconds: leftDuration,
+            sourceStartSeconds: 0,
+            targetClipDurationSeconds: retainedDuration,
+            targetClipId: clip.id,
+          }],
+        }, "intervalo");
+        clip.durationSeconds = retainedDuration;
         clip.timingSource = "USER_EDITED";
         continue;
       }
@@ -391,7 +450,27 @@ export function applyCompositionEditorPatches(
         next.canvas.fps,
       );
       rightClip.timingSource = "USER_EDITED";
-      clip.durationSeconds = quantizeToDocumentFrame(leftDuration, next.canvas.fps);
+      const leftClipDuration = quantizeToDocumentFrame(leftDuration, next.canvas.fps);
+      applyDerivedAnimationsOrThrow(next, {
+        animations: next.motion.animations,
+        clipDurationSeconds: clip.durationSeconds,
+        clipId: clip.id,
+        segments: [
+          {
+            sourceEndSeconds: leftDuration,
+            sourceStartSeconds: 0,
+            targetClipDurationSeconds: leftClipDuration,
+            targetClipId: clip.id,
+          },
+          {
+            sourceEndSeconds: clip.durationSeconds,
+            sourceStartSeconds: rangeEndSeconds - clip.startSeconds,
+            targetClipDurationSeconds: rightClip.durationSeconds,
+            targetClipId: rightClip.id,
+          },
+        ],
+      }, "intervalo");
+      clip.durationSeconds = leftClipDuration;
       clip.timingSource = "USER_EDITED";
       next.clips.push(rightClip);
       continue;

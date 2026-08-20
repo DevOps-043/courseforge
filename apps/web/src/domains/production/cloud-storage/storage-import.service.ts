@@ -1,6 +1,7 @@
 import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { createHash } from "node:crypto";
 import type { ImportedCloudAsset, ProductionAssetType } from "./types";
+import { PRODUCTION_MEDIA_CACHE_CONTROL_SECONDS } from "../media-storage.config";
 
 function getStorageTarget(type: ProductionAssetType, fileName: string, mimeType: string) {
   switch (type) {
@@ -43,6 +44,7 @@ export async function uploadImportedAssetToStorage(params: {
   const { error: uploadError } = await admin.storage
     .from("production-assets")
     .upload(storagePath, params.buffer, {
+      cacheControl: String(PRODUCTION_MEDIA_CACHE_CONTROL_SECONDS),
       contentType: target.mimeType,
       upsert: true,
     });

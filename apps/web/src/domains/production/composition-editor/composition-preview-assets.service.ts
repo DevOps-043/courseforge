@@ -1,8 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CompositionEditorDocument } from "./composition-document.types";
 import { CompositionPreviewCompilerError } from "./composition-preview-compiler.service";
+import { PUBLIC_PRODUCTION_MEDIA_BUCKETS } from "../media-storage.config";
 
 export const COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS = 60 * 60;
+export const COMPOSITION_PREVIEW_SIGNING_CONCURRENCY = 6;
+export const COMPOSITION_PREVIEW_PUBLIC_BUCKETS = PUBLIC_PRODUCTION_MEDIA_BUCKETS;
 
 /** Resolves only linked assets into scoped Storage URLs renewed on every preview load. */
 export async function resolveCompositionPreviewAssetUrls(params: {
@@ -31,28 +34,70 @@ export async function resolveCompositionPreviewAssetUrls(params: {
 
   const { data: assets, error: assetsError } = await params.supabase
     .from("production_assets")
-    .select("id, storage_bucket, storage_path")
+    .select("id, checksum, storage_bucket, storage_path")
     .eq("organization_id", params.organizationId)
     .in("id", assetIds);
   if (assetsError) throw assetsError;
   const urls = new Map<string, string>();
-  for (const asset of assets || []) {
+  const storedAssets = assets || [];
+  const privateAssets = [];
+  for (const asset of storedAssets) {
     if (!asset.storage_bucket || !asset.storage_path) {
       throw new CompositionPreviewCompilerError("Un asset de la composición no tiene storage disponible.");
     }
-    const { data: signed, error: signedError } = await params.supabase.storage
-      .from(asset.storage_bucket)
-      .createSignedUrl(
-        toBucketRelativePath(asset.storage_bucket, asset.storage_path),
-        COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS,
+    const storagePath = toBucketRelativePath(asset.storage_bucket, asset.storage_path);
+    if (COMPOSITION_PREVIEW_PUBLIC_BUCKETS.has(asset.storage_bucket)) {
+      const rawPublicUrl = params.supabase.storage.from(asset.storage_bucket).getPublicUrl(storagePath).data.publicUrl;
+      assertSafeStorageUrl(rawPublicUrl);
+      const publicUrl = withContentVersion(
+        rawPublicUrl,
+        asset.checksum,
       );
-    if (signedError) throw signedError;
-    urls.set(asset.id, signed.signedUrl);
+      urls.set(asset.id, publicUrl);
+      continue;
+    }
+    privateAssets.push({ ...asset, storagePath });
+  }
+  for (let offset = 0; offset < privateAssets.length; offset += COMPOSITION_PREVIEW_SIGNING_CONCURRENCY) {
+    const batch = privateAssets.slice(offset, offset + COMPOSITION_PREVIEW_SIGNING_CONCURRENCY);
+    const signedAssets = await Promise.all(batch.map(async (asset) => {
+      const { data: signed, error: signedError } = await params.supabase.storage
+        .from(asset.storage_bucket)
+        .createSignedUrl(
+          asset.storagePath,
+          COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS,
+        );
+      if (signedError) throw signedError;
+      assertSafeStorageUrl(signed.signedUrl);
+      return [asset.id, signed.signedUrl] as const;
+    }));
+    signedAssets.forEach(([assetId, signedUrl]) => urls.set(assetId, signedUrl));
   }
   if (urls.size !== assetIds.length) {
     throw new CompositionPreviewCompilerError("No se pudo resolver uno o más assets de preview.");
   }
   return urls;
+}
+
+function assertSafeStorageUrl(rawUrl: string) {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new CompositionPreviewCompilerError("Storage devolvió una URL de preview inválida.");
+  }
+  const isLocalDevelopmentUrl = url.protocol === "http:"
+    && (url.hostname === "localhost" || url.hostname === "127.0.0.1");
+  if (url.protocol !== "https:" && !isLocalDevelopmentUrl) {
+    throw new CompositionPreviewCompilerError("La URL de un asset de preview debe usar HTTPS.");
+  }
+}
+
+function withContentVersion(rawUrl: string, checksum: unknown) {
+  if (typeof checksum !== "string" || !/^[a-f0-9]{64}$/i.test(checksum)) return rawUrl;
+  const url = new URL(rawUrl);
+  url.searchParams.set("v", checksum.toLowerCase());
+  return url.toString();
 }
 
 function toBucketRelativePath(bucket: string, storedPath: string) {

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { PRODUCTION_MEDIA_CACHE_CONTROL_SECONDS } from "../../media-storage.config";
 import {
   HEYGEN_ALLOWED_VIDEO_HOSTS,
   HEYGEN_MAX_IMPORT_SIZE_BYTES,
@@ -114,6 +115,7 @@ export class HeygenVideoImportService {
     const { error: uploadError } = await this.supabase.storage
       .from(HEYGEN_VIDEO_STORAGE_BUCKET)
       .upload(objectPath, downloadedVideo.buffer, {
+        cacheControl: String(PRODUCTION_MEDIA_CACHE_CONTROL_SECONDS),
         contentType: downloadedVideo.contentType,
         upsert: true,
       });

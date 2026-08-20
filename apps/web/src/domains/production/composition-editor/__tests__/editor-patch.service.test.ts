@@ -487,7 +487,7 @@ test("reiniciar también recupera el inicio eliminado por un trim de timeline", 
   assert.equal(restored.sourceOffsetSeconds, 0);
 });
 
-test("rechaza cortes en los límites y clips con animaciones para no perder estado", () => {
+test("rechaza cortes en los límites y migra animaciones que no atraviesan el corte", () => {
   const document = baseDocument();
   const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
   assert.throws(() => applyCompositionEditorPatches(document, [{
@@ -513,13 +513,85 @@ test("rechaza cortes en los límites y clips con animaciones para no perder esta
     target: { clipId: video.id, part: "CONTENT" },
     timing: { anchor: "CLIP_START", durationSeconds: 0.2, offsetSeconds: 0 },
   });
-  assert.throws(() => applyCompositionEditorPatches(document, [{
+  document.motion.animations.push({
+    id: "motion-video-exit",
+    keyframes: [
+      { offset: 0, values: { opacity: 1 } },
+      { offset: 1, values: { opacity: 0 } },
+    ],
+    origin: "PRESET",
+    preset: { id: "FADE_OUT", version: 1 },
+    propertyGroup: "OPACITY",
+    target: { clipId: video.id, part: "CONTENT" },
+    timing: { anchor: "CLIP_END", durationSeconds: 0.2, offsetSeconds: 0 },
+  });
+  const edited = applyCompositionEditorPatches(document, [{
     atSeconds: 2,
     clipId: video.id,
     newClipId: "animated-cut",
     newHfId: "animated-cut-hf",
     type: "clip.split",
-  }]), CompositionEditorPatchError);
+  }]);
+
+  const entry = edited.motion.animations.find((animation) => animation.id === "motion-video")!;
+  const exit = edited.motion.animations.find((animation) => animation.id === "motion-video-exit")!;
+  assert.equal(entry.target.clipId, video.id);
+  assert.equal(exit.target.clipId, "animated-cut");
+  assert.deepEqual(resolveCompositionAnimationWindow(entry, 2), { duration: 0.2, end: 0.2, start: 0 });
+  assert.deepEqual(resolveCompositionAnimationWindow(exit, 28), { duration: 0.2, end: 28, start: 27.8 });
+});
+
+test("rechaza únicamente el corte que atraviesa una animación", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  document.motion = { ...document.motion, animations: [{
+    id: "motion-crossing-cut",
+    keyframes: [
+      { offset: 0, values: { scale: 1 } },
+      { offset: 1, values: { scale: 1.2 } },
+    ],
+    origin: "USER",
+    propertyGroup: "SCALE",
+    target: { clipId: video.id, part: "CONTENT" },
+    timing: { anchor: "CLIP_START", durationSeconds: 1, offsetSeconds: 1.5 },
+  }] };
+
+  assert.throws(() => applyCompositionEditorPatches(document, [{
+    atSeconds: 2,
+    clipId: video.id,
+    newClipId: "crossing-cut",
+    newHfId: "crossing-cut-hf",
+    type: "clip.split",
+  }]), /El corte atraviesa la animación motion-crossing-cut/);
+});
+
+test("redistribuye animaciones al eliminar un intervalo entre ellas", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  document.canvas.durationSeconds = 60;
+  video.durationSeconds = 30;
+  video.sourceDurationSeconds = 30;
+  document.motion = { ...document.motion, animations: [] };
+  const animated = applyCompositionEditorPatches(document, [
+    { animationId: "motion-before-gap", clipId: video.id, durationSeconds: 0.5, presetId: "FADE_IN", type: "animation.add-preset" },
+    { animationId: "motion-after-gap", clipId: video.id, durationSeconds: 0.5, presetId: "FADE_OUT", type: "animation.add-preset" },
+  ]);
+  const edited = applyCompositionEditorPatches(animated, [{
+    clipId: video.id,
+    endSeconds: 15,
+    newClipId: "animated-after-gap",
+    newHfId: "animated-after-gap-hf",
+    ripple: true,
+    startSeconds: 10,
+    type: "clip.remove-range",
+  }]);
+
+  const before = edited.motion.animations.find((animation) => animation.id === "motion-before-gap")!;
+  const after = edited.motion.animations.find((animation) => animation.id === "motion-after-gap")!;
+  assert.equal(before.target.clipId, video.id);
+  assert.equal(after.target.clipId, "animated-after-gap");
+  assert.deepEqual(resolveCompositionAnimationWindow(before, 10), { duration: 0.5, end: 0.5, start: 0 });
+  assert.deepEqual(resolveCompositionAnimationWindow(after, 15), { duration: 0.5, end: 15, start: 14.5 });
 });
 
 test("acumula ediciones sucesivas sin reiniciar propiedades previamente guardadas", () => {

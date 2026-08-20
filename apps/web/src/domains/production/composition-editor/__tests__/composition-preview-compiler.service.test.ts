@@ -4,19 +4,35 @@ import { Script } from "node:vm";
 import { createInitialCompositionDocument } from "../composition-document.factory";
 import {
   COMPOSITION_COMPILATION_TARGETS,
+  COMPOSITION_PREVIEW_MEDIA_CONFIG,
   compileCompositionPreview,
 } from "../composition-preview-compiler.service";
 import { applyCompositionEditorPatches } from "../editor-patch.service";
 import {
   COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS,
+  COMPOSITION_PREVIEW_PUBLIC_BUCKETS,
+  COMPOSITION_PREVIEW_SIGNING_CONCURRENCY,
   resolveCompositionPreviewAssetUrls,
 } from "../composition-preview-assets.service";
 
-test("uses one-hour scoped signatures so a preview can renew media without iframe authentication", () => {
+test("uses stable public URLs and scoped signatures without iframe authentication", () => {
   assert.equal(COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS, 60 * 60);
+  assert.equal(COMPOSITION_PREVIEW_SIGNING_CONCURRENCY, 6);
+  assert.deepEqual([...COMPOSITION_PREVIEW_PUBLIC_BUCKETS], ["production-assets", "production-videos"]);
 });
 
-test("embeds a freshly signed Storage URL instead of an authenticated iframe asset route", async () => {
+test("keeps preview media warming bounded for remote assets", () => {
+  assert.deepEqual(COMPOSITION_PREVIEW_MEDIA_CONFIG, {
+    bufferingTimeoutMs: 12_000,
+    forcedSeekToleranceSeconds: 0.05,
+    lookaheadSeconds: 15,
+    maxPrimedMedia: 6,
+    minimumReadyState: 2,
+    seekToleranceSeconds: 0.35,
+  });
+});
+
+test("embeds a stable Storage URL for public production media", async () => {
   const assetId = "00000000-0000-4000-8000-000000000041";
   const document = createInitialCompositionDocument({
     animatedDeck: null,
@@ -35,14 +51,11 @@ test("embeds a freshly signed Storage URL instead of an authenticated iframe ass
   const supabase = {
     from: (table: string) => table === "video_composition_draft_assets"
       ? query([{ production_asset_id: assetId }])
-      : query([{ id: assetId, storage_bucket: "production-assets", storage_path: "production-assets/broll.mp4" }]),
+      : query([{ checksum: "4".repeat(64), id: assetId, storage_bucket: "production-assets", storage_path: "production-assets/broll.mp4" }]),
     storage: {
       from: () => ({
-        createSignedUrl: async (path: string, ttl: number) => {
-          assert.equal(path, "broll.mp4");
-          assert.equal(ttl, COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS);
-          return { data: { signedUrl: "https://storage.test/signed-broll.mp4?token=scoped" }, error: null };
-        },
+        createSignedUrl: async () => { throw new Error("A public preview asset must not be signed"); },
+        getPublicUrl: (path: string) => ({ data: { publicUrl: `https://storage.test/public/${path}` } }),
       }),
     },
   };
@@ -54,7 +67,62 @@ test("embeds a freshly signed Storage URL instead of an authenticated iframe ass
     supabase: supabase as never,
   });
 
-  assert.equal(urls.get(assetId), "https://storage.test/signed-broll.mp4?token=scoped");
+  assert.equal(urls.get(assetId), `https://storage.test/public/broll.mp4?v=${"4".repeat(64)}`);
+});
+
+test("signs preview assets in bounded parallel batches", async () => {
+  const assetIds = Array.from({ length: 7 }, (_, index) => `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`);
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "7".repeat(64), durationSeconds: 8, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: assetIds[0], publicUrl: null, storageBucket: "private-media", storagePath: "private-media/video-0.mp4", timelineRole: "BROLL" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 56, subtitle: "Prueba", title: "Firmas" },
+  });
+  const sourceClip = document.clips.find((clip) => clip.source.type === "PRODUCTION_ASSET")!;
+  document.clips = assetIds.map((productionAssetId, index) => ({
+    ...sourceClip,
+    hfId: `bounded-signing-${index}`,
+    id: `bounded-signing-${index}`,
+    source: { productionAssetId, type: "PRODUCTION_ASSET" as const },
+    startSeconds: index * 8,
+  }));
+  const query = (data: unknown) => {
+    const builder = {
+      eq: () => builder,
+      in: () => builder,
+      select: () => builder,
+      then: (resolve: (value: unknown) => unknown) => resolve({ data, error: null }),
+    };
+    return builder;
+  };
+  let activeSignatures = 0;
+  let maximumActiveSignatures = 0;
+  const supabase = {
+    from: (table: string) => table === "video_composition_draft_assets"
+      ? query(assetIds.map((productionAssetId) => ({ production_asset_id: productionAssetId })))
+      : query(assetIds.map((id, index) => ({ id, storage_bucket: "private-media", storage_path: `private-media/video-${index}.mp4` }))),
+    storage: {
+      from: () => ({
+        createSignedUrl: async (path: string) => {
+          activeSignatures += 1;
+          maximumActiveSignatures = Math.max(maximumActiveSignatures, activeSignatures);
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          activeSignatures -= 1;
+          return { data: { signedUrl: `https://storage.test/${path}?token=scoped` }, error: null };
+        },
+        getPublicUrl: () => { throw new Error("A private preview asset must not use a public URL"); },
+      }),
+    },
+  };
+
+  const urls = await resolveCompositionPreviewAssetUrls({
+    document,
+    draftId: "f7d8853b-49cb-4a46-acd9-2c21696686c3",
+    organizationId: "550e8400-e29b-41d4-a716-446655440000",
+    supabase: supabase as never,
+  });
+
+  assert.equal(urls.size, assetIds.length);
+  assert.equal(maximumActiveSignatures, COMPOSITION_PREVIEW_SIGNING_CONCURRENCY);
 });
 
 test("compiles the native document into a seekable preview with stable visual ids", async () => {
@@ -195,8 +263,35 @@ test("creates a separate synchronized audio element for an avatar video", async 
   assert.match(html, /blockedAudioMedia\.clear\(\);[\s\S]*syncMedia\(currentTime, true\)/);
   assert.doesNotMatch(html, /error\?\.name === "NotAllowedError"\) \{[\s\S]*playbackActive = false/);
   assert.match(html, /preload="metadata"/);
-  assert.match(html, /time >= start && time <= start \+ clipDuration/);
-  assert.match(html, /> 0\.35/);
+  assert.match(html, /const active = mediaIsActiveAt\(media, time\)/);
+  assert.match(html, /const MEDIA_LOOKAHEAD_SECONDS = 15/);
+  assert.match(html, /const MAX_PRIMED_MEDIA = 6/);
+  assert.match(html, /media\.readyState >= MEDIA_MINIMUM_READY_STATE/);
+  assert.match(html, /if \(media\.preload !== "auto"\) media\.preload = "auto"/);
+  assert.match(html, /primedMedia\.add\(media\);[\s\S]*media\.load\(\)/);
+  assert.match(html, /seekPrimedMediaToEntryPoint\(media, time\)/);
+  assert.match(html, /sourceOffset \+ timelineTarget - start/);
+  assert.match(html, /media\.currentTime = sourceTime/);
+  assert.match(html, /courseforge-composition-media-state/);
+  assert.match(html, /courseforge-composition-media-metric/);
+  assert.match(html, /preview_initial_ready_ms/);
+  assert.match(html, /media_warmup_ms/);
+  assert.match(html, /buffering_duration_ms/);
+  assert.match(html, /requestVideoFrameCallback/);
+  assert.match(html, /postMediaState\("PREPARING", pending\)/);
+  assert.match(html, /postMediaState\("BUFFERING", pending\)/);
+  assert.match(html, /if \(enterBuffering\(next, pending\)\) return/);
+  assert.match(html, /\["waiting", "stalled"\]/);
+  assert.match(html, /MEDIA_BUFFERING_TIMEOUT_MS/);
+  assert.match(html, /El medio no entregó un frame reproducible dentro del tiempo permitido/);
+  assert.match(html, /announceInitialReadyIfPossible\(\)/);
+  assert.match(html, /const seekTolerance = forceSeek \|\| entered/);
+  assert.match(html, /Math\.abs\(media\.currentTime - next\) > seekTolerance/);
+  assert.doesNotMatch(html, /forceSeek \|\| entered \|\| Math\.abs/);
+  assert.match(html, /const scrubTo = \(time\) => \{[\s\S]*pause\(\);[\s\S]*seek\(time, true\)/);
+  assert.match(html, /courseforge-composition-seek"\) scrubTo\(message\.seconds\)/);
+  assert.match(html, /mediaParticipatesInPlayback/);
+  assert.match(html, /Number\(media\.dataset\.volume \|\| 0\) > 0/);
   assert.match(html, /id="asset-00000000-0000-4000-8000-000000000005-media"/);
   assert.doesNotMatch(html, /media\.getAttribute\("src"\)/);
   assert.match(html, /data-volume="0\.35"/);

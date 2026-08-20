@@ -15,6 +15,15 @@ export const COMPOSITION_COMPILATION_TARGETS = {
 } as const;
 export type CompositionCompilationTarget = typeof COMPOSITION_COMPILATION_TARGETS[keyof typeof COMPOSITION_COMPILATION_TARGETS];
 
+export const COMPOSITION_PREVIEW_MEDIA_CONFIG = {
+  bufferingTimeoutMs: 12_000,
+  forcedSeekToleranceSeconds: 0.05,
+  lookaheadSeconds: 15,
+  maxPrimedMedia: 6,
+  minimumReadyState: 2,
+  seekToleranceSeconds: 0.35,
+} as const;
+
 /**
  * Compiles the native document into an isolated, seekable review document.
  * The document is not persisted and never becomes the editable source of truth.
@@ -141,17 +150,17 @@ function renderClip(
   const sourceUrl = assetUrls.get(clip.source.productionAssetId);
   if (!sourceUrl) throw new CompositionPreviewCompilerError(`No existe URL de preview para el asset ${clip.source.productionAssetId}.`);
   if (clip.kind === "AUDIO") {
-    return `<audio id="${escapeAttribute(clip.id)}" class="composition-audio${isHyperframesRender ? " clip" : ""}" data-hf-id="${escapeAttribute(clip.hfId)}"${hidden}${volumeAutomation} ${mediaOffset} data-volume="${volume}" src="${escapeAttribute(sourceUrl)}" ${timing}></audio>`;
+    return `<audio id="${escapeAttribute(clip.id)}" class="composition-audio${isHyperframesRender ? " clip" : ""}" data-hf-id="${escapeAttribute(clip.hfId)}"${hidden}${volumeAutomation} ${mediaOffset} data-volume="${volume}" src="${escapeAttribute(sourceUrl)}" preload="metadata" ${timing}></audio>`;
   }
   if (clip.kind === "VIDEO" && isHyperframesRender) {
     const video = `<video id="${escapeAttribute(clip.id)}-media" class="composition-media clip" style="${cropStyle}" src="${escapeAttribute(sourceUrl)}" muted playsinline loop preload="metadata" ${mediaOffset}${hidden} ${timing}></video>`;
     const audio = clip.trackId === "avatar"
-      ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio clip" src="${escapeAttribute(sourceUrl)}" loop ${mediaOffset}${hidden} data-volume="${volume}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${10 + clipIndex}"></audio>`
+      ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio clip" src="${escapeAttribute(sourceUrl)}" loop preload="metadata" ${mediaOffset}${hidden} data-volume="${volume}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${10 + clipIndex}"></audio>`
       : "";
     return `<div ${common} class="clip-content"><div id="${motionId}" class="motion-subject">${video}</div></div>${audio}`;
   }
   const media = clip.kind === "VIDEO"
-    ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" style="${cropStyle}" src="${escapeAttribute(sourceUrl)}" muted playsinline loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset}${hidden}></video>${clip.trackId === "avatar" ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${hidden} src="${escapeAttribute(sourceUrl)}" loop data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset} data-volume="${volume}"></audio>` : ""}`
+    ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" style="${cropStyle}" src="${escapeAttribute(sourceUrl)}" muted playsinline loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset}${hidden}></video>${clip.trackId === "avatar" ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${hidden} src="${escapeAttribute(sourceUrl)}" loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset} data-volume="${volume}"></audio>` : ""}`
     : `<img class="composition-media" style="${cropStyle}" src="${escapeAttribute(sourceUrl)}" alt="" />`;
   return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject">${media}</div></div></section>`;
 }
@@ -281,8 +290,31 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
       let cropCommitTimer = null;
       let playbackTimer = null;
       let playbackActive = false;
+      let playbackIntent = false;
+      let bufferingTargetTime = null;
+      let bufferingTimeout = null;
+      let bufferingStartedAt = null;
+      let bufferingMediaIds = [];
+      let playRequestedAt = null;
       let currentTime = 0;
+      const previewStartedAt = performance.now();
       const activeMedia = new Set();
+      // Remote previews cannot eagerly download the whole composition. Warm a
+      // bounded forward window and hold the transport at the last valid frame
+      // whenever active media has not decoded its current frame. Browsers may
+      // keep paused remote media at HAVE_CURRENT_DATA indefinitely even though
+      // it is already safe to start and can report a later waiting event.
+      const primedMedia = new WeakSet();
+      const measuredMediaWarmup = new WeakSet();
+      const mediaWarmupStartedAt = new WeakMap();
+      const MEDIA_LOOKAHEAD_SECONDS = ${COMPOSITION_PREVIEW_MEDIA_CONFIG.lookaheadSeconds};
+      const MAX_PRIMED_MEDIA = ${COMPOSITION_PREVIEW_MEDIA_CONFIG.maxPrimedMedia};
+      const MEDIA_MINIMUM_READY_STATE = ${COMPOSITION_PREVIEW_MEDIA_CONFIG.minimumReadyState};
+      const MEDIA_BUFFERING_TIMEOUT_MS = ${COMPOSITION_PREVIEW_MEDIA_CONFIG.bufferingTimeoutMs};
+      const MEDIA_FORCED_SEEK_TOLERANCE_SECONDS = ${COMPOSITION_PREVIEW_MEDIA_CONFIG.forcedSeekToleranceSeconds};
+      const MEDIA_SEEK_TOLERANCE_SECONDS = ${COMPOSITION_PREVIEW_MEDIA_CONFIG.seekToleranceSeconds};
+      let initialMediaReady = false;
+      let lastPrimeTime = Number.NEGATIVE_INFINITY;
       // Browser autoplay policy may reject audible media in the sandboxed iframe.
       // That is an audio-permission issue, not a transport failure: the muted
       // video and the composition clock must keep running.
@@ -362,6 +394,92 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         root.style.setProperty("--editor-outline-width", (2 / renderedScale) + "px");
       };
       const mediaIdentity = (media) => media.id || media.closest("[data-hf-id]")?.dataset.hfId || media.tagName.toLowerCase();
+      const emitMediaMetric = (name, startedAt, mediaIds = []) => {
+        if (!Number.isFinite(startedAt)) return;
+        window.parent.postMessage({
+          type: "courseforge-composition-media-metric",
+          metric: {
+            atSeconds: Math.max(0, currentTime),
+            durationMs: Math.max(0, Math.min(120000, performance.now() - startedAt)),
+            mediaIds: mediaIds.slice(0, 6),
+            name,
+          },
+        }, "*");
+      };
+      const completePlayStartLatency = () => {
+        if (playRequestedAt === null) return;
+        emitMediaMetric("play_start_latency_ms", playRequestedAt, [...activeMedia].map(mediaIdentity));
+        playRequestedAt = null;
+      };
+      const timedMedia = () => Array.from(document.querySelectorAll("video[data-start], audio[data-start]"));
+      const mediaStart = (media) => Number(media.dataset.start || 0);
+      const mediaEnd = (media) => mediaStart(media) + Number(media.dataset.duration || 0);
+      const mediaParticipatesInPlayback = (media) => media.tagName !== "AUDIO"
+        || media.dataset.volumeAutomated === "true"
+        || Number(media.dataset.volume || 0) > 0;
+      const mediaIsAvailable = (media) => media.dataset.clipHidden !== "true" && !media.error;
+      const mediaIsActiveAt = (media, time) => mediaIsAvailable(media)
+        && mediaParticipatesInPlayback(media)
+        && time >= mediaStart(media)
+        && time < mediaEnd(media);
+      const mediaHasPlayableData = (media) => !media.error && media.readyState >= MEDIA_MINIMUM_READY_STATE;
+      const pendingMediaAt = (time) => timedMedia().filter((media) => mediaIsActiveAt(media, time) && !mediaHasPlayableData(media));
+      const seekPrimedMediaToEntryPoint = (media, time) => {
+        if (media.readyState < 1 || (playbackActive && mediaIsActiveAt(media, time))) return;
+        const start = mediaStart(media);
+        const sourceOffset = Number(media.dataset.sourceOffset || 0);
+        const timelineTarget = Math.max(time, start);
+        const rawSourceTime = Math.max(0, sourceOffset + timelineTarget - start);
+        const sourceTime = media.loop && Number.isFinite(media.duration) && media.duration > 0
+          ? rawSourceTime % media.duration
+          : rawSourceTime;
+        if (Math.abs(media.currentTime - sourceTime) <= 0.35) return;
+        try { media.currentTime = sourceTime; } catch (error) { reportMediaError(media, error); }
+      };
+      const postMediaState = (state, pending = []) => {
+        window.parent.postMessage({
+          type: "courseforge-composition-media-state",
+          state,
+          pendingMediaIds: pending.map(mediaIdentity),
+        }, "*");
+      };
+      const primeMediaForTime = (time, force = false) => {
+        if (!force && Math.abs(time - lastPrimeTime) < 1) return;
+        lastPrimeTime = time;
+        const lookaheadEnd = Math.min(duration, time + MEDIA_LOOKAHEAD_SECONDS);
+        const candidates = timedMedia()
+          .filter((media) => mediaIsAvailable(media)
+            && mediaParticipatesInPlayback(media)
+            && mediaEnd(media) > time
+            && mediaStart(media) <= lookaheadEnd)
+          .sort((left, right) => {
+            const activeDelta = Number(mediaIsActiveAt(right, time)) - Number(mediaIsActiveAt(left, time));
+            return activeDelta || mediaStart(left) - mediaStart(right);
+          })
+          .slice(0, MAX_PRIMED_MEDIA);
+        candidates.forEach((media) => {
+          if (media.preload !== "auto") media.preload = "auto";
+          seekPrimedMediaToEntryPoint(media, time);
+          if (primedMedia.has(media) || media.readyState >= MEDIA_MINIMUM_READY_STATE) return;
+          primedMedia.add(media);
+          mediaWarmupStartedAt.set(media, performance.now());
+          try { media.load(); } catch (error) { reportMediaError(media, error); }
+        });
+      };
+      const announceInitialReadyIfPossible = () => {
+        if (initialMediaReady) return true;
+        const pending = pendingMediaAt(currentTime);
+        if (pending.length > 0) {
+          postMediaState("PREPARING", pending);
+          return false;
+        }
+        initialMediaReady = true;
+        root?.setAttribute("data-preview-ready", "true");
+        emitMediaMetric("preview_initial_ready_ms", previewStartedAt, [...activeMedia].map(mediaIdentity));
+        postMediaState("READY");
+        window.parent.postMessage({ type: "courseforge-composition-ready", duration, selectedHfId }, "*");
+        return true;
+      };
       const queueAspectCorrection = (target, layout) => {
         const hfId = target.dataset.hfId;
         if (!hfId) return;
@@ -455,12 +573,94 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
           if (pendingMediaPlayback.get(media) === playRequest) pendingMediaPlayback.delete(media);
         });
       };
+      const handleMediaReadinessChange = (event) => {
+        const media = event?.currentTarget;
+        if (media && mediaHasPlayableData(media) && !measuredMediaWarmup.has(media)) {
+          const startedAt = mediaWarmupStartedAt.get(media);
+          if (Number.isFinite(startedAt)) {
+            measuredMediaWarmup.add(media);
+            emitMediaMetric("media_warmup_ms", startedAt, [mediaIdentity(media)]);
+          }
+        }
+        primeMediaForTime(currentTime, true);
+        announceInitialReadyIfPossible();
+        if (!playbackIntent || bufferingTargetTime === null) return;
+        const pending = pendingMediaAt(bufferingTargetTime);
+        if (pending.length > 0) {
+          postMediaState("BUFFERING", pending);
+          return;
+        }
+        const resumeTime = bufferingTargetTime;
+        bufferingTargetTime = null;
+        if (bufferingTimeout) window.clearTimeout(bufferingTimeout);
+        bufferingTimeout = null;
+        if (bufferingStartedAt !== null) {
+          emitMediaMetric("buffering_duration_ms", bufferingStartedAt, bufferingMediaIds);
+          bufferingStartedAt = null;
+          bufferingMediaIds = [];
+        }
+        seek(resumeTime, true);
+        startPlaybackClock();
+      };
+      const enterBuffering = (targetTime, pending = pendingMediaAt(targetTime)) => {
+        if (!playbackIntent || pending.length === 0) return false;
+        bufferingTargetTime = targetTime;
+        if (bufferingStartedAt === null) {
+          bufferingStartedAt = performance.now();
+          bufferingMediaIds = pending.map(mediaIdentity);
+        }
+        playbackActive = false;
+        if (playbackTimer) window.cancelAnimationFrame(playbackTimer);
+        playbackTimer = null;
+        document.querySelectorAll("audio, video").forEach((media) => media.pause());
+        primeMediaForTime(targetTime, true);
+        postMediaState("BUFFERING", pending);
+        if (!bufferingTimeout) {
+          bufferingTimeout = window.setTimeout(() => {
+            bufferingTimeout = null;
+            const unresolved = pendingMediaAt(bufferingTargetTime ?? currentTime);
+            unresolved.forEach((media) => reportMediaError(media, new Error(
+              "El medio no entregó un frame reproducible dentro del tiempo permitido.",
+            )));
+          }, MEDIA_BUFFERING_TIMEOUT_MS);
+        }
+        window.parent.postMessage({ type: "courseforge-composition-playback", playing: false }, "*");
+        return true;
+      };
+      const bindMediaReadinessListeners = () => {
+        timedMedia().forEach((media) => {
+          ["loadeddata", "canplay", "canplaythrough", "progress", "playing"].forEach((eventName) => {
+            media.addEventListener(eventName, handleMediaReadinessChange);
+          });
+          media.addEventListener("playing", () => {
+            if (playRequestedAt === null) return;
+            const hasActiveVideo = [...activeMedia].some((active) => active.tagName === "VIDEO");
+            if (media.tagName !== "VIDEO" && hasActiveVideo) return;
+            if (media.tagName === "VIDEO" && typeof media.requestVideoFrameCallback === "function") {
+              media.requestVideoFrameCallback(completePlayStartLatency);
+            } else {
+              completePlayStartLatency();
+            }
+          });
+          ["waiting", "stalled"].forEach((eventName) => {
+            media.addEventListener(eventName, () => {
+              if (playbackActive && mediaIsActiveAt(media, currentTime) && !mediaHasPlayableData(media)) {
+                enterBuffering(currentTime, [media]);
+              }
+            });
+          });
+          media.addEventListener("error", (event) => {
+            reportMediaError(media);
+            handleMediaReadinessChange(event);
+          });
+        });
+      };
       const syncMedia = (time, forceSeek = false) => {
+        primeMediaForTime(time);
         document.querySelectorAll("video[data-start], audio[data-start]").forEach((media) => {
           const start = Number(media.dataset.start || 0);
-          const clipDuration = Number(media.dataset.duration || 0);
           const sourceOffset = Number(media.dataset.sourceOffset || 0);
-          const active = media.dataset.clipHidden !== "true" && time >= start && time <= start + clipDuration;
+          const active = mediaIsActiveAt(media, time);
           if (!active) {
             media.pause();
             activeMedia.delete(media);
@@ -475,7 +675,13 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
           if (Number.isFinite(media.duration) && media.duration > 0) {
             const sourceTime = Math.max(0, sourceOffset + time - start);
             const next = media.loop ? sourceTime % media.duration : Math.min(media.duration, sourceTime);
-            if (forceSeek || entered || Math.abs(media.currentTime - next) > 0.35) media.currentTime = next;
+            const seekTolerance = forceSeek || entered
+              ? MEDIA_FORCED_SEEK_TOLERANCE_SECONDS
+              : MEDIA_SEEK_TOLERANCE_SECONDS;
+            // Reassigning the same currentTime is not a no-op in Chromium: it can
+            // discard decoded data and abort the active Range request. During a
+            // buffering recovery that created an endless seek/pause/resume loop.
+            if (Math.abs(media.currentTime - next) > seekTolerance) media.currentTime = next;
           }
           if (playbackActive) requestMediaPlayback(media);
           else media.pause();
@@ -488,13 +694,27 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         window.parent.postMessage({ type: "courseforge-composition-time", seconds: currentTime }, "*");
       };
       const pause = () => {
+        playbackIntent = false;
         playbackActive = false;
+        bufferingTargetTime = null;
+        if (bufferingTimeout) window.clearTimeout(bufferingTimeout);
+        bufferingTimeout = null;
+        bufferingStartedAt = null;
+        bufferingMediaIds = [];
+        playRequestedAt = null;
         if (playbackTimer) window.cancelAnimationFrame(playbackTimer);
         playbackTimer = null;
         document.querySelectorAll("audio, video").forEach((media) => media.pause());
+        postMediaState(initialMediaReady ? "READY" : "PREPARING", pendingMediaAt(currentTime));
         window.parent.postMessage({ type: "courseforge-composition-playback", playing: false }, "*");
       };
-      const play = () => {
+      const scrubTo = (time) => {
+        // A manual seek is authoritative. Cancel an older playback/buffering
+        // target before loading the frame at the newly requested position.
+        pause();
+        seek(time, true);
+      };
+      function startPlaybackClock() {
         if (playbackTimer) window.cancelAnimationFrame(playbackTimer);
         playbackTimer = null;
         playbackActive = true;
@@ -505,11 +725,23 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
           const next = currentTime + (now - last) / 1000;
           last = now;
           if (next >= duration) { seek(duration); pause(); return; }
+          const pending = pendingMediaAt(next);
+          if (enterBuffering(next, pending)) return;
           seek(next);
           playbackTimer = window.requestAnimationFrame(tick);
         };
         playbackTimer = window.requestAnimationFrame(tick);
+        if (timedMedia().every((media) => !mediaIsActiveAt(media, currentTime))) completePlayStartLatency();
+        postMediaState("PLAYING");
         window.parent.postMessage({ type: "courseforge-composition-playback", playing: true }, "*");
+      }
+      const play = () => {
+        playRequestedAt = performance.now();
+        playbackIntent = true;
+        primeMediaForTime(currentTime, true);
+        const pending = pendingMediaAt(currentTime);
+        if (enterBuffering(currentTime, pending)) return;
+        startPlaybackClock();
       };
       audioUnlock?.addEventListener("click", () => {
         // This handler executes inside the iframe under a real user gesture,
@@ -521,6 +753,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         if (media.readyState >= 1) preserveLegacyAvatarAspect(media);
         else media.addEventListener("loadedmetadata", () => preserveLegacyAvatarAspect(media), { once: true });
       });
+      bindMediaReadinessListeners();
       const selectTarget = (target) => {
         if (!target) return;
         document.querySelectorAll("[data-selected='true']").forEach((node) => node.removeAttribute("data-selected"));
@@ -695,7 +928,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
       window.addEventListener("message", (event) => {
         const message = event.data;
         if (!message || typeof message.type !== "string") return;
-        if (message.type === "courseforge-composition-seek") seek(message.seconds, true);
+        if (message.type === "courseforge-composition-seek") scrubTo(message.seconds);
         if (message.type === "courseforge-composition-play") play();
         if (message.type === "courseforge-composition-pause") pause();
         if (message.type === "courseforge-composition-editor-settings") {
@@ -726,9 +959,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
       });
       new ResizeObserver(fitCompositionToViewport).observe(viewport);
       fitCompositionToViewport();
+      primeMediaForTime(0, true);
       seek(0);
-      root?.setAttribute("data-preview-ready", "true");
-      window.parent.postMessage({ type: "courseforge-composition-ready", duration, selectedHfId }, "*");
+      announceInitialReadyIfPossible();
     })();
   </script>`;
 }
