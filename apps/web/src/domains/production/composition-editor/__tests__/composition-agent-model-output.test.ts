@@ -25,6 +25,27 @@ test("normalizes required nullable provider fields without widening persisted op
   assert.equal(patch.source, "AGENT");
 });
 
+test("accepts a finite playback preset that lasts longer than an entrance", () => {
+  const patch = normalizeCompositionAgentModelOutput({
+    operations: [{
+      animationId: "motion-pulse-agent",
+      clipId: "visual-clip",
+      durationSeconds: 6,
+      presetId: "PULSE",
+      type: "animation.add-preset",
+    }],
+    summary: "Añadirá un pulso finito durante la reproducción.",
+  });
+
+  assert.deepEqual(patch.operations[0], {
+    animationId: "motion-pulse-agent",
+    clipId: "visual-clip",
+    durationSeconds: 6,
+    presetId: "PULSE",
+    type: "animation.add-preset",
+  });
+});
+
 test("rejects a provider partial object that contains only null values", () => {
   assert.throws(() => normalizeCompositionAgentModelOutput({
     operations: [{

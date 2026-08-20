@@ -9,6 +9,7 @@ import type {
   CloudStorageConnection,
   CloudStorageProvider,
 } from "@/domains/production/cloud-storage/types";
+import { HeygenIntegrationCard } from "./HeygenIntegrationCard";
 
 const PROVIDER_LABELS: Record<CloudStorageProvider, string> = {
   google_drive: "Google Drive",
@@ -62,7 +63,7 @@ export default function IntegrationsClient({
       <div>
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Integraciones</h1>
         <p className="mt-2 text-sm text-gray-600 dark:text-[#94A3B8]">
-          Administra cuentas de Drive y OneDrive para {organizationLabel}. Esta conexion solo aplica para esta empresa.
+          Administra servicios externos para {organizationLabel}. Estas conexiones solo aplican para esta empresa.
         </p>
       </div>
 
@@ -135,6 +136,7 @@ export default function IntegrationsClient({
             </div>
           </section>
         ))}
+        <HeygenIntegrationCard />
       </div>
     </div>
   );

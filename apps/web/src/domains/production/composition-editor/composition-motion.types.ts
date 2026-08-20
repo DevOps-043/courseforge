@@ -24,8 +24,19 @@ export const COMPOSITION_MOTION_PRESET_IDS = [
   "FADE_OUT",
   "SLIDE_IN_LEFT",
   "SLIDE_IN_RIGHT",
+  "SLIDE_IN_UP",
+  "SLIDE_IN_DOWN",
+  "SLIDE_OUT_LEFT",
+  "SLIDE_OUT_RIGHT",
+  "SLIDE_OUT_UP",
+  "SLIDE_OUT_DOWN",
   "ZOOM_IN",
+  "ZOOM_OUT",
   "POP",
+  "PULSE",
+  "FLOAT",
+  "SWAY",
+  "BREATHE",
 ] as const;
 
 const editorIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i);
@@ -51,6 +62,10 @@ export const compositionAnimationSchema = z.object({
   origin: z.enum(["AGENT", "IMPORTED", "PRESET", "USER"]),
   preset: z.object({
     id: z.enum(COMPOSITION_MOTION_PRESET_IDS),
+    parameters: z.object({
+      cycles: z.number().int().min(1).max(12),
+      intensity: finiteNumberSchema.min(0.25).max(2),
+    }).strict().optional(),
     version: z.number().int().min(1).max(100),
   }).strict().optional(),
   propertyGroup: z.enum(["OPACITY", "POSITION", "ROTATION", "SCALE"]),

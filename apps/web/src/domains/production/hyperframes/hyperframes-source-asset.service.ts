@@ -286,6 +286,10 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
       .eq("asset_type", PRODUCTION_ASSET_TYPES.SOURCE_MEDIA)
       .eq("storage_bucket", stored.storageBucket)
       .eq("storage_path", reference.storagePath)
+      // Historical retries may have produced duplicate provenance rows before
+      // this synchronization became idempotent. One canonical row is enough;
+      // listHyperframesSourceAssets already de-duplicates by storage path.
+      .limit(1)
       .maybeSingle();
     if (existingError) throw existingError;
     const metadata = await getStoredFileMetadata(params.supabase, stored);

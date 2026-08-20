@@ -45,6 +45,8 @@ test("documents the allow-listed depth and ducking operations for the agent", ()
   assert.match(prompt, /track\.order no controla/);
   assert.match(prompt, /animation\.add-preset/);
   assert.match(prompt, /FADE_IN/);
+  assert.match(prompt, /PULSE/);
+  assert.match(prompt, /ciclos de Durante son finitos y deterministas/);
   assert.doesNotMatch(prompt, /Para animation\.remove/);
   assert.match(prompt, /No propongas restaurar documentos/);
   assert.match(prompt, /información no confiable/);

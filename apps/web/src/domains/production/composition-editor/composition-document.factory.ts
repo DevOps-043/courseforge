@@ -16,6 +16,7 @@ import {
   getCompositionTrackDefinition,
   resolveCompositionTrackDefinition,
 } from "./composition-track-registry";
+import { resolveDefaultCompositionClipLayout } from "./composition-default-layout.service";
 
 /**
  * Creates the first editable document from internal Production sources.
@@ -223,10 +224,8 @@ function buildAssetClips(assets: HyperframesProjectAsset[], durationSeconds: num
         ? "VIDEO" as const
         : "IMAGE" as const;
     const trackId = resolveTrackId(asset);
-    const isAudio = trackId === "voice" || trackId === "music";
     const timing = timingByAssetId.get(asset.productionAssetId)!;
-    const avatarWidth = Math.round(canvasWidth * 0.32);
-    const avatarHeight = Math.round(canvasHeight * 0.65);
+    const track = resolveCompositionTrackDefinition(asset);
     return {
       durationSeconds: timing.durationSeconds,
       hfId: `asset-${asset.productionAssetId}`,
@@ -234,15 +233,11 @@ function buildAssetClips(assets: HyperframesProjectAsset[], durationSeconds: num
       id: `asset-${asset.productionAssetId}`,
       kind,
       label: asset.label?.trim() || `Asset ${initialIndex + index + 1}`,
-      layout: {
-        height: isAudio ? 1 : trackId === "avatar" ? avatarHeight : canvasHeight,
-        opacity: 1,
-        rotation: 0,
-        width: isAudio ? 1 : trackId === "avatar" ? avatarWidth : canvasWidth,
-        x: trackId === "avatar" ? canvasWidth - avatarWidth - 48 : 0,
-        y: trackId === "avatar" ? canvasHeight - avatarHeight - 48 : 0,
-        zIndex: isAudio ? 0 : trackId === "avatar" ? 10 : trackId === "broll" ? 5 : -1,
-      },
+      layout: resolveDefaultCompositionClipLayout({
+        canvas: { height: canvasHeight, width: canvasWidth },
+        clipKind: kind,
+        track,
+      }),
       source: { productionAssetId: asset.productionAssetId, type: "PRODUCTION_ASSET" as const },
       ...(asset.durationSeconds && asset.durationSeconds > 0 ? { sourceDurationSeconds: roundSeconds(asset.durationSeconds) } : {}),
       sourceOffsetSeconds: 0,

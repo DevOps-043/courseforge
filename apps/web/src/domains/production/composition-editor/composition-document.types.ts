@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS } from "./composition-document.types.constants";
 import { compositionMotionSchema } from "./composition-motion.types";
+import { resolveCompositionAnimationWindow } from "./composition-motion-scheduling.service";
 
 export const LEGACY_COMPOSITION_DOCUMENT_FORMAT = "courseforge-composition-v1";
 export const COMPOSITION_DOCUMENT_FORMAT = "courseforge-composition-v2";
@@ -71,6 +72,12 @@ export const compositionLayoutPatchSchema = z.object({
   zIndex: compositionLayoutFieldSchemas.zIndex.optional(),
 }).strict();
 
+export const compositionVisualCropSchema = z.object({
+  focusX: finiteNumberSchema.min(0).max(1),
+  focusY: finiteNumberSchema.min(0).max(1),
+  zoom: finiteNumberSchema.min(1).max(8),
+}).strict();
+
 export const compositionAudioMixSchema = z.object({
   ducking: z.object({
     attackSeconds: finiteNumberSchema.min(0).max(5).default(DEFAULT_COMPOSITION_DUCKING_SETTINGS.attackSeconds),
@@ -100,6 +107,7 @@ const productionAssetSourceSchema = z.object({
 }).strict();
 
 export const compositionClipSchema = z.object({
+  crop: compositionVisualCropSchema.optional(),
   durationSeconds: boundedSecondsSchema.positive(),
   hidden: z.boolean().default(false),
   hfId: editorIdSchema,
@@ -185,10 +193,9 @@ export const compositionEditorDocumentSchema = z.object({
       context.addIssue({ code: "custom", message: `La animación ${animation.id} apunta a un clip inexistente.` });
       continue;
     }
-    const relativeStart = animation.timing.anchor === "CLIP_START"
-      ? animation.timing.offsetSeconds
-      : clip.durationSeconds - animation.timing.offsetSeconds - animation.timing.durationSeconds;
-    const relativeEnd = relativeStart + animation.timing.durationSeconds;
+    const animationWindow = resolveCompositionAnimationWindow(animation, clip.durationSeconds);
+    const relativeStart = animationWindow.start;
+    const relativeEnd = animationWindow.end;
     if (relativeStart < -0.001 || relativeEnd > clip.durationSeconds + 0.001) {
       context.addIssue({ code: "custom", message: `La animación ${animation.id} excede la duración de ${clip.label}.` });
     }
@@ -203,6 +210,7 @@ export const compositionEditorDocumentSchema = z.object({
 });
 
 export type CompositionClip = z.infer<typeof compositionClipSchema>;
+export type CompositionVisualCrop = z.infer<typeof compositionVisualCropSchema>;
 export type CompositionAudioMix = z.infer<typeof compositionAudioMixSchema>;
 export type CompositionEditorDocument = z.infer<typeof compositionEditorDocumentSchema>;
 export type CompositionTrack = z.infer<typeof compositionTrackSchema>;

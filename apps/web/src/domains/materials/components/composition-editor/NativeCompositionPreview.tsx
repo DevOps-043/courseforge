@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, Clapperboard, Crop, Eye, EyeOff, FileQuestion, Grid3X3, History, Image as ImageIcon, Loader2, Magnet, Maximize2, Minimize2, Minus, MousePointer2, Music2, PanelRight, Pause, Play, Plus, RefreshCw, Save, Scissors, Send, Trash2, Video, X } from "lucide-react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { AlertTriangle, CheckCircle2, Clapperboard, Crop, Eye, EyeOff, FileQuestion, GripHorizontal, Grid3X3, History, Image as ImageIcon, Loader2, Magnet, Maximize2, Minimize2, Minus, MousePointer2, Music2, PanelRight, Pause, Play, Plus, RefreshCw, RotateCcw, Save, Scan, Scissors, Send, Trash2, Video, X } from "lucide-react";
 import type { CompositionClip, CompositionEditorDocument, CompositionTrack } from "@/domains/production/composition-editor/composition-document.types";
 import { formatCompositionTimecode, parseCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
@@ -10,12 +10,13 @@ import type { CompositionAgentProposalEnvelope } from "@/domains/production/comp
 import type { CompositionAgentRecoveryMetadata } from "@/domains/production/composition-editor/composition-agent-recovery.service";
 import { applyCompositionEditorPatches, ensureCanvasDurationForClipPatches } from "@/domains/production/composition-editor/editor-patch.service";
 import { resolveCompositionTrackDefinition } from "@/domains/production/composition-editor/composition-track-registry";
-import { COMPOSITION_MOTION_PRESETS } from "@/domains/production/composition-editor/composition-motion-preset.service";
-import { COMPOSITION_MOTION_EASES, type CompositionAnimation } from "@/domains/production/composition-editor/composition-motion.types";
+import { resolveDefaultCompositionClipLayout } from "@/domains/production/composition-editor/composition-default-layout.service";
+import type { CompositionAnimation } from "@/domains/production/composition-editor/composition-motion.types";
 import { COMPOSITION_MOTION_ENABLED } from "@/domains/production/composition-editor/composition-motion.config";
 import { CompositionTimeline } from "./CompositionTimeline";
 import { AudioMixControls } from "./AudioMixControls";
 import { LayerDepthControls } from "./LayerDepthControls";
+import { CompositionMotionControls } from "./CompositionMotionControls";
 import { buildCompositionAutoOrganizePatch } from "@/domains/production/composition-editor/composition-auto-organize.service";
 import {
   COMPOSITION_VERSION_FALLBACK_HEADER,
@@ -30,6 +31,7 @@ type PreviewMessage =
   | { type: "courseforge-composition-media-error"; code: string; mediaId: string; message: string }
   | { type: "courseforge-composition-selection"; hfId: string | null }
   | { type: "courseforge-composition-layout-commit"; hfId: string; layout: { height: number; width: number; x: number; y: number } }
+  | { type: "courseforge-composition-crop-commit"; hfId: string; crop: { focusX: number; focusY: number; zoom: number } }
   | { type: "courseforge-composition-aspect-corrections"; corrections: Array<{ hfId: string; layout: { height: number; width: number; x: number; y: number } }> };
 
 type DocumentPayload = { document: CompositionEditorDocument; documentHash: string; version: number };
@@ -84,6 +86,7 @@ interface NativeCompositionPreviewProps {
 export function NativeCompositionPreview({ assistantRequestKey = 0, assets, compositionId, draftId, lessons, onSelectLesson, onVideoCompleted, selectedLessonId }: NativeCompositionPreviewProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const previewShellRef = useRef<HTMLDivElement | null>(null);
+  const studioGridRef = useRef<HTMLDivElement | null>(null);
   const payloadRef = useRef<DocumentPayload | null>(null);
   const saveInFlightRef = useRef(false);
   const renderPollInFlightRef = useRef(false);
@@ -111,6 +114,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const [renderProviderStatus, setRenderProviderStatus] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [selectedHfId, setSelectedHfId] = useState<string | null>(null);
+  const [selectedAnimationId, setSelectedAnimationId] = useState<string | null>(null);
   const [manualInspectorOpen, setManualInspectorOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<"assistant" | "properties">("properties");
   const [directEditingEnabled, setDirectEditingEnabled] = useState(true);
@@ -119,8 +123,25 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const [previewZoom, setPreviewZoom] = useState(1);
   const [previewFullscreen, setPreviewFullscreen] = useState(false);
   const [trimToolEnabled, setTrimToolEnabled] = useState(false);
-  const [removalRangeStartSeconds, setRemovalRangeStartSeconds] = useState<number | null>(null);
+  const [visualCropEnabled, setVisualCropEnabled] = useState(false);
+  const [removalRangeStart, setRemovalRangeStart] = useState<{ clipId: string; seconds: number } | null>(null);
   const [history, setHistory] = useState<DocumentHistoryEntry[] | null>(null);
+  const [studioTopPanePercent, setStudioTopPanePercent] = useState(60);
+  const [studioResizing, setStudioResizing] = useState(false);
+
+  const resizeStudioPanes = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!studioResizing) return;
+    const grid = studioGridRef.current;
+    if (!grid) return;
+    const bounds = grid.getBoundingClientRect();
+    const nextPercent = ((event.clientY - bounds.top) / Math.max(bounds.height, 1)) * 100;
+    setStudioTopPanePercent(Math.max(30, Math.min(75, nextPercent)));
+  };
+  const finishStudioResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!studioResizing) return;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    setStudioResizing(false);
+  };
 
   const loadDocument = useCallback(async () => {
     setLoading(true);
@@ -140,8 +161,9 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       setPreviewReady(false);
       setPlaybackError(null);
       setSelectedHfId(null);
+      setSelectedAnimationId(null);
       setManualInspectorOpen(false);
-      setRemovalRangeStartSeconds(null);
+      setRemovalRangeStart(null);
       setHistory(null);
       setAgentProposal(null);
       setLastAppliedAgentProposal(null);
@@ -206,6 +228,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       }
       if (message.type === "courseforge-composition-selection") {
         setSelectedHfId(message.hfId);
+        setSelectedAnimationId(null);
         setManualInspectorOpen(Boolean(message.hfId));
         if (message.hfId) setInspectorTab("properties");
       }
@@ -213,6 +236,11 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
         const clip = payload?.document.clips.find((candidate) => candidate.hfId === message.hfId);
         if (!clip) return;
         void savePatch([{ clipId: clip.id, layout: message.layout, type: "clip.layout" }], `Layout editado desde el preview: ${clip.label}.`);
+      }
+      if (message.type === "courseforge-composition-crop-commit") {
+        const clip = payload?.document.clips.find((candidate) => candidate.hfId === message.hfId);
+        if (!clip) return;
+        void savePatch([{ clipId: clip.id, crop: message.crop, type: "clip.crop" }], `Ajustó el recorte visual de ${clip.label}.`);
       }
       if (message.type === "courseforge-composition-aspect-corrections") {
         const operations = message.corrections.flatMap((correction) => {
@@ -252,11 +280,12 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     if (!previewReady) return;
     postPreviewMessage({
       editingEnabled: directEditingEnabled && !agentProposal,
+      cropEnabled: visualCropEnabled && !agentProposal,
       gridVisible,
       snapEnabled,
       type: "courseforge-composition-editor-settings",
     });
-  }, [agentProposal, directEditingEnabled, gridVisible, previewReady, snapEnabled]);
+  }, [agentProposal, directEditingEnabled, gridVisible, previewReady, snapEnabled, visualCropEnabled]);
   useEffect(() => {
     if (previewReady) postPreviewMessage({ scale: previewZoom, type: "courseforge-composition-preview-zoom" });
   }, [previewReady, previewZoom]);
@@ -279,13 +308,21 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     postPreviewMessage({ type: "courseforge-composition-seek", seconds: nextSeconds });
   };
   const selectClip = (hfId: string) => {
+    const nextClip = payloadRef.current?.document.clips.find((clip) => clip.hfId === hfId);
+    if (removalRangeStart && nextClip?.id !== removalRangeStart.clipId) setRemovalRangeStart(null);
     setSelectedHfId(hfId);
+    setSelectedAnimationId(null);
     setManualInspectorOpen(true);
     setInspectorTab("properties");
     postPreviewMessage({ type: "courseforge-composition-select", hfId });
   };
+  const selectAnimation = (animationId: string, clipHfId: string) => {
+    selectClip(clipHfId);
+    setSelectedAnimationId(animationId);
+  };
   const clearSelection = () => {
     setSelectedHfId(null);
+    setSelectedAnimationId(null);
     setManualInspectorOpen(false);
     postPreviewMessage({ type: "courseforge-composition-select", hfId: null });
   };
@@ -401,24 +438,15 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       setSaveError("No hay espacio disponible para este asset. Aplica la plantilla base o ajusta la duración del video.");
       return;
     }
-    const avatarWidth = Math.round(currentPayload.document.canvas.width * 0.32);
-    const avatarHeight = Math.round(currentPayload.document.canvas.height * 0.65);
+    const clipKind: CompositionClip["kind"] = isAudio ? "AUDIO" : asset.mimeType.startsWith("video/") ? "VIDEO" : "IMAGE";
     const clip: CompositionClip = {
       durationSeconds: clipDuration,
       hfId: clipId,
       hidden: false,
       id: clipId,
-      kind: isAudio ? "AUDIO" : asset.mimeType.startsWith("video/") ? "VIDEO" : "IMAGE",
+      kind: clipKind,
       label: asset.label,
-      layout: {
-        height: isAudio ? 1 : trackId === "avatar" ? avatarHeight : currentPayload.document.canvas.height,
-        opacity: 1,
-        rotation: 0,
-        width: isAudio ? 1 : trackId === "avatar" ? avatarWidth : currentPayload.document.canvas.width,
-        x: trackId === "avatar" ? currentPayload.document.canvas.width - avatarWidth - 48 : 0,
-        y: trackId === "avatar" ? currentPayload.document.canvas.height - avatarHeight - 48 : 0,
-        zIndex: isAudio ? 0 : trackId === "avatar" ? 10 : trackId === "broll" ? 5 : -1,
-      },
+      layout: resolveDefaultCompositionClipLayout({ canvas: currentPayload.document.canvas, clipKind, track: trackDefinition }),
       source: { productionAssetId: asset.id, type: "PRODUCTION_ASSET" },
       ...(asset.durationSeconds && asset.durationSeconds > 0 ? { sourceDurationSeconds: asset.durationSeconds } : {}),
       sourceOffsetSeconds: 0,
@@ -478,10 +506,27 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   }
 
   async function removeSelectedInterval() {
-    if (!selectedClip || removalRangeStartSeconds === null) return;
-    const rangeStart = Math.min(removalRangeStartSeconds, seconds);
-    const rangeEnd = Math.max(removalRangeStartSeconds, seconds);
+    if (!selectedClip || removalRangeStart === null) return;
+    if (selectedClip.id !== removalRangeStart.clipId) {
+      setSaveError("La marca pertenece a otro clip. Selecciona nuevamente el clip y vuelve a marcar el intervalo.");
+      setRemovalRangeStart(null);
+      return;
+    }
+    const rangeStart = Math.min(removalRangeStart.seconds, seconds);
+    const rangeEnd = Math.max(removalRangeStart.seconds, seconds);
+    const clipEnd = selectedClip.startSeconds + selectedClip.durationSeconds;
+    const minimumRange = 1 / (payloadRef.current?.document.canvas.fps || 30);
+    if (rangeStart < selectedClip.startSeconds - 0.001 || rangeEnd > clipEnd + 0.001) {
+      setSaveError(`El intervalo debe quedar entre ${formatCompositionTimecode(selectedClip.startSeconds)} y ${formatCompositionTimecode(clipEnd)}, que son los límites de ${selectedClip.label}.`);
+      return;
+    }
+    if (rangeEnd - rangeStart < minimumRange - 0.001) {
+      setSaveError("Mueve el cursor al menos un frame después de la marca para eliminar un intervalo.");
+      return;
+    }
     const identity = createDerivedClipIdentity(selectedClip.id);
+    const removesWholeClip = rangeStart <= selectedClip.startSeconds + 0.001 && rangeEnd >= clipEnd - 0.001;
+    const createsRightClip = rangeStart > selectedClip.startSeconds + 0.001 && rangeEnd < clipEnd - 0.001;
     const saved = await savePatch([{
       clipId: selectedClip.id,
       endSeconds: rangeEnd,
@@ -492,10 +537,32 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       type: "clip.remove-range",
     }], `Eliminó un intervalo de ${selectedClip.label} sin modificar el asset original.`);
     if (saved) {
-      setRemovalRangeStartSeconds(null);
-      setSelectedHfId(identity.hfId);
+      setRemovalRangeStart(null);
+      if (removesWholeClip) {
+        clearSelection();
+      } else {
+        setSelectedHfId(createsRightClip ? identity.hfId : selectedClip.hfId);
+      }
       seek(rangeStart);
     }
+  }
+
+  function markSelectedIntervalStart() {
+    if (!selectedClip) {
+      setSaveError("Selecciona primero el clip de video o audio que deseas recortar.");
+      return;
+    }
+    if (selectedClip.kind !== "VIDEO" && selectedClip.kind !== "AUDIO") {
+      setSaveError("La eliminación de intervalos solo está disponible para clips de video o audio.");
+      return;
+    }
+    const clipEnd = selectedClip.startSeconds + selectedClip.durationSeconds;
+    if (seconds < selectedClip.startSeconds - 0.001 || seconds > clipEnd + 0.001) {
+      setSaveError(`Coloca el cursor dentro de ${selectedClip.label}, entre ${formatCompositionTimecode(selectedClip.startSeconds)} y ${formatCompositionTimecode(clipEnd)}.`);
+      return;
+    }
+    setSaveError(null);
+    setRemovalRangeStart({ clipId: selectedClip.id, seconds });
   }
 
   async function updateTrack(track: CompositionTrack, settings: { hidden?: boolean; locked?: boolean; muted?: boolean; volume?: number }, summary: string) {
@@ -761,7 +828,14 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
         </div>
       </header>
 
-      <div className={`grid min-h-0 flex-1 gap-2 p-2 lg:grid-rows-[minmax(280px,3fr)_minmax(150px,2fr)] ${editorColumns}`}>
+      <div
+        ref={studioGridRef}
+        style={{
+          "--studio-preview-row": `${studioTopPanePercent}fr`,
+          "--studio-timeline-row": `${100 - studioTopPanePercent}fr`,
+        } as CSSProperties}
+        className={`grid min-h-0 flex-1 gap-2 p-2 lg:grid-rows-[minmax(220px,var(--studio-preview-row))_10px_minmax(150px,var(--studio-timeline-row))] ${editorColumns}`}
+      >
         <StudioLibrary assets={assets} lessons={lessons} onAddAsset={addAssetToTimeline} onSelectLesson={onSelectLesson} selectedLessonId={selectedLessonId} onSelectAsset={selectClip} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))} />
 
         <section ref={previewShellRef} className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-[#0F1419] dark:border-white/10 lg:col-start-2 lg:row-start-1 ${previewFullscreen ? "h-screen w-screen rounded-none" : ""}`}>
@@ -771,10 +845,11 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
               <PreviewToolButton active={directEditingEnabled} label="Editar" title="Activar selección, arrastre y tiradores" onClick={() => setDirectEditingEnabled((current) => !current)}><MousePointer2 size={13} /></PreviewToolButton>
               <PreviewToolButton active={snapEnabled} label="Snap" title="Alinear clips y recortes a frames y al cursor de la timeline" onClick={() => setSnapEnabled((current) => !current)}><Magnet size={13} /></PreviewToolButton>
               <PreviewToolButton active={gridVisible} label="Rejilla" title="Mostrar guías visuales en el canvas" onClick={() => setGridVisible((current) => !current)}><Grid3X3 size={13} /></PreviewToolButton>
-              <PreviewToolButton active={trimToolEnabled} label="Recorte" title="Resaltar los tiradores de recorte temporal en la timeline" onClick={() => setTrimToolEnabled((current) => !current)}><Crop size={13} /></PreviewToolButton>
+              <PreviewToolButton active={visualCropEnabled} label="Encuadre" title="Arrastra el contenido para reencuadrar; mueve los bordes o esquinas para ajustar el marco; usa la rueda para el zoom" onClick={() => { setDirectEditingEnabled(true); setSaveError(null); setVisualCropEnabled((current) => !current); }}><Scan size={13} /></PreviewToolButton>
+              <PreviewToolButton active={trimToolEnabled} label="Tiempo" title="Activar el recorte temporal de inicio y duración en la timeline" onClick={() => setTrimToolEnabled((current) => !current)}><Crop size={13} /></PreviewToolButton>
               <PreviewToolButton active={false} label="Dividir" title="Dividir el clip seleccionado en el cursor" onClick={() => void splitSelectedClipAtPlayhead()}><Scissors size={13} /></PreviewToolButton>
-              <PreviewToolButton active={removalRangeStartSeconds !== null} label={removalRangeStartSeconds === null ? "Marcar corte" : "Eliminar corte"} title={removalRangeStartSeconds === null ? "Marcar el inicio del intervalo a eliminar" : "Eliminar desde la marca hasta el cursor"} onClick={() => {
-                if (removalRangeStartSeconds === null) setRemovalRangeStartSeconds(seconds);
+              <PreviewToolButton active={removalRangeStart !== null} label={removalRangeStart === null ? "Marcar intervalo" : "Eliminar intervalo"} title={removalRangeStart === null ? "Marcar el inicio del intervalo temporal dentro del clip seleccionado" : `Eliminar desde ${formatCompositionTimecode(removalRangeStart.seconds)} hasta el cursor`} onClick={() => {
+                if (removalRangeStart === null) markSelectedIntervalStart();
                 else void removeSelectedInterval();
               }}><Trash2 size={13} /></PreviewToolButton>
               <span className="mx-1 h-5 w-px bg-white/15" />
@@ -797,18 +872,53 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           </div>
         </section>
 
-        <section className="min-h-0 min-w-0 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 dark:border-white/10 dark:bg-[#101720] lg:col-span-2 lg:row-start-2">
+        <div
+          role="separator"
+          aria-label="Redimensionar preview y timeline"
+          aria-orientation="horizontal"
+          aria-valuemin={30}
+          aria-valuemax={75}
+          aria-valuenow={Math.round(studioTopPanePercent)}
+          tabIndex={0}
+          onDoubleClick={() => setStudioTopPanePercent(60)}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowUp") {
+              event.preventDefault();
+              setStudioTopPanePercent((current) => Math.max(30, current - 5));
+            }
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              setStudioTopPanePercent((current) => Math.min(75, current + 5));
+            }
+          }}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            setStudioResizing(true);
+          }}
+          onPointerMove={resizeStudioPanes}
+          onPointerUp={finishStudioResize}
+          onPointerCancel={finishStudioResize}
+          title="Arrastra para cambiar el tamaño del preview y la timeline. Doble clic para restablecer."
+          className={`group hidden cursor-row-resize touch-none items-center gap-2 rounded-md outline-none lg:col-span-2 lg:row-start-2 lg:flex ${studioResizing ? "bg-cyan-100 dark:bg-cyan-400/10" : "hover:bg-slate-100 focus:bg-slate-100 dark:hover:bg-white/5 dark:focus:bg-white/5"}`}
+        >
+          <span className="h-px flex-1 bg-slate-300 group-hover:bg-cyan-400 dark:bg-white/15" />
+          <span className="flex h-5 items-center rounded-full border border-slate-300 bg-white px-2 text-slate-500 shadow-sm group-hover:border-cyan-400 group-hover:text-cyan-600 dark:border-white/20 dark:bg-[#1E2329] dark:text-gray-400"><GripHorizontal size={14} /></span>
+          <span className="h-px flex-1 bg-slate-300 group-hover:bg-cyan-400 dark:bg-white/15" />
+        </div>
+
+        <section className="min-h-0 min-w-0 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 dark:border-white/10 dark:bg-[#101720] lg:col-span-2 lg:row-start-3">
           <div className={`mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-[11px] ${durationSourceLabel ? "border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5" : "border-amber-300 bg-amber-50 dark:border-amber-400/30 dark:bg-amber-400/10"}`}><span className="text-slate-600 dark:text-gray-300">{durationSourceLabel ? `Duración final: ${formatCompositionTimecode(duration)} determinada por ${durationSourceLabel}.` : "Esta composición aún no registra qué asset determina su duración. Aplica el cálculo automático para normalizarla."}</span><button type="button" disabled={saving} onClick={() => void applyBaseTemplate()} className="rounded-md border border-[#00D4B3] px-2 py-0.5 font-bold text-[#0A2540] hover:bg-[#00D4B3]/10 disabled:opacity-50 dark:text-[#00D4B3]">Calcular y organizar</button></div>
           <AudioMixControls audioMix={payload.document.audioMix} disabled={saving} onUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)} />
-          <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Recortó el inicio de ${clip.label} desde la timeline.`)} />
+          <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedAnimationId={selectedAnimationId} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={selectAnimation} onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Recortó el inicio de ${clip.label} desde la timeline.`)} />
           {estimatedClipCount > 0 && <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
           {saveError && <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800 dark:bg-red-500/10 dark:text-red-100"><span>{saveError}</span>{failedSave && <button type="button" disabled={saving} onClick={() => void savePatch(failedSave.operations, failedSave.summary, failedSave.source)} className="rounded border border-current px-2 py-1 font-bold disabled:opacity-50">Reintentar</button>}</div>}
           <AssemblyActions assembly={assembly} busy={assembling} error={assemblyError} providerStatus={renderProviderStatus} renderStatus={renderStatus} onApprove={approveAssembly} onPrepare={prepareAssembly} onRender={submitAssemblyRender} />
         </section>
 
-        {inspectorOpen && <aside className="min-w-0 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-[#1E2329] lg:col-start-3 lg:row-span-2 lg:row-start-1">
+        {inspectorOpen && <aside className="min-w-0 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-[#1E2329] lg:col-start-3 lg:row-span-3 lg:row-start-1">
           <div className="mb-3 flex items-center justify-between gap-2"><div className="flex rounded-lg bg-slate-100 p-1 text-xs dark:bg-white/5"><button type="button" onClick={() => setInspectorTab("properties")} className={`rounded-md px-2 py-1 font-semibold ${inspectorTab === "properties" ? "bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white" : "text-slate-500 dark:text-gray-400"}`}>Propiedades</button><button type="button" onClick={() => setInspectorTab("assistant")} className={`rounded-md px-2 py-1 font-semibold ${inspectorTab === "assistant" ? "bg-[#00D4B3] text-[#0A2540] shadow-sm" : "text-slate-500 dark:text-gray-400"}`}>SofLIA</button></div><button type="button" onClick={clearSelection} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 dark:text-gray-400 dark:hover:bg-white/10" title="Cerrar panel"><X size={15} /></button></div>
-          {inspectorTab === "properties" ? <CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} saving={saving} onPatch={savePatch} onRemove={removeClipFromTimeline} /> : <AgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={requestAgentProposal} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}
+          {inspectorTab === "properties" ? <CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} selectedAnimationId={selectedAnimationId} onAnimationSelect={setSelectedAnimationId} onPatch={savePatch} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} /> : <AgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={requestAgentProposal} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}
         </aside>}
       </div>
     </section>
@@ -948,7 +1058,7 @@ function AssetThumbnail({ asset }: { asset: CompositionStudioAsset }) {
   return <span className={commonClass + " text-slate-400 dark:text-gray-500"}><Icon size={18} /></span>;
 }
 
-function CompositionInspector({ animations, clip, onPatch, onRemove, saving }: { animations: CompositionAnimation[]; clip: CompositionClip | null; onPatch: (operations: CompositionEditorPatchOperation[], summary: string) => Promise<boolean>; onRemove: (clip: CompositionClip) => Promise<void>; saving: boolean }) {
+function CompositionInspector({ animations, clip, cropModeEnabled, onAnimationSelect, onPatch, onPreviewCrop, onRemove, saving, selectedAnimationId, track }: { animations: CompositionAnimation[]; clip: CompositionClip | null; cropModeEnabled: boolean; onAnimationSelect: (animationId: string | null) => void; onPatch: (operations: CompositionEditorPatchOperation[], summary: string) => Promise<boolean>; onPreviewCrop: (hfId: string, crop: { focusX: number; focusY: number; zoom: number }) => void; onRemove: (clip: CompositionClip) => Promise<void>; saving: boolean; selectedAnimationId: string | null; track: CompositionTrack | null }) {
   const [startSeconds, setStartSeconds] = useState("");
   const [durationSeconds, setDurationSeconds] = useState("");
   const [x, setX] = useState("");
@@ -957,50 +1067,88 @@ function CompositionInspector({ animations, clip, onPatch, onRemove, saving }: {
   const [height, setHeight] = useState("");
   const [rotation, setRotation] = useState("");
   const [opacity, setOpacity] = useState("");
+  const [volume, setVolume] = useState(1);
+  const [validationError, setValidationError] = useState<string | null>(null);
   useEffect(() => { setStartSeconds(clip ? formatCompositionTimecode(clip.startSeconds) : ""); setDurationSeconds(clip ? formatCompositionTimecode(clip.durationSeconds) : ""); setX(clip ? String(clip.layout.x) : ""); setY(clip ? String(clip.layout.y) : ""); }, [clip?.id, clip?.startSeconds, clip?.durationSeconds, clip?.layout.x, clip?.layout.y]);
   useEffect(() => { setWidth(clip ? String(clip.layout.width) : ""); setHeight(clip ? String(clip.layout.height) : ""); setRotation(clip ? String(clip.layout.rotation) : ""); setOpacity(clip ? String(clip.layout.opacity) : ""); }, [clip?.id, clip?.layout.height, clip?.layout.opacity, clip?.layout.rotation, clip?.layout.width]);
+  useEffect(() => { setVolume(track?.volume ?? 1); }, [track?.id, track?.volume]);
   if (!clip) return <p className="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-xs leading-5 text-slate-500 dark:border-white/10 dark:text-gray-400">Selecciona un clip en la timeline o directamente en el preview para editar su layout, visibilidad o duración.</p>;
   const numberOrNull = (value: string) => { const result = Number(value); return Number.isFinite(result) ? result : null; };
-  const saveTiming = async () => { const start = parseCompositionTimecode(startSeconds); const duration = parseCompositionTimecode(durationSeconds); if (start === null || duration === null || duration < 0.05) return; await onPatch([{ clipId: clip.id, durationSeconds: duration, type: "clip.duration" }, { clipId: clip.id, startSeconds: start, type: "clip.move" }], `Ajustó la ubicación y duración de ${clip.label}.`); };
-  const savePosition = async () => { const nextX = numberOrNull(x); const nextY = numberOrNull(y); if (nextX === null || nextY === null) return; await onPatch([{ clipId: clip.id, layout: { x: nextX, y: nextY }, type: "clip.layout" }], `Ajustó la posición de ${clip.label}.`); };
-  const saveTransform = async () => { const next = { height: numberOrNull(height), opacity: numberOrNull(opacity), rotation: numberOrNull(rotation), width: numberOrNull(width) }; if (Object.values(next).some((value) => value === null)) return; await onPatch([{ clipId: clip.id, layout: next as { height: number; opacity: number; rotation: number; width: number }, type: "clip.layout" }], `Transformación de ${clip.label}.`); };
-  return <div className="space-y-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold text-slate-900 dark:text-white">{clip.label}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-400">{clip.kind} · pista {clip.trackId}</p></div><div className="flex flex-wrap gap-1"><button type="button" disabled={saving} onClick={() => void onPatch([{ clipId: clip.id, hidden: !clip.hidden, type: "clip.visibility" }], `${clip.hidden ? "Mostró" : "Ocultó"} ${clip.label}.`)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">{clip.hidden ? <Eye size={13} /> : <EyeOff size={13} />}{clip.hidden ? "Mostrar" : "Ocultar"}</button><button type="button" disabled={saving} onClick={() => void onRemove(clip)} className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-400/40 dark:text-red-200 dark:hover:bg-red-400/10"><Trash2 size={13} /> Quitar</button></div></div><p className="rounded-md bg-slate-50 px-2 py-1.5 text-[10px] text-slate-500 dark:bg-white/5 dark:text-gray-400">Quitar solo retira este clip de la línea de tiempo; los assets y el deck original permanecen disponibles.</p>{clip.kind !== "AUDIO" && <LayerDepthControls clip={clip} disabled={saving} onPatch={onPatch} />}<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><TimecodeField label="Inicio (mm:ss)" value={startSeconds} onChange={setStartSeconds} /><TimecodeField label="Duración (mm:ss)" value={durationSeconds} onChange={setDurationSeconds} /><InspectorField label="Posición X" value={x} onChange={setX} /><InspectorField label="Posición Y" value={y} onChange={setY} /></div><p className="text-[10px] text-slate-500 dark:text-gray-400">Formato: 01:05 = 1 minuto y 5 segundos; 00:01.050 incluye milisegundos.</p><div className="border-t border-slate-200 pt-3 dark:border-white/10"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Transformación</p><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><InspectorField label="Ancho" value={width} onChange={setWidth} min={1} /><InspectorField label="Alto" value={height} onChange={setHeight} min={1} /><InspectorField label="Rotación" value={rotation} onChange={setRotation} min={-360} /><InspectorField label="Opacidad" value={opacity} onChange={setOpacity} min={0} /></div><p className="mt-2 text-[10px] text-slate-500">Arrastra en el preview para mover; usa el tirador para redimensionar. Mantén Alt para liberar proporciones.</p></div>{COMPOSITION_MOTION_ENABLED && clip.kind !== "AUDIO" && <CompositionMotionControls animations={animations} clip={clip} disabled={saving} onPatch={onPatch} />}<div className="flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => void saveTiming()} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50 dark:bg-cyan-400 dark:text-slate-950"><Save size={13} /> Guardar tiempo</button><button type="button" disabled={saving} onClick={() => void savePosition()} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-bold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">Guardar posición</button><button type="button" disabled={saving} onClick={() => void saveTransform()} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-bold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">Guardar transformación</button>{saving && <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-gray-400"><Loader2 className="animate-spin" size={13} /> Actualizando preview…</span>}</div></div>;
-}
-
-function CompositionMotionControls({ animations, clip, disabled, onPatch }: { animations: CompositionAnimation[]; clip: CompositionClip; disabled: boolean; onPatch: (operations: CompositionEditorPatchOperation[], summary: string) => Promise<boolean> }) {
-  const addPreset = (presetId: typeof COMPOSITION_MOTION_PRESETS[number]["id"]) => {
-    const animationId = `motion-${presetId.toLowerCase().replaceAll("_", "-")}-${Date.now().toString(36)}`;
-    return onPatch([{ animationId, clipId: clip.id, durationSeconds: Math.min(0.7, clip.durationSeconds), presetId, type: "animation.add-preset" }], `Añadió la animación ${presetId} a ${clip.label}.`);
+  const isMusicClip = clip.kind === "AUDIO" && track?.semanticRole === "MUSIC";
+  if (isMusicClip && track) {
+    const saveMusicChanges = async () => {
+      const duration = parseCompositionTimecode(durationSeconds);
+      if (duration === null || duration < 0.05 || volume < 0 || volume > 1) {
+        setValidationError("Revisa la duración y el volumen de la música.");
+        return;
+      }
+      setValidationError(null);
+      await onPatch([
+        { clipId: clip.id, durationSeconds: duration, type: "clip.duration" },
+        { settings: { volume }, trackId: track.id, type: "track.update" },
+      ], `Ajustó la duración y el volumen de ${clip.label}.`);
+    };
+    return <div className="space-y-3"><div className="flex items-start gap-2"><span className="rounded-md bg-violet-100 p-1.5 text-violet-700 dark:bg-violet-400/10 dark:text-violet-200"><Music2 size={16} /></span><div><p className="text-sm font-semibold text-slate-900 dark:text-white">{clip.label}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-400">Música · ajustes de audio</p></div></div><TimecodeField label="Duración (mm:ss)" value={durationSeconds} onChange={setDurationSeconds} /><label className="block text-xs font-medium text-slate-600 dark:text-gray-300"><span className="flex items-center justify-between"><span>Volumen</span><span className="font-mono tabular-nums">{Math.round(volume * 100)}%</span></span><input aria-label="Volumen de la música" aria-valuetext={`${Math.round(volume * 100)}%`} type="range" min="0" max="1" step="0.01" value={volume} disabled={saving} onChange={(event) => setVolume(Number(event.target.value))} className="mt-2 w-full accent-violet-500" /></label><p className="text-[10px] leading-4 text-slate-500 dark:text-gray-400">Estos ajustes modifican la duración real del clip y el volumen base de la música. El ducking se configura por separado.</p>{validationError && <p role="alert" className="rounded-md bg-red-50 px-2 py-1.5 text-[10px] text-red-700 dark:bg-red-500/10 dark:text-red-200">{validationError}</p>}<button type="button" disabled={saving} onClick={() => void saveMusicChanges()} className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50"><Save size={13} /> Guardar audio</button></div>;
+  }
+  const saveAllChanges = async () => {
+    const start = parseCompositionTimecode(startSeconds);
+    const duration = parseCompositionTimecode(durationSeconds);
+    const layout = {
+      height: numberOrNull(height),
+      opacity: numberOrNull(opacity),
+      rotation: numberOrNull(rotation),
+      width: numberOrNull(width),
+      x: numberOrNull(x),
+      y: numberOrNull(y),
+    };
+    if (start === null || duration === null || duration < 0.05 || Object.values(layout).some((value) => value === null)) {
+      setValidationError("Revisa tiempo, posición y transformación. Todos los valores deben ser válidos y la duración debe ser mayor a cero.");
+      return;
+    }
+    setValidationError(null);
+    await onPatch([
+      { clipId: clip.id, durationSeconds: duration, type: "clip.duration" },
+      { clipId: clip.id, startSeconds: start, type: "clip.move" },
+      { clipId: clip.id, layout: layout as { height: number; opacity: number; rotation: number; width: number; x: number; y: number }, type: "clip.layout" },
+    ], `Guardó tiempo, posición y transformación de ${clip.label}.`);
   };
-  return <section className="border-t border-slate-200 pt-3 dark:border-white/10"><div className="flex items-center justify-between gap-2"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Animaciones</p><span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500 dark:bg-white/10">{animations.length}</span></div><p className="mt-1 text-[10px] leading-4 text-slate-500 dark:text-gray-400">Los presets se aplican al contenido y conservan la posición y el tamaño base.</p><div className="mt-2 grid grid-cols-2 gap-1.5">{COMPOSITION_MOTION_PRESETS.map((preset) => <button key={preset.id} type="button" disabled={disabled} onClick={() => void addPreset(preset.id)} className="rounded-md border border-cyan-200 px-2 py-1.5 text-[10px] font-semibold text-cyan-800 hover:bg-cyan-50 disabled:opacity-50 dark:border-cyan-400/30 dark:text-cyan-200 dark:hover:bg-cyan-400/10">{preset.label}</button>)}</div>{animations.length > 0 && <div className="mt-2 space-y-1.5">{animations.map((animation) => <MotionAnimationRow key={animation.id} animation={animation} clip={clip} disabled={disabled} onPatch={onPatch} />)}</div>}</section>;
-}
-
-function MotionAnimationRow({ animation, clip, disabled, onPatch }: { animation: CompositionAnimation; clip: CompositionClip; disabled: boolean; onPatch: (operations: CompositionEditorPatchOperation[], summary: string) => Promise<boolean> }) {
-  const [duration, setDuration] = useState(String(animation.timing.durationSeconds));
-  useEffect(() => setDuration(String(animation.timing.durationSeconds)), [animation.id, animation.timing.durationSeconds]);
-  const saveDuration = () => {
-    const value = Number(duration);
-    if (!Number.isFinite(value) || value <= 0 || value > Math.min(2, clip.durationSeconds)) return;
-    return onPatch([{ animationId: animation.id, timing: { durationSeconds: value }, type: "animation.update-timing" }], `Ajustó la duración de una animación de ${clip.label}.`);
+  const resetAsset = async () => {
+    const confirmed = window.confirm(`¿Reiniciar ${clip.label}? Se restaurarán su tamaño, tiempo y encuadre originales; también se quitarán sus animaciones y fragmentos derivados.`);
+    if (!confirmed) return;
+    await onPatch([{ clipId: clip.id, type: "clip.reset-asset" }], `Reinició ${clip.label} a su estado base.`);
   };
-  return <div className="rounded-md bg-slate-50 px-2 py-2 dark:bg-white/5"><div className="flex items-center justify-between gap-2"><span className="min-w-0"><span className="block truncate text-[10px] font-semibold text-slate-700 dark:text-gray-200">{animation.preset?.id || animation.propertyGroup}</span><span className="block text-[9px] text-slate-400">{animation.timing.anchor === "CLIP_START" ? "Anclada a la entrada" : "Anclada a la salida"}</span></span><button type="button" disabled={disabled} onClick={() => void onPatch([{ animationId: animation.id, type: "animation.remove" }], `Quitó una animación de ${clip.label}.`)} className="rounded p-1 text-red-600 hover:bg-red-50 disabled:opacity-50 dark:text-red-300 dark:hover:bg-red-400/10" title="Quitar animación"><Trash2 size={12} /></button></div><div className="mt-1.5 flex items-end gap-1.5"><label className="min-w-0 flex-1 text-[9px] text-slate-500">Duración (s)<input type="number" min="0.05" max={Math.min(2, clip.durationSeconds)} step="0.05" value={duration} onChange={(event) => setDuration(event.target.value)} className="mt-0.5 w-full rounded border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-800 dark:border-white/10 dark:bg-slate-950 dark:text-white" /></label><button type="button" disabled={disabled} onClick={() => void saveDuration()} className="rounded border border-slate-300 px-2 py-1 text-[9px] font-bold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">Guardar</button></div><details className="mt-2 border-t border-slate-200 pt-1.5 dark:border-white/10"><summary className="cursor-pointer text-[9px] font-bold text-slate-500">Editar keyframes ({animation.keyframes.length})</summary><div className="mt-1.5 space-y-1.5">{animation.keyframes.map((_, index) => <MotionKeyframeEditor key={`${animation.id}-${index}`} animation={animation} clip={clip} disabled={disabled} index={index} onPatch={onPatch} />)}</div></details></div>;
+  return <div className="space-y-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold text-slate-900 dark:text-white">{clip.label}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-400">{clip.kind} · pista {clip.trackId}</p></div><div className="flex flex-wrap gap-1"><button type="button" disabled={saving} onClick={() => void onPatch([{ clipId: clip.id, hidden: !clip.hidden, type: "clip.visibility" }], `${clip.hidden ? "Mostró" : "Ocultó"} ${clip.label}.`)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">{clip.hidden ? <Eye size={13} /> : <EyeOff size={13} />}{clip.hidden ? "Mostrar" : "Ocultar"}</button><button type="button" disabled={saving} onClick={() => void onRemove(clip)} className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-400/40 dark:text-red-200 dark:hover:bg-red-400/10"><Trash2 size={13} /> Quitar</button></div></div><p className="rounded-md bg-slate-50 px-2 py-1.5 text-[10px] text-slate-500 dark:bg-white/5 dark:text-gray-400">Quitar solo retira este clip de la línea de tiempo; los assets y el deck original permanecen disponibles.</p>{clip.kind !== "AUDIO" && <LayerDepthControls clip={clip} disabled={saving} onPatch={onPatch} />}<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><TimecodeField label="Inicio (mm:ss)" value={startSeconds} onChange={setStartSeconds} /><TimecodeField label="Duración (mm:ss)" value={durationSeconds} onChange={setDurationSeconds} /><InspectorField label="Posición X" value={x} onChange={setX} /><InspectorField label="Posición Y" value={y} onChange={setY} /></div><p className="text-[10px] text-slate-500 dark:text-gray-400">Formato: 01:05 = 1 minuto y 5 segundos; 00:01.050 incluye milisegundos.</p><div className="border-t border-slate-200 pt-3 dark:border-white/10"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Transformación</p><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><InspectorField label="Ancho" value={width} onChange={setWidth} min={1} /><InspectorField label="Alto" value={height} onChange={setHeight} min={1} /><InspectorField label="Rotación" value={rotation} onChange={setRotation} min={-360} /><InspectorField label="Opacidad" value={opacity} onChange={setOpacity} min={0} /></div><p className="mt-2 text-[10px] text-slate-500">Arrastra en el preview para mover; usa el tirador para redimensionar. Mantén Alt para liberar proporciones.</p></div>{(clip.kind === "VIDEO" || clip.kind === "IMAGE") && <VisualCropControls clip={clip} cropModeEnabled={cropModeEnabled} disabled={saving} onPatch={onPatch} onPreviewCrop={onPreviewCrop} />}{COMPOSITION_MOTION_ENABLED && clip.kind !== "AUDIO" && <CompositionMotionControls animations={animations} clip={clip} disabled={saving} selectedAnimationId={selectedAnimationId} onSelectAnimation={onAnimationSelect} onPatch={onPatch} />}{validationError && <p role="alert" className="rounded-md bg-red-50 px-2 py-1.5 text-[10px] text-red-700 dark:bg-red-500/10 dark:text-red-200">{validationError}</p>}<div className="flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => void saveAllChanges()} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50 dark:bg-cyan-400 dark:text-slate-950"><Save size={13} /> Guardar cambios</button><button type="button" disabled={saving || clip.source.type !== "PRODUCTION_ASSET"} onClick={() => void resetAsset()} className="inline-flex items-center gap-1 rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-400/40 dark:text-amber-200 dark:hover:bg-amber-400/10" title="Restaurar tiempo, tamaño, encuadre y animaciones del asset"><RotateCcw size={13} /> Reiniciar asset</button>{saving && <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-gray-400"><Loader2 className="animate-spin" size={13} /> Actualizando preview…</span>}</div></div>;
 }
 
-function MotionKeyframeEditor({ animation, clip, disabled, index, onPatch }: { animation: CompositionAnimation; clip: CompositionClip; disabled: boolean; index: number; onPatch: (operations: CompositionEditorPatchOperation[], summary: string) => Promise<boolean> }) {
-  const keyframe = animation.keyframes[index]!;
-  const propertyNames = Object.keys(keyframe.values) as Array<keyof typeof keyframe.values>;
-  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(propertyNames.map((name) => [name, String(keyframe.values[name])])));
-  const [ease, setEase] = useState(keyframe.ease || "none");
+function VisualCropControls({ clip, cropModeEnabled, disabled, onPatch, onPreviewCrop }: { clip: CompositionClip; cropModeEnabled: boolean; disabled: boolean; onPatch: (operations: CompositionEditorPatchOperation[], summary: string) => Promise<boolean>; onPreviewCrop: (hfId: string, crop: { focusX: number; focusY: number; zoom: number }) => void }) {
+  const [zoom, setZoom] = useState(clip.crop?.zoom || 1);
+  const [focusX, setFocusX] = useState(clip.crop?.focusX || 0.5);
+  const [focusY, setFocusY] = useState(clip.crop?.focusY || 0.5);
   useEffect(() => {
-    setValues(Object.fromEntries((Object.keys(keyframe.values) as Array<keyof typeof keyframe.values>).map((name) => [name, String(keyframe.values[name])])));
-    setEase(keyframe.ease || "none");
-  }, [animation.id, index, keyframe.ease, keyframe.values]);
-  const save = () => {
-    const parsedValues = Object.fromEntries(Object.entries(values).map(([name, value]) => [name, Number(value)]));
-    if (Object.values(parsedValues).some((value) => !Number.isFinite(value))) return;
-    return onPatch([{ animationId: animation.id, ease: index === 0 ? undefined : ease as typeof COMPOSITION_MOTION_EASES[number], keyframeIndex: index, values: parsedValues as CompositionAnimation["keyframes"][number]["values"], type: "animation.update-keyframe" }], `Editó el keyframe ${index + 1} de ${clip.label}.`);
+    setZoom(clip.crop?.zoom || 1);
+    setFocusX(clip.crop?.focusX || 0.5);
+    setFocusY(clip.crop?.focusY || 0.5);
+  }, [clip.id, clip.crop?.focusX, clip.crop?.focusY, clip.crop?.zoom]);
+  const preview = (next: { focusX: number; focusY: number; zoom: number }) => {
+    const minimumFocus = 0.5 / next.zoom;
+    const maximumFocus = 1 - minimumFocus;
+    const normalized = {
+      focusX: Math.max(minimumFocus, Math.min(maximumFocus, next.focusX)),
+      focusY: Math.max(minimumFocus, Math.min(maximumFocus, next.focusY)),
+      zoom: next.zoom,
+    };
+    setZoom(normalized.zoom);
+    setFocusX(normalized.focusX);
+    setFocusY(normalized.focusY);
+    onPreviewCrop(clip.hfId, normalized);
   };
-  return <div className="rounded border border-slate-200 bg-white p-1.5 dark:border-white/10 dark:bg-slate-950"><div className="mb-1 flex items-center justify-between text-[9px] text-slate-500"><span>Pose {index + 1}</span><span>{Math.round(keyframe.offset * 100)}%</span></div><div className="grid grid-cols-2 gap-1">{propertyNames.map((name) => <label key={name} className="text-[8px] uppercase text-slate-400">{name}<input type="number" step="0.05" value={values[name] || ""} onChange={(event) => setValues((current) => ({ ...current, [name]: event.target.value }))} className="mt-0.5 w-full rounded border border-slate-200 px-1 py-0.5 text-[9px] text-slate-800 dark:border-white/10 dark:bg-slate-900 dark:text-white" /></label>)}{index > 0 && <label className="col-span-2 text-[8px] uppercase text-slate-400">Easing<select value={ease} onChange={(event) => setEase(event.target.value as typeof COMPOSITION_MOTION_EASES[number])} className="mt-0.5 w-full rounded border border-slate-200 px-1 py-0.5 text-[9px] normal-case text-slate-800 dark:border-white/10 dark:bg-slate-900 dark:text-white">{COMPOSITION_MOTION_EASES.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>}</div><button type="button" disabled={disabled} onClick={() => void save()} className="mt-1 w-full rounded border border-cyan-200 py-1 text-[8px] font-bold text-cyan-800 disabled:opacity-50 dark:border-cyan-400/30 dark:text-cyan-200">Guardar pose</button></div>;
+  const save = (crop = { focusX, focusY, zoom }) => onPatch([{ clipId: clip.id, crop: crop.zoom <= 1.0001 ? null : crop, type: "clip.crop" }], `Ajustó el recorte visual de ${clip.label}.`);
+  const center = () => {
+    const crop = { focusX: 0.5, focusY: 0.5, zoom: Math.max(2, zoom) };
+    preview(crop);
+    return save(crop);
+  };
+  return <section className={`border-t pt-3 ${cropModeEnabled ? "border-amber-300" : "border-slate-200 dark:border-white/10"}`}><div className="flex items-center justify-between gap-2"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Recorte visual</p>{cropModeEnabled && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold text-amber-800">Encuadre activo</span>}</div><p className="mt-1 text-[10px] leading-4 text-slate-500">Arrastra el contenido para elegir la zona visible. Mueve los tiradores amarillos de bordes o esquinas para ajustar el marco. La rueda controla el zoom.</p><label className="mt-2 block text-[10px] font-medium text-slate-600 dark:text-gray-300">Acercamiento · {zoom.toFixed(2)}×<input type="range" min="1" max="8" step="0.05" value={zoom} disabled={disabled} onChange={(event) => preview({ focusX, focusY, zoom: Number(event.target.value) })} className="mt-1 w-full accent-amber-500" /></label><label className="mt-2 block text-[10px] font-medium text-slate-600 dark:text-gray-300">Foco horizontal · {Math.round(focusX * 100)}%<input type="range" min="0" max="1" step="0.01" value={focusX} disabled={disabled || zoom <= 1} onChange={(event) => preview({ focusX: Number(event.target.value), focusY, zoom })} className="mt-1 w-full accent-amber-500" /></label><label className="mt-2 block text-[10px] font-medium text-slate-600 dark:text-gray-300">Foco vertical · {Math.round(focusY * 100)}%<input type="range" min="0" max="1" step="0.01" value={focusY} disabled={disabled || zoom <= 1} onChange={(event) => preview({ focusX, focusY: Number(event.target.value), zoom })} className="mt-1 w-full accent-amber-500" /></label><div className="mt-2 flex flex-wrap gap-1.5"><button type="button" disabled={disabled} onClick={() => void center()} className="rounded-md border border-amber-300 px-2 py-1 text-[10px] font-bold text-amber-800 disabled:opacity-50 dark:text-amber-200">Recortar al centro</button><button type="button" disabled={disabled} onClick={() => void save()} className="rounded-md bg-amber-500 px-2 py-1 text-[10px] font-bold text-slate-950 disabled:opacity-50">Guardar encuadre</button><button type="button" disabled={disabled} onClick={() => { preview({ focusX: 0.5, focusY: 0.5, zoom: 1 }); void save({ focusX: 0.5, focusY: 0.5, zoom: 1 }); }} className="rounded-md border border-slate-300 px-2 py-1 text-[10px] font-bold text-slate-600 disabled:opacity-50 dark:border-white/15 dark:text-gray-300">Restablecer zoom</button></div></section>;
 }
 
 function TimecodeField({ label, onChange, value }: { label: string; onChange: (value: string) => void; value: string }) { return <label className="text-xs font-medium text-slate-600 dark:text-gray-300"><span>{label}</span><input type="text" inputMode="decimal" placeholder="00:00" value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 font-mono text-sm text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-white" /></label>; }

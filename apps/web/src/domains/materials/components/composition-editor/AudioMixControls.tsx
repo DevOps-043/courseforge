@@ -34,8 +34,8 @@ export function AudioMixControls({ audioMix, disabled, onUpdate }: AudioMixContr
       <div className="flex min-w-0 items-center gap-2">
         <AudioLines className="shrink-0 text-[#00A98F]" size={16} />
         <div className="min-w-0">
-          <p className="text-xs font-bold text-slate-800 dark:text-gray-100">Mezcla automática</p>
-          <p className="truncate text-[10px] text-slate-500 dark:text-gray-400">La voz y el avatar atenúan la música con transiciones seek-safe.</p>
+          <p className="text-xs font-bold text-slate-800 dark:text-gray-100">Reducción de música durante voz</p>
+          <p className="truncate text-[10px] text-slate-500 dark:text-gray-400">Reduce temporalmente la música respecto a su volumen base.</p>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -49,11 +49,11 @@ export function AudioMixControls({ audioMix, disabled, onUpdate }: AudioMixContr
           )}
           className={`rounded-md border px-2.5 py-1 text-[11px] font-bold disabled:opacity-50 ${ducking.enabled ? "border-[#00D4B3] bg-[#00D4B3]/15 text-[#0A6455] dark:text-[#00D4B3]" : "border-slate-300 text-slate-500 dark:border-white/15 dark:text-gray-400"}`}
         >
-          {ducking.enabled ? "Ducking activo" : "Ducking inactivo"}
+          {ducking.enabled ? "Reducción activa" : "Reducción inactiva"}
         </button>
         <label className="flex items-center gap-2 text-[10px] font-semibold text-slate-600 dark:text-gray-300">
           <CircleGauge size={14} />
-          Música durante voz
+          Nivel durante voz
           <input
             aria-label="Volumen relativo de música durante voz"
             aria-valuetext={`${Math.round(duckedVolumeRatio * 100)}%`}
@@ -69,7 +69,7 @@ export function AudioMixControls({ audioMix, disabled, onUpdate }: AudioMixContr
             onBlur={commitRatio}
             className="w-20 accent-[#00D4B3] disabled:opacity-40"
           />
-          <span className="w-8 text-right tabular-nums">{Math.round(duckedVolumeRatio * 100)}%</span>
+          <span className="w-16 text-right tabular-nums">{Math.round(duckedVolumeRatio * 100)}% de base</span>
         </label>
       </div>
     </div>

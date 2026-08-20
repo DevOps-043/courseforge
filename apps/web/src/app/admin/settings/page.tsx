@@ -29,8 +29,8 @@ export default function SettingsPage() {
         </section>
         <section className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl overflow-hidden shadow-sm">
           <div className="p-6 border-b border-gray-100 dark:border-[#6C757D]/10">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Estudio de video</h3>
-            <p className="mt-1 text-sm text-gray-500 dark:text-[#94A3B8]">Asistente de edición y conexión segura para renderizados.</p>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Agente de edición</h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-[#94A3B8]">Configura el modelo que prepara propuestas de edición.</p>
           </div>
           <div className="p-6"><VideoStudioSettings /></div>
         </section>

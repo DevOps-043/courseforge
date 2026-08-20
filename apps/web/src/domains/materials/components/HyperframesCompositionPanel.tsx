@@ -58,6 +58,7 @@ export function HyperframesCompositionPanel({
   const [composition, setComposition] = useState<VideoComposition | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [editorError, setEditorError] = useState<string | null>(null);
+  const [syncWarning, setSyncWarning] = useState<string | null>(null);
   const [revisionId, setRevisionId] = useState<string | null>(null);
   const [renderRequest, setRenderRequest] = useState<RenderRequest | null>(null);
   const [busy, setBusy] = useState<BusyAction>("prepare");
@@ -96,17 +97,26 @@ export function HyperframesCompositionPanel({
   const loadInitialData = useCallback(async () => {
     setBusy("prepare");
     setEditorError(null);
-    setAssets([]);
+    setSyncWarning(null);
+    setAnimatedDeck(null);
     setDraftId(null);
     try {
-      const syncResponse = await fetch("/api/production/hyperframes/assets/sync", {
-        body: JSON.stringify({ componentId }),
-        headers: { "Content-Type": "application/json" },
-        method: "POST",
-      });
-      const syncPayload = await syncResponse.json();
-      if (!syncResponse.ok) throw new Error(syncPayload.error || "No se pudieron preparar los assets.");
-      setAnimatedDeck(syncPayload.data?.animatedDeck || null);
+      try {
+        const syncResponse = await fetch("/api/production/hyperframes/assets/sync", {
+          body: JSON.stringify({ componentId }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        });
+        const syncPayload = await syncResponse.json();
+        if (!syncResponse.ok) throw new Error(syncPayload.error || "No se pudieron actualizar los assets de Producción.");
+        setAnimatedDeck(syncPayload.data?.animatedDeck || null);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "No se pudieron actualizar los assets de Producción.";
+        setSyncWarning(message);
+        // Existing registry rows remain usable. A failed refresh must not hide
+        // the library or prevent an already traceable composition from opening.
+        toast.warning(`${message} Se usarán los assets ya vinculados.`);
+      }
 
       // Asset visibility must not depend on creating the editable draft. If a
       // draft needs repair, the author still sees exactly what Production sent.
@@ -265,7 +275,8 @@ export function HyperframesCompositionPanel({
 
       <p className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-900 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-100">El preview completo se actualiza automáticamente después de cada edición. El envío a render se volverá a conectar en la siguiente fase, cuando pueda generar un snapshot exacto de esta versión.</p>
 
-      {editorError && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">Los assets de Producción ya se muestran arriba. Falta preparar el editor: {editorError}</p>}
+      {syncWarning && <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">No se pudo actualizar el registro de assets: {syncWarning} Se muestran los assets vinculados previamente.</p>}
+      {editorError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-100">No se pudo preparar el editor: {editorError}</p>}
       {draftId && (
         <div className="min-h-0 flex-1">
           <NativeCompositionPreview assistantRequestKey={assistantRequestKey} assets={studioAssets} compositionId={composition?.id || ""} draftId={draftId} lessons={lessonLibrary} onSelectLesson={onSelectLesson} onVideoCompleted={onVideoCompleted} selectedLessonId={selectedLessonId} />

@@ -136,6 +136,61 @@ test("appends the complete accumulated document when saving a new version", asyn
   assert.equal(saved.version, 5);
 });
 
+test("allows trusted system reconciliation to add a clip without weakening the agent policy", async () => {
+  const storedHash = "a".repeat(64);
+  const nextHash = "b".repeat(64);
+  const document = createInitialCompositionDocument({
+    animatedDeck: {
+      css: "",
+      fonts: [],
+      height: 1080,
+      slides: [{ animationCount: 0, classes: "slide", html: "<section>Base</section>", index: 0, label: "Base" }],
+      width: 1920,
+    },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Sistema" },
+  });
+  const addedClip = {
+    ...document.clips[0]!,
+    hfId: "deck-slide-system",
+    id: "deck-slide-system",
+    label: "Añadido por reconciliación",
+  };
+  const documentQuery = {
+    eq: () => documentQuery,
+    limit: () => documentQuery,
+    maybeSingle: async () => ({ data: { document, document_hash: storedHash, version: 1 }, error: null }),
+    order: () => documentQuery,
+    select: () => documentQuery,
+  };
+  const assetLinksQuery = {
+    eq: () => assetLinksQuery,
+    select: () => assetLinksQuery,
+    then: (resolve: (value: unknown) => unknown) => resolve({ data: [], error: null }),
+  };
+  const supabase = {
+    from: (table: string) => table === "video_composition_draft_assets" ? assetLinksQuery : documentQuery,
+    rpc: () => ({ retry: () => ({ data: [{ document_hash: nextHash, outcome: "APPENDED", version: 2 }], error: null }) }),
+  };
+
+  const saved = await applyAndAppendCompositionDocumentPatches({
+    auditSource: "SYSTEM",
+    draftId: "f7d8853b-49cb-4a46-acd9-2c21696686c3",
+    expectedDocumentHash: storedHash,
+    organizationId: "550e8400-e29b-41d4-a716-446655440000",
+    patch: {
+      operations: [{ clip: addedClip, clipId: addedClip.id, type: "clip.add" }],
+      source: "AGENT",
+      summary: "Sincronizó un asset desde Producción.",
+    },
+    supabase: supabase as never,
+    userId: "00000000-0000-4000-8000-000000000001",
+  });
+
+  assert.equal(saved.document.clips.some((clip) => clip.id === addedClip.id), true);
+  assert.equal(saved.version, 2);
+});
+
 test("classifies statement cancellation as a retryable save timeout", () => {
   const error = normalizeCompositionPersistenceError(
     { code: "57014", message: "canceling statement due to statement timeout" },

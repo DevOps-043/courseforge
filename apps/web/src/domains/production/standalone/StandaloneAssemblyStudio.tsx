@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import Link from "next/link";
 import {
+  ArrowRight,
   CheckCircle2,
   Film,
   Loader2,
@@ -10,8 +12,8 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  Upload,
 } from "lucide-react";
-import { PostproductionAssemblyContainer } from "@/domains/materials/components/PostproductionAssemblyContainer";
 import { ProductionAssetCard } from "@/domains/materials/components/ProductionAssetCard";
 import { PRODUCTION_THEME } from "@/domains/materials/components/production-asset-ui";
 import {
@@ -30,6 +32,7 @@ import {
   type StandaloneAssemblyComponentView,
   type StandaloneAssemblyProjectSummary,
 } from "./standalone-assembly.actions";
+import { getStandaloneAssemblyReadiness } from "./standalone-assembly-readiness";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("es-MX", {
@@ -68,7 +71,6 @@ export function StandaloneAssemblyStudio() {
   const [creatingProject, setCreatingProject] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [assemblyVersion, setAssemblyVersion] = useState(0);
   const pendingAssetsRef = useRef<Record<string, Partial<MaterialAssets>>>({});
   const saveQueuesRef = useRef<Map<string, Promise<void>>>(new Map());
 
@@ -148,6 +150,13 @@ export function StandaloneAssemblyStudio() {
 
     return `${adminBasePath}/slides?${params.toString()}`;
   }, [adminBasePath, componentView?.component.id, pathname]);
+  const readiness = useMemo(
+    () => getStandaloneAssemblyReadiness(componentView?.component.assets),
+    [componentView?.component.assets],
+  );
+  const editorHref = componentView
+    ? `${adminBasePath}/assembly/${componentView.project.id}/edit`
+    : null;
 
   const handleCreateProject = async () => {
     const title = newTitle.trim();
@@ -221,7 +230,6 @@ export function StandaloneAssemblyStudio() {
 
         if (!pendingAssetsRef.current[componentId]) break;
       }
-      setAssemblyVersion((value) => value + 1);
     })()
       .catch((saveError) => {
         console.error("Error auto-saving standalone production assets:", saveError);
@@ -247,7 +255,7 @@ export function StandaloneAssemblyStudio() {
             Estudio de Ensamble
           </h1>
           <p className="mt-2 max-w-3xl text-sm text-gray-600 dark:text-[#94A3B8]">
-            Crea un video independiente, sube sus assets, ajusta timeline y genera un unico render final.
+            Crea o selecciona un proyecto, prepara sus assets y después continúa al editor de video.
           </p>
         </div>
 
@@ -406,6 +414,17 @@ export function StandaloneAssemblyStudio() {
             </div>
           ) : componentView ? (
             <div className="space-y-6">
+              <div className="rounded-xl border border-cyan-200 bg-cyan-50/60 p-4 dark:border-cyan-400/20 dark:bg-cyan-400/5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-cyan-700 dark:text-cyan-300"><Upload size={14} /> Preparación de assets</p>
+                    <h3 className="mt-1 text-base font-bold text-slate-900 dark:text-white">Carga y clasifica los medios del proyecto</h3>
+                    <p className="mt-1 text-xs text-slate-600 dark:text-gray-400">Cuando termines, abre el editor en la siguiente página para trabajar con preview y timeline.</p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm dark:bg-white/10 dark:text-gray-300">{readiness.assetCount} asset(s)</span>
+                </div>
+              </div>
+
               <ProductionAssetCard
                 component={componentView.component}
                 hideGeneratedAssetTools
@@ -418,12 +437,17 @@ export function StandaloneAssemblyStudio() {
                 sofliaSlidesHref={sofliaSlidesHref}
               />
 
-              <PostproductionAssemblyContainer
-                key={`${componentView.artifactId}:${componentView.component.id}:${assemblyVersion}`}
-                artifactId={componentView.artifactId}
-                initialComponentId={componentView.component.id}
-                singleVideoOnly
-              />
+              <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#151A21] sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-bold text-slate-900 dark:text-white">Siguiente paso: edición</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-gray-400">{readiness.canOpenEditor ? "El proyecto ya tiene una fuente de duración válida." : "Agrega voz, avatar, B-roll con duración o un deck de slides para continuar."}</p>
+                </div>
+                {readiness.canOpenEditor && editorHref ? (
+                  <Link href={editorHref} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#0A2540] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#0d2f4d]">Abrir editor <ArrowRight size={16} /></Link>
+                ) : (
+                  <button type="button" disabled className="inline-flex min-h-10 shrink-0 cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-slate-200 px-5 py-2.5 text-sm font-bold text-slate-500 dark:bg-white/10 dark:text-gray-500">Abrir editor <ArrowRight size={16} /></button>
+                )}
+              </div>
             </div>
           ) : (
             <div className="rounded-lg border border-dashed border-gray-200 bg-white p-10 text-center dark:border-[#6C757D]/20 dark:bg-[#151A21]">

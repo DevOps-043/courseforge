@@ -136,11 +136,12 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
 
   let nextDocument: CompositionEditorDocument;
   try {
-    if (params.patch.source === "AGENT") {
+    const enforceAgentPolicy = params.patch.source === "AGENT" && params.auditSource !== "SYSTEM";
+    if (enforceAgentPolicy) {
       assertCompositionAgentOperationsAllowed(params.patch.operations);
     }
     nextDocument = applyCompositionEditorPatches(current.document, params.patch.operations, params.auditSource || params.patch.source);
-    if (params.patch.source === "AGENT") {
+    if (enforceAgentPolicy) {
       validateCompositionAgentSimulation({
         after: nextDocument,
         before: current.document,

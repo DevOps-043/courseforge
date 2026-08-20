@@ -4,6 +4,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext, TenantContextLookupError } from "@/lib/server/tenant-context";
 import { initializeHyperframesDraft, HyperframesDraftError } from "@/domains/production/hyperframes/hyperframes-draft.service";
+import { CompositionDocumentError } from "@/domains/production/composition-editor/composition-document.service";
 import { createClient } from "@/utils/supabase/server";
 
 interface RouteContext { params: Promise<{ compositionId: string }>; }
@@ -27,6 +28,9 @@ export async function POST(_request: Request, context: RouteContext) {
     }
     if (error instanceof z.ZodError) return NextResponse.json({ error: "Identificador de composición inválido." }, { status: 400 });
     if (error instanceof HyperframesDraftError) return NextResponse.json({ error: error.message }, { status: error.status });
+    if (error instanceof CompositionDocumentError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (isTransientStorageError(error)) return NextResponse.json({ error: "El almacenamiento del editor está ocupado. Intenta preparar el proyecto nuevamente.", code: "COMPOSITION_STORAGE_UNAVAILABLE", retryable: true }, { status: 503 });
     console.error("[API /production/hyperframes/compositions/:id/draft] Unexpected error:", serializeError(error));
     return NextResponse.json({ error: "No se pudo preparar el proyecto de edición." }, { status: 500 });

@@ -9,6 +9,11 @@ import {
   ensureCanvasDurationForClipPatches,
 } from "../editor-patch.service";
 import { compositionEditorPatchRequestSchema } from "../editor-patch.types";
+import {
+  buildCompositionAnimationTimelineEdit,
+  planCompositionPresetInsertion,
+  resolveCompositionAnimationWindow,
+} from "../composition-motion-scheduling.service";
 
 const baseDocument = () => createInitialCompositionDocument({
   animatedDeck: {
@@ -43,6 +48,38 @@ test("edita la lÃ­nea de tiempo sin alterar la referencia del asset", () => {
   assert.equal(result.durationSeconds, 4);
   assert.equal(result.timingSource, "USER_EDITED");
   assert.deepEqual(result.source, video.source);
+});
+
+test("aplica un recorte visual no destructivo y conserva timing, layout y fuente", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  const edited = applyCompositionEditorPatches(document, [{
+    clipId: video.id,
+    crop: { focusX: 0.5, focusY: 0.5, zoom: 2 },
+    type: "clip.crop",
+  }]);
+  const result = edited.clips.find((clip) => clip.id === video.id)!;
+
+  assert.deepEqual(result.crop, { focusX: 0.5, focusY: 0.5, zoom: 2 });
+  assert.equal(result.durationSeconds, video.durationSeconds);
+  assert.deepEqual(result.layout, video.layout);
+  assert.deepEqual(result.source, video.source);
+});
+
+test("limita el foco del recorte para que nunca exponga espacio vacío", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  const edited = applyCompositionEditorPatches(document, [{
+    clipId: video.id,
+    crop: { focusX: 0, focusY: 1, zoom: 2 },
+    type: "clip.crop",
+  }]);
+
+  assert.deepEqual(edited.clips.find((clip) => clip.id === video.id)?.crop, {
+    focusX: 0.25,
+    focusY: 0.75,
+    zoom: 2,
+  });
 });
 
 test("rechaza cambios que exceden el canvas", () => {
@@ -331,6 +368,125 @@ test("elimina un segmento intermedio y conserva los dos rangos del mismo asset",
   }
 });
 
+test("permite eliminar un intervalo desde el inicio del clip", () => {
+  const document = baseDocument();
+  document.canvas.durationSeconds = 60;
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  video.durationSeconds = 30;
+  video.sourceDurationSeconds = 30;
+  const edited = applyCompositionEditorPatches(document, [{
+    clipId: video.id,
+    endSeconds: video.startSeconds + 5,
+    ripple: true,
+    startSeconds: video.startSeconds,
+    type: "clip.remove-range",
+  }]);
+  const result = edited.clips.find((clip) => clip.id === video.id)!;
+
+  assert.equal(result.startSeconds, video.startSeconds);
+  assert.equal(result.durationSeconds, 25);
+  assert.equal(result.sourceOffsetSeconds, 5);
+});
+
+test("permite eliminar un intervalo hasta el final del clip", () => {
+  const document = baseDocument();
+  document.canvas.durationSeconds = 60;
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  video.durationSeconds = 30;
+  video.sourceDurationSeconds = 30;
+  const edited = applyCompositionEditorPatches(document, [{
+    clipId: video.id,
+    endSeconds: video.startSeconds + video.durationSeconds,
+    ripple: true,
+    startSeconds: video.startSeconds + 25,
+    type: "clip.remove-range",
+  }]);
+  const result = edited.clips.find((clip) => clip.id === video.id)!;
+
+  assert.equal(result.durationSeconds, 25);
+  assert.equal(result.sourceOffsetSeconds, 0);
+});
+
+test("mantiene el error cuando el intervalo realmente queda fuera del clip", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  assert.throws(() => applyCompositionEditorPatches(document, [{
+    clipId: video.id,
+    endSeconds: video.startSeconds + video.durationSeconds + 1,
+    ripple: true,
+    startSeconds: video.startSeconds + 1,
+    type: "clip.remove-range",
+  }]), CompositionEditorPatchError);
+});
+
+test("reinicia un asset, consolida sus fragmentos y elimina recortes y animaciones", () => {
+  const document = baseDocument();
+  document.canvas.durationSeconds = 60;
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  video.durationSeconds = 30;
+  video.sourceDurationSeconds = 30;
+  const originalStartSeconds = video.startSeconds;
+  const split = applyCompositionEditorPatches(document, [{
+    atSeconds: video.startSeconds + 10,
+    clipId: video.id,
+    newClipId: "video-reset-right",
+    newHfId: "video-reset-right-hf",
+    type: "clip.split",
+  }]);
+  const edited = applyCompositionEditorPatches(split, [
+    { animationId: "motion-reset-left", clipId: video.id, durationSeconds: 0.5, presetId: "FADE_IN", type: "animation.add-preset" },
+    { animationId: "motion-reset-right", clipId: "video-reset-right", durationSeconds: 0.5, presetId: "FADE_OUT", type: "animation.add-preset" },
+    { clipId: "video-reset-right", crop: { focusX: 0.5, focusY: 0.5, zoom: 2 }, type: "clip.crop" },
+    { clipId: "video-reset-right", layout: { height: 300, width: 400, x: 25, y: 40 }, type: "clip.layout" },
+  ]);
+  const reset = applyCompositionEditorPatches(edited, [{
+    clipId: "video-reset-right",
+    type: "clip.reset-asset",
+  }]);
+  const restored = reset.clips.find((clip) => clip.id === "video-reset-right")!;
+  const sourceAssetId = restored.source.type === "PRODUCTION_ASSET" ? restored.source.productionAssetId : null;
+  const sourceClips = reset.clips.filter((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.productionAssetId === sourceAssetId);
+
+  assert.equal(sourceClips.length, 1);
+  assert.equal(restored.startSeconds, originalStartSeconds);
+  assert.equal(restored.durationSeconds, 30);
+  assert.equal(restored.sourceOffsetSeconds, 0);
+  assert.equal(restored.crop, undefined);
+  assert.deepEqual(restored.layout, { height: 1080, opacity: 1, rotation: 0, width: 1920, x: 0, y: 0, zIndex: -1 });
+  assert.equal(reset.motion.animations.some((animation) => animation.target.clipId === video.id || animation.target.clipId === "video-reset-right"), false);
+});
+
+test("impide que el agente reinicie un asset sin confirmación del usuario", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  assert.throws(() => applyCompositionEditorPatches(document, [{
+    clipId: video.id,
+    type: "clip.reset-asset",
+  }], "AGENT"), CompositionEditorPatchError);
+});
+
+test("reiniciar también recupera el inicio eliminado por un trim de timeline", () => {
+  const document = baseDocument();
+  document.canvas.durationSeconds = 60;
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  video.durationSeconds = 30;
+  video.sourceDurationSeconds = 30;
+  const originalStartSeconds = video.startSeconds;
+  const trimmed = applyCompositionEditorPatches(document, [{
+    clipId: video.id,
+    durationSeconds: 25,
+    sourceOffsetSeconds: 5,
+    startSeconds: originalStartSeconds + 5,
+    type: "clip.trim",
+  }]);
+  const reset = applyCompositionEditorPatches(trimmed, [{ clipId: video.id, type: "clip.reset-asset" }]);
+  const restored = reset.clips.find((clip) => clip.id === video.id)!;
+
+  assert.equal(restored.startSeconds, originalStartSeconds);
+  assert.equal(restored.durationSeconds, 30);
+  assert.equal(restored.sourceOffsetSeconds, 0);
+});
+
 test("rechaza cortes en los límites y clips con animaciones para no perder estado", () => {
   const document = baseDocument();
   const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
@@ -435,6 +591,199 @@ test("añade motion sin modificar layout ni timing y lo elimina en cascada con e
 
   const removed = applyCompositionEditorPatches(animated, [{ clipId: video.id, type: "clip.remove" }]);
   assert.equal(removed.motion.animations.length, 0);
+});
+
+test("crea y reconfigura animaciones Durante con ciclos finitos", () => {
+  const document = baseDocument();
+  document.canvas.durationSeconds = 60;
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  video.durationSeconds = 12;
+  const animated = applyCompositionEditorPatches(document, [{
+    animationId: "motion-pulse-test",
+    clipId: video.id,
+    durationSeconds: 6,
+    presetId: "PULSE",
+    type: "animation.add-preset",
+  }]);
+  const initial = animated.motion.animations.find((animation) => animation.id === "motion-pulse-test")!;
+
+  assert.equal(initial.timing.anchor, "CLIP_START");
+  assert.equal(initial.timing.durationSeconds, 6);
+  assert.equal(initial.preset?.parameters?.cycles, 3);
+  assert.equal(initial.keyframes.length, 7);
+
+  const configured = applyCompositionEditorPatches(animated, [{
+    animationId: initial.id,
+    cycles: 4,
+    durationSeconds: 8,
+    intensity: 1.5,
+    offsetSeconds: 1.5,
+    type: "animation.configure-preset",
+  }]);
+  const result = configured.motion.animations.find((animation) => animation.id === initial.id)!;
+
+  assert.equal(result.origin, "USER");
+  assert.equal(result.timing.durationSeconds, 8);
+  assert.equal(result.timing.offsetSeconds, 1.5);
+  assert.equal(result.preset?.parameters?.cycles, 4);
+  assert.equal(result.preset?.parameters?.intensity, 1.5);
+  assert.equal(result.keyframes.length, 9);
+});
+
+test("ancla los presets de salida al final y conserva sus límites de fase", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  const animated = applyCompositionEditorPatches(document, [{
+    animationId: "motion-slide-out-test",
+    clipId: video.id,
+    durationSeconds: 5,
+    presetId: "SLIDE_OUT_RIGHT",
+    type: "animation.add-preset",
+  }]);
+  const exit = animated.motion.animations.find((animation) => animation.id === "motion-slide-out-test")!;
+
+  assert.equal(exit.propertyGroup, "POSITION");
+  assert.equal(exit.timing.anchor, "CLIP_END");
+  assert.equal(exit.timing.durationSeconds, 2);
+  assert.throws(() => applyCompositionEditorPatches(animated, [{
+    animationId: exit.id,
+    timing: { anchor: "CLIP_START" },
+    type: "animation.update-timing",
+  }]), CompositionEditorPatchError);
+  assert.throws(() => applyCompositionEditorPatches(animated, [{
+    animationId: exit.id,
+    timing: { durationSeconds: 2.1 },
+    type: "animation.update-timing",
+  }]), CompositionEditorPatchError);
+});
+
+test("planifica entrada, reproducción y salida sin solapar el mismo grupo de propiedades", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  const presets = ["SLIDE_IN_LEFT", "FLOAT", "SLIDE_OUT_RIGHT"] as const;
+  let animated = document;
+
+  for (const presetId of presets) {
+    const plan = planCompositionPresetInsertion({
+      animations: animated.motion.animations,
+      clipDurationSeconds: video.durationSeconds,
+      clipId: video.id,
+      presetId,
+    });
+    assert.equal(plan.available, true);
+    animated = applyCompositionEditorPatches(animated, [{
+      animationId: `motion-${presetId.toLowerCase().replaceAll("_", "-")}-planned`,
+      clipId: video.id,
+      durationSeconds: plan.durationSeconds,
+      offsetSeconds: plan.offsetSeconds,
+      presetId,
+      type: "animation.add-preset",
+    }]);
+  }
+
+  const windows = animated.motion.animations
+    .filter((animation) => animation.target.clipId === video.id && animation.propertyGroup === "POSITION")
+    .map((animation) => resolveCompositionAnimationWindow(animation, video.durationSeconds))
+    .sort((left, right) => left.start - right.start);
+  assert.equal(windows.length, 3);
+  assert.ok(windows[0]!.end <= windows[1]!.start + 0.001);
+  assert.ok(windows[1]!.end <= windows[2]!.start + 0.001);
+  assert.equal(windows[0]!.start, 0);
+  assert.equal(windows[2]!.end, video.durationSeconds);
+});
+
+test("marca un preset como no disponible cuando su propiedad ocupa todo el clip", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  video.durationSeconds = 0.7;
+  const animated = applyCompositionEditorPatches(document, [{
+    animationId: "motion-opacity-full-clip",
+    clipId: video.id,
+    durationSeconds: 0.7,
+    presetId: "FADE_IN",
+    type: "animation.add-preset",
+  }]);
+  const plan = planCompositionPresetInsertion({
+    animations: animated.motion.animations,
+    clipDurationSeconds: video.durationSeconds,
+    clipId: video.id,
+    presetId: "FADE_OUT",
+  });
+
+  assert.equal(plan.available, false);
+  assert.match(plan.reason || "", /opacidad/);
+});
+
+test("mueve una salida por frames conservando su anclaje al final", () => {
+  const timing = buildCompositionAnimationTimelineEdit({
+    animation: { timing: { anchor: "CLIP_END", durationSeconds: 0.7, offsetSeconds: 0 } },
+    clipDurationSeconds: 5,
+    deltaSeconds: -1,
+    fps: 30,
+    kind: "MOVE",
+    maximumDurationSeconds: 2,
+    snapEnabled: true,
+  });
+
+  assert.deepEqual(timing, {
+    anchor: "CLIP_END",
+    durationSeconds: 0.7,
+    offsetSeconds: 1,
+  });
+});
+
+test("redimensiona una banda dentro del máximo del preset y hace snap al playhead", () => {
+  const resized = buildCompositionAnimationTimelineEdit({
+    animation: { timing: { anchor: "CLIP_START", durationSeconds: 1, offsetSeconds: 1 } },
+    clipDurationSeconds: 5,
+    deltaSeconds: 10,
+    fps: 30,
+    kind: "RESIZE_END",
+    maximumDurationSeconds: 2,
+    snapEnabled: true,
+  });
+  const snapped = buildCompositionAnimationTimelineEdit({
+    animation: { timing: { anchor: "CLIP_START", durationSeconds: 1, offsetSeconds: 1 } },
+    clipDurationSeconds: 5,
+    deltaSeconds: 0.96,
+    fps: 30,
+    kind: "MOVE",
+    maximumDurationSeconds: 2,
+    snapEnabled: true,
+    snapTargetSeconds: 3,
+    snapToleranceSeconds: 0.1,
+  });
+
+  assert.deepEqual(resized, {
+    anchor: "CLIP_START",
+    durationSeconds: 2,
+    offsetSeconds: 1,
+  });
+  assert.deepEqual(snapped, {
+    anchor: "CLIP_START",
+    durationSeconds: 1,
+    offsetSeconds: 2,
+  });
+});
+
+test("marca como manual una animación ajustada desde la timeline", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  const animated = applyCompositionEditorPatches(document, [{
+    animationId: "motion-manual-timing",
+    clipId: video.id,
+    durationSeconds: 0.7,
+    presetId: "FADE_IN",
+    type: "animation.add-preset",
+  }]);
+  const updated = applyCompositionEditorPatches(animated, [{
+    animationId: "motion-manual-timing",
+    timing: { offsetSeconds: 0.5 },
+    type: "animation.update-timing",
+  }]);
+
+  assert.equal(updated.motion.animations[0]?.origin, "USER");
+  assert.equal(updated.motion.animations[0]?.timing.offsetSeconds, 0.5);
 });
 
 test("el cálculo automático conserva layout, visibilidad y tiempos manuales", () => {

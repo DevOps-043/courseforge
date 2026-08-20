@@ -4,7 +4,11 @@ import {
   type CompositionEditorDocument,
 } from "./composition-document.types";
 import type { CompositionEditorPatchOperation } from "./editor-patch.types";
-import { createCompositionPresetAnimation } from "./composition-motion-preset.service";
+import {
+  createCompositionPresetAnimation,
+  getCompositionMotionPresetDefinition,
+} from "./composition-motion-preset.service";
+import { resolveDefaultCompositionClipLayout } from "./composition-default-layout.service";
 
 export class CompositionEditorPatchError extends Error {
   constructor(message: string) {
@@ -128,11 +132,38 @@ export function applyCompositionEditorPatches(
       }
       next.motion.animations.push(createCompositionPresetAnimation({
         animationId: operation.animationId,
+        clipDurationSeconds: clip.durationSeconds,
         clipId: clip.id,
         durationSeconds: Math.min(operation.durationSeconds, clip.durationSeconds),
+        offsetSeconds: operation.offsetSeconds,
         origin: source === "AGENT" ? "AGENT" : "PRESET",
         presetId: operation.presetId,
       }));
+      continue;
+    }
+    if (operation.type === "animation.configure-preset") {
+      if (source !== "USER") {
+        throw new CompositionEditorPatchError("Solo una acción explícita del usuario puede reconfigurar un preset.");
+      }
+      const animationIndex = next.motion.animations.findIndex((candidate) => candidate.id === operation.animationId);
+      if (animationIndex < 0) throw new CompositionEditorPatchError("La animación que intentas editar ya no existe.");
+      const animation = next.motion.animations[animationIndex]!;
+      if (!animation.preset) throw new CompositionEditorPatchError("La animación no proviene de un preset configurable.");
+      const clip = next.clips.find((candidate) => candidate.id === animation.target.clipId);
+      if (!clip) throw new CompositionEditorPatchError("El clip de la animación ya no existe.");
+      const track = next.tracks.find((candidate) => candidate.id === clip.trackId);
+      if (track?.locked) throw new CompositionEditorPatchError("No puedes editar animaciones de un track bloqueado.");
+      next.motion.animations[animationIndex] = createCompositionPresetAnimation({
+        animationId: animation.id,
+        clipDurationSeconds: clip.durationSeconds,
+        clipId: clip.id,
+        cycles: operation.cycles,
+        durationSeconds: operation.durationSeconds,
+        intensity: operation.intensity,
+        offsetSeconds: operation.offsetSeconds,
+        origin: "USER",
+        presetId: animation.preset.id,
+      });
       continue;
     }
     if (operation.type === "animation.remove" || operation.type === "animation.update-keyframe" || operation.type === "animation.update-timing") {
@@ -145,7 +176,19 @@ export function applyCompositionEditorPatches(
       if (operation.type === "animation.remove") {
         next.motion.animations.splice(animationIndex, 1);
       } else if (operation.type === "animation.update-timing") {
-        animation.timing = { ...animation.timing, ...operation.timing };
+        const timing = { ...animation.timing, ...operation.timing };
+        if (animation.preset) {
+          const definition = getCompositionMotionPresetDefinition(animation.preset.id);
+          const expectedAnchor = definition.phase === "EXIT" ? "CLIP_END" : "CLIP_START";
+          if (timing.anchor !== expectedAnchor) {
+            throw new CompositionEditorPatchError("El anclaje del preset debe coincidir con su fase de animación.");
+          }
+          if (definition.maxDurationSeconds !== null && timing.durationSeconds > definition.maxDurationSeconds) {
+            throw new CompositionEditorPatchError("Las animaciones de entrada y salida pueden durar como máximo 2 segundos.");
+          }
+        }
+        animation.timing = timing;
+        animation.origin = source === "AGENT" ? "AGENT" : "USER";
       } else {
         const keyframe = animation.keyframes[operation.keyframeIndex];
         if (!keyframe) throw new CompositionEditorPatchError("El keyframe que intentas editar ya no existe.");
@@ -210,6 +253,51 @@ export function applyCompositionEditorPatches(
     const currentTrack = next.tracks.find((track) => track.id === clip.trackId);
     if (!currentTrack) throw new CompositionEditorPatchError("El clip no tiene un track válido.");
 
+    if (operation.type === "clip.reset-asset") {
+      if (source !== "USER") {
+        throw new CompositionEditorPatchError("Solo una acción explícita del usuario puede reiniciar un asset.");
+      }
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes reiniciar un asset de un track bloqueado.");
+      if (clip.source.type !== "PRODUCTION_ASSET") {
+        throw new CompositionEditorPatchError("Solo los assets multimedia pueden reiniciarse.");
+      }
+      const productionAssetId = clip.source.productionAssetId;
+      const siblingClips = next.clips.filter((candidate) => (
+        candidate.source.type === "PRODUCTION_ASSET"
+        && candidate.source.productionAssetId === productionAssetId
+      ));
+      const siblingIds = new Set(siblingClips.map((candidate) => candidate.id));
+      const untrimmedSiblings = siblingClips.filter((candidate) => (candidate.sourceOffsetSeconds || 0) <= CLIP_BOUNDARY_EPSILON_SECONDS);
+      const originalStartSeconds = untrimmedSiblings.length > 0
+        ? Math.min(...untrimmedSiblings.map((candidate) => candidate.startSeconds))
+        : Math.max(0, Math.min(...siblingClips.map((candidate) => candidate.startSeconds - (candidate.sourceOffsetSeconds || 0))));
+      const knownSourceDuration = Math.max(
+        ...siblingClips.map((candidate) => candidate.sourceDurationSeconds || 0),
+      );
+      const observedSourceDuration = Math.max(
+        ...siblingClips.map((candidate) => (candidate.sourceOffsetSeconds || 0) + candidate.durationSeconds),
+      );
+      const restoredDurationSeconds = quantizeToDocumentFrame(
+        knownSourceDuration > 0 ? knownSourceDuration : observedSourceDuration,
+        next.canvas.fps,
+      );
+      clip.startSeconds = quantizeToDocumentFrame(originalStartSeconds, next.canvas.fps);
+      clip.durationSeconds = restoredDurationSeconds;
+      clip.sourceOffsetSeconds = 0;
+      clip.timingSource = "ESTIMATED";
+      clip.hidden = false;
+      clip.layout = resolveDefaultCompositionClipLayout({ canvas: next.canvas, clipKind: clip.kind, track: currentTrack });
+      delete clip.crop;
+      next.clips = next.clips.filter((candidate) => candidate.id === clip.id || !siblingIds.has(candidate.id));
+      next.motion.animations = next.motion.animations.filter((animation) => !siblingIds.has(animation.target.clipId));
+      const requiredCanvasDuration = clip.startSeconds + clip.durationSeconds;
+      if (requiredCanvasDuration > next.canvas.durationSeconds) {
+        next.canvas.durationSeconds = quantizeToDocumentFrame(requiredCanvasDuration, next.canvas.fps);
+        next.canvas.durationMode = "USER_EDITED";
+      }
+      continue;
+    }
+
     if (operation.type === "clip.split") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes dividir un clip de un track bloqueado.");
       assertDerivableMediaClip(next, clip);
@@ -243,11 +331,11 @@ export function applyCompositionEditorPatches(
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes eliminar un intervalo de un track bloqueado.");
       assertDerivableMediaClip(next, clip);
       const clipEnd = clip.startSeconds + clip.durationSeconds;
-      const rangeStartSeconds = quantizeToDocumentFrame(operation.startSeconds, next.canvas.fps);
-      const rangeEndSeconds = quantizeToDocumentFrame(operation.endSeconds, next.canvas.fps);
+      const rangeStartSeconds = Math.max(clip.startSeconds, quantizeToDocumentFrame(operation.startSeconds, next.canvas.fps));
+      const rangeEndSeconds = Math.min(clipEnd, quantizeToDocumentFrame(operation.endSeconds, next.canvas.fps));
       if (
-        rangeStartSeconds < clip.startSeconds + CLIP_BOUNDARY_EPSILON_SECONDS ||
-        rangeEndSeconds > clipEnd - CLIP_BOUNDARY_EPSILON_SECONDS ||
+        operation.startSeconds < clip.startSeconds - CLIP_BOUNDARY_EPSILON_SECONDS ||
+        operation.endSeconds > clipEnd + CLIP_BOUNDARY_EPSILON_SECONDS ||
         rangeEndSeconds <= rangeStartSeconds
       ) {
         throw new CompositionEditorPatchError("El intervalo debe quedar dentro del clip seleccionado.");
@@ -255,12 +343,34 @@ export function applyCompositionEditorPatches(
       const leftDuration = rangeStartSeconds - clip.startSeconds;
       const rightDuration = clipEnd - rangeEndSeconds;
       const minimumClipDuration = minimumDerivedClipDuration(next.canvas.fps);
-      if (
-        leftDuration < minimumClipDuration ||
-        rightDuration < minimumClipDuration
-      ) {
-        throw new CompositionEditorPatchError("El intervalo debe dejar al menos un frame válido a ambos lados.");
+      if (rangeEndSeconds - rangeStartSeconds < minimumClipDuration - CLIP_BOUNDARY_EPSILON_SECONDS) {
+        throw new CompositionEditorPatchError("El intervalo debe durar al menos un frame.");
       }
+      const removesFromStart = leftDuration < minimumClipDuration;
+      const removesThroughEnd = rightDuration < minimumClipDuration;
+
+      if (removesFromStart && removesThroughEnd) {
+        removeClipOrThrow(next, clip.id);
+        continue;
+      }
+
+      if (removesFromStart) {
+        clip.durationSeconds = quantizeToDocumentFrame(rightDuration, next.canvas.fps);
+        clip.sourceOffsetSeconds = normalizeVideoSourceOffset(
+          clip,
+          quantizeToDocumentFrame((clip.sourceOffsetSeconds || 0) + (rangeEndSeconds - clip.startSeconds), next.canvas.fps),
+        );
+        clip.startSeconds = quantizeToDocumentFrame(operation.ripple ? clip.startSeconds : rangeEndSeconds, next.canvas.fps);
+        clip.timingSource = "USER_EDITED";
+        continue;
+      }
+
+      if (removesThroughEnd) {
+        clip.durationSeconds = quantizeToDocumentFrame(leftDuration, next.canvas.fps);
+        clip.timingSource = "USER_EDITED";
+        continue;
+      }
+
       if (!operation.newClipId || !operation.newHfId) {
         throw new CompositionEditorPatchError("Eliminar un segmento intermedio requiere un identificador para el clip restante.");
       }
@@ -333,6 +443,15 @@ export function applyCompositionEditorPatches(
       clip.layout = { ...clip.layout, ...operation.layout };
     }
 
+    if (operation.type === "clip.crop") {
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes recortar visualmente un track bloqueado.");
+      if (clip.kind !== "VIDEO" && clip.kind !== "IMAGE") {
+        throw new CompositionEditorPatchError("El recorte visual solo está disponible para videos e imágenes.");
+      }
+      if (operation.crop) clip.crop = normalizeVisualCrop(operation.crop);
+      else delete clip.crop;
+    }
+
     if (operation.type === "clip.visibility") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes ocultar o mostrar un clip de un track bloqueado.");
       clip.hidden = operation.hidden;
@@ -362,6 +481,16 @@ export function applyCompositionEditorPatches(
 
 function minimumDerivedClipDuration(fps: number) {
   return Math.max(0.05, 1 / fps);
+}
+
+function normalizeVisualCrop(crop: { focusX: number; focusY: number; zoom: number }) {
+  const minimumFocus = 0.5 / crop.zoom;
+  const maximumFocus = 1 - minimumFocus;
+  return {
+    focusX: Math.max(minimumFocus, Math.min(maximumFocus, crop.focusX)),
+    focusY: Math.max(minimumFocus, Math.min(maximumFocus, crop.focusY)),
+    zoom: crop.zoom,
+  };
 }
 
 function quantizeToDocumentFrame(value: number, fps: number) {

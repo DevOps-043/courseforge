@@ -156,7 +156,6 @@ export function ProductionAssetCard({
     // Sub-handlers
     handleVoiceUpload,
     handleMusicUpload,
-    handleVolumeChange,
     handleSofliaEngineSlideGeneration,
     prepareUploadedHtmlSlidesAsAnimatedDeck,
     handleSlidesZipUpload,
@@ -300,7 +299,6 @@ export function ProductionAssetCard({
                 isUploading={isUploadingMusic}
                 fileRef={musicFileRef}
                 onUpload={handleMusicUpload}
-                onVolumeChange={handleVolumeChange}
                 onClear={clearBackgroundMusic}
                 isSearchingArtlist={isSearchingArtlist}
                 isImportingArtlist={isImportingArtlist}

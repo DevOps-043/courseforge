@@ -35,7 +35,7 @@ const modelOperationSchema = z.discriminatedUnion("type", [
   z.object({
     animationId: editorIdSchema,
     clipId: editorIdSchema,
-    durationSeconds: secondsSchema.positive().max(2),
+    durationSeconds: secondsSchema.positive(),
     presetId: z.enum(COMPOSITION_MOTION_PRESET_IDS),
     type: z.literal("animation.add-preset"),
   }).strict(),

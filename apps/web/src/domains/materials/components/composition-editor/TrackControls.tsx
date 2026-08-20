@@ -92,8 +92,9 @@ export function TrackControls({ disabled, onUpdate, track }: TrackControlsProps)
               {track.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
             </button>
             <input
-              aria-label={`Volumen de ${track.label}`}
+              aria-label={`Volumen base de ${track.label}`}
               aria-valuetext={`${Math.round(volume * 100)}%`}
+              title={`Volumen base de ${track.label}: ${Math.round(volume * 100)}%`}
               disabled={disabled || track.muted}
               type="range"
               min="0"

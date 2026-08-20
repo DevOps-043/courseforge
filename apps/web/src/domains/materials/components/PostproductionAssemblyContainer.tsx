@@ -28,6 +28,24 @@ function getComponentTitle(component: VideoComponent) {
   return contentTitle || component.lessonTitle || "Video";
 }
 
+function hasProductionMedia(component: VideoComponent) {
+  const assets = component.assets;
+  if (!assets || typeof assets !== "object") return false;
+  const values = assets as Record<string, unknown>;
+  const slides = values.slides && typeof values.slides === "object"
+    ? values.slides as Record<string, unknown>
+    : null;
+  return Boolean(
+    values.voice_audio
+    || values.background_music
+    || values.avatar_video
+    || (Array.isArray(values.avatar_clips) && values.avatar_clips.length > 0)
+    || (Array.isArray(values.b_roll_clips) && values.b_roll_clips.length > 0)
+    || slides?.animated_deck
+    || (Array.isArray(slides?.images) && slides.images.length > 0)
+  );
+}
+
 /**
  * Dedicated assembly surface for Courseforge's internal video composition flow.
  * Legacy Remotion and desktop-worker controls are intentionally absent here.
@@ -71,10 +89,11 @@ export function PostproductionAssemblyContainer({
         : singleVideoOnly
           ? allComponents.slice(0, 1)
           : allComponents;
+      const preferredComponent = scoped.find(hasProductionMedia) || scoped[0] || null;
       setComponents(scoped);
       setActiveComponentId((current) => current && scoped.some((component) => component.id === current)
         ? current
-        : scoped[0]?.id || null);
+        : preferredComponent?.id || null);
     } catch (error) {
       console.error("[VideoAssemblyStudio] No se pudieron cargar los componentes:", error);
       setComponents([]);

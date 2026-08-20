@@ -7,6 +7,7 @@ import {
   compositionLayoutPatchSchema,
   compositionLayoutSchema,
   compositionTrackSchema,
+  compositionVisualCropSchema,
 } from "./composition-document.types";
 import { COMPOSITION_MOTION_EASES, COMPOSITION_MOTION_PRESET_IDS, compositionMotionValuesSchema } from "./composition-motion.types";
 
@@ -69,6 +70,16 @@ const clipLayoutOperationSchema = z.object({
     "Debes indicar al menos una propiedad de layout.",
   ),
   type: z.literal("clip.layout"),
+}).strict();
+
+const clipCropOperationSchema = z.object({
+  crop: compositionVisualCropSchema.nullable(),
+  type: z.literal("clip.crop"),
+}).strict();
+
+/** Restores one source asset and consolidates all of its derived timeline fragments. */
+const clipResetAssetOperationSchema = z.object({
+  type: z.literal("clip.reset-asset"),
 }).strict();
 
 const clipVisibilityOperationSchema = z.object({
@@ -140,9 +151,19 @@ const documentRestoreOperationSchema = z.object({
 const animationAddPresetOperationSchema = z.object({
   animationId: editorIdSchema,
   clipId: editorIdSchema,
-  durationSeconds: boundedSecondsSchema.positive().max(2),
+  durationSeconds: boundedSecondsSchema.positive(),
+  offsetSeconds: boundedSecondsSchema.optional(),
   presetId: z.enum(COMPOSITION_MOTION_PRESET_IDS),
   type: z.literal("animation.add-preset"),
+}).strict();
+
+const animationConfigurePresetOperationSchema = z.object({
+  animationId: editorIdSchema,
+  cycles: z.number().int().min(1).max(12),
+  durationSeconds: boundedSecondsSchema.positive(),
+  intensity: z.number().finite().min(0.25).max(2),
+  offsetSeconds: boundedSecondsSchema,
+  type: z.literal("animation.configure-preset"),
 }).strict();
 
 const animationRemoveOperationSchema = z.object({
@@ -171,6 +192,7 @@ const animationUpdateKeyframeOperationSchema = z.object({
 const clipPatchOperationSchema = z.discriminatedUnion("type", [
   clipAddOperationSchema,
   canvasDurationOperationSchema,
+  clipCropOperationSchema,
   clipMoveOperationSchema,
   clipDurationOperationSchema,
   clipEstimatedTimingOperationSchema,
@@ -180,6 +202,7 @@ const clipPatchOperationSchema = z.discriminatedUnion("type", [
   clipTrimOperationSchema,
   clipSplitOperationSchema,
   clipRemoveRangeOperationSchema,
+  clipResetAssetOperationSchema,
   clipVisibilityOperationSchema,
 ]).and(z.object({ clipId: editorIdSchema }).strict());
 
@@ -187,6 +210,7 @@ export const compositionEditorPatchOperationSchema = z.union([
   audioMixUpdateOperationSchema,
   documentRestoreOperationSchema,
   animationAddPresetOperationSchema,
+  animationConfigurePresetOperationSchema,
   animationRemoveOperationSchema,
   animationUpdateKeyframeOperationSchema,
   animationUpdateTimingOperationSchema,

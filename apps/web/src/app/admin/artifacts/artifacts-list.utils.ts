@@ -190,7 +190,13 @@ export function getArtifactTitle(ideaCentral: string) {
     .trim();
 }
 
-export function isStandaloneAssemblyArtifact(artifact: Pick<Artifact, "idea_central">) {
+export function isStandaloneAssemblyArtifact(
+  artifact: Pick<Artifact, "descripcion" | "idea_central">,
+) {
+  if (hasStandaloneAssemblyMode(artifact.descripcion)) {
+    return true;
+  }
+
   const rawIdea = artifact.idea_central?.trim();
 
   if (!rawIdea) {
@@ -208,6 +214,28 @@ export function isStandaloneAssemblyArtifact(artifact: Pick<Artifact, "idea_cent
     const parsedIdea = JSON.parse(rawIdea) as { mode?: unknown };
     return parsedIdea.mode === "standalone_assembly";
   } catch {
+    // Standalone projects created by Courseforge keep a readable title in
+    // idea_central and the authoritative mode in descripcion. The prefix is a
+    // compatibility fallback for rows created before descripcion was stored.
+    return /^\[Ensamble\]\s+/i.test(rawIdea);
+  }
+}
+
+function hasStandaloneAssemblyMode(value: unknown) {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return (value as { mode?: unknown }).mode === "standalone_assembly";
+  }
+
+  if (typeof value !== "string") {
     return false;
+  }
+
+  try {
+    return (JSON.parse(value) as { mode?: unknown }).mode === "standalone_assembly";
+  } catch {
+    return (
+      value.includes('"mode":"standalone_assembly"') ||
+      value.includes('"mode": "standalone_assembly"')
+    );
   }
 }

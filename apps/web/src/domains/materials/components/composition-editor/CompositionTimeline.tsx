@@ -1,9 +1,12 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent } from "react";
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
 import type { CompositionClip, CompositionEditorDocument } from "@/domains/production/composition-editor/composition-document.types";
+import type { CompositionAnimation } from "@/domains/production/composition-editor/composition-motion.types";
 import { TrackControls } from "./TrackControls";
+import { AnimationTimelineBand } from "./AnimationTimelineBand";
 import type { CompositionTrackUpdateHandler } from "./composition-studio.types";
 
 type TimelineGesture = {
@@ -17,6 +20,9 @@ type TimelineGesture = {
 };
 
 const PLAYHEAD_SNAP_DISTANCE_PX = 10;
+const MIN_TIMELINE_ZOOM = 1;
+const MAX_TIMELINE_ZOOM = 8;
+const TIMELINE_ZOOM_STEP = 0.5;
 
 interface CompositionTimelineProps {
   assetLabels: Record<string, string>;
@@ -24,25 +30,33 @@ interface CompositionTimelineProps {
   document: CompositionEditorDocument;
   onClearSelection: () => void;
   onDurationChange: (clip: CompositionClip, durationSeconds: number) => void;
+  onAnimationSelect: (animationId: string, clipHfId: string) => void;
+  onAnimationTimingChange: (animation: CompositionAnimation, timing: CompositionAnimation["timing"]) => void;
   onMove: (clip: CompositionClip, startSeconds: number) => void;
   onSeek: (seconds: number) => void;
   onSelect: (hfId: string) => void;
   onTrackUpdate: CompositionTrackUpdateHandler;
   onTrim: (clip: CompositionClip, startSeconds: number, durationSeconds: number, sourceOffsetSeconds: number) => void;
   saving: boolean;
+  selectedAnimationId: string | null;
   selectedHfId: string | null;
   snapEnabled?: boolean;
   trimMode?: boolean;
 }
 
-export function CompositionTimeline({ assetLabels, currentTime, document, onClearSelection, onDurationChange, onMove, onSeek, onSelect, onTrackUpdate, onTrim, saving, selectedHfId, snapEnabled = true, trimMode = false }: CompositionTimelineProps) {
+export function CompositionTimeline({ assetLabels, currentTime, document, onAnimationSelect, onAnimationTimingChange, onClearSelection, onDurationChange, onMove, onSeek, onSelect, onTrackUpdate, onTrim, saving, selectedAnimationId, selectedHfId, snapEnabled = true, trimMode = false }: CompositionTimelineProps) {
   const [gesture, setGesture] = useState<TimelineGesture | null>(null);
+  const [motionEditError, setMotionEditError] = useState<string | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
+  const [timelineZoom, setTimelineZoom] = useState(MIN_TIMELINE_ZOOM);
+  const [timelineScroll, setTimelineScroll] = useState(0);
+  const [timelineScrollMax, setTimelineScrollMax] = useState(0);
   const didDragRef = useRef(false);
+  const timelineViewportRef = useRef<HTMLDivElement>(null);
   const tracks = document.tracks.slice().sort((left, right) => left.order - right.order);
   const maxDuration = document.canvas.durationSeconds;
   const fps = document.canvas.fps;
-  const ruler = useMemo(() => buildTimelineRuler(maxDuration), [maxDuration]);
+  const ruler = useMemo(() => buildTimelineRuler(maxDuration, timelineZoom), [maxDuration, timelineZoom]);
 
   const beginGesture = (event: PointerEvent<HTMLElement>, clip: CompositionClip, kind: TimelineGesture["kind"]) => {
     if (saving || document.tracks.find((track) => track.id === clip.trackId)?.locked) return;
@@ -158,14 +172,69 @@ export function CompositionTimeline({ assetLabels, currentTime, document, onClea
   };
   const endScrub = () => setScrubbing(false);
 
+  const changeTimelineZoom = (nextZoom: number) => {
+    setTimelineZoom(Math.max(MIN_TIMELINE_ZOOM, Math.min(MAX_TIMELINE_ZOOM, nextZoom)));
+  };
+  const syncTimelineScroll = () => {
+    const viewport = timelineViewportRef.current;
+    if (!viewport) return;
+    const maximum = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+    setTimelineScrollMax(maximum);
+    setTimelineScroll(Math.min(viewport.scrollLeft, maximum));
+  };
+  const moveTimelineScroll = (nextPosition: number) => {
+    const viewport = timelineViewportRef.current;
+    if (!viewport) return;
+    viewport.scrollLeft = Math.max(0, Math.min(timelineScrollMax, nextPosition));
+    syncTimelineScroll();
+  };
+  const nudgeTimelineScroll = (direction: -1 | 1) => {
+    const viewport = timelineViewportRef.current;
+    if (!viewport) return;
+    moveTimelineScroll(viewport.scrollLeft + direction * Math.max(120, viewport.clientWidth * 0.6));
+  };
+
+  useEffect(() => {
+    const viewport = timelineViewportRef.current;
+    if (!viewport) return;
+    const frame = window.requestAnimationFrame(syncTimelineScroll);
+    const observer = new ResizeObserver(syncTimelineScroll);
+    observer.observe(viewport);
+    if (viewport.firstElementChild) observer.observe(viewport.firstElementChild);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [timelineZoom, tracks.length]);
+
   return <div className="space-y-2">
-    <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-gray-400"><span>Timeline</span><span>{formatSeconds(currentTime)} · {document.clips.length} clips · mueve el bloque o recorta sus bordes</span></div>
-    <div className="grid grid-cols-[160px_minmax(0,1fr)] items-end gap-2"><span className="pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-gray-400">Tiempo</span><div role="slider" aria-label="Cursor de la composición" aria-valuemax={maxDuration} aria-valuemin={0} aria-valuenow={currentTime} tabIndex={0} onKeyDown={(event) => { if (event.key === "ArrowLeft") { event.preventDefault(); onSeek(Math.max(0, currentTime - 0.5)); } if (event.key === "ArrowRight") { event.preventDefault(); onSeek(Math.min(maxDuration, currentTime + 0.5)); } }} onPointerDown={beginScrub} onPointerMove={continueScrub} onPointerUp={endScrub} onPointerCancel={endScrub} className="relative h-8 cursor-ew-resize select-none overflow-hidden rounded-t-md border border-b-0 border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5">{ruler.minor.map((time) => <span key={`minor-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute bottom-0 h-2 w-px bg-slate-300 dark:bg-white/20" />)}{ruler.major.map((time) => <span key={`major-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute inset-y-0 w-px bg-slate-300 dark:bg-white/20"><span className="absolute left-1 top-1 whitespace-nowrap font-mono text-[9px] text-slate-500 dark:text-gray-400">{formatSeconds(time)}</span></span>)}<span aria-hidden="true" style={{ left: `${(currentTime / maxDuration) * 100}%` }} className={`absolute inset-y-0 z-30 w-0.5 ${gesture?.snappedToPlayhead ? "bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.9)]" : "bg-cyan-600 shadow-[0_0_7px_rgba(8,145,178,0.75)] dark:bg-cyan-300"} ${scrubbing ? "opacity-100" : "opacity-90"}`}><span className={`absolute -left-1.5 top-0 h-3 w-3 rotate-45 border ${gesture?.snappedToPlayhead ? "border-amber-600 bg-amber-100" : "border-cyan-700 bg-cyan-100 dark:border-cyan-100 dark:bg-cyan-400"}`} /></span></div></div>
+    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-gray-400">
+      <span>Timeline</span>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <span>{formatSeconds(currentTime)} · {document.clips.length} clips · mueve el bloque o recorta sus bordes</span>
+        <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-white p-0.5 normal-case tracking-normal dark:border-white/10 dark:bg-white/5">
+          <button type="button" aria-label="Alejar timeline" title="Alejar timeline" disabled={timelineZoom <= MIN_TIMELINE_ZOOM} onClick={() => changeTimelineZoom(timelineZoom - TIMELINE_ZOOM_STEP)} className="rounded p-1 text-slate-600 hover:bg-slate-100 disabled:opacity-30 dark:text-gray-300 dark:hover:bg-white/10"><ZoomOut size={13} /></button>
+          <input aria-label="Zoom del timeline" aria-valuetext={`${Math.round(timelineZoom * 100)}%`} type="range" min={MIN_TIMELINE_ZOOM} max={MAX_TIMELINE_ZOOM} step={TIMELINE_ZOOM_STEP} value={timelineZoom} onChange={(event) => changeTimelineZoom(Number(event.target.value))} className="w-20 accent-[#00D4B3]" />
+          <span className="w-10 text-center font-mono text-[10px] tabular-nums">{Math.round(timelineZoom * 100)}%</span>
+          <button type="button" aria-label="Acercar timeline" title="Acercar timeline" disabled={timelineZoom >= MAX_TIMELINE_ZOOM} onClick={() => changeTimelineZoom(timelineZoom + TIMELINE_ZOOM_STEP)} className="rounded p-1 text-slate-600 hover:bg-slate-100 disabled:opacity-30 dark:text-gray-300 dark:hover:bg-white/10"><ZoomIn size={13} /></button>
+        </div>
+      </div>
+    </div>
+    <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 dark:border-white/10 dark:bg-white/5">
+      <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-gray-400">Desplazamiento</span>
+      <button type="button" aria-label="Mover timeline a la izquierda" title="Mover timeline a la izquierda" disabled={timelineScroll <= 0} onClick={() => nudgeTimelineScroll(-1)} className="rounded p-1 text-slate-600 hover:bg-slate-200 disabled:opacity-30 dark:text-gray-300 dark:hover:bg-white/10"><ChevronLeft size={14} /></button>
+      <input aria-label="Desplazamiento horizontal del timeline" aria-valuetext={timelineScrollMax > 0 ? `${Math.round((timelineScroll / timelineScrollMax) * 100)}%` : "Inicio"} type="range" min="0" max={Math.max(1, timelineScrollMax)} step="1" value={timelineScrollMax > 0 ? timelineScroll : 0} disabled={timelineScrollMax <= 0} onChange={(event) => moveTimelineScroll(Number(event.target.value))} className="min-w-24 flex-1 accent-[#00D4B3] disabled:opacity-40" />
+      <button type="button" aria-label="Mover timeline a la derecha" title="Mover timeline a la derecha" disabled={timelineScroll >= timelineScrollMax} onClick={() => nudgeTimelineScroll(1)} className="rounded p-1 text-slate-600 hover:bg-slate-200 disabled:opacity-30 dark:text-gray-300 dark:hover:bg-white/10"><ChevronRight size={14} /></button>
+    </div>
+    {motionEditError && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] text-red-700 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-200">{motionEditError}</div>}
+    <div ref={timelineViewportRef} onScroll={syncTimelineScroll} className="overflow-x-auto pb-2">
+      <div className="space-y-2" style={{ minWidth: `${timelineZoom * 100}%` }}>
+    <div className="grid grid-cols-[160px_minmax(0,1fr)] items-end gap-2"><span className="sticky left-0 z-40 bg-white pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:bg-[#101720] dark:text-gray-400">Tiempo</span><div role="slider" aria-label="Cursor de la composición" aria-valuemax={maxDuration} aria-valuemin={0} aria-valuenow={currentTime} tabIndex={0} onKeyDown={(event) => { if (event.key === "ArrowLeft") { event.preventDefault(); onSeek(Math.max(0, currentTime - 0.5)); } if (event.key === "ArrowRight") { event.preventDefault(); onSeek(Math.min(maxDuration, currentTime + 0.5)); } }} onPointerDown={beginScrub} onPointerMove={continueScrub} onPointerUp={endScrub} onPointerCancel={endScrub} className="relative h-8 cursor-ew-resize select-none overflow-hidden rounded-t-md border border-b-0 border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5">{ruler.minor.map((time) => <span key={`minor-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute bottom-0 h-2 w-px bg-slate-300 dark:bg-white/20" />)}{ruler.major.map((time) => <span key={`major-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute inset-y-0 w-px bg-slate-300 dark:bg-white/20"><span className="absolute left-1 top-1 whitespace-nowrap font-mono text-[9px] text-slate-500 dark:text-gray-400">{formatSeconds(time)}</span></span>)}<span aria-hidden="true" style={{ left: `${(currentTime / maxDuration) * 100}%` }} className={`absolute inset-y-0 z-30 w-0.5 ${gesture?.snappedToPlayhead ? "bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.9)]" : "bg-cyan-600 shadow-[0_0_7px_rgba(8,145,178,0.75)] dark:bg-cyan-300"} ${scrubbing ? "opacity-100" : "opacity-90"}`}><span className={`absolute -left-1.5 top-0 h-3 w-3 rotate-45 border ${gesture?.snappedToPlayhead ? "border-amber-600 bg-amber-100" : "border-cyan-700 bg-cyan-100 dark:border-cyan-100 dark:bg-cyan-400"}`} /></span></div></div>
     {tracks.map((track) => {
       const clips = document.clips.filter((clip) => clip.trackId === track.id);
       const lanes = track.kind === "DECK" ? [clips] : clips.map((clip) => [clip]);
       return <div key={track.id} className="grid grid-cols-[160px_minmax(0,1fr)] items-start gap-2">
-        <TrackControls disabled={saving} track={track} onUpdate={onTrackUpdate} />
+        <div className="sticky left-0 z-40 bg-white dark:bg-[#101720]"><TrackControls disabled={saving} track={track} onUpdate={onTrackUpdate} /></div>
         <div className="space-y-1">
           {lanes.map((lane, laneIndex) => <div key={`${track.id}-${laneIndex}`} data-timeline-lane onClick={(event) => { if (event.target === event.currentTarget) onClearSelection(); }} onPointerDown={(event) => { if (event.target === event.currentTarget) beginScrub(event); }} onPointerMove={(event) => { if (scrubbing) continueScrub(event); }} onPointerUp={() => { if (scrubbing) endScrub(); }} onPointerCancel={() => { if (scrubbing) endScrub(); }} className="relative h-9 overflow-hidden rounded-md border border-slate-200 bg-slate-100 dark:border-white/10 dark:bg-white/5">
             {ruler.minor.map((time) => <span key={`minor-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute inset-y-0 w-px bg-slate-300/50 dark:bg-white/5" />)}
@@ -176,20 +245,70 @@ export function CompositionTimeline({ assetLabels, currentTime, document, onClea
               const clipDuration = activeGesture?.durationSeconds ?? clip.durationSeconds;
               const clipStart = activeGesture?.startSeconds ?? clip.startSeconds;
               const label = clip.source.type === "PRODUCTION_ASSET" ? assetLabels[clip.source.productionAssetId] || clip.label : clip.label;
-              return <button key={clip.id} data-clip-id={clip.id} disabled={saving || track.locked} type="button" onClick={() => { if (didDragRef.current) { didDragRef.current = false; return; } onSeek(clipStart); onSelect(clip.hfId); }} onPointerDown={(event) => { if (!trimMode) beginGesture(event, clip, "move"); }} onPointerMove={updateGesture} onPointerUp={finishGesture} onPointerCancel={finishGesture} title={`${label}: ${formatSeconds(clipStart)} – ${formatSeconds(clipStart + clipDuration)}`} style={{ left: `${(clipStart / maxDuration) * 100}%`, width: `${(clipDuration / maxDuration) * 100}%` }} className={`absolute inset-y-1 min-w-5 touch-none select-none truncate rounded border px-3 text-left text-[10px] font-semibold shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${selectedHfId === clip.hfId ? "border-[#0A2540] bg-[#0A2540] text-white" : clip.timingSource === "ESTIMATED" ? "border-[#F59E0B] bg-[#F59E0B]/30 text-[#0A2540] hover:bg-[#F59E0B]/40" : "border-[#00D4B3] bg-[#00D4B3]/20 text-[#0A2540] hover:bg-[#00D4B3]/30 dark:text-[#E9ECEF]"}`}><span aria-label={`Recortar inicio de ${label}`} onPointerDown={(event) => beginGesture(event, clip, "trim-start")} className={`absolute inset-y-0 left-0 cursor-ew-resize border-r hover:bg-black/10 ${trimMode && selectedHfId === clip.hfId ? "w-3 border-white bg-cyan-300/70" : "w-2 border-black/20"}`} /><span>{label}</span><span aria-label={`Cambiar duración de ${label}`} onPointerDown={(event) => beginGesture(event, clip, "trim-end")} className={`absolute inset-y-0 right-0 cursor-ew-resize border-l hover:bg-black/10 ${trimMode && selectedHfId === clip.hfId ? "w-3 border-white bg-cyan-300/70" : "w-2 border-black/20"}`} /></button>;
+              const animations = document.motion.animations.filter((animation) => animation.target.clipId === clip.id);
+              const displayClip = activeGesture ? {
+                ...clip,
+                durationSeconds: clipDuration,
+                startSeconds: clipStart,
+              } : clip;
+              return <Fragment key={clip.id}>
+                <button
+                  data-clip-id={clip.id}
+                  disabled={saving || track.locked}
+                  type="button"
+                  onClick={() => {
+                    if (didDragRef.current) { didDragRef.current = false; return; }
+                    onSeek(clipStart);
+                    onSelect(clip.hfId);
+                  }}
+                  onPointerDown={(event) => { if (!trimMode) beginGesture(event, clip, "move"); }}
+                  onPointerMove={updateGesture}
+                  onPointerUp={finishGesture}
+                  onPointerCancel={finishGesture}
+                  title={`${label}: ${formatSeconds(clipStart)} – ${formatSeconds(clipStart + clipDuration)}`}
+                  style={{
+                    left: `${(clipStart / maxDuration) * 100}%`,
+                    width: `${(clipDuration / maxDuration) * 100}%`,
+                  }}
+                  className={`absolute inset-y-1 min-w-5 touch-none select-none truncate rounded border px-3 pb-2 text-left text-[10px] font-semibold shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${selectedHfId === clip.hfId ? "border-[#0A2540] bg-[#0A2540] text-white" : clip.timingSource === "ESTIMATED" ? "border-[#F59E0B] bg-[#F59E0B]/30 text-[#0A2540] hover:bg-[#F59E0B]/40" : "border-[#00D4B3] bg-[#00D4B3]/20 text-[#0A2540] hover:bg-[#00D4B3]/30 dark:text-[#E9ECEF]"}`}
+                >
+                  <span aria-label={`Recortar inicio de ${label}`} onPointerDown={(event) => beginGesture(event, clip, "trim-start")} className={`absolute inset-y-0 left-0 cursor-ew-resize border-r hover:bg-black/10 ${trimMode && selectedHfId === clip.hfId ? "w-3 border-white bg-cyan-300/70" : "w-2 border-black/20"}`} />
+                  <span className="relative z-10">{label}</span>
+                  <span aria-label={`Cambiar duración de ${label}`} onPointerDown={(event) => beginGesture(event, clip, "trim-end")} className={`absolute inset-y-0 right-0 cursor-ew-resize border-l hover:bg-black/10 ${trimMode && selectedHfId === clip.hfId ? "w-3 border-white bg-cyan-300/70" : "w-2 border-black/20"}`} />
+                </button>
+                {animations.map((animation) => <AnimationTimelineBand
+                  key={animation.id}
+                  animation={animation}
+                  animations={document.motion.animations}
+                  clip={displayClip}
+                  compositionDurationSeconds={maxDuration}
+                  currentTime={currentTime}
+                  disabled={saving || track.locked || Boolean(activeGesture)}
+                  fps={fps}
+                  onCommit={onAnimationTimingChange}
+                  onError={setMotionEditError}
+                  onSeek={onSeek}
+                  onSelect={onAnimationSelect}
+                  selected={selectedAnimationId === animation.id}
+                  snapEnabled={snapEnabled}
+                />)}
+              </Fragment>;
             })}
           </div>)}
           {lanes.length === 0 && <div className="flex h-9 items-center rounded-md border border-dashed border-slate-200 px-2 text-[10px] text-slate-400 dark:border-white/10">Sin clips</div>}
         </div>
       </div>;
     })}
+      </div>
+    </div>
   </div>;
 }
 
-function buildTimelineRuler(durationSeconds: number) {
+function buildTimelineRuler(durationSeconds: number, zoom = 1) {
   const safeDuration = Math.max(durationSeconds, 0.05);
+  const visibleDuration = safeDuration / Math.max(zoom, 1);
   const majorCandidates = [0.5, 1, 2, 5, 10, 15, 30, 60];
-  const majorInterval = majorCandidates.find((candidate) => safeDuration / candidate <= 8) || 60;
+  const majorInterval = majorCandidates.find((candidate) => visibleDuration / candidate <= 8) || 60;
   const minorInterval = majorInterval >= 2 ? majorInterval / 2 : majorInterval / 5;
   const major: number[] = [];
   const minor: number[] = [];

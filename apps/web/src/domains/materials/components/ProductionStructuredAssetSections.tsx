@@ -1,7 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Volume2,
-  VolumeX,
   Music,
   Mic,
   FileVideo,
@@ -391,7 +390,6 @@ interface BackgroundMusicSectionProps {
   isUploading: boolean;
   fileRef: React.RefObject<HTMLInputElement | null>;
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onVolumeChange: (vol: number) => void;
   onClear: () => void;
   
   // Artlist props
@@ -416,7 +414,6 @@ export function BackgroundMusicSection({
   isUploading,
   fileRef,
   onUpload,
-  onVolumeChange,
   onClear,
   isSearchingDrive,
   isImportingDrive,
@@ -425,14 +422,7 @@ export function BackgroundMusicSection({
   importDriveAsset,
   clearDriveSearchResults,
 }: BackgroundMusicSectionProps) {
-  const [vol, setVol] = useState(backgroundMusic?.volume_multiplier ?? 0.15);
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
-
-  const handleVolSlide = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = parseFloat(e.target.value);
-    setVol(v);
-    onVolumeChange(v);
-  };
 
   return (
     <div className="p-3 rounded-xl border border-gray-200 dark:border-[#6C757D]/10 bg-gray-50/50 dark:bg-[#0F1419]/30">
@@ -514,20 +504,9 @@ export function BackgroundMusicSection({
       </div>
 
       {backgroundMusic && (
-        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-100 dark:border-[#6C757D]/10 text-[10px] text-gray-500">
-          <span className="flex items-center gap-1 font-semibold min-w-[70px]">
-            {vol > 0 ? <Volume2 size={11} className="text-indigo-500" /> : <VolumeX size={11} />}
-            Vol: {Math.round(vol * 100)}%
-          </span>
-          <input
-            type="range"
-            min="0"
-            max="0.5"
-            step="0.01"
-            value={vol}
-            onChange={handleVolSlide}
-            className="flex-1 accent-indigo-500 h-1 bg-gray-200 dark:bg-gray-700 rounded-lg cursor-pointer"
-          />
+        <div className="mt-2 flex items-center gap-1.5 border-t border-gray-100 pt-2 text-[10px] text-gray-500 dark:border-[#6C757D]/10 dark:text-gray-400">
+          <Volume2 size={11} className="shrink-0 text-indigo-500" />
+          <span>El volumen y la reducción durante voz se ajustan en el Estudio de edición.</span>
         </div>
       )}
 

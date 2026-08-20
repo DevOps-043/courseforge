@@ -111,6 +111,33 @@ test("fails closed when a document references an asset without a preview URL", a
   await assert.rejects(() => compileCompositionPreview({ assetUrls: new Map(), document }));
 });
 
+test("compiles the same spatial crop into preview and HyperFrames render", async () => {
+  const assetId = "00000000-0000-4000-8000-000000000044";
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "c".repeat(64), durationSeconds: 8, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: assetId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/avatar.mp4", timelineRole: "AVATAR" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Crop" },
+  });
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  const cropped = applyCompositionEditorPatches(document, [{ clipId: video.id, crop: { focusX: 0.5, focusY: 0.5, zoom: 2 }, type: "clip.crop" }]);
+  const assetUrls = new Map([[assetId, "assets/avatar.mp4"]]);
+  const previewHtml = await compileCompositionPreview({ assetUrls, document: cropped });
+  const renderHtml = await compileCompositionPreview({ assetUrls, document: cropped, target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER });
+  const cropStyle = "position:absolute;max-width:none;left:-50%;top:-50%;width:200%;height:200%;";
+
+  assert.match(previewHtml, new RegExp(cropStyle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(renderHtml, new RegExp(cropStyle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(previewHtml, /courseforge-composition-crop-commit/);
+  assert.match(previewHtml, /courseforge-composition-preview-crop/);
+  assert.match(previewHtml, /zoom: 1\.5/);
+  assert.match(previewHtml, /addEventListener\("wheel"/);
+  assert.match(previewHtml, /queueCropCommit\(target\)/);
+  assert.match(previewHtml, /composition-crop-handle/);
+  assert.match(previewHtml, /mode: cropHandle \? "crop-frame"/);
+  assert.match(previewHtml, /resizeCropFrame/);
+  assert.doesNotMatch(renderHtml, /courseforge-composition-crop-commit/);
+});
+
 test("compiles a deterministic HyperFrames render document without the interactive controller", async () => {
   const document = createInitialCompositionDocument({
     animatedDeck: {
@@ -312,10 +339,21 @@ test("compiles motion on an inner subject without replacing the editable layout"
     target: { clipId: clip.id, part: "CONTENT" },
     timing: { anchor: "CLIP_START", durationSeconds: 0.7, offsetSeconds: 0 },
   });
-  const html = await compileCompositionPreview({ assetUrls: new Map(), document });
+  const animated = applyCompositionEditorPatches(document, [{
+    animationId: "motion-pulse-preview",
+    clipId: clip.id,
+    durationSeconds: 3,
+    presetId: "PULSE",
+    type: "animation.add-preset",
+  }]);
+  const html = await compileCompositionPreview({ assetUrls: new Map(), document: animated });
   assert.match(html, new RegExp(`id="${clip.id}" data-hf-id="${clip.hfId}"`));
   assert.match(html, new RegExp(`id="${clip.id}-motion" class="motion-subject deck-content"`));
   assert.match(html, /const motionAnimations =/);
+  assert.match(html, /motion-pulse-preview/);
   assert.match(html, /timeline\.set\(target, first\.values, animation\.start\)/);
   assert.match(html, /timeline\.to\(target/);
+  const motionPayload = html.match(/const motionAnimations = (\[[^;]+\]);/)?.[1];
+  assert.ok(motionPayload);
+  assert.doesNotMatch(motionPayload, /repeat/);
 });

@@ -7,7 +7,10 @@ import {
   getServiceRoleClient,
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
-import { syncHyperframesSourceAssetsFromProduction } from "@/domains/production/hyperframes/hyperframes-source-asset.service";
+import {
+  HyperframesSourceAssetError,
+  syncHyperframesSourceAssetsFromProduction,
+} from "@/domains/production/hyperframes/hyperframes-source-asset.service";
 import { createClient } from "@/utils/supabase/server";
 
 const inputSchema = z.object({ componentId: z.string().uuid() }).strict();
@@ -33,6 +36,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, data });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: "Component ID inválido." }, { status: 400 });
+    if (error instanceof HyperframesSourceAssetError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error("[API /production/hyperframes/assets/sync] Unexpected error:", { message: getErrorMessage(error) });
     return NextResponse.json({ error: "No se pudieron preparar los assets del paso de Producción." }, { status: 500 });
   }

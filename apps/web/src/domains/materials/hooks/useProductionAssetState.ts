@@ -487,14 +487,6 @@ export function useProductionAssetState({
     }
   };
 
-  // Update volume multiplier for background music
-  const handleVolumeChange = (volume: number) => {
-    if (!backgroundMusic) return;
-    const newMusic = { ...backgroundMusic, volume_multiplier: volume };
-    setBackgroundMusic(newMusic);
-    onAssetChange?.(component.id, { background_music: newMusic });
-  };
-
   // Helper: generates renderable slide images from the component storyboard.
   // Used automatically when uploaded/imported slides contain no renderable images.
   const autoGenerateSlidesFromStoryboard = async (): Promise<boolean> => {
@@ -1405,7 +1397,6 @@ export function useProductionAssetState({
     // Sub-handlers
     handleVoiceUpload,
     handleMusicUpload,
-    handleVolumeChange,
     handleSofliaEngineSlideGeneration,
     handleOpenDesignExport,
     prepareUploadedHtmlSlidesAsAnimatedDeck,

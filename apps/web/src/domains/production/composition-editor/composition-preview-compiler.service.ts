@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { CompositionClip, CompositionEditorDocument, CompositionTrack } from "./composition-document.types";
+import { resolveCompositionAnimationWindow } from "./composition-motion-scheduling.service";
 import {
   buildCompositionVolumeAutomations,
   type CompositionClipVolumeAutomation,
@@ -64,13 +65,27 @@ export async function compileCompositionPreview(params: {
     #composition-viewport { position: fixed; inset: 0; overflow: hidden; background: #020617; }
     #composition-root { --preview-scale: 1; --preview-user-scale: 1; --editor-control-scale: 1; --editor-outline-width: 3px; position: absolute; left: 50%; top: 50%; width: ${document.canvas.width}px; height: ${document.canvas.height}px; overflow: hidden; background: #020617; transform: translate(-50%, -50%) scale(calc(var(--preview-scale) * var(--preview-user-scale))); transform-origin: center; }
     .clip { position: absolute; inset: 0;${isInteractivePreview ? " pointer-events: none;" : ""} }
-    .clip-content { position: absolute; transform-origin: top left;${isInteractivePreview ? " pointer-events: auto;" : ""} visibility: hidden; }
+    .clip-content { position: absolute; overflow: hidden; transform-origin: top left;${isInteractivePreview ? " pointer-events: auto;" : ""} visibility: hidden; }
     .motion-subject { position: relative; width: 100%; height: 100%; transform-origin: center; }
     ${isInteractivePreview ? `.clip-content[data-selected="true"] { outline: var(--editor-outline-width) solid #22d3ee; outline-offset: calc(-1 * var(--editor-outline-width)); box-shadow: 0 0 0 var(--editor-outline-width) rgba(255,255,255,.75), 0 0 18px rgba(34,211,238,.75); }
     .clip-content[data-selected="true"]::after { content: ""; position: absolute; inset: 0; border: var(--editor-outline-width) solid rgba(8,145,178,.9); pointer-events: none; }
     .composition-editor-control { position: absolute; z-index: 2147483647; display: grid; width: 22px; height: 22px; padding: 0; place-items: center; border: 2px solid #fff; border-radius: 5px; color: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.65); cursor: pointer; }
     .composition-move-handle { left: 0; top: 0; background: #0e7490; font: 700 15px/1 system-ui, sans-serif; cursor: move; transform: scale(var(--editor-control-scale)); transform-origin: top left; }
     .composition-resize-handle { right: 0; bottom: 0; background: #0891b2; font: 800 14px/1 system-ui, sans-serif; cursor: nwse-resize; transform: scale(var(--editor-control-scale)); transform-origin: bottom right; }
+    .clip-content[data-crop-mode="true"] { cursor: grab; }
+    .clip-content[data-crop-mode="true"]:active { cursor: grabbing; }
+    .clip-content[data-crop-mode="true"]::before { content: ""; position: absolute; inset: 0; z-index: 2147483645; pointer-events: none; background-image: linear-gradient(to right, transparent 33.1%, rgba(255,255,255,.7) 33.2%, rgba(255,255,255,.7) 33.5%, transparent 33.6%, transparent 66.4%, rgba(255,255,255,.7) 66.5%, rgba(255,255,255,.7) 66.8%, transparent 66.9%), linear-gradient(to bottom, transparent 33.1%, rgba(255,255,255,.7) 33.2%, rgba(255,255,255,.7) 33.5%, transparent 33.6%, transparent 66.4%, rgba(255,255,255,.7) 66.5%, rgba(255,255,255,.7) 66.8%, transparent 66.9%); box-shadow: inset 0 0 0 var(--editor-outline-width) #f59e0b; }
+    .composition-crop-handle { z-index: 2147483647; width: 14px; height: 14px; border-color: #fff; border-radius: 3px; background: #f59e0b; transform: translate(-50%, -50%) scale(var(--editor-control-scale)); transform-origin: center; }
+    .composition-crop-handle[data-crop-edge="n"] { left: 50%; top: 0; width: 34px; height: 10px; cursor: ns-resize; }
+    .composition-crop-handle[data-crop-edge="s"] { left: 50%; top: 100%; width: 34px; height: 10px; cursor: ns-resize; }
+    .composition-crop-handle[data-crop-edge="e"] { left: 100%; top: 50%; width: 10px; height: 34px; cursor: ew-resize; }
+    .composition-crop-handle[data-crop-edge="w"] { left: 0; top: 50%; width: 10px; height: 34px; cursor: ew-resize; }
+    .composition-crop-handle[data-crop-edge="nw"], .composition-crop-handle[data-crop-edge="se"] { cursor: nwse-resize; }
+    .composition-crop-handle[data-crop-edge="ne"], .composition-crop-handle[data-crop-edge="sw"] { cursor: nesw-resize; }
+    .composition-crop-handle[data-crop-edge="nw"] { left: 0; top: 0; }
+    .composition-crop-handle[data-crop-edge="ne"] { left: 100%; top: 0; }
+    .composition-crop-handle[data-crop-edge="sw"] { left: 0; top: 100%; }
+    .composition-crop-handle[data-crop-edge="se"] { left: 100%; top: 100%; }
     .composition-editor-grid { position: absolute; inset: 0; z-index: 2147483646; display: none; pointer-events: none; background-image: linear-gradient(to right, rgba(34,211,238,.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(34,211,238,.18) 1px, transparent 1px), linear-gradient(to right, rgba(34,211,238,.38) 1px, transparent 1px), linear-gradient(to bottom, rgba(34,211,238,.38) 1px, transparent 1px); background-size: 16px 16px, 16px 16px, 80px 80px, 80px 80px; box-shadow: inset 0 0 0 1px rgba(34,211,238,.5); }
     .composition-editor-grid[data-visible="true"] { display: block; }` : ""}
     .composition-media { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -110,7 +125,10 @@ function renderClip(
   const isHyperframesRender = target === COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER;
   const layout = `left:${clip.layout.x}px;top:${clip.layout.y}px;width:${clip.layout.width}px;height:${clip.layout.height}px;opacity:${clip.layout.opacity};z-index:${clip.layout.zIndex};transform:rotate(${clip.layout.rotation}deg);`;
   const preservesSourceAspect = track?.semanticRole === "AVATAR" || track?.id === "avatar";
-  const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}"${preservesSourceAspect ? ' data-preserve-aspect="true"' : ""} style="${layout}"`;
+  const crop = clip.crop || { focusX: 0.5, focusY: 0.5, zoom: 1 };
+  const cropData = ` data-crop-zoom="${crop.zoom}" data-crop-focus-x="${crop.focusX}" data-crop-focus-y="${crop.focusY}"`;
+  const cropStyle = renderVisualCropStyle(crop);
+  const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}"${cropData}${preservesSourceAspect ? ' data-preserve-aspect="true"' : ""} style="${layout}"`;
   const motionId = `${escapeAttribute(clip.id)}-motion`;
   const timing = `data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${trackIndex(clip.trackId, clipIndex)}"`;
   const mediaOffset = `data-source-offset="${clip.sourceOffsetSeconds || 0}"${isHyperframesRender ? ` data-media-start="${clip.sourceOffsetSeconds || 0}"` : ""}`;
@@ -126,16 +144,23 @@ function renderClip(
     return `<audio id="${escapeAttribute(clip.id)}" class="composition-audio${isHyperframesRender ? " clip" : ""}" data-hf-id="${escapeAttribute(clip.hfId)}"${hidden}${volumeAutomation} ${mediaOffset} data-volume="${volume}" src="${escapeAttribute(sourceUrl)}" ${timing}></audio>`;
   }
   if (clip.kind === "VIDEO" && isHyperframesRender) {
-    const video = `<video id="${escapeAttribute(clip.id)}-media" class="composition-media clip" src="${escapeAttribute(sourceUrl)}" muted playsinline loop preload="metadata" ${mediaOffset}${hidden} ${timing}></video>`;
+    const video = `<video id="${escapeAttribute(clip.id)}-media" class="composition-media clip" style="${cropStyle}" src="${escapeAttribute(sourceUrl)}" muted playsinline loop preload="metadata" ${mediaOffset}${hidden} ${timing}></video>`;
     const audio = clip.trackId === "avatar"
       ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio clip" src="${escapeAttribute(sourceUrl)}" loop ${mediaOffset}${hidden} data-volume="${volume}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${10 + clipIndex}"></audio>`
       : "";
     return `<div ${common} class="clip-content"><div id="${motionId}" class="motion-subject">${video}</div></div>${audio}`;
   }
   const media = clip.kind === "VIDEO"
-    ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" src="${escapeAttribute(sourceUrl)}" muted playsinline loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset}${hidden}></video>${clip.trackId === "avatar" ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${hidden} src="${escapeAttribute(sourceUrl)}" loop data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset} data-volume="${volume}"></audio>` : ""}`
-    : `<img class="composition-media" src="${escapeAttribute(sourceUrl)}" alt="" />`;
+    ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" style="${cropStyle}" src="${escapeAttribute(sourceUrl)}" muted playsinline loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset}${hidden}></video>${clip.trackId === "avatar" ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${hidden} src="${escapeAttribute(sourceUrl)}" loop data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset} data-volume="${volume}"></audio>` : ""}`
+    : `<img class="composition-media" style="${cropStyle}" src="${escapeAttribute(sourceUrl)}" alt="" />`;
   return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject">${media}</div></div></section>`;
+}
+
+function renderVisualCropStyle(crop: { focusX: number; focusY: number; zoom: number }) {
+  if (crop.zoom <= 1.0001) return "";
+  const leftPercent = 50 - crop.focusX * crop.zoom * 100;
+  const topPercent = 50 - crop.focusY * crop.zoom * 100;
+  return `position:absolute;max-width:none;left:${leftPercent}%;top:${topPercent}%;width:${crop.zoom * 100}%;height:${crop.zoom * 100}%;`;
 }
 
 function replaceUrls(value: string, replacements?: Map<string, string>) {
@@ -162,9 +187,7 @@ function renderTimelineInitializer(
   }));
   const motionAnimations = document.motion.animations.map((animation) => {
     const clip = document.clips.find((candidate) => candidate.id === animation.target.clipId)!;
-    const relativeStart = animation.timing.anchor === "CLIP_START"
-      ? animation.timing.offsetSeconds
-      : clip.durationSeconds - animation.timing.offsetSeconds - animation.timing.durationSeconds;
+    const relativeStart = resolveCompositionAnimationWindow(animation, clip.durationSeconds).start;
     return {
       duration: animation.timing.durationSeconds,
       id: animation.id,
@@ -249,11 +272,13 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
       const editorGrid = document.getElementById("composition-editor-grid");
       const timeline = window.__timelines["courseforge-composition"];
       let editingEnabled = true;
+      let cropEnabled = false;
       let snapEnabled = true;
       let previewUserScale = 1;
       let selectedHfId = null;
       let activeTransform = null;
       let aspectCorrectionTimer = null;
+      let cropCommitTimer = null;
       let playbackTimer = null;
       let playbackActive = false;
       let currentTime = 0;
@@ -268,6 +293,64 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
       const canvasWidth = ${document.canvas.width};
       const canvasHeight = ${document.canvas.height};
       const pendingAspectCorrections = new Map();
+      const readCrop = (target) => ({
+        focusX: Number(target.dataset.cropFocusX || .5),
+        focusY: Number(target.dataset.cropFocusY || .5),
+        zoom: Number(target.dataset.cropZoom || 1),
+      });
+      const applyCrop = (target, crop) => {
+        const media = target.querySelector('.composition-media');
+        if (!media || !(media instanceof HTMLElement)) return;
+        const zoom = Math.max(1, Math.min(8, Number(crop.zoom) || 1));
+        const minimumFocus = .5 / zoom;
+        const maximumFocus = 1 - minimumFocus;
+        const focusX = Math.max(minimumFocus, Math.min(maximumFocus, Number(crop.focusX) || .5));
+        const focusY = Math.max(minimumFocus, Math.min(maximumFocus, Number(crop.focusY) || .5));
+        target.dataset.cropZoom = String(zoom);
+        target.dataset.cropFocusX = String(focusX);
+        target.dataset.cropFocusY = String(focusY);
+        if (zoom <= 1.0001) {
+          Object.assign(media.style, { height: '', left: '', maxWidth: '', position: '', top: '', width: '' });
+          return;
+        }
+        Object.assign(media.style, {
+          height: (zoom * 100) + '%',
+          left: (50 - focusX * zoom * 100) + '%',
+          maxWidth: 'none',
+          position: 'absolute',
+          top: (50 - focusY * zoom * 100) + '%',
+          width: (zoom * 100) + '%',
+        });
+      };
+      const commitCrop = (target) => {
+        const hfId = target?.dataset?.hfId;
+        if (!hfId) return;
+        window.parent.postMessage({
+          type: "courseforge-composition-crop-commit",
+          hfId,
+          crop: readCrop(target),
+        }, "*");
+      };
+      const queueCropCommit = (target) => {
+        if (cropCommitTimer) window.clearTimeout(cropCommitTimer);
+        cropCommitTimer = window.setTimeout(() => {
+          cropCommitTimer = null;
+          commitCrop(target);
+        }, 180);
+      };
+      const resizeCropFrame = (layout, edge, dx, dy) => {
+        const minimumSize = 24;
+        const snap = (value) => snapEnabled ? Math.round(value / 16) * 16 : Math.round(value);
+        let left = layout.x;
+        let top = layout.y;
+        let right = layout.x + layout.width;
+        let bottom = layout.y + layout.height;
+        if (edge.includes("w")) left = Math.max(0, Math.min(right - minimumSize, snap(layout.x + dx)));
+        if (edge.includes("e")) right = Math.max(left + minimumSize, Math.min(canvasWidth, snap(layout.x + layout.width + dx)));
+        if (edge.includes("n")) top = Math.max(0, Math.min(bottom - minimumSize, snap(layout.y + dy)));
+        if (edge.includes("s")) bottom = Math.max(top + minimumSize, Math.min(canvasHeight, snap(layout.y + layout.height + dy)));
+        return { height: bottom - top, width: right - left, x: left, y: top };
+      };
       const fitCompositionToViewport = () => {
         if (!root || !viewport) return;
         const scale = Math.min(viewport.clientWidth / ${document.canvas.width}, viewport.clientHeight / ${document.canvas.height});
@@ -441,9 +524,29 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
       const selectTarget = (target) => {
         if (!target) return;
         document.querySelectorAll("[data-selected='true']").forEach((node) => node.removeAttribute("data-selected"));
+        document.querySelectorAll("[data-crop-mode='true']").forEach((node) => node.removeAttribute("data-crop-mode"));
         document.querySelectorAll(".composition-editor-control").forEach((node) => node.remove());
         target.setAttribute("data-selected", "true");
-        if (editingEnabled) {
+        const canCrop = Boolean(target.querySelector('.composition-media'));
+        if (cropEnabled && canCrop) {
+          target.setAttribute("data-crop-mode", "true");
+          const cropHandleLabels = {
+            n: "Ajustar borde superior", ne: "Ajustar esquina superior derecha",
+            e: "Ajustar borde derecho", se: "Ajustar esquina inferior derecha",
+            s: "Ajustar borde inferior", sw: "Ajustar esquina inferior izquierda",
+            w: "Ajustar borde izquierdo", nw: "Ajustar esquina superior izquierda",
+          };
+          for (const [edge, label] of Object.entries(cropHandleLabels)) {
+            const cropHandle = document.createElement("button");
+            cropHandle.type = "button";
+            cropHandle.className = "composition-editor-control composition-crop-handle";
+            cropHandle.dataset.cropEdge = edge;
+            cropHandle.setAttribute("aria-label", label);
+            cropHandle.title = label;
+            target.appendChild(cropHandle);
+          }
+        }
+        if (editingEnabled && !cropEnabled) {
           const moveHandle = document.createElement("button");
           moveHandle.type = "button";
           moveHandle.className = "composition-editor-control composition-move-handle";
@@ -465,6 +568,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
       };
       const clearTarget = () => {
         document.querySelectorAll("[data-selected='true']").forEach((node) => node.removeAttribute("data-selected"));
+        document.querySelectorAll("[data-crop-mode='true']").forEach((node) => node.removeAttribute("data-crop-mode"));
         document.querySelectorAll(".composition-editor-control").forEach((node) => node.remove());
         selectedHfId = null;
         window.parent.postMessage({ type: "courseforge-composition-selection", hfId: null }, "*");
@@ -480,8 +584,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
       });
       root?.addEventListener("pointerdown", (event) => {
         if (!editingEnabled) return;
+        const cropHandle = event.target.closest(".composition-crop-handle");
         const handle = event.target.closest(".composition-resize-handle");
-        const target = handle?.parentElement || event.target.closest("[data-hf-id]");
+        const target = cropHandle?.parentElement || handle?.parentElement || event.target.closest("[data-hf-id]");
         if (!target || !(target instanceof HTMLElement)) return;
         selectTarget(target);
         const rootBox = root.getBoundingClientRect();
@@ -494,17 +599,53 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
           y: Number.parseFloat(target.style.top),
         };
         if (Object.values(layout).some((value) => !Number.isFinite(value))) return;
-        activeTransform = { startX: event.clientX, startY: event.clientY, layout, mode: handle ? "resize" : "move", moved: false, preserveRatio: !event.altKey, scale, target };
+        const canCrop = Boolean(target.querySelector('.composition-media'));
+        const currentCrop = readCrop(target);
+        const initializesCrop = cropEnabled && canCrop && currentCrop.zoom <= 1.0001;
+        const crop = initializesCrop ? { focusX: .5, focusY: .5, zoom: 1.5 } : currentCrop;
+        activeTransform = { crop, cropEdge: cropHandle?.dataset.cropEdge || null, startX: event.clientX, startY: event.clientY, layout, mode: cropHandle ? "crop-frame" : cropEnabled && canCrop ? "crop" : handle ? "resize" : "move", moved: false, preserveRatio: !event.altKey, scale, target };
         target.setPointerCapture?.(event.pointerId);
         event.preventDefault();
         event.stopPropagation();
       });
+      root?.addEventListener("wheel", (event) => {
+        if (!editingEnabled || !cropEnabled) return;
+        const target = event.target.closest("[data-hf-id]");
+        if (!target || !(target instanceof HTMLElement) || !target.querySelector('.composition-media')) return;
+        selectTarget(target);
+        const crop = readCrop(target);
+        const zoomFactor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+        const zoom = Math.max(1, Math.min(8, Math.round(crop.zoom * zoomFactor * 100) / 100));
+        applyCrop(target, { ...crop, zoom });
+        queueCropCommit(target);
+        event.preventDefault();
+        event.stopPropagation();
+      }, { passive: false });
       root?.addEventListener("pointermove", (event) => {
         if (!activeTransform) return;
         const dx = (event.clientX - activeTransform.startX) / activeTransform.scale;
         const dy = (event.clientY - activeTransform.startY) / activeTransform.scale;
         if (Math.abs(dx) > .25 || Math.abs(dy) > .25) activeTransform.moved = true;
         const target = activeTransform.target;
+        if (activeTransform.mode === "crop-frame") {
+          const layout = resizeCropFrame(activeTransform.layout, activeTransform.cropEdge || "", dx, dy);
+          Object.assign(target.style, {
+            height: layout.height + "px",
+            left: layout.x + "px",
+            top: layout.y + "px",
+            width: layout.width + "px",
+          });
+          return;
+        }
+        if (activeTransform.mode === "crop") {
+          const zoom = activeTransform.crop.zoom;
+          applyCrop(target, {
+            focusX: activeTransform.crop.focusX - dx / Math.max(1, activeTransform.layout.width * zoom),
+            focusY: activeTransform.crop.focusY - dy / Math.max(1, activeTransform.layout.height * zoom),
+            zoom,
+          });
+          return;
+        }
         if (activeTransform.mode === "move") {
           const maxX = Math.max(0, canvasWidth - activeTransform.layout.width);
           const maxY = Math.max(0, canvasHeight - activeTransform.layout.height);
@@ -534,6 +675,10 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         activeTransform = null;
         transform.target.releasePointerCapture?.(event.pointerId);
         if (!transform.moved || !selectedHfId) return;
+        if (transform.mode === "crop") {
+          commitCrop(transform.target);
+          return;
+        }
         window.parent.postMessage({
           type: "courseforge-composition-layout-commit",
           hfId: selectedHfId,
@@ -555,6 +700,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         if (message.type === "courseforge-composition-pause") pause();
         if (message.type === "courseforge-composition-editor-settings") {
           editingEnabled = message.editingEnabled !== false;
+          cropEnabled = message.cropEnabled === true;
           snapEnabled = message.snapEnabled !== false;
           if (editorGrid) editorGrid.setAttribute("data-visible", message.gridVisible === true ? "true" : "false");
           document.querySelectorAll(".composition-editor-control").forEach((node) => node.remove());
@@ -564,6 +710,10 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         if (message.type === "courseforge-composition-preview-zoom") {
           previewUserScale = Math.max(.5, Math.min(2, Number(message.scale) || 1));
           fitCompositionToViewport();
+        }
+        if (message.type === "courseforge-composition-preview-crop" && typeof message.hfId === "string") {
+          const target = document.querySelector('[data-hf-id="' + CSS.escape(message.hfId) + '"]');
+          if (target instanceof HTMLElement) applyCrop(target, message.crop || {});
         }
         if (message.type === "courseforge-composition-select") {
           if (message.hfId === null) {
