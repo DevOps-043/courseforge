@@ -42,6 +42,15 @@ type PreviewMessage =
 
 type DocumentPayload = { document: CompositionEditorDocument; documentHash: string; version: number };
 type DocumentHistoryEntry = DocumentPayload & { createdAt: string };
+type CompositionSnapshotEntry = {
+  createdAt: string;
+  documentHash: string;
+  documentVersion: number;
+  id: string;
+  isActive: boolean;
+  projectArchiveSizeBytes: number;
+  revisionNumber: number;
+};
 type AgentProposal = CompositionAgentProposalEnvelope & {
   documentHash: string;
   expiresAt: string;
@@ -88,6 +97,21 @@ interface NativeCompositionPreviewProps {
   selectedLessonId: string | null;
 }
 
+async function readCompositionApiResponse<T>(response: Response, fallbackMessage: string): Promise<T> {
+  const contentType = response.headers.get("content-type") || "";
+  const rawBody = await response.text();
+  if (!contentType.toLowerCase().includes("application/json")) {
+    throw new Error(response.status === 404
+      ? `${fallbackMessage} El endpoint de snapshots no está disponible en este despliegue.`
+      : `${fallbackMessage} El servidor devolvió una respuesta inesperada (${response.status}).`);
+  }
+  try {
+    return JSON.parse(rawBody) as T;
+  } catch {
+    throw new Error(`${fallbackMessage} El servidor devolvió JSON inválido.`);
+  }
+}
+
 /** The native assembly studio: library, full preview, timeline and contextual inspector. */
 export function NativeCompositionPreview({ assistantRequestKey = 0, assets, compositionId, draftId, lessons, onSelectLesson, onVideoCompleted, selectedLessonId }: NativeCompositionPreviewProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
@@ -96,6 +120,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const payloadRef = useRef<DocumentPayload | null>(null);
   const saveInFlightRef = useRef(false);
   const renderPollInFlightRef = useRef(false);
+  const onVideoCompletedRef = useRef(onVideoCompleted);
   const mediaRecoveryHashRef = useRef<string | null>(null);
   const playheadSecondsRef = useRef(0);
   const pendingSeekSecondsRef = useRef<number | null>(null);
@@ -121,12 +146,15 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const [lastAppliedAgentProposal, setLastAppliedAgentProposal] = useState<AgentProposal | null>(null);
   const [proposing, setProposing] = useState(false);
   const [assembly, setAssembly] = useState<{ revisionId: string; status: "READY_FOR_PREVIEW" | "READY_FOR_RENDER" } | null>(null);
+  const [snapshotHistory, setSnapshotHistory] = useState<CompositionSnapshotEntry[] | null>(null);
+  const [snapshotHistoryOpen, setSnapshotHistoryOpen] = useState(false);
   const [assemblyError, setAssemblyError] = useState<string | null>(null);
   const [assembling, setAssembling] = useState(false);
   const [renderStatus, setRenderStatus] = useState<"idle" | "validating" | "sending" | "rendering" | "completed" | "failed">("idle");
   const [renderRequestId, setRenderRequestId] = useState<string | null>(null);
   const [renderProviderStatus, setRenderProviderStatus] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
+
   const [selectedHfId, setSelectedHfId] = useState<string | null>(null);
   const [selectedAnimationId, setSelectedAnimationId] = useState<string | null>(null);
   const [manualInspectorOpen, setManualInspectorOpen] = useState(false);
@@ -142,6 +170,10 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const [history, setHistory] = useState<DocumentHistoryEntry[] | null>(null);
   const [studioTopPanePercent, setStudioTopPanePercent] = useState(60);
   const [studioResizing, setStudioResizing] = useState(false);
+
+  useEffect(() => {
+    onVideoCompletedRef.current = onVideoCompleted;
+  }, [onVideoCompleted]);
 
   const resizeStudioPanes = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!studioResizing) return;
@@ -191,7 +223,42 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     }
   }, [draftId]);
 
+  const loadSnapshotHistory = useCallback(async (signal?: AbortSignal) => {
+    const response = await fetch(`/api/production/hyperframes/compositions/${compositionId}/revisions`, {
+      cache: "no-store",
+      signal,
+    });
+    const body = await readCompositionApiResponse<{
+      data?: { activeRevisionId: string | null; snapshots: CompositionSnapshotEntry[]; status: string };
+      error?: string;
+    }>(response, "No se pudo cargar el historial de snapshots.");
+    if (!response.ok || !body.data) throw new Error(body.error || "No se pudo cargar el historial de snapshots.");
+    if (signal?.aborted) return;
+    setSnapshotHistory(body.data.snapshots);
+    const activeSnapshot = body.data.snapshots.find((snapshot) => snapshot.id === body.data?.activeRevisionId);
+    setAssembly(activeSnapshot ? {
+      revisionId: activeSnapshot.id,
+      status: body.data.status === "READY_FOR_RENDER" ? "READY_FOR_RENDER" : "READY_FOR_PREVIEW",
+    } : null);
+  }, [compositionId]);
+
   useEffect(() => { void loadDocument(); }, [loadDocument]);
+  useEffect(() => {
+    const controller = new AbortController();
+    setAssembly(null);
+    setSnapshotHistory(null);
+    setSnapshotHistoryOpen(false);
+    setAssemblyError(null);
+    setRenderStatus("idle");
+    setRenderRequestId(null);
+    setRenderProviderStatus(null);
+    void loadSnapshotHistory(controller.signal).catch((caught) => {
+      if (!controller.signal.aborted) {
+        setAssemblyError(caught instanceof Error ? caught.message : "No se pudo cargar el historial de snapshots.");
+      }
+    });
+    return () => controller.abort();
+  }, [loadSnapshotHistory]);
   useEffect(() => {
     const telemetry = new CompositionPreviewTelemetryBuffer({ draftId });
     previewTelemetryRef.current = telemetry;
@@ -829,15 +896,42 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     setAssembling(true); setAssemblyError(null); setRenderStatus("validating");
     try {
       const response = await fetch(`/api/production/hyperframes/compositions/${compositionId}/snapshot`, { body: JSON.stringify({ draftId }), headers: { "Content-Type": "application/json" }, method: "POST" });
-      const body = await response.json();
+      const body = await readCompositionApiResponse<{ data?: { id: string }; error?: string }>(response, "No se pudo preparar el ensamble.");
       if (!response.ok) throw new Error(body.error || "No se pudo preparar el ensamble.");
-      setAssembly({ revisionId: body.data.id, status: "READY_FOR_PREVIEW" }); setRenderStatus("idle");
+      if (!body.data?.id) throw new Error("El servidor no devolvió el snapshot creado.");
+      setAssembly({ revisionId: body.data.id, status: "READY_FOR_PREVIEW" });
+      setRenderStatus("idle");
+      await loadSnapshotHistory();
     } catch (caught) { setAssemblyError(caught instanceof Error ? caught.message : "No se pudo preparar el ensamble."); setRenderStatus("failed"); }
     finally { setAssembling(false); }
   }
+
+  async function restoreSnapshot(snapshot: CompositionSnapshotEntry) {
+    if (snapshot.isActive || assembling) return;
+    setAssembling(true);
+    setAssemblyError(null);
+    try {
+      const response = await fetch(`/api/production/hyperframes/compositions/${compositionId}/revisions`, {
+        body: JSON.stringify({ revisionId: snapshot.id }),
+        headers: { "Content-Type": "application/json" },
+        method: "PUT",
+      });
+      const body = await readCompositionApiResponse<{ data?: { id: string; status: "READY_FOR_PREVIEW" }; error?: string }>(response, "No se pudo restaurar el snapshot.");
+      if (!response.ok || !body.data) throw new Error(body.error || "No se pudo restaurar el snapshot.");
+      setAssembly({ revisionId: body.data.id, status: "READY_FOR_PREVIEW" });
+      setRenderStatus("idle");
+      setRenderRequestId(null);
+      setRenderProviderStatus(null);
+      await loadSnapshotHistory();
+    } catch (caught) {
+      setAssemblyError(caught instanceof Error ? caught.message : "No se pudo restaurar el snapshot.");
+    } finally {
+      setAssembling(false);
+    }
+  }
   async function approveAssembly() {
     if (!assembly) return; setAssembling(true); setAssemblyError(null);
-    try { const response = await fetch(`/api/production/hyperframes/compositions/${compositionId}/approve`, { method: "POST" }); const body = await response.json(); if (!response.ok) throw new Error(body.error || "No se pudo aprobar el ensamble."); setAssembly({ ...assembly, status: "READY_FOR_RENDER" }); }
+    try { const response = await fetch(`/api/production/hyperframes/compositions/${compositionId}/approve`, { method: "POST" }); const body = await readCompositionApiResponse<{ error?: string }>(response, "No se pudo aprobar el ensamble."); if (!response.ok) throw new Error(body.error || "No se pudo aprobar el ensamble."); setAssembly({ ...assembly, status: "READY_FOR_RENDER" }); }
     catch (caught) { setAssemblyError(caught instanceof Error ? caught.message : "No se pudo aprobar el ensamble."); }
     finally { setAssembling(false); }
   }
@@ -846,14 +940,14 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     renderPollInFlightRef.current = true;
     try {
       const response = await fetch(`/api/production/hyperframes/renders/${requestId}/poll`, { method: "POST" });
-      const body = await response.json();
+      const body = await readCompositionApiResponse<{ data: { action: string; providerStatus: string }; error?: string }>(response, "No se pudo consultar el render.");
       if (!response.ok) throw new Error(body.error || "No se pudo consultar el render.");
 
       setRenderProviderStatus(body.data.providerStatus as string);
       if (body.data.action === "COMPLETE") {
         setRenderStatus("completed");
         setAssemblyError(null);
-        onVideoCompleted?.();
+        onVideoCompletedRef.current?.();
       } else if (body.data.action === "FAIL") {
         setRenderStatus("failed");
         setAssemblyError("HeyGen reportó que el render falló. Regenera el snapshot antes de reintentar.");
@@ -868,7 +962,44 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     } finally {
       renderPollInFlightRef.current = false;
     }
-  }, [onVideoCompleted]);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const response = await fetch(
+          `/api/production/hyperframes/renders?compositionId=${encodeURIComponent(compositionId)}`,
+          { cache: "no-store" },
+        );
+        const body = await readCompositionApiResponse<{
+          data?: { id: string; providerStatus: string } | null;
+          error?: string;
+        }>(response, "No se pudo recuperar el render pendiente.");
+        if (!response.ok) {
+          throw new Error(body.error || "No se pudo recuperar el render pendiente.");
+        }
+        if (!active || !body.data?.id) return;
+
+        const requestId = body.data.id as string;
+        setRenderRequestId(requestId);
+        setRenderProviderStatus(body.data.providerStatus as string);
+        setRenderStatus("rendering");
+        setAssemblyError(null);
+        void pollAssemblyRender(requestId);
+      } catch (caught) {
+        if (!active) return;
+        setAssemblyError(
+          caught instanceof Error
+            ? caught.message
+            : "No se pudo recuperar el render pendiente.",
+        );
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [compositionId, pollAssemblyRender]);
 
   useEffect(() => {
     if (!renderRequestId || renderStatus !== "rendering") return;
@@ -882,7 +1013,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     if (!assembly || assembly.status !== "READY_FOR_RENDER") return; setAssembling(true); setAssemblyError(null); setRenderStatus("sending");
     try {
       const response = await fetch("/api/production/hyperframes/renders", { body: JSON.stringify({ aspectRatio: "16:9", format: "mp4", quality: "high", resolution: "1080p", revisionId: assembly.revisionId }), headers: { "Content-Type": "application/json" }, method: "POST" });
-      const body = await response.json();
+      const body = await readCompositionApiResponse<{ data: { providerStatus: string; renderRequestId: string }; error?: string }>(response, "No se pudo enviar el render.");
       if (!response.ok) throw new Error(body.error || "No se pudo enviar el render.");
       const requestId = body.data.renderRequestId as string;
       setRenderRequestId(requestId);
@@ -938,7 +1069,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           <span role="status" className={`mr-2 text-[11px] font-medium ${saving ? "text-[#00D4B3]" : saveError ? "text-red-700 dark:text-red-300" : "text-[#10B981]"}`}>{saving ? "Guardando…" : saveError ? "Error al guardar" : "Guardado"}</span>
           <button type="button" onClick={() => setManualInspectorOpen((current) => !current)} className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${inspectorOpen ? "border-[#00D4B3] bg-[#00D4B3]/10 text-[#0A2540] dark:text-[#00D4B3]" : "border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5"}`}><PanelRight size={14} /> {inspectorOpen ? "Ocultar panel" : "Mostrar panel"}</button>
           <div className="relative">
-            <button type="button" disabled={saving} onClick={() => void loadHistory()} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5" title="Restaurar una versión previa"><History size={14} /> Historial</button>
+            <button type="button" disabled={saving} onClick={() => void loadHistory()} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5" title="Restaurar una versión editable previa"><History size={14} /> Historial de edición</button>
             {history && <div className="absolute right-0 z-50 mt-1 w-72 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-xl dark:border-white/10 dark:bg-[#1E2329]"><div className="flex items-center justify-between px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500"><span>Versiones recientes</span><button type="button" onClick={() => setHistory(null)} className="rounded p-0.5 hover:bg-slate-100 dark:hover:bg-white/10"><X size={12} /></button></div>{history.map((entry) => <button key={entry.documentHash} type="button" disabled={saving || entry.version === payload.version} onClick={() => void restoreHistoryEntry(entry)} className="flex w-full items-center justify-between rounded px-2 py-2 text-left text-xs hover:bg-slate-100 disabled:cursor-default disabled:opacity-50 dark:hover:bg-white/10"><span><span className="block font-semibold">Versión {entry.version}{entry.version === payload.version ? " (actual)" : ""}</span><span className="block text-[10px] text-slate-500">{new Date(entry.createdAt).toLocaleString()}</span></span>{entry.version !== payload.version && <span className="text-[10px] font-bold text-cyan-700 dark:text-cyan-300">Restaurar</span>}</button>)}</div>}
           </div>
           <button type="button" onClick={() => void loadDocument()} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:text-gray-400 dark:hover:bg-white/10" title="Recargar composición"><RefreshCw size={15} /></button>
@@ -1033,7 +1164,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           <AudioMixControls audioMix={payload.document.audioMix} disabled={saving} onUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)} />
           <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedAnimationId={selectedAnimationId} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={selectAnimation} onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Recortó el inicio de ${clip.label} desde la timeline.`)} />
           {estimatedClipCount > 0 && <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
-          <AssemblyActions assembly={assembly} busy={assembling} error={assemblyError} providerStatus={renderProviderStatus} renderStatus={renderStatus} onApprove={approveAssembly} onPrepare={prepareAssembly} onRender={submitAssemblyRender} />
+          <AssemblyActions assembly={assembly} busy={assembling} error={assemblyError} history={snapshotHistory} historyOpen={snapshotHistoryOpen} providerStatus={renderProviderStatus} renderStatus={renderStatus} onApprove={approveAssembly} onHistoryToggle={() => setSnapshotHistoryOpen((current) => !current)} onPrepare={prepareAssembly} onRender={submitAssemblyRender} onRestore={restoreSnapshot} />
           </div>
         </section>
 
@@ -1171,7 +1302,20 @@ function AgentConversation({ lastAppliedProposal, onApprove, onDismiss, onPropos
   </section>;
 }
 
-function AssemblyActions({ assembly, busy, error, onApprove, onPrepare, onRender, providerStatus, renderStatus }: { assembly: { revisionId: string; status: "READY_FOR_PREVIEW" | "READY_FOR_RENDER" } | null; busy: boolean; error: string | null; onApprove: () => void; onPrepare: () => void; onRender: () => void; providerStatus: string | null; renderStatus: "idle" | "validating" | "sending" | "rendering" | "completed" | "failed" }) {
+function AssemblyActions({ assembly, busy, error, history, historyOpen, onApprove, onHistoryToggle, onPrepare, onRender, onRestore, providerStatus, renderStatus }: {
+  assembly: { revisionId: string; status: "READY_FOR_PREVIEW" | "READY_FOR_RENDER" } | null;
+  busy: boolean;
+  error: string | null;
+  history: CompositionSnapshotEntry[] | null;
+  historyOpen: boolean;
+  onApprove: () => void;
+  onHistoryToggle: () => void;
+  onPrepare: () => void;
+  onRender: () => void;
+  onRestore: (snapshot: CompositionSnapshotEntry) => void;
+  providerStatus: string | null;
+  renderStatus: "idle" | "validating" | "sending" | "rendering" | "completed" | "failed";
+}) {
   const label = renderStatus === "validating" ? "Validando snapshot…" : renderStatus === "sending" ? "Subiendo proyecto y enviando a HeyGen…" : renderStatus === "rendering" ? `HeyGen está procesando el video${providerStatus ? ` (${providerStatus.toLowerCase()})` : ""}. Courseforge lo importará al terminar.` : renderStatus === "completed" ? "Video completado e importado en Courseforge." : "";
   const summary = renderStatus === "completed"
     ? "El video final ya está disponible."
@@ -1180,7 +1324,19 @@ function AssemblyActions({ assembly, busy, error, onApprove, onPrepare, onRender
         ? "Snapshot aprobado. Puedes enviar el render."
         : "Snapshot listo. Revísalo y apruébalo para renderizar."
       : "Congela la versión guardada antes de enviar un render.";
-  return <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3 dark:border-cyan-400/20 dark:bg-cyan-400/10"><div className="text-xs text-cyan-950 dark:text-cyan-100"><p className="font-bold">Ensamble del video</p><p className="mt-0.5">{summary}</p>{label && <p className="mt-1 font-medium">{label}</p>}{error && <p role="alert" className="mt-1 text-red-700 dark:text-red-200">{error}</p>}</div><div className="flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => void onPrepare()} className="inline-flex items-center gap-1.5 rounded-md bg-cyan-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Clapperboard size={14} /> {busy && renderStatus === "validating" ? "Congelando…" : assembly ? "Regenerar snapshot" : "Congelar snapshot"}</button>{assembly?.status === "READY_FOR_PREVIEW" && <button type="button" disabled={busy} onClick={() => void onApprove()} className="inline-flex items-center gap-1.5 rounded-md border border-cyan-700 px-3 py-2 text-xs font-bold text-cyan-900 disabled:opacity-50 dark:border-cyan-300 dark:text-cyan-100"><CheckCircle2 size={14} /> Aprobar snapshot</button>}{assembly?.status === "READY_FOR_RENDER" && <button type="button" disabled={busy || renderStatus === "sending" || renderStatus === "rendering" || renderStatus === "completed"} onClick={() => void onRender()} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50 dark:bg-white dark:text-slate-950"><Send size={14} /> Renderizar video</button>}</div></div>;
+  return <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3 dark:border-cyan-400/20 dark:bg-cyan-400/10">
+    <div className="text-xs text-cyan-950 dark:text-cyan-100"><p className="font-bold">Ensamble del video</p><p className="mt-0.5">{summary}</p>{label && <p className="mt-1 font-medium">{label}</p>}{error && <p role="alert" className="mt-1 text-red-700 dark:text-red-200">{error}</p>}</div>
+    <div className="flex flex-wrap gap-2">
+      <button type="button" disabled={busy} onClick={() => void onPrepare()} className="inline-flex items-center gap-1.5 rounded-md bg-cyan-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Clapperboard size={14} /> {busy && renderStatus === "validating" ? "Congelando…" : assembly ? "Regenerar snapshot" : "Congelar snapshot"}</button>
+      <button type="button" disabled={busy || history === null} onClick={onHistoryToggle} className="inline-flex items-center gap-1.5 rounded-md border border-cyan-700 px-3 py-2 text-xs font-bold text-cyan-900 disabled:opacity-50 dark:border-cyan-300 dark:text-cyan-100"><History size={14} /> Snapshots {history ? `(${history.length})` : ""}</button>
+      {assembly?.status === "READY_FOR_PREVIEW" && <button type="button" disabled={busy} onClick={() => void onApprove()} className="inline-flex items-center gap-1.5 rounded-md border border-cyan-700 px-3 py-2 text-xs font-bold text-cyan-900 disabled:opacity-50 dark:border-cyan-300 dark:text-cyan-100"><CheckCircle2 size={14} /> Aprobar snapshot</button>}
+      {assembly?.status === "READY_FOR_RENDER" && <button type="button" disabled={busy || renderStatus === "sending" || renderStatus === "rendering" || renderStatus === "completed"} onClick={() => void onRender()} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50 dark:bg-white dark:text-slate-950"><Send size={14} /> Renderizar video</button>}
+    </div>
+    {historyOpen && <div className="w-full rounded-lg border border-cyan-200 bg-white/80 p-2 dark:border-cyan-400/20 dark:bg-slate-950/40">
+      <p className="px-1 pb-1.5 text-[10px] font-bold uppercase tracking-wide text-cyan-900/70 dark:text-cyan-100/70">Snapshots congelados</p>
+      {history && history.length > 0 ? <div className="max-h-44 space-y-1 overflow-y-auto">{history.map((snapshot) => <div key={snapshot.id} className="flex items-center justify-between gap-3 rounded-md px-2 py-2 text-xs hover:bg-cyan-50 dark:hover:bg-white/5"><span><span className="block font-semibold">Snapshot {snapshot.revisionNumber}{snapshot.isActive ? " (activo)" : ""}</span><span className="block text-[10px] text-slate-500">Documento v{snapshot.documentVersion} · {new Date(snapshot.createdAt).toLocaleString()}</span></span><button type="button" disabled={busy || snapshot.isActive} onClick={() => void onRestore(snapshot)} className="rounded-md border border-cyan-600 px-2 py-1 text-[10px] font-bold text-cyan-800 disabled:cursor-default disabled:opacity-50 dark:text-cyan-200">{snapshot.isActive ? "Activo" : "Restaurar"}</button></div>)}</div> : <p className="px-1 py-2 text-xs text-slate-500">Todavía no hay snapshots congelados.</p>}
+    </div>}
+  </div>;
 }
 
 function StudioLibrary({ assets, lessons, onAddAsset, onSelectAsset, onSelectLesson, selectedHfId, selectedLessonId, timelineAssetIds }: {

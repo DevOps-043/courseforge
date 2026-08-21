@@ -19,6 +19,34 @@ export interface HyperframesImportedVideo {
   storagePath: string;
 }
 
+export function buildCompletedRenderAssets(
+  currentAssets: Record<string, unknown>,
+  params: {
+    durationSeconds?: number | null;
+    publicUrl: string;
+    storagePath: string;
+  },
+): Record<string, unknown> {
+  const {
+    final_video_assembly_stale: _assemblyStale,
+    final_video_layout_stale: _layoutStale,
+    ...preservedAssets
+  } = currentAssets;
+
+  return {
+    ...preservedAssets,
+    final_video_asset_provider: PRODUCTION_PROVIDERS.HYPERFRAMES,
+    final_video_source: "hyperframes_cloud",
+    final_video_storage_path: params.storagePath,
+    final_video_url: params.publicUrl,
+    production_status: "COMPLETED",
+    updated_at: new Date().toISOString(),
+    video_duration: params.durationSeconds
+      ? Math.round(params.durationSeconds)
+      : undefined,
+  };
+}
+
 export class HyperframesVideoImportService {
   constructor(
     private readonly supabase: SupabaseClient<any, "public", any>,
@@ -103,16 +131,14 @@ export class HyperframesVideoImportService {
       .single();
     if (componentReadError) throw componentReadError;
 
-    const nextAssets = {
-      ...((component?.assets || {}) as Record<string, unknown>),
-      final_video_asset_provider: PRODUCTION_PROVIDERS.HYPERFRAMES,
-      final_video_source: "hyperframes_cloud",
-      final_video_storage_path: storagePath,
-      final_video_url: publicUrl,
-      production_status: "COMPLETED",
-      updated_at: new Date().toISOString(),
-      video_duration: params.durationSeconds ? Math.round(params.durationSeconds) : undefined,
-    };
+    const nextAssets = buildCompletedRenderAssets(
+      (component?.assets || {}) as Record<string, unknown>,
+      {
+        durationSeconds: params.durationSeconds,
+        publicUrl,
+        storagePath,
+      },
+    );
     const { error: componentUpdateError } = await this.supabase
       .from("material_components")
       .update({ assets: nextAssets })

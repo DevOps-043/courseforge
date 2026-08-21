@@ -11,6 +11,11 @@ import {
   HyperframesRevisionGenerationError,
   HyperframesRevisionGenerationService,
 } from "@/domains/production/hyperframes/hyperframes-revision-generation.service";
+import {
+  activateCompositionSnapshot,
+  CompositionSnapshotError,
+  listCompositionSnapshots,
+} from "@/domains/production/composition-editor/composition-snapshot.service";
 import { createClient } from "@/utils/supabase/server";
 
 interface RouteContext { params: Promise<{ compositionId: string }>; }
@@ -20,6 +25,42 @@ const revisionRequestSchema = z.object({
   generationMode: z.enum(["AUTOMATIC", "AGENT_ASSISTED"]),
   selectedAssetIds: z.array(z.string().uuid()).min(1).max(250).optional(),
 }).strict();
+
+const activateSnapshotSchema = z.object({ revisionId: z.string().uuid() }).strict();
+
+export async function GET(_request: Request, context: RouteContext) {
+  try {
+    const authorization = await authorize();
+    if (authorization instanceof NextResponse) return authorization;
+    const compositionId = z.string().uuid().parse((await context.params).compositionId);
+    const data = await listCompositionSnapshots({
+      compositionId,
+      organizationId: authorization.organizationId,
+      supabase: authorization.admin,
+    });
+    return NextResponse.json({ success: true, data }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    return respondSnapshotError(error, "No se pudo cargar el historial de snapshots.");
+  }
+}
+
+export async function PUT(request: Request, context: RouteContext) {
+  try {
+    const authorization = await authorize();
+    if (authorization instanceof NextResponse) return authorization;
+    const compositionId = z.string().uuid().parse((await context.params).compositionId);
+    const { revisionId } = activateSnapshotSchema.parse(await request.json());
+    const data = await activateCompositionSnapshot({
+      compositionId,
+      organizationId: authorization.organizationId,
+      revisionId,
+      supabase: authorization.admin,
+    });
+    return NextResponse.json({ success: true, data }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    return respondSnapshotError(error, "No se pudo restaurar el snapshot.");
+  }
+}
 
 export async function POST(request: Request, context: RouteContext) {
   try {
@@ -58,4 +99,17 @@ async function authorize() {
   const tenant = await resolveActiveTenantContext();
   if (!tenant) return NextResponse.json({ error: "Empresa no válida o no autorizada." }, { status: 403 });
   return { admin: getServiceRoleClient(), organizationId: tenant.organizationId, userId: user.userId };
+}
+
+function respondSnapshotError(error: unknown, fallback: string) {
+  if (error instanceof z.ZodError) {
+    return NextResponse.json({ error: "El snapshot solicitado no es válido." }, { status: 400 });
+  }
+  if (error instanceof CompositionSnapshotError) {
+    return NextResponse.json({ error: error.message }, { status: error.status });
+  }
+  console.error("[API /production/hyperframes/compositions/:id/revisions] Snapshot error:", {
+    message: getErrorMessage(error),
+  });
+  return NextResponse.json({ error: fallback }, { status: 500 });
 }

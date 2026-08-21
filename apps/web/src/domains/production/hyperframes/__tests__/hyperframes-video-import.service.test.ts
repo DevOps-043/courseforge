@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { assertSafeHyperframesVideoUrl } from "../hyperframes-video-import.service";
+import {
+  assertSafeHyperframesVideoUrl,
+  buildCompletedRenderAssets,
+} from "../hyperframes-video-import.service";
 
 describe("HyperFrames final-video import", () => {
   it("only accepts HTTPS video URLs served by HeyGen", () => {
@@ -22,5 +25,30 @@ describe("HyperFrames final-video import", () => {
       () => assertSafeHyperframesVideoUrl("https://untrusted-bucket.s3.amazonaws.com/final.mp4"),
       /host permitido/i,
     );
+  });
+});
+
+describe("HyperFrames completed-render assets", () => {
+  it("replaces the final video and clears stale markers from the prior render", () => {
+    const nextAssets = buildCompletedRenderAssets(
+      {
+        final_video_assembly_stale: true,
+        final_video_layout_stale: true,
+        final_video_url: "https://example.test/old.mp4",
+        slides_url: "https://example.test/slides",
+      },
+      {
+        durationSeconds: 243.2,
+        publicUrl: "https://example.test/new.mp4",
+        storagePath: "production-videos/new.mp4",
+      },
+    );
+
+    assert.equal(nextAssets.final_video_url, "https://example.test/new.mp4");
+    assert.equal(nextAssets.video_duration, 243);
+    assert.equal(nextAssets.production_status, "COMPLETED");
+    assert.equal(nextAssets["slides_url"], "https://example.test/slides");
+    assert.equal("final_video_assembly_stale" in nextAssets, false);
+    assert.equal("final_video_layout_stale" in nextAssets, false);
   });
 });

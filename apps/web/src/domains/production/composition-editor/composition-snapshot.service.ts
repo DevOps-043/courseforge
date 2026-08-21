@@ -18,6 +18,16 @@ export class CompositionSnapshotError extends Error {
 
 type AssetRow = { checksum: string; file_size_bytes: number; id: string; mime_type: string; public_url: string | null; storage_bucket: string; storage_path: string };
 
+export type CompositionSnapshotSummary = {
+  createdAt: string;
+  documentHash: string;
+  documentVersion: number;
+  id: string;
+  isActive: boolean;
+  projectArchiveSizeBytes: number;
+  revisionNumber: number;
+};
+
 /** Freezes exactly one saved native document into the immutable render revision contract. */
 export async function snapshotCompositionDocument(params: {
   compositionId: string;
@@ -49,7 +59,15 @@ export async function snapshotCompositionDocument(params: {
     .contains("manifest", { draft_document_hash: current.documentHash })
     .maybeSingle();
   if (existingError) throw existingError;
-  if (existing) return { ...existing, documentHash: current.documentHash, reused: true, version: current.version };
+  if (existing) {
+    await setActiveCompositionSnapshot({
+      compositionId: params.compositionId,
+      organizationId: params.organizationId,
+      revisionId: existing.id,
+      supabase: params.supabase,
+    });
+    return { ...existing, documentHash: current.documentHash, reused: true, version: current.version };
+  }
 
   const referencedAssetIds = [...new Set(current.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))];
   const [clipAssets, deckDependencies] = await Promise.all([
@@ -129,9 +147,108 @@ export async function snapshotCompositionDocument(params: {
     })));
     if (linkError) throw linkError;
   }
-  const { error: compositionUpdateError } = await params.supabase.from("video_compositions").update({ active_revision_id: revision.id, status: "READY_FOR_PREVIEW", updated_at: new Date().toISOString() }).eq("id", params.compositionId).eq("organization_id", params.organizationId);
-  if (compositionUpdateError) throw compositionUpdateError;
+  await setActiveCompositionSnapshot({
+    compositionId: params.compositionId,
+    organizationId: params.organizationId,
+    revisionId: revision.id,
+    supabase: params.supabase,
+  });
   return { ...revision, documentHash: current.documentHash, preflight: archivePreflight, reused: false, version: current.version };
+}
+
+/** Lists immutable snapshots for one composition without exposing Storage paths. */
+export async function listCompositionSnapshots(params: {
+  compositionId: string;
+  organizationId: string;
+  supabase: SupabaseClient<any, "public", any>;
+}): Promise<{ activeRevisionId: string | null; snapshots: CompositionSnapshotSummary[]; status: string }> {
+  const { data: composition, error: compositionError } = await params.supabase
+    .from("video_compositions")
+    .select("active_revision_id, status")
+    .eq("id", params.compositionId)
+    .eq("organization_id", params.organizationId)
+    .maybeSingle();
+  if (compositionError) throw compositionError;
+  if (!composition) throw new CompositionSnapshotError("La composición no existe.", 404);
+
+  const { data, error } = await params.supabase
+    .from("video_composition_revisions")
+    .select("id, revision_number, project_archive_size_bytes, manifest, created_at")
+    .eq("composition_id", params.compositionId)
+    .eq("organization_id", params.organizationId)
+    .contains("manifest", { snapshot: true })
+    .order("revision_number", { ascending: false })
+    .limit(50);
+  if (error) throw error;
+
+  return {
+    activeRevisionId: composition.active_revision_id as string | null,
+    snapshots: (data || []).map((row) => {
+      const manifest = asRecord(row.manifest);
+      return {
+        createdAt: String(row.created_at),
+        documentHash: typeof manifest.draft_document_hash === "string" ? manifest.draft_document_hash : "",
+        documentVersion: typeof manifest.draft_document_version === "number" ? manifest.draft_document_version : 0,
+        id: String(row.id),
+        isActive: row.id === composition.active_revision_id,
+        projectArchiveSizeBytes: Number(row.project_archive_size_bytes),
+        revisionNumber: Number(row.revision_number),
+      };
+    }),
+    status: String(composition.status),
+  };
+}
+
+/** Reactivates a prior immutable snapshot; approval is intentionally revoked. */
+export async function activateCompositionSnapshot(params: {
+  compositionId: string;
+  organizationId: string;
+  revisionId: string;
+  supabase: SupabaseClient<any, "public", any>;
+}) {
+  const { data: revision, error } = await params.supabase
+    .from("video_composition_revisions")
+    .select("id, revision_number, project_archive_size_bytes, manifest, created_at")
+    .eq("id", params.revisionId)
+    .eq("composition_id", params.compositionId)
+    .eq("organization_id", params.organizationId)
+    .contains("manifest", { snapshot: true })
+    .maybeSingle();
+  if (error) throw error;
+  if (!revision) throw new CompositionSnapshotError("El snapshot no existe o no pertenece a esta composición.", 404);
+  await setActiveCompositionSnapshot(params);
+  const manifest = asRecord(revision.manifest);
+  return {
+    createdAt: String(revision.created_at),
+    documentHash: typeof manifest.draft_document_hash === "string" ? manifest.draft_document_hash : "",
+    documentVersion: typeof manifest.draft_document_version === "number" ? manifest.draft_document_version : 0,
+    id: String(revision.id),
+    isActive: true,
+    projectArchiveSizeBytes: Number(revision.project_archive_size_bytes),
+    revisionNumber: Number(revision.revision_number),
+    status: "READY_FOR_PREVIEW" as const,
+  };
+}
+
+async function setActiveCompositionSnapshot(params: {
+  compositionId: string;
+  organizationId: string;
+  revisionId: string;
+  supabase: SupabaseClient<any, "public", any>;
+}) {
+  const { data, error } = await params.supabase
+    .from("video_compositions")
+    .update({ active_revision_id: params.revisionId, status: "READY_FOR_PREVIEW", updated_at: new Date().toISOString() })
+    .eq("id", params.compositionId)
+    .eq("organization_id", params.organizationId)
+    .select("id")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new CompositionSnapshotError("La composición no existe.", 404);
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
 async function readSnapshotAssets(params: { draftId: string; organizationId: string; supabase: SupabaseClient<any, "public", any> }, ids: string[]) {
