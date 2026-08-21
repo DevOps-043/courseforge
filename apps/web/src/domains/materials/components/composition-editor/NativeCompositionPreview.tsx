@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, Clapperboard, Crop, Eye, EyeOff, FileQuestion, GripHorizontal, Grid3X3, History, Image as ImageIcon, Loader2, Magnet, Maximize2, Minimize2, Minus, MousePointer2, Music2, PanelRight, Pause, Play, Plus, RefreshCw, RotateCcw, Save, Scan, Scissors, Send, Trash2, Video, X } from "lucide-react";
-import type { CompositionClip, CompositionEditorDocument, CompositionTrack } from "@/domains/production/composition-editor/composition-document.types";
+import type { CompositionClip, CompositionEditorDocument, CompositionTrack, CompositionVisualCrop } from "@/domains/production/composition-editor/composition-document.types";
 import { formatCompositionTimecode, parseCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
 import type { CompositionAgentProposalEnvelope } from "@/domains/production/composition-editor/composition-agent-proposal.types";
@@ -25,6 +25,8 @@ import {
 } from "@/domains/production/composition-editor/composition-document-version";
 import { CompositionPreviewTelemetryBuffer } from "@/domains/production/composition-editor/composition-preview-telemetry.client";
 import type { CompositionPreviewMetric } from "@/domains/production/composition-editor/composition-preview-telemetry";
+import { clampPreviewPlayhead, classifyPreviewTimeMessage, isPreviewRefreshRequired } from "@/domains/production/composition-editor/composition-preview-playhead.service";
+import { hasCompositionCrop, normalizeCompositionCropInsets, resolveCompositionCropInsets, type CompositionCropInsets } from "@/domains/production/composition-editor/composition-visual-crop.service";
 
 type PreviewMessage =
   | { type: "courseforge-composition-ready"; duration: number }
@@ -35,7 +37,7 @@ type PreviewMessage =
   | { type: "courseforge-composition-media-error"; code: string; mediaId: string; message: string }
   | { type: "courseforge-composition-selection"; hfId: string | null }
   | { type: "courseforge-composition-layout-commit"; hfId: string; layout: { height: number; width: number; x: number; y: number } }
-  | { type: "courseforge-composition-crop-commit"; hfId: string; crop: { focusX: number; focusY: number; zoom: number } }
+  | { type: "courseforge-composition-crop-commit"; hfId: string; crop: CompositionVisualCrop }
   | { type: "courseforge-composition-aspect-corrections"; corrections: Array<{ hfId: string; layout: { height: number; width: number; x: number; y: number } }> };
 
 type DocumentPayload = { document: CompositionEditorDocument; documentHash: string; version: number };
@@ -98,6 +100,8 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const playheadSecondsRef = useRef(0);
   const pendingSeekSecondsRef = useRef<number | null>(null);
   const pendingPreviewRestoreSecondsRef = useRef<number | null>(null);
+  const previewDocumentHashRef = useRef<string | null>(null);
+  const autoPlayAfterPreviewRefreshRef = useRef(false);
   const previewTelemetryRef = useRef<CompositionPreviewTelemetryBuffer | null>(null);
   const [payload, setPayload] = useState<DocumentPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -107,7 +111,8 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const [previewMediaState, setPreviewMediaState] = useState<"BUFFERING" | "PLAYING" | "PREPARING" | "READY">("PREPARING");
   const [pendingPreviewMediaIds, setPendingPreviewMediaIds] = useState<string[]>([]);
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
-  const [preservedPreviewHash, setPreservedPreviewHash] = useState<string | null>(null);
+  const [previewDocumentHash, setPreviewDocumentHash] = useState<string | null>(null);
+  const [previewDirty, setPreviewDirty] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -163,7 +168,9 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
-      setPreservedPreviewHash(null);
+      previewDocumentHashRef.current = nextPayload.documentHash;
+      setPreviewDocumentHash(nextPayload.documentHash);
+      setPreviewDirty(false);
       setSeconds(0);
       playheadSecondsRef.current = 0;
       pendingPreviewRestoreSecondsRef.current = null;
@@ -205,10 +212,20 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       if (!message || typeof message.type !== "string") return;
       if (message.type === "courseforge-composition-time") {
         const pendingSeekSeconds = pendingSeekSecondsRef.current;
-        if (pendingSeekSeconds !== null && Math.abs(message.seconds - pendingSeekSeconds) > 0.05) return;
+        const decision = classifyPreviewTimeMessage({
+          pendingRestoreSeconds: pendingPreviewRestoreSecondsRef.current,
+          pendingSeekSeconds,
+          reportedSeconds: message.seconds,
+        });
+        if (!decision.accept) return;
+        if (decision.completesRestore) pendingPreviewRestoreSecondsRef.current = null;
         pendingSeekSecondsRef.current = null;
         playheadSecondsRef.current = message.seconds;
         setSeconds(message.seconds);
+        if (decision.completesRestore && autoPlayAfterPreviewRefreshRef.current) {
+          autoPlayAfterPreviewRefreshRef.current = false;
+          frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-play" }, "*");
+        }
       }
       if (message.type === "courseforge-composition-playback") {
         setPlaying(message.playing);
@@ -228,12 +245,15 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
         setPlaybackError(null);
         const restoreSeconds = pendingPreviewRestoreSecondsRef.current;
         if (restoreSeconds !== null) {
-          pendingPreviewRestoreSecondsRef.current = null;
-          const clampedSeconds = Math.max(0, Math.min(message.duration, restoreSeconds));
+          const clampedSeconds = clampPreviewPlayhead(restoreSeconds, message.duration);
+          pendingPreviewRestoreSecondsRef.current = clampedSeconds;
           pendingSeekSecondsRef.current = clampedSeconds;
           playheadSecondsRef.current = clampedSeconds;
           setSeconds(clampedSeconds);
           frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-seek", seconds: clampedSeconds }, "*");
+        } else if (autoPlayAfterPreviewRefreshRef.current) {
+          autoPlayAfterPreviewRefreshRef.current = false;
+          frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-play" }, "*");
         }
         if (selectedHfId) {
           frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-select", hfId: selectedHfId }, "*");
@@ -253,6 +273,9 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           setPlaying(false);
           setPreviewReady(false);
           setPlaybackError("El enlace del medio dejó de responder. Renovando el acceso al preview…");
+          previewDocumentHashRef.current = currentHash;
+          setPreviewDocumentHash(currentHash);
+          setPreviewDirty(false);
           setPreviewRefreshKey((current) => current + 1);
           return;
         }
@@ -293,7 +316,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const durationSourceLabel = payload?.document.canvas.durationSource
     ? DURATION_SOURCE_LABELS[payload.document.canvas.durationSource]
     : null;
-  const savedPreviewUrl = useMemo(() => payload ? `/api/production/hyperframes/drafts/${draftId}/preview?v=${encodeURIComponent(preservedPreviewHash || payload.documentHash)}&r=${previewRefreshKey}` : null, [draftId, payload?.documentHash, preservedPreviewHash, previewRefreshKey]);
+  const savedPreviewUrl = useMemo(() => payload && previewDocumentHash ? `/api/production/hyperframes/drafts/${draftId}/preview?v=${encodeURIComponent(previewDocumentHash)}&r=${previewRefreshKey}` : null, [draftId, payload, previewDocumentHash, previewRefreshKey]);
   const previewUrl = agentProposal
     ? `/api/production/hyperframes/drafts/${draftId}/agent-proposals/${agentProposal.proposalId}/preview`
     : savedPreviewUrl;
@@ -331,14 +354,9 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     return () => document.removeEventListener("fullscreenchange", syncFullscreenState);
   }, []);
   const refreshPreviewMedia = () => {
-    postPreviewMessage({ type: "courseforge-composition-pause" });
     mediaRecoveryHashRef.current = null;
-    setPlaying(false);
-    setPreviewReady(false);
-    setPreviewMediaState("PREPARING");
-    setPendingPreviewMediaIds([]);
+    refreshPreviewDocument(false);
     setPlaybackError("Renovando el acceso a los medios del preview…");
-    setPreviewRefreshKey((current) => current + 1);
   };
   const seek = (nextSeconds: number) => {
     pendingSeekSecondsRef.current = nextSeconds;
@@ -376,12 +394,35 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   };
   const pausePreviewForMutation = () => {
     pendingPreviewRestoreSecondsRef.current = playheadSecondsRef.current;
+    pendingSeekSecondsRef.current = null;
     postPreviewMessage({ type: "courseforge-composition-pause" });
     setPlaying(false);
     setPreviewReady(false);
     setPreviewMediaState("PREPARING");
     setPendingPreviewMediaIds([]);
     setPlaybackError(null);
+  };
+  const refreshPreviewDocument = (autoPlay = false) => {
+    const currentPayload = payloadRef.current;
+    if (!currentPayload || agentProposal) return;
+    pausePreviewForMutation();
+    autoPlayAfterPreviewRefreshRef.current = autoPlay;
+    previewDocumentHashRef.current = currentPayload.documentHash;
+    setPreviewDocumentHash(currentPayload.documentHash);
+    setPreviewDirty(false);
+    setPreviewRefreshKey((current) => current + 1);
+  };
+  const togglePreviewPlayback = () => {
+    if (transportActive) {
+      postPreviewMessage({ type: "courseforge-composition-pause" });
+      return;
+    }
+    const currentHash = payloadRef.current?.documentHash || null;
+    if (isPreviewRefreshRequired({ persistedDocumentHash: currentHash, previewDirty, previewDocumentHash: previewDocumentHashRef.current })) {
+      refreshPreviewDocument(true);
+      return;
+    }
+    postPreviewMessage({ type: "courseforge-composition-play" });
   };
   async function savePatch(
     operations: CompositionEditorPatchOperation[],
@@ -403,15 +444,13 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       setSaveError(caught instanceof Error ? caught.message : "El cambio solicitado no es válido.");
       return false;
     }
-    if (options.preservePreviewRuntime) {
-      setPreservedPreviewHash(currentPayload.documentHash);
-    } else {
-      pausePreviewForMutation();
-    }
+    postPreviewMessage({ type: "courseforge-composition-pause" });
+    setPlaying(false);
     saveInFlightRef.current = true;
     setSaving(true);
     setSaveError(null);
     setFailedSave(null);
+    setPreviewDirty(true);
     const optimisticPayload = { ...currentPayload, document: optimisticDocument };
     payloadRef.current = optimisticPayload;
     setPayload(optimisticPayload);
@@ -430,7 +469,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
         const nextPayload = body.data as DocumentPayload;
         payloadRef.current = nextPayload;
         setPayload(nextPayload);
-        setPreservedPreviewHash(null);
+        setPreviewDirty(nextPayload.documentHash !== previewDocumentHashRef.current);
         setFailedSave({ operations: effectiveOperations, source, summary });
         setSaveError(body.error || "La composición cambió en otra sesión. El preview se actualizó con la última versión.");
         return false;
@@ -440,22 +479,15 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
-      if (!options.preservePreviewRuntime) setPreservedPreviewHash(null);
+      setPreviewDirty(nextPayload.documentHash !== previewDocumentHashRef.current);
       if (source === "USER") setLastAppliedAgentProposal(null);
-      if (!options.preservePreviewRuntime && nextPayload.documentHash === currentPayload.documentHash) {
-        pendingPreviewRestoreSecondsRef.current = null;
-        restoreReadyPreviewState();
-      }
       return true;
     } catch (caught) {
-      pendingPreviewRestoreSecondsRef.current = null;
       payloadRef.current = currentPayload;
       setPayload(currentPayload);
+      setPreviewDirty(currentPayload.documentHash !== previewDocumentHashRef.current);
       if (options.preservePreviewRuntime) {
-        setPreservedPreviewHash(null);
-        setPreviewRefreshKey((current) => current + 1);
-      } else {
-        restoreReadyPreviewState();
+        refreshPreviewDocument(false);
       }
       setFailedSave({ operations: effectiveOperations, source, summary });
       setSaveError(caught instanceof Error ? caught.message : "No se pudo guardar el cambio.");
@@ -667,7 +699,6 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       const proposal = body.data as AgentProposal;
       if (proposal.documentHash !== payload.documentHash) throw new Error("La composicion cambio antes de recibir la propuesta. Vuelve a solicitarla.");
       setLastAppliedAgentProposal(null);
-      setPreservedPreviewHash(null);
       setAgentProposal(proposal);
     } catch (caught) {
       setSaveError(caught instanceof Error ? caught.message : "No se pudo preparar la propuesta.");
@@ -716,7 +747,9 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
-      setPreservedPreviewHash(null);
+      previewDocumentHashRef.current = nextPayload.documentHash;
+      setPreviewDocumentHash(nextPayload.documentHash);
+      setPreviewDirty(false);
       setLastAppliedAgentProposal(proposal);
       setAgentProposal(null);
     } catch (caught) {
@@ -776,7 +809,9 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
-      setPreservedPreviewHash(null);
+      previewDocumentHashRef.current = nextPayload.documentHash;
+      setPreviewDocumentHash(nextPayload.documentHash);
+      setPreviewDirty(false);
       setLastAppliedAgentProposal(null);
     } catch (caught) {
       pendingPreviewRestoreSecondsRef.current = null;
@@ -922,12 +957,12 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
 
         <section ref={previewShellRef} className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-[#0F1419] dark:border-white/10 lg:col-start-2 lg:row-start-1 ${previewFullscreen ? "h-screen w-screen rounded-none" : ""}`}>
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-2 py-1.5 text-xs text-slate-300">
-            <span className="shrink-0 font-semibold">{agentProposal ? "Preview de propuesta · no guardado" : "Preview completo"}</span>
+            <span className="flex shrink-0 items-center gap-2 font-semibold">{agentProposal ? "Preview de propuesta · no guardado" : "Preview completo"}{!agentProposal && previewDirty && <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[9px] font-bold text-amber-200">Cambios pendientes</span>}</span>
             <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <PreviewToolButton active={directEditingEnabled} label="Editar" title="Activar selección, arrastre y tiradores" onClick={() => setDirectEditingEnabled((current) => !current)}><MousePointer2 size={13} /></PreviewToolButton>
-              <PreviewToolButton active={snapEnabled} label="Snap" title="Alinear clips y recortes a frames y al cursor de la timeline" onClick={() => setSnapEnabled((current) => !current)}><Magnet size={13} /></PreviewToolButton>
+              <PreviewToolButton active={snapEnabled} label="Snap" title="Alinear clips y recortes con el cursor y con los bordes de otros clips" onClick={() => setSnapEnabled((current) => !current)}><Magnet size={13} /></PreviewToolButton>
               <PreviewToolButton active={gridVisible} label="Rejilla" title="Mostrar guías visuales en el canvas" onClick={() => setGridVisible((current) => !current)}><Grid3X3 size={13} /></PreviewToolButton>
-              <PreviewToolButton active={visualCropEnabled} label="Encuadre" title="Arrastra el contenido para reencuadrar; mueve los bordes o esquinas para ajustar el marco; usa la rueda para el zoom" onClick={() => { setDirectEditingEnabled(true); setSaveError(null); setVisualCropEnabled((current) => !current); }}><Scan size={13} /></PreviewToolButton>
+              <PreviewToolButton active={visualCropEnabled} label="Recorte" title="Recorta el contenido sin modificar el tamaño ni la posición del asset" onClick={() => { setDirectEditingEnabled(true); setSaveError(null); setVisualCropEnabled((current) => !current); }}><Scan size={13} /></PreviewToolButton>
               <PreviewToolButton active={trimToolEnabled} label="Tiempo" title="Activar el recorte temporal de inicio y duración en la timeline" onClick={() => setTrimToolEnabled((current) => !current)}><Crop size={13} /></PreviewToolButton>
               <PreviewToolButton active={false} label="Dividir" title="Dividir el clip seleccionado en el cursor" onClick={() => void splitSelectedClipAtPlayhead()}><Scissors size={13} /></PreviewToolButton>
               <PreviewToolButton active={removalRangeStart !== null} label={removalRangeStart === null ? "Marcar intervalo" : "Eliminar intervalo"} title={removalRangeStart === null ? "Marcar el inicio del intervalo temporal dentro del clip seleccionado" : `Eliminar desde ${formatCompositionTimecode(removalRangeStart.seconds)} hasta el cursor`} onClick={() => {
@@ -951,7 +986,8 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           </div>
           {playbackError && <div role="alert" className="flex items-center justify-between gap-3 border-t border-amber-300/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-100"><span>{playbackError}</span><button type="button" onClick={refreshPreviewMedia} className="shrink-0 rounded border border-amber-200/50 px-2 py-1 font-semibold hover:bg-amber-200/10">Recargar medios</button></div>}
           <div className="flex shrink-0 items-center gap-2 border-t border-white/10 bg-[#0A2540] px-2 py-1.5">
-            <button type="button" disabled={saving || !previewReady || previewMediaState === "PREPARING"} onClick={() => postPreviewMessage({ type: transportActive ? "courseforge-composition-pause" : "courseforge-composition-play" })} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#00D4B3] text-[#0A2540] hover:bg-[#10B981] disabled:cursor-wait disabled:opacity-50">{transportActive ? <Pause size={14} /> : <Play size={14} />}</button>
+            <button type="button" disabled={saving || !previewReady || previewMediaState === "PREPARING"} onClick={togglePreviewPlayback} title={previewDirty ? "Actualizar el preview y reproducir" : transportActive ? "Pausar" : "Reproducir"} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#00D4B3] text-[#0A2540] hover:bg-[#10B981] disabled:cursor-wait disabled:opacity-50">{transportActive ? <Pause size={14} /> : <Play size={14} />}</button>
+            <button type="button" disabled={saving || !previewReady || Boolean(agentProposal)} onClick={() => refreshPreviewDocument(false)} title="Actualizar el preview con los cambios guardados" aria-label="Actualizar preview" className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border disabled:cursor-wait disabled:opacity-50 ${previewDirty ? "border-amber-300/50 bg-amber-400/15 text-amber-200" : "border-white/15 text-slate-300 hover:bg-white/10"}`}><RefreshCw size={13} /></button>
             <input aria-label="Posición del preview" disabled={saving || !previewReady} type="range" min="0" max={duration} step="0.05" value={Math.min(seconds, duration)} onPointerDown={beginScrub} onChange={(event) => seek(Number(event.target.value))} className="w-full accent-[#00D4B3] disabled:cursor-wait disabled:opacity-50" />
           </div>
         </section>
@@ -991,12 +1027,14 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           <span className="h-px flex-1 bg-slate-300 group-hover:bg-cyan-400 dark:bg-white/15" />
         </div>
 
-        <section className="min-h-0 min-w-0 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 dark:border-white/10 dark:bg-[#101720] lg:col-span-2 lg:row-start-3">
+        <section className="min-h-0 min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-[#101720] lg:col-span-2 lg:row-start-3">
+          <div className="h-full min-h-0 snap-y snap-proximity scroll-pt-2 overflow-y-auto overscroll-contain p-2 pb-6 [scrollbar-gutter:stable]">
           <div className={`mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-[11px] ${durationSourceLabel ? "border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5" : "border-amber-300 bg-amber-50 dark:border-amber-400/30 dark:bg-amber-400/10"}`}><span className="text-slate-600 dark:text-gray-300">{durationSourceLabel ? `Duración final: ${formatCompositionTimecode(duration)} determinada por ${durationSourceLabel}.` : "Esta composición aún no registra qué asset determina su duración. Aplica el cálculo automático para normalizarla."}</span><button type="button" disabled={saving} onClick={() => void applyBaseTemplate()} className="rounded-md border border-[#00D4B3] px-2 py-0.5 font-bold text-[#0A2540] hover:bg-[#00D4B3]/10 disabled:opacity-50 dark:text-[#00D4B3]">Calcular y organizar</button></div>
           <AudioMixControls audioMix={payload.document.audioMix} disabled={saving} onUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)} />
           <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedAnimationId={selectedAnimationId} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={selectAnimation} onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Recortó el inicio de ${clip.label} desde la timeline.`)} />
           {estimatedClipCount > 0 && <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
           <AssemblyActions assembly={assembly} busy={assembling} error={assemblyError} providerStatus={renderProviderStatus} renderStatus={renderStatus} onApprove={approveAssembly} onPrepare={prepareAssembly} onRender={submitAssemblyRender} />
+          </div>
         </section>
 
         {inspectorOpen && <aside className="min-w-0 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-[#1E2329] lg:col-start-3 lg:row-span-3 lg:row-start-1">
@@ -1193,7 +1231,7 @@ function AssetThumbnail({ asset }: { asset: CompositionStudioAsset }) {
   return <span className={commonClass + " text-slate-400 dark:text-gray-500"}><Icon size={18} /></span>;
 }
 
-function CompositionInspector({ animations, clip, cropModeEnabled, onAnimationSelect, onPatch, onPreviewCrop, onRemove, saving, selectedAnimationId, track }: { animations: CompositionAnimation[]; clip: CompositionClip | null; cropModeEnabled: boolean; onAnimationSelect: (animationId: string | null) => void; onPatch: (operations: CompositionEditorPatchOperation[], summary: string) => Promise<boolean>; onPreviewCrop: (hfId: string, crop: { focusX: number; focusY: number; zoom: number }) => void; onRemove: (clip: CompositionClip) => Promise<void>; saving: boolean; selectedAnimationId: string | null; track: CompositionTrack | null }) {
+function CompositionInspector({ animations, clip, cropModeEnabled, onAnimationSelect, onPatch, onPreviewCrop, onRemove, saving, selectedAnimationId, track }: { animations: CompositionAnimation[]; clip: CompositionClip | null; cropModeEnabled: boolean; onAnimationSelect: (animationId: string | null) => void; onPatch: (operations: CompositionEditorPatchOperation[], summary: string) => Promise<boolean>; onPreviewCrop: (hfId: string, crop: CompositionVisualCrop) => void; onRemove: (clip: CompositionClip) => Promise<void>; saving: boolean; selectedAnimationId: string | null; track: CompositionTrack | null }) {
   const [startSeconds, setStartSeconds] = useState("");
   const [durationSeconds, setDurationSeconds] = useState("");
   const [x, setX] = useState("");
@@ -1255,35 +1293,34 @@ function CompositionInspector({ animations, clip, cropModeEnabled, onAnimationSe
   return <div className="space-y-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold text-slate-900 dark:text-white">{clip.label}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-400">{clip.kind} · pista {clip.trackId}</p></div><div className="flex flex-wrap gap-1"><button type="button" disabled={saving} onClick={() => void onPatch([{ clipId: clip.id, hidden: !clip.hidden, type: "clip.visibility" }], `${clip.hidden ? "Mostró" : "Ocultó"} ${clip.label}.`)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">{clip.hidden ? <Eye size={13} /> : <EyeOff size={13} />}{clip.hidden ? "Mostrar" : "Ocultar"}</button><button type="button" disabled={saving} onClick={() => void onRemove(clip)} className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-400/40 dark:text-red-200 dark:hover:bg-red-400/10"><Trash2 size={13} /> Quitar</button></div></div><p className="rounded-md bg-slate-50 px-2 py-1.5 text-[10px] text-slate-500 dark:bg-white/5 dark:text-gray-400">Quitar solo retira este clip de la línea de tiempo; los assets y el deck original permanecen disponibles.</p>{clip.kind !== "AUDIO" && <LayerDepthControls clip={clip} disabled={saving} onPatch={onPatch} />}<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><TimecodeField label="Inicio (mm:ss)" value={startSeconds} onChange={setStartSeconds} /><TimecodeField label="Duración (mm:ss)" value={durationSeconds} onChange={setDurationSeconds} /><InspectorField label="Posición X" value={x} onChange={setX} /><InspectorField label="Posición Y" value={y} onChange={setY} /></div><p className="text-[10px] text-slate-500 dark:text-gray-400">Formato: 01:05 = 1 minuto y 5 segundos; 00:01.050 incluye milisegundos.</p><div className="border-t border-slate-200 pt-3 dark:border-white/10"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Transformación</p><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><InspectorField label="Ancho" value={width} onChange={setWidth} min={1} /><InspectorField label="Alto" value={height} onChange={setHeight} min={1} /><InspectorField label="Rotación" value={rotation} onChange={setRotation} min={-360} /><InspectorField label="Opacidad" value={opacity} onChange={setOpacity} min={0} /></div><p className="mt-2 text-[10px] text-slate-500">Arrastra en el preview para mover; usa el tirador para redimensionar. Mantén Alt para liberar proporciones.</p></div>{(clip.kind === "VIDEO" || clip.kind === "IMAGE") && <VisualCropControls clip={clip} cropModeEnabled={cropModeEnabled} disabled={saving} onPatch={onPatch} onPreviewCrop={onPreviewCrop} />}{COMPOSITION_MOTION_ENABLED && clip.kind !== "AUDIO" && <CompositionMotionControls animations={animations} clip={clip} disabled={saving} selectedAnimationId={selectedAnimationId} onSelectAnimation={onAnimationSelect} onPatch={onPatch} />}{validationError && <p role="alert" className="rounded-md bg-red-50 px-2 py-1.5 text-[10px] text-red-700 dark:bg-red-500/10 dark:text-red-200">{validationError}</p>}<div className="flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => void saveAllChanges()} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50 dark:bg-cyan-400 dark:text-slate-950"><Save size={13} /> Guardar cambios</button><button type="button" disabled={saving || clip.source.type !== "PRODUCTION_ASSET"} onClick={() => void resetAsset()} className="inline-flex items-center gap-1 rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-400/40 dark:text-amber-200 dark:hover:bg-amber-400/10" title="Restaurar tiempo, tamaño, encuadre y animaciones del asset"><RotateCcw size={13} /> Reiniciar asset</button>{saving && <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-gray-400"><Loader2 className="animate-spin" size={13} /> Actualizando preview…</span>}</div></div>;
 }
 
-function VisualCropControls({ clip, cropModeEnabled, disabled, onPatch, onPreviewCrop }: { clip: CompositionClip; cropModeEnabled: boolean; disabled: boolean; onPatch: (operations: CompositionEditorPatchOperation[], summary: string) => Promise<boolean>; onPreviewCrop: (hfId: string, crop: { focusX: number; focusY: number; zoom: number }) => void }) {
-  const [zoom, setZoom] = useState(clip.crop?.zoom || 1);
-  const [focusX, setFocusX] = useState(clip.crop?.focusX || 0.5);
-  const [focusY, setFocusY] = useState(clip.crop?.focusY || 0.5);
+function VisualCropControls({ clip, cropModeEnabled, disabled, onPatch, onPreviewCrop }: { clip: CompositionClip; cropModeEnabled: boolean; disabled: boolean; onPatch: (operations: CompositionEditorPatchOperation[], summary: string) => Promise<boolean>; onPreviewCrop: (hfId: string, crop: CompositionVisualCrop) => void }) {
+  const [crop, setCrop] = useState<CompositionCropInsets>(() => resolveCompositionCropInsets(clip.crop, clip.layout));
   useEffect(() => {
-    setZoom(clip.crop?.zoom || 1);
-    setFocusX(clip.crop?.focusX || 0.5);
-    setFocusY(clip.crop?.focusY || 0.5);
-  }, [clip.id, clip.crop?.focusX, clip.crop?.focusY, clip.crop?.zoom]);
-  const preview = (next: { focusX: number; focusY: number; zoom: number }) => {
-    const minimumFocus = 0.5 / next.zoom;
-    const maximumFocus = 1 - minimumFocus;
-    const normalized = {
-      focusX: Math.max(minimumFocus, Math.min(maximumFocus, next.focusX)),
-      focusY: Math.max(minimumFocus, Math.min(maximumFocus, next.focusY)),
-      zoom: next.zoom,
-    };
-    setZoom(normalized.zoom);
-    setFocusX(normalized.focusX);
-    setFocusY(normalized.focusY);
+    setCrop(resolveCompositionCropInsets(clip.crop, clip.layout));
+  }, [clip.id, clip.crop, clip.layout.height, clip.layout.width]);
+  const preview = (next: CompositionCropInsets) => {
+    const normalized = normalizeCompositionCropInsets(next, clip.layout);
+    setCrop(normalized);
     onPreviewCrop(clip.hfId, normalized);
   };
-  const save = (crop = { focusX, focusY, zoom }) => onPatch([{ clipId: clip.id, crop: crop.zoom <= 1.0001 ? null : crop, type: "clip.crop" }], `Ajustó el recorte visual de ${clip.label}.`);
-  const center = () => {
-    const crop = { focusX: 0.5, focusY: 0.5, zoom: Math.max(2, zoom) };
-    preview(crop);
-    return save(crop);
+  const save = (next = crop) => onPatch([{ clipId: clip.id, crop: hasCompositionCrop(next) ? next : null, type: "clip.crop" }], `Ajustó el recorte visual de ${clip.label}.`);
+  const clear = () => {
+    const empty = { bottom: 0, left: 0, right: 0, top: 0 };
+    preview(empty);
+    return save(empty);
   };
-  return <section className={`border-t pt-3 ${cropModeEnabled ? "border-amber-300" : "border-slate-200 dark:border-white/10"}`}><div className="flex items-center justify-between gap-2"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Recorte visual</p>{cropModeEnabled && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold text-amber-800">Encuadre activo</span>}</div><p className="mt-1 text-[10px] leading-4 text-slate-500">Arrastra el contenido para elegir la zona visible. Mueve los tiradores amarillos de bordes o esquinas para ajustar el marco. La rueda controla el zoom.</p><label className="mt-2 block text-[10px] font-medium text-slate-600 dark:text-gray-300">Acercamiento · {zoom.toFixed(2)}×<input type="range" min="1" max="8" step="0.05" value={zoom} disabled={disabled} onChange={(event) => preview({ focusX, focusY, zoom: Number(event.target.value) })} className="mt-1 w-full accent-amber-500" /></label><label className="mt-2 block text-[10px] font-medium text-slate-600 dark:text-gray-300">Foco horizontal · {Math.round(focusX * 100)}%<input type="range" min="0" max="1" step="0.01" value={focusX} disabled={disabled || zoom <= 1} onChange={(event) => preview({ focusX: Number(event.target.value), focusY, zoom })} className="mt-1 w-full accent-amber-500" /></label><label className="mt-2 block text-[10px] font-medium text-slate-600 dark:text-gray-300">Foco vertical · {Math.round(focusY * 100)}%<input type="range" min="0" max="1" step="0.01" value={focusY} disabled={disabled || zoom <= 1} onChange={(event) => preview({ focusX, focusY: Number(event.target.value), zoom })} className="mt-1 w-full accent-amber-500" /></label><div className="mt-2 flex flex-wrap gap-1.5"><button type="button" disabled={disabled} onClick={() => void center()} className="rounded-md border border-amber-300 px-2 py-1 text-[10px] font-bold text-amber-800 disabled:opacity-50 dark:text-amber-200">Recortar al centro</button><button type="button" disabled={disabled} onClick={() => void save()} className="rounded-md bg-amber-500 px-2 py-1 text-[10px] font-bold text-slate-950 disabled:opacity-50">Guardar encuadre</button><button type="button" disabled={disabled} onClick={() => { preview({ focusX: 0.5, focusY: 0.5, zoom: 1 }); void save({ focusX: 0.5, focusY: 0.5, zoom: 1 }); }} className="rounded-md border border-slate-300 px-2 py-1 text-[10px] font-bold text-slate-600 disabled:opacity-50 dark:border-white/15 dark:text-gray-300">Restablecer zoom</button></div></section>;
+  const fields: Array<{ key: keyof CompositionCropInsets; label: string; maximum: number }> = [
+    { key: "top", label: "Superior", maximum: clip.layout.height - crop.bottom - 1 },
+    { key: "right", label: "Derecho", maximum: clip.layout.width - crop.left - 1 },
+    { key: "bottom", label: "Inferior", maximum: clip.layout.height - crop.top - 1 },
+    { key: "left", label: "Izquierdo", maximum: clip.layout.width - crop.right - 1 },
+  ];
+  return <section className={`border-t pt-3 ${cropModeEnabled ? "border-amber-300" : "border-slate-200 dark:border-white/10"}`}>
+    <div className="flex items-center justify-between gap-2"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Recorte visual</p>{cropModeEnabled && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold text-amber-800">Recorte activo</span>}</div>
+    <p className="mt-1 text-[10px] leading-4 text-slate-500">Cada borde oculta píxeles únicamente desde su dirección. No escala el contenido ni modifica ancho, alto, X o Y.</p>
+    <div className="mt-2 grid grid-cols-2 gap-2">{fields.map((field) => <label key={field.key} className="text-[10px] font-medium text-slate-600 dark:text-gray-300"><span className="flex justify-between gap-2"><span>{field.label}</span><span className="font-mono">{Math.round(crop[field.key])} px</span></span><input type="range" min="0" max={Math.max(0, field.maximum)} step="1" value={crop[field.key]} disabled={disabled} onChange={(event) => preview({ ...crop, [field.key]: Number(event.target.value) })} className="mt-1 w-full accent-amber-500" /></label>)}</div>
+    <div className="mt-2 flex flex-wrap gap-1.5"><button type="button" disabled={disabled} onClick={() => void save()} className="rounded-md bg-amber-500 px-2 py-1 text-[10px] font-bold text-slate-950 disabled:opacity-50">Guardar recorte</button><button type="button" disabled={disabled} onClick={() => void clear()} className="rounded-md border border-slate-300 px-2 py-1 text-[10px] font-bold text-slate-600 disabled:opacity-50 dark:border-white/15 dark:text-gray-300">Quitar recorte</button></div>
+  </section>;
 }
 
 function TimecodeField({ label, onChange, value }: { label: string; onChange: (value: string) => void; value: string }) { return <label className="text-xs font-medium text-slate-600 dark:text-gray-300"><span>{label}</span><input type="text" inputMode="decimal" placeholder="00:00" value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 font-mono text-sm text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-white" /></label>; }

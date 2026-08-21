@@ -187,22 +187,23 @@ test("compiles the same spatial crop into preview and HyperFrames render", async
     plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Crop" },
   });
   const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
-  const cropped = applyCompositionEditorPatches(document, [{ clipId: video.id, crop: { focusX: 0.5, focusY: 0.5, zoom: 2 }, type: "clip.crop" }]);
+  const cropped = applyCompositionEditorPatches(document, [{ clipId: video.id, crop: { top: 12, right: 24, bottom: 36, left: 48 }, type: "clip.crop" }]);
   const assetUrls = new Map([[assetId, "assets/avatar.mp4"]]);
   const previewHtml = await compileCompositionPreview({ assetUrls, document: cropped });
   const renderHtml = await compileCompositionPreview({ assetUrls, document: cropped, target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER });
-  const cropStyle = "position:absolute;max-width:none;left:-50%;top:-50%;width:200%;height:200%;";
+  const cropStyle = "clip-path:inset(12px 24px 36px 48px);";
 
   assert.match(previewHtml, new RegExp(cropStyle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(renderHtml, new RegExp(cropStyle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(previewHtml, /courseforge-composition-crop-commit/);
   assert.match(previewHtml, /courseforge-composition-preview-crop/);
-  assert.match(previewHtml, /zoom: 1\.5/);
-  assert.match(previewHtml, /addEventListener\("wheel"/);
-  assert.match(previewHtml, /queueCropCommit\(target\)/);
+  assert.match(previewHtml, /moveCropWindow/);
+  assert.doesNotMatch(previewHtml, /addEventListener\("wheel"/);
   assert.match(previewHtml, /composition-crop-handle/);
-  assert.match(previewHtml, /mode: cropHandle \? "crop-frame"/);
-  assert.match(previewHtml, /resizeCropFrame/);
+  assert.match(previewHtml, /mode: cropHandle \? "crop-edge"/);
+  assert.match(previewHtml, /adjustCropFromHandle/);
+  assert.match(previewHtml, /transform\.mode === "crop-move" \|\| transform\.mode === "crop-edge"/);
+  assert.doesNotMatch(previewHtml, /resizeCropFrame/);
   assert.doesNotMatch(renderHtml, /courseforge-composition-crop-commit/);
 });
 

@@ -10,6 +10,7 @@ import {
 } from "./composition-motion-preset.service";
 import { resolveDefaultCompositionClipLayout } from "./composition-default-layout.service";
 import { deriveCompositionAnimationsForRetainedSegments } from "./composition-motion-derivation.service";
+import { normalizeCompositionCropInsets, resolveCompositionCropInsets } from "./composition-visual-crop.service";
 
 export class CompositionEditorPatchError extends Error {
   constructor(message: string) {
@@ -527,7 +528,12 @@ export function applyCompositionEditorPatches(
       if (clip.kind !== "VIDEO" && clip.kind !== "IMAGE") {
         throw new CompositionEditorPatchError("El recorte visual solo está disponible para videos e imágenes.");
       }
-      if (operation.crop) clip.crop = normalizeVisualCrop(operation.crop);
+      if (operation.crop) {
+        clip.crop = normalizeCompositionCropInsets(
+          resolveCompositionCropInsets(operation.crop, clip.layout),
+          clip.layout,
+        );
+      }
       else delete clip.crop;
     }
 
@@ -560,16 +566,6 @@ export function applyCompositionEditorPatches(
 
 function minimumDerivedClipDuration(fps: number) {
   return Math.max(0.05, 1 / fps);
-}
-
-function normalizeVisualCrop(crop: { focusX: number; focusY: number; zoom: number }) {
-  const minimumFocus = 0.5 / crop.zoom;
-  const maximumFocus = 1 - minimumFocus;
-  return {
-    focusX: Math.max(minimumFocus, Math.min(maximumFocus, crop.focusX)),
-    focusY: Math.max(minimumFocus, Math.min(maximumFocus, crop.focusY)),
-    zoom: crop.zoom,
-  };
 }
 
 function quantizeToDocumentFrame(value: number, fps: number) {

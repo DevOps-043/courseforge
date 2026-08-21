@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Clapperboard, Loader2 } from "lucide-react";
 import { PostproductionAssemblyContainer } from "@/domains/materials/components/PostproductionAssemblyContainer";
+import { PRODUCTION_THEME } from "@/domains/materials/components/production-asset-ui";
 import { getStandaloneAssemblyProjectAction, type StandaloneAssemblyComponentView } from "./standalone-assembly.actions";
 import { getStandaloneAssemblyReadiness } from "./standalone-assembly-readiness";
 
@@ -60,7 +61,7 @@ export function StandaloneAssemblyEditor({
 
   return (
     <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-slate-50 dark:bg-[#0F1419]">
-      <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 dark:border-white/10 dark:bg-[#151A21]">
+      <header className={`${PRODUCTION_THEME.workspaceHeader} justify-between gap-4`}>
         <div className="flex min-w-0 items-center gap-4">
           <Link href={backHref} className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/10"><ArrowLeft size={15} /> Assets</Link>
           <div className="min-w-0">

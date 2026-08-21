@@ -21,6 +21,7 @@ import type {
   PublicationRequestRecord,
   PublicationVideoLesson,
 } from "@/domains/publication/types/publication.types";
+import { PRODUCTION_THEME } from "@/domains/materials/components/production-asset-ui";
 import { ArtifactStageContent } from "./ArtifactStageContent";
 import { ArtifactToast } from "./ArtifactToast";
 import { ArtifactWorkflowHeader } from "./ArtifactWorkflowHeader";
@@ -317,7 +318,7 @@ export default function ArtifactClientView({
         onClose={() => setToast((previous) => ({ ...previous, show: false }))}
       />
 
-      <div id={isAssemblyStudio ? "assembly-workspace-toolbar" : undefined} className={isAssemblyStudio ? "flex h-16 shrink-0 items-center gap-5 border-b border-slate-200 bg-white px-5 text-slate-900 shadow-sm" : "space-y-8"}>
+      <div id={isAssemblyStudio ? "assembly-workspace-toolbar" : undefined} className={isAssemblyStudio ? `${PRODUCTION_THEME.workspaceHeader} gap-5` : "space-y-8"}>
         <ArtifactWorkflowHeader
           artifact={artifact}
           compact={isAssemblyStudio}

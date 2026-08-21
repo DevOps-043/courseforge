@@ -72,11 +72,28 @@ export const compositionLayoutPatchSchema = z.object({
   zIndex: compositionLayoutFieldSchemas.zIndex.optional(),
 }).strict();
 
-export const compositionVisualCropSchema = z.object({
+const legacyCompositionVisualCropSchema = z.object({
   focusX: finiteNumberSchema.min(0).max(1),
   focusY: finiteNumberSchema.min(0).max(1),
   zoom: finiteNumberSchema.min(1).max(8),
 }).strict();
+
+const insetCompositionVisualCropSchema = z.object({
+  bottom: finiteNumberSchema.min(0).max(8_192),
+  left: finiteNumberSchema.min(0).max(8_192),
+  right: finiteNumberSchema.min(0).max(8_192),
+  top: finiteNumberSchema.min(0).max(8_192),
+}).strict();
+
+/**
+ * New edits use independent pixel insets, matching HyperFrames Studio's
+ * `clip-path: inset(...)` crop contract. The legacy focus/zoom variant remains
+ * readable so existing draft documents can be migrated non-destructively.
+ */
+export const compositionVisualCropSchema = z.union([
+  insetCompositionVisualCropSchema,
+  legacyCompositionVisualCropSchema,
+]);
 
 export const compositionAudioMixSchema = z.object({
   ducking: z.object({

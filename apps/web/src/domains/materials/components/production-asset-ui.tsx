@@ -13,6 +13,8 @@ import type {
 } from "../types/materials.types";
 
 export const PRODUCTION_THEME = {
+  workspaceHeader:
+    "flex h-16 shrink-0 items-center border-b border-slate-200 bg-white px-5 text-slate-900 shadow-sm dark:border-white/10 dark:bg-[#151A21] dark:text-white",
   card:
     "overflow-hidden rounded-2xl border bg-white dark:bg-[#151A21]",
   cardBorder: {

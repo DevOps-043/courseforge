@@ -55,30 +55,31 @@ test("aplica un recorte visual no destructivo y conserva timing, layout y fuente
   const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
   const edited = applyCompositionEditorPatches(document, [{
     clipId: video.id,
-    crop: { focusX: 0.5, focusY: 0.5, zoom: 2 },
+    crop: { top: 12, right: 24, bottom: 36, left: 48 },
     type: "clip.crop",
   }]);
   const result = edited.clips.find((clip) => clip.id === video.id)!;
 
-  assert.deepEqual(result.crop, { focusX: 0.5, focusY: 0.5, zoom: 2 });
+  assert.deepEqual(result.crop, { top: 12, right: 24, bottom: 36, left: 48 });
   assert.equal(result.durationSeconds, video.durationSeconds);
   assert.deepEqual(result.layout, video.layout);
   assert.deepEqual(result.source, video.source);
 });
 
-test("limita el foco del recorte para que nunca exponga espacio vacío", () => {
+test("limita los insets para conservar al menos un píxel visible", () => {
   const document = baseDocument();
   const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
   const edited = applyCompositionEditorPatches(document, [{
     clipId: video.id,
-    crop: { focusX: 0, focusY: 1, zoom: 2 },
+    crop: { top: video.layout.height, right: video.layout.width, bottom: video.layout.height, left: video.layout.width },
     type: "clip.crop",
   }]);
 
   assert.deepEqual(edited.clips.find((clip) => clip.id === video.id)?.crop, {
-    focusX: 0.25,
-    focusY: 0.75,
-    zoom: 2,
+    bottom: 0,
+    left: video.layout.width - 1,
+    right: 0,
+    top: video.layout.height - 1,
   });
 });
 
