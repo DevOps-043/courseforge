@@ -203,8 +203,38 @@ test("compiles the same spatial crop into preview and HyperFrames render", async
   assert.match(previewHtml, /mode: cropHandle \? "crop-edge"/);
   assert.match(previewHtml, /adjustCropFromHandle/);
   assert.match(previewHtml, /transform\.mode === "crop-move" \|\| transform\.mode === "crop-edge"/);
+  assert.match(previewHtml, /\.clip-content \{[^}]*pointer-events: none/);
+  assert.match(previewHtml, /\.motion-subject \{[^}]*pointer-events: auto/);
+  assert.match(previewHtml, /inset: var\(--crop-top, 0px\) var\(--crop-right, 0px\) var\(--crop-bottom, 0px\) var\(--crop-left, 0px\)/);
+  assert.match(previewHtml, /const minX = -activeTransform\.crop\.left/);
+  assert.match(previewHtml, /const maxX = canvasWidth - activeTransform\.layout\.width \+ activeTransform\.crop\.right/);
+  assert.match(previewHtml, /scaleCropForLayout\(activeTransform\.crop, activeTransform\.layout/);
   assert.doesNotMatch(previewHtml, /resizeCropFrame/);
   assert.doesNotMatch(renderHtml, /courseforge-composition-crop-commit/);
+});
+
+test("scales crop insets with layout size instead of narrowing the visible window", () => {
+  const assetId = "00000000-0000-4000-8000-000000000045";
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "d".repeat(64), durationSeconds: 8, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: assetId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/avatar.mp4", timelineRole: "AVATAR" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Crop resize" },
+  });
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  const cropped = applyCompositionEditorPatches(document, [{
+    clipId: video.id,
+    crop: { top: 12, right: 24, bottom: 36, left: 48 },
+    type: "clip.crop",
+  }]);
+  const croppedVideo = cropped.clips.find((clip) => clip.id === video.id)!;
+  const resized = applyCompositionEditorPatches(cropped, [{
+    clipId: video.id,
+    layout: { height: croppedVideo.layout.height / 2, width: croppedVideo.layout.width / 2 },
+    type: "clip.layout",
+  }]);
+  const resizedVideo = resized.clips.find((clip) => clip.id === video.id)!;
+
+  assert.deepEqual(resizedVideo.crop, { top: 6, right: 12, bottom: 18, left: 24 });
 });
 
 test("compiles a deterministic HyperFrames render document without the interactive controller", async () => {

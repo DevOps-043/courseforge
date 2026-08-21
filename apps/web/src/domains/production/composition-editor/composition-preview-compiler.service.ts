@@ -75,11 +75,10 @@ export async function compileCompositionPreview(params: {
     #composition-viewport { position: fixed; inset: 0; overflow: hidden; background: #020617; }
     #composition-root { --preview-scale: 1; --preview-user-scale: 1; --editor-control-scale: 1; --editor-outline-width: 3px; position: absolute; left: 50%; top: 50%; width: ${document.canvas.width}px; height: ${document.canvas.height}px; overflow: hidden; background: #020617; transform: translate(-50%, -50%) scale(calc(var(--preview-scale) * var(--preview-user-scale))); transform-origin: center; }
     .clip { position: absolute; inset: 0;${isInteractivePreview ? " pointer-events: none;" : ""} }
-    .clip-content { position: absolute; overflow: hidden; transform-origin: top left;${isInteractivePreview ? " pointer-events: auto;" : ""} visibility: hidden; }
-    .motion-subject { position: relative; width: 100%; height: 100%; transform-origin: center; }
-    ${isInteractivePreview ? `.clip-content[data-selected="true"] { outline: var(--editor-outline-width) solid #22d3ee; outline-offset: calc(-1 * var(--editor-outline-width)); box-shadow: 0 0 0 var(--editor-outline-width) rgba(255,255,255,.75), 0 0 18px rgba(34,211,238,.75); }
-    .clip-content[data-selected="true"]::after { content: ""; position: absolute; inset: 0; border: var(--editor-outline-width) solid rgba(8,145,178,.9); pointer-events: none; }
-    .composition-editor-control { position: absolute; z-index: 2147483647; display: grid; width: 22px; height: 22px; padding: 0; place-items: center; border: 2px solid #fff; border-radius: 5px; color: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.65); cursor: pointer; }
+    .clip-content { position: absolute; overflow: hidden; transform-origin: top left;${isInteractivePreview ? " pointer-events: none;" : ""} visibility: hidden; }
+    .motion-subject { position: relative; width: 100%; height: 100%; transform-origin: center;${isInteractivePreview ? " pointer-events: auto;" : ""} }
+    ${isInteractivePreview ? `.clip-content[data-selected="true"]::after { content: ""; position: absolute; inset: var(--crop-top, 0px) var(--crop-right, 0px) var(--crop-bottom, 0px) var(--crop-left, 0px); border: var(--editor-outline-width) solid rgba(8,145,178,.9); box-shadow: 0 0 0 var(--editor-outline-width) rgba(255,255,255,.75), 0 0 18px rgba(34,211,238,.75); pointer-events: none; }
+    .composition-editor-control { position: absolute; z-index: 2147483647; display: grid; width: 22px; height: 22px; padding: 0; place-items: center; border: 2px solid #fff; border-radius: 5px; color: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.65); cursor: pointer; pointer-events: auto; }
     .composition-move-handle { left: 0; top: 0; background: #0e7490; font: 700 15px/1 system-ui, sans-serif; cursor: move; transform: scale(var(--editor-control-scale)); transform-origin: top left; }
     .composition-resize-handle { right: 0; bottom: 0; background: #0891b2; font: 800 14px/1 system-ui, sans-serif; cursor: nwse-resize; transform: scale(var(--editor-control-scale)); transform-origin: bottom right; }
     .clip-content[data-crop-mode="true"] { cursor: grab; }
@@ -354,6 +353,16 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
             handle.style.top = crop.top + visibleHeight / 2 + "px";
           }
         });
+        const moveHandle = target.querySelector('.composition-move-handle');
+        if (moveHandle instanceof HTMLElement) {
+          moveHandle.style.left = crop.left + "px";
+          moveHandle.style.top = crop.top + "px";
+        }
+        const resizeHandle = target.querySelector('.composition-resize-handle');
+        if (resizeHandle instanceof HTMLElement) {
+          resizeHandle.style.right = crop.right + "px";
+          resizeHandle.style.bottom = crop.bottom + "px";
+        }
       };
       const commitCrop = (target) => {
         const hfId = target?.dataset?.hfId;
@@ -379,6 +388,12 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         const top = Math.max(0, Math.min(verticalCrop, crop.top + dy));
         return normalizeCrop({ left, right: horizontalCrop - left, top, bottom: verticalCrop - top }, layout);
       };
+      const scaleCropForLayout = (crop, previousLayout, nextLayout) => normalizeCrop({
+        bottom: crop.bottom * nextLayout.height / previousLayout.height,
+        left: crop.left * nextLayout.width / previousLayout.width,
+        right: crop.right * nextLayout.width / previousLayout.width,
+        top: crop.top * nextLayout.height / previousLayout.height,
+      }, nextLayout);
       const fitCompositionToViewport = () => {
         if (!root || !viewport) return;
         const scale = Math.min(viewport.clientWidth / ${document.canvas.width}, viewport.clientHeight / ${document.canvas.height});
@@ -777,7 +792,6 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
             cropHandle.title = label;
             target.appendChild(cropHandle);
           }
-          applyCrop(target, readCrop(target), true);
         }
         if (editingEnabled && !cropEnabled) {
           const moveHandle = document.createElement("button");
@@ -795,6 +809,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
           handle.textContent = "↘";
           target.appendChild(handle);
         }
+        applyCrop(target, readCrop(target), cropEnabled && canCrop);
         selectedHfId = target.dataset.hfId || null;
         const box = target.getBoundingClientRect();
         window.parent.postMessage({ type: "courseforge-composition-selection", hfId: selectedHfId, bounds: { height: box.height, width: box.width, x: box.x, y: box.y } }, "*");
@@ -857,12 +872,16 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
           return;
         }
         if (activeTransform.mode === "move") {
-          const maxX = Math.max(0, canvasWidth - activeTransform.layout.width);
-          const maxY = Math.max(0, canvasHeight - activeTransform.layout.height);
-          const x = Math.max(0, Math.min(maxX, activeTransform.layout.x + dx));
-          const y = Math.max(0, Math.min(maxY, activeTransform.layout.y + dy));
-          const nextX = snapEnabled ? Math.min(maxX, Math.round(x / 16) * 16) : Math.round(x);
-          const nextY = snapEnabled ? Math.min(maxY, Math.round(y / 16) * 16) : Math.round(y);
+          const minX = -activeTransform.crop.left;
+          const minY = -activeTransform.crop.top;
+          const maxX = canvasWidth - activeTransform.layout.width + activeTransform.crop.right;
+          const maxY = canvasHeight - activeTransform.layout.height + activeTransform.crop.bottom;
+          const x = Math.max(minX, Math.min(maxX, activeTransform.layout.x + dx));
+          const y = Math.max(minY, Math.min(maxY, activeTransform.layout.y + dy));
+          const snappedVisibleX = Math.round((x + activeTransform.crop.left) / 16) * 16;
+          const snappedVisibleY = Math.round((y + activeTransform.crop.top) / 16) * 16;
+          const nextX = snapEnabled ? Math.max(minX, Math.min(maxX, snappedVisibleX - activeTransform.crop.left)) : Math.round(x);
+          const nextY = snapEnabled ? Math.max(minY, Math.min(maxY, snappedVisibleY - activeTransform.crop.top)) : Math.round(y);
           target.style.left = nextX + "px";
           target.style.top = nextY + "px";
           return;
@@ -878,6 +897,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         const nextHeight = snapEnabled ? Math.min(maxHeight, Math.max(24, Math.round(boundedHeight / 16) * 16)) : Math.round(boundedHeight);
         target.style.width = nextWidth + "px";
         target.style.height = nextHeight + "px";
+        applyCrop(target, scaleCropForLayout(activeTransform.crop, activeTransform.layout, { width: nextWidth, height: nextHeight }), false);
       });
       const finishTransform = (event) => {
         if (!activeTransform) return;

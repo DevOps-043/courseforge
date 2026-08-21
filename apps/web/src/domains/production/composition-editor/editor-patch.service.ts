@@ -10,7 +10,11 @@ import {
 } from "./composition-motion-preset.service";
 import { resolveDefaultCompositionClipLayout } from "./composition-default-layout.service";
 import { deriveCompositionAnimationsForRetainedSegments } from "./composition-motion-derivation.service";
-import { normalizeCompositionCropInsets, resolveCompositionCropInsets } from "./composition-visual-crop.service";
+import {
+  normalizeCompositionCropInsets,
+  resolveCompositionCropInsets,
+  scaleCompositionCropInsets,
+} from "./composition-visual-crop.service";
 
 export class CompositionEditorPatchError extends Error {
   constructor(message: string) {
@@ -520,7 +524,12 @@ export function applyCompositionEditorPatches(
 
     if (operation.type === "clip.layout") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes editar el layout de un track bloqueado.");
-      clip.layout = { ...clip.layout, ...operation.layout };
+      const previousLayout = clip.layout;
+      const nextLayout = { ...previousLayout, ...operation.layout };
+      if (clip.crop && (nextLayout.width !== previousLayout.width || nextLayout.height !== previousLayout.height)) {
+        clip.crop = scaleCompositionCropInsets(clip.crop, previousLayout, nextLayout);
+      }
+      clip.layout = nextLayout;
     }
 
     if (operation.type === "clip.crop") {

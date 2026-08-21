@@ -46,6 +46,27 @@ export function hasCompositionCrop(crop: CompositionCropInsets) {
   return crop.top > 0 || crop.right > 0 || crop.bottom > 0 || crop.left > 0;
 }
 
+/**
+ * Keeps the cropped window proportional when the owning layout is resized.
+ * Insets are stored in local pixels because that is the HyperFrames contract,
+ * so they must follow the same axis scale as the element dimensions.
+ */
+export function scaleCompositionCropInsets(
+  crop: CompositionVisualCrop,
+  previousLayout: Pick<CompositionLayout, "height" | "width">,
+  nextLayout: Pick<CompositionLayout, "height" | "width">,
+): CompositionCropInsets {
+  const current = resolveCompositionCropInsets(crop, previousLayout);
+  const scaleX = nextLayout.width / previousLayout.width;
+  const scaleY = nextLayout.height / previousLayout.height;
+  return normalizeCompositionCropInsets({
+    bottom: current.bottom * scaleY,
+    left: current.left * scaleX,
+    right: current.right * scaleX,
+    top: current.top * scaleY,
+  }, nextLayout);
+}
+
 function clamp(value: number, minimum: number, maximum: number) {
   if (!Number.isFinite(value)) return minimum;
   return Math.min(maximum, Math.max(minimum, value));
