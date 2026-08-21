@@ -244,6 +244,9 @@ function buildAssetClips(assets: HyperframesProjectAsset[], durationSeconds: num
       startSeconds: timing.startSeconds,
       timingSource: "ESTIMATED" as const,
       trackId,
+      ...(kind === "VIDEO" && (track.semanticRole === "BROLL" || track.id === "broll")
+        ? { volume: 0 }
+        : {}),
     };
   });
 }

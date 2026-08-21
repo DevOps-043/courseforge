@@ -120,6 +120,51 @@ test("actualiza controles de capa y permite volver a desbloquearla", () => {
   assert.equal(unlocked.tracks.find((candidate) => candidate.id === track.id)?.locked, false);
 });
 
+test("persiste el volumen por clip solamente en videos de B-roll", () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{
+      checksum: "b".repeat(64),
+      durationSeconds: 8,
+      fileSizeBytes: 42,
+      mimeType: "video/mp4",
+      productionAssetId: "22222222-2222-4222-8222-222222222222",
+      publicUrl: null,
+      storageBucket: "production-assets",
+      storagePath: "production-assets/broll.mp4",
+      timelineRole: "BROLL",
+    }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "B-roll" },
+  });
+  const broll = document.clips.find((clip) => clip.trackId === "broll")!;
+  const tracksBefore = structuredClone(document.tracks);
+
+  const edited = applyCompositionEditorPatches(document, [{
+    clipId: broll.id,
+    type: "clip.volume",
+    volume: 0.42,
+  }]);
+
+  assert.equal(edited.clips.find((clip) => clip.id === broll.id)?.volume, 0.42);
+  assert.deepEqual(edited.tracks, tracksBefore);
+  assert.deepEqual(edited.clips.find((clip) => clip.id === broll.id)?.source, broll.source);
+});
+
+test("rechaza volumen individual fuera de B-roll y valores fuera de rango", () => {
+  const document = baseDocument();
+  const avatar = document.clips.find((clip) => clip.kind === "VIDEO")!;
+
+  assert.throws(
+    () => applyCompositionEditorPatches(document, [{ clipId: avatar.id, type: "clip.volume", volume: 0.5 }]),
+    CompositionEditorPatchError,
+  );
+  assert.equal(compositionEditorPatchRequestSchema.safeParse({
+    operations: [{ clipId: avatar.id, type: "clip.volume", volume: 1.01 }],
+    source: "USER",
+    summary: "Volumen inválido.",
+  }).success, false);
+});
+
 test("actualiza la mezcla automática sin modificar los tracks de audio", () => {
   const document = baseDocument();
   const tracksBefore = structuredClone(document.tracks);

@@ -141,6 +141,8 @@ export const compositionClipSchema = z.object({
   startSeconds: boundedSecondsSchema,
   timingSource: z.enum(["ESTIMATED", "USER_EDITED"]),
   trackId: editorIdSchema,
+  /** Per-clip source audio. Currently authored only for B-roll video clips. */
+  volume: finiteNumberSchema.min(0).max(1).optional(),
 }).strict().superRefine((clip, context) => {
   if (clip.startSeconds + clip.durationSeconds > COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS) {
     context.addIssue({ code: "custom", message: "El clip excede la duración máxima de la composición." });
