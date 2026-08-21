@@ -62,6 +62,7 @@ type StoredRevisionAsset = {
 };
 
 type ExistingRequest = {
+  callback_id: string;
   id: string;
   provider_asset_id: string | null;
   provider_render_id: string | null;
@@ -183,6 +184,8 @@ export class HyperframesRenderSubmissionService {
       const render = await this.client.createRender({
         aspectRatio: input.aspectRatio,
         assetId: upload.assetId,
+        callbackId: request.callback_id,
+        callbackUrl: await this.getWebhookCallbackUrl(input.organizationId),
         composition: revision.entry_point,
         format: input.format || "mp4",
         fps: input.fps || 30,
@@ -273,7 +276,7 @@ export class HyperframesRenderSubmissionService {
   }): Promise<ExistingRequest> {
     const { data: existing, error: readError } = await this.supabase
       .from("hyperframes_render_requests")
-      .select("id, provider_asset_id, provider_render_id, provider_status")
+      .select("id, callback_id, provider_asset_id, provider_render_id, provider_status")
       .eq("production_job_id", params.jobId)
       .maybeSingle();
     if (readError) throw readError;
@@ -289,10 +292,23 @@ export class HyperframesRenderSubmissionService {
         production_job_id: params.jobId,
         provider_status: "PENDING",
       })
-      .select("id, provider_asset_id, provider_render_id, provider_status")
+      .select("id, callback_id, provider_asset_id, provider_render_id, provider_status")
       .single();
     if (error) throw error;
     return data as ExistingRequest;
+  }
+
+  private async getWebhookCallbackUrl(organizationId: string): Promise<string | undefined> {
+    const { data, error } = await this.supabase
+      .from("heygen_workspace_connections")
+      .select("default_callback_url")
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+    if (error) throw error;
+    const callbackUrl = typeof data?.default_callback_url === "string"
+      ? data.default_callback_url.trim()
+      : "";
+    return callbackUrl || undefined;
   }
 
   private async downloadAndVerifyArchive(

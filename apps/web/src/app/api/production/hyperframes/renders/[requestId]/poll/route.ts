@@ -27,8 +27,8 @@ interface RouteContext {
 const requestIdSchema = z.string().uuid();
 
 /**
- * Explicit polling endpoint. The browser/admin scheduler calls this endpoint;
- * HeyGen is never given a callback URL and cannot call Courseforge directly.
+ * Optional user-triggered reconciliation nudge. Webhooks and scheduled Edge
+ * workers own durable tracking even when no browser is open.
  */
 export async function POST(_request: Request, context: RouteContext) {
   try {

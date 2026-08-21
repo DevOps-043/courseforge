@@ -6,7 +6,7 @@ export interface HyperframesPollingDecision {
   action: HyperframesPollingAction;
   errorMessage: string | null;
   providerStatus: string;
-  progressPercent: number;
+  progressPercent: number | null;
 }
 
 /** Maps the provider lifecycle into Courseforge's durable job lifecycle. */
@@ -19,14 +19,14 @@ export function decideHyperframesPollingAction(
         action: "WAIT",
         errorMessage: null,
         providerStatus: render.status,
-        progressPercent: 15,
+        progressPercent: null,
       };
     case "rendering":
       return {
         action: "WAIT",
         errorMessage: null,
         providerStatus: render.status,
-        progressPercent: 65,
+        progressPercent: null,
       };
     case "completed":
       return render.video_url
@@ -37,10 +37,10 @@ export function decideHyperframesPollingAction(
             progressPercent: 90,
           }
         : {
-            action: "FAIL",
-            errorMessage: "HeyGen completó el render sin entregar una URL de video.",
+            action: "WAIT",
+            errorMessage: null,
             providerStatus: render.status,
-            progressPercent: 100,
+            progressPercent: null,
           };
     case "failed":
       return {

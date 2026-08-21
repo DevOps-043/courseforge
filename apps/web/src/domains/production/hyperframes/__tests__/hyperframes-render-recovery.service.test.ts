@@ -13,6 +13,10 @@ function createSupabaseStub(rows: Record<string, unknown>) {
             filters.push({ column, table, value });
             return query;
           },
+          in(column: string, value: unknown) {
+            filters.push({ column, table, value });
+            return query;
+          },
           limit() {
             return query;
           },
@@ -38,6 +42,7 @@ describe("HyperFrames render recovery", () => {
     const stub = createSupabaseStub({
       hyperframes_render_requests: {
         id: "request-1",
+        import_status: "NONE",
         provider_render_id: "provider-1",
         provider_status: "RUNNING",
       },
@@ -55,6 +60,7 @@ describe("HyperFrames render recovery", () => {
       id: "request-1",
       providerRenderId: "provider-1",
       providerStatus: "RUNNING",
+      importStatus: "NONE",
     });
     assert.equal(
       stub.filters.filter(

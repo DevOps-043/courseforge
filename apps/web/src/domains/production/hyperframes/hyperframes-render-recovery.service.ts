@@ -11,6 +11,7 @@ interface RecoverableProductionJob {
 
 interface RecoverableRenderRequestRow {
   id: string;
+  import_status: string;
   provider_render_id: string | null;
   provider_status: string;
 }
@@ -19,6 +20,7 @@ export interface RecoverableHyperframesRender {
   id: string;
   providerRenderId: string;
   providerStatus: string;
+  importStatus: string;
 }
 
 /**
@@ -54,7 +56,11 @@ export class HyperframesRenderRecoveryService {
       .eq("material_component_id", componentId)
       .eq("job_type", PRODUCTION_JOB_TYPES.HYPERFRAMES_RENDER)
       .eq("provider", PRODUCTION_PROVIDERS.HYPERFRAMES)
-      .eq("status", PRODUCTION_JOB_STATUSES.WAITING_PROVIDER)
+      .in("status", [
+        PRODUCTION_JOB_STATUSES.WAITING_PROVIDER,
+        PRODUCTION_JOB_STATUSES.RUNNING,
+        PRODUCTION_JOB_STATUSES.RETRY_SCHEDULED,
+      ])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -63,7 +69,7 @@ export class HyperframesRenderRecoveryService {
 
     const { data: request, error: requestError } = await this.supabase
       .from("hyperframes_render_requests")
-      .select("id, provider_render_id, provider_status")
+      .select("id, import_status, provider_render_id, provider_status")
       .eq("organization_id", params.organizationId)
       .eq("production_job_id", (job as RecoverableProductionJob).id)
       .maybeSingle();
@@ -76,6 +82,7 @@ export class HyperframesRenderRecoveryService {
       id: recoverable.id,
       providerRenderId: recoverable.provider_render_id,
       providerStatus: recoverable.provider_status,
+      importStatus: recoverable.import_status,
     };
   }
 }

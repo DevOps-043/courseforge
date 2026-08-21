@@ -10,14 +10,14 @@ describe("HyperFrames polling decisions", () => {
     );
     assert.equal(
       decideHyperframesPollingAction({ format: "mp4", render_id: "hfr_1", status: "rendering" }).progressPercent,
-      65,
+      null,
     );
   });
 
-  it("requires a signed video URL before accepting completion", () => {
+  it("waits for a signed URL without inventing a failure and accepts completion with one", () => {
     assert.equal(
       decideHyperframesPollingAction({ format: "mp4", render_id: "hfr_1", status: "completed" }).action,
-      "FAIL",
+      "WAIT",
     );
     assert.equal(
       decideHyperframesPollingAction({

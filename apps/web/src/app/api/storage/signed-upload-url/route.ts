@@ -238,7 +238,7 @@ export async function POST(request: Request) {
         const { data, error } = await admin.storage
             .from(bucket)
             .createSignedUploadUrl(authorizedFilePath, {
-                upsert: purpose === 'template-bundle' || purpose === 'curation-source-pdf' ? false : upsert ?? true,
+                upsert: purpose === 'curation-source-pdf' ? false : upsert ?? true,
             });
 
         if (error || !data) {

@@ -26,6 +26,9 @@ yarn-error.log*
 coverage/
 .tmp/
 
+# Local Supabase CLI metadata
+supabase/.temp/
+
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
