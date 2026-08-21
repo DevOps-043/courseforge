@@ -66,6 +66,22 @@ test("aplica un recorte visual no destructivo y conserva timing, layout y fuente
   assert.deepEqual(result.source, video.source);
 });
 
+test("aplica el mismo recorte visual no destructivo a una diapositiva HTML", () => {
+  const document = baseDocument();
+  const slide = document.clips.find((clip) => clip.kind === "DECK_SLIDE")!;
+  const edited = applyCompositionEditorPatches(document, [{
+    clipId: slide.id,
+    crop: { top: 18, right: 36, bottom: 54, left: 72 },
+    type: "clip.crop",
+  }]);
+  const result = edited.clips.find((clip) => clip.id === slide.id)!;
+
+  assert.deepEqual(result.crop, { top: 18, right: 36, bottom: 54, left: 72 });
+  assert.equal(result.durationSeconds, slide.durationSeconds);
+  assert.deepEqual(result.layout, slide.layout);
+  assert.deepEqual(result.source, slide.source);
+});
+
 test("limita los insets para conservar al menos un píxel visible", () => {
   const document = baseDocument();
   const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
@@ -498,8 +514,23 @@ test("reinicia un asset, consolida sus fragmentos y elimina recortes y animacion
   assert.equal(restored.durationSeconds, 30);
   assert.equal(restored.sourceOffsetSeconds, 0);
   assert.equal(restored.crop, undefined);
-  assert.deepEqual(restored.layout, { height: 1080, opacity: 1, rotation: 0, width: 1920, x: 0, y: 0, zIndex: -1 });
+  assert.equal(restored.mediaFit, "COVER");
+  assert.deepEqual(restored.layout, { height: 1080, opacity: 1, rotation: 0, width: 1920, x: 0, y: 0, zIndex: 0 });
   assert.equal(reset.motion.animations.some((animation) => animation.target.clipId === video.id || animation.target.clipId === "video-reset-right"), false);
+});
+
+test("permite mostrar completa una fuente visual sin confundir fit con crop", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  video.crop = { bottom: 20, left: 10, right: 10, top: 20 };
+  const fitted = applyCompositionEditorPatches(document, [
+    { clipId: video.id, mediaFit: "CONTAIN", type: "clip.media-fit" },
+    { clipId: video.id, crop: null, type: "clip.crop" },
+  ]);
+  const result = fitted.clips.find((clip) => clip.id === video.id)!;
+
+  assert.equal(result.mediaFit, "CONTAIN");
+  assert.equal(result.crop, undefined);
 });
 
 test("impide que el agente reinicie un asset sin confirmación del usuario", () => {
@@ -651,7 +682,7 @@ test("acumula ediciones sucesivas sin reiniciar propiedades previamente guardada
     { clipId: video.id, startSeconds: 3.25, type: "clip.move" },
     {
       clipId: video.id,
-      layout: { height: 540, opacity: 0.72, rotation: 13, width: 960, x: 417, y: 208, zIndex: 12 },
+      layout: { height: 540, opacity: 0.72, rotation: 13, width: 960, x: 417, y: 208, zIndex: 10 },
       type: "clip.layout",
     },
     { clipId: video.id, hidden: true, type: "clip.visibility" },
@@ -672,7 +703,7 @@ test("acumula ediciones sucesivas sin reiniciar propiedades previamente guardada
     width: 960,
     x: 417,
     y: 208,
-    zIndex: 12,
+    zIndex: 10,
   });
 });
 

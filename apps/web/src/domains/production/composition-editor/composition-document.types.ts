@@ -2,6 +2,10 @@ import { z } from "zod";
 import { COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS } from "./composition-document.types.constants";
 import { compositionMotionSchema } from "./composition-motion.types";
 import { resolveCompositionAnimationWindow } from "./composition-motion-scheduling.service";
+import {
+  COMPOSITION_LAYER_MAX,
+  COMPOSITION_LAYER_MIN,
+} from "./composition-layer-depth";
 
 export const LEGACY_COMPOSITION_DOCUMENT_FORMAT = "courseforge-composition-v1";
 export const COMPOSITION_DOCUMENT_FORMAT = "courseforge-composition-v2";
@@ -17,6 +21,8 @@ export const COMPOSITION_DURATION_SOURCES = [
 export type CompositionDurationSource = typeof COMPOSITION_DURATION_SOURCES[number];
 export const COMPOSITION_TRACK_ROLES = ["DECK", "AVATAR", "VOICE", "MUSIC", "BROLL", "VISUAL", "OVERLAY"] as const;
 export type CompositionTrackRole = typeof COMPOSITION_TRACK_ROLES[number];
+export const COMPOSITION_MEDIA_FIT_MODES = ["CONTAIN", "COVER"] as const;
+export type CompositionMediaFit = typeof COMPOSITION_MEDIA_FIT_MODES[number];
 export const DEFAULT_COMPOSITION_DUCKING_SETTINGS = {
   attackSeconds: 0.2,
   duckedVolumeRatio: 0.35,
@@ -51,7 +57,7 @@ const compositionLayoutFieldSchemas = {
   width: finiteNumberSchema.positive().max(8_192),
   x: finiteNumberSchema.min(-8_192).max(8_192),
   y: finiteNumberSchema.min(-8_192).max(8_192),
-  zIndex: z.number().int().min(-100).max(100),
+  zIndex: z.number().int().min(COMPOSITION_LAYER_MIN).max(COMPOSITION_LAYER_MAX),
 };
 
 export const compositionLayoutSchema = z.object({
@@ -121,6 +127,8 @@ const deckStylesSchema = z.object({
 
 const productionAssetSourceSchema = z.object({
   productionAssetId: uuidSchema,
+  sourceHeight: z.number().int().positive().max(16_384).optional(),
+  sourceWidth: z.number().int().positive().max(16_384).optional(),
 }).strict();
 
 export const compositionClipSchema = z.object({
@@ -132,6 +140,8 @@ export const compositionClipSchema = z.object({
   kind: z.enum(["AUDIO", "DECK_SLIDE", "IMAGE", "VIDEO"]),
   label: z.string().trim().min(1).max(200),
   layout: compositionLayoutSchema,
+  /** Controls source fitting independently from layout and explicit crop. */
+  mediaFit: z.enum(COMPOSITION_MEDIA_FIT_MODES).optional(),
   source: z.discriminatedUnion("type", [
     deckSourceSchema.extend({ type: z.literal("DECK_SLIDE") }),
     productionAssetSourceSchema.extend({ type: z.literal("PRODUCTION_ASSET") }),

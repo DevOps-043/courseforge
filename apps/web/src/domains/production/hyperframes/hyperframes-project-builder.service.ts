@@ -9,6 +9,8 @@ export interface HyperframesProjectAsset extends HyperframesAssetManifestItem {
   durationSeconds?: number;
   label?: string;
   publicUrl: string | null;
+  sourceHeight?: number;
+  sourceWidth?: number;
   storageBucket: string;
   timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL" | "VOICE";
   timelineVariant?: "CLIP" | "FULL";

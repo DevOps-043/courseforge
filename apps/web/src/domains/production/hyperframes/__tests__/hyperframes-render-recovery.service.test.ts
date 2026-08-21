@@ -70,6 +70,32 @@ describe("HyperFrames render recovery", () => {
     );
   });
 
+  it("recovers an upload before HeyGen has returned a render id", async () => {
+    const stub = createSupabaseStub({
+      hyperframes_render_requests: {
+        id: "request-uploading",
+        import_status: "NONE",
+        provider_render_id: null,
+        provider_status: "UPLOADING",
+      },
+      production_jobs: { id: "job-uploading" },
+      video_compositions: { material_component_id: "component-1" },
+    });
+    const service = new HyperframesRenderRecoveryService(stub.client as never);
+
+    const result = await service.findLatestForComposition({
+      compositionId: "composition-1",
+      organizationId: "organization-1",
+    });
+
+    assert.deepEqual(result, {
+      id: "request-uploading",
+      importStatus: "NONE",
+      providerRenderId: null,
+      providerStatus: "UPLOADING",
+    });
+  });
+
   it("does not expose a request when the composition has no scoped component", async () => {
     const stub = createSupabaseStub({ video_compositions: null });
     const service = new HyperframesRenderRecoveryService(stub.client as never);

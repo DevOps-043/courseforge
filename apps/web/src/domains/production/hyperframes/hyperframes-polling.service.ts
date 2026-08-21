@@ -1,5 +1,7 @@
 import type { HyperframesCloudRenderDetail } from "./hyperframes-cloud.client";
 
+const UNSUBMITTED_RENDER_STALE_AFTER_MS = 10 * 60 * 1_000;
+
 export type HyperframesPollingAction = "WAIT" | "COMPLETE" | "FAIL";
 
 export interface HyperframesPollingDecision {
@@ -7,6 +9,12 @@ export interface HyperframesPollingDecision {
   errorMessage: string | null;
   providerStatus: string;
   progressPercent: number | null;
+}
+
+export function isUnsubmittedRenderStale(updatedAt: string, nowMs = Date.now()) {
+  const updatedAtMs = Date.parse(updatedAt);
+  return Number.isFinite(updatedAtMs)
+    && nowMs - updatedAtMs >= UNSUBMITTED_RENDER_STALE_AFTER_MS;
 }
 
 /** Maps the provider lifecycle into Courseforge's durable job lifecycle. */

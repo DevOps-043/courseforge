@@ -10,7 +10,10 @@ import type { CompositionAgentProposalEnvelope } from "@/domains/production/comp
 import type { CompositionAgentRecoveryMetadata } from "@/domains/production/composition-editor/composition-agent-recovery.service";
 import { applyCompositionEditorPatches, ensureCanvasDurationForClipPatches } from "@/domains/production/composition-editor/editor-patch.service";
 import { resolveCompositionTrackDefinition } from "@/domains/production/composition-editor/composition-track-registry";
-import { resolveDefaultCompositionClipLayout } from "@/domains/production/composition-editor/composition-default-layout.service";
+import {
+  resolveDefaultCompositionClipLayout,
+  resolveDefaultCompositionMediaFit,
+} from "@/domains/production/composition-editor/composition-default-layout.service";
 import type { CompositionAnimation } from "@/domains/production/composition-editor/composition-motion.types";
 import { COMPOSITION_MOTION_ENABLED } from "@/domains/production/composition-editor/composition-motion.config";
 import { CompositionTimeline } from "./CompositionTimeline";
@@ -53,6 +56,11 @@ type CompositionSnapshotEntry = {
   projectArchiveSizeBytes: number;
   revisionNumber: number;
 };
+type ActiveAssembly = {
+  projectArchiveSizeBytes: number;
+  revisionId: string;
+  status: "READY_FOR_PREVIEW" | "READY_FOR_RENDER";
+};
 type AgentProposal = CompositionAgentProposalEnvelope & {
   documentHash: string;
   expiresAt: string;
@@ -81,6 +89,8 @@ export interface CompositionStudioAsset {
   label: string;
   mimeType: string;
   previewUrl: string | null;
+  sourceHeight?: number;
+  sourceWidth?: number;
   sizeLabel: string;
   sourceLabel: string;
   timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL" | "VOICE";
@@ -147,7 +157,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const [agentProposal, setAgentProposal] = useState<AgentProposal | null>(null);
   const [lastAppliedAgentProposal, setLastAppliedAgentProposal] = useState<AgentProposal | null>(null);
   const [proposing, setProposing] = useState(false);
-  const [assembly, setAssembly] = useState<{ revisionId: string; status: "READY_FOR_PREVIEW" | "READY_FOR_RENDER" } | null>(null);
+  const [assembly, setAssembly] = useState<ActiveAssembly | null>(null);
   const [snapshotHistory, setSnapshotHistory] = useState<CompositionSnapshotEntry[] | null>(null);
   const [snapshotHistoryOpen, setSnapshotHistoryOpen] = useState(false);
   const [assemblyError, setAssemblyError] = useState<string | null>(null);
@@ -239,6 +249,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     setSnapshotHistory(body.data.snapshots);
     const activeSnapshot = body.data.snapshots.find((snapshot) => snapshot.id === body.data?.activeRevisionId);
     setAssembly(activeSnapshot ? {
+      projectArchiveSizeBytes: activeSnapshot.projectArchiveSizeBytes,
       revisionId: activeSnapshot.id,
       status: body.data.status === "READY_FOR_RENDER" ? "READY_FOR_RENDER" : "READY_FOR_PREVIEW",
     } : null);
@@ -606,6 +617,9 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       return;
     }
     const clipKind: CompositionClip["kind"] = isAudio ? "AUDIO" : asset.mimeType.startsWith("video/") ? "VIDEO" : "IMAGE";
+    const sourceDimensions = asset.sourceWidth && asset.sourceHeight
+      ? { height: asset.sourceHeight, width: asset.sourceWidth }
+      : null;
     const clip: CompositionClip = {
       durationSeconds: clipDuration,
       hfId: clipId,
@@ -613,8 +627,13 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       id: clipId,
       kind: clipKind,
       label: asset.label,
-      layout: resolveDefaultCompositionClipLayout({ canvas: currentPayload.document.canvas, clipKind, track: trackDefinition }),
-      source: { productionAssetId: asset.id, type: "PRODUCTION_ASSET" },
+      layout: resolveDefaultCompositionClipLayout({ canvas: currentPayload.document.canvas, clipKind, sourceDimensions, track: trackDefinition }),
+      mediaFit: resolveDefaultCompositionMediaFit({ clipKind, track: trackDefinition }),
+      source: {
+        productionAssetId: asset.id,
+        ...(sourceDimensions ? { sourceHeight: sourceDimensions.height, sourceWidth: sourceDimensions.width } : {}),
+        type: "PRODUCTION_ASSET",
+      },
       ...(asset.durationSeconds && asset.durationSeconds > 0 ? { sourceDurationSeconds: asset.durationSeconds } : {}),
       sourceOffsetSeconds: 0,
       startSeconds: isSequential ? occupiedUntil : 0,
@@ -898,10 +917,10 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     setAssembling(true); setAssemblyError(null); setRenderStatus("validating");
     try {
       const response = await fetch(`/api/production/hyperframes/compositions/${compositionId}/snapshot`, { body: JSON.stringify({ draftId }), headers: { "Content-Type": "application/json" }, method: "POST" });
-      const body = await readCompositionApiResponse<{ data?: { id: string }; error?: string }>(response, "No se pudo preparar el ensamble.");
+      const body = await readCompositionApiResponse<{ data?: { id: string; project_archive_size_bytes: number }; error?: string }>(response, "No se pudo preparar el ensamble.");
       if (!response.ok) throw new Error(body.error || "No se pudo preparar el ensamble.");
       if (!body.data?.id) throw new Error("El servidor no devolvió el snapshot creado.");
-      setAssembly({ revisionId: body.data.id, status: "READY_FOR_PREVIEW" });
+      setAssembly({ projectArchiveSizeBytes: Number(body.data.project_archive_size_bytes), revisionId: body.data.id, status: "READY_FOR_PREVIEW" });
       setRenderStatus("idle");
       await loadSnapshotHistory();
     } catch (caught) { setAssemblyError(caught instanceof Error ? caught.message : "No se pudo preparar el ensamble."); setRenderStatus("failed"); }
@@ -920,7 +939,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       });
       const body = await readCompositionApiResponse<{ data?: { id: string; status: "READY_FOR_PREVIEW" }; error?: string }>(response, "No se pudo restaurar el snapshot.");
       if (!response.ok || !body.data) throw new Error(body.error || "No se pudo restaurar el snapshot.");
-      setAssembly({ revisionId: body.data.id, status: "READY_FOR_PREVIEW" });
+      setAssembly({ projectArchiveSizeBytes: snapshot.projectArchiveSizeBytes, revisionId: body.data.id, status: "READY_FOR_PREVIEW" });
       setRenderStatus("idle");
       setRenderRequestId(null);
       setRenderProviderStatus(null);
@@ -948,7 +967,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       setRenderProviderStatus(body.data.providerStatus as string);
       if (body.data.action === "FAIL") {
         setRenderStatus("failed");
-        setAssemblyError("HeyGen reportó que el render falló. Regenera el snapshot antes de reintentar.");
+        setAssemblyError("El envío o HeyGen reportaron que el render falló. Puedes volver a intentarlo.");
       } else {
         setRenderStatus("rendering");
         setAssemblyError(null);
@@ -962,33 +981,37 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     }
   }, []);
 
+  const recoverActiveRender = useCallback(async () => {
+    const response = await fetch(
+      `/api/production/hyperframes/renders?compositionId=${encodeURIComponent(compositionId)}`,
+      { cache: "no-store" },
+    );
+    const body = await readCompositionApiResponse<{
+      data?: { id: string; importStatus: string; providerStatus: string } | null;
+      error?: string;
+    }>(response, "No se pudo recuperar el render pendiente.");
+    if (!response.ok) throw new Error(body.error || "No se pudo recuperar el render pendiente.");
+    if (!body.data?.id) return false;
+
+    const requestId = body.data.id;
+    setRenderRequestId(requestId);
+    setRenderProviderStatus(
+      body.data.importStatus && body.data.importStatus !== "NONE"
+        ? body.data.importStatus
+        : body.data.providerStatus,
+    );
+    setRenderStatus("rendering");
+    setAssemblyError(null);
+    void pollAssemblyRender(requestId);
+    return true;
+  }, [compositionId, pollAssemblyRender]);
+
   useEffect(() => {
     let active = true;
     void (async () => {
       try {
-        const response = await fetch(
-          `/api/production/hyperframes/renders?compositionId=${encodeURIComponent(compositionId)}`,
-          { cache: "no-store" },
-        );
-        const body = await readCompositionApiResponse<{
-          data?: { id: string; importStatus: string; providerStatus: string } | null;
-          error?: string;
-        }>(response, "No se pudo recuperar el render pendiente.");
-        if (!response.ok) {
-          throw new Error(body.error || "No se pudo recuperar el render pendiente.");
-        }
-        if (!active || !body.data?.id) return;
-
-        const requestId = body.data.id as string;
-        setRenderRequestId(requestId);
-        setRenderProviderStatus(
-          body.data.importStatus && body.data.importStatus !== "NONE"
-            ? body.data.importStatus
-            : body.data.providerStatus,
-        );
-        setRenderStatus("rendering");
-        setAssemblyError(null);
-        void pollAssemblyRender(requestId);
+        if (!active) return;
+        await recoverActiveRender();
       } catch (caught) {
         if (!active) return;
         setAssemblyError(
@@ -1001,7 +1024,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     return () => {
       active = false;
     };
-  }, [compositionId, pollAssemblyRender]);
+  }, [recoverActiveRender]);
 
   useEffect(() => {
     if (!renderRequestId) return;
@@ -1084,7 +1107,18 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       setRenderStatus("rendering");
       void pollAssemblyRender(requestId);
     }
-    catch (caught) { setAssemblyError(caught instanceof Error ? caught.message : "No se pudo enviar el render."); setRenderStatus("failed"); }
+    catch (caught) {
+      try {
+        if (await recoverActiveRender()) {
+          setAssemblyError("La solicitud tardó más de lo esperado, pero el ensamble quedó registrado y continúa en seguimiento.");
+          return;
+        }
+      } catch {
+        // Preserve the original submission error when reconciliation is also unavailable.
+      }
+      setAssemblyError(caught instanceof Error ? caught.message : "No se pudo enviar el render.");
+      setRenderStatus("failed");
+    }
     finally { setAssembling(false); }
   }
 
@@ -1366,7 +1400,7 @@ function AgentConversation({ lastAppliedProposal, onApprove, onDismiss, onPropos
 }
 
 function AssemblyActions({ assembly, busy, error, history, historyOpen, onApprove, onHistoryToggle, onPrepare, onRender, onRestore, providerStatus, renderStatus }: {
-  assembly: { revisionId: string; status: "READY_FOR_PREVIEW" | "READY_FOR_RENDER" } | null;
+  assembly: ActiveAssembly | null;
   busy: boolean;
   error: string | null;
   history: CompositionSnapshotEntry[] | null;
@@ -1379,7 +1413,18 @@ function AssemblyActions({ assembly, busy, error, history, historyOpen, onApprov
   providerStatus: string | null;
   renderStatus: "idle" | "validating" | "sending" | "rendering" | "completed" | "failed";
 }) {
-  const label = renderStatus === "validating" ? "Validando snapshot…" : renderStatus === "sending" ? "Subiendo proyecto y enviando a HeyGen…" : renderStatus === "rendering" ? `Proceso durable activo${providerStatus ? ` (${providerStatus.toLowerCase()})` : ""}. Puedes cerrar o recargar esta página sin interrumpirlo.` : renderStatus === "completed" ? "Video completado e importado en Courseforge." : "";
+  const normalizedProviderStatus = providerStatus?.toUpperCase() || null;
+  const label = renderStatus === "validating"
+    ? "Validando snapshot…"
+    : renderStatus === "sending" || normalizedProviderStatus === "UPLOADING"
+      ? "Courseforge está subiendo el ZIP validado a HeyGen."
+      : renderStatus === "rendering"
+        ? normalizedProviderStatus === "QUEUED" || normalizedProviderStatus === "RETRY_SCHEDULED"
+          ? "Courseforge está preparando la importación del video. Puedes cerrar o recargar esta página."
+          : `HeyGen está procesando el video${providerStatus ? ` (${providerStatus.toLowerCase()})` : ""}. Courseforge lo importará al terminar; puedes cerrar o recargar esta página.`
+        : renderStatus === "completed"
+          ? "Video completado e importado en Courseforge."
+          : "";
   const summary = renderStatus === "completed"
     ? "El video final ya está disponible."
     : assembly
@@ -1387,19 +1432,24 @@ function AssemblyActions({ assembly, busy, error, history, historyOpen, onApprov
         ? "Snapshot aprobado. Puedes enviar el render."
         : "Snapshot listo. Revísalo y apruébalo para renderizar."
       : "Congela la versión guardada antes de enviar un render.";
+  const activeRender = renderStatus === "sending" || renderStatus === "rendering";
   return <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3 dark:border-cyan-400/20 dark:bg-cyan-400/10">
-    <div className="text-xs text-cyan-950 dark:text-cyan-100"><p className="font-bold">Ensamble del video</p><p className="mt-0.5">{summary}</p>{label && <p className="mt-1 font-medium">{label}</p>}{error && <p role="alert" className="mt-1 text-red-700 dark:text-red-200">{error}</p>}</div>
+    <div className="text-xs text-cyan-950 dark:text-cyan-100"><p className="font-bold">Ensamble del video</p><p className="mt-0.5">{summary}</p>{assembly && <p className="mt-1 text-[11px] text-cyan-800/80 dark:text-cyan-100/70">ZIP validado: {formatAssemblyBytes(assembly.projectArchiveSizeBytes)} de 200 MB</p>}{label && <p role="status" className="mt-1 inline-flex items-center gap-1.5 font-medium">{activeRender && <Loader2 className="animate-spin" size={13} />}{label}</p>}{error && <p role="alert" className="mt-1 text-red-700 dark:text-red-200">{error}</p>}</div>
     <div className="flex flex-wrap gap-2">
       <button type="button" disabled={busy} onClick={() => void onPrepare()} className="inline-flex items-center gap-1.5 rounded-md bg-cyan-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Clapperboard size={14} /> {busy && renderStatus === "validating" ? "Congelando…" : assembly ? "Regenerar snapshot" : "Congelar snapshot"}</button>
       <button type="button" disabled={busy || history === null} onClick={onHistoryToggle} className="inline-flex items-center gap-1.5 rounded-md border border-cyan-700 px-3 py-2 text-xs font-bold text-cyan-900 disabled:opacity-50 dark:border-cyan-300 dark:text-cyan-100"><History size={14} /> Snapshots {history ? `(${history.length})` : ""}</button>
       {assembly?.status === "READY_FOR_PREVIEW" && <button type="button" disabled={busy} onClick={() => void onApprove()} className="inline-flex items-center gap-1.5 rounded-md border border-cyan-700 px-3 py-2 text-xs font-bold text-cyan-900 disabled:opacity-50 dark:border-cyan-300 dark:text-cyan-100"><CheckCircle2 size={14} /> Aprobar snapshot</button>}
-      {assembly?.status === "READY_FOR_RENDER" && <button type="button" disabled={busy || renderStatus === "sending" || renderStatus === "rendering" || renderStatus === "completed"} onClick={() => void onRender()} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50 dark:bg-white dark:text-slate-950"><Send size={14} /> Renderizar video</button>}
+      {assembly?.status === "READY_FOR_RENDER" && <button type="button" disabled={busy || activeRender || renderStatus === "completed"} onClick={() => void onRender()} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-950"><Send size={14} /> {activeRender ? "Render en curso" : "Renderizar video"}</button>}
     </div>
     {historyOpen && <div className="w-full rounded-lg border border-cyan-200 bg-white/80 p-2 dark:border-cyan-400/20 dark:bg-slate-950/40">
       <p className="px-1 pb-1.5 text-[10px] font-bold uppercase tracking-wide text-cyan-900/70 dark:text-cyan-100/70">Snapshots congelados</p>
       {history && history.length > 0 ? <div className="max-h-44 space-y-1 overflow-y-auto">{history.map((snapshot) => <div key={snapshot.id} className="flex items-center justify-between gap-3 rounded-md px-2 py-2 text-xs hover:bg-cyan-50 dark:hover:bg-white/5"><span><span className="block font-semibold">Snapshot {snapshot.revisionNumber}{snapshot.isActive ? " (activo)" : ""}</span><span className="block text-[10px] text-slate-500">Documento v{snapshot.documentVersion} · {new Date(snapshot.createdAt).toLocaleString()}</span></span><button type="button" disabled={busy || snapshot.isActive} onClick={() => void onRestore(snapshot)} className="rounded-md border border-cyan-600 px-2 py-1 text-[10px] font-bold text-cyan-800 disabled:cursor-default disabled:opacity-50 dark:text-cyan-200">{snapshot.isActive ? "Activo" : "Restaurar"}</button></div>)}</div> : <p className="px-1 py-2 text-xs text-slate-500">Todavía no hay snapshots congelados.</p>}
     </div>}
   </div>;
+}
+
+function formatAssemblyBytes(value: number) {
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function StudioLibrary({ assets, lessons, onAddAsset, onSelectAsset, onSelectLesson, selectedHfId, selectedLessonId, timelineAssetIds }: {
@@ -1444,8 +1494,8 @@ function AssetThumbnail({ asset }: { asset: CompositionStudioAsset }) {
   const [failed, setFailed] = useState(false);
   const commonClass = "relative flex h-9 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-slate-100 dark:border-white/10 dark:bg-white/5";
   if (asset.mimeType.startsWith("audio/")) return <span className={commonClass + " text-violet-600 dark:text-violet-300"}><Music2 size={18} /></span>;
-  if (asset.mimeType.startsWith("image/") && asset.previewUrl && !failed) return <span className={commonClass}><img src={asset.previewUrl} alt="" onError={() => setFailed(true)} className="h-full w-full object-cover" /></span>;
-  if (asset.mimeType.startsWith("video/") && asset.previewUrl && !failed) return <span className={commonClass}><video muted preload="metadata" onError={() => setFailed(true)} className="h-full w-full object-cover"><source src={asset.previewUrl} type={asset.mimeType} /></video><Play className="pointer-events-none absolute text-white drop-shadow" size={15} /></span>;
+  if (asset.mimeType.startsWith("image/") && asset.previewUrl && !failed) return <span className={commonClass}><img src={asset.previewUrl} alt="" onError={() => setFailed(true)} className="h-full w-full bg-slate-950 object-contain" /></span>;
+  if (asset.mimeType.startsWith("video/") && asset.previewUrl && !failed) return <span className={commonClass}><video muted preload="metadata" onError={() => setFailed(true)} className="h-full w-full bg-slate-950 object-contain"><source src={asset.previewUrl} type={asset.mimeType} /></video><Play className="pointer-events-none absolute text-white drop-shadow" size={15} /></span>;
   const Icon = asset.mimeType.startsWith("image/") ? ImageIcon : asset.mimeType.startsWith("video/") ? Video : FileQuestion;
   return <span className={commonClass + " text-slate-400 dark:text-gray-500"}><Icon size={18} /></span>;
 }
@@ -1517,7 +1567,19 @@ function CompositionInspector({ animations, clip, cropModeEnabled, onAnimationSe
     if (!confirmed) return;
     await onPatch([{ clipId: clip.id, type: "clip.reset-asset" }], `Reinició ${clip.label} a su estado base.`);
   };
-  return <div className="space-y-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold text-slate-900 dark:text-white">{clip.label}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-400">{clip.kind} · pista {clip.trackId}</p></div><div className="flex flex-wrap gap-1"><button type="button" disabled={saving} onClick={() => void onPatch([{ clipId: clip.id, hidden: !clip.hidden, type: "clip.visibility" }], `${clip.hidden ? "Mostró" : "Ocultó"} ${clip.label}.`)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">{clip.hidden ? <Eye size={13} /> : <EyeOff size={13} />}{clip.hidden ? "Mostrar" : "Ocultar"}</button><button type="button" disabled={saving} onClick={() => void onRemove(clip)} className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-400/40 dark:text-red-200 dark:hover:bg-red-400/10"><Trash2 size={13} /> Quitar</button></div></div><p className="rounded-md bg-slate-50 px-2 py-1.5 text-[10px] text-slate-500 dark:bg-white/5 dark:text-gray-400">Quitar solo retira este clip de la línea de tiempo; los assets y el deck original permanecen disponibles.</p>{clip.kind !== "AUDIO" && <LayerDepthControls clip={clip} disabled={saving} onPatch={onPatch} />}<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><TimecodeField label="Inicio (mm:ss)" value={startSeconds} onChange={setStartSeconds} /><TimecodeField label="Duración (mm:ss)" value={durationSeconds} onChange={setDurationSeconds} /><InspectorField label="Posición X" value={x} onChange={setX} /><InspectorField label="Posición Y" value={y} onChange={setY} /></div><p className="text-[10px] text-slate-500 dark:text-gray-400">Formato: 01:05 = 1 minuto y 5 segundos; 00:01.050 incluye milisegundos.</p>{isBrollVideo && <section className="border-t border-slate-200 pt-3 dark:border-white/10"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Audio del asset</p><VolumeSlider accentClassName="accent-cyan-500" ariaLabel={`Volumen de ${clip.label}`} disabled={saving} label="Volumen del B-roll" onChange={setVolume} value={volume} /><p className="mt-2 text-[10px] leading-4 text-slate-500 dark:text-gray-400">Este volumen pertenece sólo a este clip. En 0% conserva el B-roll silenciado.</p></section>}<div className="border-t border-slate-200 pt-3 dark:border-white/10"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Transformación</p><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><InspectorField label="Ancho" value={width} onChange={setWidth} min={1} /><InspectorField label="Alto" value={height} onChange={setHeight} min={1} /><InspectorField label="Rotación" value={rotation} onChange={setRotation} min={-360} /><InspectorField label="Opacidad" value={opacity} onChange={setOpacity} min={0} /></div><p className="mt-2 text-[10px] text-slate-500">Arrastra en el preview para mover; usa el tirador para redimensionar. Mantén Alt para liberar proporciones.</p></div>{(clip.kind === "VIDEO" || clip.kind === "IMAGE") && <VisualCropControls clip={clip} cropModeEnabled={cropModeEnabled} disabled={saving} onPatch={onPatch} onPreviewCrop={onPreviewCrop} />}{COMPOSITION_MOTION_ENABLED && clip.kind !== "AUDIO" && <CompositionMotionControls animations={animations} clip={clip} disabled={saving} selectedAnimationId={selectedAnimationId} onSelectAnimation={onAnimationSelect} onPatch={onPatch} />}{validationError && <p role="alert" className="rounded-md bg-red-50 px-2 py-1.5 text-[10px] text-red-700 dark:bg-red-500/10 dark:text-red-200">{validationError}</p>}<div className="flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => void saveAllChanges()} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50 dark:bg-cyan-400 dark:text-slate-950"><Save size={13} /> Guardar cambios</button><button type="button" disabled={saving || clip.source.type !== "PRODUCTION_ASSET"} onClick={() => void resetAsset()} className="inline-flex items-center gap-1 rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-400/40 dark:text-amber-200 dark:hover:bg-amber-400/10" title="Restaurar tiempo, tamaño, encuadre y animaciones del asset"><RotateCcw size={13} /> Reiniciar asset</button>{saving && <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-gray-400"><Loader2 className="animate-spin" size={13} /> Actualizando preview…</span>}</div></div>;
+  const supportsVisualCrop = clip.kind === "VIDEO" || clip.kind === "IMAGE" || clip.kind === "DECK_SLIDE";
+  return <div className="space-y-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold text-slate-900 dark:text-white">{clip.label}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-400">{clip.kind} · pista {clip.trackId}</p></div><div className="flex flex-wrap gap-1"><button type="button" disabled={saving} onClick={() => void onPatch([{ clipId: clip.id, hidden: !clip.hidden, type: "clip.visibility" }], `${clip.hidden ? "Mostró" : "Ocultó"} ${clip.label}.`)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">{clip.hidden ? <Eye size={13} /> : <EyeOff size={13} />}{clip.hidden ? "Mostrar" : "Ocultar"}</button><button type="button" disabled={saving} onClick={() => void onRemove(clip)} className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-400/40 dark:text-red-200 dark:hover:bg-red-400/10"><Trash2 size={13} /> Quitar</button></div></div><p className="rounded-md bg-slate-50 px-2 py-1.5 text-[10px] text-slate-500 dark:bg-white/5 dark:text-gray-400">Quitar solo retira este clip de la línea de tiempo; los assets y el deck original permanecen disponibles.</p>{clip.kind !== "AUDIO" && <LayerDepthControls clip={clip} disabled={saving} onPatch={onPatch} />}<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><TimecodeField label="Inicio (mm:ss)" value={startSeconds} onChange={setStartSeconds} /><TimecodeField label="Duración (mm:ss)" value={durationSeconds} onChange={setDurationSeconds} /><InspectorField label="Posición X" value={x} onChange={setX} /><InspectorField label="Posición Y" value={y} onChange={setY} /></div><p className="text-[10px] text-slate-500 dark:text-gray-400">Formato: 01:05 = 1 minuto y 5 segundos; 00:01.050 incluye milisegundos.</p>{isBrollVideo && <section className="border-t border-slate-200 pt-3 dark:border-white/10"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Audio del asset</p><VolumeSlider accentClassName="accent-cyan-500" ariaLabel={`Volumen de ${clip.label}`} disabled={saving} label="Volumen del B-roll" onChange={setVolume} value={volume} /><p className="mt-2 text-[10px] leading-4 text-slate-500 dark:text-gray-400">Este volumen pertenece sólo a este clip. En 0% conserva el B-roll silenciado.</p></section>}<div className="border-t border-slate-200 pt-3 dark:border-white/10"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Transformación</p><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><InspectorField label="Ancho" value={width} onChange={setWidth} min={1} /><InspectorField label="Alto" value={height} onChange={setHeight} min={1} /><InspectorField label="Rotación" value={rotation} onChange={setRotation} min={-360} /><InspectorField label="Opacidad" value={opacity} onChange={setOpacity} min={0} /></div><p className="mt-2 text-[10px] text-slate-500">Arrastra en el preview para mover; usa el tirador para redimensionar. Mantén Alt para liberar proporciones.</p></div>{(clip.kind === "VIDEO" || clip.kind === "IMAGE") && <MediaFitControls clip={clip} disabled={saving} onPatch={onPatch} track={track} />}{supportsVisualCrop && <VisualCropControls clip={clip} cropModeEnabled={cropModeEnabled} disabled={saving} onPatch={onPatch} onPreviewCrop={onPreviewCrop} />}{COMPOSITION_MOTION_ENABLED && clip.kind !== "AUDIO" && <CompositionMotionControls animations={animations} clip={clip} disabled={saving} selectedAnimationId={selectedAnimationId} onSelectAnimation={onAnimationSelect} onPatch={onPatch} />}{validationError && <p role="alert" className="rounded-md bg-red-50 px-2 py-1.5 text-[10px] text-red-700 dark:bg-red-500/10 dark:text-red-200">{validationError}</p>}<div className="flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => void saveAllChanges()} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50 dark:bg-cyan-400 dark:text-slate-950"><Save size={13} /> Guardar cambios</button><button type="button" disabled={saving || clip.source.type !== "PRODUCTION_ASSET"} onClick={() => void resetAsset()} className="inline-flex items-center gap-1 rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-400/40 dark:text-amber-200 dark:hover:bg-amber-400/10" title="Restaurar tiempo, tamaño, encuadre y animaciones del asset"><RotateCcw size={13} /> Reiniciar asset</button>{saving && <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-gray-400"><Loader2 className="animate-spin" size={13} /> Actualizando preview…</span>}</div></div>;
+}
+
+function MediaFitControls({ clip, disabled, onPatch, track }: { clip: CompositionClip; disabled: boolean; onPatch: (operations: CompositionEditorPatchOperation[], summary: string) => Promise<boolean>; track: CompositionTrack | null }) {
+  const currentFit = clip.mediaFit || ((track?.semanticRole === "AVATAR" || track?.id === "avatar") ? "CONTAIN" : "COVER");
+  const changeFit = (mediaFit: "CONTAIN" | "COVER") => {
+    const operations: CompositionEditorPatchOperation[] = [{ clipId: clip.id, mediaFit, type: "clip.media-fit" }];
+    if (mediaFit === "CONTAIN" && clip.crop) operations.push({ clipId: clip.id, crop: null, type: "clip.crop" });
+    const summary = mediaFit === "CONTAIN" ? `Mostró completo ${clip.label}.` : `Ajustó ${clip.label} para llenar su caja.`;
+    return onPatch(operations, summary);
+  };
+  return <section className="border-t border-slate-200 pt-3 dark:border-white/10"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Ajuste del medio</p><div className="grid grid-cols-2 gap-2"><button type="button" disabled={disabled || currentFit === "CONTAIN"} onClick={() => void changeFit("CONTAIN")} className="rounded-md border border-slate-300 px-2 py-1.5 text-[10px] font-bold text-slate-700 disabled:bg-cyan-50 disabled:text-cyan-700 dark:border-white/15 dark:text-gray-200 dark:disabled:bg-cyan-400/10 dark:disabled:text-cyan-200">Mostrar completo</button><button type="button" disabled={disabled || currentFit === "COVER"} onClick={() => void changeFit("COVER")} className="rounded-md border border-slate-300 px-2 py-1.5 text-[10px] font-bold text-slate-700 disabled:bg-cyan-50 disabled:text-cyan-700 dark:border-white/15 dark:text-gray-200 dark:disabled:bg-cyan-400/10 dark:disabled:text-cyan-200">Llenar caja</button></div><p className="mt-2 text-[10px] leading-4 text-slate-500 dark:text-gray-400">“Mostrar completo” elimina el recorte explícito y conserva toda la fuente. “Llenar caja” puede ocultar bordes si la proporción es distinta.</p></section>;
 }
 
 function VisualCropControls({ clip, cropModeEnabled, disabled, onPatch, onPreviewCrop }: { clip: CompositionClip; cropModeEnabled: boolean; disabled: boolean; onPatch: (operations: CompositionEditorPatchOperation[], summary: string) => Promise<boolean>; onPreviewCrop: (hfId: string, crop: CompositionVisualCrop) => void }) {

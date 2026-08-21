@@ -16,7 +16,11 @@ import {
   getCompositionTrackDefinition,
   resolveCompositionTrackDefinition,
 } from "./composition-track-registry";
-import { resolveDefaultCompositionClipLayout } from "./composition-default-layout.service";
+import {
+  resolveDefaultCompositionClipLayout,
+  resolveDefaultCompositionMediaFit,
+} from "./composition-default-layout.service";
+import { DEFAULT_COMPOSITION_LAYER } from "./composition-layer-depth";
 
 /**
  * Creates the first editable document from internal Production sources.
@@ -110,12 +114,48 @@ export function reconcileCompositionDocument(params: {
   const removedDeckDependencyCount = params.document.clips.length - withoutDeckDependencies.length;
   const productionAssets = selectAuthoritativeTimelineAssets(params.productionAssets);
   const productionAssetById = new Map(productionAssets.map((asset) => [asset.productionAssetId, asset]));
+  let clipSynchronizationChanged = false;
   const synchronizedClips = withoutDeckDependencies.map((clip) => {
     if (clip.source.type !== "PRODUCTION_ASSET") return clip;
     const source = productionAssetById.get(clip.source.productionAssetId);
-    return source ? { ...clip, trackId: resolveTrackId(source) } : clip;
+    if (!source) return clip;
+    const track = resolveCompositionTrackDefinition(source);
+    const sourceDimensions = source.sourceWidth && source.sourceHeight
+      ? { height: source.sourceHeight, width: source.sourceWidth }
+      : null;
+    const isUnframedLegacyBroll = (clip.kind === "VIDEO" || clip.kind === "IMAGE")
+      && (track.semanticRole === "BROLL" || track.id === "broll")
+      && clip.mediaFit === undefined
+      && clip.crop === undefined;
+    const usesGeneratedCanvasLayout = clip.layout.x === 0
+      && clip.layout.y === 0
+      && clip.layout.width === params.document.canvas.width
+      && clip.layout.height === params.document.canvas.height;
+    const sourceDimensionsChanged = Boolean(sourceDimensions) && (
+      clip.source.sourceHeight !== sourceDimensions?.height
+      || clip.source.sourceWidth !== sourceDimensions?.width
+    );
+    clipSynchronizationChanged ||= clip.trackId !== track.id
+      || isUnframedLegacyBroll
+      || sourceDimensionsChanged;
+    return {
+      ...clip,
+      ...(isUnframedLegacyBroll ? { mediaFit: "CONTAIN" as const } : {}),
+      ...(isUnframedLegacyBroll && sourceDimensions && usesGeneratedCanvasLayout ? {
+        layout: resolveDefaultCompositionClipLayout({
+          canvas: params.document.canvas,
+          clipKind: clip.kind,
+          sourceDimensions,
+          track,
+        }),
+      } : {}),
+      source: {
+        ...clip.source,
+        ...(sourceDimensions ? { sourceHeight: sourceDimensions.height, sourceWidth: sourceDimensions.width } : {}),
+      },
+      trackId: track.id,
+    };
   });
-  const trackAssignmentChanged = synchronizedClips.some((clip, index) => clip.trackId !== withoutDeckDependencies[index]?.trackId);
   const synchronizedTracks = [...params.document.tracks];
   for (const requiredTrack of buildTracks(productionAssets, null)) {
     if (!synchronizedTracks.some((track) => track.id === requiredTrack.id)) {
@@ -132,7 +172,7 @@ export function reconcileCompositionDocument(params: {
   const appended = appendMissingProductionAssetClips(documentWithoutDeckDependencies, productionAssets);
   return {
     addedProductionAssetCount: appended.document.clips.length - documentWithoutDeckDependencies.clips.length,
-    changed: removedDeckDependencyCount > 0 || trackAssignmentChanged || appended.changed,
+    changed: removedDeckDependencyCount > 0 || clipSynchronizationChanged || appended.changed,
     document: appended.document,
     removedDeckDependencyCount,
   };
@@ -174,7 +214,7 @@ function buildDeckClips(deck: HyperframesAnimatedDeckSource | null, durationSeco
       id: `deck-slide-${slide.index}`,
       kind: "DECK_SLIDE" as const,
       label: slide.label || `Diapositiva ${position + 1}`,
-      layout: { height: deck.height, opacity: 1, rotation: 0, width: deck.width, x: 0, y: 0, zIndex: 0 },
+      layout: { height: deck.height, opacity: 1, rotation: 0, width: deck.width, x: 0, y: 0, zIndex: DEFAULT_COMPOSITION_LAYER.DECK },
       source: {
         classes: slide.classes,
         html: slide.html,
@@ -226,6 +266,9 @@ function buildAssetClips(assets: HyperframesProjectAsset[], durationSeconds: num
     const trackId = resolveTrackId(asset);
     const timing = timingByAssetId.get(asset.productionAssetId)!;
     const track = resolveCompositionTrackDefinition(asset);
+    const sourceDimensions = asset.sourceWidth && asset.sourceHeight
+      ? { height: asset.sourceHeight, width: asset.sourceWidth }
+      : null;
     return {
       durationSeconds: timing.durationSeconds,
       hfId: `asset-${asset.productionAssetId}`,
@@ -236,9 +279,15 @@ function buildAssetClips(assets: HyperframesProjectAsset[], durationSeconds: num
       layout: resolveDefaultCompositionClipLayout({
         canvas: { height: canvasHeight, width: canvasWidth },
         clipKind: kind,
+        sourceDimensions,
         track,
       }),
-      source: { productionAssetId: asset.productionAssetId, type: "PRODUCTION_ASSET" as const },
+      mediaFit: resolveDefaultCompositionMediaFit({ clipKind: kind, track }),
+      source: {
+        productionAssetId: asset.productionAssetId,
+        ...(sourceDimensions ? { sourceHeight: sourceDimensions.height, sourceWidth: sourceDimensions.width } : {}),
+        type: "PRODUCTION_ASSET" as const,
+      },
       ...(asset.durationSeconds && asset.durationSeconds > 0 ? { sourceDurationSeconds: roundSeconds(asset.durationSeconds) } : {}),
       sourceOffsetSeconds: 0,
       startSeconds: timing.startSeconds,

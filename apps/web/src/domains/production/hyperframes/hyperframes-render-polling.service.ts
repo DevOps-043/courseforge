@@ -5,7 +5,10 @@ import {
   PRODUCTION_PROVIDERS,
 } from "../types/production.types";
 import type { HyperframesCloudClient } from "./hyperframes-cloud.client";
-import { decideHyperframesPollingAction } from "./hyperframes-polling.service";
+import {
+  decideHyperframesPollingAction,
+  isUnsubmittedRenderStale,
+} from "./hyperframes-polling.service";
 
 type HyperframesRenderRequestRow = {
   archive_size_bytes: number;
@@ -15,6 +18,7 @@ type HyperframesRenderRequestRow = {
   production_job_id: string;
   provider_render_id: string | null;
   provider_status: string;
+  updated_at: string;
 };
 
 type HyperframesProductionJobRow = {
@@ -63,9 +67,27 @@ export class HyperframesRenderPollingService {
     });
 
     if (!request.provider_render_id) {
-      throw new HyperframesRenderPollingError(
-        "El render HyperFrames aún no tiene un identificador de HeyGen.",
-      );
+      if (isUnsubmittedRenderStale(request.updated_at)) {
+        const now = new Date().toISOString();
+        await this.markFailed({
+          errorMessage: "La carga no fue aceptada por HeyGen dentro de 10 minutos. Puedes reintentar el render.",
+          jobId: job.id,
+          pollAttempts: request.poll_attempts + 1,
+          providerStatus: "FAILED",
+          requestId: request.id,
+          updatedAt: now,
+        });
+        return {
+          action: "FAIL",
+          providerStatus: "FAILED",
+          requestId: request.id,
+        };
+      }
+      return {
+        action: "WAIT",
+        providerStatus: request.provider_status,
+        requestId: request.id,
+      };
     }
     if (!job.material_component_id || !job.organization_id) {
       throw new HyperframesRenderPollingError(
@@ -131,7 +153,7 @@ export class HyperframesRenderPollingService {
   private async getRequest(params: { organizationId: string; requestId: string }) {
     const { data, error } = await this.supabase
       .from("hyperframes_render_requests")
-      .select("id, production_job_id, composition_revision_id, archive_size_bytes, provider_render_id, provider_status, poll_attempts")
+      .select("id, production_job_id, composition_revision_id, archive_size_bytes, provider_render_id, provider_status, poll_attempts, updated_at")
       .eq("id", params.requestId)
       .eq("organization_id", params.organizationId)
       .maybeSingle();

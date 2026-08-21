@@ -32,6 +32,7 @@ test("preserves deck HTML as editable clips and labels missing timings as estima
   assert.equal(document.canvas.durationSeconds, 10);
   assert.equal(document.clips[0]?.source.type, "DECK_SLIDE");
   assert.equal(document.clips[0]?.timingSource, "ESTIMATED");
+  assert.equal(document.clips[0]?.layout.zIndex, 1);
   assert.match(document.clips[0]?.source.html || "", /<h1>Uno<\/h1>/);
   assert.equal(document.clips[1]?.startSeconds, 5);
 });
@@ -67,6 +68,30 @@ test("keeps production media as references instead of copying files", () => {
   assert.equal(document.clips[0]?.source.type, "PRODUCTION_ASSET");
   assert.equal(document.clips[0]?.source.productionAssetId, "00000000-0000-4000-8000-000000000001");
   assert.equal(document.clips[0]?.volume, 0);
+  assert.equal(document.clips[0]?.mediaFit, "CONTAIN");
+});
+
+test("centers a vertical b-roll at source aspect without hiding its frame", () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{
+      checksum: "9".repeat(64), durationSeconds: 8, fileSizeBytes: 40, mimeType: "video/mp4",
+      productionAssetId: "00000000-0000-4000-8000-000000000099", publicUrl: null,
+      sourceHeight: 1920, sourceWidth: 1080, storageBucket: "production-assets",
+      storagePath: "production-assets/vertical.mp4", timelineRole: "BROLL",
+    }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Vertical" },
+  });
+  const clip = document.clips[0]!;
+
+  assert.equal(clip.mediaFit, "CONTAIN");
+  assert.deepEqual(clip.layout, { height: 1080, opacity: 1, rotation: 0, width: 608, x: 656, y: 0, zIndex: 2 });
+  assert.deepEqual(clip.source, {
+    productionAssetId: "00000000-0000-4000-8000-000000000099",
+    sourceHeight: 1920,
+    sourceWidth: 1080,
+    type: "PRODUCTION_ASSET",
+  });
 });
 
 test("separates voice and music into semantic layers the agent can identify", () => {
@@ -120,6 +145,7 @@ test("preserves the production asset name so an avatar clip is identifiable in t
   });
 
   assert.equal(document.clips[0]?.label, "Presentador avatar.mp4");
+  assert.equal(document.clips[0]?.layout.zIndex, 2);
 });
 
 test("uses source durations for the base template and distributes b-roll clips", () => {
@@ -271,6 +297,41 @@ test("reconciliation prefers one full avatar over its generated fragments", () =
   ));
 
   assert.deepEqual(avatarIds, [assets[0]!.productionAssetId]);
+});
+
+test("reconciles an unframed legacy B-roll to full-source fit without overriding authored crop", () => {
+  const asset = {
+    checksum: "8".repeat(64), durationSeconds: 8, fileSizeBytes: 4, mimeType: "video/mp4",
+    productionAssetId: "00000000-0000-4000-8000-000000000098", publicUrl: null,
+    sourceHeight: 1920, sourceWidth: 1080, storageBucket: "production-assets",
+    storagePath: "production-assets/legacy-vertical.mp4", timelineRole: "BROLL" as const,
+  };
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ ...asset, sourceHeight: undefined, sourceWidth: undefined }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Legacy" },
+  });
+  delete document.clips[0]!.mediaFit;
+  const reconciled = reconcileCompositionDocument({
+    deckDependencyAssetIds: new Set(),
+    document,
+    productionAssets: [asset],
+  });
+  const clip = reconciled.document.clips[0]!;
+
+  assert.equal(reconciled.changed, true);
+  assert.equal(clip.mediaFit, "CONTAIN");
+  assert.deepEqual(clip.layout, { height: 1080, opacity: 1, rotation: 0, width: 608, x: 656, y: 0, zIndex: 2 });
+
+  const croppedDocument = structuredClone(document);
+  croppedDocument.clips[0]!.crop = { bottom: 10, left: 10, right: 10, top: 10 };
+  const cropped = reconcileCompositionDocument({
+    deckDependencyAssetIds: new Set(),
+    document: croppedDocument,
+    productionAssets: [asset],
+  }).document.clips[0]!;
+  assert.equal(cropped.mediaFit, undefined);
+  assert.deepEqual(cropped.layout, croppedDocument.clips[0]!.layout);
 });
 
 test("removes only deck-owned raster assets from an existing timeline", () => {

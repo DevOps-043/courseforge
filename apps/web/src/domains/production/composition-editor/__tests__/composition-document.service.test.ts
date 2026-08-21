@@ -6,6 +6,18 @@ import {
   getCurrentCompositionDocument,
   normalizeCompositionPersistenceError,
 } from "../composition-document.service";
+import { normalizeCompositionDocumentLayerDepths } from "../composition-layer-depth";
+
+test("normalizes legacy layer depths into the 0 to 10 contract", () => {
+  const normalized = normalizeCompositionDocumentLayerDepths({
+    clips: [
+      { id: "behind", layout: { zIndex: -25 } },
+      { id: "ahead", layout: { zIndex: 250 } },
+    ],
+  }) as { clips: Array<{ layout: { zIndex: number } }> };
+
+  assert.deepEqual(normalized.clips.map((clip) => clip.layout.zIndex), [0, 10]);
+});
 
 test("uses the stored document hash as the concurrency token", async () => {
   const storedHash = "a".repeat(64);

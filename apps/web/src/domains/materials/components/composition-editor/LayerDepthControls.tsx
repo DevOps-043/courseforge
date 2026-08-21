@@ -4,9 +4,11 @@ import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Layers2, Save } from "lucide-react";
 import type { CompositionClip } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
-
-const MIN_LAYER_DEPTH = -100;
-const MAX_LAYER_DEPTH = 100;
+import {
+  COMPOSITION_LAYER_MAX,
+  COMPOSITION_LAYER_MIN,
+  clampCompositionLayerDepth,
+} from "@/domains/production/composition-editor/composition-layer-depth";
 
 interface LayerDepthControlsProps {
   clip: CompositionClip;
@@ -20,7 +22,7 @@ export function LayerDepthControls({ clip, disabled, onPatch }: LayerDepthContro
   useEffect(() => setDepth(String(clip.layout.zIndex)), [clip.id, clip.layout.zIndex]);
 
   const persistDepth = async (requestedDepth: number) => {
-    const nextDepth = clampDepth(requestedDepth);
+    const nextDepth = clampCompositionLayerDepth(requestedDepth);
     if (nextDepth === clip.layout.zIndex) {
       setDepth(String(nextDepth));
       return;
@@ -53,7 +55,7 @@ export function LayerDepthControls({ clip, disabled, onPatch }: LayerDepthContro
         <div className="flex items-center gap-1">
           <button
             type="button"
-            disabled={disabled || clip.layout.zIndex <= MIN_LAYER_DEPTH}
+            disabled={disabled || clip.layout.zIndex <= COMPOSITION_LAYER_MIN}
             aria-label={`Enviar ${clip.label} un plano hacia atrás`}
             onClick={() => void persistDepth(clip.layout.zIndex - 1)}
             className="rounded-md border border-slate-300 p-1.5 text-slate-600 hover:bg-white disabled:opacity-40 dark:border-white/15 dark:text-gray-300 dark:hover:bg-white/10"
@@ -63,7 +65,7 @@ export function LayerDepthControls({ clip, disabled, onPatch }: LayerDepthContro
           </button>
           <button
             type="button"
-            disabled={disabled || clip.layout.zIndex >= MAX_LAYER_DEPTH}
+            disabled={disabled || clip.layout.zIndex >= COMPOSITION_LAYER_MAX}
             aria-label={`Traer ${clip.label} un plano hacia delante`}
             onClick={() => void persistDepth(clip.layout.zIndex + 1)}
             className="rounded-md border border-slate-300 p-1.5 text-slate-600 hover:bg-white disabled:opacity-40 dark:border-white/15 dark:text-gray-300 dark:hover:bg-white/10"
@@ -79,8 +81,8 @@ export function LayerDepthControls({ clip, disabled, onPatch }: LayerDepthContro
             aria-label={`Profundidad visual de ${clip.label}`}
             disabled={disabled}
             type="number"
-            min={MIN_LAYER_DEPTH}
-            max={MAX_LAYER_DEPTH}
+            min={COMPOSITION_LAYER_MIN}
+            max={COMPOSITION_LAYER_MAX}
             step={1}
             value={depth}
             onChange={(event) => setDepth(event.target.value)}
@@ -101,12 +103,8 @@ export function LayerDepthControls({ clip, disabled, onPatch }: LayerDepthContro
   );
 }
 
-function clampDepth(value: number) {
-  return Math.max(MIN_LAYER_DEPTH, Math.min(MAX_LAYER_DEPTH, Math.round(value)));
-}
-
 function describeDepth(depth: number) {
-  if (depth < 0) return "Fondo";
-  if (depth > 0) return "Primer plano";
-  return "Plano base";
+  if (depth === COMPOSITION_LAYER_MIN) return "Fondo";
+  if (depth === COMPOSITION_LAYER_MAX) return "Primer plano";
+  return "Plano intermedio";
 }

@@ -77,6 +77,11 @@ const clipCropOperationSchema = z.object({
   type: z.literal("clip.crop"),
 }).strict();
 
+const clipMediaFitOperationSchema = z.object({
+  mediaFit: z.enum(["CONTAIN", "COVER"]),
+  type: z.literal("clip.media-fit"),
+}).strict();
+
 /** Restores one source asset and consolidates all of its derived timeline fragments. */
 const clipResetAssetOperationSchema = z.object({
   type: z.literal("clip.reset-asset"),
@@ -202,6 +207,7 @@ const clipPatchOperationSchema = z.discriminatedUnion("type", [
   clipDurationOperationSchema,
   clipEstimatedTimingOperationSchema,
   clipLayoutOperationSchema,
+  clipMediaFitOperationSchema,
   clipRemoveOperationSchema,
   clipTemplateOperationSchema,
   clipTrimOperationSchema,

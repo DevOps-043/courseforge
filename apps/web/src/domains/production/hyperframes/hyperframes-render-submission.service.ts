@@ -69,6 +69,11 @@ type ExistingRequest = {
   provider_status: string;
 };
 
+type ActiveRender = {
+  jobId: string;
+  request: ExistingRequest | null;
+};
+
 export class HyperframesRenderSubmissionError extends Error {
   constructor(
     message: string,
@@ -123,6 +128,27 @@ export class HyperframesRenderSubmissionService {
     });
     assertPassingPreflight(declaredPreflight);
 
+    const activeRender = await this.findActiveRender({
+      componentId: context.componentId,
+      organizationId: input.organizationId,
+    });
+    if (activeRender) {
+      if (!activeRender.request) {
+        throw new HyperframesRenderSubmissionError(
+          "Este video ya tiene un render iniciándose. Espera unos segundos y actualiza el estado.",
+        );
+      }
+      return {
+        jobId: activeRender.jobId,
+        preflight: declaredPreflight,
+        providerAssetId: activeRender.request.provider_asset_id,
+        providerRenderId: activeRender.request.provider_render_id,
+        providerStatus: activeRender.request.provider_status,
+        renderRequestId: activeRender.request.id,
+        reused: true,
+      };
+    }
+
     const jobInput = {
       aspect_ratio: input.aspectRatio,
       format: input.format || "mp4",
@@ -139,15 +165,42 @@ export class HyperframesRenderSubmissionService {
       jobType: PRODUCTION_JOB_TYPES.HYPERFRAMES_RENDER,
       provider: PRODUCTION_PROVIDERS.HYPERFRAMES,
     });
-    const job = await createOrReuseProductionJob(this.supabase, {
-      context,
-      createdBy: input.createdBy,
-      idempotencyKey,
-      inputSnapshot: jobInput,
-      jobType: PRODUCTION_JOB_TYPES.HYPERFRAMES_RENDER,
-      provider: PRODUCTION_PROVIDERS.HYPERFRAMES,
-      providerModel: HYPERFRAMES_COMPOSITION_FORMAT,
-    });
+    let job: Awaited<ReturnType<typeof createOrReuseProductionJob>>;
+    try {
+      job = await createOrReuseProductionJob(this.supabase, {
+        context,
+        createdBy: input.createdBy,
+        idempotencyKey,
+        inputSnapshot: jobInput,
+        jobType: PRODUCTION_JOB_TYPES.HYPERFRAMES_RENDER,
+        provider: PRODUCTION_PROVIDERS.HYPERFRAMES,
+        providerModel: HYPERFRAMES_COMPOSITION_FORMAT,
+      });
+    } catch (error) {
+      // The database trigger is the final guard for two users submitting in
+      // the same instant. Return the winner instead of surfacing a generic 500.
+      const concurrentRender = await this.findActiveRender({
+        componentId: context.componentId,
+        organizationId: input.organizationId,
+      });
+      if (concurrentRender?.request) {
+        return {
+          jobId: concurrentRender.jobId,
+          preflight: declaredPreflight,
+          providerAssetId: concurrentRender.request.provider_asset_id,
+          providerRenderId: concurrentRender.request.provider_render_id,
+          providerStatus: concurrentRender.request.provider_status,
+          renderRequestId: concurrentRender.request.id,
+          reused: true,
+        };
+      }
+      if (concurrentRender) {
+        throw new HyperframesRenderSubmissionError(
+          "Este video ya tiene un render iniciándose. Espera unos segundos y actualiza el estado.",
+        );
+      }
+      throw error;
+    }
     let request: ExistingRequest;
     try {
       request = await this.ensureRenderRequest({
@@ -175,6 +228,7 @@ export class HyperframesRenderSubmissionService {
     }
 
     try {
+      await this.markUploading(job.id, request.id);
       const archiveBytes = await this.downloadAndVerifyArchive(revision, manifest);
       const upload = await this.client.uploadProjectArchive({
         bytes: archiveBytes,
@@ -214,6 +268,39 @@ export class HyperframesRenderSubmissionService {
       await this.markSubmissionFailed(job.id, request.id, error);
       throw error;
     }
+  }
+
+  private async findActiveRender(params: {
+    componentId: string;
+    organizationId: string;
+  }): Promise<ActiveRender | null> {
+    const { data: job, error: jobError } = await this.supabase
+      .from("production_jobs")
+      .select("id")
+      .eq("organization_id", params.organizationId)
+      .eq("material_component_id", params.componentId)
+      .eq("job_type", PRODUCTION_JOB_TYPES.HYPERFRAMES_RENDER)
+      .eq("provider", PRODUCTION_PROVIDERS.HYPERFRAMES)
+      .in("status", [
+        PRODUCTION_JOB_STATUSES.PENDING,
+        PRODUCTION_JOB_STATUSES.RUNNING,
+        PRODUCTION_JOB_STATUSES.WAITING_PROVIDER,
+        PRODUCTION_JOB_STATUSES.RETRY_SCHEDULED,
+      ])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (jobError) throw jobError;
+    if (!job?.id) return null;
+
+    const { data: request, error: requestError } = await this.supabase
+      .from("hyperframes_render_requests")
+      .select("id, callback_id, provider_asset_id, provider_render_id, provider_status")
+      .eq("organization_id", params.organizationId)
+      .eq("production_job_id", job.id)
+      .maybeSingle();
+    if (requestError) throw requestError;
+    return { jobId: job.id as string, request: request as ExistingRequest | null };
   }
 
   private async getRevision(input: HyperframesRenderSubmissionInput) {
@@ -290,7 +377,7 @@ export class HyperframesRenderSubmissionService {
         idempotency_key: params.idempotencyKey,
         organization_id: params.organizationId,
         production_job_id: params.jobId,
-        provider_status: "PENDING",
+        provider_status: "UPLOADING",
       })
       .select("id, callback_id, provider_asset_id, provider_render_id, provider_status")
       .single();
@@ -309,6 +396,26 @@ export class HyperframesRenderSubmissionService {
       ? data.default_callback_url.trim()
       : "";
     return callbackUrl || undefined;
+  }
+
+  private async markUploading(jobId: string, requestId: string) {
+    const now = new Date().toISOString();
+    const { error: jobError } = await this.supabase
+      .from("production_jobs")
+      .update({
+        progress: [{ at: now, percent: 1, stage: "uploading" }],
+        started_at: now,
+        status: PRODUCTION_JOB_STATUSES.RUNNING,
+        updated_at: now,
+      })
+      .eq("id", jobId);
+    if (jobError) throw jobError;
+
+    const { error: requestError } = await this.supabase
+      .from("hyperframes_render_requests")
+      .update({ provider_status: "UPLOADING", updated_at: now })
+      .eq("id", requestId);
+    if (requestError) throw requestError;
   }
 
   private async downloadAndVerifyArchive(

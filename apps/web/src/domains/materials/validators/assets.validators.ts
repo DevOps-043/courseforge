@@ -26,8 +26,10 @@ export const bRollClipSchema = z.object({
   public_url: z.string().url(),
   file_name: z.string().trim().optional(),
   duration: z.number().positive().optional(),
+  height: z.number().int().positive().max(16_384).optional(),
   prompt_used: z.string().trim().optional(),
   order: z.number().int().min(1),
+  width: z.number().int().positive().max(16_384).optional(),
 });
 
 export const avatarGenerationModeSchema = z.enum([
