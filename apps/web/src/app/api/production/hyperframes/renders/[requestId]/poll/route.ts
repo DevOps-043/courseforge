@@ -18,6 +18,7 @@ import {
   HyperframesRenderPollingError,
   HyperframesRenderPollingService,
 } from "@/domains/production/hyperframes/hyperframes-render-polling.service";
+import { HyperframesRenderRecoveryService } from "@/domains/production/hyperframes/hyperframes-render-recovery.service";
 import { createClient } from "@/utils/supabase/server";
 
 interface RouteContext {
@@ -26,47 +27,68 @@ interface RouteContext {
 
 const requestIdSchema = z.string().uuid();
 
+/** Returns tenant-scoped durable state without exposing the service-role key. */
+export async function GET(_request: Request, context: RouteContext) {
+  try {
+    const { requestId: rawRequestId } = await context.params;
+    const requestId = requestIdSchema.parse(rawRequestId);
+    const authorized = await resolveAuthorizedRenderContext();
+    if (authorized.response) return authorized.response;
+
+    const service = new HyperframesRenderRecoveryService(authorized.admin);
+    const result = await service.findById({
+      organizationId: authorized.organizationId,
+      requestId,
+    });
+    if (!result) {
+      return NextResponse.json(
+        { error: "Render HyperFrames no encontrado para esta empresa." },
+        { status: 404 },
+      );
+    }
+    return NextResponse.json(
+      { success: true, data: result },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
+  } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: "Identificador de render inválido." },
+        { status: 400 },
+      );
+    }
+    console.error("[API /production/hyperframes/renders/:requestId/poll GET] Unexpected error:", {
+      ...getErrorDetails(error),
+      message: getErrorMessage(error),
+    });
+    return NextResponse.json(
+      { error: "Error interno al consultar el estado durable del render." },
+      { status: 500 },
+    );
+  }
+}
+
 /**
- * Explicit polling endpoint. The browser/admin scheduler calls this endpoint;
- * HeyGen is never given a callback URL and cannot call Courseforge directly.
+ * Optional user-triggered reconciliation nudge. Webhooks and scheduled Edge
+ * workers own durable tracking even when no browser is open.
  */
 export async function POST(_request: Request, context: RouteContext) {
   try {
     const { requestId: rawRequestId } = await context.params;
     const requestId = requestIdSchema.parse(rawRequestId);
-    const supabase = await createClient();
-    const authenticatedUser = await getAuthenticatedUser(supabase);
-    if (!authenticatedUser) {
-      return NextResponse.json({ error: "No autorizado." }, { status: 401 });
-    }
-
-    if (!(await canReviewContent(authenticatedUser.userId))) {
-      return NextResponse.json(
-        { error: "No tienes permisos para consultar renders de HyperFrames." },
-        { status: 403 },
-      );
-    }
-
-    const tenant = await resolveActiveTenantContext();
-    if (!tenant) {
-      return NextResponse.json(
-        { error: "Empresa no válida o no autorizada." },
-        { status: 403 },
-      );
-    }
-
-    const admin = getServiceRoleClient();
+    const authorized = await resolveAuthorizedRenderContext();
+    if (authorized.response) return authorized.response;
     const hyperframesAuth = await getHyperframesClientForOrganization({
       allowGlobalFallback: false,
-      organizationId: tenant.organizationId,
-      supabase: admin,
+      organizationId: authorized.organizationId,
+      supabase: authorized.admin,
     });
     const service = new HyperframesRenderPollingService(
-      admin,
+      authorized.admin,
       hyperframesAuth.client,
     );
     const result = await service.poll({
-      organizationId: tenant.organizationId,
+      organizationId: authorized.organizationId,
       requestId,
     });
 
@@ -103,4 +125,42 @@ export async function POST(_request: Request, context: RouteContext) {
       { status: 500 },
     );
   }
+}
+
+async function resolveAuthorizedRenderContext() {
+  const supabase = await createClient();
+  const authenticatedUser = await getAuthenticatedUser(supabase);
+  if (!authenticatedUser) {
+    return {
+      admin: null as never,
+      organizationId: null as never,
+      response: NextResponse.json({ error: "No autorizado." }, { status: 401 }),
+    };
+  }
+  if (!(await canReviewContent(authenticatedUser.userId))) {
+    return {
+      admin: null as never,
+      organizationId: null as never,
+      response: NextResponse.json(
+        { error: "No tienes permisos para consultar renders de HyperFrames." },
+        { status: 403 },
+      ),
+    };
+  }
+  const tenant = await resolveActiveTenantContext();
+  if (!tenant) {
+    return {
+      admin: null as never,
+      organizationId: null as never,
+      response: NextResponse.json(
+        { error: "Empresa no válida o no autorizada." },
+        { status: 403 },
+      ),
+    };
+  }
+  return {
+    admin: getServiceRoleClient(),
+    organizationId: tenant.organizationId,
+    response: null,
+  };
 }

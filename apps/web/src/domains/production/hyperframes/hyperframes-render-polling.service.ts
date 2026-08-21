@@ -9,10 +9,6 @@ import {
   decideHyperframesPollingAction,
   isUnsubmittedRenderStale,
 } from "./hyperframes-polling.service";
-import {
-  HyperframesVideoImportService,
-  type HyperframesImportedVideo,
-} from "./hyperframes-video-import.service";
 
 type HyperframesRenderRequestRow = {
   archive_size_bytes: number;
@@ -45,25 +41,20 @@ export class HyperframesRenderPollingError extends Error {
 }
 
 export interface HyperframesPollResult {
-  action: "WAIT" | "COMPLETE" | "FAIL";
-  finalVideo?: HyperframesImportedVideo;
+  action: "WAIT" | "IMPORT_QUEUED" | "FAIL";
   providerStatus: string;
   requestId: string;
 }
 
 /**
- * Reconciles one cloud render with Courseforge. It is intentionally invoked by
- * authenticated polling rather than receiving provider callbacks/webhooks.
+ * Optional authenticated reconciliation nudge. Durable cron/webhook workers
+ * remain authoritative; this endpoint never downloads or buffers the video.
  */
 export class HyperframesRenderPollingService {
-  private readonly importer: HyperframesVideoImportService;
-
   constructor(
     private readonly supabase: SupabaseClient<any, "public", any>,
     private readonly client: HyperframesCloudClient,
-  ) {
-    this.importer = new HyperframesVideoImportService(supabase);
-  }
+  ) {}
 
   async poll(params: {
     organizationId: string;
@@ -154,51 +145,16 @@ export class HyperframesRenderPollingService {
       };
     }
 
-    try {
-      const finalVideo = await this.importer.importCompletedRender({
-        artifactId: job.artifact_id,
-        componentId: job.material_component_id,
-        createdBy: job.created_by,
-        durationSeconds: render.duration || null,
-        jobId: job.id,
-        organizationId: job.organization_id,
-        renderId: render.render_id,
-        requestId: request.id,
-        thumbnailUrl: render.thumbnail_url || null,
-        videoUrl: render.video_url!,
-      });
-      await this.updateRequest({
-        id: request.id,
-        pollAttempts: request.poll_attempts + 1,
-        providerError: null,
-        providerStatus,
-        updatedAt: now,
-      });
-      await this.updateJobSucceeded({
-        finalVideo,
-        job,
-        providerRenderId: render.render_id,
-        providerStatus: decision.providerStatus,
-        updatedAt: now,
-      });
-      return {
-        action: "COMPLETE",
-        finalVideo,
-        providerStatus: decision.providerStatus,
-        requestId: request.id,
-      };
-    } catch (error) {
-      const message = toSafeErrorMessage(error);
-      await this.markFailed({
-        errorMessage: message,
-        jobId: job.id,
-        pollAttempts: request.poll_attempts + 1,
-        providerStatus: "FAILED",
-        requestId: request.id,
-        updatedAt: now,
-      });
-      throw new HyperframesRenderPollingError(message, 502);
-    }
+    const { error: queueError } = await this.supabase.rpc("queue_hyperframes_render_import", {
+      p_provider_render_id: render.render_id,
+      p_request_id: request.id,
+    });
+    if (queueError) throw queueError;
+    return {
+      action: "IMPORT_QUEUED",
+      providerStatus: decision.providerStatus,
+      requestId: request.id,
+    };
   }
 
   private async getRequest(params: { organizationId: string; requestId: string }) {
@@ -253,7 +209,7 @@ export class HyperframesRenderPollingService {
 
   private async updateJobWaiting(params: {
     job: HyperframesProductionJobRow;
-    progressPercent: number;
+    progressPercent: number | null;
     providerRenderId: string;
     providerStatus: string;
     updatedAt: string;
@@ -275,36 +231,6 @@ export class HyperframesRenderPollingService {
     if (error) throw error;
   }
 
-  private async updateJobSucceeded(params: {
-    finalVideo: HyperframesImportedVideo;
-    job: HyperframesProductionJobRow;
-    providerRenderId: string;
-    providerStatus: string;
-    updatedAt: string;
-  }) {
-    const { error } = await this.supabase
-      .from("production_jobs")
-      .update({
-        completed_at: params.updatedAt,
-        output_snapshot: {
-          ...(params.job.output_snapshot || {}),
-          final_video: {
-            checksum: params.finalVideo.checksum,
-            file_size_bytes: params.finalVideo.fileSizeBytes,
-            public_url: params.finalVideo.publicUrl,
-            storage_path: params.finalVideo.storagePath,
-          },
-          provider_render_id: params.providerRenderId,
-          provider_status: params.providerStatus,
-        },
-        progress: appendProgress(params.job.progress, 100, "completed", params.updatedAt),
-        provider_job_id: params.providerRenderId,
-        status: PRODUCTION_JOB_STATUSES.SUCCEEDED,
-        updated_at: params.updatedAt,
-      })
-      .eq("id", params.job.id);
-    if (error) throw error;
-  }
 
   private async markFailed(params: {
     errorMessage: string;
@@ -337,7 +263,7 @@ export class HyperframesRenderPollingService {
 
 function appendProgress(
   existing: unknown[] | null,
-  percent: number,
+  percent: number | null,
   stage: string,
   at: string,
 ) {
@@ -349,9 +275,4 @@ function toStoredProviderStatus(status: string) {
   if (status === "queued") return "PENDING";
   if (status === "rendering") return "RUNNING";
   return status.toUpperCase();
-}
-
-function toSafeErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message.trim()) return error.message.slice(0, 500);
-  return "No se pudo importar el video final de HyperFrames.";
 }

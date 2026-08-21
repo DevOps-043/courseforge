@@ -69,4 +69,33 @@ describe("HyperFrames Cloud client", () => {
       /idempotencia/,
     );
   });
+
+  it("includes the durable callback correlation when configured", async () => {
+    let submittedBody = "";
+    const client = new HyperframesCloudClient({
+      apiKey: "test-key-123456",
+      fetchImpl: async (_input, init) => {
+        submittedBody = String(init?.body || "");
+        return jsonResponse({ data: { render_id: "hfr_callback" } }, 202);
+      },
+    });
+
+    await client.createRender({
+      aspectRatio: "16:9",
+      assetId: "asst_123",
+      callbackId: "request-correlation-1",
+      callbackUrl: "https://project.supabase.co/functions/v1/heygen-hyperframes-webhook",
+      idempotencyKey: "hf:render:callback",
+    });
+
+    assert.deepEqual(JSON.parse(submittedBody), {
+      aspect_ratio: "16:9",
+      callback_id: "request-correlation-1",
+      callback_url: "https://project.supabase.co/functions/v1/heygen-hyperframes-webhook",
+      format: "mp4",
+      project: { asset_id: "asst_123", type: "asset_id" },
+      quality: "high",
+      resolution: "1080p",
+    });
+  });
 });

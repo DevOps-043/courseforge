@@ -174,9 +174,8 @@ export function HyperframesCompositionPanel({
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "No se pudo consultar el render.");
       setRenderRequest((current) => current ? { ...current, providerStatus: payload.data.providerStatus } : current);
-      if (payload.data.action === "COMPLETE") {
-        toast.success("Video final guardado en Courseforge.");
-        onVideoCompleted?.();
+      if (payload.data.action === "IMPORT_QUEUED") {
+        toast.success("Render terminado; Courseforge importará el video en segundo plano.");
       } else if (payload.data.action === "FAIL") {
         toast.error("El servicio de render reportó un fallo.");
       }

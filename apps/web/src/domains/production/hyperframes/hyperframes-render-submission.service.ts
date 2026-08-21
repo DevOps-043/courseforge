@@ -62,6 +62,7 @@ type StoredRevisionAsset = {
 };
 
 type ExistingRequest = {
+  callback_id: string;
   id: string;
   provider_asset_id: string | null;
   provider_render_id: string | null;
@@ -260,7 +261,7 @@ export class HyperframesRenderSubmissionService {
   async resume(params: { organizationId: string; requestId: string }) {
     const { data: storedRequest, error: requestError } = await this.supabase
       .from("hyperframes_render_requests")
-      .select("id, organization_id, production_job_id, composition_revision_id, idempotency_key, provider_asset_id, provider_render_id, provider_status")
+      .select("id, organization_id, production_job_id, composition_revision_id, idempotency_key, callback_id, provider_asset_id, provider_render_id, provider_status")
       .eq("id", params.requestId)
       .eq("organization_id", params.organizationId)
       .maybeSingle();
@@ -358,6 +359,8 @@ export class HyperframesRenderSubmissionService {
       const render = await client.createRender({
         aspectRatio: input.aspectRatio,
         assetId: providerAssetId,
+        callbackId: request.callback_id,
+        callbackUrl: await this.getWebhookCallbackUrl(input.organizationId),
         composition: revision.entry_point,
         format: input.format || "mp4",
         fps: input.fps || 30,
@@ -403,6 +406,7 @@ export class HyperframesRenderSubmissionService {
         PRODUCTION_JOB_STATUSES.PENDING,
         PRODUCTION_JOB_STATUSES.RUNNING,
         PRODUCTION_JOB_STATUSES.WAITING_PROVIDER,
+        PRODUCTION_JOB_STATUSES.RETRY_SCHEDULED,
       ])
       .order("created_at", { ascending: false })
       .limit(1)
@@ -412,7 +416,7 @@ export class HyperframesRenderSubmissionService {
 
     const { data: request, error: requestError } = await this.supabase
       .from("hyperframes_render_requests")
-      .select("id, provider_asset_id, provider_render_id, provider_status")
+      .select("id, callback_id, provider_asset_id, provider_render_id, provider_status")
       .eq("organization_id", params.organizationId)
       .eq("production_job_id", job.id)
       .maybeSingle();
@@ -483,7 +487,7 @@ export class HyperframesRenderSubmissionService {
   }): Promise<ExistingRequest> {
     const { data: existing, error: readError } = await this.supabase
       .from("hyperframes_render_requests")
-      .select("id, provider_asset_id, provider_render_id, provider_status")
+      .select("id, callback_id, provider_asset_id, provider_render_id, provider_status")
       .eq("production_job_id", params.jobId)
       .maybeSingle();
     if (readError) throw readError;
@@ -499,7 +503,7 @@ export class HyperframesRenderSubmissionService {
         production_job_id: params.jobId,
         provider_status: "CREATED",
       })
-      .select("id, provider_asset_id, provider_render_id, provider_status")
+      .select("id, callback_id, provider_asset_id, provider_render_id, provider_status")
       .single();
     if (error) throw error;
     return data as ExistingRequest;
@@ -538,6 +542,19 @@ export class HyperframesRenderSubmissionService {
       .eq("id", params.jobId);
     if (jobError) throw jobError;
     return true;
+  }
+
+  private async getWebhookCallbackUrl(organizationId: string): Promise<string | undefined> {
+    const { data, error } = await this.supabase
+      .from("heygen_workspace_connections")
+      .select("default_callback_url")
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+    if (error) throw error;
+    const callbackUrl = typeof data?.default_callback_url === "string"
+      ? data.default_callback_url.trim()
+      : "";
+    return callbackUrl || undefined;
   }
 
   private async markUploading(jobId: string, requestId: string) {

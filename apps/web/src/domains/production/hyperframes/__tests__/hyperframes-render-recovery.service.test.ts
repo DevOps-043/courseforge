@@ -38,10 +38,41 @@ function createSupabaseStub(rows: Record<string, unknown>) {
 }
 
 describe("HyperFrames render recovery", () => {
+  it("returns one request only when both id and organization match", async () => {
+    const stub = createSupabaseStub({
+      hyperframes_render_requests: {
+        id: "request-1",
+        import_status: "QUEUED",
+        provider_render_id: "provider-1",
+        provider_status: "COMPLETED",
+      },
+    });
+    const service = new HyperframesRenderRecoveryService(stub.client as never);
+
+    const result = await service.findById({
+      organizationId: "organization-1",
+      requestId: "request-1",
+    });
+
+    assert.deepEqual(result, {
+      id: "request-1",
+      importStatus: "QUEUED",
+      providerRenderId: "provider-1",
+      providerStatus: "COMPLETED",
+    });
+    assert.ok(stub.filters.some(
+      (filter) => filter.column === "id" && filter.value === "request-1",
+    ));
+    assert.ok(stub.filters.some(
+      (filter) => filter.column === "organization_id" && filter.value === "organization-1",
+    ));
+  });
+
   it("returns the latest durable request and scopes every lookup to the organization", async () => {
     const stub = createSupabaseStub({
       hyperframes_render_requests: {
         id: "request-1",
+        import_status: "NONE",
         provider_render_id: "provider-1",
         provider_status: "RUNNING",
       },
@@ -59,6 +90,7 @@ describe("HyperFrames render recovery", () => {
       id: "request-1",
       providerRenderId: "provider-1",
       providerStatus: "RUNNING",
+      importStatus: "NONE",
     });
     assert.equal(
       stub.filters.filter(
@@ -72,6 +104,7 @@ describe("HyperFrames render recovery", () => {
     const stub = createSupabaseStub({
       hyperframes_render_requests: {
         id: "request-uploading",
+        import_status: "NONE",
         provider_render_id: null,
         provider_status: "UPLOADING",
       },
@@ -87,6 +120,7 @@ describe("HyperFrames render recovery", () => {
 
     assert.deepEqual(result, {
       id: "request-uploading",
+      importStatus: "NONE",
       providerRenderId: null,
       providerStatus: "UPLOADING",
     });

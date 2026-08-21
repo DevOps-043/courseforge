@@ -31,6 +31,7 @@ import { CompositionPreviewTelemetryBuffer } from "@/domains/production/composit
 import type { CompositionPreviewMetric } from "@/domains/production/composition-editor/composition-preview-telemetry";
 import { clampPreviewPlayhead, classifyPreviewTimeMessage, isPreviewRefreshRequired } from "@/domains/production/composition-editor/composition-preview-playhead.service";
 import { hasCompositionCrop, normalizeCompositionCropInsets, resolveCompositionCropInsets, type CompositionCropInsets } from "@/domains/production/composition-editor/composition-visual-crop.service";
+import { createClient as createBrowserSupabaseClient } from "@/utils/supabase/client";
 
 type PreviewMessage =
   | { type: "courseforge-composition-ready"; duration: number }
@@ -964,11 +965,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       if (!response.ok) throw new Error(body.error || "No se pudo consultar el render.");
 
       setRenderProviderStatus(body.data.providerStatus as string);
-      if (body.data.action === "COMPLETE") {
-        setRenderStatus("completed");
-        setAssemblyError(null);
-        onVideoCompletedRef.current?.();
-      } else if (body.data.action === "FAIL") {
+      if (body.data.action === "FAIL") {
         setRenderStatus("failed");
         setAssemblyError("El envío o HeyGen reportaron que el render falló. Puedes volver a intentarlo.");
       } else {
@@ -990,7 +987,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       { cache: "no-store" },
     );
     const body = await readCompositionApiResponse<{
-      data?: { id: string; providerStatus: string } | null;
+      data?: { id: string; importStatus: string; providerStatus: string } | null;
       error?: string;
     }>(response, "No se pudo recuperar el render pendiente.");
     if (!response.ok) throw new Error(body.error || "No se pudo recuperar el render pendiente.");
@@ -998,7 +995,11 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
 
     const requestId = body.data.id;
     setRenderRequestId(requestId);
-    setRenderProviderStatus(body.data.providerStatus);
+    setRenderProviderStatus(
+      body.data.importStatus && body.data.importStatus !== "NONE"
+        ? body.data.importStatus
+        : body.data.providerStatus,
+    );
     setRenderStatus("rendering");
     setAssemblyError(null);
     void pollAssemblyRender(requestId);
@@ -1026,12 +1027,82 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   }, [recoverActiveRender]);
 
   useEffect(() => {
-    if (!renderRequestId || renderStatus !== "rendering") return;
-    const timer = window.setInterval(() => {
-      void pollAssemblyRender(renderRequestId);
-    }, 10_000);
-    return () => window.clearInterval(timer);
-  }, [pollAssemblyRender, renderRequestId, renderStatus]);
+    if (!renderRequestId) return;
+    const supabase = createBrowserSupabaseClient();
+    let active = true;
+    let completionNotified = false;
+    const applyDurableRenderState = (row: {
+      import_status?: string;
+      provider_status?: string;
+    }) => {
+      if (!active) return;
+      const providerStatus = row.provider_status || "PENDING";
+      const importStatus = row.import_status || "NONE";
+      setRenderProviderStatus(importStatus !== "NONE" ? importStatus : providerStatus);
+
+      if (importStatus === "COMPLETED") {
+        setRenderStatus("completed");
+        setAssemblyError(null);
+        if (!completionNotified) {
+          completionNotified = true;
+          onVideoCompletedRef.current?.();
+        }
+      } else if (providerStatus === "FAILED" || importStatus === "FAILED") {
+        setRenderStatus("failed");
+        setAssemblyError("No se pudo completar el render o importar el video final. Revisa el estado antes de reintentar.");
+      } else {
+        setRenderStatus("rendering");
+        setAssemblyError(null);
+      }
+    };
+    const refreshDurableRenderState = async () => {
+      const response = await fetch(
+        `/api/production/hyperframes/renders/${encodeURIComponent(renderRequestId)}/poll`,
+        { cache: "no-store" },
+      );
+      const body = await readCompositionApiResponse<{
+        data?: { importStatus: string; providerStatus: string };
+        error?: string;
+      }>(response, "No se pudo actualizar el estado del render.");
+      if (!response.ok || !body.data) {
+        throw new Error(body.error || "No se pudo actualizar el estado del render.");
+      }
+      applyDurableRenderState({
+        import_status: body.data.importStatus,
+        provider_status: body.data.providerStatus,
+      });
+    };
+    const channel = supabase
+      .channel(`hyperframes-render:${renderRequestId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          filter: `id=eq.${renderRequestId}`,
+          schema: "public",
+          table: "hyperframes_render_requests",
+        },
+        (event: { new: Record<string, unknown> }) => {
+          applyDurableRenderState(event.new as {
+            import_status?: string;
+            provider_status?: string;
+          });
+        },
+      )
+      .subscribe((status: string) => {
+        if (status !== "SUBSCRIBED") return;
+        void refreshDurableRenderState().catch(() => undefined);
+      });
+    const refreshTimer = window.setInterval(() => {
+      void refreshDurableRenderState().catch(() => undefined);
+    }, 15_000);
+    void refreshDurableRenderState().catch(() => undefined);
+    return () => {
+      active = false;
+      window.clearInterval(refreshTimer);
+      void supabase.removeChannel(channel);
+    };
+  }, [renderRequestId]);
 
   async function submitAssemblyRender() {
     if (!assembly || assembly.status !== "READY_FOR_RENDER") return; setAssembling(true); setAssemblyError(null); setRenderStatus("sending");
@@ -1359,7 +1430,9 @@ function AssemblyActions({ assembly, busy, error, history, historyOpen, onApprov
       : normalizedProviderStatus === "SUBMITTING"
         ? "ZIP recibido por HeyGen. Courseforge está creando el render."
       : renderStatus === "rendering"
-        ? `HeyGen está procesando el video${providerStatus ? ` (${providerStatus.toLowerCase()})` : ""}. Courseforge lo importará al terminar.`
+        ? normalizedProviderStatus === "QUEUED" || normalizedProviderStatus === "RETRY_SCHEDULED"
+          ? "Courseforge está preparando la importación del video. Puedes cerrar o recargar esta página."
+          : `HeyGen está procesando el video${providerStatus ? ` (${providerStatus.toLowerCase()})` : ""}. Courseforge lo importará al terminar; puedes cerrar o recargar esta página.`
         : renderStatus === "completed"
           ? "Video completado e importado en Courseforge."
           : "";

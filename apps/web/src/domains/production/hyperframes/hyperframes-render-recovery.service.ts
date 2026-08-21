@@ -11,6 +11,7 @@ interface RecoverableProductionJob {
 
 interface RecoverableRenderRequestRow {
   id: string;
+  import_status: string;
   provider_render_id: string | null;
   provider_status: string;
 }
@@ -19,6 +20,7 @@ export interface RecoverableHyperframesRender {
   id: string;
   providerRenderId: string | null;
   providerStatus: string;
+  importStatus: string;
 }
 
 /**
@@ -30,6 +32,20 @@ export class HyperframesRenderRecoveryService {
   constructor(
     private readonly supabase: SupabaseClient<any, "public", any>,
   ) {}
+
+  async findById(params: {
+    organizationId: string;
+    requestId: string;
+  }): Promise<RecoverableHyperframesRender | null> {
+    const { data, error } = await this.supabase
+      .from("hyperframes_render_requests")
+      .select("id, import_status, provider_render_id, provider_status")
+      .eq("id", params.requestId)
+      .eq("organization_id", params.organizationId)
+      .maybeSingle();
+    if (error) throw error;
+    return toRecoverableRender(data as RecoverableRenderRequestRow | null);
+  }
 
   async findLatestForComposition(params: {
     compositionId: string;
@@ -56,8 +72,9 @@ export class HyperframesRenderRecoveryService {
       .eq("provider", PRODUCTION_PROVIDERS.HYPERFRAMES)
       .in("status", [
         PRODUCTION_JOB_STATUSES.PENDING,
-        PRODUCTION_JOB_STATUSES.RUNNING,
         PRODUCTION_JOB_STATUSES.WAITING_PROVIDER,
+        PRODUCTION_JOB_STATUSES.RUNNING,
+        PRODUCTION_JOB_STATUSES.RETRY_SCHEDULED,
       ])
       .order("created_at", { ascending: false })
       .limit(1)
@@ -67,19 +84,24 @@ export class HyperframesRenderRecoveryService {
 
     const { data: request, error: requestError } = await this.supabase
       .from("hyperframes_render_requests")
-      .select("id, provider_render_id, provider_status")
+      .select("id, import_status, provider_render_id, provider_status")
       .eq("organization_id", params.organizationId)
       .eq("production_job_id", (job as RecoverableProductionJob).id)
       .maybeSingle();
     if (requestError) throw requestError;
 
-    const recoverable = request as RecoverableRenderRequestRow | null;
-    if (!recoverable) return null;
-
-    return {
-      id: recoverable.id,
-      providerRenderId: recoverable.provider_render_id,
-      providerStatus: recoverable.provider_status,
-    };
+    return toRecoverableRender(request as RecoverableRenderRequestRow | null);
   }
+}
+
+function toRecoverableRender(
+  row: RecoverableRenderRequestRow | null,
+): RecoverableHyperframesRender | null {
+  if (!row) return null;
+  return {
+    id: row.id,
+    providerRenderId: row.provider_render_id,
+    providerStatus: row.provider_status,
+    importStatus: row.import_status,
+  };
 }

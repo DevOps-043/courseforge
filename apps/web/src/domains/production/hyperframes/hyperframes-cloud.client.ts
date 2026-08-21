@@ -96,6 +96,8 @@ export class HyperframesCloudClient {
   async createRender(params: {
     aspectRatio: "16:9" | "9:16" | "1:1";
     assetId: string;
+    callbackId?: string;
+    callbackUrl?: string;
     composition?: string;
     format?: "mp4" | "webm" | "mov";
     fps?: number;
@@ -109,6 +111,8 @@ export class HyperframesCloudClient {
     return this.request<{ render_id: string }>("POST", "/v3/hyperframes/renders", {
       body: {
         aspect_ratio: params.aspectRatio,
+        callback_id: params.callbackId,
+        callback_url: params.callbackUrl,
         composition: params.composition,
         format: params.format || "mp4",
         fps: params.fps,
