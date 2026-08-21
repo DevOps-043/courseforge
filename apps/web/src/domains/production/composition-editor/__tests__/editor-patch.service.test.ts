@@ -66,6 +66,22 @@ test("aplica un recorte visual no destructivo y conserva timing, layout y fuente
   assert.deepEqual(result.source, video.source);
 });
 
+test("aplica el mismo recorte visual no destructivo a una diapositiva HTML", () => {
+  const document = baseDocument();
+  const slide = document.clips.find((clip) => clip.kind === "DECK_SLIDE")!;
+  const edited = applyCompositionEditorPatches(document, [{
+    clipId: slide.id,
+    crop: { top: 18, right: 36, bottom: 54, left: 72 },
+    type: "clip.crop",
+  }]);
+  const result = edited.clips.find((clip) => clip.id === slide.id)!;
+
+  assert.deepEqual(result.crop, { top: 18, right: 36, bottom: 54, left: 72 });
+  assert.equal(result.durationSeconds, slide.durationSeconds);
+  assert.deepEqual(result.layout, slide.layout);
+  assert.deepEqual(result.source, slide.source);
+});
+
 test("limita los insets para conservar al menos un píxel visible", () => {
   const document = baseDocument();
   const video = document.clips.find((clip) => clip.kind === "VIDEO")!;

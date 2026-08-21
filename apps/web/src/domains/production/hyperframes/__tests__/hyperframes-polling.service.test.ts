@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { decideHyperframesPollingAction } from "../hyperframes-polling.service";
+import {
+  decideHyperframesPollingAction,
+  isUnsubmittedRenderStale,
+} from "../hyperframes-polling.service";
 
 describe("HyperFrames polling decisions", () => {
   it("keeps queued and rendering jobs in the polling flow", () => {
@@ -12,6 +15,12 @@ describe("HyperFrames polling decisions", () => {
       decideHyperframesPollingAction({ format: "mp4", render_id: "hfr_1", status: "rendering" }).progressPercent,
       65,
     );
+  });
+
+  it("expires an upload that never receives a HeyGen render id", () => {
+    const now = Date.parse("2026-08-21T18:00:00.000Z");
+    assert.equal(isUnsubmittedRenderStale("2026-08-21T17:51:00.000Z", now), false);
+    assert.equal(isUnsubmittedRenderStale("2026-08-21T17:50:00.000Z", now), true);
   });
 
   it("requires a signed video URL before accepting completion", () => {

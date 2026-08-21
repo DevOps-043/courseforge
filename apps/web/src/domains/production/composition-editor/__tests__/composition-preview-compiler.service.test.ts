@@ -170,6 +170,39 @@ test("compiles the native document into a seekable preview with stable visual id
   }
 });
 
+test("applies an HTML slide crop identically in preview and HyperFrames render", async () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: {
+      css: ".slide h1 { opacity: calc(var(--deck-t) / 2); }",
+      fonts: [],
+      height: 1080,
+      slides: [{ animationCount: 1, classes: "slide", html: "<h1>Recortable</h1>", index: 0, label: "Recortable" }],
+      width: 1920,
+    },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 5, subtitle: "Prueba", title: "Deck recortable" },
+  });
+  const slide = document.clips.find((clip) => clip.kind === "DECK_SLIDE")!;
+  const cropped = applyCompositionEditorPatches(document, [{
+    clipId: slide.id,
+    crop: { top: 40, right: 80, bottom: 120, left: 160 },
+    type: "clip.crop",
+  }]);
+  const previewHtml = await compileCompositionPreview({ assetUrls: new Map(), document: cropped });
+  const renderHtml = await compileCompositionPreview({
+    assetUrls: new Map(),
+    document: cropped,
+    target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+  });
+
+  for (const html of [previewHtml, renderHtml]) {
+    assert.match(html, /data-croppable="true"/);
+    assert.match(html, /class="motion-subject deck-content" style="clip-path:inset\(40px 80px 120px 160px\);"/);
+    assert.match(html, /"--deck-t": clip\.duration/);
+  }
+  assert.match(previewHtml, /target\.dataset\.croppable === "true"/);
+});
+
 test("fails closed when a document references an asset without a preview URL", async () => {
   const document = createInitialCompositionDocument({
     animatedDeck: null,

@@ -17,7 +17,7 @@ interface RecoverableRenderRequestRow {
 
 export interface RecoverableHyperframesRender {
   id: string;
-  providerRenderId: string;
+  providerRenderId: string | null;
   providerStatus: string;
 }
 
@@ -54,7 +54,11 @@ export class HyperframesRenderRecoveryService {
       .eq("material_component_id", componentId)
       .eq("job_type", PRODUCTION_JOB_TYPES.HYPERFRAMES_RENDER)
       .eq("provider", PRODUCTION_PROVIDERS.HYPERFRAMES)
-      .eq("status", PRODUCTION_JOB_STATUSES.WAITING_PROVIDER)
+      .in("status", [
+        PRODUCTION_JOB_STATUSES.PENDING,
+        PRODUCTION_JOB_STATUSES.RUNNING,
+        PRODUCTION_JOB_STATUSES.WAITING_PROVIDER,
+      ])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -70,7 +74,7 @@ export class HyperframesRenderRecoveryService {
     if (requestError) throw requestError;
 
     const recoverable = request as RecoverableRenderRequestRow | null;
-    if (!recoverable?.provider_render_id) return null;
+    if (!recoverable) return null;
 
     return {
       id: recoverable.id,

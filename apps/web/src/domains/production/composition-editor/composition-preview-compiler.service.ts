@@ -136,7 +136,7 @@ function renderClip(
   const crop = resolveCompositionCropInsets(clip.crop, clip.layout);
   const cropData = ` data-crop-top="${crop.top}" data-crop-right="${crop.right}" data-crop-bottom="${crop.bottom}" data-crop-left="${crop.left}"`;
   const cropStyle = renderVisualCropStyle(crop);
-  const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}" data-media-fit="${mediaFit}"${cropData}${aspectAnchor ? ` data-preserve-aspect="${aspectAnchor}"` : ""} style="${layout}"`;
+  const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}" data-croppable="true" data-media-fit="${mediaFit}"${cropData}${aspectAnchor ? ` data-preserve-aspect="${aspectAnchor}"` : ""} style="${layout}"`;
   const motionId = `${escapeAttribute(clip.id)}-motion`;
   const timing = `data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${trackIndex(clip.trackId, clipIndex)}"`;
   const mediaOffset = `data-source-offset="${clip.sourceOffsetSeconds || 0}"${isHyperframesRender ? ` data-media-start="${clip.sourceOffsetSeconds || 0}"` : ""}`;
@@ -150,7 +150,7 @@ function renderClip(
     || track?.id === "broll"
   );
   if (clip.source.type === "DECK_SLIDE") {
-    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content"><div class="deck-scope"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
+    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
   }
   const sourceUrl = assetUrls.get(clip.source.productionAssetId);
   if (!sourceUrl) throw new CompositionPreviewCompilerError(`No existe URL de preview para el asset ${clip.source.productionAssetId}.`);
@@ -809,7 +809,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         document.querySelectorAll("[data-crop-mode='true']").forEach((node) => node.removeAttribute("data-crop-mode"));
         document.querySelectorAll(".composition-editor-control").forEach((node) => node.remove());
         target.setAttribute("data-selected", "true");
-        const canCrop = Boolean(target.querySelector('.composition-media'));
+        const canCrop = target.dataset.croppable === "true";
         if (cropEnabled && canCrop) {
           target.setAttribute("data-crop-mode", "true");
           const cropHandleLabels = {
@@ -885,7 +885,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
           y: Number.parseFloat(target.style.top),
         };
         if (Object.values(layout).some((value) => !Number.isFinite(value))) return;
-        const canCrop = Boolean(target.querySelector('.composition-media'));
+        const canCrop = target.dataset.croppable === "true";
         const currentCrop = readCrop(target);
         activeTransform = { crop: currentCrop, cropEdge: cropHandle?.dataset.cropEdge || null, startX: event.clientX, startY: event.clientY, layout, mode: cropHandle ? "crop-edge" : cropEnabled && canCrop ? "crop-move" : handle ? "resize" : "move", moved: false, preserveRatio: !event.altKey, scale, target };
         target.setPointerCapture?.(event.pointerId);

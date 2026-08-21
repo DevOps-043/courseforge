@@ -13,6 +13,10 @@ function createSupabaseStub(rows: Record<string, unknown>) {
             filters.push({ column, table, value });
             return query;
           },
+          in(column: string, value: unknown) {
+            filters.push({ column, table, value });
+            return query;
+          },
           limit() {
             return query;
           },
@@ -62,6 +66,30 @@ describe("HyperFrames render recovery", () => {
       ).length,
       3,
     );
+  });
+
+  it("recovers an upload before HeyGen has returned a render id", async () => {
+    const stub = createSupabaseStub({
+      hyperframes_render_requests: {
+        id: "request-uploading",
+        provider_render_id: null,
+        provider_status: "UPLOADING",
+      },
+      production_jobs: { id: "job-uploading" },
+      video_compositions: { material_component_id: "component-1" },
+    });
+    const service = new HyperframesRenderRecoveryService(stub.client as never);
+
+    const result = await service.findLatestForComposition({
+      compositionId: "composition-1",
+      organizationId: "organization-1",
+    });
+
+    assert.deepEqual(result, {
+      id: "request-uploading",
+      providerRenderId: null,
+      providerStatus: "UPLOADING",
+    });
   });
 
   it("does not expose a request when the composition has no scoped component", async () => {

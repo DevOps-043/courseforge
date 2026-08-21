@@ -546,8 +546,8 @@ export function applyCompositionEditorPatches(
 
     if (operation.type === "clip.crop") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes recortar visualmente un track bloqueado.");
-      if (clip.kind !== "VIDEO" && clip.kind !== "IMAGE") {
-        throw new CompositionEditorPatchError("El recorte visual solo está disponible para videos e imágenes.");
+      if (clip.kind !== "VIDEO" && clip.kind !== "IMAGE" && clip.kind !== "DECK_SLIDE") {
+        throw new CompositionEditorPatchError("El recorte visual solo está disponible para videos, imágenes y diapositivas.");
       }
       if (operation.crop) {
         clip.crop = normalizeCompositionCropInsets(
