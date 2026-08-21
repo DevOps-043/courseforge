@@ -1356,6 +1356,8 @@ function AssemblyActions({ assembly, busy, error, history, historyOpen, onApprov
     ? "Validando snapshot…"
     : renderStatus === "sending" || normalizedProviderStatus === "UPLOADING"
       ? "Courseforge está subiendo el ZIP validado a HeyGen."
+      : normalizedProviderStatus === "SUBMITTING"
+        ? "ZIP recibido por HeyGen. Courseforge está creando el render."
       : renderStatus === "rendering"
         ? `HeyGen está procesando el video${providerStatus ? ` (${providerStatus.toLowerCase()})` : ""}. Courseforge lo importará al terminar.`
         : renderStatus === "completed"

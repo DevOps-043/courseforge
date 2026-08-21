@@ -85,6 +85,7 @@ export class HyperframesRenderSubmissionError extends Error {
 export interface HyperframesRenderSubmissionInput {
   aspectRatio: "16:9" | "9:16" | "1:1";
   createdBy: string;
+  deferProcessing?: boolean;
   format?: "mp4" | "webm" | "mov";
   fps?: number;
   organizationId: string;
@@ -112,7 +113,7 @@ export interface HyperframesRenderSubmissionResult {
 export class HyperframesRenderSubmissionService {
   constructor(
     private readonly supabase: SupabaseClient<any, "public", any>,
-    private readonly client: HyperframesCloudClient,
+    private readonly client?: HyperframesCloudClient,
   ) {}
 
   async submit(input: HyperframesRenderSubmissionInput): Promise<HyperframesRenderSubmissionResult> {
@@ -226,17 +227,137 @@ export class HyperframesRenderSubmissionService {
       };
     }
 
-    try {
-      await this.markUploading(job.id, request.id);
-      const archiveBytes = await this.downloadAndVerifyArchive(revision, manifest);
-      const upload = await this.client.uploadProjectArchive({
-        bytes: archiveBytes,
-        fileName: `${revision.id}.zip`,
-        idempotencyKey,
+    if (input.deferProcessing) {
+      const providerStatus = request.provider_asset_id ? "SUBMITTING" : "UPLOADING";
+      const claimed = await this.claimBackgroundDispatch({
+        expectedStatus: request.provider_status,
+        jobId: job.id,
+        providerStatus,
+        requestId: request.id,
       });
-      const render = await this.client.createRender({
+      return {
+        jobId: job.id,
+        preflight: declaredPreflight,
+        providerAssetId: request.provider_asset_id,
+        providerRenderId: null,
+        providerStatus,
+        renderRequestId: request.id,
+        reused: !claimed,
+      };
+    }
+
+    return this.processSubmission({
+      input,
+      jobId: job.id,
+      idempotencyKey,
+      manifest,
+      request,
+      revision,
+      preflight: declaredPreflight,
+    });
+  }
+
+  async resume(params: { organizationId: string; requestId: string }) {
+    const { data: storedRequest, error: requestError } = await this.supabase
+      .from("hyperframes_render_requests")
+      .select("id, organization_id, production_job_id, composition_revision_id, idempotency_key, provider_asset_id, provider_render_id, provider_status")
+      .eq("id", params.requestId)
+      .eq("organization_id", params.organizationId)
+      .maybeSingle();
+    if (requestError) throw requestError;
+    if (!storedRequest) {
+      throw new HyperframesRenderSubmissionError("Solicitud de render no encontrada.", 404);
+    }
+
+    const request = storedRequest as ExistingRequest & {
+      composition_revision_id: string;
+      idempotency_key: string;
+      production_job_id: string;
+    };
+    if (request.provider_render_id) return;
+
+    const { data: storedJob, error: jobError } = await this.supabase
+      .from("production_jobs")
+      .select("id, created_by, input_snapshot")
+      .eq("id", request.production_job_id)
+      .eq("organization_id", params.organizationId)
+      .maybeSingle();
+    if (jobError) throw jobError;
+    if (!storedJob) throw new HyperframesRenderSubmissionError("Job de render no encontrado.", 404);
+
+    const options = parseStoredRenderOptions(storedJob.input_snapshot);
+    const input: HyperframesRenderSubmissionInput = {
+      ...options,
+      createdBy: String(storedJob.created_by || ""),
+      organizationId: params.organizationId,
+      revisionId: request.composition_revision_id,
+    };
+    const revision = await this.getRevision(input, false);
+    const assets = await this.getRevisionAssets(revision.id);
+    const manifest = parseAndVerifyManifest(revision.manifest, assets);
+    const preflight = validateHyperframesPreflight({
+      archiveSizeBytes: revision.project_archive_size_bytes,
+      assets: manifest,
+    });
+    assertPassingPreflight(preflight);
+
+    await this.processSubmission({
+      input,
+      idempotencyKey: request.idempotency_key,
+      jobId: request.production_job_id,
+      manifest,
+      preflight,
+      request,
+      revision,
+    });
+  }
+
+  async failDispatch(params: { error: unknown; organizationId: string; requestId: string }) {
+    const { data, error } = await this.supabase
+      .from("hyperframes_render_requests")
+      .select("id, production_job_id")
+      .eq("id", params.requestId)
+      .eq("organization_id", params.organizationId)
+      .maybeSingle();
+    if (error) throw error;
+    if (data) await this.markSubmissionFailed(data.production_job_id, data.id, params.error);
+  }
+
+  private async processSubmission(params: {
+    input: HyperframesRenderSubmissionInput;
+    idempotencyKey: string;
+    jobId: string;
+    manifest: HyperframesAssetManifestItem[];
+    preflight: ReturnType<typeof validateHyperframesPreflight>;
+    request: ExistingRequest;
+    revision: StoredRevision;
+  }): Promise<HyperframesRenderSubmissionResult> {
+    const { input, idempotencyKey, jobId, manifest, preflight, request, revision } = params;
+    const client = this.client;
+    if (!client) {
+      throw new HyperframesRenderSubmissionError("El worker de render no tiene un cliente de HeyGen configurado.", 500);
+    }
+
+    try {
+      let providerAssetId = request.provider_asset_id;
+      if (!providerAssetId) {
+        await this.markUploading(jobId, request.id);
+        const archiveBytes = await this.downloadAndVerifyArchive(revision, manifest);
+        const upload = await client.uploadProjectArchive({
+          bytes: archiveBytes,
+          fileName: `${revision.id}.zip`,
+          idempotencyKey,
+        });
+        providerAssetId = upload.assetId;
+        await this.markProjectUploaded({
+          jobId,
+          providerAssetId,
+          requestId: request.id,
+        });
+      }
+      const render = await client.createRender({
         aspectRatio: input.aspectRatio,
-        assetId: upload.assetId,
+        assetId: providerAssetId,
         composition: revision.entry_point,
         format: input.format || "mp4",
         fps: input.fps || 30,
@@ -247,22 +368,22 @@ export class HyperframesRenderSubmissionService {
         variables: revision.variables_values || {},
       });
       await this.markSubmitted({
-        jobId: job.id,
-        providerAssetId: upload.assetId,
+        jobId,
+        providerAssetId,
         providerRenderId: render.render_id,
         requestId: request.id,
       });
       return {
-        jobId: job.id,
-        preflight: declaredPreflight,
-        providerAssetId: upload.assetId,
+        jobId,
+        preflight,
+        providerAssetId,
         providerRenderId: render.render_id,
         providerStatus: "PENDING",
         renderRequestId: request.id,
         reused: false,
       };
     } catch (error) {
-      await this.markSubmissionFailed(job.id, request.id, error);
+      await this.markSubmissionFailed(jobId, request.id, error);
       throw error;
     }
   }
@@ -299,7 +420,7 @@ export class HyperframesRenderSubmissionService {
     return { jobId: job.id as string, request: request as ExistingRequest | null };
   }
 
-  private async getRevision(input: HyperframesRenderSubmissionInput) {
+  private async getRevision(input: HyperframesRenderSubmissionInput, requireActive = true) {
     const { data, error } = await this.supabase
       .from("video_composition_revisions")
       .select(HYPERFRAMES_RENDER_REVISION_SELECT)
@@ -315,7 +436,10 @@ export class HyperframesRenderSubmissionService {
       throw new HyperframesRenderSubmissionError("La revisión no usa el formato interno de HyperFrames.");
     }
     const composition = getComposition(revision);
-    if (!composition || composition.status !== "READY_FOR_RENDER" || composition.active_revision_id !== revision.id) {
+    if (!composition || (requireActive && (
+      composition.status !== "READY_FOR_RENDER"
+      || composition.active_revision_id !== revision.id
+    ))) {
       throw new HyperframesRenderSubmissionError(
         "Solo se puede renderizar la revisión activa aprobada para render.",
       );
@@ -373,12 +497,47 @@ export class HyperframesRenderSubmissionService {
         idempotency_key: params.idempotencyKey,
         organization_id: params.organizationId,
         production_job_id: params.jobId,
-        provider_status: "UPLOADING",
+        provider_status: "CREATED",
       })
       .select("id, provider_asset_id, provider_render_id, provider_status")
       .single();
     if (error) throw error;
     return data as ExistingRequest;
+  }
+
+  private async claimBackgroundDispatch(params: {
+    expectedStatus: string;
+    jobId: string;
+    providerStatus: "SUBMITTING" | "UPLOADING";
+    requestId: string;
+  }) {
+    const now = new Date().toISOString();
+    const { data: claimed, error: requestError } = await this.supabase
+      .from("hyperframes_render_requests")
+      .update({
+        provider_error: null,
+        provider_status: params.providerStatus,
+        updated_at: now,
+      })
+      .eq("id", params.requestId)
+      .eq("provider_status", params.expectedStatus)
+      .select("id")
+      .maybeSingle();
+    if (requestError) throw requestError;
+    if (!claimed) return false;
+
+    const { error: jobError } = await this.supabase
+      .from("production_jobs")
+      .update({
+        failed_at: null,
+        progress: [{ at: now, percent: 0, stage: "queued" }],
+        provider_error: null,
+        status: PRODUCTION_JOB_STATUSES.PENDING,
+        updated_at: now,
+      })
+      .eq("id", params.jobId);
+    if (jobError) throw jobError;
+    return true;
   }
 
   private async markUploading(jobId: string, requestId: string) {
@@ -398,6 +557,37 @@ export class HyperframesRenderSubmissionService {
       .from("hyperframes_render_requests")
       .update({ provider_status: "UPLOADING", updated_at: now })
       .eq("id", requestId);
+    if (requestError) throw requestError;
+  }
+
+  private async markProjectUploaded(params: {
+    jobId: string;
+    providerAssetId: string;
+    requestId: string;
+  }) {
+    const now = new Date().toISOString();
+    const { error: jobError } = await this.supabase
+      .from("production_jobs")
+      .update({
+        output_snapshot: {
+          provider_asset_id: params.providerAssetId,
+          provider_status: "submitting",
+        },
+        progress: [{ at: now, percent: 3, stage: "submitting" }],
+        status: PRODUCTION_JOB_STATUSES.RUNNING,
+        updated_at: now,
+      })
+      .eq("id", params.jobId);
+    if (jobError) throw jobError;
+
+    const { error: requestError } = await this.supabase
+      .from("hyperframes_render_requests")
+      .update({
+        provider_asset_id: params.providerAssetId,
+        provider_status: "SUBMITTING",
+        updated_at: now,
+      })
+      .eq("id", params.requestId);
     if (requestError) throw requestError;
   }
 
@@ -499,6 +689,34 @@ function assertCompatibleRenderOptions(input: HyperframesRenderSubmissionInput) 
   if (input.fps !== undefined && (!Number.isInteger(input.fps) || input.fps < 1 || input.fps > 240)) {
     throw new HyperframesRenderSubmissionError("FPS debe ser un entero entre 1 y 240.", 400);
   }
+}
+
+function parseStoredRenderOptions(value: unknown): Pick<
+  HyperframesRenderSubmissionInput,
+  "aspectRatio" | "format" | "fps" | "quality" | "resolution"
+> {
+  const input = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const aspectRatio = input.aspect_ratio;
+  const format = input.format;
+  const quality = input.quality;
+  const resolution = input.resolution;
+  const fps = input.fps;
+  if (!(["16:9", "9:16", "1:1"] as unknown[]).includes(aspectRatio)
+    || !(["mp4", "webm", "mov"] as unknown[]).includes(format)
+    || !(["draft", "standard", "high"] as unknown[]).includes(quality)
+    || !(["1080p", "4k"] as unknown[]).includes(resolution)
+    || !Number.isInteger(fps)) {
+    throw new HyperframesRenderSubmissionError("El snapshot de opciones del render no es válido.", 500);
+  }
+  return {
+    aspectRatio: aspectRatio as "16:9" | "9:16" | "1:1",
+    format: format as "mp4" | "webm" | "mov",
+    fps: fps as number,
+    quality: quality as "draft" | "standard" | "high",
+    resolution: resolution as "1080p" | "4k",
+  };
 }
 
 function getComposition(revision: StoredRevision) {
