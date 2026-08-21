@@ -237,6 +237,35 @@ test("scales crop insets with layout size instead of narrowing the visible windo
   assert.deepEqual(resizedVideo.crop, { top: 6, right: 12, bottom: 18, left: 24 });
 });
 
+test("keeps vertical B-roll fully visible with identical preview and render fit", async () => {
+  const assetId = "00000000-0000-4000-8000-000000000046";
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{
+      checksum: "e".repeat(64), durationSeconds: 8, fileSizeBytes: 4, mimeType: "video/mp4",
+      productionAssetId: assetId, publicUrl: null, sourceHeight: 1920, sourceWidth: 1080,
+      storageBucket: "production-assets", storagePath: "production-assets/vertical.mp4", timelineRole: "BROLL",
+    }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Vertical" },
+  });
+  const assetUrls = new Map([[assetId, "assets/vertical.mp4"]]);
+  const previewHtml = await compileCompositionPreview({ assetUrls, document });
+  const renderHtml = await compileCompositionPreview({ assetUrls, document, target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER });
+
+  for (const html of [previewHtml, renderHtml]) {
+    assert.match(html, /data-media-fit="CONTAIN"/);
+    assert.match(html, /data-preserve-aspect="CENTER"/);
+    assert.match(html, /left:656px;top:0px;width:608px;height:1080px/);
+  }
+  assert.match(previewHtml, /querySelectorAll\('\.clip-content\[data-preserve-aspect\] video'\)/);
+
+  const legacyDocument = structuredClone(document);
+  delete legacyDocument.clips[0]!.mediaFit;
+  const legacyHtml = await compileCompositionPreview({ assetUrls, document: legacyDocument });
+  assert.match(legacyHtml, /data-media-fit="COVER"/);
+  assert.doesNotMatch(legacyHtml, /data-preserve-aspect="CENTER"/);
+});
+
 test("compiles a deterministic HyperFrames render document without the interactive controller", async () => {
   const document = createInitialCompositionDocument({
     animatedDeck: {
@@ -271,8 +300,8 @@ test("creates a separate synchronized audio element for an avatar video", async 
   });
   document.tracks.find((track) => track.id === "avatar")!.volume = 0.35;
   const html = await compileCompositionPreview({ assetUrls: new Map([[avatarId, "https://example.test/avatar.mp4"]]), document });
-  assert.match(html, /data-preserve-aspect="true"/);
-  assert.match(html, /data-preserve-aspect="true"\] \.composition-media \{ object-fit: contain; \}/);
+  assert.match(html, /data-preserve-aspect="BOTTOM_RIGHT"/);
+  assert.match(html, /data-media-fit="CONTAIN"\] \.composition-media \{ object-fit: contain; \}/);
   assert.match(html, /courseforge-composition-aspect-corrections/);
   assert.match(html, /media\.videoWidth \|\| media\.naturalWidth/);
   assert.match(html, /usesLegacyAvatarBox/);

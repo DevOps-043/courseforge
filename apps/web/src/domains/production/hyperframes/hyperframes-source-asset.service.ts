@@ -23,6 +23,8 @@ interface InternalMaterialAssetReference {
   mimeType: string | null;
   publicUrl: string | null;
   sourceType: "DECK_DEPENDENCY" | "PRODUCTION_MEDIA";
+  sourceHeight?: number;
+  sourceWidth?: number;
   storagePath: string;
   timelineRole: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL" | "VOICE";
   timelineVariant?: "CLIP" | "FULL";
@@ -113,12 +115,15 @@ export function collectInternalMaterialAssetReferences(rawAssets: unknown): Inte
     const durationSeconds = positiveDuration(
       value.duration_seconds ?? value.durationSeconds ?? value.duration,
     );
+    const sourceHeight = positiveInteger(value.source_height ?? value.height);
+    const sourceWidth = positiveInteger(value.source_width ?? value.width);
     references.push({
       ...(durationSeconds ? { durationSeconds } : {}),
       fileName: typeof value.file_name === "string" ? value.file_name : null,
       mimeType: typeof value.content_type === "string" ? value.content_type : mimeType || null,
       publicUrl: typeof value.public_url === "string" ? value.public_url : null,
       sourceType,
+      ...(sourceHeight && sourceWidth ? { sourceHeight, sourceWidth } : {}),
       storagePath: value.storage_path,
       timelineRole,
       timelineVariant,
@@ -316,6 +321,8 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
       && (reference.durationSeconds === undefined || preciseDurationSeconds(existing.duration_milliseconds, existing.duration_seconds) === reference.durationSeconds)
       && isRecord(existing.metadata)
       && existing.metadata.timeline_role === reference.timelineRole
+      && (reference.sourceHeight === undefined || existing.metadata.source_height === reference.sourceHeight)
+      && (reference.sourceWidth === undefined || existing.metadata.source_width === reference.sourceWidth)
       && (reference.timelineVariant === undefined || existing.metadata.timeline_variant === reference.timelineVariant)
     ) continue;
 
@@ -339,6 +346,10 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
         assembly_source_type: reference.sourceType,
         file_name: reference.fileName || stored.fileName,
         source_provider: "production_step",
+        ...(reference.sourceHeight && reference.sourceWidth ? {
+          source_height: reference.sourceHeight,
+          source_width: reference.sourceWidth,
+        } : {}),
         timeline_role: reference.timelineRole,
         ...(reference.timelineVariant ? { timeline_variant: reference.timelineVariant } : {}),
       },
@@ -483,6 +494,12 @@ function asArray(value: unknown) {
 
 function positiveDuration(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function positiveInteger(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 && value <= 16_384
+    ? value
+    : undefined;
 }
 
 function preciseDurationSeconds(milliseconds: unknown, legacySeconds: unknown) {

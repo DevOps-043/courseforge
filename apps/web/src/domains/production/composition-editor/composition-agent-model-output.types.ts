@@ -2,6 +2,7 @@ import { z } from "zod";
 import { COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS } from "./composition-document.types";
 import { COMPOSITION_MOTION_PRESET_IDS } from "./composition-motion.types";
 import { compositionEditorPatchRequestSchema } from "./editor-patch.types";
+import { COMPOSITION_LAYER_MAX, COMPOSITION_LAYER_MIN } from "./composition-layer-depth";
 
 const editorIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i);
 const secondsSchema = z.number().finite().min(0).max(COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS);
@@ -15,7 +16,7 @@ const nullableLayoutSchema = z.object({
   width: nullableNumber,
   x: nullableNumber,
   y: nullableNumber,
-  zIndex: z.number().int().nullable(),
+  zIndex: z.number().int().min(COMPOSITION_LAYER_MIN).max(COMPOSITION_LAYER_MAX).nullable(),
 }).strict();
 
 const modelOperationSchema = z.discriminatedUnion("type", [

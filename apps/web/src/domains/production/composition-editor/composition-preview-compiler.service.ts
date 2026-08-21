@@ -90,7 +90,7 @@ export async function compileCompositionPreview(params: {
     .composition-editor-grid { position: absolute; inset: 0; z-index: 2147483646; display: none; pointer-events: none; background-image: linear-gradient(to right, rgba(34,211,238,.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(34,211,238,.18) 1px, transparent 1px), linear-gradient(to right, rgba(34,211,238,.38) 1px, transparent 1px), linear-gradient(to bottom, rgba(34,211,238,.38) 1px, transparent 1px); background-size: 16px 16px, 16px 16px, 80px 80px, 80px 80px; box-shadow: inset 0 0 0 1px rgba(34,211,238,.5); }
     .composition-editor-grid[data-visible="true"] { display: block; }` : ""}
     .composition-media { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .clip-content[data-preserve-aspect="true"] .composition-media { object-fit: contain; }
+    .clip-content[data-media-fit="CONTAIN"] .composition-media { object-fit: contain; }
     .composition-audio { display: none; }
     ${isInteractivePreview ? `.composition-audio-unlock { position: absolute; left: 50%; bottom: 28px; z-index: 2147483647; display: none; transform: translateX(-50%); border: 1px solid rgba(255,255,255,.55); border-radius: 999px; background: rgba(2,6,23,.92); color: #fff; padding: 12px 18px; font: 700 16px/1 system-ui, sans-serif; box-shadow: 0 10px 30px rgba(0,0,0,.4); cursor: pointer; }
     .composition-audio-unlock[data-visible="true"] { display: block; }` : ""}
@@ -125,11 +125,18 @@ function renderClip(
 ) {
   const isHyperframesRender = target === COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER;
   const layout = `left:${clip.layout.x}px;top:${clip.layout.y}px;width:${clip.layout.width}px;height:${clip.layout.height}px;opacity:${clip.layout.opacity};z-index:${clip.layout.zIndex};transform:rotate(${clip.layout.rotation}deg);`;
-  const preservesSourceAspect = track?.semanticRole === "AVATAR" || track?.id === "avatar";
+  const isAvatar = track?.semanticRole === "AVATAR" || track?.id === "avatar";
+  const isBroll = track?.semanticRole === "BROLL" || track?.id === "broll";
+  // Missing mediaFit is intentionally backward-compatible with historical
+  // documents: avatars contained their source, all other media used cover.
+  const mediaFit = clip.mediaFit || (isAvatar ? "CONTAIN" : "COVER");
+  const aspectAnchor = mediaFit === "CONTAIN" && (isAvatar || isBroll)
+    ? (isAvatar ? "BOTTOM_RIGHT" : "CENTER")
+    : null;
   const crop = resolveCompositionCropInsets(clip.crop, clip.layout);
   const cropData = ` data-crop-top="${crop.top}" data-crop-right="${crop.right}" data-crop-bottom="${crop.bottom}" data-crop-left="${crop.left}"`;
   const cropStyle = renderVisualCropStyle(crop);
-  const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}"${cropData}${preservesSourceAspect ? ' data-preserve-aspect="true"' : ""} style="${layout}"`;
+  const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}" data-media-fit="${mediaFit}"${cropData}${aspectAnchor ? ` data-preserve-aspect="${aspectAnchor}"` : ""} style="${layout}"`;
   const motionId = `${escapeAttribute(clip.id)}-motion`;
   const timing = `data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${trackIndex(clip.trackId, clipIndex)}"`;
   const mediaOffset = `data-source-offset="${clip.sourceOffsetSeconds || 0}"${isHyperframesRender ? ` data-media-start="${clip.sourceOffsetSeconds || 0}"` : ""}`;
@@ -523,8 +530,8 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
           }
         }, 50);
       };
-      const preserveLegacyAvatarAspect = (media) => {
-        const target = media.closest('.clip-content[data-preserve-aspect="true"]');
+      const preserveDefaultMediaAspect = (media) => {
+        const target = media.closest('.clip-content[data-preserve-aspect]');
         if (!target || !(target instanceof HTMLElement)) return;
         const sourceWidth = Number(media.videoWidth || media.naturalWidth || 0);
         const sourceHeight = Number(media.videoHeight || media.naturalHeight || 0);
@@ -538,11 +545,17 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         if (Object.values(layout).some((value) => !Number.isFinite(value))) return;
         const legacyWidth = Math.round(canvasWidth * .32);
         const legacyHeight = Math.round(canvasHeight * .65);
-        const usesLegacyAvatarBox = Math.abs(layout.width - legacyWidth) <= 2
+        const usesLegacyAvatarBox = target.dataset.preserveAspect === "BOTTOM_RIGHT"
+          && Math.abs(layout.width - legacyWidth) <= 2
           && Math.abs(layout.height - legacyHeight) <= 2
           && Math.abs(layout.x - (canvasWidth - legacyWidth - 48)) <= 2
           && Math.abs(layout.y - (canvasHeight - legacyHeight - 48)) <= 2;
-        if (!usesLegacyAvatarBox) return;
+        const usesDefaultBrollBox = target.dataset.preserveAspect === "CENTER"
+          && Math.abs(layout.width - canvasWidth) <= 2
+          && Math.abs(layout.height - canvasHeight) <= 2
+          && Math.abs(layout.x) <= 2
+          && Math.abs(layout.y) <= 2;
+        if (!usesLegacyAvatarBox && !usesDefaultBrollBox) return;
         const sourceRatio = sourceWidth / sourceHeight;
         const layoutRatio = layout.width / layout.height;
         if (Math.abs(sourceRatio - layoutRatio) <= .01) return;
@@ -551,8 +564,12 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         const correctedLayout = {
           height,
           width,
-          x: layout.x + layout.width - width,
-          y: layout.y + layout.height - height,
+          x: usesLegacyAvatarBox
+            ? layout.x + layout.width - width
+            : layout.x + Math.round((layout.width - width) / 2),
+          y: usesLegacyAvatarBox
+            ? layout.y + layout.height - height
+            : layout.y + Math.round((layout.height - height) / 2),
         };
         Object.assign(target.style, {
           height: correctedLayout.height + "px",
@@ -778,9 +795,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         blockedAudioMedia.clear();
         syncMedia(currentTime, true);
       });
-      document.querySelectorAll('.clip-content[data-preserve-aspect="true"] video').forEach((media) => {
-        if (media.readyState >= 1) preserveLegacyAvatarAspect(media);
-        else media.addEventListener("loadedmetadata", () => preserveLegacyAvatarAspect(media), { once: true });
+      document.querySelectorAll('.clip-content[data-preserve-aspect] video').forEach((media) => {
+        if (media.readyState >= 1) preserveDefaultMediaAspect(media);
+        else media.addEventListener("loadedmetadata", () => preserveDefaultMediaAspect(media), { once: true });
       });
       bindMediaReadinessListeners();
       const selectTarget = (target) => {

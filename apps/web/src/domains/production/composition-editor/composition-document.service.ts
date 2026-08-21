@@ -8,6 +8,7 @@ import { COMPOSITION_MOTION_ENABLED, isCompositionMotionOperation } from "./comp
 import { buildCompositionAgentDiff } from "./composition-agent-diff.service";
 import { assertCompositionAgentOperationsAllowed, CompositionAgentPolicyError } from "./composition-agent-policy.service";
 import { validateCompositionAgentSimulation, CompositionAgentValidationError } from "./composition-agent-validation.service";
+import { normalizeCompositionDocumentLayerDepths } from "./composition-layer-depth";
 
 export class CompositionDocumentError extends Error {
   constructor(message: string, readonly status = 400) {
@@ -107,7 +108,7 @@ export async function listCompositionDocumentHistory(params: {
     version: number;
   }) => ({
     createdAt: row.created_at,
-    document: compositionEditorDocumentSchema.parse(row.document),
+    document: parsePersistedCompositionDocument(row.document),
     documentHash: row.document_hash,
     version: row.version,
   }));
@@ -417,7 +418,7 @@ async function getLatestCompositionDocument(params: {
       false,
     );
   }
-  const parsedDocument = compositionEditorDocumentSchema.parse(data.document);
+  const parsedDocument = parsePersistedCompositionDocument(data.document);
   const assetRoles = new Map((assetLinks || []).map((link: { production_asset_id: string; role: string }) => [
     link.production_asset_id,
     link.role,
@@ -436,4 +437,10 @@ function stableStringify(value: unknown): string {
     return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+function parsePersistedCompositionDocument(input: unknown): CompositionEditorDocument {
+  return compositionEditorDocumentSchema.parse(
+    normalizeCompositionDocumentLayerDepths(input),
+  );
 }

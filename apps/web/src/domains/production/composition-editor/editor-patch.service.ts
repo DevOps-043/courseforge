@@ -8,7 +8,10 @@ import {
   createCompositionPresetAnimation,
   getCompositionMotionPresetDefinition,
 } from "./composition-motion-preset.service";
-import { resolveDefaultCompositionClipLayout } from "./composition-default-layout.service";
+import {
+  resolveDefaultCompositionClipLayout,
+  resolveDefaultCompositionMediaFit,
+} from "./composition-default-layout.service";
 import { deriveCompositionAnimationsForRetainedSegments } from "./composition-motion-derivation.service";
 import {
   normalizeCompositionCropInsets,
@@ -306,7 +309,15 @@ export function applyCompositionEditorPatches(
       clip.sourceOffsetSeconds = 0;
       clip.timingSource = "ESTIMATED";
       clip.hidden = false;
-      clip.layout = resolveDefaultCompositionClipLayout({ canvas: next.canvas, clipKind: clip.kind, track: currentTrack });
+      clip.layout = resolveDefaultCompositionClipLayout({
+        canvas: next.canvas,
+        clipKind: clip.kind,
+        sourceDimensions: clip.source.type === "PRODUCTION_ASSET" && clip.source.sourceWidth && clip.source.sourceHeight
+          ? { height: clip.source.sourceHeight, width: clip.source.sourceWidth }
+          : null,
+        track: currentTrack,
+      });
+      clip.mediaFit = resolveDefaultCompositionMediaFit({ clipKind: clip.kind, track: currentTrack });
       delete clip.crop;
       delete clip.volume;
       next.clips = next.clips.filter((candidate) => candidate.id === clip.id || !siblingIds.has(candidate.id));
@@ -545,6 +556,14 @@ export function applyCompositionEditorPatches(
         );
       }
       else delete clip.crop;
+    }
+
+    if (operation.type === "clip.media-fit") {
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes cambiar el ajuste visual de un track bloqueado.");
+      if (clip.kind !== "VIDEO" && clip.kind !== "IMAGE") {
+        throw new CompositionEditorPatchError("El ajuste visual solo está disponible para videos e imágenes.");
+      }
+      clip.mediaFit = operation.mediaFit;
     }
 
     if (operation.type === "clip.visibility") {

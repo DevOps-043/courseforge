@@ -13,7 +13,12 @@ interface VideoAsset {
   checksum: string;
   durationSeconds?: number;
   eligibleForRevision: boolean;
-  metadata: { file_name?: string | null; source_provider?: string | null };
+  metadata: {
+    file_name?: string | null;
+    source_height?: number | null;
+    source_provider?: string | null;
+    source_width?: number | null;
+  };
   mimeType: string;
   productionAssetId: string;
   fileSizeBytes: number;
@@ -78,6 +83,8 @@ export function HyperframesCompositionPanel({
     label: asset.metadata.file_name || asset.mimeType,
     mimeType: asset.mimeType,
     previewUrl: draftId ? `/api/production/hyperframes/drafts/${draftId}/assets/${asset.productionAssetId}` : null,
+    sourceHeight: typeof asset.metadata.source_height === "number" ? asset.metadata.source_height : undefined,
+    sourceWidth: typeof asset.metadata.source_width === "number" ? asset.metadata.source_width : undefined,
     sizeLabel: formatBytes(asset.fileSizeBytes),
     sourceLabel: asset.sourceType === "DECK_DEPENDENCY" ? "Recurso interno del deck" : "Medio de Producción",
     timelineRole: asset.timelineRole,

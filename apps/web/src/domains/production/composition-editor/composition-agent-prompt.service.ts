@@ -1,5 +1,6 @@
 import type { CompositionEditorDocument } from "./composition-document.types";
 import { buildCompositionAgentReadSnapshot } from "./composition-agent-read-tools.service";
+import { COMPOSITION_LAYER_MAX, COMPOSITION_LAYER_MIN } from "./composition-layer-depth";
 
 /** Builds the minimum safe context required for constrained editing proposals. */
 export function buildCompositionAgentContext(document: CompositionEditorDocument, selectedClipId: string | null = null) {
@@ -17,7 +18,7 @@ export function buildCompositionProposalPrompt(params: {
     "Cada operación debe ser una de: clip.move, clip.duration, clip.layout, clip.visibility, track.update, audio-mix.update, animation.add-preset, animation.update-timing.",
     "No inventes clips, tracks, assets, HTML, URLs, scripts ni propiedades fuera del documento.",
     "Respeta semanticRole: VOICE es narración, MUSIC es música de fondo, AVATAR es presentador, BROLL es apoyo visual, DECK son diapositivas, OVERLAY son gráficos y VISUAL son otros medios.",
-    "Los tracks organizan solapamiento temporal; track.order no controla qué elemento aparece delante. Solo layout.zIndex controla la profundidad visual y debe ser un entero entre -100 y 100. No cambies zIndex en clips AUDIO.",
+    `Los tracks organizan solapamiento temporal; track.order no controla qué elemento aparece delante. Solo layout.zIndex controla la profundidad visual y debe ser un entero entre ${COMPOSITION_LAYER_MIN} y ${COMPOSITION_LAYER_MAX}. No cambies zIndex en clips AUDIO.`,
     "Para track.update usa {type, trackId, settings}; settings solo puede contener hidden, locked, muted o volume (0 a 1). No edites clips de un track bloqueado salvo que la solicitud sea desbloquear ese track.",
     "Para audio-mix.update usa {type, settings}; settings solo puede contener enabled, duckedVolumeRatio (0 a 1), attackSeconds (0 a 5) o releaseSeconds (0 a 5). VOICE y AVATAR disparan el ducking y MUSIC es el objetivo.",
     "Para animation.add-preset usa {type, animationId, clipId, presetId, durationSeconds}. animationId debe iniciar con motion- y contener solo letras, números o guiones. Entrada: FADE_IN, SLIDE_IN_LEFT, SLIDE_IN_RIGHT, SLIDE_IN_UP, SLIDE_IN_DOWN, ZOOM_IN, POP. Durante: PULSE, FLOAT, SWAY, BREATHE. Salida: FADE_OUT, SLIDE_OUT_LEFT, SLIDE_OUT_RIGHT, SLIDE_OUT_UP, SLIDE_OUT_DOWN, ZOOM_OUT.",

@@ -111,6 +111,19 @@ describe("HyperFrames source assets", () => {
     assert.equal(references[0]?.timelineRole, "AVATAR");
   });
 
+  it("keeps uploaded b-roll dimensions for deterministic source-aspect layout", () => {
+    const references = collectInternalMaterialAssetReferences({
+      b_roll_clips: [{
+        height: 1920,
+        storage_path: "production-assets/broll/vertical.mp4",
+        width: 1080,
+      }],
+    });
+
+    assert.equal(references[0]?.sourceHeight, 1920);
+    assert.equal(references[0]?.sourceWidth, 1080);
+  });
+
   it("keeps an oversized file visible with a clear preflight warning", () => {
     const asset = inspectHyperframesSourceAsset({
       checksum: "a".repeat(64),

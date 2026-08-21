@@ -167,32 +167,42 @@ function buildSingleUploadedSlideImage(params: {
   };
 }
 
-async function detectDirectVideoDuration(url: string) {
-  return new Promise<number>((resolve) => {
+type VideoMetadata = { duration: number; height: number; width: number };
+
+async function detectDirectVideoMetadata(url: string) {
+  return new Promise<VideoMetadata>((resolve) => {
     const video = document.createElement("video");
     video.preload = "metadata";
     video.crossOrigin = "anonymous";
     video.onloadedmetadata = () => {
       const durationRaw = video.duration;
-      resolve(
-        !Number.isNaN(durationRaw) && durationRaw > 0
-          ? Math.round(durationRaw)
-          : 0,
-      );
+      resolve({
+        duration: !Number.isNaN(durationRaw) && durationRaw > 0 ? Math.round(durationRaw) : 0,
+        height: Number.isFinite(video.videoHeight) ? video.videoHeight : 0,
+        width: Number.isFinite(video.videoWidth) ? video.videoWidth : 0,
+      });
     };
-    video.onerror = () => resolve(0);
+    video.onerror = () => resolve({ duration: 0, height: 0, width: 0 });
     video.src = url;
   });
 }
 
-async function detectLocalMediaDuration(file: File) {
+async function detectDirectVideoDuration(url: string) {
+  return (await detectDirectVideoMetadata(url)).duration;
+}
+
+async function detectLocalVideoMetadata(file: File) {
   const objectUrl = URL.createObjectURL(file);
 
   try {
-    return await detectDirectVideoDuration(objectUrl);
+    return await detectDirectVideoMetadata(objectUrl);
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
+}
+
+async function detectLocalMediaDuration(file: File) {
+  return (await detectLocalVideoMetadata(file)).duration;
 }
 
 export function useProductionAssetState({
@@ -767,17 +777,22 @@ export function useProductionAssetState({
         componentId: component.id,
       });
 
-      let duration = 0;
+      let videoMetadata: VideoMetadata = { duration: 0, height: 0, width: 0 };
       try {
-        duration = await detectLocalMediaDuration(file);
+        videoMetadata = await detectLocalVideoMetadata(file);
       } catch (e) {
-        console.warn('Could not detect local clip duration:', e);
+        console.warn('Could not detect local clip metadata:', e);
       }
-      if (!duration) {
+      if (!videoMetadata.duration || !videoMetadata.width || !videoMetadata.height) {
         try {
-          duration = await detectDirectVideoDuration(publicUrl);
+          const uploadedMetadata = await detectDirectVideoMetadata(publicUrl);
+          videoMetadata = {
+            duration: videoMetadata.duration || uploadedMetadata.duration,
+            height: videoMetadata.height || uploadedMetadata.height,
+            width: videoMetadata.width || uploadedMetadata.width,
+          };
         } catch (e) {
-          console.warn('Could not detect uploaded clip duration:', e);
+          console.warn('Could not detect uploaded clip metadata:', e);
         }
       }
 
@@ -786,8 +801,10 @@ export function useProductionAssetState({
         storage_path: `production-assets/${path}`,
         public_url: publicUrl,
         file_name: file.name,
-        duration: duration || undefined,
+        duration: videoMetadata.duration || undefined,
+        height: videoMetadata.height || undefined,
         order: bRollClips.length + 1,
+        width: videoMetadata.width || undefined,
       };
 
       const updatedClips = [...bRollClips, newClip];

@@ -22,7 +22,7 @@ test("exposes semantic layers, audio mix and visual depth without source interna
   assert.equal(context.composition.audioMix.ducking.enabled, true);
   assert.equal(context.composition.tracks.find((track) => track.id === "music")?.semanticRole, "MUSIC");
   assert.equal(context.composition.tracks.find((track) => track.id === "broll")?.semanticRole, "BROLL");
-  assert.equal(context.composition.clips.find((clip) => clip.trackId === "broll")?.layout.zIndex, 5);
+  assert.equal(context.composition.clips.find((clip) => clip.trackId === "broll")?.layout.zIndex, 2);
   assert.equal("source" in context.composition.clips[0]!, false);
   assert.doesNotMatch(JSON.stringify(context), /storagePath|publicUrl|productionAssetId/);
 });
@@ -43,6 +43,7 @@ test("documents the allow-listed depth and ducking operations for the agent", ()
   assert.match(prompt, /audio-mix\.update/);
   assert.match(prompt, /layout\.zIndex/);
   assert.match(prompt, /track\.order no controla/);
+  assert.match(prompt, /entero entre 0 y 10/);
   assert.match(prompt, /animation\.add-preset/);
   assert.match(prompt, /FADE_IN/);
   assert.match(prompt, /PULSE/);
@@ -72,16 +73,22 @@ test("rejects agent audio-mix properties outside the allow-list", () => {
 
 test("constrains agent visual depth to the persisted layout range", () => {
   const valid = compositionEditorPatchRequestSchema.safeParse({
-    operations: [{ clipId: "visual-clip", layout: { zIndex: 100 }, type: "clip.layout" }],
+    operations: [{ clipId: "visual-clip", layout: { zIndex: 10 }, type: "clip.layout" }],
     source: "AGENT",
     summary: "Traerá el clip al frente.",
   });
   const invalid = compositionEditorPatchRequestSchema.safeParse({
-    operations: [{ clipId: "visual-clip", layout: { zIndex: 101 }, type: "clip.layout" }],
+    operations: [{ clipId: "visual-clip", layout: { zIndex: 11 }, type: "clip.layout" }],
     source: "AGENT",
     summary: "Excederá la profundidad permitida.",
+  });
+  const negative = compositionEditorPatchRequestSchema.safeParse({
+    operations: [{ clipId: "visual-clip", layout: { zIndex: -1 }, type: "clip.layout" }],
+    source: "AGENT",
+    summary: "Intentará usar una capa negativa.",
   });
 
   assert.equal(valid.success, true);
   assert.equal(invalid.success, false);
+  assert.equal(negative.success, false);
 });

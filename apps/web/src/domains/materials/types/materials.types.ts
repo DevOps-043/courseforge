@@ -206,8 +206,10 @@ export interface MaterialAssets {
         public_url: string;
         file_name?: string;
         duration?: number;
+        height?: number;
         prompt_used?: string;
         order: number;
+        width?: number;
     }[];
     avatar_generation_mode?: AvatarGenerationMode;
     avatar_clips?: AvatarClip[];

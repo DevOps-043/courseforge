@@ -178,6 +178,8 @@ export async function initializeHyperframesDraft(params: {
       mimeType: asset.mimeType,
       productionAssetId: asset.productionAssetId,
       publicUrl: null,
+      sourceHeight: positiveMetadataDimension(asset.metadata.source_height),
+      sourceWidth: positiveMetadataDimension(asset.metadata.source_width),
       storageBucket: "production-assets",
       storagePath: asset.storagePath,
       timelineRole: asset.timelineRole,
@@ -244,6 +246,12 @@ export async function initializeHyperframesDraft(params: {
   }
 
   return { ...descriptor, initialized: persistedDocument.created, documentVersion: persistedDocument.version };
+}
+
+function positiveMetadataDimension(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 && value <= 16_384
+    ? value
+    : undefined;
 }
 
 async function loadOrCreateInitialDocument(params: {
