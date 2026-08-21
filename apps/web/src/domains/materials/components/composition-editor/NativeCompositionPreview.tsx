@@ -1055,6 +1055,23 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
         setAssemblyError(null);
       }
     };
+    const refreshDurableRenderState = async () => {
+      const response = await fetch(
+        `/api/production/hyperframes/renders/${encodeURIComponent(renderRequestId)}/poll`,
+        { cache: "no-store" },
+      );
+      const body = await readCompositionApiResponse<{
+        data?: { importStatus: string; providerStatus: string };
+        error?: string;
+      }>(response, "No se pudo actualizar el estado del render.");
+      if (!response.ok || !body.data) {
+        throw new Error(body.error || "No se pudo actualizar el estado del render.");
+      }
+      applyDurableRenderState({
+        import_status: body.data.importStatus,
+        provider_status: body.data.providerStatus,
+      });
+    };
     const channel = supabase
       .channel(`hyperframes-render:${renderRequestId}`)
       .on(
@@ -1074,23 +1091,15 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       )
       .subscribe((status: string) => {
         if (status !== "SUBSCRIBED") return;
-        // Realtime is an invalidation channel, not the source of truth. Read the
-        // current row after subscribing so a completion between render submit
-        // and channel establishment cannot be missed.
-        void supabase
-          .from("hyperframes_render_requests")
-          .select("import_status, provider_status")
-          .eq("id", renderRequestId)
-          .single()
-          .then(({ data, error }: {
-            data: { import_status?: string; provider_status?: string } | null;
-            error: unknown;
-          }) => {
-            if (!error && data) applyDurableRenderState(data);
-          });
+        void refreshDurableRenderState().catch(() => undefined);
       });
+    const refreshTimer = window.setInterval(() => {
+      void refreshDurableRenderState().catch(() => undefined);
+    }, 15_000);
+    void refreshDurableRenderState().catch(() => undefined);
     return () => {
       active = false;
+      window.clearInterval(refreshTimer);
       void supabase.removeChannel(channel);
     };
   }, [renderRequestId]);

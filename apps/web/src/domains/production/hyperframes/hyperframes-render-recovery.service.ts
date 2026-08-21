@@ -33,6 +33,20 @@ export class HyperframesRenderRecoveryService {
     private readonly supabase: SupabaseClient<any, "public", any>,
   ) {}
 
+  async findById(params: {
+    organizationId: string;
+    requestId: string;
+  }): Promise<RecoverableHyperframesRender | null> {
+    const { data, error } = await this.supabase
+      .from("hyperframes_render_requests")
+      .select("id, import_status, provider_render_id, provider_status")
+      .eq("id", params.requestId)
+      .eq("organization_id", params.organizationId)
+      .maybeSingle();
+    if (error) throw error;
+    return toRecoverableRender(data as RecoverableRenderRequestRow | null);
+  }
+
   async findLatestForComposition(params: {
     compositionId: string;
     organizationId: string;
@@ -76,14 +90,18 @@ export class HyperframesRenderRecoveryService {
       .maybeSingle();
     if (requestError) throw requestError;
 
-    const recoverable = request as RecoverableRenderRequestRow | null;
-    if (!recoverable) return null;
-
-    return {
-      id: recoverable.id,
-      providerRenderId: recoverable.provider_render_id,
-      providerStatus: recoverable.provider_status,
-      importStatus: recoverable.import_status,
-    };
+    return toRecoverableRender(request as RecoverableRenderRequestRow | null);
   }
+}
+
+function toRecoverableRender(
+  row: RecoverableRenderRequestRow | null,
+): RecoverableHyperframesRender | null {
+  if (!row) return null;
+  return {
+    id: row.id,
+    providerRenderId: row.provider_render_id,
+    providerStatus: row.provider_status,
+    importStatus: row.import_status,
+  };
 }
