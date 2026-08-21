@@ -87,6 +87,11 @@ const clipVisibilityOperationSchema = z.object({
   type: z.literal("clip.visibility"),
 }).strict();
 
+const clipVolumeOperationSchema = z.object({
+  type: z.literal("clip.volume"),
+  volume: z.number().finite().min(0).max(1),
+}).strict();
+
 /** Only alters the editable document; source assets remain linked and intact. */
 const clipAddOperationSchema = z.object({
   clip: compositionClipSchema,
@@ -204,6 +209,7 @@ const clipPatchOperationSchema = z.discriminatedUnion("type", [
   clipRemoveRangeOperationSchema,
   clipResetAssetOperationSchema,
   clipVisibilityOperationSchema,
+  clipVolumeOperationSchema,
 ]).and(z.object({ clipId: editorIdSchema }).strict());
 
 export const compositionEditorPatchOperationSchema = z.union([

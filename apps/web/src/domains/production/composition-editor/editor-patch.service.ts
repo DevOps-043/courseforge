@@ -308,6 +308,7 @@ export function applyCompositionEditorPatches(
       clip.hidden = false;
       clip.layout = resolveDefaultCompositionClipLayout({ canvas: next.canvas, clipKind: clip.kind, track: currentTrack });
       delete clip.crop;
+      delete clip.volume;
       next.clips = next.clips.filter((candidate) => candidate.id === clip.id || !siblingIds.has(candidate.id));
       next.motion.animations = next.motion.animations.filter((animation) => !siblingIds.has(animation.target.clipId));
       const requiredCanvasDuration = clip.startSeconds + clip.durationSeconds;
@@ -549,6 +550,16 @@ export function applyCompositionEditorPatches(
     if (operation.type === "clip.visibility") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes ocultar o mostrar un clip de un track bloqueado.");
       clip.hidden = operation.hidden;
+    }
+
+    if (operation.type === "clip.volume") {
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes cambiar el volumen de un track bloqueado.");
+      const isBrollVideo = clip.kind === "VIDEO"
+        && (currentTrack.semanticRole === "BROLL" || currentTrack.id === "broll");
+      if (!isBrollVideo) {
+        throw new CompositionEditorPatchError("El volumen individual solo está disponible para clips de B-roll.");
+      }
+      clip.volume = operation.volume;
     }
 
     if (operation.type === "clip.template") {

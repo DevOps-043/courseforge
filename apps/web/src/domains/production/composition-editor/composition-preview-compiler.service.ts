@@ -135,7 +135,13 @@ function renderClip(
   const mediaOffset = `data-source-offset="${clip.sourceOffsetSeconds || 0}"${isHyperframesRender ? ` data-media-start="${clip.sourceOffsetSeconds || 0}"` : ""}`;
   const hidden = clip.hidden || track?.hidden ? (isHyperframesRender ? ' data-hidden="true"' : ' data-clip-hidden="true"') : "";
   const volumeAutomation = hasVolumeAutomation ? ' data-volume-automated="true"' : "";
-  const volume = track?.muted ? 0 : track?.volume ?? 1;
+  const volume = resolveClipAudioVolume(clip, track);
+  const hasSynchronizedVideoAudio = clip.kind === "VIDEO" && Boolean(
+    track?.semanticRole === "AVATAR"
+    || track?.semanticRole === "BROLL"
+    || track?.id === "avatar"
+    || track?.id === "broll"
+  );
   if (clip.source.type === "DECK_SLIDE") {
     return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content"><div class="deck-scope"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
   }
@@ -146,15 +152,27 @@ function renderClip(
   }
   if (clip.kind === "VIDEO" && isHyperframesRender) {
     const video = `<video id="${escapeAttribute(clip.id)}-media" class="composition-media clip" src="${escapeAttribute(sourceUrl)}" muted playsinline loop preload="metadata" ${mediaOffset}${hidden} ${timing}></video>`;
-    const audio = clip.trackId === "avatar"
+    const audio = hasSynchronizedVideoAudio
       ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio clip" src="${escapeAttribute(sourceUrl)}" loop preload="metadata" ${mediaOffset}${hidden} data-volume="${volume}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${10 + clipIndex}"></audio>`
       : "";
     return `<div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${video}</div></div>${audio}`;
   }
   const media = clip.kind === "VIDEO"
-    ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" src="${escapeAttribute(sourceUrl)}" muted playsinline loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset}${hidden}></video>${clip.trackId === "avatar" ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${hidden} src="${escapeAttribute(sourceUrl)}" loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset} data-volume="${volume}"></audio>` : ""}`
+    ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" src="${escapeAttribute(sourceUrl)}" muted playsinline loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset}${hidden}></video>${hasSynchronizedVideoAudio ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${hidden} src="${escapeAttribute(sourceUrl)}" loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset} data-volume="${volume}"></audio>` : ""}`
     : `<img class="composition-media" src="${escapeAttribute(sourceUrl)}" alt="" />`;
   return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${media}</div></div></section>`;
+}
+
+function resolveClipAudioVolume(
+  clip: CompositionClip,
+  track: CompositionTrack | undefined,
+) {
+  if (track?.muted) return 0;
+  const trackVolume = track?.volume ?? 1;
+  const isBrollVideo = clip.kind === "VIDEO"
+    && (track?.semanticRole === "BROLL" || track?.id === "broll");
+  const clipVolume = isBrollVideo ? clip.volume ?? 0 : 1;
+  return Math.max(0, Math.min(1, trackVolume * clipVolume));
 }
 
 function renderVisualCropStyle(crop: { bottom: number; left: number; right: number; top: number }) {

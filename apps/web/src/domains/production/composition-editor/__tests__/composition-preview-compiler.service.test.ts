@@ -338,6 +338,39 @@ test("creates a separate synchronized audio element for an avatar video", async 
   assert.doesNotMatch(renderHtml, /media\.play\(\)|composition-audio-unlock/);
 });
 
+test("applies independent B-roll clip volume in preview and render", async () => {
+  const brollId = "00000000-0000-4000-8000-000000000006";
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "c".repeat(64), durationSeconds: 8, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: brollId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/broll.mp4", timelineRole: "BROLL" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "B-roll" },
+  });
+  const broll = document.clips.find((clip) => clip.trackId === "broll")!;
+  const edited = applyCompositionEditorPatches(document, [{ clipId: broll.id, type: "clip.volume", volume: 0.4 }]);
+
+  const previewHtml = await compileCompositionPreview({
+    assetUrls: new Map([[brollId, "https://example.test/broll.mp4"]]),
+    document: edited,
+  });
+  assert.match(previewHtml, new RegExp(`id="${broll.id}-audio"`));
+  assert.match(previewHtml, new RegExp(`id="${broll.id}-audio"[^>]+data-volume="0\\.4"`));
+  assert.match(previewHtml, new RegExp(`id="${broll.id}-media"[^>]+muted`));
+
+  const renderHtml = await compileCompositionPreview({
+    assetUrls: new Map([[brollId, "assets/broll.mp4"]]),
+    document: edited,
+    target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+  });
+  assert.match(renderHtml, new RegExp(`id="${broll.id}-audio" class="composition-audio clip"[^>]+data-volume="0\\.4"`));
+
+  delete broll.volume;
+  const legacyHtml = await compileCompositionPreview({
+    assetUrls: new Map([[brollId, "https://example.test/broll.mp4"]]),
+    document,
+  });
+  assert.match(legacyHtml, new RegExp(`id="${broll.id}-audio"[^>]+data-volume="0"`));
+});
+
 test("compiles derived video clips with the same source and their distinct media offsets", async () => {
   const avatarId = "00000000-0000-4000-8000-000000000015";
   const document = createInitialCompositionDocument({

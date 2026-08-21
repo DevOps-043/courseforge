@@ -66,6 +66,7 @@ test("keeps production media as references instead of copying files", () => {
 
   assert.equal(document.clips[0]?.source.type, "PRODUCTION_ASSET");
   assert.equal(document.clips[0]?.source.productionAssetId, "00000000-0000-4000-8000-000000000001");
+  assert.equal(document.clips[0]?.volume, 0);
 });
 
 test("separates voice and music into semantic layers the agent can identify", () => {
