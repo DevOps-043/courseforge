@@ -168,6 +168,7 @@ export async function POST(request: Request) {
                 public_url: publicUrl,
                 storage_path: `production-assets/${storagePath}`,
                 file_name: videoId ? `${provider}-${videoId}.mp4` : `${provider}-video.mp4`,
+                has_audio: true,
                 duration: currentAssets.video_duration || undefined, // Maintain duration if known
             },
             // Fallback for retrocompatibility: also set the direct final video URL

@@ -14,12 +14,14 @@ import {
   type HyperframesAnimatedDeckSource,
   type HyperframesAssetManifestItem,
 } from "./hyperframes.types";
+import { validateHyperframesMediaAsset } from "./hyperframes-media-constraints";
 
 const SUPPORTED_HYPERFRAMES_MIME = /^(audio|font|image|video)\/[a-z0-9.+-]+$/i;
 
 interface InternalMaterialAssetReference {
   durationSeconds?: number;
   fileName: string | null;
+  hasAudio?: boolean;
   mimeType: string | null;
   publicUrl: string | null;
   sourceType: "DECK_DEPENDENCY" | "PRODUCTION_MEDIA";
@@ -37,6 +39,7 @@ export function isSupportedHyperframesSourceMime(mimeType: string | null | undef
 export interface HyperframesSourceAssetCandidate extends HyperframesAssetManifestItem {
   durationSeconds?: number;
   eligibleForRevision: boolean;
+  hasAudio?: boolean;
   metadata: Record<string, unknown>;
   qaStatus: string;
   sourceType: "DECK_DEPENDENCY" | "PRODUCTION_MEDIA";
@@ -54,6 +57,7 @@ export function inspectHyperframesSourceAsset(input: {
   checksum: string | null;
   durationSeconds?: number | null;
   fileSizeBytes: number | null;
+  hasAudio?: boolean;
   metadata?: Record<string, unknown> | null;
   mimeType: string | null;
   productionAssetId: string;
@@ -76,20 +80,29 @@ export function inspectHyperframesSourceAsset(input: {
   const fileName = typeof input.metadata?.file_name === "string"
     ? input.metadata.file_name
     : input.storagePath?.split("/").pop() || "Asset sin nombre";
-  const validationErrors = parsed.success
+  const manifestErrors = parsed.success
     ? []
     : parsed.error.issues.map((issue) => issue.path.includes("fileSizeBytes")
       && typeof input.fileSizeBytes === "number"
       && input.fileSizeBytes > HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES
         ? `“${fileName}” excede el máximo individual de 200 MB (${formatAssetSize(input.fileSizeBytes)}).`
         : issue.message);
+  const mediaValidation = validateHyperframesMediaAsset({
+    fileName,
+    fileSizeBytes: input.fileSizeBytes,
+    height: positiveInteger(input.metadata?.source_height),
+    mimeType: input.mimeType,
+    width: positiveInteger(input.metadata?.source_width),
+  });
+  const validationErrors = [...manifestErrors, ...mediaValidation.errors];
 
   return {
     ...item,
     durationSeconds: typeof input.durationSeconds === "number" && Number.isFinite(input.durationSeconds) && input.durationSeconds > 0
       ? input.durationSeconds
       : undefined,
-    eligibleForRevision: parsed.success,
+    eligibleForRevision: parsed.success && mediaValidation.valid,
+    ...(input.hasAudio !== undefined ? { hasAudio: input.hasAudio } : {}),
     metadata: input.metadata || {},
     qaStatus: input.qaStatus || "PENDING",
     sourceType: input.sourceType,
@@ -117,9 +130,12 @@ export function collectInternalMaterialAssetReferences(rawAssets: unknown): Inte
     );
     const sourceHeight = positiveInteger(value.source_height ?? value.height);
     const sourceWidth = positiveInteger(value.source_width ?? value.width);
+    const explicitHasAudio = optionalBoolean(value.has_audio ?? value.hasAudio);
+    const hasAudio = explicitHasAudio ?? legacyAudioPresenceForRole(timelineRole);
     references.push({
       ...(durationSeconds ? { durationSeconds } : {}),
       fileName: typeof value.file_name === "string" ? value.file_name : null,
+      ...(hasAudio !== undefined ? { hasAudio } : {}),
       mimeType: typeof value.content_type === "string" ? value.content_type : mimeType || null,
       publicUrl: typeof value.public_url === "string" ? value.public_url : null,
       sourceType,
@@ -298,7 +314,10 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
       .maybeSingle();
     if (existingError) throw existingError;
     const metadata = await getStoredFileMetadata(params.supabase, stored);
-    const mimeType = reference.mimeType || metadata.mimeType || mimeTypeFromFileName(reference.fileName || stored.fileName);
+    const inferredMimeType = mimeTypeFromFileName(reference.fileName || stored.fileName);
+    const mimeType = metadata.mimeType
+      || (inferredMimeType !== "application/octet-stream" ? inferredMimeType : reference.mimeType)
+      || "application/octet-stream";
     if (!isSupportedHyperframesSourceMime(mimeType)) {
       skipped.push(reference.storagePath);
       continue;
@@ -320,6 +339,7 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
       && existing.checksum
       && (reference.durationSeconds === undefined || preciseDurationSeconds(existing.duration_milliseconds, existing.duration_seconds) === reference.durationSeconds)
       && isRecord(existing.metadata)
+      && (reference.hasAudio === undefined || existing.metadata.has_audio === reference.hasAudio)
       && existing.metadata.timeline_role === reference.timelineRole
       && (reference.sourceHeight === undefined || existing.metadata.source_height === reference.sourceHeight)
       && (reference.sourceWidth === undefined || existing.metadata.source_width === reference.sourceWidth)
@@ -345,6 +365,7 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
       metadata: {
         assembly_source_type: reference.sourceType,
         file_name: reference.fileName || stored.fileName,
+        ...(reference.hasAudio !== undefined ? { has_audio: reference.hasAudio } : {}),
         source_provider: "production_step",
         ...(reference.sourceHeight && reference.sourceWidth ? {
           source_height: reference.sourceHeight,
@@ -428,6 +449,7 @@ export async function listHyperframesSourceAssets(params: {
       checksum: asset.checksum,
       durationSeconds: preciseDurationSeconds(asset.duration_milliseconds, asset.duration_seconds),
       fileSizeBytes: asset.file_size_bytes,
+      hasAudio: reference.hasAudio ?? optionalBoolean(isRecord(asset.metadata) ? asset.metadata.has_audio : undefined),
       metadata: isRecord(asset.metadata) ? asset.metadata : {},
       mimeType: asset.mime_type,
       productionAssetId: asset.id,
@@ -482,8 +504,13 @@ async function getStoredFileMetadata(supabase: SupabaseClient<any, "public", any
 
 function mimeTypeFromFileName(fileName: string) {
   const extension = fileName.split(".").pop()?.toLowerCase();
-  if (["mp3", "wav", "m4a", "aac", "ogg"].includes(extension || "")) return "audio/mpeg";
-  if (["mp4", "webm", "mov", "m4v"].includes(extension || "")) return "video/mp4";
+  if (extension === "mp3") return "audio/mpeg";
+  if (extension === "wav") return "audio/wav";
+  if (["m4a", "aac", "ogg"].includes(extension || "")) return `audio/${extension}`;
+  if (extension === "mp4") return "video/mp4";
+  if (extension === "webm") return "video/webm";
+  if (extension === "mov") return "video/quicktime";
+  if (extension === "m4v") return "video/x-m4v";
   if (["png", "jpg", "jpeg", "webp", "gif"].includes(extension || "")) return `image/${extension === "jpg" ? "jpeg" : extension}`;
   return "application/octet-stream";
 }
@@ -500,6 +527,21 @@ function positiveInteger(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) && value > 0 && value <= 16_384
     ? value
     : undefined;
+}
+
+function optionalBoolean(value: unknown) {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+/**
+ * Historical Production JSON predates track probing. Avatars are generated
+ * with narration, while B-roll is intentionally silent by default. New files
+ * always persist an explicit value and do not use this compatibility rule.
+ */
+function legacyAudioPresenceForRole(role: InternalMaterialAssetReference["timelineRole"]) {
+  if (role === "AVATAR") return true;
+  if (role === "BROLL") return false;
+  return undefined;
 }
 
 function preciseDurationSeconds(milliseconds: unknown, legacySeconds: unknown) {

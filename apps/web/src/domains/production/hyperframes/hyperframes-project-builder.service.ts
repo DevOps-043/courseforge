@@ -7,6 +7,7 @@ import type { HyperframesPlan } from "./hyperframes-plan.service";
 
 export interface HyperframesProjectAsset extends HyperframesAssetManifestItem {
   durationSeconds?: number;
+  hasAudio?: boolean;
   label?: string;
   publicUrl: string | null;
   sourceHeight?: number;

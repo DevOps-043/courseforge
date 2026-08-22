@@ -239,7 +239,7 @@ async function assertAddedAssetsBelongToDraft(params: {
     if (operation.type === "clip.add" && operation.clip.source.type === "PRODUCTION_ASSET") {
       return [operation.clip.source.productionAssetId];
     }
-    if (operation.type === "document.restore") {
+    if (operation.type === "document.restore" || operation.type === "document.reconcile") {
       return operation.document.clips.flatMap((clip) => (
         clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []
       ));

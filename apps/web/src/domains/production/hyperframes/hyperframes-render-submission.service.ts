@@ -19,6 +19,9 @@ import {
   hyperframesRevisionManifestSchema,
   type HyperframesAssetManifestItem,
 } from "./hyperframes.types";
+import { HYPERFRAMES_DURABLE_RENDER_PROFILE } from "./hyperframes-media-constraints";
+import type { HyperframesRenderSettings } from "./hyperframes-render-profiles";
+import { resolveHyperframesSnapshotRenderProfile } from "./hyperframes-request-validation";
 
 const PROJECT_ARCHIVE_BUCKET = "production-assets";
 
@@ -123,7 +126,9 @@ export class HyperframesRenderSubmissionService {
     const revision = await this.getRevision(input);
     const context = await this.resolveComponentContext(revision, input.organizationId);
     const assets = await this.getRevisionAssets(revision.id);
-    const manifest = parseAndVerifyManifest(revision.manifest, assets);
+    const revisionContract = parseAndVerifyManifest(revision.manifest, assets);
+    const manifest = revisionContract.assets;
+    const effectiveInput = applyRevisionRenderProfile(input, revisionContract.renderProfile);
     const declaredPreflight = validateHyperframesPreflight({
       archiveSizeBytes: revision.project_archive_size_bytes,
       assets: manifest,
@@ -152,12 +157,12 @@ export class HyperframesRenderSubmissionService {
     }
 
     const baseJobInput = {
-      aspect_ratio: input.aspectRatio,
-      format: input.format || "mp4",
-      fps: input.fps || 30,
+      aspect_ratio: effectiveInput.aspectRatio,
+      format: effectiveInput.format || "mp4",
+      fps: effectiveInput.fps || HYPERFRAMES_DURABLE_RENDER_PROFILE.fps,
       project_hash: revision.project_hash,
-      quality: input.quality || "high",
-      resolution: input.resolution || "1080p",
+      quality: effectiveInput.quality || HYPERFRAMES_DURABLE_RENDER_PROFILE.quality,
+      resolution: effectiveInput.resolution || "1080p",
       revision_id: revision.id,
       variables: revision.variables_values || {},
     };
@@ -268,7 +273,7 @@ export class HyperframesRenderSubmissionService {
     }
 
     return this.processSubmission({
-      input,
+      input: effectiveInput,
       jobId: job.id,
       idempotencyKey,
       manifest,
@@ -315,7 +320,9 @@ export class HyperframesRenderSubmissionService {
     };
     const revision = await this.getRevision(input, false);
     const assets = await this.getRevisionAssets(revision.id);
-    const manifest = parseAndVerifyManifest(revision.manifest, assets);
+    const revisionContract = parseAndVerifyManifest(revision.manifest, assets);
+    const manifest = revisionContract.assets;
+    const effectiveInput = applyRevisionRenderProfile(input, revisionContract.renderProfile);
     const preflight = validateHyperframesPreflight({
       archiveSizeBytes: revision.project_archive_size_bytes,
       assets: manifest,
@@ -323,7 +330,7 @@ export class HyperframesRenderSubmissionService {
     assertPassingPreflight(preflight);
 
     await this.processSubmission({
-      input,
+      input: effectiveInput,
       idempotencyKey: request.idempotency_key,
       jobId: request.production_job_id,
       manifest,
@@ -383,9 +390,9 @@ export class HyperframesRenderSubmissionService {
         callbackUrl: await this.getWebhookCallbackUrl(input.organizationId),
         composition: revision.entry_point,
         format: input.format || "mp4",
-        fps: input.fps || 30,
+        fps: input.fps || HYPERFRAMES_DURABLE_RENDER_PROFILE.fps,
         idempotencyKey,
-        quality: input.quality || "high",
+        quality: input.quality || HYPERFRAMES_DURABLE_RENDER_PROFILE.quality,
         resolution: input.resolution || "1080p",
         title: input.title || getComposition(revision)!.name,
         variables: revision.variables_values || {},
@@ -783,6 +790,12 @@ function parseAndVerifyManifest(rawManifest: unknown, rows: StoredRevisionAsset[
   if (!parsedManifest.success) {
     throw new HyperframesRenderSubmissionError("El manifiesto de assets de la revisión no es válido.");
   }
+  if (!parsedManifest.data.render_profile) {
+    throw new HyperframesRenderSubmissionError(
+      "Este snapshot usa un perfil de render anterior. Regenera el snapshot antes de enviarlo a HeyGen.",
+      409,
+    );
+  }
   const manifest = parsedManifest.data.asset_manifest;
   const expected = hyperframesAssetManifestSchema.parse(
     rows.map((row) => ({
@@ -798,7 +811,21 @@ function parseAndVerifyManifest(rawManifest: unknown, rows: StoredRevisionAsset[
       "El manifiesto no coincide con la trazabilidad de assets de la revisión.",
     );
   }
-  return expected;
+  return {
+    assets: expected,
+    renderProfile: parsedManifest.data.render_profile,
+  };
+}
+
+export function applyRevisionRenderProfile(
+  input: HyperframesRenderSubmissionInput,
+  renderProfile: HyperframesRenderSettings | undefined,
+) {
+  const resolved = resolveHyperframesSnapshotRenderProfile(input, renderProfile);
+  if (!resolved.success) {
+    throw new HyperframesRenderSubmissionError(resolved.message, 409);
+  }
+  return { ...input, ...resolved.data };
 }
 
 function sameManifest(

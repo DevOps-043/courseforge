@@ -299,6 +299,7 @@ export class HeygenScenesService {
         duration: video.durationSeconds || clip.duration,
         external_id: video.videoId,
         file_name: imported.asset.storagePath.split("/").at(-1) || clip.file_name,
+        has_audio: true,
         public_url: imported.asset.publicUrl,
         storage_path: imported.asset.storagePath,
         status: "COMPLETED",

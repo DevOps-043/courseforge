@@ -329,7 +329,7 @@ test("creates a separate synchronized audio element for an avatar video", async 
   const avatarId = "00000000-0000-4000-8000-000000000005";
   const document = createInitialCompositionDocument({
     animatedDeck: null,
-    assets: [{ checksum: "b".repeat(64), durationSeconds: 30, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: avatarId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/avatar.mp4", timelineRole: "AVATAR" }],
+    assets: [{ checksum: "b".repeat(64), durationSeconds: 30, fileSizeBytes: 4, hasAudio: true, mimeType: "video/mp4", productionAssetId: avatarId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/avatar.mp4", timelineRole: "AVATAR" }],
     plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Avatar" },
   });
   document.tracks.find((track) => track.id === "avatar")!.volume = 0.35;
@@ -405,7 +405,7 @@ test("applies independent B-roll clip volume in preview and render", async () =>
   const brollId = "00000000-0000-4000-8000-000000000006";
   const document = createInitialCompositionDocument({
     animatedDeck: null,
-    assets: [{ checksum: "c".repeat(64), durationSeconds: 8, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: brollId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/broll.mp4", timelineRole: "BROLL" }],
+    assets: [{ checksum: "c".repeat(64), durationSeconds: 8, fileSizeBytes: 4, hasAudio: true, mimeType: "video/mp4", productionAssetId: brollId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/broll.mp4", timelineRole: "BROLL" }],
     plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "B-roll" },
   });
   const broll = document.clips.find((clip) => clip.trackId === "broll")!;
@@ -434,6 +434,15 @@ test("applies independent B-roll clip volume in preview and render", async () =>
   assert.match(legacyHtml, new RegExp(`id="${broll.id}-audio"[^>]+data-volume="0"`));
 
   if (broll.source.type !== "PRODUCTION_ASSET") throw new Error("Expected a production asset source.");
+  delete broll.source.hasAudio;
+  const unknownAudioDocument = compositionEditorDocumentSchema.parse(document);
+  const unknownAudioRenderHtml = await compileCompositionPreview({
+    assetUrls: new Map([[brollId, "assets/broll.mp4"]]),
+    document: unknownAudioDocument,
+    target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+  });
+  assert.doesNotMatch(unknownAudioRenderHtml, new RegExp(`id="${broll.id}-audio"`));
+
   broll.source.hasAudio = false;
   const silentDocument = compositionEditorDocumentSchema.parse(document);
   const silentPreviewHtml = await compileCompositionPreview({
@@ -456,7 +465,7 @@ test("compiles derived video clips with the same source and their distinct media
   const avatarId = "00000000-0000-4000-8000-000000000015";
   const document = createInitialCompositionDocument({
     animatedDeck: null,
-    assets: [{ checksum: "e".repeat(64), durationSeconds: 30, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: avatarId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/avatar.mp4", timelineRole: "AVATAR" }],
+    assets: [{ checksum: "e".repeat(64), durationSeconds: 30, fileSizeBytes: 4, hasAudio: true, mimeType: "video/mp4", productionAssetId: avatarId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/avatar.mp4", timelineRole: "AVATAR" }],
     plan: { accentColor: "#38BDF8", durationSeconds: 30, subtitle: "Prueba", title: "Cortes" },
   });
   const avatar = document.clips.find((clip) => clip.kind === "VIDEO")!;
@@ -483,7 +492,7 @@ test("mantiene preview y render en paridad para dividir a 01:30 y eliminar un in
   const avatarId = "00000000-0000-4000-8000-000000000016";
   const document = createInitialCompositionDocument({
     animatedDeck: null,
-    assets: [{ checksum: "f".repeat(64), durationSeconds: 180, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: avatarId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/avatar.mp4", timelineRole: "AVATAR" }],
+    assets: [{ checksum: "f".repeat(64), durationSeconds: 180, fileSizeBytes: 4, hasAudio: true, mimeType: "video/mp4", productionAssetId: avatarId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/avatar.mp4", timelineRole: "AVATAR" }],
     plan: { accentColor: "#38BDF8", durationSeconds: 180, subtitle: "Prueba", title: "Edición no destructiva" },
   });
   document.canvas.durationSeconds = 180;

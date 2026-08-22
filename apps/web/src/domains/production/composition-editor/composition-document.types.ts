@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS } from "./composition-document.types.constants";
+import {
+  COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS,
+  DEFAULT_COMPOSITION_RENDER_FPS,
+} from "./composition-document.types.constants";
 import { compositionMotionSchema } from "./composition-motion.types";
 import { resolveCompositionAnimationWindow } from "./composition-motion-scheduling.service";
 import {
@@ -186,7 +189,7 @@ export const compositionEditorDocumentSchema = z.object({
     durationMode: z.enum(["AUTO", "USER_EDITED"]).optional(),
     durationSource: z.enum(COMPOSITION_DURATION_SOURCES).optional(),
     durationSeconds: boundedSecondsSchema.positive(),
-    fps: z.union([z.literal(24), z.literal(30), z.literal(60)]).default(30),
+    fps: z.union([z.literal(24), z.literal(25), z.literal(30), z.literal(60)]).default(DEFAULT_COMPOSITION_RENDER_FPS),
     height: z.number().int().positive().max(8_192),
     width: z.number().int().positive().max(8_192),
   }).strict(),

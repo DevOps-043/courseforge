@@ -5,6 +5,7 @@ import JSZip from "jszip";
 import { toast } from "sonner";
 import { getErrorMessage } from "@/lib/errors";
 import { uploadWithSignedUrl } from "@/lib/storage-upload";
+import { validateHyperframesMediaAsset } from "@/domains/production/hyperframes/hyperframes-media-constraints";
 import type { CloudStorageProvider } from "@/domains/production/cloud-storage/types";
 import {
   MAX_VIDEO_UPLOAD_SIZE_BYTES,
@@ -27,6 +28,7 @@ import type {
   SlidesAsset,
 } from "../validators/assets.validators";
 import { formatGammaContent } from "../lib/production-formatters";
+import { inspectLocalVideoFile } from "../media/video-file-metadata.client";
 
 interface UseProductionAssetStateParams {
   component: MaterialComponent;
@@ -61,8 +63,6 @@ function isRenderableSlideImage(file: File) {
   const imageMimeTypes = new Set([
     "image/png",
     "image/jpeg",
-    "image/webp",
-    "image/svg+xml",
   ]);
   const extension = file.name.split(".").pop()?.toLowerCase();
 
@@ -70,9 +70,7 @@ function isRenderableSlideImage(file: File) {
     imageMimeTypes.has(file.type) ||
     extension === "png" ||
     extension === "jpg" ||
-    extension === "jpeg" ||
-    extension === "webp" ||
-    extension === "svg"
+    extension === "jpeg"
   );
 }
 
@@ -154,16 +152,21 @@ function buildSingleUploadedSlideImage(params: {
   originalFileName: string;
   publicUrl: string;
   slideIndex?: number;
+  height?: number;
+  width?: number;
 }) {
   if (!isRenderableSlideImage(params.file)) {
     return null;
   }
 
   return {
+    content_type: params.file.type || undefined,
     file_name: params.originalFileName,
+    height: params.height,
     slide_index: params.slideIndex ?? 1,
     storage_path: `production-assets/${params.fileName}`,
     public_url: params.publicUrl,
+    width: params.width,
   };
 }
 
@@ -191,18 +194,38 @@ async function detectDirectVideoDuration(url: string) {
   return (await detectDirectVideoMetadata(url)).duration;
 }
 
-async function detectLocalVideoMetadata(file: File) {
+async function detectLocalMediaDuration(file: File) {
   const objectUrl = URL.createObjectURL(file);
-
   try {
-    return await detectDirectVideoMetadata(objectUrl);
+    return (await detectDirectVideoMetadata(objectUrl)).duration;
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
 }
 
-async function detectLocalMediaDuration(file: File) {
-  return (await detectLocalVideoMetadata(file)).duration;
+async function detectLocalImageDimensions(file: File) {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    return await new Promise<{ height: number; width: number }>((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve({ height: image.naturalHeight, width: image.naturalWidth });
+      image.onerror = () => resolve({ height: 0, width: 0 });
+      image.src = objectUrl;
+    });
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function assertHyperframesMediaFile(file: File, dimensions?: { height: number; width: number }) {
+  const validation = validateHyperframesMediaAsset({
+    fileName: file.name,
+    fileSizeBytes: file.size,
+    height: dimensions?.height,
+    mimeType: file.type,
+    width: dimensions?.width,
+  });
+  if (!validation.valid) throw new Error(validation.errors.join(" "));
 }
 
 export function useProductionAssetState({
@@ -355,6 +378,7 @@ export function useProductionAssetState({
         const recoveredAvatar: AvatarVideo = {
           external_id: latestJob.providerJobId || undefined,
           file_name: data.data.asset.storagePath.split("/").pop(),
+          has_audio: true,
           provider: "heygen",
           public_url: data.data.asset.publicUrl,
           storage_path: data.data.asset.storagePath,
@@ -430,6 +454,7 @@ export function useProductionAssetState({
 
     setIsUploadingVoice(true);
     try {
+      assertHyperframesMediaFile(file);
       const fileName = `voices/${component.id}-voice-${Date.now()}.${file.name.split('.').pop()}`;
       const { publicUrl, path } = await uploadWithSignedUrl('production-assets', fileName, file, {
         componentId: component.id,
@@ -475,6 +500,7 @@ export function useProductionAssetState({
 
     setIsUploadingMusic(true);
     try {
+      assertHyperframesMediaFile(file);
       const fileName = `music/${component.id}-bg-${Date.now()}.${file.name.split('.').pop()}`;
       const { publicUrl, path } = await uploadWithSignedUrl('production-assets', fileName, file, {
         componentId: component.id,
@@ -686,6 +712,15 @@ export function useProductionAssetState({
       const uploadVersion = Date.now();
 
       for (const [index, file] of files.entries()) {
+        const imageDimensions = isRenderableSlideImage(file)
+          ? await detectLocalImageDimensions(file)
+          : null;
+        if (imageDimensions) {
+          if (!imageDimensions.width || !imageDimensions.height) {
+            throw new Error(`No se pudo verificar la resolución de “${file.name}”.`);
+          }
+          assertHyperframesMediaFile(file, imageDimensions);
+        }
         const extension = file.name.split(".").pop()?.toLowerCase() || "bin";
         const safeName = file.name
           .replace(/\.[^.]+$/, "")
@@ -711,6 +746,8 @@ export function useProductionAssetState({
           originalFileName: file.name,
           publicUrl,
           slideIndex: uploadedImages.length + 1,
+          height: imageDimensions?.height,
+          width: imageDimensions?.width,
         });
 
         if (uploadedImage) {
@@ -771,23 +808,23 @@ export function useProductionAssetState({
 
     setIsUploadingBroll(true);
     try {
+      let videoMetadata = await inspectLocalVideoFile(file);
+      if (!videoMetadata.width || !videoMetadata.height) {
+        throw new Error(`No se pudo verificar la resolución de “${file.name}”. Usa un MP4 o WebM válido.`);
+      }
+      assertHyperframesMediaFile(file, videoMetadata);
       const clipId = `clip-${Date.now()}`;
       const fileName = `broll/${component.id}-${clipId}.${file.name.split('.').pop()}`;
       const { publicUrl, path } = await uploadWithSignedUrl('production-assets', fileName, file, {
         componentId: component.id,
       });
 
-      let videoMetadata: VideoMetadata = { duration: 0, height: 0, width: 0 };
-      try {
-        videoMetadata = await detectLocalVideoMetadata(file);
-      } catch (e) {
-        console.warn('Could not detect local clip metadata:', e);
-      }
       if (!videoMetadata.duration || !videoMetadata.width || !videoMetadata.height) {
         try {
           const uploadedMetadata = await detectDirectVideoMetadata(publicUrl);
           videoMetadata = {
             duration: videoMetadata.duration || uploadedMetadata.duration,
+            hasAudio: videoMetadata.hasAudio,
             height: videoMetadata.height || uploadedMetadata.height,
             width: videoMetadata.width || uploadedMetadata.width,
           };
@@ -803,6 +840,7 @@ export function useProductionAssetState({
         file_name: file.name,
         duration: videoMetadata.duration || undefined,
         height: videoMetadata.height || undefined,
+        has_audio: videoMetadata.hasAudio,
         order: bRollClips.length + 1,
         width: videoMetadata.width || undefined,
       };
@@ -885,17 +923,17 @@ export function useProductionAssetState({
 
     setIsUploadingAvatar(true);
     try {
+      const videoMetadata = await inspectLocalVideoFile(file);
+      if (!videoMetadata.width || !videoMetadata.height) {
+        throw new Error(`No se pudo verificar la resolución de “${file.name}”. Usa un MP4 o WebM válido.`);
+      }
+      assertHyperframesMediaFile(file, videoMetadata);
       const fileName = `avatars/${component.id}-avatar-${Date.now()}.${file.name.split('.').pop()}`;
       const { publicUrl, path } = await uploadWithSignedUrl('production-assets', fileName, file, {
         componentId: component.id,
       });
 
-      let duration = 0;
-      try {
-        duration = await detectLocalMediaDuration(file);
-      } catch (e) {
-        console.warn('Could not detect local avatar duration:', e);
-      }
+      let duration = videoMetadata.duration;
       if (!duration) {
         try {
           duration = await detectDirectVideoDuration(publicUrl);
@@ -910,7 +948,10 @@ export function useProductionAssetState({
         public_url: publicUrl,
         file_name: file.name,
         duration: duration || undefined,
+        height: videoMetadata.height,
+        has_audio: videoMetadata.hasAudio,
         provider: 'upload',
+        width: videoMetadata.width,
       };
 
       // This picker represents the authoritative full-avatar source. Scene
@@ -1015,6 +1056,7 @@ export function useProductionAssetState({
             const newAvatar: AvatarVideo = {
               external_id: result.providerJobId || undefined,
               file_name: result.asset.storagePath.split("/").pop(),
+              has_audio: true,
               provider: "heygen",
               public_url: result.asset.publicUrl,
               storage_path: result.asset.storagePath,

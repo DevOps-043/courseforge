@@ -8,7 +8,22 @@ import {
   readCompositionAnimationRuntime,
 } from "./composition-preview-compiler.service";
 import { validateHyperframesPreflight } from "../hyperframes/hyperframes-preflight.service";
-import { HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES, HYPERFRAMES_COMPOSITION_FORMAT, hyperframesAssetManifestSchema } from "../hyperframes/hyperframes.types";
+import {
+  HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES,
+  HYPERFRAMES_COMPOSITION_FORMAT,
+  hyperframesAssetManifestSchema,
+  hyperframesRenderProfileSchema,
+} from "../hyperframes/hyperframes.types";
+import {
+  HYPERFRAMES_DURABLE_RENDER_PROFILE,
+  validateHyperframesMediaAsset,
+} from "../hyperframes/hyperframes-media-constraints";
+import {
+  findHyperframesRenderProfile,
+  toHyperframesRenderSettings,
+  type HyperframesRenderProfile,
+  type HyperframesRenderSettings,
+} from "../hyperframes/hyperframes-render-profiles";
 
 const PROJECT_BUCKET = "production-assets";
 
@@ -16,7 +31,7 @@ export class CompositionSnapshotError extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
 }
 
-type AssetRow = { checksum: string; file_size_bytes: number; id: string; mime_type: string; public_url: string | null; storage_bucket: string; storage_path: string };
+type AssetRow = { checksum: string; file_size_bytes: number; id: string; metadata: Record<string, unknown> | null; mime_type: string; public_url: string | null; storage_bucket: string; storage_path: string };
 
 export type CompositionSnapshotSummary = {
   createdAt: string;
@@ -25,6 +40,8 @@ export type CompositionSnapshotSummary = {
   id: string;
   isActive: boolean;
   projectArchiveSizeBytes: number;
+  renderProfile: HyperframesRenderSettings | null;
+  renderProfileId: string | null;
   revisionNumber: number;
 };
 
@@ -33,6 +50,7 @@ export async function snapshotCompositionDocument(params: {
   compositionId: string;
   draftId: string;
   organizationId: string;
+  renderProfile: HyperframesRenderProfile;
   supabase: SupabaseClient<any, "public", any>;
   userId: string;
 }) {
@@ -45,6 +63,7 @@ export async function snapshotCompositionDocument(params: {
   if (compositionError) throw compositionError;
   if (!draft || draft.composition_id !== params.compositionId || draft.state !== "ACTIVE") throw new CompositionSnapshotError("El borrador no pertenece a una composici\u00f3n editable.", 409);
   if (!composition) throw new CompositionSnapshotError("La composici\u00f3n no existe.", 404);
+  assertCompositionSnapshotRenderContract(current.document);
   if (!current.document.canvas.durationSource && current.document.canvas.durationMode !== "USER_EDITED") {
     throw new CompositionSnapshotError(
       "La duración todavía no tiene un origen verificable. Usa ‘Calcular y organizar’ en el timeline antes de preparar el ensamble.",
@@ -52,11 +71,16 @@ export async function snapshotCompositionDocument(params: {
     );
   }
 
+  const renderSettings = toHyperframesRenderSettings(params.renderProfile);
+  const persistedRenderProfile = { id: params.renderProfile.id, ...renderSettings };
   const { data: existing, error: existingError } = await params.supabase
     .from("video_composition_revisions")
     .select("id, revision_number, project_hash, project_archive_size_bytes")
     .eq("composition_id", params.compositionId)
-    .contains("manifest", { draft_document_hash: current.documentHash })
+    .contains("manifest", {
+      draft_document_hash: current.documentHash,
+      render_profile: persistedRenderProfile,
+    })
     .maybeSingle();
   if (existingError) throw existingError;
   if (existing) {
@@ -75,6 +99,14 @@ export async function snapshotCompositionDocument(params: {
     readReferencedDeckDependencies(params, current.document),
   ]);
   const assets = [...new Map([...clipAssets, ...deckDependencies].map((asset) => [asset.id, asset])).values()];
+  const mediaErrors = assets.flatMap((asset) => validateHyperframesMediaAsset({
+    fileName: typeof asset.metadata?.file_name === "string" ? asset.metadata.file_name : asset.storage_path,
+    fileSizeBytes: asset.file_size_bytes,
+    height: readPositiveInteger(asset.metadata?.source_height),
+    mimeType: asset.mime_type,
+    width: readPositiveInteger(asset.metadata?.source_width),
+  }).errors);
+  if (mediaErrors.length > 0) throw new CompositionSnapshotError(mediaErrors.join(" "));
   const manifest = hyperframesAssetManifestSchema.parse(assets.map((asset) => ({
     checksum: asset.checksum,
     fileSizeBytes: asset.file_size_bytes,
@@ -148,7 +180,15 @@ export async function snapshotCompositionDocument(params: {
     entry_point: "index.html",
     format: HYPERFRAMES_COMPOSITION_FORMAT,
     generation_mode: "AUTOMATIC",
-    manifest: { asset_manifest: manifest, draft_document_hash: current.documentHash, draft_document_version: current.version, snapshot: true },
+    manifest: {
+      asset_manifest: manifest,
+      draft_document_hash: current.documentHash,
+      draft_document_version: current.version,
+      render_profile: {
+        ...persistedRenderProfile,
+      },
+      snapshot: true,
+    },
     organization_id: params.organizationId,
     project_archive_size_bytes: archive.byteLength,
     project_hash: projectHash,
@@ -215,6 +255,7 @@ export async function listCompositionSnapshots(params: {
     activeRevisionId: composition.active_revision_id as string | null,
     snapshots: (data || []).map((row) => {
       const manifest = asRecord(row.manifest);
+      const renderProfile = readPersistedRenderProfile(manifest);
       return {
         createdAt: String(row.created_at),
         documentHash: typeof manifest.draft_document_hash === "string" ? manifest.draft_document_hash : "",
@@ -222,6 +263,8 @@ export async function listCompositionSnapshots(params: {
         id: String(row.id),
         isActive: row.id === composition.active_revision_id,
         projectArchiveSizeBytes: Number(row.project_archive_size_bytes),
+        renderProfile,
+        renderProfileId: findHyperframesRenderProfile(renderProfile)?.id || null,
         revisionNumber: Number(row.revision_number),
       };
     }),
@@ -248,6 +291,7 @@ export async function activateCompositionSnapshot(params: {
   if (!revision) throw new CompositionSnapshotError("El snapshot no existe o no pertenece a esta composición.", 404);
   await setActiveCompositionSnapshot(params);
   const manifest = asRecord(revision.manifest);
+  const renderProfile = readPersistedRenderProfile(manifest);
   return {
     createdAt: String(revision.created_at),
     documentHash: typeof manifest.draft_document_hash === "string" ? manifest.draft_document_hash : "",
@@ -255,6 +299,8 @@ export async function activateCompositionSnapshot(params: {
     id: String(revision.id),
     isActive: true,
     projectArchiveSizeBytes: Number(revision.project_archive_size_bytes),
+    renderProfile,
+    renderProfileId: findHyperframesRenderProfile(renderProfile)?.id || null,
     revisionNumber: Number(revision.revision_number),
     status: "READY_FOR_PREVIEW" as const,
   };
@@ -286,7 +332,7 @@ async function readSnapshotAssets(params: { draftId: string; organizationId: str
   const { data: linked, error: linkError } = await params.supabase.from("video_composition_draft_assets").select("production_asset_id").eq("draft_id", params.draftId).eq("organization_id", params.organizationId).in("production_asset_id", ids);
   if (linkError) throw linkError;
   if ((linked || []).length !== ids.length) throw new CompositionSnapshotError("El documento contiene assets que no pertenecen al borrador.", 409);
-  const { data, error } = await params.supabase.from("production_assets").select("id, checksum, file_size_bytes, mime_type, public_url, storage_bucket, storage_path").eq("organization_id", params.organizationId).in("id", ids);
+  const { data, error } = await params.supabase.from("production_assets").select("id, checksum, file_size_bytes, metadata, mime_type, public_url, storage_bucket, storage_path").eq("organization_id", params.organizationId).in("id", ids);
   if (error) throw error;
   if ((data || []).length !== ids.length) throw new CompositionSnapshotError("No se pudo resolver uno o m\u00e1s assets del snapshot.", 409);
   return data as AssetRow[];
@@ -308,7 +354,7 @@ async function readReferencedDeckDependencies(
 
   const { data, error } = await params.supabase
     .from("production_assets")
-    .select("id, checksum, file_size_bytes, mime_type, public_url, storage_bucket, storage_path")
+    .select("id, checksum, file_size_bytes, metadata, mime_type, public_url, storage_bucket, storage_path")
     .eq("organization_id", params.organizationId)
     .in("id", dependencyIds);
   if (error) throw error;
@@ -362,5 +408,35 @@ function bucketRelativePath(bucket: string, storagePath: string) {
   const path = storagePath.startsWith(`${bucket}/`) ? storagePath.slice(bucket.length + 1) : storagePath;
   if (!path || path.startsWith("/") || path.includes("..") || path.includes("\\")) throw new CompositionSnapshotError("La ruta de un asset no es segura.");
   return path;
+}
+
+function readPersistedRenderProfile(manifest: Record<string, unknown>) {
+  const parsed = hyperframesRenderProfileSchema.safeParse(manifest.render_profile);
+  return parsed.success ? parsed.data : null;
+}
+
+export function assertCompositionSnapshotRenderContract(
+  document: Awaited<ReturnType<typeof getCurrentCompositionDocument>>["document"],
+) {
+  if (document.canvas.fps !== HYPERFRAMES_DURABLE_RENDER_PROFILE.fps) {
+    throw new CompositionSnapshotError(
+      "El documento usa un perfil de render anterior. Recarga el editor para migrarlo a 25 FPS antes de generar el snapshot.",
+      409,
+    );
+  }
+  const clipWithoutAudioMetadata = document.clips.find((clip) => (
+    clip.kind === "VIDEO"
+    && clip.source.type === "PRODUCTION_ASSET"
+    && typeof clip.source.hasAudio !== "boolean"
+  ));
+  if (clipWithoutAudioMetadata) {
+    throw new CompositionSnapshotError(
+      `El video “${clipWithoutAudioMetadata.label}” todavía no tiene metadatos de audio. Recarga el editor antes de generar el snapshot.`,
+      409,
+    );
+  }
+}
+function readPositiveInteger(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 }
 function fileExtension(mime: string) { const value = mime.split("/")[1]?.toLowerCase(); return value === "jpeg" ? "jpg" : value === "mpeg" ? "mp3" : value?.replace(/[^a-z0-9]/g, "") || "bin"; }

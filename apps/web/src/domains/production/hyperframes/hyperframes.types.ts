@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { HYPERFRAMES_RENDER_PROFILE_IDS } from "./hyperframes-render-profiles";
 
 export const HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES = 200 * 1024 * 1024;
 export const HYPERFRAMES_COMPOSITION_FORMAT = "hyperframes-html-v1";
@@ -56,10 +57,19 @@ export const hyperframesAnimatedDeckSourceSchema = z.object({
   width: z.number().int().min(1).max(8_192),
 }).strict();
 
+export const hyperframesRenderProfileSchema = z.object({
+  format: z.literal("mp4").default("mp4"),
+  fps: z.union([z.literal(24), z.literal(25), z.literal(30), z.literal(60)]),
+  id: z.enum(HYPERFRAMES_RENDER_PROFILE_IDS).optional(),
+  quality: z.enum(["draft", "standard", "high"]),
+  resolution: z.literal("1080p").default("1080p"),
+}).strict();
+
 /** Persisted alongside a revision so render preflight can be reproduced. */
 export const hyperframesRevisionManifestSchema = z
   .object({
     asset_manifest: hyperframesAssetManifestSchema,
+    render_profile: hyperframesRenderProfileSchema.optional(),
   })
   .passthrough();
 

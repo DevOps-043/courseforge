@@ -124,10 +124,28 @@ describe("HyperFrames source assets", () => {
     assert.equal(references[0]?.sourceWidth, 1080);
   });
 
-  it("keeps an oversized file visible with a clear preflight warning", () => {
+  it("fails closed for historical B-roll audio and preserves avatar narration", () => {
+    const references = collectInternalMaterialAssetReferences({
+      avatar_video: {
+        storage_path: "production-assets/avatars/avatar.mp4",
+      },
+      b_roll_clips: [{
+        storage_path: "production-assets/broll/silent.mp4",
+      }, {
+        has_audio: true,
+        storage_path: "production-assets/broll/authored-audio.mp4",
+      }],
+    });
+
+    assert.equal(references.find((asset) => asset.timelineRole === "AVATAR")?.hasAudio, true);
+    assert.equal(references.find((asset) => asset.storagePath.endsWith("silent.mp4"))?.hasAudio, false);
+    assert.equal(references.find((asset) => asset.storagePath.endsWith("authored-audio.mp4"))?.hasAudio, true);
+  });
+
+  it("keeps an oversized video visible with its provider-specific warning", () => {
     const asset = inspectHyperframesSourceAsset({
       checksum: "a".repeat(64),
-      fileSizeBytes: 201 * 1024 * 1024,
+      fileSizeBytes: 101 * 1024 * 1024,
       metadata: { file_name: "avatar-largo.mp4" },
       mimeType: "video/mp4",
       productionAssetId: "550e8400-e29b-41d4-a716-446655440000",
@@ -137,6 +155,22 @@ describe("HyperFrames source assets", () => {
 
     assert.equal(asset?.eligibleForRevision, false);
     assert.match(asset?.validationErrors.join(" ") || "", /avatar-largo\.mp4/);
-    assert.match(asset?.validationErrors.join(" ") || "", /200 MB/);
+    assert.match(asset?.validationErrors.join(" ") || "", /100 MiB/);
+  });
+
+  it("blocks source media above the maximum supported resolution", () => {
+    const asset = inspectHyperframesSourceAsset({
+      checksum: "b".repeat(64),
+      fileSizeBytes: 20 * 1024 * 1024,
+      metadata: { file_name: "avatar-4k.mp4", source_height: 3840, source_width: 2160 },
+      mimeType: "video/mp4",
+      productionAssetId: "550e8400-e29b-41d4-a716-446655440000",
+      sourceType: "PRODUCTION_MEDIA",
+      storagePath: "avatars/avatar-4k.mp4",
+    });
+
+    assert.equal(asset?.eligibleForRevision, false);
+    assert.match(asset?.validationErrors.join(" ") || "", /2160×3840/);
+    assert.match(asset?.validationErrors.join(" ") || "", /1920 px/);
   });
 });

@@ -22,6 +22,7 @@ interface VideoAsset {
   mimeType: string;
   productionAssetId: string;
   fileSizeBytes: number;
+  hasAudio?: boolean;
   sourceType: "DECK_DEPENDENCY" | "PRODUCTION_MEDIA";
   timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL" | "VOICE";
   timelineVariant?: "CLIP" | "FULL";
@@ -78,6 +79,7 @@ export function HyperframesCompositionPanel({
   const hasAggregateSizeError = totalAssetBytes > CLOUD_ASSET_LIMIT_BYTES;
   const studioAssets = useMemo<CompositionStudioAsset[]>(() => assets.filter((asset) => asset.sourceType === "PRODUCTION_MEDIA").map((asset) => ({
     durationSeconds: asset.durationSeconds,
+    hasAudio: asset.hasAudio,
     id: asset.productionAssetId,
     isEditable: asset.sourceType === "PRODUCTION_MEDIA",
     label: asset.metadata.file_name || asset.mimeType,

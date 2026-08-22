@@ -1,9 +1,8 @@
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  appendMissingProductionAssetClips,
   createInitialCompositionDocument,
-  selectAuthoritativeTimelineAssets,
+  reconcileCompositionDocument,
 } from "../composition-editor/composition-document.factory";
 import { CompositionDurationResolutionError } from "../composition-editor/composition-duration.service";
 import {
@@ -37,39 +36,20 @@ type DraftRow = {
   project_storage_prefix: string;
 };
 
-/** Builds the smallest versioned patch required to mirror active Production media. */
+/** Builds one atomic, server-only migration that preserves authored edits. */
 export function buildProductionAssetReconciliationOperations(
-  document: Parameters<typeof appendMissingProductionAssetClips>[0],
-  assets: Parameters<typeof appendMissingProductionAssetClips>[1],
+  document: Parameters<typeof reconcileCompositionDocument>[0]["document"],
+  assets: Parameters<typeof reconcileCompositionDocument>[0]["productionAssets"],
+  deckDependencyAssetIds: Set<string> = new Set(),
 ) {
-  const timelineAssets = selectAuthoritativeTimelineAssets(assets);
-  const activeAssetIds = new Set(timelineAssets.map((asset) => asset.productionAssetId));
-  const staleClipIds = document.clips.flatMap((clip) => (
-    clip.source.type === "PRODUCTION_ASSET" && !activeAssetIds.has(clip.source.productionAssetId)
-      ? [clip.id]
-      : []
-  ));
-  const reconciled = appendMissingProductionAssetClips(document, timelineAssets);
-  const currentAssetIds = new Set(document.clips.flatMap((clip) => (
-    clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []
-  )));
-  const currentTrackIds = new Set(document.tracks.map((track) => track.id));
-  const suppliedTrackIds = new Set<string>();
-  const removalOperations = staleClipIds.map((clipId) => ({ clipId, type: "clip.remove" as const }));
-  const additionOperations = reconciled.document.clips.flatMap((clip) => {
-    if (clip.source.type !== "PRODUCTION_ASSET" || currentAssetIds.has(clip.source.productionAssetId)) return [];
-    const track = !currentTrackIds.has(clip.trackId) && !suppliedTrackIds.has(clip.trackId)
-      ? reconciled.document.tracks.find((candidate) => candidate.id === clip.trackId)
-      : undefined;
-    if (track) suppliedTrackIds.add(track.id);
-    return [{
-      clip,
-      clipId: clip.id,
-      ...(track ? { track } : {}),
-      type: "clip.add" as const,
-    }];
+  const reconciled = reconcileCompositionDocument({
+    deckDependencyAssetIds,
+    document,
+    productionAssets: assets,
   });
-  return [...removalOperations, ...additionOperations];
+  return reconciled.changed
+    ? [{ document: reconciled.document, type: "document.reconcile" as const }]
+    : [];
 }
 
 /**
@@ -174,6 +154,7 @@ export async function initializeHyperframesDraft(params: {
       checksum: asset.checksum,
       durationSeconds: asset.durationSeconds,
       fileSizeBytes: asset.fileSizeBytes,
+      hasAudio: asset.hasAudio,
       label: typeof asset.metadata.file_name === "string" ? asset.metadata.file_name : undefined,
       mimeType: asset.mimeType,
       productionAssetId: asset.productionAssetId,
@@ -185,6 +166,9 @@ export async function initializeHyperframesDraft(params: {
       timelineRole: asset.timelineRole,
       timelineVariant: asset.timelineVariant,
     }));
+  const deckDependencyAssetIds = new Set(candidates
+    .filter((asset) => asset.sourceType === "DECK_DEPENDENCY")
+    .map((asset) => asset.productionAssetId));
   const animatedDeck = extractHyperframesAnimatedDeck(component.assets);
   // A draft can predate a re-sync. Link assets on every initialization so an
   // older draft never hides assets that are already available in Production.
@@ -224,6 +208,7 @@ export async function initializeHyperframesDraft(params: {
     animatedDeck,
     assets,
     compositionName: composition.name,
+    deckDependencyAssetIds,
     draftId: typedDraft.id,
     organizationId: params.organizationId,
     supabase: params.supabase,
@@ -258,6 +243,7 @@ async function loadOrCreateInitialDocument(params: {
   animatedDeck: ReturnType<typeof extractHyperframesAnimatedDeck>;
   assets: Parameters<typeof createInitialCompositionDocument>[0]["assets"];
   compositionName: string;
+  deckDependencyAssetIds: Set<string>;
   draftId: string;
   organizationId: string;
   supabase: SupabaseClient<any, "public", any>;
@@ -265,7 +251,11 @@ async function loadOrCreateInitialDocument(params: {
 }) {
   try {
     const current = await getCurrentCompositionDocument(params);
-    const operations = buildProductionAssetReconciliationOperations(current.document, params.assets);
+    const operations = buildProductionAssetReconciliationOperations(
+      current.document,
+      params.assets,
+      params.deckDependencyAssetIds,
+    );
     if (operations.length === 0) {
       return { created: false, document: current.document, version: current.version };
     }

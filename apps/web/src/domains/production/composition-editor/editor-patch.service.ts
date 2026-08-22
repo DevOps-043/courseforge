@@ -136,6 +136,14 @@ export function applyCompositionEditorPatches(
   next.format = COMPOSITION_DOCUMENT_FORMAT;
 
   for (const operation of operations) {
+    if (operation.type === "document.reconcile") {
+      if (source !== "SYSTEM") {
+        throw new CompositionEditorPatchError("La reconciliación completa del documento es una operación exclusiva del sistema.");
+      }
+      next = structuredClone(operation.document);
+      next.format = COMPOSITION_DOCUMENT_FORMAT;
+      continue;
+    }
     if (operation.type === "document.restore") {
       if (source !== "USER") {
         throw new CompositionEditorPatchError("Solo una acción explícita del usuario puede restaurar una versión anterior.");

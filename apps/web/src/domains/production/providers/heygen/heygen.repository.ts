@@ -520,6 +520,7 @@ export class HeygenRepository {
         duration: params.durationSeconds || undefined,
         external_id: params.providerJobId,
         file_name: fileName,
+        has_audio: true,
         provider: PRODUCTION_PROVIDERS.HEYGEN,
         public_url: params.publicUrl,
         storage_path: `${params.storagePath}`,

@@ -51,6 +51,24 @@ describe("HyperFrames render preflight", () => {
     assert.ok(result.errors.some((error) => error.includes("empaquetado")));
   });
 
+  it("blocks an individual video larger than the 100 MiB provider limit", () => {
+    const result = validateHyperframesPreflight({
+      assets: [asset({ fileSizeBytes: 101 * 1024 * 1024 })],
+    });
+
+    assert.equal(result.valid, false);
+    assert.ok(result.errors.some((error) => error.includes("100 MiB")));
+  });
+
+  it("blocks MOV inputs before consuming a provider render attempt", () => {
+    const result = validateHyperframesPreflight({
+      assets: [asset({ mimeType: "video/quicktime", storagePath: "assets/avatar.mov" })],
+    });
+
+    assert.equal(result.valid, false);
+    assert.ok(result.errors.some((error) => error.includes("MP4 o WebM")));
+  });
+
   it("rejects unsafe asset paths before a render can be submitted", () => {
     const result = validateHyperframesPreflight({
       assets: [asset({ storagePath: "../secreto.mp4" })],

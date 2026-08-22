@@ -148,6 +148,7 @@ export interface AvatarClip {
     public_url?: string;
     storage_path?: string;
     file_name?: string;
+    has_audio?: boolean;
     duration?: number;
     provider?: string;
     external_id?: string;
@@ -208,6 +209,7 @@ export interface MaterialAssets {
         file_name?: string;
         duration?: number;
         height?: number;
+        has_audio?: boolean;
         prompt_used?: string;
         order: number;
         width?: number;
@@ -219,9 +221,12 @@ export interface MaterialAssets {
         public_url: string;
         file_name?: string;
         duration?: number;
+        has_audio?: boolean;
+        height?: number;
         provider?: string;
         external_id?: string;
         sync_status?: 'SYNCING' | 'COMPLETED' | 'FAILED';
+        width?: number;
     };
     slides?: {
         open_design_project_id?: string;

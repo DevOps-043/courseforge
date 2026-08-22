@@ -359,12 +359,16 @@ export function VoiceAudioSection({
         </div>
       </div>
 
+      <p className="mt-2 text-[10px] text-gray-500 dark:text-gray-400">
+        Formatos admitidos: MP3 o WAV · máximo 50 MiB por archivo.
+      </p>
+
       <input
         type="file"
         ref={fileRef}
         onChange={onUpload}
         className="hidden"
-        accept="audio/mpeg,audio/mp3,audio/wav"
+        accept=".mp3,.wav,audio/mpeg,audio/mp3,audio/wav"
       />
 
       <GoogleDriveImportModal
@@ -503,6 +507,10 @@ export function BackgroundMusicSection({
         </div>
       </div>
 
+      <p className="mt-2 text-[10px] text-gray-500 dark:text-gray-400">
+        Formatos admitidos: MP3 o WAV · máximo 50 MiB por archivo.
+      </p>
+
       {backgroundMusic && (
         <div className="mt-2 flex items-center gap-1.5 border-t border-gray-100 pt-2 text-[10px] text-gray-500 dark:border-[#6C757D]/10 dark:text-gray-400">
           <Volume2 size={11} className="shrink-0 text-indigo-500" />
@@ -515,7 +523,7 @@ export function BackgroundMusicSection({
         ref={fileRef}
         onChange={onUpload}
         className="hidden"
-        accept="audio/mpeg,audio/mp3"
+        accept=".mp3,.wav,audio/mpeg,audio/mp3,audio/wav"
       />
 
       {/* <ArtlistSearchModal
@@ -965,6 +973,10 @@ export function BRollClipsSection({
           </button>
         </div>
       </div>
+
+      <p className="mt-2 text-[10px] text-gray-500 dark:text-gray-400">
+        Formatos admitidos: MP4 o WebM · máximo 100 MiB · resolución máxima 1920 px en el lado mayor.
+      </p>
  
       {clips.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-gray-100 dark:border-[#6C757D]/10">
@@ -998,7 +1010,7 @@ export function BRollClipsSection({
         ref={fileRef}
         onChange={onUpload}
         className="hidden"
-        accept="video/mp4,video/quicktime,video/webm"
+        accept=".mp4,.webm,video/mp4,video/webm"
       />
  
       {/* <ArtlistSearchModal
@@ -1170,6 +1182,10 @@ export function AvatarVideoSection({
           </button>
         </div>
       </div>
+
+      <p className="mt-2 text-[10px] text-gray-500 dark:text-gray-400">
+        Formatos admitidos: MP4 o WebM · máximo 100 MiB · resolución máxima 1920×1080 o 1080×1920.
+      </p>
 
       <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-semibold text-gray-500 dark:text-gray-400">
         <span className="rounded-full bg-gray-100 px-2 py-1 dark:bg-white/5">
@@ -1415,7 +1431,7 @@ export function AvatarVideoSection({
         ref={fileRef}
         onChange={onUpload}
         className="hidden"
-        accept="video/mp4"
+        accept=".mp4,.webm,video/mp4,video/webm"
       />
 
       <GoogleDriveImportModal

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES } from "./hyperframes.types";
+import { HYPERFRAMES_DURABLE_RENDER_PROFILE } from "./hyperframes-media-constraints";
 
 const DEFAULT_HEYGEN_API_BASE_URL = "https://api.heygen.com";
 const COMPLETION_RETRY_DELAYS_MS = [250, 500, 1_000] as const;
@@ -117,7 +118,7 @@ export class HyperframesCloudClient {
         format: params.format || "mp4",
         fps: params.fps,
         project: { asset_id: params.assetId, type: "asset_id" },
-        quality: params.quality || "high",
+        quality: params.quality || HYPERFRAMES_DURABLE_RENDER_PROFILE.quality,
         resolution: params.resolution || "1080p",
         title: params.title,
         variables: params.variables,

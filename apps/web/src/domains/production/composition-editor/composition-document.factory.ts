@@ -21,6 +21,7 @@ import {
   resolveDefaultCompositionMediaFit,
 } from "./composition-default-layout.service";
 import { DEFAULT_COMPOSITION_LAYER } from "./composition-layer-depth";
+import { DEFAULT_COMPOSITION_RENDER_FPS } from "./composition-document.types.constants";
 
 /**
  * Creates the first editable document from internal Production sources.
@@ -52,7 +53,7 @@ export function createInitialCompositionDocument(params: {
       durationMode: "AUTO",
       durationSeconds,
       durationSource: duration.source,
-      fps: 30,
+      fps: DEFAULT_COMPOSITION_RENDER_FPS,
       height: params.animatedDeck?.height || 1080,
       width: params.animatedDeck?.width || 1920,
     },
@@ -108,14 +109,18 @@ export function reconcileCompositionDocument(params: {
   document: CompositionEditorDocument;
   productionAssets: HyperframesProjectAsset[];
 }) {
+  const productionAssets = selectAuthoritativeTimelineAssets(params.productionAssets);
+  const productionAssetById = new Map(productionAssets.map((asset) => [asset.productionAssetId, asset]));
   const withoutDeckDependencies = params.document.clips.filter((clip) => (
     clip.source.type !== "PRODUCTION_ASSET" || !params.deckDependencyAssetIds.has(clip.source.productionAssetId)
   ));
   const removedDeckDependencyCount = params.document.clips.length - withoutDeckDependencies.length;
-  const productionAssets = selectAuthoritativeTimelineAssets(params.productionAssets);
-  const productionAssetById = new Map(productionAssets.map((asset) => [asset.productionAssetId, asset]));
+  const withoutInactiveProductionAssets = withoutDeckDependencies.filter((clip) => (
+    clip.source.type !== "PRODUCTION_ASSET" || productionAssetById.has(clip.source.productionAssetId)
+  ));
+  const removedInactiveProductionAssetCount = withoutDeckDependencies.length - withoutInactiveProductionAssets.length;
   let clipSynchronizationChanged = false;
-  const synchronizedClips = withoutDeckDependencies.map((clip) => {
+  const synchronizedClips = withoutInactiveProductionAssets.map((clip) => {
     if (clip.source.type !== "PRODUCTION_ASSET") return clip;
     const source = productionAssetById.get(clip.source.productionAssetId);
     if (!source) return clip;
@@ -135,9 +140,11 @@ export function reconcileCompositionDocument(params: {
       clip.source.sourceHeight !== sourceDimensions?.height
       || clip.source.sourceWidth !== sourceDimensions?.width
     );
+    const sourceAudioChanged = clip.source.hasAudio !== source.hasAudio;
     clipSynchronizationChanged ||= clip.trackId !== track.id
       || isUnframedLegacyBroll
-      || sourceDimensionsChanged;
+      || sourceDimensionsChanged
+      || sourceAudioChanged;
     return {
       ...clip,
       ...(isUnframedLegacyBroll ? { mediaFit: "CONTAIN" as const } : {}),
@@ -151,6 +158,7 @@ export function reconcileCompositionDocument(params: {
       } : {}),
       source: {
         ...clip.source,
+        ...(source.hasAudio !== undefined ? { hasAudio: source.hasAudio } : {}),
         ...(sourceDimensions ? { sourceHeight: sourceDimensions.height, sourceWidth: sourceDimensions.width } : {}),
       },
       trackId: track.id,
@@ -164,6 +172,10 @@ export function reconcileCompositionDocument(params: {
   }
   const documentWithoutDeckDependencies = compositionEditorDocumentSchema.parse({
     ...params.document,
+    canvas: {
+      ...params.document.canvas,
+      fps: DEFAULT_COMPOSITION_RENDER_FPS,
+    },
     clips: synchronizedClips,
     tracks: synchronizedTracks.filter((track) => (
       track.kind === "DECK" || synchronizedClips.some((clip) => clip.trackId === track.id)
@@ -172,9 +184,14 @@ export function reconcileCompositionDocument(params: {
   const appended = appendMissingProductionAssetClips(documentWithoutDeckDependencies, productionAssets);
   return {
     addedProductionAssetCount: appended.document.clips.length - documentWithoutDeckDependencies.clips.length,
-    changed: removedDeckDependencyCount > 0 || clipSynchronizationChanged || appended.changed,
+    changed: removedDeckDependencyCount > 0
+      || removedInactiveProductionAssetCount > 0
+      || clipSynchronizationChanged
+      || params.document.canvas.fps !== DEFAULT_COMPOSITION_RENDER_FPS
+      || appended.changed,
     document: appended.document,
     removedDeckDependencyCount,
+    removedInactiveProductionAssetCount,
   };
 }
 
@@ -284,6 +301,7 @@ function buildAssetClips(assets: HyperframesProjectAsset[], durationSeconds: num
       }),
       mediaFit: resolveDefaultCompositionMediaFit({ clipKind: kind, track }),
       source: {
+        ...(asset.hasAudio !== undefined ? { hasAudio: asset.hasAudio } : {}),
         productionAssetId: asset.productionAssetId,
         ...(sourceDimensions ? { sourceHeight: sourceDimensions.height, sourceWidth: sourceDimensions.width } : {}),
         type: "PRODUCTION_ASSET" as const,

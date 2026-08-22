@@ -3,6 +3,7 @@ import {
   hyperframesAssetManifestSchema,
   type HyperframesAssetManifestItem,
 } from "./hyperframes.types";
+import { validateHyperframesMediaAsset } from "./hyperframes-media-constraints";
 
 export interface HyperframesPreflightResult {
   archiveSizeBytes: number | null;
@@ -38,6 +39,14 @@ export function validateHyperframesPreflight(params: {
   const totalAssetBytes = uniqueAssets.reduce((total, asset) => total + asset.fileSizeBytes, 0);
   const archiveSizeBytes = normalizeArchiveSize(params.archiveSizeBytes);
   const errors: string[] = [];
+
+  for (const asset of uniqueAssets) {
+    errors.push(...validateHyperframesMediaAsset({
+      fileName: asset.storagePath,
+      fileSizeBytes: asset.fileSizeBytes,
+      mimeType: asset.mimeType,
+    }).errors);
+  }
 
   if (totalAssetBytes > HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES) {
     errors.push("Los assets únicos exceden el límite de 200 MiB para render cloud.");

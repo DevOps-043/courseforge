@@ -3,17 +3,32 @@ import { z } from "zod";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext, TenantContextLookupError } from "@/lib/server/tenant-context";
 import { CompositionSnapshotError, snapshotCompositionDocument } from "@/domains/production/composition-editor/composition-snapshot.service";
+import {
+  DEFAULT_HYPERFRAMES_RENDER_PROFILE_ID,
+  getHyperframesRenderProfile,
+  HYPERFRAMES_RENDER_PROFILE_IDS,
+} from "@/domains/production/hyperframes/hyperframes-render-profiles";
 import { createClient } from "@/utils/supabase/server";
 
 interface RouteContext { params: Promise<{ compositionId: string }>; }
-const bodySchema = z.object({ draftId: z.string().uuid() }).strict();
+const bodySchema = z.object({
+  draftId: z.string().uuid(),
+  renderProfileId: z.enum(HYPERFRAMES_RENDER_PROFILE_IDS).default(DEFAULT_HYPERFRAMES_RENDER_PROFILE_ID),
+}).strict();
 
 export async function POST(request: Request, context: RouteContext) {
   try {
     const auth = await authorize(); if (auth instanceof NextResponse) return auth;
     const compositionId = z.string().uuid().parse((await context.params).compositionId);
-    const { draftId } = bodySchema.parse(await request.json());
-    const data = await snapshotCompositionDocument({ compositionId, draftId, organizationId: auth.organizationId, supabase: auth.admin, userId: auth.userId });
+    const { draftId, renderProfileId } = bodySchema.parse(await request.json());
+    const data = await snapshotCompositionDocument({
+      compositionId,
+      draftId,
+      organizationId: auth.organizationId,
+      renderProfile: getHyperframesRenderProfile(renderProfileId),
+      supabase: auth.admin,
+      userId: auth.userId,
+    });
     return NextResponse.json({ success: true, data }, { status: data.reused ? 200 : 201 });
   } catch (error) {
     if (error instanceof TenantContextLookupError) return NextResponse.json({ error: error.message, code: error.code, retryable: true }, { status: 503 });

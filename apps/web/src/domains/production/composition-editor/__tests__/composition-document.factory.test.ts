@@ -30,6 +30,7 @@ test("preserves deck HTML as editable clips and labels missing timings as estima
   });
 
   assert.equal(document.canvas.durationSeconds, 10);
+  assert.equal(document.canvas.fps, 25);
   assert.equal(document.clips[0]?.source.type, "DECK_SLIDE");
   assert.equal(document.clips[0]?.timingSource, "ESTIMATED");
   assert.equal(document.clips[0]?.layout.zIndex, 1);
@@ -332,6 +333,32 @@ test("reconciles an unframed legacy B-roll to full-source fit without overriding
   }).document.clips[0]!;
   assert.equal(cropped.mediaFit, undefined);
   assert.deepEqual(cropped.layout, croppedDocument.clips[0]!.layout);
+});
+
+test("reconciles legacy FPS and explicit source-audio metadata", () => {
+  const asset = {
+    checksum: "7".repeat(64), durationSeconds: 8, fileSizeBytes: 4, hasAudio: false,
+    mimeType: "video/mp4", productionAssetId: "00000000-0000-4000-8000-000000000097",
+    publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/silent.mp4",
+    timelineRole: "BROLL" as const,
+  };
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ ...asset, hasAudio: undefined }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Legacy" },
+  });
+  document.canvas.fps = 30;
+
+  const reconciled = reconcileCompositionDocument({
+    deckDependencyAssetIds: new Set(),
+    document,
+    productionAssets: [asset],
+  });
+  const source = reconciled.document.clips[0]!.source;
+
+  assert.equal(reconciled.changed, true);
+  assert.equal(reconciled.document.canvas.fps, 25);
+  assert.equal(source.type === "PRODUCTION_ASSET" ? source.hasAudio : undefined, false);
 });
 
 test("removes only deck-owned raster assets from an existing timeline", () => {

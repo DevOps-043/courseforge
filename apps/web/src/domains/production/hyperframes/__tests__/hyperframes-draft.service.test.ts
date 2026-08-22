@@ -51,11 +51,13 @@ test("reconciles an existing draft with the active Production avatar only", () =
   });
   document.clips[0]!.layout.x = 123;
   document.clips[0]!.timingSource = "USER_EDITED";
+  document.canvas.fps = 30;
 
   const operations = buildProductionAssetReconciliationOperations(document, [{
     checksum: "2".repeat(64),
     durationSeconds: 30,
     fileSizeBytes: 4,
+    hasAudio: true,
     mimeType: "video/mp4",
     productionAssetId: avatarAssetId,
     publicUrl: null,
@@ -64,11 +66,18 @@ test("reconciles an existing draft with the active Production avatar only", () =
     timelineRole: "AVATAR",
     timelineVariant: "FULL",
   }]);
-  const reconciled = applyCompositionEditorPatches(document, operations);
+  assert.throws(
+    () => applyCompositionEditorPatches(document, operations),
+    /exclusiva del sistema/,
+  );
+  const reconciled = applyCompositionEditorPatches(document, operations, "SYSTEM");
 
-  assert.deepEqual(operations.map((operation) => operation.type), ["clip.remove", "clip.add"]);
+  assert.deepEqual(operations.map((operation) => operation.type), ["document.reconcile"]);
+  assert.equal(reconciled.canvas.fps, 25);
   assert.equal(reconciled.clips.some((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.productionAssetId === staleAssetId), false);
   assert.equal(reconciled.clips.some((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.productionAssetId === avatarAssetId && clip.trackId === "avatar"), true);
+  const avatar = reconciled.clips.find((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.productionAssetId === avatarAssetId);
+  assert.equal(avatar?.source.type === "PRODUCTION_ASSET" ? avatar.source.hasAudio : undefined, true);
   assert.equal(reconciled.clips.find((clip) => clip.source.type === "DECK_SLIDE")?.layout.x, 123);
   assert.equal(reconciled.clips.find((clip) => clip.source.type === "DECK_SLIDE")?.timingSource, "USER_EDITED");
 });

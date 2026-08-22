@@ -27,6 +27,7 @@ export const bRollClipSchema = z.object({
   file_name: z.string().trim().optional(),
   duration: z.number().positive().optional(),
   height: z.number().int().positive().max(16_384).optional(),
+  has_audio: z.boolean().optional(),
   prompt_used: z.string().trim().optional(),
   order: z.number().int().min(1),
   width: z.number().int().positive().max(16_384).optional(),
@@ -65,6 +66,7 @@ export const avatarClipSchema = z.object({
   public_url: z.string().url().optional(),
   storage_path: z.string().trim().optional(),
   file_name: z.string().trim().optional(),
+  has_audio: z.boolean().optional(),
   duration: z.number().positive().optional(),
   provider: z.string().trim().optional(),
   external_id: z.string().trim().optional(),
@@ -80,9 +82,12 @@ export const avatarVideoSchema = z.object({
   public_url: z.string().url(),
   file_name: z.string().trim().optional(),
   duration: z.number().positive().optional(),
+  height: z.number().int().positive().max(16_384).optional(),
+  has_audio: z.boolean().optional(),
   provider: z.string().trim().optional(),
   external_id: z.string().trim().optional(),
   sync_status: z.enum(["SYNCING", "COMPLETED", "FAILED"]).optional(),
+  width: z.number().int().positive().max(16_384).optional(),
 });
 
 // Schema for individual Slide Image
@@ -92,6 +97,8 @@ export const slideImageSchema = z.object({
   public_url: z.string().url(),
   file_name: z.string().trim().optional(),
   content_type: z.string().trim().optional(),
+  height: z.number().int().positive().max(16_384).optional(),
+  width: z.number().int().positive().max(16_384).optional(),
 });
 
 export const animatedDeckFontSchema = z.object({

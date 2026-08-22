@@ -158,6 +158,12 @@ const documentRestoreOperationSchema = z.object({
   type: z.literal("document.restore"),
 }).strict();
 
+/** Atomic server-only migration of a persisted document to the current contract. */
+const documentReconcileOperationSchema = z.object({
+  document: compositionEditorDocumentSchema,
+  type: z.literal("document.reconcile"),
+}).strict();
+
 const animationAddPresetOperationSchema = z.object({
   animationId: editorIdSchema,
   clipId: editorIdSchema,
@@ -220,6 +226,7 @@ const clipPatchOperationSchema = z.discriminatedUnion("type", [
 
 export const compositionEditorPatchOperationSchema = z.union([
   audioMixUpdateOperationSchema,
+  documentReconcileOperationSchema,
   documentRestoreOperationSchema,
   animationAddPresetOperationSchema,
   animationConfigurePresetOperationSchema,

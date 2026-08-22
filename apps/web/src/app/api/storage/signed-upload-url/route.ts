@@ -12,6 +12,7 @@ import {
 } from '@/utils/auth/session';
 import { createClient } from '@/utils/supabase/server';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
+import { validateHyperframesMediaAsset } from '@/domains/production/hyperframes/hyperframes-media-constraints';
 
 const ALLOWED_BUCKETS = new Set(['thumbnails', 'production-videos', 'production-assets', 'curation-sources']);
 const BUNDLE_AGENT_REFERENCE_MAX_BYTES = 75 * 1024 * 1024;
@@ -44,6 +45,11 @@ function hasUnsafePathSegment(filePath: string) {
 function isBundleAgentReferenceContentType(contentType: string | undefined) {
     if (!contentType) return false;
     return contentType.startsWith('image/') || contentType.startsWith('video/');
+}
+
+function isHyperframesProductionMediaPath(filePath: string, contentType: string | undefined) {
+    if (/^(audio|image|video)\//i.test(contentType || '')) return true;
+    return /^(avatars|broll|music|voices)\//i.test(filePath);
 }
 
 async function ensureCurationSourcesBucket(admin: ReturnType<typeof getServiceRoleClient>) {
@@ -121,6 +127,24 @@ export async function POST(request: Request) {
                 { error: 'El archivo supera el tamano maximo permitido' },
                 { status: 400 },
             );
+        }
+
+        if (
+            bucket === 'production-assets'
+            && purpose === 'production-asset'
+            && isHyperframesProductionMediaPath(filePath, contentType)
+        ) {
+            const mediaValidation = validateHyperframesMediaAsset({
+                fileName: filePath,
+                fileSizeBytes,
+                mimeType: contentType,
+            });
+            if (!mediaValidation.valid) {
+                return NextResponse.json(
+                    { error: mediaValidation.errors.join(' ') },
+                    { status: 400 },
+                );
+            }
         }
 
         const supabase = await createClient();

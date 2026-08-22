@@ -145,7 +145,7 @@ function renderClip(
   const volume = resolveClipAudioVolume(clip, track);
   const hasSynchronizedVideoAudio = clip.kind === "VIDEO"
     && clip.source.type === "PRODUCTION_ASSET"
-    && clip.source.hasAudio !== false
+    && clip.source.hasAudio === true
     && Boolean(
       track?.semanticRole === "AVATAR"
       || track?.semanticRole === "BROLL"

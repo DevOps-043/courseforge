@@ -94,7 +94,7 @@ describe("HyperFrames Cloud client", () => {
       callback_url: "https://project.supabase.co/functions/v1/heygen-hyperframes-webhook",
       format: "mp4",
       project: { asset_id: "asst_123", type: "asset_id" },
-      quality: "high",
+      quality: "standard",
       resolution: "1080p",
     });
   });
