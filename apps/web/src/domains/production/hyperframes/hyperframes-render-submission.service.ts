@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getErrorMessage } from "@/lib/errors";
 import {
@@ -85,6 +85,7 @@ export class HyperframesRenderSubmissionError extends Error {
 
 export interface HyperframesRenderSubmissionInput {
   aspectRatio: "16:9" | "9:16" | "1:1";
+  attemptId?: string;
   createdBy: string;
   deferProcessing?: boolean;
   format?: "mp4" | "webm" | "mov";
@@ -107,9 +108,9 @@ export interface HyperframesRenderSubmissionResult {
 }
 
 /**
- * Creates a durable request before uploading to HeyGen. Retrying the same
- * revision/options reuses an idempotency key across the direct upload and the
- * render request, so a crash cannot create a second billable render.
+ * Creates a durable request before uploading to HeyGen. Repeating a request
+ * while it is active reuses its idempotency key, while a terminal failure gets
+ * a fresh attempt key so it can be retried against the same snapshot.
  */
 export class HyperframesRenderSubmissionService {
   constructor(
@@ -150,7 +151,7 @@ export class HyperframesRenderSubmissionService {
       };
     }
 
-    const jobInput = {
+    const baseJobInput = {
       aspect_ratio: input.aspectRatio,
       format: input.format || "mp4",
       fps: input.fps || 30,
@@ -160,12 +161,31 @@ export class HyperframesRenderSubmissionService {
       revision_id: revision.id,
       variables: revision.variables_values || {},
     };
-    const idempotencyKey = buildProductionIdempotencyKey({
+    const baseIdempotencyKey = buildProductionIdempotencyKey({
       componentId: context.componentId,
-      input: jobInput,
+      input: baseJobInput,
       jobType: PRODUCTION_JOB_TYPES.HYPERFRAMES_RENDER,
       provider: PRODUCTION_PROVIDERS.HYPERFRAMES,
     });
+    const attemptId = input.attemptId || (
+      await this.hasFailedAttempt({
+        idempotencyKey: baseIdempotencyKey,
+        organizationId: input.organizationId,
+      })
+        ? randomUUID()
+        : undefined
+    );
+    const jobInput = attemptId
+      ? { ...baseJobInput, attempt_id: attemptId }
+      : baseJobInput;
+    const idempotencyKey = attemptId
+      ? buildProductionIdempotencyKey({
+          componentId: context.componentId,
+          input: jobInput,
+          jobType: PRODUCTION_JOB_TYPES.HYPERFRAMES_RENDER,
+          provider: PRODUCTION_PROVIDERS.HYPERFRAMES,
+        })
+      : baseIdempotencyKey;
     let job: Awaited<ReturnType<typeof createOrReuseProductionJob>>;
     try {
       job = await createOrReuseProductionJob(this.supabase, {
@@ -422,6 +442,23 @@ export class HyperframesRenderSubmissionService {
       .maybeSingle();
     if (requestError) throw requestError;
     return { jobId: job.id as string, request: request as ExistingRequest | null };
+  }
+
+  private async hasFailedAttempt(params: {
+    idempotencyKey: string;
+    organizationId: string;
+  }) {
+    const { data, error } = await this.supabase
+      .from("production_jobs")
+      .select("id")
+      .eq("organization_id", params.organizationId)
+      .eq("idempotency_key", params.idempotencyKey)
+      .eq("job_type", PRODUCTION_JOB_TYPES.HYPERFRAMES_RENDER)
+      .eq("provider", PRODUCTION_PROVIDERS.HYPERFRAMES)
+      .eq("status", PRODUCTION_JOB_STATUSES.FAILED)
+      .maybeSingle();
+    if (error) throw error;
+    return Boolean(data?.id);
   }
 
   private async getRevision(input: HyperframesRenderSubmissionInput, requireActive = true) {

@@ -104,27 +104,47 @@ export async function snapshotCompositionDocument(params: {
   zip.file("assets/gsap.min.js", animationRuntime);
   zip.file("composition-document.json", JSON.stringify(current.document, null, 2));
   zip.file("asset-manifest.json", JSON.stringify(manifest, null, 2));
-  for (const asset of assets) {
-    const bytes = await downloadAndVerify(params.supabase, asset);
-    zip.file(assetFiles.get(asset.id)!, bytes);
+  // Media files are already compressed. Re-compressing MP4/MP3/image bytes at
+  // DEFLATE level 9 made this synchronous endpoint spend several minutes for
+  // less than one percent of size reduction. Download independently and store
+  // the binary payloads verbatim; only the small text files use DEFLATE.
+  const downloadedAssets = await Promise.all(assets.map(async (asset) => ({
+    asset,
+    bytes: await downloadAndVerify(params.supabase, asset),
+  })));
+  for (const { asset, bytes } of downloadedAssets) {
+    zip.file(assetFiles.get(asset.id)!, bytes, { compression: "STORE" });
   }
-  const archive = await zip.generateAsync({ compression: "DEFLATE", type: "uint8array", compressionOptions: { level: 9 } });
+  const archive = await zip.generateAsync({ compression: "DEFLATE", type: "uint8array", compressionOptions: { level: 6 } });
   const archivePreflight = validateHyperframesPreflight({ archiveSizeBytes: archive.byteLength, assets: manifest });
   if (!archivePreflight.valid || archive.byteLength > HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES) {
     throw new CompositionSnapshotError(archivePreflight.errors.join(" ") || "El snapshot excede el l\u00edmite de 200 MB.");
   }
   const projectHash = createHash("sha256").update(archive).digest("hex");
   // The document hash identifies the semantic edit; the archive hash identifies
-  // the exact bytes that a renderer will download. Never overwrite a prior
-  // snapshot path, because an already-submitted render may still reference it.
+  // the exact bytes that a renderer will download. A repeated path can only be
+  // produced by the same bytes, so retrying an interrupted upload is safe.
   const projectPath = `composition-snapshots/${params.organizationId}/${params.compositionId}/${projectHash}.zip`;
-  const { error: uploadError } = await params.supabase.storage.from(PROJECT_BUCKET).upload(projectPath, archive, { contentType: "application/zip", upsert: false });
-  if (uploadError) throw uploadError;
+  // The path is content-addressed by projectHash. Replacing an orphan left by
+  // an interrupted request is therefore idempotent: the bytes are identical.
+  const { error: uploadError } = await params.supabase.storage.from(PROJECT_BUCKET).upload(projectPath, archive, { contentType: "application/zip", upsert: true });
+  if (uploadError) {
+    throw new CompositionSnapshotError(
+      `No se pudo cargar el archivo del snapshot${readExternalErrorCode(uploadError) ? ` (${readExternalErrorCode(uploadError)})` : ""}.`,
+      502,
+    );
+  }
   const { data: latest, error: latestError } = await params.supabase.from("video_composition_revisions").select("revision_number").eq("composition_id", params.compositionId).order("revision_number", { ascending: false }).limit(1).maybeSingle();
-  if (latestError) throw latestError;
+  if (latestError) {
+    throw new CompositionSnapshotError(
+      `No se pudo calcular la siguiente revisión${readExternalErrorCode(latestError) ? ` (${readExternalErrorCode(latestError)})` : ""}.`,
+      500,
+    );
+  }
+  const creatorId = await resolveSnapshotCreatorId(params.supabase, params.userId);
   const { data: revision, error: revisionError } = await params.supabase.from("video_composition_revisions").insert({
     composition_id: params.compositionId,
-    created_by: params.userId,
+    created_by: creatorId,
     entry_point: "index.html",
     format: HYPERFRAMES_COMPOSITION_FORMAT,
     generation_mode: "AUTOMATIC",
@@ -138,14 +158,24 @@ export async function snapshotCompositionDocument(params: {
     variables_schema: [],
     variables_values: current.document.variables,
   }).select("id, revision_number, project_hash, project_archive_size_bytes").single();
-  if (revisionError) throw revisionError;
+  if (revisionError) {
+    throw new CompositionSnapshotError(
+      `El archivo se cargó, pero no se pudo registrar la revisión${readExternalErrorCode(revisionError) ? ` (${readExternalErrorCode(revisionError)})` : ""}.`,
+      500,
+    );
+  }
   if (manifest.length > 0) {
     const { error: linkError } = await params.supabase.from("video_composition_assets").insert(manifest.map((asset) => ({
       composition_revision_id: revision.id, file_size_bytes: asset.fileSizeBytes, mime_type: asset.mimeType, organization_id: params.organizationId,
       production_asset_id: asset.productionAssetId, role: asset.mimeType.startsWith("audio/") ? "AUDIO" : asset.mimeType.startsWith("video/") ? "VIDEO" : "IMAGE",
       source_checksum: asset.checksum, source_storage_path: asset.storagePath,
     })));
-    if (linkError) throw linkError;
+    if (linkError) {
+      throw new CompositionSnapshotError(
+        `La revisión se creó, pero no se pudieron vincular sus assets${readExternalErrorCode(linkError) ? ` (${readExternalErrorCode(linkError)})` : ""}.`,
+        500,
+      );
+    }
   }
   await setActiveCompositionSnapshot({
     compositionId: params.compositionId,
@@ -299,6 +329,33 @@ async function downloadAndVerify(supabase: SupabaseClient<any, "public", any>, a
   if (bytes.byteLength !== asset.file_size_bytes) throw new CompositionSnapshotError(`El tama\u00f1o de ${asset.id} no coincide con su registro.`);
   if (createHash("sha256").update(bytes).digest("hex") !== asset.checksum.toLowerCase()) throw new CompositionSnapshotError(`El checksum de ${asset.id} no coincide con su registro.`);
   return bytes;
+}
+
+async function resolveSnapshotCreatorId(
+  supabase: SupabaseClient<any, "public", any>,
+  userId: string,
+) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) {
+    throw new CompositionSnapshotError(
+      `No se pudo validar el autor del snapshot${readExternalErrorCode(error) ? ` (${readExternalErrorCode(error)})` : ""}.`,
+      500,
+    );
+  }
+  // created_by is optional, but when present it references profiles rather
+  // than auth.users. Auth Bridge identities without a synchronized profile
+  // must not make an otherwise valid snapshot fail its foreign key.
+  return data?.id ? String(data.id) : null;
+}
+
+function readExternalErrorCode(error: unknown) {
+  if (!error || typeof error !== "object" || !("code" in error)) return "";
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(code) ? code : "";
 }
 
 function bucketRelativePath(bucket: string, storagePath: string) {

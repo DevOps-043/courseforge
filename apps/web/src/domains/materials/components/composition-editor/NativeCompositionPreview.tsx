@@ -1170,10 +1170,13 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     };
   }, [renderRecovery?.completedVideo, renderRequestId]);
 
-  async function submitAssemblyRender() {
+  async function submitAssemblyRender(options: { forceNewAttempt?: boolean } = {}) {
     if (!assembly || assembly.status !== "READY_FOR_RENDER") return; setAssembling(true); setAssemblyError(null); setRenderStatus("sending");
     try {
-      const response = await fetch("/api/production/hyperframes/renders", { body: JSON.stringify({ aspectRatio: "16:9", format: "mp4", quality: "high", resolution: "1080p", revisionId: assembly.revisionId }), headers: { "Content-Type": "application/json" }, method: "POST" });
+      const attemptId = options.forceNewAttempt || renderStatus === "failed"
+        ? crypto.randomUUID()
+        : undefined;
+      const response = await fetch("/api/production/hyperframes/renders", { body: JSON.stringify({ aspectRatio: "16:9", attemptId, format: "mp4", quality: "high", resolution: "1080p", revisionId: assembly.revisionId }), headers: { "Content-Type": "application/json" }, method: "POST" });
       const body = await readCompositionApiResponse<{ data: { providerStatus: string; renderRequestId: string }; error?: string }>(response, "No se pudo enviar el render.");
       if (!response.ok) throw new Error(body.error || "No se pudo enviar el render.");
       const requestId = body.data.renderRequestId as string;
@@ -1195,6 +1198,49 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       setRenderStatus("failed");
     }
     finally { setAssembling(false); }
+  }
+
+  async function deletePriorVideoAndRender() {
+    const completedVideo = renderRecovery?.completedVideo;
+    if (!completedVideo?.assetId || !assembly || assembly.status !== "READY_FOR_RENDER") return;
+    const confirmed = window.confirm(
+      "Se eliminará permanentemente de Storage el video final actual de esta lección y se archivarán sus referencias anteriores. Los snapshots y videos de otras lecciones no cambiarán. ¿Deseas continuar y lanzar un render nuevo?",
+    );
+    if (!confirmed) return;
+
+    setAssembling(true);
+    setAssemblyError(null);
+    try {
+      const response = await fetch(
+        `/api/production/hyperframes/compositions/${encodeURIComponent(compositionId)}/final-video`,
+        {
+          body: JSON.stringify({ assetId: completedVideo.assetId }),
+          headers: { "Content-Type": "application/json" },
+          method: "DELETE",
+        },
+      );
+      const body = await readCompositionApiResponse<{ error?: string }>(
+        response,
+        "No se pudo eliminar el video final anterior.",
+      );
+      if (!response.ok) {
+        throw new Error(body.error || "No se pudo eliminar el video final anterior.");
+      }
+      setRenderRecovery((current) => current ? { ...current, completedVideo: null } : current);
+      setRenderStatus("idle");
+      setRenderProviderStatus(null);
+    } catch (caught) {
+      setAssemblyError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo eliminar el video final anterior.",
+      );
+      setRenderStatus("failed");
+      setAssembling(false);
+      return;
+    }
+    setAssembling(false);
+    await submitAssemblyRender({ forceNewAttempt: true });
   }
 
   const changePreviewZoom = (delta: number) => {
@@ -1336,7 +1382,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           <AudioMixControls audioMix={payload.document.audioMix} disabled={saving} onUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)} />
           <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedAnimationId={selectedAnimationId} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={selectAnimation} onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Recortó el inicio de ${clip.label} desde la timeline.`)} />
           {estimatedClipCount > 0 && <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
-          <AssemblyActions assembly={assembly} busy={assembling} error={assemblyError} history={snapshotHistory} historyOpen={snapshotHistoryOpen} priorCompletedVideo={Boolean(renderRecovery?.completedVideo && renderRecovery.completedVideo.compositionRevisionId !== assembly?.revisionId)} providerStatus={renderProviderStatus} renderStatus={renderStatus} onApprove={approveAssembly} onHistoryToggle={() => setSnapshotHistoryOpen((current) => !current)} onPrepare={prepareAssembly} onRender={submitAssemblyRender} onRestore={restoreSnapshot} />
+          <AssemblyActions assembly={assembly} busy={assembling} error={assemblyError} history={snapshotHistory} historyOpen={snapshotHistoryOpen} priorCompletedVideo={Boolean(renderRecovery?.completedVideo && renderRecovery.completedVideo.compositionRevisionId !== assembly?.revisionId)} providerStatus={renderProviderStatus} renderStatus={renderStatus} onApprove={approveAssembly} onDeleteAndRender={deletePriorVideoAndRender} onHistoryToggle={() => setSnapshotHistoryOpen((current) => !current)} onPrepare={prepareAssembly} onRender={() => submitAssemblyRender()} onRestore={restoreSnapshot} />
           </div>
         </section>
 
@@ -1474,13 +1520,14 @@ function AgentConversation({ lastAppliedProposal, onApprove, onDismiss, onPropos
   </section>;
 }
 
-function AssemblyActions({ assembly, busy, error, history, historyOpen, onApprove, onHistoryToggle, onPrepare, onRender, onRestore, priorCompletedVideo, providerStatus, renderStatus }: {
+function AssemblyActions({ assembly, busy, error, history, historyOpen, onApprove, onDeleteAndRender, onHistoryToggle, onPrepare, onRender, onRestore, priorCompletedVideo, providerStatus, renderStatus }: {
   assembly: ActiveAssembly | null;
   busy: boolean;
   error: string | null;
   history: CompositionSnapshotEntry[] | null;
   historyOpen: boolean;
   onApprove: () => void;
+  onDeleteAndRender: () => void;
   onHistoryToggle: () => void;
   onPrepare: () => void;
   onRender: () => void;
@@ -1519,7 +1566,8 @@ function AssemblyActions({ assembly, busy, error, history, historyOpen, onApprov
       <button type="button" disabled={busy} onClick={() => void onPrepare()} className="inline-flex items-center gap-1.5 rounded-md bg-cyan-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Clapperboard size={14} /> {busy && renderStatus === "validating" ? "Congelando…" : assembly ? "Regenerar snapshot" : "Congelar snapshot"}</button>
       <button type="button" disabled={busy || history === null} onClick={onHistoryToggle} className="inline-flex items-center gap-1.5 rounded-md border border-cyan-700 px-3 py-2 text-xs font-bold text-cyan-900 disabled:opacity-50 dark:border-cyan-300 dark:text-cyan-100"><History size={14} /> Snapshots {history ? `(${history.length})` : ""}</button>
       {assembly?.status === "READY_FOR_PREVIEW" && <button type="button" disabled={busy} onClick={() => void onApprove()} className="inline-flex items-center gap-1.5 rounded-md border border-cyan-700 px-3 py-2 text-xs font-bold text-cyan-900 disabled:opacity-50 dark:border-cyan-300 dark:text-cyan-100"><CheckCircle2 size={14} /> Aprobar snapshot</button>}
-      {assembly?.status === "READY_FOR_RENDER" && <button type="button" disabled={busy || activeRender || renderStatus === "completed"} onClick={() => void onRender()} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-950"><Send size={14} /> {activeRender ? "Render en curso" : "Renderizar video"}</button>}
+      {assembly?.status === "READY_FOR_RENDER" && <button type="button" disabled={busy || activeRender || renderStatus === "completed"} onClick={() => void onRender()} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-950"><Send size={14} /> {activeRender ? "Render en curso" : renderStatus === "failed" ? "Reintentar render" : "Renderizar video"}</button>}
+      {assembly?.status === "READY_FOR_RENDER" && priorCompletedVideo && <button type="button" disabled={busy || activeRender} onClick={() => void onDeleteAndRender()} className="inline-flex items-center gap-1.5 rounded-md border border-red-400 bg-white px-3 py-2 text-xs font-bold text-red-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-transparent dark:text-red-200"><Trash2 size={14} /> Borrar video anterior y renderizar</button>}
     </div>
     {historyOpen && <div className="w-full rounded-lg border border-cyan-200 bg-white/80 p-2 dark:border-cyan-400/20 dark:bg-slate-950/40">
       <p className="px-1 pb-1.5 text-[10px] font-bold uppercase tracking-wide text-cyan-900/70 dark:text-cyan-100/70">Snapshots congelados</p>

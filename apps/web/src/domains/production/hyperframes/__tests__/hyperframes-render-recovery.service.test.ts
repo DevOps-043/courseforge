@@ -27,6 +27,10 @@ function createSupabaseStub(rows: Record<string, unknown>) {
               error: null,
             });
           },
+          neq(column: string, value: unknown) {
+            filters.push({ column: `${column}:neq`, table, value });
+            return query;
+          },
           not(column: string, operator: string, value: unknown) {
             filters.push({ column: `${column}:${operator}`, table, value });
             return query;

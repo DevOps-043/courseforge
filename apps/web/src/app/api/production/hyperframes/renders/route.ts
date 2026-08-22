@@ -22,6 +22,7 @@ import { createClient } from "@/utils/supabase/server";
 
 const renderRequestSchema = z.object({
   aspectRatio: z.enum(["16:9", "9:16", "1:1"]),
+  attemptId: z.string().uuid().optional(),
   format: z.enum(["mp4", "webm", "mov"]).optional(),
   fps: z.number().int().min(1).max(240).optional(),
   quality: z.enum(["draft", "standard", "high"]).optional(),

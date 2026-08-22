@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MaterialAssets } from "../../materials/types/materials.types";
 import {
   PRODUCTION_ASSET_TYPES,
+  PRODUCTION_QA_STATUSES,
   PRODUCTION_PROVIDERS,
 } from "../types/production.types";
 
@@ -66,6 +67,7 @@ export class HyperframesFinalVideoService {
       .eq("organization_id", params.organizationId)
       .eq("asset_type", PRODUCTION_ASSET_TYPES.FINAL_VIDEO)
       .eq("provider", PRODUCTION_PROVIDERS.HYPERFRAMES)
+      .neq("qa_status", PRODUCTION_QA_STATUSES.ARCHIVED)
       .in("material_component_id", componentIds)
       .not("public_url", "is", null)
       .order("created_at", { ascending: false });
