@@ -2,6 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CompositionEditorDocument } from "./composition-document.types";
 import { CompositionPreviewCompilerError } from "./composition-preview-compiler.service";
 import { PUBLIC_PRODUCTION_MEDIA_BUCKETS } from "../media-storage.config";
+import {
+  elapsedMilliseconds,
+  type CompositionPreviewAssetDiagnostics,
+} from "./composition-preview-performance";
 
 export const COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS = 60 * 60;
 export const COMPOSITION_PREVIEW_SIGNING_CONCURRENCY = 6;
@@ -11,14 +15,26 @@ export const COMPOSITION_PREVIEW_PUBLIC_BUCKETS = PUBLIC_PRODUCTION_MEDIA_BUCKET
 export async function resolveCompositionPreviewAssetUrls(params: {
   document: CompositionEditorDocument;
   draftId: string;
+  onDiagnostics?: (diagnostics: CompositionPreviewAssetDiagnostics) => void;
   organizationId: string;
   supabase: SupabaseClient<any, "public", any>;
 }) {
   const assetIds = [...new Set(params.document.clips.flatMap((clip) => (
     clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []
   )))];
-  if (assetIds.length === 0) return new Map<string, string>();
+  if (assetIds.length === 0) {
+    params.onDiagnostics?.({
+      assetCount: 0,
+      assetQueryMs: 0,
+      draftLinkQueryMs: 0,
+      privateAssetCount: 0,
+      publicAssetCount: 0,
+      signingMs: 0,
+    });
+    return new Map<string, string>();
+  }
 
+  const draftLinkQueryStartedAt = performance.now();
   const { data: draftLinks, error: draftLinksError } = await params.supabase
     .from("video_composition_draft_assets")
     .select("production_asset_id")
@@ -26,18 +42,21 @@ export async function resolveCompositionPreviewAssetUrls(params: {
     .eq("organization_id", params.organizationId)
     .in("production_asset_id", assetIds);
   if (draftLinksError) throw draftLinksError;
+  const draftLinkQueryMs = elapsedMilliseconds(draftLinkQueryStartedAt);
   const linkedIds = new Set((draftLinks || []).map((link) => link.production_asset_id as string));
   const missingLinks = assetIds.filter((assetId) => !linkedIds.has(assetId));
   if (missingLinks.length > 0) {
     throw new CompositionPreviewCompilerError("La composición referencia assets que no pertenecen al borrador.");
   }
 
+  const assetQueryStartedAt = performance.now();
   const { data: assets, error: assetsError } = await params.supabase
     .from("production_assets")
     .select("id, checksum, storage_bucket, storage_path")
     .eq("organization_id", params.organizationId)
     .in("id", assetIds);
   if (assetsError) throw assetsError;
+  const assetQueryMs = elapsedMilliseconds(assetQueryStartedAt);
   const urls = new Map<string, string>();
   const storedAssets = assets || [];
   const privateAssets = [];
@@ -58,6 +77,7 @@ export async function resolveCompositionPreviewAssetUrls(params: {
     }
     privateAssets.push({ ...asset, storagePath });
   }
+  const signingStartedAt = performance.now();
   for (let offset = 0; offset < privateAssets.length; offset += COMPOSITION_PREVIEW_SIGNING_CONCURRENCY) {
     const batch = privateAssets.slice(offset, offset + COMPOSITION_PREVIEW_SIGNING_CONCURRENCY);
     const signedAssets = await Promise.all(batch.map(async (asset) => {
@@ -76,6 +96,14 @@ export async function resolveCompositionPreviewAssetUrls(params: {
   if (urls.size !== assetIds.length) {
     throw new CompositionPreviewCompilerError("No se pudo resolver uno o más assets de preview.");
   }
+  params.onDiagnostics?.({
+    assetCount: assetIds.length,
+    assetQueryMs,
+    draftLinkQueryMs,
+    privateAssetCount: privateAssets.length,
+    publicAssetCount: storedAssets.length - privateAssets.length,
+    signingMs: elapsedMilliseconds(signingStartedAt),
+  });
   return urls;
 }
 
