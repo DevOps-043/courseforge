@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent } from "react";
 import type { CompositionClip } from "@/domains/production/composition-editor/composition-document.types";
 import {
@@ -9,9 +9,11 @@ import {
 } from "@/domains/production/composition-editor/composition-motion-preset.service";
 import {
   buildCompositionAnimationTimelineEdit,
+  buildCompositionAnimationTimelineSnapEdit,
   findCompositionAnimationTimingConflict,
   resolveCompositionAnimationWindow,
   type CompositionAnimationTimelineEditKind,
+  type CompositionAnimationTimelineSnapEdit,
 } from "@/domains/production/composition-editor/composition-motion-scheduling.service";
 import type { CompositionAnimation } from "@/domains/production/composition-editor/composition-motion.types";
 
@@ -22,6 +24,7 @@ type AnimationTimelineBandProps = {
   animation: CompositionAnimation;
   animations: CompositionAnimation[];
   clip: CompositionClip;
+  clips: CompositionClip[];
   compositionDurationSeconds: number;
   currentTime: number;
   disabled: boolean;
@@ -43,6 +46,7 @@ export function AnimationTimelineBand({
   animation,
   animations,
   clip,
+  clips,
   compositionDurationSeconds,
   currentTime,
   disabled,
@@ -59,6 +63,7 @@ export function AnimationTimelineBand({
   const [gesture, setGesture] = useState<BandGesture | null>(null);
   const [draftTiming, setDraftTiming] = useState(animation.timing);
   const [conflictingAnimationId, setConflictingAnimationId] = useState<string | null>(null);
+  const [snapMatch, setSnapMatch] = useState<CompositionAnimationTimelineSnapEdit["snapMatch"]>(null);
   const draftTimingRef = useRef(animation.timing);
   const conflictingAnimationIdRef = useRef<string | null>(null);
   const definition = animation.preset
@@ -75,6 +80,7 @@ export function AnimationTimelineBand({
     if (gesture) return;
     setDraftTiming(animation.timing);
     setConflictingAnimationId(null);
+    setSnapMatch(null);
     draftTimingRef.current = animation.timing;
     conflictingAnimationIdRef.current = null;
   }, [animation.timing, gesture]);
@@ -103,22 +109,22 @@ export function AnimationTimelineBand({
     if (Math.abs(event.clientX - gesture.pointerStartX) >= BAND_DRAG_THRESHOLD_PX) {
       didDragRef.current = true;
     }
-    const playheadWithinClip = currentTime >= clip.startSeconds
-      && currentTime <= clip.startSeconds + clip.durationSeconds;
-    const timing = buildCompositionAnimationTimelineEdit({
+    const snapEdit = buildCompositionAnimationTimelineSnapEdit({
       animation,
+      animations,
+      clips,
       clipDurationSeconds: clip.durationSeconds,
+      clipStartSeconds: clip.startSeconds,
       deltaSeconds,
       fps,
       kind: gesture.kind,
       maximumDurationSeconds,
+      playheadSeconds: currentTime,
       snapEnabled,
-      ...(playheadWithinClip ? {
-        snapTargetSeconds: currentTime - clip.startSeconds,
-        snapToleranceSeconds: (BAND_PLAYHEAD_SNAP_DISTANCE_PX / laneWidth)
-          * compositionDurationSeconds,
-      } : {}),
+      snapToleranceSeconds: (BAND_PLAYHEAD_SNAP_DISTANCE_PX / laneWidth)
+        * compositionDurationSeconds,
     });
+    const { timing } = snapEdit;
     const conflict = findCompositionAnimationTimingConflict({
       animationId: animation.id,
       animations,
@@ -129,6 +135,7 @@ export function AnimationTimelineBand({
     });
     setDraftTiming(timing);
     setConflictingAnimationId(conflict?.id || null);
+    setSnapMatch(snapEdit.snapMatch);
     draftTimingRef.current = timing;
     conflictingAnimationIdRef.current = conflict?.id || null;
     const nextWindow = resolveCompositionAnimationWindow({ timing }, clip.durationSeconds);
@@ -141,6 +148,7 @@ export function AnimationTimelineBand({
     event.stopPropagation();
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     setGesture(null);
+    setSnapMatch(null);
     if (!didDragRef.current) return;
     if (conflictingAnimationIdRef.current) {
       setDraftTiming(animation.timing);
@@ -162,6 +170,7 @@ export function AnimationTimelineBand({
     setGesture(null);
     setDraftTiming(animation.timing);
     setConflictingAnimationId(null);
+    setSnapMatch(null);
     draftTimingRef.current = animation.timing;
     conflictingAnimationIdRef.current = null;
     onError(null);
@@ -204,48 +213,59 @@ export function AnimationTimelineBand({
   const label = definition?.label || animation.propertyGroup;
   const conflict = Boolean(conflictingAnimationId);
   return (
-    <div
-      ref={bandRef}
-      role="slider"
-      tabIndex={disabled ? -1 : 0}
-      aria-label={`${motionPhaseLabel(phase)}: ${label}`}
-      aria-valuemin={0}
-      aria-valuemax={clip.durationSeconds}
-      aria-valuenow={window.start}
-      aria-valuetext={`${window.start.toFixed(2)} a ${window.end.toFixed(2)} segundos dentro del clip`}
-      data-animation-id={animation.id}
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onSelect(animation.id, clip.hfId);
-        onSeek(absoluteStart);
-      }}
-      onKeyDown={(event) => editFromKeyboard(
-        event,
-        event.shiftKey ? "RESIZE_END" : "MOVE",
+    <Fragment>
+      {snapMatch && (
+        <span
+          aria-hidden="true"
+          data-animation-snap-source={snapMatch.source}
+          title={formatAnimationSnapLabel(snapMatch)}
+          style={{ left: `${(snapMatch.timeSeconds / compositionDurationSeconds) * 100}%` }}
+          className="pointer-events-none absolute inset-y-0 z-40 w-0.5 bg-amber-400 shadow-[0_0_9px_rgba(251,191,36,0.9)]"
+        />
       )}
-      onPointerDown={(event) => beginGesture(event, "MOVE")}
-      onPointerMove={updateGesture}
-      onPointerUp={finishGesture}
-      onPointerCancel={cancelGesture}
-      title={`${motionPhaseLabel(phase)} · ${label} · arrastra para mover; Shift + flechas cambia la duración`}
-      style={{
-        left: `${(absoluteStart / compositionDurationSeconds) * 100}%`,
-        width: `${Math.max(0.75, (window.duration / compositionDurationSeconds) * 100)}%`,
-      }}
-      className={`absolute bottom-0.5 z-30 h-2.5 min-w-3 touch-none rounded-full border outline-none transition-[box-shadow,border-color] ${phaseColor(phase)} ${selected ? "ring-2 ring-white ring-offset-1 ring-offset-slate-700" : ""} ${conflict ? "border-red-700 bg-red-400 ring-2 ring-red-300" : ""} ${disabled ? "cursor-not-allowed opacity-60" : "cursor-grab active:cursor-grabbing"}`}
-    >
-      <span
-        aria-hidden="true"
-        onPointerDown={(event) => beginGesture(event, "RESIZE_START")}
-        className="absolute inset-y-[-2px] left-0 w-2 cursor-ew-resize rounded-l-full bg-black/25 hover:bg-white/50"
-      />
-      <span
-        aria-hidden="true"
-        onPointerDown={(event) => beginGesture(event, "RESIZE_END")}
-        className="absolute inset-y-[-2px] right-0 w-2 cursor-ew-resize rounded-r-full bg-black/25 hover:bg-white/50"
-      />
-    </div>
+      <div
+        ref={bandRef}
+        role="slider"
+        tabIndex={disabled ? -1 : 0}
+        aria-label={`${motionPhaseLabel(phase)}: ${label}`}
+        aria-valuemin={0}
+        aria-valuemax={clip.durationSeconds}
+        aria-valuenow={window.start}
+        aria-valuetext={`${window.start.toFixed(2)} a ${window.end.toFixed(2)} segundos dentro del clip`}
+        data-animation-id={animation.id}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onSelect(animation.id, clip.hfId);
+          onSeek(absoluteStart);
+        }}
+        onKeyDown={(event) => editFromKeyboard(
+          event,
+          event.shiftKey ? "RESIZE_END" : "MOVE",
+        )}
+        onPointerDown={(event) => beginGesture(event, "MOVE")}
+        onPointerMove={updateGesture}
+        onPointerUp={finishGesture}
+        onPointerCancel={cancelGesture}
+        title={`${motionPhaseLabel(phase)} · ${label} · arrastra para mover; Shift + flechas cambia la duración`}
+        style={{
+          left: `${(absoluteStart / compositionDurationSeconds) * 100}%`,
+          width: `${Math.max(0.75, (window.duration / compositionDurationSeconds) * 100)}%`,
+        }}
+        className={`absolute bottom-0.5 z-30 h-2.5 min-w-3 touch-none rounded-full border outline-none transition-[box-shadow,border-color] ${phaseColor(phase)} ${selected ? "ring-2 ring-white ring-offset-1 ring-offset-slate-700" : ""} ${snapMatch ? "ring-2 ring-amber-400 ring-offset-1 ring-offset-slate-700" : ""} ${conflict ? "border-red-700 bg-red-400 ring-2 ring-red-300" : ""} ${disabled ? "cursor-not-allowed opacity-60" : "cursor-grab active:cursor-grabbing"}`}
+      >
+        <span
+          aria-hidden="true"
+          onPointerDown={(event) => beginGesture(event, "RESIZE_START")}
+          className="absolute inset-y-[-2px] left-0 w-2 cursor-ew-resize rounded-l-full bg-black/25 hover:bg-white/50"
+        />
+        <span
+          aria-hidden="true"
+          onPointerDown={(event) => beginGesture(event, "RESIZE_END")}
+          className="absolute inset-y-[-2px] right-0 w-2 cursor-ew-resize rounded-r-full bg-black/25 hover:bg-white/50"
+        />
+      </div>
+    </Fragment>
   );
 }
 
@@ -268,4 +288,12 @@ function phaseColor(phase: ReturnType<typeof getCompositionMotionPhase>) {
 
 function motionPhaseLabel(phase: ReturnType<typeof getCompositionMotionPhase>) {
   return phase === "ENTRY" ? "Entrada" : phase === "PLAYBACK" ? "Durante" : "Salida";
+}
+
+function formatAnimationSnapLabel(match: NonNullable<CompositionAnimationTimelineSnapEdit["snapMatch"]>) {
+  if (match.source === "PLAYHEAD") return "Snap al cursor";
+  if (match.source === "CLIP_START") return `Snap al inicio de ${match.clipLabel || "un asset"}`;
+  if (match.source === "CLIP_END") return `Snap al final de ${match.clipLabel || "un asset"}`;
+  const boundary = match.source === "ANIMATION_START" ? "inicio" : "final";
+  return `Snap al ${boundary} de ${match.animationLabel || "otra animación"}`;
 }

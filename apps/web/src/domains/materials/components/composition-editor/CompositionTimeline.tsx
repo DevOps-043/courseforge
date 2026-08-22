@@ -11,6 +11,10 @@ import {
   resolveTimelineSnap,
   type TimelineSnapMatch,
 } from "@/domains/production/composition-editor/composition-timeline-snap.service";
+import {
+  resolveCompositionTimelineTrimStartMinimum,
+  resolveCompositionTimelineTrimStartSourceOffset,
+} from "@/domains/production/composition-editor/composition-timeline-trim.service";
 import { TrackControls } from "./TrackControls";
 import { AnimationTimelineBand } from "./AnimationTimelineBand";
 import type { CompositionTrackUpdateHandler } from "./composition-studio.types";
@@ -155,7 +159,7 @@ export function CompositionTimeline({ assetLabels, currentTime, document, onAnim
     }
 
     const originalEnd = gesture.clip.startSeconds + gesture.clip.durationSeconds;
-    const earliestStart = Math.max(0, gesture.clip.startSeconds - (gesture.clip.sourceOffsetSeconds || 0));
+    const earliestStart = resolveCompositionTimelineTrimStartMinimum(gesture.clip);
     const unclampedStartSeconds = Math.max(earliestStart, Math.min(originalEnd - (1 / fps), gesture.clip.startSeconds + deltaSeconds));
     const snap = resolveTimelineSnap({
       anchors: [{ edge: "START", timeSeconds: unclampedStartSeconds }],
@@ -173,7 +177,10 @@ export function CompositionTimeline({ assetLabels, currentTime, document, onAnim
     const durationSeconds = snap.match
       ? originalEnd - startSeconds
       : quantizeTimelineSeconds(originalEnd - startSeconds, snapEnabled, fps);
-    const sourceOffsetSeconds = (gesture.clip.sourceOffsetSeconds || 0) + startSeconds - gesture.clip.startSeconds;
+    const sourceOffsetSeconds = resolveCompositionTimelineTrimStartSourceOffset(
+      gesture.clip,
+      startSeconds,
+    );
     setGesture((current) => current ? {
       ...current,
       durationSeconds,
@@ -335,7 +342,7 @@ export function CompositionTimeline({ assetLabels, currentTime, document, onAnim
                   }}
                   className={`absolute inset-y-1 min-w-5 touch-none select-none truncate rounded border px-3 pb-2 text-left text-[10px] font-semibold shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${activeGesture?.snapMatch || clipSnapMatch?.clipId === clip.id ? "ring-2 ring-amber-400 ring-offset-1" : ""} ${selectedHfId === clip.hfId ? "border-[#0A2540] bg-[#0A2540] text-white" : clip.timingSource === "ESTIMATED" ? "border-[#F59E0B] bg-[#F59E0B]/30 text-[#0A2540] hover:bg-[#F59E0B]/40" : "border-[#00D4B3] bg-[#00D4B3]/20 text-[#0A2540] hover:bg-[#00D4B3]/30 dark:text-[#E9ECEF]"}`}
                 >
-                  <span aria-label={`Recortar inicio de ${label}`} onPointerDown={(event) => beginGesture(event, clip, "trim-start")} className={`absolute inset-y-0 left-0 cursor-ew-resize border-r hover:bg-black/10 ${trimMode && selectedHfId === clip.hfId ? "w-3 border-white bg-cyan-300/70" : "w-2 border-black/20"}`} />
+                  <span aria-label={`Ajustar inicio de ${label}`} onPointerDown={(event) => beginGesture(event, clip, "trim-start")} className={`absolute inset-y-0 left-0 cursor-ew-resize border-r hover:bg-black/10 ${trimMode && selectedHfId === clip.hfId ? "w-3 border-white bg-cyan-300/70" : "w-2 border-black/20"}`} />
                   <span className="relative z-10">{label}</span>
                   <span aria-label={`Cambiar duración de ${label}`} onPointerDown={(event) => beginGesture(event, clip, "trim-end")} className={`absolute inset-y-0 right-0 cursor-ew-resize border-l hover:bg-black/10 ${trimMode && selectedHfId === clip.hfId ? "w-3 border-white bg-cyan-300/70" : "w-2 border-black/20"}`} />
                 </button>
@@ -344,6 +351,7 @@ export function CompositionTimeline({ assetLabels, currentTime, document, onAnim
                   animation={animation}
                   animations={document.motion.animations}
                   clip={displayClip}
+                  clips={document.clips}
                   compositionDurationSeconds={maxDuration}
                   currentTime={currentTime}
                   disabled={saving || track.locked || Boolean(activeGesture)}

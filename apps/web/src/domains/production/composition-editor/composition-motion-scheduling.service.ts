@@ -6,6 +6,13 @@ import type {
   CompositionAnimation,
   CompositionMotionPresetId,
 } from "./composition-motion.types";
+import {
+  buildTimelineSnapTargets,
+  resolveTimelineSnap,
+  type TimelineSnapMatch,
+  type TimelineSnapTarget,
+} from "./composition-timeline-snap.service";
+import type { CompositionClip } from "./composition-document.types";
 
 const MOTION_WINDOW_EPSILON_SECONDS = 0.001;
 
@@ -23,6 +30,11 @@ export type CompositionPresetInsertionPlan = {
 };
 
 export type CompositionAnimationTimelineEditKind = "MOVE" | "RESIZE_END" | "RESIZE_START";
+
+export type CompositionAnimationTimelineSnapEdit = {
+  snapMatch: TimelineSnapMatch | null;
+  timing: CompositionAnimation["timing"];
+};
 
 export function buildCompositionAnimationTimelineEdit(params: {
   animation: Pick<CompositionAnimation, "timing">;
@@ -89,6 +101,82 @@ export function buildCompositionAnimationTimelineEdit(params: {
     anchor: params.animation.timing.anchor,
     durationSeconds,
     offsetSeconds: roundSeconds(Math.max(0, offsetSeconds)),
+  };
+}
+
+/** Applies magnetic alignment without allowing the animation to leave its clip or overlap a peer. */
+export function buildCompositionAnimationTimelineSnapEdit(params: {
+  animation: CompositionAnimation;
+  animations: CompositionAnimation[];
+  clips: Array<Pick<CompositionClip, "hidden" | "id" | "label" | "durationSeconds" | "startSeconds">>;
+  clipDurationSeconds: number;
+  clipStartSeconds: number;
+  deltaSeconds: number;
+  fps: number;
+  kind: CompositionAnimationTimelineEditKind;
+  maximumDurationSeconds: number;
+  playheadSeconds: number;
+  snapEnabled: boolean;
+  snapToleranceSeconds: number;
+}): CompositionAnimationTimelineSnapEdit {
+  const timing = buildCompositionAnimationTimelineEdit({
+    animation: params.animation,
+    clipDurationSeconds: params.clipDurationSeconds,
+    deltaSeconds: params.deltaSeconds,
+    fps: params.fps,
+    kind: params.kind,
+    maximumDurationSeconds: params.maximumDurationSeconds,
+    snapEnabled: params.snapEnabled,
+  });
+  if (!params.snapEnabled) return { snapMatch: null, timing };
+
+  const window = resolveCompositionAnimationWindow({ timing }, params.clipDurationSeconds);
+  const targets = buildCompositionAnimationSnapTargets({
+    animation: params.animation,
+    animations: params.animations,
+    clips: params.clips,
+    clipDurationSeconds: params.clipDurationSeconds,
+    clipStartSeconds: params.clipStartSeconds,
+    playheadSeconds: params.playheadSeconds,
+  });
+  const anchors = params.kind === "MOVE"
+    ? [
+        { edge: "START" as const, timeSeconds: params.clipStartSeconds + window.start },
+        { edge: "END" as const, timeSeconds: params.clipStartSeconds + window.end },
+      ]
+    : [{
+        edge: params.kind === "RESIZE_START" ? "START" as const : "END" as const,
+        timeSeconds: params.clipStartSeconds + (params.kind === "RESIZE_START" ? window.start : window.end),
+      }];
+  const snap = resolveTimelineSnap({
+    anchors,
+    isValidDelta: (snapDelta) => Boolean(resolveValidAnimationSnapTiming({
+      animation: params.animation,
+      animations: params.animations,
+      clipDurationSeconds: params.clipDurationSeconds,
+      fps: params.fps,
+      kind: params.kind,
+      maximumDurationSeconds: params.maximumDurationSeconds,
+      snapDelta,
+      timing,
+    })),
+    targets,
+    toleranceSeconds: params.snapToleranceSeconds,
+  });
+  if (!snap.match) return { snapMatch: null, timing };
+
+  return {
+    snapMatch: snap.match,
+    timing: resolveValidAnimationSnapTiming({
+      animation: params.animation,
+      animations: params.animations,
+      clipDurationSeconds: params.clipDurationSeconds,
+      fps: params.fps,
+      kind: params.kind,
+      maximumDurationSeconds: params.maximumDurationSeconds,
+      snapDelta: snap.deltaSeconds,
+      timing,
+    }) || timing,
   };
 }
 
@@ -166,6 +254,82 @@ export function planCompositionPresetInsertion(params: {
     offsetSeconds: roundSeconds(Math.max(0, offsetSeconds)),
     reason: null,
   };
+}
+
+function buildCompositionAnimationSnapTargets(params: {
+  animation: CompositionAnimation;
+  animations: CompositionAnimation[];
+  clips: Array<Pick<CompositionClip, "hidden" | "id" | "label" | "durationSeconds" | "startSeconds">>;
+  clipDurationSeconds: number;
+  clipStartSeconds: number;
+  playheadSeconds: number;
+}): TimelineSnapTarget[] {
+  const targets: TimelineSnapTarget[] = buildTimelineSnapTargets({
+    clips: params.clips,
+    playheadSeconds: params.playheadSeconds,
+  });
+
+  for (const candidate of params.animations) {
+    if (
+      candidate.id === params.animation.id
+      || candidate.target.clipId !== params.animation.target.clipId
+    ) continue;
+    const window = resolveCompositionAnimationWindow(candidate, params.clipDurationSeconds);
+    const animationLabel = candidate.preset
+      ? getCompositionMotionPresetDefinition(candidate.preset.id).label
+      : candidate.propertyGroup;
+    targets.push({
+      animationId: candidate.id,
+      animationLabel,
+      source: "ANIMATION_START",
+      timeSeconds: params.clipStartSeconds + window.start,
+    }, {
+      animationId: candidate.id,
+      animationLabel,
+      source: "ANIMATION_END",
+      timeSeconds: params.clipStartSeconds + window.end,
+    });
+  }
+
+  return targets;
+}
+
+function resolveValidAnimationSnapTiming(params: {
+  animation: CompositionAnimation;
+  animations: CompositionAnimation[];
+  clipDurationSeconds: number;
+  fps: number;
+  kind: CompositionAnimationTimelineEditKind;
+  maximumDurationSeconds: number;
+  snapDelta: number;
+  timing: CompositionAnimation["timing"];
+}) {
+  const before = resolveCompositionAnimationWindow({ timing: params.timing }, params.clipDurationSeconds);
+  const timing = buildCompositionAnimationTimelineEdit({
+    animation: { timing: params.timing },
+    clipDurationSeconds: params.clipDurationSeconds,
+    deltaSeconds: params.snapDelta,
+    fps: params.fps,
+    kind: params.kind,
+    maximumDurationSeconds: params.maximumDurationSeconds,
+    snapEnabled: false,
+  });
+  const after = resolveCompositionAnimationWindow({ timing }, params.clipDurationSeconds);
+  const expectedStart = before.start + (params.kind === "RESIZE_END" ? 0 : params.snapDelta);
+  const expectedEnd = before.end + (params.kind === "RESIZE_START" ? 0 : params.snapDelta);
+  if (
+    Math.abs(after.start - expectedStart) > MOTION_WINDOW_EPSILON_SECONDS
+    || Math.abs(after.end - expectedEnd) > MOTION_WINDOW_EPSILON_SECONDS
+  ) return null;
+  const conflict = findCompositionAnimationTimingConflict({
+    animationId: params.animation.id,
+    animations: params.animations,
+    clipDurationSeconds: params.clipDurationSeconds,
+    clipId: params.animation.target.clipId,
+    propertyGroup: params.animation.propertyGroup,
+    timing,
+  });
+  return conflict ? null : timing;
 }
 
 function collectFreeAnimationWindows(

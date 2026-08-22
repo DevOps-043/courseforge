@@ -11,6 +11,7 @@ import {
 import { compositionEditorPatchRequestSchema } from "../editor-patch.types";
 import {
   buildCompositionAnimationTimelineEdit,
+  buildCompositionAnimationTimelineSnapEdit,
   planCompositionPresetInsertion,
   resolveCompositionAnimationWindow,
 } from "../composition-motion-scheduling.service";
@@ -306,6 +307,30 @@ test("persiste un recorte atómico con offset de fuente", () => {
   assert.equal(result.durationSeconds, 4);
   assert.equal(result.sourceOffsetSeconds, 3);
   assert.equal(result.timingSource, "USER_EDITED");
+});
+
+test("extiende una diapositiva desde el borde izquierdo sin recortar su fuente HTML", () => {
+  const document = baseDocument();
+  const slide = document.clips.find((clip) => clip.kind === "DECK_SLIDE")!;
+  document.canvas.durationSeconds = 30;
+  slide.startSeconds = 10;
+  slide.durationSeconds = 5;
+  const sourceBefore = structuredClone(slide.source);
+
+  const edited = applyCompositionEditorPatches(document, [{
+    clipId: slide.id,
+    durationSeconds: 9,
+    sourceOffsetSeconds: 0,
+    startSeconds: 6,
+    type: "clip.trim",
+  }]);
+  const result = edited.clips.find((clip) => clip.id === slide.id)!;
+
+  assert.equal(result.startSeconds, 6);
+  assert.equal(result.durationSeconds, 9);
+  assert.equal(result.startSeconds + result.durationSeconds, 15);
+  assert.equal(result.sourceOffsetSeconds, 0);
+  assert.deepEqual(result.source, sourceBefore);
 });
 
 test("permite extender un video más allá de su fuente para reproducirlo en loop", () => {
@@ -804,6 +829,47 @@ test("crea y reconfigura animaciones Durante con ciclos finitos", () => {
   assert.equal(result.keyframes.length, 9);
 });
 
+test("crea ocultación intermedia instantánea y con desvanecimiento reversible", () => {
+  const document = baseDocument();
+  document.canvas.durationSeconds = 60;
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  video.durationSeconds = 12;
+
+  const hidden = applyCompositionEditorPatches(document, [{
+    animationId: "motion-hide-test",
+    clipId: video.id,
+    durationSeconds: 4,
+    offsetSeconds: 2,
+    presetId: "HIDE",
+    type: "animation.add-preset",
+  }]);
+  const hideAnimation = hidden.motion.animations.find((animation) => animation.id === "motion-hide-test")!;
+
+  assert.equal(hideAnimation.timing.anchor, "CLIP_START");
+  assert.equal(hideAnimation.propertyGroup, "OPACITY");
+  assert.deepEqual(hideAnimation.keyframes, [
+    { offset: 0, values: { opacity: 0 } },
+    { ease: "steps(1)", offset: 1, values: { opacity: 1 } },
+  ]);
+
+  const faded = applyCompositionEditorPatches(document, [{
+    animationId: "motion-fade-hide-test",
+    clipId: video.id,
+    durationSeconds: 5,
+    offsetSeconds: 3,
+    presetId: "FADE_HIDE",
+    type: "animation.add-preset",
+  }]);
+  const fadeAnimation = faded.motion.animations.find((animation) => animation.id === "motion-fade-hide-test")!;
+
+  assert.deepEqual(fadeAnimation.keyframes, [
+    { offset: 0, values: { opacity: 1 } },
+    { ease: "power2.in", offset: 0.2, values: { opacity: 0 } },
+    { ease: "none", offset: 0.8, values: { opacity: 0 } },
+    { ease: "power2.out", offset: 1, values: { opacity: 1 } },
+  ]);
+});
+
 test("ancla los presets de salida al final y conserva sus límites de fase", () => {
   const document = baseDocument();
   const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
@@ -904,6 +970,81 @@ test("mueve una salida por frames conservando su anclaje al final", () => {
     durationSeconds: 0.7,
     offsetSeconds: 1,
   });
+});
+
+test("aplica snap magnético a animaciones Durante y respeta el interruptor global", () => {
+  const document = baseDocument();
+  document.canvas.durationSeconds = 60;
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  video.durationSeconds = 12;
+  const animated = applyCompositionEditorPatches(document, [
+    { animationId: "motion-entry-snap-target", clipId: video.id, durationSeconds: 1, offsetSeconds: 0, presetId: "FADE_IN", type: "animation.add-preset" },
+    { animationId: "motion-during-snap", clipId: video.id, durationSeconds: 2, offsetSeconds: 2, presetId: "HIDE", type: "animation.add-preset" },
+  ]);
+  const during = animated.motion.animations.find((animation) => animation.id === "motion-during-snap")!;
+  const common = {
+    animation: during,
+    animations: animated.motion.animations,
+    clips: animated.clips,
+    clipDurationSeconds: video.durationSeconds,
+    clipStartSeconds: video.startSeconds,
+    fps: document.canvas.fps,
+    kind: "MOVE" as const,
+    maximumDurationSeconds: video.durationSeconds,
+    playheadSeconds: video.startSeconds + 8,
+    snapToleranceSeconds: 0.1,
+  };
+
+  const snappedAfterEntry = buildCompositionAnimationTimelineSnapEdit({
+    ...common,
+    deltaSeconds: -0.92,
+    snapEnabled: true,
+  });
+  assert.equal(snappedAfterEntry.timing.offsetSeconds, 1);
+  assert.equal(snappedAfterEntry.snapMatch?.source, "ANIMATION_END");
+  assert.equal(snappedAfterEntry.snapMatch?.animationId, "motion-entry-snap-target");
+
+  const snappedToClipEnd = buildCompositionAnimationTimelineSnapEdit({
+    ...common,
+    deltaSeconds: 7.96,
+    snapEnabled: true,
+  });
+  assert.equal(snappedToClipEnd.timing.offsetSeconds, 10);
+  assert.equal(snappedToClipEnd.snapMatch?.source, "CLIP_END");
+  assert.equal(snappedToClipEnd.snapMatch?.movingEdge, "END");
+
+  const slide = animated.clips.find((clip) => clip.kind === "DECK_SLIDE")!;
+  slide.startSeconds = video.startSeconds + 6;
+  slide.durationSeconds = 2;
+  const snappedToAssetStart = buildCompositionAnimationTimelineSnapEdit({
+    ...common,
+    clips: animated.clips,
+    deltaSeconds: 1.96,
+    snapEnabled: true,
+  });
+  assert.equal(snappedToAssetStart.timing.offsetSeconds, 4);
+  assert.equal(snappedToAssetStart.snapMatch?.source, "CLIP_START");
+  assert.equal(snappedToAssetStart.snapMatch?.clipId, slide.id);
+  assert.equal(snappedToAssetStart.snapMatch?.clipLabel, slide.label);
+
+  const resizedToPlayhead = buildCompositionAnimationTimelineSnapEdit({
+    ...common,
+    deltaSeconds: 0.96,
+    kind: "RESIZE_END",
+    playheadSeconds: video.startSeconds + 5,
+    snapEnabled: true,
+  });
+  assert.equal(resizedToPlayhead.timing.durationSeconds, 3);
+  assert.equal(resizedToPlayhead.snapMatch?.source, "PLAYHEAD");
+  assert.equal(resizedToPlayhead.snapMatch?.movingEdge, "END");
+
+  const withoutSnap = buildCompositionAnimationTimelineSnapEdit({
+    ...common,
+    deltaSeconds: -0.92,
+    snapEnabled: false,
+  });
+  assert.equal(withoutSnap.timing.offsetSeconds, 1.08);
+  assert.equal(withoutSnap.snapMatch, null);
 });
 
 test("redimensiona una banda dentro del máximo del preset y hace snap al playhead", () => {

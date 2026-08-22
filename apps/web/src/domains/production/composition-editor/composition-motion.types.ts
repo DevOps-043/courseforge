@@ -17,6 +17,7 @@ export const COMPOSITION_MOTION_EASES = [
   "power3.out",
   "power3.inOut",
   "back.out(1.4)",
+  "steps(1)",
 ] as const;
 
 export const COMPOSITION_MOTION_PRESET_IDS = [
@@ -37,6 +38,8 @@ export const COMPOSITION_MOTION_PRESET_IDS = [
   "FLOAT",
   "SWAY",
   "BREATHE",
+  "HIDE",
+  "FADE_HIDE",
 ] as const;
 
 const editorIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i);

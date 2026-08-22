@@ -632,3 +632,32 @@ test("compiles motion on an inner subject without replacing the editable layout"
   assert.ok(motionPayload);
   assert.doesNotMatch(motionPayload, /repeat/);
 });
+
+test("compiles reversible intermediate visibility presets identically for preview and render", async () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: { css: "", fonts: [], height: 1080, width: 1920, slides: [{ animationCount: 0, classes: "slide", html: "<h1>Visibilidad</h1>", index: 0, label: "Visibilidad" }] },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 12, subtitle: "Prueba", title: "Visibilidad intermedia" },
+  });
+  document.canvas.durationSeconds = 12;
+  const clip = document.clips[0]!;
+  clip.durationSeconds = 12;
+  clip.startSeconds = 0;
+  const animated = applyCompositionEditorPatches(document, [
+    { animationId: "motion-hide-preview", clipId: clip.id, durationSeconds: 2, offsetSeconds: 2, presetId: "HIDE", type: "animation.add-preset" },
+    { animationId: "motion-fade-hide-preview", clipId: clip.id, durationSeconds: 4, offsetSeconds: 6, presetId: "FADE_HIDE", type: "animation.add-preset" },
+  ]);
+  const previewHtml = await compileCompositionPreview({ assetUrls: new Map(), document: animated });
+  const renderHtml = await compileCompositionPreview({
+    assetUrls: new Map(),
+    document: animated,
+    target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+  });
+
+  for (const html of [previewHtml, renderHtml]) {
+    assert.match(html, /"ease":"steps\(1\)"/);
+    assert.match(html, /"offset":0\.2,"values":\{"opacity":0\}/);
+    assert.match(html, /"offset":0\.8,"values":\{"opacity":0\}/);
+    assert.match(html, /"ease":"power2\.out","offset":1,"values":\{"opacity":1\}/);
+  }
+});
