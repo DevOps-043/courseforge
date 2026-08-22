@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Script } from "node:vm";
 import { createInitialCompositionDocument } from "../composition-document.factory";
+import { compositionEditorDocumentSchema } from "../composition-document.types";
 import {
   COMPOSITION_COMPILATION_TARGETS,
   COMPOSITION_PREVIEW_MEDIA_CONFIG,
@@ -431,6 +432,24 @@ test("applies independent B-roll clip volume in preview and render", async () =>
     document,
   });
   assert.match(legacyHtml, new RegExp(`id="${broll.id}-audio"[^>]+data-volume="0"`));
+
+  if (broll.source.type !== "PRODUCTION_ASSET") throw new Error("Expected a production asset source.");
+  broll.source.hasAudio = false;
+  const silentDocument = compositionEditorDocumentSchema.parse(document);
+  const silentPreviewHtml = await compileCompositionPreview({
+    assetUrls: new Map([[brollId, "https://example.test/broll.mp4"]]),
+    document: silentDocument,
+  });
+  assert.match(silentPreviewHtml, new RegExp(`id="${broll.id}-media"`));
+  assert.doesNotMatch(silentPreviewHtml, new RegExp(`id="${broll.id}-audio"`));
+
+  const silentRenderHtml = await compileCompositionPreview({
+    assetUrls: new Map([[brollId, "assets/broll.mp4"]]),
+    document: silentDocument,
+    target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+  });
+  assert.match(silentRenderHtml, new RegExp(`id="${broll.id}-media"`));
+  assert.doesNotMatch(silentRenderHtml, new RegExp(`id="${broll.id}-audio"`));
 });
 
 test("compiles derived video clips with the same source and their distinct media offsets", async () => {

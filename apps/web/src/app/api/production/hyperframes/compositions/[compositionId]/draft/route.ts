@@ -4,6 +4,10 @@ import { getErrorMessage } from "@/lib/errors";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext, TenantContextLookupError } from "@/lib/server/tenant-context";
 import { initializeHyperframesDraft, HyperframesDraftError } from "@/domains/production/hyperframes/hyperframes-draft.service";
+import {
+  summarizeHyperframesValidationIssues,
+  validateHyperframesCompositionId,
+} from "@/domains/production/hyperframes/hyperframes-request-validation";
 import { CompositionDocumentError } from "@/domains/production/composition-editor/composition-document.service";
 import { createClient } from "@/utils/supabase/server";
 
@@ -15,18 +19,56 @@ export async function POST(_request: Request, context: RouteContext) {
     const authorization = await authorize();
     if (authorization instanceof NextResponse) return authorization;
     const { compositionId } = await context.params;
-    const draft = await initializeHyperframesDraft({
-      compositionId: z.string().uuid().parse(compositionId),
+    const validatedCompositionId = validateHyperframesCompositionId(compositionId);
+    if (!validatedCompositionId.success) {
+      return NextResponse.json(
+        { error: "Identificador de composición inválido.", code: "COMPOSITION_ID_INVALID" },
+        { status: 400 },
+      );
+    }
+    return initializeDraftResponse({
+      admin: authorization.admin,
+      compositionId: validatedCompositionId.data,
       organizationId: authorization.organizationId,
-      supabase: authorization.admin,
       userId: authorization.userId,
     });
-    return NextResponse.json({ success: true, data: draft });
   } catch (error) {
     if (error instanceof TenantContextLookupError) {
       return NextResponse.json({ error: error.message, code: error.code, retryable: true }, { status: 503 });
     }
-    if (error instanceof z.ZodError) return NextResponse.json({ error: "Identificador de composición inválido." }, { status: 400 });
+    console.error("[API /production/hyperframes/compositions/:id/draft] Unexpected request error:", serializeError(error));
+    return NextResponse.json({ error: "No se pudo preparar el proyecto de edición." }, { status: 500 });
+  }
+}
+
+async function initializeDraftResponse(params: {
+  admin: ReturnType<typeof getServiceRoleClient>;
+  compositionId: string;
+  organizationId: string;
+  userId: string;
+}) {
+  try {
+    const draft = await initializeHyperframesDraft({
+      compositionId: params.compositionId,
+      organizationId: params.organizationId,
+      supabase: params.admin,
+      userId: params.userId,
+    });
+    return NextResponse.json({ success: true, data: draft });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      console.error("[API /production/hyperframes/compositions/:id/draft] Composition data validation failed:", {
+        compositionId: params.compositionId,
+        issues: summarizeHyperframesValidationIssues(error),
+      });
+      return NextResponse.json(
+        {
+          error: "Los datos de la composición no cumplen el formato requerido.",
+          code: "COMPOSITION_DATA_INVALID",
+        },
+        { status: 422 },
+      );
+    }
     if (error instanceof HyperframesDraftError) return NextResponse.json({ error: error.message }, { status: error.status });
     if (error instanceof CompositionDocumentError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

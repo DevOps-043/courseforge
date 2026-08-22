@@ -126,6 +126,8 @@ const deckStylesSchema = z.object({
 }).strict();
 
 const productionAssetSourceSchema = z.object({
+  /** Result of media probing; absent on documents created before audio detection. */
+  hasAudio: z.boolean().optional(),
   productionAssetId: uuidSchema,
   sourceHeight: z.number().int().positive().max(16_384).optional(),
   sourceWidth: z.number().int().positive().max(16_384).optional(),

@@ -14,6 +14,10 @@ import {
   HyperframesRenderSubmissionService,
 } from "@/domains/production/hyperframes/hyperframes-render-submission.service";
 import { HyperframesRenderRecoveryService } from "@/domains/production/hyperframes/hyperframes-render-recovery.service";
+import {
+  summarizeHyperframesValidationIssues,
+  validateHyperframesCompositionId,
+} from "@/domains/production/hyperframes/hyperframes-request-validation";
 import { createClient } from "@/utils/supabase/server";
 
 const renderRequestSchema = z.object({
@@ -26,16 +30,18 @@ const renderRequestSchema = z.object({
   title: z.string().trim().min(1).max(160).optional(),
 }).strict();
 
-const recoverableRenderQuerySchema = z.object({
-  compositionId: z.string().uuid(),
-});
-
 /** Returns durable provider work so a reopened editor can resume reconciliation. */
 export async function GET(request: Request) {
   try {
-    const input = recoverableRenderQuerySchema.parse(
-      Object.fromEntries(new URL(request.url).searchParams),
+    const compositionId = validateHyperframesCompositionId(
+      new URL(request.url).searchParams.get("compositionId"),
     );
+    if (!compositionId.success) {
+      return NextResponse.json(
+        { error: "Identificador de composición inválido.", code: "COMPOSITION_ID_INVALID" },
+        { status: 400 },
+      );
+    }
     const supabase = await createClient();
     const authenticatedUser = await getAuthenticatedUser(supabase);
     if (!authenticatedUser) {
@@ -57,7 +63,7 @@ export async function GET(request: Request) {
 
     const service = new HyperframesRenderRecoveryService(getServiceRoleClient());
     const result = await service.findLatestForComposition({
-      compositionId: input.compositionId,
+      compositionId: compositionId.data,
       organizationId: tenant.organizationId,
     });
     return NextResponse.json(
@@ -66,9 +72,15 @@ export async function GET(request: Request) {
     );
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
+      console.error("[API /production/hyperframes/renders GET] Recovery data validation failed:", {
+        issues: summarizeHyperframesValidationIssues(error),
+      });
       return NextResponse.json(
-        { error: "Identificador de composición inválido." },
-        { status: 400 },
+        {
+          error: "Los datos del render pendiente no cumplen el formato requerido.",
+          code: "RENDER_RECOVERY_DATA_INVALID",
+        },
+        { status: 422 },
       );
     }
     console.error("[API /production/hyperframes/renders GET] Unexpected error:", {

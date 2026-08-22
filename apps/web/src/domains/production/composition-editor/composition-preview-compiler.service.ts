@@ -143,12 +143,15 @@ function renderClip(
   const hidden = clip.hidden || track?.hidden ? (isHyperframesRender ? ' data-hidden="true"' : ' data-clip-hidden="true"') : "";
   const volumeAutomation = hasVolumeAutomation ? ' data-volume-automated="true"' : "";
   const volume = resolveClipAudioVolume(clip, track);
-  const hasSynchronizedVideoAudio = clip.kind === "VIDEO" && Boolean(
-    track?.semanticRole === "AVATAR"
-    || track?.semanticRole === "BROLL"
-    || track?.id === "avatar"
-    || track?.id === "broll"
-  );
+  const hasSynchronizedVideoAudio = clip.kind === "VIDEO"
+    && clip.source.type === "PRODUCTION_ASSET"
+    && clip.source.hasAudio !== false
+    && Boolean(
+      track?.semanticRole === "AVATAR"
+      || track?.semanticRole === "BROLL"
+      || track?.id === "avatar"
+      || track?.id === "broll"
+    );
   if (clip.source.type === "DECK_SLIDE") {
     return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
   }
