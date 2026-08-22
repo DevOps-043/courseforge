@@ -5,6 +5,7 @@ import type { PointerEvent } from "react";
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
 import type { CompositionClip, CompositionEditorDocument } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionAnimation } from "@/domains/production/composition-editor/composition-motion.types";
+import { buildCompositionTimelineLayout } from "@/domains/production/composition-editor/composition-timeline-layout.service";
 import {
   buildTimelineSnapTargets,
   resolveTimelineSnap,
@@ -56,9 +57,11 @@ export function CompositionTimeline({ assetLabels, currentTime, document, onAnim
   const [timelineZoom, setTimelineZoom] = useState(MIN_TIMELINE_ZOOM);
   const [timelineScroll, setTimelineScroll] = useState(0);
   const [timelineScrollMax, setTimelineScrollMax] = useState(0);
+  const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() => new Set());
   const didDragRef = useRef(false);
   const timelineViewportRef = useRef<HTMLDivElement>(null);
-  const tracks = document.tracks.slice().sort((left, right) => left.order - right.order);
+  const timelineLayout = useMemo(() => buildCompositionTimelineLayout(document), [document]);
+  const groups = timelineLayout.groups;
   const maxDuration = document.canvas.durationSeconds;
   const fps = document.canvas.fps;
   const ruler = useMemo(() => buildTimelineRuler(maxDuration, timelineZoom), [maxDuration, timelineZoom]);
@@ -244,7 +247,16 @@ export function CompositionTimeline({ assetLabels, currentTime, document, onAnim
       window.cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [timelineZoom, tracks.length]);
+  }, [timelineZoom, groups.length]);
+
+  const toggleGroupExpanded = (groupId: string) => {
+    setExpandedGroupIds((current) => {
+      const next = new Set(current);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  };
 
   return <div className="space-y-2 pb-2">
     <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-gray-400">
@@ -269,19 +281,25 @@ export function CompositionTimeline({ assetLabels, currentTime, document, onAnim
     <div ref={timelineViewportRef} onScroll={syncTimelineScroll} className="overflow-x-auto pb-4">
       <div className="space-y-2" style={{ minWidth: `${timelineZoom * 100}%` }}>
     <div className="grid grid-cols-[160px_minmax(0,1fr)] items-end gap-2"><span className="sticky left-0 z-40 bg-white pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:bg-[#101720] dark:text-gray-400">Tiempo</span><div role="slider" aria-label="Cursor de la composición" aria-valuemax={maxDuration} aria-valuemin={0} aria-valuenow={currentTime} tabIndex={0} onKeyDown={(event) => { if (event.key === "ArrowLeft") { event.preventDefault(); onSeek(Math.max(0, currentTime - 0.5)); } if (event.key === "ArrowRight") { event.preventDefault(); onSeek(Math.min(maxDuration, currentTime + 0.5)); } }} onPointerDown={beginScrub} onPointerMove={continueScrub} onPointerUp={endScrub} onPointerCancel={endScrub} className="relative h-8 cursor-ew-resize select-none overflow-hidden rounded-t-md border border-b-0 border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5">{ruler.minor.map((time) => <span key={`minor-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute bottom-0 h-2 w-px bg-slate-300 dark:bg-white/20" />)}{ruler.major.map((time) => <span key={`major-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute inset-y-0 w-px bg-slate-300 dark:bg-white/20"><span className="absolute left-1 top-1 whitespace-nowrap font-mono text-[9px] text-slate-500 dark:text-gray-400">{formatSeconds(time)}</span></span>)}{clipSnapMatch && <span aria-hidden="true" style={{ left: `${(clipSnapMatch.timeSeconds / maxDuration) * 100}%` }} className="absolute inset-y-0 z-30 w-0.5 bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.9)]"><span className="absolute left-1 top-0.5 whitespace-nowrap rounded bg-amber-100 px-1 py-0.5 text-[8px] font-bold normal-case tracking-normal text-amber-900 shadow-sm">{formatSnapLabel(clipSnapMatch)}</span></span>}<span aria-hidden="true" style={{ left: `${(currentTime / maxDuration) * 100}%` }} className={`absolute inset-y-0 z-30 w-0.5 ${snappedToPlayhead ? "bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.9)]" : "bg-cyan-600 shadow-[0_0_7px_rgba(8,145,178,0.75)] dark:bg-cyan-300"} ${scrubbing ? "opacity-100" : "opacity-90"}`}><span className={`absolute -left-1.5 top-0 h-3 w-3 rotate-45 border ${snappedToPlayhead ? "border-amber-600 bg-amber-100" : "border-cyan-700 bg-cyan-100 dark:border-cyan-100 dark:bg-cyan-400"}`} /></span></div></div>
-    {tracks.map((track) => {
-      const clips = document.clips.filter((clip) => clip.trackId === track.id);
-      const lanes = track.kind === "DECK" ? [clips] : clips.map((clip) => [clip]);
-      return <div key={track.id} className="grid snap-start grid-cols-[160px_minmax(0,1fr)] items-stretch gap-2">
+    {groups.map((group) => {
+      const { track } = group;
+      const expanded = expandedGroupIds.has(group.id);
+      const lanes = expanded
+        ? group.clips.map((clip) => [clip])
+        : group.lanes.map((lane) => lane.clips);
+      const displayLabel = group.kind === "VISUAL"
+        ? `Capa ${group.zIndex} · ${track.label}`
+        : `Audio · ${track.label}`;
+      return <div key={group.id} className="grid snap-start grid-cols-[160px_minmax(0,1fr)] items-stretch gap-2">
         <div className="sticky left-0 z-40 self-stretch bg-white dark:bg-[#101720]">
-          <TrackControls disabled={saving} track={track} onUpdate={onTrackUpdate} />
-          {lanes.slice(1).map((_, continuationIndex) => <div key={`${track.id}-label-${continuationIndex + 1}`} className="mt-1 flex h-9 min-w-0 items-center gap-1 border-l-2 border-teal-400/70 bg-white px-1 dark:bg-[#101720]">
-            <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-slate-700 dark:text-slate-200">{track.label}</span>
+          <TrackControls disabled={saving} displayLabel={displayLabel} expanded={expanded} track={track} onToggleExpanded={() => toggleGroupExpanded(group.id)} onUpdate={onTrackUpdate} />
+          {lanes.slice(1).map((_, continuationIndex) => <div key={`${group.id}-label-${continuationIndex + 1}`} className="mt-1 flex h-9 min-w-0 items-center gap-1 border-l-2 border-teal-400/70 bg-white px-1 dark:bg-[#101720]">
+            <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-slate-700 dark:text-slate-200">{displayLabel}</span>
             <span className="shrink-0 text-[9px] text-slate-400">{continuationIndex + 2}</span>
           </div>)}
         </div>
         <div className="space-y-1">
-          {lanes.map((lane, laneIndex) => <div key={`${track.id}-${laneIndex}`} data-timeline-lane onClick={(event) => { if (event.target === event.currentTarget) onClearSelection(); }} onPointerDown={(event) => { if (event.target === event.currentTarget) beginScrub(event); }} onPointerMove={(event) => { if (scrubbing) continueScrub(event); }} onPointerUp={() => { if (scrubbing) endScrub(); }} onPointerCancel={() => { if (scrubbing) endScrub(); }} className="relative h-9 overflow-hidden rounded-md border border-slate-200 bg-slate-100 dark:border-white/10 dark:bg-white/5">
+          {lanes.map((lane, laneIndex) => <div key={`${group.id}-${laneIndex}`} data-timeline-lane onClick={(event) => { if (event.target === event.currentTarget) onClearSelection(); }} onPointerDown={(event) => { if (event.target === event.currentTarget) beginScrub(event); }} onPointerMove={(event) => { if (scrubbing) continueScrub(event); }} onPointerUp={() => { if (scrubbing) endScrub(); }} onPointerCancel={() => { if (scrubbing) endScrub(); }} className="relative h-9 overflow-hidden rounded-md border border-slate-200 bg-slate-100 dark:border-white/10 dark:bg-white/5">
             {ruler.minor.map((time) => <span key={`minor-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute inset-y-0 w-px bg-slate-300/50 dark:bg-white/5" />)}
             {ruler.major.map((time) => <span key={`major-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute inset-y-0 w-px bg-slate-300 dark:bg-white/15" />)}
             {clipSnapMatch && <span aria-hidden="true" style={{ left: `${(clipSnapMatch.timeSeconds / maxDuration) * 100}%` }} className="absolute inset-y-0 z-20 w-0.5 bg-amber-400 shadow-[0_0_9px_rgba(251,191,36,0.9)]" />}

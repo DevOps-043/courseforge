@@ -7,6 +7,11 @@ import {
   type CompositionClipVolumeAutomation,
 } from "./composition-audio-mix.service";
 import { resolveCompositionCropInsets } from "./composition-visual-crop.service";
+import {
+  compositionClipHasConfigurableAudio,
+  resolveCompositionClipAudioVolume,
+} from "./composition-clip-audio.service";
+import { buildCompositionTimelineLayout } from "./composition-timeline-layout.service";
 
 export class CompositionPreviewCompilerError extends Error {}
 
@@ -40,6 +45,7 @@ export async function compileCompositionPreview(params: {
   const animationRuntime = isInteractivePreview ? await readCompositionAnimationRuntime() : null;
   const { document } = params;
   const tracksById = new Map(document.tracks.map((track) => [track.id, track]));
+  const timelineLayout = buildCompositionTimelineLayout(document);
   const volumeAutomations = buildCompositionVolumeAutomations(document);
   const automatedClipIds = new Set(volumeAutomations.map((automation) => automation.targetClipId));
   const deckStyles = document.deckStyles
@@ -48,20 +54,22 @@ export async function compileCompositionPreview(params: {
   const clips = document.clips
     .slice()
     .sort((left, right) => left.layout.zIndex - right.layout.zIndex || left.startSeconds - right.startSeconds)
-    .map((clip, index) => renderClip(
+    .map((clip) => renderClip(
       clip,
       tracksById.get(clip.trackId),
       params.assetUrls,
       params.deckAssetUrls,
       target,
-      index,
+      requireRuntimeTrackIndex(timelineLayout.trackIndexByClipId, clip.id),
+      timelineLayout.audioTrackIndexByClipId.get(clip.id),
       automatedClipIds.has(clip.id),
     ))
     .join("\n");
   const hasAudibleMedia = document.clips.some((clip) => {
     const track = tracksById.get(clip.trackId);
     return !clip.hidden && !track?.hidden && !track?.muted
-      && (clip.kind === "AUDIO" || (clip.kind === "VIDEO" && clip.trackId === "avatar"));
+      && compositionClipHasConfigurableAudio(clip, track)
+      && resolveCompositionClipAudioVolume(clip, track) > 0;
   });
   return `<!doctype html>
 <html lang="es">
@@ -120,7 +128,8 @@ function renderClip(
   assetUrls: Map<string, string>,
   deckAssetUrls: Map<string, string> | undefined,
   target: CompositionCompilationTarget,
-  clipIndex: number,
+  runtimeTrackIndex: number,
+  runtimeAudioTrackIndex: number | undefined,
   hasVolumeAutomation: boolean,
 ) {
   const isHyperframesRender = target === COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER;
@@ -138,20 +147,13 @@ function renderClip(
   const cropStyle = renderVisualCropStyle(crop);
   const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}" data-croppable="true" data-media-fit="${mediaFit}"${cropData}${aspectAnchor ? ` data-preserve-aspect="${aspectAnchor}"` : ""} style="${layout}"`;
   const motionId = `${escapeAttribute(clip.id)}-motion`;
-  const timing = `data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${trackIndex(clip.trackId, clipIndex)}"`;
+  const timing = `data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${runtimeTrackIndex}"`;
   const mediaOffset = `data-source-offset="${clip.sourceOffsetSeconds || 0}"${isHyperframesRender ? ` data-media-start="${clip.sourceOffsetSeconds || 0}"` : ""}`;
   const hidden = clip.hidden || track?.hidden ? (isHyperframesRender ? ' data-hidden="true"' : ' data-clip-hidden="true"') : "";
   const volumeAutomation = hasVolumeAutomation ? ' data-volume-automated="true"' : "";
-  const volume = resolveClipAudioVolume(clip, track);
+  const volume = resolveCompositionClipAudioVolume(clip, track);
   const hasSynchronizedVideoAudio = clip.kind === "VIDEO"
-    && clip.source.type === "PRODUCTION_ASSET"
-    && clip.source.hasAudio === true
-    && Boolean(
-      track?.semanticRole === "AVATAR"
-      || track?.semanticRole === "BROLL"
-      || track?.id === "avatar"
-      || track?.id === "broll"
-    );
+    && compositionClipHasConfigurableAudio(clip, track);
   if (clip.source.type === "DECK_SLIDE") {
     return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
   }
@@ -163,7 +165,7 @@ function renderClip(
   if (clip.kind === "VIDEO" && isHyperframesRender) {
     const video = `<video id="${escapeAttribute(clip.id)}-media" class="composition-media clip" src="${escapeAttribute(sourceUrl)}" muted playsinline loop preload="metadata" ${mediaOffset}${hidden} ${timing}></video>`;
     const audio = hasSynchronizedVideoAudio
-      ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio clip" src="${escapeAttribute(sourceUrl)}" loop preload="metadata" ${mediaOffset}${hidden} data-volume="${volume}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${10 + clipIndex}"></audio>`
+      ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio clip" src="${escapeAttribute(sourceUrl)}" loop preload="metadata" ${mediaOffset}${hidden} data-volume="${volume}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${requireRuntimeAudioTrackIndex(runtimeAudioTrackIndex, clip.id)}"></audio>`
       : "";
     return `<div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${video}</div></div>${audio}`;
   }
@@ -171,18 +173,6 @@ function renderClip(
     ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" src="${escapeAttribute(sourceUrl)}" muted playsinline loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset}${hidden}></video>${hasSynchronizedVideoAudio ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${hidden} src="${escapeAttribute(sourceUrl)}" loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset} data-volume="${volume}"></audio>` : ""}`
     : `<img class="composition-media" src="${escapeAttribute(sourceUrl)}" alt="" />`;
   return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${media}</div></div></section>`;
-}
-
-function resolveClipAudioVolume(
-  clip: CompositionClip,
-  track: CompositionTrack | undefined,
-) {
-  if (track?.muted) return 0;
-  const trackVolume = track?.volume ?? 1;
-  const isBrollVideo = clip.kind === "VIDEO"
-    && (track?.semanticRole === "BROLL" || track?.id === "broll");
-  const clipVolume = isBrollVideo ? clip.volume ?? 0 : 1;
-  return Math.max(0, Math.min(1, trackVolume * clipVolume));
 }
 
 function renderVisualCropStyle(crop: { bottom: number; left: number; right: number; top: number }) {
@@ -1001,15 +991,15 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
   </script>`;
 }
 
-function trackIndex(trackId: string, clipIndex = 0) {
-  if (trackId === "deck") return 0;
-  if (trackId === "avatar") return 1;
-  if (trackId === "broll") return 2;
-  if (trackId === "visual") return 3;
-  if (trackId === "overlay") return 4;
-  if (trackId === "voice") return 10;
-  if (trackId === "music" || trackId === "audio") return 11;
-  return 20 + clipIndex;
+function requireRuntimeTrackIndex(indexes: ReadonlyMap<string, number>, clipId: string) {
+  const index = indexes.get(clipId);
+  if (index === undefined) throw new CompositionPreviewCompilerError(`No se pudo asignar un track temporal a ${clipId}.`);
+  return index;
+}
+
+function requireRuntimeAudioTrackIndex(index: number | undefined, clipId: string) {
+  if (index === undefined) throw new CompositionPreviewCompilerError(`No se pudo asignar un track de audio a ${clipId}.`);
+  return index;
 }
 
 export async function readCompositionAnimationRuntime() {

@@ -136,13 +136,14 @@ test("actualiza controles de capa y permite volver a desbloquearla", () => {
   assert.equal(unlocked.tracks.find((candidate) => candidate.id === track.id)?.locked, false);
 });
 
-test("persiste el volumen por clip solamente en videos de B-roll", () => {
+test("persiste el volumen individual de B-roll sin alterar el master del track", () => {
   const document = createInitialCompositionDocument({
     animatedDeck: null,
     assets: [{
       checksum: "b".repeat(64),
       durationSeconds: 8,
       fileSizeBytes: 42,
+      hasAudio: true,
       mimeType: "video/mp4",
       productionAssetId: "22222222-2222-4222-8222-222222222222",
       publicUrl: null,
@@ -166,7 +167,31 @@ test("persiste el volumen por clip solamente en videos de B-roll", () => {
   assert.deepEqual(edited.clips.find((clip) => clip.id === broll.id)?.source, broll.source);
 });
 
-test("rechaza volumen individual fuera de B-roll y valores fuera de rango", () => {
+test("acepta volumen individual de avatar cuando la fuente confirma audio", () => {
+  const avatarDocument = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{
+      checksum: "c".repeat(64),
+      durationSeconds: 20,
+      fileSizeBytes: 42,
+      hasAudio: true,
+      mimeType: "video/mp4",
+      productionAssetId: "33333333-3333-4333-8333-333333333333",
+      publicUrl: null,
+      storageBucket: "production-assets",
+      storagePath: "production-assets/avatar-with-audio.mp4",
+      timelineRole: "AVATAR",
+    }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 20, subtitle: "Prueba", title: "Avatar" },
+  });
+  const avatar = avatarDocument.clips[0]!;
+  const edited = applyCompositionEditorPatches(avatarDocument, [{ clipId: avatar.id, type: "clip.volume", volume: 0.5 }]);
+
+  assert.equal(edited.clips[0]?.volume, 0.5);
+  assert.equal(edited.tracks.find((track) => track.id === "avatar")?.volume, 1);
+});
+
+test("rechaza volumen individual sin audio confirmado y valores fuera de rango", () => {
   const document = baseDocument();
   const avatar = document.clips.find((clip) => clip.kind === "VIDEO")!;
 

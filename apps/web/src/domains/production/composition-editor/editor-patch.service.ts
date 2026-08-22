@@ -18,6 +18,7 @@ import {
   resolveCompositionCropInsets,
   scaleCompositionCropInsets,
 } from "./composition-visual-crop.service";
+import { compositionClipHasConfigurableAudio } from "./composition-clip-audio.service";
 
 export class CompositionEditorPatchError extends Error {
   constructor(message: string) {
@@ -581,10 +582,8 @@ export function applyCompositionEditorPatches(
 
     if (operation.type === "clip.volume") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes cambiar el volumen de un track bloqueado.");
-      const isBrollVideo = clip.kind === "VIDEO"
-        && (currentTrack.semanticRole === "BROLL" || currentTrack.id === "broll");
-      if (!isBrollVideo) {
-        throw new CompositionEditorPatchError("El volumen individual solo está disponible para clips de B-roll.");
+      if (!compositionClipHasConfigurableAudio(clip, currentTrack)) {
+        throw new CompositionEditorPatchError("El volumen individual solo está disponible para clips con una fuente de audio confirmada.");
       }
       clip.volume = operation.volume;
     }

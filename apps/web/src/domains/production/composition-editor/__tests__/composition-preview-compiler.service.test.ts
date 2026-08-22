@@ -469,13 +469,19 @@ test("compiles derived video clips with the same source and their distinct media
     plan: { accentColor: "#38BDF8", durationSeconds: 30, subtitle: "Prueba", title: "Cortes" },
   });
   const avatar = document.clips.find((clip) => clip.kind === "VIDEO")!;
-  const split = applyCompositionEditorPatches(document, [{
+  const configured = applyCompositionEditorPatches(document, [{
+    clipId: avatar.id,
+    type: "clip.volume",
+    volume: 0.6,
+  }]);
+  const split = applyCompositionEditorPatches(configured, [{
     atSeconds: 12,
     clipId: avatar.id,
     newClipId: "avatar-second-cut",
     newHfId: "avatar-second-cut-hf",
     type: "clip.split",
   }]);
+  assert.deepEqual(split.clips.map((clip) => clip.volume), [0.6, 0.6]);
 
   const html = await compileCompositionPreview({
     assetUrls: new Map([[avatarId, "assets/avatar.mp4"]]),
@@ -484,6 +490,8 @@ test("compiles derived video clips with the same source and their distinct media
   });
 
   assert.equal((html.match(/src="assets\/avatar\.mp4"/g) || []).length, 4);
+  assert.match(html, new RegExp(`id="${avatar.id}-audio"[^>]+data-volume="0\\.6"`));
+  assert.match(html, /id="avatar-second-cut-audio"[^>]+data-volume="0\.6"/);
   assert.match(html, /id="avatar-second-cut-media"[\s\S]*data-media-start="12"/);
   assert.match(html, /id="avatar-second-cut-audio"[\s\S]*data-media-start="12"/);
 });
