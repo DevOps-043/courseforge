@@ -985,6 +985,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       setRenderProviderStatus(body.data.providerStatus as string);
       if (body.data.action === "FAIL") {
         setRenderStatus("failed");
+        setRenderRequestId(null);
         setAssemblyError("El envío o HeyGen reportaron que el render falló. Puedes volver a intentarlo.");
       } else {
         setRenderStatus("rendering");
@@ -1101,6 +1102,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
 
       if (importStatus === "COMPLETED") {
         setRenderStatus("completed");
+        setRenderRequestId(null);
         setAssemblyError(null);
         if (!completionNotified) {
           completionNotified = true;
@@ -1108,6 +1110,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
         }
       } else if (providerStatus === "FAILED" || importStatus === "FAILED") {
         setRenderStatus("failed");
+        setRenderRequestId(null);
         setAssemblyError(
           renderRecovery?.completedVideo
             ? "No se pudo completar este render. El último video completado sigue disponible para publicación y no fue eliminado."
