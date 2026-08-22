@@ -32,7 +32,23 @@ import {
   resolveCompositionDocumentVersion,
 } from "@/domains/production/composition-editor/composition-document-version";
 import { CompositionPreviewTelemetryBuffer } from "@/domains/production/composition-editor/composition-preview-telemetry.client";
-import type { CompositionPreviewMetric } from "@/domains/production/composition-editor/composition-preview-telemetry";
+import {
+  COMPOSITION_PREVIEW_TELEMETRY_CONFIG,
+} from "@/domains/production/composition-editor/composition-preview-telemetry";
+import { classifyCompositionPreviewOperations } from "@/domains/production/composition-editor/composition-preview-operation-policy";
+import {
+  createCompositionPreviewParentCommand,
+  parseCompositionPreviewIframeMessage,
+  type CompositionPreviewParentCommandInput,
+} from "@/domains/production/composition-editor/composition-preview-protocol";
+import { CompositionSaveQueue } from "@/domains/production/composition-editor/composition-save-queue";
+import { CompositionPreviewRuntimePatchCoordinator } from "@/domains/production/composition-editor/composition-preview-runtime-sync.client";
+import { COMPOSITION_PREVIEW_SYNC_V2_ENABLED } from "@/domains/production/composition-editor/composition-preview-sync.config";
+import {
+  INITIAL_COMPOSITION_PREVIEW_SYNC_STATE,
+  transitionCompositionPreviewSyncState,
+} from "@/domains/production/composition-editor/composition-preview-sync-state";
+import { buildCompositionPreviewVisualPatch } from "@/domains/production/composition-editor/composition-preview-visual-patch";
 import { clampPreviewPlayhead, classifyPreviewTimeMessage, isPreviewRefreshRequired } from "@/domains/production/composition-editor/composition-preview-playhead.service";
 import { hasCompositionCrop, normalizeCompositionCropInsets, resolveCompositionCropInsets, type CompositionCropInsets } from "@/domains/production/composition-editor/composition-visual-crop.service";
 import { createClient as createBrowserSupabaseClient } from "@/utils/supabase/client";
@@ -47,19 +63,15 @@ import {
   type HyperframesRenderSettings,
 } from "@/domains/production/hyperframes/hyperframes-render-profiles";
 
-type PreviewMessage =
-  | { type: "courseforge-composition-ready"; duration: number }
-  | { type: "courseforge-composition-time"; seconds: number }
-  | { type: "courseforge-composition-playback"; playing: boolean }
-  | { type: "courseforge-composition-media-state"; state: "BUFFERING" | "PLAYING" | "PREPARING" | "READY"; pendingMediaIds: string[] }
-  | { type: "courseforge-composition-media-metric"; metric: CompositionPreviewMetric }
-  | { type: "courseforge-composition-media-error"; code: string; mediaId: string; message: string }
-  | { type: "courseforge-composition-selection"; hfId: string | null }
-  | { type: "courseforge-composition-layout-commit"; hfId: string; layout: { height: number; width: number; x: number; y: number } }
-  | { type: "courseforge-composition-crop-commit"; hfId: string; crop: CompositionVisualCrop }
-  | { type: "courseforge-composition-aspect-corrections"; corrections: Array<{ hfId: string; layout: { height: number; width: number; x: number; y: number } }> };
-
 type DocumentPayload = { document: CompositionEditorDocument; documentHash: string; version: number };
+type SavePatchOptions = { preservePreviewRuntime?: boolean };
+type PreviewReloadReason = "DIRTY_PLAYBACK" | "MANUAL" | "MEDIA_RECOVERY" | "SAVE_RECOVERY";
+type PendingEditTelemetry = {
+  operationCount: number;
+  operationNames: string[];
+  source: "AGENT" | "USER";
+  startedAt: number;
+};
 type DocumentHistoryEntry = DocumentPayload & { createdAt: string };
 type CompositionSnapshotEntry = {
   createdAt: string;
@@ -165,6 +177,9 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const studioGridRef = useRef<HTMLDivElement | null>(null);
   const payloadRef = useRef<DocumentPayload | null>(null);
   const saveInFlightRef = useRef(false);
+  const saveQueueRef = useRef<CompositionSaveQueue<() => Promise<boolean>> | null>(null);
+  const runtimePatchCoordinatorRef = useRef<CompositionPreviewRuntimePatchCoordinator | null>(null);
+  const previewSyncStateRef = useRef(INITIAL_COMPOSITION_PREVIEW_SYNC_STATE);
   const renderPollInFlightRef = useRef(false);
   const onVideoCompletedRef = useRef(onVideoCompleted);
   const mediaRecoveryHashRef = useRef<string | null>(null);
@@ -172,8 +187,11 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const pendingSeekSecondsRef = useRef<number | null>(null);
   const pendingPreviewRestoreSecondsRef = useRef<number | null>(null);
   const previewDocumentHashRef = useRef<string | null>(null);
+  const previewRuntimeBaseHashRef = useRef<string | null>(null);
   const autoPlayAfterPreviewRefreshRef = useRef(false);
   const previewTelemetryRef = useRef<CompositionPreviewTelemetryBuffer | null>(null);
+  const previewReloadTelemetryRef = useRef<{ reason: PreviewReloadReason; startedAt: number } | null>(null);
+  const pendingEditTelemetryRef = useRef<PendingEditTelemetry | null>(null);
   const [payload, setPayload] = useState<DocumentPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -205,6 +223,17 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     DEFAULT_HYPERFRAMES_RENDER_PROFILE_ID,
   );
   const [seconds, setSeconds] = useState(0);
+
+  if (!saveQueueRef.current) {
+    saveQueueRef.current = new CompositionSaveQueue(
+      (saveCommand) => saveCommand(),
+      undefined,
+      () => setSaveError("Hay demasiados cambios pendientes. Espera a que termine el guardado actual."),
+    );
+  }
+  if (!runtimePatchCoordinatorRef.current) {
+    runtimePatchCoordinatorRef.current = new CompositionPreviewRuntimePatchCoordinator();
+  }
 
   const [selectedHfId, setSelectedHfId] = useState<string | null>(null);
   const [selectedAnimationId, setSelectedAnimationId] = useState<string | null>(null);
@@ -251,7 +280,14 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
+      if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+        previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
+          documentHash: nextPayload.documentHash,
+          type: "DOCUMENT_LOADED",
+        });
+      }
       previewDocumentHashRef.current = nextPayload.documentHash;
+      previewRuntimeBaseHashRef.current = nextPayload.documentHash;
       setPreviewDocumentHash(nextPayload.documentHash);
       setPreviewDirty(false);
       setSeconds(0);
@@ -329,16 +365,21 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       void telemetry.dispose();
     };
   }, [draftId]);
+  useEffect(() => () => runtimePatchCoordinatorRef.current?.dispose(), []);
   useEffect(() => {
     if (assistantRequestKey <= 0) return;
     setManualInspectorOpen(true);
     setInspectorTab("assistant");
   }, [assistantRequestKey]);
   useEffect(() => {
-    const onMessage = (event: MessageEvent<PreviewMessage>) => {
+    const onMessage = (event: MessageEvent) => {
       if (event.source !== frameRef.current?.contentWindow) return;
-      const message = event.data;
-      if (!message || typeof message.type !== "string") return;
+      const message = parseCompositionPreviewIframeMessage(event.data);
+      if (!message) return;
+      if (message.type === "courseforge-composition-visual-patch-result") {
+        runtimePatchCoordinatorRef.current?.acknowledge(message);
+        return;
+      }
       if (message.type === "courseforge-composition-time") {
         const pendingSeekSeconds = pendingSeekSecondsRef.current;
         const decision = classifyPreviewTimeMessage({
@@ -353,7 +394,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
         setSeconds(message.seconds);
         if (decision.completesRestore && autoPlayAfterPreviewRefreshRef.current) {
           autoPlayAfterPreviewRefreshRef.current = false;
-          frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-play" }, "*");
+          postPreviewMessage({ type: "courseforge-composition-play" });
         }
       }
       if (message.type === "courseforge-composition-playback") {
@@ -368,6 +409,38 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
         previewTelemetryRef.current?.record(message.metric);
       }
       if (message.type === "courseforge-composition-ready") {
+        const readyDocumentHash = previewDocumentHashRef.current;
+        if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED && readyDocumentHash) {
+          previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
+            documentHash: readyDocumentHash,
+            type: "PREVIEW_READY",
+          });
+        }
+        const readyAt = performance.now();
+        const reloadTelemetry = previewReloadTelemetryRef.current;
+        if (reloadTelemetry) {
+          previewReloadTelemetryRef.current = null;
+          previewTelemetryRef.current?.record({
+            atSeconds: playheadSecondsRef.current,
+            context: { reloadReason: reloadTelemetry.reason },
+            durationMs: Math.min(600_000, readyAt - reloadTelemetry.startedAt),
+            name: "iframe_reload_ms",
+          });
+        }
+        const pendingEditTelemetry = pendingEditTelemetryRef.current;
+        if (pendingEditTelemetry) {
+          pendingEditTelemetryRef.current = null;
+          previewTelemetryRef.current?.record({
+            atSeconds: playheadSecondsRef.current,
+            context: {
+              operationCount: pendingEditTelemetry.operationCount,
+              operationNames: pendingEditTelemetry.operationNames,
+              source: pendingEditTelemetry.source,
+            },
+            durationMs: Math.min(600_000, readyAt - pendingEditTelemetry.startedAt),
+            name: "edit_to_visual_update_ms",
+          });
+        }
         setPreviewReady(true);
         setPreviewMediaState("READY");
         setPendingPreviewMediaIds([]);
@@ -379,13 +452,13 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           pendingSeekSecondsRef.current = clampedSeconds;
           playheadSecondsRef.current = clampedSeconds;
           setSeconds(clampedSeconds);
-          frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-seek", seconds: clampedSeconds }, "*");
+          postPreviewMessage({ type: "courseforge-composition-seek", seconds: clampedSeconds });
         } else if (autoPlayAfterPreviewRefreshRef.current) {
           autoPlayAfterPreviewRefreshRef.current = false;
-          frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-play" }, "*");
+          postPreviewMessage({ type: "courseforge-composition-play" });
         }
         if (selectedHfId) {
-          frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-select", hfId: selectedHfId }, "*");
+          postPreviewMessage({ type: "courseforge-composition-select", hfId: selectedHfId });
         }
       }
       if (message.type === "courseforge-composition-media-error") {
@@ -398,15 +471,26 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
         setPreviewMediaState("PREPARING");
         if (currentHash && mediaRecoveryHashRef.current !== currentHash) {
           mediaRecoveryHashRef.current = currentHash;
-          frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-pause" }, "*");
+          postPreviewMessage({ type: "courseforge-composition-pause" });
           setPlaying(false);
           setPreviewReady(false);
           setPlaybackError("El enlace del medio dejó de responder. Renovando el acceso al preview…");
           previewDocumentHashRef.current = currentHash;
+          previewRuntimeBaseHashRef.current = currentHash;
           setPreviewDocumentHash(currentHash);
           setPreviewDirty(false);
+          if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+            previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
+              documentHash: currentHash,
+              type: "PREVIEW_RELOAD_STARTED",
+            });
+          }
+          previewReloadTelemetryRef.current = { reason: "MEDIA_RECOVERY", startedAt: performance.now() };
           setPreviewRefreshKey((current) => current + 1);
           return;
+        }
+        if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+          previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, { type: "RUNTIME_FAILED" });
         }
         setPlaybackError(`No se pudo reproducir ${message.mediaId}: ${message.message}`);
       }
@@ -463,7 +547,12 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const selectedClip = payload?.document.clips.find((clip) => clip.hfId === selectedHfId) ?? null;
   const inspectorOpen = manualInspectorOpen || Boolean(selectedClip);
 
-  const postPreviewMessage = (message: Record<string, unknown>) => frameRef.current?.contentWindow?.postMessage(message, "*");
+  const postPreviewMessage = (message: CompositionPreviewParentCommandInput) => {
+    const command = createCompositionPreviewParentCommand(message);
+    if (!command) return false;
+    frameRef.current?.contentWindow?.postMessage(command, "*");
+    return true;
+  };
   useEffect(() => {
     if (!previewReady) return;
     postPreviewMessage({
@@ -484,7 +573,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   }, []);
   const refreshPreviewMedia = () => {
     mediaRecoveryHashRef.current = null;
-    refreshPreviewDocument(false);
+    refreshPreviewDocument(false, "MEDIA_RECOVERY");
     setPlaybackError("Renovando el acceso a los medios del preview…");
   };
   const seek = (nextSeconds: number) => {
@@ -531,14 +620,22 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     setPendingPreviewMediaIds([]);
     setPlaybackError(null);
   };
-  const refreshPreviewDocument = (autoPlay = false) => {
+  const refreshPreviewDocument = (autoPlay = false, reason: PreviewReloadReason = "MANUAL") => {
     const currentPayload = payloadRef.current;
     if (!currentPayload || agentProposal) return;
     pausePreviewForMutation();
     autoPlayAfterPreviewRefreshRef.current = autoPlay;
     previewDocumentHashRef.current = currentPayload.documentHash;
+    previewRuntimeBaseHashRef.current = currentPayload.documentHash;
     setPreviewDocumentHash(currentPayload.documentHash);
     setPreviewDirty(false);
+    if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+      previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
+        documentHash: currentPayload.documentHash,
+        type: "PREVIEW_RELOAD_STARTED",
+      });
+    }
+    previewReloadTelemetryRef.current = { reason, startedAt: performance.now() };
     setPreviewRefreshKey((current) => current + 1);
   };
   const togglePreviewPlayback = () => {
@@ -548,19 +645,32 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     }
     const currentHash = payloadRef.current?.documentHash || null;
     if (isPreviewRefreshRequired({ persistedDocumentHash: currentHash, previewDirty, previewDocumentHash: previewDocumentHashRef.current })) {
-      refreshPreviewDocument(true);
+      refreshPreviewDocument(true, "DIRTY_PLAYBACK");
       return;
     }
     postPreviewMessage({ type: "courseforge-composition-play" });
   };
-  async function savePatch(
+  function savePatch(
     operations: CompositionEditorPatchOperation[],
     summary: string,
     source: "AGENT" | "USER" = "USER",
-    options: { preservePreviewRuntime?: boolean } = {},
+    options: SavePatchOptions = {},
+  ): Promise<boolean> {
+    if (!COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+      return executeSavePatch(operations, summary, source, options, false);
+    }
+    return saveQueueRef.current!.enqueue(() => executeSavePatch(operations, summary, source, options, true));
+  }
+
+  async function executeSavePatch(
+    operations: CompositionEditorPatchOperation[],
+    summary: string,
+    source: "AGENT" | "USER",
+    options: SavePatchOptions,
+    queuedSave: boolean,
   ): Promise<boolean> {
     const currentPayload = payloadRef.current;
-    if (!currentPayload || saveInFlightRef.current) return false;
+    if (!currentPayload || (!queuedSave && saveInFlightRef.current)) return false;
     if (agentProposal && source !== "AGENT") {
       setSaveError("Confirma o descarta la propuesta antes de realizar otra edición.");
       return false;
@@ -573,19 +683,56 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       setSaveError(caught instanceof Error ? caught.message : "El cambio solicitado no es válido.");
       return false;
     }
-    postPreviewMessage({ type: "courseforge-composition-pause" });
-    setPlaying(false);
+    const updateStrategy = classifyCompositionPreviewOperations(effectiveOperations);
+    if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+      previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, { type: "EDIT_ACCEPTED" });
+      previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, { type: "SAVE_STARTED" });
+    }
+    const visualPatch = updateStrategy === "LIVE_DOM"
+      ? buildCompositionPreviewVisualPatch({ document: optimisticDocument, operations: effectiveOperations })
+      : null;
+    const runtimeBaseHash = previewRuntimeBaseHashRef.current;
+    const canApplyIncrementally = COMPOSITION_PREVIEW_SYNC_V2_ENABLED
+      && agentProposal === null
+      && previewReady
+      && visualPatch !== null
+      && runtimeBaseHash !== null
+      && previewDocumentHashRef.current === currentPayload.documentHash;
+    const runtimePatchPromise = canApplyIncrementally
+      ? runtimePatchCoordinatorRef.current!.dispatch({
+          baseDocumentHash: runtimeBaseHash,
+          patch: visualPatch,
+          send: postPreviewMessage,
+        })
+      : null;
+    if (!runtimePatchPromise) {
+      postPreviewMessage({ type: "courseforge-composition-pause" });
+      setPlaying(false);
+    }
     saveInFlightRef.current = true;
     setSaving(true);
     setSaveError(null);
     setFailedSave(null);
     setPreviewDirty(true);
+    const priorPendingEditTelemetry = pendingEditTelemetryRef.current;
+    if (!options.preservePreviewRuntime) {
+      const operationNames = [...new Set(effectiveOperations.map((operation) => operation.type))];
+      pendingEditTelemetryRef.current = {
+        operationCount: Math.min(100, (priorPendingEditTelemetry?.operationCount || 0) + effectiveOperations.length),
+        operationNames: [...new Set([...(priorPendingEditTelemetry?.operationNames || []), ...operationNames])].slice(0, 12),
+        source,
+        startedAt: priorPendingEditTelemetry?.startedAt || performance.now(),
+      };
+    }
     const optimisticPayload = { ...currentPayload, document: optimisticDocument };
     payloadRef.current = optimisticPayload;
     setPayload(optimisticPayload);
+    const requestBody = JSON.stringify({ operations: effectiveOperations, source, summary });
+    const requestStartedAt = performance.now();
+    let saveOutcome: "CONFLICT" | "ERROR" | "SUCCESS" = "ERROR";
     try {
       const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/document`, {
-        body: JSON.stringify({ operations: effectiveOperations, source, summary }),
+        body: requestBody,
         headers: {
           "Content-Type": "application/json",
           "If-Match": formatCompositionDocumentEtag(currentPayload.documentHash),
@@ -595,33 +742,109 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       });
       const body = await response.json();
       if (response.status === 409 && body.data) {
+        saveOutcome = "CONFLICT";
+        if (!options.preservePreviewRuntime) pendingEditTelemetryRef.current = priorPendingEditTelemetry;
         const nextPayload = body.data as DocumentPayload;
+        nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
+        if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+          previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
+            documentHash: nextPayload.documentHash,
+            type: "CONFLICT",
+          });
+        }
         payloadRef.current = nextPayload;
         setPayload(nextPayload);
         setPreviewDirty(nextPayload.documentHash !== previewDocumentHashRef.current);
+        if (runtimePatchPromise) refreshPreviewDocument(false, "SAVE_RECOVERY");
         setFailedSave({ operations: effectiveOperations, source, summary });
         setSaveError(body.error || "La composición cambió en otra sesión. El preview se actualizó con la última versión.");
         return false;
       }
       if (!response.ok) throw new Error(body.error || "No se pudo guardar el cambio.");
+      saveOutcome = "SUCCESS";
       const nextPayload = body.data as DocumentPayload;
       nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
+      if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+        previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
+          documentHash: nextPayload.documentHash,
+          type: "SAVE_SUCCEEDED",
+        });
+      }
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
-      setPreviewDirty(nextPayload.documentHash !== previewDocumentHashRef.current);
+      if (runtimePatchPromise) {
+        const runtimeOutcome = await runtimePatchPromise;
+        previewTelemetryRef.current?.record({
+          atSeconds: playheadSecondsRef.current,
+          context: { runtimeOutcome: runtimeOutcome.code, updateStrategy },
+          durationMs: Math.min(600_000, runtimeOutcome.durationMs),
+          name: "runtime_visual_patch_ms",
+        });
+        if (runtimeOutcome.applied) {
+          previewDocumentHashRef.current = nextPayload.documentHash;
+          setPreviewDocumentHash(nextPayload.documentHash);
+          setPreviewDirty(false);
+          const pendingEditTelemetry = pendingEditTelemetryRef.current;
+          if (pendingEditTelemetry) {
+            pendingEditTelemetryRef.current = null;
+            previewTelemetryRef.current?.record({
+              atSeconds: playheadSecondsRef.current,
+              context: {
+                operationCount: pendingEditTelemetry.operationCount,
+                operationNames: pendingEditTelemetry.operationNames,
+                source: pendingEditTelemetry.source,
+                updateStrategy,
+              },
+              durationMs: Math.min(600_000, runtimeOutcome.durationMs),
+              name: "edit_to_visual_update_ms",
+            });
+          }
+          if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+            previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
+              documentHash: nextPayload.documentHash,
+              type: "PREVIEW_READY",
+            });
+          }
+        } else {
+          setPreviewDirty(true);
+          refreshPreviewDocument(false, "SAVE_RECOVERY");
+        }
+      } else {
+        setPreviewDirty(nextPayload.documentHash !== previewDocumentHashRef.current);
+      }
       if (source === "USER") setLastAppliedAgentProposal(null);
       return true;
     } catch (caught) {
+      if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+        previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, { type: "SAVE_FAILED" });
+      }
+      if (!options.preservePreviewRuntime) pendingEditTelemetryRef.current = priorPendingEditTelemetry;
       payloadRef.current = currentPayload;
       setPayload(currentPayload);
       setPreviewDirty(currentPayload.documentHash !== previewDocumentHashRef.current);
-      if (options.preservePreviewRuntime) {
-        refreshPreviewDocument(false);
+      if (options.preservePreviewRuntime || runtimePatchPromise) {
+        refreshPreviewDocument(false, "SAVE_RECOVERY");
       }
       setFailedSave({ operations: effectiveOperations, source, summary });
       setSaveError(caught instanceof Error ? caught.message : "No se pudo guardar el cambio.");
       return false;
     } finally {
+      previewTelemetryRef.current?.record({
+        atSeconds: playheadSecondsRef.current,
+        context: {
+          operationCount: Math.min(100, effectiveOperations.length),
+          operationNames: [...new Set(effectiveOperations.map((operation) => operation.type))].slice(0, 12),
+          outcome: saveOutcome,
+          requestBytes: Math.min(
+            COMPOSITION_PREVIEW_TELEMETRY_CONFIG.maxRequestBytes,
+            new TextEncoder().encode(requestBody).byteLength,
+          ),
+          source,
+          updateStrategy,
+        },
+        durationMs: Math.min(600_000, performance.now() - requestStartedAt),
+        name: "save_roundtrip_ms",
+      });
       saveInFlightRef.current = false;
       setSaving(false);
     }

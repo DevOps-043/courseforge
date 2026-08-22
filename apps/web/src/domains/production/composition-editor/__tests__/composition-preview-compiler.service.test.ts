@@ -15,6 +15,7 @@ import {
   COMPOSITION_PREVIEW_SIGNING_CONCURRENCY,
   resolveCompositionPreviewAssetUrls,
 } from "../composition-preview-assets.service";
+import type { CompositionPreviewAssetDiagnostics } from "../composition-preview-performance";
 
 test("uses stable public URLs and scoped signatures without iframe authentication", () => {
   assert.equal(COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS, 60 * 60);
@@ -61,14 +62,19 @@ test("embeds a stable Storage URL for public production media", async () => {
     },
   };
 
+  const diagnostics: CompositionPreviewAssetDiagnostics[] = [];
   const urls = await resolveCompositionPreviewAssetUrls({
     document,
     draftId: "f7d8853b-49cb-4a46-acd9-2c21696686c3",
+    onDiagnostics: (value) => { diagnostics.push(value); },
     organizationId: "550e8400-e29b-41d4-a716-446655440000",
     supabase: supabase as never,
   });
 
   assert.equal(urls.get(assetId), `https://storage.test/public/broll.mp4?v=${"4".repeat(64)}`);
+  assert.equal(diagnostics[0]?.assetCount, 1);
+  assert.equal(diagnostics[0]?.privateAssetCount, 0);
+  assert.equal(diagnostics[0]?.publicAssetCount, 1);
 });
 
 test("signs preview assets in bounded parallel batches", async () => {
@@ -115,15 +121,21 @@ test("signs preview assets in bounded parallel batches", async () => {
     },
   };
 
+  const diagnostics: CompositionPreviewAssetDiagnostics[] = [];
   const urls = await resolveCompositionPreviewAssetUrls({
     document,
     draftId: "f7d8853b-49cb-4a46-acd9-2c21696686c3",
+    onDiagnostics: (value) => { diagnostics.push(value); },
     organizationId: "550e8400-e29b-41d4-a716-446655440000",
     supabase: supabase as never,
   });
 
   assert.equal(urls.size, assetIds.length);
   assert.equal(maximumActiveSignatures, COMPOSITION_PREVIEW_SIGNING_CONCURRENCY);
+  assert.equal(diagnostics[0]?.assetCount, assetIds.length);
+  assert.equal(diagnostics[0]?.privateAssetCount, assetIds.length);
+  assert.equal(diagnostics[0]?.publicAssetCount, 0);
+  assert.ok((diagnostics[0]?.signingMs || 0) >= 0);
 });
 
 test("compiles the native document into a seekable preview with stable visual ids", async () => {
@@ -139,7 +151,13 @@ test("compiles the native document into a seekable preview with stable visual id
     assetUrls: new Map(),
     deckAssetUrls: new Map([["https://cdn.test/deck.png", "assets/deck.png"]]),
     document,
+    documentHash: "a".repeat(64),
   });
+  assert.match(html, /protocolVersion: 1/);
+  assert.match(html, /event\.source !== window\.parent/);
+  assert.match(html, new RegExp(`compiledDocumentHash = "${"a".repeat(64)}"`));
+  assert.match(html, /courseforge-composition-visual-patch-result/);
+  assert.match(html, /applyRuntimeVisibilityOverrides/);
 
   assert.match(html, /data-composition-id="courseforge-composition"/);
   assert.match(html, /id="composition-viewport" data-composition-id="courseforge-composition"/);

@@ -7,6 +7,7 @@ import {
   COMPOSITION_PREVIEW_TELEMETRY_CONFIG,
   COMPOSITION_PREVIEW_SLOW_THRESHOLD_MS,
   compositionPreviewTelemetryBatchSchema,
+  summarizeCompositionPreviewMetricContexts,
   summarizeCompositionPreviewMetrics,
 } from "@/domains/production/composition-editor/composition-preview-telemetry";
 import { createClient } from "@/utils/supabase/server";
@@ -49,6 +50,7 @@ export async function POST(request: Request, context: RouteContext) {
       sessionId: batch.sessionId,
       slowMetricCount: slowMetrics.length,
       slowMetricNames: [...new Set(slowMetrics.map((metric) => metric.name))],
+      dimensions: summarizeCompositionPreviewMetricContexts(batch.metrics),
       summary: summarizeCompositionPreviewMetrics(batch.metrics),
     });
     return new NextResponse(null, { status: 202, headers: { "Cache-Control": "private, no-store" } });

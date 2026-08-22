@@ -4,8 +4,14 @@ import { CompositionPreviewTelemetryBuffer } from "../composition-preview-teleme
 import {
   compositionPreviewMetricSchema,
   compositionPreviewTelemetryBatchSchema,
+  summarizeCompositionPreviewMetricContexts,
   summarizeCompositionPreviewMetrics,
 } from "../composition-preview-telemetry";
+import {
+  createPreviewCorrelationId,
+  elapsedMilliseconds,
+  formatServerTimingHeader,
+} from "../composition-preview-performance";
 
 const validMetric = {
   atSeconds: 12.5,
@@ -35,6 +41,36 @@ test("summarizes latency without retaining individual media identifiers", () => 
   });
 });
 
+test("accepts bounded edit diagnostics without URLs or free-form labels", () => {
+  const metric = compositionPreviewMetricSchema.parse({
+    atSeconds: 3,
+    context: {
+      operationCount: 2,
+      operationNames: ["clip.layout", "clip.crop"],
+      outcome: "SUCCESS",
+      requestBytes: 640,
+      source: "USER",
+      updateStrategy: "LIVE_DOM",
+    },
+    durationMs: 325,
+    name: "save_roundtrip_ms",
+  });
+  assert.deepEqual(metric.mediaIds, []);
+  assert.equal(compositionPreviewMetricSchema.safeParse({
+    ...metric,
+    context: { operationNames: ["https://storage.test/private.mp4"] },
+  }).success, false);
+  assert.deepEqual(summarizeCompositionPreviewMetricContexts([metric]), {
+    operationCount: 2,
+    operationNames: ["clip.crop", "clip.layout"],
+    outcomes: ["SUCCESS"],
+    reloadReasons: [],
+    requestBytes: 640,
+    runtimeOutcomes: [],
+    updateStrategies: ["LIVE_DOM"],
+  });
+});
+
 test("batches preview telemetry through the authenticated draft endpoint", async () => {
   const requests: Array<{ body: string; url: string }> = [];
   const telemetry = new CompositionPreviewTelemetryBuffer({
@@ -55,4 +91,17 @@ test("batches preview telemetry through the authenticated draft endpoint", async
     metrics: [validMetric],
     sessionId: "00000000-0000-4000-8000-000000000099",
   });
+});
+
+test("formats stable server timings and rejects unsafe correlation ids", () => {
+  assert.equal(formatServerTimingHeader({
+    assetsMs: 23.26,
+    authorizationMs: 4.01,
+    compileMs: 10.55,
+    documentMs: 8.44,
+    totalMs: 46.78,
+  }), "authorization;dur=4.0, document;dur=8.4, assets;dur=23.3, compile;dur=10.6, total;dur=46.8");
+  assert.equal(createPreviewCorrelationId("preview_session-123"), "preview_session-123");
+  assert.match(createPreviewCorrelationId("token=secret&url=https://example.test"), /^[0-9a-f-]{36}$/);
+  assert.equal(elapsedMilliseconds(25, 40), 15);
 });
