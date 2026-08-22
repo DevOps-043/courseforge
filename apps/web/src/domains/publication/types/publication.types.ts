@@ -52,6 +52,7 @@ export type PublicationComponentContent =
   | Record<string, unknown>;
 
 export interface PublicationComponent {
+  id?: string;
   type: ComponentType;
   iteration_number?: number | null;
   assets?: MaterialAssets | null;

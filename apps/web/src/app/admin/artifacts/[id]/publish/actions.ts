@@ -7,6 +7,10 @@ import {
     sortLessonsNaturally,
 } from '@/domains/publication/lib/publication-payload-builders';
 import { selectLatestComponentsByType } from '@/domains/materials/lib/material-component-versions';
+import {
+    HyperframesFinalVideoService,
+    mergeDurableFinalVideoIntoAssets,
+} from '@/domains/production/hyperframes/hyperframes-final-video.service';
 import type {
     PublicationComponent,
     PublicationDataResult,
@@ -34,10 +38,41 @@ interface RawArtifactRow {
     id: string;
     idea_central: string;
     descripcion: unknown;
+    organization_id: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null;
+}
+
+async function hydrateLessonsFromDurableFinalVideos(
+    admin: ReturnType<typeof getServiceRoleClient>,
+    lessons: RawMaterialLessonRow[],
+    organizationId: string,
+): Promise<RawMaterialLessonRow[]> {
+    const componentIds = lessons.flatMap((lesson) =>
+        (lesson.material_components || []).flatMap((component) =>
+            component.id ? [component.id] : [],
+        ),
+    );
+    if (componentIds.length === 0) return lessons;
+
+    const videosByComponent = await new HyperframesFinalVideoService(admin)
+        .findLatestByComponentIds({ componentIds, organizationId });
+    if (videosByComponent.size === 0) return lessons;
+
+    return lessons.map((lesson) => ({
+        ...lesson,
+        material_components: (lesson.material_components || []).map((component) => ({
+            ...component,
+            assets: component.id
+                ? mergeDurableFinalVideoIntoAssets(
+                    component.assets,
+                    videosByComponent.get(component.id),
+                )
+                : component.assets,
+        })),
+    }));
 }
 
 
@@ -68,6 +103,7 @@ function extractVideoMetadata(
         videoComponent.assets?.final_video_url ||
         videoComponent.assets?.video_url ||
         '';
+    videoDuration = Number(videoComponent.assets?.video_duration) || 0;
 
     const content = isRecord(videoComponent.content)
         ? videoComponent.content
@@ -138,7 +174,7 @@ export async function getPublicationData(
 
     let artifactQuery = admin
         .from('artifacts')
-        .select('id, idea_central, generation_metadata, descripcion')
+        .select('id, idea_central, generation_metadata, descripcion, organization_id')
         .eq('id', artifactId);
 
     if (activeOrgId) {
@@ -168,6 +204,7 @@ export async function getPublicationData(
                 module_title,
                 oa_text,
                 material_components(
+                    id,
                     type,
                     iteration_number,
                     assets,
@@ -176,7 +213,12 @@ export async function getPublicationData(
             `)
             .eq('materials_id', materials.id);
 
-        const sorted = sortLessonsNaturally((rawLessons || []) as RawMaterialLessonRow[]);
+        const hydratedLessons = await hydrateLessonsFromDurableFinalVideos(
+            admin,
+            (rawLessons || []) as RawMaterialLessonRow[],
+            artifact.organization_id,
+        );
+        const sorted = sortLessonsNaturally(hydratedLessons);
         lessons = sorted
             .filter((lesson) => hasVideoComponent(selectLatestComponentsByType(lesson.material_components || [])))
             .map((lesson) => mapLessonToPublicationLesson(lesson));
@@ -276,7 +318,23 @@ export async function savePublicationDraft(
 }
 
 export async function refreshProductionVideos(artifactId: string) {
-    const admin = getServiceRoleClient();
+    const tenant = await resolveActiveTenantContext();
+    if (!tenant) {
+        return {
+            success: false as const,
+            error: 'Empresa no válida o no autorizada.',
+            lessons: [] as PublicationVideoLesson[],
+        };
+    }
+    const authorized = await getAuthorizedArtifactAdminForTenant(artifactId, tenant);
+    if (!authorized) {
+        return {
+            success: false as const,
+            error: 'No autorizado para consultar este artefacto.',
+            lessons: [] as PublicationVideoLesson[],
+        };
+    }
+    const { admin } = authorized;
 
     const { data: materials } = await admin
         .from('materials')
@@ -299,6 +357,7 @@ export async function refreshProductionVideos(artifactId: string) {
             lesson_title,
             module_title,
             material_components(
+                id,
                 type,
                 iteration_number,
                 assets,
@@ -315,7 +374,12 @@ export async function refreshProductionVideos(artifactId: string) {
         };
     }
 
-    const sorted = sortLessonsNaturally((rawLessons || []) as RawMaterialLessonRow[]);
+    const hydratedLessons = await hydrateLessonsFromDurableFinalVideos(
+        admin,
+        (rawLessons || []) as RawMaterialLessonRow[],
+        tenant.organizationId,
+    );
+    const sorted = sortLessonsNaturally(hydratedLessons);
     return {
         success: true as const,
         lessons: sorted
