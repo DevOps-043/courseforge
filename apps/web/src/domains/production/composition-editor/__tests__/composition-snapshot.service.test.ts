@@ -48,7 +48,13 @@ test("lists persisted snapshots and identifies the active revision", async () =>
       manifest: {
         draft_document_hash: "b".repeat(64),
         draft_document_version: 8,
-        render_profile: { fps: 25, quality: "standard" },
+        render_profile: {
+          format: "mp4",
+          fps: 25,
+          id: "balanced",
+          quality: "standard",
+          resolution: "1080p",
+        },
         snapshot: true,
       },
       project_archive_size_bytes: 2048,
@@ -84,6 +90,7 @@ test("lists persisted snapshots and identifies the active revision", async () =>
     quality: "standard",
     resolution: "1080p",
   });
+  assert.equal("id" in (result.snapshots[0]?.renderProfile || {}), false);
   assert.equal(result.snapshots[0]?.renderProfileId, "balanced");
   assert.equal(result.snapshots[1]?.renderProfile, null);
   assert.equal(result.snapshots[1]?.renderProfileId, null);

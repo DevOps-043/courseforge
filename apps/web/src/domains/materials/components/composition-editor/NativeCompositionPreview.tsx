@@ -191,6 +191,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const [snapshotHistory, setSnapshotHistory] = useState<CompositionSnapshotEntry[] | null>(null);
   const [snapshotHistoryOpen, setSnapshotHistoryOpen] = useState(false);
   const [assemblyError, setAssemblyError] = useState<string | null>(null);
+  const [assemblyNotice, setAssemblyNotice] = useState<string | null>(null);
   const [assembling, setAssembling] = useState(false);
   const [renderStatus, setRenderStatus] = useState<"idle" | "validating" | "sending" | "rendering" | "completed" | "failed">("idle");
   const [renderRequestId, setRenderRequestId] = useState<string | null>(null);
@@ -304,6 +305,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     setSnapshotHistory(null);
     setSnapshotHistoryOpen(false);
     setAssemblyError(null);
+    setAssemblyNotice(null);
     setRenderStatus("idle");
     setRenderRequestId(null);
     setRenderProviderStatus(null);
@@ -958,11 +960,11 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   }
 
   async function prepareAssembly() {
-    setAssembling(true); setAssemblyError(null); setRenderStatus("validating");
+    setAssembling(true); setAssemblyError(null); setAssemblyNotice(null); setRenderStatus("validating");
     try {
       const selectedProfile = getHyperframesRenderProfile(selectedRenderProfileId);
       const response = await fetch(`/api/production/hyperframes/compositions/${compositionId}/snapshot`, { body: JSON.stringify({ draftId, renderProfileId: selectedProfile.id }), headers: { "Content-Type": "application/json" }, method: "POST" });
-      const body = await readCompositionApiResponse<{ data?: { id: string; project_archive_size_bytes: number }; error?: string }>(response, "No se pudo preparar el ensamble.");
+      const body = await readCompositionApiResponse<{ data?: { id: string; project_archive_size_bytes: number; reused?: boolean; revision_number?: number }; error?: string }>(response, "No se pudo preparar el ensamble.");
       if (!response.ok) throw new Error(body.error || "No se pudo preparar el ensamble.");
       if (!body.data?.id) throw new Error("El servidor no devolvió el snapshot creado.");
       setAssembly({
@@ -971,6 +973,9 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
         revisionId: body.data.id,
         status: "READY_FOR_PREVIEW",
       });
+      setAssemblyNotice(body.data.reused
+        ? `El Snapshot ${body.data.revision_number || "activo"} ya coincide con el documento, los assets y el perfil. Se reutilizó sin volver a cargar el ZIP.`
+        : `Snapshot ${body.data.revision_number || "nuevo"} creado y ZIP almacenado correctamente.`);
       setRenderStatus("idle");
       await loadSnapshotHistory();
     } catch (caught) { setAssemblyError(caught instanceof Error ? caught.message : "No se pudo preparar el ensamble."); setRenderStatus("failed"); }
@@ -981,6 +986,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     if (snapshot.isActive || assembling) return;
     setAssembling(true);
     setAssemblyError(null);
+    setAssemblyNotice(null);
     try {
       const response = await fetch(`/api/production/hyperframes/compositions/${compositionId}/revisions`, {
         body: JSON.stringify({ revisionId: snapshot.id }),
@@ -1225,12 +1231,21 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       setAssemblyError("El perfil seleccionado no coincide con el snapshot aprobado. Regenera el snapshot antes de renderizar.");
       return;
     }
-    setAssembling(true); setAssemblyError(null); setRenderStatus("sending");
+    setAssembling(true); setAssemblyError(null); setAssemblyNotice(null); setRenderStatus("sending");
     try {
       const attemptId = options.forceNewAttempt || renderStatus === "failed"
         ? crypto.randomUUID()
         : undefined;
-      const response = await fetch("/api/production/hyperframes/renders", { body: JSON.stringify({ aspectRatio: "16:9", attemptId, ...assembly.renderProfile, revisionId: assembly.revisionId }), headers: { "Content-Type": "application/json" }, method: "POST" });
+      const response = await fetch("/api/production/hyperframes/renders", {
+        body: JSON.stringify({
+          aspectRatio: "16:9",
+          attemptId,
+          ...toHyperframesRenderSettings(assembly.renderProfile),
+          revisionId: assembly.revisionId,
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
       const body = await readCompositionApiResponse<{ data: { providerStatus: string; renderRequestId: string }; error?: string }>(response, "No se pudo enviar el render.");
       if (!response.ok) throw new Error(body.error || "No se pudo enviar el render.");
       const requestId = body.data.renderRequestId as string;
@@ -1273,11 +1288,13 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           method: "DELETE",
         },
       );
-      const body = await readCompositionApiResponse<{ error?: string }>(
+      const body = await readCompositionApiResponse<{ code?: string; error?: string }>(
         response,
         "No se pudo eliminar el video final anterior.",
       );
-      if (!response.ok) {
+      const alreadyDeleted = response.status === 404
+        && body.code === "HYPERFRAMES_FINAL_VIDEO_NOT_FOUND";
+      if (!response.ok && !alreadyDeleted) {
         throw new Error(body.error || "No se pudo eliminar el video final anterior.");
       }
       setRenderRecovery((current) => current ? { ...current, completedVideo: null } : current);
@@ -1436,7 +1453,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           <AudioMixControls audioMix={payload.document.audioMix} disabled={saving} onUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)} />
           <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedAnimationId={selectedAnimationId} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={selectAnimation} onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Recortó el inicio de ${clip.label} desde la timeline.`)} />
           {estimatedClipCount > 0 && <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
-          <AssemblyActions assembly={assembly} busy={assembling} error={assemblyError} history={snapshotHistory} historyOpen={snapshotHistoryOpen} priorCompletedVideo={Boolean(renderRecovery?.completedVideo && renderRecovery.completedVideo.compositionRevisionId !== assembly?.revisionId)} providerStatus={renderProviderStatus} renderStatus={renderStatus} selectedRenderProfileId={selectedRenderProfileId} onApprove={approveAssembly} onDeleteAndRender={deletePriorVideoAndRender} onHistoryToggle={() => setSnapshotHistoryOpen((current) => !current)} onPrepare={prepareAssembly} onProfileChange={setSelectedRenderProfileId} onRender={() => submitAssemblyRender()} onRestore={restoreSnapshot} />
+          <AssemblyActions assembly={assembly} busy={assembling} error={assemblyError} notice={assemblyNotice} history={snapshotHistory} historyOpen={snapshotHistoryOpen} priorCompletedVideo={Boolean(renderRecovery?.completedVideo && renderRecovery.completedVideo.compositionRevisionId !== assembly?.revisionId)} providerStatus={renderProviderStatus} renderStatus={renderStatus} selectedRenderProfileId={selectedRenderProfileId} onApprove={approveAssembly} onDeleteAndRender={deletePriorVideoAndRender} onHistoryToggle={() => setSnapshotHistoryOpen((current) => !current)} onPrepare={prepareAssembly} onProfileChange={(profileId) => { setSelectedRenderProfileId(profileId); setAssemblyNotice(null); }} onRender={() => submitAssemblyRender()} onRestore={restoreSnapshot} />
           </div>
         </section>
 
@@ -1574,10 +1591,11 @@ function AgentConversation({ lastAppliedProposal, onApprove, onDismiss, onPropos
   </section>;
 }
 
-function AssemblyActions({ assembly, busy, error, history, historyOpen, onApprove, onDeleteAndRender, onHistoryToggle, onPrepare, onProfileChange, onRender, onRestore, priorCompletedVideo, providerStatus, renderStatus, selectedRenderProfileId }: {
+function AssemblyActions({ assembly, busy, error, notice, history, historyOpen, onApprove, onDeleteAndRender, onHistoryToggle, onPrepare, onProfileChange, onRender, onRestore, priorCompletedVideo, providerStatus, renderStatus, selectedRenderProfileId }: {
   assembly: ActiveAssembly | null;
   busy: boolean;
   error: string | null;
+  notice: string | null;
   history: CompositionSnapshotEntry[] | null;
   historyOpen: boolean;
   onApprove: () => void;
@@ -1621,7 +1639,7 @@ function AssemblyActions({ assembly, busy, error, history, historyOpen, onApprov
       : "Congela la versión guardada antes de enviar un render.";
   const activeRender = renderStatus === "sending" || renderStatus === "rendering";
   return <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3 dark:border-cyan-400/20 dark:bg-cyan-400/10">
-    <div className="min-w-64 flex-1 text-xs text-cyan-950 dark:text-cyan-100"><p className="font-bold">Ensamble del video</p><p className="mt-0.5">{summary}</p>{assembly && <><p className="mt-1 text-[11px] text-cyan-800/80 dark:text-cyan-100/70">ZIP validado: {formatAssemblyBytes(assembly.projectArchiveSizeBytes)} de 200 MB</p><p className="mt-0.5 text-[11px] text-cyan-800/80 dark:text-cyan-100/70">{assembly.renderProfile ? `Perfil del snapshot: ${assemblyProfile?.label || "Compatible"} · MP4 · 1080p · ${assembly.renderProfile.fps} FPS · calidad ${renderQualityLabel(assembly.renderProfile.quality)}` : "Este snapshot usa un perfil anterior; regénéralo antes de renderizar."}</p></>}{!profileMatchesAssembly && <p role="status" className="mt-1 font-medium text-amber-700 dark:text-amber-200">El perfil seleccionado no coincide con el snapshot. Regenera el snapshot para aplicarlo antes de aprobar o renderizar.</p>}{label && <p role="status" className="mt-1 inline-flex items-center gap-1.5 font-medium">{activeRender && <Loader2 className="animate-spin" size={13} />}{label}</p>}{priorCompletedVideo && <p role="status" className="mt-1 text-amber-700 dark:text-amber-200">Hay un video anterior importado y disponible; no se reemplazará hasta que esta revisión termine correctamente.</p>}{error && <p role="alert" className="mt-1 text-red-700 dark:text-red-200">{error}</p>}</div>
+    <div className="min-w-64 flex-1 text-xs text-cyan-950 dark:text-cyan-100"><p className="font-bold">Ensamble del video</p><p className="mt-0.5">{summary}</p>{assembly && <><p className="mt-1 text-[11px] text-cyan-800/80 dark:text-cyan-100/70">ZIP validado: {formatAssemblyBytes(assembly.projectArchiveSizeBytes)} de 200 MB</p><p className="mt-0.5 text-[11px] text-cyan-800/80 dark:text-cyan-100/70">{assembly.renderProfile ? `Perfil del snapshot: ${assemblyProfile?.label || "Compatible"} · MP4 · 1080p · ${assembly.renderProfile.fps} FPS · calidad ${renderQualityLabel(assembly.renderProfile.quality)}` : "Este snapshot usa un perfil anterior; regénéralo antes de renderizar."}</p></>}{notice && <p role="status" className="mt-1 font-medium text-emerald-700 dark:text-emerald-200">{notice}</p>}{!profileMatchesAssembly && <p role="status" className="mt-1 font-medium text-amber-700 dark:text-amber-200">El perfil seleccionado no coincide con el snapshot. Regenera el snapshot para aplicarlo antes de aprobar o renderizar.</p>}{label && <p role="status" className="mt-1 inline-flex items-center gap-1.5 font-medium">{activeRender && <Loader2 className="animate-spin" size={13} />}{label}</p>}{priorCompletedVideo && <p role="status" className="mt-1 text-amber-700 dark:text-amber-200">Hay un video anterior importado y disponible; no se reemplazará hasta que esta revisión termine correctamente.</p>}{error && <p role="alert" className="mt-1 text-red-700 dark:text-red-200">{error}</p>}</div>
     <label className="min-w-64 rounded-lg border border-cyan-200 bg-white/70 p-2 dark:border-cyan-400/20 dark:bg-slate-950/30">
       <span className="block text-[10px] font-bold uppercase tracking-wide text-cyan-900/70 dark:text-cyan-100/70">Perfil de render</span>
       <select

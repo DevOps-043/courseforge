@@ -9,6 +9,7 @@ import {
 import {
   getHyperframesRenderProfile,
   HYPERFRAMES_RENDER_PROFILES,
+  toHyperframesRenderSettings,
 } from "../hyperframes-render-profiles";
 
 test("accepts UUID composition identifiers and rejects route placeholders", () => {
@@ -84,4 +85,37 @@ test("exposes only avatar-safe user profiles and keeps high quality selectable",
   );
   assert.equal(getHyperframesRenderProfile("balanced").quality, "standard");
   assert.equal(getHyperframesRenderProfile("high").quality, "high");
+  assert.deepEqual(toHyperframesRenderSettings(getHyperframesRenderProfile("balanced")), {
+    format: "mp4",
+    fps: 25,
+    quality: "standard",
+    resolution: "1080p",
+  });
+  assert.equal(
+    "id" in toHyperframesRenderSettings(getHyperframesRenderProfile("balanced")),
+    false,
+  );
+});
+
+test("removes manifest-only metadata before resolving a provider request", () => {
+  const snapshotWithInternalId = {
+    format: "mp4" as const,
+    fps: 25 as const,
+    id: "balanced",
+    quality: "standard" as const,
+    resolution: "1080p" as const,
+  };
+
+  assert.deepEqual(
+    resolveHyperframesSnapshotRenderProfile({}, snapshotWithInternalId),
+    {
+      data: {
+        format: "mp4",
+        fps: 25,
+        quality: "standard",
+        resolution: "1080p",
+      },
+      success: true,
+    },
+  );
 });

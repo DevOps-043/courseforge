@@ -65,5 +65,13 @@ export function resolveHyperframesSnapshotRenderProfile(
       success: false,
     };
   }
-  return { data: snapshot, success: true };
+  return {
+    data: {
+      format: snapshot.format,
+      fps: snapshot.fps,
+      quality: snapshot.quality,
+      resolution: snapshot.resolution,
+    },
+    success: true,
+  };
 }

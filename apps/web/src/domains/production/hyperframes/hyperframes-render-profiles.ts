@@ -80,7 +80,7 @@ export function findHyperframesRenderProfile(
 }
 
 export function toHyperframesRenderSettings(
-  profile: HyperframesRenderProfile,
+  profile: HyperframesRenderSettings,
 ): HyperframesRenderSettings {
   return {
     format: profile.format,

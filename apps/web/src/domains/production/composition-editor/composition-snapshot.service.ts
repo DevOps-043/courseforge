@@ -255,7 +255,7 @@ export async function listCompositionSnapshots(params: {
     activeRevisionId: composition.active_revision_id as string | null,
     snapshots: (data || []).map((row) => {
       const manifest = asRecord(row.manifest);
-      const renderProfile = readPersistedRenderProfile(manifest);
+      const persistedRenderProfile = readPersistedRenderProfile(manifest);
       return {
         createdAt: String(row.created_at),
         documentHash: typeof manifest.draft_document_hash === "string" ? manifest.draft_document_hash : "",
@@ -263,8 +263,8 @@ export async function listCompositionSnapshots(params: {
         id: String(row.id),
         isActive: row.id === composition.active_revision_id,
         projectArchiveSizeBytes: Number(row.project_archive_size_bytes),
-        renderProfile,
-        renderProfileId: findHyperframesRenderProfile(renderProfile)?.id || null,
+        renderProfile: persistedRenderProfile.settings,
+        renderProfileId: persistedRenderProfile.id,
         revisionNumber: Number(row.revision_number),
       };
     }),
@@ -291,7 +291,7 @@ export async function activateCompositionSnapshot(params: {
   if (!revision) throw new CompositionSnapshotError("El snapshot no existe o no pertenece a esta composición.", 404);
   await setActiveCompositionSnapshot(params);
   const manifest = asRecord(revision.manifest);
-  const renderProfile = readPersistedRenderProfile(manifest);
+  const persistedRenderProfile = readPersistedRenderProfile(manifest);
   return {
     createdAt: String(revision.created_at),
     documentHash: typeof manifest.draft_document_hash === "string" ? manifest.draft_document_hash : "",
@@ -299,8 +299,8 @@ export async function activateCompositionSnapshot(params: {
     id: String(revision.id),
     isActive: true,
     projectArchiveSizeBytes: Number(revision.project_archive_size_bytes),
-    renderProfile,
-    renderProfileId: findHyperframesRenderProfile(renderProfile)?.id || null,
+    renderProfile: persistedRenderProfile.settings,
+    renderProfileId: persistedRenderProfile.id,
     revisionNumber: Number(revision.revision_number),
     status: "READY_FOR_PREVIEW" as const,
   };
@@ -412,7 +412,12 @@ function bucketRelativePath(bucket: string, storagePath: string) {
 
 function readPersistedRenderProfile(manifest: Record<string, unknown>) {
   const parsed = hyperframesRenderProfileSchema.safeParse(manifest.render_profile);
-  return parsed.success ? parsed.data : null;
+  if (!parsed.success) return { id: null, settings: null };
+  const settings = toHyperframesRenderSettings(parsed.data);
+  return {
+    id: parsed.data.id || findHyperframesRenderProfile(settings)?.id || null,
+    settings,
+  };
 }
 
 export function assertCompositionSnapshotRenderContract(
