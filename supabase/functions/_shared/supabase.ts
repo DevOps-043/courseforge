@@ -17,4 +17,3 @@ export async function rpc<T>(name: string, params: Record<string, unknown>): Pro
   if (error) throw new Error(`${name}: ${error.message}`);
   return data as T;
 }
-

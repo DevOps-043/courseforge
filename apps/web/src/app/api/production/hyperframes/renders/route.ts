@@ -7,11 +7,8 @@ import {
   getServiceRoleClient,
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
-import { HyperframesCloudApiError } from "@/domains/production/hyperframes/hyperframes-cloud.client";
-import {
-  getHyperframesClientForOrganization,
-  HyperframesCredentialResolverError,
-} from "@/domains/production/hyperframes/hyperframes-credential-resolver.service";
+import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
+import { runHyperframesRenderBackground } from "@/domains/production/hyperframes/hyperframes-render-background.service";
 import {
   HyperframesRenderSubmissionError,
   HyperframesRenderSubmissionService,
@@ -109,17 +106,41 @@ export async function POST(request: Request) {
     }
 
     const admin = getServiceRoleClient();
-    const hyperframesAuth = await getHyperframesClientForOrganization({
-      allowGlobalFallback: false,
-      organizationId: tenant.organizationId,
-      supabase: admin,
-    });
-    const service = new HyperframesRenderSubmissionService(admin, hyperframesAuth.client);
+    const service = new HyperframesRenderSubmissionService(admin);
     const result = await service.submit({
       ...input,
       createdBy: authenticatedUser.userId,
+      deferProcessing: true,
       organizationId: tenant.organizationId,
     });
+    if (!result.reused && !result.providerRenderId) {
+      try {
+        await callBackgroundFunctionJson(
+          "hyperframes-render-background",
+          { renderRequestId: result.renderRequestId },
+          {
+            fallbackError: "No se pudo iniciar el worker de render.",
+            localHandlerLoader: async () => ({
+              handler: async (event: { body: string }) => {
+                const localPayload = JSON.parse(event.body) as { renderRequestId: string };
+                await runHyperframesRenderBackground(localPayload.renderRequestId);
+                return { statusCode: 200, body: JSON.stringify({ success: true }) };
+              },
+            }),
+          },
+        );
+      } catch (dispatchError) {
+        await service.failDispatch({
+          error: dispatchError,
+          organizationId: tenant.organizationId,
+          requestId: result.renderRequestId,
+        });
+        throw new HyperframesRenderSubmissionError(
+          "No se pudo iniciar el worker de render. Intenta nuevamente.",
+          503,
+        );
+      }
+    }
     return NextResponse.json({ success: true, data: result }, { status: result.reused ? 200 : 202 });
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
@@ -131,19 +152,6 @@ export async function POST(request: Request) {
     if (error instanceof HyperframesRenderSubmissionError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
-    if (error instanceof HyperframesCredentialResolverError) {
-      return NextResponse.json(
-        { error: error.message, code: error.code },
-        { status: error.status },
-      );
-    }
-    if (error instanceof HyperframesCloudApiError) {
-      return NextResponse.json(
-        { error: error.message, providerCode: error.code || null },
-        { status: error.status === 429 ? 429 : 502 },
-      );
-    }
-
     console.error("[API /production/hyperframes/renders] Unexpected error:", {
       ...getErrorDetails(error),
       message: getErrorMessage(error),

@@ -20,4 +20,3 @@ export function getSupabaseServiceRoleKey(): string {
 export function getEncryptionKeyHex(): string {
   return requireEnv("OAUTH_TOKEN_CRYPTO_SECRET");
 }
-

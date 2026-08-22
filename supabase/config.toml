@@ -6,4 +6,3 @@ verify_jwt = false
 
 [functions.import-hyperframes-video]
 verify_jwt = false
-

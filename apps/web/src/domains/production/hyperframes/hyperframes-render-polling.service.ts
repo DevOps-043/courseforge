@@ -67,6 +67,13 @@ export class HyperframesRenderPollingService {
     });
 
     if (!request.provider_render_id) {
+      if (request.provider_status === "FAILED") {
+        return {
+          action: "FAIL",
+          providerStatus: "FAILED",
+          requestId: request.id,
+        };
+      }
       if (isUnsubmittedRenderStale(request.updated_at)) {
         const now = new Date().toISOString();
         await this.markFailed({
