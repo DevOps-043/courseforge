@@ -9,6 +9,7 @@ test("classifies visual, timeline and structural operations explicitly", () => {
   assert.equal(classifyCompositionPreviewOperation({ type: "clip.layout" }), "LIVE_DOM");
   assert.equal(classifyCompositionPreviewOperation({ type: "clip.trim" }), "LIVE_TIMELINE");
   assert.equal(classifyCompositionPreviewOperation({ type: "clip.add" }), "FULL_RELOAD");
+  assert.equal(classifyCompositionPreviewOperation({ type: "document.reconcile" }), "FULL_RELOAD");
   assert.equal(classifyCompositionPreviewOperation({ type: "track.update" }), "FULL_RELOAD");
   assert.equal(classifyCompositionPreviewOperation({ type: "future.unknown" }), "FULL_RELOAD");
 });

@@ -9,6 +9,7 @@ import {
 import { resolveCompositionCropInsets } from "./composition-visual-crop.service";
 import {
   compositionClipHasConfigurableAudio,
+  resolveCompositionClipAudioVolume,
 } from "./composition-clip-audio.service";
 import { buildCompositionTimelineLayout } from "./composition-timeline-layout.service";
 import { COMPOSITION_PREVIEW_PROTOCOL_VERSION } from "./composition-preview-protocol";
