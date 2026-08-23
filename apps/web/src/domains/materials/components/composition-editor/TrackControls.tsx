@@ -1,17 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Eye, EyeOff, Lock, Unlock, Volume2, VolumeX } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, EyeOff, Lock, Unlock, Volume2, VolumeX } from "lucide-react";
 import type { CompositionTrack } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionTrackUpdateHandler } from "./composition-studio.types";
 
 interface TrackControlsProps {
   disabled: boolean;
+  displayLabel?: string;
+  expanded?: boolean;
   onUpdate: CompositionTrackUpdateHandler;
+  onToggleExpanded?: () => void;
   track: CompositionTrack;
 }
 
-export function TrackControls({ disabled, onUpdate, track }: TrackControlsProps) {
+export function TrackControls({ disabled, displayLabel, expanded, onToggleExpanded, onUpdate, track }: TrackControlsProps) {
   const [volume, setVolume] = useState(track.volume ?? 1);
 
   useEffect(() => setVolume(track.volume ?? 1), [track.volume]);
@@ -30,12 +33,22 @@ export function TrackControls({ disabled, onUpdate, track }: TrackControlsProps)
 
   return (
     <div className="min-w-0 pt-1">
-      <span
-        className="block truncate text-xs font-semibold text-slate-700 dark:text-gray-200"
-        title={`${track.label} · ${track.semanticRole || track.kind}`}
+      {onToggleExpanded ? <button
+        type="button"
+        aria-expanded={expanded}
+        aria-label={`${expanded ? "Contraer" : "Expandir"} ${displayLabel || track.label}`}
+        onClick={onToggleExpanded}
+        className="flex max-w-full items-center gap-1 rounded pr-1 text-left text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:text-gray-200 dark:hover:bg-white/10"
+        title={`${displayLabel || track.label} · ${track.semanticRole || track.kind}`}
       >
-        {track.label}
-      </span>
+        {expanded ? <ChevronDown className="shrink-0" size={13} /> : <ChevronRight className="shrink-0" size={13} />}
+        <span className="truncate">{displayLabel || track.label}</span>
+      </button> : <span
+        className="block truncate text-xs font-semibold text-slate-700 dark:text-gray-200"
+        title={`${displayLabel || track.label} · ${track.semanticRole || track.kind}`}
+      >
+        {displayLabel || track.label}
+      </span>}
       <span className="sr-only">Capa semántica: {track.semanticRole || track.kind}</span>
       <div className="mt-1 flex items-center gap-1 text-slate-500 dark:text-gray-400">
         <button

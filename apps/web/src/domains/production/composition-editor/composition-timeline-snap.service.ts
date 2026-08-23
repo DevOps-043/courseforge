@@ -1,9 +1,11 @@
 import type { CompositionClip } from "./composition-document.types";
 
 export type TimelineSnapEdge = "END" | "START";
-export type TimelineSnapSource = "CLIP_END" | "CLIP_START" | "PLAYHEAD";
+export type TimelineSnapSource = "ANIMATION_END" | "ANIMATION_START" | "CLIP_END" | "CLIP_START" | "PLAYHEAD";
 
 export type TimelineSnapTarget = {
+  animationId?: string;
+  animationLabel?: string;
   clipId?: string;
   clipLabel?: string;
   source: TimelineSnapSource;
@@ -26,15 +28,17 @@ type TimelineSnapAnchor = {
 
 const SOURCE_PRIORITY: Record<TimelineSnapSource, number> = {
   PLAYHEAD: 0,
-  CLIP_START: 1,
-  CLIP_END: 2,
+  ANIMATION_START: 1,
+  ANIMATION_END: 2,
+  CLIP_START: 3,
+  CLIP_END: 4,
 };
 const SNAP_COMPARISON_EPSILON = 1e-9;
 
 /** Builds magnetic points shared by every visible track in the timeline. */
 export function buildTimelineSnapTargets(params: {
   clips: Array<Pick<CompositionClip, "hidden" | "id" | "label" | "durationSeconds" | "startSeconds">>;
-  excludedClipId: string;
+  excludedClipId?: string;
   playheadSeconds: number;
 }): TimelineSnapTarget[] {
   const targets: TimelineSnapTarget[] = [{

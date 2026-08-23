@@ -16,6 +16,10 @@ import {
 } from "@/domains/production/composition-editor/composition-default-layout.service";
 import type { CompositionAnimation } from "@/domains/production/composition-editor/composition-motion.types";
 import { COMPOSITION_MOTION_ENABLED } from "@/domains/production/composition-editor/composition-motion.config";
+import {
+  compositionClipHasConfigurableAudio,
+  resolveCompositionClipDefaultVolume,
+} from "@/domains/production/composition-editor/composition-clip-audio.service";
 import { CompositionTimeline } from "./CompositionTimeline";
 import { AudioMixControls } from "./AudioMixControls";
 import { VolumeSlider } from "./VolumeSlider";
@@ -28,9 +32,23 @@ import {
   resolveCompositionDocumentVersion,
 } from "@/domains/production/composition-editor/composition-document-version";
 import { CompositionPreviewTelemetryBuffer } from "@/domains/production/composition-editor/composition-preview-telemetry.client";
-import { EngineSelect } from "@/components/ui/EngineSelect";
-import type { CompositionPreviewMetric } from "@/domains/production/composition-editor/composition-preview-telemetry";
+import { COMPOSITION_PREVIEW_TELEMETRY_CONFIG } from "@/domains/production/composition-editor/composition-preview-telemetry";
 import { clampPreviewPlayhead, classifyPreviewTimeMessage, isPreviewRefreshRequired } from "@/domains/production/composition-editor/composition-preview-playhead.service";
+import { CompositionSaveQueue } from "@/domains/production/composition-editor/composition-save-queue";
+import { CompositionPreviewRuntimePatchCoordinator } from "@/domains/production/composition-editor/composition-preview-runtime-sync.client";
+import {
+  INITIAL_COMPOSITION_PREVIEW_SYNC_STATE,
+  transitionCompositionPreviewSyncState,
+} from "@/domains/production/composition-editor/composition-preview-sync-state";
+import { COMPOSITION_PREVIEW_SYNC_V2_ENABLED } from "@/domains/production/composition-editor/composition-preview-sync.config";
+import {
+  createCompositionPreviewParentCommand,
+  parseCompositionPreviewIframeMessage,
+  type CompositionPreviewParentCommandInput,
+} from "@/domains/production/composition-editor/composition-preview-protocol";
+import { classifyCompositionPreviewOperations } from "@/domains/production/composition-editor/composition-preview-operation-policy";
+import { buildCompositionPreviewVisualPatch } from "@/domains/production/composition-editor/composition-preview-visual-patch";
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { hasCompositionCrop, normalizeCompositionCropInsets, resolveCompositionCropInsets, type CompositionCropInsets } from "@/domains/production/composition-editor/composition-visual-crop.service";
 import { createClient as createBrowserSupabaseClient } from "@/utils/supabase/client";
 import {
@@ -44,19 +62,15 @@ import {
   type HyperframesRenderSettings,
 } from "@/domains/production/hyperframes/hyperframes-render-profiles";
 
-type PreviewMessage =
-  | { type: "courseforge-composition-ready"; duration: number }
-  | { type: "courseforge-composition-time"; seconds: number }
-  | { type: "courseforge-composition-playback"; playing: boolean }
-  | { type: "courseforge-composition-media-state"; state: "BUFFERING" | "PLAYING" | "PREPARING" | "READY"; pendingMediaIds: string[] }
-  | { type: "courseforge-composition-media-metric"; metric: CompositionPreviewMetric }
-  | { type: "courseforge-composition-media-error"; code: string; mediaId: string; message: string }
-  | { type: "courseforge-composition-selection"; hfId: string | null }
-  | { type: "courseforge-composition-layout-commit"; hfId: string; layout: { height: number; width: number; x: number; y: number } }
-  | { type: "courseforge-composition-crop-commit"; hfId: string; crop: CompositionVisualCrop }
-  | { type: "courseforge-composition-aspect-corrections"; corrections: Array<{ hfId: string; layout: { height: number; width: number; x: number; y: number } }> };
-
 type DocumentPayload = { document: CompositionEditorDocument; documentHash: string; version: number };
+type SavePatchOptions = { preservePreviewRuntime?: boolean };
+type PreviewReloadReason = "DIRTY_PLAYBACK" | "MANUAL" | "MEDIA_RECOVERY" | "SAVE_RECOVERY";
+type PendingEditTelemetry = {
+  operationCount: number;
+  operationNames: string[];
+  source: "AGENT" | "USER";
+  startedAt: number;
+};
 type DocumentHistoryEntry = DocumentPayload & { createdAt: string };
 type CompositionSnapshotEntry = {
   createdAt: string;
@@ -162,6 +176,9 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const studioGridRef = useRef<HTMLDivElement | null>(null);
   const payloadRef = useRef<DocumentPayload | null>(null);
   const saveInFlightRef = useRef(false);
+  const saveQueueRef = useRef<CompositionSaveQueue<() => Promise<boolean>> | null>(null);
+  const runtimePatchCoordinatorRef = useRef<CompositionPreviewRuntimePatchCoordinator | null>(null);
+  const previewSyncStateRef = useRef(INITIAL_COMPOSITION_PREVIEW_SYNC_STATE);
   const renderPollInFlightRef = useRef(false);
   const onVideoCompletedRef = useRef(onVideoCompleted);
   const mediaRecoveryHashRef = useRef<string | null>(null);
@@ -169,8 +186,11 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const pendingSeekSecondsRef = useRef<number | null>(null);
   const pendingPreviewRestoreSecondsRef = useRef<number | null>(null);
   const previewDocumentHashRef = useRef<string | null>(null);
+  const previewRuntimeBaseHashRef = useRef<string | null>(null);
   const autoPlayAfterPreviewRefreshRef = useRef(false);
   const previewTelemetryRef = useRef<CompositionPreviewTelemetryBuffer | null>(null);
+  const previewReloadTelemetryRef = useRef<{ reason: PreviewReloadReason; startedAt: number } | null>(null);
+  const pendingEditTelemetryRef = useRef<PendingEditTelemetry | null>(null);
   const [payload, setPayload] = useState<DocumentPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -202,6 +222,17 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     DEFAULT_HYPERFRAMES_RENDER_PROFILE_ID,
   );
   const [seconds, setSeconds] = useState(0);
+
+  if (!saveQueueRef.current) {
+    saveQueueRef.current = new CompositionSaveQueue(
+      (saveCommand) => saveCommand(),
+      undefined,
+      () => setSaveError("Hay demasiados cambios pendientes. Espera a que termine el guardado actual."),
+    );
+  }
+  if (!runtimePatchCoordinatorRef.current) {
+    runtimePatchCoordinatorRef.current = new CompositionPreviewRuntimePatchCoordinator();
+  }
 
   const [selectedHfId, setSelectedHfId] = useState<string | null>(null);
   const [selectedAnimationId, setSelectedAnimationId] = useState<string | null>(null);
@@ -248,7 +279,14 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
+      if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+        previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
+          documentHash: nextPayload.documentHash,
+          type: "DOCUMENT_LOADED",
+        });
+      }
       previewDocumentHashRef.current = nextPayload.documentHash;
+      previewRuntimeBaseHashRef.current = nextPayload.documentHash;
       setPreviewDocumentHash(nextPayload.documentHash);
       setPreviewDirty(false);
       setSeconds(0);
@@ -326,16 +364,21 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       void telemetry.dispose();
     };
   }, [draftId]);
+  useEffect(() => () => runtimePatchCoordinatorRef.current?.dispose(), []);
   useEffect(() => {
     if (assistantRequestKey <= 0) return;
     setManualInspectorOpen(true);
     setInspectorTab("assistant");
   }, [assistantRequestKey]);
   useEffect(() => {
-    const onMessage = (event: MessageEvent<PreviewMessage>) => {
+    const onMessage = (event: MessageEvent) => {
       if (event.source !== frameRef.current?.contentWindow) return;
-      const message = event.data;
-      if (!message || typeof message.type !== "string") return;
+      const message = parseCompositionPreviewIframeMessage(event.data);
+      if (!message) return;
+      if (message.type === "courseforge-composition-visual-patch-result") {
+        runtimePatchCoordinatorRef.current?.acknowledge(message);
+        return;
+      }
       if (message.type === "courseforge-composition-time") {
         const pendingSeekSeconds = pendingSeekSecondsRef.current;
         const decision = classifyPreviewTimeMessage({
@@ -350,7 +393,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
         setSeconds(message.seconds);
         if (decision.completesRestore && autoPlayAfterPreviewRefreshRef.current) {
           autoPlayAfterPreviewRefreshRef.current = false;
-          frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-play" }, "*");
+          postPreviewMessage({ type: "courseforge-composition-play" });
         }
       }
       if (message.type === "courseforge-composition-playback") {
@@ -365,6 +408,38 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
         previewTelemetryRef.current?.record(message.metric);
       }
       if (message.type === "courseforge-composition-ready") {
+        const readyDocumentHash = previewDocumentHashRef.current;
+        if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED && readyDocumentHash) {
+          previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
+            documentHash: readyDocumentHash,
+            type: "PREVIEW_READY",
+          });
+        }
+        const readyAt = performance.now();
+        const reloadTelemetry = previewReloadTelemetryRef.current;
+        if (reloadTelemetry) {
+          previewReloadTelemetryRef.current = null;
+          previewTelemetryRef.current?.record({
+            atSeconds: playheadSecondsRef.current,
+            context: { reloadReason: reloadTelemetry.reason },
+            durationMs: Math.min(600_000, readyAt - reloadTelemetry.startedAt),
+            name: "iframe_reload_ms",
+          });
+        }
+        const pendingEditTelemetry = pendingEditTelemetryRef.current;
+        if (pendingEditTelemetry) {
+          pendingEditTelemetryRef.current = null;
+          previewTelemetryRef.current?.record({
+            atSeconds: playheadSecondsRef.current,
+            context: {
+              operationCount: pendingEditTelemetry.operationCount,
+              operationNames: pendingEditTelemetry.operationNames,
+              source: pendingEditTelemetry.source,
+            },
+            durationMs: Math.min(600_000, readyAt - pendingEditTelemetry.startedAt),
+            name: "edit_to_visual_update_ms",
+          });
+        }
         setPreviewReady(true);
         setPreviewMediaState("READY");
         setPendingPreviewMediaIds([]);
@@ -376,13 +451,13 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           pendingSeekSecondsRef.current = clampedSeconds;
           playheadSecondsRef.current = clampedSeconds;
           setSeconds(clampedSeconds);
-          frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-seek", seconds: clampedSeconds }, "*");
+          postPreviewMessage({ type: "courseforge-composition-seek", seconds: clampedSeconds });
         } else if (autoPlayAfterPreviewRefreshRef.current) {
           autoPlayAfterPreviewRefreshRef.current = false;
-          frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-play" }, "*");
+          postPreviewMessage({ type: "courseforge-composition-play" });
         }
         if (selectedHfId) {
-          frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-select", hfId: selectedHfId }, "*");
+          postPreviewMessage({ type: "courseforge-composition-select", hfId: selectedHfId });
         }
       }
       if (message.type === "courseforge-composition-media-error") {
@@ -395,15 +470,26 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
         setPreviewMediaState("PREPARING");
         if (currentHash && mediaRecoveryHashRef.current !== currentHash) {
           mediaRecoveryHashRef.current = currentHash;
-          frameRef.current?.contentWindow?.postMessage({ type: "courseforge-composition-pause" }, "*");
+          postPreviewMessage({ type: "courseforge-composition-pause" });
           setPlaying(false);
           setPreviewReady(false);
           setPlaybackError("El enlace del medio dejó de responder. Renovando el acceso al preview…");
           previewDocumentHashRef.current = currentHash;
+          previewRuntimeBaseHashRef.current = currentHash;
           setPreviewDocumentHash(currentHash);
           setPreviewDirty(false);
+          if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+            previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
+              documentHash: currentHash,
+              type: "PREVIEW_RELOAD_STARTED",
+            });
+          }
+          previewReloadTelemetryRef.current = { reason: "MEDIA_RECOVERY", startedAt: performance.now() };
           setPreviewRefreshKey((current) => current + 1);
           return;
+        }
+        if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+          previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, { type: "RUNTIME_FAILED" });
         }
         setPlaybackError(`No se pudo reproducir ${message.mediaId}: ${message.message}`);
       }
@@ -460,7 +546,12 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const selectedClip = payload?.document.clips.find((clip) => clip.hfId === selectedHfId) ?? null;
   const inspectorOpen = manualInspectorOpen || Boolean(selectedClip);
 
-  const postPreviewMessage = (message: Record<string, unknown>) => frameRef.current?.contentWindow?.postMessage(message, "*");
+  const postPreviewMessage = (message: CompositionPreviewParentCommandInput) => {
+    const command = createCompositionPreviewParentCommand(message);
+    if (!command) return false;
+    frameRef.current?.contentWindow?.postMessage(command, "*");
+    return true;
+  };
   useEffect(() => {
     if (!previewReady) return;
     postPreviewMessage({
@@ -481,7 +572,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   }, []);
   const refreshPreviewMedia = () => {
     mediaRecoveryHashRef.current = null;
-    refreshPreviewDocument(false);
+    refreshPreviewDocument(false, "MEDIA_RECOVERY");
     setPlaybackError("Renovando el acceso a los medios del preview…");
   };
   const seek = (nextSeconds: number) => {
@@ -528,14 +619,22 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     setPendingPreviewMediaIds([]);
     setPlaybackError(null);
   };
-  const refreshPreviewDocument = (autoPlay = false) => {
+  const refreshPreviewDocument = (autoPlay = false, reason: PreviewReloadReason = "MANUAL") => {
     const currentPayload = payloadRef.current;
     if (!currentPayload || agentProposal) return;
     pausePreviewForMutation();
     autoPlayAfterPreviewRefreshRef.current = autoPlay;
     previewDocumentHashRef.current = currentPayload.documentHash;
+    previewRuntimeBaseHashRef.current = currentPayload.documentHash;
     setPreviewDocumentHash(currentPayload.documentHash);
     setPreviewDirty(false);
+    if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+      previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
+        documentHash: currentPayload.documentHash,
+        type: "PREVIEW_RELOAD_STARTED",
+      });
+    }
+    previewReloadTelemetryRef.current = { reason, startedAt: performance.now() };
     setPreviewRefreshKey((current) => current + 1);
   };
   const togglePreviewPlayback = () => {
@@ -545,19 +644,32 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     }
     const currentHash = payloadRef.current?.documentHash || null;
     if (isPreviewRefreshRequired({ persistedDocumentHash: currentHash, previewDirty, previewDocumentHash: previewDocumentHashRef.current })) {
-      refreshPreviewDocument(true);
+      refreshPreviewDocument(true, "DIRTY_PLAYBACK");
       return;
     }
     postPreviewMessage({ type: "courseforge-composition-play" });
   };
-  async function savePatch(
+  function savePatch(
     operations: CompositionEditorPatchOperation[],
     summary: string,
     source: "AGENT" | "USER" = "USER",
-    options: { preservePreviewRuntime?: boolean } = {},
+    options: SavePatchOptions = {},
+  ): Promise<boolean> {
+    if (!COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+      return executeSavePatch(operations, summary, source, options, false);
+    }
+    return saveQueueRef.current!.enqueue(() => executeSavePatch(operations, summary, source, options, true));
+  }
+
+  async function executeSavePatch(
+    operations: CompositionEditorPatchOperation[],
+    summary: string,
+    source: "AGENT" | "USER",
+    options: SavePatchOptions,
+    queuedSave: boolean,
   ): Promise<boolean> {
     const currentPayload = payloadRef.current;
-    if (!currentPayload || saveInFlightRef.current) return false;
+    if (!currentPayload || (!queuedSave && saveInFlightRef.current)) return false;
     if (agentProposal && source !== "AGENT") {
       setSaveError("Confirma o descarta la propuesta antes de realizar otra edición.");
       return false;
@@ -570,19 +682,56 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       setSaveError(caught instanceof Error ? caught.message : "El cambio solicitado no es válido.");
       return false;
     }
-    postPreviewMessage({ type: "courseforge-composition-pause" });
-    setPlaying(false);
+    const updateStrategy = classifyCompositionPreviewOperations(effectiveOperations);
+    if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+      previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, { type: "EDIT_ACCEPTED" });
+      previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, { type: "SAVE_STARTED" });
+    }
+    const visualPatch = updateStrategy === "LIVE_DOM"
+      ? buildCompositionPreviewVisualPatch({ document: optimisticDocument, operations: effectiveOperations })
+      : null;
+    const runtimeBaseHash = previewRuntimeBaseHashRef.current;
+    const canApplyIncrementally = COMPOSITION_PREVIEW_SYNC_V2_ENABLED
+      && agentProposal === null
+      && previewReady
+      && visualPatch !== null
+      && runtimeBaseHash !== null
+      && previewDocumentHashRef.current === currentPayload.documentHash;
+    const runtimePatchPromise = canApplyIncrementally
+      ? runtimePatchCoordinatorRef.current!.dispatch({
+        baseDocumentHash: runtimeBaseHash,
+        patch: visualPatch,
+        send: postPreviewMessage,
+      })
+      : null;
+    if (!runtimePatchPromise) {
+      postPreviewMessage({ type: "courseforge-composition-pause" });
+      setPlaying(false);
+    }
     saveInFlightRef.current = true;
     setSaving(true);
     setSaveError(null);
     setFailedSave(null);
     setPreviewDirty(true);
+    const priorPendingEditTelemetry = pendingEditTelemetryRef.current;
+    if (!options.preservePreviewRuntime) {
+      const operationNames = [...new Set(effectiveOperations.map((operation) => operation.type))];
+      pendingEditTelemetryRef.current = {
+        operationCount: Math.min(100, (priorPendingEditTelemetry?.operationCount || 0) + effectiveOperations.length),
+        operationNames: [...new Set([...(priorPendingEditTelemetry?.operationNames || []), ...operationNames])].slice(0, 12),
+        source,
+        startedAt: priorPendingEditTelemetry?.startedAt || performance.now(),
+      };
+    }
     const optimisticPayload = { ...currentPayload, document: optimisticDocument };
     payloadRef.current = optimisticPayload;
     setPayload(optimisticPayload);
+    const requestBody = JSON.stringify({ operations: effectiveOperations, source, summary });
+    const requestStartedAt = performance.now();
+    let saveOutcome: "CONFLICT" | "ERROR" | "SUCCESS" = "ERROR";
     try {
       const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/document`, {
-        body: JSON.stringify({ operations: effectiveOperations, source, summary }),
+        body: requestBody,
         headers: {
           "Content-Type": "application/json",
           "If-Match": formatCompositionDocumentEtag(currentPayload.documentHash),
@@ -592,33 +741,109 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       });
       const body = await response.json();
       if (response.status === 409 && body.data) {
+        saveOutcome = "CONFLICT";
+        if (!options.preservePreviewRuntime) pendingEditTelemetryRef.current = priorPendingEditTelemetry;
         const nextPayload = body.data as DocumentPayload;
+        nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
+        if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+          previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
+            documentHash: nextPayload.documentHash,
+            type: "CONFLICT",
+          });
+        }
         payloadRef.current = nextPayload;
         setPayload(nextPayload);
         setPreviewDirty(nextPayload.documentHash !== previewDocumentHashRef.current);
+        if (runtimePatchPromise) refreshPreviewDocument(false, "SAVE_RECOVERY");
         setFailedSave({ operations: effectiveOperations, source, summary });
         setSaveError(body.error || "La composición cambió en otra sesión. El preview se actualizó con la última versión.");
         return false;
       }
       if (!response.ok) throw new Error(body.error || "No se pudo guardar el cambio.");
+      saveOutcome = "SUCCESS";
       const nextPayload = body.data as DocumentPayload;
       nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
+      if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+        previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
+          documentHash: nextPayload.documentHash,
+          type: "SAVE_SUCCEEDED",
+        });
+      }
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
-      setPreviewDirty(nextPayload.documentHash !== previewDocumentHashRef.current);
+      if (runtimePatchPromise) {
+        const runtimeOutcome = await runtimePatchPromise;
+        previewTelemetryRef.current?.record({
+          atSeconds: playheadSecondsRef.current,
+          context: { runtimeOutcome: runtimeOutcome.code, updateStrategy },
+          durationMs: Math.min(600_000, runtimeOutcome.durationMs),
+          name: "runtime_visual_patch_ms",
+        });
+        if (runtimeOutcome.applied) {
+          previewDocumentHashRef.current = nextPayload.documentHash;
+          setPreviewDocumentHash(nextPayload.documentHash);
+          setPreviewDirty(false);
+          const pendingEditTelemetry = pendingEditTelemetryRef.current;
+          if (pendingEditTelemetry) {
+            pendingEditTelemetryRef.current = null;
+            previewTelemetryRef.current?.record({
+              atSeconds: playheadSecondsRef.current,
+              context: {
+                operationCount: pendingEditTelemetry.operationCount,
+                operationNames: pendingEditTelemetry.operationNames,
+                source: pendingEditTelemetry.source,
+                updateStrategy,
+              },
+              durationMs: Math.min(600_000, runtimeOutcome.durationMs),
+              name: "edit_to_visual_update_ms",
+            });
+          }
+          if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+            previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
+              documentHash: nextPayload.documentHash,
+              type: "PREVIEW_READY",
+            });
+          }
+        } else {
+          setPreviewDirty(true);
+          refreshPreviewDocument(false, "SAVE_RECOVERY");
+        }
+      } else {
+        setPreviewDirty(nextPayload.documentHash !== previewDocumentHashRef.current);
+      }
       if (source === "USER") setLastAppliedAgentProposal(null);
       return true;
     } catch (caught) {
+      if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+        previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, { type: "SAVE_FAILED" });
+      }
+      if (!options.preservePreviewRuntime) pendingEditTelemetryRef.current = priorPendingEditTelemetry;
       payloadRef.current = currentPayload;
       setPayload(currentPayload);
       setPreviewDirty(currentPayload.documentHash !== previewDocumentHashRef.current);
-      if (options.preservePreviewRuntime) {
-        refreshPreviewDocument(false);
+      if (options.preservePreviewRuntime || runtimePatchPromise) {
+        refreshPreviewDocument(false, "SAVE_RECOVERY");
       }
       setFailedSave({ operations: effectiveOperations, source, summary });
       setSaveError(caught instanceof Error ? caught.message : "No se pudo guardar el cambio.");
       return false;
     } finally {
+      previewTelemetryRef.current?.record({
+        atSeconds: playheadSecondsRef.current,
+        context: {
+          operationCount: Math.min(100, effectiveOperations.length),
+          operationNames: [...new Set(effectiveOperations.map((operation) => operation.type))].slice(0, 12),
+          outcome: saveOutcome,
+          requestBytes: Math.min(
+            COMPOSITION_PREVIEW_TELEMETRY_CONFIG.maxRequestBytes,
+            new TextEncoder().encode(requestBody).byteLength,
+          ),
+          source,
+          updateStrategy,
+        },
+        durationMs: Math.min(600_000, performance.now() - requestStartedAt),
+        name: "save_roundtrip_ms",
+      });
       saveInFlightRef.current = false;
       setSaving(false);
     }
@@ -1381,7 +1606,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
             <span className="flex shrink-0 items-center gap-2 font-semibold">{agentProposal ? "Preview de propuesta · no guardado" : "Preview completo"}{!agentProposal && previewDirty && <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[9px] font-bold text-amber-200">Cambios pendientes</span>}</span>
             <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <PreviewToolButton active={directEditingEnabled} label="Editar" title="Activar selección, arrastre y tiradores" onClick={() => setDirectEditingEnabled((current) => !current)}><MousePointer2 size={13} /></PreviewToolButton>
-              <PreviewToolButton active={snapEnabled} label="Snap" title="Alinear clips y recortes con el cursor y con los bordes de otros clips" onClick={() => setSnapEnabled((current) => !current)}><Magnet size={13} /></PreviewToolButton>
+              <PreviewToolButton active={snapEnabled} label="Snap" title="Alinear clips, recortes y animaciones con el cursor y con otros límites temporales" onClick={() => setSnapEnabled((current) => !current)}><Magnet size={13} /></PreviewToolButton>
               <PreviewToolButton active={gridVisible} label="Rejilla" title="Mostrar guías visuales en el canvas" onClick={() => setGridVisible((current) => !current)}><Grid3X3 size={13} /></PreviewToolButton>
               <PreviewToolButton active={visualCropEnabled} label="Recorte" title="Recorta el contenido sin modificar el tamaño ni la posición del asset" onClick={() => { setDirectEditingEnabled(true); setSaveError(null); setVisualCropEnabled((current) => !current); }}><Scan size={13} /></PreviewToolButton>
               <PreviewToolButton active={trimToolEnabled} label="Tiempo" title="Activar el recorte temporal de inicio y duración en la timeline" onClick={() => setTrimToolEnabled((current) => !current)}><Crop size={13} /></PreviewToolButton>
@@ -1450,11 +1675,11 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
 
         <section className="min-h-0 min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-[#101720] lg:col-span-2 lg:row-start-3">
           <div className="h-full min-h-0 snap-y snap-proximity scroll-pt-2 overflow-y-auto overscroll-contain p-2 pb-6 [scrollbar-gutter:stable]">
-          <div className={`mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-[11px] ${durationSourceLabel ? "border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5" : "border-amber-300 bg-amber-50 dark:border-amber-400/30 dark:bg-amber-400/10"}`}><span className="text-slate-600 dark:text-gray-300">{durationSourceLabel ? `Duración final: ${formatCompositionTimecode(duration)} determinada por ${durationSourceLabel}.` : "Esta composición aún no registra qué asset determina su duración. Aplica el cálculo automático para normalizarla."}</span><button type="button" disabled={saving} onClick={() => void applyBaseTemplate()} className="rounded-md border border-[var(--engine-accent)] px-2 py-0.5 font-bold text-[var(--engine-primary)] hover:bg-[var(--engine-accent)]/10 disabled:opacity-50 dark:text-[var(--engine-accent)]">Calcular y organizar</button></div>
-          <AudioMixControls audioMix={payload.document.audioMix} disabled={saving} onUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)} />
-          <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedAnimationId={selectedAnimationId} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={selectAnimation} onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Recortó el inicio de ${clip.label} desde la timeline.`)} />
-          {estimatedClipCount > 0 && <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
-          <AssemblyActions assembly={assembly} busy={assembling} error={assemblyError} notice={assemblyNotice} history={snapshotHistory} historyOpen={snapshotHistoryOpen} priorCompletedVideo={Boolean(renderRecovery?.completedVideo && renderRecovery.completedVideo.compositionRevisionId !== assembly?.revisionId)} providerStatus={renderProviderStatus} renderStatus={renderStatus} selectedRenderProfileId={selectedRenderProfileId} onApprove={approveAssembly} onDeleteAndRender={deletePriorVideoAndRender} onHistoryToggle={() => setSnapshotHistoryOpen((current) => !current)} onPrepare={prepareAssembly} onProfileChange={(profileId) => { setSelectedRenderProfileId(profileId); setAssemblyNotice(null); }} onRender={() => submitAssemblyRender()} onRestore={restoreSnapshot} />
+            <div className={`mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-[11px] ${durationSourceLabel ? "border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5" : "border-amber-300 bg-amber-50 dark:border-amber-400/30 dark:bg-amber-400/10"}`}><span className="text-slate-600 dark:text-gray-300">{durationSourceLabel ? `Duración final: ${formatCompositionTimecode(duration)} determinada por ${durationSourceLabel}.` : "Esta composición aún no registra qué asset determina su duración. Aplica el cálculo automático para normalizarla."}</span><button type="button" disabled={saving} onClick={() => void applyBaseTemplate()} className="rounded-md border border-[var(--engine-accent)] px-2 py-0.5 font-bold text-[var(--engine-primary)] hover:bg-[var(--engine-accent)]/10 disabled:opacity-50 dark:text-[var(--engine-accent)]">Calcular y organizar</button></div>
+            <AudioMixControls audioMix={payload.document.audioMix} disabled={saving} onUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)} />
+            <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedAnimationId={selectedAnimationId} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={selectAnimation} onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Ajustó el inicio de ${clip.label} desde la timeline.`)} />
+            {estimatedClipCount > 0 && <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
+            <AssemblyActions assembly={assembly} busy={assembling} error={assemblyError} notice={assemblyNotice} history={snapshotHistory} historyOpen={snapshotHistoryOpen} priorCompletedVideo={Boolean(renderRecovery?.completedVideo && renderRecovery.completedVideo.compositionRevisionId !== assembly?.revisionId)} providerStatus={renderProviderStatus} renderStatus={renderStatus} selectedRenderProfileId={selectedRenderProfileId} onApprove={approveAssembly} onDeleteAndRender={deletePriorVideoAndRender} onHistoryToggle={() => setSnapshotHistoryOpen((current) => !current)} onPrepare={prepareAssembly} onProfileChange={(profileId) => { setSelectedRenderProfileId(profileId); setAssemblyNotice(null); }} onRender={() => submitAssemblyRender()} onRestore={restoreSnapshot} />
           </div>
         </section>
 
@@ -1622,13 +1847,13 @@ function AssemblyActions({ assembly, busy, error, notice, history, historyOpen, 
       ? "Courseforge está subiendo el ZIP validado a HeyGen."
       : normalizedProviderStatus === "SUBMITTING"
         ? "ZIP recibido por HeyGen. Courseforge está creando el render."
-      : renderStatus === "rendering"
-        ? normalizedProviderStatus === "QUEUED" || normalizedProviderStatus === "RETRY_SCHEDULED"
-          ? "Courseforge está preparando la importación del video. Puedes cerrar o recargar esta página."
-          : `HeyGen está procesando el video${providerStatus ? ` (${providerStatus.toLowerCase()})` : ""}. Courseforge lo importará al terminar; puedes cerrar o recargar esta página.`
-        : renderStatus === "completed"
-          ? "Video completado e importado en Courseforge."
-          : "";
+        : renderStatus === "rendering"
+          ? normalizedProviderStatus === "QUEUED" || normalizedProviderStatus === "RETRY_SCHEDULED"
+            ? "Courseforge está preparando la importación del video. Puedes cerrar o recargar esta página."
+            : `HeyGen está procesando el video${providerStatus ? ` (${providerStatus.toLowerCase()})` : ""}. Courseforge lo importará al terminar; puedes cerrar o recargar esta página.`
+          : renderStatus === "completed"
+            ? "Video completado e importado en Courseforge."
+            : "";
   const summary = renderStatus === "completed"
     ? "El video final ya está disponible."
     : assembly
@@ -1742,9 +1967,11 @@ function CompositionInspector({ animations, clip, cropModeEnabled, onAnimationSe
   useEffect(() => { setStartSeconds(clip ? formatCompositionTimecode(clip.startSeconds) : ""); setDurationSeconds(clip ? formatCompositionTimecode(clip.durationSeconds) : ""); setX(clip ? String(clip.layout.x) : ""); setY(clip ? String(clip.layout.y) : ""); }, [clip?.id, clip?.startSeconds, clip?.durationSeconds, clip?.layout.x, clip?.layout.y]);
   useEffect(() => { setWidth(clip ? String(clip.layout.width) : ""); setHeight(clip ? String(clip.layout.height) : ""); setRotation(clip ? String(clip.layout.rotation) : ""); setOpacity(clip ? String(clip.layout.opacity) : ""); }, [clip?.id, clip?.layout.height, clip?.layout.opacity, clip?.layout.rotation, clip?.layout.width]);
   useEffect(() => {
-    const isBrollVideo = clip?.kind === "VIDEO"
-      && (track?.semanticRole === "BROLL" || track?.id === "broll");
-    setVolume(isBrollVideo ? clip.volume ?? 0 : track?.volume ?? 1);
+    if (!clip) {
+      setVolume(1);
+      return;
+    }
+    setVolume(clip.volume ?? resolveCompositionClipDefaultVolume(clip, track ?? undefined));
   }, [clip?.id, clip?.kind, clip?.volume, track?.id, track?.semanticRole, track?.volume]);
   if (!clip) return <p className="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-xs leading-5 text-slate-500 dark:border-white/10 dark:text-gray-400">Selecciona un clip en la timeline o directamente en el preview para editar su layout, visibilidad o duración.</p>;
   const numberOrNull = (value: string) => { const result = Number(value); return Number.isFinite(result) ? result : null; };
@@ -1759,13 +1986,12 @@ function CompositionInspector({ animations, clip, cropModeEnabled, onAnimationSe
       setValidationError(null);
       await onPatch([
         { clipId: clip.id, durationSeconds: duration, type: "clip.duration" },
-        { settings: { volume }, trackId: track.id, type: "track.update" },
+        { clipId: clip.id, type: "clip.volume", volume },
       ], `Ajustó la duración y el volumen de ${clip.label}.`);
     };
     return <div className="space-y-3"><div className="flex items-start gap-2"><span className="rounded-md bg-violet-100 p-1.5 text-violet-700 dark:bg-violet-400/10 dark:text-violet-200"><Music2 size={16} /></span><div><p className="text-sm font-semibold text-slate-900 dark:text-white">{clip.label}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-400">Música · ajustes de audio</p></div></div><TimecodeField label="Duración (mm:ss)" value={durationSeconds} onChange={setDurationSeconds} /><VolumeSlider accentClassName="accent-violet-500" ariaLabel="Volumen de la música" disabled={saving} label="Volumen" onChange={setVolume} value={volume} /><p className="text-[10px] leading-4 text-slate-500 dark:text-gray-400">Estos ajustes modifican la duración real del clip y el volumen base de la música. El ducking se configura por separado.</p>{validationError && <p role="alert" className="rounded-md bg-red-50 px-2 py-1.5 text-[10px] text-red-700 dark:bg-red-500/10 dark:text-red-200">{validationError}</p>}<button type="button" disabled={saving} onClick={() => void saveMusicChanges()} className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50"><Save size={13} /> Guardar audio</button></div>;
   }
-  const isBrollVideo = clip.kind === "VIDEO"
-    && (track?.semanticRole === "BROLL" || track?.id === "broll");
+  const hasConfigurableClipAudio = compositionClipHasConfigurableAudio(clip, track ?? undefined);
   const saveAllChanges = async () => {
     const start = parseCompositionTimecode(startSeconds);
     const duration = parseCompositionTimecode(durationSeconds);
@@ -1777,7 +2003,7 @@ function CompositionInspector({ animations, clip, cropModeEnabled, onAnimationSe
       x: numberOrNull(x),
       y: numberOrNull(y),
     };
-    if (start === null || duration === null || duration < 0.05 || Object.values(layout).some((value) => value === null) || (isBrollVideo && (volume < 0 || volume > 1))) {
+    if (start === null || duration === null || duration < 0.05 || Object.values(layout).some((value) => value === null) || (hasConfigurableClipAudio && (volume < 0 || volume > 1))) {
       setValidationError("Revisa tiempo, posición y transformación. Todos los valores deben ser válidos y la duración debe ser mayor a cero.");
       return;
     }
@@ -1787,8 +2013,8 @@ function CompositionInspector({ animations, clip, cropModeEnabled, onAnimationSe
       { clipId: clip.id, startSeconds: start, type: "clip.move" },
       { clipId: clip.id, layout: layout as { height: number; opacity: number; rotation: number; width: number; x: number; y: number }, type: "clip.layout" },
     ];
-    if (isBrollVideo) operations.push({ clipId: clip.id, type: "clip.volume", volume });
-    await onPatch(operations, `Guardó tiempo, posición, transformación${isBrollVideo ? " y volumen" : ""} de ${clip.label}.`);
+    if (hasConfigurableClipAudio) operations.push({ clipId: clip.id, type: "clip.volume", volume });
+    await onPatch(operations, `Guardó tiempo, posición, transformación${hasConfigurableClipAudio ? " y volumen" : ""} de ${clip.label}.`);
   };
   const resetAsset = async () => {
     const confirmed = window.confirm(`¿Reiniciar ${clip.label}? Se restaurarán su tamaño, tiempo y encuadre originales; también se quitarán sus animaciones y fragmentos derivados.`);
@@ -1796,7 +2022,7 @@ function CompositionInspector({ animations, clip, cropModeEnabled, onAnimationSe
     await onPatch([{ clipId: clip.id, type: "clip.reset-asset" }], `Reinició ${clip.label} a su estado base.`);
   };
   const supportsVisualCrop = clip.kind === "VIDEO" || clip.kind === "IMAGE" || clip.kind === "DECK_SLIDE";
-  return <div className="space-y-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold text-slate-900 dark:text-white">{clip.label}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-400">{clip.kind} · pista {clip.trackId}</p></div><div className="flex flex-wrap gap-1"><button type="button" disabled={saving} onClick={() => void onPatch([{ clipId: clip.id, hidden: !clip.hidden, type: "clip.visibility" }], `${clip.hidden ? "Mostró" : "Ocultó"} ${clip.label}.`)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">{clip.hidden ? <Eye size={13} /> : <EyeOff size={13} />}{clip.hidden ? "Mostrar" : "Ocultar"}</button><button type="button" disabled={saving} onClick={() => void onRemove(clip)} className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-400/40 dark:text-red-200 dark:hover:bg-red-400/10"><Trash2 size={13} /> Quitar</button></div></div><p className="rounded-md bg-slate-50 px-2 py-1.5 text-[10px] text-slate-500 dark:bg-white/5 dark:text-gray-400">Quitar solo retira este clip de la línea de tiempo; los assets y el deck original permanecen disponibles.</p>{clip.kind !== "AUDIO" && <LayerDepthControls clip={clip} disabled={saving} onPatch={onPatch} />}<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><TimecodeField label="Inicio (mm:ss)" value={startSeconds} onChange={setStartSeconds} /><TimecodeField label="Duración (mm:ss)" value={durationSeconds} onChange={setDurationSeconds} /><InspectorField label="Posición X" value={x} onChange={setX} /><InspectorField label="Posición Y" value={y} onChange={setY} /></div><p className="text-[10px] text-slate-500 dark:text-gray-400">Formato: 01:05 = 1 minuto y 5 segundos; 00:01.050 incluye milisegundos.</p>{isBrollVideo && <section className="border-t border-slate-200 pt-3 dark:border-white/10"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Audio del asset</p><VolumeSlider accentClassName="accent-cyan-500" ariaLabel={`Volumen de ${clip.label}`} disabled={saving} label="Volumen del B-roll" onChange={setVolume} value={volume} /><p className="mt-2 text-[10px] leading-4 text-slate-500 dark:text-gray-400">Este volumen pertenece sólo a este clip. En 0% conserva el B-roll silenciado.</p></section>}<div className="border-t border-slate-200 pt-3 dark:border-white/10"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Transformación</p><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><InspectorField label="Ancho" value={width} onChange={setWidth} min={1} /><InspectorField label="Alto" value={height} onChange={setHeight} min={1} /><InspectorField label="Rotación" value={rotation} onChange={setRotation} min={-360} /><InspectorField label="Opacidad" value={opacity} onChange={setOpacity} min={0} /></div><p className="mt-2 text-[10px] text-slate-500">Arrastra en el preview para mover; usa el tirador para redimensionar. Mantén Alt para liberar proporciones.</p></div>{(clip.kind === "VIDEO" || clip.kind === "IMAGE") && <MediaFitControls clip={clip} disabled={saving} onPatch={onPatch} track={track} />}{supportsVisualCrop && <VisualCropControls clip={clip} cropModeEnabled={cropModeEnabled} disabled={saving} onPatch={onPatch} onPreviewCrop={onPreviewCrop} />}{COMPOSITION_MOTION_ENABLED && clip.kind !== "AUDIO" && <CompositionMotionControls animations={animations} clip={clip} disabled={saving} selectedAnimationId={selectedAnimationId} onSelectAnimation={onAnimationSelect} onPatch={onPatch} />}{validationError && <p role="alert" className="rounded-md bg-red-50 px-2 py-1.5 text-[10px] text-red-700 dark:bg-red-500/10 dark:text-red-200">{validationError}</p>}<div className="flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => void saveAllChanges()} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50 dark:bg-cyan-400 dark:text-slate-950"><Save size={13} /> Guardar cambios</button><button type="button" disabled={saving || clip.source.type !== "PRODUCTION_ASSET"} onClick={() => void resetAsset()} className="inline-flex items-center gap-1 rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-400/40 dark:text-amber-200 dark:hover:bg-amber-400/10" title="Restaurar tiempo, tamaño, encuadre y animaciones del asset"><RotateCcw size={13} /> Reiniciar asset</button>{saving && <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-gray-400"><Loader2 className="animate-spin" size={13} /> Actualizando preview…</span>}</div></div>;
+  return <div className="space-y-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold text-slate-900 dark:text-white">{clip.label}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-400">{clip.kind} · pista {clip.trackId}</p></div><div className="flex flex-wrap gap-1"><button type="button" disabled={saving} onClick={() => void onPatch([{ clipId: clip.id, hidden: !clip.hidden, type: "clip.visibility" }], `${clip.hidden ? "Mostró" : "Ocultó"} ${clip.label}.`)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">{clip.hidden ? <Eye size={13} /> : <EyeOff size={13} />}{clip.hidden ? "Mostrar" : "Ocultar"}</button><button type="button" disabled={saving} onClick={() => void onRemove(clip)} className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-400/40 dark:text-red-200 dark:hover:bg-red-400/10"><Trash2 size={13} /> Quitar</button></div></div><p className="rounded-md bg-slate-50 px-2 py-1.5 text-[10px] text-slate-500 dark:bg-white/5 dark:text-gray-400">Quitar solo retira este clip de la línea de tiempo; los assets y el deck original permanecen disponibles.</p>{clip.kind !== "AUDIO" && <LayerDepthControls clip={clip} disabled={saving} onPatch={onPatch} />}<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><TimecodeField label="Inicio (mm:ss)" value={startSeconds} onChange={setStartSeconds} /><TimecodeField label="Duración (mm:ss)" value={durationSeconds} onChange={setDurationSeconds} /><InspectorField label="Posición X" value={x} onChange={setX} /><InspectorField label="Posición Y" value={y} onChange={setY} /></div><p className="text-[10px] text-slate-500 dark:text-gray-400">Formato: 01:05 = 1 minuto y 5 segundos; 00:01.050 incluye milisegundos.</p>{hasConfigurableClipAudio && <section className="border-t border-slate-200 pt-3 dark:border-white/10"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Audio del clip</p><VolumeSlider accentClassName="accent-cyan-500" ariaLabel={`Volumen de ${clip.label}`} disabled={saving} label="Volumen individual" onChange={setVolume} value={volume} /><p className="mt-2 text-[10px] leading-4 text-slate-500 dark:text-gray-400">Este ajuste pertenece sólo a este segmento. El volumen de la pista continúa funcionando como control maestro.</p></section>}<div className="border-t border-slate-200 pt-3 dark:border-white/10"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Transformación</p><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><InspectorField label="Ancho" value={width} onChange={setWidth} min={1} /><InspectorField label="Alto" value={height} onChange={setHeight} min={1} /><InspectorField label="Rotación" value={rotation} onChange={setRotation} min={-360} /><InspectorField label="Opacidad" value={opacity} onChange={setOpacity} min={0} /></div><p className="mt-2 text-[10px] text-slate-500">Arrastra en el preview para mover; usa el tirador para redimensionar. Mantén Alt para liberar proporciones.</p></div>{(clip.kind === "VIDEO" || clip.kind === "IMAGE") && <MediaFitControls clip={clip} disabled={saving} onPatch={onPatch} track={track} />}{supportsVisualCrop && <VisualCropControls clip={clip} cropModeEnabled={cropModeEnabled} disabled={saving} onPatch={onPatch} onPreviewCrop={onPreviewCrop} />}{COMPOSITION_MOTION_ENABLED && clip.kind !== "AUDIO" && <CompositionMotionControls animations={animations} clip={clip} disabled={saving} selectedAnimationId={selectedAnimationId} onSelectAnimation={onAnimationSelect} onPatch={onPatch} />}{validationError && <p role="alert" className="rounded-md bg-red-50 px-2 py-1.5 text-[10px] text-red-700 dark:bg-red-500/10 dark:text-red-200">{validationError}</p>}<div className="flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => void saveAllChanges()} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50 dark:bg-cyan-400 dark:text-slate-950"><Save size={13} /> Guardar cambios</button><button type="button" disabled={saving || clip.source.type !== "PRODUCTION_ASSET"} onClick={() => void resetAsset()} className="inline-flex items-center gap-1 rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-400/40 dark:text-amber-200 dark:hover:bg-amber-400/10" title="Restaurar tiempo, tamaño, encuadre y animaciones del asset"><RotateCcw size={13} /> Reiniciar asset</button>{saving && <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-gray-400"><Loader2 className="animate-spin" size={13} /> Actualizando preview…</span>}</div></div>;
 }
 
 function MediaFitControls({ clip, disabled, onPatch, track }: { clip: CompositionClip; disabled: boolean; onPatch: (operations: CompositionEditorPatchOperation[], summary: string) => Promise<boolean>; track: CompositionTrack | null }) {

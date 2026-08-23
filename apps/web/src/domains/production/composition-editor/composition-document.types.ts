@@ -156,7 +156,7 @@ export const compositionClipSchema = z.object({
   startSeconds: boundedSecondsSchema,
   timingSource: z.enum(["ESTIMATED", "USER_EDITED"]),
   trackId: editorIdSchema,
-  /** Per-clip source audio. Currently authored only for B-roll video clips. */
+  /** Per-clip source audio multiplier; track volume remains the master gain. */
   volume: finiteNumberSchema.min(0).max(1).optional(),
 }).strict().superRefine((clip, context) => {
   if (clip.startSeconds + clip.durationSeconds > COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS) {

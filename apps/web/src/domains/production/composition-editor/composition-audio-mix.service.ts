@@ -4,6 +4,10 @@ import type {
   CompositionTrack,
   CompositionTrackRole,
 } from "./composition-document.types";
+import {
+  compositionClipHasConfigurableAudio,
+  resolveCompositionClipAudioVolume,
+} from "./composition-clip-audio.service";
 
 export interface CompositionVolumePoint {
   timeSeconds: number;
@@ -44,7 +48,7 @@ export function buildCompositionVolumeAutomations(
   return document.clips.flatMap((clip) => {
     const track = tracksById.get(clip.trackId);
     if (!isDuckingTargetClip(clip, track, ducking.targetRole)) return [];
-    const baselineVolume = clampVolume(track?.volume ?? 1);
+    const baselineVolume = resolveCompositionClipAudioVolume(clip, track);
     if (baselineVolume === 0) return [];
     const duckedVolume = roundVolume(baselineVolume * ducking.duckedVolumeRatio);
     const clipInterval = toInterval(clip);
@@ -92,6 +96,7 @@ function isAudibleTriggerClip(
   const role = resolveTrackRole(track, clip.trackId);
   if (!role || !triggerRoles.has(role)) return false;
   if (clip.hidden || track?.hidden || track?.muted || (track?.volume ?? 1) <= 0) return false;
+  if (!compositionClipHasConfigurableAudio(clip, track) || resolveCompositionClipAudioVolume(clip, track) <= 0) return false;
   return role === "VOICE" ? clip.kind === "AUDIO" : clip.kind === "VIDEO";
 }
 
@@ -101,6 +106,7 @@ function isDuckingTargetClip(
   targetRole: "MUSIC",
 ) {
   return clip.kind === "AUDIO"
+    && compositionClipHasConfigurableAudio(clip, track)
     && resolveTrackRole(track, clip.trackId) === targetRole
     && !clip.hidden
     && !track?.hidden

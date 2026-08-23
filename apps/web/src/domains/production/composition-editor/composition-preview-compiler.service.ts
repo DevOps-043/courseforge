@@ -7,6 +7,17 @@ import {
   type CompositionClipVolumeAutomation,
 } from "./composition-audio-mix.service";
 import { resolveCompositionCropInsets } from "./composition-visual-crop.service";
+import {
+  compositionClipHasConfigurableAudio,
+  resolveCompositionClipAudioVolume,
+} from "./composition-clip-audio.service";
+import { buildCompositionTimelineLayout } from "./composition-timeline-layout.service";
+import { COMPOSITION_PREVIEW_PROTOCOL_VERSION } from "./composition-preview-protocol";
+import {
+  resolveCompositionPreviewAspectAnchor,
+  resolveCompositionPreviewClipVolume,
+  resolveCompositionPreviewMediaFit,
+} from "./composition-preview-visual-state";
 
 export class CompositionPreviewCompilerError extends Error {}
 
@@ -33,6 +44,7 @@ export async function compileCompositionPreview(params: {
   assetUrls: Map<string, string>;
   deckAssetUrls?: Map<string, string>;
   document: CompositionEditorDocument;
+  documentHash?: string;
   target?: CompositionCompilationTarget;
 }) {
   const target = params.target || COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW;
@@ -40,6 +52,7 @@ export async function compileCompositionPreview(params: {
   const animationRuntime = isInteractivePreview ? await readCompositionAnimationRuntime() : null;
   const { document } = params;
   const tracksById = new Map(document.tracks.map((track) => [track.id, track]));
+  const timelineLayout = buildCompositionTimelineLayout(document);
   const volumeAutomations = buildCompositionVolumeAutomations(document);
   const automatedClipIds = new Set(volumeAutomations.map((automation) => automation.targetClipId));
   const deckStyles = document.deckStyles
@@ -48,20 +61,22 @@ export async function compileCompositionPreview(params: {
   const clips = document.clips
     .slice()
     .sort((left, right) => left.layout.zIndex - right.layout.zIndex || left.startSeconds - right.startSeconds)
-    .map((clip, index) => renderClip(
+    .map((clip) => renderClip(
       clip,
       tracksById.get(clip.trackId),
       params.assetUrls,
       params.deckAssetUrls,
       target,
-      index,
+      requireRuntimeTrackIndex(timelineLayout.trackIndexByClipId, clip.id),
+      timelineLayout.audioTrackIndexByClipId.get(clip.id),
       automatedClipIds.has(clip.id),
     ))
     .join("\n");
   const hasAudibleMedia = document.clips.some((clip) => {
     const track = tracksById.get(clip.trackId);
     return !clip.hidden && !track?.hidden && !track?.muted
-      && (clip.kind === "AUDIO" || (clip.kind === "VIDEO" && clip.trackId === "avatar"));
+      && compositionClipHasConfigurableAudio(clip, track)
+      && resolveCompositionClipAudioVolume(clip, track) > 0;
   });
   return `<!doctype html>
 <html lang="es">
@@ -109,7 +124,7 @@ export async function compileCompositionPreview(params: {
   </div>
   ${animationRuntime ? `<script>${animationRuntime}</script>` : '<script src="assets/gsap.min.js"></script>'}
   ${renderTimelineInitializer(document, volumeAutomations)}
-  ${isInteractivePreview ? renderInteractivePreviewController(document) : ""}
+  ${isInteractivePreview ? renderInteractivePreviewController(document, params.documentHash) : ""}
 </body>
 </html>`;
 }
@@ -120,38 +135,26 @@ function renderClip(
   assetUrls: Map<string, string>,
   deckAssetUrls: Map<string, string> | undefined,
   target: CompositionCompilationTarget,
-  clipIndex: number,
+  runtimeTrackIndex: number,
+  runtimeAudioTrackIndex: number | undefined,
   hasVolumeAutomation: boolean,
 ) {
   const isHyperframesRender = target === COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER;
   const layout = `left:${clip.layout.x}px;top:${clip.layout.y}px;width:${clip.layout.width}px;height:${clip.layout.height}px;opacity:${clip.layout.opacity};z-index:${clip.layout.zIndex};transform:rotate(${clip.layout.rotation}deg);`;
-  const isAvatar = track?.semanticRole === "AVATAR" || track?.id === "avatar";
-  const isBroll = track?.semanticRole === "BROLL" || track?.id === "broll";
-  // Missing mediaFit is intentionally backward-compatible with historical
-  // documents: avatars contained their source, all other media used cover.
-  const mediaFit = clip.mediaFit || (isAvatar ? "CONTAIN" : "COVER");
-  const aspectAnchor = mediaFit === "CONTAIN" && (isAvatar || isBroll)
-    ? (isAvatar ? "BOTTOM_RIGHT" : "CENTER")
-    : null;
+  const mediaFit = resolveCompositionPreviewMediaFit(clip, track);
+  const aspectAnchor = resolveCompositionPreviewAspectAnchor(mediaFit, track);
   const crop = resolveCompositionCropInsets(clip.crop, clip.layout);
   const cropData = ` data-crop-top="${crop.top}" data-crop-right="${crop.right}" data-crop-bottom="${crop.bottom}" data-crop-left="${crop.left}"`;
   const cropStyle = renderVisualCropStyle(crop);
-  const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}" data-croppable="true" data-media-fit="${mediaFit}"${cropData}${aspectAnchor ? ` data-preserve-aspect="${aspectAnchor}"` : ""} style="${layout}"`;
+  const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}" data-croppable="true" data-layout-opacity="${clip.layout.opacity}" data-media-fit="${mediaFit}"${cropData}${aspectAnchor ? ` data-preserve-aspect="${aspectAnchor}"` : ""} style="${layout}"`;
   const motionId = `${escapeAttribute(clip.id)}-motion`;
-  const timing = `data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${trackIndex(clip.trackId, clipIndex)}"`;
+  const timing = `data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${runtimeTrackIndex}"`;
   const mediaOffset = `data-source-offset="${clip.sourceOffsetSeconds || 0}"${isHyperframesRender ? ` data-media-start="${clip.sourceOffsetSeconds || 0}"` : ""}`;
   const hidden = clip.hidden || track?.hidden ? (isHyperframesRender ? ' data-hidden="true"' : ' data-clip-hidden="true"') : "";
   const volumeAutomation = hasVolumeAutomation ? ' data-volume-automated="true"' : "";
-  const volume = resolveClipAudioVolume(clip, track);
+  const volume = resolveCompositionPreviewClipVolume(clip, track);
   const hasSynchronizedVideoAudio = clip.kind === "VIDEO"
-    && clip.source.type === "PRODUCTION_ASSET"
-    && clip.source.hasAudio === true
-    && Boolean(
-      track?.semanticRole === "AVATAR"
-      || track?.semanticRole === "BROLL"
-      || track?.id === "avatar"
-      || track?.id === "broll"
-    );
+    && compositionClipHasConfigurableAudio(clip, track);
   if (clip.source.type === "DECK_SLIDE") {
     return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
   }
@@ -163,7 +166,7 @@ function renderClip(
   if (clip.kind === "VIDEO" && isHyperframesRender) {
     const video = `<video id="${escapeAttribute(clip.id)}-media" class="composition-media clip" src="${escapeAttribute(sourceUrl)}" muted playsinline loop preload="metadata" ${mediaOffset}${hidden} ${timing}></video>`;
     const audio = hasSynchronizedVideoAudio
-      ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio clip" src="${escapeAttribute(sourceUrl)}" loop preload="metadata" ${mediaOffset}${hidden} data-volume="${volume}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${10 + clipIndex}"></audio>`
+      ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio clip" src="${escapeAttribute(sourceUrl)}" loop preload="metadata" ${mediaOffset}${hidden} data-volume="${volume}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${requireRuntimeAudioTrackIndex(runtimeAudioTrackIndex, clip.id)}"></audio>`
       : "";
     return `<div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${video}</div></div>${audio}`;
   }
@@ -171,18 +174,6 @@ function renderClip(
     ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" src="${escapeAttribute(sourceUrl)}" muted playsinline loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset}${hidden}></video>${hasSynchronizedVideoAudio ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${hidden} src="${escapeAttribute(sourceUrl)}" loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset} data-volume="${volume}"></audio>` : ""}`
     : `<img class="composition-media" src="${escapeAttribute(sourceUrl)}" alt="" />`;
   return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${media}</div></div></section>`;
-}
-
-function resolveClipAudioVolume(
-  clip: CompositionClip,
-  track: CompositionTrack | undefined,
-) {
-  if (track?.muted) return 0;
-  const trackVolume = track?.volume ?? 1;
-  const isBrollVideo = clip.kind === "VIDEO"
-    && (track?.semanticRole === "BROLL" || track?.id === "broll");
-  const clipVolume = isBrollVideo ? clip.volume ?? 0 : 1;
-  return Math.max(0, Math.min(1, trackVolume * clipVolume));
 }
 
 function renderVisualCropStyle(crop: { bottom: number; left: number; right: number; top: number }) {
@@ -289,7 +280,7 @@ function renderTimelineInitializer(
   </script>`;
 }
 
-function renderInteractivePreviewController(document: CompositionEditorDocument) {
+function renderInteractivePreviewController(document: CompositionEditorDocument, documentHash?: string) {
   return `<script>
     (() => {
       const root = document.getElementById("composition-root");
@@ -314,6 +305,10 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
       let playRequestedAt = null;
       let currentTime = 0;
       const previewStartedAt = performance.now();
+      const postParentMessage = (message) => window.parent.postMessage({
+        ...message,
+        protocolVersion: ${COMPOSITION_PREVIEW_PROTOCOL_VERSION},
+      }, "*");
       const activeMedia = new Set();
       // Remote previews cannot eagerly download the whole composition. Warm a
       // bounded forward window and hold the transport at the last valid frame
@@ -338,6 +333,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
       const pendingMediaPlayback = new WeakMap();
       const reportedMediaErrors = new WeakSet();
       const duration = ${document.canvas.durationSeconds};
+      const compiledDocumentHash = ${JSON.stringify(documentHash || null)};
       const canvasWidth = ${document.canvas.width};
       const canvasHeight = ${document.canvas.height};
       const pendingAspectCorrections = new Map();
@@ -395,11 +391,11 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
       const commitCrop = (target) => {
         const hfId = target?.dataset?.hfId;
         if (!hfId) return;
-        window.parent.postMessage({
+        postParentMessage({
           type: "courseforge-composition-crop-commit",
           hfId,
           crop: readCrop(target),
-        }, "*");
+        });
       };
       const adjustCropFromHandle = (crop, layout, edge, dx, dy) => {
         const next = { ...crop };
@@ -435,7 +431,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
       const mediaIdentity = (media) => media.id || media.closest("[data-hf-id]")?.dataset.hfId || media.tagName.toLowerCase();
       const emitMediaMetric = (name, startedAt, mediaIds = []) => {
         if (!Number.isFinite(startedAt)) return;
-        window.parent.postMessage({
+        postParentMessage({
           type: "courseforge-composition-media-metric",
           metric: {
             atSeconds: Math.max(0, currentTime),
@@ -443,7 +439,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
             mediaIds: mediaIds.slice(0, 6),
             name,
           },
-        }, "*");
+        });
       };
       const completePlayStartLatency = () => {
         if (playRequestedAt === null) return;
@@ -476,11 +472,11 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         try { media.currentTime = sourceTime; } catch (error) { reportMediaError(media, error); }
       };
       const postMediaState = (state, pending = []) => {
-        window.parent.postMessage({
+        postParentMessage({
           type: "courseforge-composition-media-state",
           state,
           pendingMediaIds: pending.map(mediaIdentity),
-        }, "*");
+        });
       };
       const primeMediaForTime = (time, force = false) => {
         if (!force && Math.abs(time - lastPrimeTime) < 1) return;
@@ -516,7 +512,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         root?.setAttribute("data-preview-ready", "true");
         emitMediaMetric("preview_initial_ready_ms", previewStartedAt, [...activeMedia].map(mediaIdentity));
         postMediaState("READY");
-        window.parent.postMessage({ type: "courseforge-composition-ready", duration, selectedHfId }, "*");
+        postParentMessage({ type: "courseforge-composition-ready", duration, selectedHfId });
         return true;
       };
       const queueAspectCorrection = (target, layout) => {
@@ -529,7 +525,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
           pendingAspectCorrections.clear();
           aspectCorrectionTimer = null;
           if (corrections.length > 0) {
-            window.parent.postMessage({ type: "courseforge-composition-aspect-corrections", corrections }, "*");
+            postParentMessage({ type: "courseforge-composition-aspect-corrections", corrections });
           }
         }, 50);
       };
@@ -587,12 +583,12 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         reportedMediaErrors.add(media);
         const code = error?.name || (media.error ? "MEDIA_ERROR_" + media.error.code : "MEDIA_PLAYBACK_ERROR");
         const message = error?.message || media.error?.message || "El navegador no pudo reproducir este medio.";
-        window.parent.postMessage({
+        postParentMessage({
           type: "courseforge-composition-media-error",
           code,
           mediaId: mediaIdentity(media),
           message,
-        }, "*");
+        });
       };
       const handleMediaPlaybackFailure = (media, error) => {
         if (error?.name === "AbortError") return;
@@ -673,7 +669,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
             )));
           }, MEDIA_BUFFERING_TIMEOUT_MS);
         }
-        window.parent.postMessage({ type: "courseforge-composition-playback", playing: false }, "*");
+        postParentMessage({ type: "courseforge-composition-playback", playing: false });
         return true;
       };
       const bindMediaReadinessListeners = () => {
@@ -739,8 +735,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
       const seek = (time, forceMediaSeek = false) => {
         currentTime = Math.max(0, Math.min(duration, Number(time) || 0));
         timeline.seek(currentTime, false);
+        applyRuntimeVisibilityOverrides();
         syncMedia(currentTime, forceMediaSeek);
-        window.parent.postMessage({ type: "courseforge-composition-time", seconds: currentTime }, "*");
+        postParentMessage({ type: "courseforge-composition-time", seconds: currentTime });
       };
       const pause = () => {
         playbackIntent = false;
@@ -755,7 +752,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         playbackTimer = null;
         document.querySelectorAll("audio, video").forEach((media) => media.pause());
         postMediaState(initialMediaReady ? "READY" : "PREPARING", pendingMediaAt(currentTime));
-        window.parent.postMessage({ type: "courseforge-composition-playback", playing: false }, "*");
+        postParentMessage({ type: "courseforge-composition-playback", playing: false });
       };
       const scrubTo = (time) => {
         // A manual seek is authoritative. Cancel an older playback/buffering
@@ -782,7 +779,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         playbackTimer = window.requestAnimationFrame(tick);
         if (timedMedia().every((media) => !mediaIsActiveAt(media, currentTime))) completePlayStartLatency();
         postMediaState("PLAYING");
-        window.parent.postMessage({ type: "courseforge-composition-playback", playing: true }, "*");
+        postParentMessage({ type: "courseforge-composition-playback", playing: true });
       }
       const play = () => {
         playRequestedAt = performance.now();
@@ -850,7 +847,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         applyCrop(target, readCrop(target), cropEnabled && canCrop);
         selectedHfId = target.dataset.hfId || null;
         const box = target.getBoundingClientRect();
-        window.parent.postMessage({ type: "courseforge-composition-selection", hfId: selectedHfId, bounds: { height: box.height, width: box.width, x: box.x, y: box.y } }, "*");
+        postParentMessage({ type: "courseforge-composition-selection", hfId: selectedHfId, bounds: { height: box.height, width: box.width, x: box.x, y: box.y } });
       };
       const clearTarget = () => {
         document.querySelectorAll("[data-crop-mode='true']").forEach((node) => {
@@ -860,7 +857,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
         document.querySelectorAll("[data-crop-mode='true']").forEach((node) => node.removeAttribute("data-crop-mode"));
         document.querySelectorAll(".composition-editor-control").forEach((node) => node.remove());
         selectedHfId = null;
-        window.parent.postMessage({ type: "courseforge-composition-selection", hfId: null }, "*");
+        postParentMessage({ type: "courseforge-composition-selection", hfId: null });
       };
       document.addEventListener("click", (event) => {
         if (activeTransform?.moved) return;
@@ -947,7 +944,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
           commitCrop(transform.target);
           return;
         }
-        window.parent.postMessage({
+        postParentMessage({
           type: "courseforge-composition-layout-commit",
           hfId: selectedHfId,
           layout: {
@@ -956,13 +953,107 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
             x: Number.parseFloat(transform.target.style.left),
             y: Number.parseFloat(transform.target.style.top),
           },
-        }, "*");
+        });
       };
       root?.addEventListener("pointerup", finishTransform);
       root?.addEventListener("pointercancel", finishTransform);
+      const targetIsActiveAt = (target, time) => {
+        const timingHost = target.matches("[data-start]") ? target : target.closest("[data-start]");
+        if (!timingHost) return true;
+        const start = Number(timingHost.dataset.start || 0);
+        const durationSeconds = Number(timingHost.dataset.duration || 0);
+        return time >= start && time < start + durationSeconds;
+      };
+      const applyRuntimeVisibilityOverrides = () => {
+        document.querySelectorAll('[data-runtime-visibility]').forEach((target) => {
+          if (!(target instanceof HTMLElement)) return;
+          const hidden = target.dataset.runtimeVisibility === "hidden";
+          const active = targetIsActiveAt(target, currentTime);
+          const layoutOpacity = Number(target.dataset.layoutOpacity || 1);
+          target.style.visibility = !hidden && active ? "visible" : "hidden";
+          target.style.opacity = !hidden && active ? String(Number.isFinite(layoutOpacity) ? layoutOpacity : 1) : "0";
+        });
+      };
+      const setRuntimeMediaVisibility = (target, hidden) => {
+        const mediaElements = [
+          ...(target.matches("audio, video") ? [target] : []),
+          ...target.querySelectorAll("audio, video"),
+        ];
+        const siblingAudio = target.id ? document.getElementById(target.id + "-audio") : null;
+        if (siblingAudio) mediaElements.push(siblingAudio);
+        mediaElements.forEach((media) => {
+          if (hidden) media.dataset.clipHidden = "true";
+          else delete media.dataset.clipHidden;
+        });
+      };
+      const applyVisualPatch = (message) => {
+        const startedAt = performance.now();
+        const finish = (applied, code) => postParentMessage({
+          applied,
+          code,
+          durationMs: Math.max(0, performance.now() - startedAt),
+          sequence: message.sequence,
+          type: "courseforge-composition-visual-patch-result",
+        });
+        if (!compiledDocumentHash || message.baseDocumentHash !== compiledDocumentHash) {
+          finish(false, "VERSION_MISMATCH");
+          return;
+        }
+        const changes = message.patch?.changes;
+        if (!Number.isInteger(message.sequence) || message.sequence < 1 || !Array.isArray(changes) || changes.length < 1 || changes.length > 100) {
+          finish(false, "INVALID_PATCH");
+          return;
+        }
+        const resolvedChanges = [];
+        for (const change of changes) {
+          if (!change || typeof change.hfId !== "string") { finish(false, "INVALID_PATCH"); return; }
+          const target = document.querySelector('[data-hf-id="' + CSS.escape(change.hfId) + '"]');
+          if (!(target instanceof HTMLElement)) { finish(false, "TARGET_NOT_FOUND"); return; }
+          resolvedChanges.push({ change, target });
+        }
+        try {
+          for (const { change, target } of resolvedChanges) {
+            if (change.layout) {
+              Object.assign(target.style, {
+                height: change.layout.height + "px",
+                left: change.layout.x + "px",
+                top: change.layout.y + "px",
+                transform: "rotate(" + change.layout.rotation + "deg)",
+                width: change.layout.width + "px",
+                zIndex: String(change.layout.zIndex),
+              });
+            }
+            if (change.cropInsets) applyCrop(target, change.cropInsets);
+            if (change.mediaFit === "CONTAIN" || change.mediaFit === "COVER") {
+              target.dataset.mediaFit = change.mediaFit;
+              if (change.aspectAnchor) target.dataset.preserveAspect = change.aspectAnchor;
+              else delete target.dataset.preserveAspect;
+              const media = target.querySelector("video, img");
+              if (media) preserveDefaultMediaAspect(media);
+            }
+            if (typeof change.hidden === "boolean") {
+              target.dataset.runtimeVisibility = change.hidden ? "hidden" : "shown";
+              setRuntimeMediaVisibility(target, change.hidden);
+            }
+            if (typeof change.volume === "number") {
+              const volumeTarget = target.matches("audio") ? target : document.getElementById(target.id + "-audio");
+              if (!(volumeTarget instanceof HTMLMediaElement)) throw new Error("VOLUME_TARGET_NOT_FOUND");
+              volumeTarget.dataset.volume = String(change.volume);
+              if (volumeTarget.dataset.volumeAutomated !== "true") volumeTarget.volume = change.volume;
+            }
+          }
+          seek(currentTime);
+          finish(true, "APPLIED");
+        } catch {
+          finish(false, "RUNTIME_ERROR");
+        }
+      };
       window.addEventListener("message", (event) => {
+        if (event.source !== window.parent) return;
         const message = event.data;
         if (!message || typeof message.type !== "string") return;
+        if ((message.protocolVersion ?? ${COMPOSITION_PREVIEW_PROTOCOL_VERSION}) !== ${COMPOSITION_PREVIEW_PROTOCOL_VERSION}) return;
+        if (message.type === "courseforge-composition-visual-patch") { applyVisualPatch(message); return; }
         if (message.type === "courseforge-composition-seek") scrubTo(message.seconds);
         if (message.type === "courseforge-composition-play") play();
         if (message.type === "courseforge-composition-pause") pause();
@@ -1001,15 +1092,15 @@ function renderInteractivePreviewController(document: CompositionEditorDocument)
   </script>`;
 }
 
-function trackIndex(trackId: string, clipIndex = 0) {
-  if (trackId === "deck") return 0;
-  if (trackId === "avatar") return 1;
-  if (trackId === "broll") return 2;
-  if (trackId === "visual") return 3;
-  if (trackId === "overlay") return 4;
-  if (trackId === "voice") return 10;
-  if (trackId === "music" || trackId === "audio") return 11;
-  return 20 + clipIndex;
+function requireRuntimeTrackIndex(indexes: ReadonlyMap<string, number>, clipId: string) {
+  const index = indexes.get(clipId);
+  if (index === undefined) throw new CompositionPreviewCompilerError(`No se pudo asignar un track temporal a ${clipId}.`);
+  return index;
+}
+
+function requireRuntimeAudioTrackIndex(index: number | undefined, clipId: string) {
+  if (index === undefined) throw new CompositionPreviewCompilerError(`No se pudo asignar un track de audio a ${clipId}.`);
+  return index;
 }
 
 export async function readCompositionAnimationRuntime() {

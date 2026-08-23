@@ -15,6 +15,7 @@ import {
   COMPOSITION_PREVIEW_SIGNING_CONCURRENCY,
   resolveCompositionPreviewAssetUrls,
 } from "../composition-preview-assets.service";
+import type { CompositionPreviewAssetDiagnostics } from "../composition-preview-performance";
 
 test("uses stable public URLs and scoped signatures without iframe authentication", () => {
   assert.equal(COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS, 60 * 60);
@@ -61,14 +62,19 @@ test("embeds a stable Storage URL for public production media", async () => {
     },
   };
 
+  const diagnostics: CompositionPreviewAssetDiagnostics[] = [];
   const urls = await resolveCompositionPreviewAssetUrls({
     document,
     draftId: "f7d8853b-49cb-4a46-acd9-2c21696686c3",
+    onDiagnostics: (value) => { diagnostics.push(value); },
     organizationId: "550e8400-e29b-41d4-a716-446655440000",
     supabase: supabase as never,
   });
 
   assert.equal(urls.get(assetId), `https://storage.test/public/broll.mp4?v=${"4".repeat(64)}`);
+  assert.equal(diagnostics[0]?.assetCount, 1);
+  assert.equal(diagnostics[0]?.privateAssetCount, 0);
+  assert.equal(diagnostics[0]?.publicAssetCount, 1);
 });
 
 test("signs preview assets in bounded parallel batches", async () => {
@@ -115,15 +121,21 @@ test("signs preview assets in bounded parallel batches", async () => {
     },
   };
 
+  const diagnostics: CompositionPreviewAssetDiagnostics[] = [];
   const urls = await resolveCompositionPreviewAssetUrls({
     document,
     draftId: "f7d8853b-49cb-4a46-acd9-2c21696686c3",
+    onDiagnostics: (value) => { diagnostics.push(value); },
     organizationId: "550e8400-e29b-41d4-a716-446655440000",
     supabase: supabase as never,
   });
 
   assert.equal(urls.size, assetIds.length);
   assert.equal(maximumActiveSignatures, COMPOSITION_PREVIEW_SIGNING_CONCURRENCY);
+  assert.equal(diagnostics[0]?.assetCount, assetIds.length);
+  assert.equal(diagnostics[0]?.privateAssetCount, assetIds.length);
+  assert.equal(diagnostics[0]?.publicAssetCount, 0);
+  assert.ok((diagnostics[0]?.signingMs || 0) >= 0);
 });
 
 test("compiles the native document into a seekable preview with stable visual ids", async () => {
@@ -139,7 +151,13 @@ test("compiles the native document into a seekable preview with stable visual id
     assetUrls: new Map(),
     deckAssetUrls: new Map([["https://cdn.test/deck.png", "assets/deck.png"]]),
     document,
+    documentHash: "a".repeat(64),
   });
+  assert.match(html, /protocolVersion: 1/);
+  assert.match(html, /event\.source !== window\.parent/);
+  assert.match(html, new RegExp(`compiledDocumentHash = "${"a".repeat(64)}"`));
+  assert.match(html, /courseforge-composition-visual-patch-result/);
+  assert.match(html, /applyRuntimeVisibilityOverrides/);
 
   assert.match(html, /data-composition-id="courseforge-composition"/);
   assert.match(html, /id="composition-viewport" data-composition-id="courseforge-composition"/);
@@ -469,13 +487,19 @@ test("compiles derived video clips with the same source and their distinct media
     plan: { accentColor: "#38BDF8", durationSeconds: 30, subtitle: "Prueba", title: "Cortes" },
   });
   const avatar = document.clips.find((clip) => clip.kind === "VIDEO")!;
-  const split = applyCompositionEditorPatches(document, [{
+  const configured = applyCompositionEditorPatches(document, [{
+    clipId: avatar.id,
+    type: "clip.volume",
+    volume: 0.6,
+  }]);
+  const split = applyCompositionEditorPatches(configured, [{
     atSeconds: 12,
     clipId: avatar.id,
     newClipId: "avatar-second-cut",
     newHfId: "avatar-second-cut-hf",
     type: "clip.split",
   }]);
+  assert.deepEqual(split.clips.map((clip) => clip.volume), [0.6, 0.6]);
 
   const html = await compileCompositionPreview({
     assetUrls: new Map([[avatarId, "assets/avatar.mp4"]]),
@@ -484,6 +508,8 @@ test("compiles derived video clips with the same source and their distinct media
   });
 
   assert.equal((html.match(/src="assets\/avatar\.mp4"/g) || []).length, 4);
+  assert.match(html, new RegExp(`id="${avatar.id}-audio"[^>]+data-volume="0\\.6"`));
+  assert.match(html, /id="avatar-second-cut-audio"[^>]+data-volume="0\.6"/);
   assert.match(html, /id="avatar-second-cut-media"[\s\S]*data-media-start="12"/);
   assert.match(html, /id="avatar-second-cut-audio"[\s\S]*data-media-start="12"/);
 });
@@ -605,4 +631,33 @@ test("compiles motion on an inner subject without replacing the editable layout"
   const motionPayload = html.match(/const motionAnimations = (\[[^;]+\]);/)?.[1];
   assert.ok(motionPayload);
   assert.doesNotMatch(motionPayload, /repeat/);
+});
+
+test("compiles reversible intermediate visibility presets identically for preview and render", async () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: { css: "", fonts: [], height: 1080, width: 1920, slides: [{ animationCount: 0, classes: "slide", html: "<h1>Visibilidad</h1>", index: 0, label: "Visibilidad" }] },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 12, subtitle: "Prueba", title: "Visibilidad intermedia" },
+  });
+  document.canvas.durationSeconds = 12;
+  const clip = document.clips[0]!;
+  clip.durationSeconds = 12;
+  clip.startSeconds = 0;
+  const animated = applyCompositionEditorPatches(document, [
+    { animationId: "motion-hide-preview", clipId: clip.id, durationSeconds: 2, offsetSeconds: 2, presetId: "HIDE", type: "animation.add-preset" },
+    { animationId: "motion-fade-hide-preview", clipId: clip.id, durationSeconds: 4, offsetSeconds: 6, presetId: "FADE_HIDE", type: "animation.add-preset" },
+  ]);
+  const previewHtml = await compileCompositionPreview({ assetUrls: new Map(), document: animated });
+  const renderHtml = await compileCompositionPreview({
+    assetUrls: new Map(),
+    document: animated,
+    target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+  });
+
+  for (const html of [previewHtml, renderHtml]) {
+    assert.match(html, /"ease":"steps\(1\)"/);
+    assert.match(html, /"offset":0\.2,"values":\{"opacity":0\}/);
+    assert.match(html, /"offset":0\.8,"values":\{"opacity":0\}/);
+    assert.match(html, /"ease":"power2\.out","offset":1,"values":\{"opacity":1\}/);
+  }
 });

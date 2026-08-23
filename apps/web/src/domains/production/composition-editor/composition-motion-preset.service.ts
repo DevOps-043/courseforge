@@ -18,6 +18,7 @@ export type CompositionMotionPresetDefinition = {
 
 const ENTRY_CONTROLS = ["DURATION", "INTENSITY", "OFFSET"] as const;
 const PLAYBACK_CONTROLS = ["DURATION", "INTENSITY", "CYCLES", "OFFSET"] as const;
+const INTERMEDIATE_VISIBILITY_CONTROLS = ["DURATION", "OFFSET"] as const;
 const EXIT_CONTROLS = ["DURATION", "INTENSITY", "OFFSET"] as const;
 
 export const COMPOSITION_MOTION_PRESETS = [
@@ -32,6 +33,8 @@ export const COMPOSITION_MOTION_PRESETS = [
   preset("FLOAT", "Flotar", "PLAYBACK", "POSITION", PLAYBACK_CONTROLS),
   preset("SWAY", "Balanceo", "PLAYBACK", "ROTATION", PLAYBACK_CONTROLS),
   preset("BREATHE", "Respirar", "PLAYBACK", "OPACITY", PLAYBACK_CONTROLS),
+  preset("HIDE", "Desaparecer", "PLAYBACK", "OPACITY", INTERMEDIATE_VISIBILITY_CONTROLS),
+  preset("FADE_HIDE", "Desvanecer y reaparecer", "PLAYBACK", "OPACITY", INTERMEDIATE_VISIBILITY_CONTROLS),
   preset("FADE_OUT", "Desvanecer", "EXIT", "OPACITY", EXIT_CONTROLS),
   preset("SLIDE_OUT_LEFT", "Hacia la izquierda", "EXIT", "POSITION", EXIT_CONTROLS),
   preset("SLIDE_OUT_RIGHT", "Hacia la derecha", "EXIT", "POSITION", EXIT_CONTROLS),
@@ -120,6 +123,19 @@ export function createCompositionPresetAnimation(params: {
       return { ...common, propertyGroup: "ROTATION", keyframes: oscillationKeyframes("rotation", 0, 3 * intensity, cycles) };
     case "BREATHE":
       return { ...common, propertyGroup: "OPACITY", keyframes: oscillationKeyframes("opacity", 1, clamp(1 - 0.12 * intensity, 0.55, 0.94), cycles) };
+    case "HIDE":
+      return { ...common, propertyGroup: "OPACITY", keyframes: [{ offset: 0, values: { opacity: 0 } }, { ease: "steps(1)", offset: 1, values: { opacity: 1 } }] };
+    case "FADE_HIDE":
+      return {
+        ...common,
+        propertyGroup: "OPACITY",
+        keyframes: [
+          { offset: 0, values: { opacity: 1 } },
+          { ease: "power2.in", offset: 0.2, values: { opacity: 0 } },
+          { ease: "none", offset: 0.8, values: { opacity: 0 } },
+          { ease: "power2.out", offset: 1, values: { opacity: 1 } },
+        ],
+      };
     case "FADE_IN":
       return { ...common, propertyGroup: "OPACITY", keyframes: [{ offset: 0, values: { opacity: clamp(1 - intensity, 0, 0.75) } }, { ease: "power2.out", offset: 1, values: { opacity: 1 } }] };
     default:
