@@ -127,10 +127,10 @@ export function HeygenIntegrationCard() {
   const connected = connection?.connected === true;
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:border-[#00D4B3]/40 dark:border-white/5 dark:bg-[#151A21]">
-      <div className="flex items-start justify-between gap-4">
+    <section className="engine-integration-row engine-integration-row--credential">
+      <div className="engine-integration-row__main">
         <div className="flex items-start gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#00D4B3]/10 text-[#00A98F] dark:text-[#00D4B3]">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--engine-accent)]/10 text-[var(--engine-accent-strong)] dark:text-[var(--engine-accent)]">
             <KeyRound size={24} />
           </div>
           <div>
@@ -160,20 +160,23 @@ export function HeygenIntegrationCard() {
         )}
       </div>
 
+      <div className="engine-integration-row__details">
       {connected ? (
-        <p className="mt-5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+        <p className="engine-integration-note engine-integration-note--success">
           API configurada ••••{connection.last4 || ""}
         </p>
       ) : null}
 
       {connection?.lastValidationError ? (
-        <p className="mt-3 rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+        <p className="engine-integration-note engine-integration-note--danger">
           {connection.lastValidationError}
         </p>
       ) : null}
 
-      <label className="mt-5 block text-sm font-semibold text-gray-700 dark:text-gray-200">
+      <label className="engine-field">
+        <span>
         API key de HeyGen
+        </span>
         <input
           type="password"
           value={apiKey}
@@ -185,19 +188,19 @@ export function HeygenIntegrationCard() {
               ? "Pega una nueva API key para reemplazarla"
               : "Pega la API key de HeyGen"
           }
-          className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#1F5AF6] focus:ring-2 focus:ring-[#1F5AF6]/10 disabled:opacity-60 dark:border-white/10 dark:bg-slate-950 dark:text-white"
         />
       </label>
       <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">
         La clave se valida y almacena cifrada por empresa. No volverá a mostrarse.
       </p>
+      </div>
 
-      <div className="mt-5 flex flex-wrap gap-3">
+      <div className="engine-integration-row__actions">
         <button
           type="button"
           disabled={loading || busy !== null || !apiKey.trim()}
           onClick={() => void saveConnection()}
-          className="inline-flex items-center gap-2 rounded-xl bg-[#1F5AF6] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#1F5AF6]/15 transition hover:bg-[#1a4bd6] disabled:cursor-not-allowed disabled:opacity-60"
+          className="engine-button engine-button--primary"
         >
           {busy === "save" ? (
             <Loader2 className="animate-spin" size={16} />
@@ -213,7 +216,7 @@ export function HeygenIntegrationCard() {
               type="button"
               disabled={busy !== null}
               onClick={() => void validateConnection()}
-              className="inline-flex items-center gap-2 rounded-xl border border-[#1F5AF6]/30 px-4 py-2.5 text-sm font-semibold text-[#1F5AF6] transition hover:bg-[#1F5AF6]/5 disabled:cursor-not-allowed disabled:opacity-60"
+              className="engine-button"
             >
               {busy === "validate" ? (
                 <Loader2 className="animate-spin" size={16} />
@@ -226,7 +229,7 @@ export function HeygenIntegrationCard() {
               type="button"
               disabled={busy !== null}
               onClick={() => void disconnect()}
-              className="inline-flex items-center gap-2 rounded-xl border border-red-500/30 px-4 py-2.5 text-sm font-semibold text-red-500 transition hover:bg-red-500/5 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-red-500/10"
+              className="engine-button engine-button--danger"
             >
               {busy === "disconnect" ? (
                 <Loader2 className="animate-spin" size={16} />

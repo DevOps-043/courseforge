@@ -44,7 +44,7 @@ export function ProductionAssetGammaSection({
             onClick={() =>
               copyToClipboard(component.assets?.gamma_deck_id || "", "ID Copiado")
             }
-            className="flex cursor-pointer items-center gap-1 rounded border border-[#1F5AF6]/20 bg-[#1F5AF6]/10 px-2 py-0.5 text-[10px] font-mono text-[#1F5AF6] transition-colors hover:bg-[#1F5AF6]/20"
+            className="flex cursor-pointer items-center gap-1 rounded border border-[var(--engine-info)]/20 bg-[var(--engine-info)]/10 px-2 py-0.5 text-[10px] font-mono text-[var(--engine-info)] transition-colors hover:bg-[var(--engine-info)]/20"
             title="Click para copiar ID compuesto"
           >
             #{component.assets.gamma_deck_id}
@@ -125,7 +125,7 @@ export function ProductionAssetGammaSection({
                     "Estructura copiada",
                   )
                 }
-                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-[#1F5AF6]/20 bg-[#1F5AF6]/10 py-2 text-xs text-[#1F5AF6] transition-colors hover:bg-[#1F5AF6]/20"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-[var(--engine-info)]/20 bg-[var(--engine-info)]/10 py-2 text-xs text-[var(--engine-info)] transition-colors hover:bg-[var(--engine-info)]/20"
                 title="Copia el guion estructurado para generar slides de texto en Gamma"
               >
                 <Copy size={12} /> Copiar Estructura Gamma
@@ -139,7 +139,7 @@ export function ProductionAssetGammaSection({
                   "JSON copiado",
                 )
               }
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-gray-100 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:border-[#6C757D]/20 dark:bg-[#2D333B] dark:text-[#6C757D] dark:hover:bg-[#373E47]"
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-gray-100 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:border-[var(--engine-muted)]/20 dark:bg-[#2D333B] dark:text-[var(--engine-muted)] dark:hover:bg-[#373E47]"
               title="Copiar datos raw como JSON"
             >
               <Copy size={10} /> JSON Raw

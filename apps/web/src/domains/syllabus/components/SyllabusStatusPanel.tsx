@@ -9,12 +9,12 @@ export function SyllabusStatusPanel({
 }: SyllabusStatusPanelProps) {
   if (status === "STEP_GENERATING") {
     return (
-      <div className="bg-white dark:bg-[#1E2329] rounded-2xl border border-gray-200 dark:border-white/5 p-12 text-center">
+      <div className="bg-white dark:bg-[var(--engine-surface-hover)] rounded-2xl border border-gray-200 dark:border-white/5 p-12 text-center">
         <div className="inline-block relative w-16 h-16 mb-6">
-          <div className="absolute inset-0 rounded-full border-4 border-[#00D4B3]/20 border-t-[#00D4B3] animate-spin" />
+          <div className="absolute inset-0 rounded-full border-4 border-[var(--engine-accent)]/20 border-t-[var(--engine-accent)] animate-spin" />
           <div className="absolute inset-0 flex items-center justify-center">
             <svg
-              className="w-6 h-6 text-[#00D4B3]"
+              className="w-6 h-6 text-[var(--engine-accent)]"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"

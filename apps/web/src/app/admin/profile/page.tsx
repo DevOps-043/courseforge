@@ -34,9 +34,12 @@ export default async function ProfilePage({
 
   return (
     <div className="w-full space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-white mb-2">Mi Perfil</h1>
-        <p className="text-[#94A3B8]">Gestiona tu información personal y preferencias de cuenta.</p>
+      <div className="engine-page-hero flex items-center">
+        <div>
+          <p className="engine-eyebrow">Identidad y seguridad</p>
+          <h1 className="mb-3">Mi perfil</h1>
+          <p>Gestiona tu información personal y tus preferencias de cuenta.</p>
+        </div>
       </div>
       
       <div>

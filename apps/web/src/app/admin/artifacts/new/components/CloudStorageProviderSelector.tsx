@@ -91,10 +91,10 @@ export function CloudStorageProviderSelector({
           No hay almacenamiento cloud conectado
         </span>
         <div className="flex flex-wrap gap-3">
-          <CloudStorageConnectButton provider="google_drive" className="text-xs text-[#00D4B3] hover:underline font-semibold">
+          <CloudStorageConnectButton provider="google_drive" className="text-xs text-[var(--engine-accent)] hover:underline font-semibold">
             Conectar Google Drive
           </CloudStorageConnectButton>
-          <CloudStorageConnectButton provider="onedrive" className="text-xs text-[#00D4B3] hover:underline font-semibold">
+          <CloudStorageConnectButton provider="onedrive" className="text-xs text-[var(--engine-accent)] hover:underline font-semibold">
             Conectar OneDrive
           </CloudStorageConnectButton>
         </div>
@@ -104,7 +104,7 @@ export function CloudStorageProviderSelector({
 
   return (
     <div className="space-y-3 pt-3 border-t border-gray-100 dark:border-white/5">
-      <label className="text-xs uppercase tracking-wider text-gray-500 dark:text-[#6C757D] font-bold">
+      <label className="text-xs uppercase tracking-wider text-gray-500 dark:text-[var(--engine-muted)] font-bold">
         Sincronizar carpetas de assets
       </label>
       <div className="space-y-2">
@@ -114,7 +114,7 @@ export function CloudStorageProviderSelector({
             name="cloudStorageProvider"
             checked={selectedProvider === null}
             onChange={() => handleProviderChange(null)}
-            className="h-4 w-4 border-gray-300 text-[#00D4B3] focus:ring-[#00D4B3]"
+            className="h-4 w-4 border-gray-300 text-[var(--engine-accent)] focus:ring-[var(--engine-accent)]"
           />
           <span>No sincronizar</span>
         </label>
@@ -130,10 +130,10 @@ export function CloudStorageProviderSelector({
                 name="cloudStorageProvider"
                 checked={selectedProvider === connection.provider}
                 onChange={() => handleProviderChange(connection.provider)}
-                className="h-4 w-4 border-gray-300 text-[#00D4B3] focus:ring-[#00D4B3]"
+                className="h-4 w-4 border-gray-300 text-[var(--engine-accent)] focus:ring-[var(--engine-accent)]"
               />
               <span className="flex min-w-0 items-center gap-1.5">
-                <HardDrive size={14} className="shrink-0 text-[#00D4B3]" />
+                <HardDrive size={14} className="shrink-0 text-[var(--engine-accent)]" />
                 <span className="shrink-0">{PROVIDER_LABELS[connection.provider]}</span>
                 {connection.email && (
                   <span className="truncate text-xs text-gray-500 dark:text-slate-400">

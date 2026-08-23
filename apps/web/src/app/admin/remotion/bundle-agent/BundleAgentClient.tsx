@@ -26,6 +26,7 @@ import {
   type BundleAgentVisualReference,
   type BundleTemplateFamily,
 } from "@/domains/production/bundle-agent/types";
+import { EngineSelect } from "@/components/ui/EngineSelect";
 
 interface ConversationState {
   conversation: { id: string; title: string; status: string; template_id: string | null } | null;
@@ -85,7 +86,7 @@ interface BundleModifiers {
 }
 
 const DEFAULT_BUNDLE_TOKENS: BundleDesignTokens = {
-  accent: "#00D4B3",
+  accent: "var(--engine-accent)",
   background: "#05070B",
   muted: "#CBD5E1",
   surface: "#111827",
@@ -783,7 +784,7 @@ export function BundleAgentClient({
         <div>
           <Link
             href={templatesHref}
-            className="mb-3 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-[#00D4B3]/40 hover:text-[#009688]"
+            className="mb-3 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-[var(--engine-accent)]/40 hover:text-[var(--engine-accent-strong)]"
           >
             <ArrowLeft size={16} />
             Regresar a plantillas
@@ -814,7 +815,7 @@ export function BundleAgentClient({
             </label>
             <input
               id="conversation-title"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition focus:border-[#00D4B3] focus:bg-white disabled:text-slate-500"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition focus:border-[var(--engine-accent)] focus:bg-white disabled:text-slate-500"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               disabled={Boolean(state.conversation)}
@@ -824,7 +825,7 @@ export function BundleAgentClient({
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 px-4 py-4">
             {state.messages.length === 0 ? (
               <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center text-center">
-                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[#00D4B3]/10 text-[#009688]">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--engine-accent)]/10 text-[var(--engine-accent-strong)]">
                   <Sparkles size={24} />
                 </div>
                 <h2 className="text-lg font-semibold text-slate-950">Cuentame que bundle quieres crear</h2>
@@ -837,7 +838,7 @@ export function BundleAgentClient({
                       key={prompt}
                       type="button"
                       onClick={() => useQuickPrompt(prompt)}
-                      className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-left text-sm text-slate-700 transition hover:border-[#00D4B3]/50 hover:bg-[#00D4B3]/5"
+                      className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-left text-sm text-slate-700 transition hover:border-[var(--engine-accent)]/50 hover:bg-[var(--engine-accent)]/5"
                     >
                       {prompt}
                     </button>
@@ -852,7 +853,7 @@ export function BundleAgentClient({
                   return (
                     <div key={item.id} className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
                       {!isUser ? (
-                        <div className={`mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${isTool ? "bg-slate-200 text-slate-600" : "bg-[#00D4B3]/10 text-[#009688]"}`}>
+                        <div className={`mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${isTool ? "bg-slate-200 text-slate-600" : "bg-[var(--engine-accent)]/10 text-[var(--engine-accent-strong)]"}`}>
                           {isTool ? <FileCode2 size={18} /> : <Bot size={18} />}
                         </div>
                       ) : null}
@@ -909,7 +910,7 @@ export function BundleAgentClient({
                       </button>
                     </div>
                     <input
-                      className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none transition focus:border-[#00D4B3]"
+                      className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none transition focus:border-[var(--engine-accent)]"
                       value={reference.note || ""}
                       onChange={(event) => updateReferenceNote(reference.id, event.target.value)}
                       placeholder="Nota opcional: que debe observar SofLIA de esta referencia"
@@ -918,7 +919,7 @@ export function BundleAgentClient({
                 ))}
               </div>
             ) : null}
-            <div className="flex gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2 focus-within:border-[#00D4B3]">
+            <div className="flex gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2 focus-within:border-[var(--engine-accent)]">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -931,7 +932,7 @@ export function BundleAgentClient({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={busy || uploadingReferences || visualReferences.length >= VISUAL_REFERENCE_LIMIT}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-[#00D4B3]/60 hover:text-[#009688] disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-[var(--engine-accent)]/60 hover:text-[var(--engine-accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
                 title="Adjuntar imagen o video de referencia"
               >
                 {uploadingReferences ? <Loader2 className="animate-spin" size={18} /> : <ImagePlus size={18} />}
@@ -952,7 +953,7 @@ export function BundleAgentClient({
               <button
                 type="submit"
                 disabled={busy || uploadingReferences || (!message.trim() && visualReferences.length === 0)}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#00D4B3] text-white transition hover:bg-[#00BFA5] disabled:cursor-not-allowed disabled:bg-slate-300"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--engine-accent)] text-white transition hover:bg-[#00BFA5] disabled:cursor-not-allowed disabled:bg-slate-300"
                 title="Enviar"
               >
                 <Send size={18} />
@@ -971,26 +972,26 @@ export function BundleAgentClient({
 
           <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
-              <Settings2 className="text-[#009688]" size={18} />
+              <Settings2 className="text-[var(--engine-accent-strong)]" size={18} />
               <h2 className="font-semibold text-slate-950">Modificadores</h2>
             </div>
             <div className="space-y-3 p-4">
-              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="template-family">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Familia visual
-                <select
-                  id="template-family"
+                <EngineSelect
                   value={templateFamily}
-                  onChange={(event) => setTemplateFamily(event.target.value as BundleTemplateFamily | "auto")}
+                  onValueChange={(value) => setTemplateFamily(value as BundleTemplateFamily | "auto")}
                   disabled={busy}
-                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-700 outline-none transition focus:border-[#00D4B3] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <option value="auto">Automatica segun la direccion creativa</option>
-                  {BUNDLE_TEMPLATE_FAMILY_OPTIONS.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label} - {option.description}
-                    </option>
-                  ))}
-                </select>
+                  className="mt-1 normal-case tracking-normal"
+                  options={[
+                    { value: "auto", label: "Automática según la dirección creativa" },
+                    ...BUNDLE_TEMPLATE_FAMILY_OPTIONS.map((option) => ({
+                      value: option.id,
+                      label: option.label,
+                      description: option.description,
+                    })),
+                  ]}
+                />
               </label>
 
               <div className="grid grid-cols-2 gap-2">
@@ -1028,7 +1029,7 @@ export function BundleAgentClient({
                       ...current,
                       durationFrames: Number(event.target.value),
                     }))}
-                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#00D4B3]"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--engine-accent)]"
                   />
                 </label>
                 <label className="text-xs font-semibold text-slate-600">
@@ -1043,7 +1044,7 @@ export function BundleAgentClient({
                       ...current,
                       fps: Number(event.target.value),
                     }))}
-                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#00D4B3]"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--engine-accent)]"
                   />
                 </label>
                 <label className="text-xs font-semibold text-slate-600">
@@ -1058,7 +1059,7 @@ export function BundleAgentClient({
                       ...current,
                       width: Number(event.target.value),
                     }))}
-                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#00D4B3]"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--engine-accent)]"
                   />
                 </label>
                 <label className="text-xs font-semibold text-slate-600">
@@ -1073,7 +1074,7 @@ export function BundleAgentClient({
                       ...current,
                       height: Number(event.target.value),
                     }))}
-                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#00D4B3]"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--engine-accent)]"
                   />
                 </label>
               </div>
@@ -1082,7 +1083,7 @@ export function BundleAgentClient({
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-4 flex items-center gap-2">
-              <Bot className="text-[#009688]" size={20} />
+              <Bot className="text-[var(--engine-accent-strong)]" size={20} />
               <h2 className="font-semibold text-slate-950">Pasos del agente</h2>
             </div>
             <div className="grid gap-3">

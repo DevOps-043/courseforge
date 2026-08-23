@@ -72,7 +72,7 @@ export function ArtifactBaseStage({
           <button
             key={tab}
             onClick={() => setActiveTab(tab as "content" | "validation")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === tab ? "bg-[#1F5AF6] text-white" : "bg-white dark:bg-[#151A21] text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-[#6C757D]/10"}`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === tab ? "bg-[var(--engine-info)] text-white" : "bg-white dark:bg-[var(--engine-surface-solid)] text-gray-500 dark:text-[var(--engine-text-muted)] hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-[var(--engine-muted)]/10"}`}
           >
             {tab === "content" ? "Idea Central" : "Validación"}
           </button>
@@ -83,14 +83,14 @@ export function ArtifactBaseStage({
         <div className="space-y-6">
           <SectionCard
             title="Nombres del Curso"
-            icon={<FileText size={18} className="text-[#00D4B3]" />}
+            icon={<FileText size={18} className="text-[var(--engine-accent)]" />}
             action={
               editingSection === "nombres" ? (
                 <EditActions onSave={onSaveContent} onCancel={onCancelEdit} />
               ) : (
                 <button
                   onClick={() => setEditingSection("nombres")}
-                  className="p-1.5 hover:bg-[#1F5AF6]/10 text-[#6C757D] hover:text-[#1F5AF6] rounded-lg transition-colors"
+                  className="p-1.5 hover:bg-[var(--engine-info)]/10 text-[var(--engine-muted)] hover:text-[var(--engine-info)] rounded-lg transition-colors"
                 >
                   <Edit2 size={16} />
                 </button>
@@ -101,11 +101,11 @@ export function ArtifactBaseStage({
               <div className="space-y-3">
                 {editedContent.nombres.map((nombre: string, idx: number) => (
                   <div key={idx} className="flex items-center gap-3">
-                    <span className="text-[#6C757D] font-mono text-sm">
+                    <span className="text-[var(--engine-muted)] font-mono text-sm">
                       {idx + 1}.
                     </span>
                     <input
-                      className="flex-1 bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-lg p-3 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#00D4B3] transition-colors"
+                      className="flex-1 bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-lg p-3 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[var(--engine-accent)] transition-colors"
                       value={nombre}
                       onChange={(e) => {
                         const nombres = [...editedContent.nombres];
@@ -121,9 +121,9 @@ export function ArtifactBaseStage({
                 {(artifact.nombres || []).map((nombre: string, idx: number) => (
                   <div
                     key={idx}
-                    className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/10 text-gray-900 dark:text-white text-sm"
+                    className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/10 text-gray-900 dark:text-white text-sm"
                   >
-                    <span className="text-[#6C757D] font-mono">{idx + 1}.</span>
+                    <span className="text-[var(--engine-muted)] font-mono">{idx + 1}.</span>
                     {nombre}
                   </div>
                 ))}
@@ -140,7 +140,7 @@ export function ArtifactBaseStage({
               ) : (
                 <button
                   onClick={() => setEditingSection("objetivos")}
-                  className="p-1.5 hover:bg-[#1F5AF6]/10 text-[#6C757D] hover:text-[#1F5AF6] rounded-lg transition-colors"
+                  className="p-1.5 hover:bg-[var(--engine-info)]/10 text-[var(--engine-muted)] hover:text-[var(--engine-info)] rounded-lg transition-colors"
                 >
                   <Edit2 size={16} />
                 </button>
@@ -153,7 +153,7 @@ export function ArtifactBaseStage({
                   <div key={idx} className="flex items-start gap-3">
                     <div className="w-1.5 h-1.5 rounded-full bg-[#F59E0B] mt-4 shrink-0" />
                     <textarea
-                      className="flex-1 bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-lg p-3 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#F59E0B] transition-colors min-h-[60px]"
+                      className="flex-1 bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-lg p-3 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#F59E0B] transition-colors min-h-[60px]"
                       value={obj}
                       onChange={(e) => {
                         const objetivos = [...editedContent.objetivos];
@@ -169,7 +169,7 @@ export function ArtifactBaseStage({
                 {(artifact.objetivos || []).map((obj: string, idx: number) => (
                   <li
                     key={idx}
-                    className="flex gap-3 text-sm text-gray-700 dark:text-[#E9ECEF] bg-gray-50 dark:bg-[#0F1419] p-3 rounded-lg border border-gray-200 dark:border-[#6C757D]/10"
+                    className="flex gap-3 text-sm text-gray-700 dark:text-[#E9ECEF] bg-gray-50 dark:bg-[var(--engine-canvas)] p-3 rounded-lg border border-gray-200 dark:border-[var(--engine-muted)]/10"
                   >
                     <div className="w-1.5 h-1.5 rounded-full bg-[#F59E0B] mt-2 shrink-0" />
                     {obj}
@@ -181,14 +181,14 @@ export function ArtifactBaseStage({
 
           <SectionCard
             title="Descripción"
-            icon={<Layers size={18} className="text-[#1F5AF6]" />}
+            icon={<Layers size={18} className="text-[var(--engine-info)]" />}
             action={
               editingSection === "descripcion" ? (
                 <EditActions onSave={onSaveContent} onCancel={onCancelEdit} />
               ) : (
                 <button
                   onClick={() => setEditingSection("descripcion")}
-                  className="p-1.5 hover:bg-[#1F5AF6]/10 text-[#6C757D] hover:text-[#1F5AF6] rounded-lg transition-colors"
+                  className="p-1.5 hover:bg-[var(--engine-info)]/10 text-[var(--engine-muted)] hover:text-[var(--engine-info)] rounded-lg transition-colors"
                 >
                   <Edit2 size={16} />
                 </button>
@@ -197,7 +197,7 @@ export function ArtifactBaseStage({
           >
             {editingSection === "descripcion" ? (
               <textarea
-                className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl p-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#1F5AF6] min-h-[150px] leading-relaxed"
+                className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl p-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[var(--engine-info)] min-h-[150px] leading-relaxed"
                 value={editedContent.descripcion.texto}
                 onChange={(e) =>
                   setEditedContent({
@@ -210,20 +210,20 @@ export function ArtifactBaseStage({
                 }
               />
             ) : (
-              <p className="text-sm text-gray-700 dark:text-[#E9ECEF] bg-gray-50 dark:bg-[#0F1419] p-4 rounded-xl border border-gray-200 dark:border-[#6C757D]/10 leading-relaxed">
+              <p className="text-sm text-gray-700 dark:text-[#E9ECEF] bg-gray-50 dark:bg-[var(--engine-canvas)] p-4 rounded-xl border border-gray-200 dark:border-[var(--engine-muted)]/10 leading-relaxed">
                 {artifact.descripcion?.texto || "N/A"}
               </p>
             )}
           </SectionCard>
 
           {REVIEWER_ROLE_SET.has(profile?.platform_role || "") && (
-            <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 mt-8">
+            <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-2xl p-6 mt-8">
               <h3 className="text-gray-900 dark:text-white font-bold mb-4 flex items-center gap-2">
                 <Edit3 size={18} /> Revisión Fase 1 (QA)
               </h3>
 
               <textarea
-                className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl p-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 min-h-[100px] placeholder-gray-400 dark:placeholder-gray-600"
+                className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl p-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[var(--engine-accent)]/50 min-h-[100px] placeholder-gray-400 dark:placeholder-gray-600"
                 placeholder="Escribe tus comentarios o feedback para la IA..."
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
@@ -235,7 +235,7 @@ export function ArtifactBaseStage({
                   <>
                     <button
                       onClick={onApprove}
-                      className="flex-1 bg-[#00D4B3]/10 hover:bg-[#00D4B3]/20 text-[#00D4B3] border border-[#00D4B3]/20 py-3 rounded-xl font-medium transition-all"
+                      className="flex-1 bg-[var(--engine-accent)]/10 hover:bg-[var(--engine-accent)]/20 text-[var(--engine-accent)] border border-[var(--engine-accent)]/20 py-3 rounded-xl font-medium transition-all"
                     >
                       Aprobar Fase 1
                     </button>
@@ -267,12 +267,12 @@ export function ArtifactBaseStage({
 
                 {reviewState === "approved" && (
                   <div className="w-full flex gap-4">
-                    <div className="flex-1 bg-[#00D4B3]/20 text-[#00D4B3] py-3 rounded-xl font-bold text-center flex items-center justify-center gap-2">
+                    <div className="flex-1 bg-[var(--engine-accent)]/20 text-[var(--engine-accent)] py-3 rounded-xl font-bold text-center flex items-center justify-center gap-2">
                       <CheckCircle2 /> Fase 1 Aprobada
                     </div>
                     <button
                       onClick={onContinue}
-                      className="flex-1 bg-[#1F5AF6] hover:bg-[#1548c7] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#1F5AF6]/20"
+                      className="flex-1 bg-[var(--engine-info)] hover:bg-[#1548c7] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-[var(--engine-info)]/20"
                     >
                       Continuar a Estructura
                     </button>
@@ -286,9 +286,9 @@ export function ArtifactBaseStage({
         <div className="space-y-6">
           {artifact.generation_metadata?.search_queries &&
             artifact.generation_metadata.search_queries.length > 0 && (
-              <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-xl p-5">
+              <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-xl p-5">
                 <h3 className="text-gray-900 dark:text-white font-bold text-sm mb-3 flex items-center gap-2">
-                  <Layers size={16} className="text-[#1F5AF6]" />
+                  <Layers size={16} className="text-[var(--engine-info)]" />
                   Búsquedas de Investigación
                 </h3>
                 <div className="flex flex-wrap gap-2">
@@ -296,7 +296,7 @@ export function ArtifactBaseStage({
                     (q: string, idx: number) => (
                       <span
                         key={idx}
-                        className="text-xs text-gray-600 dark:text-[#E9ECEF] bg-gray-100 dark:bg-[#0F1419] px-3 py-1.5 rounded-full border border-gray-200 dark:border-[#6C757D]/20"
+                        className="text-xs text-gray-600 dark:text-[#E9ECEF] bg-gray-100 dark:bg-[var(--engine-canvas)] px-3 py-1.5 rounded-full border border-gray-200 dark:border-[var(--engine-muted)]/20"
                       >
                         ðŸ” {q}
                       </span>
@@ -310,10 +310,10 @@ export function ArtifactBaseStage({
             {validation.results?.map((res, idx) => (
               <div
                 key={idx}
-                className={`p-4 rounded-xl border flex items-start gap-4 ${res.passed ? "bg-[#00D4B3]/10 border-[#00D4B3]/20" : "bg-[#EF4444]/10 border-[#EF4444]/20"}`}
+                className={`p-4 rounded-xl border flex items-start gap-4 ${res.passed ? "bg-[var(--engine-accent)]/10 border-[var(--engine-accent)]/20" : "bg-[#EF4444]/10 border-[#EF4444]/20"}`}
               >
                 {res.passed ? (
-                  <CheckCircle2 className="text-[#00D4B3]" />
+                  <CheckCircle2 className="text-[var(--engine-accent)]" />
                 ) : (
                   <AlertCircle className="text-[#EF4444]" />
                 )}
@@ -366,8 +366,8 @@ function SectionCard({
   children: ReactNode;
 }) {
   return (
-    <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-200 dark:border-[#6C757D]/10 flex justify-between items-center bg-gray-50 dark:bg-[#1A2027]">
+    <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-2xl overflow-hidden">
+      <div className="px-6 py-4 border-b border-gray-200 dark:border-[var(--engine-muted)]/10 flex justify-between items-center bg-gray-50 dark:bg-[#1A2027]">
         <h3 className="text-gray-900 dark:text-white font-bold flex items-center gap-2">
           {icon} {title}
         </h3>

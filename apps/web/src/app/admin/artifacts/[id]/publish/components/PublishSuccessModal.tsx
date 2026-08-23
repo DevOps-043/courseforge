@@ -1,5 +1,6 @@
 import React from 'react';
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
+import { EngineDialog } from '@/components/ui/EngineDialog';
 
 interface PublishSuccessModalProps {
     isOpen: boolean;
@@ -12,34 +13,31 @@ interface PublishSuccessModalProps {
 export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     isOpen,
     onClose,
-    title = "¡Curso Publicado Exitosamente!",
-    message = "El curso ha sido depositado en el buzón de SofLIA Learning y será procesado en breve.",
+    title = "Curso publicado",
+    message = "El curso se depositó en el buzón de SofLIA Learning y será procesado en breve.",
     buttonText = "Cerrar"
-}) => {
-    if (!isOpen) return null;
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overflow-x-hidden bg-black/60 dark:bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="relative w-full max-w-md bg-white dark:bg-[#1A222C] rounded-2xl shadow-2xl p-8 flex flex-col items-center text-center animate-in zoom-in-95 duration-200 border border-gray-100 dark:border-gray-800">
-                <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center mb-6 ring-8 ring-green-50 dark:ring-green-900/10">
-                    <CheckCircle className="w-10 h-10" />
-                </div>
-                
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-                    {title}
-                </h3>
-                
-                <p className="text-gray-600 dark:text-gray-400 text-sm mb-8 leading-relaxed">
-                    {message}
-                </p>
-
-                <button
-                    onClick={onClose}
-                    className="w-full bg-[#00D4B3] hover:bg-[#00c0a1] text-white font-medium py-3 px-4 rounded-xl transition-all active:scale-[0.98] shadow-sm hover:shadow"
-                >
-                    {buttonText}
-                </button>
-            </div>
+}) => (
+    <EngineDialog
+        isOpen={isOpen}
+        onClose={onClose}
+        size="compact"
+        eyebrow="Publicación completada"
+        title={title}
+        description="El envío fue confirmado por SofLIA Engine."
+        icon={<CheckCircle2 />}
+        footer={(
+            <button
+                type="button"
+                onClick={onClose}
+                className="min-h-11 w-full rounded-[0.86rem] border border-[var(--engine-action)] bg-[var(--engine-action)] px-4 text-sm font-semibold text-[var(--engine-on-action)] shadow-lg hover:-translate-y-px"
+            >
+                {buttonText}
+            </button>
+        )}
+    >
+        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.07] p-4 text-sm leading-6 text-[var(--engine-text)]">
+            <p>{message}</p>
+            <p className="mt-2 font-[var(--font-system-label)] text-[0.58rem] font-semibold uppercase tracking-[0.1em] text-emerald-500">Listo para procesamiento</p>
         </div>
-    );
-}
+    </EngineDialog>
+);

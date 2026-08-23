@@ -244,23 +244,23 @@ export function StandaloneAssemblyStudio() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="engine-assembly-studio space-y-5">
+      <div className="engine-assembly-header">
         <div>
-          <div className="mb-2 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 dark:border-[#6C757D]/10 dark:bg-[#151A21] dark:text-[#94A3B8]">
-            <Sparkles className="h-3.5 w-3.5 text-[#00A98F]" />
+          <div className="mb-2 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 dark:border-[var(--engine-muted)]/10 dark:bg-[var(--engine-surface-solid)] dark:text-[var(--engine-text-muted)]">
+            <Sparkles className="h-3.5 w-3.5 text-[var(--engine-accent-strong)]" />
             Ensamble independiente
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+          <h1 className="text-3xl text-gray-900 dark:text-white">
             Estudio de Ensamble
           </h1>
-          <p className="mt-2 max-w-3xl text-sm text-gray-600 dark:text-[#94A3B8]">
+          <p className="mt-2 max-w-3xl text-sm text-gray-600 dark:text-[var(--engine-text-muted)]">
             Crea o selecciona un proyecto, prepara sus assets y después continúa al editor de video.
           </p>
         </div>
 
         <form
-          className="flex w-full gap-2 lg:max-w-md"
+          className="engine-assembly-search"
           onSubmit={(event) => {
             event.preventDefault();
             void loadProjects(query);
@@ -272,13 +272,13 @@ export function StandaloneAssemblyStudio() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Buscar ensamble"
-              className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 outline-none transition focus:border-[#00D4B3] focus:ring-2 focus:ring-[#00D4B3]/20 dark:border-[#6C757D]/10 dark:bg-[#151A21] dark:text-white"
+              className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 outline-none transition focus:border-[var(--engine-accent)] focus:ring-2 focus:ring-[var(--engine-accent)]/20 dark:border-[var(--engine-muted)]/10 dark:bg-[var(--engine-surface-solid)] dark:text-white"
             />
           </div>
           <button
             type="submit"
             disabled={loadingProjects}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#0A2540] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0d2f4d] disabled:cursor-not-allowed disabled:opacity-60"
+            className="engine-button engine-button--primary"
           >
             {loadingProjects ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             Buscar
@@ -292,19 +292,19 @@ export function StandaloneAssemblyStudio() {
         </div>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
-        <aside className="min-h-0 rounded-lg border border-gray-200 bg-white shadow-sm dark:border-[#6C757D]/10 dark:bg-[#151A21]">
+      <div className="engine-assembly-layout">
+        <aside className="engine-project-rail">
           <div className="border-b border-gray-100 p-4 dark:border-white/5">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-sm font-bold text-gray-900 dark:text-white">Videos de ensamble</h2>
-                <p className="text-xs text-gray-500 dark:text-[#94A3B8]">{projects.length} proyecto(s)</p>
+                <p className="text-xs text-gray-500 dark:text-[var(--engine-text-muted)]">{projects.length} proyecto(s)</p>
               </div>
               <button
                 type="button"
                 onClick={() => void loadProjects(query)}
                 disabled={loadingProjects}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#6C757D]/20 dark:text-gray-200 dark:hover:bg-white/5"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[var(--engine-muted)]/20 dark:text-gray-200 dark:hover:bg-white/5"
                 title="Actualizar"
               >
                 <RefreshCw className={`h-4 w-4 ${loadingProjects ? "animate-spin" : ""}`} />
@@ -322,12 +322,12 @@ export function StandaloneAssemblyStudio() {
                 value={newTitle}
                 onChange={(event) => setNewTitle(event.target.value)}
                 placeholder="Titulo del video"
-                className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-[#00D4B3] focus:ring-2 focus:ring-[#00D4B3]/20 dark:border-[#6C757D]/10 dark:bg-[#0F131A] dark:text-white"
+                className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-[var(--engine-accent)] focus:ring-2 focus:ring-[var(--engine-accent)]/20 dark:border-[var(--engine-muted)]/10 dark:bg-[#0F131A] dark:text-white"
               />
               <button
                 type="submit"
                 disabled={creatingProject}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#00A98F] text-white transition hover:bg-[#008f79] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--engine-accent-strong)] text-white transition hover:bg-[#008f79] disabled:cursor-not-allowed disabled:opacity-60"
                 title="Crear video"
               >
                 {creatingProject ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
@@ -342,7 +342,7 @@ export function StandaloneAssemblyStudio() {
                 Cargando ensambles
               </div>
             ) : projects.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-gray-200 p-4 text-center text-sm text-gray-500 dark:border-[#6C757D]/20">
+              <div className="rounded-lg border border-dashed border-gray-200 p-4 text-center text-sm text-gray-500 dark:border-[var(--engine-muted)]/20">
                 Crea un video para iniciar el ensamble independiente.
               </div>
             ) : (
@@ -355,8 +355,8 @@ export function StandaloneAssemblyStudio() {
                     onClick={() => setSelectedProject(project)}
                     className={`w-full rounded-lg border p-3 text-left transition ${
                       isSelected
-                        ? "border-[#00D4B3] bg-[#00D4B3]/5 ring-1 ring-[#00D4B3]/25"
-                        : "border-gray-200 hover:bg-gray-50 dark:border-[#6C757D]/10 dark:hover:bg-white/5"
+                        ? "border-[var(--engine-accent)] bg-[var(--engine-accent)]/5 ring-1 ring-[var(--engine-accent)]/25"
+                        : "border-gray-200 hover:bg-gray-50 dark:border-[var(--engine-muted)]/10 dark:hover:bg-white/5"
                     }`}
                   >
                     <div className="mb-2 flex items-start justify-between gap-2">
@@ -368,7 +368,7 @@ export function StandaloneAssemblyStudio() {
                       </span>
                     </div>
                     {project.description ? (
-                      <p className="line-clamp-2 text-xs text-gray-500 dark:text-[#94A3B8]">
+                      <p className="line-clamp-2 text-xs text-gray-500 dark:text-[var(--engine-text-muted)]">
                         {project.description}
                       </p>
                     ) : null}
@@ -382,11 +382,11 @@ export function StandaloneAssemblyStudio() {
           </div>
         </aside>
 
-        <main className="min-w-0 space-y-6">
-          <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-[#6C757D]/10 dark:bg-[#151A21]">
+        <main className="min-w-0 space-y-5">
+          <div className="engine-assembly-context">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-normal text-gray-500 dark:text-[#94A3B8]">
+                <p className="text-xs font-semibold uppercase tracking-normal text-gray-500 dark:text-[var(--engine-text-muted)]">
                   Video activo
                 </p>
                 <h2 className="mt-1 truncate text-lg font-bold text-gray-900 dark:text-white">
@@ -409,12 +409,12 @@ export function StandaloneAssemblyStudio() {
 
           {loadingProject ? (
             <div className={`flex flex-col items-center justify-center py-20 ${PRODUCTION_THEME.panel}`}>
-              <Loader2 className="mb-4 h-8 w-8 animate-spin text-[#1F5AF6]" />
+              <Loader2 className="mb-4 h-8 w-8 animate-spin text-[var(--engine-info)]" />
               <p className={`font-medium ${PRODUCTION_THEME.secondaryText}`}>Cargando ensamble...</p>
             </div>
           ) : componentView ? (
             <div className="space-y-6">
-              <div className="rounded-xl border border-cyan-200 bg-cyan-50/60 p-4 dark:border-cyan-400/20 dark:bg-cyan-400/5">
+              <div className="engine-assembly-readiness">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-cyan-700 dark:text-cyan-300"><Upload size={14} /> Preparación de assets</p>
@@ -437,22 +437,22 @@ export function StandaloneAssemblyStudio() {
                 sofliaSlidesHref={sofliaSlidesHref}
               />
 
-              <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#151A21] sm:flex-row sm:items-center sm:justify-between">
+              <div className="engine-assembly-next">
                 <div>
                   <p className="text-sm font-bold text-slate-900 dark:text-white">Siguiente paso: edición</p>
                   <p className="mt-1 text-xs text-slate-500 dark:text-gray-400">{readiness.canOpenEditor ? "El proyecto ya tiene una fuente de duración válida." : "Agrega voz, avatar, B-roll con duración o un deck de slides para continuar."}</p>
                 </div>
                 {readiness.canOpenEditor && editorHref ? (
-                  <Link href={editorHref} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#0A2540] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#0d2f4d]">Abrir editor <ArrowRight size={16} /></Link>
+                  <Link href={editorHref} className="engine-button engine-button--primary">Abrir editor <ArrowRight size={16} /></Link>
                 ) : (
                   <button type="button" disabled className="inline-flex min-h-10 shrink-0 cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-slate-200 px-5 py-2.5 text-sm font-bold text-slate-500 dark:bg-white/10 dark:text-gray-500">Abrir editor <ArrowRight size={16} /></button>
                 )}
               </div>
             </div>
           ) : (
-            <div className="rounded-lg border border-dashed border-gray-200 bg-white p-10 text-center dark:border-[#6C757D]/20 dark:bg-[#151A21]">
+            <div className="rounded-lg border border-dashed border-gray-200 bg-white p-10 text-center dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-surface-solid)]">
               <Film className="mx-auto mb-3 h-10 w-10 text-gray-300 dark:text-gray-600" />
-              <p className="text-sm font-medium text-gray-500 dark:text-[#94A3B8]">
+              <p className="text-sm font-medium text-gray-500 dark:text-[var(--engine-text-muted)]">
                 Crea o selecciona un video de ensamble para subir assets y renderizar.
               </p>
             </div>

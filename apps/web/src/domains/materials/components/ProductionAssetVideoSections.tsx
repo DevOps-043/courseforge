@@ -140,10 +140,10 @@ export function ProductionAssetFinalVideoSection({
           disabled={finalVideoSource === "upload"}
           className={`w-full rounded-lg border p-2.5 pr-24 text-xs transition-colors focus:outline-none ${
             urlError
-              ? "border-red-500/50 bg-white text-gray-900 focus:border-red-500 dark:bg-[#0F1419] dark:text-white"
+              ? "border-red-500/50 bg-white text-gray-900 focus:border-red-500 dark:bg-[var(--engine-canvas)] dark:text-white"
               : finalVideoUrl
-                ? "border-green-400 bg-white text-gray-900 focus:border-green-500 dark:border-green-500/30 dark:bg-[#0F1419] dark:text-white"
-                : "border-gray-300 bg-white text-gray-900 focus:border-[#1F5AF6] dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
+                ? "border-green-400 bg-white text-gray-900 focus:border-green-500 dark:border-green-500/30 dark:bg-[var(--engine-canvas)] dark:text-white"
+                : "border-gray-300 bg-white text-gray-900 focus:border-[var(--engine-info)] dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)] dark:text-white"
           } ${finalVideoSource === "upload" ? "cursor-not-allowed opacity-70" : ""}`}
         />
 
@@ -173,8 +173,8 @@ export function ProductionAssetFinalVideoSection({
           }
           className={`absolute bottom-1 right-1 top-1 flex items-center gap-2 rounded-md px-3 text-xs font-medium transition-colors ${
             finalVideoSource === "link" && finalVideoUrl
-              ? "cursor-not-allowed bg-gray-100 text-gray-400 dark:bg-[#6C757D]/10 dark:text-[#6C757D]/50"
-              : "bg-[#1F5AF6]/10 text-[#1F5AF6] disabled:opacity-50 hover:bg-[#1F5AF6]/20"
+              ? "cursor-not-allowed bg-gray-100 text-gray-400 dark:bg-[var(--engine-muted)]/10 dark:text-[var(--engine-muted)]/50"
+              : "bg-[var(--engine-info)]/10 text-[var(--engine-info)] disabled:opacity-50 hover:bg-[var(--engine-info)]/20"
           }`}
           title={
             finalVideoSource === "link" && finalVideoUrl
@@ -194,7 +194,7 @@ export function ProductionAssetFinalVideoSection({
       )}
 
       {isUploading && (
-        <p className="animate-pulse text-[10px] text-[#1F5AF6]">
+        <p className="animate-pulse text-[10px] text-[var(--engine-info)]">
           Subiendo video... Por favor no cierres esta pagina.
         </p>
       )}

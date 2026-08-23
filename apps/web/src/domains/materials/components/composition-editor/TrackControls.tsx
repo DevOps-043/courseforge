@@ -105,7 +105,7 @@ export function TrackControls({ disabled, onUpdate, track }: TrackControlsProps)
               onPointerUp={commitVolume}
               onKeyUp={commitVolume}
               onBlur={commitVolume}
-              className="w-14 accent-[#00D4B3] disabled:opacity-40"
+              className="w-14 accent-[var(--engine-accent)] disabled:opacity-40"
             />
           </>
         )}

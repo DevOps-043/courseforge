@@ -379,7 +379,7 @@ export function RemotionTimelineInspector({
     <section className="relative z-0 overflow-hidden rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-[#26313D] dark:bg-[#101820]">
       <div className="mb-2 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#00D4B3]/15 text-[#00A98F] dark:text-[#00D4B3]">
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--engine-accent)]/15 text-[var(--engine-accent-strong)] dark:text-[var(--engine-accent)]">
             <Clock className="h-4 w-4" />
           </span>
           <div className="min-w-0">
@@ -409,7 +409,7 @@ export function RemotionTimelineInspector({
             value={Math.min(timelineScrollLeft, timelineMaxScrollLeft)}
             onChange={(event) => setTimelineScrollPosition(Number(event.target.value))}
             disabled={timelineMaxScrollLeft <= 0}
-            className="w-28 accent-[#00D4B3] disabled:opacity-40"
+            className="w-28 accent-[var(--engine-accent)] disabled:opacity-40"
             aria-label="Desplazamiento horizontal del timeline"
           />
           <button
@@ -436,7 +436,7 @@ export function RemotionTimelineInspector({
             step={10}
             value={zoomPxPerSecond}
             onChange={(event) => setZoomPxPerSecond(Number(event.target.value))}
-            className="w-24 accent-[#00D4B3]"
+            className="w-24 accent-[var(--engine-accent)]"
             aria-label="Zoom del timeline"
           />
           <button
@@ -503,7 +503,7 @@ export function RemotionTimelineInspector({
                   </div>
                 ))}
                 <div
-                  className="pointer-events-none absolute bottom-0 top-0 z-[1] w-px bg-[#00D4B3]"
+                  className="pointer-events-none absolute bottom-0 top-0 z-[1] w-px bg-[var(--engine-accent)]"
                   style={{ left: `${playheadLeft}px` }}
                 />
               </div>
@@ -523,7 +523,7 @@ export function RemotionTimelineInspector({
                     }}
                   >
                     <div
-                      className="pointer-events-none absolute bottom-0 top-0 z-[1] w-px bg-[#00D4B3]"
+                      className="pointer-events-none absolute bottom-0 top-0 z-[1] w-px bg-[var(--engine-accent)]"
                       style={{ left: `${playheadLeft}px` }}
                     />
                     {track.segments.map((segment) => {
@@ -545,7 +545,7 @@ export function RemotionTimelineInspector({
                           className={`absolute top-1 h-6 overflow-hidden rounded-md px-2 text-left text-[11px] font-semibold text-white shadow-sm transition ${style.bar} ${
                             isActive ? style.activeBar : ""
                           } ${
-                            isSelected ? "outline outline-2 outline-offset-1 outline-[#00D4B3]" : ""
+                            isSelected ? "outline outline-2 outline-offset-1 outline-[var(--engine-accent)]" : ""
                           } ${editable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
                           style={getSegmentStyle(segment, pxPerFrame)}
                         >

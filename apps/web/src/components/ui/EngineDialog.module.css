@@ -1,0 +1,207 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background:
+    radial-gradient(circle at 78% 12%, color-mix(in srgb, var(--engine-accent) 11%, transparent), transparent 34rem),
+    rgb(2 9 18 / 0.66);
+  backdrop-filter: blur(1rem) saturate(116%);
+}
+
+.dialog {
+  position: relative;
+  display: flex;
+  width: min(36rem, calc(100vw - 2rem));
+  max-height: min(48rem, calc(100svh - 2rem));
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--engine-border);
+  border-radius: 1.65rem;
+  color: var(--engine-text);
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--engine-accent) 7%, transparent), transparent 22rem),
+    color-mix(in srgb, var(--engine-surface-solid) 97%, transparent);
+  box-shadow: 0 2.25rem 5.5rem rgb(2 12 23 / 0.46), inset 0 1px 0 rgb(255 255 255 / 0.055);
+  backdrop-filter: blur(1.5rem) saturate(120%);
+}
+
+.wide {
+  width: min(58rem, calc(100vw - 2.5rem));
+}
+
+.workspace {
+  width: min(74rem, calc(100vw - 2.5rem));
+  max-height: min(54rem, calc(100svh - 2rem));
+}
+
+.compact {
+  width: min(28rem, calc(100vw - 2rem));
+}
+
+.header {
+  display: grid;
+  min-height: 5.2rem;
+  flex: 0 0 auto;
+  grid-template-columns: 3rem minmax(0, 1fr) 2.75rem;
+  align-items: center;
+  gap: 0.9rem;
+  border-bottom: 1px solid var(--engine-border);
+  padding: 0.82rem 1.15rem;
+  background: color-mix(in srgb, var(--engine-surface-solid) 92%, transparent);
+  backdrop-filter: blur(1.2rem) saturate(120%);
+}
+
+.icon,
+.close {
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--engine-accent) 25%, var(--engine-border));
+  border-radius: 0.92rem;
+}
+
+.icon {
+  width: 3rem;
+  height: 3rem;
+  color: var(--engine-accent-strong);
+  background: color-mix(in srgb, var(--engine-accent) 7%, var(--engine-surface-soft));
+}
+
+:global(.dark) .icon {
+  color: var(--engine-accent);
+}
+
+.icon svg,
+.close svg {
+  width: 1.12rem;
+  height: 1.12rem;
+  stroke-width: 1.8;
+}
+
+.heading {
+  min-width: 0;
+}
+
+.eyebrow {
+  margin: 0 0 0.2rem;
+  color: var(--engine-text-muted);
+  font-family: var(--font-system-label);
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  color: var(--engine-text);
+  font-family: var(--font-system-display);
+  font-size: clamp(1.55rem, 3vw, 1.9rem);
+  font-weight: 400;
+  letter-spacing: -0.028em;
+  line-height: 1.02;
+}
+
+.description {
+  margin: 0.3rem 0 0;
+  color: var(--engine-text-muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.close {
+  width: 2.75rem;
+  height: 2.75rem;
+  color: var(--engine-text-muted);
+  background: var(--engine-surface-soft);
+  transition: color 170ms ease, border-color 170ms ease, background 170ms ease, transform 170ms var(--engine-ease);
+}
+
+.close:hover {
+  transform: translateY(-1px);
+  color: var(--engine-text);
+  border-color: var(--engine-border-active);
+  background: color-mix(in srgb, var(--engine-accent) 5%, var(--engine-surface-soft));
+}
+
+.close:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.body {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem 1.35rem;
+  scrollbar-width: none;
+}
+
+.body::-webkit-scrollbar {
+  display: none;
+}
+
+.footer {
+  display: flex;
+  min-height: 4.75rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.62rem;
+  border-top: 1px solid var(--engine-border);
+  padding: 0.78rem 1.35rem;
+  background: color-mix(in srgb, var(--engine-surface-solid) 94%, transparent);
+  backdrop-filter: blur(1.1rem);
+}
+
+@media (max-width: 48rem) {
+  .overlay {
+    padding: 0;
+  }
+
+  .dialog,
+  .wide,
+  .workspace,
+  .compact {
+    width: 100%;
+    height: 100svh;
+    max-height: none;
+    border-radius: 0;
+  }
+
+  .header {
+    min-height: 4.85rem;
+    grid-template-columns: 2.7rem minmax(0, 1fr) 2.7rem;
+    padding: 0.68rem 0.8rem;
+  }
+
+  .icon,
+  .close {
+    width: 2.7rem;
+    height: 2.7rem;
+  }
+
+  .description {
+    display: none;
+  }
+
+  .body {
+    padding: 1rem 0.9rem 1.2rem;
+  }
+
+  .footer {
+    padding: 0.7rem 0.9rem calc(0.7rem + env(safe-area-inset-bottom));
+  }
+
+  .footer > * {
+    flex: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .close {
+    transition-duration: 1ms;
+  }
+}

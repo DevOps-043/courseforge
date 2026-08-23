@@ -30,6 +30,7 @@ import {
   type LayoutLayerOption,
   upsertLayoutLayerEdit,
 } from "./layoutOverrideDraftModel";
+import { EngineSelect } from "@/components/ui/EngineSelect";
 
 interface LayoutOverrideDraftPanelProps {
   componentId: string;
@@ -202,7 +203,7 @@ export function LayoutOverrideDraftPanel({
   };
 
   return (
-    <div className="rounded-2xl border border-[#00D4B3]/20 bg-[#00D4B3]/5 p-4">
+    <div className="rounded-2xl border border-[var(--engine-accent)]/20 bg-[var(--engine-accent)]/5 p-4">
       <div className="mb-4 flex flex-col gap-3">
         <div>
           <h4 className="text-sm font-bold text-gray-900 dark:text-white">
@@ -215,7 +216,7 @@ export function LayoutOverrideDraftPanel({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 dark:border-[#6C757D]/20 dark:bg-[#0F1419]">
+          <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)]">
             {([
               { mode: "move" as const, label: "Mover", Icon: Move },
               { mode: "crop" as const, label: "Recortar", Icon: Scissors },
@@ -227,7 +228,7 @@ export function LayoutOverrideDraftPanel({
                 disabled={disabled}
                 className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
                   editMode === mode
-                    ? "bg-[#0A2540] text-white"
+                    ? "bg-[var(--engine-primary)] text-white"
                     : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5"
                 }`}
               >
@@ -238,14 +239,14 @@ export function LayoutOverrideDraftPanel({
           </div>
           {isMoveMode ? (
             <>
-              <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 dark:border-[#6C757D]/20 dark:bg-[#0F1419]">
+              <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)]">
                 <button
                   type="button"
                   onClick={() => updateGridSettings({ visible: !gridSettings.visible })}
                   disabled={disabled}
                   className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     gridSettings.visible
-                      ? "bg-[#00D4B3] text-[#0A2540]"
+                      ? "bg-[var(--engine-accent)] text-[var(--engine-primary)]"
                       : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5"
                   }`}
                 >
@@ -258,7 +259,7 @@ export function LayoutOverrideDraftPanel({
                   disabled={disabled}
                   className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     gridSettings.snap
-                      ? "bg-[#00D4B3] text-[#0A2540]"
+                      ? "bg-[var(--engine-accent)] text-[var(--engine-primary)]"
                       : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5"
                   }`}
                 >
@@ -268,26 +269,19 @@ export function LayoutOverrideDraftPanel({
               </div>
               <label className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-300">
                 Paso
-                <select
-                  value={gridSettings.size}
-                  onChange={(event) =>
-                    updateGridSettings({ size: Number(event.target.value) })
-                  }
+                <EngineSelect
+                  value={String(gridSettings.size)}
+                  onValueChange={(value) => updateGridSettings({ size: Number(value) })}
                   disabled={disabled}
-                  className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419] dark:text-white"
-                >
-                  {GRID_SIZE_OPTIONS.map((size) => (
-                    <option key={size} value={size}>
-                      {size}px
-                    </option>
-                  ))}
-                </select>
+                  className="min-w-24"
+                  options={GRID_SIZE_OPTIONS.map((size) => ({ value: String(size), label: `${size}px` }))}
+                />
               </label>
               <button
                 type="button"
                 onClick={resetLayer}
                 disabled={disabled}
-                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#6C757D]/20 dark:text-gray-200 dark:hover:bg-white/5"
+                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-[var(--engine-muted)]/20 dark:text-gray-200 dark:hover:bg-white/5"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
                 Reset
@@ -301,20 +295,16 @@ export function LayoutOverrideDraftPanel({
         <div className="space-y-2">
           <label className="block space-y-1 text-xs font-semibold text-gray-600 dark:text-gray-300">
             Capa
-            <select
+            <EngineSelect
               value={selectedLayerId}
-              onChange={(event) =>
-                changeSelectedLayer(event.target.value as RemotionEditableLayerId)
-              }
+              onValueChange={(value) => changeSelectedLayer(value as RemotionEditableLayerId)}
               disabled={disabled}
-              className="w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419] dark:text-white"
-            >
-              {editableLayers.map((layer) => (
-                <option key={layer.id} value={layer.id}>
-                  {layer.detail ? `${layer.label} (${layer.detail})` : layer.label}
-                </option>
-              ))}
-            </select>
+              options={editableLayers.map((layer) => ({
+                value: layer.id,
+                label: layer.label,
+                description: layer.detail,
+              }))}
+            />
           </label>
           {isMoveMode ? (
             <div className="flex items-center gap-2">
@@ -324,7 +314,7 @@ export function LayoutOverrideDraftPanel({
                 disabled={disabled || !stackPosition.canMoveBackward}
                 title="Bajar una capa"
                 aria-label="Bajar una capa"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-gray-200 dark:hover:bg-white/5"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)] dark:text-gray-200 dark:hover:bg-white/5"
               >
                 <ArrowDown className="h-4 w-4" />
               </button>
@@ -334,7 +324,7 @@ export function LayoutOverrideDraftPanel({
                 disabled={disabled || !stackPosition.canMoveForward}
                 title="Subir una capa"
                 aria-label="Subir una capa"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-gray-200 dark:hover:bg-white/5"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)] dark:text-gray-200 dark:hover:bg-white/5"
               >
                 <ArrowUp className="h-4 w-4" />
               </button>
@@ -357,7 +347,7 @@ export function LayoutOverrideDraftPanel({
                   value={displayX}
                   onChange={(event) => updatePosition("x", event.target.value)}
                   disabled={disabled}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419] dark:text-white"
+                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs dark:border-[var(--engine-muted)]/10 dark:bg-[var(--engine-canvas)] dark:text-white"
                 />
               </label>
               <label className="space-y-1 text-xs font-semibold text-gray-600 dark:text-gray-300">
@@ -367,7 +357,7 @@ export function LayoutOverrideDraftPanel({
                   value={displayY}
                   onChange={(event) => updatePosition("y", event.target.value)}
                   disabled={disabled}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419] dark:text-white"
+                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs dark:border-[var(--engine-muted)]/10 dark:bg-[var(--engine-canvas)] dark:text-white"
                 />
               </label>
             </div>
@@ -380,7 +370,7 @@ export function LayoutOverrideDraftPanel({
                   value={displayWidth}
                   onChange={(event) => updateSize("width", event.target.value)}
                   disabled={disabled}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419] dark:text-white"
+                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs dark:border-[var(--engine-muted)]/10 dark:bg-[var(--engine-canvas)] dark:text-white"
                 />
               </label>
               <label className="space-y-1 text-xs font-semibold text-gray-600 dark:text-gray-300">
@@ -390,7 +380,7 @@ export function LayoutOverrideDraftPanel({
                   value={displayHeight}
                   onChange={(event) => updateSize("height", event.target.value)}
                   disabled={disabled}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419] dark:text-white"
+                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs dark:border-[var(--engine-muted)]/10 dark:bg-[var(--engine-canvas)] dark:text-white"
                 />
               </label>
             </div>
@@ -409,7 +399,7 @@ export function LayoutOverrideDraftPanel({
               type="button"
               onClick={resetCrop}
               disabled={disabled || !crop}
-              className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-gray-300 dark:hover:bg-white/5"
+              className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)] dark:text-gray-300 dark:hover:bg-white/5"
             >
               Mostrar completo
             </button>
@@ -429,7 +419,7 @@ export function LayoutOverrideDraftPanel({
                 value={Math.round(((crop?.[field] ?? 0) as number) * 100)}
                 onChange={(event) => updateCrop(field, event.target.value)}
                 disabled={disabled}
-                className="w-full min-w-[56px] rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419] dark:text-white"
+                className="w-full min-w-[56px] rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs dark:border-[var(--engine-muted)]/10 dark:bg-[var(--engine-canvas)] dark:text-white"
               />
             </label>
           ))}

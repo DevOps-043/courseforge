@@ -73,11 +73,11 @@ export default function ConstructorNewArtifactPage() {
                 router.push('/builder/artifacts');
             } else {
                 console.error(result.error);
-                alert('Error generando el artefacto: ' + result.error);
+                toast.error(`Error generando el artefacto: ${result.error}`);
             }
         } catch (error) {
             console.error(error);
-            alert('Ocurrió un error inesperado.');
+            toast.error('Ocurrió un error inesperado.');
         } finally {
             setIsLoading(false);
         }
@@ -86,17 +86,14 @@ export default function ConstructorNewArtifactPage() {
     return (
         <div className="max-w-7xl mx-auto space-y-8">
             {/* Header Section */}
-            <div className="bg-gradient-to-r from-[#0A2540] to-[#151A21] rounded-2xl p-8 border border-[#1F5AF6]/20 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-96 h-96 bg-[#1F5AF6]/10 rounded-full blur-[80px] pointer-events-none translate-x-1/3 -translate-y-1/3" />
-                <div className="absolute bottom-0 left-0 w-64 h-64 bg-[#00D4B3]/5 rounded-full blur-[60px] pointer-events-none -translate-x-1/3 translate-y-1/3" />
-
+            <div className="engine-page-hero">
                 <div className="relative z-10">
-                    <div className="flex items-center gap-2 text-[#00D4B3] mb-2 font-medium text-sm tracking-wide uppercase">
+                    <div className="engine-eyebrow flex items-center gap-2">
                         <Sparkles size={16} />
                         <span>Generador de Contenido con IA</span>
                     </div>
-                    <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 font-sans">Crear un Proyecto Nuevo</h1>
-                    <p className="text-[#94A3B8] max-w-2xl text-lg">
+                    <h1 className="mb-2 text-3xl md:text-4xl">Crear un proyecto nuevo</h1>
+                    <p className="max-w-2xl text-base">
                         Inicia un nuevo flujo de trabajo o importa un contenido base para desarrollar tu proyecto instruccional asignado.
                     </p>
                 </div>
@@ -110,32 +107,32 @@ export default function ConstructorNewArtifactPage() {
                         <ModeCard
                             active={mode === 'ai'}
                             onClick={() => setMode('ai')}
-                            icon={<Sparkles className="text-[#00D4B3]" size={24} />}
+                            icon={<Sparkles className="text-[var(--engine-accent)]" size={24} />}
                             title="Crear con IA"
                             description="Estructurado y Preciso. Genera desde cero."
                         />
                         <ModeCard
                             active={mode === 'import'}
                             onClick={() => setMode('import')}
-                            icon={<Upload className="text-[#1F5AF6]" size={24} />}
+                            icon={<Upload className="text-[var(--engine-info)]" size={24} />}
                             title="Importar Existente"
                             description="Pega contenido completo o sube archivos."
                         />
                     </div>
 
                     {/* Form Container */}
-                    <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 md:p-8 shadow-xl">
+                    <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-2xl p-6 md:p-8 shadow-xl">
                         {mode === 'ai' ? (
                             <div className="space-y-6">
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
-                                        <BookOpen size={16} className="text-[#00D4B3]" />
+                                        <BookOpen size={16} className="text-[var(--engine-accent)]" />
                                         Tema o Título del Curso
                                     </label>
                                     <input
                                         type="text"
                                         placeholder="Ej. Curso Completo..."
-                                        className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl px-4 py-3.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3]/50 focus:ring-1 focus:ring-[#00D4B3]/20 transition-all font-medium"
+                                        className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl px-4 py-3.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[var(--engine-muted)] focus:outline-none focus:border-[var(--engine-accent)]/50 focus:ring-1 focus:ring-[var(--engine-accent)]/20 transition-all font-medium"
                                         value={formData.title}
                                         onChange={e => setFormData(prev => ({ ...prev, title: e.target.value }))}
                                     />
@@ -144,11 +141,11 @@ export default function ConstructorNewArtifactPage() {
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium text-gray-900 dark:text-white flex justify-between items-center">
                                         <span>Idea Principal y Descripción</span>
-                                        <span className="text-xs text-gray-500 dark:text-[#6C757D]">{formData.description.length}/1000</span>
+                                        <span className="text-xs text-gray-500 dark:text-[var(--engine-muted)]">{formData.description.length}/1000</span>
                                     </label>
                                     <textarea
                                         placeholder="Describe de qué trata el curso en detalle..."
-                                        className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl px-4 py-3.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3]/50 focus:ring-1 focus:ring-[#00D4B3]/20 transition-all min-h-[160px] resize-none leading-relaxed"
+                                        className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl px-4 py-3.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[var(--engine-muted)] focus:outline-none focus:border-[var(--engine-accent)]/50 focus:ring-1 focus:ring-[var(--engine-accent)]/20 transition-all min-h-[160px] resize-none leading-relaxed"
                                         value={formData.description}
                                         onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
                                         maxLength={1000}
@@ -164,7 +161,7 @@ export default function ConstructorNewArtifactPage() {
                                         <input
                                             type="text"
                                             placeholder="Ej. Principiantes..."
-                                            className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl px-4 py-3 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3]/50 transition-all"
+                                            className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl px-4 py-3 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[var(--engine-muted)] focus:outline-none focus:border-[var(--engine-accent)]/50 transition-all"
                                             value={formData.targetAudience}
                                             onChange={e => setFormData(prev => ({ ...prev, targetAudience: e.target.value }))}
                                         />
@@ -177,17 +174,17 @@ export default function ConstructorNewArtifactPage() {
                                         <input
                                             type="text"
                                             placeholder="Ej. Crear primera app web..."
-                                            className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl px-4 py-3 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#6C757D] focus:outline-none focus:border-[#00D4B3]/50 transition-all"
+                                            className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl px-4 py-3 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[var(--engine-muted)] focus:outline-none focus:border-[var(--engine-accent)]/50 transition-all"
                                             value={formData.expectedResults}
                                             onChange={e => setFormData(prev => ({ ...prev, expectedResults: e.target.value }))}
                                         />
                                     </div>
                                 </div>
 
-                                <div className="pt-4 border-t border-gray-200 dark:border-[#6C757D]/10">
+                                <div className="pt-4 border-t border-gray-200 dark:border-[var(--engine-muted)]/10">
                                     <button
                                         onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
-                                        className="flex items-center gap-2 text-sm text-gray-500 dark:text-[#94A3B8] hover:text-gray-900 dark:hover:text-white transition-colors"
+                                        className="flex items-center gap-2 text-sm text-gray-500 dark:text-[var(--engine-text-muted)] hover:text-gray-900 dark:hover:text-white transition-colors"
                                     >
                                         <Settings size={16} />
                                         Configuración Avanzada
@@ -197,11 +194,11 @@ export default function ConstructorNewArtifactPage() {
                                     {isAdvancedOpen && (
                                         <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="pt-4 space-y-4">
                                             <div className="space-y-2">
-                                                <label className="text-xs uppercase tracking-wider text-gray-500 dark:text-[#6C757D] font-bold">ID del Curso (Opcional)</label>
+                                                <label className="text-xs uppercase tracking-wider text-gray-500 dark:text-[var(--engine-muted)] font-bold">ID del Curso (Opcional)</label>
                                                 <input
                                                     type="text"
                                                     placeholder="#1. MARKETING-101"
-                                                    className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-lg px-4 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:border-[#00D4B3]/30"
+                                                    className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-lg px-4 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:border-[var(--engine-accent)]/30"
                                                     value={formData.courseId}
                                                     onChange={e => setFormData(prev => ({ ...prev, courseId: e.target.value }))}
                                                 />
@@ -213,12 +210,12 @@ export default function ConstructorNewArtifactPage() {
                                                     <input
                                                         type="checkbox"
                                                         id="useGoogleDrive"
-                                                        className="h-4.5 w-4.5 rounded border-gray-300 dark:border-slate-700 text-[#00D4B3] focus:ring-[#00D4B3] dark:bg-[#0F1419] cursor-pointer"
+                                                        className="h-4.5 w-4.5 rounded border-gray-300 dark:border-slate-700 text-[var(--engine-accent)] focus:ring-[var(--engine-accent)] dark:bg-[var(--engine-canvas)] cursor-pointer"
                                                         checked={useGoogleDrive}
                                                         onChange={e => setUseGoogleDrive(e.target.checked)}
                                                     />
                                                     <label htmlFor="useGoogleDrive" className="text-sm text-gray-700 dark:text-slate-300 font-medium cursor-pointer flex items-center gap-1.5 select-none">
-                                                        <HardDrive size={14} className="text-[#00D4B3]" />
+                                                        <HardDrive size={14} className="text-[var(--engine-accent)]" />
                                                         Crear árbol de carpetas en Google Drive
                                                     </label>
                                                 </div>
@@ -231,7 +228,7 @@ export default function ConstructorNewArtifactPage() {
                                                     </span>
                                                     <a
                                                         href="/api/auth/google/login"
-                                                        className="text-xs text-[#00D4B3] hover:underline font-semibold"
+                                                        className="text-xs text-[var(--engine-accent)] hover:underline font-semibold"
                                                     >
                                                         Conectar ahora
                                                     </a>
@@ -248,8 +245,8 @@ export default function ConstructorNewArtifactPage() {
                                         className={`
                                     relative w-full overflow-hidden group px-6 py-4 rounded-2xl font-bold font-sans shadow-2xl flex items-center justify-center gap-3 transition-all duration-300 transform
                                     ${isLoading || !formData.description
-                                                ? 'bg-gray-200 text-gray-400 dark:bg-[#00D4B3]/10 dark:text-[#00D4B3]/30 cursor-not-allowed border border-transparent dark:border-[#00D4B3]/10'
-                                                : 'bg-[#0A2540] text-white hover:bg-[#0A2540]/90 dark:bg-[#00D4B3] dark:text-[#0A2540] dark:hover:bg-[#00bda0] shadow-lg shadow-[#0A2540]/25 dark:shadow-[#00D4B3]/25 hover:shadow-[#0A2540]/40 dark:hover:shadow-[#00D4B3]/40 hover:-translate-y-0.5'
+                                                ? 'bg-gray-200 text-gray-400 dark:bg-[var(--engine-accent)]/10 dark:text-[var(--engine-accent)]/30 cursor-not-allowed border border-transparent dark:border-[var(--engine-accent)]/10'
+                                                : 'bg-[var(--engine-primary)] text-white hover:bg-[var(--engine-primary)]/90 dark:bg-[var(--engine-accent)] dark:text-[var(--engine-primary)] dark:hover:bg-[var(--engine-accent-hover)] shadow-lg shadow-[var(--engine-primary)]/25 dark:shadow-[var(--engine-accent)]/25 hover:shadow-[var(--engine-primary)]/40 dark:hover:shadow-[var(--engine-accent)]/40 hover:-translate-y-0.5'
                                             }
                                 `}
                                     >
@@ -258,7 +255,7 @@ export default function ConstructorNewArtifactPage() {
                                         )}
                                         {isLoading ? (
                                             <>
-                                                <div className="w-5 h-5 border-2 border-white/30 border-t-white dark:border-[#0A2540]/30 dark:border-t-[#0A2540] rounded-full animate-spin" />
+                                                <div className="w-5 h-5 border-2 border-white/30 border-t-white dark:border-[var(--engine-primary)]/30 dark:border-t-[var(--engine-primary)] rounded-full animate-spin" />
                                                 <span>Generando...</span>
                                             </>
                                         ) : (
@@ -284,11 +281,11 @@ export default function ConstructorNewArtifactPage() {
 
                 {/* Right Column: Inspiration / Sidebar */}
                 <div className="lg:col-span-1 space-y-6">
-                    <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 shadow-xl">
-                        <h3 className="text-[#00D4B3] font-bold text-sm tracking-wider uppercase mb-4 flex items-center gap-2">
+                    <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-2xl p-6 shadow-xl">
+                        <h3 className="text-[var(--engine-accent)] font-bold text-sm tracking-wider uppercase mb-4 flex items-center gap-2">
                             <Sparkles size={14} /> Plantillas de Inspiración
                         </h3>
-                        <p className="text-xs text-gray-500 dark:text-[#94A3B8] mb-6">Usa estas plantillas para ver cómo estructurar un buen prompt:</p>
+                        <p className="text-xs text-gray-500 dark:text-[var(--engine-text-muted)] mb-6">Usa estas plantillas para ver cómo estructurar un buen prompt:</p>
 
                         <div className="space-y-4">
                             <TemplateCard
@@ -305,14 +302,14 @@ export default function ConstructorNewArtifactPage() {
                         </div>
                     </div>
 
-                    <div className="bg-[#0A2540]/5 dark:bg-[#0A2540]/50 border border-[#1F5AF6]/10 rounded-2xl p-6">
+                    <div className="bg-[var(--engine-primary)]/5 dark:bg-[var(--engine-primary)]/50 border border-[var(--engine-info)]/10 rounded-2xl p-6">
                         <div className="flex items-start gap-4">
-                            <div className="w-10 h-10 rounded-full bg-[#1F5AF6]/20 flex items-center justify-center text-[#1F5AF6] shrink-0">
+                            <div className="w-10 h-10 rounded-full bg-[var(--engine-info)]/20 flex items-center justify-center text-[var(--engine-info)] shrink-0">
                                 <CheckCircle2 size={20} />
                             </div>
                             <div>
                                 <h4 className="text-gray-900 dark:text-white font-medium text-sm mb-1">Tu proceso como Constructor</h4>
-                                <p className="text-xs text-gray-500 dark:text-[#94A3B8]">
+                                <p className="text-xs text-gray-500 dark:text-[var(--engine-text-muted)]">
                                     Una vez generado el esqueleto primario, podrás modificar los textos y contenido que el Agente elaboró, antes de pasarlo a revisión del Arquitecto.
                                 </p>
                             </div>
@@ -330,15 +327,15 @@ function ModeCard({ active, onClick, icon, title, description }: SelectionCardPr
             onClick={onClick}
             className={`
                 relative p-6 rounded-2xl border text-left transition-all duration-300 w-full group
-                ${active ? 'bg-white dark:bg-[#151A21] border-[#1F5AF6] shadow-lg shadow-[#1F5AF6]/10' : 'bg-white dark:bg-[#151A21]/50 border-gray-200 dark:border-[#6C757D]/10 hover:border-gray-300 dark:hover:border-[#6C757D]/30 hover:bg-gray-50 dark:hover:bg-[#151A21]' }
+                ${active ? 'bg-white dark:bg-[var(--engine-surface-solid)] border-[var(--engine-info)] shadow-lg shadow-[var(--engine-info)]/10' : 'bg-white dark:bg-[var(--engine-surface-solid)]/50 border-gray-200 dark:border-[var(--engine-muted)]/10 hover:border-gray-300 dark:hover:border-[var(--engine-muted)]/30 hover:bg-gray-50 dark:hover:bg-[var(--engine-surface-solid)]' }
             `}
         >
-            <div className={`mb-4 w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${active ? 'bg-[#1F5AF6]/10' : 'bg-gray-100 dark:bg-[#1E2329]'}`}>
+            <div className={`mb-4 w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${active ? 'bg-[var(--engine-info)]/10' : 'bg-gray-100 dark:bg-[var(--engine-surface-hover)]'}`}>
                 {icon}
             </div>
-            <h3 className={`font-bold text-lg mb-1 transition-colors ${active ? 'text-[#1F5AF6] dark:text-white' : 'text-gray-900 dark:text-[#E9ECEF]'}`}>{title}</h3>
-            <p className="text-sm text-gray-500 dark:text-[#94A3B8]">{description}</p>
-            {active && <div className="absolute top-4 right-4 text-[#1F5AF6]"><CheckCircle2 size={20} /></div>}
+            <h3 className={`font-bold text-lg mb-1 transition-colors ${active ? 'text-[var(--engine-info)] dark:text-white' : 'text-gray-900 dark:text-[#E9ECEF]'}`}>{title}</h3>
+            <p className="text-sm text-gray-500 dark:text-[var(--engine-text-muted)]">{description}</p>
+            {active && <div className="absolute top-4 right-4 text-[var(--engine-info)]"><CheckCircle2 size={20} /></div>}
         </button>
     )
 }
@@ -347,10 +344,10 @@ function TemplateCard({ title, description, onClick }: TemplateCardProps) {
     return (
         <button
             onClick={onClick}
-            className="w-full text-left p-4 rounded-xl bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/10 hover:border-[#00D4B3]/30 hover:shadow-lg hover:shadow-[#00D4B3]/5 transition-all group"
+            className="w-full text-left p-4 rounded-xl bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/10 hover:border-[var(--engine-accent)]/30 hover:shadow-lg hover:shadow-[var(--engine-accent)]/5 transition-all group"
         >
-            <h4 className="text-gray-900 dark:text-white font-medium text-sm mb-1 group-hover:text-[#00D4B3] transition-colors">{title}</h4>
-            <p className="text-xs text-gray-500 dark:text-[#94A3B8]">{description}</p>
+            <h4 className="text-gray-900 dark:text-white font-medium text-sm mb-1 group-hover:text-[var(--engine-accent)] transition-colors">{title}</h4>
+            <p className="text-xs text-gray-500 dark:text-[var(--engine-text-muted)]">{description}</p>
         </button>
     )
 }

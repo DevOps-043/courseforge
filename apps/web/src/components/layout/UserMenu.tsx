@@ -27,7 +27,7 @@ export default function UserMenu({ userEmail, profile, logoutAction, align = 'bo
                         initial={{ opacity: 0, y: align === 'bottom' ? 10 : -10, scale: 0.95 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: align === 'bottom' ? 10 : -10, scale: 0.95 }}
-                        className={`absolute ${align === 'bottom' ? 'bottom-full mb-2' : 'top-full mt-2'} right-0 w-64 bg-white dark:bg-[#1E2329] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden backdrop-blur-xl p-1`}
+                        className={`absolute ${align === 'bottom' ? 'bottom-full mb-2' : 'top-full mt-2'} right-0 w-64 bg-white dark:bg-[var(--engine-surface-hover)] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden backdrop-blur-xl p-1`}
                     >
                         <div className="p-2 border-b border-gray-100 dark:border-white/5 mb-1">
                             <p className="text-xs text-gray-500 dark:text-slate-500 font-semibold uppercase tracking-wider">Mi Cuenta</p>
@@ -41,7 +41,7 @@ export default function UserMenu({ userEmail, profile, logoutAction, align = 'bo
                             onClick={(e) => { e.stopPropagation(); setIsUserMenuOpen(false); }}
                             className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white rounded-lg transition-colors text-left"
                         >
-                            <User size={16} className="text-[#00D4B3]" />
+                            <User size={16} className="text-[var(--engine-accent)]" />
                             Editar Perfil
                         </Link>
 
@@ -60,7 +60,7 @@ export default function UserMenu({ userEmail, profile, logoutAction, align = 'bo
                             ) : theme === 'dark' ? (
                                 <Moon size={16} className="text-blue-500" />
                             ) : (
-                                <Monitor size={16} className="text-[#00D4B3]" />
+                                <Monitor size={16} className="text-[var(--engine-accent)]" />
                             )}
                             {theme === 'light' ? 'Modo Claro' : theme === 'dark' ? 'Modo Oscuro' : 'Sistema'}
                         </button>
@@ -85,7 +85,7 @@ export default function UserMenu({ userEmail, profile, logoutAction, align = 'bo
                 ${isUserMenuOpen ? 'bg-gray-100 dark:bg-white/10' : 'hover:bg-gray-100 dark:hover:bg-white/5'}
             `}
             >
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00D4B3] to-[#009688] flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-[#00D4B3]/20 relative">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--engine-accent)] to-[var(--engine-accent-strong)] flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-[var(--engine-accent)]/20 relative">
                     {profile?.avatar_url ? (
                         <div className="w-full h-full overflow-hidden rounded-full">
                             <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
@@ -93,7 +93,7 @@ export default function UserMenu({ userEmail, profile, logoutAction, align = 'bo
                     ) : (
                         (profile?.first_name?.[0] || userEmail?.[0]?.toUpperCase())
                     )}
-                    <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white dark:border-[#151A21] rounded-full z-10"></div>
+                    <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white dark:border-[var(--engine-surface-solid)] rounded-full z-10"></div>
                 </div>
 
                 <ChevronDown

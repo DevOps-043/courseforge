@@ -42,13 +42,13 @@ export function InstructionalPlanReviewPanel({
   const canDecide = Boolean(plan.validation) && !isValidating;
 
   return (
-    <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 mt-8">
+    <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-2xl p-6 mt-8">
       <h3 className="text-gray-900 dark:text-white font-bold mb-4 flex items-center gap-2">
         <Edit3 size={18} /> Revisión Fase 3: Plan Instruccional
       </h3>
 
       <textarea
-        className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl p-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 min-h-[100px] placeholder-gray-400 dark:placeholder-gray-600"
+        className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl p-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[var(--engine-accent)]/50 min-h-[100px] placeholder-gray-400 dark:placeholder-gray-600"
         placeholder="Escribe tus comentarios o feedback sobre el plan instruccional..."
         value={reviewNotes}
         onChange={(event) => setReviewNotes(event.target.value)}
@@ -61,7 +61,7 @@ export function InstructionalPlanReviewPanel({
             <button
               onClick={onValidate}
               disabled={isValidating || isGenerating}
-              className="flex-1 bg-white dark:bg-[#0F1419] border border-[#00D4B3] hover:bg-[#00D4B3]/10 text-[#00D4B3] py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 bg-white dark:bg-[var(--engine-canvas)] border border-[var(--engine-accent)] hover:bg-[var(--engine-accent)]/10 text-[var(--engine-accent)] py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isValidating ? (
                 <RefreshCw size={18} className="animate-spin" />
@@ -75,8 +75,8 @@ export function InstructionalPlanReviewPanel({
               disabled={!canDecide}
               className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${
                 !canDecide
-                  ? "bg-[#00D4B3]/5 text-[#00D4B3]/30 border border-[#00D4B3]/5 cursor-not-allowed"
-                  : "bg-[#00D4B3]/10 hover:bg-[#00D4B3]/20 text-[#00D4B3] border border-[#00D4B3]/20"
+                  ? "bg-[var(--engine-accent)]/5 text-[var(--engine-accent)]/30 border border-[var(--engine-accent)]/5 cursor-not-allowed"
+                  : "bg-[var(--engine-accent)]/10 hover:bg-[var(--engine-accent)]/20 text-[var(--engine-accent)] border border-[var(--engine-accent)]/20"
               }`}
             >
               <CheckCircle2 size={18} />
@@ -99,7 +99,7 @@ export function InstructionalPlanReviewPanel({
 
         {isApproved && (
           <div className="w-full flex gap-4">
-            <div className="flex-1 bg-[#00D4B3]/20 text-[#00D4B3] py-3 rounded-xl font-bold text-center flex items-center justify-center gap-2">
+            <div className="flex-1 bg-[var(--engine-accent)]/20 text-[var(--engine-accent)] py-3 rounded-xl font-bold text-center flex items-center justify-center gap-2">
               <CheckCircle2 size={18} />
               Fase 3 Aprobada
             </div>
@@ -107,7 +107,7 @@ export function InstructionalPlanReviewPanel({
               <button
                 type="button"
                 onClick={onNext}
-                className="flex-1 bg-[#1F5AF6] hover:bg-[#1548c7] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#1F5AF6]/20"
+                className="flex-1 bg-[var(--engine-info)] hover:bg-[#1548c7] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-[var(--engine-info)]/20"
               >
                 Continuar a Fuentes
               </button>

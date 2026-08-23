@@ -1,4 +1,8 @@
-import { Trash2 } from "lucide-react";
+"use client";
+
+import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import { MoreHorizontal, Trash2 } from "lucide-react";
 
 interface ArtifactDropdownMenuProps {
   isOpen: boolean;
@@ -13,33 +17,55 @@ export function ArtifactDropdownMenu({
   onDelete,
   position,
 }: ArtifactDropdownMenuProps) {
+  const deleteButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    deleteButtonRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <>
-      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <button type="button" aria-label="Cerrar menú de acciones" className="fixed inset-0 z-[1000003] cursor-default bg-transparent" onClick={onClose} />
 
       <div
-        className="fixed z-50 bg-white dark:bg-[#1E2329] rounded-xl shadow-xl border border-gray-200 dark:border-[#6C757D]/20 py-1.5 min-w-[160px] animate-in fade-in slide-in-from-top-2 duration-150"
+        role="menu"
+        aria-label="Acciones del artefacto"
+        className="engine-floating-menu"
         style={{
           top: position.y,
           left: position.x,
           transform: "translateX(-100%)",
         }}
       >
+        <div className="engine-floating-menu__header">
+          <MoreHorizontal size={14} />
+          Acciones
+        </div>
         <button
+          ref={deleteButtonRef}
+          type="button"
+          role="menuitem"
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
             onDelete();
             onClose();
           }}
-          className="w-full px-4 py-2.5 text-left text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center gap-3 transition-colors"
+          className="engine-floating-menu__item engine-floating-menu__item--danger"
         >
           <Trash2 size={16} />
           Eliminar artefacto
         </button>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

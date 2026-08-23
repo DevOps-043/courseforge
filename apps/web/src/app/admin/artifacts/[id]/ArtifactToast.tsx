@@ -19,10 +19,10 @@ export function ArtifactToast({ toast, onClose }: ArtifactToastProps) {
       <div
         className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl backdrop-blur-md ${
           toast.type === "success"
-            ? "bg-[#00D4B3]/10 border-[#00D4B3]/20 text-[#00D4B3]"
+            ? "bg-[var(--engine-accent)]/10 border-[var(--engine-accent)]/20 text-[var(--engine-accent)]"
             : toast.type === "error"
               ? "bg-[#EF4444]/10 border-[#EF4444]/20 text-[#EF4444]"
-              : "bg-[#151A21] border-[#6C757D]/20 text-white"
+              : "bg-[var(--engine-surface-solid)] border-[var(--engine-muted)]/20 text-white"
         }`}
       >
         {toast.type === "success" && <CheckCircle2 size={18} />}

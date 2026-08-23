@@ -47,7 +47,7 @@ export function StandaloneAssemblyEditor({
   const backHref = `${adminBasePath}/assembly`;
 
   if (loading) {
-    return <div className="flex h-screen items-center justify-center bg-slate-50 text-sm text-slate-600 dark:bg-[#0F1419] dark:text-gray-300"><Loader2 className="mr-2 animate-spin text-cyan-500" size={20} /> Preparando editor…</div>;
+    return <div className="flex h-screen items-center justify-center bg-slate-50 text-sm text-slate-600 dark:bg-[var(--engine-canvas)] dark:text-gray-300"><Loader2 className="mr-2 animate-spin text-cyan-500" size={20} /> Preparando editor…</div>;
   }
 
   if (error || !project) {
@@ -60,7 +60,7 @@ export function StandaloneAssemblyEditor({
   }
 
   return (
-    <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-slate-50 dark:bg-[#0F1419]">
+    <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-slate-50 dark:bg-[var(--engine-canvas)]">
       <header className={`${PRODUCTION_THEME.workspaceHeader} justify-between gap-4`}>
         <div className="flex min-w-0 items-center gap-4">
           <Link href={backHref} className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/10"><ArrowLeft size={15} /> Assets</Link>
@@ -84,12 +84,12 @@ export function StandaloneAssemblyEditor({
 
 function EditorUnavailable({ backHref, message }: { backHref: string; message: string }) {
   return (
-    <div className="flex h-screen items-center justify-center bg-slate-50 p-6 dark:bg-[#0F1419]">
-      <div className="max-w-lg rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm dark:border-white/10 dark:bg-[#151A21]">
+    <div className="flex h-screen items-center justify-center bg-slate-50 p-6 dark:bg-[var(--engine-canvas)]">
+      <div className="max-w-lg rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm dark:border-white/10 dark:bg-[var(--engine-surface-solid)]">
         <Clapperboard className="mx-auto text-slate-400" size={34} />
         <h1 className="mt-3 text-lg font-bold text-slate-900 dark:text-white">El editor aún no está disponible</h1>
         <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-gray-400">{message}</p>
-        <Link href={backHref} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#0A2540] px-4 py-2 text-sm font-bold text-white"><ArrowLeft size={15} /> Volver a preparar assets</Link>
+        <Link href={backHref} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[var(--engine-primary)] px-4 py-2 text-sm font-bold text-white"><ArrowLeft size={15} /> Volver a preparar assets</Link>
       </div>
     </div>
   );

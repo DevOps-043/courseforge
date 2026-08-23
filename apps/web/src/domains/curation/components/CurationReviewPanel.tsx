@@ -58,13 +58,13 @@ export function CurationReviewPanel({
   const hasRetryableSources = invalidRowsCount > 0 || missingCoverageCount > 0;
 
   return (
-    <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 mt-8">
+    <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-2xl p-6 mt-8">
       <h3 className="text-gray-900 dark:text-white font-bold mb-4 flex items-center gap-2">
         <Edit3 size={18} /> Revision Fase 4: Curaduria de Fuentes
       </h3>
 
       <textarea
-        className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl p-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 min-h-[100px] placeholder-gray-400 dark:placeholder-gray-600"
+        className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl p-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[var(--engine-accent)]/50 min-h-[100px] placeholder-gray-400 dark:placeholder-gray-600"
         placeholder="Escribe tus comentarios o feedback sobre la curaduria de fuentes..."
         value={reviewNotes}
         onChange={(event) => setReviewNotes(event.target.value)}
@@ -108,7 +108,7 @@ export function CurationReviewPanel({
               type="button"
               onClick={onIterateInvalidSources}
               disabled={isValidating || isGenerating}
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-rose-500/30 bg-white/80 px-3 py-2 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-[#0F1419] dark:text-rose-300 dark:hover:bg-rose-500/10"
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-rose-500/30 bg-white/80 px-3 py-2 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-[var(--engine-canvas)] dark:text-rose-300 dark:hover:bg-rose-500/10"
             >
               <RefreshCw size={14} />
               Iterar pendientes
@@ -118,25 +118,25 @@ export function CurationReviewPanel({
       )}
 
       {isValidating && rowsLength > 0 && (
-        <div className="mt-4 mb-2 p-4 bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl flex items-center justify-between">
+        <div className="mt-4 mb-2 p-4 bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <RefreshCw size={20} className="text-[#00D4B3] animate-spin" />
+            <RefreshCw size={20} className="text-[var(--engine-accent)] animate-spin" />
             <div>
               <p className="text-gray-900 dark:text-white font-medium text-sm">
                 Validando fuentes en segundo plano...
               </p>
-              <p className="text-gray-500 dark:text-[#6C757D] text-xs">
+              <p className="text-gray-500 dark:text-[var(--engine-muted)] text-xs">
                 Manten esta pagina abierta o cierrala, el proceso continuara.
               </p>
             </div>
           </div>
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <p className="text-[#00D4B3] font-bold text-lg leading-none">
+              <p className="text-[var(--engine-accent)] font-bold text-lg leading-none">
                 {validatedCount}{" "}
-                <span className="text-gray-500 dark:text-[#6C757D] text-sm">/ {rowsLength}</span>
+                <span className="text-gray-500 dark:text-[var(--engine-muted)] text-sm">/ {rowsLength}</span>
               </p>
-              <p className="text-gray-500 dark:text-[#6C757D] text-[10px] uppercase tracking-wider font-semibold mt-1">
+              <p className="text-gray-500 dark:text-[var(--engine-muted)] text-[10px] uppercase tracking-wider font-semibold mt-1">
                 Validadas
               </p>
             </div>
@@ -146,14 +146,14 @@ export function CurationReviewPanel({
                 className="w-full h-full circular-chart inline-block"
               >
                 <path
-                  className="text-gray-200 dark:text-[#1E2329] stroke-current"
+                  className="text-gray-200 dark:text-[var(--engine-surface-hover)] stroke-current"
                   fill="none"
                   strokeWidth="3"
                   strokeDasharray="100, 100"
                   d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                 />
                 <motion.path
-                  className="text-[#00D4B3] stroke-current"
+                  className="text-[var(--engine-accent)] stroke-current"
                   fill="none"
                   strokeWidth="3"
                   strokeDasharray={`${Math.max(2, Math.round((validatedCount / rowsLength) * 100))}, 100`}
@@ -176,7 +176,7 @@ export function CurationReviewPanel({
             <button
               onClick={onValidate}
               disabled={isValidating || isGenerating}
-              className="flex-1 bg-white dark:bg-[#0F1419] border border-[#00D4B3] hover:bg-[#00D4B3]/10 text-[#00D4B3] py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 bg-white dark:bg-[var(--engine-canvas)] border border-[var(--engine-accent)] hover:bg-[var(--engine-accent)]/10 text-[var(--engine-accent)] py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isValidating ? (
                 <RefreshCw size={18} className="animate-spin" />
@@ -191,8 +191,8 @@ export function CurationReviewPanel({
               className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2
                 ${
                   !canApprove
-                    ? "bg-[#00D4B3]/5 text-[#00D4B3]/30 border border-[#00D4B3]/5 cursor-not-allowed"
-                    : "bg-[#00D4B3]/10 hover:bg-[#00D4B3]/20 text-[#00D4B3] border border-[#00D4B3]/20"
+                    ? "bg-[var(--engine-accent)]/5 text-[var(--engine-accent)]/30 border border-[var(--engine-accent)]/5 cursor-not-allowed"
+                    : "bg-[var(--engine-accent)]/10 hover:bg-[var(--engine-accent)]/20 text-[var(--engine-accent)] border border-[var(--engine-accent)]/20"
                 }`}
             >
               <CheckCircle2 size={18} />
@@ -224,7 +224,7 @@ export function CurationReviewPanel({
 
         {curationApproved && (
           <div className="w-full flex gap-4">
-            <div className="flex-1 bg-[#00D4B3]/20 text-[#00D4B3] py-3 rounded-xl font-bold text-center flex items-center justify-center gap-2">
+            <div className="flex-1 bg-[var(--engine-accent)]/20 text-[var(--engine-accent)] py-3 rounded-xl font-bold text-center flex items-center justify-center gap-2">
               <CheckCircle2 size={18} />
               Fase 4 Aprobada
             </div>
@@ -232,7 +232,7 @@ export function CurationReviewPanel({
               <button
                 type="button"
                 onClick={onContinue}
-                className="flex-1 bg-[#1F5AF6] hover:bg-[#1548c7] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#1F5AF6]/20"
+                className="flex-1 bg-[var(--engine-info)] hover:bg-[#1548c7] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-[var(--engine-info)]/20"
               >
                 Continuar a Materiales
               </button>

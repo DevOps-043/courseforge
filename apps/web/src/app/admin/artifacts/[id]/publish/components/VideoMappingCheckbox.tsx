@@ -32,7 +32,7 @@ export function VideoMappingCheckbox({
       checked={checked}
       disabled={disabled}
       onChange={onChange}
-      className={`w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-[#00D4B3] focus:ring-[#00D4B3]/30 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${className || ''}`}
+      className={`w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-[var(--engine-accent)] focus:ring-[var(--engine-accent)]/30 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${className || ''}`}
     />
   );
 }

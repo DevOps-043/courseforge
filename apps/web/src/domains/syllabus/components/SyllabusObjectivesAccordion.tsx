@@ -13,7 +13,7 @@ export function SyllabusObjectivesAccordion({
     <div className="space-y-2">
       <button
         onClick={onToggle}
-        className="w-full bg-white dark:bg-[#1E2329] border border-gray-200 dark:border-white/5 rounded-xl px-6 py-4 flex justify-between items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-all group"
+        className="w-full bg-white dark:bg-[var(--engine-surface-hover)] border border-gray-200 dark:border-white/5 rounded-xl px-6 py-4 flex justify-between items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-all group"
       >
         <div className="flex items-center gap-4">
           <div className="p-2 bg-gray-100 dark:bg-white/5 rounded-lg group-hover:bg-gray-200 dark:group-hover:bg-white/10 transition-colors">
@@ -56,14 +56,14 @@ export function SyllabusObjectivesAccordion({
       </button>
 
       {isOpen && (
-        <div className="bg-gray-50 dark:bg-[#1E2329]/50 border border-gray-200 dark:border-white/5 rounded-xl p-6 animate-in slide-in-from-top-2 duration-200">
+        <div className="bg-gray-50 dark:bg-[var(--engine-surface-hover)]/50 border border-gray-200 dark:border-white/5 rounded-xl p-6 animate-in slide-in-from-top-2 duration-200">
           <ul className="space-y-3">
             {objectives.map((objective, index) => (
               <li
                 key={`${objective}-${index}`}
                 className="flex gap-4 text-sm text-gray-600 dark:text-gray-300 items-start"
               >
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#00D4B3]/10 text-[#00D4B3] flex items-center justify-center text-xs font-mono border border-[#00D4B3]/20 mt-0.5">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--engine-accent)]/10 text-[var(--engine-accent)] flex items-center justify-center text-xs font-mono border border-[var(--engine-accent)]/20 mt-0.5">
                   {index + 1}
                 </span>
                 <span className="leading-relaxed">{objective}</span>

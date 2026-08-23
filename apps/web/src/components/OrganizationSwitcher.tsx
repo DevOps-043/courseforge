@@ -1,20 +1,19 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, Check, Loader2, Building2 } from 'lucide-react';
+import { Check, ChevronDown, Loader2, Building2 } from 'lucide-react';
 import { useOrganizationStore, type UserOrganization } from '@/core/stores/organizationStore';
 
 const LS_KEY = 'cf_last_org';
 
 interface OrganizationSwitcherProps {
-  collapsed?: boolean;
   onSwitch?: () => void;
 }
 
-export default function OrganizationSwitcher({ collapsed = false, onSwitch }: OrganizationSwitcherProps) {
+export default function OrganizationSwitcher({ onSwitch }: OrganizationSwitcherProps) {
   const {
     organizations,
     activeOrganizationId,
@@ -29,7 +28,6 @@ export default function OrganizationSwitcher({ collapsed = false, onSwitch }: Or
   const [isOpen, setIsOpen] = useState(false);
   const [showOverlay, setShowOverlay] = useState(false);
   const [switchingToName, setSwitchingToName] = useState('');
-  const containerRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -39,7 +37,7 @@ export default function OrganizationSwitcher({ collapsed = false, onSwitch }: Or
     : null;
   const activeOrg = routeOrg || getActiveOrganization();
   const effectiveActiveOrganizationId = activeOrg?.id ?? activeOrganizationId;
-  const hasMultiple = canSwitch();
+  const hasMultiple = canSwitch() && organizations.length > 1;
 
   // Autonomous initialization if not already loaded from layout
   useEffect(() => {
@@ -55,20 +53,9 @@ export default function OrganizationSwitcher({ collapsed = false, onSwitch }: Or
     }
   }, [effectiveActiveOrganizationId]);
 
-  // Close on click outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [isOpen]);
+  if (!activeOrg && organizations.length === 0) return null;
 
-  if (!activeOrg) return null;
+  const currentOrg = activeOrg || organizations[0];
 
   const handleSwitch = async (org: UserOrganization) => {
     if (org.id === effectiveActiveOrganizationId || isSwitching) return;
@@ -98,129 +85,108 @@ export default function OrganizationSwitcher({ collapsed = false, onSwitch }: Or
     }
   };
 
-  // Single org — just show label, no dropdown
-  if (!hasMultiple) {
-    return (
-      <div className={`flex items-center gap-2 px-3 py-2 ${collapsed ? 'justify-center' : ''}`}>
-        <OrgAvatar org={activeOrg} size="sm" />
-        {!collapsed && (
-          <span className="text-xs font-medium text-gray-500 dark:text-slate-400 truncate">
-            {activeOrg.name}
-          </span>
-        )}
-      </div>
-    );
-  }
-
-  // Multi-org — dropdown switcher
   return (
     <>
-      <div ref={containerRef} className="relative px-3">
-        {/* Collapsed: avatar with tooltip */}
-        {collapsed ? (
-          <div className="relative group flex justify-center">
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); if (!isSwitching) setIsOpen(!isOpen); }}
-              disabled={isSwitching}
-              className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
-            >
-              <OrgAvatar org={activeOrg} size="sm" />
-            </button>
-            <div className="absolute left-full ml-2 px-2 py-1 bg-slate-800 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-slate-700 shadow-xl">
-              {activeOrg.name}
-            </div>
+      <div className="flex flex-col gap-1 px-1 pt-1">
+        <div className="flex items-center justify-between px-1.5 pt-0.5 pb-0.5">
+          <p className="m-0 text-[0.55rem] font-semibold tracking-wider text-[var(--engine-text-muted)] uppercase font-[var(--font-system-label)]">
+            Empresa
+          </p>
+        </div>
+
+        {/* Trigger button showing current active organization */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (hasMultiple && !isSwitching) {
+              setIsOpen((prev) => !prev);
+            }
+          }}
+          disabled={!hasMultiple || isSwitching}
+          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all duration-180 border
+            ${isOpen
+              ? 'bg-[var(--engine-accent)]/10 border-[var(--engine-accent)]/25 text-[var(--engine-text)]'
+              : 'border-transparent text-[var(--engine-text)] hover:bg-[var(--engine-accent)]/6'
+            }
+            ${hasMultiple ? 'cursor-pointer' : 'cursor-default'}
+            ${isSwitching ? 'opacity-60 cursor-wait' : ''}
+          `}
+          aria-expanded={isOpen}
+          aria-label={hasMultiple ? 'Expandir selector de empresas' : 'Empresa actual'}
+        >
+          <OrgAvatar org={currentOrg} size="sm" />
+
+          <div className="flex-1 min-w-0 overflow-hidden">
+            <p className="text-[0.74rem] font-semibold text-[var(--engine-text)] truncate leading-tight">
+              {currentOrg.name}
+            </p>
+            <p className="text-[0.58rem] text-[var(--engine-text-muted)] capitalize leading-tight mt-0.5">
+              {currentOrg.role}
+            </p>
           </div>
-        ) : (
-          /* Expanded: full button */
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!isSwitching) setIsOpen(!isOpen);
-            }}
-            disabled={isSwitching}
-            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all duration-200 border border-transparent
-              ${isOpen
-                ? 'bg-gray-100 dark:bg-white/10 border-gray-200 dark:border-white/10'
-                : 'hover:bg-gray-100 dark:hover:bg-white/5'
-              }
-              ${isSwitching ? 'opacity-60 cursor-wait' : 'cursor-pointer'}
-            `}
-          >
-            <OrgAvatar org={activeOrg} size="sm" />
 
-            <div className="flex-1 text-left overflow-hidden">
-              <p className="text-xs font-semibold text-gray-800 dark:text-white truncate">
-                {activeOrg.name}
-              </p>
-              <p className="text-[10px] text-gray-400 dark:text-slate-500 capitalize">
-                {activeOrg.role}
-              </p>
-            </div>
+          {hasMultiple && (
+            <ChevronDown
+              size={14}
+              className={`text-[var(--engine-text-muted)] shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-[var(--engine-accent)]' : ''}`}
+            />
+          )}
+        </button>
 
-            {isSwitching ? (
-              <Loader2 size={14} className="text-[#00D4B3] animate-spin shrink-0" />
-            ) : (
-              <ChevronDown
-                size={14}
-                className={`text-gray-400 dark:text-slate-500 transition-transform duration-200 shrink-0 ${isOpen ? 'rotate-180' : ''}`}
-              />
-            )}
-          </button>
-        )}
-
-        <AnimatePresence>
-          {isOpen && !collapsed && (
+        {/* Collapsible dropdown list */}
+        <AnimatePresence initial={false}>
+          {isOpen && hasMultiple && (
             <motion.div
-              initial={{ opacity: 0, y: -4, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -4, scale: 0.97 }}
-              transition={{ duration: 0.15 }}
-              className="absolute left-3 right-3 top-full mt-1 bg-white dark:bg-[#1A1F26] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl overflow-hidden z-50"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className="overflow-hidden"
             >
-              <div className="p-2 border-b border-gray-100 dark:border-white/5">
-                <p className="text-[10px] text-gray-400 dark:text-slate-500 font-semibold uppercase tracking-wider px-1">
+              <div className="mt-1 flex flex-col gap-1 p-1 rounded-xl bg-black/4 dark:bg-white/4 border border-black/5 dark:border-white/5">
+                <p className="px-2 pt-1 pb-0.5 text-[0.5rem] font-semibold tracking-wider text-[var(--engine-text-muted)] uppercase font-[var(--font-system-label)]">
                   Cambiar empresa
                 </p>
-              </div>
 
-              <div className="p-1 max-h-[200px] overflow-y-auto">
-                {organizations.map((org) => {
-                  const isActive = org.id === effectiveActiveOrganizationId;
-                  return (
-                    <button
-                      key={org.id}
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleSwitch(org);
-                      }}
-                      disabled={isActive}
-                      className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors
-                        ${isActive
-                          ? 'bg-[#00D4B3]/10 dark:bg-[#00D4B3]/10'
-                          : 'hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer'
-                        }
-                      `}
-                    >
-                      <OrgAvatar org={org} size="sm" />
+                <div className="flex flex-col gap-0.5 max-h-[150px] overflow-y-auto pr-0.5 scrollbar-thin">
+                  {organizations.map((org) => {
+                    const isActive = org.id === effectiveActiveOrganizationId;
+                    return (
+                      <button
+                        key={org.id}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSwitch(org);
+                        }}
+                        disabled={isActive || isSwitching}
+                        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-colors
+                          ${isActive
+                            ? 'bg-[var(--engine-accent)]/12 text-[var(--engine-accent)] cursor-default font-medium'
+                            : 'text-[var(--engine-text-muted)] hover:text-[var(--engine-text)] hover:bg-[var(--engine-accent)]/6 cursor-pointer'
+                          }
+                          ${isSwitching && !isActive ? 'opacity-50 cursor-not-allowed' : ''}
+                        `}
+                      >
+                        <OrgAvatar org={org} size="sm" />
 
-                      <div className="flex-1 overflow-hidden">
-                        <p className={`text-xs font-medium truncate ${isActive ? 'text-[#00D4B3]' : 'text-gray-700 dark:text-slate-300'}`}>
-                          {org.name}
-                        </p>
-                        <p className="text-[10px] text-gray-400 dark:text-slate-500 capitalize">
-                          {org.role}
-                        </p>
-                      </div>
+                        <div className="flex-1 min-w-0 overflow-hidden">
+                          <p className={`text-[0.7rem] truncate leading-tight ${isActive ? 'font-semibold text-[var(--engine-accent)]' : 'text-[var(--engine-text)]'}`}>
+                            {org.name}
+                          </p>
+                          <p className="text-[0.55rem] text-[var(--engine-text-muted)] capitalize leading-tight mt-0.5">
+                            {org.role}
+                          </p>
+                        </div>
 
-                      {isActive && (
-                        <Check size={14} className="text-[#00D4B3] shrink-0" />
-                      )}
-                    </button>
-                  );
-                })}
+                        {isActive && (
+                          <Check size={13} className="text-[var(--engine-accent)] shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </motion.div>
           )}
@@ -232,11 +198,11 @@ export default function OrganizationSwitcher({ collapsed = false, onSwitch }: Or
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="fixed inset-0 z-[9999] bg-white/80 dark:bg-[#0F1419]/90 backdrop-blur-sm flex flex-col items-center justify-center gap-4"
+          className="fixed inset-0 z-[9999] bg-white/80 dark:bg-[var(--engine-canvas)]/90 backdrop-blur-sm flex flex-col items-center justify-center gap-4"
         >
-          <Loader2 size={32} className="text-[#00D4B3] animate-spin" />
+          <Loader2 size={32} className="text-[var(--engine-accent)] animate-spin" />
           <p className="text-sm font-medium text-gray-600 dark:text-slate-300">
-            Cambiando a <span className="text-[#00D4B3] font-semibold">{switchingToName}</span>...
+            Cambiando a <span className="text-[var(--engine-accent)] font-semibold">{switchingToName}</span>...
           </p>
         </motion.div>,
         document.body
@@ -246,19 +212,19 @@ export default function OrganizationSwitcher({ collapsed = false, onSwitch }: Or
 }
 
 function OrgAvatar({ org, size = 'sm' }: { org: UserOrganization; size?: 'sm' | 'md' | 'lg' }) {
-  const px = size === 'sm' ? 'w-8 h-8 text-[12px]' : size === 'md' ? 'w-10 h-10 text-xs' : 'w-12 h-12 text-sm';
+  const px = size === 'sm' ? 'w-6 h-6 text-[10px]' : size === 'md' ? 'w-8 h-8 text-xs' : 'w-10 h-10 text-sm';
 
   if (org.logo_url) {
     return (
-      <div className={`${px} rounded-xl overflow-hidden shrink-0 ring-1 ring-gray-200/50 dark:ring-white/10 shadow-sm transition-transform duration-300 group-hover:scale-105`}>
+      <div className={`${px} rounded-md overflow-hidden shrink-0 ring-1 ring-gray-200/50 dark:ring-white/10 shadow-xs`}>
         <img src={org.logo_url} alt={org.name} className="w-full h-full object-cover" />
       </div>
     );
   }
 
   return (
-    <div className={`${px} rounded-xl bg-linear-to-br from-[#0A2540] to-[#1a3a5c] flex items-center justify-center text-[#00D4B3] shadow-lg shadow-[#00D4B3]/5 shrink-0 ring-1 ring-white/10 transition-all duration-300 group-hover:scale-105 group-hover:shadow-[#00D4B3]/20`}>
-      <Building2 size={size === 'sm' ? 14 : size === 'md' ? 18 : 22} />
+    <div className={`${px} rounded-md bg-linear-to-br from-[var(--engine-primary)] to-[#1a3a5c] flex items-center justify-center text-[var(--engine-accent)] shadow-xs shrink-0 ring-1 ring-white/10`}>
+      <Building2 size={size === 'sm' ? 12 : size === 'md' ? 15 : 18} />
     </div>
   );
 }

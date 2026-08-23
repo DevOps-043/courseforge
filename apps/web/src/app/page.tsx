@@ -20,15 +20,15 @@ export default function Home() {
 
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-[#0F1419] text-gray-900 dark:text-white selection:bg-[#00D4B3] selection:text-[#0F1419] overflow-x-hidden font-sans transition-colors duration-300">
+    <div className="min-h-screen bg-gray-50 dark:bg-[var(--engine-canvas)] text-gray-900 dark:text-white selection:bg-[var(--engine-accent)] selection:text-[var(--engine-canvas)] overflow-x-hidden font-sans transition-colors duration-300">
       {/* Background Ambient Glow */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-[#00D4B3]/10 dark:bg-[#0A2540]/20 rounded-full blur-[150px]" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-blue-500/10 dark:bg-[#00D4B3]/5 rounded-full blur-[150px]" />
+        <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-[var(--engine-accent)]/10 dark:bg-[var(--engine-primary)]/20 rounded-full blur-[150px]" />
+        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-blue-500/10 dark:bg-[var(--engine-accent)]/5 rounded-full blur-[150px]" />
       </div>
 
       {/* Navbar */}
-      <nav className="fixed w-full z-50 top-0 left-0 border-b border-gray-200 dark:border-white/5 bg-white/80 dark:bg-[#0F1419]/80 backdrop-blur-md transition-colors duration-300">
+      <nav className="fixed w-full z-50 top-0 left-0 border-b border-gray-200 dark:border-white/5 bg-white/80 dark:bg-[var(--engine-canvas)]/80 backdrop-blur-md transition-colors duration-300">
         <div className="w-full px-8 lg:px-12 h-20 flex justify-between items-center">
           {/* Brand */}
           <div className="flex items-center gap-3">
@@ -86,12 +86,12 @@ export default function Home() {
             >
               <h1 className="text-5xl lg:text-7xl font-bold leading-tight tracking-tight mb-6 text-gray-900 dark:text-white">
                 Creación de Cursos <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#00D4B3] to-[#10B981]">
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--engine-accent)] to-[#10B981]">
                   Automatizada con IA
                 </span>
               </h1>
 
-              <p className="text-lg text-gray-600 dark:text-[#94A3B8] max-w-xl mx-auto lg:mx-0 leading-relaxed">
+              <p className="text-lg text-gray-600 dark:text-[var(--engine-text-muted)] max-w-xl mx-auto lg:mx-0 leading-relaxed">
                 Transforma tu conocimiento en experiencias educativas
                 estructuradas. SofLIA - Engine utiliza inteligencia artificial
                 avanzada para diseñar, desarrollar y optimizar tus cursos en
@@ -104,14 +104,14 @@ export default function Home() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.8, delay: 0.4 }}
-              className="flex items-center gap-8 justify-center lg:justify-start pt-4 text-sm text-gray-500 dark:text-[#6C757D] font-medium"
+              className="flex items-center gap-8 justify-center lg:justify-start pt-4 text-sm text-gray-500 dark:text-[var(--engine-muted)] font-medium"
             >
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-[#00D4B3]" />
+                <CheckCircle2 className="w-4 h-4 text-[var(--engine-accent)]" />
                 Generación Instantánea
               </div>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-[#00D4B3]" />
+                <CheckCircle2 className="w-4 h-4 text-[var(--engine-accent)]" />
                 Estructura Pedagógica
               </div>
             </motion.div>
@@ -126,4 +126,4 @@ export default function Home() {
 // Simple wrappers to avoid icon flicker or potential issues if needed, strictly optional but cleaner in JSX
 const SunWrapper = () => <Sun size={20} className="text-yellow-500" />;
 const MoonWrapper = () => <Moon size={20} className="text-blue-500" />;
-const MonitorWrapper = () => <Monitor size={20} className="text-[#00D4B3]" />;
+const MonitorWrapper = () => <Monitor size={20} className="text-[var(--engine-accent)]" />;

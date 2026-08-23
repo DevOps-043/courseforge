@@ -228,7 +228,7 @@ export function VideoMappingList({
   const totalWithVideo = lessons.filter((lesson) => hasVideo(lesson.id)).length;
 
   return (
-    <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 shadow-sm">
+    <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-2xl p-6 shadow-sm">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-lg font-bold text-gray-900 dark:text-white">
           2. Asignación de Videos y Selección para Envío

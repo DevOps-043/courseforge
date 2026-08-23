@@ -43,12 +43,12 @@ export default async function TenantArchitectArtifactPage({
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-20">
-      <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-[#94A3B8]">
+      <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-[var(--engine-text-muted)]">
         <Link href={`${basePath}/artifacts`} className="hover:text-gray-900 dark:hover:text-white flex items-center gap-1 transition-colors">
           <ArrowLeft size={16} />
           Volver a Control de Calidad
         </Link>
-        <span className="text-gray-300 dark:text-[#6C757D]">/</span>
+        <span className="text-gray-300 dark:text-[var(--engine-muted)]">/</span>
         <span className="text-gray-900 dark:text-white truncate max-w-xs">{artifact.idea_central}</span>
       </div>
 

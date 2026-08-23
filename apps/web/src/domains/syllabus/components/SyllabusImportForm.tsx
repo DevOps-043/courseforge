@@ -43,9 +43,9 @@ export function SyllabusImportForm({ onImport, onCancel }: SyllabusImportFormPro
   };
 
   return (
-    <div className="bg-white dark:bg-[#1E2329] p-6 rounded-xl border border-gray-200 dark:border-white/10 shadow-sm">
+    <div className="bg-white dark:bg-[var(--engine-surface-hover)] p-6 rounded-xl border border-gray-200 dark:border-white/10 shadow-sm">
       <div className="mb-4">
-        <h3 className="text-lg font-bold text-[#0A2540] dark:text-white">Importar Temario Existente</h3>
+        <h3 className="text-lg font-bold text-[var(--engine-primary)] dark:text-white">Importar Temario Existente</h3>
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Pega aquí tu temario en formato JSON o Markdown pre-estructurado.
         </p>
@@ -55,7 +55,7 @@ export function SyllabusImportForm({ onImport, onCancel }: SyllabusImportFormPro
         value={content}
         onChange={(e) => setContent(e.target.value)}
         placeholder='{ "modules": [...] }'
-        className="w-full h-64 p-4 rounded-lg bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-white/10 text-sm font-mono focus:ring-2 focus:ring-[#00D4B3] focus:outline-none dark:text-gray-300 resize-none transition-all"
+        className="w-full h-64 p-4 rounded-lg bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-white/10 text-sm font-mono focus:ring-2 focus:ring-[var(--engine-accent)] focus:outline-none dark:text-gray-300 resize-none transition-all"
       />
 
       {error && (
@@ -78,7 +78,7 @@ export function SyllabusImportForm({ onImport, onCancel }: SyllabusImportFormPro
         )}
         <button
           onClick={handleParseAndImport}
-          className="px-6 py-2 bg-[#0A2540] dark:bg-white text-white dark:text-[#0A2540] rounded-lg text-sm font-bold hover:opacity-90 transition-all shadow-lg shadow-blue-900/10"
+          className="px-6 py-2 bg-[var(--engine-primary)] dark:bg-white text-white dark:text-[var(--engine-primary)] rounded-lg text-sm font-bold hover:opacity-90 transition-all shadow-lg shadow-blue-900/10"
         >
           Procesar e Importar
         </button>

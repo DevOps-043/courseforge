@@ -87,11 +87,11 @@ export function WorkerDownloadPanel({
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-950 selection:bg-[#00D4B3]/30 dark:bg-[#0F1419] dark:text-white">
-      <header className="border-b border-gray-200 bg-white/90 backdrop-blur dark:border-white/10 dark:bg-[#151A21]/90">
+    <div className="min-h-screen bg-gray-50 text-gray-950 selection:bg-[var(--engine-accent)]/30 dark:bg-[var(--engine-canvas)] dark:text-white">
+      <header className="border-b border-gray-200 bg-white/90 backdrop-blur dark:border-white/10 dark:bg-[var(--engine-surface-solid)]/90">
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6">
           <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#00D4B3]/10 text-[#00A98F] ring-1 ring-[#00D4B3]/20">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--engine-accent)]/10 text-[var(--engine-accent-strong)] ring-1 ring-[var(--engine-accent)]/20">
               <Laptop className="h-5 w-5" />
             </div>
             <div>
@@ -104,7 +104,7 @@ export function WorkerDownloadPanel({
           <button
             type="button"
             onClick={handleGoBack}
-            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:border-[#00D4B3]/50 hover:text-[#008B78] dark:border-white/10 dark:text-slate-200 dark:hover:text-[#00D4B3]"
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:border-[var(--engine-accent)]/50 hover:text-[#008B78] dark:border-white/10 dark:text-slate-200 dark:hover:text-[var(--engine-accent)]"
           >
             <span className="inline-flex items-center gap-2">
               <ArrowLeft className="h-4 w-4" />
@@ -117,7 +117,7 @@ export function WorkerDownloadPanel({
       <main className="mx-auto grid max-w-7xl gap-10 px-6 py-12 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-16">
         <section className="space-y-8">
           <div className="max-w-3xl">
-            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#00D4B3]/25 bg-[#00D4B3]/10 px-3 py-1 text-sm font-semibold text-[#008B78] dark:text-[#67E8D5]">
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[var(--engine-accent)]/25 bg-[var(--engine-accent)]/10 px-3 py-1 text-sm font-semibold text-[#008B78] dark:text-[#67E8D5]">
               <CheckCircle2 className="h-4 w-4" />
               Version {version}
             </div>
@@ -152,14 +152,14 @@ export function WorkerDownloadPanel({
               return (
                 <article
                   key={option.id}
-                  className="flex min-h-[260px] flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#151A21]"
+                  className="flex min-h-[260px] flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[var(--engine-surface-solid)]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-white">
                       <Icon className="h-5 w-5" />
                     </div>
                     {isSuggested ? (
-                      <span className="rounded-full bg-[#00D4B3]/10 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-[#008B78] dark:text-[#67E8D5]">
+                      <span className="rounded-full bg-[var(--engine-accent)]/10 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-[#008B78] dark:text-[#67E8D5]">
                         Sugerido
                       </span>
                     ) : null}
@@ -182,7 +182,7 @@ export function WorkerDownloadPanel({
                   ) : (
                     <a
                       href={option.href}
-                      className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#0A2540] px-4 text-sm font-bold text-white transition hover:bg-[#123B63] dark:bg-[#00D4B3] dark:text-[#06131F] dark:hover:bg-[#67E8D5]"
+                      className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[var(--engine-primary)] px-4 text-sm font-bold text-white transition hover:bg-[#123B63] dark:bg-[var(--engine-accent)] dark:text-[#06131F] dark:hover:bg-[#67E8D5]"
                     >
                       <Download className="h-4 w-4" />
                       Descargar
@@ -195,9 +195,9 @@ export function WorkerDownloadPanel({
         </section>
 
         <aside className="space-y-4">
-          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#151A21]">
+          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[var(--engine-surface-solid)]">
             <h2 className="flex items-center gap-2 text-lg font-bold">
-              <ShieldCheck className="h-5 w-5 text-[#00A98F]" />
+              <ShieldCheck className="h-5 w-5 text-[var(--engine-accent-strong)]" />
               Flujo seguro
             </h2>
             <ul className="mt-4 space-y-3 text-sm leading-6 text-gray-600 dark:text-slate-300">
@@ -208,7 +208,7 @@ export function WorkerDownloadPanel({
             </ul>
           </section>
 
-          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#151A21]">
+          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[var(--engine-surface-solid)]">
             <h2 className="text-lg font-bold">Pasos de vinculacion</h2>
             <ol className="mt-4 space-y-3 text-sm leading-6 text-gray-600 dark:text-slate-300">
               <li>1. Instala y abre el worker en tu computadora.</li>

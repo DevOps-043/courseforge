@@ -54,23 +54,23 @@ export function ErrorShell({
     <main className="min-h-screen bg-gray-50 text-gray-900 dark:bg-[#050B14] dark:text-white">
       <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col justify-center px-6 py-12">
         <div className="mb-8 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#00D4B3]/30 bg-[#00D4B3]/10 text-[#00A98F] dark:text-[#00D4B3]">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--engine-accent)]/30 bg-[var(--engine-accent)]/10 text-[var(--engine-accent-strong)] dark:text-[var(--engine-accent)]">
             <AlertTriangle size={22} />
           </div>
           <div>
-            <p className="text-sm font-semibold text-[#00A98F] dark:text-[#00D4B3]">SofLIA - Engine</p>
-            <p className="text-xs text-gray-500 dark:text-[#94A3B8]">Centro de operaciones</p>
+            <p className="text-sm font-semibold text-[var(--engine-accent-strong)] dark:text-[var(--engine-accent)]">SofLIA - Engine</p>
+            <p className="text-xs text-gray-500 dark:text-[var(--engine-text-muted)]">Centro de operaciones</p>
           </div>
         </div>
 
         <section className="max-w-2xl">
-          <p className="mb-4 text-sm font-semibold uppercase tracking-[0.28em] text-[#00A98F] dark:text-[#00D4B3]">
+          <p className="mb-4 text-sm font-semibold uppercase tracking-[0.28em] text-[var(--engine-accent-strong)] dark:text-[var(--engine-accent)]">
             Error {code}
           </p>
           <h1 className="text-4xl font-bold leading-tight text-gray-950 dark:text-white md:text-6xl">
             {title}
           </h1>
-          <p className="mt-5 max-w-xl text-base leading-7 text-gray-600 dark:text-[#94A3B8] md:text-lg">
+          <p className="mt-5 max-w-xl text-base leading-7 text-gray-600 dark:text-[var(--engine-text-muted)] md:text-lg">
             {description}
           </p>
         </section>
@@ -78,7 +78,7 @@ export function ErrorShell({
         <div className="mt-8 flex flex-wrap gap-3">
           <Link
             href={mainMenuHref}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#1F5AF6] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[#1F5AF6]/20 transition hover:bg-[#1a4bd6]"
+            className="inline-flex items-center gap-2 rounded-lg bg-[var(--engine-info)] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[var(--engine-info)]/20 transition hover:bg-[var(--engine-info)]"
           >
             <PrimaryIcon size={18} />
             {primaryLabel ?? "Ir al menu principal"}
@@ -97,7 +97,7 @@ export function ErrorShell({
             <button
               type="button"
               onClick={reset}
-              className="inline-flex items-center gap-2 rounded-lg border border-[#00D4B3]/30 bg-[#00D4B3]/10 px-5 py-3 text-sm font-semibold text-[#008B76] transition hover:bg-[#00D4B3]/15 dark:text-[#00D4B3]"
+              className="inline-flex items-center gap-2 rounded-lg border border-[var(--engine-accent)]/30 bg-[var(--engine-accent)]/10 px-5 py-3 text-sm font-semibold text-[#008B76] transition hover:bg-[var(--engine-accent)]/15 dark:text-[var(--engine-accent)]"
             >
               <RefreshCw size={18} />
               Intentar de nuevo
@@ -105,7 +105,7 @@ export function ErrorShell({
           ) : null}
         </div>
 
-        <div className="mt-12 grid max-w-3xl gap-4 border-t border-gray-200 pt-6 text-sm text-gray-600 dark:border-white/10 dark:text-[#94A3B8] md:grid-cols-3">
+        <div className="mt-12 grid max-w-3xl gap-4 border-t border-gray-200 pt-6 text-sm text-gray-600 dark:border-white/10 dark:text-[var(--engine-text-muted)] md:grid-cols-3">
           <div>
             <p className="font-semibold text-gray-950 dark:text-white">Ruta actual</p>
             <p className="mt-1 break-all">{pathname || "No disponible"}</p>

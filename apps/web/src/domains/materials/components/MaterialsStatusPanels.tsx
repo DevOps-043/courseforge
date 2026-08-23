@@ -295,7 +295,7 @@ export function MaterialsQaReviewPanel({
             value={qaNote}
             onChange={(event) => onQaNoteChange(event.target.value)}
             placeholder="Notas de revision (opcional)"
-            className="w-full p-3 text-sm border border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-[#1E2329] text-gray-900 dark:text-white placeholder-gray-400"
+            className="w-full p-3 text-sm border border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-[var(--engine-surface-hover)] text-gray-900 dark:text-white placeholder-gray-400"
             rows={2}
           />
           <div className="flex gap-3">

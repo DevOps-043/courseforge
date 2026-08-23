@@ -21,6 +21,7 @@ import {
   User,
 } from "lucide-react";
 import { toast } from "sonner";
+import { EngineSelect } from "@/components/ui/EngineSelect";
 
 type SlideLayoutId = "center" | "closing" | "data" | "framework" | "split" | "split_reverse";
 type SlideTypeId = string;
@@ -92,12 +93,12 @@ const EMPTY_STATE: StudioState = {
 };
 
 const DEFAULT_TOKENS: DesignTokens = {
-  accent: "#00D4B3",
+  accent: "var(--engine-accent)",
   accent2: "#2D7D6E",
   background: "#F7FAFC",
   muted: "#65758B",
   surface: "#FFFFFF",
-  text: "#0A2540",
+  text: "var(--engine-primary)",
 };
 
 const DEFAULT_MODIFIERS: TemplateModifiers = {
@@ -527,10 +528,10 @@ export function SlideTemplateStudioClient() {
   }
 
   return (
-    <main className="h-[calc(100vh-84px)] overflow-hidden bg-gray-50 p-3 text-gray-950 dark:bg-[#0F1419] dark:text-white lg:p-4">
+    <main className="h-[calc(100vh-84px)] overflow-hidden bg-gray-50 p-3 text-gray-950 dark:bg-[var(--engine-canvas)] dark:text-white lg:p-4">
       <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs font-bold text-[#00A98F]">
+          <div className="flex items-center gap-2 text-xs font-bold text-[var(--engine-accent-strong)]">
             <FileCode2 size={14} />
             Slide Template Studio
           </div>
@@ -539,14 +540,14 @@ export function SlideTemplateStudioClient() {
         <div className="flex flex-wrap gap-2">
           <Link
             href={`${adminBasePath}/slides`}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-100 dark:border-white/10 dark:bg-[#151A21] dark:text-gray-200 dark:hover:bg-white/5"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-100 dark:border-white/10 dark:bg-[var(--engine-surface-solid)] dark:text-gray-200 dark:hover:bg-white/5"
           >
             <ArrowLeft size={16} />
             Regresar
           </Link>
           <Link
             href={`${adminBasePath}/templates`}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-100 dark:border-white/10 dark:bg-[#151A21] dark:text-gray-200 dark:hover:bg-white/5"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-100 dark:border-white/10 dark:bg-[var(--engine-surface-solid)] dark:text-gray-200 dark:hover:bg-white/5"
           >
             <Layers3 size={16} />
             Biblioteca
@@ -554,7 +555,7 @@ export function SlideTemplateStudioClient() {
           {downloadHref && (
             <a
               href={downloadHref}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#0A2540] px-3 py-2 text-sm font-bold text-white transition hover:bg-[#10395f]"
+              className="inline-flex items-center gap-2 rounded-lg bg-[var(--engine-primary)] px-3 py-2 text-sm font-bold text-white transition hover:bg-[#10395f]"
             >
               <Download size={16} />
               Descargar ZIP
@@ -564,7 +565,7 @@ export function SlideTemplateStudioClient() {
       </div>
 
       <section className="grid h-[calc(100%-56px)] min-h-0 gap-3 xl:grid-cols-[minmax(380px,0.82fr)_minmax(560px,1.18fr)]">
-        <div className="flex min-h-0 flex-col rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#151A21]">
+        <div className="flex min-h-0 flex-col rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[var(--engine-surface-solid)]">
           <div className="border-b border-gray-100 p-2.5 dark:border-white/10">
             <label className="block text-[11px] font-black uppercase text-gray-500 dark:text-gray-400">
               Nombre del deck template
@@ -572,14 +573,14 @@ export function SlideTemplateStudioClient() {
             <input
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-semibold outline-none transition focus:border-[#00D4B3] dark:border-white/10 dark:bg-[#0F1419]"
+              className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-semibold outline-none transition focus:border-[var(--engine-accent)] dark:border-white/10 dark:bg-[var(--engine-canvas)]"
             />
           </div>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
             {state.messages.length === 0 ? (
               <div className="flex h-full min-h-[96px] flex-col items-center justify-center text-center">
-                <Sparkles className="mb-1.5 text-[#00A98F]" size={24} />
+                <Sparkles className="mb-1.5 text-[var(--engine-accent-strong)]" size={24} />
                 <h2 className="text-sm font-black">Describe la plantilla que necesitas</h2>
                 <p className="mt-1 max-w-md text-[11px] leading-5 text-gray-500 dark:text-gray-400">
                   El sistema separara decisiones de tipos de diapositiva, layouts, estilo grafico y contrato HTML.
@@ -595,7 +596,7 @@ export function SlideTemplateStudioClient() {
                     <span className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-300">
                       {message.role === "USER" ? <User size={16} /> : <Bot size={16} />}
                     </span>
-                    <div className={`rounded-lg px-4 py-3 text-sm leading-6 ${message.role === "USER" ? "bg-[#0A2540] text-white" : "bg-gray-100 text-gray-800 dark:bg-white/10 dark:text-gray-100"}`}>
+                    <div className={`rounded-lg px-4 py-3 text-sm leading-6 ${message.role === "USER" ? "bg-[var(--engine-primary)] text-white" : "bg-gray-100 text-gray-800 dark:bg-white/10 dark:text-gray-100"}`}>
                       <p className="mb-1 text-[11px] font-black uppercase opacity-70">{getRoleLabel(message.role)}</p>
                       {message.content_redacted}
                     </div>
@@ -611,12 +612,12 @@ export function SlideTemplateStudioClient() {
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
                 placeholder="Ej. Necesito una plantilla corporativa para cursos de liderazgo, con portada, objetivos, explicacion, graficas solo cuando haya datos, y cierre practico."
-                className="h-14 flex-1 resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#00D4B3] dark:border-white/10 dark:bg-[#0F1419]"
+                className="h-14 flex-1 resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--engine-accent)] dark:border-white/10 dark:bg-[var(--engine-canvas)]"
               />
               <button
                 type="submit"
                 disabled={busy || !prompt.trim()}
-                className="inline-flex w-12 items-center justify-center rounded-lg bg-[#00A98F] text-white transition hover:bg-[#008f79] disabled:cursor-not-allowed disabled:bg-gray-300"
+                className="inline-flex w-12 items-center justify-center rounded-lg bg-[var(--engine-accent-strong)] text-white transition hover:bg-[#008f79] disabled:cursor-not-allowed disabled:bg-gray-300"
                 title="Enviar"
               >
                 {busy ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
@@ -626,21 +627,21 @@ export function SlideTemplateStudioClient() {
         </div>
 
         <aside className="grid min-h-0 grid-rows-[minmax(230px,1fr)_minmax(270px,0.92fr)] gap-3">
-          <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#151A21]">
+          <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[var(--engine-surface-solid)]">
             <div className="flex items-center justify-between border-b border-gray-100 p-3 dark:border-white/10">
               <div className="flex items-center gap-2">
-                <Palette className="text-[#00A98F]" size={18} />
+                <Palette className="text-[var(--engine-accent-strong)]" size={18} />
                 <h2 className="text-sm font-black">Slides generadas</h2>
               </div>
               <div className="flex items-center gap-2">
-                <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-white/10 dark:bg-[#0F1419]">
+                <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-white/10 dark:bg-[var(--engine-canvas)]">
                   <button
                     type="button"
                     onClick={() => setSlidePreviewMode("list")}
                     title="Vista lista"
                     className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition ${
                       slidePreviewMode === "list"
-                        ? "bg-white text-[#00A98F] shadow-sm dark:bg-white/10"
+                        ? "bg-white text-[var(--engine-accent-strong)] shadow-sm dark:bg-white/10"
                         : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
                     }`}
                   >
@@ -652,7 +653,7 @@ export function SlideTemplateStudioClient() {
                     title="Vista mosaico"
                     className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition ${
                       slidePreviewMode === "grid"
-                        ? "bg-white text-[#00A98F] shadow-sm dark:bg-white/10"
+                        ? "bg-white text-[var(--engine-accent-strong)] shadow-sm dark:bg-white/10"
                         : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
                     }`}
                   >
@@ -676,7 +677,7 @@ export function SlideTemplateStudioClient() {
                   key={slideType.id}
                   className={
                     slidePreviewMode === "list"
-                      ? "grid grid-cols-[128px_minmax(0,1fr)] gap-3 rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-white/10 dark:bg-[#0F1419]"
+                      ? "grid grid-cols-[128px_minmax(0,1fr)] gap-3 rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-white/10 dark:bg-[var(--engine-canvas)]"
                       : ""
                   }
                 >
@@ -708,7 +709,7 @@ export function SlideTemplateStudioClient() {
                         {slideType.id.replace(/_/g, " ")}
                       </span>
                       {slidePreviewMode === "list" && (
-                        <span className="rounded-full border border-[#00D4B3]/30 bg-[#00D4B3]/10 px-2 py-0.5 text-[10px] font-bold text-[#007F6D] dark:text-[#00D4B3]">
+                        <span className="rounded-full border border-[var(--engine-accent)]/30 bg-[var(--engine-accent)]/10 px-2 py-0.5 text-[10px] font-bold text-[#007F6D] dark:text-[var(--engine-accent)]">
                           {slideType.defaultLayout}
                         </span>
                       )}
@@ -719,9 +720,9 @@ export function SlideTemplateStudioClient() {
             </div>
           </section>
 
-          <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#151A21]">
+          <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[var(--engine-surface-solid)]">
             <div className="flex items-center gap-2 border-b border-gray-100 p-3 dark:border-white/10">
-              <Settings2 className="text-[#00A98F]" size={18} />
+              <Settings2 className="text-[var(--engine-accent-strong)]" size={18} />
               <h2 className="text-sm font-black">Modificadores</h2>
             </div>
             <div className="min-h-0 space-y-3 overflow-y-auto p-3">
@@ -729,7 +730,7 @@ export function SlideTemplateStudioClient() {
                 {COLOR_FIELDS.map((field) => (
                   <label key={field.key} className="text-xs font-bold text-gray-600 dark:text-gray-300">
                     {field.label}
-                    <div className="mt-1 flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 p-1.5 dark:border-white/10 dark:bg-[#0F1419]">
+                    <div className="mt-1 flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 p-1.5 dark:border-white/10 dark:bg-[var(--engine-canvas)]">
                       <input
                         type="color"
                         value={designTokens[field.key]}
@@ -748,33 +749,35 @@ export function SlideTemplateStudioClient() {
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-xs font-bold text-gray-600 dark:text-gray-300">
                   Densidad
-                  <select
+                  <EngineSelect
                     value={modifiers.density}
-                    onChange={(event) => {
+                    onValueChange={(value) => {
                       setDirtyOverrides((current) => ({ ...current, modifiers: true }));
-                      setModifiers((current) => ({ ...current, density: event.target.value as TemplateModifiers["density"] }));
+                      setModifiers((current) => ({ ...current, density: value as TemplateModifiers["density"] }));
                     }}
-                    className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-[#0F1419]"
-                  >
-                    <option value="compact">Compacta</option>
-                    <option value="comfortable">Comoda</option>
-                    <option value="spacious">Espaciada</option>
-                  </select>
+                    className="mt-1"
+                    options={[
+                      { value: "compact", label: "Compacta" },
+                      { value: "comfortable", label: "Cómoda" },
+                      { value: "spacious", label: "Espaciada" },
+                    ]}
+                  />
                 </label>
                 <label className="text-xs font-bold text-gray-600 dark:text-gray-300">
                   Tipografia
-                  <select
+                  <EngineSelect
                     value={modifiers.fontPairing}
-                    onChange={(event) => {
+                    onValueChange={(value) => {
                       setDirtyOverrides((current) => ({ ...current, modifiers: true }));
-                      setModifiers((current) => ({ ...current, fontPairing: event.target.value as TemplateModifiers["fontPairing"] }));
+                      setModifiers((current) => ({ ...current, fontPairing: value as TemplateModifiers["fontPairing"] }));
                     }}
-                    className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-[#0F1419]"
-                  >
-                    <option value="system_sans">Sans sistema</option>
-                    <option value="editorial_serif">Editorial serif</option>
-                    <option value="technical_mono">Tecnica mono</option>
-                  </select>
+                    className="mt-1"
+                    options={[
+                      { value: "system_sans", label: "Sans de sistema" },
+                      { value: "editorial_serif", label: "Serif editorial" },
+                      { value: "technical_mono", label: "Mono técnica" },
+                    ]}
+                  />
                 </label>
               </div>
 
@@ -789,7 +792,7 @@ export function SlideTemplateStudioClient() {
                     setDirtyOverrides((current) => ({ ...current, modifiers: true }));
                     setModifiers((current) => ({ ...current, cornerRadius: Number(event.target.value) }));
                   }}
-                  className="mt-2 w-full accent-[#00A98F]"
+                  className="mt-2 w-full accent-[var(--engine-accent-strong)]"
                 />
               </label>
 
@@ -802,7 +805,7 @@ export function SlideTemplateStudioClient() {
                     setDirtyOverrides((current) => ({ ...current, modifiers: true }));
                     setModifiers((current) => ({ ...current, showBrandMark: event.target.checked }));
                   }}
-                  className="h-4 w-4 accent-[#00A98F]"
+                  className="h-4 w-4 accent-[var(--engine-accent-strong)]"
                 />
               </label>
 
@@ -820,7 +823,7 @@ export function SlideTemplateStudioClient() {
                   type="button"
                   onClick={savePackage}
                   disabled={busy}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#00A98F] px-3 py-2 text-sm font-black text-white transition hover:bg-[#008f79] disabled:cursor-not-allowed disabled:bg-gray-300"
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--engine-accent-strong)] px-3 py-2 text-sm font-black text-white transition hover:bg-[#008f79] disabled:cursor-not-allowed disabled:bg-gray-300"
                 >
                   {busy ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
                   Guardar ZIP

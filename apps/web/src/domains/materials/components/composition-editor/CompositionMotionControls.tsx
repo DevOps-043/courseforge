@@ -20,6 +20,7 @@ import {
   COMPOSITION_MOTION_EASES,
   type CompositionAnimation,
 } from "@/domains/production/composition-editor/composition-motion.types";
+import { EngineSelect } from "@/components/ui/EngineSelect";
 
 type CompositionMotionPatchHandler = (
   operations: CompositionEditorPatchOperation[],
@@ -429,15 +430,12 @@ function MotionKeyframeEditor({
         {index > 0 && (
           <label className="col-span-2 text-[8px] uppercase text-slate-400">
             Easing
-            <select
+            <EngineSelect
               value={ease}
-              onChange={(event) => setEase(event.target.value as typeof COMPOSITION_MOTION_EASES[number])}
-              className="mt-0.5 w-full rounded border border-slate-200 px-1 py-0.5 text-[9px] normal-case text-slate-800 dark:border-white/10 dark:bg-slate-900 dark:text-white"
-            >
-              {COMPOSITION_MOTION_EASES.map((value) => (
-                <option key={value} value={value}>{value}</option>
-              ))}
-            </select>
+              onValueChange={(value) => setEase(value as typeof COMPOSITION_MOTION_EASES[number])}
+              className="mt-0.5 normal-case"
+              options={COMPOSITION_MOTION_EASES.map((value) => ({ value, label: value }))}
+            />
           </label>
         )}
       </div>

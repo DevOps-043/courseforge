@@ -125,22 +125,22 @@ export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
                             className={`
                                 border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all duration-300
                                 ${isDragActive
-                                    ? 'border-[#00D4B3] bg-[#00D4B3]/5'
-                                    : 'border-gray-200 dark:border-[#6C757D]/30 hover:border-[#1F5AF6] hover:bg-gray-50 dark:hover:bg-[#151A21]'
+                                    ? 'border-[var(--engine-accent)] bg-[var(--engine-accent)]/5'
+                                    : 'border-gray-200 dark:border-[var(--engine-muted)]/30 hover:border-[var(--engine-info)] hover:bg-gray-50 dark:hover:bg-[var(--engine-surface-solid)]'
                                 }
                             `}
                         >
                             <input {...getInputProps()} />
-                            <div className="w-16 h-16 rounded-full bg-[#1F5AF6]/10 flex items-center justify-center mx-auto mb-4 text-[#1F5AF6]">
+                            <div className="w-16 h-16 rounded-full bg-[var(--engine-info)]/10 flex items-center justify-center mx-auto mb-4 text-[var(--engine-info)]">
                                 <Upload size={32} />
                             </div>
                             <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
                                 {isDragActive ? 'Suelta el archivo aquí...' : 'Arrastra tu paquete SCORM aquí'}
                             </h3>
-                            <p className="text-gray-500 dark:text-[#94A3B8] mb-6">
+                            <p className="text-gray-500 dark:text-[var(--engine-text-muted)] mb-6">
                                 Soporta archivos .zip (SCORM 1.2 o 2004)
                             </p>
-                            <button className="px-6 py-2 bg-white dark:bg-[#1E2329] border border-gray-200 dark:border-[#6C757D]/30 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-[#2C333A] transition-colors">
+                            <button className="px-6 py-2 bg-white dark:bg-[var(--engine-surface-hover)] border border-gray-200 dark:border-[var(--engine-muted)]/30 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-[#2C333A] transition-colors">
                                 Seleccionar Archivo
                             </button>
                         </div>
@@ -164,7 +164,7 @@ export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
                         <div className="w-20 h-20 relative mx-auto mb-6">
                             <svg className="w-full h-full" viewBox="0 0 100 100">
                                 <circle
-                                    className="text-gray-200 dark:text-[#6C757D]/20 stroke-current"
+                                    className="text-gray-200 dark:text-[var(--engine-muted)]/20 stroke-current"
                                     strokeWidth="8"
                                     cx="50"
                                     cy="50"
@@ -172,7 +172,7 @@ export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
                                     fill="transparent"
                                 />
                                 <circle
-                                    className="text-[#1F5AF6] stroke-current transition-all duration-300"
+                                    className="text-[var(--engine-info)] stroke-current transition-all duration-300"
                                     strokeWidth="8"
                                     strokeLinecap="round"
                                     cx="50"
@@ -184,14 +184,14 @@ export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
                                     transform="rotate(-90 50 50)"
                                 />
                             </svg>
-                            <div className="absolute inset-0 flex items-center justify-center text-sm font-bold text-[#1F5AF6]">
+                            <div className="absolute inset-0 flex items-center justify-center text-sm font-bold text-[var(--engine-info)]">
                                 {progress}%
                             </div>
                         </div>
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
                             {step === 'uploading' ? 'Subiendo paquete...' : 'Analizando estructura...'}
                         </h3>
-                        <p className="text-gray-500 dark:text-[#94A3B8]">
+                        <p className="text-gray-500 dark:text-[var(--engine-text-muted)]">
                             Esto puede tomar unos momentos dependiendo del tamaño.
                         </p>
                     </motion.div>
@@ -204,23 +204,23 @@ export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
                         animate={{ opacity: 1, scale: 1 }}
                         className="space-y-6"
                     >
-                        <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/30 rounded-2xl p-6 shadow-xl">
-                            <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-100 dark:border-[#6C757D]/10">
-                                <div className="w-12 h-12 rounded-xl bg-[#00D4B3]/10 flex items-center justify-center text-[#00D4B3]">
+                        <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/30 rounded-2xl p-6 shadow-xl">
+                            <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-100 dark:border-[var(--engine-muted)]/10">
+                                <div className="w-12 h-12 rounded-xl bg-[var(--engine-accent)]/10 flex items-center justify-center text-[var(--engine-accent)]">
                                     <CheckCircle2 size={24} />
                                 </div>
                                 <div>
                                     <h3 className="text-lg font-bold text-gray-900 dark:text-white">Análisis Completado</h3>
-                                    <p className="text-sm text-gray-500 dark:text-[#94A3B8]">
+                                    <p className="text-sm text-gray-500 dark:text-[var(--engine-text-muted)]">
                                         Hemos detectado la siguiente estructura en tu paquete SCORM {manifest.version}.
                                     </p>
                                 </div>
                             </div>
 
                             <div className="space-y-4">
-                                <div className="p-4 bg-gray-50 dark:bg-[#0F1419] rounded-xl border border-gray-200 dark:border-[#6C757D]/10">
+                                <div className="p-4 bg-gray-50 dark:bg-[var(--engine-canvas)] rounded-xl border border-gray-200 dark:border-[var(--engine-muted)]/10">
                                     <h4 className="flex items-center gap-2 font-medium text-gray-900 dark:text-white mb-2">
-                                        <Database size={16} className="text-[#1F5AF6]" />
+                                        <Database size={16} className="text-[var(--engine-info)]" />
                                         {manifest.title}
                                     </h4>
                                     <div className="pl-6 space-y-2">
@@ -251,7 +251,7 @@ export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
 
                         <button
                             onClick={handleConfirm}
-                            className="w-full py-4 bg-[#1F5AF6] hover:bg-[#1F5AF6]/90 text-white rounded-xl font-bold shadow-lg shadow-[#1F5AF6]/25 flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5"
+                            className="w-full py-4 bg-[var(--engine-info)] hover:bg-[var(--engine-info)]/90 text-white rounded-xl font-bold shadow-lg shadow-[var(--engine-info)]/25 flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5"
                         >
                             <span>Comenzar Importación e IA</span>
                             <ArrowRight size={20} />

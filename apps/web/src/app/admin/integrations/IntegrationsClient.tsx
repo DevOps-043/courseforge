@@ -60,22 +60,30 @@ export default function IntegrationsClient({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Integraciones</h1>
-        <p className="mt-2 text-sm text-gray-600 dark:text-[#94A3B8]">
+      <div className="engine-page-hero">
+        <p className="engine-eyebrow">Ecosistema conectado</p>
+        <h1 className="text-3xl">Integraciones</h1>
+        <p className="mt-2 max-w-3xl text-sm">
           Administra servicios externos para {organizationLabel}. Estas conexiones solo aplican para esta empresa.
         </p>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="engine-integration-registry">
+        <div className="engine-integration-registry__header">
+          <div>
+            <p className="engine-eyebrow !mb-1 !text-[var(--engine-text-muted)]">Directorio de servicios</p>
+            <h2>Conectores de la organización</h2>
+          </div>
+          <span>{connections.length + 1} proveedores</span>
+        </div>
         {connections.map((connection) => (
           <section
             key={connection.provider}
-            className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:border-[#00D4B3]/40 dark:border-white/5 dark:bg-[#151A21]"
+            className="engine-integration-row"
           >
-            <div className="flex items-start justify-between gap-4">
+            <div className="engine-integration-row__main">
               <div className="flex items-start gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#00D4B3]/10 text-[#00A98F] dark:text-[#00D4B3]">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--engine-accent)]/10 text-[var(--engine-accent-strong)] dark:text-[var(--engine-accent)]">
                   <Cloud size={24} />
                 </div>
                 <div>
@@ -100,23 +108,26 @@ export default function IntegrationsClient({
               )}
             </div>
 
+            <div className="engine-integration-row__details">
             {connection.connected && connection.email ? (
-              <p className="mt-5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+              <p className="engine-integration-note engine-integration-note--success">
                 Conectado como {connection.email}
               </p>
             ) : null}
 
             {connection.needsReconnect ? (
-              <p className="mt-5 flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+              <p className="engine-integration-note engine-integration-note--warning">
                 <TriangleAlert className="mt-0.5 shrink-0" size={16} />
                 Hay una conexion legacy para tu usuario. Reconecta esta cuenta para usarla por empresa.
               </p>
             ) : null}
 
-            <div className="mt-6 flex flex-wrap gap-3">
+            </div>
+
+            <div className="engine-integration-row__actions">
               <CloudStorageConnectButton
                 provider={connection.provider}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#1F5AF6] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#1F5AF6]/15 transition hover:bg-[#1a4bd6]"
+                className="engine-button engine-button--primary"
               >
                 <RefreshCw size={16} />
                 {connection.connected ? "Cambiar cuenta" : "Vincular cuenta"}
@@ -127,7 +138,7 @@ export default function IntegrationsClient({
                   type="button"
                   disabled={disconnectingProvider === connection.provider}
                   onClick={() => handleDisconnect(connection.provider)}
-                  className="inline-flex items-center gap-2 rounded-xl border border-red-500/30 px-4 py-2.5 text-sm font-semibold text-red-500 transition hover:bg-red-500/5 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-red-500/10"
+                  className="engine-button engine-button--danger"
                 >
                   <Unplug size={16} />
                   {disconnectingProvider === connection.provider ? "Desvinculando..." : "Desvincular"}
