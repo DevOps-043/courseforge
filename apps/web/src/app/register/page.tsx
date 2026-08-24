@@ -59,11 +59,11 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0F1419] flex items-center justify-center p-4 lg:p-10 font-sans selection:bg-[#00D4B3] selection:text-[#0F1419] overflow-hidden">
+    <div className="min-h-screen bg-[var(--engine-canvas)] flex items-center justify-center p-4 lg:p-10 font-sans selection:bg-[var(--engine-accent)] selection:text-[var(--engine-canvas)] overflow-hidden">
       {/* Ambient Glows */}
       <div className="fixed inset-0 pointer-events-none">
-         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-[#0A2540]/20 rounded-full blur-[120px]" />
-         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#00D4B3]/5 rounded-full blur-[120px]" />
+         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-[var(--engine-primary)]/20 rounded-full blur-[120px]" />
+         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[var(--engine-accent)]/5 rounded-full blur-[120px]" />
       </div>
 
       <div className="w-full max-w-7xl px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center justify-items-center relative z-10">
@@ -87,12 +87,12 @@ export default function RegisterPage() {
 
         {/* Right Column: Register Form */}
         <div className="w-full flex justify-center lg:justify-start order-2 lg:order-2">
-          <div className="w-full max-w-lg bg-[#1E2329] border border-[#6C757D]/20 rounded-2xl p-6 sm:p-8 lg:p-10 shadow-2xl mx-auto lg:mx-0">
+          <div className="w-full max-w-lg bg-[var(--engine-surface-hover)] border border-[var(--engine-muted)]/20 rounded-2xl p-6 sm:p-8 lg:p-10 shadow-2xl mx-auto lg:mx-0">
             
             <div className="mb-6 text-center">
               <h1 className="text-3xl font-bold text-white mb-2">Crear Cuenta</h1>
-              <p className="text-[#94A3B8]">
-                Únete para <span className="text-[#00D4B3]">comenzar a construir</span>
+              <p className="text-[var(--engine-text-muted)]">
+                Únete para <span className="text-[var(--engine-accent)]">comenzar a construir</span>
               </p>
             </div>
 
@@ -107,25 +107,25 @@ export default function RegisterPage() {
               {/* Nombres y Apellidos */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-[#94A3B8] ml-1">Nombre</label>
+                    <label className="text-xs font-medium text-[var(--engine-text-muted)] ml-1">Nombre</label>
                     <input 
                         type="text" 
                         name="firstName"
                         value={formData.firstName}
                         onChange={handleChange}
-                        className="w-full bg-[#0A0D12] border border-[#6C757D]/20 rounded-xl py-3 px-4 text-white placeholder-gray-600 focus:outline-none focus:border-[#00D4B3]/50 focus:ring-1 focus:ring-[#00D4B3]/50 transition-all text-sm"
+                        className="w-full bg-[#0A0D12] border border-[var(--engine-muted)]/20 rounded-xl py-3 px-4 text-white placeholder-gray-600 focus:outline-none focus:border-[var(--engine-accent)]/50 focus:ring-1 focus:ring-[var(--engine-accent)]/50 transition-all text-sm"
                         placeholder="Tu Nombre"
                         required
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-[#94A3B8] ml-1">Username</label>
+                    <label className="text-xs font-medium text-[var(--engine-text-muted)] ml-1">Username</label>
                     <input 
                         type="text" 
                         name="username"
                         value={formData.username}
                         onChange={handleChange}
-                        className="w-full bg-[#0A0D12] border border-[#6C757D]/20 rounded-xl py-3 px-4 text-white placeholder-gray-600 focus:outline-none focus:border-[#00D4B3]/50 focus:ring-1 focus:ring-[#00D4B3]/50 transition-all text-sm"
+                        className="w-full bg-[#0A0D12] border border-[var(--engine-muted)]/20 rounded-xl py-3 px-4 text-white placeholder-gray-600 focus:outline-none focus:border-[var(--engine-accent)]/50 focus:ring-1 focus:ring-[var(--engine-accent)]/50 transition-all text-sm"
                         placeholder="@usuario"
                         required
                     />
@@ -134,25 +134,25 @@ export default function RegisterPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-[#94A3B8] ml-1">Apellido Paterno</label>
+                    <label className="text-xs font-medium text-[var(--engine-text-muted)] ml-1">Apellido Paterno</label>
                     <input 
                         type="text" 
                         name="lastNameFather"
                         value={formData.lastNameFather}
                         onChange={handleChange}
-                        className="w-full bg-[#0A0D12] border border-[#6C757D]/20 rounded-xl py-3 px-4 text-white placeholder-gray-600 focus:outline-none focus:border-[#00D4B3]/50 focus:ring-1 focus:ring-[#00D4B3]/50 transition-all text-sm"
+                        className="w-full bg-[#0A0D12] border border-[var(--engine-muted)]/20 rounded-xl py-3 px-4 text-white placeholder-gray-600 focus:outline-none focus:border-[var(--engine-accent)]/50 focus:ring-1 focus:ring-[var(--engine-accent)]/50 transition-all text-sm"
                         placeholder="Paterno"
                         required
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-[#94A3B8] ml-1">Apellido Materno</label>
+                    <label className="text-xs font-medium text-[var(--engine-text-muted)] ml-1">Apellido Materno</label>
                     <input 
                         type="text" 
                         name="lastNameMother"
                         value={formData.lastNameMother}
                         onChange={handleChange}
-                        className="w-full bg-[#0A0D12] border border-[#6C757D]/20 rounded-xl py-3 px-4 text-white placeholder-gray-600 focus:outline-none focus:border-[#00D4B3]/50 focus:ring-1 focus:ring-[#00D4B3]/50 transition-all text-sm"
+                        className="w-full bg-[#0A0D12] border border-[var(--engine-muted)]/20 rounded-xl py-3 px-4 text-white placeholder-gray-600 focus:outline-none focus:border-[var(--engine-accent)]/50 focus:ring-1 focus:ring-[var(--engine-accent)]/50 transition-all text-sm"
                         placeholder="Materno"
                         required
                     />
@@ -161,9 +161,9 @@ export default function RegisterPage() {
 
               {/* Email Input */}
               <div className="space-y-1">
-                <label className="text-xs font-medium text-[#94A3B8] ml-1">Correo electrónico</label>
+                <label className="text-xs font-medium text-[var(--engine-text-muted)] ml-1">Correo electrónico</label>
                 <div className="relative group">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6C757D] group-focus-within:text-[#00D4B3] transition-colors">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--engine-muted)] group-focus-within:text-[var(--engine-accent)] transition-colors">
                     <Mail size={18} />
                   </div>
                   <input 
@@ -171,7 +171,7 @@ export default function RegisterPage() {
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
-                    className="w-full bg-[#0A0D12] border border-[#6C757D]/20 rounded-xl py-3 pl-10 pr-4 text-white placeholder-gray-600 focus:outline-none focus:border-[#00D4B3]/50 focus:ring-1 focus:ring-[#00D4B3]/50 transition-all text-sm"
+                    className="w-full bg-[#0A0D12] border border-[var(--engine-muted)]/20 rounded-xl py-3 pl-10 pr-4 text-white placeholder-gray-600 focus:outline-none focus:border-[var(--engine-accent)]/50 focus:ring-1 focus:ring-[var(--engine-accent)]/50 transition-all text-sm"
                     placeholder="tu@correo.com"
                     required
                   />
@@ -180,9 +180,9 @@ export default function RegisterPage() {
 
               {/* Password Input */}
               <div className="space-y-1">
-                <label className="text-xs font-medium text-[#94A3B8] ml-1">Contraseña</label>
+                <label className="text-xs font-medium text-[var(--engine-text-muted)] ml-1">Contraseña</label>
                 <div className="relative group">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6C757D] group-focus-within:text-[#00D4B3] transition-colors">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--engine-muted)] group-focus-within:text-[var(--engine-accent)] transition-colors">
                     <Lock size={18} />
                   </div>
                   <input 
@@ -190,14 +190,14 @@ export default function RegisterPage() {
                     name="password"
                     value={formData.password}
                     onChange={handleChange}
-                    className="w-full bg-[#0A0D12] border border-[#6C757D]/20 rounded-xl py-3 pl-10 pr-10 text-white placeholder-gray-600 focus:outline-none focus:border-[#00D4B3]/50 focus:ring-1 focus:ring-[#00D4B3]/50 transition-all text-sm"
+                    className="w-full bg-[#0A0D12] border border-[var(--engine-muted)]/20 rounded-xl py-3 pl-10 pr-10 text-white placeholder-gray-600 focus:outline-none focus:border-[var(--engine-accent)]/50 focus:ring-1 focus:ring-[var(--engine-accent)]/50 transition-all text-sm"
                     placeholder="••••••••"
                     required
                   />
                   <button 
                     type="button" 
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-[#6C757D] hover:text-white transition-colors"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--engine-muted)] hover:text-white transition-colors"
                   >
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
@@ -209,7 +209,7 @@ export default function RegisterPage() {
                 <Button 
                     type="submit" 
                     disabled={isLoading}
-                    className="w-full bg-[#0A2540] hover:bg-[#0d2f4d] disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl shadow-lg shadow-[#0A2540]/25 transition-all active:scale-[0.98] flex items-center justify-center gap-2 group border border-[#0A2540]"
+                    className="w-full bg-[var(--engine-primary)] hover:bg-[#0d2f4d] disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl shadow-lg shadow-[var(--engine-primary)]/25 transition-all active:scale-[0.98] flex items-center justify-center gap-2 group border border-[var(--engine-primary)]"
                 >
                     {isLoading ? (
                     <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -223,9 +223,9 @@ export default function RegisterPage() {
               </div>
 
               <div className="text-center mt-4">
-                  <p className="text-xs text-[#94A3B8]">
+                  <p className="text-xs text-[var(--engine-text-muted)]">
                       ¿Ya tienes cuenta?{' '}
-                      <Link href="/login" className="text-[#00D4B3] hover:underline hover:text-[#00bda0] transition-colors">
+                      <Link href="/login" className="text-[var(--engine-accent)] hover:underline hover:text-[var(--engine-accent-hover)] transition-colors">
                           Iniciar Sesión
                       </Link>
                   </p>

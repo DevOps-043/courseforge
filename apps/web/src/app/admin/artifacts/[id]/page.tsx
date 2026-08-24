@@ -31,7 +31,7 @@ export default async function ArtifactDetailPage({
 
   return (
     <div id="artifact-detail-page" className="max-w-6xl mx-auto space-y-6 pb-20 transition-all duration-300">
-      <div id="artifact-detail-breadcrumbs" className="flex items-center gap-4 text-sm text-gray-500 dark:text-[#94A3B8]">
+      <div id="artifact-detail-breadcrumbs" className="flex items-center gap-4 text-sm text-gray-500 dark:text-[var(--engine-text-muted)]">
         <Link
           href="/admin/artifacts"
           className="hover:text-gray-900 dark:hover:text-white flex items-center gap-1 transition-colors"
@@ -39,7 +39,7 @@ export default async function ArtifactDetailPage({
           <ArrowLeft size={16} />
           Volver a Artefactos
         </Link>
-        <span className="text-gray-300 dark:text-[#6C757D]">/</span>
+        <span className="text-gray-300 dark:text-[var(--engine-muted)]">/</span>
         <span className="text-gray-900 dark:text-white truncate max-w-xs">
           {artifact.idea_central}
         </span>

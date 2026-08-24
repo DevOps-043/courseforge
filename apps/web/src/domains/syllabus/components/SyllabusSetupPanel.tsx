@@ -54,8 +54,8 @@ export function SyllabusSetupPanel({
                 p-6 rounded-xl border-2 text-left transition-all relative overflow-hidden group
                 ${
                   isActive
-                    ? "border-[#00D4B3] bg-[#00D4B3]/5"
-                    : "border-gray-200 dark:border-white/5 bg-white dark:bg-[#1E2329] hover:bg-gray-50 dark:hover:bg-white/5"
+                    ? "border-[var(--engine-accent)] bg-[var(--engine-accent)]/5"
+                    : "border-gray-200 dark:border-white/5 bg-white dark:bg-[var(--engine-surface-hover)] hover:bg-gray-50 dark:hover:bg-white/5"
                 }
               `}
             >
@@ -63,7 +63,7 @@ export function SyllabusSetupPanel({
                 <div
                   className={`p-1.5 rounded ${
                     isActive
-                      ? "bg-[#00D4B3] text-[#0A2540]"
+                      ? "bg-[var(--engine-accent)] text-[var(--engine-primary)]"
                       : "bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400"
                   }`}
                 >
@@ -96,7 +96,7 @@ export function SyllabusSetupPanel({
               </p>
 
               {isActive && (
-                <div className="absolute top-4 right-4 w-2 h-2 rounded-full bg-[#00D4B3] shadow-[0_0_10px_#00D4B3]" />
+                <div className="absolute top-4 right-4 w-2 h-2 rounded-full bg-[var(--engine-accent)] shadow-[0_0_10px_var(--engine-accent)]" />
               )}
             </button>
           );
@@ -106,7 +106,7 @@ export function SyllabusSetupPanel({
       <div className="mt-2">
         {activeTab === "GENERATE" && (
           <div className="space-y-6">
-            <div className="bg-white dark:bg-[#1E2329] border border-gray-200 dark:border-white/5 rounded-2xl p-6">
+            <div className="bg-white dark:bg-[var(--engine-surface-hover)] border border-gray-200 dark:border-white/5 rounded-2xl p-6">
               <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-6">
                 Método de Generación
               </h4>
@@ -122,7 +122,7 @@ export function SyllabusSetupPanel({
                 w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-all
                 ${
                   route
-                    ? "bg-[#00D4B3] text-[#0A2540] hover:bg-[#00bda0] shadow-[0_4px_20px_rgba(0,212,179,0.2)]"
+                    ? "bg-[var(--engine-accent)] text-[var(--engine-primary)] hover:bg-[var(--engine-accent-hover)] shadow-[0_4px_20px_rgba(0,212,179,0.2)]"
                     : "bg-gray-200 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed"
                 }
               `}

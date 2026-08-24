@@ -109,7 +109,7 @@ export function IterationPanel({
                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
                                 selectAll
                                     ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
-                                    : 'bg-white dark:bg-[#1E2329] text-orange-700 dark:text-orange-400 border-orange-300 dark:border-orange-700 hover:bg-orange-100 dark:hover:bg-orange-900/30'
+                                    : 'bg-white dark:bg-[var(--engine-surface-hover)] text-orange-700 dark:text-orange-400 border-orange-300 dark:border-orange-700 hover:bg-orange-100 dark:hover:bg-orange-900/30'
                             }`}
                         >
                             {selectAll ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
@@ -129,7 +129,7 @@ export function IterationPanel({
                                             ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
                                             : selectAll
                                                 ? 'bg-orange-100/50 dark:bg-orange-900/10 text-orange-500 dark:text-orange-500 border-orange-200 dark:border-orange-800/50 opacity-60'
-                                                : 'bg-white dark:bg-[#1E2329] text-orange-700 dark:text-orange-400 border-orange-300 dark:border-orange-700 hover:bg-orange-100 dark:hover:bg-orange-900/30'
+                                                : 'bg-white dark:bg-[var(--engine-surface-hover)] text-orange-700 dark:text-orange-400 border-orange-300 dark:border-orange-700 hover:bg-orange-100 dark:hover:bg-orange-900/30'
                                     }`}
                                 >
                                     {isSelected ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
@@ -155,7 +155,7 @@ export function IterationPanel({
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
                 placeholder="Opcional: El quiz necesita al menos 3 preguntas y explicaciones más claras."
-                className="w-full p-3 text-sm border border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-[#1E2329] text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none"
+                className="w-full p-3 text-sm border border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-[var(--engine-surface-hover)] text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none"
                 rows={3}
                 disabled={isSubmitting}
             />

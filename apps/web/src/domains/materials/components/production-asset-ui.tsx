@@ -14,24 +14,24 @@ import type {
 
 export const PRODUCTION_THEME = {
   workspaceHeader:
-    "flex h-16 shrink-0 items-center border-b border-slate-200 bg-white px-5 text-slate-900 shadow-sm dark:border-white/10 dark:bg-[#151A21] dark:text-white",
+    "flex h-16 shrink-0 items-center border-b border-slate-200 bg-white px-5 text-slate-900 shadow-sm dark:border-white/10 dark:bg-[var(--engine-surface-solid)] dark:text-white",
   card:
-    "overflow-hidden rounded-2xl border bg-white dark:bg-[#151A21]",
+    "overflow-hidden rounded-2xl border bg-white dark:bg-[var(--engine-surface-solid)]",
   cardBorder: {
-    default: "border-gray-200 dark:border-[#6C757D]/10",
+    default: "border-gray-200 dark:border-[var(--engine-muted)]/10",
     completed: "border-green-300 dark:border-green-500/30",
   },
   header:
-    "border-b border-gray-200 bg-gray-50 px-6 py-4 dark:border-[#6C757D]/10 dark:bg-[#1A2027]",
+    "border-b border-gray-200 bg-gray-50 px-6 py-4 dark:border-[var(--engine-muted)]/10 dark:bg-[#1A2027]",
   sectionTitle: "text-xs font-bold text-gray-700 dark:text-[#E9ECEF]",
   primaryText: "text-gray-900 dark:text-white",
-  secondaryText: "text-gray-600 dark:text-[#6C757D]",
+  secondaryText: "text-gray-600 dark:text-[var(--engine-muted)]",
   panel:
-    "rounded-xl border border-gray-200 bg-white dark:border-[#6C757D]/10 dark:bg-[#0F1419]",
+    "rounded-xl border border-gray-200 bg-white dark:border-[var(--engine-muted)]/10 dark:bg-[var(--engine-canvas)]",
   panelMuted:
-    "rounded-xl border border-gray-200 bg-gray-50 dark:border-[#6C757D]/10 dark:bg-[#0F1419]/50",
+    "rounded-xl border border-gray-200 bg-gray-50 dark:border-[var(--engine-muted)]/10 dark:bg-[var(--engine-canvas)]/50",
   input:
-    "rounded-lg border border-gray-300 bg-white text-xs text-gray-900 placeholder-gray-400 focus:border-[#1F5AF6] focus:outline-none dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white dark:placeholder-gray-500",
+    "rounded-lg border border-gray-300 bg-white text-xs text-gray-900 placeholder-gray-400 focus:border-[var(--engine-info)] focus:outline-none dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)] dark:text-white dark:placeholder-gray-500",
   actionPurple:
     "border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 dark:border-purple-500/20 dark:bg-purple-500/10 dark:text-purple-400 dark:hover:bg-purple-500/20",
   actionPurpleStrong:
@@ -39,9 +39,9 @@ export const PRODUCTION_THEME = {
   actionPurpleMutedText: "text-purple-600 dark:text-gray-400",
   successLink:
     "text-green-700 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300",
-  divider: "border-gray-200 dark:border-[#6C757D]/10",
+  divider: "border-gray-200 dark:border-[var(--engine-muted)]/10",
   modal:
-    "relative h-[80vh] w-full max-w-6xl overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-[#6C757D]/20 dark:bg-[#151A21]",
+    "relative h-[80vh] w-full max-w-6xl overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-surface-solid)]",
 } as const;
 
 export function getProductionStatusBadge(
@@ -157,7 +157,7 @@ export function ProductionStoryboardViewer({
       <div className="space-y-4">
         {content.storyboard?.map((item, index) => (
           <div key={index} className="flex gap-3 text-sm">
-            <span className="text-[#1F5AF6] font-mono shrink-0">
+            <span className="text-[var(--engine-info)] font-mono shrink-0">
               {item.timecode_start}
             </span>
             <div className="flex-1">

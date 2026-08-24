@@ -143,7 +143,7 @@ export function SyllabusViewer({
 
   if (!modules.length) {
     return (
-      <div className="p-12 text-center text-gray-500 bg-gray-50 dark:bg-[#151A21] rounded-2xl border border-dashed border-gray-300 dark:border-gray-700">
+      <div className="p-12 text-center text-gray-500 bg-gray-50 dark:bg-[var(--engine-surface-solid)] rounded-2xl border border-dashed border-gray-300 dark:border-gray-700">
         <p>No se ha generado contenido para el temario.</p>
       </div>
     );
@@ -156,7 +156,7 @@ export function SyllabusViewer({
           onClick={() => setActiveTab("SYLLABUS")}
           className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors relative top-[1px] ${
             activeTab === "SYLLABUS"
-              ? "text-gray-900 dark:text-white border-b-2 border-[#00D4B3]"
+              ? "text-gray-900 dark:text-white border-b-2 border-[var(--engine-accent)]"
               : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
           }`}
         >
@@ -166,14 +166,14 @@ export function SyllabusViewer({
           onClick={() => setActiveTab("VALIDATION")}
           className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors relative top-[1px] flex items-center gap-2 ${
             activeTab === "VALIDATION"
-              ? "text-gray-900 dark:text-white border-b-2 border-[#00D4B3]"
+              ? "text-gray-900 dark:text-white border-b-2 border-[var(--engine-accent)]"
               : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
           }`}
         >
           <span>Validación & Fuentes</span>
           {validation?.automatic_pass && (
             <svg
-              className="w-4 h-4 text-[#00D4B3]"
+              className="w-4 h-4 text-[var(--engine-accent)]"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -195,7 +195,7 @@ export function SyllabusViewer({
 
       {activeTab === "SYLLABUS" && (
         <>
-          <div className="flex items-center gap-4 bg-white dark:bg-[#151A21] border border-gray-200 dark:border-white/5 p-4 rounded-xl text-sm justify-between">
+          <div className="flex items-center gap-4 bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-white/5 p-4 rounded-xl text-sm justify-between">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 text-gray-600 dark:text-white/70">
                 <svg
@@ -236,7 +236,7 @@ export function SyllabusViewer({
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <span className="bg-[#00D4B3]/10 text-[#00D4B3] px-2 py-1 rounded text-xs font-bold border border-[#00D4B3]/20">
+              <span className="bg-[var(--engine-accent)]/10 text-[var(--engine-accent)] px-2 py-1 rounded text-xs font-bold border border-[var(--engine-accent)]/20">
                 Validación OK
               </span>
             </div>

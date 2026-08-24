@@ -15,12 +15,12 @@ export function SyllabusGenerationHeader({
   const cleanTitle = cleanCourseTitle(ideaCentral);
 
   return (
-    <div className="bg-white dark:bg-[#1E2329] rounded-2xl border border-gray-200 dark:border-white/5 p-8 relative overflow-hidden">
+    <div className="bg-white dark:bg-[var(--engine-surface-hover)] rounded-2xl border border-gray-200 dark:border-white/5 p-8 relative overflow-hidden">
       <div className="relative z-10">
         <div className="flex items-center gap-4 mb-4">
-          <div className="p-2.5 bg-[#00D4B3]/10 rounded-xl flex-shrink-0">
+          <div className="p-2.5 bg-[var(--engine-accent)]/10 rounded-xl flex-shrink-0">
             <svg
-              className="w-6 h-6 text-[#00D4B3]"
+              className="w-6 h-6 text-[var(--engine-accent)]"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -50,7 +50,7 @@ export function SyllabusGenerationHeader({
           . Puedes generar con IA o importar un temario existente.
         </p>
       </div>
-      <div className="absolute top-0 right-0 w-64 h-64 bg-[#0A2540] opacity-5 dark:opacity-20 blur-[100px] rounded-full pointer-events-none" />
+      <div className="absolute top-0 right-0 w-64 h-64 bg-[var(--engine-primary)] opacity-5 dark:opacity-20 blur-[100px] rounded-full pointer-events-none" />
     </div>
   );
 }

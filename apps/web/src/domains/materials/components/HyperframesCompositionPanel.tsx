@@ -8,6 +8,7 @@ import {
   type CompositionStudioAsset,
   type CompositionStudioLesson,
 } from "./composition-editor/NativeCompositionPreview";
+import { EngineSelect } from "@/components/ui/EngineSelect";
 
 interface VideoAsset {
   checksum: string;
@@ -262,23 +263,23 @@ export function HyperframesCompositionPanel({
   void submitRender;
 
   return (
-    <section className={draftId ? "flex h-full min-h-0 flex-col [&>p]:hidden" : "space-y-5 rounded-xl border border-[#00D4B3]/40 bg-[#00D4B3]/5 p-4 dark:border-[#00D4B3]/25 dark:bg-[#00D4B3]/[0.04]"}>
+    <section className={draftId ? "flex h-full min-h-0 flex-col [&>p]:hidden" : "space-y-5 rounded-xl border border-[var(--engine-accent)]/40 bg-[var(--engine-accent)]/5 p-4 dark:border-[var(--engine-accent)]/25 dark:bg-[var(--engine-accent)]/[0.04]"}>
       <div className={draftId ? "hidden" : "flex flex-wrap items-start justify-between gap-3"}>
         <div>
-          <h4 className="flex items-center gap-2 text-base font-bold text-[#0A2540] dark:text-[#00D4B3]"><Sparkles size={17} /> Estudio de video</h4>
+          <h4 className="flex items-center gap-2 text-base font-bold text-[var(--engine-primary)] dark:text-[var(--engine-accent)]"><Sparkles size={17} /> Estudio de video</h4>
           <p className="mt-1 text-xs text-slate-600 dark:text-gray-400">Los assets vienen del paso de Producción y se vinculan automáticamente al video seleccionado.</p>
         </div>
         <button type="button" onClick={() => void loadInitialData()} disabled={busy !== null} className="rounded-lg p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white" title="Actualizar assets"><RefreshCw className={busy === "prepare" ? "animate-spin" : ""} size={15} /></button>
       </div>
 
-      <div className={draftId ? "hidden" : "rounded-lg border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-[#0F1419]"}>
+      <div className={draftId ? "hidden" : "rounded-lg border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-[var(--engine-canvas)]"}>
         <div className="mb-2 flex items-center justify-between gap-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-gray-400">Assets vinculados ({assets.length})</p><span className={`text-[11px] ${hasAggregateSizeError ? "font-semibold text-red-700 dark:text-red-300" : "text-slate-500 dark:text-gray-500"}`}>{formatBytes(totalAssetBytes)} en total</span></div>
         {busy === "prepare" ? <p className="flex items-center gap-2 text-xs text-slate-500 dark:text-gray-400"><Loader2 className="animate-spin" size={14} /> Preparando assets de Producción…</p> : assets.length === 0 && !animatedDeck ? <p className="text-xs text-amber-700 dark:text-amber-300">No hay medios internos compatibles para este video. Agrégalos en el paso de Producción y vuelve aquí.</p> : <><div className="grid max-h-44 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">{assets.map((asset) => <div key={asset.productionAssetId} className={`rounded-lg border p-2 text-xs ${asset.eligibleForRevision ? "border-slate-200 bg-slate-50 text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-gray-300" : "border-red-300 bg-red-50 text-red-900 dark:border-red-400/40 dark:bg-red-500/10 dark:text-red-100"}`}><div className="flex items-center gap-2"><Film size={13} className={`shrink-0 ${asset.eligibleForRevision ? "text-cyan-600 dark:text-cyan-300" : "text-red-600 dark:text-red-300"}`} /><span className="min-w-0 flex-1 truncate">{asset.metadata.file_name || asset.mimeType}</span><span className="text-[10px]">{formatBytes(asset.fileSizeBytes)}</span></div><p className="mt-1 text-[10px] text-slate-500 dark:text-gray-400">{asset.sourceType === "DECK_DEPENDENCY" ? "Recurso interno del deck HTML" : "Medio cargado en Producción"}</p>{asset.validationErrors.map((error) => <p key={error} className="mt-1 text-[10px] leading-4 text-red-700 dark:text-red-200">{error}</p>)}</div>)}</div>{hasAssetSizeErrors && <div role="alert" className="mt-3 rounded-lg border border-red-300 bg-red-50 p-3 text-xs text-red-900 dark:border-red-400/40 dark:bg-red-500/10 dark:text-red-100"><p className="flex items-center gap-2 font-bold"><AlertTriangle size={15} /> Preview bloqueado por límite de espacio</p><p className="mt-1 leading-5">{sizeErrorMessage}</p>{hasAggregateSizeError && <p className="mt-1 leading-5">El conjunto trazable ocupa {formatBytes(totalAssetBytes)}; el límite del render es 200 MB.</p>}</div>}{animatedDeck && <p className="mt-2 text-xs text-cyan-700 dark:text-cyan-300">Deck HTML animado: {animatedDeck.slideCount} diapositivas · {animatedDeck.animationCount} animaciones. Se mantiene como HTML, no se rasteriza.</p>}</>}
       </div>
 
       <div className={draftId ? "hidden" : "grid gap-3 md:grid-cols-2"}>
-        <label className="text-xs text-slate-600 dark:text-gray-400">Modo de creación<select value={generationMode} onChange={(event) => setGenerationMode(event.target.value as "AUTOMATIC" | "AGENT_ASSISTED")} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900 dark:border-white/10 dark:bg-[#0F1419] dark:text-white"><option value="AUTOMATIC">Automático</option><option value="AGENT_ASSISTED">Asistido por agente</option></select></label>
-        <label className="text-xs text-slate-600 dark:text-gray-400">Instrucción al agente (opcional)<input value={agentInstruction} onChange={(event) => setAgentInstruction(event.target.value)} maxLength={1000} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-white/10 dark:bg-[#0F1419] dark:text-white" placeholder="Ej. tono sobrio y directo" /></label>
+        <label className="text-xs text-slate-600 dark:text-gray-400">Modo de creación<EngineSelect className="mt-1" value={generationMode} onValueChange={(value) => setGenerationMode(value as "AUTOMATIC" | "AGENT_ASSISTED")} options={[{ value: "AUTOMATIC", label: "Automático" }, { value: "AGENT_ASSISTED", label: "Asistido por agente" }]} /></label>
+        <label className="text-xs text-slate-600 dark:text-gray-400">Instrucción al agente (opcional)<input value={agentInstruction} onChange={(event) => setAgentInstruction(event.target.value)} maxLength={1000} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white" placeholder="Ej. tono sobrio y directo" /></label>
       </div>
 
       <p className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-900 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-100">El preview completo se actualiza automáticamente después de cada edición. El envío a render se volverá a conectar en la siguiente fase, cuando pueda generar un snapshot exacto de esta versión.</p>
@@ -296,7 +297,7 @@ export function HyperframesCompositionPanel({
 }
 
 function ActionButton({ active, disabled, label, onClick, primary = false }: { active: boolean; disabled: boolean; label: string; onClick: () => void; primary?: boolean }) {
-  return <button type="button" disabled={disabled} onClick={onClick} className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${primary ? "bg-[#0A2540] text-white hover:bg-[#0d2f4d]" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-[#0F1419] dark:text-gray-200 dark:hover:bg-white/10"}`}>{active ? <Loader2 className="animate-spin" size={14} /> : <Clapperboard size={14} />}{label}</button>;
+  return <button type="button" disabled={disabled} onClick={onClick} className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${primary ? "bg-[var(--engine-primary)] text-white hover:bg-[#0d2f4d]" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-gray-200 dark:hover:bg-white/10"}`}>{active ? <Loader2 className="animate-spin" size={14} /> : <Clapperboard size={14} />}{label}</button>;
 }
 
 void ActionButton;

@@ -31,8 +31,8 @@ export default function SidebarNav() {
           href={item.href}
           className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
             isActive(item.href)
-              ? 'bg-[#0A2540] text-[#00D4B3] shadow-lg shadow-[#00D4B3]/5'
-              : 'text-[#94A3B8] hover:bg-[#1E2329] hover:text-white'
+              ? 'bg-[var(--engine-primary)] text-[var(--engine-accent)] shadow-lg shadow-[var(--engine-accent)]/5'
+              : 'text-[var(--engine-text-muted)] hover:bg-[var(--engine-surface-hover)] hover:text-white'
           }`}
         >
           {item.icon}

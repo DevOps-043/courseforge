@@ -9,6 +9,7 @@ import {
     formatThumbnailUrl,
 } from '@/domains/publication/lib/publication-client';
 import type { PublicationCourseData } from '@/domains/publication/types/publication.types';
+import { EngineSelect } from '@/components/ui/EngineSelect';
 
 interface CourseDataFormProps {
     initialData?: PublicationCourseData;
@@ -75,7 +76,7 @@ export function CourseDataForm({ initialData, onDataChange, lockedEmail }: Cours
     };
 
     return (
-        <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl p-6 shadow-sm">
+        <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-2xl p-6 shadow-sm">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
                 1. Datos del Curso
             </h3>
@@ -86,18 +87,18 @@ export function CourseDataForm({ initialData, onDataChange, lockedEmail }: Cours
                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                         Categoría
                     </label>
-                    <select
-                        className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl px-4 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#00D4B3]/20 focus:border-[#00D4B3] outline-none transition-all"
+                    <EngineSelect
                         value={formData.category}
-                        onChange={(e) => handleChange('category', e.target.value)}
-                    >
-                        <option value="ia">Inteligencia Artificial</option>
-                        <option value="programming">Programación</option>
-                        <option value="data">Data Science</option>
-                        <option value="design">Diseño</option>
-                        <option value="business">Negocios</option>
-                        <option value="marketing">Marketing</option>
-                    </select>
+                        onValueChange={(value) => handleChange('category', value)}
+                        options={[
+                            { value: 'ia', label: 'Inteligencia Artificial' },
+                            { value: 'programming', label: 'Programación' },
+                            { value: 'data', label: 'Data Science' },
+                            { value: 'design', label: 'Diseño' },
+                            { value: 'business', label: 'Negocios' },
+                            { value: 'marketing', label: 'Marketing' },
+                        ]}
+                    />
                 </div>
 
                 {/* Level */}
@@ -105,15 +106,15 @@ export function CourseDataForm({ initialData, onDataChange, lockedEmail }: Cours
                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                         Nivel
                     </label>
-                    <select
-                        className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl px-4 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#00D4B3]/20 focus:border-[#00D4B3] outline-none transition-all"
+                    <EngineSelect
                         value={formData.level}
-                        onChange={(e) => handleChange('level', e.target.value)}
-                    >
-                        <option value="beginner">Principiante</option>
-                        <option value="intermediate">Intermedio</option>
-                        <option value="advanced">Avanzado</option>
-                    </select>
+                        onValueChange={(value) => handleChange('level', value)}
+                        options={[
+                            { value: 'beginner', label: 'Principiante' },
+                            { value: 'intermediate', label: 'Intermedio' },
+                            { value: 'advanced', label: 'Avanzado' },
+                        ]}
+                    />
                 </div>
 
                 {/* Instructor Email */}
@@ -127,8 +128,8 @@ export function CourseDataForm({ initialData, onDataChange, lockedEmail }: Cours
                         readOnly={Boolean(lockedEmail)}
                         className={`w-full border rounded-xl px-4 py-2.5 outline-none transition-all ${
                             lockedEmail
-                                ? "bg-gray-100 dark:bg-[#0F1419]/60 border-gray-200 dark:border-[#6C757D]/10 text-gray-500 dark:text-gray-400 cursor-not-allowed select-none"
-                                : "bg-gray-50 dark:bg-[#0F1419] border-gray-200 dark:border-[#6C757D]/20 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#00D4B3]/20 focus:border-[#00D4B3]"
+                                ? "bg-gray-100 dark:bg-[var(--engine-canvas)]/60 border-gray-200 dark:border-[var(--engine-muted)]/10 text-gray-500 dark:text-gray-400 cursor-not-allowed select-none"
+                                : "bg-gray-50 dark:bg-[var(--engine-canvas)] border-gray-200 dark:border-[var(--engine-muted)]/20 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--engine-accent)]/20 focus:border-[var(--engine-accent)]"
                         }`}
                         value={formData.instructor_email}
                         onChange={(e) => {
@@ -150,7 +151,7 @@ export function CourseDataForm({ initialData, onDataChange, lockedEmail }: Cours
                     <input
                         type="text"
                         placeholder="intro-machine-learning"
-                        className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl px-4 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#00D4B3]/20 focus:border-[#00D4B3] outline-none transition-all"
+                        className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl px-4 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--engine-accent)]/20 focus:border-[var(--engine-accent)] outline-none transition-all"
                         value={formData.slug}
                         onChange={(e) => handleChange('slug', e.target.value)}
                     />
@@ -165,7 +166,7 @@ export function CourseDataForm({ initialData, onDataChange, lockedEmail }: Cours
                         type="number"
                         min="0"
                         step="0.01"
-                        className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl px-4 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#00D4B3]/20 focus:border-[#00D4B3] outline-none transition-all"
+                        className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl px-4 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--engine-accent)]/20 focus:border-[var(--engine-accent)] outline-none transition-all"
                         value={formData.price}
                         onChange={(e) => handleChange('price', parseFloat(e.target.value))}
                     />
@@ -181,7 +182,7 @@ export function CourseDataForm({ initialData, onDataChange, lockedEmail }: Cours
                         {/* Drag & Drop / Upload Area */}
                         <div
                             onClick={() => fileInputRef.current?.click()}
-                            className="border-2 border-dashed border-gray-200 dark:border-[#6C757D]/20 hover:border-[#00D4B3]/50 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl p-6 cursor-pointer transition-all flex flex-col items-center justify-center gap-3 group relative overflow-hidden"
+                            className="border-2 border-dashed border-gray-200 dark:border-[var(--engine-muted)]/20 hover:border-[var(--engine-accent)]/50 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl p-6 cursor-pointer transition-all flex flex-col items-center justify-center gap-3 group relative overflow-hidden"
                         >
                             <input
                                 type="file"
@@ -208,11 +209,11 @@ export function CourseDataForm({ initialData, onDataChange, lockedEmail }: Cours
                                 </>
                             ) : (
                                 <>
-                                    <div className="p-3 bg-gray-100 dark:bg-white/5 rounded-full group-hover:bg-[#00D4B3]/10 group-hover:text-[#00D4B3] transition-colors">
+                                    <div className="p-3 bg-gray-100 dark:bg-white/5 rounded-full group-hover:bg-[var(--engine-accent)]/10 group-hover:text-[var(--engine-accent)] transition-colors">
                                         {isUploading ? <Loader2 className="animate-spin" size={24} /> : <Upload size={24} />}
                                     </div>
                                     <div className="text-center">
-                                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-[#00D4B3]">
+                                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-[var(--engine-accent)]">
                                             {isUploading ? 'Subiendo...' : 'Click para subir imagen'}
                                         </p>
                                         <p className="text-xs text-gray-500 mt-1">PNG, JPG, WEBP (Max 5MB)</p>
@@ -226,7 +227,7 @@ export function CourseDataForm({ initialData, onDataChange, lockedEmail }: Cours
                             <input
                                 type="url"
                                 placeholder="O pega una URL externa..."
-                                className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-xl px-4 py-2 text-xs text-gray-900 dark:text-white focus:ring-1 focus:ring-[#00D4B3]/20 focus:border-[#00D4B3] outline-none transition-all pl-9"
+                                className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl px-4 py-2 text-xs text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--engine-accent)]/20 focus:border-[var(--engine-accent)] outline-none transition-all pl-9"
                                 value={formData.thumbnail_url}
                                 onChange={(e) => handleChange('thumbnail_url', e.target.value)}
                             />

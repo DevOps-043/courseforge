@@ -19,10 +19,10 @@ export default async function TenantArchitectArtifactsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-[#0A2540] to-[#151A21] p-6 rounded-2xl border border-[#00D4B3]/20 relative overflow-hidden">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-[var(--engine-primary)] to-[var(--engine-surface-solid)] p-6 rounded-2xl border border-[var(--engine-accent)]/20 relative overflow-hidden">
         <div className="relative z-10">
           <h1 className="text-2xl font-bold text-white mb-1">Control de Calidad</h1>
-          <p className="text-[#94A3B8] text-sm">Gestiona y supervisa proyectos de esta empresa.</p>
+          <p className="text-[var(--engine-text-muted)] text-sm">Gestiona y supervisa proyectos de esta empresa.</p>
         </div>
       </div>
 

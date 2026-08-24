@@ -1,10 +1,8 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
 import './globals.css';
 
 import { Providers } from './providers';
-
-const inter = Inter({ subsets: ['latin'] });
+import { ibmPlexSans, interTight, newsreader } from './root-fonts';
 
 export const metadata: Metadata = {
   title: 'SofLIA - Engine',
@@ -18,7 +16,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body className={`${inter.className} bg-gray-50 dark:bg-[#050B14] text-slate-900 dark:text-white transition-colors duration-300`}>
+      <body className={`${newsreader.variable} ${interTight.variable} ${ibmPlexSans.variable}`}>
         <Providers>
           {children}
         </Providers>

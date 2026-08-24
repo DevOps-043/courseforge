@@ -20,6 +20,7 @@ import {
   type ModuleCheckState,
 } from './video-mapping.utils';
 import { VideoMappingCheckbox } from './VideoMappingCheckbox';
+import { EngineSelect } from '@/components/ui/EngineSelect';
 
 interface VideoMappingModuleSectionProps {
   moduleTitle: string;
@@ -62,9 +63,9 @@ export function VideoMappingModuleSection({
   ).length;
 
   return (
-    <div className="border border-gray-100 dark:border-[#6C757D]/10 rounded-xl overflow-hidden">
+    <div className="border border-gray-100 dark:border-[var(--engine-muted)]/10 rounded-xl overflow-hidden">
       <div
-        className="flex items-center gap-3 px-4 py-3 bg-gray-50/80 dark:bg-[#0F1419]/80 cursor-pointer hover:bg-gray-100/80 dark:hover:bg-[#0F1419] transition-colors select-none"
+        className="flex items-center gap-3 px-4 py-3 bg-gray-50/80 dark:bg-[var(--engine-canvas)]/80 cursor-pointer hover:bg-gray-100/80 dark:hover:bg-[var(--engine-canvas)] transition-colors select-none"
         onClick={() => onToggleCollapse(moduleTitle)}
       >
         <div
@@ -99,7 +100,7 @@ export function VideoMappingModuleSection({
       <div
         className={`transition-all duration-200 ease-in-out overflow-hidden ${isCollapsed ? 'max-h-0' : 'max-h-[5000px]'}`}
       >
-        <div className="divide-y divide-gray-100 dark:divide-[#6C757D]/10">
+        <div className="divide-y divide-gray-100 dark:divide-[var(--engine-muted)]/10">
           {lessons.map((lesson) => {
             const mapping = mappings[lesson.id] || {
               lesson_id: lesson.id,
@@ -132,7 +133,7 @@ export function VideoMappingModuleSection({
                     </p>
                     {lessonHasVideo ? (
                       <span
-                        className={`text-xs mt-0.5 inline-block ${isSelected ? 'text-[#00D4B3]' : 'text-gray-400'}`}
+                        className={`text-xs mt-0.5 inline-block ${isSelected ? 'text-[var(--engine-accent)]' : 'text-gray-400'}`}
                       >
                         {isSelected ? '✓ Incluida en envío' : '— Excluida del envío'}
                       </span>
@@ -147,17 +148,15 @@ export function VideoMappingModuleSection({
 
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4 ml-7">
                   <div className="md:col-span-3">
-                    <select
-                      className="w-full bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/20 rounded-lg px-3 py-2 text-sm text-gray-700 dark:text-gray-300"
+                    <EngineSelect
                       value={mapping.video_provider}
-                      onChange={(event) =>
-                        onUpdate(lesson.id, 'video_provider', event.target.value)
-                      }
-                    >
-                      <option value="youtube">YouTube</option>
-                      <option value="vimeo">Vimeo</option>
-                      <option value="direct">MP4 Directo</option>
-                    </select>
+                      onValueChange={(value) => onUpdate(lesson.id, 'video_provider', value)}
+                      options={[
+                        { value: 'youtube', label: 'YouTube' },
+                        { value: 'vimeo', label: 'Vimeo' },
+                        { value: 'direct', label: 'MP4 directo' },
+                      ]}
+                    />
                   </div>
 
                   <div className="md:col-span-9 relative">
@@ -170,8 +169,8 @@ export function VideoMappingModuleSection({
 
                       {mapping.video_provider === 'direct' &&
                       mapping.video_id.includes('supabase.co') ? (
-                        <div className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-[#6C757D]/20 rounded-lg text-sm flex items-center justify-between group">
-                          <div className="flex items-center gap-2 truncate text-[#00D4B3]">
+                        <div className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-lg text-sm flex items-center justify-between group">
+                          <div className="flex items-center gap-2 truncate text-[var(--engine-accent)]">
                             <span className="truncate font-medium">
                               Video Interno de Plataforma
                             </span>
@@ -197,7 +196,7 @@ export function VideoMappingModuleSection({
                                 ? 'Pegar URL de Vimeo o ID...'
                                 : 'URL del archivo de video (.mp4)...'
                           }
-                          className="w-full pl-9 pr-4 py-2 bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/20 rounded-lg text-sm focus:ring-2 focus:ring-[#00D4B3]/20 focus:border-[#00D4B3] outline-none"
+                          className="w-full pl-9 pr-4 py-2 bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-lg text-sm focus:ring-2 focus:ring-[var(--engine-accent)]/20 focus:border-[var(--engine-accent)] outline-none"
                           value={mapping.video_id}
                           onChange={(event) =>
                             onUpdate(lesson.id, 'video_id', event.target.value)
@@ -223,7 +222,7 @@ export function VideoMappingModuleSection({
                       <input
                         type="text"
                         placeholder="00:00"
-                        className="w-24 px-2 py-1 bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/20 rounded-md text-sm text-center font-mono dark:text-gray-200"
+                        className="w-24 px-2 py-1 bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-md text-sm text-center font-mono dark:text-gray-200"
                         value={formatDuration(mapping.duration)}
                         onChange={(event) =>
                           onUpdate(

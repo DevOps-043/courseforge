@@ -20,7 +20,7 @@ function ResetConfirmModal({
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
-            <div className="relative bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/20 rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4">
+            <div className="relative bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4">
                 <div className="flex items-center gap-3 mb-4">
                     <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
                         <RotateCcw className="w-5 h-5 text-amber-500" />
@@ -164,11 +164,11 @@ export function SystemPromptsManager() {
                 />
             )}
 
-            <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/10 rounded-2xl overflow-hidden flex flex-col md:flex-row min-h-[500px] shadow-sm">
+            <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-2xl overflow-hidden flex flex-col md:flex-row min-h-[500px] shadow-sm">
                 {/* Sidebar List */}
-                <div className="w-full md:w-64 border-r border-gray-200 dark:border-[#6C757D]/10 bg-gray-50 dark:bg-[#0F1419]/50 flex flex-col">
-                    <div className="p-4 border-b border-gray-200 dark:border-[#6C757D]/10">
-                        <h3 className="text-sm font-bold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider">Prompts Disponibles</h3>
+                <div className="w-full md:w-64 border-r border-gray-200 dark:border-[var(--engine-muted)]/10 bg-gray-50 dark:bg-[var(--engine-canvas)]/50 flex flex-col">
+                    <div className="p-4 border-b border-gray-200 dark:border-[var(--engine-muted)]/10">
+                        <h3 className="text-sm font-bold text-gray-500 dark:text-[var(--engine-text-muted)] uppercase tracking-wider">Prompts Disponibles</h3>
                     </div>
                     <div className="overflow-y-auto flex-1 p-2 space-y-1">
                         {prompts.map(prompt => (
@@ -177,7 +177,7 @@ export function SystemPromptsManager() {
                                 onClick={() => setSelectedPromptId(prompt.id)}
                                 className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                                     selectedPromptId === prompt.id
-                                        ? 'bg-[#00D4B3]/10 text-[#00D4B3] shadow-sm'
+                                        ? 'bg-[var(--engine-accent)]/10 text-[var(--engine-accent)] shadow-sm'
                                         : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-gray-200'
                                 }`}
                             >
@@ -194,13 +194,13 @@ export function SystemPromptsManager() {
                 </div>
 
                 {/* Editor Area */}
-                <div className="flex-1 flex flex-col bg-white dark:bg-[#151A21]">
+                <div className="flex-1 flex flex-col bg-white dark:bg-[var(--engine-surface-solid)]">
                     {selectedPrompt ? (
                         <>
-                            <div className="p-4 border-b border-gray-200 dark:border-[#6C757D]/10 flex justify-between items-center bg-white dark:bg-[#0F1419]/30">
+                            <div className="p-4 border-b border-gray-200 dark:border-[var(--engine-muted)]/10 flex justify-between items-center bg-white dark:bg-[var(--engine-canvas)]/30">
                                <div>
                                     <h3 className="text-gray-900 dark:text-white font-semibold flex items-center gap-2">
-                                        <MessageSquareCode size={18} className="text-[#00D4B3]" />
+                                        <MessageSquareCode size={18} className="text-[var(--engine-accent)]" />
                                         {selectedPrompt.code} v{selectedPrompt.version}
                                         {selectedPrompt.is_org_override && (
                                             <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20">
@@ -208,7 +208,7 @@ export function SystemPromptsManager() {
                                             </span>
                                         )}
                                     </h3>
-                                    <p className="text-xs text-gray-500 dark:text-[#94A3B8] mt-0.5">{selectedPrompt.description}</p>
+                                    <p className="text-xs text-gray-500 dark:text-[var(--engine-text-muted)] mt-0.5">{selectedPrompt.description}</p>
                                </div>
                                <div className="flex items-center gap-3">
                                     {/* Status Message */}
@@ -237,7 +237,7 @@ export function SystemPromptsManager() {
                                         className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
                                             saving
                                                 ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
-                                                : 'bg-[#00D4B3] text-white dark:text-black hover:bg-[#00D4B3]/90 shadow-lg shadow-[#00D4B3]/10'
+                                                : 'bg-[var(--engine-accent)] text-white dark:text-black hover:bg-[var(--engine-accent)]/90 shadow-lg shadow-[var(--engine-accent)]/10'
                                         }`}
                                     >
                                         {saving ? (
@@ -253,12 +253,12 @@ export function SystemPromptsManager() {
                                  <textarea
                                     value={content}
                                     onChange={(e) => setContent(e.target.value)}
-                                    className="w-full h-full bg-white dark:bg-[#0F1419] text-gray-900 dark:text-gray-300 font-mono text-sm p-6 resize-none focus:outline-none focus:ring-1 focus:ring-[#00D4B3]/30 leading-relaxed"
+                                    className="w-full h-full bg-white dark:bg-[var(--engine-canvas)] text-gray-900 dark:text-gray-300 font-mono text-sm p-6 resize-none focus:outline-none focus:ring-1 focus:ring-[var(--engine-accent)]/30 leading-relaxed"
                                     spellCheck={false}
                                     placeholder="Escribe aquí el contenido del prompt..."
                                 />
                             </div>
-                            <div className="px-4 py-2 bg-gray-50 dark:bg-[#0F1419] border-t border-gray-200 dark:border-[#6C757D]/10 text-xs text-gray-500 dark:text-[#94A3B8] flex justify-between">
+                            <div className="px-4 py-2 bg-gray-50 dark:bg-[var(--engine-canvas)] border-t border-gray-200 dark:border-[var(--engine-muted)]/10 text-xs text-gray-500 dark:text-[var(--engine-text-muted)] flex justify-between">
                                 <span>
                                     {selectedPrompt.is_org_override
                                         ? 'Versión personalizada para esta organización'

@@ -27,7 +27,7 @@ function StepDivider({ done }: { done: boolean }) {
   return (
     <div
       className={`h-0.5 w-5 shrink-0 rounded-full transition-colors md:w-8 ${
-        done ? "bg-[#1F5AF6]" : "bg-gray-200 dark:bg-[#2D333B]"
+        done ? "bg-[var(--engine-info)]" : "bg-gray-200 dark:bg-[#2D333B]"
       }`}
     />
   );
@@ -60,10 +60,10 @@ function StepItem({
       <div
         className={`flex h-8 w-8 items-center justify-center rounded-full border transition-all md:h-9 md:w-9 ${
           active
-            ? "border-[#1F5AF6] bg-[#1F5AF6] text-white shadow-sm shadow-[#1F5AF6]/25"
+            ? "border-[var(--engine-info)] bg-[var(--engine-info)] text-white shadow-sm shadow-[var(--engine-info)]/25"
             : done
-              ? "border-[#00D4B3] bg-[#00D4B3]/10 text-[#00D4B3]"
-              : "border-gray-300 dark:border-[#2D333B] text-gray-500 dark:text-[#6C757D]"
+              ? "border-[var(--engine-accent)] bg-[var(--engine-accent)]/10 text-[var(--engine-accent)]"
+              : "border-gray-300 dark:border-[#2D333B] text-gray-500 dark:text-[var(--engine-muted)]"
         }`}
       >
         {done ? <CheckCircle2 size={15} /> : icon}
@@ -71,10 +71,10 @@ function StepItem({
       <span
         className={`text-[10px] font-semibold uppercase tracking-wide ${
           active
-            ? "text-[#1F5AF6]"
+            ? "text-[var(--engine-info)]"
             : done
-              ? "text-[#00D4B3]"
-              : "text-gray-500 dark:text-[#6C757D]"
+              ? "text-[var(--engine-accent)]"
+              : "text-gray-500 dark:text-[var(--engine-muted)]"
         }`}
       >
         {label}
@@ -107,7 +107,7 @@ export function ArtifactWorkflowStepper({
     ][currentStep - 1] ?? "Curso";
 
   return (
-    <div className={compact ? "min-w-0 flex-1" : "sticky top-0 z-50 rounded-b-xl border-b border-x border-gray-200 bg-[#F8FAFC] px-3 py-2 shadow-[0_14px_30px_rgba(15,23,42,0.10)] dark:border-[#6C757D]/10 dark:bg-[#10151C]"}>
+    <div className={compact ? "min-w-0 flex-1" : "sticky top-0 z-50 rounded-b-xl border-b border-x border-gray-200 bg-[#F8FAFC] px-3 py-2 shadow-[0_14px_30px_rgba(15,23,42,0.10)] dark:border-[var(--engine-muted)]/10 dark:bg-[#10151C]"}>
       <div className={compact ? "hidden" : "mb-2 flex items-center justify-between gap-3"}>
         <div className="min-w-0">
           <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -117,7 +117,7 @@ export function ArtifactWorkflowStepper({
             Fase {currentStep} de 8: {currentStepLabel}
           </p>
         </div>
-        <span className="shrink-0 rounded-full border border-[#1F5AF6]/20 bg-[#1F5AF6]/10 px-3 py-1 text-xs font-bold text-[#1F5AF6]">
+        <span className="shrink-0 rounded-full border border-[var(--engine-info)]/20 bg-[var(--engine-info)]/10 px-3 py-1 text-xs font-bold text-[var(--engine-info)]">
           {currentStep}/8
         </span>
       </div>

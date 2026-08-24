@@ -34,7 +34,7 @@ export function MaterialsDodChecklist({ dod, checks, className = '' }: Materials
     const getStatusIcon = (status: 'PASS' | 'FAIL' | 'PENDING') => {
         switch (status) {
             case 'PASS':
-                return <CheckCircle className="h-5 w-5 text-[#00D4B3]" />; // Aqua
+                return <CheckCircle className="h-5 w-5 text-[var(--engine-accent)]" />; // Aqua
             case 'FAIL':
                 return <XCircle className="h-5 w-5 text-red-500" />;
             case 'PENDING':
@@ -45,7 +45,7 @@ export function MaterialsDodChecklist({ dod, checks, className = '' }: Materials
     const getStatusBg = (status: 'PASS' | 'FAIL' | 'PENDING') => {
         switch (status) {
             case 'PASS':
-                return 'bg-[#00D4B3]/5 border-[#00D4B3]/20';
+                return 'bg-[var(--engine-accent)]/5 border-[var(--engine-accent)]/20';
             case 'FAIL':
                 return 'bg-red-500/5 border-red-500/20';
             case 'PENDING':
@@ -62,7 +62,7 @@ export function MaterialsDodChecklist({ dod, checks, className = '' }: Materials
             <div className="flex items-center justify-between">
                 <h4 className="font-semibold text-lg text-gray-900 dark:text-white">Definition of Done (DoD)</h4>
                 {allPassed && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold bg-[#00D4B3]/10 text-[#00D4B3] border border-[#00D4B3]/20 rounded-full">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold bg-[var(--engine-accent)]/10 text-[var(--engine-accent)] border border-[var(--engine-accent)]/20 rounded-full">
                         <CheckCircle className="h-3.5 w-3.5" />
                         Aprobado por IA
                     </span>

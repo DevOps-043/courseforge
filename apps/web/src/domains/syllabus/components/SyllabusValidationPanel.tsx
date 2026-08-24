@@ -14,7 +14,7 @@ export function SyllabusValidationPanel({
 }: SyllabusValidationPanelProps) {
   return (
     <div className="space-y-6 animate-in fade-in zoom-in-95 duration-200">
-      <div className="bg-white dark:bg-[#151A21] rounded-2xl border border-gray-200 dark:border-white/5 p-6 space-y-4">
+      <div className="bg-white dark:bg-[var(--engine-surface-solid)] rounded-2xl border border-gray-200 dark:border-white/5 p-6 space-y-4">
         <h4 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-4">
           Reglas de Calidad (Agentic Checks)
         </h4>
@@ -24,12 +24,12 @@ export function SyllabusValidationPanel({
               key={check.code}
               className={`px-4 py-3 rounded-xl border flex items-start gap-3 ${
                 check.pass
-                  ? "bg-white dark:bg-[#151A21] border-[#00D4B3]/20"
-                  : "bg-red-50 dark:bg-[#151A21] border-red-500/20"
+                  ? "bg-white dark:bg-[var(--engine-surface-solid)] border-[var(--engine-accent)]/20"
+                  : "bg-red-50 dark:bg-[var(--engine-surface-solid)] border-red-500/20"
               }`}
             >
               <div
-                className={`mt-0.5 flex-shrink-0 ${check.pass ? "text-[#00D4B3]" : "text-red-500"}`}
+                className={`mt-0.5 flex-shrink-0 ${check.pass ? "text-[var(--engine-accent)]" : "text-red-500"}`}
               >
                 {check.pass ? (
                   <svg
@@ -63,7 +63,7 @@ export function SyllabusValidationPanel({
               </div>
               <div className="text-sm">
                 <span
-                  className={`font-mono font-bold mr-2 ${check.pass ? "text-[#00D4B3]" : "text-red-500"}`}
+                  className={`font-mono font-bold mr-2 ${check.pass ? "text-[var(--engine-accent)]" : "text-red-500"}`}
                 >
                   {check.code}
                 </span>
@@ -87,7 +87,7 @@ export function SyllabusValidationPanel({
         </div>
       </div>
 
-      <div className="bg-white dark:bg-[#151A21] rounded-2xl border border-gray-200 dark:border-white/5 p-6">
+      <div className="bg-white dark:bg-[var(--engine-surface-solid)] rounded-2xl border border-gray-200 dark:border-white/5 p-6">
         <h4 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-4">
           Fuentes de Investigación (Google Search)
         </h4>
@@ -172,7 +172,7 @@ export function SyllabusValidationPanel({
                             className={`text-sm leading-relaxed ${isList ? "flex gap-2 pl-2" : ""}`}
                           >
                             {isList && (
-                              <span className="text-[#00D4B3] mt-1.5 w-1.5 h-1.5 rounded-full bg-[#00D4B3] shrink-0 block" />
+                              <span className="text-[var(--engine-accent)] mt-1.5 w-1.5 h-1.5 rounded-full bg-[var(--engine-accent)] shrink-0 block" />
                             )}
                             <p
                               className={

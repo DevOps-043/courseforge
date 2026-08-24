@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import {
-  X,
   CheckCircle,
   Layout,
   MessageSquare,
@@ -12,6 +10,7 @@ import {
   Sparkles,
   RefreshCw,
 } from "lucide-react";
+import { EngineDialog } from "@/components/ui/EngineDialog";
 import {
   MaterialLesson,
   MaterialComponent,
@@ -69,36 +68,24 @@ export function MaterialDetailsModal({
   const selectedComponent = components.find((c) => c.type === selectedType);
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <div
-          className="fixed inset-0 flex items-center justify-center z-[9999]"
-          style={{ fontFamily: "Inter, sans-serif" }}
-        >
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={onClose}
-          />
-
-          {/* Modal Content */}
-          <motion.div
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.95, opacity: 0 }}
-            className="relative w-[1200px] h-[80vh] rounded-2xl shadow-2xl overflow-hidden flex flex-row
-                bg-white dark:bg-[#0F1419] border border-gray-200 dark:border-white/10"
-          >
+    <EngineDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      size="workspace"
+      eyebrow="Estudio de materiales"
+      title={lesson.lesson_title}
+      description="Previsualiza, valida e itera los componentes de esta lección."
+      icon={<Layout aria-hidden="true" />}
+      bodyClassName="!p-0"
+    >
+      <div className="flex h-[min(44rem,calc(100svh-8rem))] min-h-0 flex-col md:flex-row">
             {/* Left Panel - Navigation */}
-            <div className="w-80 flex flex-col border-r border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[#131820]">
+            <div className="flex max-h-64 w-full flex-col border-b border-[var(--engine-border)] bg-[var(--engine-surface-soft)] md:max-h-none md:w-72 md:border-b-0 md:border-r">
               {/* Header */}
               <div className="p-6 border-b border-gray-200 dark:border-white/5">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center 
-                    bg-gradient-to-br from-blue-600 to-cyan-400 dark:from-[#0A2540] dark:to-[#00D4B3]">
+                    bg-gradient-to-br from-blue-600 to-cyan-400 dark:from-[var(--engine-primary)] dark:to-[var(--engine-accent)]">
                     <Layout className="text-white w-5 h-5" />
                   </div>
                   <div>
@@ -134,7 +121,7 @@ export function MaterialDetailsModal({
                     }}
                     className={`w-full flex items-center gap-3 p-3 rounded-xl text-sm transition-all ${
                       selectedType === comp.type
-                        ? "bg-white dark:bg-[#1E2329] text-blue-600 dark:text-[#00D4B3] shadow-md dark:shadow-shadow-black/20 border border-gray-200 dark:border-white/5"
+                        ? "bg-white dark:bg-[var(--engine-surface-hover)] text-blue-600 dark:text-[var(--engine-accent)] shadow-md dark:shadow-shadow-black/20 border border-gray-200 dark:border-white/5"
                         : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-white/5"
                     }`}
                   >
@@ -143,23 +130,20 @@ export function MaterialDetailsModal({
                       {comp.type.replace(/_/g, " ")}
                     </span>
                     {selectedType === comp.type && (
-                      <motion.div
-                        layoutId="activeIndicator"
-                        className="w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-[#00D4B3]"
-                      />
+                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--engine-accent)]" />
                     )}
                   </button>
                 ))}
               </div>
 
               {/* Actions Footer */}
-              <div className="p-4 border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[#0F1419]">
+              <div className="p-4 border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[var(--engine-canvas)]">
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => setActiveTab("dod")}
                     className={`flex items-center justify-center gap-2 p-2 rounded-lg text-xs font-medium transition-colors ${
                       activeTab === "dod"
-                        ? "bg-white dark:bg-[#1E2329] text-gray-900 dark:text-white border border-gray-200 dark:border-white/10 shadow-sm"
+                        ? "bg-white dark:bg-[var(--engine-surface-hover)] text-gray-900 dark:text-white border border-gray-200 dark:border-white/10 shadow-sm"
                         : "text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/5"
                     }`}
                   >
@@ -170,7 +154,7 @@ export function MaterialDetailsModal({
                     onClick={() => setActiveTab("iteration")}
                     className={`flex items-center justify-center gap-2 p-2 rounded-lg text-xs font-medium transition-colors ${
                       activeTab === "iteration"
-                        ? "bg-white dark:bg-[#1E2329] text-gray-900 dark:text-white border border-gray-200 dark:border-white/10 shadow-sm"
+                        ? "bg-white dark:bg-[var(--engine-surface-hover)] text-gray-900 dark:text-white border border-gray-200 dark:border-white/10 shadow-sm"
                         : "text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/5"
                     }`}
                   >
@@ -182,19 +166,12 @@ export function MaterialDetailsModal({
             </div>
 
             {/* Right Panel - Content */}
-            <div className="flex-1 flex flex-col relative bg-white dark:bg-[#0F1419]">
-              <button
-                onClick={onClose}
-                className="absolute top-4 right-4 p-2 rounded-lg transition-colors z-10 text-gray-400 hover:text-gray-600 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
+            <div className="flex-1 flex flex-col relative bg-white dark:bg-[var(--engine-canvas)]">
               <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
                 {activeTab === "preview" && selectedComponent ? (
                   <div className="max-w-3xl mx-auto space-y-6">
                     <div className="flex items-center gap-3 mb-8">
-                      <span className="p-2 rounded-lg bg-blue-50 dark:bg-[#00D4B3]/10 text-blue-600 dark:text-[#00D4B3]">
+                      <span className="p-2 rounded-lg bg-blue-50 dark:bg-[var(--engine-accent)]/10 text-blue-600 dark:text-[var(--engine-accent)]">
                         {getComponentIcon(selectedComponent.type)}
                       </span>
                       <div>
@@ -207,7 +184,7 @@ export function MaterialDetailsModal({
                       </div>
                     </div>
                     <div className="material-content-wrapper p-6 rounded-2xl shadow-xl 
-                        bg-white dark:bg-[#1E2329] border border-gray-200 dark:border-white/5 text-gray-900 dark:text-gray-200">
+                        bg-white dark:bg-[var(--engine-surface-hover)] border border-gray-200 dark:border-white/5 text-gray-900 dark:text-gray-200">
                       <ComponentViewer
                         component={selectedComponent}
                         variant="embedded"
@@ -218,12 +195,12 @@ export function MaterialDetailsModal({
                 ) : activeTab === "dod" ? (
                   <div className="max-w-2xl mx-auto pt-10">
                     <h2 className="text-2xl font-bold mb-6 flex items-center gap-3 text-gray-900 dark:text-white">
-                      <CheckCircle className="text-blue-600 dark:text-[#00D4B3]" />
+                      <CheckCircle className="text-blue-600 dark:text-[var(--engine-accent)]" />
                       Definition of Done
                     </h2>
                     <MaterialsDodChecklist
                       dod={lesson.dod!}
-                      className="p-6 rounded-2xl border bg-white dark:bg-[#1E2329] border-gray-200 dark:border-white/5"
+                      className="p-6 rounded-2xl border bg-white dark:bg-[var(--engine-surface-hover)] border-gray-200 dark:border-white/5"
                     />
                   </div>
                 ) : activeTab === "iteration" ? (
@@ -239,7 +216,7 @@ export function MaterialDetailsModal({
                       onStartIteration={(instr, types) =>
                         onIterationStart(lesson.id, instr, types)
                       }
-                      className="p-6 rounded-2xl border shadow-xl bg-white dark:bg-[#1E2329] border-gray-200 dark:border-white/5"
+                      className="p-6 rounded-2xl border shadow-xl bg-white dark:bg-[var(--engine-surface-hover)] border-gray-200 dark:border-white/5"
                     />
                   </div>
                 ) : (
@@ -250,9 +227,7 @@ export function MaterialDetailsModal({
                 )}
               </div>
             </div>
-          </motion.div>
-        </div>
-      )}
-    </AnimatePresence>
+      </div>
+    </EngineDialog>
   );
 }

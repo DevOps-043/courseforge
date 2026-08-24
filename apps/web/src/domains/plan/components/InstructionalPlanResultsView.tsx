@@ -94,7 +94,7 @@ export function InstructionalPlanResultsView({
           type="button"
           onClick={onRegenerate}
           disabled={isGenerating}
-          className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:border-[#00D4B3] hover:text-[#00D4B3] dark:border-gray-700 dark:bg-[#0F1419] dark:text-gray-300 dark:hover:text-[#00D4B3]"
+          className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:border-[var(--engine-accent)] hover:text-[var(--engine-accent)] dark:border-gray-700 dark:bg-[var(--engine-canvas)] dark:text-gray-300 dark:hover:text-[var(--engine-accent)]"
         >
           <RefreshCw size={14} className={isGenerating ? "animate-spin" : ""} />
           {isGenerating ? "Regenerando..." : "Regenerar"}

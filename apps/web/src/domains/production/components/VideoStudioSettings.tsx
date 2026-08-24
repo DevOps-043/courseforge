@@ -61,7 +61,7 @@ export function VideoStudioSettings() {
 
   if (!settings) {
     return (
-      <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600 dark:border-white/10 dark:bg-[#151A21] dark:text-gray-300">
+      <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600 dark:border-white/10 dark:bg-[var(--engine-surface-solid)] dark:text-gray-300">
         <Loader2 className="animate-spin" size={16} />
         Cargando configuración de video…
       </div>
@@ -71,9 +71,9 @@ export function VideoStudioSettings() {
   return (
     <section className="space-y-5">
       <div>
-        <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-[#151A21]">
+        <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-[var(--engine-surface-solid)]">
           <div className="flex items-start gap-3">
-            <span className="rounded-lg bg-[#00D4B3]/15 p-2 text-[#0A2540] dark:bg-[#00D4B3]/15 dark:text-[#00D4B3]">
+            <span className="rounded-lg bg-[var(--engine-accent)]/15 p-2 text-[var(--engine-primary)] dark:bg-[var(--engine-accent)]/15 dark:text-[var(--engine-accent)]">
               <Sparkles size={18} />
             </span>
             <div>
@@ -86,7 +86,7 @@ export function VideoStudioSettings() {
 
           <div className="mt-4">
             <PremiumSelect
-              icon={<Sparkles size={12} className="text-[#00D4B3]" />}
+              icon={<Sparkles size={12} className="text-[var(--engine-accent)]" />}
               label="Modelo de edición"
               options={VIDEO_STUDIO_MODEL_OPTIONS}
               value={settings.agentModel}
@@ -96,7 +96,7 @@ export function VideoStudioSettings() {
 
           <div className="mt-3">
             <PremiumSelect
-              icon={<Sparkles size={12} className="text-[#00D4B3]" />}
+              icon={<Sparkles size={12} className="text-[var(--engine-accent)]" />}
               label="Modelo de respaldo"
               options={[
                 { value: "", label: "Sin modelo de respaldo", description: "Detenerse si el modelo principal no se recupera." },
@@ -116,7 +116,7 @@ export function VideoStudioSettings() {
               step="0.05"
               value={settings.temperature}
               onChange={(event) => setSettings({ ...settings, temperature: Number(event.target.value) })}
-              className="mt-2 w-full accent-[#00D4B3]"
+              className="mt-2 w-full accent-[var(--engine-accent)]"
             />
           </label>
           <label className="mt-3 flex items-center gap-2 text-xs text-slate-700 dark:text-gray-200">
@@ -131,7 +131,7 @@ export function VideoStudioSettings() {
             type="button"
             disabled={busy}
             onClick={() => void saveAssistant()}
-            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#0A2540] px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-[#0d2f4d] disabled:opacity-50"
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[var(--engine-primary)] px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-[#0d2f4d] disabled:opacity-50"
           >
             {busy ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
             Guardar asistente

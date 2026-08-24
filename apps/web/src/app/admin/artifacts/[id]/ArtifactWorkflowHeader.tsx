@@ -29,8 +29,8 @@ export function ArtifactWorkflowHeader({
   compact = false,
 }: ArtifactWorkflowHeaderProps) {
   return (
-    <div className={`relative flex min-w-0 items-center justify-between gap-4 overflow-hidden ${compact ? "p-0" : "rounded-2xl border border-gray-200 bg-white p-6 dark:border-[#6C757D]/10 dark:bg-[#151A21]"}`}>
-      {!compact && <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-[#1F5AF6]/5 rounded-full blur-[80px] pointer-events-none translate-x-1/2 -translate-y-1/2" />}
+    <div className={`relative flex min-w-0 items-center justify-between gap-4 overflow-hidden ${compact ? "p-0" : "rounded-2xl border border-gray-200 bg-white p-6 dark:border-[var(--engine-muted)]/10 dark:bg-[var(--engine-surface-solid)]"}`}>
+      {!compact && <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-[var(--engine-info)]/5 rounded-full blur-[80px] pointer-events-none translate-x-1/2 -translate-y-1/2" />}
       <div className="relative z-10 min-w-0 flex-1">
         <div className={`flex items-center gap-3 ${compact ? "" : "mb-1"}`}>
           <h1
@@ -50,7 +50,7 @@ export function ArtifactWorkflowHeader({
             {displayState.replaceAll("_", " ")}
           </div>
         </div>
-        {!compact && <p className="text-gray-500 dark:text-[#6C757D] text-xs font-mono">
+        {!compact && <p className="text-gray-500 dark:text-[var(--engine-muted)] text-xs font-mono">
           {artifact.courseId || artifact.id} " Creado hace{" "}
           {new Date(artifact.created_at).toLocaleDateString()}
         </p>}

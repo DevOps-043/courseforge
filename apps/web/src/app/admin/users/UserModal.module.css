@@ -1,0 +1,266 @@
+.form {
+  display: grid;
+  gap: 1.35rem;
+}
+
+.identity {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.9rem;
+  border: 1px solid var(--engine-border);
+  border-radius: 1.1rem;
+  padding: 0.9rem;
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--engine-accent) 7%, transparent), transparent 12rem),
+    var(--engine-surface-soft);
+}
+
+.avatar {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--engine-accent) 32%, var(--engine-border));
+  border-radius: 1rem;
+  color: var(--engine-on-action);
+  background: var(--engine-primary);
+  font-family: var(--font-system-display);
+  font-size: 1.45rem;
+  box-shadow: 0 0.8rem 2rem color-mix(in srgb, var(--engine-primary) 18%, transparent);
+}
+
+.identityTitle {
+  overflow: hidden;
+  margin: 0;
+  color: var(--engine-text);
+  font-family: var(--font-system-display);
+  font-size: 1.25rem;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.identityMeta {
+  overflow: hidden;
+  margin: 0.22rem 0 0;
+  color: var(--engine-text-muted);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  border: 1px solid color-mix(in srgb, var(--engine-success) 25%, transparent);
+  border-radius: 999px;
+  padding: 0.36rem 0.58rem;
+  color: var(--engine-success);
+  background: color-mix(in srgb, var(--engine-success) 7%, transparent);
+  font-family: var(--font-system-label);
+  font-size: 0.53rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.status::before {
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.section {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.sectionLabel,
+.fieldLabel,
+.roleName {
+  font-family: var(--font-system-label);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.sectionLabel {
+  margin: 0;
+  color: var(--engine-text-muted);
+  font-size: 0.57rem;
+}
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.72rem;
+}
+
+.field,
+.fieldWide {
+  display: grid;
+  min-width: 0;
+  gap: 0.34rem;
+}
+
+.fieldWide {
+  grid-column: 1 / -1;
+}
+
+.fieldLabel {
+  color: var(--engine-text-muted);
+  font-size: 0.53rem;
+}
+
+.inputWrap {
+  position: relative;
+}
+
+.inputWrap svg {
+  position: absolute;
+  top: 50%;
+  left: 0.82rem;
+  width: 1rem;
+  height: 1rem;
+  transform: translateY(-50%);
+  color: var(--engine-text-muted);
+  stroke-width: 1.75;
+}
+
+.input {
+  width: 100%;
+  min-height: 3rem;
+  border: 1px solid var(--engine-border);
+  border-radius: 0.9rem;
+  padding: 0.7rem 0.85rem 0.7rem 2.55rem;
+  color: var(--engine-text);
+  background: var(--engine-surface-soft);
+  font-size: 0.78rem;
+}
+
+.input:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.roleGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.68rem;
+}
+
+.roleCard {
+  display: grid;
+  min-height: 6rem;
+  grid-template-columns: 2.2rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.65rem;
+  border: 1px solid var(--engine-border);
+  border-radius: 1rem;
+  padding: 0.78rem;
+  color: var(--engine-text);
+  background: var(--engine-surface-soft);
+  text-align: left;
+  transition: transform 180ms var(--engine-ease), border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.roleCard:hover {
+  transform: translateY(-1px);
+  border-color: var(--engine-border-active);
+}
+
+.roleCardActive {
+  color: var(--engine-on-action);
+  border-color: var(--engine-action);
+  background: var(--engine-action);
+  box-shadow: 0 0.7rem 1.8rem color-mix(in srgb, var(--engine-action) 18%, transparent);
+}
+
+.roleIcon {
+  display: grid;
+  width: 2.2rem;
+  height: 2.2rem;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 0.7rem;
+  opacity: 0.78;
+}
+
+.roleIcon svg {
+  width: 1rem;
+  height: 1rem;
+  stroke-width: 1.8;
+}
+
+.roleName {
+  display: block;
+  font-size: 0.56rem;
+}
+
+.roleDescription {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.63rem;
+  line-height: 1.35;
+  opacity: 0.7;
+}
+
+.secondaryButton,
+.primaryButton {
+  display: inline-flex;
+  min-height: 2.72rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.48rem;
+  border-radius: 0.86rem;
+  padding: 0.68rem 1rem;
+  font-size: 0.7rem;
+  font-weight: 560;
+  transition: transform 170ms var(--engine-ease), border-color 170ms ease, box-shadow 170ms ease;
+}
+
+.secondaryButton {
+  border: 1px solid var(--engine-border);
+  color: var(--engine-text-muted);
+  background: var(--engine-surface-soft);
+}
+
+.secondaryButton:hover {
+  color: var(--engine-text);
+  border-color: var(--engine-border-active);
+}
+
+.primaryButton {
+  border: 1px solid var(--engine-action);
+  color: var(--engine-on-action);
+  background: var(--engine-action);
+  box-shadow: 0 0.6rem 1.55rem color-mix(in srgb, var(--engine-action) 17%, transparent);
+}
+
+.primaryButton:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0.85rem 1.9rem color-mix(in srgb, var(--engine-action) 22%, transparent);
+}
+
+@media (max-width: 48rem) {
+  .identity {
+    grid-template-columns: 3.2rem minmax(0, 1fr);
+  }
+
+  .status {
+    display: none;
+  }
+
+  .fieldGrid,
+  .roleGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .roleCard {
+    min-height: 4.7rem;
+  }
+}

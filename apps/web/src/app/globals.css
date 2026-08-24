@@ -1,12 +1,13 @@
 @import "tailwindcss";
+@import "./engine-design-system.css";
 
 @variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --color-background: #050b14;
-  --color-surface: #0f172a;
-  --color-primary: #00e5c0;
-  --color-secondary: #1f5af6;
+  --color-background: var(--engine-canvas);
+  --color-surface: var(--engine-surface);
+  --color-primary: var(--engine-accent);
+  --color-secondary: var(--engine-primary);
 }
 
 body {
@@ -44,7 +45,7 @@ html.courseforge-assembly-focus #artifact-detail-breadcrumbs {
    fill the shell immediately, including a hard refresh of the assembly stage. */
 body:has(#assembly-workspace-toolbar) #application-content {
   height: 100vh !important;
-  margin-left: 64px !important;
+  margin-left: 72px !important;
   padding: 0 !important;
 }
 

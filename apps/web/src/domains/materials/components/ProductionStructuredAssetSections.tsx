@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Volume2,
   Music,
@@ -43,6 +43,7 @@ import type {
   CloudStorageProvider,
 } from "@/domains/production/cloud-storage/types";
 import type { SlideTemplateLibraryItem } from "@/domains/production/slides/slide-template-library.actions";
+import { EngineSelect } from "@/components/ui/EngineSelect";
 
 function formatSeconds(seconds: number) {
   if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
@@ -139,7 +140,7 @@ function AnimatedDeckSlideFrame({
   return (
     <div
       ref={containerRef}
-      className="relative aspect-video overflow-hidden rounded-lg border border-gray-200 bg-[#05070b] dark:border-[#6C757D]/20"
+      className="relative aspect-video overflow-hidden rounded-lg border border-gray-200 bg-[#05070b] dark:border-[var(--engine-muted)]/20"
     >
       <iframe
         title={`Preview ${slide.label || slide.index}`}
@@ -183,7 +184,7 @@ function AnimatedDeckPreview({
   }
 
   return (
-    <div className="mt-3 rounded-xl border border-purple-100 bg-white p-3 shadow-sm dark:border-purple-500/10 dark:bg-[#0F1419]/60">
+    <div className="mt-3 rounded-xl border border-purple-100 bg-white p-3 shadow-sm dark:border-purple-500/10 dark:bg-[var(--engine-canvas)]/60">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Eye size={14} className="text-purple-500" />
@@ -197,7 +198,7 @@ function AnimatedDeckPreview({
             href={sourceUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[10px] font-bold text-gray-600 transition-colors hover:bg-gray-50 dark:border-[#6C757D]/20 dark:text-gray-300 dark:hover:bg-white/5"
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[10px] font-bold text-gray-600 transition-colors hover:bg-gray-50 dark:border-[var(--engine-muted)]/20 dark:text-gray-300 dark:hover:bg-white/5"
           >
             <ExternalLink size={10} />
             HTML original
@@ -218,7 +219,7 @@ function AnimatedDeckPreview({
           </div>
         </div>
 
-        <div className="min-w-0 rounded-lg border border-gray-100 bg-gray-50 p-2 dark:border-[#6C757D]/10 dark:bg-[#151A21]/80">
+        <div className="min-w-0 rounded-lg border border-gray-100 bg-gray-50 p-2 dark:border-[var(--engine-muted)]/10 dark:bg-[var(--engine-surface-solid)]/80">
           <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
             <ListChecks size={12} />
             Pasos
@@ -293,10 +294,10 @@ export function VoiceAudioSection({
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   return (
-    <div className="p-3 rounded-xl border border-gray-200 dark:border-[#6C757D]/10 bg-gray-50/50 dark:bg-[#0F1419]/30">
+    <div className="p-3 rounded-xl border border-gray-200 dark:border-[var(--engine-muted)]/10 bg-gray-50/50 dark:bg-[var(--engine-canvas)]/30">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Mic size={14} className="text-[#1F5AF6]" />
+          <Mic size={14} className="text-[var(--engine-info)]" />
           <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Audio de Voz (Locución)</span>
           {voiceAudio && (
             <span className="flex items-center gap-0.5 text-[10px] font-semibold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 px-1.5 py-0.5 rounded-full">
@@ -315,7 +316,7 @@ export function VoiceAudioSection({
               <button
                 onClick={() => fileRef.current?.click()}
                 disabled={isUploading}
-                className="px-2 py-1 rounded bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/20 text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50"
+                className="px-2 py-1 rounded bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/20 text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50"
               >
                 {isUploading ? <Loader2 size={10} className="animate-spin" /> : "Re-subir"}
               </button>
@@ -338,10 +339,10 @@ export function VoiceAudioSection({
               <button
                 onClick={() => fileRef.current?.click()}
                 disabled={isUploading}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white dark:bg-[#151A21] dark:border-[#6C757D]/20 text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all cursor-pointer"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white dark:bg-[var(--engine-surface-solid)] dark:border-[var(--engine-muted)]/20 text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all cursor-pointer"
               >
                 {isUploading ? (
-                  <Loader2 className="animate-spin text-[#1F5AF6]" size={10} />
+                  <Loader2 className="animate-spin text-[var(--engine-info)]" size={10} />
                 ) : (
                   <Upload size={10} />
                 )}
@@ -429,7 +430,7 @@ export function BackgroundMusicSection({
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
 
   return (
-    <div className="p-3 rounded-xl border border-gray-200 dark:border-[#6C757D]/10 bg-gray-50/50 dark:bg-[#0F1419]/30">
+    <div className="p-3 rounded-xl border border-gray-200 dark:border-[var(--engine-muted)]/10 bg-gray-50/50 dark:bg-[var(--engine-canvas)]/30">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Music size={14} className="text-indigo-500" />
@@ -450,7 +451,7 @@ export function BackgroundMusicSection({
               <button
                 onClick={() => fileRef.current?.click()}
                 disabled={isUploading}
-                className="px-2 py-1 rounded bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/20 text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50"
+                className="px-2 py-1 rounded bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/20 text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50"
               >
                 {isUploading ? <Loader2 size={10} className="animate-spin" /> : "Local"}
               </button>
@@ -479,7 +480,7 @@ export function BackgroundMusicSection({
               <button
                 onClick={() => fileRef.current?.click()}
                 disabled={isUploading}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-305 bg-white dark:bg-[#151A21] dark:border-[#6C757D]/20 text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all cursor-pointer"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-305 bg-white dark:bg-[var(--engine-surface-solid)] dark:border-[var(--engine-muted)]/20 text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all cursor-pointer"
               >
                 {isUploading ? (
                   <Loader2 className="animate-spin text-indigo-500" size={10} />
@@ -512,7 +513,7 @@ export function BackgroundMusicSection({
       </p>
 
       {backgroundMusic && (
-        <div className="mt-2 flex items-center gap-1.5 border-t border-gray-100 pt-2 text-[10px] text-gray-500 dark:border-[#6C757D]/10 dark:text-gray-400">
+        <div className="mt-2 flex items-center gap-1.5 border-t border-gray-100 pt-2 text-[10px] text-gray-500 dark:border-[var(--engine-muted)]/10 dark:text-gray-400">
           <Volume2 size={11} className="shrink-0 text-indigo-500" />
           <span>El volumen y la reducción durante voz se ajustan en el Estudio de edición.</span>
         </div>
@@ -611,7 +612,6 @@ export function SofliaHtmlSlidesSection({
   clearDriveSearchResults,
 }: SofliaHtmlSlidesSectionProps) {
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
-  const templateSelectId = useId();
   const animatedDeck = slides?.animated_deck;
   const qaStatus = typeof slides?.qa_report?.status === "string"
     ? slides.qa_report.status
@@ -644,7 +644,7 @@ export function SofliaHtmlSlidesSection({
   };
 
   return (
-    <div className="p-3 rounded-xl border border-gray-200 dark:border-[#6C757D]/10 bg-gray-50/50 dark:bg-[#0F1419]/30">
+    <div className="p-3 rounded-xl border border-gray-200 dark:border-[var(--engine-muted)]/10 bg-gray-50/50 dark:bg-[var(--engine-canvas)]/30">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Wand2 size={14} className="text-purple-500" />
@@ -704,7 +704,7 @@ export function SofliaHtmlSlidesSection({
           {slideTemplatesHref && (
             <a
               href={slideTemplatesHref}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg border border-gray-300 bg-white dark:bg-[#151A21] hover:bg-gray-50 dark:hover:bg-white/5 text-gray-650 dark:text-gray-300 transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg border border-gray-300 bg-white dark:bg-[var(--engine-surface-solid)] hover:bg-gray-50 dark:hover:bg-white/5 text-gray-650 dark:text-gray-300 transition-colors"
             >
               <LayoutTemplate size={10} />
               <span>Plantillas</span>
@@ -724,7 +724,7 @@ export function SofliaHtmlSlidesSection({
           <button
             onClick={() => fileRef.current?.click()}
             disabled={isUploading}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg border border-gray-300 bg-white dark:bg-[#151A21] hover:bg-gray-50 dark:hover:bg-white/5 text-gray-650 dark:text-gray-300 transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg border border-gray-300 bg-white dark:bg-[var(--engine-surface-solid)] hover:bg-gray-50 dark:hover:bg-white/5 text-gray-650 dark:text-gray-300 transition-colors"
           >
             {isUploading ? <Loader2 size={10} className="animate-spin" /> : <Upload size={10} />}
             <span>Subir slides</span>
@@ -751,15 +751,12 @@ export function SofliaHtmlSlidesSection({
         </div>
       </div>
 
-      <div className="mt-2 grid gap-1.5 rounded-lg border border-gray-100 bg-white/75 p-2 dark:border-[#6C757D]/10 dark:bg-[#151A21]/50">
+      <div className="mt-2 grid gap-1.5 rounded-lg border border-gray-100 bg-white/75 p-2 dark:border-[var(--engine-muted)]/10 dark:bg-[var(--engine-surface-solid)]/50">
         <div className="flex items-center justify-between gap-2">
-          <label
-            htmlFor={templateSelectId}
-            className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400"
-          >
+          <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
             <LayoutTemplate size={11} />
             Plantilla HTML
-          </label>
+          </span>
           {slides?.selected_slide_template_title ? (
             <span className="max-w-[180px] truncate rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-bold text-purple-700 dark:bg-purple-500/10 dark:text-purple-300">
               {slides.selected_slide_template_title}
@@ -767,22 +764,19 @@ export function SofliaHtmlSlidesSection({
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            id={templateSelectId}
+          <EngineSelect
             value={selectedSlideTemplateRunId || ""}
-            onChange={(event) => onSelectSlideTemplate?.(event.target.value || null)}
+            onValueChange={(value) => onSelectSlideTemplate?.(value || null)}
             disabled={isGeneratingSofliaSlides || isLoadingSlideTemplates}
-            className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 outline-none transition-colors focus:border-purple-300 focus:ring-2 focus:ring-purple-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-gray-200 dark:focus:ring-purple-500/10"
-          >
-            <option value="">
-              {isLoadingSlideTemplates ? "Cargando plantillas..." : "Automatica segun la leccion"}
-            </option>
-            {slideTemplates.map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.title}
-              </option>
-            ))}
-          </select>
+            className="min-w-0 flex-1"
+            options={[
+              {
+                value: "",
+                label: isLoadingSlideTemplates ? "Cargando plantillas..." : "Automática según la lección",
+              },
+              ...slideTemplates.map((template) => ({ value: template.id, label: template.title })),
+            ]}
+          />
           {selectedSlideTemplate ? (
             <span className="shrink-0 rounded-full bg-gray-100 px-2 py-1 text-[10px] font-bold text-gray-600 dark:bg-white/5 dark:text-gray-300">
               {selectedSlideTemplate.layouts.length} layout(s)
@@ -792,7 +786,7 @@ export function SofliaHtmlSlidesSection({
       </div>
 
       {(slides?.open_design_project_id || hasSourceReference || renderableSlideCount > 0 || animatedDeck) && (
-        <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-gray-100 dark:border-[#6C757D]/10 text-[10px]">
+        <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-gray-100 dark:border-[var(--engine-muted)]/10 text-[10px]">
           {slides?.open_design_project_id && (
             <span className="font-mono text-gray-450 dark:text-gray-400 bg-gray-100 dark:bg-white/5 px-1.5 py-0.5 rounded">
               ID: {slides.open_design_project_id}
@@ -848,7 +842,7 @@ export function SofliaHtmlSlidesSection({
               href={slide.public_url}
               target="_blank"
               rel="noreferrer"
-              className="group overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm transition-colors hover:border-purple-300 dark:border-[#6C757D]/20 dark:bg-[#0F1419]"
+              className="group overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm transition-colors hover:border-purple-300 dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)]"
               title={`Slide ${slide.slide_index}`}
             >
               <div className="aspect-video overflow-hidden bg-black">
@@ -936,10 +930,10 @@ export function BRollClipsSection({
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
 
   return (
-    <div className="p-3 rounded-xl border border-gray-200 dark:border-[#6C757D]/10 bg-gray-50/50 dark:bg-[#0F1419]/30">
+    <div className="p-3 rounded-xl border border-gray-200 dark:border-[var(--engine-muted)]/10 bg-gray-50/50 dark:bg-[var(--engine-canvas)]/30">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <FileVideo size={14} className="text-[#00D4B3]" />
+          <FileVideo size={14} className="text-[var(--engine-accent)]" />
           <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Clips de B-Roll (Video)</span>
           <span className="text-[10px] font-semibold text-gray-500 bg-gray-200/50 dark:bg-white/5 px-1.5 py-0.5 rounded-full">
             {clips.length} clip(s)
@@ -950,7 +944,7 @@ export function BRollClipsSection({
           <button
             onClick={() => fileRef.current?.click()}
             disabled={isUploading}
-            className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white dark:bg-[#151A21] px-2.5 py-1.5 text-[10px] font-bold text-gray-650 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all cursor-pointer"
+            className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white dark:bg-[var(--engine-surface-solid)] px-2.5 py-1.5 text-[10px] font-bold text-gray-650 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all cursor-pointer"
           >
             {isUploading ? <Loader2 size={10} className="animate-spin" /> : <Upload size={10} />}
             <span>MP4</span>
@@ -958,7 +952,7 @@ export function BRollClipsSection({
           
           {/* <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-1 rounded-lg border border-[#00D4B3]/30 bg-[#00D4B3]/5 px-2.5 py-1.5 text-[10px] font-bold text-[#00D4B3] hover:bg-[#00D4B3]/10 transition-all cursor-pointer"
+            className="flex items-center gap-1 rounded-lg border border-[var(--engine-accent)]/30 bg-[var(--engine-accent)]/5 px-2.5 py-1.5 text-[10px] font-bold text-[var(--engine-accent)] hover:bg-[var(--engine-accent)]/10 transition-all cursor-pointer"
           >
             <Search size={10} />
             <span>Artlist</span>
@@ -979,17 +973,17 @@ export function BRollClipsSection({
       </p>
  
       {clips.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-gray-100 dark:border-[#6C757D]/10">
+        <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-gray-100 dark:border-[var(--engine-muted)]/10">
           {clips.map((clip) => (
             <div
               key={clip.id}
-              className="inline-flex items-center gap-1 bg-white dark:bg-[#151A21] px-2 py-0.5 pl-2.5 pr-1.5 rounded-full border border-gray-200 dark:border-[#6C757D]/25 text-[10px] shadow-sm"
+              className="inline-flex items-center gap-1 bg-white dark:bg-[var(--engine-surface-solid)] px-2 py-0.5 pl-2.5 pr-1.5 rounded-full border border-gray-200 dark:border-[var(--engine-muted)]/25 text-[10px] shadow-sm"
             >
               <a
                 href={clip.public_url}
                 target="_blank"
                 rel="noreferrer"
-                className="font-bold text-gray-800 dark:text-gray-200 hover:text-[#00D4B3] hover:underline"
+                className="font-bold text-gray-800 dark:text-gray-200 hover:text-[var(--engine-accent)] hover:underline"
               >
                 #{clip.order} ({clip.duration ? `${clip.duration}s` : 'MP4'})
               </a>
@@ -1150,7 +1144,7 @@ export function AvatarVideoSection({
   };
 
   return (
-    <div className="p-3 rounded-xl border border-gray-200 dark:border-[#6C757D]/10 bg-gray-50/50 dark:bg-[#0F1419]/30">
+    <div className="p-3 rounded-xl border border-gray-200 dark:border-[var(--engine-muted)]/10 bg-gray-50/50 dark:bg-[var(--engine-canvas)]/30">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Video size={14} className="text-rose-500" />
@@ -1166,7 +1160,7 @@ export function AvatarVideoSection({
           <button
             onClick={() => fileRef.current?.click()}
             disabled={isUploading || isSyncing}
-            className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white dark:bg-[#151A21] px-2.5 py-1.5 text-[10px] font-bold text-gray-650 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white dark:bg-[var(--engine-surface-solid)] px-2.5 py-1.5 text-[10px] font-bold text-gray-650 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all cursor-pointer disabled:opacity-50"
           >
             {isUploading ? <Loader2 size={10} className="animate-spin" /> : <Upload size={10} />}
             <span>Video completo</span>
@@ -1203,72 +1197,68 @@ export function AvatarVideoSection({
       </div>
 
       {!avatarVideo && (
-        <div className="mt-3 space-y-2 border-t border-gray-100 pt-3 dark:border-[#6C757D]/10">
+        <div className="mt-3 space-y-2 border-t border-gray-100 pt-3 dark:border-[var(--engine-muted)]/10">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <select
+            <EngineSelect
               value={selectedAvatarPresetId}
-              onChange={(event) => onAvatarPresetChange(event.target.value)}
+              onValueChange={onAvatarPresetChange}
               disabled={isSyncing || isLoadingPresets}
-              className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-800 focus:border-rose-500 focus:outline-none disabled:opacity-60 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
-            >
-              <option value="">Avatar default</option>
-              {avatarPresets.map((preset) => (
-                <option key={preset.id} value={preset.id}>
-                  {preset.name || preset.id}
-                  {preset.is_default ? " (default)" : ""}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: "", label: "Avatar predeterminado" },
+                ...avatarPresets.map((preset) => ({
+                  value: preset.id,
+                  label: `${preset.name || preset.id}${preset.is_default ? " · Predeterminado" : ""}`,
+                })),
+              ]}
+            />
 
-            <select
+            <EngineSelect
               value={selectedVoicePresetId}
-              onChange={(event) => onVoicePresetChange(event.target.value)}
+              onValueChange={onVoicePresetChange}
               disabled={isSyncing || isLoadingPresets}
-              className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-800 focus:border-rose-500 focus:outline-none disabled:opacity-60 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
-            >
-              <option value="">Voz default</option>
-              {voicePresets.map((preset) => (
-                <option key={preset.id} value={preset.id}>
-                  {preset.name || preset.id}
-                  {preset.is_default ? " (default)" : ""}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: "", label: "Voz predeterminada" },
+                ...voicePresets.map((preset) => ({
+                  value: preset.id,
+                  label: `${preset.name || preset.id}${preset.is_default ? " · Predeterminada" : ""}`,
+                })),
+              ]}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <select
+            <EngineSelect
               value={engine}
-              onChange={(event) => onEngineChange(event.target.value as "avatar_iv" | "avatar_v")}
+              onValueChange={(value) => onEngineChange(value as "avatar_iv" | "avatar_v")}
               disabled={isSyncing}
-              className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-800 focus:border-rose-500 focus:outline-none disabled:opacity-60 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
-            >
-              <option value="avatar_iv">Avatar IV</option>
-              <option value="avatar_v">Avatar V</option>
-            </select>
+              options={[
+                { value: "avatar_iv", label: "Avatar IV" },
+                { value: "avatar_v", label: "Avatar V" },
+              ]}
+            />
 
-            <select
+            <EngineSelect
               value={resolution}
-              onChange={(event) => onResolutionChange(event.target.value as "720p" | "1080p" | "4k")}
+              onValueChange={(value) => onResolutionChange(value as "720p" | "1080p" | "4k")}
               disabled={isSyncing}
-              className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-800 focus:border-rose-500 focus:outline-none disabled:opacity-60 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
-            >
-              <option value="720p">720p</option>
-              <option value="1080p">1080p</option>
-              <option value="4k">4K</option>
-            </select>
+              options={[
+                { value: "720p", label: "720p" },
+                { value: "1080p", label: "1080p" },
+                { value: "4k", label: "4K" },
+              ]}
+            />
 
-            <select
+            <EngineSelect
               value={aspectRatio}
-              onChange={(event) => onAspectRatioChange(event.target.value as "16:9" | "9:16")}
+              onValueChange={(value) => onAspectRatioChange(value as "16:9" | "9:16")}
               disabled={isSyncing}
-              className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-800 focus:border-rose-500 focus:outline-none disabled:opacity-60 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
-            >
-              <option value="16:9">16:9</option>
-              <option value="9:16">9:16</option>
-            </select>
+              options={[
+                { value: "16:9", label: "16:9 · Horizontal" },
+                { value: "9:16", label: "9:16 · Vertical" },
+              ]}
+            />
 
-            <label className="flex items-center justify-center gap-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-bold text-gray-650 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-gray-300">
+            <label className="flex items-center justify-center gap-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-bold text-gray-650 dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)] dark:text-gray-300">
               <input
                 type="checkbox"
                 checked={captionEnabled}
@@ -1294,7 +1284,7 @@ export function AvatarVideoSection({
               type="button"
               onClick={onRefreshPresets}
               disabled={isSyncing || isLoadingPresets}
-              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[10px] font-bold text-gray-650 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-[#6C757D]/20 dark:bg-[#151A21] dark:text-gray-300 dark:hover:bg-white/5"
+              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[10px] font-bold text-gray-650 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-surface-solid)] dark:text-gray-300 dark:hover:bg-white/5"
             >
               {isLoadingPresets ? "Cargando..." : "Presets"}
             </button>
@@ -1313,7 +1303,7 @@ export function AvatarVideoSection({
       )}
 
       {isSyncing && (
-        <div className="space-y-1 mt-2 pt-2 border-t border-gray-100 dark:border-[#6C757D]/10">
+        <div className="space-y-1 mt-2 pt-2 border-t border-gray-100 dark:border-[var(--engine-muted)]/10">
           <div className="flex justify-between text-[9px] font-semibold text-rose-500">
             <span className="flex items-center gap-1 animate-pulse">
               <Loader2 size={8} className="animate-spin" />
@@ -1337,7 +1327,7 @@ export function AvatarVideoSection({
       )}
 
       {(jobId || providerJobId || jobStatus) && !avatarVideo && (
-        <div className="mt-2 flex flex-wrap gap-2 border-t border-gray-100 pt-2 text-[10px] text-gray-500 dark:border-[#6C757D]/10 dark:text-gray-400">
+        <div className="mt-2 flex flex-wrap gap-2 border-t border-gray-100 pt-2 text-[10px] text-gray-500 dark:border-[var(--engine-muted)]/10 dark:text-gray-400">
           {jobStatus && <span>Status: {jobStatus}</span>}
           {providerJobId && <span>Proveedor: {providerJobId}</span>}
           {jobId && <span>Job: {jobId.slice(0, 8)}...</span>}
@@ -1345,7 +1335,7 @@ export function AvatarVideoSection({
       )}
 
       {hasAvatarClips ? (
-        <div className="mt-3 border-t border-gray-100 pt-3 dark:border-[#6C757D]/10">
+        <div className="mt-3 border-t border-gray-100 pt-3 dark:border-[var(--engine-muted)]/10">
           <div className="mb-2 flex items-center justify-between gap-2">
             <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
               Clips generados
@@ -1358,7 +1348,7 @@ export function AvatarVideoSection({
             {completedAvatarClips.map((clip) => (
               <div
                 key={clip.id}
-                className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-[#6C757D]/20 dark:bg-[#151A21]"
+                className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-surface-solid)]"
               >
                 <video
                   src={clip.public_url}
@@ -1401,7 +1391,7 @@ export function AvatarVideoSection({
       ) : null}
 
       {avatarVideo && (
-        <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-gray-105 dark:border-[#6C757D]/10 text-[10px]">
+        <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-gray-105 dark:border-[var(--engine-muted)]/10 text-[10px]">
           <span className="font-semibold text-gray-500 truncate max-w-[150px]" title={avatarVideo.storage_path.split("/").pop()}>
             {avatarVideo.storage_path.split("/").pop()}
           </span>
@@ -1535,15 +1525,15 @@ export function ArtlistSearchModal({
         className="hidden"
       />
 
-      <div className="relative w-full max-w-3xl max-h-[85vh] overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-[#6C757D]/20 dark:bg-[#151A21] flex flex-col shadow-2xl animate-in fade-in-50 zoom-in-95 duration-150">
+      <div className="relative w-full max-w-3xl max-h-[85vh] overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-surface-solid)] flex flex-col shadow-2xl animate-in fade-in-50 zoom-in-95 duration-150">
         
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-100 dark:border-[#6C757D]/10 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-gray-100 dark:border-[var(--engine-muted)]/10 px-6 py-4">
           <div className="flex items-center gap-2">
             {type === "music" ? (
               <Music className="text-indigo-500 animate-pulse" size={20} />
             ) : (
-              <FileVideo className="text-[#00D4B3] animate-pulse" size={20} />
+              <FileVideo className="text-[var(--engine-accent)] animate-pulse" size={20} />
             )}
             <div>
               <h3 className="text-sm font-bold text-gray-950 dark:text-white">
@@ -1574,13 +1564,13 @@ export function ArtlistSearchModal({
                 placeholder={type === "music" ? "Buscar por género, mood o instrumento..." : "Buscar por tags de video o keywords..."}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-gray-305 bg-white text-gray-900 placeholder-gray-400 focus:border-[#1F5AF6] focus:outline-none dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
+                className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-gray-305 bg-white text-gray-900 placeholder-gray-400 focus:border-[var(--engine-info)] focus:outline-none dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)] dark:text-white"
               />
             </div>
             <button
               type="submit"
               disabled={isSearching}
-              className="px-4 py-2 text-xs font-bold text-white bg-[#1F5AF6] hover:bg-[#1A4ED4] rounded-lg transition-colors flex items-center gap-1"
+              className="px-4 py-2 text-xs font-bold text-white bg-[var(--engine-info)] hover:bg-[#1A4ED4] rounded-lg transition-colors flex items-center gap-1"
             >
               {isSearching ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
               Buscar
@@ -1611,11 +1601,11 @@ export function ArtlistSearchModal({
           <div className="space-y-2 pt-2">
             {isSearching ? (
               <div className="flex flex-col items-center justify-center py-12 text-gray-505 dark:text-gray-400 space-y-3">
-                <Loader2 className="animate-spin text-[#1F5AF6]" size={32} />
+                <Loader2 className="animate-spin text-[var(--engine-info)]" size={32} />
                 <p className="text-xs">Consultando catálogo de Artlist...</p>
               </div>
             ) : results.length === 0 ? (
-              <div className="text-center py-12 text-xs text-gray-500 dark:text-gray-405 border border-dashed border-gray-200 dark:border-[#6C757D]/15 rounded-xl">
+              <div className="text-center py-12 text-xs text-gray-500 dark:text-gray-405 border border-dashed border-gray-200 dark:border-[var(--engine-muted)]/15 rounded-xl">
                 Haz una búsqueda o haz clic en las sugerencias para cargar el catálogo.
               </div>
             ) : type === "music" ? (
@@ -1624,15 +1614,15 @@ export function ArtlistSearchModal({
                 {results.map((track) => (
                   <div
                     key={track.id}
-                    className="flex items-center justify-between p-3 rounded-xl border border-gray-100 dark:border-[#6C757D]/10 bg-gray-50/50 dark:bg-[#0F1419]/30 text-xs"
+                    className="flex items-center justify-between p-3 rounded-xl border border-gray-100 dark:border-[var(--engine-muted)]/10 bg-gray-50/50 dark:bg-[var(--engine-canvas)]/30 text-xs"
                   >
                     <div className="flex items-center gap-3">
                       <button
                         onClick={() => handlePlayToggle(track.id, track.public_url)}
-                        className="p-2 rounded-full bg-white dark:bg-[#151A21] border border-gray-200 dark:border-[#6C757D]/20 text-gray-650 dark:text-gray-300 hover:text-[#1F5AF6] dark:hover:text-[#38BDF8] hover:border-[#1F5AF6]/30 transition-all flex items-center justify-center shadow-sm"
+                        className="p-2 rounded-full bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/20 text-gray-650 dark:text-gray-300 hover:text-[var(--engine-info)] dark:hover:text-[#38BDF8] hover:border-[var(--engine-info)]/30 transition-all flex items-center justify-center shadow-sm"
                       >
                         {playingTrackId === track.id ? (
-                          <Pause size={14} className="fill-current text-[#1F5AF6]" />
+                          <Pause size={14} className="fill-current text-[var(--engine-info)]" />
                         ) : (
                           <Play size={14} className="fill-current" />
                         )}
@@ -1646,7 +1636,7 @@ export function ArtlistSearchModal({
                     <button
                       onClick={() => handleImportClick(track.id)}
                       disabled={isImporting}
-                      className="px-3 py-1.5 text-[11px] font-bold rounded-lg border border-gray-200 dark:border-[#6C757D]/20 hover:bg-white dark:hover:bg-white/5 text-gray-750 dark:text-gray-300 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                      className="px-3 py-1.5 text-[11px] font-bold rounded-lg border border-gray-200 dark:border-[var(--engine-muted)]/20 hover:bg-white dark:hover:bg-white/5 text-gray-750 dark:text-gray-300 transition-colors flex items-center gap-1.5 disabled:opacity-50"
                     >
                       {isImporting ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
                       Importar
@@ -1660,7 +1650,7 @@ export function ArtlistSearchModal({
                 {results.map((video) => (
                   <div
                     key={video.id}
-                    className="group flex flex-col rounded-xl border border-gray-105 dark:border-[#6C757D]/10 bg-gray-50/50 dark:bg-[#0F1419]/30 overflow-hidden"
+                    className="group flex flex-col rounded-xl border border-gray-105 dark:border-[var(--engine-muted)]/10 bg-gray-50/50 dark:bg-[var(--engine-canvas)]/30 overflow-hidden"
                   >
                     <div
                       className="relative aspect-video bg-black cursor-pointer overflow-hidden flex items-center justify-center"
@@ -1721,10 +1711,10 @@ export function ArtlistSearchModal({
         </div>
 
         {/* Footer */}
-        <div className="bg-gray-50 dark:bg-[#151A21] px-6 py-3 border-t border-gray-100 dark:border-[#6C757D]/10 flex justify-end">
+        <div className="bg-gray-50 dark:bg-[var(--engine-surface-solid)] px-6 py-3 border-t border-gray-100 dark:border-[var(--engine-muted)]/10 flex justify-end">
           <button
             onClick={handleClose}
-            className="px-4 py-2 text-xs font-bold rounded-lg border border-gray-300 dark:border-[#6C757D]/20 text-gray-750 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+            className="px-4 py-2 text-xs font-bold rounded-lg border border-gray-300 dark:border-[var(--engine-muted)]/20 text-gray-750 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
           >
             Cerrar
           </button>
@@ -2130,10 +2120,10 @@ export function GoogleDriveImportModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="relative w-full max-w-2xl max-h-[85vh] overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-[#6C757D]/20 dark:bg-[#151A21] flex flex-col shadow-2xl animate-in fade-in-50 zoom-in-95 duration-150">
+      <div className="relative w-full max-w-2xl max-h-[85vh] overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-surface-solid)] flex flex-col shadow-2xl animate-in fade-in-50 zoom-in-95 duration-150">
         
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-100 dark:border-[#6C757D]/10 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-gray-100 dark:border-[var(--engine-muted)]/10 px-6 py-4">
           <div className="flex items-center gap-2">
             <HardDrive className="text-blue-500 animate-pulse" size={20} />
             <div>
@@ -2181,10 +2171,10 @@ export function GoogleDriveImportModal({
         </div>
 
         {/* Footer */}
-        <div className="bg-gray-50 dark:bg-[#151A21] px-6 py-3 border-t border-gray-100 dark:border-[#6C757D]/10 flex justify-end">
+        <div className="bg-gray-50 dark:bg-[var(--engine-surface-solid)] px-6 py-3 border-t border-gray-100 dark:border-[var(--engine-muted)]/10 flex justify-end">
           <button
             onClick={handleClose}
-            className="px-4 py-2 text-xs font-bold rounded-lg border border-gray-305 dark:border-[#6C757D]/20 text-gray-750 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+            className="px-4 py-2 text-xs font-bold rounded-lg border border-gray-305 dark:border-[var(--engine-muted)]/20 text-gray-750 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
           >
             Cancelar
           </button>
@@ -2244,7 +2234,7 @@ function CloudStorageImportBody({
   if (isLoadingConnections) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-gray-500 dark:text-gray-400">
-        <Loader2 className="mb-3 animate-spin text-[#1F5AF6]" size={28} />
+        <Loader2 className="mb-3 animate-spin text-[var(--engine-info)]" size={28} />
         <p className="text-xs">Revisando cuentas vinculadas...</p>
       </div>
     );
@@ -2252,7 +2242,7 @@ function CloudStorageImportBody({
 
   if (connectedProviders.length === 0) {
     return (
-      <div className="space-y-4 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 p-5 text-center dark:border-[#6C757D]/20 dark:bg-[#0F1419]/30">
+      <div className="space-y-4 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 p-5 text-center dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)]/30">
         <HardDrive size={32} className="mx-auto text-gray-400" />
         <div>
           <p className="text-sm font-bold text-gray-900 dark:text-white">No hay cuentas cloud vinculadas</p>
@@ -2264,13 +2254,13 @@ function CloudStorageImportBody({
           <CloudStorageConnectButton provider="google_drive" className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
             Vincular Google Drive
           </CloudStorageConnectButton>
-          <CloudStorageConnectButton provider="onedrive" className="rounded-lg border border-[#00D4B3]/30 bg-[#00D4B3]/10 px-3 py-2 text-xs font-bold text-[#008F7A] hover:bg-[#00D4B3]/15 dark:text-[#00D4B3]">
+          <CloudStorageConnectButton provider="onedrive" className="rounded-lg border border-[var(--engine-accent)]/30 bg-[var(--engine-accent)]/10 px-3 py-2 text-xs font-bold text-[#008F7A] hover:bg-[var(--engine-accent)]/15 dark:text-[var(--engine-accent)]">
             Vincular OneDrive
           </CloudStorageConnectButton>
           <button
             type="button"
             onClick={onConnectRefresh}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-white dark:border-[#6C757D]/20 dark:text-gray-300 dark:hover:bg-white/5"
+            className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-white dark:border-[var(--engine-muted)]/20 dark:text-gray-300 dark:hover:bg-white/5"
           >
             Actualizar
           </button>
@@ -2295,8 +2285,8 @@ function CloudStorageImportBody({
                 onClick={() => onProviderSelect(connection.provider)}
                 className={`rounded-lg border px-3 py-2 text-left text-xs font-bold transition-colors ${
                   selectedProvider === connection.provider
-                    ? "border-[#1F5AF6] bg-blue-50 text-[#1F5AF6] dark:bg-blue-500/10"
-                    : "border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-[#6C757D]/20 dark:text-gray-300 dark:hover:bg-white/5"
+                    ? "border-[var(--engine-info)] bg-blue-50 text-[var(--engine-info)] dark:bg-blue-500/10"
+                    : "border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-[var(--engine-muted)]/20 dark:text-gray-300 dark:hover:bg-white/5"
                 }`}
               >
                 <span className="block">{label}</span>
@@ -2324,13 +2314,13 @@ function CloudStorageImportBody({
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
               disabled={!selectedProvider || isSearching}
-              className="w-full rounded-lg border border-gray-305 bg-white py-2 pl-9 pr-4 text-xs text-gray-900 placeholder-gray-400 focus:border-[#1F5AF6] focus:outline-none dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
+              className="w-full rounded-lg border border-gray-305 bg-white py-2 pl-9 pr-4 text-xs text-gray-900 placeholder-gray-400 focus:border-[var(--engine-info)] focus:outline-none dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)] dark:text-white"
             />
           </div>
           <button
             type="submit"
             disabled={!selectedProvider || isSearching}
-            className="flex items-center gap-1 rounded-lg bg-[#1F5AF6] px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-[#1A4ED4] disabled:opacity-50"
+            className="flex items-center gap-1 rounded-lg bg-[var(--engine-info)] px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-[#1A4ED4] disabled:opacity-50"
           >
             {isSearching ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
             Buscar
@@ -2340,12 +2330,12 @@ function CloudStorageImportBody({
 
       <div className="space-y-2">
         {isSearching ? (
-          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 py-10 text-gray-500 dark:border-[#6C757D]/15 dark:text-gray-400">
-            <Loader2 className="mb-3 animate-spin text-[#1F5AF6]" size={28} />
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 py-10 text-gray-500 dark:border-[var(--engine-muted)]/15 dark:text-gray-400">
+            <Loader2 className="mb-3 animate-spin text-[var(--engine-info)]" size={28} />
             <p className="text-xs">Consultando {selectedProviderLabel}...</p>
           </div>
         ) : results.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-200 py-8 text-center text-xs text-gray-500 dark:border-[#6C757D]/15 dark:text-gray-400">
+          <div className="rounded-xl border border-dashed border-gray-200 py-8 text-center text-xs text-gray-500 dark:border-[var(--engine-muted)]/15 dark:text-gray-400">
             Busca archivos para importar desde {selectedProviderLabel}.
           </div>
         ) : (
@@ -2353,7 +2343,7 @@ function CloudStorageImportBody({
             {results.map((file) => (
               <div
                 key={file.id}
-                className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/50 p-3 text-xs dark:border-[#6C757D]/10 dark:bg-[#0F1419]/30"
+                className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/50 p-3 text-xs dark:border-[var(--engine-muted)]/10 dark:bg-[var(--engine-canvas)]/30"
               >
                 <div className="min-w-0">
                   <p className="truncate font-semibold text-gray-900 dark:text-white">{file.name}</p>
@@ -2365,7 +2355,7 @@ function CloudStorageImportBody({
                   type="button"
                   onClick={() => onImportFile(file.id)}
                   disabled={isImporting || localIsImporting}
-                  className="flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-bold text-gray-700 transition-colors hover:bg-white disabled:opacity-50 dark:border-[#6C757D]/20 dark:text-gray-300 dark:hover:bg-white/5"
+                  className="flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-bold text-gray-700 transition-colors hover:bg-white disabled:opacity-50 dark:border-[var(--engine-muted)]/20 dark:text-gray-300 dark:hover:bg-white/5"
                 >
                   {(isImporting || localIsImporting) ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
                   Importar
@@ -2387,7 +2377,7 @@ function CloudStorageImportBody({
             value={linkUrl}
             onChange={(event) => setLinkUrl(event.target.value)}
             disabled={!selectedProvider || isImporting || localIsImporting}
-            className="flex-1 rounded-lg border border-gray-305 bg-white p-2 text-xs text-gray-900 placeholder-gray-400 focus:border-[#1F5AF6] focus:outline-none dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-white"
+            className="flex-1 rounded-lg border border-gray-305 bg-white p-2 text-xs text-gray-900 placeholder-gray-400 focus:border-[var(--engine-info)] focus:outline-none dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)] dark:text-white"
           />
           <button
             type="submit"
@@ -2423,7 +2413,7 @@ function CloudStorageImportBody({
               )}
             </div>
           ) : (
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-gray-200 bg-gray-50/50 p-4 dark:border-[#6C757D]/20 dark:bg-[#0F1419]/10">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-gray-200 bg-gray-50/50 p-4 dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)]/10">
               <div>
                 <p className="text-xs font-semibold text-gray-900 dark:text-white">Abrir Google Picker</p>
                 <p className="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400">

@@ -81,7 +81,7 @@ export function ComponentViewer({
         </div>
       </button>
 
-      {expanded && <div className="p-4 bg-white dark:bg-[#1E2329]">{content}</div>}
+      {expanded && <div className="p-4 bg-white dark:bg-[var(--engine-surface-hover)]">{content}</div>}
     </div>
   );
 }

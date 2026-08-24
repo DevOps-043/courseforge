@@ -11,12 +11,14 @@ import {
   Loader2,
   Plus,
   RefreshCw,
+  ScanFace,
   Sparkles,
   Trash2,
   Unplug,
   UserRoundCog,
 } from "lucide-react";
 import { toast } from "sonner";
+import { EngineSelect } from "@/components/ui/EngineSelect";
 
 type AspectRatio = "16:9" | "9:16";
 type Engine = "avatar_iv" | "avatar_v";
@@ -812,16 +814,17 @@ export default function HeygenStudioClient({
   ];
 
   return (
-    <div className="space-y-6">
-      <header className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-white/5 dark:bg-[#151A21]">
+    <div className="heygen-studio space-y-6">
+      <header className="engine-page-hero">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-rose-500/10 text-rose-500">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-[var(--engine-accent)]">
               <UserRoundCog size={24} />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Avatares</h1>
-              <p className="mt-2 max-w-2xl text-sm text-gray-600 dark:text-[#94A3B8]">
+              <p className="engine-eyebrow">Producción audiovisual</p>
+              <h1 className="text-3xl">Avatares</h1>
+              <p className="mt-2 max-w-2xl text-sm">
                 Modulo para administrar presets y generar videos de avatar de {organizationLabel}.
               </p>
             </div>
@@ -874,7 +877,7 @@ export default function HeygenStudioClient({
               type="button"
               onClick={handleSyncCatalog}
               disabled={!connection.connected || isLoadingPresets || isSyncingCatalog}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#1F5AF6] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#1F5AF6]/15 transition hover:bg-[#1a4bd6] disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl bg-[var(--engine-action)] px-4 py-2.5 text-sm font-semibold text-[var(--engine-on-action)] shadow-lg transition hover:-translate-y-px disabled:opacity-60"
             >
               {isSyncingCatalog ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
               Sincronizar
@@ -889,7 +892,7 @@ export default function HeygenStudioClient({
         </div>
       ) : null}
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/5 dark:bg-[#151A21]">
+      <section className="engine-connection-strip">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-bold text-gray-900 dark:text-white">
@@ -906,7 +909,7 @@ export default function HeygenStudioClient({
                 onChange={(event) => setApiKeyInput(event.target.value)}
                 placeholder={connection.connected ? "Pega una nueva API key para reemplazarla" : "Pega la API key de HeyGen"}
                 disabled={isSavingConnection || isLoadingConnection}
-                className="h-[40px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[#0F1419] dark:text-white"
+                className="h-[40px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white"
               />
             </label>
           </div>
@@ -914,7 +917,7 @@ export default function HeygenStudioClient({
             type="button"
             onClick={handleSaveApiKey}
             disabled={isSavingConnection || apiKeyInput.trim().length < 12}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-rose-500/15 transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-60"
+            className="engine-button engine-button--primary"
           >
             {isSavingConnection ? <Loader2 size={16} className="animate-spin" /> : <UserRoundCog size={16} />}
             Validar y guardar
@@ -935,7 +938,7 @@ export default function HeygenStudioClient({
       )}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
-        <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-white/5 dark:bg-[#151A21]">
+        <section className="engine-surface engine-studio-panel p-6">
           <div className="mb-5 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold text-gray-900 dark:text-white">Generacion de avatar</h2>
@@ -957,8 +960,8 @@ export default function HeygenStudioClient({
           </div>
 
           {isCourseContext ? (
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 p-2 dark:border-white/5 dark:bg-[#0F1419]">
-              <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1 dark:border-white/10 dark:bg-[#151A21]">
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 p-2 dark:border-white/5 dark:bg-[var(--engine-canvas)]">
+              <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1 dark:border-white/10 dark:bg-[var(--engine-surface-solid)]">
                 {[
                   { label: "Por escenas", value: "scene_clips" },
                   { label: "Video completo", value: "single_video" },
@@ -994,7 +997,7 @@ export default function HeygenStudioClient({
                   value={standaloneTitle}
                   disabled={isGenerating}
                   onChange={(event) => setStandaloneTitle(event.target.value)}
-                  className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[#0F1419] dark:text-white"
+                  className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white"
                 />
               </label>
               <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
@@ -1004,7 +1007,7 @@ export default function HeygenStudioClient({
                   disabled={isGenerating}
                   onChange={(event) => setStandaloneScript(event.target.value)}
                   placeholder="Escribe el texto que dira el avatar..."
-                  className="min-h-36 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium normal-case leading-relaxed tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[#0F1419] dark:text-white"
+                  className="min-h-36 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium normal-case leading-relaxed tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white"
                 />
               </label>
             </div>
@@ -1129,7 +1132,7 @@ export default function HeygenStudioClient({
                               value={clip.script_text}
                               disabled={isGeneratingClips}
                               onChange={(event) => updateSceneClip(clip.id, { script_text: event.target.value })}
-                              className="mt-3 min-h-28 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm leading-relaxed text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[#0F1419] dark:text-white"
+                              className="mt-3 min-h-28 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm leading-relaxed text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white"
                             />
                             {clip.error_message ? (
                               <p className="mt-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-600 dark:text-red-300">
@@ -1172,7 +1175,7 @@ export default function HeygenStudioClient({
                                     })
                                   }
                                   placeholder="Opcional"
-                                  className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[#0F1419] dark:text-white"
+                                  className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white"
                                 />
                               </label>
                             </div>
@@ -1252,7 +1255,7 @@ export default function HeygenStudioClient({
             />
             <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
               Subtitulos
-              <span className="flex h-[38px] items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm normal-case tracking-normal text-gray-700 dark:border-white/10 dark:bg-[#0F1419] dark:text-gray-300">
+              <span className="flex h-[38px] items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm normal-case tracking-normal text-gray-700 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-gray-300">
                 <input
                   type="checkbox"
                   checked={caption}
@@ -1322,14 +1325,20 @@ export default function HeygenStudioClient({
           </div>
 
           {componentId ? (
-            <p className="mt-4 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-500 dark:border-white/5 dark:bg-[#0F1419] dark:text-slate-400">
+            <p className="mt-4 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-500 dark:border-white/5 dark:bg-[var(--engine-canvas)] dark:text-slate-400">
               componentId: {componentId}
             </p>
           ) : null}
         </section>
 
-        <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-white/5 dark:bg-[#151A21]">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white">Estado</h2>
+        <section className="engine-preview-stage">
+          <div className="engine-preview-stage__header">
+            <div>
+              <p className="engine-eyebrow !mb-1 !text-[var(--engine-text-muted)]">Monitor de render</p>
+              <h2 className="text-lg text-gray-900 dark:text-white">Vista de producción</h2>
+            </div>
+            <span className="engine-preview-stage__live"><span /> EN VIVO</span>
+          </div>
           {currentJob ? (
             <div className="mt-4 space-y-3">
               <StatusRow label="Job" value={currentJob.jobId} mono />
@@ -1357,8 +1366,12 @@ export default function HeygenStudioClient({
               ) : null}
             </div>
           ) : (
-            <div className="mt-4 rounded-xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500 dark:border-white/10 dark:text-slate-400">
-              No hay job activo para revisar.
+            <div className="engine-preview-empty">
+              <div className="engine-preview-orbit">
+                <ScanFace size={32} strokeWidth={1.35} />
+              </div>
+              <h3>El escenario está listo</h3>
+              <p>Configura voz, presencia y formato. La vista previa aparecerá aquí al iniciar un render.</p>
             </div>
           )}
         </section>
@@ -1374,7 +1387,7 @@ export default function HeygenStudioClient({
         title={isCourseContext ? "Videos de esta generacion" : "Biblioteca de videos"}
       />
 
-      <section className="grid gap-6 xl:grid-cols-2">
+      <section className="engine-catalog-grid">
         <PresetList
           emptyText="Sin avatares sincronizados."
           items={avatarPresets.map((preset) => ({
@@ -1417,22 +1430,16 @@ function SelectField({
   value: string;
 }) {
   return (
-    <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
-      {label}
-      <select
+    <div>
+      <EngineSelect
+        label={label}
         value={value}
         disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[#0F1419] dark:text-white"
-      >
-        {placeholder ? <option value="">{placeholder}</option> : null}
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
+        onValueChange={onChange}
+        options={placeholder ? [{ label: placeholder, value: "" }, ...options] : options}
+        placeholder={placeholder}
+      />
+    </div>
   );
 }
 
@@ -1468,7 +1475,7 @@ function StatusRow({
   value: string;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-sm dark:border-white/5 dark:bg-[#0F1419]">
+    <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-sm dark:border-white/5 dark:bg-[var(--engine-canvas)]">
       <span className="shrink-0 font-semibold text-gray-500 dark:text-slate-400">{label}</span>
       <span className={`min-w-0 text-right text-gray-900 dark:text-white ${mono ? "font-mono text-xs" : "font-medium"}`}>
         {value}
@@ -1536,7 +1543,7 @@ function GeneratedVideoLibrary({
   }, [items, selectedVideoId]);
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-white/5 dark:bg-[#151A21]">
+    <section className="engine-surface engine-preset-catalog p-6" data-catalog={title.toLowerCase()}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="text-lg font-bold text-gray-900 dark:text-white">{title}</h2>
         <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-500 dark:bg-white/5 dark:text-slate-400">
@@ -1550,7 +1557,7 @@ function GeneratedVideoLibrary({
       ) : (
         <div className="space-y-4">
           {selectedVideo ? (
-            <div className="overflow-hidden rounded-xl border border-gray-100 bg-gray-50 shadow-sm dark:border-white/5 dark:bg-[#0F1419]">
+            <div className="overflow-hidden rounded-xl border border-gray-100 bg-gray-50 shadow-sm dark:border-white/5 dark:bg-[var(--engine-canvas)]">
               <video
                 key={selectedVideo.id}
                 src={selectedVideo.url}
@@ -1588,7 +1595,7 @@ function GeneratedVideoLibrary({
               key={item.id}
               type="button"
               onClick={() => setSelectedVideoId(item.id)}
-              className={`overflow-hidden rounded-xl border bg-gray-50 text-left shadow-sm transition dark:bg-[#0F1419] ${
+              className={`overflow-hidden rounded-xl border bg-gray-50 text-left shadow-sm transition dark:bg-[var(--engine-canvas)] ${
                 selectedVideo?.id === item.id
                   ? "border-rose-400 ring-2 ring-rose-500/20 dark:border-rose-400"
                   : "border-gray-100 hover:border-rose-200 dark:border-white/5 dark:hover:border-rose-500/30"
@@ -1636,7 +1643,7 @@ function PresetList({
   title: string;
 }) {
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-white/5 dark:bg-[#151A21]">
+    <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-white/5 dark:bg-[var(--engine-surface-solid)]">
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="text-lg font-bold text-gray-900 dark:text-white">{title}</h2>
         <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-500 dark:bg-white/5 dark:text-slate-400">
@@ -1648,20 +1655,20 @@ function PresetList({
           {emptyText}
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className={title === "Avatares" ? "engine-avatar-gallery" : "engine-voice-gallery"}>
           {items.map((item) => (
             <div
               key={item.id}
-              className="flex min-w-0 items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-white/5 dark:bg-[#0F1419]"
+              className="engine-preset-card"
             >
               {item.imageUrl ? (
                 <img
                   src={item.imageUrl}
                   alt=""
-                  className="h-12 w-12 shrink-0 rounded-xl object-cover"
+                  className="engine-preset-card__image"
                 />
               ) : (
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-rose-500/10 text-rose-500">
+                <div className="engine-preset-card__fallback">
                   <UserRoundCog size={20} />
                 </div>
               )}

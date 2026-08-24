@@ -382,16 +382,16 @@ export default async function SofliaEngineSlidesPage({
 
   return (
     <main className="space-y-6">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <header className="engine-page-hero flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-sm font-semibold text-[#00A98F]">
+          <div className="engine-eyebrow flex items-center gap-2">
             <PresentationMark />
-            Produccion visual
+            Producción visual
           </div>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight text-gray-950 dark:text-white">
+          <h1 className="mt-3 text-3xl">
             SofLIA - Engine Slides
           </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-600 dark:text-gray-400">
+          <p className="mt-2 max-w-3xl text-sm leading-6">
             Consola del modulo hibrido para generar diapositivas de cursos con
             plantillas HTML SofLIA, graficas SVG responsivas y QA automatico.
           </p>
@@ -400,28 +400,28 @@ export default async function SofliaEngineSlidesPage({
         <div className="flex flex-wrap gap-2">
           <Link
             href={backHref}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:bg-[#151A21] dark:text-gray-200 dark:hover:bg-white/5"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:bg-[var(--engine-surface-solid)] dark:text-gray-200 dark:hover:bg-white/5"
           >
             <ArrowLeft size={16} />
             Regresar
           </Link>
           <Link
             href={`${adminBasePath}/artifacts`}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#0A2540] px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-[#10395f]"
+            className="inline-flex items-center gap-2 rounded-lg bg-[var(--engine-primary)] px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-[#10395f]"
           >
             <Layers3 size={16} />
             Ir a artefactos
           </Link>
           <Link
             href={`${adminBasePath}/templates`}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:bg-[#151A21] dark:text-gray-200 dark:hover:bg-white/5"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:bg-[var(--engine-surface-solid)] dark:text-gray-200 dark:hover:bg-white/5"
           >
             <FileText size={16} />
             Plantillas
           </Link>
           <Link
             href={`${adminBasePath}/slides/templates`}
-            className="inline-flex items-center gap-2 rounded-lg border border-[#00D4B3]/30 bg-[#00D4B3]/10 px-3 py-2 text-sm font-bold text-[#007F6D] transition hover:bg-[#00D4B3]/15 dark:text-[#00D4B3]"
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--engine-accent)]/30 bg-[var(--engine-accent)]/10 px-3 py-2 text-sm font-bold text-[#007F6D] transition hover:bg-[var(--engine-accent)]/15 dark:text-[var(--engine-accent)]"
           >
             <FileCode2 size={16} />
             Crear template HTML
@@ -430,24 +430,24 @@ export default async function SofliaEngineSlidesPage({
       </header>
 
       <section className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-[#151A21]">
+        <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-[var(--engine-surface-solid)]">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Decks recientes</p>
-            <Gauge size={16} className="text-[#00A98F]" />
+            <Gauge size={16} className="text-[var(--engine-accent-strong)]" />
           </div>
           <p className="mt-3 text-3xl font-bold text-gray-950 dark:text-white">{recentDecks.length}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-[#151A21]">
+        <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-[var(--engine-surface-solid)]">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Con alertas</p>
             <AlertTriangle size={16} className="text-amber-500" />
           </div>
           <p className="mt-3 text-3xl font-bold text-gray-950 dark:text-white">{warningOrFailed}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-[#151A21]">
+        <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-[var(--engine-surface-solid)]">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Hallazgos QA</p>
-            <ShieldCheck size={16} className="text-[#00A98F]" />
+            <ShieldCheck size={16} className="text-[var(--engine-accent-strong)]" />
           </div>
           <p className="mt-3 text-3xl font-bold text-gray-950 dark:text-white">{totalFindings}</p>
         </div>
@@ -460,7 +460,7 @@ export default async function SofliaEngineSlidesPage({
       />
 
       <section className="grid gap-6 xl:grid-cols-[1fr_380px]">
-        <div className="rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#151A21]">
+        <div className="rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[var(--engine-surface-solid)]">
           <div className="border-b border-gray-100 px-5 py-4 dark:border-white/10">
             <h2 className="text-sm font-bold text-gray-950 dark:text-white">
               Decks generados recientemente
@@ -496,7 +496,7 @@ export default async function SofliaEngineSlidesPage({
             </div>
           ) : (
             <div className="px-5 py-10 text-center">
-              <CheckCircle2 size={26} className="mx-auto text-[#00A98F]" />
+              <CheckCircle2 size={26} className="mx-auto text-[var(--engine-accent-strong)]" />
               <h3 className="mt-3 text-sm font-bold text-gray-950 dark:text-white">
                 Aun no hay decks generados
               </h3>
@@ -509,9 +509,9 @@ export default async function SofliaEngineSlidesPage({
         </div>
 
         <aside className="space-y-4">
-          <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-[#151A21]">
+          <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-[var(--engine-surface-solid)]">
             <div className="flex items-center gap-2">
-              <GitBranch size={17} className="text-[#00A98F]" />
+              <GitBranch size={17} className="text-[var(--engine-accent-strong)]" />
               <h2 className="text-sm font-bold text-gray-950 dark:text-white">
                 Pipeline activo
               </h2>
@@ -526,7 +526,7 @@ export default async function SofliaEngineSlidesPage({
                 "quality_gate",
               ].map((stage, index) => (
                 <li key={stage} className="flex items-center gap-3">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#00D4B3]/10 text-xs font-bold text-[#00A98F]">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--engine-accent)]/10 text-xs font-bold text-[var(--engine-accent-strong)]">
                     {index + 1}
                   </span>
                   <span className="font-mono text-xs">{stage}</span>
@@ -535,9 +535,9 @@ export default async function SofliaEngineSlidesPage({
             </ol>
           </div>
 
-          <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-[#151A21]">
+          <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-[var(--engine-surface-solid)]">
             <div className="flex items-center gap-2">
-              <BarChart3 size={17} className="text-[#00A98F]" />
+              <BarChart3 size={17} className="text-[var(--engine-accent-strong)]" />
               <h2 className="text-sm font-bold text-gray-950 dark:text-white">
                 Graficas
               </h2>
@@ -556,7 +556,7 @@ export default async function SofliaEngineSlidesPage({
 
 function PresentationMark() {
   return (
-    <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#00D4B3]/10 text-[#00A98F]">
+    <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--engine-accent)]/10 text-[var(--engine-accent-strong)]">
       <BarChart3 size={15} />
     </span>
   );

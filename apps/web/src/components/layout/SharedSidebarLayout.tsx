@@ -1,309 +1,293 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { usePathname } from 'next/navigation';
-import Link from 'next/link';
+import React, { useEffect, useState } from 'react';
 import Image from 'next/image';
-import { ChevronLeft, ChevronRight, ChevronUp, LogOut, Monitor, Moon, Sun, User } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  LogOut,
+  Menu,
+  Monitor,
+  Moon,
+  Sun,
+  User,
+  X,
+} from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useTheme } from 'next-themes';
 import OrganizationSwitcher from '@/components/OrganizationSwitcher';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import type { SidebarProfile } from './layout.types';
+import styles from './SharedSidebarLayout.module.css';
 
 export interface NavItemConfig {
-    href: string;
-    icon: React.ReactNode;
-    label: string;
+  href: string;
+  icon: React.ReactNode;
+  label: string;
 }
 
 interface SharedSidebarLayoutProps {
-    children: React.ReactNode;
-    userEmail?: string;
-    logoutAction: () => void;
-    profile?: SidebarProfile | null;
-    navItems: NavItemConfig[];
-    basePath: string; // The root path to match exactly, e.g. '/admin', '/architect'
-    title: React.ReactNode;
+  children: React.ReactNode;
+  userEmail?: string;
+  logoutAction: () => void;
+  profile?: SidebarProfile | null;
+  navItems: NavItemConfig[];
+  basePath: string;
+  title: React.ReactNode;
 }
 
 interface SidebarNavItemProps extends NavItemConfig {
-    isActive: boolean;
-    isCollapsed: boolean;
+  isActive: boolean;
+  isCollapsed: boolean;
+  onNavigate: () => void;
 }
 
-const NavItem = ({ href, icon, label, isActive, isCollapsed }: SidebarNavItemProps) => {
-    return (
-        <Link
-            href={href}
-            className={`relative group flex items-center px-3 py-3 rounded-xl transition-all duration-300 overflow-hidden ${isActive
-                ? 'bg-[#0A2540] text-white shadow-lg shadow-[#0A2540]/20'
-                : 'text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5'
-                }`}
-            title={isCollapsed ? label : ''}
-        >
-            {isActive && (
-                <motion.div
-                    layoutId="activeTab"
-                    className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-[#00D4B3] rounded-r-full"
-                />
-            )}
+function SidebarNavItem({ href, icon, label, isActive, isCollapsed, onNavigate }: SidebarNavItemProps) {
+  return (
+    <Link
+      href={href}
+      onClick={onNavigate}
+      aria-current={isActive ? 'page' : undefined}
+      className={`${styles.navItem} ${isActive ? styles.navItemActive : ''}`}
+    >
+      <span className={styles.navIcon} aria-hidden="true">{icon}</span>
+      {!isCollapsed && <span className={styles.navLabel}>{label}</span>}
+      {isCollapsed && <span className={styles.tooltip}>{label}</span>}
+    </Link>
+  );
+}
 
-            <div className={`flex items-center gap-4 ${isCollapsed ? 'justify-center w-full px-0' : 'pl-2 min-w-[200px]'}`}>
-                <div className={`${isActive ? 'text-[#00D4B3]' : ''}`}>
-                    {icon}
-                </div>
-
-                <motion.span
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: isCollapsed ? 0 : 1, x: isCollapsed ? -10 : 0 }}
-                    transition={{ duration: 0.2 }}
-                    className={`font-medium text-sm whitespace-nowrap ${isCollapsed ? 'hidden' : 'block'}`}
-                >
-                    {label}
-                </motion.span>
-            </div>
-
-            {isCollapsed && (
-                <div className="absolute left-full ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-slate-700 shadow-xl">
-                    {label}
-                </div>
-            )}
-        </Link>
-    );
-};
+function ThemeIcon({ theme }: { theme?: string }) {
+  if (theme === 'light') return <Sun aria-hidden="true" />;
+  if (theme === 'dark') return <Moon aria-hidden="true" />;
+  return <Monitor aria-hidden="true" />;
+}
 
 export default function SharedSidebarLayout({
-    children,
-    userEmail,
-    logoutAction,
-    profile,
-    navItems,
-    basePath,
-    title
+  children,
+  userEmail,
+  logoutAction,
+  profile,
+  navItems,
+  basePath,
+  title,
 }: SharedSidebarLayoutProps) {
-    const [isPinned, setIsPinned] = useState(true);
-    const [isHovered, setIsHovered] = useState(false);
-    const [isFocusModeRequested, setIsFocusModeRequested] = useState(false);
-    const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-    useAuth(); // Inicializa stores de auth y organización
+  const [isPinned, setIsPinned] = useState(true);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFocusModeRequested, setIsFocusModeRequested] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const { theme, setTheme } = useTheme();
+  const pathname = usePathname();
 
-    const { theme, setTheme } = useTheme();
-    const [mounted, setMounted] = useState(false);
+  useAuth();
 
-    useEffect(() => {
-        setMounted(true);
-    }, []);
+  useEffect(() => {
+    setMounted(true);
+    const mediaQuery = window.matchMedia('(max-width: 48rem)');
+    const syncViewport = () => setIsMobile(mediaQuery.matches);
+    syncViewport();
+    mediaQuery.addEventListener('change', syncViewport);
+    return () => mediaQuery.removeEventListener('change', syncViewport);
+  }, []);
 
-    const pathname = usePathname();
-    const isOpen = (isPinned && !isFocusModeRequested) || isHovered;
-
-    useEffect(() => {
-        const handleFocusModeChange = (event: Event) => {
-            const detail = (event as CustomEvent<{ enabled?: boolean }>).detail;
-            setIsFocusModeRequested(Boolean(detail?.enabled));
-            setIsHovered(false);
-        };
-
-        window.addEventListener('courseforge:admin-focus-mode', handleFocusModeChange);
-
-        return () => {
-            window.removeEventListener('courseforge:admin-focus-mode', handleFocusModeChange);
-        };
-    }, []);
-
-    const isActive = (href: string) => {
-        if (href === basePath) return pathname === basePath;
-        return pathname.startsWith(href);
+  useEffect(() => {
+    const handleFocusModeChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ enabled?: boolean }>).detail;
+      setIsFocusModeRequested(Boolean(detail?.enabled));
+      setIsHovered(false);
     };
 
-    if (!mounted) {
-        return null;
-    }
+    window.addEventListener('courseforge:admin-focus-mode', handleFocusModeChange);
+    return () => window.removeEventListener('courseforge:admin-focus-mode', handleFocusModeChange);
+  }, []);
 
-    return (
-        <div className="min-h-screen bg-gray-50 dark:bg-[#0F1419] flex text-slate-800 dark:text-slate-200 overflow-x-clip selection:bg-[#00D4B3]/30 transition-colors duration-300">
-            <motion.aside
-                initial={false}
-                animate={{ width: isOpen ? 280 : 64 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                onMouseEnter={() => !isPinned && setIsHovered(true)}
-                onMouseLeave={() => !isPinned && setIsHovered(false)}
-                className="fixed left-0 top-0 h-full z-40 border-r border-gray-200 dark:border-white/5 backdrop-blur-3xl flex flex-col bg-white dark:bg-[#151A21]/80 transition-colors duration-300"
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobileMenuOpen]);
+
+  const isActive = (href: string) =>
+    href === basePath ? pathname === basePath : pathname.startsWith(href);
+
+  const isExpanded = isMobile ? true : (isPinned && !isFocusModeRequested) || isHovered;
+  const sidebarWidth = isMobile ? 280 : isExpanded ? 264 : 72;
+
+  const cycleTheme = () => {
+    if (theme === 'system') setTheme('dark');
+    else if (theme === 'dark') setTheme('light');
+    else setTheme('system');
+  };
+
+  const accountName = profile?.first_name
+    ? `${profile.first_name} ${profile.last_name_father || ''}`.trim()
+    : userEmail?.split('@')[0].split('.')[0] || 'Usuario';
+  const accountInitial = profile?.first_name?.[0] || userEmail?.[0]?.toUpperCase() || 'U';
+
+  if (!mounted) return null;
+
+  return (
+    <div className={`soflia-engine-shell ${styles.shell}`}>
+      <AnimatePresence>
+        {isMobile && isMobileMenuOpen && (
+          <motion.button
+            type="button"
+            aria-label="Cerrar navegación"
+            className={styles.mobileBackdrop}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      <motion.aside
+        initial={false}
+        animate={{ width: sidebarWidth, x: isMobile && !isMobileMenuOpen ? -296 : 0 }}
+        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+        onMouseEnter={() => !isPinned && !isMobile && setIsHovered(true)}
+        onMouseLeave={() => !isPinned && !isMobile && setIsHovered(false)}
+        className={styles.sidebar}
+        aria-label="Navegación principal"
+      >
+        <div className={styles.brandHeader}>
+          <div className={styles.brand}>
+            <span className={styles.brandMark}>
+              <Image src="/Logo.png" alt="SofLIA" fill sizes="42px" className="object-contain p-1.5" />
+            </span>
+            {isExpanded && (
+              <div>
+                <p className={styles.brandName}>SofLIA <span>Engine</span></p>
+                <p className={styles.brandRole}>{title}</p>
+              </div>
+            )}
+          </div>
+
+          {isMobile ? (
+            <button type="button" aria-label="Cerrar menú" className={styles.mobileClose} onClick={() => setIsMobileMenuOpen(false)}>
+              <X size={17} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              aria-label={isPinned ? 'Contraer menú lateral' : 'Expandir menú lateral'}
+              title={isPinned ? 'Contraer menú lateral' : 'Expandir menú lateral'}
+              className={styles.collapseButton}
+              onClick={() => {
+                setIsPinned((current) => !current);
+                setIsHovered(false);
+              }}
             >
-                <div className="absolute inset-0 bg-gradient-to-b from-white/[0.05] to-transparent pointer-events-none" />
-
-                <div className={`h-20 flex items-center ${isOpen ? 'px-6' : 'justify-center px-0'} overflow-visible transition-all duration-300 border-b border-gray-100 dark:border-white/5 relative`}>
-                    <AnimatePresence mode='wait'>
-                        {isOpen ? (
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="flex items-center gap-3 w-full pr-10"
-                            >
-                                <div className="w-9 h-9 relative shrink-0 rounded-xl bg-[#00D4B3]/10 p-1.5 ring-1 ring-[#00D4B3]/20">
-                                    <Image src="/Logo.png" alt="Logo" fill className="object-contain" />
-                                </div>
-                                <div className="min-w-0">
-                                    <p className="font-bold text-lg leading-5 tracking-wide text-gray-900 dark:text-white">
-                                        SofLIA <span className="text-[#00D4B3]">Engine</span>
-                                    </p>
-                                    <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-gray-400 dark:text-slate-500">
-                                        {title}
-                                    </p>
-                                </div>
-                            </motion.div>
-                        ) : (
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="w-full h-full flex items-center justify-center p-4"
-                            >
-                                <div className="w-9 h-9 relative shrink-0 rounded-xl bg-[#00D4B3]/10 p-1.5 ring-1 ring-[#00D4B3]/20">
-                                    <Image src="/Logo.png" alt="Logo" fill className="object-contain" />
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-
-                    <button
-                        type="button"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setIsPinned((current) => !current);
-                            setIsHovered(false);
-                        }}
-                        aria-label={isPinned ? 'Contraer menu lateral' : 'Expandir menu lateral'}
-                        title={isPinned ? 'Contraer menu lateral' : 'Expandir menu lateral'}
-                        className={`absolute z-50 -translate-y-1/2 rounded-full border border-gray-200 bg-white p-1.5 text-gray-500 shadow-sm transition hover:border-[#00D4B3]/50 hover:text-[#00A98F] dark:border-white/10 dark:bg-[#1A1F26] dark:text-slate-400 dark:hover:text-[#00D4B3] ${isOpen ? 'right-4 top-1/2' : '-right-3 top-[68px]'}`}
-                    >
-                        {isPinned ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-                    </button>
-                </div>
-
-                <div className={`py-2 ${isOpen ? 'border-b border-gray-100 dark:border-white/5' : ''}`}>
-                    <OrganizationSwitcher collapsed={!isOpen} />
-                </div>
-
-                <div className="flex-1 py-6 px-3 flex flex-col gap-2 overflow-y-auto overflow-x-hidden scrollbar-hide">
-                    {navItems.map((item) => (
-                        <NavItem
-                            key={item.href}
-                            {...item}
-                            isActive={isActive(item.href)}
-                            isCollapsed={!isOpen}
-                        />
-                    ))}
-                </div>
-
-                <div className={`border-t border-gray-100 dark:border-white/5 p-4 relative z-50`}>
-                    <AnimatePresence>
-                        {isUserMenuOpen && (
-                            <motion.div
-                                initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                className="absolute bottom-full left-4 right-4 mb-2 bg-white dark:bg-[#1A1F26] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden backdrop-blur-xl p-1"
-                            >
-                                <div className="p-2 border-b border-gray-100 dark:border-white/5 mb-1">
-                                    <p className="text-xs text-gray-500 dark:text-slate-500 font-semibold uppercase tracking-wider">Mi Cuenta</p>
-                                </div>
-
-                                <Link
-                                    href={`${basePath}/profile`}
-                                    onClick={(e) => { e.stopPropagation(); setIsUserMenuOpen(false); }}
-                                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white rounded-lg transition-colors text-left"
-                                >
-                                    <User size={16} className="text-[#00D4B3]" />
-                                    Editar Perfil
-                                </Link>
-
-                                <button
-                                    type="button"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (theme === 'system') setTheme('dark');
-                                        else if (theme === 'dark') setTheme('light');
-                                        else setTheme('system');
-                                    }}
-                                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white rounded-lg transition-colors text-left"
-                                >
-                                    {theme === 'light' ? (
-                                        <Sun size={16} className="text-yellow-500" />
-                                    ) : theme === 'dark' ? (
-                                        <Moon size={16} className="text-blue-500" />
-                                    ) : (
-                                        <Monitor size={16} className="text-[#00D4B3]" />
-                                    )}
-                                    {theme === 'light' ? 'Modo Claro' : theme === 'dark' ? 'Modo Oscuro' : 'Sistema'}
-                                </button>
-
-                                <div className="h-px bg-gray-100 dark:bg-white/5 my-1" />
-
-                                <form action={logoutAction} className="w-full" onClick={(e) => e.stopPropagation()}>
-                                    <button type="submit" className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors text-left">
-                                        <LogOut size={16} />
-                                        Cerrar Sesión
-                                    </button>
-                                </form>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-
-                    <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 }}
-                        onClick={(e) => { e.stopPropagation(); setIsUserMenuOpen(!isUserMenuOpen); }}
-                        className={`flex items-center gap-3 p-2 rounded-xl transition-all cursor-pointer border border-transparent ${isUserMenuOpen ? 'bg-gray-100 dark:bg-white/10' : 'hover:bg-gray-100 dark:hover:bg-white/10'} ${!isOpen ? 'justify-center' : ''}`}
-                    >
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#00D4B3] to-[#009688] flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-[#00D4B3]/20 relative shrink-0">
-                            {profile?.avatar_url ? (
-                                <div className="w-full h-full overflow-hidden rounded-full">
-                                    <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
-                                </div>
-                            ) : (
-                                (profile?.first_name?.[0] || userEmail?.[0]?.toUpperCase())
-                            )}
-                            <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white dark:border-[#151A21] rounded-full z-10"></div>
-                        </div>
-                        {isOpen && (
-                            <>
-                                <div className="flex-1 overflow-hidden">
-                                    <p className="text-sm text-gray-900 dark:text-white font-medium truncate capitalize">
-                                        {profile?.first_name ? `${profile.first_name} ${profile.last_name_father || ''}` : (userEmail?.split('@')[0].split('.')[0] || 'Usuario')}
-                                    </p>
-                                </div>
-
-                                <ChevronUp
-                                    size={16}
-                                    className={`text-gray-400 dark:text-slate-500 transition-transform duration-300 ${isUserMenuOpen ? 'rotate-180' : ''}`}
-                                />
-                            </>
-                        )}
-                    </motion.div>
-
-                    {isOpen && !isUserMenuOpen && (
-                        <p className="text-[9px] text-center text-gray-400 dark:text-slate-600 mt-3 select-none">
-                            Usa el boton superior para contraer el menu
-                        </p>
-                    )}
-                </div>
-            </motion.aside>
-
-            <motion.main
-                id="application-content"
-                animate={{ marginLeft: isOpen ? 280 : 64, paddingLeft: isFocusModeRequested ? 0 : 32 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                className={`flex-1 ${isFocusModeRequested ? 'h-screen overflow-hidden p-0' : 'min-h-screen py-8 pr-8'}`}
-                onClick={() => setIsUserMenuOpen(false)}
-            >
-                <div className={isFocusModeRequested ? "h-full max-w-none" : "max-w-7xl mx-auto"}>
-                    {children}
-                </div>
-            </motion.main>
+              {isPinned ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+            </button>
+          )}
         </div>
-    );
+
+        <nav className={styles.navigation}>
+          {navItems.map((item) => (
+            <SidebarNavItem
+              key={item.href}
+              {...item}
+              isActive={isActive(item.href)}
+              isCollapsed={!isExpanded}
+              onNavigate={() => setIsMobileMenuOpen(false)}
+            />
+          ))}
+        </nav>
+
+        <div className={styles.accountArea}>
+          <AnimatePresence>
+            {isUserMenuOpen && isExpanded && (
+              <motion.div
+                className={styles.accountMenu}
+                initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <OrganizationSwitcher onSwitch={() => setIsUserMenuOpen(false)} />
+                <div className={styles.menuDivider} />
+                <p className={styles.menuLabel}>Cuenta</p>
+                <Link className={styles.menuItem} href={`${basePath}/profile`} onClick={() => setIsUserMenuOpen(false)}>
+                  <User size={16} aria-hidden="true" />
+                  Editar perfil
+                </Link>
+                <button type="button" className={styles.menuItem} onClick={cycleTheme}>
+                  <ThemeIcon theme={theme} />
+                  {theme === 'light' ? 'Modo claro' : theme === 'dark' ? 'Modo oscuro' : 'Tema del sistema'}
+                </button>
+                <div className={styles.menuDivider} />
+                <form action={logoutAction}>
+                  <button type="submit" className={styles.menuItemDanger}>
+                    <LogOut size={16} aria-hidden="true" />
+                    Cerrar sesión
+                  </button>
+                </form>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <button
+            type="button"
+            className={`${styles.accountButton} ${isUserMenuOpen ? styles.accountButtonOpen : ''}`}
+            aria-expanded={isUserMenuOpen}
+            onClick={() => setIsUserMenuOpen((current) => !current)}
+          >
+            <span className={styles.avatar}>
+              {profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : accountInitial}
+              <span className={styles.presence} aria-label="En línea" />
+            </span>
+            {isExpanded && (
+              <>
+                <span className={styles.accountText}>
+                  <span className={styles.accountName}>{accountName}</span>
+                  <span className={styles.accountMeta}>{userEmail || 'Cuenta SofLIA'}</span>
+                </span>
+                <ChevronUp size={15} className={isUserMenuOpen ? 'rotate-180' : ''} aria-hidden="true" />
+              </>
+            )}
+          </button>
+        </div>
+      </motion.aside>
+
+      <motion.main
+        id="application-content"
+        className={`${styles.main} ${isFocusModeRequested ? styles.focusMain : ''}`}
+        animate={{
+          marginLeft: isMobile ? 0 : sidebarWidth + (isFocusModeRequested ? 0 : 12),
+          padding: isFocusModeRequested ? 0 : isMobile ? '16px 12px 24px' : '20px 24px 32px 24px',
+        }}
+        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+        onClick={() => setIsUserMenuOpen(false)}
+      >
+        {isMobile && !isMobileMenuOpen && (
+          <button
+            type="button"
+            aria-label="Abrir menú"
+            className="fixed top-3 left-3 z-40 flex items-center justify-center w-9 h-9 rounded-xl bg-[var(--engine-surface-solid)] border border-[var(--engine-border)] shadow-md text-[var(--engine-text)]"
+            onClick={(event) => {
+              event.stopPropagation();
+              setIsMobileMenuOpen(true);
+            }}
+          >
+            <Menu size={18} />
+          </button>
+        )}
+
+        <div className={`${styles.content} engine-content ${isFocusModeRequested ? styles.focusContent : ''}`}>
+          {children}
+        </div>
+      </motion.main>
+    </div>
+  );
 }

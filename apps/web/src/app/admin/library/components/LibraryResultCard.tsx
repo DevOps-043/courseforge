@@ -54,7 +54,7 @@ function AssetSignal({
             title={label}
             className={`flex h-5 w-5 items-center justify-center rounded-full border ${
                 active
-                    ? 'border-[#00D4B3]/40 bg-[#00D4B3]/15 text-[#00D4B3]'
+                    ? 'border-[var(--engine-accent)]/40 bg-[var(--engine-accent)]/15 text-[var(--engine-accent)]'
                     : 'border-gray-600/20 bg-gray-500/10 text-gray-600'
             }`}
         >
@@ -87,7 +87,7 @@ function SlideGallery({ images }: { images: NonNullable<MaterialAssets['slides']
 
     return (
         <div className="space-y-2">
-            <div className="aspect-video overflow-hidden rounded-lg border border-[#6C757D]/20 bg-[#0F1419]">
+            <div className="aspect-video overflow-hidden rounded-lg border border-[var(--engine-muted)]/20 bg-[var(--engine-canvas)]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                     src={current.public_url}
@@ -103,7 +103,7 @@ function SlideGallery({ images }: { images: NonNullable<MaterialAssets['slides']
                             type="button"
                             onClick={() => setIndex(itemIndex)}
                             className={`h-9 w-14 flex-shrink-0 overflow-hidden rounded border ${
-                                itemIndex === index ? 'border-[#00D4B3]' : 'border-transparent opacity-60'
+                                itemIndex === index ? 'border-[var(--engine-accent)]' : 'border-transparent opacity-60'
                             }`}
                         >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -137,15 +137,15 @@ export function LibraryResultCard({ result }: LibraryResultCardProps) {
             <button
                 type="button"
                 onClick={() => setIsOpen(true)}
-                className="flex h-full flex-col rounded-lg border border-[#6C757D]/10 bg-[#151A21] p-4 text-left transition-colors hover:border-[#00D4B3]/50 hover:bg-[#1E2329]"
+                className="flex h-full flex-col rounded-lg border border-[var(--engine-muted)]/10 bg-[var(--engine-surface-solid)] p-4 text-left transition-colors hover:border-[var(--engine-accent)]/50 hover:bg-[var(--engine-surface-hover)]"
             >
                 <div className="mb-3 flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
-                        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[#0A2540] text-[#00D4B3]">
+                        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--engine-primary)] text-[var(--engine-accent)]">
                             <Icon size={17} />
                         </span>
                         <div className="min-w-0">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--engine-text-muted)]">
                                 {result.kind === 'asset'
                                     ? result.assetTypeLabel
                                     : getLibraryComponentTypeLabel(result.componentType)}
@@ -160,13 +160,13 @@ export function LibraryResultCard({ result }: LibraryResultCardProps) {
 
                 <div className="min-h-16 flex-1">
                     <h3 className="line-clamp-2 text-sm font-semibold text-white">{result.title}</h3>
-                    <p className="mt-1 line-clamp-1 text-xs text-[#94A3B8]">{result.workshopName}</p>
+                    <p className="mt-1 line-clamp-1 text-xs text-[var(--engine-text-muted)]">{result.workshopName}</p>
                     <p className="mt-1 line-clamp-1 text-[11px] text-gray-500">
                         {result.folderPath.company} / {result.folderPath.lesson}
                     </p>
                 </div>
 
-                <div className="mt-3 flex items-center justify-between border-t border-[#6C757D]/10 pt-3">
+                <div className="mt-3 flex items-center justify-between border-t border-[var(--engine-muted)]/10 pt-3">
                     <span className="truncate font-mono text-[10px] text-gray-600">{result.courseCode}</span>
                     <div className="flex items-center gap-1">
                         <AssetSignal active={assetState.hasSlides} icon={<Image size={9} />} label="Slides" />
@@ -185,13 +185,13 @@ export function LibraryResultCard({ result }: LibraryResultCardProps) {
                     onClick={() => setIsOpen(false)}
                 >
                     <div
-                        className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-[#6C757D]/20 bg-[#151A21] shadow-2xl"
+                        className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-[var(--engine-muted)]/20 bg-[var(--engine-surface-solid)] shadow-2xl"
                         onClick={(event) => event.stopPropagation()}
                     >
-                        <div className="flex items-start justify-between gap-4 border-b border-[#6C757D]/10 bg-[#0F1419] p-5">
+                        <div className="flex items-start justify-between gap-4 border-b border-[var(--engine-muted)]/10 bg-[var(--engine-canvas)] p-5">
                             <div className="min-w-0">
                                 <div className="mb-2 flex flex-wrap items-center gap-2">
-                                    <span className="rounded border border-[#00D4B3]/20 bg-[#00D4B3]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00D4B3]">
+                                    <span className="rounded border border-[var(--engine-accent)]/20 bg-[var(--engine-accent)]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--engine-accent)]">
                                         {result.kind === 'asset'
                                             ? result.assetTypeLabel
                                             : getLibraryComponentTypeLabel(result.componentType)}
@@ -199,14 +199,14 @@ export function LibraryResultCard({ result }: LibraryResultCardProps) {
                                     <StatusBadge status={result.productionStatus} />
                                 </div>
                                 <h2 className="text-lg font-bold leading-snug text-white">{result.title}</h2>
-                                <p className="mt-1 text-xs text-[#94A3B8]">
+                                <p className="mt-1 text-xs text-[var(--engine-text-muted)]">
                                     {result.folderPath.company} / {result.folderPath.workshop} / {result.folderPath.lesson}
                                 </p>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => setIsOpen(false)}
-                                className="rounded-full bg-[#1E2329] p-2 text-gray-400 transition-colors hover:text-white"
+                                className="rounded-full bg-[var(--engine-surface-hover)] p-2 text-gray-400 transition-colors hover:text-white"
                             >
                                 <X size={18} />
                             </button>
@@ -214,14 +214,14 @@ export function LibraryResultCard({ result }: LibraryResultCardProps) {
 
                         <div className="space-y-5 overflow-y-auto p-5">
                             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                                <div className="rounded-lg border border-[#6C757D]/10 bg-[#1E2329] p-3">
+                                <div className="rounded-lg border border-[var(--engine-muted)]/10 bg-[var(--engine-surface-hover)] p-3">
                                     <h4 className="mb-1 text-[10px] font-bold uppercase text-gray-500">Archivo o contenido</h4>
                                     <p className="truncate text-sm text-white">{result.fileName || result.title}</p>
                                     {result.storagePath && (
                                         <p className="mt-1 truncate font-mono text-[11px] text-gray-500">{result.storagePath}</p>
                                     )}
                                 </div>
-                                <div className="rounded-lg border border-[#6C757D]/10 bg-[#1E2329] p-3">
+                                <div className="rounded-lg border border-[var(--engine-muted)]/10 bg-[var(--engine-surface-hover)] p-3">
                                     <h4 className="mb-1 text-[10px] font-bold uppercase text-gray-500">Actualizado</h4>
                                     <p className="text-sm text-white">
                                         {new Date(result.updatedAt).toLocaleDateString('es-MX', {
@@ -248,8 +248,8 @@ export function LibraryResultCard({ result }: LibraryResultCardProps) {
                                             key={asset.label}
                                             className={`flex flex-col items-center gap-1 rounded-lg border p-2 text-center ${
                                                 asset.active
-                                                    ? 'border-[#00D4B3]/25 bg-[#00D4B3]/10 text-[#00D4B3]'
-                                                    : 'border-[#6C757D]/10 bg-[#1E2329]/50 text-gray-600'
+                                                    ? 'border-[var(--engine-accent)]/25 bg-[var(--engine-accent)]/10 text-[var(--engine-accent)]'
+                                                    : 'border-[var(--engine-muted)]/10 bg-[var(--engine-surface-hover)]/50 text-gray-600'
                                             }`}
                                         >
                                             {asset.icon}
@@ -263,7 +263,7 @@ export function LibraryResultCard({ result }: LibraryResultCardProps) {
                             {assetState.slideImages.length > 0 && (
                                 <section>
                                     <h3 className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
-                                        <Image size={16} className="text-[#00D4B3]" />
+                                        <Image size={16} className="text-[var(--engine-accent)]" />
                                         Slides renderizables
                                     </h3>
                                     <SlideGallery images={assetState.slideImages} />
@@ -273,10 +273,10 @@ export function LibraryResultCard({ result }: LibraryResultCardProps) {
                             {videoUrl && (
                                 <section>
                                     <h3 className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
-                                        <Video size={16} className="text-[#00D4B3]" />
+                                        <Video size={16} className="text-[var(--engine-accent)]" />
                                         Video
                                     </h3>
-                                    <div className="aspect-video overflow-hidden rounded-lg border border-[#6C757D]/20 bg-black">
+                                    <div className="aspect-video overflow-hidden rounded-lg border border-[var(--engine-muted)]/20 bg-black">
                                         {videoConfig.isEmbed ? (
                                             <iframe
                                                 src={videoConfig.url}
@@ -294,7 +294,7 @@ export function LibraryResultCard({ result }: LibraryResultCardProps) {
                             {result.assets?.avatar_video?.public_url && (
                                 <section>
                                     <h3 className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
-                                        <Layout size={16} className="text-[#00D4B3]" />
+                                        <Layout size={16} className="text-[var(--engine-accent)]" />
                                         Avatar
                                     </h3>
                                     <video src={result.assets.avatar_video.public_url} controls className="max-h-80 w-full rounded-lg bg-black" />
@@ -304,7 +304,7 @@ export function LibraryResultCard({ result }: LibraryResultCardProps) {
                             {result.assets?.voice_audio?.public_url && (
                                 <section>
                                     <h3 className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
-                                        <Mic size={16} className="text-[#00D4B3]" />
+                                        <Mic size={16} className="text-[var(--engine-accent)]" />
                                         Voz
                                     </h3>
                                     <audio src={result.assets.voice_audio.public_url} controls className="h-10 w-full" />
@@ -314,7 +314,7 @@ export function LibraryResultCard({ result }: LibraryResultCardProps) {
                             {result.assets?.background_music?.public_url && (
                                 <section>
                                     <h3 className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
-                                        <Music size={16} className="text-[#00D4B3]" />
+                                        <Music size={16} className="text-[var(--engine-accent)]" />
                                         Musica
                                     </h3>
                                     <audio src={result.assets.background_music.public_url} controls className="h-10 w-full" />
@@ -324,12 +324,12 @@ export function LibraryResultCard({ result }: LibraryResultCardProps) {
                             {assetState.brollClips.length > 0 && (
                                 <section>
                                     <h3 className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
-                                        <Film size={16} className="text-[#00D4B3]" />
+                                        <Film size={16} className="text-[var(--engine-accent)]" />
                                         B-roll
                                     </h3>
                                     <div className="space-y-2">
                                         {assetState.brollClips.map((clip, index) => (
-                                            <div key={clip.id || `${clip.storage_path}-${index}`} className="overflow-hidden rounded-lg border border-[#6C757D]/10 bg-[#1E2329]">
+                                            <div key={clip.id || `${clip.storage_path}-${index}`} className="overflow-hidden rounded-lg border border-[var(--engine-muted)]/10 bg-[var(--engine-surface-hover)]">
                                                 {clip.public_url && (
                                                     <video src={clip.public_url} controls muted className="max-h-44 w-full bg-black object-cover" />
                                                 )}
@@ -344,14 +344,14 @@ export function LibraryResultCard({ result }: LibraryResultCardProps) {
                             )}
                         </div>
 
-                        <div className="flex items-center justify-end gap-3 border-t border-[#6C757D]/10 bg-[#0F1419] p-4">
+                        <div className="flex items-center justify-end gap-3 border-t border-[var(--engine-muted)]/10 bg-[var(--engine-canvas)] p-4">
                             <StatusBadge status={result.productionStatus} className="mr-auto" />
                             {primaryUrl && (
                                 <>
                                     <button
                                         type="button"
                                         onClick={() => copyToClipboard(primaryUrl)}
-                                        className="flex items-center gap-2 rounded-lg border border-[#6C757D]/20 bg-[#1E2329] px-4 py-2 text-sm text-white transition-colors hover:bg-[#2D333B]"
+                                        className="flex items-center gap-2 rounded-lg border border-[var(--engine-muted)]/20 bg-[var(--engine-surface-hover)] px-4 py-2 text-sm text-white transition-colors hover:bg-[#2D333B]"
                                     >
                                         <Copy size={14} />
                                         Copiar URL
@@ -360,7 +360,7 @@ export function LibraryResultCard({ result }: LibraryResultCardProps) {
                                         href={primaryUrl}
                                         target="_blank"
                                         rel="noreferrer"
-                                        className="flex items-center gap-2 rounded-lg border border-[#00D4B3]/20 bg-[#00D4B3]/10 px-4 py-2 text-sm font-medium text-[#00D4B3] transition-colors hover:bg-[#00D4B3]/20"
+                                        className="flex items-center gap-2 rounded-lg border border-[var(--engine-accent)]/20 bg-[var(--engine-accent)]/10 px-4 py-2 text-sm font-medium text-[var(--engine-accent)] transition-colors hover:bg-[var(--engine-accent)]/20"
                                     >
                                         <ExternalLink size={14} />
                                         Abrir

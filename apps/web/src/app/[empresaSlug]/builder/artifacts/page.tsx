@@ -26,12 +26,12 @@ export default async function TenantConstructorArtifactsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-[#0A2540] to-[#151A21] p-6 rounded-2xl border border-[#1F5AF6]/20 relative overflow-hidden">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-[var(--engine-primary)] to-[var(--engine-surface-solid)] p-6 rounded-2xl border border-[var(--engine-info)]/20 relative overflow-hidden">
         <div className="relative z-10">
           <h1 className="text-2xl font-bold text-white mb-1">Mis Asignaciones</h1>
-          <p className="text-[#94A3B8] text-sm">Proyectos asignados dentro de esta empresa.</p>
+          <p className="text-[var(--engine-text-muted)] text-sm">Proyectos asignados dentro de esta empresa.</p>
         </div>
-        <Link href={`${basePath}/artifacts/new`} className="relative z-10 bg-[#1F5AF6] hover:bg-[#1a4bd6] text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all shadow-lg shadow-[#1F5AF6]/20 group">
+        <Link href={`${basePath}/artifacts/new`} className="relative z-10 bg-[var(--engine-info)] hover:bg-[var(--engine-info)] text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all shadow-lg shadow-[var(--engine-info)]/20 group">
           <Plus size={18} className="group-hover:rotate-90 transition-transform" />
           Nuevo Artefacto
         </Link>

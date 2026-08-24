@@ -70,7 +70,7 @@ export function InstructionalPlanLessonCard({
     <div
       className={`group overflow-hidden rounded-xl border transition-all duration-300 ${
         expanded
-          ? "border-[#00D4B3]/30 bg-white shadow-lg shadow-black/5 dark:bg-[#0f1418] dark:shadow-black/40"
+          ? "border-[var(--engine-accent)]/30 bg-white shadow-lg shadow-black/5 dark:bg-[#0f1418] dark:shadow-black/40"
           : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-[#0A0E12] dark:hover:border-gray-700 dark:hover:bg-[#0f1418]"
       }`}
     >
@@ -91,7 +91,7 @@ export function InstructionalPlanLessonCard({
             </div>
             <div
               className={`w-0.5 flex-1 rounded-full ${
-                expanded ? "bg-[#00D4B3]/20" : "bg-transparent"
+                expanded ? "bg-[var(--engine-accent)]/20" : "bg-transparent"
               }`}
             />
           </div>
@@ -100,8 +100,8 @@ export function InstructionalPlanLessonCard({
             <h4
               className={`text-base font-semibold transition-colors ${
                 expanded
-                  ? "text-[#00D4B3]"
-                  : "text-gray-900 group-hover:text-[#00D4B3] dark:text-gray-200 dark:group-hover:text-white"
+                  ? "text-[var(--engine-accent)]"
+                  : "text-gray-900 group-hover:text-[var(--engine-accent)] dark:text-gray-200 dark:group-hover:text-white"
               }`}
             >
               {lesson.lesson_title}
@@ -149,7 +149,7 @@ export function InstructionalPlanLessonCard({
           <div
             className={`rounded-lg p-2 transition-all duration-300 ${
               expanded
-                ? "rotate-180 bg-[#00D4B3] text-white dark:text-[#0A2540]"
+                ? "rotate-180 bg-[var(--engine-accent)] text-white dark:text-[var(--engine-primary)]"
                 : "bg-gray-100 text-gray-400 group-hover:bg-white group-hover:text-gray-600 dark:bg-gray-800/50 dark:text-gray-500 dark:group-hover:bg-gray-800 dark:group-hover:text-gray-300"
             }`}
           >
@@ -163,7 +163,7 @@ export function InstructionalPlanLessonCard({
           {isEditing ? (
             <div className="space-y-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-inner dark:border-gray-800/60 dark:bg-[#0A0E12]">
               <div className="space-y-2">
-                <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#00D4B3]">
+                <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--engine-accent)]">
                   <Target size={14} /> Objetivo de Aprendizaje
                 </label>
                 <PremiumTextarea
@@ -198,7 +198,7 @@ export function InstructionalPlanLessonCard({
                 {displayLesson.components.map((component, componentIndex) => (
                   <div
                     key={`component-${componentIndex}`}
-                    className="group/edit-card relative space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4 transition-colors hover:border-gray-300 dark:border-gray-700/50 dark:bg-[#151A21]/50 dark:hover:border-gray-600"
+                    className="group/edit-card relative space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4 transition-colors hover:border-gray-300 dark:border-gray-700/50 dark:bg-[var(--engine-surface-solid)]/50 dark:hover:border-gray-600"
                   >
                     <div className="flex gap-4">
                       <div className="w-48 flex-shrink-0 space-y-3">
@@ -254,7 +254,7 @@ export function InstructionalPlanLessonCard({
                 <button
                   type="button"
                   onClick={onSaveEdit}
-                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#00D4B3] to-[#00A38D] px-5 py-2.5 text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[#00D4B3]/20 dark:text-[#0A2540]"
+                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[var(--engine-accent)] to-[#00A38D] px-5 py-2.5 text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[var(--engine-accent)]/20 dark:text-[var(--engine-primary)]"
                 >
                   <Check size={16} /> Guardar Cambios
                 </button>
@@ -270,10 +270,10 @@ export function InstructionalPlanLessonCard({
           ) : (
             <>
               <div className="relative space-y-3">
-                <div className="absolute left-[-1.5rem] top-2 h-full w-0.5 bg-[#00D4B3]/20" />
+                <div className="absolute left-[-1.5rem] top-2 h-full w-0.5 bg-[var(--engine-accent)]/20" />
 
-                <div className="rounded-lg border border-[#00D4B3]/10 bg-[#00D4B3]/5 p-4">
-                  <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#00D4B3]">
+                <div className="rounded-lg border border-[var(--engine-accent)]/10 bg-[var(--engine-accent)]/5 p-4">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--engine-accent)]">
                     <Target size={14} />
                     Objetivo de Aprendizaje
                   </div>

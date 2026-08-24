@@ -32,7 +32,7 @@ export function AudioMixControls({ audioMix, disabled, onUpdate }: AudioMixContr
   return (
     <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 dark:border-white/10 dark:bg-white/5">
       <div className="flex min-w-0 items-center gap-2">
-        <AudioLines className="shrink-0 text-[#00A98F]" size={16} />
+        <AudioLines className="shrink-0 text-[var(--engine-accent-strong)]" size={16} />
         <div className="min-w-0">
           <p className="text-xs font-bold text-slate-800 dark:text-gray-100">Reducción de música durante voz</p>
           <p className="truncate text-[10px] text-slate-500 dark:text-gray-400">Reduce temporalmente la música respecto a su volumen base.</p>
@@ -47,7 +47,7 @@ export function AudioMixControls({ audioMix, disabled, onUpdate }: AudioMixContr
             { enabled: !ducking.enabled },
             `${ducking.enabled ? "Desactivó" : "Activó"} la mezcla automática de música y voz.`,
           )}
-          className={`rounded-md border px-2.5 py-1 text-[11px] font-bold disabled:opacity-50 ${ducking.enabled ? "border-[#00D4B3] bg-[#00D4B3]/15 text-[#0A6455] dark:text-[#00D4B3]" : "border-slate-300 text-slate-500 dark:border-white/15 dark:text-gray-400"}`}
+          className={`rounded-md border px-2.5 py-1 text-[11px] font-bold disabled:opacity-50 ${ducking.enabled ? "border-[var(--engine-accent)] bg-[var(--engine-accent)]/15 text-[#0A6455] dark:text-[var(--engine-accent)]" : "border-slate-300 text-slate-500 dark:border-white/15 dark:text-gray-400"}`}
         >
           {ducking.enabled ? "Reducción activa" : "Reducción inactiva"}
         </button>
@@ -67,7 +67,7 @@ export function AudioMixControls({ audioMix, disabled, onUpdate }: AudioMixContr
             onPointerUp={commitRatio}
             onKeyUp={commitRatio}
             onBlur={commitRatio}
-            className="w-20 accent-[#00D4B3] disabled:opacity-40"
+            className="w-20 accent-[var(--engine-accent)] disabled:opacity-40"
           />
           <span className="w-16 text-right tabular-nums">{Math.round(duckedVolumeRatio * 100)}% de base</span>
         </label>

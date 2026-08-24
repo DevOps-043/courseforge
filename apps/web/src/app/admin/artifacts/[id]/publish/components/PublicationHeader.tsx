@@ -43,7 +43,7 @@ export function PublicationHeader({
   onPublish,
 }: PublicationHeaderProps) {
   return (
-    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-[#151A21] p-4 rounded-xl border border-gray-200 dark:border-[#6C757D]/10">
+    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-[var(--engine-surface-solid)] p-4 rounded-xl border border-gray-200 dark:border-[var(--engine-muted)]/10">
       <div>
         <h2 className="text-xl font-bold text-gray-900 dark:text-white">
           {artifactTitle}
@@ -91,7 +91,7 @@ export function PublicationHeader({
           <button
             onClick={onPublish}
             disabled={!isReady || isSaving || isPublishing}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isReady ? 'bg-[#00D4B3] hover:bg-[#00c0a1]' : 'bg-gray-400 dark:bg-gray-600'}`}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isReady ? 'bg-[var(--engine-accent)] hover:bg-[var(--engine-accent-hover)]' : 'bg-gray-400 dark:bg-gray-600'}`}
           >
             {isPublishing ? (
               <Loader2 className="animate-spin" size={16} />

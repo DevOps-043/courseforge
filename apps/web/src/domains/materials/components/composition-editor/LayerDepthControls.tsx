@@ -46,7 +46,7 @@ export function LayerDepthControls({ clip, disabled, onPatch }: LayerDepthContro
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 dark:border-white/10 dark:bg-white/5">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Layers2 className="text-[#00A98F]" size={15} />
+          <Layers2 className="text-[var(--engine-accent-strong)]" size={15} />
           <div>
             <p className="text-[11px] font-bold text-slate-800 dark:text-gray-100">Profundidad visual</p>
             <p className="text-[10px] text-slate-500 dark:text-gray-400">{describeDepth(clip.layout.zIndex)} · z-index {clip.layout.zIndex}</p>
@@ -94,7 +94,7 @@ export function LayerDepthControls({ clip, disabled, onPatch }: LayerDepthContro
           type="button"
           disabled={disabled}
           onClick={saveTypedDepth}
-          className="inline-flex items-center gap-1 rounded-md border border-[#00D4B3] px-2 py-1.5 text-[10px] font-bold text-[#0A6455] disabled:opacity-40 dark:text-[#00D4B3]"
+          className="inline-flex items-center gap-1 rounded-md border border-[var(--engine-accent)] px-2 py-1.5 text-[10px] font-bold text-[#0A6455] disabled:opacity-40 dark:text-[var(--engine-accent)]"
         >
           <Save size={12} /> Guardar plano
         </button>

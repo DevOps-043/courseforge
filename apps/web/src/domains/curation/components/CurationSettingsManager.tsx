@@ -505,11 +505,11 @@ function PromptHelpTooltip({ text }: { text: string }) {
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => event.stopPropagation()}
         aria-label="Ver ayuda del prompt"
-        className="w-5 h-5 rounded-full border border-gray-300 dark:border-[#6C757D]/40 text-[11px] font-bold text-gray-500 dark:text-[#94A3B8] hover:border-[#00D4B3] hover:text-[#00D4B3] focus:outline-none focus:ring-2 focus:ring-[#00D4B3]/30 transition-colors"
+        className="w-5 h-5 rounded-full border border-gray-300 dark:border-[var(--engine-muted)]/40 text-[11px] font-bold text-gray-500 dark:text-[var(--engine-text-muted)] hover:border-[var(--engine-accent)] hover:text-[var(--engine-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--engine-accent)]/30 transition-colors"
       >
         ?
       </button>
-      <span className="pointer-events-none absolute left-1/2 top-7 z-30 hidden w-80 -translate-x-1/2 rounded-lg border border-gray-200 bg-white p-3 text-left text-xs font-normal leading-relaxed text-gray-600 shadow-xl shadow-black/10 group-hover:block group-focus-within:block dark:border-[#6C757D]/20 dark:bg-[#151A21] dark:text-gray-300">
+      <span className="pointer-events-none absolute left-1/2 top-7 z-30 hidden w-80 -translate-x-1/2 rounded-lg border border-gray-200 bg-white p-3 text-left text-xs font-normal leading-relaxed text-gray-600 shadow-xl shadow-black/10 group-hover:block group-focus-within:block dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-surface-solid)] dark:text-gray-300">
         {text}
       </span>
     </span>
@@ -558,8 +558,8 @@ function PhasePromptEditor({
   };
 
   return (
-    <div className="border border-gray-200 dark:border-[#6C757D]/10 rounded-xl overflow-hidden bg-gray-50 dark:bg-[#0F1419]/50">
-      <div className="px-4 py-3 border-b border-gray-200 dark:border-[#6C757D]/10 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div className="border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-xl overflow-hidden bg-gray-50 dark:bg-[var(--engine-canvas)]/50">
+      <div className="px-4 py-3 border-b border-gray-200 dark:border-[var(--engine-muted)]/10 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div
           role="button"
           tabIndex={0}
@@ -579,7 +579,7 @@ function PhasePromptEditor({
           )}
           <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <MessageSquareCode size={15} className="text-[#00D4B3]" />
+            <MessageSquareCode size={15} className="text-[var(--engine-accent)]" />
             <h5 className="text-sm font-semibold text-gray-900 dark:text-white truncate">
               {prompt.code} v{prompt.version}
             </h5>
@@ -600,7 +600,7 @@ function PhasePromptEditor({
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-500 dark:text-[#94A3B8] mt-1 truncate">
+          <p className="text-xs text-gray-500 dark:text-[var(--engine-text-muted)] mt-1 truncate">
             {prompt.description || "Sin descripcion"}
           </p>
           </div>
@@ -611,7 +611,7 @@ function PhasePromptEditor({
             type="button"
             onClick={handleToggleHistory}
             disabled={historyLoading || saving || resetting}
-            className="px-3 py-2 rounded-lg text-xs font-semibold text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-[#6C757D]/20 hover:bg-white dark:hover:bg-white/5 transition-colors disabled:opacity-50 flex items-center gap-2"
+            className="px-3 py-2 rounded-lg text-xs font-semibold text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-[var(--engine-muted)]/20 hover:bg-white dark:hover:bg-white/5 transition-colors disabled:opacity-50 flex items-center gap-2"
           >
             {historyLoading ? <Loader2 size={13} className="animate-spin" /> : <History size={13} />}
             Historial
@@ -635,7 +635,7 @@ function PhasePromptEditor({
             type="button"
             onClick={() => onSave(prompt, draft)}
             disabled={saving || resetting || !hasChanges}
-            className="px-3 py-2 rounded-lg text-xs font-semibold bg-[#00D4B3] text-white dark:text-black hover:bg-[#00D4B3]/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+            className="px-3 py-2 rounded-lg text-xs font-semibold bg-[var(--engine-accent)] text-white dark:text-black hover:bg-[var(--engine-accent)]/90 transition-colors disabled:opacity-50 flex items-center gap-2"
           >
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
             Guardar
@@ -648,14 +648,14 @@ function PhasePromptEditor({
           <textarea
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            className="w-full min-h-72 bg-white dark:bg-[#0F1419] text-gray-900 dark:text-gray-300 font-mono text-sm p-4 resize-y focus:outline-none focus:ring-1 focus:ring-[#00D4B3]/30 leading-relaxed"
+            className="w-full min-h-72 bg-white dark:bg-[var(--engine-canvas)] text-gray-900 dark:text-gray-300 font-mono text-sm p-4 resize-y focus:outline-none focus:ring-1 focus:ring-[var(--engine-accent)]/30 leading-relaxed"
             spellCheck={false}
             placeholder="Contenido del prompt"
           />
 
           {showHistory && (
-            <div className="border-t border-gray-200 dark:border-[#6C757D]/10 bg-white dark:bg-[#0B1118] p-4">
-              <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-[#94A3B8]">
+            <div className="border-t border-gray-200 dark:border-[var(--engine-muted)]/10 bg-white dark:bg-[#0B1118] p-4">
+              <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-[var(--engine-text-muted)]">
                 <History size={14} />
                 Historial de versiones
               </div>
@@ -669,7 +669,7 @@ function PhasePromptEditor({
                   {history.map((item) => (
                     <div
                       key={item.id}
-                      className="rounded-lg border border-gray-200 dark:border-[#6C757D]/10 bg-gray-50 dark:bg-[#0F1419]/60 p-3"
+                      className="rounded-lg border border-gray-200 dark:border-[var(--engine-muted)]/10 bg-gray-50 dark:bg-[var(--engine-canvas)]/60 p-3"
                     >
                       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                         <div className="min-w-0">
@@ -677,7 +677,7 @@ function PhasePromptEditor({
                             <span className="text-xs font-semibold text-gray-900 dark:text-white">
                               v{item.version}
                             </span>
-                            <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-[#94A3B8]">
+                            <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-[var(--engine-text-muted)]">
                               {item.organization_id ? "Organizacion" : "Global"}
                             </span>
                             {item.is_active && (
@@ -691,7 +691,7 @@ function PhasePromptEditor({
                               </span>
                             )}
                           </div>
-                          <p className="mt-1 text-[11px] text-gray-500 dark:text-[#94A3B8]">
+                          <p className="mt-1 text-[11px] text-gray-500 dark:text-[var(--engine-text-muted)]">
                             {new Date(item.created_at).toLocaleString()}
                             {item.change_summary ? ` - ${item.change_summary}` : ""}
                           </p>
@@ -700,14 +700,14 @@ function PhasePromptEditor({
                           type="button"
                           onClick={() => onRestoreVersion(item)}
                           disabled={item.id === prompt.id || Boolean(restoringId) || saving || resetting}
-                          className="px-3 py-2 rounded-lg text-xs font-semibold text-[#00D4B3] border border-[#00D4B3]/30 hover:bg-[#00D4B3]/10 transition-colors disabled:opacity-50 flex items-center gap-2"
+                          className="px-3 py-2 rounded-lg text-xs font-semibold text-[var(--engine-accent)] border border-[var(--engine-accent)]/30 hover:bg-[var(--engine-accent)]/10 transition-colors disabled:opacity-50 flex items-center gap-2"
                         >
                           {restoringId === item.id ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
                           Restaurar esta version
                         </button>
                       </div>
                       <details className="mt-2">
-                        <summary className="cursor-pointer text-[11px] font-semibold text-gray-500 hover:text-gray-900 dark:text-[#94A3B8] dark:hover:text-white">
+                        <summary className="cursor-pointer text-[11px] font-semibold text-gray-500 hover:text-gray-900 dark:text-[var(--engine-text-muted)] dark:hover:text-white">
                           Ver contenido
                         </summary>
                         <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-white p-3 text-[11px] text-gray-700 dark:bg-[#070A0F] dark:text-gray-300">
@@ -718,14 +718,14 @@ function PhasePromptEditor({
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-gray-500 dark:text-[#94A3B8]">
+                <p className="text-xs text-gray-500 dark:text-[var(--engine-text-muted)]">
                   No hay historial para este prompt.
                 </p>
               )}
             </div>
           )}
 
-          <div className="px-4 py-2 border-t border-gray-200 dark:border-[#6C757D]/10 text-xs text-gray-500 dark:text-[#94A3B8] flex flex-col gap-1 md:flex-row md:justify-between">
+          <div className="px-4 py-2 border-t border-gray-200 dark:border-[var(--engine-muted)]/10 text-xs text-gray-500 dark:text-[var(--engine-text-muted)] flex flex-col gap-1 md:flex-row md:justify-between">
             <span>
               {prompt.is_org_override
                 ? "Version activa para esta organizacion"
@@ -900,28 +900,28 @@ export function CurationSettingsManager() {
     return (
       <section
         key={scope}
-        className="space-y-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-[#6C757D]/10 dark:bg-[#151A21]"
+        className="engine-settings-scope"
       >
-        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div className="engine-settings-scope__header">
           <div className="flex items-start gap-3">
-            <div className="rounded-lg bg-[#0A2540]/10 p-2 text-[#0A2540] dark:bg-[#00D4B3]/10 dark:text-[#00D4B3]">
+            <div className="rounded-lg bg-[var(--engine-primary)]/10 p-2 text-[var(--engine-primary)] dark:bg-[var(--engine-accent)]/10 dark:text-[var(--engine-accent)]">
               {metadata.icon}
             </div>
             <div>
               <h4 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">
                 Modelos: {metadata.title}
               </h4>
-              <p className="mt-1 text-sm text-gray-500 dark:text-[#94A3B8]">
+              <p className="mt-1 text-sm text-gray-500 dark:text-[var(--engine-text-muted)]">
                 {metadata.description}
               </p>
             </div>
           </div>
-          <span className="rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-500 dark:border-[#6C757D]/20 dark:text-[#94A3B8]">
+          <span className="rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-500 dark:border-[var(--engine-muted)]/20 dark:text-[var(--engine-text-muted)]">
             {scopeSettings.length} configuraciones
           </span>
         </div>
 
-        <div className="space-y-8">
+        <div className="engine-settings-phases">
           {scopeSettings.map((setting) => renderConfigSection(setting))}
         </div>
       </section>
@@ -934,22 +934,27 @@ export function CurationSettingsManager() {
     const isGreen = metadata.accent === "green";
     const modelOptions = getModelOptions(setting.setting_type);
     const reasoningOptions = getReasoningOptions(setting.setting_type);
-    const accentText = isGreen ? "text-[#10B981]" : "text-[#00D4B3]";
+    const accentText = isGreen ? "text-[#10B981]" : "text-[var(--engine-accent)]";
     const accentBg = isGreen
       ? "bg-[#10B981]/10 text-[#10B981]"
-      : "bg-[#00D4B3]/10 text-[#00D4B3]";
+      : "bg-[var(--engine-accent)]/10 text-[var(--engine-accent)]";
 
     return (
       <div
         key={setting.id}
-        className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500"
+        className="engine-settings-phase animate-in fade-in slide-in-from-bottom-4 duration-500"
       >
-        <div className="flex items-center gap-2 mb-4">
+        <div className="engine-settings-phase__identity">
           <div className={`p-2 rounded-lg ${accentBg}`}>{metadata.icon}</div>
           <h4 className="text-sm font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">
             {metadata.title}
           </h4>
+          <span className="engine-settings-phase__number">
+            {String(settingsList.indexOf(setting) + 1).padStart(2, "0")}
+          </span>
         </div>
+
+        <div className="engine-settings-phase__content">
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
           <PremiumSelect
@@ -963,7 +968,7 @@ export function CurationSettingsManager() {
           <PremiumSelect
             label="Modelo Fallback"
             icon={
-              <span className="w-3 h-3 rounded-full border border-gray-400 dark:border-[#6C757D] flex items-center justify-center text-[8px] text-gray-400 dark:text-[#6C757D]">
+              <span className="w-3 h-3 rounded-full border border-gray-400 dark:border-[var(--engine-muted)] flex items-center justify-center text-[8px] text-gray-400 dark:text-[var(--engine-muted)]">
                 ?
               </span>
             }
@@ -978,7 +983,7 @@ export function CurationSettingsManager() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-0">
           <PremiumSelect
             label="Nivel de Pensamiento"
-            icon={<BrainCircuit size={12} className="text-[#1F5AF6]" />}
+            icon={<BrainCircuit size={12} className="text-[var(--engine-info)]" />}
             value={setting.thinking_level ?? "medium"}
             onChange={(value) =>
               handleUpdate(setting.id, "thinking_level", value)
@@ -988,14 +993,14 @@ export function CurationSettingsManager() {
 
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <label className="text-[10px] font-bold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider">
+              <label className="text-[10px] font-bold text-gray-500 dark:text-[var(--engine-text-muted)] uppercase tracking-wider">
                 Temperatura (Creatividad)
               </label>
               <span
                 className={`text-xs font-mono font-bold px-2 py-0.5 rounded border ${
                   isGreen
                     ? "text-[#10B981] bg-[#10B981]/10 border-[#10B981]/20"
-                    : "text-[#00D4B3] bg-[#00D4B3]/10 border-[#00D4B3]/20"
+                    : "text-[var(--engine-accent)] bg-[var(--engine-accent)]/10 border-[var(--engine-accent)]/20"
                 }`}
               >
                 {setting.temperature}
@@ -1016,12 +1021,12 @@ export function CurationSettingsManager() {
                   )
                 }
                 className={`w-full h-2 bg-gray-200 dark:bg-[#0A0D12] rounded-lg appearance-none cursor-pointer hover:opacity-100 relative z-20 ${
-                  isGreen ? "accent-[#10B981]" : "accent-[#00D4B3]"
+                  isGreen ? "accent-[#10B981]" : "accent-[var(--engine-accent)]"
                 }`}
               />
-              <div className="absolute top-1/2 left-0 right-0 h-px bg-gray-300 dark:bg-[#1E2329] -translate-y-1/2 z-0" />
+              <div className="absolute top-1/2 left-0 right-0 h-px bg-gray-300 dark:bg-[var(--engine-surface-hover)] -translate-y-1/2 z-0" />
             </div>
-            <div className="flex justify-between text-[10px] text-gray-400 dark:text-[#6C757D]">
+            <div className="flex justify-between text-[10px] text-gray-400 dark:text-[var(--engine-muted)]">
               <span>Preciso (0.1)</span>
               <span>Creativo (1.0)</span>
             </div>
@@ -1031,7 +1036,7 @@ export function CurationSettingsManager() {
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <MessageSquareCode size={15} className={accentText} />
-            <h5 className="text-xs font-bold text-gray-500 dark:text-[#94A3B8] uppercase tracking-wider">
+            <h5 className="text-xs font-bold text-gray-500 dark:text-[var(--engine-text-muted)] uppercase tracking-wider">
               Prompts de la fase
             </h5>
           </div>
@@ -1055,14 +1060,16 @@ export function CurationSettingsManager() {
               ))}
             </div>
           ) : (
-            <div className="border border-dashed border-gray-200 dark:border-[#6C757D]/20 rounded-xl p-4 text-sm text-gray-500 dark:text-[#94A3B8] bg-gray-50 dark:bg-[#0F1419]/40">
+            <div className="border border-dashed border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl p-4 text-sm text-gray-500 dark:text-[var(--engine-text-muted)] bg-gray-50 dark:bg-[var(--engine-canvas)]/40">
               No hay prompts configurables asociados directamente a este paso.
             </div>
           )}
         </div>
 
+        </div>
+
         {settingsList.indexOf(setting) < settingsList.length - 1 && (
-          <div className="h-px bg-gray-100 dark:bg-[#6C757D]/10 mt-8 mb-8" />
+          <div className="engine-settings-phase__divider" />
         )}
       </div>
     );
@@ -1070,7 +1077,7 @@ export function CurationSettingsManager() {
 
   if (loading) {
     return (
-      <div className="p-8 flex justify-center text-[#00D4B3]">
+      <div className="p-8 flex justify-center text-[var(--engine-accent)]">
         <Loader2 className="animate-spin" />
       </div>
     );
@@ -1092,7 +1099,7 @@ export function CurationSettingsManager() {
           <h3 className="text-lg font-bold text-gray-900 dark:text-white">
             Modelos por ambito
           </h3>
-          <p className="mt-1 text-sm text-gray-500 dark:text-[#94A3B8]">
+          <p className="mt-1 text-sm text-gray-500 dark:text-[var(--engine-text-muted)]">
             Define modelo, fallback, temperatura y razonamiento para cada flujo y agente configurable.
           </p>
         </div>
@@ -1104,11 +1111,11 @@ export function CurationSettingsManager() {
         </div>
       </section>
 
-      <div className="pt-4 flex justify-end border-t border-gray-100 dark:border-[#6C757D]/10 mt-6">
+      <div className="pt-4 flex justify-end border-t border-gray-100 dark:border-[var(--engine-muted)]/10 mt-6">
         <button
           onClick={saveSettings}
           disabled={saving}
-          className="px-6 py-2.5 bg-[#0A2540] text-white hover:bg-[#0A2540]/90 dark:bg-[#00D4B3] dark:text-[#0A0D12] text-sm font-bold rounded-xl dark:hover:bg-[#00bda0] disabled:opacity-50 transition-all flex items-center gap-2 shadow-lg shadow-[#0A2540]/20 dark:shadow-[#00D4B3]/20"
+          className="px-6 py-2.5 bg-[var(--engine-primary)] text-white hover:bg-[var(--engine-primary)]/90 dark:bg-[var(--engine-accent)] dark:text-[#0A0D12] text-sm font-bold rounded-xl dark:hover:bg-[var(--engine-accent-hover)] disabled:opacity-50 transition-all flex items-center gap-2 shadow-lg shadow-[var(--engine-primary)]/20 dark:shadow-[var(--engine-accent)]/20"
         >
           {saving ? (
             <Loader2 size={16} className="animate-spin" />

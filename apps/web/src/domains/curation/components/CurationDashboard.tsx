@@ -172,17 +172,17 @@ export function CurationDashboard({
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-3 border border-gray-200 bg-white p-4 shadow-sm dark:border-[#1E2329] dark:bg-[#0F1419]">
+      <div className="flex flex-wrap items-center gap-3 border border-gray-200 bg-white p-4 shadow-sm dark:border-[var(--engine-surface-hover)] dark:bg-[var(--engine-canvas)]">
         <Stat icon={BookOpen} value={stats.lessons} label="Lecciones" tone="blue" />
         <Stat icon={CheckCircle2} value={stats.valid} label="Validas" tone="green" />
         <Stat icon={XCircle} value={stats.invalid} label="Invalidas" tone="red" />
-        <span className="ml-auto text-xs text-gray-500 dark:text-[#6C757D]">
+        <span className="ml-auto text-xs text-gray-500 dark:text-[var(--engine-muted)]">
           {stats.manual} manuales / {visibleRowsCount - stats.manual} automaticas
         </span>
       </div>
 
       {isGenerating && (
-        <div className="border border-[#00D4B3]/20 bg-[#00D4B3]/5 p-4 text-sm text-[#008f79] dark:text-[#00D4B3]">
+        <div className="border border-[var(--engine-accent)]/20 bg-[var(--engine-accent)]/5 p-4 text-sm text-[#008f79] dark:text-[var(--engine-accent)]">
           OpenAI esta buscando candidatos. Courseforge valida cada resultado antes de guardarlo.
         </div>
       )}
@@ -196,7 +196,7 @@ export function CurationDashboard({
           return (
             <section
               key={lesson.id}
-              className="overflow-hidden border border-gray-200 bg-white dark:border-[#1E2329] dark:bg-[#0F1419]"
+              className="overflow-hidden border border-gray-200 bg-white dark:border-[var(--engine-surface-hover)] dark:bg-[var(--engine-canvas)]"
             >
               <div className="flex min-h-14 items-center gap-3 px-4 py-3">
                 <button
@@ -225,7 +225,7 @@ export function CurationDashboard({
                     setAddingUrl(addingUrl === lesson.id ? null : lesson.id);
                     setUrlValue("");
                   }}
-                  className="p-2 text-[#1F5AF6] hover:bg-[#1F5AF6]/10"
+                  className="p-2 text-[var(--engine-info)] hover:bg-[var(--engine-info)]/10"
                   title="Agregar URL"
                 >
                   <Link2 size={17} />
@@ -233,7 +233,7 @@ export function CurationDashboard({
                 <button
                   type="button"
                   onClick={() => fileInputs.current[lesson.id]?.click()}
-                  className="p-2 text-[#00a98f] hover:bg-[#00D4B3]/10"
+                  className="p-2 text-[#00a98f] hover:bg-[var(--engine-accent)]/10"
                   title="Subir PDF"
                 >
                   <Upload size={17} />
@@ -250,7 +250,7 @@ export function CurationDashboard({
               </div>
 
               {!isCollapsed && (
-                <div className="border-t border-gray-200 p-4 dark:border-[#1E2329]">
+                <div className="border-t border-gray-200 p-4 dark:border-[var(--engine-surface-hover)]">
                   {addingUrl === lesson.id && (
                     <div className="mb-3 flex gap-2">
                       <input
@@ -261,13 +261,13 @@ export function CurationDashboard({
                           if (event.key === "Enter") void submitUrl(lesson);
                         }}
                         placeholder="https://..."
-                        className="min-w-0 flex-1 border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-[#1F5AF6] dark:border-[#1E2329] dark:bg-[#151A21] dark:text-white"
+                        className="min-w-0 flex-1 border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-[var(--engine-info)] dark:border-[var(--engine-surface-hover)] dark:bg-[var(--engine-surface-solid)] dark:text-white"
                       />
                       <button
                         type="button"
                         disabled={busy === `url:${lesson.id}`}
                         onClick={() => void submitUrl(lesson)}
-                        className="bg-[#1F5AF6] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                        className="bg-[var(--engine-info)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
                       >
                         Agregar
                       </button>
@@ -317,8 +317,8 @@ function Stat({
   tone: "blue" | "green" | "red";
 }) {
   const colors = {
-    blue: "text-[#1F5AF6] bg-[#1F5AF6]/10",
-    green: "text-[#00a98f] bg-[#00D4B3]/10",
+    blue: "text-[var(--engine-info)] bg-[var(--engine-info)]/10",
+    green: "text-[#00a98f] bg-[var(--engine-accent)]/10",
     red: "text-rose-500 bg-rose-500/10",
   };
   return (
@@ -351,21 +351,21 @@ function SourceRow({
   }[status];
   const statusClass =
     status === "valid"
-      ? "text-[#00a98f] bg-[#00D4B3]/10"
+      ? "text-[#00a98f] bg-[var(--engine-accent)]/10"
       : status === "invalid"
         ? "text-rose-500 bg-rose-500/10"
         : "text-amber-600 bg-amber-500/10 dark:text-amber-400";
   const isPdf = source.source_kind === "pdf";
 
   return (
-    <div className="flex items-start gap-3 border border-gray-200 bg-gray-50 p-3 dark:border-[#1E2329] dark:bg-[#151A21]">
+    <div className="flex items-start gap-3 border border-gray-200 bg-gray-50 p-3 dark:border-[var(--engine-surface-hover)] dark:bg-[var(--engine-surface-solid)]">
       <FileText size={18} className="mt-0.5 shrink-0 text-gray-400" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <p className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-white">
             {source.source_title || source.file_name || "Fuente sin titulo"}
           </p>
-          <span className="bg-gray-200 px-2 py-0.5 text-[10px] font-semibold uppercase text-gray-600 dark:bg-[#1E2329] dark:text-gray-300">
+          <span className="bg-gray-200 px-2 py-0.5 text-[10px] font-semibold uppercase text-gray-600 dark:bg-[var(--engine-surface-hover)] dark:text-gray-300">
             {source.origin === "manual" ? "Manual" : "Automatica"}
           </span>
           <span className={`px-2 py-0.5 text-[10px] font-semibold ${statusClass}`}>
@@ -386,7 +386,7 @@ function SourceRow({
           href={source.source_ref}
           target="_blank"
           rel="noreferrer"
-          className="p-1.5 text-[#1F5AF6] hover:bg-[#1F5AF6]/10"
+          className="p-1.5 text-[var(--engine-info)] hover:bg-[var(--engine-info)]/10"
           title="Abrir fuente"
         >
           <ExternalLink size={15} />
@@ -400,7 +400,7 @@ function SourceRow({
           await onRevalidate(source.id);
           setBusy(false);
         }}
-        className="p-1.5 text-gray-500 hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50 dark:hover:bg-[#1E2329] dark:hover:text-white"
+        className="p-1.5 text-gray-500 hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50 dark:hover:bg-[var(--engine-surface-hover)] dark:hover:text-white"
         title="Revalidar fuente"
       >
         <RefreshCw size={15} className={busy ? "animate-spin" : ""} />

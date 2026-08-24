@@ -39,7 +39,7 @@ export function SyllabusModuleCard({
 }: SyllabusModuleCardProps) {
   return (
     <div
-      className={`group bg-white dark:bg-[#151A21] rounded-2xl border ${isEditing ? "border-[#00D4B3] ring-1 ring-[#00D4B3]/30" : "border-gray-200 dark:border-white/5"} overflow-hidden transition-all duration-300`}
+      className={`group bg-white dark:bg-[var(--engine-surface-solid)] rounded-2xl border ${isEditing ? "border-[var(--engine-accent)] ring-1 ring-[var(--engine-accent)]/30" : "border-gray-200 dark:border-white/5"} overflow-hidden transition-all duration-300`}
     >
       <div className="w-full px-6 py-5 flex justify-between items-start">
         <div
@@ -49,12 +49,12 @@ export function SyllabusModuleCard({
           <div className="flex items-center gap-2 mb-1">
             {isEditing ? (
               <input
-                className="bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-lg font-bold text-gray-900 dark:text-white w-full focus:outline-none focus:border-[#00D4B3] transition-all focus:bg-white dark:focus:bg-[#151A21] placeholder-gray-400 dark:placeholder-gray-600 shadow-inner"
+                className="bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-lg font-bold text-gray-900 dark:text-white w-full focus:outline-none focus:border-[var(--engine-accent)] transition-all focus:bg-white dark:focus:bg-[var(--engine-surface-solid)] placeholder-gray-400 dark:placeholder-gray-600 shadow-inner"
                 value={module.title}
                 onChange={(event) => onUpdateModuleTitle(event.target.value)}
               />
             ) : (
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white group-hover:text-[#00D4B3] transition-colors">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white group-hover:text-[var(--engine-accent)] transition-colors">
                 Módulo {index + 1}: {module.title}
               </h3>
             )}
@@ -69,7 +69,7 @@ export function SyllabusModuleCard({
                   event.stopPropagation();
                   onStartEdit();
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 rounded-lg text-gray-500 dark:text-gray-400 hover:text-[#00D4B3] transition-colors border border-gray-200 dark:border-white/5 hover:border-[#00D4B3]/30 text-xs font-medium"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 rounded-lg text-gray-500 dark:text-gray-400 hover:text-[var(--engine-accent)] transition-colors border border-gray-200 dark:border-white/5 hover:border-[var(--engine-accent)]/30 text-xs font-medium"
               >
                 <svg
                   className="w-3.5 h-3.5"
@@ -153,7 +153,7 @@ export function SyllabusModuleCard({
             </div>
           ) : (
             <div onClick={onToggle} className="cursor-pointer flex items-center gap-3">
-              <span className="text-xs font-medium bg-gray-100 dark:bg-[#0F1419] px-2.5 py-1 rounded-md border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400">
+              <span className="text-xs font-medium bg-gray-100 dark:bg-[var(--engine-canvas)] px-2.5 py-1 rounded-md border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400">
                 {module.lessons.length} lecciones
               </span>
               <svg
@@ -175,7 +175,7 @@ export function SyllabusModuleCard({
       </div>
 
       {isExpanded && (
-        <div className="border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[#0F1419]/50 animate-in slide-in-from-top-1 duration-200">
+        <div className="border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[var(--engine-canvas)]/50 animate-in slide-in-from-top-1 duration-200">
           <div className="p-4 space-y-2">
             {module.lessons.map((lesson, lessonIndex) => (
               <div
@@ -183,7 +183,7 @@ export function SyllabusModuleCard({
                 className="p-4 rounded-xl hover:bg-gray-100 dark:hover:bg-white/5 transition-colors group/item border border-transparent hover:border-gray-200 dark:hover:border-white/5"
               >
                 <div className="flex gap-4">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-[#1F5AF6]/10 text-[#1F5AF6] flex items-center justify-center text-xs font-bold font-mono border border-[#1F5AF6]/20 mt-0.5">
+                  <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-[var(--engine-info)]/10 text-[var(--engine-info)] flex items-center justify-center text-xs font-bold font-mono border border-[var(--engine-info)]/20 mt-0.5">
                     {index + 1}.{lessonIndex + 1}
                   </div>
 
@@ -192,7 +192,7 @@ export function SyllabusModuleCard({
                       <div className="space-y-3 relative">
                         <div className="flex justify-between items-start gap-4">
                           <input
-                            className="w-full bg-white dark:bg-[#0F1419] border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-base font-medium text-gray-900 dark:text-white focus:outline-none focus:border-[#00D4B3] transition-all focus:bg-white dark:focus:bg-[#151A21] placeholder-gray-400 dark:placeholder-gray-600"
+                            className="w-full bg-white dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-base font-medium text-gray-900 dark:text-white focus:outline-none focus:border-[var(--engine-accent)] transition-all focus:bg-white dark:focus:bg-[var(--engine-surface-solid)] placeholder-gray-400 dark:placeholder-gray-600"
                             value={lesson.title}
                             onChange={(event) =>
                               onUpdateLesson(
@@ -226,7 +226,7 @@ export function SyllabusModuleCard({
                           )}
                         </div>
                         <textarea
-                          className="w-full bg-white dark:bg-[#0F1419] border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:border-[#00D4B3] min-h-[80px] transition-all focus:bg-white dark:focus:bg-[#151A21] resize-none placeholder-gray-400 dark:placeholder-gray-600"
+                          className="w-full bg-white dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:border-[var(--engine-accent)] min-h-[80px] transition-all focus:bg-white dark:focus:bg-[var(--engine-surface-solid)] resize-none placeholder-gray-400 dark:placeholder-gray-600"
                           value={lesson.objective_specific}
                           onChange={(event) =>
                             onUpdateLesson(
@@ -237,7 +237,7 @@ export function SyllabusModuleCard({
                           }
                           placeholder="Objetivo específico de esta lección..."
                         />
-                        <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#151A21] rounded-xl px-4 py-2 border border-gray-200 dark:border-white/5 w-fit hover:border-gray-300 dark:hover:border-white/10 transition-colors group/time">
+                        <div className="flex items-center gap-3 bg-gray-50 dark:bg-[var(--engine-surface-solid)] rounded-xl px-4 py-2 border border-gray-200 dark:border-white/5 w-fit hover:border-gray-300 dark:hover:border-white/10 transition-colors group/time">
                           <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 group-hover/time:bg-blue-500/20 transition-colors">
                             <svg
                               className="w-4 h-4"
@@ -333,7 +333,7 @@ export function SyllabusModuleCard({
               <div className="p-4 border-t border-gray-200/50 dark:border-white/5">
                 <button
                   onClick={onAddLesson}
-                  className="w-full py-3 flex items-center justify-center gap-2 border-2 border-dashed border-[#00D4B3]/30 hover:border-[#00D4B3] rounded-xl text-[#00D4B3] hover:bg-[#00D4B3]/5 transition-colors text-sm font-semibold"
+                  className="w-full py-3 flex items-center justify-center gap-2 border-2 border-dashed border-[var(--engine-accent)]/30 hover:border-[var(--engine-accent)] rounded-xl text-[var(--engine-accent)] hover:bg-[var(--engine-accent)]/5 transition-colors text-sm font-semibold"
                 >
                   <svg
                     className="w-4 h-4"

@@ -32,24 +32,23 @@ import {
   resolveCompositionDocumentVersion,
 } from "@/domains/production/composition-editor/composition-document-version";
 import { CompositionPreviewTelemetryBuffer } from "@/domains/production/composition-editor/composition-preview-telemetry.client";
+import { COMPOSITION_PREVIEW_TELEMETRY_CONFIG } from "@/domains/production/composition-editor/composition-preview-telemetry";
+import { clampPreviewPlayhead, classifyPreviewTimeMessage, isPreviewRefreshRequired } from "@/domains/production/composition-editor/composition-preview-playhead.service";
+import { CompositionSaveQueue } from "@/domains/production/composition-editor/composition-save-queue";
+import { CompositionPreviewRuntimePatchCoordinator } from "@/domains/production/composition-editor/composition-preview-runtime-sync.client";
 import {
-  COMPOSITION_PREVIEW_TELEMETRY_CONFIG,
-} from "@/domains/production/composition-editor/composition-preview-telemetry";
-import { classifyCompositionPreviewOperations } from "@/domains/production/composition-editor/composition-preview-operation-policy";
+  INITIAL_COMPOSITION_PREVIEW_SYNC_STATE,
+  transitionCompositionPreviewSyncState,
+} from "@/domains/production/composition-editor/composition-preview-sync-state";
+import { COMPOSITION_PREVIEW_SYNC_V2_ENABLED } from "@/domains/production/composition-editor/composition-preview-sync.config";
 import {
   createCompositionPreviewParentCommand,
   parseCompositionPreviewIframeMessage,
   type CompositionPreviewParentCommandInput,
 } from "@/domains/production/composition-editor/composition-preview-protocol";
-import { CompositionSaveQueue } from "@/domains/production/composition-editor/composition-save-queue";
-import { CompositionPreviewRuntimePatchCoordinator } from "@/domains/production/composition-editor/composition-preview-runtime-sync.client";
-import { COMPOSITION_PREVIEW_SYNC_V2_ENABLED } from "@/domains/production/composition-editor/composition-preview-sync.config";
-import {
-  INITIAL_COMPOSITION_PREVIEW_SYNC_STATE,
-  transitionCompositionPreviewSyncState,
-} from "@/domains/production/composition-editor/composition-preview-sync-state";
+import { classifyCompositionPreviewOperations } from "@/domains/production/composition-editor/composition-preview-operation-policy";
 import { buildCompositionPreviewVisualPatch } from "@/domains/production/composition-editor/composition-preview-visual-patch";
-import { clampPreviewPlayhead, classifyPreviewTimeMessage, isPreviewRefreshRequired } from "@/domains/production/composition-editor/composition-preview-playhead.service";
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { hasCompositionCrop, normalizeCompositionCropInsets, resolveCompositionCropInsets, type CompositionCropInsets } from "@/domains/production/composition-editor/composition-visual-crop.service";
 import { createClient as createBrowserSupabaseClient } from "@/utils/supabase/client";
 import {
@@ -700,10 +699,10 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       && previewDocumentHashRef.current === currentPayload.documentHash;
     const runtimePatchPromise = canApplyIncrementally
       ? runtimePatchCoordinatorRef.current!.dispatch({
-          baseDocumentHash: runtimeBaseHash,
-          patch: visualPatch,
-          send: postPreviewMessage,
-        })
+        baseDocumentHash: runtimeBaseHash,
+        patch: visualPatch,
+        send: postPreviewMessage,
+      })
       : null;
     if (!runtimePatchPromise) {
       postPreviewMessage({ type: "courseforge-composition-pause" });
@@ -1562,7 +1561,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     : "lg:grid-cols-[360px_minmax(0,1fr)]";
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm dark:border-white/10 dark:bg-[#0F1419]">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm dark:border-white/10 dark:bg-[var(--engine-canvas)]">
       {saveError && (
         <CompositionErrorToast
           message={saveError}
@@ -1576,17 +1575,17 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           retrying={saving}
         />
       )}
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-[#1E2329]">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-[var(--engine-surface-hover)]">
         <div>
           <h5 className="text-sm font-bold text-slate-900 dark:text-white">Estudio de edición</h5>
           <p className="mt-0.5 text-xs text-slate-500 dark:text-gray-400">Versión {payload.version} · {formatSeconds(duration)} · duración por {durationSourceLabel || "origen no registrado"} · cambios guardados por versión</p>
         </div>
         <div className="flex items-center gap-1">
-          <span role="status" className={`mr-2 text-[11px] font-medium ${saving ? "text-[#00D4B3]" : saveError ? "text-red-700 dark:text-red-300" : "text-[#10B981]"}`}>{saving ? "Guardando…" : saveError ? "Error al guardar" : "Guardado"}</span>
-          <button type="button" onClick={() => setManualInspectorOpen((current) => !current)} className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${inspectorOpen ? "border-[#00D4B3] bg-[#00D4B3]/10 text-[#0A2540] dark:text-[#00D4B3]" : "border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5"}`}><PanelRight size={14} /> {inspectorOpen ? "Ocultar panel" : "Mostrar panel"}</button>
+          <span role="status" className={`mr-2 text-[11px] font-medium ${saving ? "text-[var(--engine-accent)]" : saveError ? "text-red-700 dark:text-red-300" : "text-[#10B981]"}`}>{saving ? "Guardando…" : saveError ? "Error al guardar" : "Guardado"}</span>
+          <button type="button" onClick={() => setManualInspectorOpen((current) => !current)} className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${inspectorOpen ? "border-[var(--engine-accent)] bg-[var(--engine-accent)]/10 text-[var(--engine-primary)] dark:text-[var(--engine-accent)]" : "border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5"}`}><PanelRight size={14} /> {inspectorOpen ? "Ocultar panel" : "Mostrar panel"}</button>
           <div className="relative">
             <button type="button" disabled={saving} onClick={() => void loadHistory()} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5" title="Restaurar una versión editable previa"><History size={14} /> Historial de edición</button>
-            {history && <div className="absolute right-0 z-50 mt-1 w-72 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-xl dark:border-white/10 dark:bg-[#1E2329]"><div className="flex items-center justify-between px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500"><span>Versiones recientes</span><button type="button" onClick={() => setHistory(null)} className="rounded p-0.5 hover:bg-slate-100 dark:hover:bg-white/10"><X size={12} /></button></div>{history.map((entry) => <button key={entry.documentHash} type="button" disabled={saving || entry.version === payload.version} onClick={() => void restoreHistoryEntry(entry)} className="flex w-full items-center justify-between rounded px-2 py-2 text-left text-xs hover:bg-slate-100 disabled:cursor-default disabled:opacity-50 dark:hover:bg-white/10"><span><span className="block font-semibold">Versión {entry.version}{entry.version === payload.version ? " (actual)" : ""}</span><span className="block text-[10px] text-slate-500">{new Date(entry.createdAt).toLocaleString()}</span></span>{entry.version !== payload.version && <span className="text-[10px] font-bold text-cyan-700 dark:text-cyan-300">Restaurar</span>}</button>)}</div>}
+            {history && <div className="absolute right-0 z-50 mt-1 w-72 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-xl dark:border-white/10 dark:bg-[var(--engine-surface-hover)]"><div className="flex items-center justify-between px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500"><span>Versiones recientes</span><button type="button" onClick={() => setHistory(null)} className="rounded p-0.5 hover:bg-slate-100 dark:hover:bg-white/10"><X size={12} /></button></div>{history.map((entry) => <button key={entry.documentHash} type="button" disabled={saving || entry.version === payload.version} onClick={() => void restoreHistoryEntry(entry)} className="flex w-full items-center justify-between rounded px-2 py-2 text-left text-xs hover:bg-slate-100 disabled:cursor-default disabled:opacity-50 dark:hover:bg-white/10"><span><span className="block font-semibold">Versión {entry.version}{entry.version === payload.version ? " (actual)" : ""}</span><span className="block text-[10px] text-slate-500">{new Date(entry.createdAt).toLocaleString()}</span></span>{entry.version !== payload.version && <span className="text-[10px] font-bold text-cyan-700 dark:text-cyan-300">Restaurar</span>}</button>)}</div>}
           </div>
           <button type="button" onClick={() => void loadDocument()} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:text-gray-400 dark:hover:bg-white/10" title="Recargar composición"><RefreshCw size={15} /></button>
         </div>
@@ -1602,7 +1601,7 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
       >
         <StudioLibrary assets={assets} lessons={lessons} onAddAsset={addAssetToTimeline} onSelectLesson={onSelectLesson} selectedLessonId={selectedLessonId} onSelectAsset={selectClip} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))} />
 
-        <section ref={previewShellRef} className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-[#0F1419] dark:border-white/10 lg:col-start-2 lg:row-start-1 ${previewFullscreen ? "h-screen w-screen rounded-none" : ""}`}>
+        <section ref={previewShellRef} className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-[var(--engine-canvas)] dark:border-white/10 lg:col-start-2 lg:row-start-1 ${previewFullscreen ? "h-screen w-screen rounded-none" : ""}`}>
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-2 py-1.5 text-xs text-slate-300">
             <span className="flex shrink-0 items-center gap-2 font-semibold">{agentProposal ? "Preview de propuesta · no guardado" : "Preview completo"}{!agentProposal && previewDirty && <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[9px] font-bold text-amber-200">Cambios pendientes</span>}</span>
             <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -1632,10 +1631,10 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
             </div>
           </div>
           {playbackError && <div role="alert" className="flex items-center justify-between gap-3 border-t border-amber-300/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-100"><span>{playbackError}</span><button type="button" onClick={refreshPreviewMedia} className="shrink-0 rounded border border-amber-200/50 px-2 py-1 font-semibold hover:bg-amber-200/10">Recargar medios</button></div>}
-          <div className="flex shrink-0 items-center gap-2 border-t border-white/10 bg-[#0A2540] px-2 py-1.5">
-            <button type="button" disabled={saving || !previewReady || previewMediaState === "PREPARING"} onClick={togglePreviewPlayback} title={previewDirty ? "Actualizar el preview y reproducir" : transportActive ? "Pausar" : "Reproducir"} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#00D4B3] text-[#0A2540] hover:bg-[#10B981] disabled:cursor-wait disabled:opacity-50">{transportActive ? <Pause size={14} /> : <Play size={14} />}</button>
+          <div className="flex shrink-0 items-center gap-2 border-t border-white/10 bg-[var(--engine-primary)] px-2 py-1.5">
+            <button type="button" disabled={saving || !previewReady || previewMediaState === "PREPARING"} onClick={togglePreviewPlayback} title={previewDirty ? "Actualizar el preview y reproducir" : transportActive ? "Pausar" : "Reproducir"} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--engine-accent)] text-[var(--engine-primary)] hover:bg-[#10B981] disabled:cursor-wait disabled:opacity-50">{transportActive ? <Pause size={14} /> : <Play size={14} />}</button>
             <button type="button" disabled={saving || !previewReady || Boolean(agentProposal)} onClick={() => refreshPreviewDocument(false)} title="Actualizar el preview con los cambios guardados" aria-label="Actualizar preview" className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border disabled:cursor-wait disabled:opacity-50 ${previewDirty ? "border-amber-300/50 bg-amber-400/15 text-amber-200" : "border-white/15 text-slate-300 hover:bg-white/10"}`}><RefreshCw size={13} /></button>
-            <input aria-label="Posición del preview" disabled={saving || !previewReady} type="range" min="0" max={duration} step="0.05" value={Math.min(seconds, duration)} onPointerDown={beginScrub} onChange={(event) => seek(Number(event.target.value))} className="w-full accent-[#00D4B3] disabled:cursor-wait disabled:opacity-50" />
+            <input aria-label="Posición del preview" disabled={saving || !previewReady} type="range" min="0" max={duration} step="0.05" value={Math.min(seconds, duration)} onPointerDown={beginScrub} onChange={(event) => seek(Number(event.target.value))} className="w-full accent-[var(--engine-accent)] disabled:cursor-wait disabled:opacity-50" />
           </div>
         </section>
 
@@ -1670,22 +1669,22 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           className={`group hidden cursor-row-resize touch-none items-center gap-2 rounded-md outline-none lg:col-span-2 lg:row-start-2 lg:flex ${studioResizing ? "bg-cyan-100 dark:bg-cyan-400/10" : "hover:bg-slate-100 focus:bg-slate-100 dark:hover:bg-white/5 dark:focus:bg-white/5"}`}
         >
           <span className="h-px flex-1 bg-slate-300 group-hover:bg-cyan-400 dark:bg-white/15" />
-          <span className="flex h-5 items-center rounded-full border border-slate-300 bg-white px-2 text-slate-500 shadow-sm group-hover:border-cyan-400 group-hover:text-cyan-600 dark:border-white/20 dark:bg-[#1E2329] dark:text-gray-400"><GripHorizontal size={14} /></span>
+          <span className="flex h-5 items-center rounded-full border border-slate-300 bg-white px-2 text-slate-500 shadow-sm group-hover:border-cyan-400 group-hover:text-cyan-600 dark:border-white/20 dark:bg-[var(--engine-surface-hover)] dark:text-gray-400"><GripHorizontal size={14} /></span>
           <span className="h-px flex-1 bg-slate-300 group-hover:bg-cyan-400 dark:bg-white/15" />
         </div>
 
         <section className="min-h-0 min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-[#101720] lg:col-span-2 lg:row-start-3">
           <div className="h-full min-h-0 snap-y snap-proximity scroll-pt-2 overflow-y-auto overscroll-contain p-2 pb-6 [scrollbar-gutter:stable]">
-          <div className={`mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-[11px] ${durationSourceLabel ? "border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5" : "border-amber-300 bg-amber-50 dark:border-amber-400/30 dark:bg-amber-400/10"}`}><span className="text-slate-600 dark:text-gray-300">{durationSourceLabel ? `Duración final: ${formatCompositionTimecode(duration)} determinada por ${durationSourceLabel}.` : "Esta composición aún no registra qué asset determina su duración. Aplica el cálculo automático para normalizarla."}</span><button type="button" disabled={saving} onClick={() => void applyBaseTemplate()} className="rounded-md border border-[#00D4B3] px-2 py-0.5 font-bold text-[#0A2540] hover:bg-[#00D4B3]/10 disabled:opacity-50 dark:text-[#00D4B3]">Calcular y organizar</button></div>
-          <AudioMixControls audioMix={payload.document.audioMix} disabled={saving} onUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)} />
-          <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedAnimationId={selectedAnimationId} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={selectAnimation} onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Ajustó el inicio de ${clip.label} desde la timeline.`)} />
-          {estimatedClipCount > 0 && <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
-          <AssemblyActions assembly={assembly} busy={assembling} error={assemblyError} notice={assemblyNotice} history={snapshotHistory} historyOpen={snapshotHistoryOpen} priorCompletedVideo={Boolean(renderRecovery?.completedVideo && renderRecovery.completedVideo.compositionRevisionId !== assembly?.revisionId)} providerStatus={renderProviderStatus} renderStatus={renderStatus} selectedRenderProfileId={selectedRenderProfileId} onApprove={approveAssembly} onDeleteAndRender={deletePriorVideoAndRender} onHistoryToggle={() => setSnapshotHistoryOpen((current) => !current)} onPrepare={prepareAssembly} onProfileChange={(profileId) => { setSelectedRenderProfileId(profileId); setAssemblyNotice(null); }} onRender={() => submitAssemblyRender()} onRestore={restoreSnapshot} />
+            <div className={`mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-[11px] ${durationSourceLabel ? "border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5" : "border-amber-300 bg-amber-50 dark:border-amber-400/30 dark:bg-amber-400/10"}`}><span className="text-slate-600 dark:text-gray-300">{durationSourceLabel ? `Duración final: ${formatCompositionTimecode(duration)} determinada por ${durationSourceLabel}.` : "Esta composición aún no registra qué asset determina su duración. Aplica el cálculo automático para normalizarla."}</span><button type="button" disabled={saving} onClick={() => void applyBaseTemplate()} className="rounded-md border border-[var(--engine-accent)] px-2 py-0.5 font-bold text-[var(--engine-primary)] hover:bg-[var(--engine-accent)]/10 disabled:opacity-50 dark:text-[var(--engine-accent)]">Calcular y organizar</button></div>
+            <AudioMixControls audioMix={payload.document.audioMix} disabled={saving} onUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)} />
+            <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedAnimationId={selectedAnimationId} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={selectAnimation} onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Ajustó el inicio de ${clip.label} desde la timeline.`)} />
+            {estimatedClipCount > 0 && <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
+            <AssemblyActions assembly={assembly} busy={assembling} error={assemblyError} notice={assemblyNotice} history={snapshotHistory} historyOpen={snapshotHistoryOpen} priorCompletedVideo={Boolean(renderRecovery?.completedVideo && renderRecovery.completedVideo.compositionRevisionId !== assembly?.revisionId)} providerStatus={renderProviderStatus} renderStatus={renderStatus} selectedRenderProfileId={selectedRenderProfileId} onApprove={approveAssembly} onDeleteAndRender={deletePriorVideoAndRender} onHistoryToggle={() => setSnapshotHistoryOpen((current) => !current)} onPrepare={prepareAssembly} onProfileChange={(profileId) => { setSelectedRenderProfileId(profileId); setAssemblyNotice(null); }} onRender={() => submitAssemblyRender()} onRestore={restoreSnapshot} />
           </div>
         </section>
 
-        {inspectorOpen && <aside className="min-w-0 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-[#1E2329] lg:col-start-3 lg:row-span-3 lg:row-start-1">
-          <div className="mb-3 flex items-center justify-between gap-2"><div className="flex rounded-lg bg-slate-100 p-1 text-xs dark:bg-white/5"><button type="button" onClick={() => setInspectorTab("properties")} className={`rounded-md px-2 py-1 font-semibold ${inspectorTab === "properties" ? "bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white" : "text-slate-500 dark:text-gray-400"}`}>Propiedades</button><button type="button" onClick={() => setInspectorTab("assistant")} className={`rounded-md px-2 py-1 font-semibold ${inspectorTab === "assistant" ? "bg-[#00D4B3] text-[#0A2540] shadow-sm" : "text-slate-500 dark:text-gray-400"}`}>SofLIA</button></div><button type="button" onClick={clearSelection} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 dark:text-gray-400 dark:hover:bg-white/10" title="Cerrar panel"><X size={15} /></button></div>
+        {inspectorOpen && <aside className="min-w-0 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-[var(--engine-surface-hover)] lg:col-start-3 lg:row-span-3 lg:row-start-1">
+          <div className="mb-3 flex items-center justify-between gap-2"><div className="flex rounded-lg bg-slate-100 p-1 text-xs dark:bg-white/5"><button type="button" onClick={() => setInspectorTab("properties")} className={`rounded-md px-2 py-1 font-semibold ${inspectorTab === "properties" ? "bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white" : "text-slate-500 dark:text-gray-400"}`}>Propiedades</button><button type="button" onClick={() => setInspectorTab("assistant")} className={`rounded-md px-2 py-1 font-semibold ${inspectorTab === "assistant" ? "bg-[var(--engine-accent)] text-[var(--engine-primary)] shadow-sm" : "text-slate-500 dark:text-gray-400"}`}>SofLIA</button></div><button type="button" onClick={clearSelection} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 dark:text-gray-400 dark:hover:bg-white/10" title="Cerrar panel"><X size={15} /></button></div>
           {inspectorTab === "properties" ? <CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} selectedAnimationId={selectedAnimationId} onAnimationSelect={setSelectedAnimationId} onPatch={savePatch} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} /> : <AgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={requestAgentProposal} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}
         </aside>}
       </div>
@@ -1709,7 +1708,7 @@ function CompositionErrorToast({
       aria-atomic="true"
       aria-live="assertive"
       role="alert"
-      className="fixed right-4 top-20 z-[100] w-[calc(100vw-2rem)] max-w-md overflow-hidden rounded-xl border border-red-200 bg-white shadow-2xl shadow-slate-950/20 dark:border-red-400/30 dark:bg-[#1E2329]"
+      className="fixed right-4 top-20 z-[100] w-[calc(100vw-2rem)] max-w-md overflow-hidden rounded-xl border border-red-200 bg-white shadow-2xl shadow-slate-950/20 dark:border-red-400/30 dark:bg-[var(--engine-surface-hover)]"
     >
       <div className="h-1 bg-red-500" />
       <div className="flex items-start gap-3 p-4">
@@ -1717,14 +1716,14 @@ function CompositionErrorToast({
           <AlertTriangle aria-hidden="true" size={18} strokeWidth={2} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-[#0A2540] dark:text-white">No se pudo completar el cambio</p>
+          <p className="text-sm font-bold text-[var(--engine-primary)] dark:text-white">No se pudo completar el cambio</p>
           <p className="mt-1 break-words text-xs leading-5 text-slate-600 dark:text-gray-300">{message}</p>
           {onRetry && (
             <button
               type="button"
               disabled={retrying}
               onClick={onRetry}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[#0A2540] px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-[#0d2f4d] disabled:cursor-not-allowed disabled:opacity-50 dark:bg-[#00D4B3] dark:text-[#0A2540] dark:hover:bg-[#18e0c0]"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[var(--engine-primary)] px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-[#0d2f4d] disabled:cursor-not-allowed disabled:opacity-50 dark:bg-[var(--engine-accent)] dark:text-[var(--engine-primary)] dark:hover:bg-[#18e0c0]"
             >
               {retrying && <Loader2 aria-hidden="true" className="animate-spin" size={13} />}
               {retrying ? "Reintentando…" : "Reintentar"}
@@ -1736,7 +1735,7 @@ function CompositionErrorToast({
           onClick={onDismiss}
           aria-label="Cerrar mensaje de error"
           title="Cerrar"
-          className="-mr-1 -mt-1 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#0A2540] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00D4B3] dark:hover:bg-white/10 dark:hover:text-white"
+          className="-mr-1 -mt-1 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-[var(--engine-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--engine-accent)] dark:hover:bg-white/10 dark:hover:text-white"
         >
           <X aria-hidden="true" size={16} />
         </button>
@@ -1791,28 +1790,28 @@ function AgentConversation({ lastAppliedProposal, onApprove, onDismiss, onPropos
     onDismiss();
   };
 
-  return <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[#00D4B3]/30 bg-slate-50 dark:bg-[#0F1419]">
-    <div className="flex items-center gap-2.5 border-b border-[#00D4B3]/25 bg-gradient-to-r from-[#00D4B3]/15 to-white px-3 py-3 dark:to-[#1E2329]">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#00D4B3] text-xs font-black text-[#0A2540] shadow-sm shadow-[#00D4B3]/30 dark:shadow-none">S</span>
+  return <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[var(--engine-accent)]/30 bg-slate-50 dark:bg-[var(--engine-canvas)]">
+    <div className="flex items-center gap-2.5 border-b border-[var(--engine-accent)]/25 bg-gradient-to-r from-[var(--engine-accent)]/15 to-white px-3 py-3 dark:to-[var(--engine-surface-hover)]">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--engine-accent)] text-xs font-black text-[var(--engine-primary)] shadow-sm shadow-[var(--engine-accent)]/30 dark:shadow-none">S</span>
       <div className="min-w-0"><p className="truncate text-xs font-bold text-slate-900 dark:text-white">SofLIA</p><p className="flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Asistente de edición</p></div>
     </div>
 
     <div className="min-h-40 flex-1 space-y-3 overflow-y-auto px-3 py-4">
       {messages.map((message) => <div key={message.id} className={`flex items-end gap-2 ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-        {message.role === "assistant" && <span className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#00D4B3] text-[10px] font-black text-[#0A2540]">S</span>}
-        <div className={`max-w-[84%] rounded-2xl px-3 py-2.5 text-xs leading-5 shadow-sm ${message.role === "user" ? "rounded-br-md bg-[#0A2540] text-white" : "rounded-bl-md border border-slate-100 bg-white text-slate-700 dark:border-white/10 dark:bg-[#1E2329] dark:text-gray-100"}`}>
+        {message.role === "assistant" && <span className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--engine-accent)] text-[10px] font-black text-[var(--engine-primary)]">S</span>}
+        <div className={`max-w-[84%] rounded-2xl px-3 py-2.5 text-xs leading-5 shadow-sm ${message.role === "user" ? "rounded-br-md bg-[var(--engine-primary)] text-white" : "rounded-bl-md border border-slate-100 bg-white text-slate-700 dark:border-white/10 dark:bg-[var(--engine-surface-hover)] dark:text-gray-100"}`}>
           {message.text}
         </div>
       </div>)}
-      {proposing && <div className="flex items-end gap-2"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#00D4B3] text-[10px] font-black text-[#0A2540]">S</span><div className="inline-flex items-center gap-2 rounded-2xl rounded-bl-md border border-slate-100 bg-white px-3 py-2.5 text-xs text-slate-600 shadow-sm dark:border-white/10 dark:bg-[#1E2329] dark:text-gray-300"><Loader2 className="animate-spin text-[#00D4B3]" size={13} /> Revisando la composición...</div></div>}
-      {proposal && <div className="ml-8 rounded-xl border border-[#00D4B3]/40 bg-[#00D4B3]/10 p-3 text-xs text-[#0A2540] shadow-sm dark:text-[#E9ECEF]"><div className="flex items-center justify-between gap-2"><p className="font-bold">Esperando tu confirmación</p><span className={`rounded-full px-2 py-0.5 text-[9px] font-black ${proposal.risk.level === "HIGH" ? "bg-red-100 text-red-700" : proposal.risk.level === "MEDIUM" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>Riesgo {proposal.risk.level.toLowerCase()}</span></div><p className="mt-1 text-[11px] leading-4 opacity-80">No se guardará nada hasta que confirmes.</p><ul className="mt-2 max-h-28 space-y-1 overflow-y-auto text-[10px] opacity-80">{proposal.diff.slice(0, 8).map((change, index) => <li key={`${change.entityType}-${change.entityId}-${change.path}-${index}`}>• {change.entityType.toLowerCase()} {change.entityId}: {change.path}</li>)}</ul>{proposal.validation.issues.length > 0 && <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">{proposal.validation.issues.map((issue) => issue.message).join(" ")}</p>}<div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={onApprove} className="rounded-lg bg-[#0A2540] px-3 py-1.5 font-bold text-white transition hover:bg-[#0d2f4d] disabled:opacity-50">Confirmar y aplicar</button><button type="button" disabled={saving} onClick={reject} className="rounded-lg border border-[#00D4B3] bg-white px-3 py-1.5 font-bold text-[#0A2540] transition hover:bg-[#00D4B3]/10 disabled:opacity-50 dark:bg-transparent dark:text-[#00D4B3]">Rechazar</button></div></div>}
-      {!proposal && lastAppliedProposal && <div className="ml-8 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-sm dark:border-white/10 dark:bg-[#1E2329] dark:text-gray-200"><p className="font-bold">Edición aplicada</p><p className="mt-1 text-[10px] opacity-75">Puedes deshacerla mientras no se guarden cambios posteriores.</p><button type="button" disabled={saving} onClick={onUndo} className="mt-2 rounded-lg border border-slate-300 px-3 py-1.5 font-bold hover:bg-slate-50 disabled:opacity-50 dark:border-white/20 dark:hover:bg-white/5">Deshacer edición</button></div>}
+      {proposing && <div className="flex items-end gap-2"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--engine-accent)] text-[10px] font-black text-[var(--engine-primary)]">S</span><div className="inline-flex items-center gap-2 rounded-2xl rounded-bl-md border border-slate-100 bg-white px-3 py-2.5 text-xs text-slate-600 shadow-sm dark:border-white/10 dark:bg-[var(--engine-surface-hover)] dark:text-gray-300"><Loader2 className="animate-spin text-[var(--engine-accent)]" size={13} /> Revisando la composición...</div></div>}
+      {proposal && <div className="ml-8 rounded-xl border border-[var(--engine-accent)]/40 bg-[var(--engine-accent)]/10 p-3 text-xs text-[var(--engine-primary)] shadow-sm dark:text-[#E9ECEF]"><div className="flex items-center justify-between gap-2"><p className="font-bold">Esperando tu confirmación</p><span className={`rounded-full px-2 py-0.5 text-[9px] font-black ${proposal.risk.level === "HIGH" ? "bg-red-100 text-red-700" : proposal.risk.level === "MEDIUM" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>Riesgo {proposal.risk.level.toLowerCase()}</span></div><p className="mt-1 text-[11px] leading-4 opacity-80">No se guardará nada hasta que confirmes.</p><ul className="mt-2 max-h-28 space-y-1 overflow-y-auto text-[10px] opacity-80">{proposal.diff.slice(0, 8).map((change, index) => <li key={`${change.entityType}-${change.entityId}-${change.path}-${index}`}>• {change.entityType.toLowerCase()} {change.entityId}: {change.path}</li>)}</ul>{proposal.validation.issues.length > 0 && <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">{proposal.validation.issues.map((issue) => issue.message).join(" ")}</p>}<div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={onApprove} className="rounded-lg bg-[var(--engine-primary)] px-3 py-1.5 font-bold text-white transition hover:bg-[#0d2f4d] disabled:opacity-50">Confirmar y aplicar</button><button type="button" disabled={saving} onClick={reject} className="rounded-lg border border-[var(--engine-accent)] bg-white px-3 py-1.5 font-bold text-[var(--engine-primary)] transition hover:bg-[var(--engine-accent)]/10 disabled:opacity-50 dark:bg-transparent dark:text-[var(--engine-accent)]">Rechazar</button></div></div>}
+      {!proposal && lastAppliedProposal && <div className="ml-8 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-sm dark:border-white/10 dark:bg-[var(--engine-surface-hover)] dark:text-gray-200"><p className="font-bold">Edición aplicada</p><p className="mt-1 text-[10px] opacity-75">Puedes deshacerla mientras no se guarden cambios posteriores.</p><button type="button" disabled={saving} onClick={onUndo} className="mt-2 rounded-lg border border-slate-300 px-3 py-1.5 font-bold hover:bg-slate-50 disabled:opacity-50 dark:border-white/20 dark:hover:bg-white/5">Deshacer edición</button></div>}
     </div>
 
     <div className="border-t border-slate-200 bg-white p-2 dark:border-white/10 dark:bg-[#101720]">
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-1.5 transition focus-within:border-[#00D4B3] focus-within:ring-2 focus-within:ring-[#00D4B3]/15 dark:border-white/15 dark:bg-slate-950">
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-1.5 transition focus-within:border-[var(--engine-accent)] focus-within:ring-2 focus-within:ring-[var(--engine-accent)]/15 dark:border-white/15 dark:bg-slate-950">
         <textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} maxLength={1500} rows={2} placeholder="Pide un cambio para la composición..." className="w-full resize-none bg-transparent px-1 py-0 text-xs leading-4 text-slate-900 outline-none placeholder:text-slate-400 dark:text-white" />
-        <div className="mt-0.5 flex items-center justify-between gap-2"><span className="text-[9px] text-slate-400">Enter para enviar · Shift + Enter para salto</span><button type="button" aria-label="Enviar mensaje" disabled={proposing || Boolean(proposal) || instruction.trim().length < 3} onClick={() => void send()} className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#0A2540] text-white transition hover:bg-[#0d2f4d] disabled:cursor-not-allowed disabled:opacity-40"><Send size={12} /></button></div>
+        <div className="mt-0.5 flex items-center justify-between gap-2"><span className="text-[9px] text-slate-400">Enter para enviar · Shift + Enter para salto</span><button type="button" aria-label="Enviar mensaje" disabled={proposing || Boolean(proposal) || instruction.trim().length < 3} onClick={() => void send()} className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--engine-primary)] text-white transition hover:bg-[#0d2f4d] disabled:cursor-not-allowed disabled:opacity-40"><Send size={12} /></button></div>
       </div>
     </div>
   </section>;
@@ -1848,13 +1847,13 @@ function AssemblyActions({ assembly, busy, error, notice, history, historyOpen, 
       ? "Courseforge está subiendo el ZIP validado a HeyGen."
       : normalizedProviderStatus === "SUBMITTING"
         ? "ZIP recibido por HeyGen. Courseforge está creando el render."
-      : renderStatus === "rendering"
-        ? normalizedProviderStatus === "QUEUED" || normalizedProviderStatus === "RETRY_SCHEDULED"
-          ? "Courseforge está preparando la importación del video. Puedes cerrar o recargar esta página."
-          : `HeyGen está procesando el video${providerStatus ? ` (${providerStatus.toLowerCase()})` : ""}. Courseforge lo importará al terminar; puedes cerrar o recargar esta página.`
-        : renderStatus === "completed"
-          ? "Video completado e importado en Courseforge."
-          : "";
+        : renderStatus === "rendering"
+          ? normalizedProviderStatus === "QUEUED" || normalizedProviderStatus === "RETRY_SCHEDULED"
+            ? "Courseforge está preparando la importación del video. Puedes cerrar o recargar esta página."
+            : `HeyGen está procesando el video${providerStatus ? ` (${providerStatus.toLowerCase()})` : ""}. Courseforge lo importará al terminar; puedes cerrar o recargar esta página.`
+          : renderStatus === "completed"
+            ? "Video completado e importado en Courseforge."
+            : "";
   const summary = renderStatus === "completed"
     ? "El video final ya está disponible."
     : assembly
@@ -1869,15 +1868,18 @@ function AssemblyActions({ assembly, busy, error, notice, history, historyOpen, 
     <div className="min-w-64 flex-1 text-xs text-cyan-950 dark:text-cyan-100"><p className="font-bold">Ensamble del video</p><p className="mt-0.5">{summary}</p>{assembly && <><p className="mt-1 text-[11px] text-cyan-800/80 dark:text-cyan-100/70">ZIP validado: {formatAssemblyBytes(assembly.projectArchiveSizeBytes)} de 200 MB</p><p className="mt-0.5 text-[11px] text-cyan-800/80 dark:text-cyan-100/70">{assembly.renderProfile ? `Perfil del snapshot: ${assemblyProfile?.label || "Compatible"} · MP4 · 1080p · ${assembly.renderProfile.fps} FPS · calidad ${renderQualityLabel(assembly.renderProfile.quality)}` : "Este snapshot usa un perfil anterior; regénéralo antes de renderizar."}</p></>}{notice && <p role="status" className="mt-1 font-medium text-emerald-700 dark:text-emerald-200">{notice}</p>}{!profileMatchesAssembly && <p role="status" className="mt-1 font-medium text-amber-700 dark:text-amber-200">El perfil seleccionado no coincide con el snapshot. Regenera el snapshot para aplicarlo antes de aprobar o renderizar.</p>}{label && <p role="status" className="mt-1 inline-flex items-center gap-1.5 font-medium">{activeRender && <Loader2 className="animate-spin" size={13} />}{label}</p>}{priorCompletedVideo && <p role="status" className="mt-1 text-amber-700 dark:text-amber-200">Hay un video anterior importado y disponible; no se reemplazará hasta que esta revisión termine correctamente.</p>}{error && <p role="alert" className="mt-1 text-red-700 dark:text-red-200">{error}</p>}</div>
     <label className="min-w-64 rounded-lg border border-cyan-200 bg-white/70 p-2 dark:border-cyan-400/20 dark:bg-slate-950/30">
       <span className="block text-[10px] font-bold uppercase tracking-wide text-cyan-900/70 dark:text-cyan-100/70">Perfil de render</span>
-      <select
+      <EngineSelect
         aria-label="Perfil de render"
-        className="mt-1 w-full rounded-md border border-cyan-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-900 outline-none focus:border-cyan-600 dark:border-cyan-400/30 dark:bg-slate-950 dark:text-white"
+        className="mt-1"
         disabled={busy || activeRender}
         value={selectedRenderProfileId}
-        onChange={(event) => onProfileChange(event.target.value as HyperframesRenderProfileId)}
-      >
-        {HYPERFRAMES_RENDER_PROFILES.map((profile) => <option key={profile.id} value={profile.id}>{profile.label} · 1080p · 25 FPS</option>)}
-      </select>
+        onValueChange={(value) => onProfileChange(value as HyperframesRenderProfileId)}
+        options={HYPERFRAMES_RENDER_PROFILES.map((profile) => ({
+          value: profile.id,
+          label: `${profile.label} · 1080p · 25 FPS`,
+          description: profile.description,
+        }))}
+      />
       <span className="mt-1 block text-[10px] leading-4 text-cyan-800/75 dark:text-cyan-100/65">{selectedProfile.description}</span>
       <span className="mt-0.5 block text-[10px] leading-4 text-cyan-800/75 dark:text-cyan-100/65">25 FPS conserva el movimiento nativo del avatar; 4K no añade detalle a fuentes de hasta 1080p.</span>
     </label>

@@ -28,10 +28,10 @@ export function SyllabusReviewPanel({
     status === "STEP_REJECTED" || status === "STEP_READY_FOR_QA";
 
   return (
-    <div className="bg-white dark:bg-[#151A21] border border-gray-200 dark:border-white/5 rounded-2xl p-6 mt-8">
+    <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-white/5 rounded-2xl p-6 mt-8">
       <h3 className="text-gray-900 dark:text-white font-bold mb-4 flex items-center gap-2">
         <svg
-          className="w-4 h-4 text-[#00D4B3]"
+          className="w-4 h-4 text-[var(--engine-accent)]"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -47,7 +47,7 @@ export function SyllabusReviewPanel({
       </h3>
 
       <textarea
-        className="w-full bg-gray-50 dark:bg-[#0F1419] border border-gray-200 dark:border-white/10 rounded-xl p-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[#00D4B3]/50 min-h-[100px] placeholder-gray-400 dark:placeholder-gray-600"
+        className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-white/10 rounded-xl p-4 text-gray-900 dark:text-white text-sm focus:outline-none focus:border-[var(--engine-accent)]/50 min-h-[100px] placeholder-gray-400 dark:placeholder-gray-600"
         placeholder="Escribe tus comentarios o feedback sobre la estructura del temario..."
         value={reviewNotes}
         onChange={(event) => onReviewNotesChange(event.target.value)}
@@ -59,7 +59,7 @@ export function SyllabusReviewPanel({
           <>
             <button
               onClick={onApprove}
-              className="flex-1 bg-[#00D4B3]/10 hover:bg-[#00D4B3]/20 text-[#00D4B3] border border-[#00D4B3]/20 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
+              className="flex-1 bg-[var(--engine-accent)]/10 hover:bg-[var(--engine-accent)]/20 text-[var(--engine-accent)] border border-[var(--engine-accent)]/20 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
             >
               <svg
                 className="w-5 h-5"
@@ -100,7 +100,7 @@ export function SyllabusReviewPanel({
 
         {isApproved && (
           <div className="w-full flex gap-4">
-            <div className="flex-1 bg-[#00D4B3]/20 text-[#00D4B3] py-3 rounded-xl font-bold text-center flex items-center justify-center gap-2">
+            <div className="flex-1 bg-[var(--engine-accent)]/20 text-[var(--engine-accent)] py-3 rounded-xl font-bold text-center flex items-center justify-center gap-2">
               <svg
                 className="w-5 h-5"
                 fill="none"
@@ -120,7 +120,7 @@ export function SyllabusReviewPanel({
               <button
                 type="button"
                 onClick={onNext}
-                className="flex-1 bg-[#1F5AF6] hover:bg-[#1548c7] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#1F5AF6]/20"
+                className="flex-1 bg-[var(--engine-info)] hover:bg-[#1548c7] text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-[var(--engine-info)]/20"
               >
                 Continuar a Plan
               </button>

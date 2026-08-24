@@ -275,7 +275,7 @@ export function ProductionAssetCard({
         <div className="space-y-6">
           {/* Structured Asset Form for Video Components */}
           {component.type.includes("VIDEO") && (
-            <div className="space-y-4 border-b pb-4 dark:border-[#6C757D]/10">
+            <div className="space-y-4 border-b pb-4 dark:border-[var(--engine-muted)]/10">
               <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">
                 Recursos del Video
               </h4>

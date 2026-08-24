@@ -232,7 +232,7 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
     if (isLoading) {
         return (
             <div className={`flex flex-col items-center justify-center py-20 ${PRODUCTION_THEME.panel}`}>
-                <Loader2 className="animate-spin text-[#1F5AF6] mb-4" size={32} />
+                <Loader2 className="animate-spin text-[var(--engine-info)] mb-4" size={32} />
                 <p className={`font-medium ${PRODUCTION_THEME.secondaryText}`}>Cargando items de produccion...</p>
             </div>
         );
@@ -253,14 +253,14 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
     return (
         <div className="space-y-8">
             {/* Header / Intro */}
-            <div className="rounded-2xl border border-gray-200 bg-gradient-to-r from-white to-blue-50 p-6 dark:border-[#6C757D]/10 dark:from-[#151A21] dark:to-[#1F5AF6]/10">
+            <div className="rounded-2xl border border-gray-200 bg-gradient-to-r from-white to-blue-50 p-6 dark:border-[var(--engine-muted)]/10 dark:from-[var(--engine-surface-solid)] dark:to-[var(--engine-info)]/10">
                 <div className="flex justify-between items-start mb-4">
                     <div>
                         <h2 className={`text-xl font-bold mb-2 flex items-center gap-3 ${PRODUCTION_THEME.primaryText}`}>
                             {progressStats.percentage === 100 ? (
                                 <CheckCircle2 className="text-green-600 dark:text-green-400" />
                             ) : (
-                                <Clapperboard className="text-[#1F5AF6]" />
+                                <Clapperboard className="text-[var(--engine-info)]" />
                             )}
                             Produccion Visual
                         </h2>
@@ -269,7 +269,7 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
                         </p>
                     </div>
                     {/* Progress Stats */}
-                    <div className="flex items-center gap-4 rounded-xl border border-gray-200 bg-white/80 px-4 py-2 dark:border-[#6C757D]/10 dark:bg-[#0F1419]/50">
+                    <div className="flex items-center gap-4 rounded-xl border border-gray-200 bg-white/80 px-4 py-2 dark:border-[var(--engine-muted)]/10 dark:bg-[var(--engine-canvas)]/50">
                         <div className="flex items-center gap-2 text-sm">
                             <CheckCircle2 size={16} className="text-green-600 dark:text-green-400" />
                             <span className="text-green-700 dark:text-green-400 font-bold">{progressStats.completed}</span>
@@ -282,13 +282,13 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
                             <AlertCircle size={16} className="text-gray-500 dark:text-gray-400" />
                             <span className="text-gray-600 dark:text-gray-400 font-bold">{progressStats.pending}</span>
                         </div>
-                        <div className="h-6 w-px bg-gray-300 dark:bg-[#6C757D]/30" />
+                        <div className="h-6 w-px bg-gray-300 dark:bg-[var(--engine-muted)]/30" />
                         <span className={`font-bold ${PRODUCTION_THEME.primaryText}`}>{progressStats.percentage}%</span>
                     </div>
                 </div>
 
                 {/* Progress Bar */}
-                <div className="relative h-2 bg-gray-200 dark:bg-[#0F1419] rounded-full overflow-hidden">
+                <div className="relative h-2 bg-gray-200 dark:bg-[var(--engine-canvas)] rounded-full overflow-hidden">
                     <div
                         className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-500 to-green-400 transition-all duration-500"
                         style={{ width: `${progressStats.percentage}%` }}
@@ -310,11 +310,11 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
                 {productionItems.map((group) => (
                     <div key={group.lesson.id} className="space-y-4">
                         <div className="flex items-center gap-4">
-                            <div className="h-px flex-1 bg-gray-200 dark:bg-[#6C757D]/20"></div>
-                            <h3 className="rounded-full border border-gray-200 bg-gray-50 px-4 py-1 font-mono text-xs uppercase tracking-wider text-gray-600 dark:border-[#6C757D]/20 dark:bg-[#0F1419] dark:text-[#6C757D]">
+                            <div className="h-px flex-1 bg-gray-200 dark:bg-[var(--engine-muted)]/20"></div>
+                            <h3 className="rounded-full border border-gray-200 bg-gray-50 px-4 py-1 font-mono text-xs uppercase tracking-wider text-gray-600 dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)] dark:text-[var(--engine-muted)]">
                                 {group.lesson.lesson_title}
                             </h3>
-                            <div className="h-px flex-1 bg-gray-200 dark:bg-[#6C757D]/20"></div>
+                            <div className="h-px flex-1 bg-gray-200 dark:bg-[var(--engine-muted)]/20"></div>
                         </div>
 
                         <div className="grid gap-6">
