@@ -26,7 +26,7 @@ export async function configureHeygenHyperframesWebhook(params: {
   const created = await createEndpoint(params.apiKey, callbackUrl);
 
   try {
-    const { error } = await params.supabase.rpc("configure_heygen_webhook", {
+    const { error } = await params.supabase.rpc("configure_hyperframes_webhook", {
       p_callback_url: callbackUrl,
       p_encrypted_secret: encrypt(created.secret),
       p_endpoint_id: created.endpoint_id,
@@ -63,7 +63,7 @@ export async function disconnectHeygenHyperframesWebhook(params: {
       });
     });
   }
-  const { error } = await params.supabase.rpc("clear_heygen_webhook", {
+  const { error } = await params.supabase.rpc("clear_hyperframes_webhook", {
     p_organization_id: params.organizationId,
   });
   if (error) throw error;
@@ -114,7 +114,7 @@ async function readCurrentEndpointId(
   organizationId: string,
 ): Promise<string | null> {
   const { data, error } = await supabase
-    .from("heygen_workspace_connections")
+    .from("hyperframes_workspace_connections")
     .select("webhook_endpoint_id")
     .eq("organization_id", organizationId)
     .maybeSingle();

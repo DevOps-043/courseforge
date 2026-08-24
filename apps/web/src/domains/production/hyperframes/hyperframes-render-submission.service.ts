@@ -590,7 +590,7 @@ export class HyperframesRenderSubmissionService {
 
   private async getWebhookCallbackUrl(organizationId: string): Promise<string | undefined> {
     const { data, error } = await this.supabase
-      .from("heygen_workspace_connections")
+      .from("hyperframes_workspace_connections")
       .select("default_callback_url")
       .eq("organization_id", organizationId)
       .maybeSingle();

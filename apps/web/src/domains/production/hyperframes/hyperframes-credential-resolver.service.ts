@@ -13,7 +13,7 @@ export class HyperframesCredentialResolverError extends Error {
   }
 }
 
-/** Resolves the HeyGen credential without exposing it to the browser. */
+/** Resolves the assembly credential without exposing it to the browser. */
 export async function getHyperframesClientForOrganization(params: {
   allowGlobalFallback?: boolean;
   organizationId: string;
@@ -24,7 +24,7 @@ export async function getHyperframesClientForOrganization(params: {
   });
   const credential = await credentialService.getDecryptedSecret({
     organizationId: params.organizationId,
-    provider: "heygen",
+    provider: "hyperframes_cloud",
   });
 
   if (credential?.secret) {
@@ -35,7 +35,7 @@ export async function getHyperframesClientForOrganization(params: {
     };
   }
 
-  const globalApiKey = getOptionalServerEnvValue("HEYGEN_API_KEY");
+  const globalApiKey = getOptionalServerEnvValue("HYPERFRAMES_CLOUD_API_KEY");
   if (params.allowGlobalFallback && globalApiKey?.trim()) {
     return {
       authMode: "global_api_key" as const,
@@ -45,7 +45,7 @@ export async function getHyperframesClientForOrganization(params: {
   }
 
   throw new HyperframesCredentialResolverError(
-    "Configura una API key de HeyGen para esta empresa antes de renderizar con HyperFrames.",
+    "Configura una API key de HyperFrames Cloud para esta empresa antes de renderizar.",
     409,
     "HYPERFRAMES_ORGANIZATION_CREDENTIAL_REQUIRED",
   );

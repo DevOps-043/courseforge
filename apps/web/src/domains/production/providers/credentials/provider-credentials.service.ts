@@ -64,7 +64,46 @@ export class ProductionProviderCredentialsService {
     };
   }
 
-  async upsertHeygenApiKey(params: {
+  /** Persists a secret only after its owning domain validated it. */
+  async upsertValidatedSecret(params: {
+    createdBy: string;
+    metadata?: Record<string, unknown>;
+    organizationId: string;
+    provider: ProductionCredentialProvider;
+    secret: string;
+  }): Promise<ProductionProviderCredentialStatus> {
+    const saved = await this.repository.upsertActiveCredential({
+      createdBy: params.createdBy,
+      encryptedSecret: encrypt(params.secret),
+      last4: readLast4(params.secret),
+      metadata: params.metadata,
+      organizationId: params.organizationId,
+      provider: params.provider,
+      validatedAt: new Date().toISOString(),
+    });
+    return toCredentialStatus(params.provider, saved);
+  }
+
+  async markValidationSucceeded(params: {
+    metadata?: Record<string, unknown>;
+    organizationId: string;
+    provider: ProductionCredentialProvider;
+  }) {
+    await this.repository.markCredentialValidationSucceeded({
+      ...params,
+      validatedAt: new Date().toISOString(),
+    });
+  }
+
+  async markValidationFailed(params: {
+    errorMessage: string;
+    organizationId: string;
+    provider: ProductionCredentialProvider;
+  }) {
+    await this.repository.markCredentialValidationFailed(params);
+  }
+
+  async upsertHeygenAvatarApiKey(params: {
     apiKey: string;
     createdBy: string;
     organizationId: string;
@@ -76,21 +115,21 @@ export class ProductionProviderCredentialsService {
       createdBy: params.createdBy,
       encryptedSecret: encrypt(normalizedApiKey),
       last4: readLast4(normalizedApiKey),
-      metadata: { validation_provider: "heygen" },
+      metadata: { validation_provider: "heygen_avatar" },
       organizationId: params.organizationId,
-      provider: "heygen",
+      provider: "heygen_avatar",
       validatedAt: new Date().toISOString(),
     });
 
-    return toCredentialStatus("heygen", saved);
+    return toCredentialStatus("heygen_avatar", saved);
   }
 
-  async validateActiveHeygenCredential(params: {
+  async validateActiveHeygenAvatarCredential(params: {
     organizationId: string;
   }): Promise<ProductionProviderCredentialStatus> {
     const credential = await this.getDecryptedSecret({
       organizationId: params.organizationId,
-      provider: "heygen",
+      provider: "heygen_avatar",
     });
 
     if (!credential?.secret) {
@@ -105,23 +144,23 @@ export class ProductionProviderCredentialsService {
       await validateHeygenApiKey(credential.secret);
       const validatedAt = new Date().toISOString();
       await this.repository.markCredentialValidationSucceeded({
-        metadata: { validation_provider: "heygen" },
+        metadata: { validation_provider: "heygen_avatar" },
         organizationId: params.organizationId,
-        provider: "heygen",
+        provider: "heygen_avatar",
         validatedAt,
       });
     } catch (error) {
       await this.repository.markCredentialValidationFailed({
         errorMessage: buildSafeValidationError(error),
         organizationId: params.organizationId,
-        provider: "heygen",
+        provider: "heygen_avatar",
       });
       throw error;
     }
 
     return this.getCredentialStatus({
       organizationId: params.organizationId,
-      provider: "heygen",
+      provider: "heygen_avatar",
     });
   }
 
