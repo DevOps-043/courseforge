@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -14,8 +15,6 @@ import {
   ScanFace,
   Sparkles,
   Trash2,
-  Unplug,
-  UserRoundCog,
 } from "lucide-react";
 import { toast } from "sonner";
 import { EngineSelect } from "@/components/ui/EngineSelect";
@@ -143,6 +142,7 @@ export default function HeygenStudioClient({
   organizationLabel,
 }: HeygenStudioClientProps) {
   const router = useRouter();
+  const params = useParams<{ empresaSlug?: string }>();
   const searchParams = useSearchParams();
   const componentId = searchParams.get("componentId");
   const source = searchParams.get("source");
@@ -177,11 +177,6 @@ export default function HeygenStudioClient({
     connected: false,
     last4: null,
   });
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  const [isLoadingConnection, setIsLoadingConnection] = useState(false);
-  const [isDisconnecting, setIsDisconnecting] = useState(false);
-  const [isSavingConnection, setIsSavingConnection] = useState(false);
-  const [isValidatingConnection, setIsValidatingConnection] = useState(false);
   const [isLoadingPresets, setIsLoadingPresets] = useState(false);
   const [isSyncingCatalog, setIsSyncingCatalog] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -226,8 +221,6 @@ export default function HeygenStudioClient({
   }, []);
 
   const loadConnection = useCallback(async () => {
-    setIsLoadingConnection(true);
-
     try {
       const response = await fetch("/api/production/heygen/connection", {
         cache: "no-store",
@@ -242,8 +235,6 @@ export default function HeygenStudioClient({
     } catch (error) {
       const message = error instanceof Error ? error.message : "Error al consultar la conexion de avatares.";
       setErrorMessage(message);
-    } finally {
-      setIsLoadingConnection(false);
     }
   }, []);
 
@@ -699,108 +690,6 @@ export default function HeygenStudioClient({
     }
   };
 
-  const handleSaveApiKey = async () => {
-    if (apiKeyInput.trim().length < 12) {
-      toast.error("Ingresa una API key de HeyGen valida.");
-      return;
-    }
-
-    setIsSavingConnection(true);
-    setErrorMessage(null);
-
-    try {
-      const response = await fetch("/api/production/heygen/connection", {
-        body: JSON.stringify({ apiKey: apiKeyInput.trim() }),
-        headers: { "Content-Type": "application/json" },
-        method: "POST",
-      });
-      const payload = await response.json();
-
-      if (!response.ok || !payload.success) {
-        throw new Error(payload.error || "No se pudo guardar la API key de HeyGen.");
-      }
-
-      setApiKeyInput("");
-      setConnection(payload.data as HeygenConnection);
-      toast.success("API key de HeyGen validada y guardada.");
-      try {
-        const syncResult = await syncCatalog();
-        toast.success(
-          `Catalogo de avatares sincronizado: ${syncResult.avatarCount ?? 0} avatares y ${syncResult.voiceCount ?? 0} voces.`,
-        );
-      } catch (syncError) {
-        const syncMessage =
-          syncError instanceof Error
-            ? syncError.message
-            : "No se pudo sincronizar el catalogo de avatares.";
-        setErrorMessage(`API key guardada, pero no se pudo sincronizar el catalogo: ${syncMessage}`);
-        toast.error("API key guardada, pero no se pudo sincronizar el catalogo.");
-      }
-      await loadPresets();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al guardar la conexion de avatares.";
-      setErrorMessage(message);
-      toast.error(message);
-    } finally {
-      setIsSavingConnection(false);
-    }
-  };
-
-  const handleValidateConnection = async () => {
-    setIsValidatingConnection(true);
-    setErrorMessage(null);
-
-    try {
-      const response = await fetch("/api/production/heygen/connection/validate", {
-        method: "POST",
-      });
-      const payload = await response.json();
-
-      if (!response.ok || !payload.success) {
-        throw new Error(payload.error || "No se pudo validar la API key de HeyGen.");
-      }
-
-      setConnection(payload.data as HeygenConnection);
-      toast.success("Conexion de avatares validada.");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al validar la conexion de avatares.";
-      setErrorMessage(message);
-      toast.error(message);
-      await loadConnection();
-    } finally {
-      setIsValidatingConnection(false);
-    }
-  };
-
-  const handleDisconnectHeygen = async () => {
-    setIsDisconnecting(true);
-    setErrorMessage(null);
-
-    try {
-      const response = await fetch("/api/production/heygen/connection", {
-        method: "DELETE",
-      });
-      const payload = await response.json();
-
-      if (!response.ok || !payload.success) {
-        throw new Error(payload.error || "No se pudo desconectar el proveedor de avatares.");
-      }
-
-      setConnection({ connected: false, last4: null });
-      setAvatarPresets([]);
-      setVoicePresets([]);
-      setSelectedAvatarPresetId("");
-      setSelectedVoicePresetId("");
-      toast.success("Proveedor de avatares desconectado.");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al desconectar el proveedor de avatares.";
-      setErrorMessage(message);
-      toast.error(message);
-    } finally {
-      setIsDisconnecting(false);
-    }
-  };
-
   const isSceneMode = isCourseContext && avatarGenerationMode === "scene_clips";
   const visibleSceneClips = sceneClips.filter((clip) => !clip.deleted);
   const completedSceneClips = visibleSceneClips.filter((clip) => clip.status === "COMPLETED");
@@ -830,6 +719,9 @@ export default function HeygenStudioClient({
         ]
       : []),
   ];
+  const integrationsPath = params?.empresaSlug
+    ? `/${params.empresaSlug}/admin/integrations`
+    : "/admin/integrations";
 
   return (
     <div className="heygen-studio space-y-6">
@@ -858,30 +750,6 @@ export default function HeygenStudioClient({
                 Regresar al flujo
               </button>
             ) : null}
-            {connection.connected ? (
-              <>
-                <button
-                  type="button"
-                  onClick={handleValidateConnection}
-                  disabled={isValidatingConnection}
-                  className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 px-4 py-2.5 text-sm font-semibold text-emerald-600 transition hover:bg-emerald-500/5 disabled:opacity-60 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
-                >
-                  {isValidatingConnection ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                  Revalidar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDisconnectHeygen}
-                  disabled={isDisconnecting}
-                  className="inline-flex items-center gap-2 rounded-xl border border-red-500/30 px-4 py-2.5 text-sm font-semibold text-red-500 transition hover:bg-red-500/5 disabled:opacity-60 dark:hover:bg-red-500/10"
-                >
-                  {isDisconnecting ? <Loader2 size={16} className="animate-spin" /> : <Unplug size={16} />}
-                  Desconectar
-                </button>
-              </>
-            ) : (
-              null
-            )}
             <button
               type="button"
               onClick={loadPresets}
@@ -910,48 +778,20 @@ export default function HeygenStudioClient({
         </div>
       ) : null}
 
-      <section className="engine-connection-strip">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0 flex-1">
-            <h2 className="text-base font-bold text-gray-900 dark:text-white">
-              Conexion por API key de empresa
-            </h2>
-            <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
-              La key se valida en servidor, se guarda cifrada y solo se usa para esta organizacion.
-            </p>
-            <label className="mt-4 flex max-w-xl flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
-              API key HeyGen
-              <input
-                type="password"
-                value={apiKeyInput}
-                onChange={(event) => setApiKeyInput(event.target.value)}
-                placeholder={connection.connected ? "Pega una nueva API key para reemplazarla" : "Pega la API key de HeyGen"}
-                disabled={isSavingConnection || isLoadingConnection}
-                className="h-[40px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white"
-              />
-            </label>
-          </div>
-          <button
-            type="button"
-            onClick={handleSaveApiKey}
-            disabled={isSavingConnection || apiKeyInput.trim().length < 12}
-            className="engine-button engine-button--primary"
-          >
-            {isSavingConnection ? <Loader2 size={16} className="animate-spin" /> : <UserRoundCog size={16} />}
-            Validar y guardar
-          </button>
-        </div>
-      </section>
-
       {connection.connected ? (
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-700 dark:text-emerald-300">
-          Proveedor de avatares conectado con API key de empresa
-          {connection.last4 ? ` terminada en ${connection.last4}` : ""}.
-          {connection.lastValidatedAt ? ` Ultima validacion: ${new Date(connection.lastValidatedAt).toLocaleString()}.` : ""}
+          HeyGen está conectado. La configuración de la integración se administra desde {" "}
+          <Link href={integrationsPath} className="underline underline-offset-2 hover:opacity-80">
+            Integraciones
+          </Link>
+          .
         </div>
       ) : (
-        <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-700 dark:text-amber-300">
-          Configura una API key de HeyGen para sincronizar los avatares y voces de esta empresa.
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-700 dark:text-amber-300">
+          <span>Conecta HeyGen desde Integraciones para sincronizar avatares y voces.</span>
+          <Link href={integrationsPath} className="engine-button engine-button--secondary">
+            Ir a Integraciones
+          </Link>
         </div>
       )}
 

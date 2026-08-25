@@ -26,6 +26,7 @@ import { VolumeSlider } from "./VolumeSlider";
 import { LayerDepthControls } from "./LayerDepthControls";
 import { CompositionMotionControls } from "./CompositionMotionControls";
 import { buildCompositionAutoOrganizePatch } from "@/domains/production/composition-editor/composition-auto-organize.service";
+import { buildCompositionDurationRecalculationPatch } from "@/domains/production/composition-editor/composition-duration-recalculation.service";
 import {
   COMPOSITION_VERSION_FALLBACK_HEADER,
   formatCompositionDocumentEtag,
@@ -1041,21 +1042,33 @@ export function NativeCompositionPreview({ assets, compositionId, draftId, lesso
     await savePatch([{ settings, trackId: track.id, type: "track.update" }], summary);
   }
 
-  async function applyBaseTemplate() {
+  async function recalculateDuration() {
+    if (!payload) return;
+    let operations: CompositionEditorPatchOperation[];
+    try {
+      operations = buildCompositionDurationRecalculationPatch({ assets, document: payload.document }).operations;
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "No se pudo recalcular la duración de la composición.");
+      return;
+    }
+    await savePatch(operations, "Recalculó la duración del contenido sin reorganizar el timeline.");
+  }
+
+  async function organizeTimeline() {
     if (!payload) return;
     const hasManualTiming = payload.document.clips.some((clip) => clip.timingSource === "USER_EDITED");
     const confirmation = hasManualTiming
-      ? "La composición contiene ajustes manuales. Se calcularán los tiempos estimados y la duración final sin modificar posiciones, tamaños ni tiempos editados manualmente. ¿Continuar?"
-      : "Esto calculará la duración por prioridad y organizará únicamente los tiempos estimados. Las posiciones, capas y versiones anteriores se conservarán. ¿Continuar?";
+      ? "La composición contiene ajustes manuales. Se organizarán únicamente los tiempos estimados, sin modificar posiciones, tamaños ni tiempos editados manualmente. ¿Continuar?"
+      : "Esto organizará únicamente los tiempos estimados. Las posiciones, capas y versiones anteriores se conservarán. ¿Continuar?";
     if (!window.confirm(confirmation)) return;
     let operations: CompositionEditorPatchOperation[];
     try {
-      operations = buildCompositionAutoOrganizePatch({ assets, document: payload.document }).operations;
+      operations = buildCompositionAutoOrganizePatch({ assets, document: payload.document, includeCanvasDuration: false }).operations;
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "No se pudo calcular la duración de la composición.");
+      setSaveError(error instanceof Error ? error.message : "No se pudo organizar el timeline de la composición.");
       return;
     }
-    await savePatch(operations, "Calculó la duración y organizó los tiempos estimados sin reemplazar el layout manual.");
+    await savePatch(operations, "Organizó los tiempos estimados sin reemplazar el layout manual.");
   }
 
   async function requestAgentProposal(instruction: string) {
@@ -1718,7 +1731,7 @@ export function NativeCompositionPreview({ assets, compositionId, draftId, lesso
 
         <section className={styles.timelinePanel}>
           <div className={styles.timelineScroll}>
-            <div className={`${styles.durationStrip} ${durationSourceLabel ? "" : styles.durationStripWarning}`}><span>{durationSourceLabel ? `Duración final: ${formatCompositionTimecode(duration)} · ${durationSourceLabel}` : "Define el asset que controla la duración final para normalizar la composición."}</span><button type="button" disabled={saving} onClick={() => void applyBaseTemplate()} className={styles.durationAction}>Calcular y organizar</button></div>
+            <div className={`${styles.durationStrip} ${durationSourceLabel ? "" : styles.durationStripWarning}`}><span>{durationSourceLabel ? `Duración de contenido: ${formatCompositionTimecode(duration)} · ${durationSourceLabel}` : "Define el asset que controla la duración del contenido."}</span><div className={styles.durationActions}><button type="button" disabled={saving} onClick={() => void recalculateDuration()} className={styles.durationAction}>Recalcular duración</button><button type="button" disabled={saving} onClick={() => void organizeTimeline()} className={styles.durationAction}>Organizar timeline</button></div></div>
             <AudioMixControls audioMix={payload.document.audioMix} disabled={saving} onUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)} />
             <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedAnimationId={selectedAnimationId} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={selectAnimation} onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Ajustó el inicio de ${clip.label} desde la timeline.`)} />
             {estimatedClipCount > 0 && <p className={styles.estimatedWarning}><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
