@@ -654,6 +654,8 @@ export default function HeygenStudioClient({
       ).length;
       if (failedCount > 0) {
         toast.error(`${failedCount} escenas fueron rechazadas por el proveedor.`);
+      } else if (payload.data?.submissionStatus === "QUEUED") {
+        toast.success(`Lote en cola: ${selectedSceneClipIds.length} escenas.`);
       } else {
         toast.success(`Lote de avatares enviado: ${selectedSceneClipIds.length} escenas.`);
       }

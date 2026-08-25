@@ -17,7 +17,10 @@ export class HeygenCredentialResolverError extends Error {
 
 export async function getHeygenClientForOrganization(params: {
   allowGlobalFallback?: boolean;
+  createVideoMaxAttempts?: number;
+  createVideoRetryDelayMs?: number;
   organizationId: string;
+  requestTimeoutMs?: number;
   supabase: ProductionProviderCredentialsSupabaseClient;
 }) {
   const credentialService = new ProductionProviderCredentialsService({
@@ -31,7 +34,12 @@ export async function getHeygenClientForOrganization(params: {
   if (credential?.secret) {
     return {
       authMode: "organization_api_key" as const,
-      client: new HeygenClient({ apiKey: credential.secret }),
+      client: new HeygenClient({
+        apiKey: credential.secret,
+        createVideoMaxAttempts: params.createVideoMaxAttempts,
+        createVideoRetryDelayMs: params.createVideoRetryDelayMs,
+        timeoutMs: params.requestTimeoutMs,
+      }),
       credentialLast4: credential.last4,
     };
   }
@@ -40,7 +48,12 @@ export async function getHeygenClientForOrganization(params: {
   if (params.allowGlobalFallback && typeof globalApiKey === "string" && globalApiKey.trim()) {
     return {
       authMode: "global_api_key" as const,
-      client: new HeygenClient({ apiKey: globalApiKey }),
+      client: new HeygenClient({
+        apiKey: globalApiKey,
+        createVideoMaxAttempts: params.createVideoMaxAttempts,
+        createVideoRetryDelayMs: params.createVideoRetryDelayMs,
+        timeoutMs: params.requestTimeoutMs,
+      }),
       credentialLast4: null,
     };
   }

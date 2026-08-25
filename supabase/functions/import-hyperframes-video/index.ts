@@ -1,5 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { getOrganizationHeygenApiKey } from "../_shared/credentials.ts";
+import { getOrganizationHyperframesApiKey } from "../_shared/credentials.ts";
 import { getHyperframesRender } from "../_shared/heygen.ts";
 import { authorizeWorker, jsonResponse, logEvent, methodNotAllowed } from "../_shared/http.ts";
 import { rpc } from "../_shared/supabase.ts";
@@ -69,7 +69,7 @@ Deno.serve(async (request) => {
 
 async function processImport(claim: ImportClaim): Promise<void> {
   try {
-    const apiKey = await getOrganizationHeygenApiKey(claim.organization_id);
+    const apiKey = await getOrganizationHyperframesApiKey(claim.organization_id);
     const detail = await getHyperframesRender(apiKey, claim.provider_render_id);
     if (detail.status !== "completed" || !detail.video_url) {
       throw new RetryableImportError("HeyGen render is not ready for import.");

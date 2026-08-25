@@ -126,13 +126,13 @@ export async function resolveProductionComponentContext(params: {
 
 export async function createOrReuseProductionJob(
   supabase: SupabaseClient,
-  params: CreateProductionJobParams,
+  params: CreateProductionJobParams & { retryFailed?: boolean },
 ): Promise<ProductionJobRecord> {
   assertProviderSupportsJobType(params.provider, params.jobType);
 
   let existingQuery = supabase
     .from("production_jobs")
-    .select("id, output_snapshot, provider_job_id, status")
+    .select("id, attempt, output_snapshot, provider_job_id, status")
     .eq("idempotency_key", params.idempotencyKey)
     .eq("job_type", params.jobType)
     .eq("provider", params.provider);
@@ -149,6 +149,42 @@ export async function createOrReuseProductionJob(
   }
 
   if (existingJob?.id) {
+    if (
+      params.retryFailed &&
+      existingJob.status === PRODUCTION_JOB_STATUSES.FAILED
+    ) {
+      const now = new Date().toISOString();
+      const { data: retriedJob, error: retryError } = await supabase
+        .from("production_jobs")
+        .update({
+          attempt: (existingJob.attempt || 1) + 1,
+          failed_at: null,
+          output_snapshot: {},
+          provider_callback_id: null,
+          provider_error: null,
+          provider_job_id: null,
+          provider_request_id: null,
+          started_at: null,
+          status: PRODUCTION_JOB_STATUSES.PENDING,
+          updated_at: now,
+        })
+        .eq("id", existingJob.id)
+        .eq("status", PRODUCTION_JOB_STATUSES.FAILED)
+        .select("id, attempt, output_snapshot, provider_job_id, status")
+        .maybeSingle();
+
+      if (retryError) throw retryError;
+      if (retriedJob?.id) return retriedJob as ProductionJobRecord;
+
+      const { data: concurrentJob, error: concurrentError } = await supabase
+        .from("production_jobs")
+        .select("id, attempt, output_snapshot, provider_job_id, status")
+        .eq("id", existingJob.id)
+        .single();
+      if (concurrentError) throw concurrentError;
+      return concurrentJob as ProductionJobRecord;
+    }
+
     return existingJob as ProductionJobRecord;
   }
 
@@ -169,7 +205,7 @@ export async function createOrReuseProductionJob(
       provider_model: params.providerModel || null,
       status: PRODUCTION_JOB_STATUSES.PENDING,
     })
-    .select("id, output_snapshot, provider_job_id, status")
+    .select("id, attempt, output_snapshot, provider_job_id, status")
     .single();
 
   if (error) {

@@ -30,6 +30,8 @@
     "src/domains/production/bundle-agent/__tests__/**/*.ts",
     "src/domains/production/render-batches/render-batch.types.ts",
     "src/domains/production/render-batches/__tests__/**/*.ts",
+    "src/domains/production/jobs/production-jobs.service.ts",
+    "src/domains/production/jobs/__tests__/**/*.ts",
     "src/domains/production/slides/**/*.ts",
     "src/domains/production/providers/credentials/**/*.ts",
     "src/domains/production/providers/heygen/heygen.types.ts",

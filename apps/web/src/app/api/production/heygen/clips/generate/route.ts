@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getErrorMessage } from "@/lib/errors";
+import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
+import { signBackgroundPayload } from "@/lib/server/background-payload-signature";
 import {
   canReviewContent,
   getAuthenticatedUser,
   getAuthorizedMaterialComponentAdmin,
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
-import { HeygenApiError } from "@/domains/production/providers/heygen/heygen.client";
+import { runHeygenAvatarClipsBackground } from "@/domains/production/providers/heygen/heygen-avatar-background.service";
 import {
   HeygenScenesService,
   HeygenScenesServiceError,
@@ -16,19 +18,14 @@ import {
   getHeygenClientForOrganization,
   HeygenCredentialResolverError,
 } from "@/domains/production/providers/heygen/heygen-credential-resolver.service";
-import {
-  buildResolutionRejectionHint,
-} from "@/domains/production/providers/heygen/heygen-request-constraints";
 import { heygenGenerateClipsRequestSchema } from "@/domains/production/providers/heygen/heygen.validators";
 import { createClient } from "@/utils/supabase/server";
 
 export async function POST(request: Request) {
-  let requestedResolution: "720p" | "1080p" | "4k" = "1080p";
   try {
     const payload = heygenGenerateClipsRequestSchema.parse(
       await request.json().catch(() => ({})),
     );
-    requestedResolution = payload.resolution;
     const supabase = await createClient();
     const authenticatedUser = await getAuthenticatedUser(supabase);
     if (!authenticatedUser) {
@@ -68,13 +65,60 @@ export async function POST(request: Request) {
       authorizedComponent.admin,
       heygenAuth.client,
     );
-    const result = await service.generateSceneClips({
-      createdBy: authenticatedUser.userId,
-      options: payload,
+    const queued = await service.queueSceneClips({
+      clipIds: payload.clipIds,
+      clips: payload.clips,
+      componentId: payload.componentId,
       organizationId: tenant.organizationId,
     });
+    const backgroundRequest = {
+      createdBy: authenticatedUser.userId,
+      organizationId: tenant.organizationId,
+      options: {
+        ...payload,
+        clips: queued.clips,
+      },
+    };
 
-    return NextResponse.json({ success: true, data: result });
+    try {
+      await callBackgroundFunctionJson(
+        "heygen-avatar-clips-background",
+        signBackgroundPayload(backgroundRequest),
+        {
+          fallbackError: "No se pudo iniciar el worker de avatares.",
+          localHandlerLoader: async () => ({
+            handler: async () => {
+              await runHeygenAvatarClipsBackground(backgroundRequest);
+              return { statusCode: 200, body: JSON.stringify({ success: true }) };
+            },
+          }),
+        },
+      );
+    } catch (dispatchError) {
+      const message = getErrorMessage(
+        dispatchError,
+        "No se pudo iniciar el worker de avatares.",
+      );
+      await service.markQueuedSceneClipsFailed({
+        clipIds: payload.clipIds,
+        componentId: payload.componentId,
+        errorMessage: message,
+      });
+      throw new HeygenScenesServiceError(message, 503);
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          clips: queued.clips,
+          jobs: [],
+          submissionStatus: "QUEUED",
+          voiceClips: queued.voiceClips,
+        },
+      },
+      { status: 202 },
+    );
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -85,23 +129,6 @@ export async function POST(request: Request) {
 
     if (error instanceof HeygenScenesServiceError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    if (error instanceof HeygenApiError) {
-      return NextResponse.json(
-        {
-          error: error.message,
-          hint: buildResolutionRejectionHint(requestedResolution),
-          providerCode: error.providerCode || null,
-          retryAfterSeconds: error.retryAfterSeconds || null,
-        },
-        {
-          headers: error.retryAfterSeconds
-            ? { "Retry-After": String(error.retryAfterSeconds) }
-            : undefined,
-          status: error.status === 429 ? 429 : 502,
-        },
-      );
     }
 
     if (error instanceof HeygenCredentialResolverError) {

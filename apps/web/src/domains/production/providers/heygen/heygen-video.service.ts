@@ -183,6 +183,7 @@ export class HeygenVideoService {
       jobType: PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_VIDEO,
       provider: PRODUCTION_PROVIDERS.HEYGEN,
       providerModel: params.options.engine,
+      retryFailed: true,
     });
 
     if (job.status !== PRODUCTION_JOB_STATUSES.PENDING) {

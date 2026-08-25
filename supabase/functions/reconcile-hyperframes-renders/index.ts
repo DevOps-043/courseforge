@@ -1,5 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { getOrganizationHeygenApiKey } from "../_shared/credentials.ts";
+import { getOrganizationHyperframesApiKey } from "../_shared/credentials.ts";
 import { getHyperframesRender, HeygenHttpError } from "../_shared/heygen.ts";
 import { authorizeWorker, jsonResponse, logEvent, methodNotAllowed } from "../_shared/http.ts";
 import { rpc } from "../_shared/supabase.ts";
@@ -47,7 +47,7 @@ async function processClaim(
   try {
     let credential = credentialCache.get(claim.organization_id);
     if (!credential) {
-      credential = getOrganizationHeygenApiKey(claim.organization_id);
+      credential = getOrganizationHyperframesApiKey(claim.organization_id);
       credentialCache.set(claim.organization_id, credential);
     }
     const detail = await getHyperframesRender(await credential, claim.provider_render_id);

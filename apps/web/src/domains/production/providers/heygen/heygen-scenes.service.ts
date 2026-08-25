@@ -146,6 +146,74 @@ export class HeygenScenesService {
     return nextAssets;
   }
 
+  async queueSceneClips(params: {
+    clips: AvatarClip[];
+    clipIds: string[];
+    componentId: string;
+    organizationId: string;
+  }) {
+    const context = await resolveProductionComponentContext({
+      componentId: params.componentId,
+      supabase: this.supabase,
+    });
+    if (context.organizationId !== params.organizationId) {
+      throw new HeygenScenesServiceError(
+        "El componente no pertenece a la empresa activa.",
+        403,
+      );
+    }
+
+    const selectedIds = new Set(params.clipIds);
+    if (!params.clips.some((clip) => selectedIds.has(clip.id) && !clip.deleted)) {
+      throw new HeygenScenesServiceError("Selecciona al menos una escena para generar.");
+    }
+
+    const queuedClips = sortClips(params.clips.filter((clip) => !clip.deleted)).map(
+      (clip) => selectedIds.has(clip.id)
+        ? {
+            ...clip,
+            error_message: undefined,
+            external_id: undefined,
+            job_id: undefined,
+            status: "WAITING_PROVIDER" as const,
+          }
+        : clip,
+    );
+    const assets = await this.saveSceneClips({
+      avatarGenerationMode: "scene_clips",
+      clips: queuedClips,
+      componentId: params.componentId,
+    });
+    return {
+      clips: queuedClips,
+      voiceClips: assets.voice_clips || [],
+    };
+  }
+
+  async markQueuedSceneClipsFailed(params: {
+    clipIds: string[];
+    componentId: string;
+    errorMessage: string;
+  }) {
+    const currentAssets = await this.readComponentAssets(params.componentId);
+    const selectedIds = new Set(params.clipIds);
+    const clips = sortClips(currentAssets.avatar_clips || []).map((clip) =>
+      selectedIds.has(clip.id) && clip.status === "WAITING_PROVIDER" && !clip.job_id
+        ? {
+            ...clip,
+            error_message: params.errorMessage.slice(0, 500),
+            status: "FAILED" as const,
+          }
+        : clip,
+    );
+    await this.saveSceneClips({
+      avatarGenerationMode: "scene_clips",
+      clips,
+      componentId: params.componentId,
+      voiceClips: currentAssets.voice_clips || [],
+    });
+  }
+
   async generateSceneClips(params: {
     createdBy: string;
     options: HeygenSceneClipGenerationOptions;
@@ -475,6 +543,7 @@ export class HeygenScenesService {
       jobType: PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_CLIP,
       provider: PRODUCTION_PROVIDERS.HEYGEN,
       providerModel: params.options.engine,
+      retryFailed: true,
     });
 
     if (job.status !== PRODUCTION_JOB_STATUSES.PENDING) {

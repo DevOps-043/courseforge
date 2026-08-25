@@ -40,6 +40,8 @@ export interface HeygenClientOptions {
   accessToken?: string;
   apiKey?: string;
   baseUrl?: string;
+  createVideoMaxAttempts?: number;
+  createVideoRetryDelayMs?: number;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
 }
@@ -48,6 +50,8 @@ export class HeygenClient {
   private readonly accessToken?: string;
   private readonly apiKey?: string;
   private readonly baseUrl: string;
+  private readonly createVideoMaxAttempts: number;
+  private readonly createVideoRetryDelayMs: number;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
 
@@ -55,6 +59,14 @@ export class HeygenClient {
     this.accessToken = options.accessToken;
     this.apiKey = options.accessToken ? options.apiKey : options.apiKey || getHeygenApiKey();
     this.baseUrl = (options.baseUrl || HEYGEN_API_BASE_URL).replace(/\/$/, "");
+    this.createVideoMaxAttempts = Math.max(
+      1,
+      Math.min(options.createVideoMaxAttempts ?? 1, 3),
+    );
+    this.createVideoRetryDelayMs = Math.max(
+      0,
+      options.createVideoRetryDelayMs ?? 500,
+    );
     this.fetchImpl = options.fetchImpl || fetch;
     this.timeoutMs = options.timeoutMs ?? HEYGEN_REQUEST_TIMEOUT_MS;
   }
@@ -77,15 +89,37 @@ export class HeygenClient {
     payload: HeygenCreateVideoRequest,
     idempotencyKey: string,
   ): Promise<HeygenCreateVideoResponse> {
-    const raw = await this.requestJson({
-      body: payload,
-      headers: {
-        "Content-Type": "application/json",
-        "Idempotency-Key": idempotencyKey,
-      },
-      method: "POST",
-      path: "/v3/videos",
-    });
+    let raw: unknown;
+    for (let attempt = 1; attempt <= this.createVideoMaxAttempts; attempt += 1) {
+      try {
+        raw = await this.requestJson({
+          body: payload,
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+          },
+          method: "POST",
+          path: "/v3/videos",
+        });
+        break;
+      } catch (error) {
+        const retryable =
+          error instanceof HeygenApiError &&
+          (error.status === 408 ||
+            error.status === 429 ||
+            error.status >= 500);
+        if (!retryable || attempt >= this.createVideoMaxAttempts) throw error;
+
+        const providerDelay = (error.retryAfterSeconds || 0) * 1_000;
+        await sleep(
+          Math.min(
+            Math.max(providerDelay, this.createVideoRetryDelayMs),
+            5_000,
+          ),
+        );
+      }
+    }
+
     const parsed = heygenCreateVideoProviderResponseSchema.parse(raw);
 
     return {
@@ -216,6 +250,10 @@ export class HeygenClient {
       status: response.status,
     });
   }
+}
+
+function sleep(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function readString(value: unknown) {

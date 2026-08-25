@@ -82,4 +82,39 @@ describe("HeyGen separated track client", () => {
     assert.equal("script" in (submittedBody || {}), false);
     assert.equal("voice_id" in (submittedBody || {}), false);
   });
+
+  it("retries an idempotent video submission after a transient provider failure", async () => {
+    let attempts = 0;
+    const idempotencyKeys: string[] = [];
+    const client = new HeygenClient({
+      apiKey: "test-key",
+      createVideoMaxAttempts: 2,
+      createVideoRetryDelayMs: 0,
+      fetchImpl: async (_input, init) => {
+        attempts += 1;
+        idempotencyKeys.push(new Headers(init?.headers).get("Idempotency-Key") || "");
+        if (attempts === 1) {
+          return Response.json(
+            { error: { message: "temporary outage" } },
+            { status: 503 },
+          );
+        }
+        return Response.json({ data: { video_id: "video-recovered", status: "pending" } });
+      },
+    });
+
+    const result = await client.createAvatarVideo({
+      aspect_ratio: "16:9",
+      audio_url: "https://courseforge.example.com/voice.wav",
+      avatar_id: "avatar-1",
+      output_format: "mp4",
+      resolution: "1080p",
+      title: "Leccion",
+      type: "avatar",
+    }, "job-retry-1");
+
+    assert.equal(result.videoId, "video-recovered");
+    assert.equal(attempts, 2);
+    assert.deepEqual(idempotencyKeys, ["job-retry-1", "job-retry-1"]);
+  });
 });

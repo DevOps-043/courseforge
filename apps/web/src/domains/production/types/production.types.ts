@@ -85,6 +85,7 @@ export interface ProductionComponentContext {
 }
 
 export interface ProductionJobRecord {
+  attempt?: number;
   id: string;
   output_snapshot?: Record<string, unknown> | null;
   provider_job_id?: string | null;
