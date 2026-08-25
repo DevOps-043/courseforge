@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS } from "./composition-document.types.constants";
 
-export const COMPOSITION_MOTION_SCHEMA_VERSION = 1 as const;
+export const COMPOSITION_MOTION_SCHEMA_VERSION = 2 as const;
+export const LEGACY_COMPOSITION_MOTION_SCHEMA_VERSION = 1 as const;
 export const COMPOSITION_MOTION_MAX_ANIMATIONS = 200;
 export const COMPOSITION_MOTION_MAX_KEYFRAMES = 50;
 
@@ -59,9 +60,17 @@ export const compositionMotionKeyframeSchema = z.object({
   values: compositionMotionValuesSchema,
 }).strict();
 
+export const compositionMotionLoopSchema = z.object({
+  /** A finite loop is expanded by the compiler; it is never a render-time infinite loop. */
+  mode: z.literal("FINITE"),
+  /** Complete base → peak → base cycle, independent from the animation window. */
+  cycleDurationSeconds: finiteNumberSchema.min(0.5).max(8),
+}).strict();
+
 export const compositionAnimationSchema = z.object({
   id: editorIdSchema,
   keyframes: z.array(compositionMotionKeyframeSchema).min(2).max(COMPOSITION_MOTION_MAX_KEYFRAMES),
+  loop: compositionMotionLoopSchema.optional(),
   origin: z.enum(["AGENT", "IMPORTED", "PRESET", "USER"]),
   preset: z.object({
     id: z.enum(COMPOSITION_MOTION_PRESET_IDS),
@@ -100,11 +109,23 @@ export const compositionAnimationSchema = z.object({
   if (animation.keyframes[0]?.offset !== 0 || animation.keyframes.at(-1)?.offset !== 1) {
     context.addIssue({ code: "custom", message: "La animación debe comenzar en offset 0 y terminar en offset 1." });
   }
+  if (animation.loop && (
+    animation.keyframes.length !== 3
+    || animation.keyframes[1]?.offset !== 0.5
+  )) {
+    context.addIssue({
+      code: "custom",
+      message: "Una animación repetible debe definir una pose inicial, una pose pico al 50% y una pose final.",
+    });
+  }
 });
 
 export const compositionMotionSchema = z.object({
   animations: z.array(compositionAnimationSchema).max(COMPOSITION_MOTION_MAX_ANIMATIONS).default([]),
-  schemaVersion: z.literal(COMPOSITION_MOTION_SCHEMA_VERSION).default(COMPOSITION_MOTION_SCHEMA_VERSION),
+  schemaVersion: z.union([
+    z.literal(LEGACY_COMPOSITION_MOTION_SCHEMA_VERSION),
+    z.literal(COMPOSITION_MOTION_SCHEMA_VERSION),
+  ]).default(COMPOSITION_MOTION_SCHEMA_VERSION),
 }).strict().default({ animations: [], schemaVersion: COMPOSITION_MOTION_SCHEMA_VERSION });
 
 export type CompositionAnimation = z.infer<typeof compositionAnimationSchema>;

@@ -54,3 +54,29 @@ Los presets iniciales son `FADE_IN`, `FADE_OUT`, `SLIDE_IN_LEFT`, `SLIDE_IN_RIGH
 - Ausencia de solapamiento en el mismo grupo de propiedades.
 - Paridad del compilador de preview y render.
 - Pruebas visuales en inicio, poses intermedias y final.
+
+## Extensión Motion V2: animación ambiental con repetición finita
+
+Motion V2 conserva la lectura y el render de documentos `schemaVersion: 1`. Toda
+edición que crea una nueva versión del documento escribe `schemaVersion: 2`.
+
+Los presets ambientales `PULSE`, `FLOAT`, `SWAY` y `BREATHE` pueden declarar:
+
+```json
+{
+  "loop": {
+    "mode": "FINITE",
+    "cycleDurationSeconds": 1.5
+  }
+}
+```
+
+La duración del intervalo de la animación sigue siendo la fuente de verdad. La
+cadencia describe un ciclo completo de pose base → pico → pose base y debe estar
+entre 0.5 y 8 segundos. El compilador construye un número finito de repeticiones
+y un último tramo parcial que vuelve a la pose base exactamente al finalizar el
+intervalo. No se usan `repeat: -1`, relojes ni keyframes expandidos por cada ciclo.
+
+Los loops aceptan exactamente tres keyframes (0 %, 50 %, 100 %). Sus poses no se
+editan individualmente; se ajustan mediante duración, cadencia e intensidad para
+mantener una semántica estable entre preview y render.
