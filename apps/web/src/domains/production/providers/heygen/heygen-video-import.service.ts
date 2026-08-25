@@ -129,7 +129,7 @@ export class HeygenVideoImportService {
       .getPublicUrl(objectPath);
 
     const storagePath = `${HEYGEN_VIDEO_STORAGE_BUCKET}/${objectPath}`;
-    const asset = await this.repository.insertAvatarVideoAsset({
+    const asset = await this.repository.insertGeneratedMediaAsset({
       assetType: params.assetType,
       checksum: downloadedVideo.checksum,
       context,
@@ -207,7 +207,9 @@ async function downloadVideoWithLimits(params: {
 
   try {
     const response = await params.fetchImpl(params.url, {
-      headers: { Accept: "video/mp4,video/webm,application/octet-stream" },
+      headers: {
+        Accept: "video/mp4,video/webm,application/octet-stream,binary/octet-stream",
+      },
       redirect: "error",
       signal: controller.signal,
     });
@@ -269,7 +271,7 @@ async function readResponseBodyWithLimit(response: Response) {
   return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), totalBytes);
 }
 
-function normalizeVideoContentType(
+export function normalizeVideoContentType(
   contentTypeHeader: string | null,
   url: string,
 ) {
@@ -281,7 +283,13 @@ function normalizeVideoContentType(
     return contentType;
   }
 
-  if (contentType === "application/octet-stream") {
+  // files2.heygen.ai currently serves some valid MP4 outputs with the
+  // non-standard binary/octet-stream value. The caller validates the HTTPS
+  // URL against the explicit HeyGen host allow-list before reaching here.
+  if (
+    contentType === "application/octet-stream"
+    || contentType === "binary/octet-stream"
+  ) {
     return url.toLowerCase().includes(".webm") ? "video/webm" : "video/mp4";
   }
 

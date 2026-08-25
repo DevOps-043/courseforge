@@ -37,6 +37,7 @@ interface AvatarSceneClip {
   error_message?: string;
   external_id?: string;
   file_name?: string;
+  has_audio?: boolean;
   id: string;
   job_id?: string;
   order: number;
@@ -44,12 +45,22 @@ interface AvatarSceneClip {
   provider?: string;
   public_url?: string;
   script_text: string;
+  script_hash?: string;
   source_hash?: string;
   status: "DRAFT" | "WAITING_PROVIDER" | "COMPLETED" | "FAILED" | "STALE";
   storage_path?: string;
   storyboard_take_number?: number;
   visual_type?: string;
   voice_preset_id?: string;
+}
+
+interface VoiceSceneClip {
+  clip_id: string;
+  duration?: number;
+  id: string;
+  order: number;
+  public_url: string;
+  status: "COMPLETED" | "FAILED" | "STALE";
 }
 
 interface AvatarPreset {
@@ -156,6 +167,7 @@ export default function HeygenStudioClient({
   const [avatarGenerationMode, setAvatarGenerationMode] =
     useState<AvatarGenerationMode>("scene_clips");
   const [sceneClips, setSceneClips] = useState<AvatarSceneClip[]>([]);
+  const [voiceClips, setVoiceClips] = useState<VoiceSceneClip[]>([]);
   const [selectedSceneClipIds, setSelectedSceneClipIds] = useState<string[]>([]);
   const [sceneClipPanelOverrides, setSceneClipPanelOverrides] = useState<
     Record<string, boolean>
@@ -283,6 +295,7 @@ export default function HeygenStudioClient({
       }
 
       const clips = (payload.data?.clips || []) as AvatarSceneClip[];
+      setVoiceClips((payload.data?.voiceClips || []) as VoiceSceneClip[]);
       setAvatarGenerationMode(
         (payload.data?.avatarGenerationMode as AvatarGenerationMode) || "scene_clips",
       );
@@ -580,6 +593,7 @@ export default function HeygenStudioClient({
     }
 
     const nextClips = (payload.data?.clips || clips) as AvatarSceneClip[];
+    setVoiceClips((payload.data?.voiceClips || []) as VoiceSceneClip[]);
     setSceneClips(nextClips);
     return nextClips;
   };
@@ -633,6 +647,7 @@ export default function HeygenStudioClient({
       }
 
       const nextClips = (payload.data?.clips || clips) as AvatarSceneClip[];
+      setVoiceClips((payload.data?.voiceClips || []) as VoiceSceneClip[]);
       setSceneClips(nextClips);
       const failedCount = nextClips.filter(
         (clip) => selectedSceneClipIds.includes(clip.id) && clip.status === "FAILED",
@@ -669,6 +684,7 @@ export default function HeygenStudioClient({
       }
 
       const clips = (payload.data?.clips || []) as AvatarSceneClip[];
+      setVoiceClips((payload.data?.voiceClips || []) as VoiceSceneClip[]);
       setSceneClips(clips);
       const completed = clips.filter((clip) => clip.status === "COMPLETED").length;
       toast.info(`Clips completados: ${completed}/${clips.length}.`);
@@ -1057,6 +1073,7 @@ export default function HeygenStudioClient({
                 </div>
               ) : (
                 visibleSceneClips.map((clip, clipIndex) => {
+                  const voiceClip = voiceClips.find((voice) => voice.clip_id === clip.id);
                   const isPanelExpanded = isSceneClipPanelExpanded(clip);
                   const scriptPreview =
                     clip.script_text.length > 140
@@ -1138,6 +1155,17 @@ export default function HeygenStudioClient({
                               <p className="mt-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-600 dark:text-red-300">
                                 {clip.error_message}
                               </p>
+                            ) : null}
+                            {voiceClip ? (
+                              <div className="mt-2 rounded-lg border border-blue-500/20 bg-blue-500/5 p-2">
+                                <div className="mb-1 flex items-center justify-between text-xs font-semibold text-blue-700 dark:text-blue-300">
+                                  <span>Voz separada · escena {voiceClip.order}</span>
+                                  <span>{voiceClip.status}{voiceClip.duration ? ` · ${voiceClip.duration.toFixed(1)}s` : ""}</span>
+                                </div>
+                                {voiceClip.status === "COMPLETED" ? (
+                                  <audio src={voiceClip.public_url} controls preload="metadata" className="h-8 w-full" />
+                                ) : null}
+                              </div>
                             ) : null}
                             <div className="mt-3 grid gap-3 md:grid-cols-3">
                               <SelectField

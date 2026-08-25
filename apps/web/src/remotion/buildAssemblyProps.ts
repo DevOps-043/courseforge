@@ -129,6 +129,7 @@ export function buildAssemblyProps(
     fps,
     totalDurationInFrames,
     voiceAudioUrl: normalized.voiceAudioUrl,
+    voiceClips: normalized.voiceClips,
     bgMusicUrl: normalized.bgMusicUrl,
     bgMusicVolume: normalized.bgMusicVolume,
     avatarVideoUrl: normalized.avatarVideoUrl,

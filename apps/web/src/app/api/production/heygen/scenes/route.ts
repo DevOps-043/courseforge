@@ -38,6 +38,7 @@ export async function GET(request: Request) {
           auth.authorizedComponent.component.assets?.avatar_generation_mode || "scene_clips",
         clips,
         componentId,
+        voiceClips: auth.authorizedComponent.component.assets?.voice_clips || [],
       },
     });
   } catch (error: unknown) {
@@ -65,6 +66,7 @@ export async function PATCH(request: Request) {
       data: {
         avatarGenerationMode: materialAssets.avatar_generation_mode,
         clips: materialAssets.avatar_clips || [],
+        voiceClips: materialAssets.voice_clips || [],
       },
     });
   } catch (error: unknown) {

@@ -155,7 +155,24 @@ export interface AvatarClip {
     job_id?: string;
     status: AvatarClipStatus;
     error_message?: string;
+    script_hash?: string;
     source_hash?: string;
+}
+
+export interface VoiceClip {
+    id: string;
+    clip_id: string;
+    order: number;
+    storage_path: string;
+    public_url: string;
+    file_name?: string;
+    duration?: number;
+    external_id?: string;
+    provider?: string;
+    script_hash: string;
+    word_timestamps?: { word: string; start: number; end: number }[];
+    status: Extract<AvatarClipStatus, 'COMPLETED' | 'FAILED' | 'STALE'>;
+    error_message?: string;
 }
 
 export interface MaterialAssets {
@@ -192,9 +209,13 @@ export interface MaterialAssets {
         public_url: string;
         file_name?: string;
         duration?: number;
+        external_id?: string;
         provider?: string;
+        script_hash?: string;
+        word_timestamps?: { word: string; start: number; end: number }[];
         last_uploaded_at?: string;
     };
+    voice_clips?: VoiceClip[];
     background_music?: {
         storage_path: string;
         public_url: string;
@@ -225,6 +246,7 @@ export interface MaterialAssets {
         height?: number;
         provider?: string;
         external_id?: string;
+        script_hash?: string;
         sync_status?: 'SYNCING' | 'COMPLETED' | 'FAILED';
         width?: number;
     };

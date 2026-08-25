@@ -107,6 +107,7 @@ export function ProductionAssetCard({
 
     // Structured states & loaders
     voiceAudio,
+    voiceClips,
     backgroundMusic,
     bRollClips,
     avatarClips,
@@ -258,6 +259,7 @@ export function ProductionAssetCard({
         screencastUrl={screencastUrl}
         finalVideoUrl={finalVideoUrl}
         voiceAudio={voiceAudio}
+        voiceClips={voiceClips}
         backgroundMusic={backgroundMusic}
         bRollClips={bRollClips}
         avatarVideo={avatarVideo}
@@ -282,6 +284,7 @@ export function ProductionAssetCard({
               
               <VoiceAudioSection
                 voiceAudio={voiceAudio}
+                voiceClips={voiceClips}
                 isUploading={isUploadingVoice}
                 fileRef={voiceFileRef}
                 onUpload={handleVoiceUpload}

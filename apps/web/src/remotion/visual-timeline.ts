@@ -410,6 +410,31 @@ function applyTimelineOverridesToTracks(
 
 export function buildVisualTimeline(props: AssemblyInputProps): VisualTimeline {
   const tracks: VisualTimelineTrack[] = [];
+  const avatarClipSegments = props.avatarClips.length > 0
+    ? buildAvatarClipSegments(props)
+    : [];
+  const voiceClipByOrder = new Map(
+    props.voiceClips.map((clip) => [clip.order, clip] as const),
+  );
+  const voiceClipSegments = avatarClipSegments.flatMap((avatarSegment) => {
+    const orderMatch = avatarSegment.id.match(/^avatar-(\d+)$/);
+    const voiceClip = orderMatch ? voiceClipByOrder.get(Number(orderMatch[1])) : undefined;
+    if (!voiceClip) return [];
+    const segment = buildSegment({
+      id: `voice-${voiceClip.order}`,
+      trackKind: "audio",
+      label: `Voz ${voiceClip.order}`,
+      startFrame: avatarSegment.startFrame,
+      durationInFrames: Math.min(avatarSegment.durationInFrames, voiceClip.durationInFrames),
+      sourceUrl: voiceClip.url,
+      sourceStartFrame: 0,
+      sourceEndFrame: voiceClip.durationInFrames,
+      sourceDurationInFrames: voiceClip.durationInFrames,
+      loopMode: "none",
+      totalDurationInFrames: props.totalDurationInFrames,
+    });
+    return segment ? [segment] : [];
+  });
   const audioSegments = [
     props.voiceAudioUrl
       ? buildFullDurationSegment({
@@ -429,6 +454,7 @@ export function buildVisualTimeline(props: AssemblyInputProps): VisualTimeline {
           totalDurationInFrames: props.totalDurationInFrames,
         })
       : null,
+    ...voiceClipSegments,
   ].filter((segment): segment is VisualTimelineSegment => Boolean(segment));
 
   if (audioSegments.length > 0) {
@@ -442,7 +468,7 @@ export function buildVisualTimeline(props: AssemblyInputProps): VisualTimeline {
 
   const avatarSegments =
     props.avatarClips.length > 0
-      ? buildAvatarClipSegments(props)
+      ? avatarClipSegments
       : props.avatarVideoUrl
         ? [
             buildFullDurationSegment({

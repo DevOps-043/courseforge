@@ -29,12 +29,12 @@ interface LibraryResultCardProps {
 function detectAssets(assets: MaterialAssets | null) {
     const a = assets ?? {};
     return {
-        hasAvatar: Boolean(a.avatar_video?.public_url),
+        hasAvatar: Boolean(a.avatar_video?.public_url || a.avatar_clips?.some((clip) => clip.public_url)),
         hasBroll: (a.b_roll_clips?.length ?? 0) > 0,
         hasMusic: Boolean(a.background_music?.public_url),
         hasSlides: Boolean((a.slides?.images?.length ?? 0) > 0 || a.slides?.html_public_url || a.slides_url),
         hasVideo: Boolean(a.final_video_url || a.video_url || a.screencast_url),
-        hasVoice: Boolean(a.voice_audio?.public_url),
+        hasVoice: Boolean(a.voice_audio?.public_url || a.voice_clips?.some((clip) => clip.public_url)),
         slideImages: a.slides?.images ?? [],
         brollClips: a.b_roll_clips ?? [],
     };
@@ -308,6 +308,26 @@ export function LibraryResultCard({ result }: LibraryResultCardProps) {
                                         Voz
                                     </h3>
                                     <audio src={result.assets.voice_audio.public_url} controls className="h-10 w-full" />
+                                </section>
+                            )}
+
+                            {(result.assets?.voice_clips?.length ?? 0) > 0 && (
+                                <section>
+                                    <h3 className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
+                                        <Mic size={16} className="text-[var(--engine-accent)]" />
+                                        Voces por escena
+                                    </h3>
+                                    <div className="space-y-2">
+                                        {result.assets!.voice_clips!
+                                            .slice()
+                                            .sort((left, right) => left.order - right.order)
+                                            .map((clip) => (
+                                                <div key={clip.id} className="rounded-lg border border-white/10 p-2">
+                                                    <p className="mb-1 text-xs text-gray-300">Escena {clip.order}</p>
+                                                    <audio src={clip.public_url} controls className="h-10 w-full" />
+                                                </div>
+                                            ))}
+                                    </div>
                                 </section>
                             )}
 

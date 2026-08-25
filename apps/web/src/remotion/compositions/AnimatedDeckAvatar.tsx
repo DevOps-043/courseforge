@@ -46,7 +46,7 @@ export function AnimatedDeckAvatar(props: AssemblyInputProps) {
   const timeline = buildVisualTimeline(props);
   const timelineSegments = timeline.tracks.flatMap((track) => track.segments);
   const avatarSegments = timelineSegments.filter((segment) => segment.trackKind === "avatar");
-  const hasVoice = Boolean(props.voiceAudioUrl);
+  const hasVoice = Boolean(props.voiceAudioUrl || props.voiceClips.length > 0);
   const hasAvatar = props.avatarClips.length > 0 || Boolean(props.avatarVideoUrl);
   const focus = getSlideFocus(frame, props);
   const globalProgress = durationInFrames > 1 ? frame / (durationInFrames - 1) : 0;
@@ -134,9 +134,11 @@ export function AnimatedDeckAvatar(props: AssemblyInputProps) {
       </div>
 
       <AudioTracks
+        avatarSegments={avatarSegments}
         bgMusicUrl={props.bgMusicUrl}
         bgMusicVolume={props.bgMusicVolume}
         voiceAudioUrl={props.voiceAudioUrl}
+        voiceClips={props.voiceClips}
       />
     </AbsoluteFill>
   );

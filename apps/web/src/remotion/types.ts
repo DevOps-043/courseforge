@@ -108,11 +108,20 @@ export const assemblyBrollClipSchema = z.object({
 export type AssemblyBrollClip = z.infer<typeof assemblyBrollClipSchema>;
 
 export const assemblyAvatarClipSchema = z.object({
+  clipId: z.string().trim().optional(),
   url: z.string().url(),
   durationInFrames: z.number().int().positive(),
   order: z.number().int().min(1),
 });
 export type AssemblyAvatarClip = z.infer<typeof assemblyAvatarClipSchema>;
+
+export const assemblyVoiceClipSchema = z.object({
+  clipId: z.string().trim(),
+  url: z.string().url(),
+  durationInFrames: z.number().int().positive(),
+  order: z.number().int().min(1),
+});
+export type AssemblyVoiceClip = z.infer<typeof assemblyVoiceClipSchema>;
 
 export const assemblyTimelineSegmentSchema = z.object({
   id: z.string(),
@@ -147,6 +156,9 @@ export const assemblyInputPropsSchema = z.object({
 
   /** Locución principal (opcional si hay avatar con voz nativa). */
   voiceAudioUrl: z.string().url().optional(),
+
+  /** Locuciones por escena, validadas 1:1 contra avatarClips. */
+  voiceClips: z.array(assemblyVoiceClipSchema).default([]),
 
   /** Música de fondo y su volumen relativo (0..1). */
   bgMusicUrl: z.string().url().optional(),
@@ -233,6 +245,7 @@ export function createDefaultAssemblyProps(
     fps: ASSEMBLY_FPS,
     totalDurationInFrames: ASSEMBLY_FALLBACK_DURATION_FRAMES,
     bgMusicVolume: 0.15,
+    voiceClips: [],
     avatarClips: [],
     slides: [],
     deckCss: "",

@@ -744,6 +744,11 @@ async function verifyMediaDurationsFromUrls(rawAssets: unknown) {
   const source = rawAssets as Record<string, unknown>;
   const verified: Record<string, unknown> = { ...source };
   verified.voice_audio = await verifyAssetDuration(source.voice_audio, "voice_audio");
+  if (Array.isArray(source.voice_clips)) {
+    verified.voice_clips = await Promise.all(
+      source.voice_clips.map((clip, index) => verifyAssetDuration(clip, `voice_clips.${index + 1}`)),
+    );
+  }
   verified.avatar_video = await verifyAssetDuration(source.avatar_video, "avatar_video");
 
   if (Array.isArray(source.b_roll_clips)) {

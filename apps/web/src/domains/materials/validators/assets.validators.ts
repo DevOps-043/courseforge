@@ -6,7 +6,14 @@ export const voiceAudioSchema = z.object({
   public_url: z.string().url(),
   file_name: z.string().trim().optional(),
   duration: z.number().positive().optional(),
+  external_id: z.string().trim().optional(),
   provider: z.string().trim().optional(),
+  script_hash: z.string().trim().optional(),
+  word_timestamps: z.array(z.object({
+    end: z.number().nonnegative(),
+    start: z.number().nonnegative(),
+    word: z.string(),
+  })).optional(),
   last_uploaded_at: z.string().datetime().optional(),
 });
 
@@ -73,7 +80,28 @@ export const avatarClipSchema = z.object({
   job_id: z.string().trim().optional(),
   status: avatarClipStatusSchema,
   error_message: z.string().trim().optional(),
+  script_hash: z.string().trim().optional(),
   source_hash: z.string().trim().optional(),
+});
+
+export const voiceClipSchema = z.object({
+  id: z.string().trim(),
+  clip_id: z.string().trim(),
+  order: z.number().int().min(1),
+  storage_path: z.string().trim(),
+  public_url: z.string().url(),
+  file_name: z.string().trim().optional(),
+  duration: z.number().positive().optional(),
+  external_id: z.string().trim().optional(),
+  provider: z.string().trim().optional(),
+  script_hash: z.string().trim(),
+  word_timestamps: z.array(z.object({
+    end: z.number().nonnegative(),
+    start: z.number().nonnegative(),
+    word: z.string(),
+  })).optional(),
+  status: z.enum(["COMPLETED", "FAILED", "STALE"]),
+  error_message: z.string().trim().optional(),
 });
 
 // Schema for Avatar Video asset (talking head)
@@ -86,6 +114,7 @@ export const avatarVideoSchema = z.object({
   has_audio: z.boolean().optional(),
   provider: z.string().trim().optional(),
   external_id: z.string().trim().optional(),
+  script_hash: z.string().trim().optional(),
   sync_status: z.enum(["SYNCING", "COMPLETED", "FAILED"]).optional(),
   width: z.number().int().positive().max(16_384).optional(),
 });
@@ -195,15 +224,45 @@ export const materialAssetsSchema = z.object({
   
   // New structured visual assets
   voice_audio: voiceAudioSchema.optional(),
+  voice_clips: z.array(voiceClipSchema).optional(),
   background_music: backgroundMusicSchema.optional(),
   b_roll_clips: z.array(bRollClipSchema).optional(),
   avatar_generation_mode: avatarGenerationModeSchema.optional(),
   avatar_clips: z.array(avatarClipSchema).optional(),
   avatar_video: avatarVideoSchema.optional(),
   slides: slidesSchema.optional(),
+}).superRefine((assets, context) => {
+  const seenClipIds = new Set<string>();
+  for (const [index, voiceClip] of (assets.voice_clips || []).entries()) {
+    if (seenClipIds.has(voiceClip.clip_id)) {
+      context.addIssue({
+        code: "custom",
+        message: "Cada escena puede tener un solo clip de voz activo.",
+        path: ["voice_clips", index, "clip_id"],
+      });
+    }
+    seenClipIds.add(voiceClip.clip_id);
+  }
+
+  const avatarById = new Map((assets.avatar_clips || []).map((clip) => [clip.id, clip]));
+  for (const [index, voiceClip] of (assets.voice_clips || []).entries()) {
+    const avatarClip = avatarById.get(voiceClip.clip_id);
+    if (
+      voiceClip.status === "COMPLETED"
+      && avatarClip?.script_hash
+      && avatarClip.script_hash !== voiceClip.script_hash
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "La voz completada no corresponde al guion vigente del clip de avatar.",
+        path: ["voice_clips", index, "script_hash"],
+      });
+    }
+  }
 });
 
 export type VoiceAudio = z.infer<typeof voiceAudioSchema>;
+export type VoiceClip = z.infer<typeof voiceClipSchema>;
 export type BackgroundMusic = z.infer<typeof backgroundMusicSchema>;
 export type BRollClip = z.infer<typeof bRollClipSchema>;
 export type AvatarGenerationMode = z.infer<typeof avatarGenerationModeSchema>;

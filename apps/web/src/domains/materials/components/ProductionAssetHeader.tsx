@@ -22,6 +22,7 @@ interface ProductionAssetHeaderProps {
   screencastUrl: string;
   finalVideoUrl: string;
   voiceAudio?: any;
+  voiceClips?: any[];
   backgroundMusic?: any;
   bRollClips?: any[];
   avatarVideo?: any;
@@ -40,6 +41,7 @@ export function ProductionAssetHeader({
   screencastUrl,
   finalVideoUrl,
   voiceAudio,
+  voiceClips,
   backgroundMusic,
   bRollClips,
   avatarVideo,
@@ -92,7 +94,7 @@ export function ProductionAssetHeader({
           <>
             <DodIndicator
               label="Voz"
-              completed={Boolean(voiceAudio) || Boolean(avatarVideo)}
+              completed={Boolean(voiceAudio) || Boolean(voiceClips?.length) || Boolean(avatarVideo)}
               required={true}
             />
             <DodIndicator
