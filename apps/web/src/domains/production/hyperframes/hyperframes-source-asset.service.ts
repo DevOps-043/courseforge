@@ -146,13 +146,22 @@ export function collectInternalMaterialAssetReferences(rawAssets: unknown): Inte
     });
   };
 
-  add(assets.voice_audio, "audio/mpeg", "PRODUCTION_MEDIA", "VOICE");
+  const usesSceneClips = assets.avatar_generation_mode === "scene_clips";
+  if (!usesSceneClips) add(assets.voice_audio, "audio/mpeg", "PRODUCTION_MEDIA", "VOICE");
+  if (usesSceneClips) {
+    for (const item of asArray(assets.voice_clips)) {
+      if (!isRecord(item) || item.status !== "COMPLETED") continue;
+      add(item, "audio/mpeg", "PRODUCTION_MEDIA", "VOICE", "CLIP");
+    }
+  }
   add(assets.background_music, "audio/mpeg", "PRODUCTION_MEDIA", "AUDIO");
   for (const item of asArray(assets.b_roll_clips)) add(item, "video/mp4", "PRODUCTION_MEDIA", "BROLL");
-  add(assets.avatar_video, "video/mp4", "PRODUCTION_MEDIA", "AVATAR", "FULL");
-  for (const item of asArray(assets.avatar_clips)) {
-    if (!isRecord(item) || item.deleted === true) continue;
-    add(item, "video/mp4", "PRODUCTION_MEDIA", "AVATAR", "CLIP");
+  if (!usesSceneClips) add(assets.avatar_video, "video/mp4", "PRODUCTION_MEDIA", "AVATAR", "FULL");
+  if (usesSceneClips) {
+    for (const item of asArray(assets.avatar_clips)) {
+      if (!isRecord(item) || item.deleted === true) continue;
+      add(item, "video/mp4", "PRODUCTION_MEDIA", "AVATAR", "CLIP");
+    }
   }
   const slides = isRecord(assets.slides) ? assets.slides : {};
   // A ready HTML deck owns its exported raster slides. Keep those files

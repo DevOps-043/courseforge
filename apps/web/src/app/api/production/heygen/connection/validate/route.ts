@@ -39,7 +39,7 @@ export async function POST() {
     const service = new ProductionProviderCredentialsService({
       supabase: getServiceRoleClient(),
     });
-    const status = await service.validateActiveHeygenCredential({
+    const status = await service.validateActiveHeygenAvatarCredential({
       organizationId: tenant.organizationId,
     });
 

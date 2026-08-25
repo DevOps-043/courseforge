@@ -5,6 +5,8 @@ export const HEYGEN_DEFAULT_PAGE_SIZE = 50;
 export const HEYGEN_MAX_IMPORT_SIZE_BYTES = 150 * 1024 * 1024;
 export const HEYGEN_REQUEST_TIMEOUT_MS = 20_000;
 export const HEYGEN_VIDEO_IMPORT_TIMEOUT_MS = 45_000;
+export const HEYGEN_AUDIO_IMPORT_TIMEOUT_MS = 30_000;
+export const HEYGEN_MAX_AUDIO_IMPORT_SIZE_BYTES = 50 * 1024 * 1024;
 export const HEYGEN_VIDEO_STORAGE_BUCKET = "production-assets";
 export const HEYGEN_ALLOWED_VIDEO_HOSTS = [
   "heygen.com",
@@ -14,6 +16,14 @@ export const HEYGEN_ALLOWED_VIDEO_HOSTS = [
   // endpoint. Keep it explicit; allowing amazonaws.com would weaken SSRF controls.
   "heygen-product.s3.amazonaws.com",
   "resource.heygen.com",
+  "files2.heygen.ai",
+] as const;
+export const HEYGEN_ALLOWED_AUDIO_HOSTS = [
+  "heygen.com",
+  "heygen.ai",
+  "cdn.heygen.com",
+  "resource.heygen.ai",
+  "resource2.heygen.ai",
   "files2.heygen.ai",
 ] as const;
 
@@ -84,10 +94,31 @@ export interface HeygenCreateVideoRequest {
   };
   output_format: HeygenAvatarVideoOutputFormat;
   resolution: HeygenAvatarVideoResolution;
-  script: string;
+  audio_url?: string;
+  script?: string;
   title: string;
   type: "avatar";
+  voice_id?: string;
+}
+
+export interface HeygenWordTimestamp {
+  end: number;
+  start: number;
+  word: string;
+}
+
+export interface HeygenGenerateSpeechRequest {
+  speed: number;
+  text: string;
   voice_id: string;
+}
+
+export interface HeygenGeneratedSpeech {
+  audioUrl: string;
+  durationSeconds: number;
+  raw: Record<string, unknown>;
+  requestId?: string | null;
+  wordTimestamps: HeygenWordTimestamp[];
 }
 
 export interface HeygenCreateVideoResponse {
@@ -167,7 +198,11 @@ export interface HeygenProductionJobRow {
 }
 
 export interface HeygenProductionAssetRow {
+  duration_milliseconds?: number | null;
+  duration_seconds?: number | null;
   id: string;
+  metadata?: Record<string, unknown> | null;
+  mime_type?: string | null;
   public_url?: string | null;
   storage_path?: string | null;
 }

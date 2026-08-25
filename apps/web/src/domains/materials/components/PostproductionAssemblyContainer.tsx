@@ -37,6 +37,7 @@ function hasProductionMedia(component: VideoComponent) {
     : null;
   return Boolean(
     values.voice_audio
+    || (Array.isArray(values.voice_clips) && values.voice_clips.length > 0)
     || values.background_music
     || values.avatar_video
     || (Array.isArray(values.avatar_clips) && values.avatar_clips.length > 0)

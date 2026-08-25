@@ -21,7 +21,7 @@ import { buildVisualTimeline } from "../visual-timeline";
  */
 export function AvatarFocus(props: AssemblyInputProps) {
   const { durationInFrames } = useVideoConfig();
-  const hasVoice = Boolean(props.voiceAudioUrl);
+  const hasVoice = Boolean(props.voiceAudioUrl || props.voiceClips.length > 0);
   const templateConfig = parseTemplateRenderConfig(props.templateConfig);
   const hasSupportVisual =
     props.slides.length > 0 || props.brollClips.length > 0;
@@ -134,7 +134,9 @@ export function AvatarFocus(props: AssemblyInputProps) {
       ) : null}
 
       <AudioTracks
+        avatarSegments={avatarSegments}
         voiceAudioUrl={props.voiceAudioUrl}
+        voiceClips={props.voiceClips}
         bgMusicUrl={props.bgMusicUrl}
         bgMusicVolume={props.bgMusicVolume}
       />

@@ -160,6 +160,17 @@ export function normalizeLibraryAssets(source: LibraryComponentSource): LibraryS
     title: "Audio de voz",
   });
 
+  for (const clip of assets.voice_clips ?? []) {
+    pushAsset({
+      assetType: "voice",
+      fallbackName: `voz-${clip.order}`,
+      fileName: clip.file_name,
+      publicUrl: clip.public_url,
+      storagePath: clip.storage_path,
+      title: `Audio de voz · escena ${clip.order}`,
+    });
+  }
+
   pushAsset({
     assetType: "music",
     fallbackName: "musica",

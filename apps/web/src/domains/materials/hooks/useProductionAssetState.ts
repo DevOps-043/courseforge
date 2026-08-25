@@ -22,6 +22,7 @@ import type {
 } from "../types/materials.types";
 import type {
   VoiceAudio,
+  VoiceClip,
   BackgroundMusic,
   BRollClip,
   AvatarVideo,
@@ -250,6 +251,9 @@ export function useProductionAssetState({
   // New structured visual asset states
   const [voiceAudio, setVoiceAudio] = useState<VoiceAudio | null>(
     (component.assets as any)?.voice_audio || null
+  );
+  const [voiceClips, setVoiceClips] = useState<VoiceClip[]>(
+    (component.assets as any)?.voice_clips || [],
   );
   const [backgroundMusic, setBackgroundMusic] = useState<BackgroundMusic | null>(
     (component.assets as any)?.background_music || null
@@ -881,9 +885,11 @@ export function useProductionAssetState({
   const clearAvatarVideo = () => {
     setAvatarVideo(null);
     setAvatarClips([]);
+    setVoiceClips([]);
     onAssetChange?.(component.id, {
       avatar_clips: [],
       avatar_video: null as any,
+      voice_clips: [],
     });
     toast.info("Videos de avatar removidos");
   };
@@ -905,7 +911,12 @@ export function useProductionAssetState({
         }
       : clip);
     setAvatarClips(updatedClips);
-    onAssetChange?.(component.id, { avatar_clips: updatedClips });
+    const updatedVoiceClips = voiceClips.filter((clip) => clip.clip_id !== clipId);
+    setVoiceClips(updatedVoiceClips);
+    onAssetChange?.(component.id, {
+      avatar_clips: updatedClips,
+      voice_clips: updatedVoiceClips,
+    });
     toast.info("Video de avatar retirado; la escena queda disponible para regenerar");
   };
 
@@ -1056,24 +1067,46 @@ export function useProductionAssetState({
             const newAvatar: AvatarVideo = {
               external_id: result.providerJobId || undefined,
               file_name: result.asset.storagePath.split("/").pop(),
-              has_audio: true,
+              has_audio: false,
               provider: "heygen",
               public_url: result.asset.publicUrl,
               storage_path: result.asset.storagePath,
               sync_status: "COMPLETED",
+              script_hash: result.scriptHash || undefined,
             };
+            const generatedVoice: VoiceAudio | null = result.voiceAsset
+              ? {
+                  duration: result.voiceAsset.durationSeconds || undefined,
+                  external_id: result.voiceAsset.providerRequestId || undefined,
+                  file_name: result.voiceAsset.storagePath.split("/").pop(),
+                  last_uploaded_at: new Date().toISOString(),
+                  provider: "heygen",
+                  public_url: result.voiceAsset.publicUrl,
+                  storage_path: result.voiceAsset.storagePath,
+                  script_hash: result.scriptHash || undefined,
+                  word_timestamps: result.voiceAsset.wordTimestamps || [],
+                }
+              : null;
             clearInterval(interval);
             setHeygenSyncProgress(100);
             setAvatarVideo(newAvatar);
+            if (generatedVoice) setVoiceAudio(generatedVoice);
             setAvatarGenerationMode("single_video");
             setAvatarClips([]);
+            setVoiceClips([]);
             onAssetChange?.(component.id, {
               avatar_generation_mode: "single_video",
               avatar_clips: [],
+              voice_clips: [],
               avatar_video: newAvatar,
+              ...(generatedVoice ? { voice_audio: generatedVoice } : {}),
             });
             setIsSyncingHeygen(false);
-            toast.success("Video de HeyGen importado correctamente");
+            toast.success(
+              generatedVoice
+                ? "Voz y avatar de HeyGen importados como pistas separadas"
+                : "Video de HeyGen importado correctamente",
+            );
           } else if (result.status === "FAILED") {
             clearInterval(interval);
             setHeygenError("HeyGen reporto la generacion como fallida.");
@@ -1404,6 +1437,7 @@ export function useProductionAssetState({
 
     // Structured states & loaders
     voiceAudio,
+    voiceClips,
     backgroundMusic,
     bRollClips,
     avatarClips,

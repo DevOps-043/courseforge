@@ -9,7 +9,7 @@ import type {
   CloudStorageConnection,
   CloudStorageProvider,
 } from "@/domains/production/cloud-storage/types";
-import { HeygenIntegrationCard } from "./HeygenIntegrationCard";
+import { ProviderIntegrationCard } from "./ProviderIntegrationCard";
 
 const PROVIDER_LABELS: Record<CloudStorageProvider, string> = {
   google_drive: "Google Drive",
@@ -147,7 +147,20 @@ export default function IntegrationsClient({
             </div>
           </section>
         ))}
-        <HeygenIntegrationCard />
+        <ProviderIntegrationCard
+          name="HeyGen Avatares"
+          keyLabel="API key de HeyGen"
+          description="Sincroniza avatares y voces, y genera clips de avatar para esta empresa. No controla el ensamblado final."
+          connectionPath="/api/production/heygen/connection"
+          validatePath="/api/production/heygen/connection/validate"
+        />
+        <ProviderIntegrationCard
+          name="HyperFrames Cloud"
+          keyLabel="API key de HyperFrames Cloud"
+          description="Ensambla los assets aprobados y renderiza el video final. Su webhook y credencial son independientes de los avatares."
+          connectionPath="/api/production/hyperframes/connection"
+          validatePath="/api/production/hyperframes/connection/validate"
+        />
       </div>
     </div>
   );

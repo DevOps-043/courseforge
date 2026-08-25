@@ -16,6 +16,7 @@ export function getStandaloneAssemblyReadiness(
 ): StandaloneAssemblyReadiness {
   const value = assets || {};
   const avatarClips = (value.avatar_clips || []).filter((clip) => !clip.deleted);
+  const voiceClips = (value.voice_clips || []).filter((clip) => clip.status === "COMPLETED");
   const bRollClips = value.b_roll_clips || [];
   const animatedDeck = value.slides?.animated_deck;
   const deckIsReady = Boolean(
@@ -26,6 +27,7 @@ export function getStandaloneAssemblyReadiness(
 
   const durationSourceCount = [
     positiveDuration(value.voice_audio?.duration),
+    ...voiceClips.map((clip) => positiveDuration(clip.duration)),
     positiveDuration(value.avatar_video?.duration),
     ...avatarClips.map((clip) => positiveDuration(clip.duration)),
     ...bRollClips.map((clip) => positiveDuration(clip.duration)),
@@ -34,6 +36,7 @@ export function getStandaloneAssemblyReadiness(
 
   const assetCount = [
     Boolean(value.voice_audio),
+    ...voiceClips.map(() => true),
     Boolean(value.background_music),
     Boolean(value.avatar_video),
     ...avatarClips.map(() => true),

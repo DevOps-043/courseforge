@@ -3,7 +3,6 @@ import type { MaterialAssets } from "@/domains/materials/types/materials.types";
 type MediaAsset = {
   public_url?: string;
   duration?: number;
-  [key: string]: unknown;
 };
 
 function isPositiveFiniteNumber(value: unknown): value is number {
@@ -68,6 +67,12 @@ export async function verifyBrowserMediaDurationsFromUrls(
     assets.voice_audio,
     "audio",
   ) as MaterialAssets["voice_audio"];
+
+  if (Array.isArray(assets.voice_clips)) {
+    verifiedAssets.voice_clips = await Promise.all(
+      assets.voice_clips.map((clip) => verifyAssetDuration(clip, "audio")),
+    ) as MaterialAssets["voice_clips"];
+  }
 
   verifiedAssets.avatar_video = await verifyAssetDuration(
     assets.avatar_video,

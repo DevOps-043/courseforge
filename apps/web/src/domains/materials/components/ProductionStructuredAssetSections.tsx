@@ -27,6 +27,7 @@ import {
 import { toast } from "sonner";
 import type {
   VoiceAudio,
+  VoiceClip,
   AvatarClip,
   AvatarGenerationMode,
   BackgroundMusic,
@@ -264,6 +265,7 @@ function buildHtmlPreviewHref(slides: SlidesAsset | null) {
 // ---------------------------------------------------------
 interface VoiceAudioSectionProps {
   voiceAudio: VoiceAudio | null;
+  voiceClips: VoiceClip[];
   isUploading: boolean;
   fileRef: React.RefObject<HTMLInputElement | null>;
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -280,6 +282,7 @@ interface VoiceAudioSectionProps {
 
 export function VoiceAudioSection({
   voiceAudio,
+  voiceClips,
   isUploading,
   fileRef,
   onUpload,
@@ -299,9 +302,9 @@ export function VoiceAudioSection({
         <div className="flex items-center gap-2">
           <Mic size={14} className="text-[var(--engine-info)]" />
           <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Audio de Voz (Locución)</span>
-          {voiceAudio && (
+          {(voiceAudio || voiceClips.length > 0) && (
             <span className="flex items-center gap-0.5 text-[10px] font-semibold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 px-1.5 py-0.5 rounded-full">
-              <CheckCircle2 size={10} /> Subido
+              <CheckCircle2 size={10} /> {voiceClips.length > 0 ? `${voiceClips.length} clips` : "Subido"}
             </span>
           )}
         </div>
@@ -359,6 +362,25 @@ export function VoiceAudioSection({
           )}
         </div>
       </div>
+      {voiceClips.length > 0 ? (
+        <div className="mt-3 space-y-2 border-t border-gray-200 pt-3 dark:border-white/10">
+          {[...voiceClips].sort((left, right) => left.order - right.order).map((clip) => (
+            <div key={clip.id} className="flex flex-col gap-1 rounded-lg bg-white p-2 dark:bg-white/5">
+              <div className="flex items-center justify-between gap-2 text-[10px] font-semibold text-gray-500 dark:text-gray-300">
+                <span>Escena {clip.order}</span>
+                <span>{clip.status}{clip.duration ? ` · ${clip.duration.toFixed(1)}s` : ""}</span>
+              </div>
+              {clip.status === "COMPLETED" ? (
+                <audio src={clip.public_url} controls preload="metadata" className="h-8 w-full" />
+              ) : (
+                <span className="text-[10px] text-amber-600 dark:text-amber-300">
+                  Esta voz debe regenerarse junto con su clip de avatar.
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <p className="mt-2 text-[10px] text-gray-500 dark:text-gray-400">
         Formatos admitidos: MP3 o WAV · máximo 50 MiB por archivo.

@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
-import { HeygenScenesService } from "../heygen-scenes.service";
+import {
+  buildHeygenCreateClipPayload,
+  HeygenScenesService,
+  reconcileVoiceClips,
+} from "../heygen-scenes.service";
 import { buildHeygenScriptFromComponent } from "../heygen-script-builder";
 
 describe("HeyGen script builder", () => {
@@ -69,6 +74,57 @@ describe("HeyGen script builder", () => {
 });
 
 describe("HeyGen scene clip builder", () => {
+  it("uses the separated voice URL as the timing source for every avatar clip", () => {
+    const payload = buildHeygenCreateClipPayload({
+      audioUrl: "https://files.heygen.ai/voice-scene-1.mp3",
+      avatarId: "avatar-look-1",
+      clip: {
+        id: "scene-1",
+        order: 1,
+        script_text: "Narracion independiente por escena.",
+        status: "DRAFT",
+      },
+      componentId: "component-1",
+      options: {
+        aspectRatio: "16:9",
+        caption: false,
+        clipIds: ["scene-1"],
+        clips: [],
+        componentId: "component-1",
+        engine: "avatar_iv",
+        outputFormat: "mp4",
+        resolution: "1080p",
+      },
+    });
+
+    assert.equal(payload.audio_url, "https://files.heygen.ai/voice-scene-1.mp3");
+    assert.equal(payload.script, undefined);
+    assert.equal(payload.voice_id, undefined);
+  });
+
+  it("marks a voice clip stale when its scene script changes", () => {
+    const originalHash = createHash("sha256").update("Guion original").digest("hex");
+    const reconciled = reconcileVoiceClips(
+      [{
+        clip_id: "scene-1",
+        id: "voice-scene-1",
+        order: 1,
+        public_url: "https://cdn.example.com/voice.mp3",
+        script_hash: originalHash,
+        status: "COMPLETED",
+        storage_path: "production-assets/voice.mp3",
+      }],
+      [{
+        id: "scene-1",
+        order: 1,
+        script_text: "Guion actualizado",
+        status: "DRAFT",
+      }],
+    );
+
+    assert.equal(reconciled[0]?.status, "STALE");
+  });
+
   it("preserves manual clips and hidden deleted storyboard clips", () => {
     const service = new HeygenScenesService({} as any, {} as any);
     const clips = service.buildSceneClips({

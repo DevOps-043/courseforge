@@ -73,9 +73,23 @@ function baseAvatarClip(params: Partial<NonNullable<MaterialAssets["avatar_clips
     deleted: params.deleted,
     public_url: params.public_url ?? VIDEO_URL,
     script_text: params.script_text ?? "Texto de prueba",
+    script_hash: params.script_hash,
     status: params.status ?? "COMPLETED",
     storage_path: params.storage_path ?? "production-assets/avatar/clip.mp4",
     duration: params.duration,
+  };
+}
+
+function baseVoiceClip(params: Partial<NonNullable<MaterialAssets["voice_clips"]>[number]>) {
+  return {
+    id: params.id ?? "voice-avatar-clip",
+    clip_id: params.clip_id ?? "avatar-clip",
+    order: params.order ?? 1,
+    storage_path: params.storage_path ?? "production-assets/voice/clip.mp3",
+    public_url: params.public_url ?? AUDIO_URL,
+    duration: params.duration,
+    script_hash: params.script_hash ?? "script-hash",
+    status: params.status ?? "COMPLETED",
   };
 }
 
@@ -369,6 +383,61 @@ describe("normalizeAssemblyAssets", () => {
     assert.deepEqual(
       props.avatarClips.map((clip) => clip.url),
       ["https://cdn.example.com/avatar-1.mp4", "https://cdn.example.com/avatar-2.mp4"],
+    );
+  });
+
+  it("accepts multiple synchronized voice clips and ignores the legacy master voice in scene mode", () => {
+    const assets: MaterialAssets = {
+      avatar_generation_mode: "scene_clips",
+      avatar_clips: [
+        baseAvatarClip({ id: "scene-2", order: 2, duration: 5, script_hash: "hash-2" }),
+        baseAvatarClip({ id: "scene-1", order: 1, duration: 3, script_hash: "hash-1" }),
+      ],
+      voice_audio: {
+        storage_path: "production-assets/legacy-master.mp3",
+        public_url: "https://cdn.example.com/legacy-master.mp3",
+        duration: 99,
+      },
+      voice_clips: [
+        baseVoiceClip({ clip_id: "scene-2", id: "voice-2", order: 2, duration: 5, script_hash: "hash-2", public_url: "https://cdn.example.com/voice-2.mp3" }),
+        baseVoiceClip({ clip_id: "scene-1", id: "voice-1", order: 1, duration: 3, script_hash: "hash-1", public_url: "https://cdn.example.com/voice-1.mp3" }),
+      ],
+    };
+
+    const props = buildAssemblyProps(assets, "split-avatar");
+    const timeline = buildVisualTimeline(props);
+
+    assert.equal(props.voiceAudioUrl, undefined);
+    assert.deepEqual(props.voiceClips.map((clip) => clip.clipId), ["scene-1", "scene-2"]);
+    assert.deepEqual(
+      timeline.tracks.find((track) => track.kind === "audio")?.segments.map((segment) => segment.id),
+      ["voice-1", "voice-2"],
+    );
+    assert.equal(
+      props.totalDurationInFrames,
+      8 * ASSEMBLY_FPS - AVATAR_CLIP_CROSSFADE_FRAMES,
+    );
+  });
+
+  it("falls back to avatar audio when the voice clip collection is incomplete", () => {
+    const assets: MaterialAssets = {
+      avatar_generation_mode: "scene_clips",
+      avatar_clips: [
+        baseAvatarClip({ id: "scene-1", order: 1, duration: 3, script_hash: "hash-1" }),
+        baseAvatarClip({ id: "scene-2", order: 2, duration: 5, script_hash: "hash-2" }),
+      ],
+      voice_clips: [
+        baseVoiceClip({ clip_id: "scene-1", script_hash: "hash-1" }),
+      ],
+    };
+
+    const normalized = normalizeAssemblyAssets(assets, ASSEMBLY_FPS);
+    const props = buildAssemblyProps(assets, "split-avatar");
+
+    assert.deepEqual(props.voiceClips, []);
+    assert.equal(
+      normalized.warnings.some((warning) => warning.code === "INCOMPLETE_VOICE_CLIPS"),
+      true,
     );
   });
 

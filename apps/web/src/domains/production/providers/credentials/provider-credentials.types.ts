@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type ProductionCredentialProvider = "heygen";
+/**
+ * Credentials are scoped to a production capability, not to the vendor name.
+ * HeyGen currently powers both capabilities, but they can be rotated and
+ * authorized independently without coupling avatar generation to assembly.
+ */
+export type ProductionCredentialProvider = "heygen_avatar" | "hyperframes_cloud";
 export type ProductionCredentialStatus = "ACTIVE" | "REVOKED";
 export type ProductionCredentialValidationStatus =
   | "NEVER_VALIDATED"

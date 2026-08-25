@@ -12,10 +12,6 @@ import {
   ProductionProviderCredentialsService,
 } from "@/domains/production/providers/credentials/provider-credentials.service";
 import { createClient } from "@/utils/supabase/server";
-import {
-  configureHeygenHyperframesWebhook,
-  disconnectHeygenHyperframesWebhook,
-} from "@/domains/production/providers/heygen/heygen-webhook.service";
 
 const heygenConnectionRequestSchema = z
   .object({
@@ -33,7 +29,7 @@ export async function GET() {
     });
     const status = await service.getCredentialStatus({
       organizationId: context.tenant.organizationId,
-      provider: "heygen",
+      provider: "heygen_avatar",
     });
 
     return NextResponse.json({ success: true, data: status });
@@ -58,20 +54,10 @@ export async function POST(request: Request) {
 
     const admin = getServiceRoleClient();
     const service = new ProductionProviderCredentialsService({ supabase: admin });
-    const previousCredential = await service.getDecryptedSecret({
-      organizationId: context.tenant.organizationId,
-      provider: "heygen",
-    });
-    const status = await service.upsertHeygenApiKey({
+    const status = await service.upsertHeygenAvatarApiKey({
       apiKey: payload.apiKey,
       createdBy: context.user.userId,
       organizationId: context.tenant.organizationId,
-    });
-    await configureHeygenHyperframesWebhook({
-      apiKey: payload.apiKey,
-      organizationId: context.tenant.organizationId,
-      previousApiKey: previousCredential?.secret,
-      supabase: admin,
     });
 
     return NextResponse.json({ success: true, data: status });
@@ -107,25 +93,9 @@ export async function DELETE() {
 
     const admin = getServiceRoleClient();
     const service = new ProductionProviderCredentialsService({ supabase: admin });
-    const credential = await service.getDecryptedSecret({
-      organizationId: context.tenant.organizationId,
-      provider: "heygen",
-    });
-    if (credential?.secret) {
-      await disconnectHeygenHyperframesWebhook({
-        apiKey: credential.secret,
-        organizationId: context.tenant.organizationId,
-        supabase: admin,
-      });
-    } else {
-      const { error } = await admin.rpc("clear_heygen_webhook", {
-        p_organization_id: context.tenant.organizationId,
-      });
-      if (error) throw error;
-    }
     const status = await service.revokeCredential({
       organizationId: context.tenant.organizationId,
-      provider: "heygen",
+      provider: "heygen_avatar",
     });
 
     return NextResponse.json({ success: true, data: status });

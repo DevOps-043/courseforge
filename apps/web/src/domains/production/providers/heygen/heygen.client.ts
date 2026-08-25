@@ -5,11 +5,14 @@ import {
   HEYGEN_REQUEST_TIMEOUT_MS,
   type HeygenCreateVideoRequest,
   type HeygenCreateVideoResponse,
+  type HeygenGeneratedSpeech,
+  type HeygenGenerateSpeechRequest,
   type HeygenVideoDetails,
 } from "./heygen.types";
 import {
   heygenApiErrorPayloadSchema,
   heygenCreateVideoProviderResponseSchema,
+  heygenGenerateSpeechProviderResponseSchema,
   heygenVideoDetailsProviderResponseSchema,
   toRecord,
 } from "./heygen.validators";
@@ -66,7 +69,7 @@ export class HeygenClient {
   async listVoices() {
     return this.requestJson({
       method: "GET",
-      path: `/v3/voices?type=private&limit=${HEYGEN_DEFAULT_PAGE_SIZE}`,
+      path: `/v3/voices?type=private&engine=starfish&limit=${HEYGEN_DEFAULT_PAGE_SIZE}`,
     });
   }
 
@@ -90,6 +93,26 @@ export class HeygenClient {
       providerStatus: parsed.data.status || null,
       raw: toRecord(raw) || {},
       videoId: parsed.data.video_id,
+    };
+  }
+
+  async generateSpeech(
+    payload: HeygenGenerateSpeechRequest,
+  ): Promise<HeygenGeneratedSpeech> {
+    const raw = await this.requestJson({
+      body: payload,
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+      path: "/v3/voices/speech",
+    });
+    const parsed = heygenGenerateSpeechProviderResponseSchema.parse(raw);
+
+    return {
+      audioUrl: parsed.data.audio_url,
+      durationSeconds: parsed.data.duration,
+      raw: toRecord(raw) || {},
+      requestId: parsed.data.request_id || null,
+      wordTimestamps: parsed.data.word_timestamps || [],
     };
   }
 

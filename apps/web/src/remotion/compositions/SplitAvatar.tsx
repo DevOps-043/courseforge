@@ -18,7 +18,7 @@ import { buildVisualTimeline } from "../visual-timeline";
  */
 export function SplitAvatar(props: AssemblyInputProps) {
   const { durationInFrames } = useVideoConfig();
-  const hasVoice = Boolean(props.voiceAudioUrl);
+  const hasVoice = Boolean(props.voiceAudioUrl || props.voiceClips.length > 0);
   const templateConfig = parseTemplateRenderConfig(props.templateConfig);
   const primaryVisualOverrideStyle = buildLayoutOverrideStyle(
     props.layoutOverrides,
@@ -111,7 +111,9 @@ export function SplitAvatar(props: AssemblyInputProps) {
       </div>
 
       <AudioTracks
+        avatarSegments={avatarSegments}
         voiceAudioUrl={props.voiceAudioUrl}
+        voiceClips={props.voiceClips}
         bgMusicUrl={props.bgMusicUrl}
         bgMusicVolume={props.bgMusicVolume}
       />

@@ -425,14 +425,14 @@ export class HeygenRepository {
     if (error) throw error;
   }
 
-  async findAvatarVideoAssetByJob(
+  async findGeneratedAssetByJob(
     jobId: string,
     assetType: (typeof PRODUCTION_ASSET_TYPES)[keyof typeof PRODUCTION_ASSET_TYPES] =
       PRODUCTION_ASSET_TYPES.AVATAR_VIDEO,
   ) {
     const { data, error } = await this.supabase
       .from("production_assets")
-      .select("id, public_url, storage_path")
+      .select("id, public_url, storage_path, duration_milliseconds, duration_seconds, mime_type, metadata")
       .eq("production_job_id", jobId)
       .eq("asset_type", assetType)
       .maybeSingle();
@@ -441,7 +441,22 @@ export class HeygenRepository {
     return (data || null) as HeygenProductionAssetRow | null;
   }
 
-  async insertAvatarVideoAsset(params: {
+  async findAvatarVideoAssetByJob(
+    jobId: string,
+    assetType: (typeof PRODUCTION_ASSET_TYPES)[keyof typeof PRODUCTION_ASSET_TYPES] =
+      PRODUCTION_ASSET_TYPES.AVATAR_VIDEO,
+  ) {
+    return this.findGeneratedAssetByJob(jobId, assetType);
+  }
+
+  async findVoiceAudioAssetByJob(jobId: string) {
+    return this.findGeneratedAssetByJob(
+      jobId,
+      PRODUCTION_ASSET_TYPES.VOICE_AUDIO,
+    );
+  }
+
+  async insertGeneratedMediaAsset(params: {
     assetType?: (typeof PRODUCTION_ASSET_TYPES)[keyof typeof PRODUCTION_ASSET_TYPES];
     checksum: string;
     context: ProductionComponentContext;
@@ -470,6 +485,9 @@ export class HeygenRepository {
         duration_seconds: params.durationSeconds
           ? Math.round(params.durationSeconds)
           : null,
+        duration_milliseconds: params.durationSeconds
+          ? Math.round(params.durationSeconds * 1000)
+          : null,
         external_url: params.externalUrl || null,
         file_size_bytes: params.fileSizeBytes,
         lesson_id: params.context.lessonId,
@@ -486,7 +504,7 @@ export class HeygenRepository {
         storage_bucket: params.storageBucket,
         storage_path: params.storagePath,
       })
-      .select("id, public_url, storage_path")
+      .select("id, public_url, storage_path, duration_milliseconds, duration_seconds, mime_type, metadata")
       .single();
 
     if (error) throw error;
@@ -534,6 +552,75 @@ export class HeygenRepository {
       .update({ assets: nextAssets })
       .eq("id", params.componentId);
 
+    if (updateError) throw updateError;
+    return nextAssets;
+  }
+
+  async promoteSeparatedAvatarTracks(params: {
+    avatar: {
+      durationSeconds?: number | null;
+      providerJobId: string;
+      publicUrl: string;
+      storagePath: string;
+    };
+    componentId: string;
+    scriptHash: string;
+    voice: {
+      durationSeconds?: number | null;
+      providerRequestId?: string | null;
+      publicUrl: string;
+      storagePath: string;
+      wordTimestamps?: unknown[];
+    };
+  }) {
+    const { data: component, error: readError } = await this.supabase
+      .from("material_components")
+      .select("assets")
+      .eq("id", params.componentId)
+      .maybeSingle();
+    if (readError) throw readError;
+
+    const currentAssets =
+      component?.assets && typeof component.assets === "object"
+        ? (component.assets as Record<string, unknown>)
+        : {};
+    const avatarFileName = params.avatar.storagePath.split("/").at(-1) || "heygen-avatar.mp4";
+    const voiceFileName = params.voice.storagePath.split("/").at(-1) || "heygen-voice.mp3";
+    const now = new Date().toISOString();
+    const nextAssets = {
+      ...currentAssets,
+      avatar_generation_mode: "single_video",
+      avatar_clips: [],
+      voice_clips: [],
+      avatar_video: {
+        duration: params.avatar.durationSeconds || params.voice.durationSeconds || undefined,
+        external_id: params.avatar.providerJobId,
+        file_name: avatarFileName,
+        has_audio: false,
+        provider: PRODUCTION_PROVIDERS.HEYGEN,
+        public_url: params.avatar.publicUrl,
+        script_hash: params.scriptHash,
+        storage_path: params.avatar.storagePath,
+        sync_status: "COMPLETED",
+      },
+      voice_audio: {
+        duration: params.voice.durationSeconds || undefined,
+        external_id: params.voice.providerRequestId || undefined,
+        file_name: voiceFileName,
+        last_uploaded_at: now,
+        provider: PRODUCTION_PROVIDERS.HEYGEN,
+        public_url: params.voice.publicUrl,
+        script_hash: params.scriptHash,
+        storage_path: params.voice.storagePath,
+        word_timestamps: params.voice.wordTimestamps || [],
+      },
+      updated_at: now,
+    };
+
+    const { error: updateError } = await this.supabase
+      .from("material_components")
+      .update({ assets: nextAssets })
+      .eq("id", params.componentId);
     if (updateError) throw updateError;
     return nextAssets;
   }

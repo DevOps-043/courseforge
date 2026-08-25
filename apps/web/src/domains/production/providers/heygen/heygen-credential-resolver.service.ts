@@ -25,7 +25,7 @@ export async function getHeygenClientForOrganization(params: {
   });
   const credential = await credentialService.getDecryptedSecret({
     organizationId: params.organizationId,
-    provider: "heygen",
+    provider: "heygen_avatar",
   });
 
   if (credential?.secret) {

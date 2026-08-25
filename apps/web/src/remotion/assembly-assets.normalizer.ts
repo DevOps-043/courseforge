@@ -4,6 +4,7 @@ import type {
   AssemblyAvatarClip,
   AssemblyBrollClip,
   AssemblySlide,
+  AssemblyVoiceClip,
 } from "./types";
 import { getAvatarClipEffectiveDurationInFrames } from "./avatar-clip-transitions";
 import { durationSecondsToFrames } from "./media-duration";
@@ -14,6 +15,7 @@ const DEFAULT_BG_MUSIC_VOLUME = 0.15;
 
 export type AssemblyAssetWarningCode =
   | "SLIDES_REFERENCE_NOT_RENDERIZABLE"
+  | "INCOMPLETE_VOICE_CLIPS"
   | "NO_RENDERABLE_VISUAL_ASSETS";
 
 export interface AssemblyAssetWarning {
@@ -23,6 +25,7 @@ export interface AssemblyAssetWarning {
 
 export interface NormalizedAssemblyAssets {
   voiceAudioUrl?: string;
+  voiceClips: AssemblyVoiceClip[];
   bgMusicUrl?: string;
   bgMusicVolume: number;
   avatarVideoUrl?: string;
@@ -84,6 +87,7 @@ function buildWarnings(params: {
   slides: AssemblySlide[];
   brollClips: AssemblyBrollClip[];
   avatarClips: AssemblyAvatarClip[];
+  voiceClips: AssemblyVoiceClip[];
 }) {
   const warnings: AssemblyAssetWarning[] = [];
   const hasNonRenderableSlides =
@@ -94,6 +98,14 @@ function buildWarnings(params: {
       code: "SLIDES_REFERENCE_NOT_RENDERIZABLE",
       message:
         "Hay slides cargadas como referencia, pero todavia no existen imagenes renderizables para ensamblado.",
+    });
+  }
+
+  if ((params.assets.voice_clips?.length || 0) > 0 && params.voiceClips.length === 0) {
+    warnings.push({
+      code: "INCOMPLETE_VOICE_CLIPS",
+      message:
+        "Las voces por escena no forman una colección completa y sincronizada; se usará el audio del avatar como respaldo.",
     });
   }
 
@@ -176,9 +188,10 @@ export function normalizeAssemblyAssets(
     )
     .map(({ originalIndex: _originalIndex, ...clip }) => clip);
 
-  const avatarClips = (a.avatar_clips ?? [])
-    .filter(isCompletedAvatarClip)
+  const completedAvatarClipSources = (a.avatar_clips ?? []).filter(isCompletedAvatarClip);
+  const avatarClips = completedAvatarClipSources
     .map((clip, index) => ({
+      clipId: clip.id,
       url: clip.public_url as string,
       durationInFrames: durationSecondsToFrames(
         isPositiveNumber(clip.duration) ? clip.duration : DEFAULT_CLIP_SECONDS,
@@ -193,6 +206,38 @@ export function normalizeAssemblyAssets(
     )
     .map(({ originalIndex: _originalIndex, ...clip }) => clip);
 
+  const completedVoiceByClipId = new Map(
+    (a.voice_clips ?? [])
+      .filter((clip) => clip.status === "COMPLETED" && Boolean(clip.public_url))
+      .map((clip) => [clip.clip_id, clip] as const),
+  );
+  const hasCompleteVoiceClipMapping = completedAvatarClipSources.length > 0
+    && completedAvatarClipSources.every((avatarClip) => {
+      const voiceClip = completedVoiceByClipId.get(avatarClip.id);
+      return Boolean(
+        voiceClip
+        && (!avatarClip.script_hash || voiceClip.script_hash === avatarClip.script_hash),
+      );
+    });
+  const voiceClips = hasCompleteVoiceClipMapping
+    ? completedAvatarClipSources.map((avatarClip, index) => {
+        const voiceClip = completedVoiceByClipId.get(avatarClip.id)!;
+        return {
+          clipId: avatarClip.id,
+          url: voiceClip.public_url,
+          durationInFrames: durationSecondsToFrames(
+            isPositiveNumber(voiceClip.duration)
+              ? voiceClip.duration
+              : isPositiveNumber(avatarClip.duration)
+                ? avatarClip.duration
+                : DEFAULT_CLIP_SECONDS,
+            fps,
+          ),
+          order: isPositiveNumber(avatarClip.order) ? avatarClip.order : index + 1,
+        };
+      }).sort((left, right) => left.order - right.order)
+    : [];
+
   const explicitBrollTotalSeconds = (a.b_roll_clips ?? [])
     .filter(
       (clip): clip is NonNullable<MaterialAssets["b_roll_clips"]>[number] & { duration: number } =>
@@ -205,8 +250,11 @@ export function normalizeAssemblyAssets(
   );
   const avatarClipTotalSeconds =
     getAvatarClipEffectiveDurationInFrames(avatarClips) / fps;
+  const voiceClipTotalSeconds =
+    getAvatarClipEffectiveDurationInFrames(voiceClips) / fps;
 
-  const voiceDurationSeconds = isPositiveNumber(a.voice_audio?.duration)
+  const voiceDurationSeconds = a.avatar_generation_mode !== "scene_clips"
+    && isPositiveNumber(a.voice_audio?.duration)
     ? a.voice_audio.duration
     : 0;
   const avatarDurationSeconds = isPositiveNumber(a.avatar_video?.duration)
@@ -216,6 +264,8 @@ export function normalizeAssemblyAssets(
 
   if (voiceDurationSeconds > 0) {
     totalDurationSeconds = voiceDurationSeconds;
+  } else if (voiceClipTotalSeconds > 0) {
+    totalDurationSeconds = voiceClipTotalSeconds;
   } else if (
     a.avatar_generation_mode === "scene_clips" &&
     avatarClipTotalSeconds > 0
@@ -235,13 +285,18 @@ export function normalizeAssemblyAssets(
     totalDurationSeconds = slides.length * DEFAULT_SLIDE_SECONDS;
   }
 
-  const warnings = buildWarnings({ assets: a, slides, brollClips, avatarClips });
+  const warnings = buildWarnings({ assets: a, slides, brollClips, avatarClips, voiceClips });
 
   return {
-    voiceAudioUrl: a.voice_audio?.public_url || undefined,
+    voiceAudioUrl: a.avatar_generation_mode === "scene_clips"
+      ? undefined
+      : a.voice_audio?.public_url || undefined,
+    voiceClips,
     bgMusicUrl: a.background_music?.public_url || undefined,
     bgMusicVolume: a.background_music?.volume_multiplier ?? DEFAULT_BG_MUSIC_VOLUME,
-    avatarVideoUrl: a.avatar_video?.public_url || undefined,
+    avatarVideoUrl: a.avatar_generation_mode === "scene_clips"
+      ? undefined
+      : a.avatar_video?.public_url || undefined,
     avatarClips,
     slides,
     deckCss: animatedSlides.length > 0 ? animatedDeck?.css || "" : "",
@@ -269,6 +324,7 @@ export function getAssemblyAssetReadiness(
     normalized.avatarClips.length > 0;
   const hasRenderableAssets = Boolean(
       normalized.voiceAudioUrl ||
+      normalized.voiceClips.length > 0 ||
       normalized.avatarVideoUrl ||
       normalized.avatarClips.length > 0 ||
       normalized.bgMusicUrl ||
@@ -309,7 +365,7 @@ export function getAssemblyAssetReadiness(
       brollClipCount: normalized.brollClips.length,
       avatarClipCount: normalized.avatarClips.length,
       hasAvatarVideo: Boolean(normalized.avatarVideoUrl),
-      hasVoiceAudio: Boolean(normalized.voiceAudioUrl),
+      hasVoiceAudio: Boolean(normalized.voiceAudioUrl || normalized.voiceClips.length > 0),
       hasBackgroundMusic: Boolean(normalized.bgMusicUrl),
       totalDurationSeconds: normalized.totalDurationSeconds,
     },

@@ -61,6 +61,7 @@ export const heygenAvatarClipSchema = z
     error_message: z.string().trim().optional(),
     external_id: z.string().trim().optional(),
     file_name: z.string().trim().optional(),
+    has_audio: z.boolean().optional(),
     id: z.string().trim().min(1),
     deleted: z.boolean().optional(),
     job_id: z.string().uuid().optional(),
@@ -69,6 +70,7 @@ export const heygenAvatarClipSchema = z
     provider: z.string().trim().optional(),
     public_url: z.string().url().optional(),
     script_text: z.string().trim().min(1),
+    script_hash: z.string().trim().optional(),
     source_hash: z.string().trim().optional(),
     status: heygenAvatarClipStatusSchema,
     storage_path: z.string().trim().optional(),
@@ -111,6 +113,21 @@ export const heygenCreateVideoProviderResponseSchema = z
   })
   .passthrough();
 
+export const heygenGenerateSpeechProviderResponseSchema = z
+  .object({
+    data: z.object({
+      audio_url: z.string().url(),
+      duration: z.number().positive(),
+      request_id: z.string().nullable().optional(),
+      word_timestamps: z.array(z.object({
+        end: z.number().nonnegative(),
+        start: z.number().nonnegative(),
+        word: z.string(),
+      })).nullable().optional(),
+    }),
+  })
+  .passthrough();
+
 export const heygenVideoDetailsProviderResponseSchema = z
   .object({
     data: z.unknown().optional(),
@@ -122,11 +139,27 @@ export const heygenJobStatusResponseSchema = z.object({
     .object({
       id: z.string().uuid(),
       publicUrl: z.string().url(),
+      providerRequestId: z.string().nullable(),
+      storagePath: z.string().min(1),
+      wordTimestamps: z.array(z.object({
+        end: z.number().nonnegative(),
+        start: z.number().nonnegative(),
+        word: z.string(),
+      })),
+    })
+    .nullable(),
+  voiceAsset: z
+    .object({
+      durationSeconds: z.number().positive().nullable(),
+      id: z.string().uuid(),
+      publicUrl: z.string().url(),
       storagePath: z.string().min(1),
     })
     .nullable(),
   jobId: z.string().uuid(),
   providerJobId: z.string().nullable(),
+  providerStatus: z.string().nullable().optional(),
+  scriptHash: z.string().nullable(),
   status: z.string(),
 });
 

@@ -136,11 +136,15 @@ function resolveProductionStatus(
     assets.avatar_clips?.some((clip) => clip.status === "COMPLETED" && clip.public_url),
   );
   const hasAvatarAsset = Boolean(assets.avatar_video?.public_url || hasCompletedAvatarClips);
+  const hasCompletedVoiceClips = Boolean(
+    assets.voice_clips?.some((clip) => clip.status === "COMPLETED" && clip.public_url),
+  );
 
   const hasRequiredSlides = !needsSlides || hasRenderableSlides(assets);
   const hasRequiredScreencast = !needsScreencast || Boolean(assets.screencast_url);
   const hasRequiredVoice = !needsVoice || Boolean(
-    assets.voice_audio?.public_url || 
+    assets.voice_audio?.public_url ||
+    hasCompletedVoiceClips ||
     assets.avatar_video?.public_url || 
     hasCompletedAvatarClips ||
     assets.video_url
@@ -163,7 +167,7 @@ function resolveProductionStatus(
   if (
     hasRenderableSlides(assets) ||
     Boolean(assets.screencast_url) ||
-    Boolean(assets.voice_audio?.public_url || assets.video_url) ||
+    Boolean(assets.voice_audio?.public_url || hasCompletedVoiceClips || assets.video_url) ||
     hasAvatarAsset ||
     Boolean(assets.b_roll_clips?.length || assets.b_roll_prompts)
   ) {
@@ -336,6 +340,25 @@ function sanitizeAvatarClipDurations(
   });
 }
 
+function sanitizeVoiceClipDurations(
+  currentClips: MaterialAssets["voice_clips"],
+  incomingClips: MaterialAssets["voice_clips"] | null | undefined,
+  mergedClips: MaterialAssets["voice_clips"] | null | undefined,
+) {
+  if (!Array.isArray(mergedClips)) return mergedClips;
+  const currentById = new Map(
+    (currentClips || []).map((clip) => [clip.id, clip] as const),
+  );
+  const incomingById = new Map(
+    (incomingClips || []).map((clip) => [clip.id, clip] as const),
+  );
+  return mergedClips.map((clip) => sanitizeTimedAssetDuration(
+    currentById.get(clip.id),
+    incomingById.get(clip.id),
+    clip,
+  ) as NonNullable<MaterialAssets["voice_clips"]>[number]);
+}
+
 function sourceSignature(assets: Partial<MaterialAssets>) {
   const broll = (assets.b_roll_clips || []).map((clip) => ({
     id: clip.id,
@@ -348,6 +371,14 @@ function sourceSignature(assets: Partial<MaterialAssets>) {
     ref: assetReferenceKey(clip),
     status: clip.status,
   }));
+  const voiceClips = (assets.voice_clips || []).map((clip) => ({
+    clipId: clip.clip_id,
+    id: clip.id,
+    order: clip.order,
+    ref: assetReferenceKey(clip),
+    scriptHash: clip.script_hash,
+    status: clip.status,
+  }));
   const slideImages = (assets.slides?.images || []).map((slide) => ({
     index: slide.slide_index,
     ref: assetReferenceKey(slide),
@@ -355,6 +386,7 @@ function sourceSignature(assets: Partial<MaterialAssets>) {
 
   return JSON.stringify({
     voice: assetReferenceKey(assets.voice_audio),
+    voiceClips,
     avatar: assetReferenceKey(assets.avatar_video),
     avatarGenerationMode: assets.avatar_generation_mode || "",
     avatarClips,
@@ -422,6 +454,7 @@ function collectProductionStoragePaths(assets: Partial<MaterialAssets>) {
   };
 
   add(assets.voice_audio?.storage_path);
+  for (const clip of assets.voice_clips || []) add(clip.storage_path);
   add(assets.background_music?.storage_path);
   for (const clip of assets.b_roll_clips || []) add(clip.storage_path);
   add(assets.avatar_video?.storage_path);
@@ -477,6 +510,14 @@ function sanitizeMaterialAssetMetadata(params: {
       incomingAssets.voice_audio,
       sanitizedAssets.voice_audio,
     ) as MaterialAssets["voice_audio"];
+  }
+
+  if (hasOwnProperty(incomingAssets, "voice_clips")) {
+    sanitizedAssets.voice_clips = sanitizeVoiceClipDurations(
+      currentAssets.voice_clips,
+      incomingAssets.voice_clips,
+      sanitizedAssets.voice_clips,
+    ) as MaterialAssets["voice_clips"];
   }
 
   if (hasOwnProperty(incomingAssets, "avatar_video")) {
@@ -1185,14 +1226,19 @@ export async function assembleRemotionVideoAction(
         slidesCount: normalizedAssets.slides.length,
         brollClipsCount: normalizedAssets.brollClips.length,
         hasAvatarVideo: Boolean(normalizedAssets.avatarVideoUrl),
-        hasVoiceAudio: Boolean(normalizedAssets.voiceAudioUrl),
+        hasVoiceAudio: Boolean(normalizedAssets.voiceAudioUrl || normalizedAssets.voiceClips.length > 0),
         totalDurationSeconds: normalizedAssets.totalDurationSeconds,
         avatarDurationSeconds: typeof currentAssets.avatar_video?.duration === "number"
           ? currentAssets.avatar_video.duration
           : null,
         voiceDurationSeconds: typeof currentAssets.voice_audio?.duration === "number"
           ? currentAssets.voice_audio.duration
-          : null,
+          : normalizedAssets.voiceClips.length > 0
+            ? normalizedAssets.voiceClips.reduce(
+                (total, clip) => total + clip.durationInFrames / ASSEMBLY_FPS,
+                0,
+              )
+            : null,
         preflightManifest: assetReadiness.manifest,
       },
       variablesKeys: Object.keys(variables || {}),
