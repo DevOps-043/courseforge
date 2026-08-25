@@ -15,6 +15,7 @@ import {
   ScanFace,
   Sparkles,
   Trash2,
+  UserRoundCog,
 } from "lucide-react";
 import { toast } from "sonner";
 import { EngineSelect } from "@/components/ui/EngineSelect";
