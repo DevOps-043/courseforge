@@ -1,9 +1,19 @@
 import { z } from "zod";
 
+const internalMediaUrlSchema = z.string().refine((value) => {
+  if (value.startsWith("/api/storage/media?")) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}, "Debe ser una URL HTTP(S) o una ruta interna de medios autorizada.");
+
 // Schema for Voice Audio asset
 export const voiceAudioSchema = z.object({
   storage_path: z.string().trim(),
-  public_url: z.string().url(),
+  public_url: internalMediaUrlSchema,
   file_name: z.string().trim().optional(),
   duration: z.number().positive().optional(),
   external_id: z.string().trim().optional(),
@@ -20,7 +30,7 @@ export const voiceAudioSchema = z.object({
 // Schema for Background Music asset
 export const backgroundMusicSchema = z.object({
   storage_path: z.string().trim(),
-  public_url: z.string().url(),
+  public_url: internalMediaUrlSchema,
   file_name: z.string().trim().optional(),
   duration: z.number().positive().optional(),
   volume_multiplier: z.number().min(0).max(1).default(0.15),
@@ -30,7 +40,7 @@ export const backgroundMusicSchema = z.object({
 export const bRollClipSchema = z.object({
   id: z.string().trim(),
   storage_path: z.string().trim(),
-  public_url: z.string().url(),
+  public_url: internalMediaUrlSchema,
   file_name: z.string().trim().optional(),
   duration: z.number().positive().optional(),
   height: z.number().int().positive().max(16_384).optional(),
@@ -70,7 +80,7 @@ export const avatarClipSchema = z.object({
   avatar_preset_id: z.string().trim().optional(),
   voice_preset_id: z.string().trim().optional(),
   background: avatarClipBackgroundSchema.optional(),
-  public_url: z.string().url().optional(),
+  public_url: internalMediaUrlSchema.optional(),
   storage_path: z.string().trim().optional(),
   file_name: z.string().trim().optional(),
   has_audio: z.boolean().optional(),
@@ -89,7 +99,7 @@ export const voiceClipSchema = z.object({
   clip_id: z.string().trim(),
   order: z.number().int().min(1),
   storage_path: z.string().trim(),
-  public_url: z.string().url(),
+  public_url: internalMediaUrlSchema,
   file_name: z.string().trim().optional(),
   duration: z.number().positive().optional(),
   external_id: z.string().trim().optional(),
@@ -107,7 +117,7 @@ export const voiceClipSchema = z.object({
 // Schema for Avatar Video asset (talking head)
 export const avatarVideoSchema = z.object({
   storage_path: z.string().trim(),
-  public_url: z.string().url(),
+  public_url: internalMediaUrlSchema,
   file_name: z.string().trim().optional(),
   duration: z.number().positive().optional(),
   height: z.number().int().positive().max(16_384).optional(),

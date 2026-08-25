@@ -9,6 +9,12 @@ import {
 } from "./composition-preview-compiler.service";
 import { validateHyperframesPreflight } from "../hyperframes/hyperframes-preflight.service";
 import {
+  buildHyperframesAssetVariableNames,
+  buildHyperframesAssetVariableSchema,
+  resolveHyperframesAssetDeliveryUrl,
+} from "../hyperframes/hyperframes-asset-delivery.service";
+import {
+  HYPERFRAMES_ASSET_DELIVERY_MODES,
   HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES,
   HYPERFRAMES_COMPOSITION_FORMAT,
   hyperframesAssetManifestSchema,
@@ -78,6 +84,7 @@ export async function snapshotCompositionDocument(params: {
     .select("id, revision_number, project_hash, project_archive_size_bytes")
     .eq("composition_id", params.compositionId)
     .contains("manifest", {
+      asset_delivery_mode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
       draft_document_hash: current.documentHash,
       render_profile: persistedRenderProfile,
     })
@@ -100,6 +107,7 @@ export async function snapshotCompositionDocument(params: {
   ]);
   const assets = [...new Map([...clipAssets, ...deckDependencies].map((asset) => [asset.id, asset])).values()];
   const mediaErrors = assets.flatMap((asset) => validateHyperframesMediaAsset({
+    deliveryMode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
     fileName: typeof asset.metadata?.file_name === "string" ? asset.metadata.file_name : asset.storage_path,
     fileSizeBytes: asset.file_size_bytes,
     height: readPositiveInteger(asset.metadata?.source_height),
@@ -112,20 +120,38 @@ export async function snapshotCompositionDocument(params: {
     fileSizeBytes: asset.file_size_bytes,
     mimeType: asset.mime_type,
     productionAssetId: asset.id,
+    storageBucket: asset.storage_bucket,
     storagePath: asset.storage_path,
   })));
-  const preflight = validateHyperframesPreflight({ assets: manifest });
+  const preflight = validateHyperframesPreflight({
+    assets: manifest,
+    deliveryMode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
+    durationSeconds: current.document.canvas.durationSeconds,
+    renderProfile: renderSettings,
+  });
   if (!preflight.valid) throw new CompositionSnapshotError(preflight.errors.join(" "));
 
   const zip = new JSZip();
-  const assetFiles = new Map<string, string>();
-  for (const asset of assets) assetFiles.set(asset.id, `assets/${asset.id}.${fileExtension(asset.mime_type)}`);
+  const assetVariableNames = buildHyperframesAssetVariableNames(manifest);
+  // Direct media is represented by provider variables and receives its URL at
+  // submission time. Only deck-owned public dependencies must be rewritten in
+  // the immutable HTML snapshot.
+  const manifestById = new Map(manifest.map((asset) => [asset.productionAssetId, asset]));
+  const assetDeliveryUrls = new Map(await Promise.all(deckDependencies.map(async (asset) => {
+    const manifestAsset = manifestById.get(asset.id);
+    if (!manifestAsset) throw new CompositionSnapshotError("Falta una dependencia del deck en el manifiesto.");
+    return [
+      asset.id,
+      await resolveHyperframesAssetDeliveryUrl({ asset: manifestAsset, supabase: params.supabase }),
+    ] as const;
+  })));
   const deckAssetUrls = new Map(deckDependencies.flatMap((asset) => (
-    asset.public_url ? [[asset.public_url, assetFiles.get(asset.id)!] as const] : []
+    asset.public_url ? [[asset.public_url, assetDeliveryUrls.get(asset.id)!] as const] : []
   )));
   const [snapshotHtml, animationRuntime] = await Promise.all([
     compileCompositionPreview({
-      assetUrls: assetFiles,
+      assetUrls: assetDeliveryUrls,
+      assetVariableNames,
       deckAssetUrls,
       document: current.document,
       target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
@@ -136,19 +162,14 @@ export async function snapshotCompositionDocument(params: {
   zip.file("assets/gsap.min.js", animationRuntime);
   zip.file("composition-document.json", JSON.stringify(current.document, null, 2));
   zip.file("asset-manifest.json", JSON.stringify(manifest, null, 2));
-  // Media files are already compressed. Re-compressing MP4/MP3/image bytes at
-  // DEFLATE level 9 made this synchronous endpoint spend several minutes for
-  // less than one percent of size reduction. Download independently and store
-  // the binary payloads verbatim; only the small text files use DEFLATE.
-  const downloadedAssets = await Promise.all(assets.map(async (asset) => ({
-    asset,
-    bytes: await downloadAndVerify(params.supabase, asset),
-  })));
-  for (const { asset, bytes } of downloadedAssets) {
-    zip.file(assetFiles.get(asset.id)!, bytes, { compression: "STORE" });
-  }
   const archive = await zip.generateAsync({ compression: "DEFLATE", type: "uint8array", compressionOptions: { level: 6 } });
-  const archivePreflight = validateHyperframesPreflight({ archiveSizeBytes: archive.byteLength, assets: manifest });
+  const archivePreflight = validateHyperframesPreflight({
+    archiveSizeBytes: archive.byteLength,
+    assets: manifest,
+    deliveryMode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
+    durationSeconds: current.document.canvas.durationSeconds,
+    renderProfile: renderSettings,
+  });
   if (!archivePreflight.valid || archive.byteLength > HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES) {
     throw new CompositionSnapshotError(archivePreflight.errors.join(" ") || "El snapshot excede el l\u00edmite de 200 MB.");
   }
@@ -181,7 +202,9 @@ export async function snapshotCompositionDocument(params: {
     format: HYPERFRAMES_COMPOSITION_FORMAT,
     generation_mode: "AUTOMATIC",
     manifest: {
+      asset_delivery_mode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
       asset_manifest: manifest,
+      canvas_duration_seconds: current.document.canvas.durationSeconds,
       draft_document_hash: current.documentHash,
       draft_document_version: current.version,
       render_profile: {
@@ -195,7 +218,7 @@ export async function snapshotCompositionDocument(params: {
     project_storage_bucket: PROJECT_BUCKET,
     project_storage_path: projectPath,
     revision_number: (latest?.revision_number || 0) + 1,
-    variables_schema: [],
+    variables_schema: buildHyperframesAssetVariableSchema(manifest),
     variables_values: current.document.variables,
   }).select("id, revision_number, project_hash, project_archive_size_bytes").single();
   if (revisionError) {
@@ -367,16 +390,6 @@ async function readReferencedDeckDependencies(
   )) as AssetRow[];
 }
 
-async function downloadAndVerify(supabase: SupabaseClient<any, "public", any>, asset: AssetRow) {
-  const path = bucketRelativePath(asset.storage_bucket, asset.storage_path);
-  const { data, error } = await supabase.storage.from(asset.storage_bucket).download(path);
-  if (error) throw error;
-  const bytes = new Uint8Array(await data.arrayBuffer());
-  if (bytes.byteLength !== asset.file_size_bytes) throw new CompositionSnapshotError(`El tama\u00f1o de ${asset.id} no coincide con su registro.`);
-  if (createHash("sha256").update(bytes).digest("hex") !== asset.checksum.toLowerCase()) throw new CompositionSnapshotError(`El checksum de ${asset.id} no coincide con su registro.`);
-  return bytes;
-}
-
 async function resolveSnapshotCreatorId(
   supabase: SupabaseClient<any, "public", any>,
   userId: string,
@@ -402,12 +415,6 @@ function readExternalErrorCode(error: unknown) {
   if (!error || typeof error !== "object" || !("code" in error)) return "";
   const code = (error as { code?: unknown }).code;
   return typeof code === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(code) ? code : "";
-}
-
-function bucketRelativePath(bucket: string, storagePath: string) {
-  const path = storagePath.startsWith(`${bucket}/`) ? storagePath.slice(bucket.length + 1) : storagePath;
-  if (!path || path.startsWith("/") || path.includes("..") || path.includes("\\")) throw new CompositionSnapshotError("La ruta de un asset no es segura.");
-  return path;
 }
 
 function readPersistedRenderProfile(manifest: Record<string, unknown>) {
@@ -444,4 +451,3 @@ export function assertCompositionSnapshotRenderContract(
 function readPositiveInteger(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 }
-function fileExtension(mime: string) { const value = mime.split("/")[1]?.toLowerCase(); return value === "jpeg" ? "jpg" : value === "mpeg" ? "mp3" : value?.replace(/[^a-z0-9]/g, "") || "bin"; }

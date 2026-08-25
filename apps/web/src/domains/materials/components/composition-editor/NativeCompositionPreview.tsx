@@ -62,6 +62,10 @@ import {
   type HyperframesRenderProfileId,
   type HyperframesRenderSettings,
 } from "@/domains/production/hyperframes/hyperframes-render-profiles";
+import {
+  estimateHyperframesRenderBudget,
+  formatRenderBudgetBytes,
+} from "@/domains/production/hyperframes/hyperframes-render-budget.service";
 import styles from "./CompositionStudio.module.css";
 
 type DocumentPayload = { document: CompositionEditorDocument; documentHash: string; version: number };
@@ -1588,6 +1592,7 @@ export function NativeCompositionPreview({ assets, compositionId, draftId, lesso
       compact
       assembly={assembly}
       busy={assembling}
+      durationSeconds={duration}
       error={assemblyError}
       notice={assemblyNotice}
       history={snapshotHistory}
@@ -1872,10 +1877,11 @@ function AgentConversation({ lastAppliedProposal, onApprove, onDismiss, onPropos
   </section>;
 }
 
-function AssemblyActions({ assembly, busy, compact = false, error, notice, history, historyOpen, onApprove, onDeleteAndRender, onHistoryToggle, onPrepare, onProfileChange, onRender, onRestore, priorCompletedVideo, providerStatus, renderStatus, selectedRenderProfileId }: {
+function AssemblyActions({ assembly, busy, compact = false, durationSeconds, error, notice, history, historyOpen, onApprove, onDeleteAndRender, onHistoryToggle, onPrepare, onProfileChange, onRender, onRestore, priorCompletedVideo, providerStatus, renderStatus, selectedRenderProfileId }: {
   assembly: ActiveAssembly | null;
   busy: boolean;
   compact?: boolean;
+  durationSeconds: number;
   error: string | null;
   notice: string | null;
   history: CompositionSnapshotEntry[] | null;
@@ -1893,6 +1899,7 @@ function AssemblyActions({ assembly, busy, compact = false, error, notice, histo
   selectedRenderProfileId: HyperframesRenderProfileId;
 }) {
   const selectedProfile = getHyperframesRenderProfile(selectedRenderProfileId);
+  const renderBudget = estimateHyperframesRenderBudget({ durationSeconds, renderProfile: selectedProfile });
   const profileMatchesAssembly = !assembly
     || sameHyperframesRenderSettings(assembly.renderProfile, selectedProfile);
   const normalizedProviderStatus = providerStatus?.toUpperCase() || null;
@@ -1950,6 +1957,7 @@ function AssemblyActions({ assembly, busy, compact = false, error, notice, histo
         <span><small>Resolución</small><strong>1080p</strong></span>
         <span><small>Cuadros</small><strong>{assembly?.renderProfile?.fps || selectedProfile.fps} FPS</strong></span>
         <span><small>Calidad</small><strong>{assembly?.renderProfile ? renderQualityLabel(assembly.renderProfile.quality) : renderQualityLabel(selectedProfile.quality)}</strong></span>
+        <span><small>Salida estimada</small><strong>{formatRenderBudgetBytes(renderBudget.estimatedOutputBytes)}</strong></span>
       </div>
 
       <label className={styles.outputProfile}>
@@ -1968,19 +1976,20 @@ function AssemblyActions({ assembly, busy, compact = false, error, notice, histo
       </label>
 
       <div className={styles.deliveryActions}>
-        <button type="button" disabled={busy} onClick={() => void onPrepare()} className={styles.deliveryActionSecondary}><Clapperboard size={14} /> {busy && renderStatus === "validating" ? "Preparando…" : assembly ? "Nueva versión" : "Crear snapshot"}</button>
+        <button type="button" disabled={busy || renderBudget.requiresSegmentation} onClick={() => void onPrepare()} className={styles.deliveryActionSecondary}><Clapperboard size={14} /> {busy && renderStatus === "validating" ? "Preparando…" : assembly ? "Nueva versión" : "Crear snapshot"}</button>
         <button type="button" disabled={busy || history === null} onClick={onHistoryToggle} className={styles.deliveryActionGhost}><History size={14} /> Versiones {history ? history.length : ""}</button>
         {assembly?.status === "READY_FOR_PREVIEW" && <button type="button" disabled={busy || !profileMatchesAssembly} onClick={() => void onApprove()} className={styles.deliveryActionPrimary}><CheckCircle2 size={14} /> Aprobar salida</button>}
-        {assembly?.status === "READY_FOR_RENDER" && <button type="button" disabled={busy || activeRender || renderStatus === "completed" || !profileMatchesAssembly} onClick={() => void onRender()} className={`${styles.deliveryActionPrimary} ${renderStatus === "completed" ? styles.deliveryActionComplete : ""}`}>{renderStatus === "completed" ? <CheckCircle2 size={14} /> : <Send size={14} />} {activeRender ? "Render en curso" : renderStatus === "completed" ? "Render completado" : renderStatus === "failed" ? "Reintentar render" : "Renderizar video"}</button>}
+        {assembly?.status === "READY_FOR_RENDER" && <button type="button" disabled={busy || activeRender || renderStatus === "completed" || !profileMatchesAssembly || renderBudget.requiresSegmentation} onClick={() => void onRender()} className={`${styles.deliveryActionPrimary} ${renderStatus === "completed" ? styles.deliveryActionComplete : ""}`}>{renderStatus === "completed" ? <CheckCircle2 size={14} /> : <Send size={14} />} {activeRender ? "Render en curso" : renderStatus === "completed" ? "Render completado" : renderStatus === "failed" ? "Reintentar render" : "Renderizar video"}</button>}
         {assembly?.status === "READY_FOR_RENDER" && priorCompletedVideo && <button type="button" disabled={busy || activeRender} onClick={() => void onDeleteAndRender()} className={styles.deliveryActionDanger}><Trash2 size={14} /> Reemplazar</button>}
       </div>
     </div>
 
-    {(notice || !profileMatchesAssembly || label || priorCompletedVideo || error) && <div className={styles.deliveryMessages}>
+    {(notice || !profileMatchesAssembly || label || priorCompletedVideo || error || renderBudget.recommendedSegmentCount > 1) && <div className={styles.deliveryMessages}>
       {notice && <p role="status" data-tone="success"><CheckCircle2 size={12} />{notice}</p>}
       {!profileMatchesAssembly && <p role="status" data-tone="warning"><AlertTriangle size={12} />El formato cambió. Crea una nueva versión antes de aprobar o renderizar.</p>}
       {label && <p role="status">{activeRender && <Loader2 className="animate-spin" size={12} />}{label}</p>}
       {priorCompletedVideo && <p role="status" data-tone="warning"><AlertTriangle size={12} />El video anterior seguirá disponible hasta que termine esta revisión.</p>}
+      {renderBudget.recommendedSegmentCount > 1 && <p role={renderBudget.requiresSegmentation ? "alert" : "status"} data-tone={renderBudget.requiresSegmentation ? "danger" : "warning"}><AlertTriangle size={12} />{renderBudget.requiresSegmentation ? `La salida estimada supera 2 GiB. Divide la composición en al menos ${renderBudget.recommendedSegmentCount} segmentos antes de renderizar.` : `Para una recuperación más segura, recomendamos ${renderBudget.recommendedSegmentCount} segmentos de hasta ${Math.floor(renderBudget.recommendedSegmentSeconds / 60)} min.`}</p>}
       {error && <p role="alert" data-tone="danger"><AlertTriangle size={12} />{error}</p>}
     </div>}
 

@@ -1,6 +1,7 @@
 export type VideoProvider = "youtube" | "vimeo" | "direct";
 export const PRODUCTION_VIDEOS_BUCKET = "production-videos";
-export const MAX_VIDEO_UPLOAD_SIZE_BYTES = 500 * 1024 * 1024;
+/** Direct uploads are resumable (TUS); keep this aligned with the Storage bucket cap. */
+export const MAX_VIDEO_UPLOAD_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
 
 const YOUTUBE_REGEX =
   /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;

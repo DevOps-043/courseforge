@@ -2,7 +2,17 @@ import { z } from "zod";
 import { HYPERFRAMES_RENDER_PROFILE_IDS } from "./hyperframes-render-profiles";
 
 export const HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES = 200 * 1024 * 1024;
+export const HYPERFRAMES_REMOTE_VIDEO_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
 export const HYPERFRAMES_COMPOSITION_FORMAT = "hyperframes-html-v1";
+
+export const HYPERFRAMES_ASSET_DELIVERY_MODES = {
+  EMBEDDED: "EMBEDDED",
+  REMOTE_VARIABLES: "REMOTE_VARIABLES",
+} as const;
+export const hyperframesAssetDeliveryModeSchema = z.enum([
+  HYPERFRAMES_ASSET_DELIVERY_MODES.EMBEDDED,
+  HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
+]);
 
 const safeStoragePathSchema = z
   .string()
@@ -29,12 +39,13 @@ export const hyperframesCompositionStatusSchema = z.enum([
 export const hyperframesAssetManifestItemSchema = z
   .object({
     checksum: z.string().regex(/^[a-f0-9]{64}$/i, "Checksum SHA-256 invalido."),
-    fileSizeBytes: z.number().int().positive().max(HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES),
+    fileSizeBytes: z.number().int().positive().max(HYPERFRAMES_REMOTE_VIDEO_LIMIT_BYTES),
     mimeType: z
       .string()
       .trim()
       .regex(/^(audio|font|image|video)\/[a-z0-9.+-]+$/i, "MIME no compatible con HyperFrames."),
     productionAssetId: z.string().uuid(),
+    storageBucket: z.string().trim().min(1).max(100).optional(),
     storagePath: safeStoragePathSchema,
   })
   .strict();
@@ -68,7 +79,9 @@ export const hyperframesRenderProfileSchema = z.object({
 /** Persisted alongside a revision so render preflight can be reproduced. */
 export const hyperframesRevisionManifestSchema = z
   .object({
+    asset_delivery_mode: hyperframesAssetDeliveryModeSchema.optional(),
     asset_manifest: hyperframesAssetManifestSchema,
+    canvas_duration_seconds: z.number().positive().max(24 * 60 * 60).optional(),
     render_profile: hyperframesRenderProfileSchema.optional(),
   })
   .passthrough();
@@ -96,6 +109,7 @@ export const hyperframesCompositionRevisionInputSchema = z
 export type HyperframesAssetManifestItem = z.infer<
   typeof hyperframesAssetManifestItemSchema
 >;
+export type HyperframesAssetDeliveryMode = z.infer<typeof hyperframesAssetDeliveryModeSchema>;
 export type HyperframesAnimatedDeckSource = z.infer<typeof hyperframesAnimatedDeckSourceSchema>;
 export type HyperframesCompositionMode = z.infer<typeof hyperframesCompositionModeSchema>;
 export type HyperframesRevisionManifest = z.infer<typeof hyperframesRevisionManifestSchema>;
