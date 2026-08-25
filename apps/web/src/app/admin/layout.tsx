@@ -5,6 +5,7 @@ import { logoutAction } from '../login/actions';
 import AdminLayoutClient from './AdminLayoutClient';
 import { getSupabaseServiceRoleKey, getSupabaseUrl } from '@/lib/server/env';
 import { resolveSidebarProfile } from '@/components/layout/layout.types';
+import { normalizePlatformRole } from '@/utils/auth/platform-role';
 
 export default async function AdminLayout({
   children,
@@ -54,14 +55,20 @@ export default async function AdminLayout({
     }
   }
 
-  const hasValidRole = ['ADMIN', 'ARQUITECTO', 'CONSTRUCTOR'].includes(profile?.platform_role as string);
+  const effectiveRole =
+    normalizePlatformRole(bridgeUser?.platform_role) ||
+    normalizePlatformRole(profile?.platform_role);
+  const hasValidRole = ['ADMIN', 'ARQUITECTO', 'CONSTRUCTOR', 'SUPERADMIN'].includes(effectiveRole as string);
 
   if (!hasValidRole) {
     redirect('/login?error=unauthorized');
   }
 
   // Usar datos disponibles
-  const displayProfile = resolveSidebarProfile(profile, bridgeUser);
+  const displayProfile = {
+    ...(resolveSidebarProfile(profile, bridgeUser) || {}),
+    platform_role: effectiveRole,
+  };
 
   return (
     <AdminLayoutClient userEmail={userEmail} logoutAction={logoutAction} profile={displayProfile}>

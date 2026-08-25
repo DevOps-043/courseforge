@@ -38,10 +38,10 @@ import type {
 } from "./artifact-view.types";
 
 const STATUS_STYLES: Record<string, string> = {
-  READY_FOR_QA: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
-  ESCALATED: "text-orange-400 bg-orange-500/10 border-orange-500/20",
-  GENERATING: "text-blue-400 bg-blue-500/10 border-blue-500/20 animate-pulse",
-  APPROVED: "text-green-400 bg-green-500/10 border-green-500/20",
+  READY_FOR_QA: "text-cyan-700 bg-cyan-50 border-cyan-200 dark:text-cyan-300 dark:bg-cyan-500/10 dark:border-cyan-500/20",
+  ESCALATED: "text-orange-700 bg-orange-50 border-orange-200 dark:text-orange-300 dark:bg-orange-500/10 dark:border-orange-500/20",
+  GENERATING: "text-blue-700 bg-blue-50 border-blue-200 animate-pulse dark:text-blue-300 dark:bg-blue-500/10 dark:border-blue-500/20",
+  APPROVED: "text-green-700 bg-green-50 border-green-200 dark:text-green-300 dark:bg-green-500/10 dark:border-green-500/20",
 };
 
 function buildEditedContent(artifact: ArtifactViewRecord): ArtifactEditedContent {
@@ -318,7 +318,7 @@ export default function ArtifactClientView({
         onClose={() => setToast((previous) => ({ ...previous, show: false }))}
       />
 
-      <div id={isAssemblyStudio ? "assembly-workspace-toolbar" : undefined} className={isAssemblyStudio ? `${PRODUCTION_THEME.workspaceHeader} gap-5` : "space-y-8"}>
+      <div id={isAssemblyStudio ? "assembly-workspace-toolbar" : undefined} className={isAssemblyStudio ? `${PRODUCTION_THEME.workspaceHeader} gap-3` : "space-y-8"}>
         <ArtifactWorkflowHeader
           artifact={artifact}
           compact={isAssemblyStudio}

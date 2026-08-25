@@ -37,6 +37,10 @@ import {
   getOrganizationPlatformRole,
   upsertOrganizationPlatformRole,
 } from "@/lib/server/tenant-context";
+import {
+  mapOrganizationRoleToPlatformRole,
+  normalizePlatformRole,
+} from "@/utils/auth/platform-role";
 
 async function syncOrganizations(
   courseforgeAdmin: SupabaseClient,
@@ -112,11 +116,6 @@ async function syncProfileAndResolveRedirect(
   }
 }
 
-function mapSofliaOrganizationRoleToPlatformRole(role: string | null) {
-  if (role === "owner" || role === "admin") return "ADMIN";
-  return "CONSTRUCTOR";
-}
-
 async function syncOrganizationRoles(
   organizations: ReturnType<typeof mapOrganizations>,
   userId: string,
@@ -125,7 +124,7 @@ async function syncOrganizationRoles(
     organizations.map((organization) =>
       upsertOrganizationPlatformRole({
         organizationId: organization.id,
-        platformRole: mapSofliaOrganizationRoleToPlatformRole(organization.role),
+        platformRole: mapOrganizationRoleToPlatformRole(organization.role),
         source: "soflia",
         userId,
       }),
@@ -144,7 +143,16 @@ async function resolveOrganizationRedirect(
 
   if (!activeOrgId) return legacyRedirect;
 
-  const organizationRole = await getOrganizationPlatformRole(user.id, activeOrgId);
+  const activeOrganization = organizations.find(
+    (organization) => organization.id === activeOrgId,
+  );
+  const storedOrganizationRole = await getOrganizationPlatformRole(
+    user.id,
+    activeOrgId,
+  );
+  const organizationRole =
+    normalizePlatformRole(storedOrganizationRole) ||
+    mapOrganizationRoleToPlatformRole(activeOrganization?.role);
   if (organizationRole === "ADMIN" || organizationRole === "SUPERADMIN") {
     return "/admin";
   }

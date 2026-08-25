@@ -12,6 +12,7 @@
   },
   "include": [
     "src/app/login/auth-bridge-contract.ts",
+    "src/utils/auth/platform-role.ts",
     "src/app/login/__tests__/**/*.ts"
   ],
   "exclude": ["node_modules"]

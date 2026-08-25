@@ -1,7 +1,16 @@
 'use client';
 
-import { Loader2, RefreshCw, Save, Send } from 'lucide-react';
+import {
+  CheckCircle2,
+  Film,
+  Loader2,
+  RefreshCw,
+  Rocket,
+  Save,
+  Send,
+} from 'lucide-react';
 import type { PublicationProfile } from '@/domains/publication/types/publication.types';
+import styles from '../PublicationWorkspace.module.css';
 
 interface PublicationHeaderProps {
   artifactTitle: string;
@@ -9,6 +18,9 @@ interface PublicationHeaderProps {
   status?: string;
   profile?: PublicationProfile;
   isReady: boolean;
+  metadataCompleteCount: number;
+  selectedLessonsCount: number;
+  selectableLessonsCount: number;
   isSaving: boolean;
   isPublishing: boolean;
   isResetting: boolean;
@@ -17,16 +29,12 @@ interface PublicationHeaderProps {
   onPublish: () => void;
 }
 
-function getStatusClasses(status?: string) {
-  if (status === 'SENT') {
-    return 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800';
-  }
-
-  if (status === 'APPROVED') {
-    return 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800';
-  }
-
-  return 'bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700';
+function getStatusLabel(status?: string) {
+  if (status === 'SENT') return 'Enviado';
+  if (status === 'APPROVED') return 'Aprobado';
+  if (status === 'READY') return 'Listo';
+  if (status === 'DRAFT') return 'Borrador';
+  return 'Nuevo';
 }
 
 export function PublicationHeader({
@@ -35,6 +43,9 @@ export function PublicationHeader({
   status,
   profile,
   isReady,
+  metadataCompleteCount,
+  selectedLessonsCount,
+  selectableLessonsCount,
   isSaving,
   isPublishing,
   isResetting,
@@ -43,29 +54,54 @@ export function PublicationHeader({
   onPublish,
 }: PublicationHeaderProps) {
   return (
-    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-[var(--engine-surface-solid)] p-4 rounded-xl border border-gray-200 dark:border-[var(--engine-muted)]/10">
-      <div>
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-          {artifactTitle}
-        </h2>
-        <div className="flex items-center gap-2 mt-1">
-          <span
-            className={`text-xs px-2 py-0.5 rounded-full border ${getStatusClasses(status)}`}
-          >
-            {status || 'NUEVO'}
+    <header className={styles.releaseHeader}>
+      <div className={styles.releaseIdentity}>
+        <span className={styles.releaseIcon} aria-hidden="true">
+          <Rocket size={20} />
+        </span>
+        <div className={styles.releaseCopy}>
+          <span className={styles.eyebrow}>Centro de publicación</span>
+          <div className={styles.releaseTitleRow}>
+            <h2>{artifactTitle}</h2>
+            <span className={styles.statusBadge} data-status={status || 'NEW'}>
+              {getStatusLabel(status)}
+            </span>
+          </div>
+          <p>Prepara la entrega, valida el contenido y envíalo a SofLIA.</p>
+        </div>
+      </div>
+
+      <div className={styles.releaseMetrics}>
+        <div className={styles.releaseMetric} data-complete={metadataCompleteCount === 3}>
+          <CheckCircle2 size={17} />
+          <span>
+            <strong>{metadataCompleteCount}/3</strong>
+            <small>datos listos</small>
           </span>
-          <span className="text-xs text-gray-500">
-            {lessonsCount} lecciones detectadas
+        </div>
+        <div className={styles.releaseMetric} data-complete={selectedLessonsCount > 0}>
+          <Film size={17} />
+          <span>
+            <strong>{selectedLessonsCount}/{selectableLessonsCount}</strong>
+            <small>videos incluidos</small>
+          </span>
+        </div>
+        <div className={styles.releaseMetric}>
+          <span>
+            <strong>{lessonsCount}</strong>
+            <small>lecciones totales</small>
           </span>
         </div>
       </div>
 
-      <div className="flex gap-3">
+      <div className={styles.releaseActions}>
         <button
+          type="button"
           onClick={onReset}
           disabled={isResetting || isSaving || isPublishing}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 dark:bg-[#1F2937] dark:text-gray-200 dark:border-gray-700 dark:hover:bg-[#374151] rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
-          title="Restablecer y Sincronizar Todo"
+          className={styles.iconButton}
+          title="Sincronizar videos desde Producción"
+          aria-label="Sincronizar videos desde Producción"
         >
           {isResetting ? (
             <Loader2 size={16} className="animate-spin" />
@@ -75,33 +111,35 @@ export function PublicationHeader({
         </button>
 
         <button
+          type="button"
           onClick={onSaveDraft}
           disabled={isSaving || isPublishing}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 dark:bg-[#1F2937] dark:text-gray-200 dark:border-gray-700 dark:hover:bg-[#374151] rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          className={styles.secondaryButton}
         >
           {isSaving ? (
             <Loader2 className="animate-spin" size={16} />
           ) : (
             <Save size={16} />
           )}
-          Guardar Borrador
+          Guardar borrador
         </button>
 
         {profile?.platform_role !== 'CONSTRUCTOR' && (
           <button
+            type="button"
             onClick={onPublish}
             disabled={!isReady || isSaving || isPublishing}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isReady ? 'bg-[var(--engine-accent)] hover:bg-[var(--engine-accent-hover)]' : 'bg-gray-400 dark:bg-gray-600'}`}
+            className={styles.primaryButton}
           >
             {isPublishing ? (
               <Loader2 className="animate-spin" size={16} />
             ) : (
               <Send size={16} />
             )}
-            Enviar a Soflia
+            Enviar a SofLIA
           </button>
         )}
       </div>
-    </div>
+    </header>
   );
 }

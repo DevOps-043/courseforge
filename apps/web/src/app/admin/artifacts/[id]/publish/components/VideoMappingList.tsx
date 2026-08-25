@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { Info } from 'lucide-react';
+import { Film, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   buildVideoUrl,
@@ -18,6 +18,7 @@ import {
 } from './video-mapping.utils';
 import { VideoMappingModuleSection } from './VideoMappingModuleSection';
 import { VIDEO_DURATION_AUTOSYNC_DELAY_MS } from '@/shared/constants/timing';
+import styles from '../PublicationWorkspace.module.css';
 
 export async function syncVideoDuration(
   provider: 'youtube' | 'vimeo' | 'direct',
@@ -228,25 +229,33 @@ export function VideoMappingList({
   const totalWithVideo = lessons.filter((lesson) => hasVideo(lesson.id)).length;
 
   return (
-    <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-2xl p-6 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-          2. Asignación de Videos y Selección para Envío
-        </h3>
-        <span className="text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">
-          {totalSelected}/{totalWithVideo} seleccionadas para envío
-        </span>
+    <section className={styles.lessonPanel}>
+      <div className={styles.lessonPanelHeader}>
+        <div className={styles.panelHeading}>
+          <span className={styles.panelIcon} aria-hidden="true">
+            <Film size={17} />
+          </span>
+          <div>
+            <span className={styles.eyebrow}>Contenido de la entrega</span>
+            <h3>Lecciones y videos</h3>
+          </div>
+        </div>
+
+        <div className={styles.selectionSummary}>
+          <strong>{totalSelected}</strong>
+          <span>de {totalWithVideo} incluidas</span>
+        </div>
       </div>
 
-      <div className="flex items-center gap-2 mb-5 text-xs text-gray-500 dark:text-gray-400">
-        <Info size={14} className="shrink-0" />
+      <div className={styles.lessonGuidance}>
+        <Info size={14} />
         <span>
-          Marca las lecciones que deseas incluir en el envío a SofLIA. Solo las
-          lecciones con video asignado pueden seleccionarse.
+          Selecciona qué lecciones formarán parte de esta versión. Puedes completar
+          los videos pendientes sin abandonar este panel.
         </span>
       </div>
 
-      <div className="space-y-4">
+      <div className={styles.moduleList}>
         {moduleGroups.map(({ moduleTitle, lessons: moduleLessons }) => (
           <VideoMappingModuleSection
             key={moduleTitle}
@@ -270,11 +279,13 @@ export function VideoMappingList({
         ))}
 
         {lessons.length === 0 && (
-          <p className="text-center text-gray-500 py-4">
-            No se encontraron lecciones en este curso.
-          </p>
+          <div className={styles.emptyState}>
+            <Film size={20} />
+            <strong>No hay lecciones disponibles</strong>
+            <p>Vuelve al temario para añadir contenido al curso.</p>
+          </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }

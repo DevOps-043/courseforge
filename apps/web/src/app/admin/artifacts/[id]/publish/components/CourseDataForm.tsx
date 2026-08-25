@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { Loader2, Upload, Image as ImageIcon } from 'lucide-react';
+import { BookOpen, Image as ImageIcon, Loader2, Upload } from 'lucide-react';
 import { getErrorMessage } from '@/lib/errors';
 import { uploadWithSignedUrl } from '@/lib/storage-upload';
 import { toast } from 'sonner';
@@ -10,6 +10,7 @@ import {
 } from '@/domains/publication/lib/publication-client';
 import type { PublicationCourseData } from '@/domains/publication/types/publication.types';
 import { EngineSelect } from '@/components/ui/EngineSelect';
+import styles from '../PublicationWorkspace.module.css';
 
 interface CourseDataFormProps {
     initialData?: PublicationCourseData;
@@ -76,15 +77,21 @@ export function CourseDataForm({ initialData, onDataChange, lockedEmail }: Cours
     };
 
     return (
-        <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-2xl p-6 shadow-sm">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-                1. Datos del Curso
-            </h3>
+        <section className={styles.settingsPanel}>
+            <div className={styles.panelHeading}>
+                <span className={styles.panelIcon} aria-hidden="true">
+                    <BookOpen size={17} />
+                </span>
+                <div>
+                    <span className={styles.eyebrow}>Configuración</span>
+                    <h3>Datos del curso</h3>
+                </div>
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className={styles.formGrid}>
                 {/* Category */}
-                <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <div className={styles.fieldGroup}>
+                    <label>
                         Categoría
                     </label>
                     <EngineSelect
@@ -102,8 +109,8 @@ export function CourseDataForm({ initialData, onDataChange, lockedEmail }: Cours
                 </div>
 
                 {/* Level */}
-                <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <div className={styles.fieldGroup}>
+                    <label>
                         Nivel
                     </label>
                     <EngineSelect
@@ -118,25 +125,21 @@ export function CourseDataForm({ initialData, onDataChange, lockedEmail }: Cours
                 </div>
 
                 {/* Instructor Email */}
-                <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <div className={styles.fieldGroup}>
+                    <label>
                         Email del Instructor (Soflia)
                     </label>
                     <input
                         type="email"
                         placeholder="instructor@soflia.com"
                         readOnly={Boolean(lockedEmail)}
-                        className={`w-full border rounded-xl px-4 py-2.5 outline-none transition-all ${
-                            lockedEmail
-                                ? "bg-gray-100 dark:bg-[var(--engine-canvas)]/60 border-gray-200 dark:border-[var(--engine-muted)]/10 text-gray-500 dark:text-gray-400 cursor-not-allowed select-none"
-                                : "bg-gray-50 dark:bg-[var(--engine-canvas)] border-gray-200 dark:border-[var(--engine-muted)]/20 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--engine-accent)]/20 focus:border-[var(--engine-accent)]"
-                        }`}
+                        className={`${styles.textInput} ${lockedEmail ? styles.lockedInput : ''}`}
                         value={formData.instructor_email}
                         onChange={(e) => {
                             if (!lockedEmail) handleChange('instructor_email', e.target.value);
                         }}
                     />
-                    <p className="text-xs text-gray-500">
+                    <p className={styles.fieldHint}>
                         {lockedEmail
                             ? "Asociado a tu cuenta de Soflia."
                             : "Debe coincidir con un usuario registrado en Soflia."}
@@ -144,100 +147,100 @@ export function CourseDataForm({ initialData, onDataChange, lockedEmail }: Cours
                 </div>
 
                 {/* Slug */}
-                <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <div className={styles.fieldGroup}>
+                    <label>
                         Slug URL
                     </label>
                     <input
                         type="text"
                         placeholder="intro-machine-learning"
-                        className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl px-4 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--engine-accent)]/20 focus:border-[var(--engine-accent)] outline-none transition-all"
+                        className={styles.textInput}
                         value={formData.slug}
                         onChange={(e) => handleChange('slug', e.target.value)}
                     />
                 </div>
 
                 {/* Price */}
-                <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <div className={styles.fieldGroup}>
+                    <label>
                         Precio (USD)
                     </label>
                     <input
                         type="number"
                         min="0"
                         step="0.01"
-                        className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl px-4 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--engine-accent)]/20 focus:border-[var(--engine-accent)] outline-none transition-all"
+                        className={styles.textInput}
                         value={formData.price}
                         onChange={(e) => handleChange('price', parseFloat(e.target.value))}
                     />
                 </div>
 
                 {/* Thumbnail URL */}
-                <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                        URL de Portada (Thumbnail)
+                <div className={`${styles.fieldGroup} ${styles.coverField}`}>
+                    <label>
+                        Portada del curso
                     </label>
 
-                    <div className="space-y-3">
+                    <div className={styles.coverControls}>
                         {/* Drag & Drop / Upload Area */}
-                        <div
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleImageUpload}
+                            className={styles.hiddenInput}
+                            accept="image/png, image/jpeg, image/webp"
+                        />
+                        <button
+                            type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            className="border-2 border-dashed border-gray-200 dark:border-[var(--engine-muted)]/20 hover:border-[var(--engine-accent)]/50 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl p-6 cursor-pointer transition-all flex flex-col items-center justify-center gap-3 group relative overflow-hidden"
+                            className={styles.coverUpload}
                         >
-                            <input
-                                type="file"
-                                ref={fileInputRef}
-                                onChange={handleImageUpload}
-                                className="hidden"
-                                accept="image/png, image/jpeg, image/webp"
-                            />
-
                             {formData.thumbnail_url ? (
                                 <>
-                                    <div className="absolute inset-0 z-0">
-                                        <img src={formData.thumbnail_url} alt="Thumbnail Preview" className="w-full h-full object-cover opacity-50 group-hover:scale-105 transition-transform duration-500" />
-                                        <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" />
+                                    <div className={styles.coverPreview}>
+                                        <img src={formData.thumbnail_url} alt="Vista previa de la portada" />
+                                        <div className={styles.coverOverlay} />
                                     </div>
-                                    <div className="relative z-10 flex flex-col items-center gap-2 text-white">
+                                    <div className={styles.coverAction}>
                                         {isUploading ? (
                                             <Loader2 className="animate-spin" size={24} />
                                         ) : (
                                             <ImageIcon size={24} className="group-hover:scale-110 transition-transform" />
                                         )}
-                                        <p className="text-sm font-medium">Click para cambiar imagen</p>
+                                        <p>Cambiar portada</p>
                                     </div>
                                 </>
                             ) : (
                                 <>
-                                    <div className="p-3 bg-gray-100 dark:bg-white/5 rounded-full group-hover:bg-[var(--engine-accent)]/10 group-hover:text-[var(--engine-accent)] transition-colors">
+                                    <div className={styles.uploadIcon}>
                                         {isUploading ? <Loader2 className="animate-spin" size={24} /> : <Upload size={24} />}
                                     </div>
-                                    <div className="text-center">
-                                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-[var(--engine-accent)]">
-                                            {isUploading ? 'Subiendo...' : 'Click para subir imagen'}
+                                    <div className={styles.uploadCopy}>
+                                        <p>
+                                            {isUploading ? 'Subiendo...' : 'Subir portada'}
                                         </p>
-                                        <p className="text-xs text-gray-500 mt-1">PNG, JPG, WEBP (Max 5MB)</p>
+                                        <small>PNG, JPG o WEBP · máximo 5 MB</small>
                                     </div>
                                 </>
                             )}
-                        </div>
+                        </button>
 
                         {/* Fallback URL Input */}
-                        <div className="relative">
+                        <div className={styles.urlInputWrap}>
                             <input
                                 type="url"
                                 placeholder="O pega una URL externa..."
-                                className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl px-4 py-2 text-xs text-gray-900 dark:text-white focus:ring-1 focus:ring-[var(--engine-accent)]/20 focus:border-[var(--engine-accent)] outline-none transition-all pl-9"
+                                className={`${styles.textInput} ${styles.urlInput}`}
                                 value={formData.thumbnail_url}
                                 onChange={(e) => handleChange('thumbnail_url', e.target.value)}
                             />
-                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                            <div className={styles.inputIcon}>
                                 <ImageIcon size={14} />
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </section>
     );
 }

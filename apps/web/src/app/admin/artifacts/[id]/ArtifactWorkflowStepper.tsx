@@ -23,11 +23,11 @@ interface ArtifactWorkflowStepperProps {
   };
 }
 
-function StepDivider({ done }: { done: boolean }) {
+function StepDivider({ compact, done }: { compact?: boolean; done: boolean }) {
   return (
     <div
-      className={`h-0.5 w-5 shrink-0 rounded-full transition-colors md:w-8 ${
-        done ? "bg-[var(--engine-info)]" : "bg-gray-200 dark:bg-[#2D333B]"
+      className={`h-px shrink-0 rounded-full transition-colors ${compact ? "w-3 xl:w-5" : "w-5 md:w-8"} ${
+        done ? "bg-[var(--engine-accent-strong)]/70 dark:bg-[var(--engine-accent)]/70" : compact ? "bg-[var(--engine-border)]" : "bg-gray-200 dark:bg-[#2D333B]"
       }`}
     />
   );
@@ -40,6 +40,7 @@ function StepItem({
   icon,
   label,
   onClick,
+  compact,
 }: {
   active?: boolean;
   disabled?: boolean;
@@ -47,33 +48,41 @@ function StepItem({
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
+  compact?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`group flex min-w-[68px] shrink-0 flex-col items-center gap-1 rounded-lg px-1.5 py-1 transition-all ${
-        disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5"
+      title={label}
+      className={`group flex shrink-0 flex-col items-center gap-1 transition-all ${compact ? "min-w-9 rounded-xl px-0.5 py-1 xl:min-w-[54px]" : "min-w-[68px] rounded-lg px-1.5 py-1"} ${
+        disabled ? "cursor-not-allowed opacity-35" : compact ? "cursor-pointer hover:bg-[var(--engine-surface-hover)]" : "cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5"
       }`}
     >
       <div
-        className={`flex h-8 w-8 items-center justify-center rounded-full border transition-all md:h-9 md:w-9 ${
+        className={`flex items-center justify-center rounded-full border transition-all ${compact ? "h-7 w-7 xl:h-8 xl:w-8" : "h-8 w-8 md:h-9 md:w-9"} ${
           active
-            ? "border-[var(--engine-info)] bg-[var(--engine-info)] text-white shadow-sm shadow-[var(--engine-info)]/25"
+            ? compact
+              ? "border-[var(--engine-accent)] bg-[var(--engine-accent)] text-[#042119] shadow-[0_0_0_4px_rgba(13,212,183,0.10)]"
+              : "border-[var(--engine-info)] bg-[var(--engine-info)] text-white shadow-sm shadow-[var(--engine-info)]/25"
             : done
-              ? "border-[var(--engine-accent)] bg-[var(--engine-accent)]/10 text-[var(--engine-accent)]"
-              : "border-gray-300 dark:border-[#2D333B] text-gray-500 dark:text-[var(--engine-muted)]"
+              ? compact
+                ? "border-[var(--engine-accent-strong)]/45 bg-[var(--engine-accent)]/10 text-[var(--engine-accent-strong)] dark:border-[var(--engine-accent)]/45 dark:text-[var(--engine-accent)]"
+                : "border-[var(--engine-accent)] bg-[var(--engine-accent)]/10 text-[var(--engine-accent)]"
+              : compact
+                ? "border-[var(--engine-border)] bg-[var(--engine-surface-soft)] text-[var(--engine-text-muted)]"
+                : "border-gray-300 text-gray-500 dark:border-[#2D333B] dark:text-[var(--engine-muted)]"
         }`}
       >
         {done ? <CheckCircle2 size={15} /> : icon}
       </div>
       <span
-        className={`text-[10px] font-semibold uppercase tracking-wide ${
+        className={`${compact ? "hidden text-[8px] xl:block" : "text-[10px]"} font-semibold uppercase tracking-wide ${
           active
-            ? "text-[var(--engine-info)]"
+            ? compact ? "text-[var(--engine-accent-strong)] dark:text-[var(--engine-accent)]" : "text-[var(--engine-info)]"
             : done
-              ? "text-[var(--engine-accent)]"
+              ? compact ? "text-[var(--engine-accent-strong)] dark:text-[var(--engine-accent)]" : "text-[var(--engine-accent)]"
               : "text-gray-500 dark:text-[var(--engine-muted)]"
         }`}
       >
@@ -107,7 +116,7 @@ export function ArtifactWorkflowStepper({
     ][currentStep - 1] ?? "Curso";
 
   return (
-    <div className={compact ? "min-w-0 flex-1" : "sticky top-0 z-50 rounded-b-xl border-b border-x border-gray-200 bg-[#F8FAFC] px-3 py-2 shadow-[0_14px_30px_rgba(15,23,42,0.10)] dark:border-[var(--engine-muted)]/10 dark:bg-[#10151C]"}>
+    <div className={compact ? "min-w-0 flex-1" : "sticky top-3 z-50 rounded-2xl border border-gray-200 bg-white/90 px-3 py-2 shadow-[0_14px_32px_rgba(15,23,42,0.10)] backdrop-blur-xl dark:border-white/10 dark:bg-[#10151C]/90"}>
       <div className={compact ? "hidden" : "mb-2 flex items-center justify-between gap-3"}>
         <div className="min-w-0">
           <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -124,14 +133,16 @@ export function ArtifactWorkflowStepper({
 
       <div className={compact ? "flex items-center justify-end overflow-x-auto" : "flex items-center overflow-x-auto pb-1"}>
         <StepItem
+          compact={compact}
           label="Base"
           active={currentStep === 1}
           onClick={() => onStepChange(1)}
           icon={<Target size={17} />}
           done={stepStatus.baseDone}
         />
-        <StepDivider done={stepStatus.baseDone} />
+        <StepDivider compact={compact} done={stepStatus.baseDone} />
         <StepItem
+          compact={compact}
           label="Temario"
           active={currentStep === 2}
           onClick={() => onStepChange(2)}
@@ -139,8 +150,9 @@ export function ArtifactWorkflowStepper({
           disabled={!stepStatus.baseDone}
           done={stepStatus.syllabusDone}
         />
-        <StepDivider done={stepStatus.syllabusDone} />
+        <StepDivider compact={compact} done={stepStatus.syllabusDone} />
         <StepItem
+          compact={compact}
           label="Plan"
           active={currentStep === 3}
           onClick={() => onStepChange(3)}
@@ -148,8 +160,9 @@ export function ArtifactWorkflowStepper({
           disabled={!stepStatus.syllabusDone}
           done={stepStatus.planDone}
         />
-        <StepDivider done={stepStatus.planDone} />
+        <StepDivider compact={compact} done={stepStatus.planDone} />
         <StepItem
+          compact={compact}
           label="Fuentes"
           active={currentStep === 4}
           onClick={() => onStepChange(4)}
@@ -157,8 +170,9 @@ export function ArtifactWorkflowStepper({
           disabled={!canAccessSourcesStep}
           done={stepStatus.curationDone}
         />
-        <StepDivider done={stepStatus.curationDone} />
+        <StepDivider compact={compact} done={stepStatus.curationDone} />
         <StepItem
+          compact={compact}
           label="Materiales"
           active={currentStep === 5}
           onClick={() => onStepChange(5)}
@@ -166,8 +180,9 @@ export function ArtifactWorkflowStepper({
           disabled={!canAccessMaterialsStep}
           done={stepStatus.materialsDone}
         />
-        <StepDivider done={stepStatus.materialsDone} />
+        <StepDivider compact={compact} done={stepStatus.materialsDone} />
         <StepItem
+          compact={compact}
           label="Produccion"
           active={currentStep === 6}
           onClick={() => onStepChange(6)}
@@ -175,8 +190,9 @@ export function ArtifactWorkflowStepper({
           disabled={!canAccessProductionStep}
           done={stepStatus.productionDone}
         />
-        <StepDivider done={stepStatus.productionDone} />
+        <StepDivider compact={compact} done={stepStatus.productionDone} />
         <StepItem
+          compact={compact}
           label="Ensamble"
           active={currentStep === 7}
           onClick={() => onStepChange(7)}
@@ -184,8 +200,9 @@ export function ArtifactWorkflowStepper({
           disabled={!canAccessPostproductionStep}
           done={stepStatus.postproductionDone}
         />
-        <StepDivider done={stepStatus.postproductionDone} />
+        <StepDivider compact={compact} done={stepStatus.postproductionDone} />
         <StepItem
+          compact={compact}
           label="Publicar"
           active={currentStep === 8}
           onClick={() => onStepChange(8)}

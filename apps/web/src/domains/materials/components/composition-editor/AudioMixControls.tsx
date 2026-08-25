@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AudioLines, CircleGauge } from "lucide-react";
 import type { CompositionAudioMix } from "@/domains/production/composition-editor/composition-document.types";
+import styles from "./CompositionStudio.module.css";
 
 export type CompositionDuckingUpdate = Partial<Pick<
   CompositionAudioMix["ducking"],
@@ -30,15 +31,15 @@ export function AudioMixControls({ audioMix, disabled, onUpdate }: AudioMixContr
   };
 
   return (
-    <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 dark:border-white/10 dark:bg-white/5">
-      <div className="flex min-w-0 items-center gap-2">
-        <AudioLines className="shrink-0 text-[var(--engine-accent-strong)]" size={16} />
+    <div className={styles.audioMix}>
+      <div className={styles.audioIdentity}>
+        <span className={styles.audioIcon}><AudioLines size={15} aria-hidden="true" /></span>
         <div className="min-w-0">
-          <p className="text-xs font-bold text-slate-800 dark:text-gray-100">Reducción de música durante voz</p>
-          <p className="truncate text-[10px] text-slate-500 dark:text-gray-400">Reduce temporalmente la música respecto a su volumen base.</p>
+          <strong>Mezcla automática de voz</strong>
+          <small>Reduce la música mientras hay narración.</small>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className={styles.audioControls}>
         <button
           type="button"
           disabled={disabled}
@@ -47,13 +48,13 @@ export function AudioMixControls({ audioMix, disabled, onUpdate }: AudioMixContr
             { enabled: !ducking.enabled },
             `${ducking.enabled ? "Desactivó" : "Activó"} la mezcla automática de música y voz.`,
           )}
-          className={`rounded-md border px-2.5 py-1 text-[11px] font-bold disabled:opacity-50 ${ducking.enabled ? "border-[var(--engine-accent)] bg-[var(--engine-accent)]/15 text-[#0A6455] dark:text-[var(--engine-accent)]" : "border-slate-300 text-slate-500 dark:border-white/15 dark:text-gray-400"}`}
+          className={`${styles.audioToggle} ${ducking.enabled ? styles.audioToggleActive : ""}`}
         >
-          {ducking.enabled ? "Reducción activa" : "Reducción inactiva"}
+          {ducking.enabled ? "Activa" : "Inactiva"}
         </button>
-        <label className="flex items-center gap-2 text-[10px] font-semibold text-slate-600 dark:text-gray-300">
+        <label className={styles.audioLevel}>
           <CircleGauge size={14} />
-          Nivel durante voz
+          Nivel
           <input
             aria-label="Volumen relativo de música durante voz"
             aria-valuetext={`${Math.round(duckedVolumeRatio * 100)}%`}
@@ -69,7 +70,7 @@ export function AudioMixControls({ audioMix, disabled, onUpdate }: AudioMixContr
             onBlur={commitRatio}
             className="w-20 accent-[var(--engine-accent)] disabled:opacity-40"
           />
-          <span className="w-16 text-right tabular-nums">{Math.round(duckedVolumeRatio * 100)}% de base</span>
+          <span className={styles.audioValue}>{Math.round(duckedVolumeRatio * 100)}%</span>
         </label>
       </div>
     </div>

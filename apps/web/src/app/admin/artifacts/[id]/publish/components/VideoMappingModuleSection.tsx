@@ -21,6 +21,7 @@ import {
 } from './video-mapping.utils';
 import { VideoMappingCheckbox } from './VideoMappingCheckbox';
 import { EngineSelect } from '@/components/ui/EngineSelect';
+import styles from '../PublicationWorkspace.module.css';
 
 interface VideoMappingModuleSectionProps {
   moduleTitle: string;
@@ -63,12 +64,10 @@ export function VideoMappingModuleSection({
   ).length;
 
   return (
-    <div className="border border-gray-100 dark:border-[var(--engine-muted)]/10 rounded-xl overflow-hidden">
-      <div
-        className="flex items-center gap-3 px-4 py-3 bg-gray-50/80 dark:bg-[var(--engine-canvas)]/80 cursor-pointer hover:bg-gray-100/80 dark:hover:bg-[var(--engine-canvas)] transition-colors select-none"
-        onClick={() => onToggleCollapse(moduleTitle)}
-      >
+    <section className={styles.moduleCard}>
+      <div className={styles.moduleHeader}>
         <div
+          className={styles.moduleCheckbox}
           onClick={(event) => {
             event.stopPropagation();
             onToggleModule(lessons);
@@ -82,26 +81,39 @@ export function VideoMappingModuleSection({
           />
         </div>
 
-        <div className="flex-1 min-w-0">
-          <span className="font-semibold text-sm text-gray-900 dark:text-white">
-            {moduleTitle}
-          </span>
-          <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">
-            {selectedInModule}/{selectableInModule} lecciones seleccionadas
-          </span>
-        </div>
+        <button
+          type="button"
+          className={styles.moduleTitleButton}
+          onClick={() => onToggleCollapse(moduleTitle)}
+          aria-expanded={!isCollapsed}
+        >
+          <span>{moduleTitle}</span>
+          <small>{lessons.length} lecciones</small>
+        </button>
 
-        <ChevronDown
-          size={18}
-          className={`text-gray-400 transition-transform duration-200 ${isCollapsed ? '-rotate-90' : ''}`}
-        />
+        <span className={styles.moduleCount}>
+          {selectedInModule}/{selectableInModule}
+          <small>incluidas</small>
+        </span>
+
+        <button
+          type="button"
+          className={styles.moduleToggle}
+          onClick={() => onToggleCollapse(moduleTitle)}
+          aria-label={isCollapsed ? `Abrir ${moduleTitle}` : `Cerrar ${moduleTitle}`}
+        >
+          <ChevronDown
+            size={18}
+            className={isCollapsed ? styles.chevronCollapsed : ''}
+          />
+        </button>
       </div>
 
       <div
-        className={`transition-all duration-200 ease-in-out overflow-hidden ${isCollapsed ? 'max-h-0' : 'max-h-[5000px]'}`}
+        className={`${styles.moduleBody} ${isCollapsed ? styles.moduleBodyCollapsed : ''}`}
       >
-        <div className="divide-y divide-gray-100 dark:divide-[var(--engine-muted)]/10">
-          {lessons.map((lesson) => {
+        <div className={styles.lessonList}>
+          {lessons.map((lesson, lessonIndex) => {
             const mapping = mappings[lesson.id] || {
               lesson_id: lesson.id,
               lesson_title: lesson.title,
@@ -116,10 +128,12 @@ export function VideoMappingModuleSection({
             return (
               <div
                 key={lesson.id}
-                className={`p-4 transition-colors ${!lessonHasVideo ? 'opacity-60 bg-gray-50/30 dark:bg-gray-900/20' : ''}`}
+                className={styles.lessonRow}
+                data-has-video={lessonHasVideo}
+                data-selected={isSelected}
               >
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="pt-0.5">
+                <div className={styles.lessonHeading}>
+                  <div className={styles.lessonCheckbox}>
                     <VideoMappingCheckbox
                       checked={isSelected}
                       indeterminate={false}
@@ -127,27 +141,27 @@ export function VideoMappingModuleSection({
                       onChange={() => onToggleLesson(lesson.id)}
                     />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm text-gray-900 dark:text-white">
+                  <span className={styles.lessonNumber}>{lessonIndex + 1}</span>
+                  <div className={styles.lessonTitleBlock}>
+                    <p>
                       {lesson.title}
                     </p>
                     {lessonHasVideo ? (
-                      <span
-                        className={`text-xs mt-0.5 inline-block ${isSelected ? 'text-[var(--engine-accent)]' : 'text-gray-400'}`}
-                      >
-                        {isSelected ? '✓ Incluida en envío' : '— Excluida del envío'}
+                      <span className={styles.lessonState} data-state={isSelected ? 'included' : 'excluded'}>
+                        {isSelected ? 'Incluida en el envío' : 'No incluida'}
                       </span>
                     ) : (
-                      <span className="text-xs text-orange-500 dark:text-orange-400 mt-0.5 inline-flex items-center gap-1">
+                      <span className={styles.lessonWarning}>
                         <AlertCircle size={11} />
-                        Sin video — no disponible para envío
+                        Falta asignar un video
                       </span>
                     )}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 ml-7">
-                  <div className="md:col-span-3">
+                <div className={styles.mappingEditor}>
+                  <div className={styles.mappingField}>
+                    <label>Fuente</label>
                     <EngineSelect
                       value={mapping.video_provider}
                       onValueChange={(value) => onUpdate(lesson.id, 'video_provider', value)}
@@ -159,9 +173,10 @@ export function VideoMappingModuleSection({
                     />
                   </div>
 
-                  <div className="md:col-span-9 relative">
-                    <div className="relative">
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                  <div className={`${styles.mappingField} ${styles.videoField}`}>
+                    <label>Enlace o identificador</label>
+                    <div className={styles.videoInputWrap}>
+                      <div className={styles.videoInputIcon}>
                         {mapping.video_provider === 'youtube' && <Youtube size={16} />}
                         {mapping.video_provider === 'vimeo' && <Video size={16} />}
                         {mapping.video_provider === 'direct' && <LinkIcon size={16} />}
@@ -169,18 +184,19 @@ export function VideoMappingModuleSection({
 
                       {mapping.video_provider === 'direct' &&
                       mapping.video_id.includes('supabase.co') ? (
-                        <div className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-lg text-sm flex items-center justify-between group">
-                          <div className="flex items-center gap-2 truncate text-[var(--engine-accent)]">
-                            <span className="truncate font-medium">
+                        <div className={styles.internalVideo}>
+                          <div>
+                            <span>
                               Video Interno de Plataforma
                             </span>
-                            <span className="text-xs text-gray-400 truncate max-w-[150px] opacity-0 group-hover:opacity-100 transition-opacity">
+                            <small>
                               ({mapping.video_id.split('/').pop()?.substring(0, 15)}...)
-                            </span>
+                            </small>
                           </div>
                           <button
+                            type="button"
                             onClick={() => onUpdate(lesson.id, 'video_id', '')}
-                            className="text-xs text-gray-500 hover:text-red-500 transition-colors ml-2 flex-shrink-0 font-medium"
+                            className={styles.removeVideoButton}
                             title="Eliminar este enlace"
                           >
                             Eliminar
@@ -196,7 +212,7 @@ export function VideoMappingModuleSection({
                                 ? 'Pegar URL de Vimeo o ID...'
                                 : 'URL del archivo de video (.mp4)...'
                           }
-                          className="w-full pl-9 pr-4 py-2 bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-lg text-sm focus:ring-2 focus:ring-[var(--engine-accent)]/20 focus:border-[var(--engine-accent)] outline-none"
+                          className={styles.videoInput}
                           value={mapping.video_id}
                           onChange={(event) =>
                             onUpdate(lesson.id, 'video_id', event.target.value)
@@ -207,22 +223,20 @@ export function VideoMappingModuleSection({
                     {mapping.video_id &&
                       mapping.video_provider === 'youtube' &&
                       mapping.video_id.length !== 11 && (
-                        <p className="text-xs text-orange-500 mt-1 flex items-center gap-1">
+                        <p className={styles.inputWarning}>
                           <AlertCircle size={12} /> ID de YouTube parece inválido
                           (debe ser 11 caracteres)
                         </p>
                       )}
                   </div>
 
-                  <div className="md:col-span-12 flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs text-gray-500 dark:text-gray-400">
-                        Duración (MM:SS):
-                      </label>
+                  <div className={`${styles.mappingField} ${styles.durationField}`}>
+                    <label>Duración</label>
+                    <div className={styles.durationControl}>
                       <input
                         type="text"
                         placeholder="00:00"
-                        className="w-24 px-2 py-1 bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-md text-sm text-center font-mono dark:text-gray-200"
+                        className={styles.durationInput}
                         value={formatDuration(mapping.duration)}
                         onChange={(event) =>
                           onUpdate(
@@ -239,22 +253,27 @@ export function VideoMappingModuleSection({
                           )
                         }
                       />
-                    </div>
-                    {mapping.video_id && (
-                      <>
+                      {mapping.video_id && (
                         <button
-                          onClick={() => onSyncDuration(lesson.id)}
+                          type="button"
+                          onClick={() => void onSyncDuration(lesson.id)}
                           disabled={syncingId === lesson.id}
-                          className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 flex items-center gap-1 disabled:opacity-50"
+                          className={styles.syncButton}
                           title="Sincronizar duración exacta desde YouTube/Vimeo"
+                          aria-label="Sincronizar duración"
                         >
                           {syncingId === lesson.id ? (
                             <Loader2 size={12} className="animate-spin" />
                           ) : (
                             <RefreshCw size={12} />
                           )}
-                          Sinc.
                         </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {mapping.video_id && (
+                    <div className={styles.mappingActions}>
                         <a
                           href={
                             mapping.video_provider === 'youtube'
@@ -265,20 +284,19 @@ export function VideoMappingModuleSection({
                           }
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                          className={styles.linkButton}
                         >
                           <ExternalLink size={12} />
-                          Probar enlace
+                          Abrir video
                         </a>
-                      </>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
       </div>
-    </div>
+    </section>
   );
 }

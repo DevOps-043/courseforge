@@ -5,6 +5,10 @@ import {
   getSupabaseServiceRoleKey,
   getSupabaseUrl,
 } from "@/lib/server/env";
+import {
+  mapOrganizationRoleToPlatformRole,
+  normalizePlatformRole,
+} from "@/utils/auth/platform-role";
 
 export interface TenantContext {
   organizationId: string;
@@ -185,11 +189,17 @@ export async function resolveTenantContext(
     return null;
   }
 
-  const platformRole = bridgeUser.platform_role || await getProfilePlatformRole(bridgeUser.id);
-  const organizationPlatformRole = await getOrganizationPlatformRole(
+  const profilePlatformRole = await getProfilePlatformRole(bridgeUser.id);
+  const platformRole =
+    normalizePlatformRole(bridgeUser.platform_role) ||
+    normalizePlatformRole(profilePlatformRole);
+  const storedOrganizationPlatformRole = await getOrganizationPlatformRole(
     bridgeUser.id,
     organization.id,
   );
+  const organizationPlatformRole =
+    normalizePlatformRole(storedOrganizationPlatformRole) ||
+    mapOrganizationRoleToPlatformRole(organization.role);
 
   return {
     organizationId: organization.id,

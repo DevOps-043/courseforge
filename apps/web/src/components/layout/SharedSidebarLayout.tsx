@@ -119,7 +119,11 @@ export default function SharedSidebarLayout({
   const isActive = (href: string) =>
     href === basePath ? pathname === basePath : pathname.startsWith(href);
 
-  const isExpanded = isMobile ? true : (isPinned && !isFocusModeRequested) || isHovered;
+  const isExpanded = isMobile
+    ? true
+    : isFocusModeRequested
+      ? false
+      : isPinned || isHovered;
   const sidebarWidth = isMobile ? 280 : isExpanded ? 264 : 72;
 
   const cycleTheme = () => {
@@ -155,9 +159,9 @@ export default function SharedSidebarLayout({
         initial={false}
         animate={{ width: sidebarWidth, x: isMobile && !isMobileMenuOpen ? -296 : 0 }}
         transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-        onMouseEnter={() => !isPinned && !isMobile && setIsHovered(true)}
-        onMouseLeave={() => !isPinned && !isMobile && setIsHovered(false)}
-        className={styles.sidebar}
+        onMouseEnter={() => !isPinned && !isMobile && !isFocusModeRequested && setIsHovered(true)}
+        onMouseLeave={() => !isPinned && !isMobile && !isFocusModeRequested && setIsHovered(false)}
+        className={`${styles.sidebar} ${!isExpanded ? styles.sidebarCollapsed : ''} ${isFocusModeRequested ? styles.sidebarFocus : ''}`}
         aria-label="Navegación principal"
       >
         <div className={styles.brandHeader}>
@@ -177,7 +181,7 @@ export default function SharedSidebarLayout({
             <button type="button" aria-label="Cerrar menú" className={styles.mobileClose} onClick={() => setIsMobileMenuOpen(false)}>
               <X size={17} />
             </button>
-          ) : (
+          ) : !isFocusModeRequested ? (
             <button
               type="button"
               aria-label={isPinned ? 'Contraer menú lateral' : 'Expandir menú lateral'}
@@ -190,7 +194,7 @@ export default function SharedSidebarLayout({
             >
               {isPinned ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
             </button>
-          )}
+          ) : null}
         </div>
 
         <nav className={styles.navigation}>
@@ -244,7 +248,13 @@ export default function SharedSidebarLayout({
             onClick={() => setIsUserMenuOpen((current) => !current)}
           >
             <span className={styles.avatar}>
-              {profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : accountInitial}
+              <span className={styles.avatarMedia}>
+                {profile?.avatar_url ? (
+                  <img src={profile.avatar_url} alt="" className={styles.avatarImg} />
+                ) : (
+                  accountInitial
+                )}
+              </span>
               <span className={styles.presence} aria-label="En línea" />
             </span>
             {isExpanded && (

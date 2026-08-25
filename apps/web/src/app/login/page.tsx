@@ -4,8 +4,15 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import { getSupabaseServiceRoleKey, getSupabaseUrl } from "@/lib/server/env";
 import LoginForm from "./LoginForm";
+import {
+  getPlatformRoleHome,
+  normalizePlatformRole,
+} from "@/utils/auth/platform-role";
 
-async function resolveRedirectForUser(userId: string) {
+async function resolveRedirectForUser(
+  userId: string,
+  bridgeRole?: string | null,
+) {
   const admin = createAdminClient(
     getSupabaseUrl(),
     getSupabaseServiceRoleKey(),
@@ -17,18 +24,11 @@ async function resolveRedirectForUser(userId: string) {
     .eq("id", userId)
     .maybeSingle();
 
-  if (
-    profile?.platform_role === "ADMIN" ||
-    profile?.platform_role === "SUPERADMIN"
-  ) {
-    return "/admin";
-  }
+  const role =
+    normalizePlatformRole(bridgeRole) ||
+    normalizePlatformRole(profile?.platform_role);
 
-  if (profile?.platform_role === "ARQUITECTO") {
-    return "/architect";
-  }
-
-  return "/builder";
+  return role ? getPlatformRoleHome(role) : null;
 }
 
 export default async function LoginPage() {
@@ -41,7 +41,13 @@ export default async function LoginPage() {
   const currentUserId = session?.user.id || bridgeUser?.id;
 
   if (currentUserId) {
-    redirect(await resolveRedirectForUser(currentUserId));
+    const redirectTo = await resolveRedirectForUser(
+      currentUserId,
+      bridgeUser?.platform_role,
+    );
+    if (redirectTo) {
+      redirect(redirectTo);
+    }
   }
 
   return <LoginForm />;

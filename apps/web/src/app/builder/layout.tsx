@@ -4,6 +4,7 @@ import { getAuthBridgeUser } from '@/utils/auth/session';
 import BuilderLayoutClient from './BuilderLayoutClient';
 import { logoutAction } from '../login/actions';
 import { resolveSidebarProfile } from '@/components/layout/layout.types';
+import { normalizePlatformRole } from '@/utils/auth/platform-role';
 
 export default async function BuilderLayout({
   children,
@@ -34,14 +35,20 @@ export default async function BuilderLayout({
     .single();
 
   // Permitir CONSTRUCTOR o roles superiores
-  const isConstructor = profile?.platform_role === 'CONSTRUCTOR' || !profile?.platform_role;
-  const isHigherRole = profile?.platform_role === 'ADMIN' || profile?.platform_role === 'ARQUITECTO' || profile?.platform_role === 'SUPERADMIN';
+  const effectiveRole =
+    normalizePlatformRole(bridgeUser?.platform_role) ||
+    normalizePlatformRole(profile?.platform_role);
+  const isConstructor = effectiveRole === 'CONSTRUCTOR' || !effectiveRole;
+  const isHigherRole = effectiveRole === 'ADMIN' || effectiveRole === 'ARQUITECTO' || effectiveRole === 'SUPERADMIN';
 
   if (!isConstructor && !isHigherRole) {
     redirect('/login?error=unknown_role');
   }
 
-  const displayProfile = resolveSidebarProfile(profile, bridgeUser);
+  const displayProfile = {
+    ...(resolveSidebarProfile(profile, bridgeUser) || {}),
+    platform_role: effectiveRole,
+  };
 
   return (
     <BuilderLayoutClient userEmail={userEmail} logoutAction={logoutAction} profile={displayProfile}>
