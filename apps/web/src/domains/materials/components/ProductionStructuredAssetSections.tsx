@@ -991,7 +991,7 @@ export function BRollClipsSection({
       </div>
 
       <p className="mt-2 text-[10px] text-gray-500 dark:text-gray-400">
-        MP4 o WebM · carga directa hasta 500 MiB · render remoto hasta 2 GiB · máximo 1920 px en el lado mayor.
+        MP4 o WebM · carga reanudable hasta 2 GiB · máximo 1920 px en el lado mayor.
       </p>
  
       {clips.length > 0 && (
@@ -1200,7 +1200,7 @@ export function AvatarVideoSection({
       </div>
 
       <p className="mt-2 text-[10px] text-gray-500 dark:text-gray-400">
-        MP4 o WebM · carga directa hasta 500 MiB · render remoto hasta 2 GiB · máximo 1920×1080 o 1080×1920.
+        MP4 o WebM · carga reanudable hasta 2 GiB · máximo 1920×1080 o 1080×1920.
       </p>
 
       <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-semibold text-gray-500 dark:text-gray-400">

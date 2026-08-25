@@ -15,9 +15,11 @@ import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 import { validateHyperframesMediaAsset } from '@/domains/production/hyperframes/hyperframes-media-constraints';
 import {
     HYPERFRAMES_ASSET_DELIVERY_MODES,
+    HYPERFRAMES_REMOTE_VIDEO_LIMIT_BYTES,
 } from '@/domains/production/hyperframes/hyperframes.types';
+import { HYPERFRAMES_PRIVATE_SOURCE_BUCKET } from '@/domains/production/media-storage.config';
 
-const ALLOWED_BUCKETS = new Set(['thumbnails', 'production-videos', 'production-assets', 'curation-sources']);
+const ALLOWED_BUCKETS = new Set(['thumbnails', 'production-videos', 'production-assets', HYPERFRAMES_PRIVATE_SOURCE_BUCKET, 'curation-sources']);
 const BUNDLE_AGENT_REFERENCE_MAX_BYTES = 75 * 1024 * 1024;
 const CURATION_SOURCE_PDF_MAX_BYTES = 25 * 1024 * 1024;
 const GENERAL_UPLOAD_MAX_BYTES = 500 * 1024 * 1024;
@@ -77,6 +79,22 @@ async function ensureCurationSourcesBucket(admin: ReturnType<typeof getServiceRo
     }
 }
 
+async function ensurePrivateRenderSourcesBucket(admin: ReturnType<typeof getServiceRoleClient>) {
+    const configuration = {
+        allowedMimeTypes: ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'video/mp4', 'video/webm'],
+        fileSizeLimit: HYPERFRAMES_REMOTE_VIDEO_LIMIT_BYTES,
+        public: false,
+    };
+    const { data: existingBucket, error: getBucketError } = await admin.storage.getBucket(HYPERFRAMES_PRIVATE_SOURCE_BUCKET);
+    if (existingBucket && !getBucketError) {
+        const { error } = await admin.storage.updateBucket(HYPERFRAMES_PRIVATE_SOURCE_BUCKET, configuration);
+        if (error) throw new Error(error.message);
+        return;
+    }
+    const { error } = await admin.storage.createBucket(HYPERFRAMES_PRIVATE_SOURCE_BUCKET, configuration);
+    if (error) throw new Error(`No se pudo asegurar el bucket privado de render: ${error.message}`);
+}
+
 async function resolveActiveUploadOrganizationId() {
     const tenant = await resolveActiveTenantContext();
     if (tenant?.organizationId) return tenant.organizationId;
@@ -125,7 +143,12 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Ruta de archivo invalida' }, { status: 400 });
         }
 
-        if (typeof fileSizeBytes === 'number' && fileSizeBytes > GENERAL_UPLOAD_MAX_BYTES) {
+        const uploadLimit = bucket === 'production-assets'
+            || bucket === 'production-videos'
+            || bucket === HYPERFRAMES_PRIVATE_SOURCE_BUCKET
+            ? HYPERFRAMES_REMOTE_VIDEO_LIMIT_BYTES
+            : GENERAL_UPLOAD_MAX_BYTES;
+        if (typeof fileSizeBytes === 'number' && fileSizeBytes > uploadLimit) {
             return NextResponse.json(
                 { error: 'El archivo supera el tamano maximo permitido' },
                 { status: 400 },
@@ -133,7 +156,7 @@ export async function POST(request: Request) {
         }
 
         if (
-            bucket === 'production-assets'
+            (bucket === 'production-assets' || bucket === HYPERFRAMES_PRIVATE_SOURCE_BUCKET)
             && purpose === 'production-asset'
             && isHyperframesProductionMediaPath(filePath, contentType)
         ) {
@@ -233,7 +256,7 @@ export async function POST(request: Request) {
             );
         }
 
-        if (bucket === 'production-assets' && purpose !== 'bundle-agent-reference') {
+        if ((bucket === 'production-assets' || bucket === HYPERFRAMES_PRIVATE_SOURCE_BUCKET) && purpose !== 'bundle-agent-reference') {
             if (!componentId) {
                 return NextResponse.json(
                     { error: 'componentId es requerido para subir activos de produccion' },
@@ -249,8 +272,10 @@ export async function POST(request: Request) {
                 );
             }
 
-            const expectedPathFragment = `${componentId}`;
-            if (!filePath.includes(expectedPathFragment)) {
+            const belongsToComponent = bucket === HYPERFRAMES_PRIVATE_SOURCE_BUCKET
+                ? isPrivateRenderSourcePath(filePath, componentId)
+                : filePath.includes(componentId);
+            if (!belongsToComponent) {
                 return NextResponse.json(
                     { error: 'La ruta del activo no corresponde al componente autorizado' },
                     { status: 400 },
@@ -261,6 +286,9 @@ export async function POST(request: Request) {
         const admin = getServiceRoleClient();
         if (purpose === 'curation-source-pdf') {
             await ensureCurationSourcesBucket(admin);
+        }
+        if (bucket === HYPERFRAMES_PRIVATE_SOURCE_BUCKET) {
+            await ensurePrivateRenderSourcesBucket(admin);
         }
 
         const { data, error } = await admin.storage
@@ -286,4 +314,11 @@ export async function POST(request: Request) {
         console.error('[API /storage/signed-upload-url] Unexpected error:', error);
         return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
     }
+}
+
+function isPrivateRenderSourcePath(filePath: string, componentId: string) {
+    const [folder, fileName, ...extra] = filePath.split('/');
+    return extra.length === 0
+        && new Set(['avatars', 'broll', 'music', 'voices']).has(folder || '')
+        && Boolean(fileName?.startsWith(`${componentId}-`));
 }

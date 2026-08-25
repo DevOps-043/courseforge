@@ -33,8 +33,10 @@ checkpoints TUS que permiten continuar en otra invocación.
 Los snapshots nuevos usan `asset_delivery_mode = REMOTE_VARIABLES`. El ZIP de
 HyperFrames contiene únicamente HTML, el runtime de animación y manifiestos;
 no contiene MP4, audio ni imágenes de Producción. Cada etiqueta multimedia usa
-`data-hf-src` y recibe en el momento del envío una URL pública, HTTPS y
-versionada por checksum del Storage interno.
+`data-hf-src` y recibe en el momento del envío una URL HTTPS del Storage
+interno. Los objetos públicos conservan una URL versionada por checksum; los
+del bucket privado `production-render-sources` reciben una firma de 24 horas
+generada justo antes de crear el render.
 
 La revisión persiste exclusivamente `storageBucket`, `storagePath`, tamaño y
 checksum. No persiste URLs firmadas ni credenciales temporales. Esto mantiene
@@ -44,12 +46,15 @@ Las revisiones anteriores que no declaran modo de entrega continúan tratándose
 como `EMBEDDED`; no se reinterpretan ni se reciclan como snapshots remotos.
 El límite de 200 MiB se conserva para el ZIP. Los medios remotos pueden sumar
 más de 200 MiB y cada video puede ocupar hasta 2 GiB, sujeto al límite global
-de Storage configurado para el proyecto.
+de Storage configurado para el proyecto. Las cargas de navegador desde 6 MiB
+usan TUS en bloques de 6 MiB, con reintentos y recuperación del upload previo;
+las cargas pequeñas conservan el endpoint estándar.
 
-Para videos cercanos a 30 minutos se recomienda mantener clips de avatar por
-lección o bloques de pocos minutos. Esto reduce el costo de reintentos y evita
-rehacer un curso completo cuando falla una sola fuente, aunque HyperFrames
-reciba una única línea de tiempo final.
+Antes de congelar o enviar, Courseforge estima la salida según duración y
+perfil. A partir de 10 minutos muestra una recomendación de segmentación; si la
+estimación supera 2 GiB bloquea el render y calcula el mínimo de segmentos. Un
+curso de 30 minutos puede seguir publicándose como varias lecciones o bloques,
+sin rehacer el curso completo cuando falla una sola fuente.
 
 ## Componentes
 
@@ -100,10 +105,20 @@ cron jobs. Mientras Vault no esté configurado, los cron hacen no-op.
 La migración
 `20260825120000_expand_hyperframes_media_delivery_limits.sql` actualiza los
 buckets `production-assets` y `production-videos` y la cola privada de
-importación a 2 GiB. Antes de aplicarla, el límite global de archivos del
+importación a 2 GiB. También crea `production-render-sources` como bucket
+privado para activar gradualmente la entrega firmada sin romper URLs públicas
+históricas. Antes de aplicarla, el límite global de archivos del
 proyecto Supabase debe permitir al menos 2 GiB; si el plan no lo permite, usar
 el máximo disponible y ajustar conjuntamente la constante del worker y el
 constraint de base de datos.
+
+La aplicación no guarda tokens TUS ni URLs firmadas en las tablas de snapshots.
+Los primeros sólo viven en el almacenamiento local administrado por
+`tus-js-client`; las segundas se resuelven en el servidor en cada intento.
+Las cargas nuevas de voz, música, B-roll y avatar se guardan en el bucket
+privado. El editor conserva una URL autenticada de Courseforge que valida
+usuario, empresa y componente y responde con una redirección firmada de diez
+minutos; los slides y videos finales públicos conservan su flujo histórico.
 
 ### 2. Configurar secretos de las Edge Functions
 

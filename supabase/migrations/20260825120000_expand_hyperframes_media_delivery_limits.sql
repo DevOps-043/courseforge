@@ -1,5 +1,18 @@
--- HyperFrames projects now deliver source media by immutable public Storage URL.
--- The ZIP remains capped at 200 MiB; only source and final-video objects expand.
+-- HyperFrames keeps legacy public assets compatible while new sensitive/large
+-- sources can use a private bucket and just-in-time signed delivery.
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'production-render-sources',
+  'production-render-sources',
+  false,
+  2147483648,
+  ARRAY['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'video/mp4', 'video/webm']
+)
+ON CONFLICT (id) DO UPDATE SET
+  public = false,
+  file_size_limit = EXCLUDED.file_size_limit,
+  allowed_mime_types = EXCLUDED.allowed_mime_types;
 
 UPDATE storage.buckets
 SET file_size_limit = 2147483648

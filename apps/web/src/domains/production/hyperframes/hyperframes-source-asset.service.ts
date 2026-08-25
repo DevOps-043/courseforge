@@ -15,6 +15,7 @@ import {
   type HyperframesAssetManifestItem,
 } from "./hyperframes.types";
 import { validateHyperframesMediaAsset } from "./hyperframes-media-constraints";
+import { HYPERFRAMES_SOURCE_BUCKETS } from "../media-storage.config";
 
 const SUPPORTED_HYPERFRAMES_MIME = /^(audio|font|image|video)\/[a-z0-9.+-]+$/i;
 
@@ -121,7 +122,8 @@ export function collectInternalMaterialAssetReferences(rawAssets: unknown): Inte
     timelineVariant?: InternalMaterialAssetReference["timelineVariant"],
   ) => {
     if (!isRecord(value) || typeof value.storage_path !== "string") return;
-    if (!value.storage_path.startsWith("production-assets/")) return;
+    const storageBucket = value.storage_path.split("/", 1)[0];
+    if (!HYPERFRAMES_SOURCE_BUCKETS.has(storageBucket)) return;
     const durationSeconds = positiveDuration(
       value.duration_seconds ?? value.durationSeconds ?? value.duration,
     );
@@ -474,7 +476,7 @@ export async function listHyperframesSourceAssets(params: {
 function parseStoredPath(storedPath: string) {
   const [storageBucket, ...rest] = storedPath.split("/");
   const storagePath = rest.join("/");
-  if (storageBucket !== "production-assets" || !storagePath || storagePath.includes("..") || storagePath.includes("\\")) {
+  if (!HYPERFRAMES_SOURCE_BUCKETS.has(storageBucket) || !storagePath || storagePath.includes("..") || storagePath.includes("\\")) {
     throw new HyperframesSourceAssetError("La ruta del asset importado no pertenece al storage interno permitido.");
   }
   return { fileName: storagePath.split("/").pop() || storagePath, storageBucket, storagePath };

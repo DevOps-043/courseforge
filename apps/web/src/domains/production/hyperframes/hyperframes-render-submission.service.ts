@@ -136,6 +136,8 @@ export class HyperframesRenderSubmissionService {
       archiveSizeBytes: revision.project_archive_size_bytes,
       assets: manifest,
       deliveryMode: revisionContract.deliveryMode,
+      durationSeconds: revisionContract.durationSeconds,
+      renderProfile: revisionContract.renderProfile,
     });
     assertPassingPreflight(declaredPreflight);
 
@@ -333,6 +335,8 @@ export class HyperframesRenderSubmissionService {
       archiveSizeBytes: revision.project_archive_size_bytes,
       assets: manifest,
       deliveryMode: revisionContract.deliveryMode,
+      durationSeconds: revisionContract.durationSeconds,
+      renderProfile: revisionContract.renderProfile,
     });
     assertPassingPreflight(preflight);
 
@@ -393,7 +397,7 @@ export class HyperframesRenderSubmissionService {
         });
       }
       const remoteAssetVariables = deliveryMode === HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES
-        ? resolveHyperframesAssetVariables({ assets: manifest, supabase: this.supabase })
+        ? await resolveHyperframesAssetVariables({ assets: manifest, supabase: this.supabase })
         : {};
       const render = await client.createRender({
         aspectRatio: input.aspectRatio,
@@ -678,6 +682,8 @@ export class HyperframesRenderSubmissionService {
       archiveSizeBytes: archive.byteLength,
       assets,
       deliveryMode,
+      durationSeconds: readManifestDuration(revision.manifest),
+      renderProfile: readManifestRenderProfile(revision.manifest),
     });
     assertPassingPreflight(actualPreflight);
     if (archive.byteLength !== revision.project_archive_size_bytes) {
@@ -828,8 +834,19 @@ function parseAndVerifyManifest(rawManifest: unknown, rows: StoredRevisionAsset[
   return {
     assets: manifest,
     deliveryMode: parsedManifest.data.asset_delivery_mode || HYPERFRAMES_ASSET_DELIVERY_MODES.EMBEDDED,
+    durationSeconds: parsedManifest.data.canvas_duration_seconds,
     renderProfile: parsedManifest.data.render_profile,
   };
+}
+
+function readManifestDuration(value: unknown) {
+  const parsed = hyperframesRevisionManifestSchema.safeParse(value);
+  return parsed.success ? parsed.data.canvas_duration_seconds : undefined;
+}
+
+function readManifestRenderProfile(value: unknown) {
+  const parsed = hyperframesRevisionManifestSchema.safeParse(value);
+  return parsed.success ? parsed.data.render_profile : undefined;
 }
 
 export function applyRevisionRenderProfile(

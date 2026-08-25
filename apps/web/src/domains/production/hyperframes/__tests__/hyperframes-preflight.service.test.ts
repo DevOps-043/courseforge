@@ -20,7 +20,7 @@ const asset = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe("HyperFrames render preflight", () => {
-  it("resolves stable content-versioned variables from trusted Storage identity", () => {
+  it("resolves stable content-versioned variables from trusted Storage identity", async () => {
     const supabase = {
       storage: {
         from: (bucket: string) => ({
@@ -29,7 +29,7 @@ describe("HyperFrames render preflight", () => {
       },
     };
     const productionAssetId = "11111111-1111-4111-8111-111111111111";
-    const variables = resolveHyperframesAssetVariables({
+    const variables = await resolveHyperframesAssetVariables({
       assets: [asset({ fileSizeBytes: 250 * 1024 * 1024, storageBucket: "production-assets" })],
       supabase: supabase as never,
     });
@@ -39,12 +39,31 @@ describe("HyperFrames render preflight", () => {
     });
   });
 
-  it("rejects private buckets before provider submission", () => {
+  it("rejects untrusted buckets before provider submission", async () => {
     const supabase = { storage: { from: () => ({ getPublicUrl: () => ({ data: { publicUrl: "https://example.test" } }) }) } };
-    assert.throws(() => resolveHyperframesAssetVariables({
+    await assert.rejects(() => resolveHyperframesAssetVariables({
       assets: [asset({ storageBucket: "private-course-assets" })],
       supabase: supabase as never,
     }), /no permite entrega remota/);
+  });
+
+  it("signs private render sources just in time", async () => {
+    const supabase = {
+      storage: {
+        from: () => ({
+          createSignedUrl: async () => ({
+            data: { signedUrl: "https://project.supabase.co/storage/private/video.mp4?token=temporary" },
+            error: null,
+          }),
+        }),
+      },
+    };
+    const variables = await resolveHyperframesAssetVariables({
+      assets: [asset({ storageBucket: "production-render-sources" })],
+      supabase: supabase as never,
+    });
+
+    assert.match(Object.values(variables)[0]!, /token=temporary/);
   });
 
   it("counts a repeated checksum once against the cloud limit", () => {
@@ -126,5 +145,31 @@ describe("HyperFrames render preflight", () => {
 
     assert.equal(result.valid, false);
     assert.ok(result.errors.some((error) => error.includes("ruta de storage")));
+  });
+
+  it("warns when a long standard render should be segmented", () => {
+    const result = validateHyperframesPreflight({
+      assets: [asset()],
+      deliveryMode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
+      durationSeconds: 30 * 60,
+      renderProfile: { format: "mp4", fps: 25, quality: "standard", resolution: "1080p" },
+    });
+
+    assert.equal(result.valid, true);
+    assert.ok(result.renderBudget);
+    assert.ok(result.renderBudget.recommendedSegmentCount >= 3);
+    assert.ok(result.warnings.some((warning) => warning.includes("segmentos")));
+  });
+
+  it("blocks a predicted output larger than the durable 2 GiB limit", () => {
+    const result = validateHyperframesPreflight({
+      assets: [asset()],
+      deliveryMode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
+      durationSeconds: 30 * 60,
+      renderProfile: { format: "mp4", fps: 25, quality: "high", resolution: "1080p" },
+    });
+
+    assert.equal(result.valid, false);
+    assert.ok(result.errors.some((error) => error.includes("2 GiB")));
   });
 });

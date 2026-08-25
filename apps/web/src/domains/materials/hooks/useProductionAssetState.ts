@@ -7,6 +7,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { uploadWithSignedUrl } from "@/lib/storage-upload";
 import { validateHyperframesMediaAsset } from "@/domains/production/hyperframes/hyperframes-media-constraints";
 import { HYPERFRAMES_ASSET_DELIVERY_MODES } from "@/domains/production/hyperframes/hyperframes.types";
+import { HYPERFRAMES_PRIVATE_SOURCE_BUCKET } from "@/domains/production/media-storage.config";
 import type { CloudStorageProvider } from "@/domains/production/cloud-storage/types";
 import {
   MAX_VIDEO_UPLOAD_SIZE_BYTES,
@@ -222,7 +223,7 @@ async function detectLocalImageDimensions(file: File) {
 function assertHyperframesMediaFile(file: File, dimensions?: { height: number; width: number }) {
   if (file.size > MAX_VIDEO_UPLOAD_SIZE_BYTES) {
     throw new Error(
-      "La carga directa admite hasta 500 MiB. Para archivos mayores usa una importación remota o divide el video en segmentos.",
+      "La carga reanudable admite hasta 2 GiB. Para archivos mayores divide el video en segmentos.",
     );
   }
 
@@ -468,7 +469,7 @@ export function useProductionAssetState({
     try {
       assertHyperframesMediaFile(file);
       const fileName = `voices/${component.id}-voice-${Date.now()}.${file.name.split('.').pop()}`;
-      const { publicUrl, path } = await uploadWithSignedUrl('production-assets', fileName, file, {
+      const { publicUrl, path } = await uploadWithSignedUrl(HYPERFRAMES_PRIVATE_SOURCE_BUCKET, fileName, file, {
         componentId: component.id,
       });
 
@@ -487,7 +488,7 @@ export function useProductionAssetState({
       }
 
       const newVoice: VoiceAudio = {
-        storage_path: `production-assets/${path}`,
+        storage_path: `${HYPERFRAMES_PRIVATE_SOURCE_BUCKET}/${path}`,
         public_url: publicUrl,
         file_name: file.name,
         duration: duration || undefined,
@@ -514,12 +515,12 @@ export function useProductionAssetState({
     try {
       assertHyperframesMediaFile(file);
       const fileName = `music/${component.id}-bg-${Date.now()}.${file.name.split('.').pop()}`;
-      const { publicUrl, path } = await uploadWithSignedUrl('production-assets', fileName, file, {
+      const { publicUrl, path } = await uploadWithSignedUrl(HYPERFRAMES_PRIVATE_SOURCE_BUCKET, fileName, file, {
         componentId: component.id,
       });
 
       const newMusic: BackgroundMusic = {
-        storage_path: `production-assets/${path}`,
+        storage_path: `${HYPERFRAMES_PRIVATE_SOURCE_BUCKET}/${path}`,
         public_url: publicUrl,
         file_name: file.name,
         volume_multiplier: backgroundMusic?.volume_multiplier ?? 0.15,
@@ -827,7 +828,7 @@ export function useProductionAssetState({
       assertHyperframesMediaFile(file, videoMetadata);
       const clipId = `clip-${Date.now()}`;
       const fileName = `broll/${component.id}-${clipId}.${file.name.split('.').pop()}`;
-      const { publicUrl, path } = await uploadWithSignedUrl('production-assets', fileName, file, {
+      const { publicUrl, path } = await uploadWithSignedUrl(HYPERFRAMES_PRIVATE_SOURCE_BUCKET, fileName, file, {
         componentId: component.id,
       });
 
@@ -847,7 +848,7 @@ export function useProductionAssetState({
 
       const newClip: BRollClip = {
         id: clipId,
-        storage_path: `production-assets/${path}`,
+        storage_path: `${HYPERFRAMES_PRIVATE_SOURCE_BUCKET}/${path}`,
         public_url: publicUrl,
         file_name: file.name,
         duration: videoMetadata.duration || undefined,
@@ -948,7 +949,7 @@ export function useProductionAssetState({
       }
       assertHyperframesMediaFile(file, videoMetadata);
       const fileName = `avatars/${component.id}-avatar-${Date.now()}.${file.name.split('.').pop()}`;
-      const { publicUrl, path } = await uploadWithSignedUrl('production-assets', fileName, file, {
+      const { publicUrl, path } = await uploadWithSignedUrl(HYPERFRAMES_PRIVATE_SOURCE_BUCKET, fileName, file, {
         componentId: component.id,
       });
 
@@ -961,7 +962,7 @@ export function useProductionAssetState({
         }
       }
 
-      const storagePath = `production-assets/${path}`;
+      const storagePath = `${HYPERFRAMES_PRIVATE_SOURCE_BUCKET}/${path}`;
       const newAvatar: AvatarVideo = {
         storage_path: storagePath,
         public_url: publicUrl,
@@ -1189,7 +1190,7 @@ export function useProductionAssetState({
     }
 
     if (file.size > MAX_VIDEO_UPLOAD_SIZE_BYTES) {
-      toast.error("El video no debe superar los 500MB. Para videos mas grandes, usa YouTube/Vimeo.");
+      toast.error("El video no debe superar 2 GiB. Para videos más grandes, divídelo en segmentos.");
       return;
     }
 

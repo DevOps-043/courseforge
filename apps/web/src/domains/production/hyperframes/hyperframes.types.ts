@@ -81,6 +81,7 @@ export const hyperframesRevisionManifestSchema = z
   .object({
     asset_delivery_mode: hyperframesAssetDeliveryModeSchema.optional(),
     asset_manifest: hyperframesAssetManifestSchema,
+    canvas_duration_seconds: z.number().positive().max(24 * 60 * 60).optional(),
     render_profile: hyperframesRenderProfileSchema.optional(),
   })
   .passthrough();

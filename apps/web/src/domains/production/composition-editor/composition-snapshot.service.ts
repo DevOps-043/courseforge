@@ -126,15 +126,25 @@ export async function snapshotCompositionDocument(params: {
   const preflight = validateHyperframesPreflight({
     assets: manifest,
     deliveryMode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
+    durationSeconds: current.document.canvas.durationSeconds,
+    renderProfile: renderSettings,
   });
   if (!preflight.valid) throw new CompositionSnapshotError(preflight.errors.join(" "));
 
   const zip = new JSZip();
   const assetVariableNames = buildHyperframesAssetVariableNames(manifest);
-  const assetDeliveryUrls = new Map(manifest.map((asset) => [
-    asset.productionAssetId,
-    resolveHyperframesAssetDeliveryUrl({ asset, supabase: params.supabase }),
-  ]));
+  // Direct media is represented by provider variables and receives its URL at
+  // submission time. Only deck-owned public dependencies must be rewritten in
+  // the immutable HTML snapshot.
+  const manifestById = new Map(manifest.map((asset) => [asset.productionAssetId, asset]));
+  const assetDeliveryUrls = new Map(await Promise.all(deckDependencies.map(async (asset) => {
+    const manifestAsset = manifestById.get(asset.id);
+    if (!manifestAsset) throw new CompositionSnapshotError("Falta una dependencia del deck en el manifiesto.");
+    return [
+      asset.id,
+      await resolveHyperframesAssetDeliveryUrl({ asset: manifestAsset, supabase: params.supabase }),
+    ] as const;
+  })));
   const deckAssetUrls = new Map(deckDependencies.flatMap((asset) => (
     asset.public_url ? [[asset.public_url, assetDeliveryUrls.get(asset.id)!] as const] : []
   )));
@@ -157,6 +167,8 @@ export async function snapshotCompositionDocument(params: {
     archiveSizeBytes: archive.byteLength,
     assets: manifest,
     deliveryMode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
+    durationSeconds: current.document.canvas.durationSeconds,
+    renderProfile: renderSettings,
   });
   if (!archivePreflight.valid || archive.byteLength > HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES) {
     throw new CompositionSnapshotError(archivePreflight.errors.join(" ") || "El snapshot excede el l\u00edmite de 200 MB.");
@@ -192,6 +204,7 @@ export async function snapshotCompositionDocument(params: {
     manifest: {
       asset_delivery_mode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
       asset_manifest: manifest,
+      canvas_duration_seconds: current.document.canvas.durationSeconds,
       draft_document_hash: current.documentHash,
       draft_document_version: current.version,
       render_profile: {

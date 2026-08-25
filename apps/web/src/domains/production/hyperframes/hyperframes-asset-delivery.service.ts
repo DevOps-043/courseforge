@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { PUBLIC_PRODUCTION_MEDIA_BUCKETS } from "../media-storage.config";
+import {
+  HYPERFRAMES_SOURCE_BUCKETS,
+  HYPERFRAMES_SOURCE_SIGNED_URL_TTL_SECONDS,
+  PUBLIC_PRODUCTION_MEDIA_BUCKETS,
+} from "../media-storage.config";
 import type { HyperframesAssetManifestItem } from "./hyperframes.types";
 
 const ASSET_VARIABLE_PREFIX = "cf_asset_";
@@ -25,20 +29,34 @@ export function buildHyperframesAssetVariableNames(assets: HyperframesAssetManif
   ]));
 }
 
-/** Resolves public, content-versioned URLs only from trusted Storage identity. */
-export function resolveHyperframesAssetDeliveryUrl(params: {
+/** Resolves a short-lived delivery URL without persisting credentials in a revision. */
+export async function resolveHyperframesAssetDeliveryUrl(params: {
   asset: HyperframesAssetManifestItem;
   supabase: SupabaseClient<any, "public", any>;
 }) {
   const bucket = params.asset.storageBucket || "production-assets";
-  if (!PUBLIC_PRODUCTION_MEDIA_BUCKETS.has(bucket)) {
+  if (!HYPERFRAMES_SOURCE_BUCKETS.has(bucket)) {
     throw new HyperframesAssetDeliveryError(`El bucket “${bucket}” no permite entrega remota a HyperFrames.`);
   }
   const objectPath = bucketRelativePath(bucket, params.asset.storagePath);
-  const { data } = params.supabase.storage.from(bucket).getPublicUrl(objectPath);
+  let deliveryUrl: string;
+  if (PUBLIC_PRODUCTION_MEDIA_BUCKETS.has(bucket)) {
+    const { data } = params.supabase.storage.from(bucket).getPublicUrl(objectPath);
+    deliveryUrl = data.publicUrl;
+  } else {
+    const { data, error } = await params.supabase.storage
+      .from(bucket)
+      .createSignedUrl(objectPath, HYPERFRAMES_SOURCE_SIGNED_URL_TTL_SECONDS);
+    if (error || !data?.signedUrl) {
+      throw new HyperframesAssetDeliveryError(
+        `No se pudo autorizar temporalmente el asset remoto “${params.asset.productionAssetId}”.`,
+      );
+    }
+    deliveryUrl = data.signedUrl;
+  }
   let url: URL;
   try {
-    url = new URL(data.publicUrl);
+    url = new URL(deliveryUrl);
   } catch {
     throw new HyperframesAssetDeliveryError("Supabase no generó una URL válida para el asset remoto.");
   }
@@ -49,14 +67,15 @@ export function resolveHyperframesAssetDeliveryUrl(params: {
   return url.toString();
 }
 
-export function resolveHyperframesAssetVariables(params: {
+export async function resolveHyperframesAssetVariables(params: {
   assets: HyperframesAssetManifestItem[];
   supabase: SupabaseClient<any, "public", any>;
 }) {
-  return Object.fromEntries(params.assets.map((asset) => [
+  const entries = await Promise.all(params.assets.map(async (asset) => [
     buildHyperframesAssetVariableName(asset.productionAssetId),
-    resolveHyperframesAssetDeliveryUrl({ asset, supabase: params.supabase }),
-  ]));
+    await resolveHyperframesAssetDeliveryUrl({ asset, supabase: params.supabase }),
+  ] as const));
+  return Object.fromEntries(entries);
 }
 
 export function buildHyperframesAssetVariableSchema(assets: HyperframesAssetManifestItem[]) {
