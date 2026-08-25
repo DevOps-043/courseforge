@@ -142,7 +142,7 @@ describe("HyperFrames source assets", () => {
     assert.equal(references.find((asset) => asset.storagePath.endsWith("authored-audio.mp4"))?.hasAudio, true);
   });
 
-  it("keeps an oversized video visible with its provider-specific warning", () => {
+  it("accepts a video above the embedded limit when Storage delivers it remotely", () => {
     const asset = inspectHyperframesSourceAsset({
       checksum: "a".repeat(64),
       fileSizeBytes: 101 * 1024 * 1024,
@@ -153,9 +153,23 @@ describe("HyperFrames source assets", () => {
       storagePath: "avatars/avatar-largo.mp4",
     });
 
+    assert.equal(asset?.eligibleForRevision, true);
+    assert.deepEqual(asset?.validationErrors, []);
+  });
+
+  it("keeps a video above the remote Storage limit visible with a warning", () => {
+    const asset = inspectHyperframesSourceAsset({
+      checksum: "a".repeat(64),
+      fileSizeBytes: (2 * 1024 * 1024 * 1024) + 1,
+      metadata: { file_name: "avatar-fuera-de-limite.mp4" },
+      mimeType: "video/mp4",
+      productionAssetId: "550e8400-e29b-41d4-a716-446655440000",
+      sourceType: "PRODUCTION_MEDIA",
+      storagePath: "avatars/avatar-fuera-de-limite.mp4",
+    });
+
     assert.equal(asset?.eligibleForRevision, false);
-    assert.match(asset?.validationErrors.join(" ") || "", /avatar-largo\.mp4/);
-    assert.match(asset?.validationErrors.join(" ") || "", /100 MiB/);
+    assert.match(asset?.validationErrors.join(" ") || "", /avatar-fuera-de-limite\.mp4/);
   });
 
   it("blocks source media above the maximum supported resolution", () => {

@@ -80,7 +80,7 @@ async function processImport(claim: ImportClaim): Promise<void> {
     assertSafeVideoUrl(detail.video_url);
 
     const source = await probeSource(detail.video_url, detail.format);
-    if (source.size > MAX_FINAL_VIDEO_BYTES) throw new TerminalImportError("Final video exceeds the 500 MiB storage limit.");
+    if (source.size > MAX_FINAL_VIDEO_BYTES) throw new TerminalImportError("Final video exceeds the 2 GiB storage limit.");
     if (claim.source_size_bytes && claim.source_size_bytes !== source.size) {
       throw new TerminalImportError("HeyGen video size changed during resumable import.");
     }

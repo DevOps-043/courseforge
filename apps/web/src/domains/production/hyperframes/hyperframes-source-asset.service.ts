@@ -8,7 +8,7 @@ import {
 } from "../types/production.types";
 import type { ImportedCloudAsset, ProductionAssetType } from "../cloud-storage/types";
 import {
-  HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES,
+  HYPERFRAMES_ASSET_DELIVERY_MODES,
   hyperframesAnimatedDeckSourceSchema,
   hyperframesAssetManifestSchema,
   type HyperframesAnimatedDeckSource,
@@ -82,12 +82,9 @@ export function inspectHyperframesSourceAsset(input: {
     : input.storagePath?.split("/").pop() || "Asset sin nombre";
   const manifestErrors = parsed.success
     ? []
-    : parsed.error.issues.map((issue) => issue.path.includes("fileSizeBytes")
-      && typeof input.fileSizeBytes === "number"
-      && input.fileSizeBytes > HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES
-        ? `“${fileName}” excede el máximo individual de 200 MB (${formatAssetSize(input.fileSizeBytes)}).`
-        : issue.message);
+    : parsed.error.issues.map((issue) => issue.message);
   const mediaValidation = validateHyperframesMediaAsset({
+    deliveryMode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
     fileName,
     fileSizeBytes: input.fileSizeBytes,
     height: positiveInteger(input.metadata?.source_height),
@@ -472,10 +469,6 @@ export async function listHyperframesSourceAssets(params: {
     });
     return candidate ? [candidate] : [];
   });
-}
-
-function formatAssetSize(value: number) {
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function parseStoredPath(storedPath: string) {

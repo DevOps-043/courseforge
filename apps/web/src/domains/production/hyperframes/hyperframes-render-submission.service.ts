@@ -12,12 +12,15 @@ import {
   PRODUCTION_PROVIDERS,
 } from "../types/production.types";
 import { HyperframesCloudClient } from "./hyperframes-cloud.client";
+import { resolveHyperframesAssetVariables } from "./hyperframes-asset-delivery.service";
 import { validateHyperframesPreflight } from "./hyperframes-preflight.service";
 import {
+  HYPERFRAMES_ASSET_DELIVERY_MODES,
   HYPERFRAMES_COMPOSITION_FORMAT,
   hyperframesAssetManifestSchema,
   hyperframesRevisionManifestSchema,
   type HyperframesAssetManifestItem,
+  type HyperframesAssetDeliveryMode,
 } from "./hyperframes.types";
 import { HYPERFRAMES_DURABLE_RENDER_PROFILE } from "./hyperframes-media-constraints";
 import type { HyperframesRenderSettings } from "./hyperframes-render-profiles";
@@ -132,6 +135,7 @@ export class HyperframesRenderSubmissionService {
     const declaredPreflight = validateHyperframesPreflight({
       archiveSizeBytes: revision.project_archive_size_bytes,
       assets: manifest,
+      deliveryMode: revisionContract.deliveryMode,
     });
     assertPassingPreflight(declaredPreflight);
 
@@ -164,6 +168,7 @@ export class HyperframesRenderSubmissionService {
       quality: effectiveInput.quality || HYPERFRAMES_DURABLE_RENDER_PROFILE.quality,
       resolution: effectiveInput.resolution || "1080p",
       revision_id: revision.id,
+      asset_delivery_mode: revisionContract.deliveryMode,
       variables: revision.variables_values || {},
     };
     const baseIdempotencyKey = buildProductionIdempotencyKey({
@@ -277,6 +282,7 @@ export class HyperframesRenderSubmissionService {
       jobId: job.id,
       idempotencyKey,
       manifest,
+      deliveryMode: revisionContract.deliveryMode,
       request,
       revision,
       preflight: declaredPreflight,
@@ -326,6 +332,7 @@ export class HyperframesRenderSubmissionService {
     const preflight = validateHyperframesPreflight({
       archiveSizeBytes: revision.project_archive_size_bytes,
       assets: manifest,
+      deliveryMode: revisionContract.deliveryMode,
     });
     assertPassingPreflight(preflight);
 
@@ -334,6 +341,7 @@ export class HyperframesRenderSubmissionService {
       idempotencyKey: request.idempotency_key,
       jobId: request.production_job_id,
       manifest,
+      deliveryMode: revisionContract.deliveryMode,
       preflight,
       request,
       revision,
@@ -352,6 +360,7 @@ export class HyperframesRenderSubmissionService {
   }
 
   private async processSubmission(params: {
+    deliveryMode: HyperframesAssetDeliveryMode;
     input: HyperframesRenderSubmissionInput;
     idempotencyKey: string;
     jobId: string;
@@ -360,7 +369,7 @@ export class HyperframesRenderSubmissionService {
     request: ExistingRequest;
     revision: StoredRevision;
   }): Promise<HyperframesRenderSubmissionResult> {
-    const { input, idempotencyKey, jobId, manifest, preflight, request, revision } = params;
+    const { deliveryMode, input, idempotencyKey, jobId, manifest, preflight, request, revision } = params;
     const client = this.client;
     if (!client) {
       throw new HyperframesRenderSubmissionError("El worker de render no tiene un cliente de HeyGen configurado.", 500);
@@ -370,7 +379,7 @@ export class HyperframesRenderSubmissionService {
       let providerAssetId = request.provider_asset_id;
       if (!providerAssetId) {
         await this.markUploading(jobId, request.id);
-        const archiveBytes = await this.downloadAndVerifyArchive(revision, manifest);
+        const archiveBytes = await this.downloadAndVerifyArchive(revision, manifest, deliveryMode);
         const upload = await client.uploadProjectArchive({
           bytes: archiveBytes,
           fileName: `${revision.id}.zip`,
@@ -383,6 +392,9 @@ export class HyperframesRenderSubmissionService {
           requestId: request.id,
         });
       }
+      const remoteAssetVariables = deliveryMode === HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES
+        ? resolveHyperframesAssetVariables({ assets: manifest, supabase: this.supabase })
+        : {};
       const render = await client.createRender({
         aspectRatio: input.aspectRatio,
         assetId: providerAssetId,
@@ -395,7 +407,7 @@ export class HyperframesRenderSubmissionService {
         quality: input.quality || HYPERFRAMES_DURABLE_RENDER_PROFILE.quality,
         resolution: input.resolution || "1080p",
         title: input.title || getComposition(revision)!.name,
-        variables: revision.variables_values || {},
+        variables: { ...(revision.variables_values || {}), ...remoteAssetVariables },
       });
       await this.markSubmitted({
         jobId,
@@ -655,6 +667,7 @@ export class HyperframesRenderSubmissionService {
   private async downloadAndVerifyArchive(
     revision: StoredRevision,
     assets: HyperframesAssetManifestItem[],
+    deliveryMode: HyperframesAssetDeliveryMode,
   ) {
     const { data, error } = await this.supabase.storage
       .from(revision.project_storage_bucket)
@@ -664,6 +677,7 @@ export class HyperframesRenderSubmissionService {
     const actualPreflight = validateHyperframesPreflight({
       archiveSizeBytes: archive.byteLength,
       assets,
+      deliveryMode,
     });
     assertPassingPreflight(actualPreflight);
     if (archive.byteLength !== revision.project_archive_size_bytes) {
@@ -812,7 +826,8 @@ function parseAndVerifyManifest(rawManifest: unknown, rows: StoredRevisionAsset[
     );
   }
   return {
-    assets: expected,
+    assets: manifest,
+    deliveryMode: parsedManifest.data.asset_delivery_mode || HYPERFRAMES_ASSET_DELIVERY_MODES.EMBEDDED,
     renderProfile: parsedManifest.data.render_profile,
   };
 }

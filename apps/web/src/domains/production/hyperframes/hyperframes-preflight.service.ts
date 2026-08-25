@@ -1,6 +1,8 @@
 import {
+  HYPERFRAMES_ASSET_DELIVERY_MODES,
   HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES,
   hyperframesAssetManifestSchema,
+  type HyperframesAssetDeliveryMode,
   type HyperframesAssetManifestItem,
 } from "./hyperframes.types";
 import { validateHyperframesMediaAsset } from "./hyperframes-media-constraints";
@@ -9,6 +11,7 @@ export interface HyperframesPreflightResult {
   archiveSizeBytes: number | null;
   assetCount: number;
   duplicateAssetCount: number;
+  deliveryMode: HyperframesAssetDeliveryMode;
   errors: string[];
   totalAssetBytes: number;
   valid: boolean;
@@ -22,13 +25,16 @@ export interface HyperframesPreflightResult {
 export function validateHyperframesPreflight(params: {
   archiveSizeBytes?: number | null;
   assets: unknown;
+  deliveryMode?: HyperframesAssetDeliveryMode;
 }): HyperframesPreflightResult {
+  const deliveryMode = params.deliveryMode || HYPERFRAMES_ASSET_DELIVERY_MODES.EMBEDDED;
   const parsedAssets = hyperframesAssetManifestSchema.safeParse(params.assets);
   if (!parsedAssets.success) {
     return {
       archiveSizeBytes: normalizeArchiveSize(params.archiveSizeBytes),
       assetCount: 0,
       duplicateAssetCount: 0,
+      deliveryMode,
       errors: parsedAssets.error.issues.map((issue) => issue.message),
       totalAssetBytes: 0,
       valid: false,
@@ -42,13 +48,15 @@ export function validateHyperframesPreflight(params: {
 
   for (const asset of uniqueAssets) {
     errors.push(...validateHyperframesMediaAsset({
+      deliveryMode,
       fileName: asset.storagePath,
       fileSizeBytes: asset.fileSizeBytes,
       mimeType: asset.mimeType,
     }).errors);
   }
 
-  if (totalAssetBytes > HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES) {
+  if (deliveryMode === HYPERFRAMES_ASSET_DELIVERY_MODES.EMBEDDED
+    && totalAssetBytes > HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES) {
     errors.push("Los assets únicos exceden el límite de 200 MiB para render cloud.");
   }
 
@@ -64,6 +72,7 @@ export function validateHyperframesPreflight(params: {
     archiveSizeBytes,
     assetCount: parsedAssets.data.length,
     duplicateAssetCount: parsedAssets.data.length - uniqueAssets.length,
+    deliveryMode,
     errors,
     totalAssetBytes,
     valid: errors.length === 0,

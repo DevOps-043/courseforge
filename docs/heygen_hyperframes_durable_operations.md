@@ -28,6 +28,29 @@ Supabase Edge Functions también son serverless. La durabilidad no proviene de
 mantener una función viva, sino de PostgreSQL, Cron, leases idempotentes y los
 checkpoints TUS que permiten continuar en otra invocación.
 
+## Entrega de medios para cursos largos
+
+Los snapshots nuevos usan `asset_delivery_mode = REMOTE_VARIABLES`. El ZIP de
+HyperFrames contiene únicamente HTML, el runtime de animación y manifiestos;
+no contiene MP4, audio ni imágenes de Producción. Cada etiqueta multimedia usa
+`data-hf-src` y recibe en el momento del envío una URL pública, HTTPS y
+versionada por checksum del Storage interno.
+
+La revisión persiste exclusivamente `storageBucket`, `storagePath`, tamaño y
+checksum. No persiste URLs firmadas ni credenciales temporales. Esto mantiene
+el snapshot reproducible y evita que una URL expirada invalide un reintento.
+
+Las revisiones anteriores que no declaran modo de entrega continúan tratándose
+como `EMBEDDED`; no se reinterpretan ni se reciclan como snapshots remotos.
+El límite de 200 MiB se conserva para el ZIP. Los medios remotos pueden sumar
+más de 200 MiB y cada video puede ocupar hasta 2 GiB, sujeto al límite global
+de Storage configurado para el proyecto.
+
+Para videos cercanos a 30 minutos se recomienda mantener clips de avatar por
+lección o bloques de pocos minutos. Esto reduce el costo de reintentos y evita
+rehacer un curso completo cuando falla una sola fuente, aunque HyperFrames
+reciba una única línea de tiempo final.
+
 ## Componentes
 
 - `heygen-hyperframes-webhook`: valida HMAC-SHA256 sobre el body crudo,
@@ -73,6 +96,14 @@ Esto aplica
 `20260821160000_durable_hyperframes_render_orchestration.sql`, habilita
 `pg_cron`/`pg_net`, publica la tabla de seguimiento en Realtime y crea los dos
 cron jobs. Mientras Vault no esté configurado, los cron hacen no-op.
+
+La migración
+`20260825120000_expand_hyperframes_media_delivery_limits.sql` actualiza los
+buckets `production-assets` y `production-videos` y la cola privada de
+importación a 2 GiB. Antes de aplicarla, el límite global de archivos del
+proyecto Supabase debe permitir al menos 2 GiB; si el plan no lo permite, usar
+el máximo disponible y ajustar conjuntamente la constante del worker y el
+constraint de base de datos.
 
 ### 2. Configurar secretos de las Edge Functions
 
@@ -200,7 +231,7 @@ de webhook.
 - jobs en `WAITING_PROVIDER`, `RUNNING` o `RETRY_SCHEDULED` sin actualización
   durante más de una hora.
 - fallos consecutivos del cron o respuestas HTTP no exitosas en `pg_net`.
-- Storage cerca del límite de cuota o videos mayores al límite de 500 MiB del
+- Storage cerca del límite de cuota o videos mayores al límite de 2 GiB del
   bucket `production-videos`.
 
 ## Rollback seguro

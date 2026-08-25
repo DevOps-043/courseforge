@@ -41,6 +41,7 @@ export const COMPOSITION_PREVIEW_MEDIA_CONFIG = {
  * The document is not persisted and never becomes the editable source of truth.
  */
 export async function compileCompositionPreview(params: {
+  assetVariableNames?: Map<string, string>;
   assetUrls: Map<string, string>;
   deckAssetUrls?: Map<string, string>;
   document: CompositionEditorDocument;
@@ -65,6 +66,7 @@ export async function compileCompositionPreview(params: {
     .map((clip) => renderClip(
       clip,
       tracksById.get(clip.trackId),
+      params.assetVariableNames,
       params.assetUrls,
       params.deckAssetUrls,
       target,
@@ -80,7 +82,7 @@ export async function compileCompositionPreview(params: {
       && resolveCompositionClipAudioVolume(clip, track) > 0;
   });
   return `<!doctype html>
-<html lang="es">
+<html lang="es"${renderHyperframesCompositionVariables(target, params.assetVariableNames)}>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=${document.canvas.width}, height=${document.canvas.height}" />
@@ -133,6 +135,7 @@ export async function compileCompositionPreview(params: {
 function renderClip(
   clip: CompositionClip,
   track: CompositionTrack | undefined,
+  assetVariableNames: Map<string, string> | undefined,
   assetUrls: Map<string, string>,
   deckAssetUrls: Map<string, string> | undefined,
   target: CompositionCompilationTarget,
@@ -160,21 +163,45 @@ function renderClip(
     return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
   }
   const sourceUrl = assetUrls.get(clip.source.productionAssetId);
-  if (!sourceUrl) throw new CompositionPreviewCompilerError(`No existe URL de preview para el asset ${clip.source.productionAssetId}.`);
+  const variableName = isHyperframesRender
+    ? assetVariableNames?.get(clip.source.productionAssetId)
+    : undefined;
+  if (!sourceUrl && !variableName) throw new CompositionPreviewCompilerError(`No existe URL de preview para el asset ${clip.source.productionAssetId}.`);
+  const mediaSource = renderMediaSourceAttribute(sourceUrl, variableName);
   if (clip.kind === "AUDIO") {
-    return `<audio id="${escapeAttribute(clip.id)}" class="composition-audio${isHyperframesRender ? " clip" : ""}" data-hf-id="${escapeAttribute(clip.hfId)}"${hidden}${volumeAutomation} ${mediaOffset} data-volume="${volume}" src="${escapeAttribute(sourceUrl)}" preload="metadata" ${timing}></audio>`;
+    return `<audio id="${escapeAttribute(clip.id)}" class="composition-audio${isHyperframesRender ? " clip" : ""}" data-hf-id="${escapeAttribute(clip.hfId)}"${hidden}${volumeAutomation} ${mediaOffset} data-volume="${volume}" ${mediaSource} preload="metadata" ${timing}></audio>`;
   }
   if (clip.kind === "VIDEO" && isHyperframesRender) {
-    const video = `<video id="${escapeAttribute(clip.id)}-media" class="composition-media clip" src="${escapeAttribute(sourceUrl)}" muted playsinline loop preload="metadata" ${mediaOffset}${hidden} ${timing}></video>`;
+    const video = `<video id="${escapeAttribute(clip.id)}-media" class="composition-media clip" ${mediaSource} muted playsinline loop preload="metadata" ${mediaOffset}${hidden} ${timing}></video>`;
     const audio = hasSynchronizedVideoAudio
-      ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio clip" src="${escapeAttribute(sourceUrl)}" loop preload="metadata" ${mediaOffset}${hidden} data-volume="${volume}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${requireRuntimeAudioTrackIndex(runtimeAudioTrackIndex, clip.id)}"></audio>`
+      ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio clip" ${mediaSource} loop preload="metadata" ${mediaOffset}${hidden} data-volume="${volume}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${requireRuntimeAudioTrackIndex(runtimeAudioTrackIndex, clip.id)}"></audio>`
       : "";
     return `<div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${video}</div></div>${audio}`;
   }
   const media = clip.kind === "VIDEO"
-    ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" src="${escapeAttribute(sourceUrl)}" muted playsinline loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset}${hidden}></video>${hasSynchronizedVideoAudio ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${hidden} src="${escapeAttribute(sourceUrl)}" loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset} data-volume="${volume}"></audio>` : ""}`
-    : `<img class="composition-media" src="${escapeAttribute(sourceUrl)}" alt="" />`;
+    ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" ${mediaSource} muted playsinline loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset}${hidden}></video>${hasSynchronizedVideoAudio ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${hidden} ${mediaSource} loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset} data-volume="${volume}"></audio>` : ""}`
+    : `<img class="composition-media" ${mediaSource} alt="" />`;
   return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${media}</div></div></section>`;
+}
+
+function renderMediaSourceAttribute(sourceUrl: string | undefined, variableName: string | undefined) {
+  if (variableName) return `data-hf-src="${escapeAttribute(variableName)}"`;
+  if (sourceUrl) return `src="${escapeAttribute(sourceUrl)}"`;
+  throw new CompositionPreviewCompilerError("No se pudo resolver la fuente de un medio.");
+}
+
+function renderHyperframesCompositionVariables(
+  target: CompositionCompilationTarget,
+  assetVariableNames: Map<string, string> | undefined,
+) {
+  if (target !== COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER || !assetVariableNames?.size) return "";
+  const declarations = [...assetVariableNames.values()].map((name) => ({
+    default: "",
+    id: name,
+    label: "Courseforge remote asset",
+    type: "string",
+  }));
+  return ` data-composition-variables='${escapeAttribute(JSON.stringify(declarations))}'`;
 }
 
 function renderVisualCropStyle(crop: { bottom: number; left: number; right: number; top: number }) {

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { getErrorMessage } from "@/lib/errors";
 import { uploadWithSignedUrl } from "@/lib/storage-upload";
 import { validateHyperframesMediaAsset } from "@/domains/production/hyperframes/hyperframes-media-constraints";
+import { HYPERFRAMES_ASSET_DELIVERY_MODES } from "@/domains/production/hyperframes/hyperframes.types";
 import type { CloudStorageProvider } from "@/domains/production/cloud-storage/types";
 import {
   MAX_VIDEO_UPLOAD_SIZE_BYTES,
@@ -219,7 +220,14 @@ async function detectLocalImageDimensions(file: File) {
 }
 
 function assertHyperframesMediaFile(file: File, dimensions?: { height: number; width: number }) {
+  if (file.size > MAX_VIDEO_UPLOAD_SIZE_BYTES) {
+    throw new Error(
+      "La carga directa admite hasta 500 MiB. Para archivos mayores usa una importación remota o divide el video en segmentos.",
+    );
+  }
+
   const validation = validateHyperframesMediaAsset({
+    deliveryMode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
     fileName: file.name,
     fileSizeBytes: file.size,
     height: dimensions?.height,

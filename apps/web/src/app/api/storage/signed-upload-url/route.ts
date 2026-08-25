@@ -13,6 +13,9 @@ import {
 import { createClient } from '@/utils/supabase/server';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 import { validateHyperframesMediaAsset } from '@/domains/production/hyperframes/hyperframes-media-constraints';
+import {
+    HYPERFRAMES_ASSET_DELIVERY_MODES,
+} from '@/domains/production/hyperframes/hyperframes.types';
 
 const ALLOWED_BUCKETS = new Set(['thumbnails', 'production-videos', 'production-assets', 'curation-sources']);
 const BUNDLE_AGENT_REFERENCE_MAX_BYTES = 75 * 1024 * 1024;
@@ -135,6 +138,7 @@ export async function POST(request: Request) {
             && isHyperframesProductionMediaPath(filePath, contentType)
         ) {
             const mediaValidation = validateHyperframesMediaAsset({
+                deliveryMode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
                 fileName: filePath,
                 fileSizeBytes,
                 mimeType: contentType,
