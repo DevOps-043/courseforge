@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Clapperboard, Film, Loader2, MessageSquareText, PlayCircle } from "lucide-react";
+import { CheckCircle2, Clapperboard, Film, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMaterials } from "../hooks/useMaterials";
 import { HyperframesCompositionPanel } from "./HyperframesCompositionPanel";
@@ -62,7 +62,6 @@ export function PostproductionAssemblyContainer({
   const [components, setComponents] = useState<VideoComponent[]>([]);
   const [activeComponentId, setActiveComponentId] = useState<string | null>(initialComponentId || null);
   const [isLoading, setIsLoading] = useState(true);
-  const [assistantRequestKey, setAssistantRequestKey] = useState(0);
 
   const loadComponents = useCallback(async () => {
     if (!materials?.lessons) {
@@ -168,7 +167,6 @@ export function PostproductionAssemblyContainer({
         <div className="h-full min-w-0">
           {activeComponent && (
             <HyperframesCompositionPanel
-              assistantRequestKey={assistantRequestKey}
               componentId={activeComponent.id}
               componentTitle={getComponentTitle(activeComponent)}
               lessonLibrary={components.map((component) => ({
@@ -178,6 +176,7 @@ export function PostproductionAssemblyContainer({
                 title: getComponentTitle(component),
               }))}
               onSelectLesson={setActiveComponentId}
+              onContinueToPublication={onNext}
               onVideoCompleted={() => { void handleVideoCompleted(); }}
               selectedLessonId={activeComponentId}
             />
@@ -185,12 +184,6 @@ export function PostproductionAssemblyContainer({
         </div>
       </div>
 
-      {onNext && (
-        <footer className="flex min-h-[72px] shrink-0 flex-wrap items-center justify-end gap-3 border-t border-slate-200 bg-white px-5 py-4 dark:border-white/10 dark:bg-[#101720]">
-          <button type="button" onClick={() => setAssistantRequestKey((current) => current + 1)} disabled={!activeComponent} className="flex min-h-10 items-center gap-2 rounded-xl border border-[var(--engine-accent)] bg-white px-4 py-2.5 text-sm font-bold text-[var(--engine-primary)] shadow-sm transition-colors hover:bg-[var(--engine-accent)]/10 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-[var(--engine-surface-hover)] dark:text-[var(--engine-accent)]"><MessageSquareText size={17} /> Modificar con SofLIA</button>
-          <button type="button" onClick={onNext} className="flex min-h-10 items-center gap-2 rounded-xl bg-cyan-400 px-5 py-2.5 text-sm font-bold text-[#062036] shadow-sm transition hover:bg-cyan-300"><PlayCircle size={17} /> Continuar a publicación</button>
-        </footer>
-      )}
     </section>
   );
 }

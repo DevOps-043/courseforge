@@ -2,6 +2,7 @@ import { cookies } from 'next/headers'
 import { jwtVerify, type JWTPayload } from 'jose'
 import { getErrorMessage } from '@/lib/errors'
 import { getCourseforgeJwtSecret } from '@/lib/server/env'
+import { normalizePlatformRole } from '@/utils/auth/platform-role'
 
 /**
  * Verifica la sesión del usuario desde la cookie cf_access_token.
@@ -78,6 +79,9 @@ export async function getAuthBridgeUser(): Promise<AuthBridgeUser | null> {
 
     const appMetadata = typedPayload.app_metadata || {}
     const userMetadata = typedPayload.user_metadata || {}
+    const rawPlatformRole =
+      userMetadata.platform_role || userMetadata.cargo_rol
+    const platformRole = normalizePlatformRole(rawPlatformRole)
 
     return {
       id: typedPayload.sub,
@@ -87,8 +91,8 @@ export async function getAuthBridgeUser(): Promise<AuthBridgeUser | null> {
       last_name: userMetadata.last_name,
       display_name: userMetadata.display_name,
       avatar_url: userMetadata.avatar_url,
-      cargo_rol: userMetadata.cargo_rol || userMetadata.platform_role,
-      platform_role: userMetadata.platform_role || userMetadata.cargo_rol,
+      cargo_rol: platformRole || rawPlatformRole,
+      platform_role: platformRole || rawPlatformRole,
       organization_ids: appMetadata.organization_ids || [],
       active_organization_id: appMetadata.active_organization_id || null,
     }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import styles from '../PublicationWorkspace.module.css';
 
 interface VideoMappingCheckboxProps {
   checked: boolean;
@@ -32,7 +33,7 @@ export function VideoMappingCheckbox({
       checked={checked}
       disabled={disabled}
       onChange={onChange}
-      className={`w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-[var(--engine-accent)] focus:ring-[var(--engine-accent)]/30 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${className || ''}`}
+      className={`${styles.mappingCheckbox} ${className || ''}`}
     />
   );
 }

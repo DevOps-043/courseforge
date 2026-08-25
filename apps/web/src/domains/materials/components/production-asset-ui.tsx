@@ -14,7 +14,7 @@ import type {
 
 export const PRODUCTION_THEME = {
   workspaceHeader:
-    "flex h-16 shrink-0 items-center border-b border-slate-200 bg-white px-5 text-slate-900 shadow-sm dark:border-white/10 dark:bg-[var(--engine-surface-solid)] dark:text-white",
+    "relative z-20 mx-2 mt-2 flex min-h-[58px] shrink-0 items-center overflow-visible rounded-2xl border border-[var(--engine-border)] bg-[var(--engine-surface)] px-3 text-[var(--engine-text)] shadow-[0_1rem_3rem_var(--engine-shadow)] backdrop-blur-xl",
   card:
     "overflow-hidden rounded-2xl border bg-white dark:bg-[var(--engine-surface-solid)]",
   cardBorder: {

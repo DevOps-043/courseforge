@@ -29,6 +29,7 @@ import { PublicationAlerts } from './components/PublicationAlerts';
 import { PublicationHeader } from './components/PublicationHeader';
 import { PublishSuccessModal } from './components/PublishSuccessModal';
 import { VideoMappingList } from './components/VideoMappingList';
+import styles from './PublicationWorkspace.module.css';
 
 interface PublicationClientViewProps {
     artifactId: string;
@@ -117,6 +118,8 @@ export default function PublicationClientView({
     const missingThumbnail = !courseData.thumbnail_url;
     const isMetadataComplete = !missingEmail && !missingSlug && !missingThumbnail;
     const isReady = isMetadataComplete;
+    const metadataCompleteCount =
+        3 - [missingEmail, missingSlug, missingThumbnail].filter(Boolean).length;
 
     const handleConfirmReset = async () => {
         setIsResetting(true);
@@ -278,28 +281,30 @@ export default function PublicationClientView({
     };
 
     return (
-        <div className="space-y-8">
+        <div className={styles.workspace}>
             {existingRequest?.upstream_dirty && (
-                <UpstreamChangeAlert
-                    source={
-                        existingRequest.upstream_dirty_source ||
-                        'un paso anterior'
-                    }
-                    onIterate={async () => {
-                        router.refresh();
-                        await dismissUpstreamDirtyAction(
-                            'publication_requests',
-                            artifactId,
-                        );
-                    }}
-                    onDismiss={async () => {
-                        await dismissUpstreamDirtyAction(
-                            'publication_requests',
-                            artifactId,
-                        );
-                        router.refresh();
-                    }}
-                />
+                <div className={styles.upstreamAlert}>
+                    <UpstreamChangeAlert
+                        source={
+                            existingRequest.upstream_dirty_source ||
+                            'un paso anterior'
+                        }
+                        onIterate={async () => {
+                            router.refresh();
+                            await dismissUpstreamDirtyAction(
+                                'publication_requests',
+                                artifactId,
+                            );
+                        }}
+                        onDismiss={async () => {
+                            await dismissUpstreamDirtyAction(
+                                'publication_requests',
+                                artifactId,
+                            );
+                            router.refresh();
+                        }}
+                    />
+                </div>
             )}
 
             <PublicationHeader
@@ -308,6 +313,9 @@ export default function PublicationClientView({
                 status={existingRequest?.status}
                 profile={profile}
                 isReady={isReady}
+                metadataCompleteCount={metadataCompleteCount}
+                selectedLessonsCount={selectedLessons.size}
+                selectableLessonsCount={selectableLessonsCount}
                 isSaving={isSaving}
                 isPublishing={isPublishing}
                 isResetting={isResetting}
@@ -318,29 +326,33 @@ export default function PublicationClientView({
                 onPublish={() => setIsPublishConfirmModalOpen(true)}
             />
 
-            <PublicationAlerts
-                missingEmail={missingEmail}
-                missingSlug={missingSlug}
-                missingThumbnail={missingThumbnail}
-                missingVideos={missingVideos}
-                selectedLessonsCount={selectedLessons.size}
-                selectableLessonsCount={selectableLessonsCount}
-            />
+            <div className={styles.workspaceGrid}>
+                <main className={styles.primaryColumn}>
+                    <VideoMappingList
+                        lessons={lessons}
+                        mappings={videoMappings}
+                        onMappingChange={setVideoMappings}
+                        selectedLessons={selectedLessons}
+                        onSelectionChange={setSelectedLessons}
+                    />
+                </main>
 
-            <div className="grid gap-8">
-                <CourseDataForm
-                    initialData={courseData}
-                    onDataChange={setCourseData}
-                    lockedEmail={lockedEmail ?? undefined}
-                />
+                <aside className={styles.sideRail} aria-label="Configuración de publicación">
+                    <PublicationAlerts
+                        missingEmail={missingEmail}
+                        missingSlug={missingSlug}
+                        missingThumbnail={missingThumbnail}
+                        missingVideos={missingVideos}
+                        selectedLessonsCount={selectedLessons.size}
+                        selectableLessonsCount={selectableLessonsCount}
+                    />
 
-                <VideoMappingList
-                    lessons={lessons}
-                    mappings={videoMappings}
-                    onMappingChange={setVideoMappings}
-                    selectedLessons={selectedLessons}
-                    onSelectionChange={setSelectedLessons}
-                />
+                    <CourseDataForm
+                        initialData={courseData}
+                        onDataChange={setCourseData}
+                        lockedEmail={lockedEmail ?? undefined}
+                    />
+                </aside>
             </div>
 
             <ConfirmationModal

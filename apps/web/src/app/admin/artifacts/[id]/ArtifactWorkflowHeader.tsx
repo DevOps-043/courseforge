@@ -29,18 +29,18 @@ export function ArtifactWorkflowHeader({
   compact = false,
 }: ArtifactWorkflowHeaderProps) {
   return (
-    <div className={`relative flex min-w-0 items-center justify-between gap-4 overflow-hidden ${compact ? "p-0" : "rounded-2xl border border-gray-200 bg-white p-6 dark:border-[var(--engine-muted)]/10 dark:bg-[var(--engine-surface-solid)]"}`}>
+    <div className={`relative flex min-w-0 items-center justify-between gap-4 overflow-hidden ${compact ? "min-w-[12rem] p-0" : "engine-page-hero min-h-[8.5rem] p-6 md:p-8"}`}>
       {!compact && <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-[var(--engine-info)]/5 rounded-full blur-[80px] pointer-events-none translate-x-1/2 -translate-y-1/2" />}
       <div className="relative z-10 min-w-0 flex-1">
-        <div className={`flex items-center gap-3 ${compact ? "" : "mb-1"}`}>
+        <div className={`flex min-w-0 items-center gap-3 ${compact ? "" : "mb-2"}`}>
           <h1
-            className={`${compact ? "text-base text-slate-900 dark:text-white" : "text-xl text-gray-900 dark:text-white"} font-bold truncate`}
+            className={`${compact ? "font-display !text-[1.45rem] !font-normal !leading-none text-[var(--engine-text)]" : "font-display text-3xl font-normal text-white md:text-4xl"} truncate`}
             title={artifact.idea_central || undefined}
           >
             {getArtifactTitle(artifact.idea_central)}
           </h1>
           <div
-            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 uppercase tracking-wider ${currentStatusStyle}`}
+            className={`${compact ? "hidden 2xl:flex" : "flex"} items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${currentStatusStyle}`}
           >
             {displayState === "READY_FOR_QA" ? (
               <CheckCircle2 size={10} />
@@ -50,7 +50,7 @@ export function ArtifactWorkflowHeader({
             {displayState.replaceAll("_", " ")}
           </div>
         </div>
-        {!compact && <p className="text-gray-500 dark:text-[var(--engine-muted)] text-xs font-mono">
+        {!compact && <p className="font-sans text-xs text-white/65">
           {artifact.courseId || artifact.id} " Creado hace{" "}
           {new Date(artifact.created_at).toLocaleDateString()}
         </p>}

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, Clapperboard, Crop, Eye, EyeOff, FileQuestion, GripHorizontal, Grid3X3, History, Image as ImageIcon, Loader2, Magnet, Maximize2, Minimize2, Minus, MousePointer2, Music2, PanelRight, Pause, Play, Plus, RefreshCw, RotateCcw, Save, Scan, Scissors, Send, Trash2, Video, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronRight, Clapperboard, Crop, Eye, EyeOff, FileQuestion, GripHorizontal, Grid3X3, History, Image as ImageIcon, Loader2, Magnet, Maximize2, Minimize2, Minus, MousePointer2, Music2, PanelRight, Pause, Play, Plus, RefreshCw, RotateCcw, Save, Scan, Scissors, Send, SlidersHorizontal, Sparkles, Trash2, Video, X } from "lucide-react";
 import type { CompositionClip, CompositionEditorDocument, CompositionTrack, CompositionVisualCrop } from "@/domains/production/composition-editor/composition-document.types";
 import { formatCompositionTimecode, parseCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
@@ -61,6 +61,7 @@ import {
   type HyperframesRenderProfileId,
   type HyperframesRenderSettings,
 } from "@/domains/production/hyperframes/hyperframes-render-profiles";
+import styles from "./CompositionStudio.module.css";
 
 type DocumentPayload = { document: CompositionEditorDocument; documentHash: string; version: number };
 type SavePatchOptions = { preservePreviewRuntime?: boolean };
@@ -144,11 +145,11 @@ export interface CompositionStudioAsset {
 }
 
 interface NativeCompositionPreviewProps {
-  assistantRequestKey?: number;
   assets: CompositionStudioAsset[];
   compositionId: string;
   draftId: string;
   lessons: CompositionStudioLesson[];
+  onContinueToPublication?: () => void;
   onVideoCompleted?: () => void;
   onSelectLesson: (lessonId: string) => void;
   selectedLessonId: string | null;
@@ -170,10 +171,11 @@ async function readCompositionApiResponse<T>(response: Response, fallbackMessage
 }
 
 /** The native assembly studio: library, full preview, timeline and contextual inspector. */
-export function NativeCompositionPreview({ assistantRequestKey = 0, assets, compositionId, draftId, lessons, onSelectLesson, onVideoCompleted, selectedLessonId }: NativeCompositionPreviewProps) {
+export function NativeCompositionPreview({ assets, compositionId, draftId, lessons, onContinueToPublication, onSelectLesson, onVideoCompleted, selectedLessonId }: NativeCompositionPreviewProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const previewShellRef = useRef<HTMLDivElement | null>(null);
   const studioGridRef = useRef<HTMLDivElement | null>(null);
+  const toolMenuRef = useRef<HTMLDivElement | null>(null);
   const payloadRef = useRef<DocumentPayload | null>(null);
   const saveInFlightRef = useRef(false);
   const saveQueueRef = useRef<CompositionSaveQueue<() => Promise<boolean>> | null>(null);
@@ -249,10 +251,27 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   const [history, setHistory] = useState<DocumentHistoryEntry[] | null>(null);
   const [studioTopPanePercent, setStudioTopPanePercent] = useState(60);
   const [studioResizing, setStudioResizing] = useState(false);
+  const [toolMenuOpen, setToolMenuOpen] = useState(false);
 
   useEffect(() => {
     onVideoCompletedRef.current = onVideoCompleted;
   }, [onVideoCompleted]);
+
+  useEffect(() => {
+    if (!toolMenuOpen) return;
+    const closeOnPointerDown = (event: globalThis.PointerEvent) => {
+      if (!toolMenuRef.current?.contains(event.target as Node)) setToolMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setToolMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnPointerDown);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnPointerDown);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [toolMenuOpen]);
 
   const resizeStudioPanes = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!studioResizing) return;
@@ -365,11 +384,6 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
     };
   }, [draftId]);
   useEffect(() => () => runtimePatchCoordinatorRef.current?.dispose(), []);
-  useEffect(() => {
-    if (assistantRequestKey <= 0) return;
-    setManualInspectorOpen(true);
-    setInspectorTab("assistant");
-  }, [assistantRequestKey]);
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.source !== frameRef.current?.contentWindow) return;
@@ -1556,12 +1570,34 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
   if (loading) return <LoadingPreview />;
   if (error || !payload || !previewUrl) return <PreviewError error={error || "No hay composición disponible."} onRetry={() => void loadDocument()} />;
 
-  const editorColumns = inspectorOpen
-    ? "lg:grid-cols-[340px_minmax(420px,1fr)_280px]"
-    : "lg:grid-cols-[360px_minmax(0,1fr)]";
+  const deliveryMenu = (
+    <AssemblyActions
+      compact
+      assembly={assembly}
+      busy={assembling}
+      error={assemblyError}
+      notice={assemblyNotice}
+      history={snapshotHistory}
+      historyOpen={snapshotHistoryOpen}
+      priorCompletedVideo={Boolean(renderRecovery?.completedVideo && renderRecovery.completedVideo.compositionRevisionId !== assembly?.revisionId)}
+      providerStatus={renderProviderStatus}
+      renderStatus={renderStatus}
+      selectedRenderProfileId={selectedRenderProfileId}
+      onApprove={approveAssembly}
+      onDeleteAndRender={deletePriorVideoAndRender}
+      onHistoryToggle={() => setSnapshotHistoryOpen((current) => !current)}
+      onPrepare={prepareAssembly}
+      onProfileChange={(profileId) => {
+        setSelectedRenderProfileId(profileId);
+        setAssemblyNotice(null);
+      }}
+      onRender={() => submitAssemblyRender()}
+      onRestore={restoreSnapshot}
+    />
+  );
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm dark:border-white/10 dark:bg-[var(--engine-canvas)]">
+    <section className={`${styles.studio} courseforge-composition-studio`}>
       {saveError && (
         <CompositionErrorToast
           message={saveError}
@@ -1575,66 +1611,73 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           retrying={saving}
         />
       )}
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-[var(--engine-surface-hover)]">
-        <div>
-          <h5 className="text-sm font-bold text-slate-900 dark:text-white">Estudio de edición</h5>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-gray-400">Versión {payload.version} · {formatSeconds(duration)} · duración por {durationSourceLabel || "origen no registrado"} · cambios guardados por versión</p>
-        </div>
-        <div className="flex items-center gap-1">
-          <span role="status" className={`mr-2 text-[11px] font-medium ${saving ? "text-[var(--engine-accent)]" : saveError ? "text-red-700 dark:text-red-300" : "text-[#10B981]"}`}>{saving ? "Guardando…" : saveError ? "Error al guardar" : "Guardado"}</span>
-          <button type="button" onClick={() => setManualInspectorOpen((current) => !current)} className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${inspectorOpen ? "border-[var(--engine-accent)] bg-[var(--engine-accent)]/10 text-[var(--engine-primary)] dark:text-[var(--engine-accent)]" : "border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5"}`}><PanelRight size={14} /> {inspectorOpen ? "Ocultar panel" : "Mostrar panel"}</button>
-          <div className="relative">
-            <button type="button" disabled={saving} onClick={() => void loadHistory()} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5" title="Restaurar una versión editable previa"><History size={14} /> Historial de edición</button>
-            {history && <div className="absolute right-0 z-50 mt-1 w-72 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-xl dark:border-white/10 dark:bg-[var(--engine-surface-hover)]"><div className="flex items-center justify-between px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500"><span>Versiones recientes</span><button type="button" onClick={() => setHistory(null)} className="rounded p-0.5 hover:bg-slate-100 dark:hover:bg-white/10"><X size={12} /></button></div>{history.map((entry) => <button key={entry.documentHash} type="button" disabled={saving || entry.version === payload.version} onClick={() => void restoreHistoryEntry(entry)} className="flex w-full items-center justify-between rounded px-2 py-2 text-left text-xs hover:bg-slate-100 disabled:cursor-default disabled:opacity-50 dark:hover:bg-white/10"><span><span className="block font-semibold">Versión {entry.version}{entry.version === payload.version ? " (actual)" : ""}</span><span className="block text-[10px] text-slate-500">{new Date(entry.createdAt).toLocaleString()}</span></span>{entry.version !== payload.version && <span className="text-[10px] font-bold text-cyan-700 dark:text-cyan-300">Restaurar</span>}</button>)}</div>}
-          </div>
-          <button type="button" onClick={() => void loadDocument()} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:text-gray-400 dark:hover:bg-white/10" title="Recargar composición"><RefreshCw size={15} /></button>
-        </div>
-      </header>
-
       <div
         ref={studioGridRef}
         style={{
           "--studio-preview-row": `${studioTopPanePercent}fr`,
           "--studio-timeline-row": `${100 - studioTopPanePercent}fr`,
         } as CSSProperties}
-        className={`grid min-h-0 flex-1 gap-2 p-2 lg:grid-rows-[minmax(220px,var(--studio-preview-row))_10px_minmax(150px,var(--studio-timeline-row))] ${editorColumns}`}
+        className={`${styles.editorGrid} ${inspectorOpen ? styles.editorGridWithInspector : ""}`}
       >
-        <StudioLibrary assets={assets} lessons={lessons} onAddAsset={addAssetToTimeline} onSelectLesson={onSelectLesson} selectedLessonId={selectedLessonId} onSelectAsset={selectClip} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))} />
+        <StudioLibrary assets={assets} delivery={deliveryMenu} lessons={lessons} onAddAsset={addAssetToTimeline} onSelectLesson={onSelectLesson} selectedLessonId={selectedLessonId} onSelectAsset={selectClip} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))} />
 
-        <section ref={previewShellRef} className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-[var(--engine-canvas)] dark:border-white/10 lg:col-start-2 lg:row-start-1 ${previewFullscreen ? "h-screen w-screen rounded-none" : ""}`}>
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-2 py-1.5 text-xs text-slate-300">
-            <span className="flex shrink-0 items-center gap-2 font-semibold">{agentProposal ? "Preview de propuesta · no guardado" : "Preview completo"}{!agentProposal && previewDirty && <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[9px] font-bold text-amber-200">Cambios pendientes</span>}</span>
-            <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <PreviewToolButton active={directEditingEnabled} label="Editar" title="Activar selección, arrastre y tiradores" onClick={() => setDirectEditingEnabled((current) => !current)}><MousePointer2 size={13} /></PreviewToolButton>
-              <PreviewToolButton active={snapEnabled} label="Snap" title="Alinear clips, recortes y animaciones con el cursor y con otros límites temporales" onClick={() => setSnapEnabled((current) => !current)}><Magnet size={13} /></PreviewToolButton>
-              <PreviewToolButton active={gridVisible} label="Rejilla" title="Mostrar guías visuales en el canvas" onClick={() => setGridVisible((current) => !current)}><Grid3X3 size={13} /></PreviewToolButton>
-              <PreviewToolButton active={visualCropEnabled} label="Recorte" title="Recorta el contenido sin modificar el tamaño ni la posición del asset" onClick={() => { setDirectEditingEnabled(true); setSaveError(null); setVisualCropEnabled((current) => !current); }}><Scan size={13} /></PreviewToolButton>
-              <PreviewToolButton active={trimToolEnabled} label="Tiempo" title="Activar el recorte temporal de inicio y duración en la timeline" onClick={() => setTrimToolEnabled((current) => !current)}><Crop size={13} /></PreviewToolButton>
-              <PreviewToolButton active={false} label="Dividir" title="Dividir el clip seleccionado en el cursor" onClick={() => void splitSelectedClipAtPlayhead()}><Scissors size={13} /></PreviewToolButton>
-              <PreviewToolButton active={removalRangeStart !== null} label={removalRangeStart === null ? "Marcar intervalo" : "Eliminar intervalo"} title={removalRangeStart === null ? "Marcar el inicio del intervalo temporal dentro del clip seleccionado" : `Eliminar desde ${formatCompositionTimecode(removalRangeStart.seconds)} hasta el cursor`} onClick={() => {
-                if (removalRangeStart === null) markSelectedIntervalStart();
-                else void removeSelectedInterval();
-              }}><Trash2 size={13} /></PreviewToolButton>
-              <span className="mx-1 h-5 w-px bg-white/15" />
-              <button type="button" disabled={previewZoom <= 0.75} onClick={() => changePreviewZoom(-0.1)} title="Alejar preview" aria-label="Alejar preview" className="rounded p-1.5 hover:bg-white/10 disabled:opacity-30"><Minus size={13} /></button>
-              <span className="min-w-10 text-center font-mono text-[10px] text-slate-400">{Math.round(previewZoom * 100)}%</span>
-              <button type="button" disabled={previewZoom >= 1.75} onClick={() => changePreviewZoom(0.1)} title="Acercar preview" aria-label="Acercar preview" className="rounded p-1.5 hover:bg-white/10 disabled:opacity-30"><Plus size={13} /></button>
-              <button type="button" onClick={() => void togglePreviewFullscreen()} title={previewFullscreen ? "Salir de pantalla completa" : "Abrir preview en pantalla completa"} aria-label={previewFullscreen ? "Salir de pantalla completa" : "Abrir preview en pantalla completa"} className="rounded p-1.5 hover:bg-white/10">{previewFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</button>
-              <span className="ml-1 font-mono text-[10px] text-slate-400">{formatSeconds(seconds)} / {formatSeconds(duration)}</span>
+        <section ref={previewShellRef} className={`${styles.previewPanel} ${previewFullscreen ? styles.previewFullscreen : ""}`}>
+          <div className={styles.previewToolbar}>
+            <div className={styles.previewIdentity}>
+              <span className={styles.previewIdentityIcon}><Clapperboard size={14} aria-hidden="true" /></span>
+              <span className={styles.previewTitle}>Ensamble <small>v{payload.version} · {formatSeconds(duration)}</small>{agentProposal ? <span className={styles.pendingBadge}>Propuesta sin guardar</span> : previewDirty ? <span className={styles.pendingBadge}>Cambios pendientes</span> : null}</span>
+            </div>
+            <div className={styles.previewTools}>
+              <div className={styles.toolbarGroup} aria-label="Edición principal">
+                <PreviewToolButton active={directEditingEnabled} label="Editar" title="Activar selección, arrastre y tiradores" onClick={() => setDirectEditingEnabled((current) => !current)}><MousePointer2 size={13} /></PreviewToolButton>
+                <PreviewToolButton active={snapEnabled} label="Snap" title="Alinear clips, recortes y animaciones con el cursor y con otros límites temporales" onClick={() => setSnapEnabled((current) => !current)}><Magnet size={13} /></PreviewToolButton>
+                <PreviewToolButton active={false} label="Dividir" title="Dividir el clip seleccionado en el cursor" onClick={() => void splitSelectedClipAtPlayhead()}><Scissors size={13} /></PreviewToolButton>
+              </div>
+              <div ref={toolMenuRef} className={styles.toolMenuWrap}>
+                <button type="button" aria-expanded={toolMenuOpen} aria-haspopup="menu" onClick={() => setToolMenuOpen((current) => !current)} className={`${styles.toolButton} ${gridVisible || visualCropEnabled || trimToolEnabled || removalRangeStart !== null ? styles.toolButtonActive : ""}`} title="Abrir herramientas adicionales"><SlidersHorizontal size={13} /><span>Herramientas</span><ChevronDown className={toolMenuOpen ? styles.toolMenuChevronOpen : ""} size={12} /></button>
+                {toolMenuOpen && <div className={styles.toolMenu} role="menu" aria-label="Herramientas adicionales">
+                  <button type="button" role="menuitemcheckbox" aria-checked={gridVisible} onClick={() => { setGridVisible((current) => !current); setToolMenuOpen(false); }} className={styles.toolMenuItem}><Grid3X3 size={14} /><span><strong>Rejilla</strong><small>Guías visuales del canvas</small></span><i data-active={gridVisible} /></button>
+                  <button type="button" role="menuitemcheckbox" aria-checked={visualCropEnabled} onClick={() => { setDirectEditingEnabled(true); setSaveError(null); setVisualCropEnabled((current) => !current); setToolMenuOpen(false); }} className={styles.toolMenuItem}><Scan size={14} /><span><strong>Recorte visual</strong><small>Ajustar bordes del medio</small></span><i data-active={visualCropEnabled} /></button>
+                  <button type="button" role="menuitemcheckbox" aria-checked={trimToolEnabled} onClick={() => { setTrimToolEnabled((current) => !current); setToolMenuOpen(false); }} className={styles.toolMenuItem}><Crop size={14} /><span><strong>Recorte temporal</strong><small>Modificar inicio y duración</small></span><i data-active={trimToolEnabled} /></button>
+                  <button type="button" role="menuitem" onClick={() => { if (removalRangeStart === null) markSelectedIntervalStart(); else void removeSelectedInterval(); setToolMenuOpen(false); }} className={styles.toolMenuItem}><Trash2 size={14} /><span><strong>{removalRangeStart === null ? "Marcar intervalo" : "Eliminar intervalo"}</strong><small>{removalRangeStart === null ? "Define el inicio de un corte" : `Desde ${formatCompositionTimecode(removalRangeStart.seconds)} al cursor`}</small></span><i data-active={removalRangeStart !== null} /></button>
+                </div>}
+              </div>
+              <div className={styles.toolbarGroup} aria-label="Vista del monitor">
+                <button type="button" disabled={previewZoom <= 0.75} onClick={() => changePreviewZoom(-0.1)} title="Alejar preview" aria-label="Alejar preview" className={styles.toolIconButton}><Minus size={13} /></button>
+                <span className={styles.toolValue}>{Math.round(previewZoom * 100)}%</span>
+                <button type="button" disabled={previewZoom >= 1.75} onClick={() => changePreviewZoom(0.1)} title="Acercar preview" aria-label="Acercar preview" className={styles.toolIconButton}><Plus size={13} /></button>
+                <button type="button" onClick={() => void togglePreviewFullscreen()} title={previewFullscreen ? "Salir de pantalla completa" : "Abrir preview en pantalla completa"} aria-label={previewFullscreen ? "Salir de pantalla completa" : "Abrir preview en pantalla completa"} className={styles.toolIconButton}>{previewFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</button>
+              </div>
+            </div>
+            <div className={styles.previewUtilities}>
+              <span role="status" data-state={saving ? "saving" : saveError ? "error" : "saved"} className={styles.saveStatus}>{saving ? "Guardando…" : saveError ? "Error" : "Guardado"}</span>
+              <div className={styles.toolbarGroup} aria-label="Documento e inspector">
+                <button type="button" onClick={() => setManualInspectorOpen((current) => !current)} className={`${styles.toolIconButton} ${inspectorOpen ? styles.toolIconButtonActive : ""}`} title={inspectorOpen ? "Cerrar inspector" : "Abrir inspector"} aria-label={inspectorOpen ? "Cerrar inspector" : "Abrir inspector"}><PanelRight size={14} /></button>
+                <div className={styles.historyWrap}>
+                  <button type="button" disabled={saving} onClick={() => void loadHistory()} className={styles.toolIconButton} title="Historial de edición" aria-label="Abrir historial de edición"><History size={14} /></button>
+                  {history && <div className={styles.historyMenu} role="dialog" aria-label="Historial de edición"><div className={styles.historyMenuHeader}><span>Historial de edición</span><button type="button" aria-label="Cerrar historial" onClick={() => setHistory(null)}><X size={12} /></button></div>{history.map((entry, entryIndex) => <button key={`${entry.documentHash}-${entry.version}-${entryIndex}`} type="button" disabled={saving || entry.version === payload.version} onClick={() => void restoreHistoryEntry(entry)} className={styles.historyItem}><span><strong>Versión {entry.version}{entry.version === payload.version ? " · actual" : ""}</strong><small>{new Date(entry.createdAt).toLocaleString()}</small></span>{entry.version !== payload.version && <em>Restaurar</em>}</button>)}</div>}
+                </div>
+                <button type="button" onClick={() => void loadDocument()} className={styles.toolIconButton} title="Recargar composición" aria-label="Recargar composición"><RefreshCw size={14} /></button>
+              </div>
+              <div className={styles.toolbarActionGroup}>
+                <button type="button" onClick={() => { setManualInspectorOpen(true); setInspectorTab("assistant"); }} className={`${styles.toolButton} ${styles.assistantTool}`} title="Ajustar la composición con SofLIA"><Sparkles size={13} /><span>SofLIA</span></button>
+                {onContinueToPublication && <button type="button" onClick={onContinueToPublication} className={`${styles.toolButton} ${styles.publishTool}`} title="Continuar a publicación"><span>Publicar</span><ArrowRight size={13} /></button>}
+              </div>
             </div>
           </div>
-          <div className="flex min-h-0 flex-1 items-center justify-center p-1.5">
-            <div className="relative aspect-video h-full max-h-full max-w-full overflow-hidden rounded-lg bg-black shadow-2xl">
+          <div className={`${styles.previewViewport} courseforge-composition-preview-viewport`}>
+            <div className={styles.previewFrame}>
               <iframe ref={frameRef} title="Preview completo de composición" src={previewUrl} sandbox="allow-scripts" allow="autoplay" className="absolute inset-0 h-full w-full" />
-              {previewMediaState === "PREPARING" && <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/70 text-white"><div className="flex items-center gap-2 rounded-full bg-slate-900/90 px-4 py-2 text-xs font-semibold shadow-xl"><Loader2 className="animate-spin" size={15} /> Preparando medios{pendingPreviewMediaIds.length > 0 ? ` (${pendingPreviewMediaIds.length})` : ""}…</div></div>}
-              {previewMediaState === "BUFFERING" && <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-slate-950/90 px-3 py-1.5 text-[11px] font-semibold text-white shadow-xl"><span className="inline-flex items-center gap-2"><Loader2 className="animate-spin" size={13} /> Cargando el siguiente medio{pendingPreviewMediaIds.length > 1 ? ` (${pendingPreviewMediaIds.length})` : ""}…</span></div>}
+              {previewMediaState === "PREPARING" && <div className={styles.mediaPreparing}><div className={styles.mediaStatus}><Loader2 className="animate-spin" size={15} /> Preparando medios{pendingPreviewMediaIds.length > 0 ? ` (${pendingPreviewMediaIds.length})` : ""}…</div></div>}
+              {previewMediaState === "BUFFERING" && <div className={styles.mediaBuffering}><span className={styles.mediaStatus}><Loader2 className="animate-spin" size={13} /> Cargando medio{pendingPreviewMediaIds.length > 1 ? ` (${pendingPreviewMediaIds.length})` : ""}…</span></div>}
             </div>
           </div>
-          {playbackError && <div role="alert" className="flex items-center justify-between gap-3 border-t border-amber-300/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-100"><span>{playbackError}</span><button type="button" onClick={refreshPreviewMedia} className="shrink-0 rounded border border-amber-200/50 px-2 py-1 font-semibold hover:bg-amber-200/10">Recargar medios</button></div>}
-          <div className="flex shrink-0 items-center gap-2 border-t border-white/10 bg-[var(--engine-primary)] px-2 py-1.5">
-            <button type="button" disabled={saving || !previewReady || previewMediaState === "PREPARING"} onClick={togglePreviewPlayback} title={previewDirty ? "Actualizar el preview y reproducir" : transportActive ? "Pausar" : "Reproducir"} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--engine-accent)] text-[var(--engine-primary)] hover:bg-[#10B981] disabled:cursor-wait disabled:opacity-50">{transportActive ? <Pause size={14} /> : <Play size={14} />}</button>
-            <button type="button" disabled={saving || !previewReady || Boolean(agentProposal)} onClick={() => refreshPreviewDocument(false)} title="Actualizar el preview con los cambios guardados" aria-label="Actualizar preview" className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border disabled:cursor-wait disabled:opacity-50 ${previewDirty ? "border-amber-300/50 bg-amber-400/15 text-amber-200" : "border-white/15 text-slate-300 hover:bg-white/10"}`}><RefreshCw size={13} /></button>
-            <input aria-label="Posición del preview" disabled={saving || !previewReady} type="range" min="0" max={duration} step="0.05" value={Math.min(seconds, duration)} onPointerDown={beginScrub} onChange={(event) => seek(Number(event.target.value))} className="w-full accent-[var(--engine-accent)] disabled:cursor-wait disabled:opacity-50" />
+          {playbackError && <div role="alert" className="flex items-center justify-between gap-3 border-t border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-300/30 dark:bg-amber-400/10 dark:text-amber-100"><span>{playbackError}</span><button type="button" onClick={refreshPreviewMedia} className="shrink-0 rounded border border-amber-400/50 px-2 py-1 font-semibold hover:bg-amber-100 dark:border-amber-200/50 dark:hover:bg-amber-200/10">Recargar medios</button></div>}
+          <div className={styles.transport}>
+            <button type="button" disabled={saving || !previewReady || previewMediaState === "PREPARING"} onClick={togglePreviewPlayback} title={previewDirty ? "Actualizar el preview y reproducir" : transportActive ? "Pausar" : "Reproducir"} className={styles.transportPrimary}>{transportActive ? <Pause size={14} /> : <Play size={14} />}</button>
+            <button type="button" disabled={saving || !previewReady || Boolean(agentProposal)} onClick={() => refreshPreviewDocument(false)} title="Actualizar el preview con los cambios guardados" aria-label="Actualizar preview" className={`${styles.transportSecondary} ${previewDirty ? styles.transportSecondaryDirty : ""}`}><RefreshCw size={13} /></button>
+            <input aria-label="Posición del preview" disabled={saving || !previewReady} type="range" min="0" max={duration} step="0.05" value={Math.min(seconds, duration)} onPointerDown={beginScrub} onChange={(event) => seek(Number(event.target.value))} className={styles.transportProgress} style={{ "--transport-progress": `${duration > 0 ? Math.min(100, (seconds / duration) * 100) : 0}%` } as CSSProperties} />
+            <span className={styles.transportTime}>{formatSeconds(seconds)} / {formatSeconds(duration)}</span>
           </div>
         </section>
 
@@ -1666,26 +1709,25 @@ export function NativeCompositionPreview({ assistantRequestKey = 0, assets, comp
           onPointerUp={finishStudioResize}
           onPointerCancel={finishStudioResize}
           title="Arrastra para cambiar el tamaño del preview y la timeline. Doble clic para restablecer."
-          className={`group hidden cursor-row-resize touch-none items-center gap-2 rounded-md outline-none lg:col-span-2 lg:row-start-2 lg:flex ${studioResizing ? "bg-cyan-100 dark:bg-cyan-400/10" : "hover:bg-slate-100 focus:bg-slate-100 dark:hover:bg-white/5 dark:focus:bg-white/5"}`}
+          className={`${styles.resizer} ${studioResizing ? styles.resizerActive : ""}`}
         >
-          <span className="h-px flex-1 bg-slate-300 group-hover:bg-cyan-400 dark:bg-white/15" />
-          <span className="flex h-5 items-center rounded-full border border-slate-300 bg-white px-2 text-slate-500 shadow-sm group-hover:border-cyan-400 group-hover:text-cyan-600 dark:border-white/20 dark:bg-[var(--engine-surface-hover)] dark:text-gray-400"><GripHorizontal size={14} /></span>
-          <span className="h-px flex-1 bg-slate-300 group-hover:bg-cyan-400 dark:bg-white/15" />
+          <span className={styles.resizerLine} />
+          <span className={styles.resizerHandle}><GripHorizontal size={14} /></span>
+          <span className={styles.resizerLine} />
         </div>
 
-        <section className="min-h-0 min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-[#101720] lg:col-span-2 lg:row-start-3">
-          <div className="h-full min-h-0 snap-y snap-proximity scroll-pt-2 overflow-y-auto overscroll-contain p-2 pb-6 [scrollbar-gutter:stable]">
-            <div className={`mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-[11px] ${durationSourceLabel ? "border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5" : "border-amber-300 bg-amber-50 dark:border-amber-400/30 dark:bg-amber-400/10"}`}><span className="text-slate-600 dark:text-gray-300">{durationSourceLabel ? `Duración final: ${formatCompositionTimecode(duration)} determinada por ${durationSourceLabel}.` : "Esta composición aún no registra qué asset determina su duración. Aplica el cálculo automático para normalizarla."}</span><button type="button" disabled={saving} onClick={() => void applyBaseTemplate()} className="rounded-md border border-[var(--engine-accent)] px-2 py-0.5 font-bold text-[var(--engine-primary)] hover:bg-[var(--engine-accent)]/10 disabled:opacity-50 dark:text-[var(--engine-accent)]">Calcular y organizar</button></div>
+        <section className={styles.timelinePanel}>
+          <div className={styles.timelineScroll}>
+            <div className={`${styles.durationStrip} ${durationSourceLabel ? "" : styles.durationStripWarning}`}><span>{durationSourceLabel ? `Duración final: ${formatCompositionTimecode(duration)} · ${durationSourceLabel}` : "Define el asset que controla la duración final para normalizar la composición."}</span><button type="button" disabled={saving} onClick={() => void applyBaseTemplate()} className={styles.durationAction}>Calcular y organizar</button></div>
             <AudioMixControls audioMix={payload.document.audioMix} disabled={saving} onUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)} />
             <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedAnimationId={selectedAnimationId} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={selectAnimation} onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Ajustó el inicio de ${clip.label} desde la timeline.`)} />
-            {estimatedClipCount > 0 && <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
-            <AssemblyActions assembly={assembly} busy={assembling} error={assemblyError} notice={assemblyNotice} history={snapshotHistory} historyOpen={snapshotHistoryOpen} priorCompletedVideo={Boolean(renderRecovery?.completedVideo && renderRecovery.completedVideo.compositionRevisionId !== assembly?.revisionId)} providerStatus={renderProviderStatus} renderStatus={renderStatus} selectedRenderProfileId={selectedRenderProfileId} onApprove={approveAssembly} onDeleteAndRender={deletePriorVideoAndRender} onHistoryToggle={() => setSnapshotHistoryOpen((current) => !current)} onPrepare={prepareAssembly} onProfileChange={(profileId) => { setSelectedRenderProfileId(profileId); setAssemblyNotice(null); }} onRender={() => submitAssemblyRender()} onRestore={restoreSnapshot} />
+            {estimatedClipCount > 0 && <p className={styles.estimatedWarning}><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
           </div>
         </section>
 
-        {inspectorOpen && <aside className="min-w-0 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-[var(--engine-surface-hover)] lg:col-start-3 lg:row-span-3 lg:row-start-1">
-          <div className="mb-3 flex items-center justify-between gap-2"><div className="flex rounded-lg bg-slate-100 p-1 text-xs dark:bg-white/5"><button type="button" onClick={() => setInspectorTab("properties")} className={`rounded-md px-2 py-1 font-semibold ${inspectorTab === "properties" ? "bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white" : "text-slate-500 dark:text-gray-400"}`}>Propiedades</button><button type="button" onClick={() => setInspectorTab("assistant")} className={`rounded-md px-2 py-1 font-semibold ${inspectorTab === "assistant" ? "bg-[var(--engine-accent)] text-[var(--engine-primary)] shadow-sm" : "text-slate-500 dark:text-gray-400"}`}>SofLIA</button></div><button type="button" onClick={clearSelection} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 dark:text-gray-400 dark:hover:bg-white/10" title="Cerrar panel"><X size={15} /></button></div>
-          {inspectorTab === "properties" ? <CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} selectedAnimationId={selectedAnimationId} onAnimationSelect={setSelectedAnimationId} onPatch={savePatch} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} /> : <AgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={requestAgentProposal} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}
+        {inspectorOpen && <aside className={styles.inspector}>
+          <div className={styles.inspectorHeader}><div className={styles.inspectorTabs}><button type="button" onClick={() => setInspectorTab("properties")} className={`${styles.inspectorTab} ${inspectorTab === "properties" ? styles.inspectorTabActive : ""}`}>Propiedades</button><button type="button" onClick={() => setInspectorTab("assistant")} className={`${styles.inspectorTab} ${inspectorTab === "assistant" ? styles.inspectorTabActive : ""}`}>SofLIA</button></div><button type="button" onClick={clearSelection} className={styles.inspectorClose} title="Cerrar inspector" aria-label="Cerrar inspector"><X size={15} /></button></div>
+          <div className={styles.inspectorBody}>{inspectorTab === "properties" ? <CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} selectedAnimationId={selectedAnimationId} onAnimationSelect={setSelectedAnimationId} onPatch={savePatch} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} /> : <AgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={requestAgentProposal} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}</div>
         </aside>}
       </div>
     </section>
@@ -1745,7 +1787,7 @@ function CompositionErrorToast({
 }
 
 function PreviewToolButton({ active, children, label, onClick, title }: { active: boolean; children: ReactNode; label: string; onClick: () => void; title: string }) {
-  return <button type="button" aria-pressed={active} onClick={onClick} title={title} className={`inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-1 font-semibold transition-colors ${active ? "bg-cyan-400 text-slate-950" : "bg-white/5 text-slate-300 hover:bg-white/10"}`}>{children}<span className="hidden 2xl:inline">{label}</span></button>;
+  return <button type="button" aria-pressed={active} onClick={onClick} title={title} className={`${styles.toolButton} ${active ? styles.toolButtonActive : ""}`}>{children}<span>{label}</span></button>;
 }
 
 
@@ -1790,7 +1832,7 @@ function AgentConversation({ lastAppliedProposal, onApprove, onDismiss, onPropos
     onDismiss();
   };
 
-  return <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[var(--engine-accent)]/30 bg-slate-50 dark:bg-[var(--engine-canvas)]">
+  return <section className={styles.agentPanel}>
     <div className="flex items-center gap-2.5 border-b border-[var(--engine-accent)]/25 bg-gradient-to-r from-[var(--engine-accent)]/15 to-white px-3 py-3 dark:to-[var(--engine-surface-hover)]">
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--engine-accent)] text-xs font-black text-[var(--engine-primary)] shadow-sm shadow-[var(--engine-accent)]/30 dark:shadow-none">S</span>
       <div className="min-w-0"><p className="truncate text-xs font-bold text-slate-900 dark:text-white">SofLIA</p><p className="flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Asistente de edición</p></div>
@@ -1817,9 +1859,10 @@ function AgentConversation({ lastAppliedProposal, onApprove, onDismiss, onPropos
   </section>;
 }
 
-function AssemblyActions({ assembly, busy, error, notice, history, historyOpen, onApprove, onDeleteAndRender, onHistoryToggle, onPrepare, onProfileChange, onRender, onRestore, priorCompletedVideo, providerStatus, renderStatus, selectedRenderProfileId }: {
+function AssemblyActions({ assembly, busy, compact = false, error, notice, history, historyOpen, onApprove, onDeleteAndRender, onHistoryToggle, onPrepare, onProfileChange, onRender, onRestore, priorCompletedVideo, providerStatus, renderStatus, selectedRenderProfileId }: {
   assembly: ActiveAssembly | null;
   busy: boolean;
+  compact?: boolean;
   error: string | null;
   notice: string | null;
   history: CompositionSnapshotEntry[] | null;
@@ -1837,7 +1880,6 @@ function AssemblyActions({ assembly, busy, error, notice, history, historyOpen, 
   selectedRenderProfileId: HyperframesRenderProfileId;
 }) {
   const selectedProfile = getHyperframesRenderProfile(selectedRenderProfileId);
-  const assemblyProfile = findHyperframesRenderProfile(assembly?.renderProfile);
   const profileMatchesAssembly = !assembly
     || sameHyperframesRenderSettings(assembly.renderProfile, selectedProfile);
   const normalizedProviderStatus = providerStatus?.toUpperCase() || null;
@@ -1864,13 +1906,43 @@ function AssemblyActions({ assembly, busy, error, notice, history, historyOpen, 
         : "Snapshot listo. Revísalo y apruébalo para renderizar."
       : "Congela la versión guardada antes de enviar un render.";
   const activeRender = renderStatus === "sending" || renderStatus === "rendering";
-  return <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3 dark:border-cyan-400/20 dark:bg-cyan-400/10">
-    <div className="min-w-64 flex-1 text-xs text-cyan-950 dark:text-cyan-100"><p className="font-bold">Ensamble del video</p><p className="mt-0.5">{summary}</p>{assembly && <><p className="mt-1 text-[11px] text-cyan-800/80 dark:text-cyan-100/70">ZIP validado: {formatAssemblyBytes(assembly.projectArchiveSizeBytes)} de 200 MB</p><p className="mt-0.5 text-[11px] text-cyan-800/80 dark:text-cyan-100/70">{assembly.renderProfile ? `Perfil del snapshot: ${assemblyProfile?.label || "Compatible"} · MP4 · 1080p · ${assembly.renderProfile.fps} FPS · calidad ${renderQualityLabel(assembly.renderProfile.quality)}` : "Este snapshot usa un perfil anterior; regénéralo antes de renderizar."}</p></>}{notice && <p role="status" className="mt-1 font-medium text-emerald-700 dark:text-emerald-200">{notice}</p>}{!profileMatchesAssembly && <p role="status" className="mt-1 font-medium text-amber-700 dark:text-amber-200">El perfil seleccionado no coincide con el snapshot. Regenera el snapshot para aplicarlo antes de aprobar o renderizar.</p>}{label && <p role="status" className="mt-1 inline-flex items-center gap-1.5 font-medium">{activeRender && <Loader2 className="animate-spin" size={13} />}{label}</p>}{priorCompletedVideo && <p role="status" className="mt-1 text-amber-700 dark:text-amber-200">Hay un video anterior importado y disponible; no se reemplazará hasta que esta revisión termine correctamente.</p>}{error && <p role="alert" className="mt-1 text-red-700 dark:text-red-200">{error}</p>}</div>
-    <label className="min-w-64 rounded-lg border border-cyan-200 bg-white/70 p-2 dark:border-cyan-400/20 dark:bg-slate-950/30">
-      <span className="block text-[10px] font-bold uppercase tracking-wide text-cyan-900/70 dark:text-cyan-100/70">Perfil de render</span>
+  const deliveryState = renderStatus === "completed"
+    ? "complete"
+    : activeRender
+      ? "working"
+      : assembly?.status === "READY_FOR_RENDER"
+        ? "ready"
+        : "draft";
+  const deliveryLabel = deliveryState === "complete"
+    ? "Listo para publicar"
+    : deliveryState === "working"
+      ? "Renderizando"
+      : deliveryState === "ready"
+        ? "Listo para render"
+        : "Preparando salida";
+  return <section className={`${styles.deliveryPanel} ${compact ? styles.deliveryPanelCompact : ""}`}>
+    <header className={styles.deliveryHeader}>
+      <span className={styles.deliveryIcon} data-state={deliveryState}>{deliveryState === "complete" ? <CheckCircle2 size={17} /> : <Clapperboard size={17} />}</span>
+      <div className={styles.deliveryTitle}>
+        <span>Entrega final</span>
+        <strong>{deliveryState === "complete" ? "Video listo para publicar" : "Salida de video"}</strong>
+        <p>{summary}</p>
+      </div>
+      <span className={styles.deliveryStatus} data-state={deliveryState}><span aria-hidden="true" />{deliveryLabel}</span>
+    </header>
+
+    <div className={styles.deliveryBody}>
+      <div className={styles.outputMetrics} aria-label="Datos de la salida">
+        <span><small>Archivo</small><strong>{assembly ? formatAssemblyBytes(assembly.projectArchiveSizeBytes) : "—"}</strong></span>
+        <span><small>Resolución</small><strong>1080p</strong></span>
+        <span><small>Cuadros</small><strong>{assembly?.renderProfile?.fps || selectedProfile.fps} FPS</strong></span>
+        <span><small>Calidad</small><strong>{assembly?.renderProfile ? renderQualityLabel(assembly.renderProfile.quality) : renderQualityLabel(selectedProfile.quality)}</strong></span>
+      </div>
+
+      <label className={styles.outputProfile}>
+        <span className={styles.renderProfileLabel}>Formato de salida</span>
       <EngineSelect
         aria-label="Perfil de render"
-        className="mt-1"
         disabled={busy || activeRender}
         value={selectedRenderProfileId}
         onValueChange={(value) => onProfileChange(value as HyperframesRenderProfileId)}
@@ -1880,21 +1952,36 @@ function AssemblyActions({ assembly, busy, error, notice, history, historyOpen, 
           description: profile.description,
         }))}
       />
-      <span className="mt-1 block text-[10px] leading-4 text-cyan-800/75 dark:text-cyan-100/65">{selectedProfile.description}</span>
-      <span className="mt-0.5 block text-[10px] leading-4 text-cyan-800/75 dark:text-cyan-100/65">25 FPS conserva el movimiento nativo del avatar; 4K no añade detalle a fuentes de hasta 1080p.</span>
-    </label>
-    <div className="flex flex-wrap gap-2">
-      <button type="button" disabled={busy} onClick={() => void onPrepare()} className="inline-flex items-center gap-1.5 rounded-md bg-cyan-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Clapperboard size={14} /> {busy && renderStatus === "validating" ? "Congelando…" : assembly ? "Regenerar snapshot" : "Congelar snapshot"}</button>
-      <button type="button" disabled={busy || history === null} onClick={onHistoryToggle} className="inline-flex items-center gap-1.5 rounded-md border border-cyan-700 px-3 py-2 text-xs font-bold text-cyan-900 disabled:opacity-50 dark:border-cyan-300 dark:text-cyan-100"><History size={14} /> Snapshots {history ? `(${history.length})` : ""}</button>
-      {assembly?.status === "READY_FOR_PREVIEW" && <button type="button" disabled={busy || !profileMatchesAssembly} onClick={() => void onApprove()} className="inline-flex items-center gap-1.5 rounded-md border border-cyan-700 px-3 py-2 text-xs font-bold text-cyan-900 disabled:opacity-50 dark:border-cyan-300 dark:text-cyan-100"><CheckCircle2 size={14} /> Aprobar snapshot</button>}
-      {assembly?.status === "READY_FOR_RENDER" && <button type="button" disabled={busy || activeRender || renderStatus === "completed" || !profileMatchesAssembly} onClick={() => void onRender()} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-950"><Send size={14} /> {activeRender ? "Render en curso" : renderStatus === "failed" ? "Reintentar render" : "Renderizar video"}</button>}
-      {assembly?.status === "READY_FOR_RENDER" && priorCompletedVideo && <button type="button" disabled={busy || activeRender} onClick={() => void onDeleteAndRender()} className="inline-flex items-center gap-1.5 rounded-md border border-red-400 bg-white px-3 py-2 text-xs font-bold text-red-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-transparent dark:text-red-200"><Trash2 size={14} /> Borrar video anterior y renderizar</button>}
+      </label>
+
+      <div className={styles.deliveryActions}>
+        <button type="button" disabled={busy} onClick={() => void onPrepare()} className={styles.deliveryActionSecondary}><Clapperboard size={14} /> {busy && renderStatus === "validating" ? "Preparando…" : assembly ? "Nueva versión" : "Crear snapshot"}</button>
+        <button type="button" disabled={busy || history === null} onClick={onHistoryToggle} className={styles.deliveryActionGhost}><History size={14} /> Versiones {history ? history.length : ""}</button>
+        {assembly?.status === "READY_FOR_PREVIEW" && <button type="button" disabled={busy || !profileMatchesAssembly} onClick={() => void onApprove()} className={styles.deliveryActionPrimary}><CheckCircle2 size={14} /> Aprobar salida</button>}
+        {assembly?.status === "READY_FOR_RENDER" && <button type="button" disabled={busy || activeRender || renderStatus === "completed" || !profileMatchesAssembly} onClick={() => void onRender()} className={`${styles.deliveryActionPrimary} ${renderStatus === "completed" ? styles.deliveryActionComplete : ""}`}>{renderStatus === "completed" ? <CheckCircle2 size={14} /> : <Send size={14} />} {activeRender ? "Render en curso" : renderStatus === "completed" ? "Render completado" : renderStatus === "failed" ? "Reintentar render" : "Renderizar video"}</button>}
+        {assembly?.status === "READY_FOR_RENDER" && priorCompletedVideo && <button type="button" disabled={busy || activeRender} onClick={() => void onDeleteAndRender()} className={styles.deliveryActionDanger}><Trash2 size={14} /> Reemplazar</button>}
+      </div>
     </div>
-    {historyOpen && <div className="w-full rounded-lg border border-cyan-200 bg-white/80 p-2 dark:border-cyan-400/20 dark:bg-slate-950/40">
-      <p className="px-1 pb-1.5 text-[10px] font-bold uppercase tracking-wide text-cyan-900/70 dark:text-cyan-100/70">Snapshots congelados</p>
-      {history && history.length > 0 ? <div className="max-h-44 space-y-1 overflow-y-auto">{history.map((snapshot) => <div key={snapshot.id} className="flex items-center justify-between gap-3 rounded-md px-2 py-2 text-xs hover:bg-cyan-50 dark:hover:bg-white/5"><span><span className="block font-semibold">Snapshot {snapshot.revisionNumber}{snapshot.isActive ? " (activo)" : ""}</span><span className="block text-[10px] text-slate-500">Documento v{snapshot.documentVersion} · {findHyperframesRenderProfile(snapshot.renderProfile)?.label || "Perfil anterior"} · {new Date(snapshot.createdAt).toLocaleString()}</span></span><button type="button" disabled={busy || snapshot.isActive} onClick={() => void onRestore(snapshot)} className="rounded-md border border-cyan-600 px-2 py-1 text-[10px] font-bold text-cyan-800 disabled:cursor-default disabled:opacity-50 dark:text-cyan-200">{snapshot.isActive ? "Activo" : "Restaurar"}</button></div>)}</div> : <p className="px-1 py-2 text-xs text-slate-500">Todavía no hay snapshots congelados.</p>}
+
+    {(notice || !profileMatchesAssembly || label || priorCompletedVideo || error) && <div className={styles.deliveryMessages}>
+      {notice && <p role="status" data-tone="success"><CheckCircle2 size={12} />{notice}</p>}
+      {!profileMatchesAssembly && <p role="status" data-tone="warning"><AlertTriangle size={12} />El formato cambió. Crea una nueva versión antes de aprobar o renderizar.</p>}
+      {label && <p role="status">{activeRender && <Loader2 className="animate-spin" size={12} />}{label}</p>}
+      {priorCompletedVideo && <p role="status" data-tone="warning"><AlertTriangle size={12} />El video anterior seguirá disponible hasta que termine esta revisión.</p>}
+      {error && <p role="alert" data-tone="danger"><AlertTriangle size={12} />{error}</p>}
     </div>}
-  </div>;
+
+    {historyOpen && <>
+      <button type="button" className={styles.snapshotBackdrop} aria-label="Cerrar versiones" onClick={onHistoryToggle} />
+      <aside className={styles.snapshotHistory} role="dialog" aria-modal="true" aria-labelledby="snapshot-history-title">
+        <div className={styles.snapshotHistoryHeader}>
+          <div><strong id="snapshot-history-title">Versiones de salida</strong><span>{history?.length || 0} snapshots disponibles</span></div>
+          <button type="button" aria-label="Cerrar versiones" onClick={onHistoryToggle}><X size={15} /></button>
+        </div>
+        {history && history.length > 0 ? <div className={styles.snapshotList}>{history.map((snapshot) => <div key={snapshot.id} className={styles.snapshotRow}><span><strong>Versión {snapshot.revisionNumber}{snapshot.isActive ? " · activa" : ""}</strong><small>Documento v{snapshot.documentVersion} · {findHyperframesRenderProfile(snapshot.renderProfile)?.label || "Perfil anterior"} · {new Date(snapshot.createdAt).toLocaleString()}</small></span><button type="button" disabled={busy || snapshot.isActive} onClick={() => void onRestore(snapshot)} className={styles.deliveryActionGhost}>{snapshot.isActive ? "En uso" : "Restaurar"}</button></div>)}</div> : <p className={styles.snapshotEmpty}>Todavía no hay versiones guardadas.</p>}
+      </aside>
+    </>}
+  </section>;
 }
 
 function formatAssemblyBytes(value: number) {
@@ -1905,8 +1992,9 @@ function renderQualityLabel(quality: HyperframesRenderSettings["quality"]) {
   return quality === "high" ? "alta" : quality === "draft" ? "borrador" : "estándar";
 }
 
-function StudioLibrary({ assets, lessons, onAddAsset, onSelectAsset, onSelectLesson, selectedHfId, selectedLessonId, timelineAssetIds }: {
+function StudioLibrary({ assets, delivery, lessons, onAddAsset, onSelectAsset, onSelectLesson, selectedHfId, selectedLessonId, timelineAssetIds }: {
   assets: CompositionStudioAsset[];
+  delivery: ReactNode;
   lessons: CompositionStudioLesson[];
   onAddAsset: (asset: CompositionStudioAsset) => void;
   onSelectAsset: (hfId: string) => void;
@@ -1915,31 +2003,42 @@ function StudioLibrary({ assets, lessons, onAddAsset, onSelectAsset, onSelectLes
   selectedLessonId: string | null;
   timelineAssetIds: Set<string>;
 }) {
-  return <aside className="grid min-h-0 grid-cols-2 gap-2 overflow-hidden lg:col-start-1 lg:row-start-1">
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-[#101720]">
-      <div className="border-b border-slate-200 px-2.5 py-1.5 dark:border-white/10">
-        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-gray-400">Videos del curso</p>
-      </div>
-      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2 pr-1.5">
-        {lessons.map((lesson, index) => <button key={lesson.id} type="button" onClick={() => onSelectLesson(lesson.id)} className={`w-full rounded-lg border px-2 py-1.5 text-left transition-colors ${selectedLessonId === lesson.id ? "border-cyan-400 bg-cyan-50 dark:border-cyan-400/40 dark:bg-cyan-400/10" : "border-transparent hover:bg-slate-100 dark:hover:bg-white/5"}`}><span className="flex items-start gap-1.5"><span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${lesson.completed ? "bg-green-100 text-green-700 dark:bg-green-400/15 dark:text-green-300" : "bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-gray-400"}`}>{lesson.completed ? "✓" : index + 1}</span><span className="min-w-0"><span className="block truncate text-[11px] font-semibold text-slate-900 dark:text-white">{lesson.title}</span><span className="block truncate text-[9px] text-slate-500 dark:text-gray-400">{lesson.subtitle}</span></span></span></button>)}
-      </div>
-    </section>
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-[#101720]">
-      <div className="flex items-center justify-between border-b border-slate-200 px-2.5 py-1.5 dark:border-white/10">
-        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-gray-400">Assets vinculados</p>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500 dark:bg-white/10 dark:text-gray-400">{assets.length}</span>
-      </div>
-      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2 pr-1.5">
+  const [activeView, setActiveView] = useState<"assets" | "delivery" | "lessons">("lessons");
+
+  return <aside className={styles.library}>
+    <div className={styles.panelTabs} role="tablist" aria-label="Biblioteca del ensamble">
+      <button type="button" role="tab" aria-selected={activeView === "lessons"} onClick={() => setActiveView("lessons")} className={`${styles.panelTab} ${activeView === "lessons" ? styles.panelTabActive : ""}`}>
+        <Clapperboard size={14} aria-hidden="true" /> Videos <span className={styles.tabCount}>{lessons.length}</span>
+      </button>
+      <button type="button" role="tab" aria-selected={activeView === "assets"} onClick={() => setActiveView("assets")} className={`${styles.panelTab} ${activeView === "assets" ? styles.panelTabActive : ""}`}>
+        <ImageIcon size={14} aria-hidden="true" /> Medios <span className={styles.tabCount}>{assets.length}</span>
+      </button>
+      <button type="button" role="tab" aria-selected={activeView === "delivery"} onClick={() => setActiveView("delivery")} className={`${styles.panelTab} ${activeView === "delivery" ? styles.panelTabActive : ""}`}>
+        <Send size={14} aria-hidden="true" /> Entrega
+      </button>
+    </div>
+
+    <div className={`${styles.libraryBody} ${activeView === "delivery" ? styles.libraryBodyDelivery : ""}`}>
+      {activeView === "lessons" ? <div className={styles.lessonList} role="tabpanel">
+        {lessons.map((lesson, index) => <button key={lesson.id} type="button" onClick={() => onSelectLesson(lesson.id)} className={`${styles.lessonItem} ${selectedLessonId === lesson.id ? styles.lessonItemActive : ""}`}>
+          <span className={`${styles.lessonIndex} ${lesson.completed ? styles.lessonIndexComplete : ""}`}>{lesson.completed ? <CheckCircle2 size={12} aria-label="Completado" /> : index + 1}</span>
+          <span className="min-w-0"><span className={styles.itemTitle}>{lesson.title}</span><span className={styles.itemMeta}>{lesson.subtitle}</span></span>
+          <ChevronRight className={styles.lessonChevron} size={13} aria-hidden="true" />
+        </button>)}
+      </div> : activeView === "assets" ? <div className={styles.assetList} role="tabpanel">
         {assets.map((asset) => {
           const hfId = `asset-${asset.id}`;
           const inTimeline = timelineAssetIds.has(asset.id);
-          return <div key={asset.id} className={`rounded-lg border p-1.5 ${selectedHfId === hfId ? "border-cyan-400 bg-cyan-50 dark:border-cyan-400/40 dark:bg-cyan-400/10" : asset.valid ? "border-slate-200 dark:border-white/10" : "border-red-200 bg-red-50 dark:border-red-400/30 dark:bg-red-500/10"}`}>
-            <button type="button" disabled={!asset.isEditable || !inTimeline} onClick={() => onSelectAsset(hfId)} className="flex w-full items-center gap-1.5 text-left disabled:cursor-default disabled:opacity-70"><AssetThumbnail asset={asset} /><span className="min-w-0 flex-1"><span className="block truncate text-[11px] font-medium text-slate-800 dark:text-gray-100">{asset.label}</span><span className="flex justify-between gap-1 text-[9px] text-slate-500 dark:text-gray-400"><span className="truncate">{asset.sourceLabel}</span><span>{asset.sizeLabel}</span></span></span></button>
-            <button type="button" disabled={!asset.isEditable || !asset.valid || inTimeline} onClick={() => onAddAsset(asset)} title={inTimeline ? "Este asset ya está en la línea de tiempo" : "Añadir a la línea de tiempo"} className={"mt-1.5 inline-flex w-full items-center justify-center gap-1 rounded-md border px-2 py-1 text-[10px] font-bold transition-colors disabled:cursor-default disabled:opacity-60 " + (inTimeline ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-200" : "border-cyan-300 text-cyan-800 hover:bg-cyan-50 dark:border-cyan-400/40 dark:text-cyan-200 dark:hover:bg-cyan-400/10")}>{inTimeline ? "En timeline" : <><Plus size={12} /> Añadir a timeline</>}</button>
+          return <div key={asset.id} className={`${styles.assetItem} ${selectedHfId === hfId ? styles.assetItemActive : ""} ${asset.valid ? "" : "border-red-400/40 bg-red-500/10"}`}>
+            <button type="button" disabled={!asset.isEditable || !inTimeline} onClick={() => onSelectAsset(hfId)} className={styles.assetMain}>
+              <AssetThumbnail asset={asset} />
+              <span className="min-w-0 flex-1"><span className={styles.itemTitle}>{asset.label}</span><span className={styles.assetMetaRow}><span className={styles.itemMeta}>{asset.sourceLabel}</span><span className={styles.itemMeta}>{asset.sizeLabel}</span></span></span>
+            </button>
+            <button type="button" disabled={!asset.isEditable || !asset.valid || inTimeline} onClick={() => onAddAsset(asset)} title={inTimeline ? "Este asset ya está en la línea de tiempo" : "Añadir a la línea de tiempo"} className={`${styles.assetAdd} ${inTimeline ? styles.assetAddComplete : ""}`}>{inTimeline ? <><CheckCircle2 size={12} /> En timeline</> : <><Plus size={12} /> Añadir a timeline</>}</button>
           </div>;
         })}
-      </div>
-    </section>
+      </div> : <div className={styles.deliveryMenu} role="tabpanel">{delivery}</div>}
+    </div>
   </aside>;
 }
 
@@ -1973,7 +2072,7 @@ function CompositionInspector({ animations, clip, cropModeEnabled, onAnimationSe
     }
     setVolume(clip.volume ?? resolveCompositionClipDefaultVolume(clip, track ?? undefined));
   }, [clip?.id, clip?.kind, clip?.volume, track?.id, track?.semanticRole, track?.volume]);
-  if (!clip) return <p className="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-xs leading-5 text-slate-500 dark:border-white/10 dark:text-gray-400">Selecciona un clip en la timeline o directamente en el preview para editar su layout, visibilidad o duración.</p>;
+  if (!clip) return <p className={styles.emptyInspector}>Selecciona un clip en la timeline o directamente en el monitor para editar su posición, visibilidad o duración.</p>;
   const numberOrNull = (value: string) => { const result = Number(value); return Number.isFinite(result) ? result : null; };
   const isMusicClip = clip.kind === "AUDIO" && track?.semanticRole === "MUSIC";
   if (isMusicClip && track) {

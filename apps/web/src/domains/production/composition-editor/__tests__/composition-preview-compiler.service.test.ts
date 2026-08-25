@@ -161,6 +161,7 @@ test("compiles the native document into a seekable preview with stable visual id
 
   assert.match(html, /data-composition-id="courseforge-composition"/);
   assert.match(html, /id="composition-viewport" data-composition-id="courseforge-composition"/);
+  assert.match(html, /#composition-viewport \{[^}]*background: transparent;/);
   assert.match(html, /id="deck-slide-0-timeline" class="clip"/);
   assert.match(html, /data-hf-id="deck-slide-0"/);
   assert.match(html, /window\.__timelines\["courseforge-composition"\]/);

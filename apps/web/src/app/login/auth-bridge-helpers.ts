@@ -7,6 +7,10 @@ import type {
   ProfileUpsertRecord,
   SofliaUserRecord,
 } from "./auth-bridge.types";
+import {
+  getPlatformRoleHome,
+  normalizePlatformRole,
+} from "@/utils/auth/platform-role";
 
 const DEFAULT_SESSION_MAX_AGE = 60 * 60 * 24 * 7;
 const REMEMBER_ME_MAX_AGE = 60 * 60 * 24 * 365;
@@ -70,6 +74,7 @@ export async function createAuthBridgeTokens(params: {
   const { jwtSecret, user, organizations, activeOrgId } = params;
   const secret = new TextEncoder().encode(jwtSecret);
   const now = Math.floor(Date.now() / 1000);
+  const platformRole = normalizePlatformRole(user.platform_role);
 
   const accessToken = await new SignJWT({
     aud: "authenticated",
@@ -88,8 +93,8 @@ export async function createAuthBridgeTokens(params: {
       last_name: user.last_name,
       display_name: user.display_name,
       avatar_url: user.profile_picture_url,
-      platform_role: user.platform_role,
-      cargo_rol: user.platform_role,
+      platform_role: platformRole || user.platform_role,
+      cargo_rol: platformRole || user.platform_role,
     },
   })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
@@ -218,20 +223,6 @@ export function buildProfileUpsert(
 }
 
 export function resolveRedirectTo(profile: AuthBridgeProfileRecord | null) {
-  if (
-    profile?.platform_role === "ADMIN" ||
-    profile?.platform_role === "SUPERADMIN"
-  ) {
-    return "/admin";
-  }
-
-  if (profile?.platform_role === "ARQUITECTO") {
-    return "/architect";
-  }
-
-  if (profile?.platform_role === "CONSTRUCTOR") {
-    return "/builder";
-  }
-
-  return "/builder";
+  const role = normalizePlatformRole(profile?.platform_role);
+  return role ? getPlatformRoleHome(role) : "/builder";
 }

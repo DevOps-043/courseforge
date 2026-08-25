@@ -8,6 +8,11 @@ import {
   SOFLIA_USER_SELECT,
   type SupabasePasswordAuthClient,
 } from "../auth-bridge-contract";
+import {
+  getPlatformRoleHome,
+  mapOrganizationRoleToPlatformRole,
+  normalizePlatformRole,
+} from "../../../utils/auth/platform-role";
 
 function authClient(result: Awaited<ReturnType<SupabasePasswordAuthClient["auth"]["signInWithPassword"]>>) {
   return {
@@ -109,8 +114,29 @@ describe("Auth Bridge contract", () => {
       "utf8",
     );
 
-    assert.match(helperSource, /platform_role: user\.platform_role/);
-    assert.match(helperSource, /cargo_rol: user\.platform_role/);
+    assert.match(helperSource, /platform_role: platformRole \|\| user\.platform_role/);
+    assert.match(helperSource, /cargo_rol: platformRole \|\| user\.platform_role/);
+  });
+
+  it("normalizes legacy Learning roles to the Engine contract", () => {
+    assert.equal(normalizePlatformRole("Administrador"), "ADMIN");
+    assert.equal(normalizePlatformRole("administradora"), "ADMIN");
+    assert.equal(normalizePlatformRole("Arquitecto"), "ARQUITECTO");
+    assert.equal(normalizePlatformRole("CONSTRUCTOR"), "CONSTRUCTOR");
+    assert.equal(normalizePlatformRole("rol-desconocido"), null);
+  });
+
+  it("derives a tenant role from the active organization membership", () => {
+    assert.equal(mapOrganizationRoleToPlatformRole("owner"), "ADMIN");
+    assert.equal(mapOrganizationRoleToPlatformRole("admin"), "ADMIN");
+    assert.equal(mapOrganizationRoleToPlatformRole("reviewer"), "ARQUITECTO");
+    assert.equal(mapOrganizationRoleToPlatformRole("member"), "CONSTRUCTOR");
+  });
+
+  it("routes canonical roles to their corresponding workspace", () => {
+    assert.equal(getPlatformRoleHome("ADMIN"), "/admin");
+    assert.equal(getPlatformRoleHome("ARQUITECTO"), "/architect");
+    assert.equal(getPlatformRoleHome("CONSTRUCTOR"), "/builder");
   });
 
   it("declares the Learning Auth anon key as required runtime config", () => {

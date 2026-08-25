@@ -111,6 +111,33 @@
   background: color-mix(in srgb, var(--engine-accent) 7%, var(--engine-surface-soft));
 }
 
+.sidebarCollapsed .brandHeader {
+  justify-content: center;
+  padding-inline: 0.45rem;
+}
+
+.sidebarCollapsed .brand {
+  justify-content: center;
+}
+
+.sidebarCollapsed:not(.sidebarFocus) .collapseButton {
+  top: auto;
+  right: -0.56rem;
+  bottom: 0.45rem;
+  width: 1.65rem;
+  height: 1.65rem;
+  transform: none;
+  border-radius: 999px;
+  background: var(--engine-surface-solid);
+  box-shadow: 0 0.45rem 1.2rem var(--engine-shadow);
+}
+
+.sidebarFocus .brandMark {
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 0.75rem;
+}
+
 .organization {
   border-bottom: 1px solid var(--engine-border);
   padding: 0.58rem 0.3rem;
@@ -178,6 +205,22 @@
   color: var(--engine-on-action);
   border-color: var(--engine-action);
   background: var(--engine-action);
+}
+
+.sidebarCollapsed .navigation {
+  align-items: center;
+  padding-inline: 0.5rem;
+}
+
+.sidebarCollapsed .navItem {
+  width: 3rem;
+  justify-content: center;
+  gap: 0;
+  padding-inline: 0;
+}
+
+.sidebarCollapsed .navItem:hover {
+  transform: none;
 }
 
 .navIcon {
@@ -258,13 +301,22 @@
   background: var(--engine-surface-soft);
 }
 
+.sidebarCollapsed .accountArea {
+  padding: 0.6rem 0.45rem;
+}
+
+.sidebarCollapsed .accountButton {
+  min-height: 3rem;
+  justify-content: center;
+  gap: 0;
+  padding: 0.35rem;
+}
+
 .avatar {
   position: relative;
-  display: grid;
   width: 2.3rem;
   height: 2.3rem;
   flex: 0 0 auto;
-  place-items: center;
   overflow: visible;
   border: 1px solid color-mix(in srgb, var(--engine-accent) 38%, var(--engine-border));
   border-radius: 50%;
@@ -275,17 +327,34 @@
   box-shadow: 0 0.55rem 1.4rem color-mix(in srgb, var(--engine-accent) 13%, transparent);
 }
 
-.avatar img {
+.avatarMedia {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 50%;
+}
+
+.avatarMedia img,
+.avatar img,
+.avatarImg {
+  display: block;
   width: 100%;
   height: 100%;
   border-radius: 50%;
   object-fit: cover;
+  aspect-ratio: 1 / 1;
 }
 
 .presence {
   position: absolute;
   right: -0.02rem;
   bottom: -0.02rem;
+  z-index: 2;
   width: 0.55rem;
   height: 0.55rem;
   border: 2px solid var(--engine-surface-solid);

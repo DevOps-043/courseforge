@@ -45,7 +45,7 @@ html.courseforge-assembly-focus #artifact-detail-breadcrumbs {
    fill the shell immediately, including a hard refresh of the assembly stage. */
 body:has(#assembly-workspace-toolbar) #application-content {
   height: 100vh !important;
-  margin-left: 72px !important;
+  margin-left: 96px !important;
   padding: 0 !important;
 }
 
@@ -90,29 +90,42 @@ body:has(#assembly-workspace-toolbar) #artifact-detail-page > #artifact-detail-b
 
 html.courseforge-assembly-focus [data-timeline-lane] {
   min-height: 40px;
-  border: 1px solid rgba(148, 163, 184, 0.36);
-  background-color: rgba(15, 23, 42, 0.05);
+  border: 1px solid var(--engine-border);
+  background-color: var(--engine-surface-soft);
   background-image: repeating-linear-gradient(
     90deg,
-    rgba(100, 116, 139, 0.16) 0,
-    rgba(100, 116, 139, 0.16) 1px,
+    color-mix(in srgb, var(--engine-border) 62%, transparent) 0,
+    color-mix(in srgb, var(--engine-border) 62%, transparent) 1px,
     transparent 1px,
     transparent 6.25%
   );
 }
 
 html.courseforge-assembly-focus [data-timeline-lane] > button {
-  border: 1px solid rgba(8, 47, 73, 0.52);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.24);
+  box-shadow: 0 2px 8px var(--engine-shadow);
 }
 
-html.dark.courseforge-assembly-focus [data-timeline-lane] {
-  border-color: rgba(148, 163, 184, 0.28);
-  background-color: rgba(255, 255, 255, 0.04);
+/* next-themes marks the document with `.light`; these stable hooks ensure that
+   the editor never inherits its dark studio palette while light mode is active. */
+html.light .courseforge-composition-studio,
+html:not(.dark) .courseforge-composition-studio {
+  --studio-canvas: #f5f8fb !important;
+  --studio-canvas-deep: #eaf0f5 !important;
+  --studio-panel: #ffffff !important;
+  --studio-panel-raised: #f8fafc !important;
+  --studio-panel-soft: #f1f5f9 !important;
+  --studio-border: rgb(10 37 64 / 0.12) !important;
+  --studio-text: #1e293b !important;
+  --studio-muted: #64748b !important;
+  --studio-shadow: rgb(2 12 23 / 0.13) !important;
+  color-scheme: light !important;
 }
 
-html.dark.courseforge-assembly-focus [data-timeline-lane] > button {
-  border-color: rgba(186, 230, 253, 0.5);
+html.light .courseforge-composition-preview-viewport,
+html:not(.dark) .courseforge-composition-preview-viewport {
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--engine-accent) 7%, transparent), transparent 22rem),
+    linear-gradient(145deg, #eaf0f5, #f8fafc) !important;
 }
 
 /* Glassmorphism Utilities */

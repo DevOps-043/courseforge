@@ -20,6 +20,15 @@ function LoginContent() {
   const [error, setError] = useState<string | null>(null);
 
   const registered = searchParams.get("registered");
+  const routeErrorCode = searchParams.get("error");
+  const routeError = routeErrorCode
+    ? {
+        unknown_role:
+          "Tu sesión es válida, pero el rol recibido no tiene acceso a esta área. Vuelve a iniciar sesión o contacta a un administrador.",
+        unauthorized:
+          "Tu cuenta no tiene permisos para acceder a esta sección.",
+      }[routeErrorCode] || "No fue posible validar los permisos de tu cuenta."
+    : null;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -73,9 +82,9 @@ function LoginContent() {
         </div>
       )}
 
-      {error && (
+      {(error || routeError) && (
         <div className="mb-6 p-3 bg-red-100 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg text-red-600 dark:text-red-400 text-sm text-center">
-          {error}
+          {error || routeError}
         </div>
       )}
 

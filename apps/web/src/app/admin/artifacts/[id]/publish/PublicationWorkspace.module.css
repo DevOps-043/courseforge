@@ -1,0 +1,1192 @@
+.workspace {
+  --publication-panel: color-mix(in srgb, var(--engine-surface-solid) 96%, transparent);
+  --publication-panel-soft: color-mix(in srgb, var(--engine-surface-soft) 92%, transparent);
+  --publication-border: var(--engine-border);
+  display: grid;
+  gap: 1rem;
+  color: var(--engine-text);
+  font-family: var(--font-system-ui);
+}
+
+.upstreamAlert {
+  overflow: hidden;
+  border-radius: 1.15rem;
+}
+
+.workspaceGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(20rem, 23rem);
+  gap: 1rem;
+  align-items: start;
+}
+
+.primaryColumn,
+.sideRail {
+  min-width: 0;
+}
+
+.sideRail {
+  position: sticky;
+  top: 1rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.releaseHeader,
+.lessonPanel,
+.settingsPanel,
+.validationPanel {
+  border: 1px solid var(--publication-border);
+  color: var(--engine-text);
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--engine-accent) 6%, transparent), transparent 18rem),
+    var(--publication-panel);
+  box-shadow: 0 1rem 2.8rem rgb(2 12 23 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.03);
+}
+
+.releaseHeader {
+  display: grid;
+  grid-template-columns: minmax(16rem, 1fr) auto auto;
+  gap: 1.25rem;
+  align-items: center;
+  min-height: 6.5rem;
+  padding: 1rem 1.1rem;
+  border-radius: 1.35rem;
+}
+
+.releaseIdentity,
+.panelHeading,
+.releaseTitleRow,
+.releaseActions,
+.releaseMetrics,
+.validationItem,
+.partialNotice,
+.readyNotice,
+.lessonGuidance,
+.lessonHeading,
+.durationControl,
+.mappingActions {
+  display: flex;
+  align-items: center;
+}
+
+.releaseIdentity {
+  min-width: 0;
+  gap: 0.85rem;
+}
+
+.releaseIcon,
+.panelIcon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--engine-accent) 34%, var(--publication-border));
+  color: var(--engine-accent-strong);
+  background: color-mix(in srgb, var(--engine-accent) 8%, var(--engine-surface-soft));
+}
+
+.releaseIcon {
+  width: 2.9rem;
+  height: 2.9rem;
+  border-radius: 0.92rem;
+}
+
+.releaseCopy {
+  min-width: 0;
+}
+
+.eyebrow {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: var(--engine-text-muted);
+  font-family: var(--font-system-label);
+  font-size: 0.55rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.releaseTitleRow {
+  min-width: 0;
+  gap: 0.6rem;
+}
+
+.releaseTitleRow h2,
+.panelHeading h3 {
+  margin: 0;
+  color: var(--engine-text);
+  font-family: var(--font-system-display);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+.releaseTitleRow h2 {
+  overflow: hidden;
+  font-size: clamp(1.35rem, 2vw, 1.85rem);
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.releaseCopy p {
+  margin: 0.22rem 0 0;
+  overflow: hidden;
+  color: var(--engine-text-muted);
+  font-size: 0.7rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statusBadge,
+.validationBadge,
+.lessonState {
+  flex: 0 0 auto;
+  border: 1px solid var(--publication-border);
+  border-radius: 999px;
+  font-family: var(--font-system-label);
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.statusBadge {
+  padding: 0.25rem 0.48rem;
+  color: var(--engine-text-muted);
+  background: var(--publication-panel-soft);
+  text-transform: uppercase;
+}
+
+.statusBadge[data-status='SENT'],
+.statusBadge[data-status='APPROVED'],
+.statusBadge[data-status='READY'] {
+  border-color: color-mix(in srgb, var(--engine-success) 32%, var(--publication-border));
+  color: var(--engine-success);
+  background: color-mix(in srgb, var(--engine-success) 7%, transparent);
+}
+
+.releaseMetrics {
+  gap: 0.45rem;
+}
+
+.releaseMetric {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 6.7rem;
+  min-height: 3.3rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--publication-border);
+  border-radius: 0.9rem;
+  color: var(--engine-text-muted);
+  background: color-mix(in srgb, var(--engine-surface-soft) 76%, transparent);
+}
+
+.releaseMetric[data-complete='true'] svg {
+  color: var(--engine-success);
+}
+
+.releaseMetric span {
+  display: grid;
+}
+
+.releaseMetric strong {
+  color: var(--engine-text);
+  font-family: var(--font-system-label);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.releaseMetric small {
+  margin-top: 0.14rem;
+  font-size: 0.55rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.releaseActions {
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.iconButton,
+.secondaryButton,
+.primaryButton,
+.moduleToggle,
+.syncButton,
+.linkButton,
+.removeVideoButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--publication-border);
+  font-family: var(--font-system-ui);
+  font-weight: 600;
+  transition: border-color 170ms ease, background 170ms ease, color 170ms ease, transform 170ms ease;
+}
+
+.iconButton,
+.secondaryButton,
+.primaryButton {
+  min-height: 2.65rem;
+  border-radius: 0.82rem;
+}
+
+.iconButton {
+  width: 2.65rem;
+  color: var(--engine-text-muted);
+  background: var(--publication-panel-soft);
+}
+
+.secondaryButton,
+.primaryButton {
+  gap: 0.45rem;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.secondaryButton {
+  color: var(--engine-text);
+  background: var(--publication-panel-soft);
+}
+
+.primaryButton {
+  border-color: var(--engine-action);
+  color: var(--engine-on-action);
+  background: var(--engine-action);
+  box-shadow: 0 0.7rem 1.6rem color-mix(in srgb, var(--engine-action) 17%, transparent);
+}
+
+.iconButton:hover:not(:disabled),
+.secondaryButton:hover:not(:disabled) {
+  border-color: var(--engine-border-active);
+  color: var(--engine-accent-strong);
+  background: color-mix(in srgb, var(--engine-accent) 6%, var(--engine-surface-soft));
+  transform: translateY(-1px);
+}
+
+.primaryButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 0.9rem 2rem color-mix(in srgb, var(--engine-action) 23%, transparent);
+}
+
+.iconButton:disabled,
+.secondaryButton:disabled,
+.primaryButton:disabled,
+.syncButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.iconButton:focus-visible,
+.secondaryButton:focus-visible,
+.primaryButton:focus-visible,
+.moduleTitleButton:focus-visible,
+.moduleToggle:focus-visible,
+.coverUpload:focus-visible,
+.textInput:focus-visible,
+.videoInput:focus-visible,
+.durationInput:focus-visible,
+.syncButton:focus-visible,
+.linkButton:focus-visible,
+.removeVideoButton:focus-visible,
+.mappingCheckbox:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--engine-accent) 12%, transparent);
+}
+
+.validationPanel,
+.settingsPanel {
+  padding: 1rem;
+  border-radius: 1.2rem;
+}
+
+.panelHeading {
+  min-width: 0;
+  gap: 0.65rem;
+}
+
+.panelIcon {
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 0.78rem;
+}
+
+.panelHeading h3 {
+  font-size: 1.08rem;
+  line-height: 1.1;
+}
+
+.validationPanel .panelHeading {
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid var(--publication-border);
+}
+
+.validationBadge {
+  margin-left: auto;
+  padding: 0.28rem 0.5rem;
+}
+
+.validationBadge[data-state='blocked'] {
+  border-color: color-mix(in srgb, var(--engine-error) 30%, var(--publication-border));
+  color: var(--engine-error);
+  background: color-mix(in srgb, var(--engine-error) 7%, transparent);
+}
+
+.validationBadge[data-state='ready'] {
+  border-color: color-mix(in srgb, var(--engine-success) 30%, var(--publication-border));
+  color: var(--engine-success);
+  background: color-mix(in srgb, var(--engine-success) 7%, transparent);
+}
+
+.validationList {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.7rem 0 0;
+}
+
+.validationItem {
+  gap: 0.5rem;
+  min-height: 2.15rem;
+  padding: 0.38rem 0.5rem;
+  border-radius: 0.7rem;
+  color: var(--engine-text-muted);
+  font-size: 0.7rem;
+}
+
+.validationItem[data-state='ready'] svg,
+.validationItem[data-state='ready'] small {
+  color: var(--engine-success);
+}
+
+.validationItem[data-state='blocked'] {
+  color: var(--engine-text);
+  background: color-mix(in srgb, var(--engine-error) 5%, transparent);
+}
+
+.validationItem[data-state='blocked'] svg,
+.validationItem[data-state='blocked'] small {
+  color: var(--engine-error);
+}
+
+.validationItem small {
+  margin-left: auto;
+  font-family: var(--font-system-label);
+  font-size: 0.54rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.partialNotice,
+.readyNotice {
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin-top: 0.7rem;
+  padding: 0.7rem;
+  border: 1px solid;
+  border-radius: 0.78rem;
+  font-size: 0.67rem;
+  line-height: 1.45;
+}
+
+.partialNotice {
+  border-color: color-mix(in srgb, var(--engine-warning) 28%, var(--publication-border));
+  color: color-mix(in srgb, var(--engine-warning) 75%, var(--engine-text));
+  background: color-mix(in srgb, var(--engine-warning) 6%, transparent);
+}
+
+.partialNotice svg,
+.readyNotice svg {
+  flex: 0 0 auto;
+  margin-top: 0.06rem;
+}
+
+.partialNotice strong {
+  display: block;
+  color: var(--engine-text);
+  font-size: 0.7rem;
+}
+
+.partialNotice p {
+  margin: 0.12rem 0 0;
+}
+
+.readyNotice {
+  border-color: color-mix(in srgb, var(--engine-success) 28%, var(--publication-border));
+  color: var(--engine-success);
+  background: color-mix(in srgb, var(--engine-success) 6%, transparent);
+}
+
+.settingsPanel .panelHeading {
+  margin-bottom: 1rem;
+}
+
+.formGrid {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.fieldGroup {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.fieldGroup > label,
+.mappingField > label {
+  color: var(--engine-text-muted);
+  font-family: var(--font-system-label);
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.textInput,
+.videoInput,
+.durationInput {
+  width: 100%;
+  border: 1px solid var(--publication-border);
+  color: var(--engine-text);
+  background: var(--publication-panel-soft);
+  outline: none;
+  transition: border-color 170ms ease, background 170ms ease, box-shadow 170ms ease;
+}
+
+.textInput {
+  min-height: 2.65rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.82rem;
+  font-size: 0.75rem;
+}
+
+.textInput:hover:not(:disabled):not([readonly]),
+.videoInput:hover,
+.durationInput:hover {
+  border-color: color-mix(in srgb, var(--engine-accent) 28%, var(--publication-border));
+}
+
+.textInput:focus,
+.videoInput:focus,
+.durationInput:focus {
+  border-color: color-mix(in srgb, var(--engine-accent) 58%, var(--publication-border));
+  background: var(--engine-surface-solid);
+}
+
+.lockedInput {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.fieldHint {
+  margin: 0;
+  color: var(--engine-text-muted);
+  font-size: 0.6rem;
+  line-height: 1.4;
+}
+
+.coverField {
+  margin-top: 0.15rem;
+}
+
+.coverControls {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.coverUpload {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 16 / 7;
+  min-height: 7rem;
+  overflow: hidden;
+  border: 1px dashed color-mix(in srgb, var(--engine-accent) 25%, var(--publication-border));
+  border-radius: 0.95rem;
+  color: var(--engine-text-muted);
+  background: color-mix(in srgb, var(--engine-accent) 3%, var(--engine-surface-soft));
+  cursor: pointer;
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+
+.coverUpload:hover {
+  border-color: color-mix(in srgb, var(--engine-accent) 58%, var(--publication-border));
+  color: var(--engine-accent-strong);
+  background: color-mix(in srgb, var(--engine-accent) 7%, var(--engine-surface-soft));
+}
+
+.hiddenInput {
+  display: none;
+}
+
+.coverPreview,
+.coverOverlay {
+  position: absolute;
+  inset: 0;
+}
+
+.coverPreview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.coverUpload:hover .coverPreview img {
+  transform: scale(1.025);
+}
+
+.coverOverlay {
+  background: linear-gradient(180deg, rgb(4 13 24 / 0.18), rgb(4 13 24 / 0.72));
+}
+
+.coverAction,
+.uploadCopy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 0.3rem;
+}
+
+.coverAction {
+  color: white;
+}
+
+.coverAction p,
+.uploadCopy p {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.uploadIcon {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 0.78rem;
+  color: var(--engine-accent-strong);
+  background: color-mix(in srgb, var(--engine-accent) 8%, var(--engine-surface-soft));
+}
+
+.uploadCopy small {
+  color: var(--engine-text-muted);
+  font-size: 0.56rem;
+}
+
+.urlInputWrap,
+.videoInputWrap {
+  position: relative;
+}
+
+.urlInput {
+  padding-left: 2.2rem;
+  font-size: 0.68rem;
+}
+
+.inputIcon,
+.videoInputIcon {
+  position: absolute;
+  z-index: 1;
+  left: 0.72rem;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--engine-text-muted);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.lessonPanel {
+  min-height: 31rem;
+  overflow: hidden;
+  border-radius: 1.25rem;
+}
+
+.lessonPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem 0.85rem;
+  border-bottom: 1px solid var(--publication-border);
+}
+
+.selectionSummary {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  gap: 0.3rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--engine-accent) 20%, var(--publication-border));
+  border-radius: 0.78rem;
+  background: color-mix(in srgb, var(--engine-accent) 5%, transparent);
+}
+
+.selectionSummary strong {
+  color: var(--engine-accent-strong);
+  font-family: var(--font-system-label);
+  font-size: 0.82rem;
+}
+
+.selectionSummary span {
+  color: var(--engine-text-muted);
+  font-size: 0.61rem;
+}
+
+.lessonGuidance {
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin: 0.75rem 1.1rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 0.72rem;
+  color: var(--engine-text-muted);
+  background: color-mix(in srgb, var(--engine-info) 5%, transparent);
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.lessonGuidance svg {
+  flex: 0 0 auto;
+  margin-top: 0.05rem;
+  color: var(--engine-info);
+}
+
+.moduleList {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0 0.75rem 0.75rem;
+}
+
+.moduleCard {
+  overflow: hidden;
+  border: 1px solid var(--publication-border);
+  border-radius: 0.95rem;
+  background: color-mix(in srgb, var(--engine-surface-solid) 82%, transparent);
+}
+
+.moduleHeader {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 3.7rem;
+  padding: 0.55rem 0.65rem;
+  background: var(--publication-panel-soft);
+}
+
+.moduleCheckbox,
+.lessonCheckbox {
+  display: grid;
+  place-items: center;
+}
+
+.moduleTitleButton {
+  display: grid;
+  min-width: 0;
+  padding: 0.18rem 0;
+  border: 0;
+  color: var(--engine-text);
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.moduleTitleButton span {
+  overflow: hidden;
+  font-family: var(--font-system-display);
+  font-size: 0.9rem;
+  font-weight: 400;
+  letter-spacing: -0.012em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.moduleTitleButton small {
+  margin-top: 0.12rem;
+  color: var(--engine-text-muted);
+  font-size: 0.55rem;
+}
+
+.moduleCount {
+  display: grid;
+  justify-items: end;
+  color: var(--engine-text);
+  font-family: var(--font-system-label);
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.moduleCount small {
+  color: var(--engine-text-muted);
+  font-size: 0.5rem;
+  font-weight: 500;
+}
+
+.moduleToggle {
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 0.65rem;
+  color: var(--engine-text-muted);
+  background: color-mix(in srgb, var(--engine-surface-solid) 78%, transparent);
+  cursor: pointer;
+}
+
+.moduleToggle:hover {
+  border-color: var(--engine-border-active);
+  color: var(--engine-text);
+}
+
+.moduleToggle svg {
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.chevronCollapsed {
+  transform: rotate(-90deg);
+}
+
+.moduleBody {
+  max-height: 5000px;
+  overflow: hidden;
+  opacity: 1;
+  transition: max-height 220ms ease, opacity 160ms ease;
+}
+
+.moduleBodyCollapsed {
+  max-height: 0;
+  opacity: 0;
+}
+
+.lessonList {
+  display: grid;
+}
+
+.lessonRow {
+  padding: 0.72rem;
+  border-top: 1px solid var(--publication-border);
+  transition: background 170ms ease;
+}
+
+.lessonRow[data-selected='true'] {
+  background: color-mix(in srgb, var(--engine-accent) 3.5%, transparent);
+}
+
+.lessonRow[data-has-video='false'] {
+  background: color-mix(in srgb, var(--engine-warning) 2.5%, transparent);
+}
+
+.lessonHeading {
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.lessonNumber {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  border: 1px solid var(--publication-border);
+  border-radius: 0.55rem;
+  color: var(--engine-text-muted);
+  background: var(--publication-panel-soft);
+  font-family: var(--font-system-label);
+  font-size: 0.58rem;
+  font-weight: 600;
+}
+
+.lessonTitleBlock {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.lessonTitleBlock p {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--engine-text);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lessonState {
+  padding: 0.23rem 0.42rem;
+}
+
+.lessonState[data-state='included'] {
+  border-color: color-mix(in srgb, var(--engine-success) 28%, var(--publication-border));
+  color: var(--engine-success);
+  background: color-mix(in srgb, var(--engine-success) 6%, transparent);
+}
+
+.lessonState[data-state='excluded'] {
+  color: var(--engine-text-muted);
+  background: var(--publication-panel-soft);
+}
+
+.lessonWarning {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--engine-warning);
+  font-size: 0.59rem;
+}
+
+.mappingEditor {
+  display: grid;
+  grid-template-columns: minmax(8.5rem, 0.26fr) minmax(15rem, 1fr) 8rem auto;
+  gap: 0.55rem;
+  align-items: end;
+  margin-top: 0.55rem;
+  margin-left: 4.05rem;
+}
+
+.mappingField {
+  display: grid;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.videoInput {
+  min-height: 2.48rem;
+  padding: 0.58rem 0.65rem 0.58rem 2.15rem;
+  border-radius: 0.74rem;
+  font-size: 0.7rem;
+}
+
+.internalVideo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 2.48rem;
+  padding: 0.48rem 0.55rem 0.48rem 2.15rem;
+  border: 1px solid color-mix(in srgb, var(--engine-accent) 24%, var(--publication-border));
+  border-radius: 0.74rem;
+  color: var(--engine-accent-strong);
+  background: color-mix(in srgb, var(--engine-accent) 5%, var(--engine-surface-soft));
+  font-size: 0.66rem;
+}
+
+.internalVideo > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.internalVideo span,
+.internalVideo small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.internalVideo small {
+  color: var(--engine-text-muted);
+  font-size: 0.52rem;
+}
+
+.removeVideoButton {
+  min-height: 1.75rem;
+  padding: 0.3rem 0.45rem;
+  border-color: transparent;
+  border-radius: 0.55rem;
+  color: var(--engine-text-muted);
+  background: transparent;
+  font-size: 0.58rem;
+  cursor: pointer;
+}
+
+.removeVideoButton:hover {
+  color: var(--engine-error);
+  background: color-mix(in srgb, var(--engine-error) 7%, transparent);
+}
+
+.inputWarning {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0.25rem 0 0;
+  color: var(--engine-warning);
+  font-size: 0.56rem;
+}
+
+.durationControl {
+  gap: 0.28rem;
+}
+
+.durationInput {
+  min-height: 2.48rem;
+  padding: 0.48rem;
+  border-radius: 0.74rem;
+  font-family: var(--font-system-mono);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.syncButton {
+  flex: 0 0 auto;
+  width: 2.48rem;
+  height: 2.48rem;
+  border-radius: 0.74rem;
+  color: var(--engine-text-muted);
+  background: var(--publication-panel-soft);
+  cursor: pointer;
+}
+
+.syncButton:hover:not(:disabled) {
+  border-color: var(--engine-border-active);
+  color: var(--engine-accent-strong);
+}
+
+.mappingActions {
+  min-height: 2.48rem;
+}
+
+.linkButton {
+  gap: 0.28rem;
+  min-height: 2.48rem;
+  padding: 0.5rem 0.58rem;
+  border-radius: 0.74rem;
+  color: var(--engine-text-muted);
+  background: var(--publication-panel-soft);
+  font-size: 0.6rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.linkButton:hover {
+  border-color: var(--engine-border-active);
+  color: var(--engine-accent-strong);
+}
+
+.mappingCheckbox {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  border: 1px solid var(--publication-border);
+  border-radius: 0.32rem;
+  accent-color: var(--engine-action);
+  cursor: pointer;
+}
+
+.mappingCheckbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.36;
+}
+
+.emptyState {
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  padding: 3rem 1rem;
+  color: var(--engine-text-muted);
+  text-align: center;
+}
+
+.emptyState strong {
+  color: var(--engine-text);
+  font-size: 0.78rem;
+}
+
+.emptyState p {
+  margin: 0;
+  font-size: 0.65rem;
+}
+
+@media (max-width: 84rem) {
+  .releaseHeader {
+    grid-template-columns: minmax(15rem, 1fr) auto;
+  }
+
+  .releaseMetrics {
+    grid-row: 2;
+  }
+
+  .releaseActions {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .mappingEditor {
+    grid-template-columns: minmax(8.5rem, 0.32fr) minmax(13rem, 1fr) 8rem;
+  }
+
+  .mappingActions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    min-height: auto;
+  }
+}
+
+@media (max-width: 70rem) {
+  .workspaceGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .sideRail {
+    position: static;
+    grid-row: 1;
+    grid-template-columns: minmax(16rem, 0.7fr) minmax(20rem, 1.3fr);
+  }
+
+  .formGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .coverField {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 52rem) {
+  .releaseHeader {
+    grid-template-columns: 1fr;
+  }
+
+  .releaseMetrics,
+  .releaseActions {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .releaseMetrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .releaseMetric {
+    min-width: 0;
+  }
+
+  .releaseActions {
+    justify-content: stretch;
+  }
+
+  .secondaryButton,
+  .primaryButton {
+    flex: 1 1 auto;
+  }
+
+  .sideRail {
+    grid-template-columns: 1fr;
+  }
+
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .coverField {
+    grid-column: auto;
+  }
+
+  .mappingEditor {
+    grid-template-columns: minmax(8rem, 0.36fr) minmax(12rem, 1fr);
+    margin-left: 0;
+  }
+
+  .durationField,
+  .mappingActions {
+    grid-column: auto;
+  }
+
+  .mappingActions {
+    justify-content: flex-start;
+    align-self: end;
+  }
+}
+
+@media (max-width: 40rem) {
+  .releaseHeader,
+  .validationPanel,
+  .settingsPanel {
+    border-radius: 1rem;
+  }
+
+  .releaseCopy p {
+    white-space: normal;
+  }
+
+  .releaseMetrics {
+    grid-template-columns: 1fr;
+  }
+
+  .releaseMetric {
+    min-height: 2.8rem;
+  }
+
+  .releaseActions {
+    flex-wrap: wrap;
+  }
+
+  .iconButton {
+    flex: 0 0 2.65rem;
+  }
+
+  .lessonPanelHeader {
+    align-items: flex-start;
+  }
+
+  .selectionSummary {
+    grid-template-columns: 1fr;
+  }
+
+  .moduleHeader {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .moduleCount {
+    display: none;
+  }
+
+  .lessonTitleBlock {
+    display: grid;
+    gap: 0.28rem;
+  }
+
+  .lessonTitleBlock p {
+    white-space: normal;
+  }
+
+  .lessonState,
+  .lessonWarning {
+    justify-self: start;
+  }
+
+  .mappingEditor {
+    grid-template-columns: 1fr;
+  }
+
+  .mappingActions {
+    grid-column: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace *,
+  .workspace *::before,
+  .workspace *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+  }
+}

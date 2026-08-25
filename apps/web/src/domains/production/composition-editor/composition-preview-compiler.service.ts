@@ -49,6 +49,7 @@ export async function compileCompositionPreview(params: {
 }) {
   const target = params.target || COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW;
   const isInteractivePreview = target === COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW;
+  const viewportBackground = isInteractivePreview ? "transparent" : "#020617";
   const animationRuntime = isInteractivePreview ? await readCompositionAnimationRuntime() : null;
   const { document } = params;
   const tracksById = new Map(document.tracks.map((track) => [track.id, track]));
@@ -86,8 +87,8 @@ export async function compileCompositionPreview(params: {
   <title>${escapeHtml(document.variables.title)}</title>
   <style>
     * { box-sizing: border-box; }
-    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #020617; }
-    #composition-viewport { position: fixed; inset: 0; overflow: hidden; background: #020617; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: ${viewportBackground}; }
+    #composition-viewport { position: fixed; inset: 0; overflow: hidden; background: ${viewportBackground}; }
     #composition-root { --preview-scale: 1; --preview-user-scale: 1; --editor-control-scale: 1; --editor-outline-width: 3px; position: absolute; left: 50%; top: 50%; width: ${document.canvas.width}px; height: ${document.canvas.height}px; overflow: hidden; background: #020617; transform: translate(-50%, -50%) scale(calc(var(--preview-scale) * var(--preview-user-scale))); transform-origin: center; }
     .clip { position: absolute; inset: 0;${isInteractivePreview ? " pointer-events: none;" : ""} }
     .clip-content { position: absolute; overflow: hidden; transform-origin: top left;${isInteractivePreview ? " pointer-events: none;" : ""} visibility: hidden; }

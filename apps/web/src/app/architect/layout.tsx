@@ -4,6 +4,7 @@ import { getAuthBridgeUser } from '@/utils/auth/session';
 import ArchitectLayoutClient from './ArchitectLayoutClient';
 import { logoutAction } from '../login/actions';
 import { resolveSidebarProfile } from '@/components/layout/layout.types';
+import { normalizePlatformRole } from '@/utils/auth/platform-role';
 
 export default async function ArchitectLayout({
   children,
@@ -33,13 +34,19 @@ export default async function ArchitectLayout({
     .eq('id', userId)
     .single();
 
-  const isArchitectOrAdmin = profile?.platform_role === 'ARQUITECTO' || profile?.platform_role === 'ADMIN' || profile?.platform_role === 'SUPERADMIN';
+  const effectiveRole =
+    normalizePlatformRole(bridgeUser?.platform_role) ||
+    normalizePlatformRole(profile?.platform_role);
+  const isArchitectOrAdmin = effectiveRole === 'ARQUITECTO' || effectiveRole === 'ADMIN' || effectiveRole === 'SUPERADMIN';
 
   if (!isArchitectOrAdmin) {
     redirect('/builder?error=unauthorized_architect');
   }
 
-  const displayProfile = resolveSidebarProfile(profile, bridgeUser);
+  const displayProfile = {
+    ...(resolveSidebarProfile(profile, bridgeUser) || {}),
+    platform_role: effectiveRole,
+  };
 
   return (
     <ArchitectLayoutClient userEmail={userEmail} logoutAction={logoutAction} profile={displayProfile}>
