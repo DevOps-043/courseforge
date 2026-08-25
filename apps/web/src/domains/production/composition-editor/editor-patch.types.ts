@@ -175,6 +175,7 @@ const animationAddPresetOperationSchema = z.object({
 
 const animationConfigurePresetOperationSchema = z.object({
   animationId: editorIdSchema,
+  cycleDurationSeconds: z.number().finite().min(0.5).max(8).optional(),
   cycles: z.number().int().min(1).max(12),
   durationSeconds: boundedSecondsSchema.positive(),
   intensity: z.number().finite().min(0.25).max(2),

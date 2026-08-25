@@ -178,6 +178,9 @@ function MotionAnimationRow({
   const [cycles, setCycles] = useState(String(
     animation.preset?.parameters?.cycles ?? definition?.defaultCycles ?? 1,
   ));
+  const [cycleDuration, setCycleDuration] = useState(String(
+    animation.loop?.cycleDurationSeconds ?? 1.5,
+  ));
   const [validationError, setValidationError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -185,11 +188,13 @@ function MotionAnimationRow({
     setOffset(String(animation.timing.offsetSeconds));
     setIntensity(String(animation.preset?.parameters?.intensity ?? definition?.defaultIntensity ?? 1));
     setCycles(String(animation.preset?.parameters?.cycles ?? definition?.defaultCycles ?? 1));
+    setCycleDuration(String(animation.loop?.cycleDurationSeconds ?? 1.5));
     setValidationError(null);
   }, [
     animation.id,
     animation.preset?.parameters?.cycles,
     animation.preset?.parameters?.intensity,
+    animation.loop?.cycleDurationSeconds,
     animation.timing.durationSeconds,
     animation.timing.offsetSeconds,
     definition?.defaultCycles,
@@ -206,6 +211,7 @@ function MotionAnimationRow({
     const offsetValue = Number(offset);
     const intensityValue = Number(intensity);
     const cyclesValue = Number(cycles);
+    const cycleDurationValue = Number(cycleDuration);
     const inputError = validateMotionInput({
       clipDurationSeconds: clip.durationSeconds,
       cycles: cyclesValue,
@@ -214,6 +220,8 @@ function MotionAnimationRow({
       maximumDuration,
       offset: offsetValue,
       requiresPresetParameters: Boolean(definition && animation.preset),
+      requiresLoopCadence: Boolean(animation.loop),
+      cycleDuration: cycleDurationValue,
     });
     if (inputError) {
       setValidationError(inputError);
@@ -251,6 +259,7 @@ function MotionAnimationRow({
     }
     return onPatch([{
       animationId: animation.id,
+      cycleDurationSeconds: animation.loop ? cycleDurationValue : undefined,
       cycles: cyclesValue,
       durationSeconds: durationValue,
       intensity: intensityValue,
@@ -312,7 +321,17 @@ function MotionAnimationRow({
             onChange={setIntensity}
           />
         )}
-        {definition?.controls.includes("CYCLES") && (
+        {definition?.controls.includes("CADENCE") && animation.loop && (
+          <MotionNumberField
+            label="Cadencia (s)"
+            min={0.5}
+            max={8}
+            step={0.1}
+            value={cycleDuration}
+            onChange={setCycleDuration}
+          />
+        )}
+        {definition?.controls.includes("CYCLES") && !animation.loop && (
           <MotionNumberField
             label="Ciclos"
             min={1}
@@ -336,7 +355,7 @@ function MotionAnimationRow({
       >
         Guardar animación
       </button>
-      <details className="mt-2 border-t border-slate-200 pt-1.5 dark:border-white/10">
+      {!animation.loop && <details className="mt-2 border-t border-slate-200 pt-1.5 dark:border-white/10">
         <summary className="cursor-pointer text-[9px] font-bold text-slate-500">
           Avanzado · keyframes ({animation.keyframes.length})
         </summary>
@@ -352,7 +371,7 @@ function MotionAnimationRow({
             />
           ))}
         </div>
-      </details>
+      </details>}
     </div>
   );
 }
@@ -485,11 +504,13 @@ function MotionNumberField({
 
 function validateMotionInput(params: {
   clipDurationSeconds: number;
+  cycleDuration: number;
   cycles: number;
   duration: number;
   intensity: number;
   maximumDuration: number;
   offset: number;
+  requiresLoopCadence: boolean;
   requiresPresetParameters: boolean;
 }) {
   if (!Number.isFinite(params.duration) || params.duration < 0.05 || params.duration > params.maximumDuration) {
@@ -508,6 +529,13 @@ function validateMotionInput(params: {
   }
   if (!Number.isInteger(params.cycles) || params.cycles < 1 || params.cycles > 12) {
     return "Los ciclos deben ser un entero entre 1 y 12.";
+  }
+  if (params.requiresLoopCadence && (
+    !Number.isFinite(params.cycleDuration)
+    || params.cycleDuration < 0.5
+    || params.cycleDuration > 8
+  )) {
+    return "La cadencia debe estar entre 0.5 y 8 segundos.";
   }
   return null;
 }

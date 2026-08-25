@@ -209,6 +209,7 @@ function renderTimelineInitializer(
       duration: animation.timing.durationSeconds,
       id: animation.id,
       keyframes: animation.keyframes,
+      loop: animation.loop,
       start: clip.startSeconds + relativeStart,
       targetId: `${clip.id}-motion`,
     };
@@ -263,6 +264,27 @@ function renderTimelineInitializer(
         const first = animation.keyframes[0];
         if (!target || !first) continue;
         timeline.set(target, first.values, animation.start);
+        if (animation.loop) {
+          const peak = animation.keyframes[1];
+          if (!peak) continue;
+          const cycleDuration = Math.min(animation.loop.cycleDurationSeconds, animation.duration);
+          const fullCycles = Math.floor(animation.duration / cycleDuration);
+          const remainder = animation.duration - fullCycles * cycleDuration;
+          const addFiniteLoop = (start, duration, cycles) => {
+            if (duration <= 0 || cycles <= 0) return;
+            timeline.to(target, {
+              ...peak.values,
+              duration: duration / 2,
+              ease: peak.ease || "none",
+              repeat: Math.max(0, cycles * 2 - 1),
+              yoyo: true,
+            }, start);
+          };
+          addFiniteLoop(animation.start, cycleDuration, fullCycles);
+          // A partial final cycle keeps the pose neutral exactly at the end of the assigned window.
+          addFiniteLoop(animation.start + fullCycles * cycleDuration, remainder, 1);
+          continue;
+        }
         for (let index = 1; index < animation.keyframes.length; index += 1) {
           const previous = animation.keyframes[index - 1];
           const keyframe = animation.keyframes[index];

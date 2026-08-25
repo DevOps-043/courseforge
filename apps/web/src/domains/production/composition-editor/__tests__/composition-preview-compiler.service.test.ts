@@ -605,6 +605,8 @@ test("compiles motion on an inner subject without replacing the editable layout"
     plan: { accentColor: "#38BDF8", durationSeconds: 5, subtitle: "Prueba", title: "Motion" },
   });
   const clip = document.clips[0]!;
+  // Do not mutate Zod's default motion array; later fixtures must start clean.
+  document.motion = { ...document.motion, animations: [] };
   document.motion.animations.push({
     id: "motion-fade-in-preview",
     keyframes: [{ offset: 0, values: { opacity: 0 } }, { ease: "power2.out", offset: 1, values: { opacity: 1 } }],
@@ -631,6 +633,41 @@ test("compiles motion on an inner subject without replacing the editable layout"
   const motionPayload = html.match(/const motionAnimations = (\[[^;]+\]);/)?.[1];
   assert.ok(motionPayload);
   assert.doesNotMatch(motionPayload, /repeat/);
+});
+
+test("compiles ambient motion as a finite loop that closes at the assigned duration", async () => {
+  const assetId = "00000000-0000-4000-8000-000000000097";
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "9".repeat(64), durationSeconds: 90, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: assetId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/ambient.mp4", timelineRole: "BROLL" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 90, subtitle: "Prueba", title: "Ambiental" },
+  });
+  const clip = document.clips.find((candidate) => candidate.source.type === "PRODUCTION_ASSET")!;
+  clip.durationSeconds = 90;
+  document.motion.animations = [{
+    id: "motion-ambient-float",
+    keyframes: [
+      { offset: 0, values: { x: 0, y: 0 } },
+      { ease: "power1.inOut", offset: 0.5, values: { x: 0, y: -24 } },
+      { ease: "power1.inOut", offset: 1, values: { x: 0, y: 0 } },
+    ],
+    loop: { mode: "FINITE", cycleDurationSeconds: 2 },
+    origin: "PRESET",
+    preset: { id: "FLOAT", parameters: { cycles: 1, intensity: 1 }, version: 3 },
+    propertyGroup: "POSITION",
+    target: { clipId: clip.id, part: "CONTENT" },
+    timing: { anchor: "CLIP_START", durationSeconds: 90, offsetSeconds: 0 },
+  }];
+
+  const html = await compileCompositionPreview({
+    assetUrls: new Map([[assetId, "https://assets.test/ambient.mp4"]]),
+    document,
+  });
+
+  assert.match(html, /"loop":\{"mode":"FINITE","cycleDurationSeconds":2\}/);
+  assert.match(html, /const fullCycles = Math\.floor\(animation\.duration \/ cycleDuration\)/);
+  assert.match(html, /repeat: Math\.max\(0, cycles \* 2 - 1\)/);
+  assert.match(html, /yoyo: true/);
 });
 
 test("compiles reversible intermediate visibility presets identically for preview and render", async () => {

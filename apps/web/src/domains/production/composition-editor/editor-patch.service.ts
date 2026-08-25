@@ -135,6 +135,7 @@ export function applyCompositionEditorPatches(
 ) {
   let next = structuredClone(document);
   next.format = COMPOSITION_DOCUMENT_FORMAT;
+  next.motion.schemaVersion = 2;
 
   for (const operation of operations) {
     if (operation.type === "document.reconcile") {
@@ -189,6 +190,7 @@ export function applyCompositionEditorPatches(
         animationId: animation.id,
         clipDurationSeconds: clip.durationSeconds,
         clipId: clip.id,
+        cycleDurationSeconds: operation.cycleDurationSeconds,
         cycles: operation.cycles,
         durationSeconds: operation.durationSeconds,
         intensity: operation.intensity,
@@ -222,6 +224,9 @@ export function applyCompositionEditorPatches(
         animation.timing = timing;
         animation.origin = source === "AGENT" ? "AGENT" : "USER";
       } else {
+        if (animation.loop) {
+          throw new CompositionEditorPatchError("Los ciclos repetibles se editan mediante cadencia, no por poses individuales.");
+        }
         const keyframe = animation.keyframes[operation.keyframeIndex];
         if (!keyframe) throw new CompositionEditorPatchError("El keyframe que intentas editar ya no existe.");
         if (operation.values) keyframe.values = operation.values;
@@ -601,6 +606,8 @@ export function applyCompositionEditorPatches(
     }
   }
 
+  // Every newly appended document uses the current motion contract, including restores.
+  next.motion.schemaVersion = 2;
   const parsed = compositionEditorDocumentSchema.safeParse(next);
   if (!parsed.success) {
     throw new CompositionEditorPatchError(

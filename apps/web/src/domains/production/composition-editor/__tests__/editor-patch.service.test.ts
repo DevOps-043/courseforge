@@ -768,6 +768,7 @@ test("actualiza documentos V1 a V2 sin perder su estado existente", () => {
   const clip = parsed.clips[0]!;
   const updated = applyCompositionEditorPatches(parsed, [{ clipId: clip.id, hidden: true, type: "clip.visibility" }]);
   assert.equal(updated.format, COMPOSITION_DOCUMENT_FORMAT);
+  assert.equal(updated.motion.schemaVersion, 2);
   assert.equal(updated.clips.find((candidate) => candidate.id === clip.id)?.hidden, true);
 });
 
@@ -792,7 +793,7 @@ test("añade motion sin modificar layout ni timing y lo elimina en cascada con e
   assert.equal(removed.motion.animations.length, 0);
 });
 
-test("crea y reconfigura animaciones Durante con ciclos finitos", () => {
+test("crea y reconfigura animaciones ambientales con cadencia finita", () => {
   const document = baseDocument();
   document.canvas.durationSeconds = 60;
   const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
@@ -808,11 +809,12 @@ test("crea y reconfigura animaciones Durante con ciclos finitos", () => {
 
   assert.equal(initial.timing.anchor, "CLIP_START");
   assert.equal(initial.timing.durationSeconds, 6);
-  assert.equal(initial.preset?.parameters?.cycles, 3);
-  assert.equal(initial.keyframes.length, 7);
+  assert.deepEqual(initial.loop, { mode: "FINITE", cycleDurationSeconds: 1.5 });
+  assert.equal(initial.keyframes.length, 3);
 
   const configured = applyCompositionEditorPatches(animated, [{
     animationId: initial.id,
+    cycleDurationSeconds: 2,
     cycles: 4,
     durationSeconds: 8,
     intensity: 1.5,
@@ -824,9 +826,9 @@ test("crea y reconfigura animaciones Durante con ciclos finitos", () => {
   assert.equal(result.origin, "USER");
   assert.equal(result.timing.durationSeconds, 8);
   assert.equal(result.timing.offsetSeconds, 1.5);
-  assert.equal(result.preset?.parameters?.cycles, 4);
+  assert.deepEqual(result.loop, { mode: "FINITE", cycleDurationSeconds: 2 });
   assert.equal(result.preset?.parameters?.intensity, 1.5);
-  assert.equal(result.keyframes.length, 9);
+  assert.equal(result.keyframes.length, 3);
 });
 
 test("crea ocultación intermedia instantánea y con desvanecimiento reversible", () => {

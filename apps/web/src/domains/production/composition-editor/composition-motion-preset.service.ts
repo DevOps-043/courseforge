@@ -2,7 +2,7 @@ import type { CompositionAnimation, CompositionMotionPresetId } from "./composit
 
 export const COMPOSITION_MOTION_PHASES = ["ENTRY", "PLAYBACK", "EXIT"] as const;
 export type CompositionMotionPhase = typeof COMPOSITION_MOTION_PHASES[number];
-export type CompositionMotionPresetControl = "CYCLES" | "DURATION" | "INTENSITY" | "OFFSET";
+export type CompositionMotionPresetControl = "CADENCE" | "CYCLES" | "DURATION" | "INTENSITY" | "OFFSET";
 
 export type CompositionMotionPresetDefinition = {
   controls: readonly CompositionMotionPresetControl[];
@@ -17,7 +17,7 @@ export type CompositionMotionPresetDefinition = {
 };
 
 const ENTRY_CONTROLS = ["DURATION", "INTENSITY", "OFFSET"] as const;
-const PLAYBACK_CONTROLS = ["DURATION", "INTENSITY", "CYCLES", "OFFSET"] as const;
+const PLAYBACK_CONTROLS = ["DURATION", "INTENSITY", "CADENCE", "OFFSET"] as const;
 const INTERMEDIATE_VISIBILITY_CONTROLS = ["DURATION", "OFFSET"] as const;
 const EXIT_CONTROLS = ["DURATION", "INTENSITY", "OFFSET"] as const;
 
@@ -68,6 +68,7 @@ export function createCompositionPresetAnimation(params: {
   animationId: string;
   clipDurationSeconds?: number;
   clipId: string;
+  cycleDurationSeconds?: number;
   cycles?: number;
   durationSeconds: number;
   intensity?: number;
@@ -80,6 +81,9 @@ export function createCompositionPresetAnimation(params: {
   const durationSeconds = clampDuration(definition, params.durationSeconds, clipDurationSeconds);
   const intensity = clamp(params.intensity ?? definition.defaultIntensity, 0.25, 2);
   const cycles = Math.round(clamp(params.cycles ?? definition.defaultCycles, 1, 12));
+  const loop = definition.phase === "PLAYBACK" && isAmbientMotionPreset(params.presetId)
+    ? { mode: "FINITE" as const, cycleDurationSeconds: clamp(params.cycleDurationSeconds ?? 1.5, 0.5, 8) }
+    : undefined;
   const offsetSeconds = clamp(
     params.offsetSeconds ?? defaultOffset(definition.phase, clipDurationSeconds, durationSeconds),
     0,
@@ -88,7 +92,7 @@ export function createCompositionPresetAnimation(params: {
   const common = {
     id: params.animationId,
     origin: params.origin,
-    preset: { id: params.presetId, parameters: { cycles, intensity }, version: 2 },
+    preset: { id: params.presetId, parameters: { cycles, intensity }, version: loop ? 3 : 2 },
     target: { clipId: params.clipId, part: "CONTENT" as const },
     timing: {
       anchor: definition.phase === "EXIT" ? "CLIP_END" as const : "CLIP_START" as const,
@@ -116,13 +120,13 @@ export function createCompositionPresetAnimation(params: {
     case "POP":
       return { ...common, propertyGroup: "SCALE", keyframes: [{ offset: 0, values: { scale: clamp(1 - 0.3 * intensity, 0.1, 0.9) } }, { ease: "back.out(1.4)", offset: 0.72, values: { scale: 1 + 0.08 * intensity } }, { ease: "power1.out", offset: 1, values: { scale: 1 } }] };
     case "PULSE":
-      return { ...common, propertyGroup: "SCALE", keyframes: oscillationKeyframes("scale", 1, 1 + 0.08 * intensity, cycles) };
+      return { ...common, loop, propertyGroup: "SCALE", keyframes: oscillationKeyframes("scale", 1, 1 + 0.08 * intensity, loop ? 1 : cycles) };
     case "FLOAT":
-      return { ...common, propertyGroup: "POSITION", keyframes: oscillationPositionKeyframes(0, -24 * intensity, cycles) };
+      return { ...common, loop, propertyGroup: "POSITION", keyframes: oscillationPositionKeyframes(0, -24 * intensity, loop ? 1 : cycles) };
     case "SWAY":
-      return { ...common, propertyGroup: "ROTATION", keyframes: oscillationKeyframes("rotation", 0, 3 * intensity, cycles) };
+      return { ...common, loop, propertyGroup: "ROTATION", keyframes: oscillationKeyframes("rotation", 0, 3 * intensity, loop ? 1 : cycles) };
     case "BREATHE":
-      return { ...common, propertyGroup: "OPACITY", keyframes: oscillationKeyframes("opacity", 1, clamp(1 - 0.12 * intensity, 0.55, 0.94), cycles) };
+      return { ...common, loop, propertyGroup: "OPACITY", keyframes: oscillationKeyframes("opacity", 1, clamp(1 - 0.12 * intensity, 0.55, 0.94), loop ? 1 : cycles) };
     case "HIDE":
       return { ...common, propertyGroup: "OPACITY", keyframes: [{ offset: 0, values: { opacity: 0 } }, { ease: "steps(1)", offset: 1, values: { opacity: 1 } }] };
     case "FADE_HIDE":
@@ -141,6 +145,10 @@ export function createCompositionPresetAnimation(params: {
     default:
       throw new Error(`El preset de animación ${params.presetId} todavía no está implementado.`);
   }
+}
+
+export function isAmbientMotionPreset(presetId: CompositionMotionPresetId) {
+  return presetId === "PULSE" || presetId === "FLOAT" || presetId === "SWAY" || presetId === "BREATHE";
 }
 
 function preset(id: CompositionMotionPresetId, label: string, phase: CompositionMotionPhase, propertyGroup: CompositionAnimation["propertyGroup"], controls: readonly CompositionMotionPresetControl[]): CompositionMotionPresetDefinition {

@@ -13,7 +13,10 @@
     "build:legacy-api": "npm run build -w apps/api",
     "lint": "npm run lint -w apps/web",
     "lint:legacy-api": "npm run lint -w apps/api",
-    "docs:audit": "powershell -ExecutionPolicy Bypass -File scripts/audit-documentation.ps1"
+    "docs:audit": "powershell -ExecutionPolicy Bypass -File scripts/audit-documentation.ps1",
+    "compliance:sbom": "powershell -ExecutionPolicy Bypass -File scripts/generate-sbom.ps1",
+    "compliance:check": "node scripts/check-third-party-compliance.mjs",
+    "compliance:verify": "npm run compliance:sbom && npm run compliance:check"
   },
   "devDependencies": {
     "@netlify/functions": "^5.1.2",
