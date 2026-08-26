@@ -204,7 +204,26 @@ export class HeygenVideoService {
       job.status !== PRODUCTION_JOB_STATUSES.PENDING &&
       job.status !== PRODUCTION_JOB_STATUSES.RETRY_SCHEDULED
     ) {
-      const existingVoice = await this.audioImportService.findImportedVoice(job.id);
+      let existingVoice = await this.audioImportService.findImportedVoice(job.id);
+      if (!existingVoice) {
+        const persistedJob = await this.repository.getProductionJob({
+          jobId: job.id,
+          organizationId: params.organizationId,
+        });
+        if (!persistedJob) {
+          throw new HeygenVideoServiceError(
+            "No se pudo recuperar el job de HeyGen para reparar su locucion.",
+            500,
+          );
+        }
+        existingVoice = await this.generateAndImportVoice({
+          createdBy: params.createdBy,
+          job: persistedJob,
+          scriptHash: script.scriptHash,
+          scriptText: script.scriptText,
+          voiceProviderId: providerVoiceId,
+        });
+      }
       return {
         jobId: job.id,
         providerJobId:
@@ -226,16 +245,11 @@ export class HeygenVideoService {
     let voiceAsset = await this.audioImportService.findImportedVoice(job.id);
     if (!voiceAsset) {
       try {
-        const speech = await this.client.generateSpeech({
-          speed: 1,
-          text: script.scriptText,
-          voice_id: providerVoiceId,
-        });
-        voiceAsset = await this.audioImportService.importGeneratedSpeech({
+        voiceAsset = await this.generateAndImportVoice({
           createdBy: params.createdBy,
           job: persistedJob,
           scriptHash: script.scriptHash,
-          speech,
+          scriptText: script.scriptText,
           voiceProviderId: providerVoiceId,
         });
       } catch (error) {
@@ -309,6 +323,27 @@ export class HeygenVideoService {
       status: PRODUCTION_JOB_STATUSES.WAITING_PROVIDER,
       voiceAsset: toPublicVoiceAsset(voiceAsset),
     };
+  }
+
+  private async generateAndImportVoice(params: {
+    createdBy?: string | null;
+    job: HeygenProductionJobRow;
+    scriptHash: string;
+    scriptText: string;
+    voiceProviderId: string;
+  }) {
+    const speech = await this.client.generateSpeech({
+      speed: 1,
+      text: params.scriptText,
+      voice_id: params.voiceProviderId,
+    });
+    return this.audioImportService.importGeneratedSpeech({
+      createdBy: params.createdBy,
+      job: params.job,
+      scriptHash: params.scriptHash,
+      speech,
+      voiceProviderId: params.voiceProviderId,
+    });
   }
 
   async getAvatarVideoJobStatus(params: {

@@ -31,6 +31,7 @@ import {
   getSlideTemplatePackagesAction,
   type SlideTemplateLibraryItem,
 } from "@/domains/production/slides/slide-template-library.actions";
+import { ProductionMediaPreview } from "./ProductionMediaPreview";
 
 interface ProductionAssetCardProps {
   component: MaterialComponent;
@@ -433,6 +434,18 @@ export function ProductionAssetCard({
               }
             />
           )}
+
+          {finalVideoUrl ? (
+            <section className="space-y-3">
+              <h4 className={PRODUCTION_THEME.sectionTitle}>VIDEO FINAL</h4>
+              <ProductionMediaPreview
+                durationSeconds={component.assets?.video_duration}
+                kind="video"
+                label={component.assets?.final_video_file_name || "Video final de producción"}
+                src={finalVideoUrl}
+              />
+            </section>
+          ) : null}
         </div>
       </div>
 
