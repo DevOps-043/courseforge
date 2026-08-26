@@ -338,3 +338,41 @@ export async function getAuthorizedMaterialComponentAdmin(componentId: string) {
     component: normalizedComponent,
   };
 }
+
+export async function getAuthorizedMaterialComponentAdminForTenant(
+  componentId: string,
+  organizationId: string,
+) {
+  const admin = getServiceRoleClient();
+  const { data: component, error } = await admin
+    .from("material_components")
+    .select(
+      `
+        id,
+        type,
+        content,
+        assets,
+        material_lesson_id,
+        material_lessons!inner (
+          materials!inner (
+            artifact_id,
+            artifacts!inner ( organization_id )
+          )
+        )
+      `,
+    )
+    .eq("id", componentId)
+    .eq("material_lessons.materials.artifacts.organization_id", organizationId)
+    .maybeSingle();
+
+  if (error || !component) {
+    if (error) console.error("[MaterialComponentAccess] Tenant lookup failed:", error);
+    return null;
+  }
+
+  const normalizedComponent = component as MaterialComponentAdminRow;
+  const artifactId = getArtifactIdFromComponent(normalizedComponent);
+  if (!artifactId) return null;
+
+  return { admin, artifactId, component: normalizedComponent };
+}

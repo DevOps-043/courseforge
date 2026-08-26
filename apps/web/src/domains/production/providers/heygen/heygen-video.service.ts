@@ -82,6 +82,8 @@ export interface HeygenAvatarVideoJobStatusResult {
   } | null;
   jobId: string;
   providerJobId: string | null;
+  providerErrorCode?: string | null;
+  providerErrorMessage?: string | null;
   providerStatus?: string | null;
   scriptHash: string | null;
   status: string;
@@ -357,10 +359,13 @@ export class HeygenVideoService {
     }
 
     if (job.status === PRODUCTION_JOB_STATUSES.FAILED) {
+      const persistedFailure = readProviderFailure(job.provider_error);
       return {
         asset: null,
         jobId: job.id,
         providerJobId: job.provider_job_id || null,
+        providerErrorCode: persistedFailure.code,
+        providerErrorMessage: persistedFailure.message,
         scriptHash: readNullableString(job.input_snapshot?.script_hash),
         status: job.status,
         voiceAsset: toPublicVoiceAsset(existingVoice),
@@ -391,6 +396,9 @@ export class HeygenVideoService {
         asset: null,
         jobId: job.id,
         providerJobId: job.provider_job_id,
+        providerErrorCode: video.failureCode || null,
+        providerErrorMessage:
+          video.failureMessage || "HeyGen reporto la generacion como fallida.",
         providerStatus: video.status,
         scriptHash: readNullableString(job.input_snapshot?.script_hash),
         status: PRODUCTION_JOB_STATUSES.FAILED,
@@ -658,6 +666,19 @@ function readString(value: unknown) {
 
 function readNullableString(value: unknown) {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function readProviderFailure(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { code: null, message: null };
+  }
+  const failure = value as Record<string, unknown>;
+  return {
+    code: readNullableString(failure.code),
+    message:
+      readNullableString(failure.message) ||
+      readNullableString(failure.error_message),
+  };
 }
 
 function preciseAssetDuration(asset: {

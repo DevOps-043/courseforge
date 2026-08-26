@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import JSZip from "jszip";
 import { toast } from "sonner";
 import { getErrorMessage } from "@/lib/errors";
+import { readApiResponse } from "@/lib/client/api-response";
+import { waitForSlideGeneration } from "@/lib/client/slide-generation";
 import { uploadWithSignedUrl } from "@/lib/storage-upload";
 import { validateHyperframesMediaAsset } from "@/domains/production/hyperframes/hyperframes-media-constraints";
 import { HYPERFRAMES_ASSET_DELIVERY_MODES } from "@/domains/production/hyperframes/hyperframes.types";
@@ -60,6 +62,15 @@ function isRestPendingHeygenStatus(status: unknown) {
     status === "WAITING_PROVIDER" ||
     status === "RETRY_SCHEDULED"
   );
+}
+
+function formatHeygenProviderFailure(result: Record<string, unknown>) {
+  if (result.providerErrorCode === "MOVIO_PAYMENT_INSUFFICIENT_CREDIT") {
+    return "HeyGen no tiene creditos API suficientes. Recarga creditos API en HeyGen y vuelve a generar.";
+  }
+  return typeof result.providerErrorMessage === "string" && result.providerErrorMessage
+    ? result.providerErrorMessage
+    : "HeyGen reporto la generacion como fallida.";
 }
 
 function isRenderableSlideImage(file: File) {
@@ -362,7 +373,7 @@ export function useProductionAssetState({
     setIsLoadingHeygenPresets(true);
     try {
       const response = await fetch("/api/production/heygen/presets");
-      const data = await response.json();
+      const data = await readApiResponse(response);
       if (!response.ok || !data.success) {
         throw new Error(data.error || "No se pudieron cargar presets HeyGen");
       }
@@ -392,7 +403,7 @@ export function useProductionAssetState({
       const response = await fetch(
         `/api/production/heygen/jobs?componentId=${component.id}`,
       );
-      const data = await response.json();
+      const data = await readApiResponse(response);
       if (!response.ok || !data.success) {
         throw new Error(data.error || "No se pudo recuperar el job HeyGen");
       }
@@ -403,6 +414,13 @@ export function useProductionAssetState({
       setHeygenJobId(latestJob.jobId || null);
       setHeygenJobStatus(latestJob.status || null);
       setHeygenProviderJobId(latestJob.providerJobId || null);
+      if (latestJob.status === "FAILED") {
+        const providerError = latestJob.providerError || {};
+        setHeygenError(formatHeygenProviderFailure({
+          providerErrorCode: providerError.code,
+          providerErrorMessage: providerError.message || providerError.error_message,
+        }));
+      }
 
       const recoveredVoiceAsset = data.data?.voiceAsset;
       if (recoveredVoiceAsset?.publicUrl && recoveredVoiceAsset?.storagePath) {
@@ -643,7 +661,7 @@ export function useProductionAssetState({
         htmlContentPath: preferredHtmlPath,
       }),
     });
-      const data = await response.json();
+      const data = await readApiResponse(response);
 
       if (!response.ok || !data.success || !data.assets?.slides?.animated_deck) {
         throw new Error(data.error || "No se pudo preparar el deck animado");
@@ -685,9 +703,17 @@ export function useProductionAssetState({
         }),
       });
 
-      const data = await response.json();
+      let data = await readApiResponse(response);
       if (!response.ok || !data.success) {
         throw new Error(data.error || "No se pudo generar el deck SofLIA - Engine");
+      }
+      if (response.status === 202 && data.submissionStatus === "QUEUED") {
+        toast.info("Deck en cola. La generacion continuara en segundo plano.");
+        const completed = await waitForSlideGeneration({
+          componentId: component.id,
+          createdAfter: data.queuedAt,
+        });
+        data = { success: true, assets: completed.assets };
       }
 
       const generatedSlides = data.assets?.slides as SlidesAsset | undefined;
@@ -729,7 +755,7 @@ export function useProductionAssetState({
         body: JSON.stringify({ componentId: component.id }),
       });
 
-      const data = await response.json();
+      const data = await readApiResponse(response);
       if (!response.ok || !data.success) {
         throw new Error(data.error || 'Error al exportar slides');
       }
@@ -1076,21 +1102,17 @@ export function useProductionAssetState({
         }),
       });
 
-      const data = await response.json();
+      const data = await readApiResponse(response);
       if (response.status === 202 && data.success) {
-        setHeygenJobId(data.data?.jobId || null);
+        setHeygenJobId(null);
         setHeygenProviderJobId(data.data?.providerJobId || null);
-        setHeygenJobStatus(data.data?.status || "RETRY_SCHEDULED");
+        setHeygenJobStatus(data.data?.status || "QUEUED");
         setHeygenSyncProgress(25);
-        setHeygenError(
-          data.warning ||
-            "HeyGen aun no confirma el envio. Puedes reintentar de forma segura.",
-        );
+        setHeygenError(null);
         setIsSyncingHeygen(false);
-        toast.warning(
-          data.warning ||
-            "El envio quedo pendiente de confirmacion; puedes reintentarlo sin duplicar el video.",
-        );
+        toast.info("Generacion en cola. El envio a HeyGen continuara en segundo plano.");
+        window.setTimeout(() => void loadLatestHeygenJob(), 1_500);
+        window.setTimeout(() => void loadLatestHeygenJob(), 4_000);
         return;
       }
 
@@ -1141,7 +1163,7 @@ export function useProductionAssetState({
         );
 
         if (response.ok) {
-          const data = await response.json();
+          const data = await readApiResponse(response);
           const result = data.data;
           setHeygenJobStatus(result.status || null);
           setHeygenProviderJobId(result.providerJobId || null);
@@ -1192,14 +1214,16 @@ export function useProductionAssetState({
             );
           } else if (result.status === "FAILED") {
             clearInterval(interval);
-            setHeygenError("HeyGen reporto la generacion como fallida.");
+            const failureMessage = formatHeygenProviderFailure(result);
+            setHeygenError(failureMessage);
+            toast.error(failureMessage);
             setIsSyncingHeygen(false);
           } else {
             setHeygenSyncProgress((prev) => Math.min(prev + 5, 95));
           }
         } else if (response.status !== 202) {
           clearInterval(interval);
-          const data = await response.json();
+          const data = await readApiResponse(response);
           setHeygenError(data.error || 'Error de importación');
           setIsSyncingHeygen(false);
         } else {
@@ -1305,7 +1329,7 @@ export function useProductionAssetState({
     setIsSearchingArtlist(true);
     try {
       const response = await fetch(`/api/production/artlist/search?type=${type}&q=${encodeURIComponent(query)}`);
-      const data = await response.json();
+      const data = await readApiResponse(response);
       if (response.ok && data.success) {
         setArtlistSearchResults(data.results || []);
       } else {
@@ -1332,7 +1356,7 @@ export function useProductionAssetState({
           componentId: component.id,
         }),
       });
-      const data = await response.json();
+      const data = await readApiResponse(response);
       if (response.ok && data.success) {
         if (type === "music") {
           setBackgroundMusic(data.assets.background_music);
@@ -1368,7 +1392,7 @@ export function useProductionAssetState({
       const response = await fetch(
         `/api/production/cloud-storage/list?q=${encodeURIComponent(query)}&provider=${provider}`,
       );
-      const data = await response.json();
+      const data = await readApiResponse(response);
       if (response.ok && data.success) {
         setGoogleDriveSearchResults(data.files || []);
       } else {
@@ -1404,7 +1428,7 @@ export function useProductionAssetState({
           avatarGenerationMode,
         }),
       });
-      const data = await response.json();
+      const data = await readApiResponse(response);
       if (response.ok && data.success) {
         // Update local states
         switch (type) {

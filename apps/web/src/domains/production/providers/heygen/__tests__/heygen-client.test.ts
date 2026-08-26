@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { HeygenApiError, HeygenClient } from "../heygen.client";
 import { buildResolutionRejectionHint } from "../heygen-request-constraints";
+import { heygenJobStatusResponseSchema } from "../heygen.validators";
+import { readApiResponse } from "../../../../../lib/client/api-response";
 
 describe("HeyGen separated track client", () => {
   it("lists only voices compatible with the TTS engine used for separated tracks", async () => {
@@ -160,5 +162,38 @@ describe("HeyGen separated track client", () => {
     assert.doesNotMatch(genericHint, /720p/);
     assert.match(resolutionHint, /720p/);
     assert.match(resolutionHint, /1080p/);
+  });
+
+  it("turns an HTML gateway timeout into a useful API message", async () => {
+    const response = new Response("<HTML><title>Gateway timeout</title></HTML>", {
+      status: 504,
+      headers: { "Content-Type": "text/html" },
+    });
+
+    await assert.rejects(
+      () => readApiResponse(response),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /excedio el tiempo de la API/);
+        assert.doesNotMatch(error.message, /Unexpected token/);
+        return true;
+      },
+    );
+  });
+
+  it("keeps provider failure details in the job status contract", () => {
+    const parsed = heygenJobStatusResponseSchema.parse({
+      asset: null,
+      jobId: "1a2c324b-63f3-44c8-aa38-02d0e5043281",
+      providerErrorCode: "MOVIO_PAYMENT_INSUFFICIENT_CREDIT",
+      providerErrorMessage: "Insufficient credit.",
+      providerJobId: "70ca554eb07f41bebb6c00e7c5fd768e",
+      scriptHash: null,
+      status: "FAILED",
+      voiceAsset: null,
+    });
+
+    assert.equal(parsed.providerErrorCode, "MOVIO_PAYMENT_INSUFFICIENT_CREDIT");
+    assert.equal(parsed.providerErrorMessage, "Insufficient credit.");
   });
 });

@@ -195,6 +195,7 @@ export interface HeygenProductionJobRow {
   organization_id?: string | null;
   output_snapshot?: Record<string, unknown> | null;
   provider_job_id?: string | null;
+  provider_error?: Record<string, unknown> | null;
   provider_model?: string | null;
   status: string;
   updated_at?: string | null;

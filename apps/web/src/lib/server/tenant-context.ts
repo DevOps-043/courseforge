@@ -1,4 +1,5 @@
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { getAuthBridgeUser, getUserOrganizations } from "@/utils/auth/session";
 import {
@@ -94,7 +95,7 @@ function getOrganizationBySlug(
   );
 }
 
-async function getProfilePlatformRole(userId: string) {
+const getProfilePlatformRole = cache(async (userId: string) => {
   const admin = getAdminClient();
   const { data, error } = await admin
     .from("profiles")
@@ -108,12 +109,12 @@ async function getProfilePlatformRole(userId: string) {
   }
 
   return ((data || null) as ProfileRoleRecord | null)?.platform_role || null;
-}
+});
 
-export async function getOrganizationPlatformRole(
+export const getOrganizationPlatformRole = cache(async (
   userId: string,
   organizationId: string,
-) {
+) => {
   const admin = getAdminClient();
   const { data, error } = await admin
     .from("organization_user_roles")
@@ -128,7 +129,7 @@ export async function getOrganizationPlatformRole(
   }
 
   return ((data || null) as OrganizationUserRoleRecord | null)?.platform_role || null;
-}
+});
 
 export async function upsertOrganizationPlatformRole(params: {
   organizationId: string;
@@ -157,7 +158,7 @@ export async function upsertOrganizationPlatformRole(params: {
   return !error;
 }
 
-export async function getOrganizationsFromSession() {
+export const getOrganizationsFromSession = cache(async () => {
   const bridgeUser = await getAuthBridgeUser();
   const organizationsFromCookie =
     (await getUserOrganizations()) as OrganizationCookieRecord[];
@@ -174,11 +175,11 @@ export async function getOrganizationsFromSession() {
     bridgeUser,
     organizations,
   };
-}
+});
 
-export async function resolveTenantContext(
+export const resolveTenantContext = cache(async (
   organizationSlug?: string | null,
-): Promise<TenantContext | null> {
+): Promise<TenantContext | null> => {
   const { bridgeUser, organizations } = await getOrganizationsFromSession();
   if (!bridgeUser?.id || organizations.length === 0) {
     return null;
@@ -209,7 +210,7 @@ export async function resolveTenantContext(
     userEmail: bridgeUser.email,
     platformRole: organizationPlatformRole || platformRole,
   };
-}
+});
 
 export async function resolveDefaultTenantPath(targetPath = "/admin") {
   const { bridgeUser, organizations } = await getOrganizationsFromSession();

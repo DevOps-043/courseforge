@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, FileJson, FileText, Layers3, Loader2, RefreshCw, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
+import { readApiResponse } from "@/lib/client/api-response";
+import { waitForSlideGeneration } from "@/lib/client/slide-generation";
 import { EngineSelect } from "@/components/ui/EngineSelect";
 
 export interface SlideGenerationCandidate {
@@ -179,10 +181,18 @@ export function SofliaEngineSlidesGenerator({
           template: "course-module",
         }),
       });
-      const payload = await response.json();
+      let payload = await readApiResponse(response);
 
       if (!response.ok || !payload.success) {
         throw new Error(payload.error || "No se pudo generar el deck.");
+      }
+      if (response.status === 202 && payload.submissionStatus === "QUEUED") {
+        toast.info("Deck en cola. La generacion continuara en segundo plano.");
+        const completed = await waitForSlideGeneration({
+          componentId: effectiveComponentId,
+          createdAfter: payload.queuedAt,
+        });
+        payload = { success: true, assets: completed.assets };
       }
 
       setLastGeneratedUrl(payload.htmlPublicUrl || payload.assets?.slides_url || null);
