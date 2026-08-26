@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   Copy,
-  ExternalLink,
   Loader2,
   MonitorPlay,
   Play,
@@ -14,6 +13,8 @@ import {
   X,
 } from "lucide-react";
 import { PRODUCTION_THEME } from "./production-asset-ui";
+import { ProductionMediaPreview } from "./ProductionMediaPreview";
+import { isAllowedProductionMediaSource } from "./production-media-preview";
 
 interface ProductionAssetPromptsSectionProps {
   bRollPrompts: string;
@@ -200,14 +201,11 @@ export function ProductionAssetFinalVideoSection({
       )}
 
       {finalVideoUrl && isValidUrl(finalVideoUrl) && (
-        <a
-          href={finalVideoUrl}
-          target="_blank"
-          rel="noreferrer"
-          className={`inline-flex items-center gap-2 text-xs ${PRODUCTION_THEME.successLink}`}
-        >
-          <ExternalLink size={12} /> Ver video final
-        </a>
+        <ProductionMediaPreview
+          kind="video"
+          label="Video final"
+          src={finalVideoUrl}
+        />
       )}
     </div>
   );
@@ -234,6 +232,13 @@ export function ProductionAssetScreencastSection({
         onChange={(event) => onScreencastUrlChange(event.target.value)}
         className={`w-full p-2.5 ${PRODUCTION_THEME.input}`}
       />
+      {isAllowedProductionMediaSource(screencastUrl) ? (
+        <ProductionMediaPreview
+          kind="video"
+          label="Screencast"
+          src={screencastUrl}
+        />
+      ) : null}
     </div>
   );
 }

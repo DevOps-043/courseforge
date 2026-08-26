@@ -9,6 +9,7 @@ import type {
   HeygenVoicePresetGenerationRow,
   HeygenVoicePresetRow,
 } from "./heygen.types";
+import { HEYGEN_VIDEO_STORAGE_BUCKET } from "./heygen.types";
 import {
   PRODUCTION_ASSET_TYPES,
   PRODUCTION_JOB_STATUSES,
@@ -450,13 +451,75 @@ export class HeygenRepository {
   ) {
     const { data, error } = await this.supabase
       .from("production_assets")
-      .select("id, public_url, storage_path, duration_milliseconds, duration_seconds, mime_type, metadata")
+      .select("id, public_url, storage_bucket, storage_path, duration_milliseconds, duration_seconds, mime_type, metadata")
       .eq("production_job_id", jobId)
       .eq("asset_type", assetType)
+      .neq("qa_status", PRODUCTION_QA_STATUSES.ARCHIVED)
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (error) throw error;
-    return (data || null) as HeygenProductionAssetRow | null;
+    const asset = (data || null) as HeygenProductionAssetRow | null;
+    if (!asset) return null;
+
+    const objectPath = resolveHeygenStorageObjectPath(asset);
+    if (!objectPath) {
+      await this.archiveUnavailableGeneratedAsset({
+        asset,
+        assetType,
+        jobId,
+        reason: "INVALID_STORAGE_REFERENCE",
+      });
+      return null;
+    }
+
+    const pathSeparatorIndex = objectPath.lastIndexOf("/");
+    const directory = objectPath.slice(0, pathSeparatorIndex);
+    const fileName = objectPath.slice(pathSeparatorIndex + 1);
+    const { data: storageObjects, error: storageError } = await this.supabase.storage
+      .from(HEYGEN_VIDEO_STORAGE_BUCKET)
+      .list(directory, { limit: 100, search: fileName });
+    if (storageError) throw storageError;
+    if (storageObjects?.some((object) => object.name === fileName)) return asset;
+
+    await this.archiveUnavailableGeneratedAsset({
+      asset,
+      assetType,
+      jobId,
+      reason: "STORAGE_OBJECT_MISSING",
+    });
+    return null;
+  }
+
+  private async archiveUnavailableGeneratedAsset(params: {
+    asset: HeygenProductionAssetRow;
+    assetType: (typeof PRODUCTION_ASSET_TYPES)[keyof typeof PRODUCTION_ASSET_TYPES];
+    jobId: string;
+    reason: "INVALID_STORAGE_REFERENCE" | "STORAGE_OBJECT_MISSING";
+  }) {
+    const archivedAt = new Date().toISOString();
+    const { error } = await this.supabase
+      .from("production_assets")
+      .update({
+        metadata: {
+          ...(params.asset.metadata || {}),
+          archive_reason: params.reason,
+          archived_at: archivedAt,
+        },
+        public_url: null,
+        qa_status: PRODUCTION_QA_STATUSES.ARCHIVED,
+      })
+      .eq("id", params.asset.id);
+
+    if (error) throw error;
+    console.warn("[HeygenRepository] Archived unavailable generated asset", {
+      assetId: params.asset.id,
+      assetType: params.assetType,
+      jobId: params.jobId,
+      reason: params.reason,
+      storagePath: params.asset.storage_path || null,
+    });
   }
 
   async findAvatarVideoAssetByJob(
@@ -623,4 +686,32 @@ export class HeygenRepository {
     if (updateError) throw updateError;
     return nextAssets;
   }
+}
+
+export function resolveHeygenStorageObjectPath(
+  asset: Pick<HeygenProductionAssetRow, "storage_bucket" | "storage_path">,
+) {
+  if (!asset.storage_path) return null;
+  if (
+    asset.storage_bucket &&
+    asset.storage_bucket !== HEYGEN_VIDEO_STORAGE_BUCKET
+  ) {
+    return null;
+  }
+
+  const normalizedPath = asset.storage_path.trim().replace(/^\/+/, "");
+  if (!normalizedPath || /^https?:\/\//i.test(normalizedPath)) return null;
+
+  const bucketPrefix = `${HEYGEN_VIDEO_STORAGE_BUCKET}/`;
+  const objectPath = normalizedPath.startsWith(bucketPrefix)
+    ? normalizedPath.slice(bucketPrefix.length)
+    : normalizedPath;
+  if (
+    !objectPath.startsWith("heygen/") ||
+    objectPath.split("/").some((segment) => segment === "." || segment === "..")
+  ) {
+    return null;
+  }
+
+  return objectPath;
 }

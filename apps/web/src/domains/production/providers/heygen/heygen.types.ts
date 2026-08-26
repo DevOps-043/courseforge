@@ -207,6 +207,7 @@ export interface HeygenProductionAssetRow {
   metadata?: Record<string, unknown> | null;
   mime_type?: string | null;
   public_url?: string | null;
+  storage_bucket?: string | null;
   storage_path?: string | null;
 }
 

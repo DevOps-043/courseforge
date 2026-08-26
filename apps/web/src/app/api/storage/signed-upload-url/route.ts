@@ -79,22 +79,6 @@ async function ensureCurationSourcesBucket(admin: ReturnType<typeof getServiceRo
     }
 }
 
-async function ensurePrivateRenderSourcesBucket(admin: ReturnType<typeof getServiceRoleClient>) {
-    const configuration = {
-        allowedMimeTypes: ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'video/mp4', 'video/webm'],
-        fileSizeLimit: HYPERFRAMES_REMOTE_VIDEO_LIMIT_BYTES,
-        public: false,
-    };
-    const { data: existingBucket, error: getBucketError } = await admin.storage.getBucket(HYPERFRAMES_PRIVATE_SOURCE_BUCKET);
-    if (existingBucket && !getBucketError) {
-        const { error } = await admin.storage.updateBucket(HYPERFRAMES_PRIVATE_SOURCE_BUCKET, configuration);
-        if (error) throw new Error(error.message);
-        return;
-    }
-    const { error } = await admin.storage.createBucket(HYPERFRAMES_PRIVATE_SOURCE_BUCKET, configuration);
-    if (error) throw new Error(`No se pudo asegurar el bucket privado de render: ${error.message}`);
-}
-
 async function resolveActiveUploadOrganizationId() {
     const tenant = await resolveActiveTenantContext();
     if (tenant?.organizationId) return tenant.organizationId;
@@ -286,9 +270,6 @@ export async function POST(request: Request) {
         const admin = getServiceRoleClient();
         if (purpose === 'curation-source-pdf') {
             await ensureCurationSourcesBucket(admin);
-        }
-        if (bucket === HYPERFRAMES_PRIVATE_SOURCE_BUCKET) {
-            await ensurePrivateRenderSourcesBucket(admin);
         }
 
         const { data, error } = await admin.storage

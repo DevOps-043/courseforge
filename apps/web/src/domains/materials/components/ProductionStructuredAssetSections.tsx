@@ -43,6 +43,7 @@ import type {
   CloudStorageFile,
   CloudStorageProvider,
 } from "@/domains/production/cloud-storage/types";
+import { ProductionMediaPreview } from "./ProductionMediaPreview";
 import type { SlideTemplateLibraryItem } from "@/domains/production/slides/slide-template-library.actions";
 import { EngineSelect } from "@/components/ui/EngineSelect";
 
@@ -388,6 +389,16 @@ export function VoiceAudioSection({
         </div>
       ) : null}
 
+      {voiceAudio ? (
+        <ProductionMediaPreview
+          className="mt-3"
+          durationSeconds={voiceAudio.duration}
+          kind="audio"
+          label={voiceAudio.file_name || "Audio de voz"}
+          src={voiceAudio.public_url}
+        />
+      ) : null}
+
       {uploadStatus !== "idle" && uploadFileName ? (
         <div
           className={`mt-2 rounded-lg border px-2.5 py-2 text-[10px] ${
@@ -567,10 +578,19 @@ export function BackgroundMusicSection({
       </p>
 
       {backgroundMusic && (
-        <div className="mt-2 flex items-center gap-1.5 border-t border-gray-100 pt-2 text-[10px] text-gray-500 dark:border-[var(--engine-muted)]/10 dark:text-gray-400">
-          <Volume2 size={11} className="shrink-0 text-indigo-500" />
-          <span>El volumen y la reducción durante voz se ajustan en el Estudio de edición.</span>
-        </div>
+        <>
+          <ProductionMediaPreview
+            className="mt-3"
+            durationSeconds={backgroundMusic.duration}
+            kind="audio"
+            label={backgroundMusic.file_name || "Música de fondo"}
+            src={backgroundMusic.public_url}
+          />
+          <div className="mt-2 flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
+            <Volume2 size={11} className="shrink-0 text-indigo-500" />
+            <span>El volumen y la reducción durante voz se ajustan en el Estudio de edición.</span>
+          </div>
+        </>
       )}
 
       <input
@@ -1027,26 +1047,24 @@ export function BRollClipsSection({
       </p>
  
       {clips.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-gray-100 dark:border-[var(--engine-muted)]/10">
+        <div className="mt-3 grid gap-2 border-t border-gray-100 pt-3 dark:border-[var(--engine-muted)]/10 sm:grid-cols-2">
           {clips.map((clip) => (
             <div
               key={clip.id}
-              className="inline-flex items-center gap-1 bg-white dark:bg-[var(--engine-surface-solid)] px-2 py-0.5 pl-2.5 pr-1.5 rounded-full border border-gray-200 dark:border-[var(--engine-muted)]/25 text-[10px] shadow-sm"
+              className="relative"
             >
-              <a
-                href={clip.public_url}
-                target="_blank"
-                rel="noreferrer"
-                className="font-bold text-gray-800 dark:text-gray-200 hover:text-[var(--engine-accent)] hover:underline"
-              >
-                #{clip.order} ({clip.duration ? `${clip.duration}s` : 'MP4'})
-              </a>
+              <ProductionMediaPreview
+                durationSeconds={clip.duration}
+                kind="video"
+                label={clip.file_name || `B-Roll ${clip.order}`}
+                src={clip.public_url}
+              />
               <button
                 onClick={() => onDelete(clip.id)}
-                className="text-gray-400 hover:text-red-500 transition-colors p-0.5 rounded-full hover:bg-gray-100 dark:hover:bg-white/5"
+                className="absolute right-1 top-1 z-10 rounded bg-black/70 p-1 text-white transition-colors hover:bg-red-600"
                 title="Eliminar clip"
               >
-                <X size={10} />
+                <X size={12} />
               </button>
             </div>
           ))}
@@ -1445,28 +1463,25 @@ export function AvatarVideoSection({
       ) : null}
 
       {avatarVideo && (
-        <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-gray-105 dark:border-[var(--engine-muted)]/10 text-[10px]">
-          <span className="font-semibold text-gray-500 truncate max-w-[150px]" title={avatarVideo.storage_path.split("/").pop()}>
-            {avatarVideo.storage_path.split("/").pop()}
-          </span>
-          {avatarVideo.provider && (
-            <span className="text-gray-400">({avatarVideo.provider})</span>
-          )}
-          <a
-            href={avatarVideo.public_url}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-0.5 text-rose-500 hover:text-rose-400 font-bold"
-          >
-            <ExternalLink size={10} /> Ver avatar
-          </a>
-          <button
-            onClick={onClear}
-            className="inline-flex items-center gap-0.5 text-red-500 hover:text-red-700 ml-auto font-bold cursor-pointer"
-            title="Eliminar avatar"
-          >
-            <X size={10} /> Eliminar
-          </button>
+        <div className="relative mt-3 border-t border-gray-100 pt-3 dark:border-[var(--engine-muted)]/10">
+          <ProductionMediaPreview
+            durationSeconds={avatarVideo.duration}
+            kind="video"
+            label={avatarVideo.file_name || "Video completo de avatar"}
+            src={avatarVideo.public_url}
+          />
+          <div className="mt-2 flex items-center justify-between gap-2 text-[10px]">
+            <span className="text-gray-400">
+              {avatarVideo.provider ? `Proveedor: ${avatarVideo.provider}` : "Fuente de avatar cargada"}
+            </span>
+            <button
+              onClick={onClear}
+              className="inline-flex items-center gap-0.5 font-bold text-red-500 hover:text-red-700"
+              title="Eliminar avatar"
+            >
+              <X size={10} /> Eliminar
+            </button>
+          </div>
         </div>
       )}
 

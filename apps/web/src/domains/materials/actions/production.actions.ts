@@ -38,6 +38,7 @@ import {
   PRODUCTION_JOB_STATUSES,
   PRODUCTION_JOB_TYPES,
   PRODUCTION_PROVIDERS,
+  PRODUCTION_QA_STATUSES,
 } from "@/domains/production/types/production.types";
 import { createClient } from "@/utils/supabase/server";
 import type {
@@ -489,7 +490,28 @@ async function cleanupOrphanedProductionStorage(
     const { error } = await supabase.storage
       .from("production-assets")
       .remove(orphanedPaths);
-    if (!error) return;
+    if (!error) {
+      const persistedPaths = orphanedPaths.flatMap((path) => [
+        path,
+        `production-assets/${path}`,
+      ]);
+      const { error: archiveError } = await supabase
+        .from("production_assets")
+        .update({
+          public_url: null,
+          qa_status: PRODUCTION_QA_STATUSES.ARCHIVED,
+        })
+        .eq("storage_bucket", "production-assets")
+        .in("storage_path", persistedPaths)
+        .neq("qa_status", PRODUCTION_QA_STATUSES.ARCHIVED);
+      if (archiveError) {
+        console.error(
+          "[ProductionActions] Storage objects removed but asset rows could not be archived:",
+          archiveError,
+        );
+      }
+      return;
+    }
     lastError = error;
   }
 
