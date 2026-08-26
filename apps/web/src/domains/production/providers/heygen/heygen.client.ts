@@ -61,7 +61,7 @@ export class HeygenClient {
     this.baseUrl = (options.baseUrl || HEYGEN_API_BASE_URL).replace(/\/$/, "");
     this.createVideoMaxAttempts = Math.max(
       1,
-      Math.min(options.createVideoMaxAttempts ?? 1, 3),
+      Math.min(options.createVideoMaxAttempts ?? 2, 3),
     );
     this.createVideoRetryDelayMs = Math.max(
       0,

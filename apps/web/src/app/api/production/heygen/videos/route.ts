@@ -11,6 +11,7 @@ import { HeygenApiError } from "@/domains/production/providers/heygen/heygen.cli
 import {
   HeygenVideoService,
   HeygenVideoServiceError,
+  HeygenVideoSubmissionUnknownError,
 } from "@/domains/production/providers/heygen/heygen-video.service";
 import {
   getHeygenClientForOrganization,
@@ -105,11 +106,27 @@ export async function POST(request: Request) {
       );
     }
 
+    if (error instanceof HeygenVideoSubmissionUnknownError) {
+      return NextResponse.json(
+        {
+          success: true,
+          data: {
+            jobId: error.jobId,
+            providerJobId: null,
+            status: "RETRY_SCHEDULED",
+            submissionUnknown: true,
+          },
+          warning: error.message,
+        },
+        { status: 202 },
+      );
+    }
+
     if (error instanceof HeygenApiError) {
       return NextResponse.json(
         {
           error: error.message,
-          hint: buildResolutionRejectionHint(requestedResolution),
+          hint: buildResolutionRejectionHint(requestedResolution, error),
           providerCode: error.providerCode || null,
           retryAfterSeconds: error.retryAfterSeconds || null,
         },

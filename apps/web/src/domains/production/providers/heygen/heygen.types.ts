@@ -3,7 +3,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export const HEYGEN_API_BASE_URL = "https://api.heygen.com";
 export const HEYGEN_DEFAULT_PAGE_SIZE = 50;
 export const HEYGEN_MAX_IMPORT_SIZE_BYTES = 150 * 1024 * 1024;
-export const HEYGEN_REQUEST_TIMEOUT_MS = 20_000;
+// Create-video acknowledgements can take longer than 20 seconds, especially for
+// higher resolutions.  Keep this below the request ceiling while allowing one
+// idempotent retry in the client.
+export const HEYGEN_REQUEST_TIMEOUT_MS = 30_000;
 export const HEYGEN_VIDEO_IMPORT_TIMEOUT_MS = 45_000;
 export const HEYGEN_AUDIO_IMPORT_TIMEOUT_MS = 30_000;
 export const HEYGEN_MAX_AUDIO_IMPORT_SIZE_BYTES = 50 * 1024 * 1024;

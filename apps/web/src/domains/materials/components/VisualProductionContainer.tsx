@@ -126,14 +126,28 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
     // Every section persists automatically. Changes for the same component are
     // coalesced and serialized so a fast delete -> replace sequence cannot be
     // committed out of order.
-    const handleAssetChange = useCallback((componentId: string, assets: Partial<MaterialAssets>) => {
+    const handleAssetChange = useCallback((
+        componentId: string,
+        assets: Partial<MaterialAssets>,
+    ): Promise<void> => {
         pendingAssetsRef.current[componentId] = {
             ...pendingAssetsRef.current[componentId],
             ...assets,
         };
 
         const activeQueue = saveQueuesRef.current.get(componentId);
-        if (activeQueue) return activeQueue;
+        if (activeQueue) {
+            return activeQueue.then(async () => {
+                const followUpQueue = saveQueuesRef.current.get(componentId);
+                if (followUpQueue && followUpQueue !== activeQueue) {
+                    await followUpQueue;
+                    return;
+                }
+                if (pendingAssetsRef.current[componentId]) {
+                    await handleAssetChange(componentId, {});
+                }
+            });
+        }
 
         const queue = (async () => {
             let saved = false;
@@ -156,15 +170,17 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
             if (saved) {
                 void refresh().then(() => router.refresh());
             }
-        })()
-            .catch((error) => {
-                console.error('Error auto-saving production assets:', error);
-                toast.error('No se pudo guardar automáticamente el cambio');
-            })
-            .finally(() => {
+        })().finally(() => {
                 saveQueuesRef.current.delete(componentId);
+                if (pendingAssetsRef.current[componentId]) {
+                    void handleAssetChange(componentId, {});
+                }
             });
 
+        void queue.catch((error) => {
+            console.error('Error auto-saving production assets:', error);
+            toast.error('No se pudo guardar automáticamente el cambio');
+        });
         saveQueuesRef.current.set(componentId, queue);
         return queue;
     }, [refresh, router]);

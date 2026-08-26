@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { HeygenClient } from "../heygen.client";
+import { HeygenApiError, HeygenClient } from "../heygen.client";
+import { buildResolutionRejectionHint } from "../heygen-request-constraints";
 
 describe("HeyGen separated track client", () => {
   it("lists only voices compatible with the TTS engine used for separated tracks", async () => {
@@ -116,5 +117,48 @@ describe("HeyGen separated track client", () => {
     assert.equal(result.videoId, "video-recovered");
     assert.equal(attempts, 2);
     assert.deepEqual(idempotencyKeys, ["job-retry-1", "job-retry-1"]);
+  });
+
+  it("classifies a client-side abort as an uncertain timeout instead of a provider rejection", async () => {
+    const client = new HeygenClient({
+      apiKey: "test-key",
+      createVideoMaxAttempts: 1,
+      timeoutMs: 5,
+      fetchImpl: async (_input, init) => new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(new DOMException("aborted", "AbortError"));
+        });
+      }),
+    });
+
+    await assert.rejects(
+      () => client.createAvatarVideo({
+        aspect_ratio: "16:9",
+        audio_url: "https://courseforge.example.com/voice.wav",
+        avatar_id: "avatar-1",
+        output_format: "mp4",
+        resolution: "1080p",
+        title: "Leccion",
+        type: "avatar",
+      }, "job-timeout-1"),
+      (error: unknown) => {
+        assert.ok(error instanceof HeygenApiError);
+        assert.equal(error.status, 408);
+        return true;
+      },
+    );
+  });
+
+  it("only suggests lowering resolution when the provider actually mentions that restriction", () => {
+    const genericHint = buildResolutionRejectionHint("1080p", {
+      message: "temporary upstream error",
+    });
+    const resolutionHint = buildResolutionRejectionHint("1080p", {
+      message: "resolution not available on current plan",
+    });
+
+    assert.doesNotMatch(genericHint, /720p/);
+    assert.match(resolutionHint, /720p/);
+    assert.match(resolutionHint, /1080p/);
   });
 });

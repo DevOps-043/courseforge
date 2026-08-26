@@ -108,6 +108,9 @@ export function ProductionAssetCard({
     // Structured states & loaders
     voiceAudio,
     voiceClips,
+    voiceUploadError,
+    voiceUploadFileName,
+    voiceUploadStatus,
     backgroundMusic,
     bRollClips,
     avatarClips,
@@ -285,6 +288,9 @@ export function ProductionAssetCard({
               <VoiceAudioSection
                 voiceAudio={voiceAudio}
                 voiceClips={voiceClips}
+                uploadError={voiceUploadError}
+                uploadFileName={voiceUploadFileName}
+                uploadStatus={voiceUploadStatus}
                 isUploading={isUploadingVoice}
                 fileRef={voiceFileRef}
                 onUpload={handleVoiceUpload}

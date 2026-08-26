@@ -762,7 +762,20 @@ export async function saveMaterialAssetsAction(
 
   const component = (rawComponent || null) as ProductionComponentRecord | null;
   const currentAssets = (component?.assets || {}) as MaterialAssets;
-  const mergedAssets: MaterialAssets = { ...currentAssets, ...assets };
+  const { data: patchedAssets, error: patchError } = await supabase.rpc(
+    "patch_material_component_assets",
+    {
+      p_assets_patch: assets,
+      p_component_id: componentId,
+    },
+  );
+
+  if (patchError) {
+    console.error("[ProductionActions] Error patching material assets:", patchError);
+    return { success: false, error: patchError.message };
+  }
+
+  const mergedAssets = (patchedAssets || {}) as MaterialAssets;
   const sanitizedAssets = sanitizeMaterialAssetMetadata({
     currentAssets,
     incomingAssets: assets,
@@ -787,10 +800,25 @@ export async function saveMaterialAssetsAction(
     updated_at: new Date().toISOString(),
   };
 
-  const { error: updateError } = await supabase
-    .from("material_components")
-    .update({ assets: finalAssets })
-    .eq("id", componentId);
+  // Only write the derived/sanitized top-level fields.  Replacing the full JSON
+  // here would reintroduce the lost-update race fixed by the RPC above.
+  const derivedPatch: Record<string, unknown> = Object.fromEntries(
+    Object.entries(finalAssets).filter(([key, value]) => {
+      return value !== mergedAssets[key as keyof MaterialAssets];
+    }),
+  );
+  for (const key of Object.keys(mergedAssets)) {
+    if (!hasOwnProperty(finalAssets, key)) {
+      derivedPatch[key] = null;
+    }
+  }
+  const { error: updateError } = await supabase.rpc(
+    "patch_material_component_assets",
+    {
+      p_assets_patch: derivedPatch,
+      p_component_id: componentId,
+    },
+  );
 
   if (updateError) {
     console.error("[ProductionActions] Error saving material assets:", updateError);

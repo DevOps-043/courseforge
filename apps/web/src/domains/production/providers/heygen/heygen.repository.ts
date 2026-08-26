@@ -425,6 +425,24 @@ export class HeygenRepository {
     if (error) throw error;
   }
 
+  async markVideoJobSubmissionUnknown(params: {
+    errorPayload: Record<string, unknown>;
+    jobId: string;
+  }) {
+    const now = new Date().toISOString();
+    const { error } = await this.supabase
+      .from("production_jobs")
+      .update({
+        failed_at: null,
+        provider_error: params.errorPayload,
+        status: PRODUCTION_JOB_STATUSES.RETRY_SCHEDULED,
+        updated_at: now,
+      })
+      .eq("id", params.jobId);
+
+    if (error) throw error;
+  }
+
   async findGeneratedAssetByJob(
     jobId: string,
     assetType: (typeof PRODUCTION_ASSET_TYPES)[keyof typeof PRODUCTION_ASSET_TYPES] =
@@ -518,21 +536,8 @@ export class HeygenRepository {
     publicUrl: string;
     storagePath: string;
   }) {
-    const { data: component, error: readError } = await this.supabase
-      .from("material_components")
-      .select("assets")
-      .eq("id", params.componentId)
-      .maybeSingle();
-
-    if (readError) throw readError;
-
-    const currentAssets =
-      component?.assets && typeof component.assets === "object"
-        ? (component.assets as Record<string, unknown>)
-        : {};
     const fileName = params.storagePath.split("/").at(-1) || "heygen-avatar.mp4";
-    const nextAssets = {
-      ...currentAssets,
+    const assetsPatch = {
       avatar_generation_mode: "single_video",
       avatar_video: {
         duration: params.durationSeconds || undefined,
@@ -547,10 +552,13 @@ export class HeygenRepository {
       updated_at: new Date().toISOString(),
     };
 
-    const { error: updateError } = await this.supabase
-      .from("material_components")
-      .update({ assets: nextAssets })
-      .eq("id", params.componentId);
+    const { data: nextAssets, error: updateError } = await this.supabase.rpc(
+      "patch_material_component_assets",
+      {
+        p_assets_patch: assetsPatch,
+        p_component_id: params.componentId,
+      },
+    );
 
     if (updateError) throw updateError;
     return nextAssets;
@@ -573,22 +581,10 @@ export class HeygenRepository {
       wordTimestamps?: unknown[];
     };
   }) {
-    const { data: component, error: readError } = await this.supabase
-      .from("material_components")
-      .select("assets")
-      .eq("id", params.componentId)
-      .maybeSingle();
-    if (readError) throw readError;
-
-    const currentAssets =
-      component?.assets && typeof component.assets === "object"
-        ? (component.assets as Record<string, unknown>)
-        : {};
     const avatarFileName = params.avatar.storagePath.split("/").at(-1) || "heygen-avatar.mp4";
     const voiceFileName = params.voice.storagePath.split("/").at(-1) || "heygen-voice.mp3";
     const now = new Date().toISOString();
-    const nextAssets = {
-      ...currentAssets,
+    const assetsPatch = {
       avatar_generation_mode: "single_video",
       avatar_clips: [],
       voice_clips: [],
@@ -617,10 +613,13 @@ export class HeygenRepository {
       updated_at: now,
     };
 
-    const { error: updateError } = await this.supabase
-      .from("material_components")
-      .update({ assets: nextAssets })
-      .eq("id", params.componentId);
+    const { data: nextAssets, error: updateError } = await this.supabase.rpc(
+      "patch_material_component_assets",
+      {
+        p_assets_patch: assetsPatch,
+        p_component_id: params.componentId,
+      },
+    );
     if (updateError) throw updateError;
     return nextAssets;
   }

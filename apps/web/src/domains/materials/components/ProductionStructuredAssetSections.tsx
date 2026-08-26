@@ -270,6 +270,9 @@ interface VoiceAudioSectionProps {
   fileRef: React.RefObject<HTMLInputElement | null>;
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onClear: () => void;
+  uploadError: string | null;
+  uploadFileName: string | null;
+  uploadStatus: "idle" | "validating" | "uploading" | "saving" | "succeeded" | "failed";
   
   // Drive props
   isSearchingDrive: boolean;
@@ -287,6 +290,9 @@ export function VoiceAudioSection({
   fileRef,
   onUpload,
   onClear,
+  uploadError,
+  uploadFileName,
+  uploadStatus,
   isSearchingDrive,
   isImportingDrive,
   driveSearchResults,
@@ -312,8 +318,8 @@ export function VoiceAudioSection({
         <div className="flex items-center gap-1.5">
           {voiceAudio ? (
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-gray-550 dark:text-gray-400 truncate max-w-[150px] font-medium" title={voiceAudio.storage_path.split("/").pop()}>
-                {voiceAudio.storage_path.split("/").pop()}
+              <span className="text-[11px] text-gray-550 dark:text-gray-400 truncate max-w-[150px] font-medium" title={voiceAudio.file_name || voiceAudio.storage_path.split("/").pop()}>
+                {voiceAudio.file_name || voiceAudio.storage_path.split("/").pop()}
                 {voiceAudio.duration && ` (${voiceAudio.duration}s)`}
               </span>
               <button
@@ -379,6 +385,32 @@ export function VoiceAudioSection({
               )}
             </div>
           ))}
+        </div>
+      ) : null}
+
+      {uploadStatus !== "idle" && uploadFileName ? (
+        <div
+          className={`mt-2 rounded-lg border px-2.5 py-2 text-[10px] ${
+            uploadStatus === "failed"
+              ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+              : uploadStatus === "succeeded"
+                ? "border-green-200 bg-green-50 text-green-700 dark:border-green-500/20 dark:bg-green-500/10 dark:text-green-300"
+                : "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300"
+          }`}
+          role={uploadStatus === "failed" ? "alert" : "status"}
+        >
+          <div className="flex items-center gap-1.5 font-semibold">
+            {isUploading ? <Loader2 size={11} className="animate-spin" /> : null}
+            <span className="truncate" title={uploadFileName}>{uploadFileName}</span>
+            <span className="ml-auto shrink-0">
+              {uploadStatus === "validating" && "Validando…"}
+              {uploadStatus === "uploading" && "Subiendo…"}
+              {uploadStatus === "saving" && "Guardando…"}
+              {uploadStatus === "succeeded" && "Guardado"}
+              {uploadStatus === "failed" && "No se guardó"}
+            </span>
+          </div>
+          {uploadError ? <p className="mt-1">{uploadError}</p> : null}
         </div>
       ) : null}
 

@@ -154,7 +154,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error: error.message,
-          hint: buildResolutionRejectionHint(requestedResolution),
+          hint: buildResolutionRejectionHint(requestedResolution, error),
           providerCode: error.providerCode || null,
           retryAfterSeconds: error.retryAfterSeconds || null,
         },

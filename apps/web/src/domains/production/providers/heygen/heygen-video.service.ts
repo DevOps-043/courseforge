@@ -9,7 +9,7 @@ import {
   PRODUCTION_PROVIDERS,
   type ProductionJobStatus,
 } from "../../types/production.types";
-import { HeygenClient } from "./heygen.client";
+import { HeygenApiError, HeygenClient } from "./heygen.client";
 import { HeygenRepository } from "./heygen.repository";
 import { buildHeygenScriptFromComponent } from "./heygen-script-builder";
 import {
@@ -37,6 +37,18 @@ export class HeygenVideoServiceError extends Error {
     super(message);
     this.name = "HeygenVideoServiceError";
     this.status = status;
+  }
+}
+
+export class HeygenVideoSubmissionUnknownError extends Error {
+  readonly jobId: string;
+
+  constructor(jobId: string) {
+    super(
+      "HeyGen no confirmo el envio dentro del tiempo esperado. El trabajo se conserva y puede reintentarse sin duplicar el video.",
+    );
+    this.name = "HeygenVideoSubmissionUnknownError";
+    this.jobId = jobId;
   }
 }
 
@@ -186,7 +198,10 @@ export class HeygenVideoService {
       retryFailed: true,
     });
 
-    if (job.status !== PRODUCTION_JOB_STATUSES.PENDING) {
+    if (
+      job.status !== PRODUCTION_JOB_STATUSES.PENDING &&
+      job.status !== PRODUCTION_JOB_STATUSES.RETRY_SCHEDULED
+    ) {
       const existingVoice = await this.audioImportService.findImportedVoice(job.id);
       return {
         jobId: job.id,
@@ -246,6 +261,18 @@ export class HeygenVideoService {
         job.id,
       );
     } catch (error) {
+      if (error instanceof HeygenApiError && error.status === 408) {
+        await this.repository.markVideoJobSubmissionUnknown({
+          errorPayload: {
+            error_message: error.message,
+            resolution: requestPayload.resolution,
+            stage: "video_submission",
+            submission_state: "unknown",
+          },
+          jobId: job.id,
+        });
+        throw new HeygenVideoSubmissionUnknownError(job.id);
+      }
       await this.repository.markVideoJobFailed({
         errorPayload: buildCreateFailurePayload(error, requestPayload),
         jobId: job.id,

@@ -26,10 +26,24 @@ export function assertHeygenTextInputWithinLimits(params: {
   );
 }
 
-export function buildResolutionRejectionHint(resolution: HeygenAvatarVideoResolution) {
-  if (resolution === "720p") {
-    return "HeyGen rechazo la solicitud. Revisa que el avatar, voz y guion sean validos para la cuenta configurada.";
+export function buildResolutionRejectionHint(
+  resolution: HeygenAvatarVideoResolution,
+  providerError?: { message?: string; providerCode?: string },
+) {
+  const providerText = `${providerError?.providerCode || ""} ${providerError?.message || ""}`
+    .toLowerCase();
+  const isResolutionRejection = [
+    "resolution",
+    "1080",
+    "4k",
+    "upgrade",
+    "subscription",
+    "plan",
+  ].some((token) => providerText.includes(token));
+
+  if (resolution !== "720p" && isResolutionRejection) {
+    return `HeyGen indico una restriccion de resolucion o plan. Prueba con 720p o valida que la cuenta pueda exportar en ${resolution}.`;
   }
 
-  return `HeyGen rechazo la solicitud. Si el mensaje menciona resolucion o plan, prueba con 720p o valida que la cuenta tenga permiso para exportar en ${resolution}.`;
+  return "Revisa que el avatar, la voz y el guion sean validos para la cuenta configurada.";
 }

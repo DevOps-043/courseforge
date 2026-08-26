@@ -194,14 +194,25 @@ export function StandaloneAssemblyStudio() {
   const handleSaveAssets = async (
     componentId: string,
     assets: Partial<MaterialAssets>,
-  ) => {
+  ): Promise<void> => {
     pendingAssetsRef.current[componentId] = {
       ...pendingAssetsRef.current[componentId],
       ...assets,
     };
 
     const activeQueue = saveQueuesRef.current.get(componentId);
-    if (activeQueue) return activeQueue;
+    if (activeQueue) {
+      await activeQueue;
+      const followUpQueue = saveQueuesRef.current.get(componentId);
+      if (followUpQueue && followUpQueue !== activeQueue) {
+        await followUpQueue;
+        return;
+      }
+      if (pendingAssetsRef.current[componentId]) {
+        await handleSaveAssets(componentId, {});
+      }
+      return;
+    }
 
     const projectId = componentView?.project.id;
     const queue = (async () => {
@@ -230,17 +241,19 @@ export function StandaloneAssemblyStudio() {
 
         if (!pendingAssetsRef.current[componentId]) break;
       }
-    })()
-      .catch((saveError) => {
-        console.error("Error auto-saving standalone production assets:", saveError);
-        setError(saveError instanceof Error ? saveError.message : "No se pudieron guardar assets.");
-      })
-      .finally(() => {
+    })().finally(() => {
         saveQueuesRef.current.delete(componentId);
+        if (pendingAssetsRef.current[componentId]) {
+          void handleSaveAssets(componentId, {});
+        }
       });
 
+    void queue.catch((saveError) => {
+      console.error("Error auto-saving standalone production assets:", saveError);
+      setError(saveError instanceof Error ? saveError.message : "No se pudieron guardar assets.");
+    });
     saveQueuesRef.current.set(componentId, queue);
-    return queue;
+    await queue;
   };
 
   return (

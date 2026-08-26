@@ -94,7 +94,11 @@ export function ProductionAssetHeader({
           <>
             <DodIndicator
               label="Voz"
-              completed={Boolean(voiceAudio) || Boolean(voiceClips?.length) || Boolean(avatarVideo)}
+              completed={
+                Boolean(voiceAudio) ||
+                Boolean(voiceClips?.length) ||
+                Boolean(avatarVideo?.has_audio)
+              }
               required={true}
             />
             <DodIndicator

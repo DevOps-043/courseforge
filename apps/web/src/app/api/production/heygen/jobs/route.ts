@@ -64,7 +64,10 @@ export async function GET(request: Request) {
       });
     }
 
-    const asset = await repository.findAvatarVideoAssetByJob(latestJob.id);
+    const [asset, voiceAsset] = await Promise.all([
+      repository.findAvatarVideoAssetByJob(latestJob.id),
+      repository.findVoiceAudioAssetByJob(latestJob.id),
+    ]);
 
     return NextResponse.json({
       success: true,
@@ -74,6 +77,19 @@ export async function GET(request: Request) {
               id: asset.id,
               publicUrl: asset.public_url || null,
               storagePath: asset.storage_path || null,
+            }
+          : null,
+        voiceAsset: voiceAsset?.public_url && voiceAsset.storage_path
+          ? {
+              durationSeconds:
+                voiceAsset.duration_seconds ||
+                (voiceAsset.duration_milliseconds
+                  ? voiceAsset.duration_milliseconds / 1_000
+                  : null),
+              id: voiceAsset.id,
+              metadata: voiceAsset.metadata || {},
+              publicUrl: voiceAsset.public_url,
+              storagePath: voiceAsset.storage_path,
             }
           : null,
         latestJob: {

@@ -84,6 +84,13 @@ interface HeygenPreset {
 type HeygenEngine = "avatar_iv" | "avatar_v";
 type HeygenResolution = "720p" | "1080p" | "4k";
 type HeygenAspectRatio = "16:9" | "9:16";
+type VoiceUploadStatus =
+  | "idle"
+  | "validating"
+  | "uploading"
+  | "saving"
+  | "succeeded"
+  | "failed";
 
 function isHtmlSlideFile(file: File) {
   const extension = file.name.split(".").pop()?.toLowerCase();
@@ -279,6 +286,10 @@ export function useProductionAssetState({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isUploadingVoice, setIsUploadingVoice] = useState(false);
+  const [voiceUploadStatus, setVoiceUploadStatus] =
+    useState<VoiceUploadStatus>("idle");
+  const [voiceUploadFileName, setVoiceUploadFileName] = useState<string | null>(null);
+  const [voiceUploadError, setVoiceUploadError] = useState<string | null>(null);
   const [isUploadingMusic, setIsUploadingMusic] = useState(false);
   const [isUploadingBroll, setIsUploadingBroll] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
@@ -332,6 +343,12 @@ export function useProductionAssetState({
     void loadLatestHeygenJob();
   }, []);
 
+  useEffect(() => {
+    if (isUploadingVoice) return;
+    setVoiceAudio((component.assets as any)?.voice_audio || null);
+    setVoiceClips((component.assets as any)?.voice_clips || []);
+  }, [component.assets, isUploadingVoice]);
+
   const loadHeygenPresets = async () => {
     setIsLoadingHeygenPresets(true);
     try {
@@ -378,6 +395,41 @@ export function useProductionAssetState({
       setHeygenJobStatus(latestJob.status || null);
       setHeygenProviderJobId(latestJob.providerJobId || null);
 
+      const recoveredVoiceAsset = data.data?.voiceAsset;
+      if (recoveredVoiceAsset?.publicUrl && recoveredVoiceAsset?.storagePath) {
+        const metadata = recoveredVoiceAsset.metadata || {};
+        const recoveredVoice: VoiceAudio = {
+          duration: recoveredVoiceAsset.durationSeconds || undefined,
+          external_id: typeof metadata.provider_request_id === "string"
+            ? metadata.provider_request_id
+            : undefined,
+          file_name:
+            (typeof metadata.file_name === "string" && metadata.file_name) ||
+            recoveredVoiceAsset.storagePath.split("/").pop(),
+          last_uploaded_at:
+            (typeof metadata.imported_at === "string" && metadata.imported_at) ||
+            latestJob.updatedAt ||
+            new Date().toISOString(),
+          provider: "heygen",
+          public_url: recoveredVoiceAsset.publicUrl,
+          script_hash:
+            (typeof metadata.script_hash === "string" && metadata.script_hash) ||
+            undefined,
+          storage_path: recoveredVoiceAsset.storagePath,
+          word_timestamps: Array.isArray(metadata.word_timestamps)
+            ? metadata.word_timestamps
+            : [],
+        };
+        setVoiceAudio((current) => current || recoveredVoice);
+        if (!(component.assets as any)?.voice_audio) {
+          void Promise.resolve(
+            onAssetChange?.(component.id, { voice_audio: recoveredVoice }),
+          ).catch((error) => {
+            console.warn("Could not relink recovered HeyGen voice:", error);
+          });
+        }
+      }
+
       if (data.data?.asset?.publicUrl && data.data?.asset?.storagePath) {
         const recoveredAvatar: AvatarVideo = {
           external_id: latestJob.providerJobId || undefined,
@@ -389,7 +441,6 @@ export function useProductionAssetState({
           sync_status: "COMPLETED",
         };
         setAvatarVideo((current) => current || recoveredAvatar);
-        return;
       }
 
       if (isRestPendingHeygenStatus(latestJob.status)) {
@@ -457,8 +508,12 @@ export function useProductionAssetState({
     if (!file) return;
 
     setIsUploadingVoice(true);
+    setVoiceUploadFileName(file.name);
+    setVoiceUploadError(null);
+    setVoiceUploadStatus("validating");
     try {
       assertHyperframesMediaFile(file);
+      setVoiceUploadStatus("uploading");
       const fileName = `voices/${component.id}-voice-${Date.now()}.${file.name.split('.').pop()}`;
       const { publicUrl, path } = await uploadWithSignedUrl('production-assets', fileName, file, {
         componentId: component.id,
@@ -483,14 +538,19 @@ export function useProductionAssetState({
         public_url: publicUrl,
         file_name: file.name,
         duration: duration || undefined,
-        provider: 'elevenlabs',
+        provider: 'upload',
         last_uploaded_at: new Date().toISOString(),
       };
+      setVoiceUploadStatus("saving");
+      await onAssetChange?.(component.id, { voice_audio: newVoice });
       setVoiceAudio(newVoice);
-      onAssetChange?.(component.id, { voice_audio: newVoice });
+      setVoiceUploadStatus("succeeded");
       toast.success('Audio de voz subido correctamente');
     } catch (err: any) {
-      toast.error(`Error al subir voz: ${err.message}`);
+      const message = getErrorMessage(err, "No se pudo completar la carga de voz.");
+      setVoiceUploadError(message);
+      setVoiceUploadStatus("failed");
+      toast.error(`Error al subir voz: ${message}`);
     } finally {
       setIsUploadingVoice(false);
       if (voiceFileRef.current) voiceFileRef.current.value = '';
@@ -1007,15 +1067,29 @@ export function useProductionAssetState({
         }),
       });
 
-      if (response.status === 202) {
-        setHeygenSyncProgress(30);
-        // Start polling background status
+      const data = await response.json();
+      if (response.status === 202 && data.success) {
+        setHeygenJobId(data.data?.jobId || null);
+        setHeygenProviderJobId(data.data?.providerJobId || null);
+        setHeygenJobStatus(data.data?.status || "RETRY_SCHEDULED");
+        setHeygenSyncProgress(25);
+        setHeygenError(
+          data.warning ||
+            "HeyGen aun no confirma el envio. Puedes reintentar de forma segura.",
+        );
+        setIsSyncingHeygen(false);
+        toast.warning(
+          data.warning ||
+            "El envio quedo pendiente de confirmacion; puedes reintentarlo sin duplicar el video.",
+        );
         return;
       }
 
-      const data = await response.json();
       if (!response.ok || !data.success) {
-        throw new Error(data.error || "Error al generar video con HeyGen");
+        throw new Error(
+          [data.error, data.hint].filter(Boolean).join(" ") ||
+            "Error al generar video con HeyGen",
+        );
       }
 
       const jobId = data.data?.jobId;
@@ -1438,6 +1512,9 @@ export function useProductionAssetState({
     // Structured states & loaders
     voiceAudio,
     voiceClips,
+    voiceUploadError,
+    voiceUploadFileName,
+    voiceUploadStatus,
     backgroundMusic,
     bRollClips,
     avatarClips,
