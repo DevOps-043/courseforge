@@ -42,7 +42,6 @@ interface RenderRequest {
 }
 
 type BusyAction = "approve" | "generate" | "render" | "poll" | "prepare" | null;
-const CLOUD_ASSET_LIMIT_BYTES = 200 * 1024 * 1024;
 
 export function HyperframesCompositionPanel({
   componentId,
@@ -80,7 +79,6 @@ export function HyperframesCompositionPanel({
       .reduce((total, asset) => total + asset.fileSizeBytes, 0)
   ), [uniqueAssets]);
   const blockedAssets = useMemo(() => uniqueAssets.filter((asset) => !asset.eligibleForRevision), [uniqueAssets]);
-  const hasAggregateSizeError = totalAssetBytes > CLOUD_ASSET_LIMIT_BYTES;
   const studioAssets = useMemo<CompositionStudioAsset[]>(() => uniqueAssets.filter((asset) => asset.sourceType === "PRODUCTION_MEDIA").map((asset) => ({
     durationSeconds: asset.durationSeconds,
     hasAudio: asset.hasAudio,
@@ -97,15 +95,13 @@ export function HyperframesCompositionPanel({
     timelineVariant: asset.timelineVariant,
     valid: asset.eligibleForRevision,
   })), [draftId, uniqueAssets]);
-  const hasAssetSizeErrors = blockedAssets.some((asset) => asset.fileSizeBytes > CLOUD_ASSET_LIMIT_BYTES) || hasAggregateSizeError;
+  const hasAssetSizeErrors = blockedAssets.length > 0;
   const sizeErrorMessage = useMemo(() => {
-    const names = blockedAssets
-      .filter((asset) => asset.fileSizeBytes > CLOUD_ASSET_LIMIT_BYTES)
-      .map((asset) => `${asset.metadata.file_name || asset.mimeType} (${formatBytes(asset.fileSizeBytes)})`);
-    if (names.length > 0) return `No se puede generar el preview. Exceden el máximo individual de 200 MB: ${names.join(", ")}.`;
-    if (hasAggregateSizeError) return `No se puede generar el preview. Los assets suman ${formatBytes(totalAssetBytes)} y el máximo es 200 MB.`;
-    return "Hay assets bloqueados que requieren corrección antes de generar el preview.";
-  }, [blockedAssets, hasAggregateSizeError, totalAssetBytes]);
+    const names = blockedAssets.map((asset) => asset.metadata.file_name || asset.mimeType);
+    return names.length > 0
+      ? `Hay assets que requieren corrección antes de generar el preview: ${names.join(", ")}.`
+      : "Hay assets bloqueados que requieren corrección antes de generar el preview.";
+  }, [blockedAssets]);
 
   const loadInitialData = useCallback(async () => {
     setBusy("prepare");
@@ -276,8 +272,8 @@ export function HyperframesCompositionPanel({
       </div>
 
       <div className={draftId ? "hidden" : "rounded-lg border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-[var(--engine-canvas)]"}>
-        <div className="mb-2 flex items-center justify-between gap-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-gray-400">Assets vinculados ({uniqueAssets.length})</p><span className={`text-[11px] ${hasAggregateSizeError ? "font-semibold text-red-700 dark:text-red-300" : "text-slate-500 dark:text-gray-500"}`}>{formatBytes(totalAssetBytes)} en total</span></div>
-        {busy === "prepare" ? <p className="flex items-center gap-2 text-xs text-slate-500 dark:text-gray-400"><Loader2 className="animate-spin" size={14} /> Preparando assets de Producción…</p> : uniqueAssets.length === 0 && !animatedDeck ? <p className="text-xs text-amber-700 dark:text-amber-300">No hay medios internos compatibles para este video. Agrégalos en el paso de Producción y vuelve aquí.</p> : <><div className="grid max-h-44 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">{uniqueAssets.map((asset) => <div key={asset.productionAssetId} className={`rounded-lg border p-2 text-xs ${asset.eligibleForRevision ? "border-slate-200 bg-slate-50 text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-gray-300" : "border-red-300 bg-red-50 text-red-900 dark:border-red-400/40 dark:bg-red-500/10 dark:text-red-100"}`}><div className="flex items-center gap-2"><Film size={13} className={`shrink-0 ${asset.eligibleForRevision ? "text-cyan-600 dark:text-cyan-300" : "text-red-600 dark:text-red-300"}`} /><span className="min-w-0 flex-1 truncate">{asset.metadata.file_name || asset.mimeType}</span><span className="text-[10px]">{formatBytes(asset.fileSizeBytes)}</span></div><p className="mt-1 text-[10px] text-slate-500 dark:text-gray-400">{asset.sourceType === "DECK_DEPENDENCY" ? "Recurso interno del deck HTML" : "Medio cargado en Producción"}</p>{asset.validationErrors.map((error, errorIndex) => <p key={`${asset.productionAssetId}-${errorIndex}`} className="mt-1 text-[10px] leading-4 text-red-700 dark:text-red-200">{error}</p>)}</div>)}</div>{hasAssetSizeErrors && <div role="alert" className="mt-3 rounded-lg border border-red-300 bg-red-50 p-3 text-xs text-red-900 dark:border-red-400/40 dark:bg-red-500/10 dark:text-red-100"><p className="flex items-center gap-2 font-bold"><AlertTriangle size={15} /> Preview bloqueado por límite de espacio</p><p className="mt-1 leading-5">{sizeErrorMessage}</p>{hasAggregateSizeError && <p className="mt-1 leading-5">El conjunto trazable ocupa {formatBytes(totalAssetBytes)}; el límite del render es 200 MB.</p>}</div>}{animatedDeck && <p className="mt-2 text-xs text-cyan-700 dark:text-cyan-300">Deck HTML animado: {animatedDeck.slideCount} diapositivas · {animatedDeck.animationCount} animaciones. Se mantiene como HTML, no se rasteriza.</p>}</>}
+        <div className="mb-2 flex items-center justify-between gap-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-gray-400">Assets vinculados ({uniqueAssets.length})</p><span className="text-[11px] text-slate-500 dark:text-gray-500">{formatBytes(totalAssetBytes)} remotos</span></div>
+        {busy === "prepare" ? <p className="flex items-center gap-2 text-xs text-slate-500 dark:text-gray-400"><Loader2 className="animate-spin" size={14} /> Preparando assets de Producción…</p> : uniqueAssets.length === 0 && !animatedDeck ? <p className="text-xs text-amber-700 dark:text-amber-300">No hay medios internos compatibles para este video. Agrégalos en el paso de Producción y vuelve aquí.</p> : <><div className="grid max-h-44 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">{uniqueAssets.map((asset) => <div key={asset.productionAssetId} className={`rounded-lg border p-2 text-xs ${asset.eligibleForRevision ? "border-slate-200 bg-slate-50 text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-gray-300" : "border-red-300 bg-red-50 text-red-900 dark:border-red-400/40 dark:bg-red-500/10 dark:text-red-100"}`}><div className="flex items-center gap-2"><Film size={13} className={`shrink-0 ${asset.eligibleForRevision ? "text-cyan-600 dark:text-cyan-300" : "text-red-600 dark:text-red-300"}`} /><span className="min-w-0 flex-1 truncate">{asset.metadata.file_name || asset.mimeType}</span><span className="text-[10px]">{formatBytes(asset.fileSizeBytes)}</span></div><p className="mt-1 text-[10px] text-slate-500 dark:text-gray-400">{asset.sourceType === "DECK_DEPENDENCY" ? "Recurso interno del deck HTML" : "Medio remoto de Producción"}</p>{asset.validationErrors.map((error, errorIndex) => <p key={`${asset.productionAssetId}-${errorIndex}`} className="mt-1 text-[10px] leading-4 text-red-700 dark:text-red-200">{error}</p>)}</div>)}</div>{hasAssetSizeErrors && <div role="alert" className="mt-3 rounded-lg border border-red-300 bg-red-50 p-3 text-xs text-red-900 dark:border-red-400/40 dark:bg-red-500/10 dark:text-red-100"><p className="flex items-center gap-2 font-bold"><AlertTriangle size={15} /> Preview bloqueado por asset incompatible</p><p className="mt-1 leading-5">{sizeErrorMessage}</p></div>}{animatedDeck && <p className="mt-2 text-xs text-cyan-700 dark:text-cyan-300">Deck HTML animado: {animatedDeck.slideCount} diapositivas · {animatedDeck.animationCount} animaciones. Se mantiene como HTML, no se rasteriza.</p>}</>}
       </div>
 
       <div className={draftId ? "hidden" : "grid gap-3 md:grid-cols-2"}>

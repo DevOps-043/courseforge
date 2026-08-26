@@ -1112,6 +1112,14 @@
   background: color-mix(in srgb, var(--engine-warning) 6%, transparent);
 }
 
+.durationActions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
 .durationAction {
   min-height: 1.75rem;
   flex: 0 0 auto;

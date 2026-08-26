@@ -17,6 +17,8 @@ export class CompositionAutoOrganizeError extends Error {}
 export function buildCompositionAutoOrganizePatch(params: {
   assets: CompositionAutoOrganizeAsset[];
   document: CompositionEditorDocument;
+  /** A caller that already recalculated duration can organize timing only. */
+  includeCanvasDuration?: boolean;
 }): { operations: CompositionEditorPatchOperation[]; resolution: CompositionDurationResolution } {
   const { assets, document } = params;
   const sourceById = new Map(assets.map((asset) => [asset.id, asset]));
@@ -28,7 +30,9 @@ export function buildCompositionAutoOrganizePatch(params: {
   const manualTimelineEnd = document.clips
     .filter((clip) => clip.timingSource === "USER_EDITED")
     .reduce((latest, clip) => Math.max(latest, clip.startSeconds + clip.durationSeconds), 0);
-  const canvasDuration = Math.max(resolution.durationSeconds, manualTimelineEnd);
+  const canvasDuration = params.includeCanvasDuration === false
+    ? document.canvas.durationSeconds
+    : Math.max(resolution.durationSeconds, manualTimelineEnd);
   const timelineAssetIds = new Set(document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []));
   const requiredDurationAssets = resolution.source === "voice"
     ? assets.filter((asset) => asset.timelineRole === "VOICE")
@@ -93,9 +97,11 @@ export function buildCompositionAutoOrganizePatch(params: {
     durationSource: resolution.source,
     type: "composition.canvas-duration",
   };
-  const operations = canvasDuration < document.canvas.durationSeconds
-    ? [...clipOperations, canvasOperation]
-    : [canvasOperation, ...clipOperations];
+  const operations = params.includeCanvasDuration === false
+    ? clipOperations
+    : canvasDuration < document.canvas.durationSeconds
+      ? [...clipOperations, canvasOperation]
+      : [canvasOperation, ...clipOperations];
   if (operations.length > 100) throw new CompositionAutoOrganizeError("La composición tiene demasiados clips para calcularla en una sola operación.");
   return { operations, resolution };
 }

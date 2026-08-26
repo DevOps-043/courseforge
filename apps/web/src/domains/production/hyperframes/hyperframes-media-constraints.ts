@@ -1,5 +1,10 @@
 import { DEFAULT_COMPOSITION_RENDER_FPS } from "../composition-editor/composition-document.types.constants";
 import {
+  HYPERFRAMES_ASSET_DELIVERY_MODES,
+  HYPERFRAMES_REMOTE_VIDEO_LIMIT_BYTES,
+  type HyperframesAssetDeliveryMode,
+} from "./hyperframes.types";
+import {
   DEFAULT_HYPERFRAMES_RENDER_PROFILE_ID,
   getHyperframesRenderProfile,
   toHyperframesRenderSettings,
@@ -10,6 +15,7 @@ export const HYPERFRAMES_AUDIO_MAX_BYTES = 50 * 1024 * 1024;
 export const HYPERFRAMES_IMAGE_MAX_BYTES = 50 * 1024 * 1024;
 export const HYPERFRAMES_FONT_MAX_BYTES = 50 * 1024 * 1024;
 export const HYPERFRAMES_MEDIA_MAX_DIMENSION_PX = 1_920;
+export const HYPERFRAMES_REMOTE_AUDIO_MAX_BYTES = 500 * 1024 * 1024;
 export const HYPERFRAMES_DURABLE_RENDER_PROFILE = toHyperframesRenderSettings(
   getHyperframesRenderProfile(DEFAULT_HYPERFRAMES_RENDER_PROFILE_ID),
 );
@@ -54,6 +60,7 @@ const ALLOWED_MEDIA = {
 type HyperframesMediaKind = keyof typeof ALLOWED_MEDIA;
 
 export interface HyperframesMediaValidationInput {
+  deliveryMode?: HyperframesAssetDeliveryMode;
   fileName?: string | null;
   fileSizeBytes?: number | null;
   height?: number | null;
@@ -68,9 +75,9 @@ export interface HyperframesMediaValidationResult {
 }
 
 /**
- * Provider-facing constraints for every media file packaged in a HyperFrames
- * project. Unknown dimensions remain allowed for historical assets, while all
- * new browser uploads measure them before reaching Storage.
+ * Provider-facing constraints for embedded and remotely delivered media.
+ * Remote video is not part of the project upload, so it uses the Storage cap
+ * rather than the embedded-project resource cap.
  */
 export function validateHyperframesMediaAsset(
   input: HyperframesMediaValidationInput,
@@ -87,6 +94,9 @@ export function validateHyperframesMediaAsset(
   }
 
   const constraint = ALLOWED_MEDIA[kind];
+  const maxBytes = input.deliveryMode === HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES
+    ? remoteMediaMaxBytes(kind, constraint.maxBytes)
+    : constraint.maxBytes;
   const extensionMatches = !extension || constraint.extensions.has(extension as never);
   const mimeMatches = !mimeType || constraint.mimeTypes.has(mimeType as never);
   if (!extensionMatches || !mimeMatches) {
@@ -99,9 +109,9 @@ export function validateHyperframesMediaAsset(
     || input.fileSizeBytes <= 0
   ) {
     errors.push(`No se pudo verificar el tamaño de “${label}”.`);
-  } else if (input.fileSizeBytes > constraint.maxBytes) {
+  } else if (input.fileSizeBytes > maxBytes) {
     errors.push(
-      `“${label}” excede el máximo de ${formatMiB(constraint.maxBytes)} (${formatMiB(input.fileSizeBytes)}).`,
+      `“${label}” excede el máximo de ${formatMiB(maxBytes)} (${formatMiB(input.fileSizeBytes)}).`,
     );
   }
 
@@ -118,11 +128,22 @@ export function validateHyperframesMediaAsset(
   return { errors, kind, valid: errors.length === 0 };
 }
 
-export function hyperframesMediaRequirements(kind: "audio" | "image" | "video") {
+function remoteMediaMaxBytes(kind: HyperframesMediaKind, embeddedMaxBytes: number) {
+  if (kind === "video") return HYPERFRAMES_REMOTE_VIDEO_LIMIT_BYTES;
+  if (kind === "audio") return HYPERFRAMES_REMOTE_AUDIO_MAX_BYTES;
+  return embeddedMaxBytes;
+}
+
+export function hyperframesMediaRequirements(
+  kind: "audio" | "image" | "video",
+  deliveryMode: HyperframesAssetDeliveryMode = HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
+) {
   const constraint = ALLOWED_MEDIA[kind];
   return {
     formats: constraint.summary,
-    maxBytes: constraint.maxBytes,
+    maxBytes: deliveryMode === HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES
+      ? remoteMediaMaxBytes(kind, constraint.maxBytes)
+      : constraint.maxBytes,
     maxDimensionPx: kind === "audio" ? null : HYPERFRAMES_MEDIA_MAX_DIMENSION_PX,
   };
 }

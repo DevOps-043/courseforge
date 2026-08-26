@@ -1,7 +1,7 @@
 import { getSupabaseServiceRoleKey, requireEnv } from "./env.ts";
 
 export const TUS_CHUNK_BYTES = 6 * 1024 * 1024;
-export const MAX_FINAL_VIDEO_BYTES = 500 * 1024 * 1024;
+export const MAX_FINAL_VIDEO_BYTES = 2 * 1024 * 1024 * 1024;
 
 interface TusUploadInput {
   bucket: string;

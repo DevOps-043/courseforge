@@ -34,6 +34,29 @@ test("keeps preview media warming bounded for remote assets", () => {
   });
 });
 
+test("compiles HyperFrames media as provider variables instead of ZIP paths", async () => {
+  const assetId = "00000000-0000-4000-8000-000000000099";
+  const variableName = "cf_asset_00000000000040008000000000000099";
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "9".repeat(64), durationSeconds: 8, fileSizeBytes: 250 * 1024 * 1024, hasAudio: true, mimeType: "video/mp4", productionAssetId: assetId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/avatar.mp4", timelineRole: "AVATAR" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Remoto" },
+  });
+  const html = await compileCompositionPreview({
+    assetUrls: new Map([[assetId, "https://project.supabase.co/avatar.mp4"]]),
+    assetVariableNames: new Map([[assetId, variableName]]),
+    document,
+    target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+  });
+
+  assert.match(html, new RegExp(`data-hf-src="${variableName}"`));
+  assert.match(
+    html,
+    new RegExp(`<html lang="es" data-composition-variables='\\[{&quot;default&quot;:&quot;&quot;,&quot;id&quot;:&quot;${variableName}&quot;,&quot;label&quot;:&quot;Courseforge remote asset&quot;,&quot;type&quot;:&quot;string&quot;}\\]'`),
+  );
+  assert.doesNotMatch(html, /src="https:\/\/project\.supabase\.co\/avatar\.mp4"/);
+});
+
 test("embeds a stable Storage URL for public production media", async () => {
   const assetId = "00000000-0000-4000-8000-000000000041";
   const document = createInitialCompositionDocument({

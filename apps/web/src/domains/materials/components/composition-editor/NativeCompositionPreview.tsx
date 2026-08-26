@@ -26,6 +26,7 @@ import { VolumeSlider } from "./VolumeSlider";
 import { LayerDepthControls } from "./LayerDepthControls";
 import { CompositionMotionControls } from "./CompositionMotionControls";
 import { buildCompositionAutoOrganizePatch } from "@/domains/production/composition-editor/composition-auto-organize.service";
+import { buildCompositionDurationRecalculationPatch } from "@/domains/production/composition-editor/composition-duration-recalculation.service";
 import {
   COMPOSITION_VERSION_FALLBACK_HEADER,
   formatCompositionDocumentEtag,
@@ -61,6 +62,10 @@ import {
   type HyperframesRenderProfileId,
   type HyperframesRenderSettings,
 } from "@/domains/production/hyperframes/hyperframes-render-profiles";
+import {
+  estimateHyperframesRenderBudget,
+  formatRenderBudgetBytes,
+} from "@/domains/production/hyperframes/hyperframes-render-budget.service";
 import styles from "./CompositionStudio.module.css";
 
 type DocumentPayload = { document: CompositionEditorDocument; documentHash: string; version: number };
@@ -1041,21 +1046,33 @@ export function NativeCompositionPreview({ assets, compositionId, draftId, lesso
     await savePatch([{ settings, trackId: track.id, type: "track.update" }], summary);
   }
 
-  async function applyBaseTemplate() {
+  async function recalculateDuration() {
+    if (!payload) return;
+    let operations: CompositionEditorPatchOperation[];
+    try {
+      operations = buildCompositionDurationRecalculationPatch({ assets, document: payload.document }).operations;
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "No se pudo recalcular la duración de la composición.");
+      return;
+    }
+    await savePatch(operations, "Recalculó la duración del contenido sin reorganizar el timeline.");
+  }
+
+  async function organizeTimeline() {
     if (!payload) return;
     const hasManualTiming = payload.document.clips.some((clip) => clip.timingSource === "USER_EDITED");
     const confirmation = hasManualTiming
-      ? "La composición contiene ajustes manuales. Se calcularán los tiempos estimados y la duración final sin modificar posiciones, tamaños ni tiempos editados manualmente. ¿Continuar?"
-      : "Esto calculará la duración por prioridad y organizará únicamente los tiempos estimados. Las posiciones, capas y versiones anteriores se conservarán. ¿Continuar?";
+      ? "La composición contiene ajustes manuales. Se organizarán únicamente los tiempos estimados, sin modificar posiciones, tamaños ni tiempos editados manualmente. ¿Continuar?"
+      : "Esto organizará únicamente los tiempos estimados. Las posiciones, capas y versiones anteriores se conservarán. ¿Continuar?";
     if (!window.confirm(confirmation)) return;
     let operations: CompositionEditorPatchOperation[];
     try {
-      operations = buildCompositionAutoOrganizePatch({ assets, document: payload.document }).operations;
+      operations = buildCompositionAutoOrganizePatch({ assets, document: payload.document, includeCanvasDuration: false }).operations;
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "No se pudo calcular la duración de la composición.");
+      setSaveError(error instanceof Error ? error.message : "No se pudo organizar el timeline de la composición.");
       return;
     }
-    await savePatch(operations, "Calculó la duración y organizó los tiempos estimados sin reemplazar el layout manual.");
+    await savePatch(operations, "Organizó los tiempos estimados sin reemplazar el layout manual.");
   }
 
   async function requestAgentProposal(instruction: string) {
@@ -1575,6 +1592,7 @@ export function NativeCompositionPreview({ assets, compositionId, draftId, lesso
       compact
       assembly={assembly}
       busy={assembling}
+      durationSeconds={duration}
       error={assemblyError}
       notice={assemblyNotice}
       history={snapshotHistory}
@@ -1718,7 +1736,7 @@ export function NativeCompositionPreview({ assets, compositionId, draftId, lesso
 
         <section className={styles.timelinePanel}>
           <div className={styles.timelineScroll}>
-            <div className={`${styles.durationStrip} ${durationSourceLabel ? "" : styles.durationStripWarning}`}><span>{durationSourceLabel ? `Duración final: ${formatCompositionTimecode(duration)} · ${durationSourceLabel}` : "Define el asset que controla la duración final para normalizar la composición."}</span><button type="button" disabled={saving} onClick={() => void applyBaseTemplate()} className={styles.durationAction}>Calcular y organizar</button></div>
+            <div className={`${styles.durationStrip} ${durationSourceLabel ? "" : styles.durationStripWarning}`}><span>{durationSourceLabel ? `Duración de contenido: ${formatCompositionTimecode(duration)} · ${durationSourceLabel}` : "Define el asset que controla la duración del contenido."}</span><div className={styles.durationActions}><button type="button" disabled={saving} onClick={() => void recalculateDuration()} className={styles.durationAction}>Recalcular duración</button><button type="button" disabled={saving} onClick={() => void organizeTimeline()} className={styles.durationAction}>Organizar timeline</button></div></div>
             <AudioMixControls audioMix={payload.document.audioMix} disabled={saving} onUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)} />
             <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedAnimationId={selectedAnimationId} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={selectAnimation} onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Ajustó el inicio de ${clip.label} desde la timeline.`)} />
             {estimatedClipCount > 0 && <p className={styles.estimatedWarning}><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
@@ -1859,10 +1877,11 @@ function AgentConversation({ lastAppliedProposal, onApprove, onDismiss, onPropos
   </section>;
 }
 
-function AssemblyActions({ assembly, busy, compact = false, error, notice, history, historyOpen, onApprove, onDeleteAndRender, onHistoryToggle, onPrepare, onProfileChange, onRender, onRestore, priorCompletedVideo, providerStatus, renderStatus, selectedRenderProfileId }: {
+function AssemblyActions({ assembly, busy, compact = false, durationSeconds, error, notice, history, historyOpen, onApprove, onDeleteAndRender, onHistoryToggle, onPrepare, onProfileChange, onRender, onRestore, priorCompletedVideo, providerStatus, renderStatus, selectedRenderProfileId }: {
   assembly: ActiveAssembly | null;
   busy: boolean;
   compact?: boolean;
+  durationSeconds: number;
   error: string | null;
   notice: string | null;
   history: CompositionSnapshotEntry[] | null;
@@ -1880,6 +1899,7 @@ function AssemblyActions({ assembly, busy, compact = false, error, notice, histo
   selectedRenderProfileId: HyperframesRenderProfileId;
 }) {
   const selectedProfile = getHyperframesRenderProfile(selectedRenderProfileId);
+  const renderBudget = estimateHyperframesRenderBudget({ durationSeconds, renderProfile: selectedProfile });
   const profileMatchesAssembly = !assembly
     || sameHyperframesRenderSettings(assembly.renderProfile, selectedProfile);
   const normalizedProviderStatus = providerStatus?.toUpperCase() || null;
@@ -1937,6 +1957,7 @@ function AssemblyActions({ assembly, busy, compact = false, error, notice, histo
         <span><small>Resolución</small><strong>1080p</strong></span>
         <span><small>Cuadros</small><strong>{assembly?.renderProfile?.fps || selectedProfile.fps} FPS</strong></span>
         <span><small>Calidad</small><strong>{assembly?.renderProfile ? renderQualityLabel(assembly.renderProfile.quality) : renderQualityLabel(selectedProfile.quality)}</strong></span>
+        <span><small>Salida estimada</small><strong>{formatRenderBudgetBytes(renderBudget.estimatedOutputBytes)}</strong></span>
       </div>
 
       <label className={styles.outputProfile}>
@@ -1955,19 +1976,20 @@ function AssemblyActions({ assembly, busy, compact = false, error, notice, histo
       </label>
 
       <div className={styles.deliveryActions}>
-        <button type="button" disabled={busy} onClick={() => void onPrepare()} className={styles.deliveryActionSecondary}><Clapperboard size={14} /> {busy && renderStatus === "validating" ? "Preparando…" : assembly ? "Nueva versión" : "Crear snapshot"}</button>
+        <button type="button" disabled={busy || renderBudget.requiresSegmentation} onClick={() => void onPrepare()} className={styles.deliveryActionSecondary}><Clapperboard size={14} /> {busy && renderStatus === "validating" ? "Preparando…" : assembly ? "Nueva versión" : "Crear snapshot"}</button>
         <button type="button" disabled={busy || history === null} onClick={onHistoryToggle} className={styles.deliveryActionGhost}><History size={14} /> Versiones {history ? history.length : ""}</button>
         {assembly?.status === "READY_FOR_PREVIEW" && <button type="button" disabled={busy || !profileMatchesAssembly} onClick={() => void onApprove()} className={styles.deliveryActionPrimary}><CheckCircle2 size={14} /> Aprobar salida</button>}
-        {assembly?.status === "READY_FOR_RENDER" && <button type="button" disabled={busy || activeRender || renderStatus === "completed" || !profileMatchesAssembly} onClick={() => void onRender()} className={`${styles.deliveryActionPrimary} ${renderStatus === "completed" ? styles.deliveryActionComplete : ""}`}>{renderStatus === "completed" ? <CheckCircle2 size={14} /> : <Send size={14} />} {activeRender ? "Render en curso" : renderStatus === "completed" ? "Render completado" : renderStatus === "failed" ? "Reintentar render" : "Renderizar video"}</button>}
+        {assembly?.status === "READY_FOR_RENDER" && <button type="button" disabled={busy || activeRender || renderStatus === "completed" || !profileMatchesAssembly || renderBudget.requiresSegmentation} onClick={() => void onRender()} className={`${styles.deliveryActionPrimary} ${renderStatus === "completed" ? styles.deliveryActionComplete : ""}`}>{renderStatus === "completed" ? <CheckCircle2 size={14} /> : <Send size={14} />} {activeRender ? "Render en curso" : renderStatus === "completed" ? "Render completado" : renderStatus === "failed" ? "Reintentar render" : "Renderizar video"}</button>}
         {assembly?.status === "READY_FOR_RENDER" && priorCompletedVideo && <button type="button" disabled={busy || activeRender} onClick={() => void onDeleteAndRender()} className={styles.deliveryActionDanger}><Trash2 size={14} /> Reemplazar</button>}
       </div>
     </div>
 
-    {(notice || !profileMatchesAssembly || label || priorCompletedVideo || error) && <div className={styles.deliveryMessages}>
+    {(notice || !profileMatchesAssembly || label || priorCompletedVideo || error || renderBudget.recommendedSegmentCount > 1) && <div className={styles.deliveryMessages}>
       {notice && <p role="status" data-tone="success"><CheckCircle2 size={12} />{notice}</p>}
       {!profileMatchesAssembly && <p role="status" data-tone="warning"><AlertTriangle size={12} />El formato cambió. Crea una nueva versión antes de aprobar o renderizar.</p>}
       {label && <p role="status">{activeRender && <Loader2 className="animate-spin" size={12} />}{label}</p>}
       {priorCompletedVideo && <p role="status" data-tone="warning"><AlertTriangle size={12} />El video anterior seguirá disponible hasta que termine esta revisión.</p>}
+      {renderBudget.recommendedSegmentCount > 1 && <p role={renderBudget.requiresSegmentation ? "alert" : "status"} data-tone={renderBudget.requiresSegmentation ? "danger" : "warning"}><AlertTriangle size={12} />{renderBudget.requiresSegmentation ? `La salida estimada supera 2 GiB. Divide la composición en al menos ${renderBudget.recommendedSegmentCount} segmentos antes de renderizar.` : `Para una recuperación más segura, recomendamos ${renderBudget.recommendedSegmentCount} segmentos de hasta ${Math.floor(renderBudget.recommendedSegmentSeconds / 60)} min.`}</p>}
       {error && <p role="alert" data-tone="danger"><AlertTriangle size={12} />{error}</p>}
     </div>}
 
