@@ -24,7 +24,8 @@ import { readApiResponse } from "@/lib/client/api-response";
 type AspectRatio = "16:9" | "9:16";
 type Engine = "avatar_iv" | "avatar_v";
 type Resolution = "720p" | "1080p" | "4k";
-type AvatarGenerationMode = "scene_clips" | "single_video";
+type OutputFormat = "mp4" | "webm";
+type AvatarGenerationMode = "scene_clips" | "single_video" | "voiceover";
 
 interface AvatarSceneClip {
   avatar_preset_id?: string;
@@ -68,6 +69,7 @@ interface AvatarPreset {
   heygen_avatar_look_id?: string | null;
   id: string;
   is_default?: boolean;
+  metadata?: Record<string, unknown> | null;
   name?: string | null;
   preview_image_url?: string | null;
   preview_video_url?: string | null;
@@ -80,6 +82,7 @@ interface VoicePreset {
   id: string;
   is_default?: boolean;
   language?: string | null;
+  metadata?: Record<string, unknown> | null;
   name?: string | null;
   preview_audio_url?: string | null;
   voice_type?: string | null;
@@ -88,6 +91,7 @@ interface VoicePreset {
 interface LatestJob {
   createdAt?: string | null;
   jobId: string;
+  jobType?: string | null;
   providerJobId?: string | null;
   providerError?: Record<string, unknown> | null;
   status: string;
@@ -114,6 +118,11 @@ interface CurrentJob {
   };
   standalone?: boolean;
   status: string;
+  voiceAsset?: {
+    durationSeconds?: number | null;
+    publicUrl: string;
+    storagePath?: string | null;
+  } | null;
 }
 
 interface HeygenStudioClientProps {
@@ -169,10 +178,21 @@ export default function HeygenStudioClient({
   const [resolution, setResolution] = useState<Resolution>("1080p");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
   const [caption, setCaption] = useState(false);
+  const [voiceSpeed, setVoiceSpeed] = useState(1);
+  const [voicePitch, setVoicePitch] = useState(0);
+  const [voiceVolume, setVoiceVolume] = useState(1);
+  const [voiceLocale, setVoiceLocale] = useState("es-MX");
+  const [speechInputType, setSpeechInputType] = useState<"text" | "ssml">("text");
+  const [outputFormat, setOutputFormat] = useState<OutputFormat>("mp4");
+  const [removeBackground, setRemoveBackground] = useState(false);
+  const [motionPrompt, setMotionPrompt] = useState("");
+  const [brandGlossaryId, setBrandGlossaryId] = useState("");
+  const [catalogQuery, setCatalogQuery] = useState("");
+  const [catalogOwnership, setCatalogOwnership] = useState("all");
   const [standaloneTitle, setStandaloneTitle] = useState("Video de avatar");
   const [standaloneScript, setStandaloneScript] = useState("");
   const [avatarGenerationMode, setAvatarGenerationMode] =
-    useState<AvatarGenerationMode>("scene_clips");
+    useState<AvatarGenerationMode>(isCourseContext ? "scene_clips" : "single_video");
   const [sceneClips, setSceneClips] = useState<AvatarSceneClip[]>([]);
   const [voiceClips, setVoiceClips] = useState<VoiceSceneClip[]>([]);
   const [selectedSceneClipIds, setSelectedSceneClipIds] = useState<string[]>([]);
@@ -261,6 +281,7 @@ export default function HeygenStudioClient({
 
       const latestJob = payload.data?.latestJob as LatestJob | null;
       const asset = payload.data?.asset as HeygenAsset | null;
+      const voiceAsset = payload.data?.voiceAsset as CurrentJob["voiceAsset"] | null;
       if (latestJob) {
         const providerFailure = readProviderFailure(latestJob.providerError);
         setCurrentJob({
@@ -270,6 +291,7 @@ export default function HeygenStudioClient({
           providerErrorCode: providerFailure.code,
           providerErrorMessage: providerFailure.message,
           status: latestJob.status,
+          voiceAsset,
         });
         if (latestJob.status === "FAILED" && providerFailure.message) {
           setErrorMessage(formatProviderFailure({
@@ -304,9 +326,26 @@ export default function HeygenStudioClient({
 
       const clips = (payload.data?.clips || []) as AvatarSceneClip[];
       setVoiceClips((payload.data?.voiceClips || []) as VoiceSceneClip[]);
-      setAvatarGenerationMode(
-        (payload.data?.avatarGenerationMode as AvatarGenerationMode) || "scene_clips",
-      );
+      const loadedMode = (payload.data?.avatarGenerationMode as AvatarGenerationMode) || "scene_clips";
+      setAvatarGenerationMode(loadedMode);
+      const voiceAudio = payload.data?.voiceAudio as {
+        duration?: number;
+        external_id?: string;
+        public_url?: string;
+        storage_path?: string;
+      } | null;
+      if (loadedMode === "voiceover" && voiceAudio?.public_url) {
+        setCurrentJob({
+          jobId: voiceAudio.external_id || "voiceover",
+          providerJobId: voiceAudio.external_id || null,
+          status: "SUCCEEDED",
+          voiceAsset: {
+            durationSeconds: voiceAudio.duration || null,
+            publicUrl: voiceAudio.public_url,
+            storagePath: voiceAudio.storage_path || null,
+          },
+        });
+      }
       setSceneClips(clips);
       setSelectedSceneClipIds((current) =>
         current.length > 0 ? current : clips.map((clip) => clip.id),
@@ -407,26 +446,40 @@ export default function HeygenStudioClient({
     try {
       const isStandalone = !componentId;
       const response = await fetch(
-        isStandalone
+        avatarGenerationMode === "voiceover"
+          ? "/api/production/heygen/speech"
+          : isStandalone
           ? "/api/production/heygen/standalone/videos"
           : "/api/production/heygen/videos",
         {
         body: JSON.stringify({
-          aspectRatio,
-          avatarPresetId: selectedAvatarPresetId || undefined,
-          ...(isStandalone
+          ...(avatarGenerationMode === "voiceover"
             ? {
-                script: standaloneScript.trim(),
-                title: standaloneTitle.trim(),
+                componentId: componentId || undefined,
+                inputType: speechInputType,
+                locale: voiceLocale || undefined,
+                script: isStandalone ? standaloneScript.trim() : undefined,
+                speed: voiceSpeed,
+                title: isStandalone ? standaloneTitle.trim() : undefined,
               }
             : {
-                autoPromote: true,
-                componentId,
+                aspectRatio,
+                avatarPresetId: selectedAvatarPresetId || undefined,
+                ...(isStandalone
+                  ? { script: standaloneScript.trim(), title: standaloneTitle.trim() }
+                  : { autoPromote: true, componentId }),
+                caption,
+                engine,
+                brandGlossaryId: brandGlossaryId || undefined,
+                locale: voiceLocale || undefined,
+                motionPrompt: motionPrompt || undefined,
+                outputFormat,
+                pitch: voicePitch,
+                removeBackground: outputFormat === "webm" || removeBackground,
+                resolution,
+                speed: Math.min(1.5, voiceSpeed),
+                volume: voiceVolume,
               }),
-          caption,
-          engine,
-          outputFormat: "mp4",
-          resolution,
           voicePresetId: selectedVoicePresetId || undefined,
         }),
         headers: { "Content-Type": "application/json" },
@@ -451,9 +504,17 @@ export default function HeygenStudioClient({
       }
 
       setCurrentJob(payload.data as CurrentJob);
-      toast.success("Job de avatar enviado.");
+      toast.success(
+        avatarGenerationMode === "voiceover"
+          ? "Voz en off generada sin crear un video."
+          : "Job de avatar enviado.",
+      );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al generar video de avatar.";
+      const message = error instanceof Error
+        ? error.message
+        : avatarGenerationMode === "voiceover"
+          ? "Error al generar la voz en off."
+          : "Error al generar video de avatar.";
       setErrorMessage(message);
       toast.error(message);
     } finally {
@@ -655,8 +716,15 @@ export default function HeygenStudioClient({
           clips,
           componentId,
           engine,
-          outputFormat: "mp4",
+          brandGlossaryId: brandGlossaryId || undefined,
+          locale: voiceLocale || undefined,
+          motionPrompt: motionPrompt || undefined,
+          outputFormat,
+          pitch: voicePitch,
+          removeBackground: outputFormat === "webm" || removeBackground,
           resolution,
+          speed: Math.min(1.5, voiceSpeed),
+          volume: voiceVolume,
         }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -721,6 +789,7 @@ export default function HeygenStudioClient({
   };
 
   const isSceneMode = isCourseContext && avatarGenerationMode === "scene_clips";
+  const isVoiceoverMode = avatarGenerationMode === "voiceover";
   const visibleSceneClips = sceneClips.filter((clip) => !clip.deleted);
   const completedSceneClips = visibleSceneClips.filter((clip) => clip.status === "COMPLETED");
   const sceneDurationSeconds = completedSceneClips.reduce(
@@ -749,6 +818,14 @@ export default function HeygenStudioClient({
         ]
       : []),
   ];
+  const normalizedCatalogQuery = catalogQuery.trim().toLowerCase();
+  const filteredAvatars = avatarPresets.filter((preset) => {
+    const ownership = typeof preset.metadata?.ownership === "string" ? preset.metadata.ownership : "unknown";
+    return (catalogOwnership === "all" || ownership === catalogOwnership)
+      && (!normalizedCatalogQuery || `${preset.name || ""} ${preset.heygen_avatar_look_id || ""}`.toLowerCase().includes(normalizedCatalogQuery));
+  });
+  const filteredVoices = voicePresets.filter((preset) => !normalizedCatalogQuery
+    || `${preset.name || ""} ${preset.language || ""} ${preset.gender || ""}`.toLowerCase().includes(normalizedCatalogQuery));
   const integrationsPath = params?.empresaSlug
     ? `/${params.empresaSlug}/admin/integrations`
     : "/admin/integrations";
@@ -829,7 +906,7 @@ export default function HeygenStudioClient({
         <section className="engine-surface engine-studio-panel p-6">
           <div className="mb-5 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Generacion de avatar</h2>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Generación de avatar y voz</h2>
               <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
                 {isCourseContext
                   ? "Generacion asociada al componente del curso."
@@ -847,34 +924,35 @@ export default function HeygenStudioClient({
             )}
           </div>
 
-          {isCourseContext ? (
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 p-2 dark:border-white/5 dark:bg-[var(--engine-canvas)]">
-              <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1 dark:border-white/10 dark:bg-[var(--engine-surface-solid)]">
-                {[
-                  { label: "Por escenas", value: "scene_clips" },
-                  { label: "Video completo", value: "single_video" },
-                ].map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setAvatarGenerationMode(option.value as AvatarGenerationMode)}
-                    className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
-                      avatarGenerationMode === option.value
-                        ? "bg-rose-600 text-white shadow-sm"
-                        : "text-gray-600 hover:bg-gray-50 dark:text-slate-300 dark:hover:bg-white/5"
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-              <span className="text-xs font-semibold text-gray-500 dark:text-slate-400">
-                {isSceneMode
-                  ? `${completedSceneClips.length}/${visibleSceneClips.length} clips listos · ${formatDuration(sceneDurationSeconds)}`
-                  : "Un solo avatar y voz para todo el guion"}
-              </span>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 p-2 dark:border-white/5 dark:bg-[var(--engine-canvas)]">
+            <div className="inline-flex flex-wrap rounded-lg border border-gray-200 bg-white p-1 dark:border-white/10 dark:bg-[var(--engine-surface-solid)]">
+              {[
+                ...(isCourseContext ? [{ label: "Por escenas", value: "scene_clips" as const }] : []),
+                { label: "Video completo", value: "single_video" as const },
+                { label: "Voz en off", value: "voiceover" as const },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setAvatarGenerationMode(option.value)}
+                  className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
+                    avatarGenerationMode === option.value
+                      ? "bg-rose-600 text-white shadow-sm"
+                      : "text-gray-600 hover:bg-gray-50 dark:text-slate-300 dark:hover:bg-white/5"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
             </div>
-          ) : null}
+            <span className="text-xs font-semibold text-gray-500 dark:text-slate-400">
+              {isSceneMode
+                ? `${completedSceneClips.length}/${visibleSceneClips.length} clips listos · ${formatDuration(sceneDurationSeconds)}`
+                : isVoiceoverMode
+                  ? "Solo genera y guarda audio; no consume un render de avatar"
+                  : "Un solo avatar y voz para todo el guion"}
+            </span>
+          </div>
 
           {!isCourseContext ? (
             <div className="mb-4 grid gap-3">
@@ -894,7 +972,7 @@ export default function HeygenStudioClient({
                   value={standaloneScript}
                   disabled={isGenerating}
                   onChange={(event) => setStandaloneScript(event.target.value)}
-                  placeholder="Escribe el texto que dira el avatar..."
+                  placeholder={isVoiceoverMode ? "Escribe el texto de la voz en off..." : "Escribe el texto que dirá el avatar..."}
                   className="min-h-36 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium normal-case leading-relaxed tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white"
                 />
               </label>
@@ -1096,17 +1174,17 @@ export default function HeygenStudioClient({
 
           {!isSceneMode ? (
             <div className="grid gap-3 md:grid-cols-2">
-            <SelectField
-              disabled={isGenerating || isLoadingPresets}
-              label="Avatar"
-              value={selectedAvatarPresetId}
-              onChange={setSelectedAvatarPresetId}
-              options={avatarPresets.map((preset) => ({
-                label: `${preset.name || preset.id}${preset.is_default ? " (default)" : ""}`,
-                value: preset.id,
-              }))}
-              placeholder="Avatar default"
-            />
+            {!isVoiceoverMode ? <SelectField
+                disabled={isGenerating || isLoadingPresets}
+                label="Avatar"
+                value={selectedAvatarPresetId}
+                onChange={setSelectedAvatarPresetId}
+                options={avatarPresets.map((preset) => ({
+                  label: `${preset.name || preset.id}${preset.is_default ? " (default)" : ""}`,
+                  value: preset.id,
+                }))}
+                placeholder="Avatar default"
+              /> : null}
             <SelectField
               disabled={isGenerating || isLoadingPresets}
               label="Voz"
@@ -1118,10 +1196,25 @@ export default function HeygenStudioClient({
               }))}
               placeholder="Voz default"
             />
+            {isVoiceoverMode ? (
+              <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
+                Velocidad
+                <input
+                  type="number"
+                  min={0.5}
+                  max={2}
+                  step={0.05}
+                  value={voiceSpeed}
+                  disabled={isGenerating}
+                  onChange={(event) => setVoiceSpeed(Math.min(2, Math.max(0.5, Number(event.target.value) || 1)))}
+                  className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white"
+                />
+              </label>
+            ) : null}
             </div>
           ) : null}
 
-          <div className="mt-3 grid gap-3 sm:grid-cols-4">
+          {!isVoiceoverMode ? <div className="mt-3 grid gap-3 sm:grid-cols-4">
             <SelectField
               disabled={isGenerating}
               label="Engine"
@@ -1166,7 +1259,55 @@ export default function HeygenStudioClient({
                 SRT
               </span>
             </label>
-          </div>
+          </div> : null}
+
+          {!isSceneMode ? (
+            <details className="mt-4 rounded-xl border border-gray-200 p-4 dark:border-white/10">
+              <summary className="cursor-pointer text-sm font-bold text-gray-700 dark:text-slate-200">
+                Controles avanzados de voz y render
+              </summary>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <SelectField
+                  disabled={isGenerating}
+                  label="Entrada de voz"
+                  value={speechInputType}
+                  onChange={(value) => setSpeechInputType(value as "text" | "ssml")}
+                  options={[{ label: "Texto", value: "text" }, { label: "SSML", value: "ssml" }]}
+                />
+                <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
+                  Locale
+                  <input value={voiceLocale} disabled={isGenerating} onChange={(event) => setVoiceLocale(event.target.value)} placeholder="es-MX" className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none focus:border-rose-500 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white" />
+                </label>
+                {!isVoiceoverMode ? <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
+                  Velocidad
+                  <input type="number" min={0.5} max={1.5} step={0.05} value={Math.min(1.5, voiceSpeed)} disabled={isGenerating} onChange={(event) => setVoiceSpeed(Math.min(1.5, Math.max(0.5, Number(event.target.value) || 1)))} className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none focus:border-rose-500 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white" />
+                </label> : null}
+                {!isVoiceoverMode ? <><label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
+                  Pitch (-50 a 50)
+                  <input type="number" min={-50} max={50} step={1} value={voicePitch} disabled={isGenerating} onChange={(event) => setVoicePitch(Math.min(50, Math.max(-50, Number(event.target.value) || 0)))} className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none focus:border-rose-500 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white" />
+                </label>
+                <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
+                  Volumen (0 a 1)
+                  <input type="number" min={0} max={1} step={0.05} value={voiceVolume} disabled={isGenerating} onChange={(event) => setVoiceVolume(Math.min(1, Math.max(0, Number(event.target.value))))} className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none focus:border-rose-500 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white" />
+                </label></> : null}
+                {!isVoiceoverMode ? <>
+                  <SelectField disabled={isGenerating} label="Contenedor" value={outputFormat} onChange={(value) => { const next = value as OutputFormat; setOutputFormat(next); if (next === "webm") setRemoveBackground(true); }} options={[{ label: "MP4", value: "mp4" }, { label: "WebM transparente", value: "webm" }]} />
+                  <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
+                    Transparencia
+                    <span className="flex h-[38px] items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-700 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-gray-300"><input type="checkbox" checked={removeBackground} disabled={isGenerating || outputFormat === "webm"} onChange={(event) => setRemoveBackground(event.target.checked)} /> Quitar fondo</span>
+                  </label>
+                  <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400 lg:col-span-2">
+                    Motion prompt
+                    <input value={motionPrompt} disabled={isGenerating} onChange={(event) => setMotionPrompt(event.target.value)} placeholder="Gestos y movimiento deseados" className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none focus:border-rose-500 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white" />
+                  </label>
+                  <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400 lg:col-span-2">
+                    Brand glossary ID
+                    <input value={brandGlossaryId} disabled={isGenerating} onChange={(event) => setBrandGlossaryId(event.target.value)} placeholder="Opcional" className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none focus:border-rose-500 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white" />
+                  </label>
+                </> : null}
+              </div>
+            </details>
+          ) : null}
 
           <div className="mt-5 flex flex-wrap gap-3">
             {isSceneMode ? (
@@ -1209,9 +1350,9 @@ export default function HeygenStudioClient({
                   className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-rose-500/15 transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                  Generar avatar
+                  {isVoiceoverMode ? "Generar voz en off" : "Generar avatar"}
                 </button>
-                <button
+                {!isVoiceoverMode ? <button
                   type="button"
                   onClick={handleCheckStatus}
                   disabled={!connection.connected || !currentJob?.jobId || isCheckingStatus}
@@ -1219,7 +1360,7 @@ export default function HeygenStudioClient({
                 >
                   {isCheckingStatus ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
                   Consultar estado
-                </button>
+                </button> : null}
               </>
             )}
           </div>
@@ -1234,7 +1375,7 @@ export default function HeygenStudioClient({
         <section className="engine-preview-stage">
           <div className="engine-preview-stage__header">
             <div>
-              <p className="engine-eyebrow !mb-1 !text-[var(--engine-text-muted)]">Monitor de render</p>
+              <p className="engine-eyebrow !mb-1 !text-[var(--engine-text-muted)]">Monitor de producción</p>
               <h2 className="text-lg text-gray-900 dark:text-white">Vista de producción</h2>
             </div>
             <span className="engine-preview-stage__live"><span /> EN VIVO</span>
@@ -1269,6 +1410,24 @@ export default function HeygenStudioClient({
                   Ver video importado
                 </a>
               ) : null}
+              {currentJob.voiceAsset?.publicUrl ? (
+                <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3">
+                  <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-blue-700 dark:text-blue-300">
+                    <span>Voz en off</span>
+                    <span>{currentJob.voiceAsset.durationSeconds ? formatDuration(currentJob.voiceAsset.durationSeconds) : "Audio listo"}</span>
+                  </div>
+                  <audio src={currentJob.voiceAsset.publicUrl} controls preload="metadata" className="w-full" />
+                  <a
+                    href={currentJob.voiceAsset.publicUrl}
+                    download
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-flex items-center gap-2 text-xs font-bold text-blue-700 underline underline-offset-2 dark:text-blue-300"
+                  >
+                    <ExternalLink size={13} /> Descargar audio
+                  </a>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="engine-preview-empty">
@@ -1282,7 +1441,7 @@ export default function HeygenStudioClient({
         </section>
       </div>
 
-      <GeneratedVideoLibrary
+      {!isVoiceoverMode ? <GeneratedVideoLibrary
         emptyText={
           isCourseContext
             ? "Los clips de esta leccion apareceran aqui cuando terminen."
@@ -1290,12 +1449,21 @@ export default function HeygenStudioClient({
         }
         items={generatedVideoItems}
         title={isCourseContext ? "Videos de esta generacion" : "Biblioteca de videos"}
-      />
+      /> : null}
+
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-200 p-4 dark:border-white/10">
+        <label className="min-w-64 flex-1 text-xs font-bold uppercase tracking-wide text-gray-400">
+          Buscar en catálogo
+          <input value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder="Nombre, idioma o ID" className="mt-1.5 h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none focus:border-rose-500 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white" />
+        </label>
+        <SelectField label="Propiedad de avatar" value={catalogOwnership} onChange={setCatalogOwnership} options={[{ label: "Todos", value: "all" }, { label: "Propios", value: "private" }, { label: "Públicos", value: "public" }]} />
+        <span className="pb-2 text-xs font-semibold text-gray-500">{filteredAvatars.length} avatares · {filteredVoices.length} voces</span>
+      </div>
 
       <section className="engine-catalog-grid">
         <PresetList
           emptyText="Sin avatares sincronizados."
-          items={avatarPresets.map((preset) => ({
+          items={filteredAvatars.map((preset) => ({
             id: preset.id,
             imageUrl: preset.preview_image_url || undefined,
             isDefault: Boolean(preset.is_default),
@@ -1306,7 +1474,7 @@ export default function HeygenStudioClient({
         />
         <PresetList
           emptyText="Sin voces sincronizadas."
-          items={voicePresets.map((preset) => ({
+          items={filteredVoices.map((preset) => ({
             id: preset.id,
             isDefault: Boolean(preset.is_default),
             meta: [preset.language, preset.gender, preset.voice_type].filter(Boolean).join(" · "),

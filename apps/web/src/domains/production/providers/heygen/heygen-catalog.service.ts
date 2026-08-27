@@ -11,13 +11,13 @@ import type {
 } from "./heygen.types";
 
 interface HeygenCatalogServiceOptions {
-  client?: Pick<HeygenClient, "listAvatarLooks" | "listVoices">;
+  client?: Pick<HeygenClient, "listAllAvatarLooks" | "listAllVoices">;
   repository?: HeygenRepository;
   supabase?: HeygenSupabaseClient;
 }
 
 export class HeygenCatalogService {
-  private readonly client: Pick<HeygenClient, "listAvatarLooks" | "listVoices">;
+  private readonly client: Pick<HeygenClient, "listAllAvatarLooks" | "listAllVoices">;
   private readonly repository: HeygenRepository;
 
   constructor(options: HeygenCatalogServiceOptions = {}) {
@@ -35,8 +35,8 @@ export class HeygenCatalogService {
 
     try {
       const [avatarResponse, voiceResponse] = await Promise.all([
-        this.client.listAvatarLooks(),
-        this.client.listVoices(),
+        this.client.listAllAvatarLooks(),
+        this.client.listAllVoices(),
       ]);
       const avatars = normalizeAvatarLooks(avatarResponse);
       const voices = normalizeVoices(voiceResponse);

@@ -59,7 +59,7 @@ export class HeygenAudioImportService {
     if (existing) return existing;
 
     assertSafeHeygenAudioUrl(params.speech.audioUrl);
-    const downloaded = await downloadAudioWithLimits({
+    const downloaded = await downloadHeygenAudioWithLimits({
       fetchImpl: this.fetchImpl,
       url: params.speech.audioUrl,
     });
@@ -137,11 +137,11 @@ export function assertSafeHeygenAudioUrl(rawUrl: string) {
   }
 }
 
-async function downloadAudioWithLimits(params: { fetchImpl: typeof fetch; url: string }) {
+export async function downloadHeygenAudioWithLimits(params: { fetchImpl?: typeof fetch; url: string }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), HEYGEN_AUDIO_IMPORT_TIMEOUT_MS);
   try {
-    const response = await params.fetchImpl(params.url, {
+    const response = await (params.fetchImpl || fetch)(params.url, {
       headers: { Accept: "audio/mpeg,audio/wav,audio/x-wav,application/octet-stream" },
       redirect: "error",
       signal: controller.signal,

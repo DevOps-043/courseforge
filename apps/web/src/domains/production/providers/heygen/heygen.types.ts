@@ -45,6 +45,43 @@ export type HeygenAvatarVideoResolution = "720p" | "1080p" | "4k";
 export type HeygenAvatarVideoAspectRatio = "16:9" | "9:16";
 export type HeygenAvatarVideoOutputFormat = "mp4" | "webm";
 
+export type HeygenAssetReference =
+  | { type: "asset_id"; asset_id: string }
+  | { type: "url"; url: string };
+
+export interface HeygenPage<T = Record<string, unknown>> {
+  data: T[];
+  hasMore: boolean;
+  nextToken: string | null;
+  raw: Record<string, unknown>;
+}
+
+export interface HeygenAccountSummary {
+  billingType: string | null;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  raw: Record<string, unknown>;
+  subscription: Record<string, unknown> | null;
+  usageBased: Record<string, unknown> | null;
+  username: string;
+  wallet: Record<string, unknown> | null;
+}
+
+export type HeygenPlatformOperationType =
+  | "AI_CLIPPING"
+  | "BRAND_GLOSSARY"
+  | "BRAND_KIT"
+  | "FILLER_REMOVAL"
+  | "LIPSYNC"
+  | "PROOFREAD"
+  | "TEMPLATE_VIDEO"
+  | "VIDEO_AGENT"
+  | "VIDEO_BATCH"
+  | "VIDEO_TRANSLATION"
+  | "VOICE_CLONE"
+  | "VOICE_DESIGN";
+
 export interface HeygenAvatarLook {
   avatarType?: string | null;
   defaultVoiceId?: string | null;
@@ -88,13 +125,20 @@ export interface HeygenCreateVideoRequest {
   avatar_id: string;
   background?: HeygenAvatarVideoBackground;
   callback_id?: string;
+  callback_url?: string;
   caption?: {
     file_format: "srt";
     style: "default";
   };
   engine?: {
     type: HeygenAvatarVideoEngine;
+    reference_look_id?: string;
   };
+  brand_glossary_id?: string;
+  folder_id?: string;
+  motion_prompt?: string;
+  remove_background?: boolean;
+  watermark?: Record<string, unknown>;
   output_format: HeygenAvatarVideoOutputFormat;
   resolution: HeygenAvatarVideoResolution;
   audio_url?: string;
@@ -102,6 +146,12 @@ export interface HeygenCreateVideoRequest {
   title: string;
   type: "avatar";
   voice_id?: string;
+  voice_settings?: {
+    locale?: string;
+    pitch?: number;
+    speed?: number;
+    volume?: number;
+  };
 }
 
 export interface HeygenWordTimestamp {
@@ -111,6 +161,9 @@ export interface HeygenWordTimestamp {
 }
 
 export interface HeygenGenerateSpeechRequest {
+  input_type?: "ssml" | "text";
+  language?: string;
+  locale?: string;
   speed: number;
   text: string;
   voice_id: string;
@@ -157,6 +210,25 @@ export interface HeygenAvatarVideoGenerationOptions {
   engine: HeygenAvatarVideoEngine;
   outputFormat: HeygenAvatarVideoOutputFormat;
   resolution: HeygenAvatarVideoResolution;
+  brandGlossaryId?: string;
+  callbackUrl?: string;
+  folderId?: string;
+  locale?: string;
+  motionPrompt?: string;
+  pitch?: number;
+  referenceLookId?: string;
+  removeBackground?: boolean;
+  speed?: number;
+  volume?: number;
+  voicePresetId?: string;
+}
+
+export interface HeygenVoiceoverGenerationOptions {
+  componentId: string;
+  inputType?: "ssml" | "text";
+  language?: string;
+  locale?: string;
+  speed: number;
   voicePresetId?: string;
 }
 
@@ -168,6 +240,7 @@ export interface HeygenAvatarPresetRow {
 }
 
 export interface HeygenAvatarPresetGenerationRow extends HeygenAvatarPresetRow {
+  metadata?: Record<string, unknown> | null;
   name: string;
   supported_api_engines?: string[] | null;
 }

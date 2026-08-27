@@ -77,14 +77,18 @@ export async function DELETE() {
       organizationId: context.tenant.organizationId,
       provider: "hyperframes_cloud",
     });
-    if (credential?.secret) {
+    const avatarStatus = await service.getCredentialStatus({
+      organizationId: context.tenant.organizationId,
+      provider: "heygen_avatar",
+    });
+    if (credential?.secret && !avatarStatus.connected) {
       await disconnectHeygenHyperframesWebhook({
         apiKey: credential.secret,
         organizationId: context.tenant.organizationId,
         supabase: admin,
       });
-    } else {
-      const { error } = await admin.rpc("clear_hyperframes_webhook", {
+    } else if (!avatarStatus.connected) {
+      const { error } = await admin.rpc("clear_heygen_webhook", {
         p_organization_id: context.tenant.organizationId,
       });
       if (error) throw error;

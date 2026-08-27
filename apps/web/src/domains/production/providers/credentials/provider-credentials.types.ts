@@ -5,7 +5,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * HeyGen currently powers both capabilities, but they can be rotated and
  * authorized independently without coupling avatar generation to assembly.
  */
-export type ProductionCredentialProvider = "heygen_avatar" | "hyperframes_cloud";
+export type ProductionCredentialProvider =
+  | "heygen_avatar"
+  | "hyperframes_cloud"
+  | "liveavatar";
 export type ProductionCredentialStatus = "ACTIVE" | "REVOKED";
 export type ProductionCredentialValidationStatus =
   | "NEVER_VALIDATED"

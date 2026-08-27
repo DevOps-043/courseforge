@@ -38,13 +38,14 @@ export class HeygenRepository {
           "preview_video_url",
           "status",
           "is_default",
+          "metadata",
           "synced_at",
         ].join(", "),
       )
       .eq("organization_id", organizationId)
       .order("is_default", { ascending: false })
       .order("synced_at", { ascending: false, nullsFirst: false })
-      .limit(100);
+      .limit(1000);
 
     if (error) throw error;
     return data || [];
@@ -63,13 +64,14 @@ export class HeygenRepository {
           "voice_type",
           "preview_audio_url",
           "is_default",
+          "metadata",
           "synced_at",
         ].join(", "),
       )
       .eq("organization_id", organizationId)
       .order("is_default", { ascending: false })
       .order("synced_at", { ascending: false, nullsFirst: false })
-      .limit(100);
+      .limit(1000);
 
     if (error) throw error;
     return data || [];
@@ -204,6 +206,7 @@ export class HeygenRepository {
           "default_voice_id",
           "supported_api_engines",
           "is_default",
+          "metadata",
         ].join(", "),
       )
       .eq("organization_id", params.organizationId);
@@ -323,7 +326,7 @@ export class HeygenRepository {
     return (data || null) as HeygenProductionJobRow | null;
   }
 
-  async getLatestAvatarVideoJobForComponent(params: {
+  async getLatestHeygenMediaJobForComponent(params: {
     componentId: string;
     organizationId: string;
   }) {
@@ -352,7 +355,10 @@ export class HeygenRepository {
       .eq("organization_id", params.organizationId)
       .eq("material_component_id", params.componentId)
       .eq("provider", PRODUCTION_PROVIDERS.HEYGEN)
-      .eq("job_type", PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_VIDEO)
+      .in("job_type", [
+        PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_VIDEO,
+        PRODUCTION_JOB_TYPES.HEYGEN_VOICEOVER,
+      ])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -626,6 +632,45 @@ export class HeygenRepository {
     );
 
     if (updateError) throw updateError;
+    return nextAssets;
+  }
+
+  async promoteVoiceAudioToMaterialAssets(params: {
+    componentId: string;
+    durationSeconds?: number | null;
+    providerRequestId?: string | null;
+    publicUrl: string;
+    scriptHash: string;
+    storagePath: string;
+    wordTimestamps?: unknown[];
+  }) {
+    const now = new Date().toISOString();
+    const fileName = params.storagePath.split("/").at(-1) || "heygen-voice.mp3";
+    const { data: nextAssets, error } = await this.supabase.rpc(
+      "patch_material_component_assets",
+      {
+        p_assets_patch: {
+          avatar_generation_mode: "voiceover",
+          avatar_clips: [],
+          avatar_video: null,
+          voice_clips: [],
+          voice_audio: {
+            duration: params.durationSeconds || undefined,
+            external_id: params.providerRequestId || undefined,
+            file_name: fileName,
+            last_uploaded_at: now,
+            provider: PRODUCTION_PROVIDERS.HEYGEN,
+            public_url: params.publicUrl,
+            script_hash: params.scriptHash,
+            storage_path: params.storagePath,
+            word_timestamps: params.wordTimestamps || [],
+          },
+          updated_at: now,
+        },
+        p_component_id: params.componentId,
+      },
+    );
+    if (error) throw error;
     return nextAssets;
   }
 

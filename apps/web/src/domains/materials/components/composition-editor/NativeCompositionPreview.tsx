@@ -33,6 +33,8 @@ import {
   resolveCompositionDocumentVersion,
 } from "@/domains/production/composition-editor/composition-document-version";
 import { CompositionPreviewTelemetryBuffer } from "@/domains/production/composition-editor/composition-preview-telemetry.client";
+import { detachVideoAudio } from "@/domains/materials/media/detach-video-audio.client";
+import { uploadWithSignedUrl } from "@/lib/storage-upload";
 import { COMPOSITION_PREVIEW_TELEMETRY_CONFIG } from "@/domains/production/composition-editor/composition-preview-telemetry";
 import { clampPreviewPlayhead, classifyPreviewTimeMessage, isPreviewRefreshRequired } from "@/domains/production/composition-editor/composition-preview-playhead.service";
 import { CompositionSaveQueue } from "@/domains/production/composition-editor/composition-save-queue";
@@ -134,6 +136,8 @@ export interface CompositionStudioLesson {
 }
 
 export interface CompositionStudioAsset {
+  detachedFromAssetId?: string;
+  detachedFromClipId?: string;
   durationSeconds?: number;
   hasAudio?: boolean;
   id: string;
@@ -152,10 +156,12 @@ export interface CompositionStudioAsset {
 
 interface NativeCompositionPreviewProps {
   assets: CompositionStudioAsset[];
+  componentId: string;
   compositionId: string;
   draftId: string;
   lessons: CompositionStudioLesson[];
   onContinueToPublication?: () => void;
+  onAssetsChanged?: () => Promise<void> | void;
   onVideoCompleted?: () => void;
   onSelectLesson: (lessonId: string) => void;
   selectedLessonId: string | null;
@@ -177,7 +183,7 @@ async function readCompositionApiResponse<T>(response: Response, fallbackMessage
 }
 
 /** The native assembly studio: library, full preview, timeline and contextual inspector. */
-export function NativeCompositionPreview({ assets, compositionId, draftId, lessons, onContinueToPublication, onSelectLesson, onVideoCompleted, selectedLessonId }: NativeCompositionPreviewProps) {
+export function NativeCompositionPreview({ assets, componentId, compositionId, draftId, lessons, onAssetsChanged, onContinueToPublication, onSelectLesson, onVideoCompleted, selectedLessonId }: NativeCompositionPreviewProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const previewShellRef = useRef<HTMLDivElement | null>(null);
   const studioGridRef = useRef<HTMLDivElement | null>(null);
@@ -212,6 +218,8 @@ export function NativeCompositionPreview({ assets, compositionId, draftId, lesso
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [separatingAudio, setSeparatingAudio] = useState(false);
+  const [separatingAudioProgress, setSeparatingAudioProgress] = useState(0);
   const [failedSave, setFailedSave] = useState<{ operations: CompositionEditorPatchOperation[]; source: "AGENT" | "USER"; summary: string } | null>(null);
   const [agentProposal, setAgentProposal] = useState<AgentProposal | null>(null);
   const [lastAppliedAgentProposal, setLastAppliedAgentProposal] = useState<AgentProposal | null>(null);
@@ -955,6 +963,116 @@ export function NativeCompositionPreview({ assets, compositionId, draftId, lesso
       type: "clip.add",
     }], `Agregó ${asset.label} a la línea de tiempo.`);
     if (added) selectClip(clip.hfId);
+  }
+
+  async function separateSelectedVideoAudio(clip: CompositionClip) {
+    if (clip.kind !== "VIDEO" || clip.source.type !== "PRODUCTION_ASSET") return;
+    const sourceAssetId = clip.source.productionAssetId;
+    const sourceAsset = assets.find((asset) => asset.id === sourceAssetId);
+    const existingDetachedAsset = assets.find((asset) => (
+      asset.detachedFromClipId === clip.id && asset.detachedFromAssetId === sourceAssetId
+    ));
+    const existingDetachedClip = existingDetachedAsset
+      ? payloadRef.current?.document.clips.find((candidate) => (
+          candidate.source.type === "PRODUCTION_ASSET"
+          && candidate.source.productionAssetId === existingDetachedAsset.id
+        ))
+      : null;
+    if (existingDetachedClip) {
+      setSelectedHfId(existingDetachedClip.hfId);
+      return;
+    }
+    if (!existingDetachedAsset && !sourceAsset?.previewUrl) {
+      setSaveError("No se pudo abrir el video fuente para separar su audio.");
+      return;
+    }
+    setSeparatingAudio(true);
+    setSeparatingAudioProgress(0);
+    setSaveError(null);
+    try {
+      const safeClipId = clip.id.replace(/[^a-z0-9-]+/gi, "-").slice(0, 72);
+      let audioAssetId = existingDetachedAsset?.id;
+      let audioDurationSeconds = existingDetachedAsset?.durationSeconds;
+      let registeredNewAsset = false;
+      if (!audioAssetId) {
+        const detached = await detachVideoAudio({
+          durationSeconds: clip.durationSeconds,
+          fileName: sourceAsset!.label,
+          onProgress: setSeparatingAudioProgress,
+          sourceOffsetSeconds: clip.sourceOffsetSeconds || 0,
+          sourceUrl: sourceAsset!.previewUrl!,
+        });
+        const storagePath = `editor-audio/${componentId}/${safeClipId}-${Date.now()}.wav`;
+        const uploaded = await uploadWithSignedUrl("production-assets", storagePath, detached.file, {
+          componentId,
+          contentType: detached.file.type,
+          fileSizeBytes: detached.file.size,
+          purpose: "production-asset",
+          upsert: false,
+        });
+        const registrationResponse = await fetch(`/api/production/hyperframes/drafts/${draftId}/detach-audio`, {
+          body: JSON.stringify({
+            componentId,
+            durationSeconds: detached.durationSeconds,
+            fileName: detached.file.name,
+            sourceAssetId,
+            sourceClipId: clip.id,
+            storagePath: uploaded.path,
+          }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        });
+        const registration = await readCompositionApiResponse<{
+          data?: { durationSeconds?: number; productionAssetId?: string };
+          error?: string;
+          success?: boolean;
+        }>(registrationResponse, "No se pudo registrar el audio separado.");
+        audioAssetId = registration.data?.productionAssetId;
+        audioDurationSeconds = registration.data?.durationSeconds || detached.durationSeconds;
+        if (!registrationResponse.ok || !registration.success || !audioAssetId) {
+          throw new Error(registration.error || "No se pudo registrar el audio separado.");
+        }
+        registeredNewAsset = true;
+      }
+      if (registeredNewAsset) await onAssetsChanged?.();
+      const suffix = crypto.randomUUID().slice(0, 8);
+      const audioClipId = `audio-${safeClipId.slice(0, 90)}-${suffix}`;
+      const voiceTrack = resolveCompositionTrackDefinition({ mimeType: "audio/wav", timelineRole: "VOICE" });
+      const durationSeconds = Math.min(clip.durationSeconds, audioDurationSeconds || clip.durationSeconds);
+      const audioClip: CompositionClip = {
+        durationSeconds,
+        hfId: audioClipId,
+        hidden: false,
+        id: audioClipId,
+        kind: "AUDIO",
+        label: `Audio de ${clip.label}`,
+        layout: resolveDefaultCompositionClipLayout({
+          canvas: payloadRef.current!.document.canvas,
+          clipKind: "AUDIO",
+          sourceDimensions: null,
+          track: voiceTrack,
+        }),
+        mediaFit: resolveDefaultCompositionMediaFit({ clipKind: "AUDIO", track: voiceTrack }),
+        source: { hasAudio: true, productionAssetId: audioAssetId, type: "PRODUCTION_ASSET" },
+        sourceDurationSeconds: audioDurationSeconds || durationSeconds,
+        sourceOffsetSeconds: 0,
+        startSeconds: clip.startSeconds,
+        timingSource: "USER_EDITED",
+        trackId: voiceTrack.id,
+        volume: 1,
+      };
+      const saved = await savePatch([
+        { clip: audioClip, clipId: audioClip.id, track: voiceTrack, type: "clip.add" },
+        { clipId: clip.id, type: "clip.volume", volume: 0 },
+      ], `Separó el audio de ${clip.label} en una pista editable y silenció el audio original.`);
+      if (!saved) throw new Error("El audio se guardó, pero no se pudo agregar a la línea de tiempo.");
+      setSelectedHfId(audioClip.hfId);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "No se pudo separar el audio del video.");
+    } finally {
+      setSeparatingAudio(false);
+      setSeparatingAudioProgress(0);
+    }
   }
 
   async function removeClipFromTimeline(clip: CompositionClip) {
@@ -1777,7 +1895,7 @@ export function NativeCompositionPreview({ assets, compositionId, draftId, lesso
 
         {inspectorOpen && <aside className={styles.inspector}>
           <div className={styles.inspectorHeader}><div className={styles.inspectorTabs}><button type="button" onClick={() => setInspectorTab("properties")} className={`${styles.inspectorTab} ${inspectorTab === "properties" ? styles.inspectorTabActive : ""}`}>Propiedades</button><button type="button" onClick={() => setInspectorTab("assistant")} className={`${styles.inspectorTab} ${inspectorTab === "assistant" ? styles.inspectorTabActive : ""}`}>SofLIA</button></div><button type="button" onClick={clearSelection} className={styles.inspectorClose} title="Cerrar inspector" aria-label="Cerrar inspector"><X size={15} /></button></div>
-          <div className={styles.inspectorBody}>{inspectorTab === "properties" ? <CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} selectedAnimationId={selectedAnimationId} onAnimationSelect={setSelectedAnimationId} onPatch={savePatch} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} /> : <AgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={requestAgentProposal} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}</div>
+          <div className={styles.inspectorBody}>{inspectorTab === "properties" ? <CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} separatingAudio={separatingAudio} separatingAudioProgress={separatingAudioProgress} selectedAnimationId={selectedAnimationId} onAnimationSelect={setSelectedAnimationId} onDetachAudio={separateSelectedVideoAudio} onPatch={savePatch} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} /> : <AgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={requestAgentProposal} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}</div>
         </aside>}
       </div>
     </section>
@@ -2106,7 +2224,7 @@ function AssetThumbnail({ asset }: { asset: CompositionStudioAsset }) {
   return <span className={commonClass + " text-slate-400 dark:text-gray-500"}><Icon size={18} /></span>;
 }
 
-function CompositionInspector({ animations, clip, cropModeEnabled, onAnimationSelect, onPatch, onPreviewCrop, onRemove, saving, selectedAnimationId, track }: { animations: CompositionAnimation[]; clip: CompositionClip | null; cropModeEnabled: boolean; onAnimationSelect: (animationId: string | null) => void; onPatch: (operations: CompositionEditorPatchOperation[], summary: string) => Promise<boolean>; onPreviewCrop: (hfId: string, crop: CompositionVisualCrop) => void; onRemove: (clip: CompositionClip) => Promise<void>; saving: boolean; selectedAnimationId: string | null; track: CompositionTrack | null }) {
+function CompositionInspector({ animations, clip, cropModeEnabled, onAnimationSelect, onDetachAudio, onPatch, onPreviewCrop, onRemove, saving, selectedAnimationId, separatingAudio, separatingAudioProgress, track }: { animations: CompositionAnimation[]; clip: CompositionClip | null; cropModeEnabled: boolean; onAnimationSelect: (animationId: string | null) => void; onDetachAudio: (clip: CompositionClip) => Promise<void>; onPatch: (operations: CompositionEditorPatchOperation[], summary: string) => Promise<boolean>; onPreviewCrop: (hfId: string, crop: CompositionVisualCrop) => void; onRemove: (clip: CompositionClip) => Promise<void>; saving: boolean; selectedAnimationId: string | null; separatingAudio: boolean; separatingAudioProgress: number; track: CompositionTrack | null }) {
   const [startSeconds, setStartSeconds] = useState("");
   const [durationSeconds, setDurationSeconds] = useState("");
   const [x, setX] = useState("");
@@ -2145,6 +2263,7 @@ function CompositionInspector({ animations, clip, cropModeEnabled, onAnimationSe
     return <div className="space-y-3"><div className="flex items-start gap-2"><span className="rounded-md bg-violet-100 p-1.5 text-violet-700 dark:bg-violet-400/10 dark:text-violet-200"><Music2 size={16} /></span><div><p className="text-sm font-semibold text-slate-900 dark:text-white">{clip.label}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-400">Música · ajustes de audio</p></div></div><TimecodeField label="Duración (mm:ss)" value={durationSeconds} onChange={setDurationSeconds} /><VolumeSlider accentClassName="accent-violet-500" ariaLabel="Volumen de la música" disabled={saving} label="Volumen" onChange={setVolume} value={volume} /><p className="text-[10px] leading-4 text-slate-500 dark:text-gray-400">Estos ajustes modifican la duración real del clip y el volumen base de la música. El ducking se configura por separado.</p>{validationError && <p role="alert" className="rounded-md bg-red-50 px-2 py-1.5 text-[10px] text-red-700 dark:bg-red-500/10 dark:text-red-200">{validationError}</p>}<button type="button" disabled={saving} onClick={() => void saveMusicChanges()} className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50"><Save size={13} /> Guardar audio</button></div>;
   }
   const hasConfigurableClipAudio = compositionClipHasConfigurableAudio(clip, track ?? undefined);
+  const canDetachAudio = clip.kind === "VIDEO" && hasConfigurableClipAudio;
   const saveAllChanges = async () => {
     const start = parseCompositionTimecode(startSeconds);
     const duration = parseCompositionTimecode(durationSeconds);
@@ -2175,7 +2294,7 @@ function CompositionInspector({ animations, clip, cropModeEnabled, onAnimationSe
     await onPatch([{ clipId: clip.id, type: "clip.reset-asset" }], `Reinició ${clip.label} a su estado base.`);
   };
   const supportsVisualCrop = clip.kind === "VIDEO" || clip.kind === "IMAGE" || clip.kind === "DECK_SLIDE";
-  return <div className="space-y-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold text-slate-900 dark:text-white">{clip.label}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-400">{clip.kind} · pista {clip.trackId}</p></div><div className="flex flex-wrap gap-1"><button type="button" disabled={saving} onClick={() => void onPatch([{ clipId: clip.id, hidden: !clip.hidden, type: "clip.visibility" }], `${clip.hidden ? "Mostró" : "Ocultó"} ${clip.label}.`)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">{clip.hidden ? <Eye size={13} /> : <EyeOff size={13} />}{clip.hidden ? "Mostrar" : "Ocultar"}</button><button type="button" disabled={saving} onClick={() => void onRemove(clip)} className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-400/40 dark:text-red-200 dark:hover:bg-red-400/10"><Trash2 size={13} /> Quitar</button></div></div><p className="rounded-md bg-slate-50 px-2 py-1.5 text-[10px] text-slate-500 dark:bg-white/5 dark:text-gray-400">Quitar solo retira este clip de la línea de tiempo; los assets y el deck original permanecen disponibles.</p>{clip.kind !== "AUDIO" && <LayerDepthControls clip={clip} disabled={saving} onPatch={onPatch} />}<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><TimecodeField label="Inicio (mm:ss)" value={startSeconds} onChange={setStartSeconds} /><TimecodeField label="Duración (mm:ss)" value={durationSeconds} onChange={setDurationSeconds} /><InspectorField label="Posición X" value={x} onChange={setX} /><InspectorField label="Posición Y" value={y} onChange={setY} /></div><p className="text-[10px] text-slate-500 dark:text-gray-400">Formato: 01:05 = 1 minuto y 5 segundos; 00:01.050 incluye milisegundos.</p>{hasConfigurableClipAudio && <section className="border-t border-slate-200 pt-3 dark:border-white/10"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Audio del clip</p><VolumeSlider accentClassName="accent-cyan-500" ariaLabel={`Volumen de ${clip.label}`} disabled={saving} label="Volumen individual" onChange={setVolume} value={volume} /><p className="mt-2 text-[10px] leading-4 text-slate-500 dark:text-gray-400">Este ajuste pertenece sólo a este segmento. El volumen de la pista continúa funcionando como control maestro.</p></section>}<div className="border-t border-slate-200 pt-3 dark:border-white/10"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Transformación</p><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><InspectorField label="Ancho" value={width} onChange={setWidth} min={1} /><InspectorField label="Alto" value={height} onChange={setHeight} min={1} /><InspectorField label="Rotación" value={rotation} onChange={setRotation} min={-360} /><InspectorField label="Opacidad" value={opacity} onChange={setOpacity} min={0} /></div><p className="mt-2 text-[10px] text-slate-500">Arrastra en el preview para mover; usa el tirador para redimensionar. Mantén Alt para liberar proporciones.</p></div>{(clip.kind === "VIDEO" || clip.kind === "IMAGE") && <MediaFitControls clip={clip} disabled={saving} onPatch={onPatch} track={track} />}{supportsVisualCrop && <VisualCropControls clip={clip} cropModeEnabled={cropModeEnabled} disabled={saving} onPatch={onPatch} onPreviewCrop={onPreviewCrop} />}{COMPOSITION_MOTION_ENABLED && clip.kind !== "AUDIO" && <CompositionMotionControls animations={animations} clip={clip} disabled={saving} selectedAnimationId={selectedAnimationId} onSelectAnimation={onAnimationSelect} onPatch={onPatch} />}{validationError && <p role="alert" className="rounded-md bg-red-50 px-2 py-1.5 text-[10px] text-red-700 dark:bg-red-500/10 dark:text-red-200">{validationError}</p>}<div className="flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => void saveAllChanges()} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50 dark:bg-cyan-400 dark:text-slate-950"><Save size={13} /> Guardar cambios</button><button type="button" disabled={saving || clip.source.type !== "PRODUCTION_ASSET"} onClick={() => void resetAsset()} className="inline-flex items-center gap-1 rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-400/40 dark:text-amber-200 dark:hover:bg-amber-400/10" title="Restaurar tiempo, tamaño, encuadre y animaciones del asset"><RotateCcw size={13} /> Reiniciar asset</button>{saving && <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-gray-400"><Loader2 className="animate-spin" size={13} /> Actualizando preview…</span>}</div></div>;
+  return <div className="space-y-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold text-slate-900 dark:text-white">{clip.label}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-400">{clip.kind} · pista {clip.trackId}</p></div><div className="flex flex-wrap gap-1"><button type="button" disabled={saving || separatingAudio} onClick={() => void onPatch([{ clipId: clip.id, hidden: !clip.hidden, type: "clip.visibility" }], `${clip.hidden ? "Mostró" : "Ocultó"} ${clip.label}.`)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">{clip.hidden ? <Eye size={13} /> : <EyeOff size={13} />}{clip.hidden ? "Mostrar" : "Ocultar"}</button><button type="button" disabled={saving || separatingAudio} onClick={() => void onRemove(clip)} className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-400/40 dark:text-red-200 dark:hover:bg-red-400/10"><Trash2 size={13} /> Quitar</button></div></div><p className="rounded-md bg-slate-50 px-2 py-1.5 text-[10px] text-slate-500 dark:bg-white/5 dark:text-gray-400">Quitar solo retira este clip de la línea de tiempo; los assets y el deck original permanecen disponibles.</p>{clip.kind !== "AUDIO" && <LayerDepthControls clip={clip} disabled={saving || separatingAudio} onPatch={onPatch} />}<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><TimecodeField label="Inicio (mm:ss)" value={startSeconds} onChange={setStartSeconds} /><TimecodeField label="Duración (mm:ss)" value={durationSeconds} onChange={setDurationSeconds} /><InspectorField label="Posición X" value={x} onChange={setX} /><InspectorField label="Posición Y" value={y} onChange={setY} /></div><p className="text-[10px] text-slate-500 dark:text-gray-400">Formato: 01:05 = 1 minuto y 5 segundos; 00:01.050 incluye milisegundos.</p>{hasConfigurableClipAudio && <section className="border-t border-slate-200 pt-3 dark:border-white/10"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Audio del clip</p><VolumeSlider accentClassName="accent-cyan-500" ariaLabel={`Volumen de ${clip.label}`} disabled={saving || separatingAudio} label="Volumen individual" onChange={setVolume} value={volume} /><p className="mt-2 text-[10px] leading-4 text-slate-500 dark:text-gray-400">Este ajuste pertenece sólo a este segmento. El volumen de la pista continúa funcionando como control maestro.</p>{canDetachAudio && <button type="button" disabled={saving || separatingAudio} onClick={() => void onDetachAudio(clip)} className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-cyan-300 bg-cyan-50 px-2.5 py-1.5 text-xs font-bold text-cyan-800 disabled:opacity-50 dark:border-cyan-400/30 dark:bg-cyan-400/10 dark:text-cyan-200">{separatingAudio ? <Loader2 className="animate-spin" size={13} /> : <Scissors size={13} />}{separatingAudio ? `Analizando y separando… ${Math.round(separatingAudioProgress * 100)}%` : "Separar audio del video"}</button>}<p className="mt-2 text-[10px] leading-4 text-slate-500 dark:text-gray-400">Al separar, el audio pasa a Voz / narración y el video original queda silenciado. Ambos se editan de forma independiente.</p></section>}<div className="border-t border-slate-200 pt-3 dark:border-white/10"><p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Transformación</p><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><InspectorField label="Ancho" value={width} onChange={setWidth} min={1} /><InspectorField label="Alto" value={height} onChange={setHeight} min={1} /><InspectorField label="Rotación" value={rotation} onChange={setRotation} min={-360} /><InspectorField label="Opacidad" value={opacity} onChange={setOpacity} min={0} /></div><p className="mt-2 text-[10px] text-slate-500">Arrastra en el preview para mover; usa el tirador para redimensionar. Mantén Alt para liberar proporciones.</p></div>{(clip.kind === "VIDEO" || clip.kind === "IMAGE") && <MediaFitControls clip={clip} disabled={saving || separatingAudio} onPatch={onPatch} track={track} />}{supportsVisualCrop && <VisualCropControls clip={clip} cropModeEnabled={cropModeEnabled} disabled={saving || separatingAudio} onPatch={onPatch} onPreviewCrop={onPreviewCrop} />}{COMPOSITION_MOTION_ENABLED && clip.kind !== "AUDIO" && <CompositionMotionControls animations={animations} clip={clip} disabled={saving || separatingAudio} selectedAnimationId={selectedAnimationId} onSelectAnimation={onAnimationSelect} onPatch={onPatch} />}{validationError && <p role="alert" className="rounded-md bg-red-50 px-2 py-1.5 text-[10px] text-red-700 dark:bg-red-500/10 dark:text-red-200">{validationError}</p>}<div className="flex flex-wrap gap-2"><button type="button" disabled={saving || separatingAudio} onClick={() => void saveAllChanges()} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50 dark:bg-cyan-400 dark:text-slate-950"><Save size={13} /> Guardar cambios</button><button type="button" disabled={saving || separatingAudio || clip.source.type !== "PRODUCTION_ASSET"} onClick={() => void resetAsset()} className="inline-flex items-center gap-1 rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-400/40 dark:text-amber-200 dark:hover:bg-amber-400/10" title="Restaurar tiempo, tamaño, encuadre y animaciones del asset"><RotateCcw size={13} /> Reiniciar asset</button>{saving && <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-gray-400"><Loader2 className="animate-spin" size={13} /> Actualizando preview…</span>}</div></div>;
 }
 
 function MediaFitControls({ clip, disabled, onPatch, track }: { clip: CompositionClip; disabled: boolean; onPatch: (operations: CompositionEditorPatchOperation[], summary: string) => Promise<boolean>; track: CompositionTrack | null }) {

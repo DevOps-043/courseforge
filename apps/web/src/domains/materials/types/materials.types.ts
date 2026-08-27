@@ -121,7 +121,7 @@ export interface ProductionDodChecklist {
     has_final_video_url: boolean; // URL del video final de producción
 }
 
-export type AvatarGenerationMode = 'scene_clips' | 'single_video';
+export type AvatarGenerationMode = 'scene_clips' | 'single_video' | 'voiceover';
 
 export type AvatarClipStatus =
     | 'DRAFT'
@@ -236,6 +236,16 @@ export interface MaterialAssets {
         width?: number;
     }[];
     avatar_generation_mode?: AvatarGenerationMode;
+    detached_audio_clips?: {
+        content_type: 'audio/wav';
+        detached_from_asset_id: string;
+        detached_from_clip_id: string;
+        duration: number;
+        file_name: string;
+        has_audio: true;
+        public_url?: string | null;
+        storage_path: string;
+    }[];
     avatar_clips?: AvatarClip[];
     avatar_video?: {
         storage_path: string;
@@ -249,7 +259,7 @@ export interface MaterialAssets {
         script_hash?: string;
         sync_status?: 'SYNCING' | 'COMPLETED' | 'FAILED';
         width?: number;
-    };
+    } | null;
     slides?: {
         appearance?: 'light' | 'dark';
         open_design_project_id?: string;

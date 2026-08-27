@@ -12,6 +12,10 @@ import {
   ProductionProviderCredentialsService,
 } from "@/domains/production/providers/credentials/provider-credentials.service";
 import { createClient } from "@/utils/supabase/server";
+import {
+  configureHeygenWebhook,
+  disconnectHeygenWebhook,
+} from "@/domains/production/providers/heygen/heygen-webhook.service";
 
 const heygenConnectionRequestSchema = z
   .object({
@@ -54,10 +58,20 @@ export async function POST(request: Request) {
 
     const admin = getServiceRoleClient();
     const service = new ProductionProviderCredentialsService({ supabase: admin });
+    const previous = await service.getDecryptedSecret({
+      organizationId: context.tenant.organizationId,
+      provider: "heygen_avatar",
+    });
     const status = await service.upsertHeygenAvatarApiKey({
       apiKey: payload.apiKey,
       createdBy: context.user.userId,
       organizationId: context.tenant.organizationId,
+    });
+    await configureHeygenWebhook({
+      apiKey: payload.apiKey,
+      organizationId: context.tenant.organizationId,
+      previousApiKey: previous?.secret,
+      supabase: admin,
     });
 
     return NextResponse.json({ success: true, data: status });
@@ -93,6 +107,23 @@ export async function DELETE() {
 
     const admin = getServiceRoleClient();
     const service = new ProductionProviderCredentialsService({ supabase: admin });
+    const [credential, hyperframes] = await Promise.all([
+      service.getDecryptedSecret({
+        organizationId: context.tenant.organizationId,
+        provider: "heygen_avatar",
+      }),
+      service.getCredentialStatus({
+        organizationId: context.tenant.organizationId,
+        provider: "hyperframes_cloud",
+      }),
+    ]);
+    if (credential?.secret && !hyperframes.connected) {
+      await disconnectHeygenWebhook({
+        apiKey: credential.secret,
+        organizationId: context.tenant.organizationId,
+        supabase: admin,
+      });
+    }
     const status = await service.revokeCredential({
       organizationId: context.tenant.organizationId,
       provider: "heygen_avatar",
