@@ -52,7 +52,7 @@ export async function GET(request: Request) {
     }
 
     const repository = new HeygenRepository(authorizedComponent.admin);
-    const latestJob = await repository.getLatestAvatarVideoJobForComponent({
+    const latestJob = await repository.getLatestHeygenMediaJobForComponent({
       componentId: query.componentId,
       organizationId: tenant.organizationId,
     });
@@ -96,8 +96,14 @@ export async function GET(request: Request) {
           createdAt: latestJob.created_at || null,
           jobId: latestJob.id,
           outputSnapshot: latestJob.output_snapshot || {},
-          providerJobId: latestJob.provider_job_id || null,
+          providerJobId: latestJob.provider_job_id
+            || (typeof latestJob.output_snapshot?.provider_request_id === "string"
+              ? latestJob.output_snapshot.provider_request_id
+              : null),
           providerError: latestJob.provider_error || null,
+          jobType: typeof latestJob.input_snapshot?.job_type === "string"
+            ? latestJob.input_snapshot.job_type
+            : null,
           providerModel: latestJob.provider_model || null,
           status: latestJob.status,
           updatedAt: latestJob.updated_at || null,

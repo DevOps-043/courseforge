@@ -20,6 +20,8 @@ import { HYPERFRAMES_SOURCE_BUCKETS } from "../media-storage.config";
 const SUPPORTED_HYPERFRAMES_MIME = /^(audio|font|image|video)\/[a-z0-9.+-]+$/i;
 
 interface InternalMaterialAssetReference {
+  detachedFromAssetId?: string;
+  detachedFromClipId?: string;
   durationSeconds?: number;
   fileName: string | null;
   hasAudio?: boolean;
@@ -132,6 +134,8 @@ export function collectInternalMaterialAssetReferences(rawAssets: unknown): Inte
     const explicitHasAudio = optionalBoolean(value.has_audio ?? value.hasAudio);
     const hasAudio = explicitHasAudio ?? legacyAudioPresenceForRole(timelineRole);
     references.push({
+      ...(typeof value.detached_from_asset_id === "string" ? { detachedFromAssetId: value.detached_from_asset_id } : {}),
+      ...(typeof value.detached_from_clip_id === "string" ? { detachedFromClipId: value.detached_from_clip_id } : {}),
       ...(durationSeconds ? { durationSeconds } : {}),
       fileName: typeof value.file_name === "string" ? value.file_name : null,
       ...(hasAudio !== undefined ? { hasAudio } : {}),
@@ -154,6 +158,7 @@ export function collectInternalMaterialAssetReferences(rawAssets: unknown): Inte
     }
   }
   add(assets.background_music, "audio/mpeg", "PRODUCTION_MEDIA", "AUDIO");
+  for (const item of asArray(assets.detached_audio_clips)) add(item, "audio/wav", "PRODUCTION_MEDIA", "VOICE");
   for (const item of asArray(assets.b_roll_clips)) add(item, "video/mp4", "PRODUCTION_MEDIA", "BROLL");
   if (!usesSceneClips) add(assets.avatar_video, "video/mp4", "PRODUCTION_MEDIA", "AVATAR", "FULL");
   if (usesSceneClips) {
@@ -347,6 +352,8 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
       && existing.checksum
       && (reference.durationSeconds === undefined || preciseDurationSeconds(existing.duration_milliseconds, existing.duration_seconds) === reference.durationSeconds)
       && isRecord(existing.metadata)
+      && (reference.detachedFromAssetId === undefined || existing.metadata.detached_from_asset_id === reference.detachedFromAssetId)
+      && (reference.detachedFromClipId === undefined || existing.metadata.detached_from_clip_id === reference.detachedFromClipId)
       && (reference.hasAudio === undefined || existing.metadata.has_audio === reference.hasAudio)
       && existing.metadata.timeline_role === reference.timelineRole
       && (reference.sourceHeight === undefined || existing.metadata.source_height === reference.sourceHeight)
@@ -372,6 +379,8 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
       material_lesson_id: context.materialLessonId,
       metadata: {
         assembly_source_type: reference.sourceType,
+        ...(reference.detachedFromAssetId ? { detached_from_asset_id: reference.detachedFromAssetId } : {}),
+        ...(reference.detachedFromClipId ? { detached_from_clip_id: reference.detachedFromClipId } : {}),
         file_name: reference.fileName || stored.fileName,
         ...(reference.hasAudio !== undefined ? { has_audio: reference.hasAudio } : {}),
         source_provider: "production_step",

@@ -38,6 +38,7 @@ export async function GET(request: Request) {
           auth.authorizedComponent.component.assets?.avatar_generation_mode || "scene_clips",
         clips,
         componentId,
+        voiceAudio: auth.authorizedComponent.component.assets?.voice_audio || null,
         voiceClips: auth.authorizedComponent.component.assets?.voice_clips || [],
       },
     });

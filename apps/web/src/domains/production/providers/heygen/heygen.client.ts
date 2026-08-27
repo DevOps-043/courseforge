@@ -5,8 +5,10 @@ import {
   HEYGEN_REQUEST_TIMEOUT_MS,
   type HeygenCreateVideoRequest,
   type HeygenCreateVideoResponse,
+  type HeygenAccountSummary,
   type HeygenGeneratedSpeech,
   type HeygenGenerateSpeechRequest,
+  type HeygenPage,
   type HeygenVideoDetails,
 } from "./heygen.types";
 import {
@@ -71,18 +73,95 @@ export class HeygenClient {
     this.timeoutMs = options.timeoutMs ?? HEYGEN_REQUEST_TIMEOUT_MS;
   }
 
-  async listAvatarLooks() {
+  async listAvatarLooks(params: {
+    avatarType?: "digital_twin" | "photo_avatar" | "studio_avatar";
+    ownership?: "private" | "public";
+    token?: string;
+  } = {}) {
     return this.requestJson({
       method: "GET",
-      path: `/v3/avatars/looks?ownership=private&limit=${HEYGEN_DEFAULT_PAGE_SIZE}`,
+      path: withQuery("/v3/avatars/looks", {
+        avatar_type: params.avatarType,
+        limit: HEYGEN_DEFAULT_PAGE_SIZE,
+        ownership: params.ownership,
+        token: params.token,
+      }),
     });
   }
 
-  async listVoices() {
+  async listAllAvatarLooks() {
+    return this.collectPages((token) => this.listAvatarLooks({ token }));
+  }
+
+  async listVoices(params: {
+    gender?: "female" | "male";
+    language?: string;
+    token?: string;
+    type?: "private" | "public";
+  } = {}) {
     return this.requestJson({
       method: "GET",
-      path: `/v3/voices?type=private&engine=starfish&limit=${HEYGEN_DEFAULT_PAGE_SIZE}`,
+      path: withQuery("/v3/voices", {
+        engine: "starfish",
+        gender: params.gender,
+        language: params.language,
+        limit: 100,
+        token: params.token,
+        type: params.type,
+      }),
     });
+  }
+
+  async listAllVoices() {
+    const [publicVoices, privateVoices] = await Promise.all([
+      this.collectPages((token) => this.listVoices({ token, type: "public" })),
+      this.collectPages((token) => this.listVoices({ token, type: "private" })),
+    ]);
+    const unique = new Map<string, Record<string, unknown>>();
+    for (const voice of [...publicVoices.data, ...privateVoices.data]) {
+      const id = readString(voice.id) || readString(voice.voice_id) || JSON.stringify(voice);
+      unique.set(id, voice);
+    }
+    return {
+      data: [...unique.values()],
+      hasMore: publicVoices.hasMore || privateVoices.hasMore,
+      nextToken: null,
+      raw: { private: privateVoices.raw, public: publicVoices.raw },
+    } satisfies HeygenPage;
+  }
+
+  async getCurrentUser(): Promise<HeygenAccountSummary> {
+    const raw = await this.requestJson({ method: "GET", path: "/v3/users/me" });
+    const root = toRecord(raw) || {};
+    const data = toRecord(root.data) || root;
+    return {
+      billingType: readString(data.billing_type),
+      email: readString(data.email),
+      firstName: readString(data.first_name),
+      lastName: readString(data.last_name),
+      raw: data,
+      subscription: toRecord(data.subscription),
+      usageBased: toRecord(data.usage_based),
+      username: readString(data.username) || "HeyGen",
+      wallet: toRecord(data.wallet),
+    };
+  }
+
+  async platformRequest<T = unknown>(params: {
+    body?: unknown;
+    idempotencyKey?: string;
+    method?: "DELETE" | "GET" | "PATCH" | "POST" | "PUT";
+    path: string;
+  }): Promise<T> {
+    return this.requestJson({
+      body: params.body,
+      headers: {
+        ...(params.body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...(params.idempotencyKey ? { "Idempotency-Key": params.idempotencyKey } : {}),
+      },
+      method: params.method || "GET",
+      path: params.path,
+    }) as Promise<T>;
   }
 
   async createAvatarVideo(
@@ -183,10 +262,33 @@ export class HeygenClient {
     };
   }
 
+  private async collectPages(
+    loader: (token?: string) => Promise<unknown>,
+  ): Promise<HeygenPage> {
+    const data: Record<string, unknown>[] = [];
+    let token: string | undefined;
+    let raw: Record<string, unknown> = {};
+    for (let page = 0; page < 20; page += 1) {
+      const response = await loader(token);
+      const root = toRecord(response) || {};
+      raw = root;
+      const pageItems = Array.isArray(root.data)
+        ? root.data.filter((item): item is Record<string, unknown> => Boolean(toRecord(item)))
+        : [];
+      data.push(...pageItems);
+      const nextToken = readString(root.next_token);
+      if (!root.has_more || !nextToken) {
+        return { data, hasMore: false, nextToken: null, raw };
+      }
+      token = nextToken;
+    }
+    return { data, hasMore: true, nextToken: token || null, raw };
+  }
+
   private async requestJson(params: {
     body?: unknown;
     headers?: Record<string, string>;
-    method: "GET" | "POST";
+    method: "DELETE" | "GET" | "PATCH" | "POST" | "PUT";
     path: string;
   }) {
     const controller = new AbortController();
@@ -250,6 +352,18 @@ export class HeygenClient {
       status: response.status,
     });
   }
+}
+
+function withQuery(
+  path: string,
+  values: Record<string, boolean | number | string | undefined>,
+) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(values)) {
+    if (value !== undefined && value !== "") query.set(key, String(value));
+  }
+  const serialized = query.toString();
+  return serialized ? `${path}?${serialized}` : path;
 }
 
 function sleep(milliseconds: number) {

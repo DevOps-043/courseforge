@@ -2,10 +2,52 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { HeygenApiError, HeygenClient } from "../heygen.client";
 import { buildResolutionRejectionHint } from "../heygen-request-constraints";
-import { heygenJobStatusResponseSchema } from "../heygen.validators";
+import { heygenGenerateVoiceoverRequestSchema, heygenJobStatusResponseSchema } from "../heygen.validators";
 import { readApiResponse } from "../../../../../lib/client/api-response";
+import { estimateHeygenCost } from "../heygen-cost.service";
+import { heygenPlatformActionSchema } from "../heygen-platform.validators";
 
 describe("HeyGen separated track client", () => {
+  it("paginates public and private Starfish voices without duplicates", async () => {
+    const requested: string[] = [];
+    const client = new HeygenClient({
+      apiKey: "test-key",
+      fetchImpl: async (input) => {
+        const url = String(input); requested.push(url);
+        const isPrivate = url.includes("type=private");
+        const isSecond = url.includes("token=next");
+        return Response.json({
+          data: [{ id: isSecond ? `${isPrivate ? "private" : "public"}-2` : "shared" }],
+          has_more: !isSecond,
+          next_token: isSecond ? null : "next",
+        });
+      },
+    });
+    const result = await client.listAllVoices();
+    assert.equal(result.data.length, 3);
+    assert.ok(requested.some((url) => url.includes("type=public")));
+    assert.ok(requested.some((url) => url.includes("type=private")));
+  });
+
+  it("validates audio-only translation and estimates its public rate", () => {
+    const action = heygenPlatformActionSchema.parse({
+      action: "translate_video",
+      durationSeconds: 120,
+      mode: "speed",
+      outputLanguages: ["Spanish (Mexico)", "English"],
+      translateAudioOnly: true,
+      video: { type: "asset_id", asset_id: "asset-video" },
+    });
+    if (action.action !== "translate_video") throw new Error("Unexpected action type.");
+    assert.equal(action.translateAudioOnly, true);
+    assert.equal(estimateHeygenCost({
+      durationSeconds: action.durationSeconds,
+      itemCount: action.outputLanguages.length,
+      mode: action.mode,
+      operation: "VIDEO_TRANSLATION",
+    }), 7.992);
+  });
+
   it("lists only voices compatible with the TTS engine used for separated tracks", async () => {
     let capturedUrl = "";
     const client = new HeygenClient({
@@ -84,6 +126,18 @@ describe("HeyGen separated track client", () => {
     assert.equal(submittedBody?.audio_url, "https://courseforge.example.com/voice.wav");
     assert.equal("script" in (submittedBody || {}), false);
     assert.equal("voice_id" in (submittedBody || {}), false);
+  });
+
+  it("accepts audio-only generation without requiring an avatar", () => {
+    const payload = heygenGenerateVoiceoverRequestSchema.parse({
+      script: "Narración independiente",
+      speed: 1.15,
+      voicePresetId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+
+    assert.equal(payload.script, "Narración independiente");
+    assert.equal(payload.speed, 1.15);
+    assert.equal("avatarPresetId" in payload, false);
   });
 
   it("retries an idempotent video submission after a transient provider failure", async () => {

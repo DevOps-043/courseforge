@@ -142,6 +142,22 @@ describe("HyperFrames source assets", () => {
     assert.equal(references.find((asset) => asset.storagePath.endsWith("authored-audio.mp4"))?.hasAudio, true);
   });
 
+  it("registers editor-detached audio as an editable narration source", () => {
+    const references = collectInternalMaterialAssetReferences({
+      detached_audio_clips: [{
+        content_type: "audio/wav",
+        duration: 12.5,
+        file_name: "clip-audio.wav",
+        has_audio: true,
+        storage_path: "production-assets/editor-audio/component/clip-audio.wav",
+      }],
+    });
+
+    assert.equal(references[0]?.durationSeconds, 12.5);
+    assert.equal(references[0]?.mimeType, "audio/wav");
+    assert.equal(references[0]?.timelineRole, "VOICE");
+  });
+
   it("accepts a video above the embedded limit when Storage delivers it remotely", () => {
     const asset = inspectHyperframesSourceAsset({
       checksum: "a".repeat(64),

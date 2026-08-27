@@ -15,6 +15,8 @@ interface VideoAsset {
   durationSeconds?: number;
   eligibleForRevision: boolean;
   metadata: {
+    detached_from_asset_id?: string | null;
+    detached_from_clip_id?: string | null;
     file_name?: string | null;
     source_height?: number | null;
     source_provider?: string | null;
@@ -81,6 +83,8 @@ export function HyperframesCompositionPanel({
   const blockedAssets = useMemo(() => uniqueAssets.filter((asset) => !asset.eligibleForRevision), [uniqueAssets]);
   const studioAssets = useMemo<CompositionStudioAsset[]>(() => uniqueAssets.filter((asset) => asset.sourceType === "PRODUCTION_MEDIA").map((asset) => ({
     durationSeconds: asset.durationSeconds,
+    detachedFromAssetId: asset.metadata.detached_from_asset_id || undefined,
+    detachedFromClipId: asset.metadata.detached_from_clip_id || undefined,
     hasAudio: asset.hasAudio,
     id: asset.productionAssetId,
     isEditable: asset.sourceType === "PRODUCTION_MEDIA",
@@ -102,6 +106,13 @@ export function HyperframesCompositionPanel({
       ? `Hay assets que requieren corrección antes de generar el preview: ${names.join(", ")}.`
       : "Hay assets bloqueados que requieren corrección antes de generar el preview.";
   }, [blockedAssets]);
+
+  const refreshAssets = useCallback(async () => {
+    const response = await fetch(`/api/production/hyperframes/assets?componentId=${encodeURIComponent(componentId)}&t=${Date.now()}`, { cache: "no-store" });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "No se pudieron actualizar los assets del editor.");
+    setAssets(payload.data as VideoAsset[]);
+  }, [componentId]);
 
   const loadInitialData = useCallback(async () => {
     setBusy("prepare");
@@ -129,10 +140,7 @@ export function HyperframesCompositionPanel({
 
       // Asset visibility must not depend on creating the editable draft. If a
       // draft needs repair, the author still sees exactly what Production sent.
-      const assetsResponse = await fetch(`/api/production/hyperframes/assets?componentId=${encodeURIComponent(componentId)}&t=${Date.now()}`, { cache: "no-store" });
-      const assetsPayload = await assetsResponse.json();
-      if (!assetsResponse.ok) throw new Error(assetsPayload.error || "No se pudieron cargar los assets.");
-      setAssets(assetsPayload.data as VideoAsset[]);
+      await refreshAssets();
 
       const compositionResponse = await fetch("/api/production/hyperframes/compositions", {
         body: JSON.stringify({ componentId, name: componentTitle }),
@@ -163,7 +171,7 @@ export function HyperframesCompositionPanel({
     } finally {
       setBusy(null);
     }
-  }, [componentId, componentTitle]);
+  }, [componentId, componentTitle, refreshAssets]);
 
   useEffect(() => { void loadInitialData(); }, [loadInitialData]);
 
@@ -287,7 +295,7 @@ export function HyperframesCompositionPanel({
       {editorError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-100">No se pudo preparar el editor: {editorError}</p>}
       {draftId && (
         <div className="min-h-0 flex-1">
-          <NativeCompositionPreview assets={studioAssets} compositionId={composition?.id || ""} draftId={draftId} lessons={lessonLibrary} onContinueToPublication={onContinueToPublication} onSelectLesson={onSelectLesson} onVideoCompleted={onVideoCompleted} selectedLessonId={selectedLessonId} />
+          <NativeCompositionPreview assets={studioAssets} componentId={componentId} compositionId={composition?.id || ""} draftId={draftId} lessons={lessonLibrary} onAssetsChanged={refreshAssets} onContinueToPublication={onContinueToPublication} onSelectLesson={onSelectLesson} onVideoCompleted={onVideoCompleted} selectedLessonId={selectedLessonId} />
         </div>
       )}
       {renderRequest?.providerStatus.toLowerCase() === "completed" && <p className="flex items-center gap-2 text-xs font-medium text-green-700 dark:text-green-400"><CheckCircle2 size={15} /> Video final importado en Courseforge.</p>}

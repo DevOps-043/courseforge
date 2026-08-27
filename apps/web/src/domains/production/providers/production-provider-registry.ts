@@ -45,6 +45,7 @@ const PROVIDERS: ProductionProviderDefinition[] = [
     jobTypes: [
       PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_CLIP,
       PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_VIDEO,
+      PRODUCTION_JOB_TYPES.HEYGEN_VOICEOVER,
     ],
   },
   {

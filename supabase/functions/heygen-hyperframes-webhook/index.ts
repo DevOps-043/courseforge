@@ -6,7 +6,7 @@ import { rpc } from "../_shared/supabase.ts";
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_TIMESTAMP_SKEW_SECONDS = 300;
-const SUPPORTED_EVENTS = new Set(["hyperframes_video.success", "hyperframes_video.fail"]);
+const TERMINAL_EVENT = /^[a-z][a-z0-9_]{0,80}\.(?:success|fail)$/;
 
 interface WebhookEvent {
   event_data?: Record<string, unknown>;
@@ -34,15 +34,17 @@ Deno.serve(async (request) => {
     const eventType = readString(event.event_type);
     const eventData = event.event_data && typeof event.event_data === "object" ? event.event_data : {};
     const callbackId = readString(eventData.callback_id);
-    const providerRenderId = readString(eventData.render_id) || readString(eventData.video_id);
-    if (
-      !eventType
-      || !isUuid(callbackId)
-      || !providerRenderId
-      || providerRenderId.length > 255
-      || !SUPPORTED_EVENTS.has(eventType)
-    ) {
-      return jsonResponse({ error: "unsupported_or_uncorrelated_event" }, 400);
+    const providerRenderId = readProviderId(eventData);
+    // A workspace-level endpoint also receives videos created outside
+    // Courseforge. They have no callback_id and are deliberately ignored.
+    if (!isUuid(callbackId)) {
+      return jsonResponse({ accepted: true, ignored: "uncorrelated_event" }, 202);
+    }
+    if (!eventType || !TERMINAL_EVENT.test(eventType)) {
+      return jsonResponse({ accepted: true, ignored: "unsupported_correlated_event" }, 202);
+    }
+    if (providerRenderId.length > 255) {
+      return jsonResponse({ error: "invalid_provider_id" }, 400);
     }
 
     const timestamp = parseTimestamp(request.headers.get("heygen-timestamp"));
@@ -71,22 +73,40 @@ Deno.serve(async (request) => {
     const failureMessage = readString(eventData.failure_message)
       || readString(eventData.error_message)
       || readString(eventData.message);
-    const result = await rpc<Array<{ action: string; duplicate: boolean; request_id: string }>>(
-      "record_hyperframes_webhook_event",
-      {
-        p_callback_id: callbackId,
-        p_event_id: eventId,
-        p_event_type: eventType,
-        p_failure_message: failureMessage || null,
-        p_payload_sha256: await sha256Hex(rawBody),
-        p_provider_render_id: providerRenderId,
-      },
-    );
+    const payloadSha256 = await sha256Hex(rawBody);
+    const isHyperframes = eventType.startsWith("hyperframes_video.");
+    const result = isHyperframes
+      ? await rpc<Array<{ action: string; duplicate: boolean; request_id: string }>>(
+          "record_hyperframes_webhook_event",
+          {
+            p_callback_id: callbackId,
+            p_event_id: eventId,
+            p_event_type: eventType,
+            p_failure_message: failureMessage || null,
+            p_payload_sha256: payloadSha256,
+            p_provider_render_id: providerRenderId,
+          },
+        )
+      : await rpc<Array<{ action: string; duplicate: boolean; operation_id: string }>>(
+          "record_heygen_platform_webhook_event",
+          {
+            p_callback_id: callbackId,
+            p_event_data: eventData,
+            p_event_id: eventId,
+            p_event_type: eventType,
+            p_failure_message: failureMessage || null,
+            p_payload_sha256: payloadSha256,
+            p_provider_id: providerRenderId,
+          },
+        );
+    const correlatedId = isHyperframes
+      ? (result[0] as { request_id?: string } | undefined)?.request_id
+      : (result[0] as { operation_id?: string } | undefined)?.operation_id;
     logEvent("info", "heygen_webhook_processed", {
       action: result[0]?.action,
       duplicate: result[0]?.duplicate,
       eventId,
-      requestId: result[0]?.request_id,
+      correlatedId,
     });
     return jsonResponse({ accepted: true, duplicate: result[0]?.duplicate || false });
   } catch (error) {
@@ -99,6 +119,17 @@ Deno.serve(async (request) => {
 
 function readString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function readProviderId(data: Record<string, unknown>): string {
+  for (const key of [
+    "render_id", "video_id", "video_translation_id", "session_id", "lipsync_id",
+    "ai_clipping_id", "filler_word_removal_id", "proofread_id", "batch_id", "voice_clone_id", "id",
+  ]) {
+    const value = readString(data[key]);
+    if (value) return value;
+  }
+  return "";
 }
 
 function parseTimestamp(value: string | null): number | null {

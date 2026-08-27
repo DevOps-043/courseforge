@@ -21,12 +21,21 @@ export async function configureHeygenHyperframesWebhook(params: {
   previousApiKey?: string | null;
   supabase: SupabaseClient<any, "public", any>;
 }): Promise<{ callbackUrl: string; endpointId: string }> {
+  return configureHeygenWebhook(params);
+}
+
+export async function configureHeygenWebhook(params: {
+  apiKey: string;
+  organizationId: string;
+  previousApiKey?: string | null;
+  supabase: SupabaseClient<any, "public", any>;
+}): Promise<{ callbackUrl: string; endpointId: string }> {
   const callbackUrl = buildWebhookUrl();
   const previousEndpointId = await readCurrentEndpointId(params.supabase, params.organizationId);
   const created = await createEndpoint(params.apiKey, callbackUrl);
 
   try {
-    const { error } = await params.supabase.rpc("configure_hyperframes_webhook", {
+    const { error } = await params.supabase.rpc("configure_heygen_webhook", {
       p_callback_url: callbackUrl,
       p_encrypted_secret: encrypt(created.secret),
       p_endpoint_id: created.endpoint_id,
@@ -54,6 +63,14 @@ export async function disconnectHeygenHyperframesWebhook(params: {
   organizationId: string;
   supabase: SupabaseClient<any, "public", any>;
 }): Promise<void> {
+  return disconnectHeygenWebhook(params);
+}
+
+export async function disconnectHeygenWebhook(params: {
+  apiKey: string;
+  organizationId: string;
+  supabase: SupabaseClient<any, "public", any>;
+}): Promise<void> {
   const endpointId = await readCurrentEndpointId(params.supabase, params.organizationId);
   if (endpointId) {
     await deleteEndpoint(params.apiKey, endpointId).catch((error) => {
@@ -63,7 +80,7 @@ export async function disconnectHeygenHyperframesWebhook(params: {
       });
     });
   }
-  const { error } = await params.supabase.rpc("clear_hyperframes_webhook", {
+  const { error } = await params.supabase.rpc("clear_heygen_webhook", {
     p_organization_id: params.organizationId,
   });
   if (error) throw error;
@@ -72,7 +89,6 @@ export async function disconnectHeygenHyperframesWebhook(params: {
 async function createEndpoint(apiKey: string, callbackUrl: string): Promise<HeygenWebhookEndpointResponse> {
   const response = await fetch(`${HEYGEN_API_BASE_URL}/v3/webhooks/endpoints`, {
     body: JSON.stringify({
-      events: ["hyperframes_video.success", "hyperframes_video.fail"],
       url: callbackUrl,
     }),
     headers: {
@@ -114,12 +130,19 @@ async function readCurrentEndpointId(
   organizationId: string,
 ): Promise<string | null> {
   const { data, error } = await supabase
-    .from("hyperframes_workspace_connections")
+    .from("heygen_workspace_connections")
     .select("webhook_endpoint_id")
     .eq("organization_id", organizationId)
     .maybeSingle();
   if (error) throw error;
-  return typeof data?.webhook_endpoint_id === "string" ? data.webhook_endpoint_id : null;
+  if (typeof data?.webhook_endpoint_id === "string") return data.webhook_endpoint_id;
+  const { data: fallback, error: fallbackError } = await supabase
+    .from("hyperframes_workspace_connections")
+    .select("webhook_endpoint_id")
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (fallbackError) throw fallbackError;
+  return typeof fallback?.webhook_endpoint_id === "string" ? fallback.webhook_endpoint_id : null;
 }
 
 function buildWebhookUrl(): string {

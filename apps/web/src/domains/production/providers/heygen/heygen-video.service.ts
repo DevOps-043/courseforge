@@ -1,6 +1,8 @@
 import {
   buildProductionIdempotencyKey,
   createOrReuseProductionJob,
+  failProductionJob,
+  markProductionJobRunning,
   resolveProductionComponentContext,
 } from "../../jobs/production-jobs.service";
 import {
@@ -23,6 +25,7 @@ import {
   type HeygenProductionJobRow,
   type HeygenSupabaseClient,
   type HeygenVideoDetails,
+  type HeygenVoiceoverGenerationOptions,
 } from "./heygen.types";
 import { HeygenVideoImportService } from "./heygen-video-import.service";
 import {
@@ -90,6 +93,18 @@ export interface HeygenAvatarVideoJobStatusResult {
   voiceAsset: PublicVoiceAsset | null;
 }
 
+export interface HeygenCreateVoiceoverResult {
+  jobId: string;
+  script: {
+    durationEstimateSeconds: number;
+    hash: string;
+    sectionCount: number;
+    title: string;
+  };
+  status: ProductionJobStatus;
+  voiceAsset: PublicVoiceAsset;
+}
+
 export class HeygenVideoService {
   private readonly client: HeygenClient;
   private readonly audioImportService: HeygenAudioImportService;
@@ -104,6 +119,129 @@ export class HeygenVideoService {
     this.audioImportService = new HeygenAudioImportService(supabase);
     this.importService = new HeygenVideoImportService(supabase);
     this.repository = new HeygenRepository(supabase);
+  }
+
+  async createVoiceoverForComponent(params: {
+    componentContent: unknown;
+    componentType: string;
+    createdBy: string;
+    fallbackTitle?: string | null;
+    options: HeygenVoiceoverGenerationOptions;
+    organizationId: string;
+  }): Promise<HeygenCreateVoiceoverResult> {
+    const context = await resolveProductionComponentContext({
+      componentId: params.options.componentId,
+      supabase: this.supabase,
+    });
+    if (context.organizationId !== params.organizationId) {
+      throw new HeygenVideoServiceError("El componente no pertenece a la empresa activa.", 403);
+    }
+
+    const script = buildHeygenScriptFromComponent({
+      componentContent: params.componentContent,
+      componentType: params.componentType,
+      fallbackTitle: params.fallbackTitle,
+    });
+    assertHeygenTextInputWithinLimits({ label: "El guion de voz en off", text: script.scriptText });
+    const voice = await this.repository.getVoicePresetForGeneration({
+      organizationId: params.organizationId,
+      presetId: params.options.voicePresetId,
+    });
+    if (!voice?.heygen_voice_id) {
+      throw new HeygenVideoServiceError(
+        params.options.voicePresetId
+          ? "No se encontró la voz de HeyGen solicitada."
+          : "No hay una voz default de HeyGen configurada para esta empresa.",
+        404,
+      );
+    }
+
+    const jobInput = {
+      component_id: context.componentId,
+      component_type: context.componentType,
+      job_type: PRODUCTION_JOB_TYPES.HEYGEN_VOICEOVER,
+      script_hash: script.scriptHash,
+      input_type: params.options.inputType || "text",
+      language: params.options.language || null,
+      locale: params.options.locale || null,
+      speed: params.options.speed,
+      voice_preset_id: voice.id,
+      voice_provider_id: voice.heygen_voice_id,
+    };
+    const job = await createOrReuseProductionJob(this.supabase, {
+      context,
+      createdBy: params.createdBy,
+      idempotencyKey: buildProductionIdempotencyKey({
+        componentId: context.componentId,
+        input: jobInput,
+        jobType: PRODUCTION_JOB_TYPES.HEYGEN_VOICEOVER,
+        provider: PRODUCTION_PROVIDERS.HEYGEN,
+      }),
+      inputSnapshot: jobInput,
+      jobType: PRODUCTION_JOB_TYPES.HEYGEN_VOICEOVER,
+      provider: PRODUCTION_PROVIDERS.HEYGEN,
+      providerModel: "starfish",
+      retryFailed: true,
+    });
+    const persistedJob = await this.repository.getProductionJob({
+      jobId: job.id,
+      organizationId: params.organizationId,
+    });
+    if (!persistedJob) throw new HeygenVideoServiceError("No se pudo recuperar el job de voz en off.", 500);
+
+    let voiceAsset = await this.audioImportService.findImportedVoice(job.id);
+    if (!voiceAsset) {
+      try {
+        await markProductionJobRunning({ jobId: job.id, supabase: this.supabase });
+        const speech = await this.client.generateSpeech({
+          input_type: params.options.inputType || "text",
+          language: params.options.language,
+          locale: params.options.locale,
+          speed: params.options.speed,
+          text: script.scriptText,
+          voice_id: voice.heygen_voice_id,
+        });
+        voiceAsset = await this.audioImportService.importGeneratedSpeech({
+          createdBy: params.createdBy,
+          job: persistedJob,
+          scriptHash: script.scriptHash,
+          speech,
+          voiceProviderId: voice.heygen_voice_id,
+        });
+      } catch (error) {
+        await failProductionJob({ error, jobId: job.id, supabase: this.supabase });
+        throw error;
+      }
+    }
+
+    await this.repository.promoteVoiceAudioToMaterialAssets({
+      componentId: context.componentId,
+      durationSeconds: voiceAsset.durationSeconds,
+      providerRequestId: voiceAsset.providerRequestId,
+      publicUrl: voiceAsset.publicUrl,
+      scriptHash: script.scriptHash,
+      storagePath: voiceAsset.storagePath,
+      wordTimestamps: voiceAsset.wordTimestamps,
+    });
+    await this.repository.markVideoJobSucceeded({
+      durationSeconds: voiceAsset.durationSeconds,
+      jobId: job.id,
+      outputSnapshot: {
+        asset_id: voiceAsset.id,
+        asset_type: "VOICE_AUDIO",
+        duration_seconds: voiceAsset.durationSeconds,
+        provider_request_id: voiceAsset.providerRequestId,
+        public_url: voiceAsset.publicUrl,
+        storage_path: voiceAsset.storagePath,
+      },
+    });
+
+    return {
+      jobId: job.id,
+      script: buildScriptSummary(script),
+      status: PRODUCTION_JOB_STATUSES.SUCCEEDED,
+      voiceAsset: toPublicVoiceAsset(voiceAsset)!,
+    };
   }
 
   async createAvatarVideoForComponent(params: {
@@ -158,6 +296,19 @@ export class HeygenVideoService {
       );
     }
 
+    if (params.options.outputFormat === "webm" && avatar.metadata?.supports_matting !== true) {
+      throw new HeygenVideoServiceError(
+        "El avatar seleccionado no declara soporte de matting para WebM transparente.",
+        409,
+      );
+    }
+    if (params.options.outputFormat === "webm" && params.options.background) {
+      throw new HeygenVideoServiceError(
+        "WebM transparente no puede combinarse con un fondo de escena.",
+        409,
+      );
+    }
+
     const voice = await this.repository.getVoicePresetForGeneration({
       organizationId: params.organizationId,
       presetId: params.options.voicePresetId,
@@ -174,15 +325,22 @@ export class HeygenVideoService {
       avatarPresetId: avatar.id,
       aspectRatio: params.options.aspectRatio,
       background: params.options.background || null,
+      brandGlossaryId: params.options.brandGlossaryId || null,
       caption: params.options.caption,
       componentId: context.componentId,
       componentType: context.componentType,
       engine: params.options.engine,
       outputFormat: params.options.outputFormat,
+      locale: params.options.locale || null,
+      motionPrompt: params.options.motionPrompt || null,
+      pitch: params.options.pitch || 0,
+      removeBackground: Boolean(params.options.removeBackground),
       resolution: params.options.resolution,
+      speed: params.options.speed || 1,
       scriptHash: script.scriptHash,
       voicePresetId: voice?.id || null,
       voiceProviderId: providerVoiceId,
+      volume: params.options.volume ?? 1,
     });
     const job = await createOrReuseProductionJob(this.supabase, {
       context,
@@ -221,6 +379,7 @@ export class HeygenVideoService {
           job: persistedJob,
           scriptHash: script.scriptHash,
           scriptText: script.scriptText,
+          speechOptions: params.options,
           voiceProviderId: providerVoiceId,
         });
       }
@@ -250,6 +409,7 @@ export class HeygenVideoService {
           job: persistedJob,
           scriptHash: script.scriptHash,
           scriptText: script.scriptText,
+          speechOptions: params.options,
           voiceProviderId: providerVoiceId,
         });
       } catch (error) {
@@ -330,10 +490,13 @@ export class HeygenVideoService {
     job: HeygenProductionJobRow;
     scriptHash: string;
     scriptText: string;
+    speechOptions: Pick<HeygenAvatarVideoGenerationOptions, "locale" | "speed">;
     voiceProviderId: string;
   }) {
     const speech = await this.client.generateSpeech({
-      speed: 1,
+      input_type: "text",
+      locale: params.speechOptions.locale,
+      speed: params.speechOptions.speed || 1,
       text: params.scriptText,
       voice_id: params.voiceProviderId,
     });
@@ -566,14 +729,28 @@ function buildHeygenCreateVideoPayload(params: {
     avatar_id: params.avatarId,
     background: params.options.background,
     callback_id: params.options.componentId,
+    callback_url: params.options.callbackUrl,
     caption: params.options.caption
       ? { file_format: "srt", style: "default" }
       : undefined,
-    engine: { type: params.options.engine },
+    brand_glossary_id: params.options.brandGlossaryId,
+    engine: {
+      type: params.options.engine,
+      reference_look_id: params.options.referenceLookId,
+    },
+    folder_id: params.options.folderId,
+    motion_prompt: params.options.motionPrompt,
     output_format: params.options.outputFormat,
+    remove_background: params.options.removeBackground,
     resolution: params.options.resolution,
     title: params.title,
     type: "avatar",
+    voice_settings: {
+      locale: params.options.locale,
+      pitch: params.options.pitch,
+      speed: params.options.speed,
+      volume: params.options.volume,
+    },
   };
 }
 
@@ -581,31 +758,45 @@ function buildAvatarVideoJobInputSnapshot(params: {
   aspectRatio: string;
   avatarPresetId: string;
   background: unknown;
+  brandGlossaryId: string | null;
   caption: boolean;
   componentId: string;
   componentType: string;
   engine: string;
   outputFormat: HeygenAvatarVideoOutputFormat;
+  locale: string | null;
+  motionPrompt: string | null;
+  pitch: number;
+  removeBackground: boolean;
   resolution: string;
+  speed: number;
   scriptHash: string;
   voicePresetId: string | null;
   voiceProviderId: string;
+  volume: number;
 }) {
   return {
     aspect_ratio: params.aspectRatio,
     avatar_preset_id: params.avatarPresetId,
     background: params.background,
+    brand_glossary_id: params.brandGlossaryId,
     caption: params.caption,
     component_id: params.componentId,
     component_type: params.componentType,
     engine: params.engine,
     job_type: PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_VIDEO,
     output_format: params.outputFormat,
+    locale: params.locale,
+    motion_prompt: params.motionPrompt,
+    pitch: params.pitch,
+    remove_background: params.removeBackground,
     resolution: params.resolution,
+    speed: params.speed,
     script_hash: params.scriptHash,
     separate_tracks: true,
     voice_preset_id: params.voicePresetId,
     voice_provider_id: params.voiceProviderId,
+    volume: params.volume,
   };
 }
 

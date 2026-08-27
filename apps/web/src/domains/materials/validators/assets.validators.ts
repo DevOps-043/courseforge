@@ -53,7 +53,19 @@ export const bRollClipSchema = z.object({
 export const avatarGenerationModeSchema = z.enum([
   "scene_clips",
   "single_video",
+  "voiceover",
 ]);
+
+export const detachedAudioClipSchema = z.object({
+  content_type: z.literal("audio/wav").default("audio/wav"),
+  detached_from_asset_id: z.string().uuid(),
+  detached_from_clip_id: z.string().trim().min(1),
+  duration: z.number().positive(),
+  file_name: z.string().trim().min(1),
+  has_audio: z.literal(true).default(true),
+  public_url: z.string().url().nullable().optional(),
+  storage_path: z.string().trim().min(1),
+});
 
 export const avatarClipStatusSchema = z.enum([
   "DRAFT",
@@ -236,10 +248,11 @@ export const materialAssetsSchema = z.object({
   voice_audio: voiceAudioSchema.optional(),
   voice_clips: z.array(voiceClipSchema).optional(),
   background_music: backgroundMusicSchema.optional(),
+  detached_audio_clips: z.array(detachedAudioClipSchema).optional(),
   b_roll_clips: z.array(bRollClipSchema).optional(),
   avatar_generation_mode: avatarGenerationModeSchema.optional(),
   avatar_clips: z.array(avatarClipSchema).optional(),
-  avatar_video: avatarVideoSchema.optional(),
+  avatar_video: avatarVideoSchema.nullable().optional(),
   slides: slidesSchema.optional(),
 }).superRefine((assets, context) => {
   const seenClipIds = new Set<string>();

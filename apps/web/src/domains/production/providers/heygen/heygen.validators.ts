@@ -37,13 +37,45 @@ export const heygenGenerateVideoRequestSchema = z
     avatarPresetId: z.string().uuid().optional(),
     background: heygenBackgroundSchema.optional(),
     caption: z.boolean().default(false),
+    brandGlossaryId: z.string().trim().min(1).max(255).optional(),
+    callbackUrl: z.string().url().optional(),
     componentId: z.string().uuid(),
     engine: z.enum(["avatar_iv", "avatar_v"]).default("avatar_iv"),
     outputFormat: z.enum(["mp4", "webm"]).default("mp4"),
+    folderId: z.string().trim().min(1).max(255).optional(),
+    locale: z.string().trim().min(2).max(35).optional(),
+    motionPrompt: z.string().trim().min(1).max(1000).optional(),
+    pitch: z.number().min(-50).max(50).default(0),
+    referenceLookId: z.string().trim().min(1).max(255).optional(),
+    removeBackground: z.boolean().default(false),
     resolution: z.enum(["720p", "1080p", "4k"]).default("1080p"),
+    speed: z.number().min(0.5).max(1.5).default(1),
+    volume: z.number().min(0).max(1).default(1),
     voicePresetId: z.string().uuid().optional(),
   })
   .strict();
+
+export const heygenGenerateVoiceoverRequestSchema = z
+  .object({
+    componentId: z.string().uuid().optional(),
+    inputType: z.enum(["text", "ssml"]).default("text"),
+    language: z.string().trim().min(2).max(16).optional(),
+    locale: z.string().trim().min(2).max(35).optional(),
+    script: z.string().trim().min(1).max(5_000).optional(),
+    speed: z.number().min(0.5).max(2).default(1),
+    title: z.string().trim().min(1).max(120).optional(),
+    voicePresetId: z.string().uuid().optional(),
+  })
+  .strict()
+  .superRefine((payload, context) => {
+    if (!payload.componentId && !payload.script) {
+      context.addIssue({
+        code: "custom",
+        message: "Debes indicar un componente o un texto para la voz en off.",
+        path: ["script"],
+      });
+    }
+  });
 
 export const heygenAvatarClipStatusSchema = z.enum([
   "DRAFT",
@@ -82,7 +114,7 @@ export const heygenAvatarClipSchema = z
 
 export const heygenScenesPatchRequestSchema = z
   .object({
-    avatarGenerationMode: z.enum(["scene_clips", "single_video"]).optional(),
+    avatarGenerationMode: z.enum(["scene_clips", "single_video", "voiceover"]).optional(),
     clips: z.array(heygenAvatarClipSchema),
     componentId: z.string().uuid(),
   })
@@ -91,13 +123,23 @@ export const heygenScenesPatchRequestSchema = z
 export const heygenGenerateClipsRequestSchema = z
   .object({
     aspectRatio: z.enum(["16:9", "9:16"]).default("16:9"),
+    brandGlossaryId: z.string().trim().min(1).max(255).optional(),
+    callbackUrl: z.string().url().optional(),
     caption: z.boolean().default(false),
     clipIds: z.array(z.string().trim().min(1)).min(1),
     clips: z.array(heygenAvatarClipSchema),
     componentId: z.string().uuid(),
     engine: z.enum(["avatar_iv", "avatar_v"]).default("avatar_iv"),
+    folderId: z.string().trim().min(1).max(255).optional(),
+    locale: z.string().trim().min(2).max(35).optional(),
+    motionPrompt: z.string().trim().min(1).max(1000).optional(),
     outputFormat: z.enum(["mp4", "webm"]).default("mp4"),
+    pitch: z.number().min(-50).max(50).default(0),
+    referenceLookId: z.string().trim().min(1).max(255).optional(),
+    removeBackground: z.boolean().default(false),
     resolution: z.enum(["720p", "1080p", "4k"]).default("1080p"),
+    speed: z.number().min(0.5).max(1.5).default(1),
+    volume: z.number().min(0).max(1).default(1),
   })
   .strict();
 

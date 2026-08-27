@@ -1255,7 +1255,11 @@ export function AvatarVideoSection({
 
       <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-semibold text-gray-500 dark:text-gray-400">
         <span className="rounded-full bg-gray-100 px-2 py-1 dark:bg-white/5">
-          {avatarGenerationMode === "scene_clips" ? "Modo: Por escenas" : "Modo: Video completo"}
+          {avatarGenerationMode === "scene_clips"
+            ? "Modo: Por escenas"
+            : avatarGenerationMode === "voiceover"
+              ? "Modo: Voz en off"
+              : "Modo: Video completo"}
         </span>
         {avatarGenerationMode === "scene_clips" ? (
           <span className="rounded-full bg-gray-100 px-2 py-1 dark:bg-white/5">

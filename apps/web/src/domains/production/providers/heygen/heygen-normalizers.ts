@@ -65,7 +65,10 @@ export function normalizeVoices(rawResponse: unknown): HeygenVoice[] {
       gender: getStringField(item, ["gender"]),
       id: getStringField(item, ["id", "voice_id", "voiceId"]) || "",
       language: getStringField(item, ["language", "locale", "language_code"]),
-      metadata: buildMinimalMetadata(item),
+      metadata: {
+        ...buildMinimalMetadata(item),
+        ownership: getStringField(item, ["ownership", "type"]),
+      },
       name: getStringField(item, ["name", "voice_name", "display_name"]) || "HeyGen voice",
       previewAudioUrl: getStringField(item, [
         "preview_audio_url",
@@ -117,6 +120,12 @@ function toRecordArray(value: unknown): Record<string, unknown>[] {
 
 function buildMinimalMetadata(item: Record<string, unknown>) {
   return {
+    engine: getStringField(item, ["engine", "engine_type"]),
+    locale: getStringField(item, ["locale", "language_code"]),
+    ownership: getStringField(item, ["ownership"]),
+    premium: item.premium === true || item.is_premium === true,
+    supports_matting:
+      item.supports_matting === true || item.matting_enabled === true,
     source: "heygen_api_v3",
     synced_fields: Object.keys(item).sort(),
   };
