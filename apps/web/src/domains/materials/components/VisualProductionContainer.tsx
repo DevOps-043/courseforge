@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { usePathname, useRouter } from 'next/navigation';
 import { PRODUCTION_COMPLETION_RECHECK_DELAY_MS } from '@/shared/constants/timing';
 import { PRODUCTION_THEME } from './production-asset-ui';
+import { ProductionAutomationReviewPanel } from '@/domains/production/automation/ProductionAutomationReviewPanel';
 
 interface VisualProductionContainerProps {
     artifactId: string;
@@ -268,6 +269,7 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
 
     return (
         <div className="space-y-8">
+            <ProductionAutomationReviewPanel artifactId={artifactId} />
             {/* Header / Intro */}
             <div className="rounded-2xl border border-gray-200 bg-gradient-to-r from-white to-blue-50 p-6 dark:border-[var(--engine-muted)]/10 dark:from-[var(--engine-surface-solid)] dark:to-[var(--engine-info)]/10">
                 <div className="flex justify-between items-start mb-4">

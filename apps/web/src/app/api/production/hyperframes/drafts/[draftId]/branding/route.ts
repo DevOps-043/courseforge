@@ -2,10 +2,33 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
-import { buildAssemblyBrandingSnapshot, resolveAssemblyBranding } from "@/domains/production/composition-editor/composition-branding.service";
+import { buildAssemblyBrandingSnapshot, reconcileAssemblyBrandingDocument, resolveAssemblyBranding } from "@/domains/production/composition-editor/composition-branding.service";
+import { applyAndAppendCompositionDocumentPatches, CompositionDocumentError, getCurrentCompositionDocument } from "@/domains/production/composition-editor/composition-document.service";
 import { createClient } from "@/utils/supabase/server";
 
 interface RouteContext { params: Promise<{ draftId: string }>; }
+
+/** Reports only whether approved branding is available; Storage identity stays server-side. */
+export async function GET(_request: Request, context: RouteContext) {
+  try {
+    const authorization = await authorize();
+    if (authorization instanceof NextResponse) return authorization;
+    const draftId = z.string().uuid().parse((await context.params).draftId);
+    const branding = await resolveAssemblyBranding({
+      draftId,
+      organizationId: authorization.organizationId,
+      supabase: authorization.admin,
+    });
+    return NextResponse.json({
+      success: true,
+      data: { hasIntro: Boolean(branding.intro), hasOutro: Boolean(branding.outro) },
+    }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    if (error instanceof z.ZodError) return NextResponse.json({ error: "Identificador de borrador inválido." }, { status: 400 });
+    console.error("[CompositionBranding] Could not inspect branding", { message: error instanceof Error ? error.message : "Unknown" });
+    return NextResponse.json({ error: "No se pudo consultar la configuración de intro y outro." }, { status: 500 });
+  }
+}
 
 /** Resolves and freezes approved organization branding for a single draft. */
 export async function POST(_request: Request, context: RouteContext) {
@@ -33,9 +56,25 @@ export async function POST(_request: Request, context: RouteContext) {
         updated_at: new Date().toISOString(),
       }, { onConflict: "draft_id" });
     if (error) throw error;
-    return NextResponse.json({ success: true, data: branding });
+    const current = await getCurrentCompositionDocument({ draftId, organizationId: authorization.organizationId, supabase: authorization.admin });
+    const document = reconcileAssemblyBrandingDocument(current.document, branding);
+    const updated = await applyAndAppendCompositionDocumentPatches({
+      auditSource: "SYSTEM",
+      draftId,
+      expectedDocumentHash: current.documentHash,
+      organizationId: authorization.organizationId,
+      patch: {
+        operations: [{ document, type: "document.reconcile" }],
+        source: "USER",
+        summary: "Colocó intro y outro configurados para la empresa.",
+      },
+      supabase: authorization.admin,
+      userId: authorization.userId,
+    });
+    return NextResponse.json({ success: true, data: { branding, ...updated } });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: "Identificador de borrador inválido." }, { status: 400 });
+    if (error instanceof CompositionDocumentError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error("[CompositionBranding] Could not resolve branding", { message: error instanceof Error ? error.message : "Unknown" });
     return NextResponse.json({ error: "No se pudo resolver la configuración de intro y outro." }, { status: 500 });
   }

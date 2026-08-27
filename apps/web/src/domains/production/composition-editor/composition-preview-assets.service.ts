@@ -19,9 +19,13 @@ export async function resolveCompositionPreviewAssetUrls(params: {
   organizationId: string;
   supabase: SupabaseClient<any, "public", any>;
 }) {
-  const assetIds = [...new Set(params.document.clips.flatMap((clip) => (
+  const productionAssetIds = [...new Set(params.document.clips.flatMap((clip) => (
     clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []
   )))];
+  const brandingAssetIds = [...new Set(params.document.clips.flatMap((clip) => (
+    clip.source.type === "ASSEMBLY_BRAND_ASSET" ? [clip.source.assemblyBrandAssetId] : []
+  )))];
+  const assetIds = [...productionAssetIds, ...brandingAssetIds];
   if (assetIds.length === 0) {
     params.onDiagnostics?.({
       assetCount: 0,
@@ -35,30 +39,39 @@ export async function resolveCompositionPreviewAssetUrls(params: {
   }
 
   const draftLinkQueryStartedAt = performance.now();
-  const { data: draftLinks, error: draftLinksError } = await params.supabase
-    .from("video_composition_draft_assets")
-    .select("production_asset_id")
-    .eq("draft_id", params.draftId)
-    .eq("organization_id", params.organizationId)
-    .in("production_asset_id", assetIds);
+  const [{ data: draftLinks, error: draftLinksError }, { data: draftBranding, error: draftBrandingError }] = await Promise.all([
+    productionAssetIds.length > 0
+      ? params.supabase.from("video_composition_draft_assets").select("production_asset_id").eq("draft_id", params.draftId).eq("organization_id", params.organizationId).in("production_asset_id", productionAssetIds)
+      : Promise.resolve({ data: [], error: null }),
+    brandingAssetIds.length > 0
+      ? params.supabase.from("video_composition_draft_branding").select("intro_asset_id, outro_asset_id").eq("draft_id", params.draftId).eq("organization_id", params.organizationId).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
   if (draftLinksError) throw draftLinksError;
+  if (draftBrandingError) throw draftBrandingError;
   const draftLinkQueryMs = elapsedMilliseconds(draftLinkQueryStartedAt);
   const linkedIds = new Set((draftLinks || []).map((link) => link.production_asset_id as string));
-  const missingLinks = assetIds.filter((assetId) => !linkedIds.has(assetId));
-  if (missingLinks.length > 0) {
+  const brandingLinks = new Set([draftBranding?.intro_asset_id, draftBranding?.outro_asset_id].filter((id): id is string => typeof id === "string"));
+  const missingLinks = productionAssetIds.filter((assetId) => !linkedIds.has(assetId));
+  const missingBrandingLinks = brandingAssetIds.filter((assetId) => !brandingLinks.has(assetId));
+  if (missingLinks.length > 0 || missingBrandingLinks.length > 0) {
     throw new CompositionPreviewCompilerError("La composición referencia assets que no pertenecen al borrador.");
   }
 
   const assetQueryStartedAt = performance.now();
-  const { data: assets, error: assetsError } = await params.supabase
-    .from("production_assets")
-    .select("id, checksum, storage_bucket, storage_path")
-    .eq("organization_id", params.organizationId)
-    .in("id", assetIds);
+  const [{ data: productionAssets, error: assetsError }, { data: brandingAssets, error: brandingAssetsError }] = await Promise.all([
+    productionAssetIds.length > 0
+      ? params.supabase.from("production_assets").select("id, checksum, storage_bucket, storage_path").eq("organization_id", params.organizationId).in("id", productionAssetIds)
+      : Promise.resolve({ data: [], error: null }),
+    brandingAssetIds.length > 0
+      ? params.supabase.from("organization_assembly_assets").select("id, checksum, storage_bucket, storage_path").eq("organization_id", params.organizationId).eq("status", "APPROVED").in("id", brandingAssetIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
   if (assetsError) throw assetsError;
+  if (brandingAssetsError) throw brandingAssetsError;
   const assetQueryMs = elapsedMilliseconds(assetQueryStartedAt);
   const urls = new Map<string, string>();
-  const storedAssets = assets || [];
+  const storedAssets = [...(productionAssets || []), ...(brandingAssets || [])];
   const privateAssets = [];
   for (const asset of storedAssets) {
     if (!asset.storage_bucket || !asset.storage_path) {

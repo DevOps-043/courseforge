@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { CompositionClip, CompositionEditorDocument, CompositionTrack } from "./composition-document.types";
+import { getCompositionClipMediaAssetId, type CompositionClip, type CompositionEditorDocument, type CompositionTrack } from "./composition-document.types";
 import { resolveCompositionAnimationWindow } from "./composition-motion-scheduling.service";
 import {
   buildCompositionVolumeAutomations,
@@ -162,11 +162,13 @@ function renderClip(
   if (clip.source.type === "DECK_SLIDE") {
     return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
   }
-  const sourceUrl = assetUrls.get(clip.source.productionAssetId);
+  const mediaAssetId = getCompositionClipMediaAssetId(clip);
+  if (!mediaAssetId) throw new CompositionPreviewCompilerError(`El clip ${clip.id} no tiene un asset multimedia válido.`);
+  const sourceUrl = assetUrls.get(mediaAssetId);
   const variableName = isHyperframesRender
-    ? assetVariableNames?.get(clip.source.productionAssetId)
+    ? assetVariableNames?.get(mediaAssetId)
     : undefined;
-  if (!sourceUrl && !variableName) throw new CompositionPreviewCompilerError(`No existe URL de preview para el asset ${clip.source.productionAssetId}.`);
+  if (!sourceUrl && !variableName) throw new CompositionPreviewCompilerError(`No existe URL de preview para el asset ${mediaAssetId}.`);
   const mediaSource = renderMediaSourceAttribute(sourceUrl, variableName);
   if (clip.kind === "AUDIO") {
     return `<audio id="${escapeAttribute(clip.id)}" class="composition-audio${isHyperframesRender ? " clip" : ""}" data-hf-id="${escapeAttribute(clip.hfId)}"${hidden}${volumeAutomation} ${mediaOffset} data-volume="${volume}" ${mediaSource} preload="metadata" ${timing}></audio>`;

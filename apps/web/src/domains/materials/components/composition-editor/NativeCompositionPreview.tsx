@@ -69,6 +69,7 @@ import {
 import styles from "./CompositionStudio.module.css";
 
 type DocumentPayload = { document: CompositionEditorDocument; documentHash: string; version: number };
+type AssemblyBrandingAvailability = { hasIntro: boolean; hasOutro: boolean };
 type SavePatchOptions = { preservePreviewRuntime?: boolean };
 type PreviewReloadReason = "DIRTY_PLAYBACK" | "MANUAL" | "MEDIA_RECOVERY" | "SAVE_RECOVERY";
 type PendingEditTelemetry = {
@@ -257,6 +258,7 @@ export function NativeCompositionPreview({ assets, compositionId, draftId, lesso
   const [studioTopPanePercent, setStudioTopPanePercent] = useState(60);
   const [studioResizing, setStudioResizing] = useState(false);
   const [toolMenuOpen, setToolMenuOpen] = useState(false);
+  const [brandingAvailability, setBrandingAvailability] = useState<AssemblyBrandingAvailability | null>(null);
 
   useEffect(() => {
     onVideoCompletedRef.current = onVideoCompleted;
@@ -333,6 +335,19 @@ export function NativeCompositionPreview({ assets, compositionId, draftId, lesso
     }
   }, [draftId]);
 
+  const loadBrandingAvailability = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/branding`, { cache: "no-store" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "No se pudo consultar intro y outro.");
+      setBrandingAvailability(body.data as AssemblyBrandingAvailability);
+    } catch {
+      // Fail closed: if availability cannot be verified, do not expose an action
+      // that would predictably fail or mutate the current timeline.
+      setBrandingAvailability(null);
+    }
+  }, [draftId]);
+
   const loadSnapshotHistory = useCallback(async (signal?: AbortSignal) => {
     const response = await fetch(`/api/production/hyperframes/compositions/${compositionId}/revisions`, {
       cache: "no-store",
@@ -361,7 +376,7 @@ export function NativeCompositionPreview({ assets, compositionId, draftId, lesso
     } : null);
   }, [compositionId]);
 
-  useEffect(() => { void loadDocument(); }, [loadDocument]);
+  useEffect(() => { void loadDocument(); void loadBrandingAvailability(); }, [loadBrandingAvailability, loadDocument]);
   useEffect(() => {
     const controller = new AbortController();
     setAssembly(null);
@@ -1075,6 +1090,23 @@ export function NativeCompositionPreview({ assets, compositionId, draftId, lesso
     await savePatch(operations, "Organizó los tiempos estimados sin reemplazar el layout manual.");
   }
 
+  async function placeAssemblyBranding() {
+    if (saving || saveInFlightRef.current) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/branding`, { method: "POST" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "No se pudo colocar el intro y outro.");
+      setBrandingAvailability({ hasIntro: Boolean(body.data?.branding?.intro), hasOutro: Boolean(body.data?.branding?.outro) });
+      await loadDocument();
+    } catch (caught) {
+      setSaveError(caught instanceof Error ? caught.message : "No se pudo colocar el intro y outro.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function requestAgentProposal(instruction: string) {
     if (!payload) return;
     setProposing(true);
@@ -1736,7 +1768,7 @@ export function NativeCompositionPreview({ assets, compositionId, draftId, lesso
 
         <section className={styles.timelinePanel}>
           <div className={styles.timelineScroll}>
-            <div className={`${styles.durationStrip} ${durationSourceLabel ? "" : styles.durationStripWarning}`}><span>{durationSourceLabel ? `Duración de contenido: ${formatCompositionTimecode(duration)} · ${durationSourceLabel}` : "Define el asset que controla la duración del contenido."}</span><div className={styles.durationActions}><button type="button" disabled={saving} onClick={() => void recalculateDuration()} className={styles.durationAction}>Recalcular duración</button><button type="button" disabled={saving} onClick={() => void organizeTimeline()} className={styles.durationAction}>Organizar timeline</button></div></div>
+            <div className={`${styles.durationStrip} ${durationSourceLabel ? "" : styles.durationStripWarning}`}><span>{durationSourceLabel ? `Duración total: ${formatCompositionTimecode(duration)} · ${durationSourceLabel}` : "Define el asset que controla la duración del contenido."}</span><div className={styles.durationActions}><button type="button" disabled={saving} onClick={() => void recalculateDuration()} className={styles.durationAction}>Recalcular duración</button><button type="button" disabled={saving} onClick={() => void organizeTimeline()} className={styles.durationAction}>Organizar timeline</button>{(brandingAvailability?.hasIntro || brandingAvailability?.hasOutro) && <button type="button" disabled={saving} onClick={() => void placeAssemblyBranding()} className={styles.durationAction}>Colocar intro/outro</button>}</div></div>
             <AudioMixControls audioMix={payload.document.audioMix} disabled={saving} onUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)} />
             <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedAnimationId={selectedAnimationId} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={selectAnimation} onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Ajustó el inicio de ${clip.label} desde la timeline.`)} />
             {estimatedClipCount > 0 && <p className={styles.estimatedWarning}><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}

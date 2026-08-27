@@ -64,6 +64,7 @@ type StoredRevisionAsset = {
   mime_type: string;
   production_asset_id: string;
   source_checksum: string;
+  source_storage_bucket?: string;
   source_storage_path: string;
 };
 
@@ -515,12 +516,29 @@ export class HyperframesRenderSubmissionService {
   }
 
   private async getRevisionAssets(revisionId: string) {
-    const { data, error } = await this.supabase
-      .from("video_composition_assets")
-      .select("production_asset_id, source_checksum, source_storage_path, file_size_bytes, mime_type")
-      .eq("composition_revision_id", revisionId);
+    const [{ data, error }, { data: branding, error: brandingError }] = await Promise.all([
+      this.supabase
+        .from("video_composition_assets")
+        .select("production_asset_id, source_checksum, source_storage_path, file_size_bytes, mime_type")
+        .eq("composition_revision_id", revisionId),
+      this.supabase
+        .from("video_composition_brand_assets")
+        .select("organization_assembly_asset_id, source_checksum, source_storage_bucket, source_storage_path, file_size_bytes, mime_type")
+        .eq("composition_revision_id", revisionId),
+    ]);
     if (error) throw error;
-    return (data || []) as StoredRevisionAsset[];
+    if (brandingError) throw brandingError;
+    return [
+      ...((data || []) as StoredRevisionAsset[]),
+      ...(branding || []).map((row) => ({
+        file_size_bytes: Number(row.file_size_bytes),
+        mime_type: String(row.mime_type),
+        production_asset_id: String(row.organization_assembly_asset_id),
+        source_checksum: String(row.source_checksum),
+        source_storage_bucket: String(row.source_storage_bucket),
+        source_storage_path: String(row.source_storage_path),
+      })),
+    ];
   }
 
   private async resolveComponentContext(revision: StoredRevision, organizationId: string) {
@@ -823,6 +841,7 @@ function parseAndVerifyManifest(rawManifest: unknown, rows: StoredRevisionAsset[
       fileSizeBytes: row.file_size_bytes,
       mimeType: row.mime_type,
       productionAssetId: row.production_asset_id,
+      ...(row.source_storage_bucket ? { storageBucket: row.source_storage_bucket } : {}),
       storagePath: row.source_storage_path,
     })),
   );

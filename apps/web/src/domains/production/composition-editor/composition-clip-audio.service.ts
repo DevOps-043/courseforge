@@ -8,7 +8,7 @@ export function compositionClipHasConfigurableAudio(
   clip: CompositionClip,
   track?: CompositionTrack,
 ): boolean {
-  if (clip.source.type !== "PRODUCTION_ASSET") return false;
+  if (clip.source.type !== "PRODUCTION_ASSET" && clip.source.type !== "ASSEMBLY_BRAND_ASSET") return false;
   if (clip.kind === "AUDIO") return true;
   if (clip.kind !== "VIDEO") return false;
   if (clip.source.hasAudio !== undefined) return clip.source.hasAudio;

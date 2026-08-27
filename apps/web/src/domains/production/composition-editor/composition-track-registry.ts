@@ -39,6 +39,7 @@ export function normalizeCompositionTrackTopology(
   const legacyTracks = new Map(document.tracks.map((track) => [track.id, track]));
   const normalizedClips = document.clips.map((clip) => {
     if (clip.source.type === "DECK_SLIDE") return { ...clip, trackId: TRACK_DEFINITIONS.DECK.id };
+    if (clip.source.type === "ASSEMBLY_BRAND_ASSET") return clip;
     const storedRole = normalizeProductionTimelineRole(assetRoles.get(clip.source.productionAssetId));
     const role = storedRole
       ? resolveCompositionTrackRole({ mimeType: clip.kind === "AUDIO" ? "audio/unknown" : "application/octet-stream", timelineRole: storedRole })

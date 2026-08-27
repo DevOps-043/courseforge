@@ -38,6 +38,7 @@ export class CompositionSnapshotError extends Error {
 }
 
 type AssetRow = { checksum: string; file_size_bytes: number; id: string; metadata: Record<string, unknown> | null; mime_type: string; public_url: string | null; storage_bucket: string; storage_path: string };
+type SnapshotAssetRow = AssetRow & { origin: "BRANDING" | "PRODUCTION" };
 
 export type CompositionSnapshotSummary = {
   createdAt: string;
@@ -101,11 +102,18 @@ export async function snapshotCompositionDocument(params: {
   }
 
   const referencedAssetIds = [...new Set(current.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))];
-  const [clipAssets, deckDependencies] = await Promise.all([
+  const referencedBrandingAssetIds = [...new Set(current.document.clips.flatMap((clip) => clip.source.type === "ASSEMBLY_BRAND_ASSET" ? [clip.source.assemblyBrandAssetId] : []))];
+  const [clipAssets, brandingAssets, deckDependencies] = await Promise.all([
     readSnapshotAssets(params, referencedAssetIds),
+    readSnapshotBrandingAssets(params, referencedBrandingAssetIds),
     readReferencedDeckDependencies(params, current.document),
   ]);
-  const assets = [...new Map([...clipAssets, ...deckDependencies].map((asset) => [asset.id, asset])).values()];
+  const assetRows: Array<[string, SnapshotAssetRow]> = [
+    ...clipAssets.map((asset): [string, SnapshotAssetRow] => [asset.id, { ...asset, origin: "PRODUCTION" }]),
+    ...brandingAssets.map((asset): [string, SnapshotAssetRow] => [asset.id, { ...asset, origin: "BRANDING" }]),
+    ...deckDependencies.map((asset): [string, SnapshotAssetRow] => [asset.id, { ...asset, origin: "PRODUCTION" }]),
+  ];
+  const assets = [...new Map<string, SnapshotAssetRow>(assetRows).values()];
   const mediaErrors = assets.flatMap((asset) => validateHyperframesMediaAsset({
     deliveryMode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
     fileName: typeof asset.metadata?.file_name === "string" ? asset.metadata.file_name : asset.storage_path,
@@ -227,8 +235,10 @@ export async function snapshotCompositionDocument(params: {
       500,
     );
   }
-  if (manifest.length > 0) {
-    const { error: linkError } = await params.supabase.from("video_composition_assets").insert(manifest.map((asset) => ({
+  const productionManifest = manifest.filter((asset) => assets.find((row) => row.id === asset.productionAssetId)?.origin === "PRODUCTION");
+  const brandingManifest = manifest.filter((asset) => assets.find((row) => row.id === asset.productionAssetId)?.origin === "BRANDING");
+  if (productionManifest.length > 0) {
+    const { error: linkError } = await params.supabase.from("video_composition_assets").insert(productionManifest.map((asset) => ({
       composition_revision_id: revision.id, file_size_bytes: asset.fileSizeBytes, mime_type: asset.mimeType, organization_id: params.organizationId,
       production_asset_id: asset.productionAssetId, role: asset.mimeType.startsWith("audio/") ? "AUDIO" : asset.mimeType.startsWith("video/") ? "VIDEO" : "IMAGE",
       source_checksum: asset.checksum, source_storage_path: asset.storagePath,
@@ -236,6 +246,25 @@ export async function snapshotCompositionDocument(params: {
     if (linkError) {
       throw new CompositionSnapshotError(
         `La revisión se creó, pero no se pudieron vincular sus assets${readExternalErrorCode(linkError) ? ` (${readExternalErrorCode(linkError)})` : ""}.`,
+        500,
+      );
+    }
+  }
+  if (brandingManifest.length > 0) {
+    const { error: linkError } = await params.supabase.from("video_composition_brand_assets").insert(brandingManifest.map((asset) => ({
+      composition_revision_id: revision.id,
+      file_size_bytes: asset.fileSizeBytes,
+      mime_type: asset.mimeType,
+      organization_assembly_asset_id: asset.productionAssetId,
+      organization_id: params.organizationId,
+      role: "VIDEO",
+      source_checksum: asset.checksum,
+      source_storage_bucket: asset.storageBucket || "production-assets",
+      source_storage_path: asset.storagePath,
+    })));
+    if (linkError) {
+      throw new CompositionSnapshotError(
+        `La revisión se creó, pero no se pudo vincular su identidad de ensamble${readExternalErrorCode(linkError) ? ` (${readExternalErrorCode(linkError)})` : ""}.`,
         500,
       );
     }
@@ -361,6 +390,28 @@ async function readSnapshotAssets(params: { draftId: string; organizationId: str
   return data as AssetRow[];
 }
 
+async function readSnapshotBrandingAssets(params: { draftId: string; organizationId: string; supabase: SupabaseClient<any, "public", any> }, ids: string[]) {
+  if (ids.length === 0) return [] as AssetRow[];
+  const { data: branding, error: brandingError } = await params.supabase
+    .from("video_composition_draft_branding")
+    .select("intro_asset_id, outro_asset_id")
+    .eq("draft_id", params.draftId)
+    .eq("organization_id", params.organizationId)
+    .maybeSingle();
+  if (brandingError) throw brandingError;
+  const linkedIds = new Set([branding?.intro_asset_id, branding?.outro_asset_id].filter((id): id is string => typeof id === "string"));
+  if (ids.some((id) => !linkedIds.has(id))) throw new CompositionSnapshotError("El documento contiene branding que no pertenece al borrador.", 409);
+  const { data, error } = await params.supabase
+    .from("organization_assembly_assets")
+    .select("id, checksum, file_size_bytes, metadata, mime_type, storage_bucket, storage_path")
+    .eq("organization_id", params.organizationId)
+    .eq("status", "APPROVED")
+    .in("id", ids);
+  if (error) throw error;
+  if ((data || []).length !== ids.length) throw new CompositionSnapshotError("No se pudo resolver intro u outro para el snapshot.", 409);
+  return (data || []).map((asset) => ({ ...asset, public_url: null })) as AssetRow[];
+}
+
 async function readReferencedDeckDependencies(
   params: { draftId: string; organizationId: string; supabase: SupabaseClient<any, "public", any> },
   document: Awaited<ReturnType<typeof getCurrentCompositionDocument>>["document"],
@@ -438,7 +489,7 @@ export function assertCompositionSnapshotRenderContract(
   }
   const clipWithoutAudioMetadata = document.clips.find((clip) => (
     clip.kind === "VIDEO"
-    && clip.source.type === "PRODUCTION_ASSET"
+    && (clip.source.type === "PRODUCTION_ASSET" || clip.source.type === "ASSEMBLY_BRAND_ASSET")
     && typeof clip.source.hasAudio !== "boolean"
   ));
   if (clipWithoutAudioMetadata) {
