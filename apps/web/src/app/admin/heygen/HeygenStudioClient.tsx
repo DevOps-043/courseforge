@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { EngineSelect } from "@/components/ui/EngineSelect";
+import { readApiResponse } from "@/lib/client/api-response";
 
 type AspectRatio = "16:9" | "9:16";
 type Engine = "avatar_iv" | "avatar_v";
@@ -88,6 +89,7 @@ interface LatestJob {
   createdAt?: string | null;
   jobId: string;
   providerJobId?: string | null;
+  providerError?: Record<string, unknown> | null;
   status: string;
   updatedAt?: string | null;
 }
@@ -102,6 +104,8 @@ interface CurrentJob {
   asset?: HeygenAsset | null;
   jobId: string;
   providerJobId?: string | null;
+  providerErrorCode?: string | null;
+  providerErrorMessage?: string | null;
   providerStatus?: string | null;
   script?: {
     durationEstimateSeconds?: number;
@@ -127,6 +131,8 @@ interface HeygenConnection {
 const STATUS_LABELS: Record<string, string> = {
   FAILED: "Fallido",
   PENDING: "Pendiente",
+  QUEUED: "En cola",
+  RETRY_SCHEDULED: "Reintento programado",
   SUCCEEDED: "Completado",
   WAITING_PROVIDER: "Esperando proveedor",
 };
@@ -195,7 +201,7 @@ export default function HeygenStudioClient({
       const response = await fetch("/api/production/heygen/presets", {
         cache: "no-store",
       });
-      const payload = await response.json();
+      const payload = await readApiResponse(response);
 
       if (!response.ok || !payload.success) {
         throw new Error(payload.error || "No se pudieron cargar los presets.");
@@ -226,7 +232,7 @@ export default function HeygenStudioClient({
       const response = await fetch("/api/production/heygen/connection", {
         cache: "no-store",
       });
-      const payload = await response.json();
+      const payload = await readApiResponse(response);
 
       if (!response.ok || !payload.success) {
         throw new Error(payload.error || "No se pudo consultar la conexion.");
@@ -247,7 +253,7 @@ export default function HeygenStudioClient({
         `/api/production/heygen/jobs?componentId=${encodeURIComponent(componentId)}`,
         { cache: "no-store" },
       );
-      const payload = await response.json();
+      const payload = await readApiResponse(response);
 
       if (!response.ok || !payload.success) {
         throw new Error(payload.error || "No se pudo consultar el ultimo job.");
@@ -256,13 +262,23 @@ export default function HeygenStudioClient({
       const latestJob = payload.data?.latestJob as LatestJob | null;
       const asset = payload.data?.asset as HeygenAsset | null;
       if (latestJob) {
+        const providerFailure = readProviderFailure(latestJob.providerError);
         setCurrentJob({
           asset,
           jobId: latestJob.jobId,
           providerJobId: latestJob.providerJobId || null,
+          providerErrorCode: providerFailure.code,
+          providerErrorMessage: providerFailure.message,
           status: latestJob.status,
         });
+        if (latestJob.status === "FAILED" && providerFailure.message) {
+          setErrorMessage(formatProviderFailure({
+            providerErrorCode: providerFailure.code,
+            providerErrorMessage: providerFailure.message,
+          }));
+        }
       }
+      return latestJob;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Error al consultar el ultimo job.";
       setErrorMessage(message);
@@ -280,7 +296,7 @@ export default function HeygenStudioClient({
         `/api/production/heygen/scenes?componentId=${encodeURIComponent(componentId)}`,
         { cache: "no-store" },
       );
-      const payload = await response.json();
+      const payload = await readApiResponse(response);
 
       if (!response.ok || !payload.success) {
         throw new Error(readApiErrorMessage(payload, "No se pudieron cargar las escenas."));
@@ -346,7 +362,7 @@ export default function HeygenStudioClient({
     const response = await fetch("/api/production/heygen/sync", {
       method: "POST",
     });
-    const payload = await response.json();
+      const payload = await readApiResponse(response);
 
     if (!response.ok || !payload.success) {
       throw new Error(payload.error || "No se pudo sincronizar el catalogo de avatares.");
@@ -417,10 +433,21 @@ export default function HeygenStudioClient({
           method: "POST",
         },
       );
-      const payload = await response.json();
+      const payload = await readApiResponse(response);
 
       if (!response.ok || !payload.success) {
         throw new Error(readApiErrorMessage(payload, "No se pudo crear el video con el proveedor de avatares."));
+      }
+
+      if (response.status === 202 && payload.data?.submissionStatus === "QUEUED") {
+        setCurrentJob({ jobId: "", providerJobId: null, status: "QUEUED" });
+        toast.info("Generacion en cola. El envio a HeyGen continuara en segundo plano.");
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          await wait(1_000);
+          const latestJob = await loadLatestJob();
+          if (latestJob) break;
+        }
+        return;
       }
 
       setCurrentJob(payload.data as CurrentJob);
@@ -445,7 +472,7 @@ export default function HeygenStudioClient({
         ? `/api/production/heygen/standalone/videos/${encodeURIComponent(currentJob.providerJobId || currentJob.jobId)}`
         : `/api/production/heygen/jobs/${currentJob.jobId}?autoPromote=true`;
       const response = await fetch(statusUrl, { cache: "no-store" });
-      const payload = await response.json();
+      const payload = await readApiResponse(response);
 
       if (!response.ok || !payload.success) {
         throw new Error(payload.error || "No se pudo consultar el job.");
@@ -460,7 +487,9 @@ export default function HeygenStudioClient({
             : "Video importado al asset del componente.",
         );
       } else if (nextStatus === "FAILED") {
-        toast.error("El proveedor reporto el job como fallido.");
+        const failureMessage = formatProviderFailure(payload.data);
+        setErrorMessage(failureMessage);
+        toast.error(failureMessage);
       } else {
         toast.info("El proveedor sigue procesando el video.");
       }
@@ -578,7 +607,7 @@ export default function HeygenStudioClient({
       headers: { "Content-Type": "application/json" },
       method: "PATCH",
     });
-    const payload = await response.json();
+    const payload = await readApiResponse(response);
 
     if (!response.ok || !payload.success) {
       throw new Error(readApiErrorMessage(payload, "No se pudieron guardar las escenas."));
@@ -632,7 +661,7 @@ export default function HeygenStudioClient({
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
-      const payload = await response.json();
+      const payload = await readApiResponse(response);
 
       if (!response.ok || !payload.success) {
         throw new Error(readApiErrorMessage(payload, "No se pudieron generar los clips."));
@@ -671,7 +700,7 @@ export default function HeygenStudioClient({
         `/api/production/heygen/clips/status?componentId=${encodeURIComponent(componentId)}`,
         { cache: "no-store" },
       );
-      const payload = await response.json();
+      const payload = await readApiResponse(response);
 
       if (!response.ok || !payload.success) {
         throw new Error(readApiErrorMessage(payload, "No se pudo consultar el estado de clips."));
@@ -1212,7 +1241,7 @@ export default function HeygenStudioClient({
           </div>
           {currentJob ? (
             <div className="mt-4 space-y-3">
-              <StatusRow label="Job" value={currentJob.jobId} mono />
+              <StatusRow label="Job" value={currentJob.jobId || "Asignando job…"} mono />
               <StatusRow label="Proveedor" value={currentJob.providerJobId || "Pendiente"} mono />
               <StatusRow
                 label="Estado"
@@ -1220,6 +1249,11 @@ export default function HeygenStudioClient({
               />
               {currentJob.providerStatus ? (
                 <StatusRow label="Proveedor" value={currentJob.providerStatus} />
+              ) : null}
+              {currentJob.providerErrorMessage ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300" role="alert">
+                  {formatProviderFailure(currentJob)}
+                </div>
               ) : null}
               {currentJob.script?.title ? (
                 <StatusRow label="Script" value={currentJob.script.title} />
@@ -1383,6 +1417,36 @@ function readApiErrorMessage(payload: any, fallback: string) {
   const error = typeof payload?.error === "string" ? payload.error : fallback;
   const hint = typeof payload?.hint === "string" ? payload.hint : "";
   return hint ? `${error} ${hint}` : error;
+}
+
+function readProviderFailure(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { code: null, message: null };
+  }
+  const failure = value as Record<string, unknown>;
+  return {
+    code: typeof failure.code === "string" ? failure.code : null,
+    message:
+      typeof failure.message === "string"
+        ? failure.message
+        : typeof failure.error_message === "string"
+          ? failure.error_message
+          : null,
+  };
+}
+
+function formatProviderFailure(job: {
+  providerErrorCode?: string | null;
+  providerErrorMessage?: string | null;
+}) {
+  if (job.providerErrorCode === "MOVIO_PAYMENT_INSUFFICIENT_CREDIT") {
+    return "HeyGen no tiene creditos API suficientes para completar este avatar. Recarga creditos API en HeyGen y vuelve a generar.";
+  }
+  return job.providerErrorMessage || "HeyGen reporto la generacion como fallida.";
+}
+
+function wait(milliseconds: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 function GeneratedVideoLibrary({

@@ -310,6 +310,7 @@ export class HeygenRepository {
           "input_snapshot",
           "output_snapshot",
           "provider_job_id",
+          "provider_error",
           "duration_seconds",
         ].join(", "),
       )
@@ -341,6 +342,7 @@ export class HeygenRepository {
           "input_snapshot",
           "output_snapshot",
           "provider_job_id",
+          "provider_error",
           "provider_model",
           "duration_seconds",
           "created_at",

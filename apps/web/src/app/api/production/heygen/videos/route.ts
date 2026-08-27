@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getErrorMessage } from "@/lib/errors";
+import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
+import { signBackgroundPayload } from "@/lib/server/background-payload-signature";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -8,11 +10,7 @@ import {
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { HeygenApiError } from "@/domains/production/providers/heygen/heygen.client";
-import {
-  HeygenVideoService,
-  HeygenVideoServiceError,
-  HeygenVideoSubmissionUnknownError,
-} from "@/domains/production/providers/heygen/heygen-video.service";
+import { runHeygenAvatarVideoBackground } from "@/domains/production/providers/heygen/heygen-video-background.service";
 import {
   getHeygenClientForOrganization,
   HeygenCredentialResolverError,
@@ -63,27 +61,43 @@ export async function POST(request: Request) {
       );
     }
 
-    const heygenAuth = await getHeygenClientForOrganization({
+    await getHeygenClientForOrganization({
       allowGlobalFallback: false,
       organizationId: tenant.organizationId,
       supabase: authorizedComponent.admin,
     });
-    const service = new HeygenVideoService(
-      authorizedComponent.admin,
-      heygenAuth.client,
-    );
-    const result = await service.createAvatarVideoForComponent({
-      componentContent: authorizedComponent.component.content,
-      componentType: authorizedComponent.component.type || "UNKNOWN",
+    const backgroundRequest = {
       createdBy: authenticatedUser.userId,
-      options: payload,
       organizationId: tenant.organizationId,
-    });
+      options: payload,
+    };
 
-    return NextResponse.json({
-      success: true,
-      data: result,
-    });
+    await callBackgroundFunctionJson(
+      "heygen-avatar-video-background",
+      signBackgroundPayload(backgroundRequest),
+      {
+        fallbackError: "No se pudo iniciar el worker de avatar.",
+        localHandlerLoader: async () => ({
+          handler: async () => {
+            await runHeygenAvatarVideoBackground(backgroundRequest);
+            return { statusCode: 200, body: JSON.stringify({ success: true }) };
+          },
+        }),
+      },
+    );
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          componentId: payload.componentId,
+          providerJobId: null,
+          status: "QUEUED",
+          submissionStatus: "QUEUED",
+        },
+      },
+      { status: 202 },
+    );
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -92,33 +106,10 @@ export async function POST(request: Request) {
       );
     }
 
-    if (error instanceof HeygenVideoServiceError) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: error.status },
-      );
-    }
-
     if (error instanceof HeygenRequestValidationError) {
       return NextResponse.json(
         { error: error.message },
         { status: error.status },
-      );
-    }
-
-    if (error instanceof HeygenVideoSubmissionUnknownError) {
-      return NextResponse.json(
-        {
-          success: true,
-          data: {
-            jobId: error.jobId,
-            providerJobId: null,
-            status: "RETRY_SCHEDULED",
-            submissionUnknown: true,
-          },
-          warning: error.message,
-        },
-        { status: 202 },
       );
     }
 

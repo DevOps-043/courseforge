@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { createClient } from "@/utils/supabase/server";
+import { getErrorMessage } from "@/lib/errors";
+import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
+import { signBackgroundPayload } from "@/lib/server/background-payload-signature";
 import type { MaterialAssets } from "@/domains/materials/types/materials.types";
 import {
   getAuthenticatedUser,
@@ -239,13 +242,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const {
-    componentId,
-    forceRegenerate = false,
-    regenerationRequestId,
-    slideTemplateRunId,
-    ...input
-  } = parsed.data;
+  const { componentId } = parsed.data;
   const internalRequest = getAutomationRequest(request, componentId);
   const supabase = internalRequest ? null : await createClient();
   const authenticatedUser = internalRequest
@@ -262,6 +259,74 @@ export async function POST(request: Request) {
       { status: 404 },
     );
   }
+
+  const queueContext = await resolveProductionComponentContext({
+    componentId,
+    supabase: authorizedComponent.admin,
+  });
+  if (!queueContext.organizationId) {
+    return NextResponse.json(
+      { error: "No se pudo resolver la organizacion del componente." },
+      { status: 409 },
+    );
+  }
+
+  const backgroundRequest = {
+    createdBy: authenticatedUser.userId,
+    organizationId: queueContext.organizationId,
+    payload: parsed.data,
+  };
+  const queuedAt = new Date().toISOString();
+  try {
+    await callBackgroundFunctionJson(
+      "slides-generation-background",
+      signBackgroundPayload(backgroundRequest),
+      {
+        fallbackError: "No se pudo iniciar el worker de slides.",
+        localHandlerLoader: async () => ({
+          handler: async () => {
+            const result = await runSlideDeckGeneration({
+              authorizedComponent,
+              createdBy: authenticatedUser.userId,
+              payload: parsed.data,
+            });
+            return { statusCode: result.status, body: await result.text() };
+          },
+        }),
+      },
+    );
+  } catch (error) {
+    return NextResponse.json(
+      { error: getErrorMessage(error, "No se pudo iniciar el worker de slides.") },
+      { status: 503 },
+    );
+  }
+
+  return NextResponse.json(
+    {
+      success: true,
+      job: null,
+      queuedAt,
+      status: "QUEUED",
+      submissionStatus: "QUEUED",
+    },
+    { status: 202 },
+  );
+}
+
+export async function runSlideDeckGeneration(params: {
+  authorizedComponent: NonNullable<Awaited<ReturnType<typeof getAuthorizedMaterialComponentAdmin>>>;
+  createdBy: string;
+  payload: z.infer<typeof requestBodySchema>;
+}) {
+  const {
+    componentId,
+    forceRegenerate = false,
+    regenerationRequestId,
+    slideTemplateRunId,
+    ...input
+  } = params.payload;
+  const authorizedComponent = params.authorizedComponent;
 
   const context = await resolveProductionComponentContext({
     componentId,
@@ -311,7 +376,7 @@ export async function POST(request: Request) {
   });
   const job = await createOrReuseProductionJob(authorizedComponent.admin, {
     context,
-    createdBy: authenticatedUser.userId,
+    createdBy: params.createdBy,
     idempotencyKey,
     inputSnapshot,
     jobType: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
@@ -446,7 +511,7 @@ export async function POST(request: Request) {
       ? await generateSlideVisualAssets({
           admin: authorizedComponent.admin,
           context,
-          createdBy: authenticatedUser.userId,
+          createdBy: params.createdBy,
           deckSpec: plannedDeckSpec,
           mode: "background",
         })
@@ -455,7 +520,7 @@ export async function POST(request: Request) {
       ? await generateSlideVisualAssets({
           admin: authorizedComponent.admin,
           context,
-          createdBy: authenticatedUser.userId,
+          createdBy: params.createdBy,
           deckSpec: backgroundVisuals.deckSpec,
           mode: "supporting",
         })
@@ -581,8 +646,7 @@ export async function POST(request: Request) {
       throw assetError;
     }
 
-    const updatedAssets: MaterialAssets = {
-      ...currentAssets,
+    const assetsPatch: Partial<MaterialAssets> = {
       final_video_assembly_stale: true,
       production_status: "DECK_READY",
       slides_url: htmlUpload.publicUrl,
@@ -603,10 +667,13 @@ export async function POST(request: Request) {
       updated_at: now,
     };
 
-    const { error: updateError } = await authorizedComponent.admin
-      .from("material_components")
-      .update({ assets: updatedAssets })
-      .eq("id", componentId);
+    const { data: updatedAssets, error: updateError } = await authorizedComponent.admin.rpc(
+      "patch_material_component_assets",
+      {
+        p_assets_patch: assetsPatch,
+        p_component_id: componentId,
+      },
+    );
 
     if (updateError) {
       throw updateError;

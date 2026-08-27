@@ -97,6 +97,7 @@ export async function GET(request: Request) {
           jobId: latestJob.id,
           outputSnapshot: latestJob.output_snapshot || {},
           providerJobId: latestJob.provider_job_id || null,
+          providerError: latestJob.provider_error || null,
           providerModel: latestJob.provider_model || null,
           status: latestJob.status,
           updatedAt: latestJob.updated_at || null,

@@ -139,6 +139,14 @@ export const heygenJobStatusResponseSchema = z.object({
     .object({
       id: z.string().uuid(),
       publicUrl: z.string().url(),
+      storagePath: z.string().min(1),
+    })
+    .nullable(),
+  voiceAsset: z
+    .object({
+      durationSeconds: z.number().positive().nullable(),
+      id: z.string().uuid(),
+      publicUrl: z.string().url(),
       providerRequestId: z.string().nullable(),
       storagePath: z.string().min(1),
       wordTimestamps: z.array(z.object({
@@ -148,16 +156,10 @@ export const heygenJobStatusResponseSchema = z.object({
       })),
     })
     .nullable(),
-  voiceAsset: z
-    .object({
-      durationSeconds: z.number().positive().nullable(),
-      id: z.string().uuid(),
-      publicUrl: z.string().url(),
-      storagePath: z.string().min(1),
-    })
-    .nullable(),
   jobId: z.string().uuid(),
   providerJobId: z.string().nullable(),
+  providerErrorCode: z.string().nullable().optional(),
+  providerErrorMessage: z.string().nullable().optional(),
   providerStatus: z.string().nullable().optional(),
   scriptHash: z.string().nullable(),
   status: z.string(),
