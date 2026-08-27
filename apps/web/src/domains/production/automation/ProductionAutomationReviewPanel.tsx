@@ -18,6 +18,7 @@ type AvatarConfiguration = {
   voicePresetId: string;
 };
 type SlidesConfiguration = {
+  appearance: "light" | "dark";
   generateVisuals: boolean;
   locale: "es" | "en";
   slideTemplateRunId?: string;
@@ -30,7 +31,7 @@ type Run = { id: string; status: string; configuration?: { defaults?: Partial<Pr
 
 const emptyProfile: Profile = {
   avatar: { aspectRatio: "16:9", avatarPresetId: "", caption: false, engine: "avatar_iv", generationMode: "scene_clips", outputFormat: "mp4", resolution: "1080p", voicePresetId: "" },
-  slides: { generateVisuals: true, locale: "es", template: "concept-lesson" },
+  slides: { appearance: "light", generateVisuals: true, locale: "es", template: "concept-lesson" },
 };
 
 export function ProductionAutomationReviewPanel({ artifactId }: { artifactId: string }) {
@@ -52,7 +53,12 @@ export function ProductionAutomationReviewPanel({ artifactId }: { artifactId: st
     const nextRun = payload.data as Run;
     setRun(nextRun);
     const defaults = nextRun.configuration?.defaults;
-    if (defaults?.avatar && defaults?.slides) setProfile(defaults as Profile);
+    if (defaults?.avatar && defaults?.slides) {
+      setProfile({
+        avatar: { ...emptyProfile.avatar, ...defaults.avatar },
+        slides: { ...emptyProfile.slides, ...defaults.slides },
+      } as Profile);
+    }
     setOverrides(Object.fromEntries(nextRun.items.flatMap((item) => item.configuration?.avatar || item.configuration?.slides
       ? [[item.material_component_id, { ...emptyProfile, ...item.configuration, avatar: { ...emptyProfile.avatar, ...item.configuration.avatar }, slides: { ...emptyProfile.slides, ...item.configuration.slides } } as Profile]]
       : [])));
@@ -199,6 +205,7 @@ function ProfileFields({ value, onChange, avatars, voices, templates, label, com
     <label className="text-xs font-medium"><Help text="Resolución de los assets de avatar. Verifica que el plan de HeyGen soporte la resolución elegida." /> Resolución<select className={inputClass} value={value.avatar.resolution} onChange={(event) => updateAvatar("resolution", event.target.value as AvatarConfiguration["resolution"])}><option value="720p">720p</option><option value="1080p">1080p</option><option value="4k">4K</option></select></label>
     <label className="text-xs font-medium"><Help text="Estructura editorial que el motor usará para organizar el deck generado." /> Plantilla de deck<select className={inputClass} value={value.slides.template} onChange={(event) => updateSlides("template", event.target.value as SlidesConfiguration["template"])}><option value="concept-lesson">Lección conceptual</option><option value="course-module">Módulo de curso</option><option value="data-explainer">Explicador de datos</option><option value="demo-guide">Guía demostrativa</option></select></label>
     <label className="text-xs font-medium"><Help text="Diseño visual reutilizable. Diseño estándar usa los estilos base; una plantilla guardada aplica su sistema de diseño." /> Plantilla visual<select className={inputClass} value={value.slides.slideTemplateRunId || ""} onChange={(event) => updateSlides("slideTemplateRunId", event.target.value || undefined)}><option value="">Diseño estándar</option>{templates.filter((template) => template.status === "PACKAGED").map((template) => <option key={template.id} value={template.id}>{template.title}</option>)}</select></label>
+    <label className="text-xs font-medium"><Help text="Apariencia del deck renderizado. Claro es el valor predeterminado; oscuro conserva los acentos de marca sobre superficies SofLIA oscuras." /> Apariencia de slides<select className={inputClass} value={value.slides.appearance} onChange={(event) => updateSlides("appearance", event.target.value as SlidesConfiguration["appearance"])}><option value="light">Claro</option><option value="dark">Oscuro</option></select></label>
   </div><label className="mt-5 flex items-center gap-2 text-xs font-medium text-[#0A2540] dark:text-white"><input className="h-4 w-4 rounded border-[#6C757D] text-[#00A98F] focus:ring-[#00D4B3]" type="checkbox" checked={value.avatar.caption} onChange={(event) => updateAvatar("caption", event.target.checked)} /> <Help text="Solicita captions/subtítulos al proveedor del avatar." /> Incluir captions en avatar</label></fieldset>;
 }
 

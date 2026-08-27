@@ -51,6 +51,7 @@ export interface ProductionAvatarConfiguration {
 }
 
 export interface ProductionSlidesConfiguration {
+  appearance: "light" | "dark";
   generateVisuals: boolean;
   locale: "es" | "en";
   slideTemplateRunId?: string;

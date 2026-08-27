@@ -280,6 +280,16 @@ interface MaterialComponentAdminRow {
   type?: string | null;
 }
 
+export class MaterialComponentLookupUnavailableError extends Error {
+  readonly code = "MATERIAL_COMPONENT_LOOKUP_UNAVAILABLE";
+  readonly retryable = true;
+
+  constructor() {
+    super("No se pudo consultar temporalmente el componente. Intenta de nuevo.");
+    this.name = "MaterialComponentLookupUnavailableError";
+  }
+}
+
 function getArtifactIdFromComponent(component: MaterialComponentAdminRow) {
   const lessonRelation = Array.isArray(component.material_lessons)
     ? component.material_lessons[0]
@@ -314,7 +324,7 @@ export async function getAuthorizedMaterialComponentAdmin(componentId: string) {
 
   if (error) {
     console.error("[MaterialComponentAccess] Error loading component:", error);
-    return null;
+    throw new MaterialComponentLookupUnavailableError();
   }
 
   const normalizedComponent = component as MaterialComponentAdminRow | null;

@@ -251,6 +251,7 @@ export interface MaterialAssets {
         width?: number;
     };
     slides?: {
+        appearance?: 'light' | 'dark';
         open_design_project_id?: string;
         html_content_path?: string;
         html_public_url?: string;

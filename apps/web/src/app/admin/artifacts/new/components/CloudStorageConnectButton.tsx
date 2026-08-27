@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import type { CloudStorageProvider } from "@/domains/production/cloud-storage/types";
 
 interface CloudStorageConnectButtonProps {
@@ -18,6 +19,7 @@ export function CloudStorageConnectButton({
   className,
   provider,
 }: CloudStorageConnectButtonProps) {
+  const router = useRouter();
   const handleConnect = () => {
     const popup = window.open(
       CONNECT_URLS[provider],
@@ -30,23 +32,32 @@ export function CloudStorageConnectButton({
       return;
     }
 
+    let hasSynchronized = false;
+    let intervalId: number | undefined;
+    const synchronizeConnection = () => {
+      if (hasSynchronized) return;
+      hasSynchronized = true;
+      if (intervalId !== undefined) window.clearInterval(intervalId);
+      router.refresh();
+    };
+
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type !== "courseforge:cloud-storage-oauth") return;
 
       window.removeEventListener("message", handleMessage);
       if (event.data?.status === "success") {
-        window.location.reload();
+        synchronizeConnection();
       }
     };
 
     window.addEventListener("message", handleMessage);
 
-    const intervalId = window.setInterval(() => {
+    intervalId = window.setInterval(() => {
       if (!popup.closed) return;
       window.clearInterval(intervalId);
       window.removeEventListener("message", handleMessage);
-      window.location.reload();
+      synchronizeConnection();
     }, 700);
   };
 

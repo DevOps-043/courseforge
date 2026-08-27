@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
+  getArtifactGenerationSnapshotAction,
   regenerateArtifactAction,
   updateArtifactContentAction,
   updateArtifactStatusAction,
@@ -57,7 +57,7 @@ function buildEditedContent(artifact: ArtifactViewRecord): ArtifactEditedContent
 }
 
 export default function ArtifactClientView({
-  artifact,
+  artifact: initialArtifact,
   publicationRequest,
   publicationLessons,
   profile,
@@ -69,7 +69,7 @@ export default function ArtifactClientView({
   profile?: PublicationProfile;
   basePath?: string;
 }) {
-  const router = useRouter();
+  const [artifact, setArtifact] = useState(initialArtifact);
   const [activeTab, setActiveTab] = useState<"content" | "validation">(
     "content",
   );
@@ -101,17 +101,12 @@ export default function ArtifactClientView({
   }>({ show: false, message: "", type: "info" });
 
   useEffect(() => {
-    setLocalProductionComplete(Boolean(artifact.production_complete));
-  }, [artifact.production_complete]);
+    setArtifact(initialArtifact);
+  }, [initialArtifact]);
 
   useEffect(() => {
-    const nextStep = getWorkflowStep(buildWorkflowSnapshot(artifact, publicationRequest));
-    // Reactive automatic step changes only apply to AI steps (1-5) to avoid hijacking human edits
-    if (currentStep < 6 || nextStep < 6) {
-      setCurrentStep(nextStep);
-    }
-  }, [artifact, publicationRequest]);
-
+    setLocalProductionComplete(Boolean(artifact.production_complete));
+  }, [artifact.production_complete]);
 
   useEffect(() => {
     setEditedContent(buildEditedContent(artifact));
@@ -119,13 +114,30 @@ export default function ArtifactClientView({
 
   useEffect(() => {
     if (artifact.state === "GENERATING" || isRegenerating) {
-      const interval = setInterval(() => {
-        router.refresh();
-      }, ARTIFACT_REFRESH_POLL_INTERVAL_MS);
+      let cancelled = false;
+      const syncGenerationSnapshot = async () => {
+        try {
+          const result = await getArtifactGenerationSnapshotAction(artifact.id);
+          if (!result.success || cancelled) return;
+          setArtifact((current) => ({ ...current, ...result.artifact }));
+        } catch (error) {
+          // A transient server-action transport failure must not interrupt the
+          // user's current workspace. The next polling interval can retry.
+          if (!cancelled) {
+            console.warn("[ArtifactDetail] Generation snapshot sync failed", error);
+          }
+        }
+      };
 
-      return () => clearInterval(interval);
+      void syncGenerationSnapshot();
+      const interval = setInterval(() => void syncGenerationSnapshot(), ARTIFACT_REFRESH_POLL_INTERVAL_MS);
+
+      return () => {
+        cancelled = true;
+        clearInterval(interval);
+      };
     }
-  }, [artifact.state, isRegenerating, router]);
+  }, [artifact.id, artifact.state, isRegenerating]);
 
   useEffect(() => {
     const enabled = currentStep === 7;
@@ -192,8 +204,8 @@ export default function ArtifactClientView({
       }
 
       setEditingSection(null);
+      setArtifact((current) => ({ ...current, ...updates }));
       showToast("Cambios guardados.", "success");
-      router.refresh();
     } catch (error) {
       console.error(error);
       showToast("Error de conexiҳn", "error");
@@ -213,7 +225,13 @@ export default function ArtifactClientView({
       showToast("Regeneraciҳn iniciada.", "info");
       setReviewState("pending");
       setFeedback("");
-      router.refresh();
+      setArtifact((current) => ({
+        ...current,
+        descripcion: {},
+        nombres: [],
+        objetivos: [],
+        state: "GENERATING",
+      }));
     } catch (error) {
       console.error(error);
       showToast("Error al regenerar.", "error");
@@ -231,8 +249,8 @@ export default function ArtifactClientView({
       }
 
       setReviewState("approved");
+      setArtifact((current) => ({ ...current, state: "APPROVED" }));
       showToast("Fase 1 Aprobada.", "success");
-      router.refresh();
     } catch (error) {
       console.error(error);
       showToast("Error de conexiҳn.", "error");
@@ -248,8 +266,8 @@ export default function ArtifactClientView({
       }
 
       setReviewState("rejected");
+      setArtifact((current) => ({ ...current, state: "REJECTED" }));
       showToast("Fase 1 Rechazada.", "info");
-      router.refresh();
     } catch (error) {
       console.error(error);
       showToast("Error de conexiҳn.", "error");

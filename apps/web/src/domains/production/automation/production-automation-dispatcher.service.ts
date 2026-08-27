@@ -253,6 +253,7 @@ export class ProductionAutomationDispatcher {
     const { POST } = await import("@/app/api/production/slides/generate/route");
     const response = await POST(new Request("http://production-automation.local/api/production/slides/generate", {
       body: JSON.stringify({
+        appearance: params.configuration.appearance,
         componentId: params.componentId,
         generateVisuals: params.configuration.generateVisuals,
         locale: params.configuration.locale,

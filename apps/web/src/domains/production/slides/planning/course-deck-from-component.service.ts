@@ -512,6 +512,7 @@ export function buildCourseDeckSpecFromComponent(params: BuildCourseDeckSpecPara
       : "component_content";
 
   return courseDeckSpecSchema.parse({
+    appearance: params.input.appearance,
     artifactId: params.artifactId,
     designSystem: {
       brandLabel: params.input.metadata?.brandLabel || "SofLIA - Engine",

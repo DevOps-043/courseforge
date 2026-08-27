@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ArrowLeft, FileJson, FileText, Layers3, Loader2, RefreshCw, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 import { readApiResponse } from "@/lib/client/api-response";
@@ -72,6 +71,7 @@ Comparacion de esfuerzos
 - Slides: 3 horas`;
 
 type SlidesInputMode = "simple" | "json";
+type SlidesAppearance = "light" | "dark";
 
 function parseCustomSlides(rawValue: string) {
   const trimmed = rawValue.trim();
@@ -127,7 +127,6 @@ export function SofliaEngineSlidesGenerator({
   initialComponentId,
   returnTo,
 }: SofliaEngineSlidesGeneratorProps) {
-  const router = useRouter();
   const initialCandidate = initialComponentId
     ? candidates.find((candidate) => candidate.componentId === initialComponentId)
     : null;
@@ -139,6 +138,7 @@ export function SofliaEngineSlidesGenerator({
   );
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
+  const [appearance, setAppearance] = useState<SlidesAppearance>("light");
   const [slidesInputMode, setSlidesInputMode] = useState<SlidesInputMode>("simple");
   const [simpleSlidesText, setSimpleSlidesText] = useState("");
   const [customSlidesJson, setCustomSlidesJson] = useState("");
@@ -170,6 +170,7 @@ export function SofliaEngineSlidesGenerator({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          appearance,
           componentId: effectiveComponentId,
           customSlides,
           locale: "es",
@@ -201,7 +202,6 @@ export function SofliaEngineSlidesGenerator({
           ? "Deck SofLIA - Engine recuperado"
           : "Deck SofLIA - Engine generado",
       );
-      router.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo generar el deck.");
     } finally {
@@ -272,6 +272,16 @@ export function SofliaEngineSlidesGenerator({
             <span>Subtítulo <em>opcional</em></span>
             <input value={subtitle} onChange={(event) => setSubtitle(event.target.value)} placeholder="Contexto o promesa" />
           </label>
+
+          <EngineSelect
+            label="Apariencia de las diapositivas"
+            value={appearance}
+            onValueChange={(value) => setAppearance(value as SlidesAppearance)}
+            options={[
+              { value: "light", label: "Claro", description: "Predeterminado SofLIA" },
+              { value: "dark", label: "Oscuro", description: "Superficies oscuras con acentos de marca" },
+            ]}
+          />
 
           <div className="engine-source-status">
             <span className={selectedCandidate?.hasPreparedSpec ? "is-ready" : ""} />

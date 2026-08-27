@@ -1,6 +1,7 @@
 import { renderCourseChartSvg } from "../charts/svg-chart-renderer.service";
 import { repairCommonUtf8Mojibake } from "../../text/mojibake.service";
 import type { CourseDeckSpec, CourseSlideSpec } from "../specs/course-deck.schema";
+import { resolveCourseDeckTheme } from "./course-deck-theme.service";
 
 function escapeHtml(value: string) {
   return repairCommonUtf8Mojibake(value)
@@ -252,6 +253,7 @@ function renderSlide(slide: CourseSlideSpec, deck: CourseDeckSpec, isActive: boo
 }
 
 function renderCss(deck: CourseDeckSpec) {
+  const theme = resolveCourseDeckTheme(deck);
   const displayFont = deck.designSystem.fontPairing === "system_sans"
     ? "Arial, Helvetica, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
     : deck.designSystem.fontPairing === "technical_mono"
@@ -263,14 +265,18 @@ function renderCss(deck: CourseDeckSpec) {
   return `:root {
   --font-display: ${displayFont};
   --font-ui: ${bodyFont};
-  --bg: ${deck.designSystem.background || "#F3F7F8"};
-  --bg-positive: #E8FAF7;
-  --shell: ${deck.designSystem.surface || "#FFFFFF"};
-  --blue-deep: ${deck.designSystem.text || "#0A2540"};
-  --accent: ${deck.designSystem.accent || "#23AEA8"};
-  --accent-accessible: ${deck.designSystem.accent2 || "#138A87"};
-  --muted: ${deck.designSystem.muted || "#6C7887"};
-  --grid-line: rgba(10, 37, 64, 0.10);
+  color-scheme: ${deck.appearance};
+  --bg: ${theme.background};
+  --bg-positive: ${theme.backgroundPositive};
+  --shell: ${theme.surface};
+  --shell-rgb: ${theme.surfaceRgb};
+  --blue-deep: ${theme.text};
+  --chrome-rgb: ${theme.chromeRgb};
+  --image-pane: ${theme.imagePane};
+  --accent: ${theme.accent};
+  --accent-accessible: ${theme.accent2};
+  --muted: ${theme.muted};
+  --grid-line: rgba(var(--chrome-rgb), 0.10);
   --type-display-hero: 126px;
   --type-display-large: 86px;
   --type-lead: 30px;
@@ -295,15 +301,15 @@ html, body {
   overflow: hidden;
   background: var(--bg);
   transform-origin: top left;
-  box-shadow: 0 30px 80px rgba(10, 37, 64, 0.15);
+  box-shadow: 0 30px 80px rgba(var(--chrome-rgb), 0.15);
 }
 .deck-stage::before {
   content: '';
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(10,37,64,.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(10,37,64,.045) 1px, transparent 1px);
+    linear-gradient(rgba(var(--chrome-rgb),.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--chrome-rgb),.045) 1px, transparent 1px);
   background-size: 80px 80px;
   pointer-events: none;
   z-index: 0;
@@ -344,7 +350,7 @@ html, body {
   height: ${deck.height}px;
   position: relative;
   overflow: hidden;
-  background: #E2E8F0;
+  background: var(--image-pane);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -368,8 +374,8 @@ html, body {
   inset: 0;
   background-image:
     radial-gradient(circle at 30% 30%, rgba(35,174,168,.22), transparent 0 22%, transparent 23%),
-    linear-gradient(rgba(10,37,64,.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(10,37,64,.08) 1px, transparent 1px);
+    linear-gradient(rgba(var(--chrome-rgb),.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--chrome-rgb),.08) 1px, transparent 1px);
   background-size: auto, 64px 64px, 64px 64px;
 }
 .visual-object {
@@ -378,10 +384,10 @@ html, body {
   padding: 54px;
   position: relative;
   z-index: 2;
-  border: 1px solid rgba(10,37,64,.16);
-  background: rgba(255,255,255,.82);
+  border: 1px solid rgba(var(--chrome-rgb),.16);
+  background: rgba(var(--shell-rgb),.82);
   backdrop-filter: blur(8px);
-  box-shadow: 0 24px 70px rgba(10,37,64,.12);
+  box-shadow: 0 24px 70px rgba(var(--chrome-rgb),.12);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -390,7 +396,7 @@ html, body {
   content: '';
   position: absolute;
   inset: 34px;
-  border: 1px solid rgba(10,37,64,.12);
+  border: 1px solid rgba(var(--chrome-rgb),.12);
 }
 .visual-orbit {
   position: absolute;
@@ -541,7 +547,7 @@ html, body {
   margin-top: 30px;
   max-width: 760px;
   border-left: 4px solid var(--accent);
-  background: rgba(255,255,255,.82);
+  background: rgba(var(--shell-rgb),.82);
   padding: 24px 30px;
   font-size: 24px;
   line-height: 1.45;
@@ -579,7 +585,7 @@ html, body {
   border: 1px solid var(--grid-line);
   padding: 46px 40px;
   background: var(--shell);
-  box-shadow: 0 10px 30px rgba(10,37,64,.04);
+  box-shadow: 0 10px 30px rgba(var(--chrome-rgb),.04);
   position: relative;
 }
 .card-index {
@@ -615,19 +621,19 @@ html, body {
 }
 .chart-card {
   width: 760px;
-  background: rgba(255,255,255,.94);
-  border: 1px solid rgba(10,37,64,.12);
+  background: rgba(var(--shell-rgb),.94);
+  border: 1px solid rgba(var(--chrome-rgb),.12);
   padding: 34px;
-  box-shadow: 0 24px 70px rgba(10,37,64,.10);
+  box-shadow: 0 24px 70px rgba(var(--chrome-rgb),.10);
 }
 .cf-chart { width: 100%; height: auto; display: block; }
 .chart-title { font-size: 26px; font-weight: 800; fill: var(--blue-deep); }
 .chart-subtitle, .chart-label { font-size: 18px; fill: var(--muted); }
 .chart-value { font-size: 19px; font-weight: 800; fill: var(--blue-deep); }
 .chart-big { font-size: 58px; font-weight: 900; fill: var(--blue-deep); }
-.chart-track { fill: rgba(10,37,64,.08); }
-.chart-axis { stroke: rgba(10,37,64,.32); stroke-width: 2; }
-.chart-grid { stroke: rgba(10,37,64,.10); stroke-width: 1.5; }
+.chart-track { fill: rgba(var(--chrome-rgb),.08); }
+.chart-axis { stroke: rgba(var(--chrome-rgb),.32); stroke-width: 2; }
+.chart-grid { stroke: rgba(var(--chrome-rgb),.10); stroke-width: 1.5; }
 .brand-mark {
   position: absolute;
   top: 60px;
@@ -688,9 +694,9 @@ html, body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: rgba(255,255,255,.95);
-  border: 1px solid rgba(10,37,64,.10);
-  box-shadow: 0 8px 30px rgba(10,37,64,.10);
+  background: rgba(var(--shell-rgb),.95);
+  border: 1px solid rgba(var(--chrome-rgb),.10);
+  box-shadow: 0 8px 30px rgba(var(--chrome-rgb),.10);
   padding: 5px;
   z-index: 999;
   font-family: var(--font-ui);
@@ -712,12 +718,12 @@ html, body {
   letter-spacing: .10em;
   color: var(--blue-deep);
 }
-.deck-count .total { color: rgba(10,37,64,.45); }
+.deck-count .total { color: rgba(var(--chrome-rgb),.45); }
 .deck-hint {
   position: fixed;
   bottom: 28px;
   right: 28px;
-  color: rgba(10,37,64,.45);
+  color: rgba(var(--chrome-rgb),.45);
   font-size: 11px;
   letter-spacing: .10em;
   text-transform: uppercase;
@@ -841,7 +847,7 @@ export function renderCourseDeckHtml(deck: CourseDeckSpec) {
     .join("\n");
 
   return `<!doctype html>
-<html lang="${deck.locale}">
+<html lang="${deck.locale}" data-appearance="${deck.appearance}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=${deck.width}, initial-scale=1">

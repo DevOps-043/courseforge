@@ -10,6 +10,7 @@ import {
   getAuthenticatedUser,
   getAuthorizedMaterialComponentAdmin,
   getServiceRoleClient,
+  MaterialComponentLookupUnavailableError,
 } from "@/lib/server/artifact-action-auth";
 import { verifyBackgroundPayload } from "@/lib/server/background-payload-signature";
 import {
@@ -52,6 +53,7 @@ const BUCKET = "production-assets";
 const SLIDE_COPY_PIPELINE_VERSION = "visible-copy-synthesis-v4";
 
 const requestBodySchema = slideDeckGenerateInputSchema.extend({
+  appearanceOnly: z.boolean().optional(),
   componentId: z.string().min(1),
   forceRegenerate: z.boolean().optional(),
   regenerationRequestId: z.string().uuid().optional(),
@@ -250,9 +252,27 @@ export async function POST(request: Request) {
     : await getAuthenticatedUser(supabase!);
   if (!authenticatedUser) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
 
-  const authorizedComponent = internalRequest
-    ? await getInternalAuthorizedComponent(componentId, internalRequest.organizationId)
-    : await getAuthorizedMaterialComponentAdmin(componentId);
+  let authorizedComponent;
+  try {
+    authorizedComponent = internalRequest
+      ? await getInternalAuthorizedComponent(componentId, internalRequest.organizationId)
+      : await getAuthorizedMaterialComponentAdmin(componentId);
+  } catch (error) {
+    if (error instanceof MaterialComponentLookupUnavailableError) {
+      return NextResponse.json(
+        {
+          code: error.code,
+          error: error.message,
+          retryable: error.retryable,
+        },
+        {
+          headers: { "Retry-After": "5" },
+          status: 503,
+        },
+      );
+    }
+    throw error;
+  }
   if (!authorizedComponent) {
     return NextResponse.json(
       { error: "Componente no encontrado para esta empresa" },
@@ -320,6 +340,7 @@ export async function runSlideDeckGeneration(params: {
   payload: z.infer<typeof requestBodySchema>;
 }) {
   const {
+    appearanceOnly = false,
     componentId,
     forceRegenerate = false,
     regenerationRequestId,
@@ -332,7 +353,7 @@ export async function runSlideDeckGeneration(params: {
     componentId,
     supabase: authorizedComponent.admin,
   });
-  if (internalRequest && context.organizationId !== internalRequest.organizationId) {
+  if (context.artifactId !== authorizedComponent.artifactId) {
     return NextResponse.json({ error: "Componente no encontrado para esta empresa" }, { status: 404 });
   }
   const currentAssets = (authorizedComponent.component.assets || {}) as MaterialAssets;
@@ -357,6 +378,7 @@ export async function runSlideDeckGeneration(params: {
     sourcePack,
   });
   const inputSnapshot = {
+    appearance_only: appearanceOnly,
     component_id: componentId,
     copy_synthesis: {
       signature: synthesisSignature,
@@ -418,7 +440,7 @@ export async function runSlideDeckGeneration(params: {
         assets: currentAssets,
         componentId,
         copySynthesisSignature: synthesisSignature,
-        forceRegenerate,
+        forceRegenerate: forceRegenerate && !appearanceOnly,
         slideTemplateRunId,
       })
       ? null
@@ -489,6 +511,7 @@ export async function runSlideDeckGeneration(params: {
     const deckSpecWithTemplate = selectedSlideTemplate
       ? courseDeckSpecSchema.parse({
           ...generatedDeckSpec,
+          appearance: input.appearance,
           designSystem: {
             ...generatedDeckSpec.designSystem,
             accent: selectedSlideTemplate.accent || generatedDeckSpec.designSystem.accent,
@@ -502,10 +525,13 @@ export async function runSlideDeckGeneration(params: {
             visualStyleGuide: selectedSlideTemplate.visualStyleGuide || generatedDeckSpec.designSystem.visualStyleGuide,
           },
         })
-      : generatedDeckSpec;
+      : courseDeckSpecSchema.parse({
+          ...generatedDeckSpec,
+          appearance: input.appearance,
+        });
     const plannedDeckSpec = planDeckVisualAssets({
       deckSpec: deckSpecWithTemplate,
-      forceRegenerate,
+      forceRegenerate: forceRegenerate && !appearanceOnly,
     });
     const backgroundVisuals = input.generateVisuals !== false
       ? await generateSlideVisualAssets({
@@ -567,6 +593,7 @@ export async function runSlideDeckGeneration(params: {
         material_lesson_id: context.materialLessonId,
         lesson_id: context.lessonId,
         metadata: {
+          appearance: deckSpec.appearance,
           copy_pipeline_version: SLIDE_COPY_PIPELINE_VERSION,
           copy_synthesis_signature: synthesisSignature,
           slide_count: deckSpec.slides.length,
@@ -595,6 +622,7 @@ export async function runSlideDeckGeneration(params: {
         material_lesson_id: context.materialLessonId,
         lesson_id: context.lessonId,
         metadata: {
+          appearance: deckSpec.appearance,
           copy_pipeline_version: SLIDE_COPY_PIPELINE_VERSION,
           copy_synthesis_signature: synthesisSignature,
           qa_status: qaReport.status,
@@ -652,6 +680,7 @@ export async function runSlideDeckGeneration(params: {
       slides_url: htmlUpload.publicUrl,
       slides: {
         ...(currentAssets.slides || {}),
+        appearance: deckSpec.appearance,
         copy_pipeline_version: SLIDE_COPY_PIPELINE_VERSION,
         copy_synthesis_signature: synthesisSignature,
         html_content_path: htmlUpload.storagePath,
@@ -684,6 +713,7 @@ export async function runSlideDeckGeneration(params: {
       .update({
         completed_at: now,
         output_snapshot: {
+          appearance: deckSpec.appearance,
           background_visual_job_id: backgroundVisuals.jobId,
           background_visuals_generated: backgroundVisuals.generatedCount,
           html_storage_path: htmlUpload.storagePath,
@@ -750,7 +780,8 @@ async function getInternalAuthorizedComponent(componentId: string, organizationI
     .select("id, type, content, assets, material_lesson_id, material_lessons!inner(materials!inner(artifact_id))")
     .eq("id", componentId)
     .maybeSingle();
-  if (error || !component) return null;
+  if (error) throw new MaterialComponentLookupUnavailableError();
+  if (!component) return null;
   const lesson = Array.isArray(component.material_lessons) ? component.material_lessons[0] : component.material_lessons;
   const materials = Array.isArray(lesson?.materials) ? lesson.materials[0] : lesson?.materials;
   const artifactId = materials?.artifact_id;
@@ -760,6 +791,7 @@ async function getInternalAuthorizedComponent(componentId: string, organizationI
     .select("organization_id")
     .eq("id", artifactId)
     .maybeSingle();
-  if (artifactError || artifact?.organization_id !== organizationId) return null;
+  if (artifactError) throw new MaterialComponentLookupUnavailableError();
+  if (artifact?.organization_id !== organizationId) return null;
   return { admin, artifactId, component };
 }

@@ -17,6 +17,7 @@ const avatarSchema = z.object({
 }).strict();
 
 const slidesSchema = z.object({
+  appearance: z.enum(["light", "dark"]).default("light"),
   generateVisuals: z.boolean(),
   locale: z.enum(["es", "en"]),
   slideTemplateRunId: z.string().uuid().optional(),

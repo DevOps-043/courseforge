@@ -199,7 +199,7 @@ describe("SofLIA Bundle Agent services", () => {
     assert.equal(spec.templateBlueprint.designTokens.text, "#0A2540");
   });
 
-  it("uses white text only when explicitly requested for slide-template conversations", () => {
+  it("keeps accessible dark text when white text is requested for a light slide template", () => {
     const spec = buildSlideTemplateSpecFromConversation({
       title: "Template elegante",
       messages: [
@@ -211,10 +211,10 @@ describe("SofLIA Bundle Agent services", () => {
     });
 
     assert.equal(spec.templateBlueprint.designTokens.background, "#F3F4F6");
-    assert.equal(spec.templateBlueprint.designTokens.text, "#F8FAFC");
+    assert.equal(spec.templateBlueprint.designTokens.text, "#0A2540");
   });
 
-  it("applies white primary and secondary text from explicit slide-template feedback", () => {
+  it("keeps accessible text roles for explicit light slide-template feedback", () => {
     const spec = buildSlideTemplateSpecFromConversation({
       title: "Template elegante",
       messages: [
@@ -226,8 +226,22 @@ describe("SofLIA Bundle Agent services", () => {
     });
 
     assert.equal(spec.templateBlueprint.designTokens.background, "#F3F4F6");
-    assert.equal(spec.templateBlueprint.designTokens.text, "#F8FAFC");
-    assert.equal(spec.templateBlueprint.designTokens.muted, "#F8FAFC");
+    assert.equal(spec.templateBlueprint.designTokens.text, "#0A2540");
+    assert.equal(spec.templateBlueprint.designTokens.muted, "#65758B");
+  });
+
+  it("normalizes dark slide-template requests to the required light base", () => {
+    const spec = buildSlideTemplateSpecFromConversation({
+      title: "Template nocturno",
+      messages: [{
+        role: "USER",
+        content_redacted: "Quiero una plantilla oscura, cinematografica, con fondo negro.",
+      }],
+    });
+
+    assert.equal(spec.templateBlueprint.designTokens.background, "#F7FAFC");
+    assert.equal(spec.templateBlueprint.designTokens.surface, "#FFFFFF");
+    assert.equal(spec.templateBlueprint.designTokens.text, "#0A2540");
   });
 
   it("honors explicitly requested slide-template slide types", () => {

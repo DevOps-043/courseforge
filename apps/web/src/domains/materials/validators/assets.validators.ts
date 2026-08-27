@@ -188,6 +188,7 @@ export const animatedDeckSchema = z.object({
 
 // Schema for Slides asset group
 export const slidesSchema = z.object({
+  appearance: z.enum(["light", "dark"]).optional(),
   open_design_project_id: z.string().trim().optional(),
   html_content_path: z.string().trim().optional(),
   html_public_url: z.string().url().optional(),

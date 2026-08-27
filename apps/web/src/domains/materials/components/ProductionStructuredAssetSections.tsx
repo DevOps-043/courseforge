@@ -645,7 +645,11 @@ interface SofliaHtmlSlidesSectionProps {
   slideTemplateStudioHref?: string;
   sofliaSlidesHref?: string;
   fileRef: React.RefObject<HTMLInputElement | null>;
-  onGenerateSofliaSlides: (slideTemplateRunId?: string | null) => void;
+  onGenerateSofliaSlides: (
+    slideTemplateRunId?: string | null,
+    appearance?: "light" | "dark",
+    appearanceOnly?: boolean,
+  ) => void;
   onSelectSlideTemplate?: (slideTemplateRunId: string | null) => void;
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onPrepareAnimatedDeck: (htmlContentPath: string) => Promise<boolean>;
@@ -686,6 +690,9 @@ export function SofliaHtmlSlidesSection({
   clearDriveSearchResults,
 }: SofliaHtmlSlidesSectionProps) {
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
+  const [selectedAppearance, setSelectedAppearance] = useState<"light" | "dark">(
+    slides?.appearance || "light",
+  );
   const animatedDeck = slides?.animated_deck;
   const qaStatus = typeof slides?.qa_report?.status === "string"
     ? slides.qa_report.status
@@ -699,6 +706,9 @@ export function SofliaHtmlSlidesSection({
   const selectedSlideTemplate = slideTemplates.find(
     (template) => template.id === selectedSlideTemplateRunId,
   );
+  useEffect(() => {
+    setSelectedAppearance(slides?.appearance || "light");
+  }, [slides?.appearance]);
   const slideImages = useMemo(
     () => [...(slides?.images || [])].sort((left, right) => left.slide_index - right.slide_index),
     [slides?.images],
@@ -756,7 +766,7 @@ export function SofliaHtmlSlidesSection({
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           {showSofliaGeneration && (
             <button
-              onClick={() => onGenerateSofliaSlides(selectedSlideTemplateRunId || null)}
+              onClick={() => onGenerateSofliaSlides(selectedSlideTemplateRunId || null, selectedAppearance, false)}
               disabled={isGeneratingSofliaSlides}
               className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-sm transition-all disabled:cursor-not-allowed disabled:opacity-70"
             >
@@ -855,6 +865,33 @@ export function SofliaHtmlSlidesSection({
             <span className="shrink-0 rounded-full bg-gray-100 px-2 py-1 text-[10px] font-bold text-gray-600 dark:bg-white/5 dark:text-gray-300">
               {selectedSlideTemplate.layouts.length} layout(s)
             </span>
+          ) : null}
+        </div>
+        <div className="mt-1 flex flex-wrap items-end gap-2 border-t border-gray-100 pt-2 dark:border-[var(--engine-muted)]/10">
+          <div className="min-w-[180px] flex-1">
+            <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              Apariencia
+            </span>
+            <EngineSelect
+              value={selectedAppearance}
+              onValueChange={(value) => setSelectedAppearance(value as "light" | "dark")}
+              disabled={isGeneratingSofliaSlides}
+              options={[
+                { value: "light", label: "Claro · predeterminado SofLIA" },
+                { value: "dark", label: "Oscuro · superficies SofLIA" },
+              ]}
+            />
+          </div>
+          {hasSourceReference ? (
+            <button
+              type="button"
+              onClick={() => onGenerateSofliaSlides(selectedSlideTemplateRunId || null, selectedAppearance, true)}
+              disabled={isGeneratingSofliaSlides || selectedAppearance === (slides?.appearance || "light")}
+              className="inline-flex h-9 items-center gap-1 rounded-lg bg-[#0A2540] px-3 text-[10px] font-bold text-white transition-colors hover:bg-[#0D3B56] disabled:cursor-not-allowed disabled:opacity-50 dark:bg-[#00D4B3] dark:text-[#0A2540]"
+            >
+              {isGeneratingSofliaSlides ? <Loader2 size={11} className="animate-spin" /> : <PanelsTopLeft size={11} />}
+              Aplicar apariencia
+            </button>
           ) : null}
         </div>
       </div>

@@ -683,7 +683,11 @@ export function useProductionAssetState({
   };
 
   // 3. Generated HTML export & Upload ZIP/HTML
-  const handleSofliaEngineSlideGeneration = async (slideTemplateRunId?: string | null) => {
+  const handleSofliaEngineSlideGeneration = async (
+    slideTemplateRunId?: string | null,
+    appearance: "light" | "dark" = slidesAsset?.appearance || "light",
+    appearanceOnly = false,
+  ) => {
     setIsGeneratingSofliaSlides(true);
     try {
       const regenerationRequestId = crypto.randomUUID();
@@ -691,6 +695,8 @@ export function useProductionAssetState({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          appearance,
+          appearanceOnly,
           componentId: component.id,
           forceRegenerate: true,
           locale: "es",
@@ -716,7 +722,22 @@ export function useProductionAssetState({
         data = { success: true, assets: completed.assets };
       }
 
-      const generatedSlides = data.assets?.slides as SlidesAsset | undefined;
+      let generatedSlides = data.assets?.slides as SlidesAsset | undefined;
+      if (appearanceOnly && generatedSlides?.html_content_path) {
+        const prepareResponse = await fetch("/api/production/slides/animated-deck/prepare", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            componentId: component.id,
+            htmlContentPath: generatedSlides.html_content_path,
+          }),
+        });
+        const preparedData = await readApiResponse(prepareResponse);
+        if (!prepareResponse.ok || !preparedData.success || !preparedData.assets?.slides?.animated_deck) {
+          throw new Error(preparedData.error || "La apariencia cambió, pero no se pudo actualizar su vista previa.");
+        }
+        generatedSlides = preparedData.assets.slides as SlidesAsset;
+      }
       const generatedSlidesUrl =
         data.assets?.slides_url || generatedSlides?.html_public_url || slidesUrl;
 
@@ -735,7 +756,9 @@ export function useProductionAssetState({
       }
       onAssetChange?.(component.id, updatedAssets);
       toast.success(
-        data.reused
+        appearanceOnly
+          ? `Apariencia ${appearance === "dark" ? "oscura" : "clara"} aplicada al deck`
+          : data.reused
           ? "Deck SofLIA - Engine recuperado"
           : "Deck SofLIA - Engine regenerado",
       );

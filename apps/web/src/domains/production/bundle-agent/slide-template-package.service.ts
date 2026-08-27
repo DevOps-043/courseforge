@@ -629,6 +629,25 @@ function asPlainRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function isLightTemplateColor(hex: string) {
+  const red = Number.parseInt(hex.slice(1, 3), 16);
+  const green = Number.parseInt(hex.slice(3, 5), 16);
+  const blue = Number.parseInt(hex.slice(5, 7), 16);
+  return (red * 299 + green * 587 + blue * 114) / 1000 >= 150;
+}
+
+function normalizeLightSlideTemplateTokens(
+  tokens: z.infer<typeof slideTemplateDesignTokensSchema>,
+) {
+  return slideTemplateDesignTokensSchema.parse({
+    ...tokens,
+    background: isLightTemplateColor(tokens.background) ? tokens.background : "#F7FAFC",
+    muted: isLightTemplateColor(tokens.muted) ? "#65758B" : tokens.muted,
+    surface: isLightTemplateColor(tokens.surface) ? tokens.surface : "#FFFFFF",
+    text: isLightTemplateColor(tokens.text) ? "#0A2540" : tokens.text,
+  });
+}
+
 function mergeSlideTemplateBlueprintOverride(
   baseBlueprint: z.infer<typeof slideTemplateBlueprintSchema>,
   overrides: unknown,
@@ -644,10 +663,10 @@ function mergeSlideTemplateBlueprintOverride(
       ...baseBlueprint.agents,
       ...asPlainRecord(blueprintOverrides.agents),
     },
-    designTokens: {
+    designTokens: normalizeLightSlideTemplateTokens(slideTemplateDesignTokensSchema.parse({
       ...baseBlueprint.designTokens,
       ...designTokenOverrides,
-    },
+    })),
     layouts: Array.isArray(blueprintOverrides.layouts)
       ? blueprintOverrides.layouts
       : baseBlueprint.layouts,
@@ -726,6 +745,7 @@ function buildSlideTemplateExampleDeck(spec: {
     .map((slideType, index) => createExampleSlide(slideType, index + 1));
 
   return courseDeckSpecSchema.parse({
+    appearance: "light",
     artifactId: "slide-template-example",
     designSystem: {
       accent: spec.templateBlueprint.designTokens.accent,

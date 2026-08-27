@@ -1,6 +1,5 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { getErrorMessage } from '@/lib/errors';
@@ -77,7 +76,6 @@ export default function PublicationClientView({
     profile,
     basePath: _basePath = '/admin',
 }: PublicationClientViewProps) {
-    const router = useRouter();
     const initialMappings = buildInitialVideoMappings(lessons, existingRequest);
     const lockedEmail = profile?.email || null;
     const [courseData, setCourseData] = useState<PublicationCourseData>(() => {
@@ -106,6 +104,9 @@ export default function PublicationClientView({
         useState(false);
     const [isPublishSuccessModalOpen, setIsPublishSuccessModalOpen] =
         useState(false);
+    const [isUpstreamDirty, setIsUpstreamDirty] = useState(
+        Boolean(existingRequest?.upstream_dirty),
+    );
 
     const missingVideos = lessons.filter(
         (lesson) => !videoMappings[lesson.id]?.video_id,
@@ -206,7 +207,6 @@ export default function PublicationClientView({
                 syncedSelectedLessons,
                 'DRAFT',
             );
-            router.refresh();
 
             toast.success(
                 `Videos sincronizados y guardados (${lessonsWithVideo.length} videos, ${syncedCount} con duracion)`,
@@ -237,7 +237,6 @@ export default function PublicationClientView({
             );
         } finally {
             setIsSaving(false);
-            router.refresh();
         }
     };
 
@@ -282,7 +281,7 @@ export default function PublicationClientView({
 
     return (
         <div className={styles.workspace}>
-            {existingRequest?.upstream_dirty && (
+            {isUpstreamDirty && (
                 <div className={styles.upstreamAlert}>
                     <UpstreamChangeAlert
                         source={
@@ -290,18 +289,18 @@ export default function PublicationClientView({
                             'un paso anterior'
                         }
                         onIterate={async () => {
-                            router.refresh();
                             await dismissUpstreamDirtyAction(
                                 'publication_requests',
                                 artifactId,
                             );
+                            setIsUpstreamDirty(false);
                         }}
                         onDismiss={async () => {
                             await dismissUpstreamDirtyAction(
                                 'publication_requests',
                                 artifactId,
                             );
-                            router.refresh();
+                            setIsUpstreamDirty(false);
                         }}
                     />
                 </div>

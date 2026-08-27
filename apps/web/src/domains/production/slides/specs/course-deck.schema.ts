@@ -26,6 +26,8 @@ export const courseSlideLayoutSchema = z.enum([
   "split_reverse",
 ]);
 
+export const courseDeckAppearanceSchema = z.enum(["light", "dark"]);
+
 export const courseVisualAssetPurposeSchema = z.enum(["background", "supporting"]);
 
 export const courseVisualAssetStatusSchema = z.enum([
@@ -170,6 +172,7 @@ export const courseDeckSourceSnapshotSchema = z.object({
 });
 
 export const courseDeckSpecSchema = z.object({
+  appearance: courseDeckAppearanceSchema.default("light"),
   artifactId: z.string().min(1),
   designSystem: courseDeckDesignSystemSchema,
   format: z.literal("16:9"),
@@ -193,6 +196,7 @@ export const customSlideInputSchema = z.object({
 });
 
 export const slideDeckGenerateInputSchema = z.object({
+  appearance: courseDeckAppearanceSchema.default("light"),
   customSlides: z.array(customSlideInputSchema).max(24).optional(),
   generateVisuals: z.boolean().optional(),
   locale: z.enum(["es", "en"]).default("es"),
@@ -205,9 +209,15 @@ export const slideDeckGenerateInputSchema = z.object({
 });
 
 export type CourseChartSpec = z.infer<typeof courseChartSpecSchema>;
+export type CourseDeckAppearance = z.infer<typeof courseDeckAppearanceSchema>;
 export type CourseDeckSpec = z.infer<typeof courseDeckSpecSchema>;
 export type CourseSlideSpec = z.infer<typeof courseSlideSpecSchema>;
 export type CourseVisualAsset = z.infer<typeof courseVisualAssetSchema>;
 export type CourseVisualAssetPurpose = z.infer<typeof courseVisualAssetPurposeSchema>;
 export type CourseVisualAssetSlot = z.infer<typeof courseVisualAssetSlotSchema>;
-export type SlideDeckGenerateInput = z.infer<typeof slideDeckGenerateInputSchema>;
+type ParsedSlideDeckGenerateInput = z.infer<typeof slideDeckGenerateInputSchema>;
+
+/** Input accepted by planning services before Zod applies request defaults. */
+export type SlideDeckGenerateInput = Omit<ParsedSlideDeckGenerateInput, "appearance"> & {
+  appearance?: CourseDeckAppearance;
+};

@@ -10,6 +10,37 @@ import { validateCourseDeckQuality } from "../validation/course-deck-qa.service"
 import { planDeckVisualAssets } from "../visuals/slide-visual-asset-planning.service";
 
 describe("SofLIA - Engine slide deck generation", () => {
+  it("uses the approved light appearance by default", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-light",
+      component: { content: {}, id: "component-light", type: "VIDEO_THEORETICAL" },
+      input: { locale: "es", template: "course-module" },
+    });
+    const html = renderCourseDeckHtml(deck);
+
+    assert.equal(deck.appearance, "light");
+    assert.match(html, /data-appearance="light"/);
+    assert.match(html, /--bg: #F3F7F8/);
+    assert.match(html, /--shell: #FFFFFF/);
+    assert.match(html, /--blue-deep: #0A2540/);
+  });
+
+  it("renders dark appearance from the same content while preserving brand accents", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-dark",
+      component: { content: {}, id: "component-dark", type: "VIDEO_THEORETICAL" },
+      input: { appearance: "dark", locale: "es", template: "course-module" },
+    });
+    const html = renderCourseDeckHtml(deck);
+
+    assert.equal(deck.appearance, "dark");
+    assert.match(html, /data-appearance="dark"/);
+    assert.match(html, /--bg: #0F1419/);
+    assert.match(html, /--shell: #1E2329/);
+    assert.match(html, /--blue-deep: #FFFFFF/);
+    assert.match(html, /--accent: #2d7d6e/i);
+  });
+
   it("keeps generated visual support copy within the compact reading budget", () => {
     const deck = buildCourseDeckSpecFromComponent({
       artifactId: "artifact-1",

@@ -17,7 +17,7 @@ import {
 } from '../types/materials.types';
 import { Loader2, Clapperboard, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { PRODUCTION_COMPLETION_RECHECK_DELAY_MS } from '@/shared/constants/timing';
 import { PRODUCTION_THEME } from './production-asset-ui';
 import { ProductionAutomationReviewPanel } from '@/domains/production/automation/ProductionAutomationReviewPanel';
@@ -35,13 +35,17 @@ interface ProductionGroup {
 }
 
 export function VisualProductionContainer({ artifactId, assetsComplete, onStatusChange }: VisualProductionContainerProps) {
-    const router = useRouter();
     const pathname = usePathname();
     const { materials, getLessonComponents, refresh } = useMaterials(artifactId);
     const [productionItems, setProductionItems] = useState<ProductionGroup[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isAssetsComplete, setIsAssetsComplete] = useState(Boolean(assetsComplete));
     const pendingAssetsRef = useRef<Record<string, Partial<MaterialAssets>>>({});
     const saveQueuesRef = useRef<Map<string, Promise<void>>>(new Map());
+
+    useEffect(() => {
+        setIsAssetsComplete(Boolean(assetsComplete));
+    }, [assetsComplete]);
 
     const adminBasePath = useMemo(() => {
         const adminIndex = pathname.indexOf('/admin');
@@ -169,7 +173,7 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
             }
 
             if (saved) {
-                void refresh().then(() => router.refresh());
+                void refresh();
             }
         })().finally(() => {
                 saveQueuesRef.current.delete(componentId);
@@ -184,7 +188,7 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
         });
         saveQueuesRef.current.set(componentId, queue);
         return queue;
-    }, [refresh, router]);
+    }, [refresh]);
 
     // Calculate global production progress
     const progressStats = useMemo(() => {
@@ -213,27 +217,27 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
             console.log(`[Production] Assets Completion Check: ${progressStats.percentage}% (DB: ${assetsComplete})`);
 
             // If 100% and not marked complete -> Mark complete
-            if (progressStats.percentage === 100 && !assetsComplete) {
+            if (progressStats.percentage === 100 && !isAssetsComplete) {
                 console.log('[Production] Reached 100% of assets. Updating DB...');
 
                 const result = await updateArtifactAssetsCompleteAction(artifactId, true);
                 if (result.success) {
-                    console.log('[Production] DB updated successfully. Refreshing...');
+                    console.log('[Production] DB updated successfully. Synchronizing local completion state...');
                     // Notify parent ONLY after DB confirms success
+                    setIsAssetsComplete(true);
                     if (onStatusChange) onStatusChange(true);
-                    router.refresh();
                 } else {
                     console.error('[Production] DB update failed:', result.error);
                 }
             }
             // If not 100% but marked complete -> Unmark (revert)
-            else if (progressStats.percentage < 100 && assetsComplete) {
+            else if (progressStats.percentage < 100 && isAssetsComplete) {
                 console.log(`[Production] Percentage dropped to ${progressStats.percentage}%. Reverting completion...`);
 
                 const result = await updateArtifactAssetsCompleteAction(artifactId, false);
                 if (result.success) {
+                    setIsAssetsComplete(false);
                     if (onStatusChange) onStatusChange(false);
-                    router.refresh();
                 }
             }
         };
@@ -244,7 +248,7 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
             PRODUCTION_COMPLETION_RECHECK_DELAY_MS,
         );
         return () => clearTimeout(timer);
-    }, [progressStats.percentage, assetsComplete, artifactId, router, productionItems.length, onStatusChange, isLoading]);
+    }, [progressStats.percentage, isAssetsComplete, artifactId, productionItems.length, onStatusChange, isLoading]);
 
     if (isLoading) {
         return (
