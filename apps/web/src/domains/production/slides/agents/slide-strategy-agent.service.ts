@@ -14,6 +14,7 @@ export interface SlidePlan {
   evidenceSourceCount: number;
   slides: PlannedSlide[];
   sourceMode: DeckBrief["sourceMode"];
+  targetSlideCount: number;
   template: DeckBrief["template"];
 }
 
@@ -345,6 +346,7 @@ export function buildSlidePlan(params: BuildSlidePlanParams): SlidePlan {
     evidenceSourceCount: params.evidence.sourceRefs.length,
     slides,
     sourceMode: params.brief.sourceMode,
+    targetSlideCount: params.brief.targetSlideCount,
     template: params.brief.template,
   };
 }

@@ -11,6 +11,7 @@ export interface DeckBrief {
   sourceMode: DeckBriefSourceMode;
   storyboardItemCount: number;
   targetSlideCount: number;
+  totalDurationSeconds: number;
   template: CourseDeckSpec["template"];
   title?: string;
 }
@@ -43,6 +44,17 @@ function countStoryboardItems(content: Record<string, unknown>) {
   return Array.isArray(content.storyboard) ? content.storyboard.length : 0;
 }
 
+function totalScriptDurationSeconds(content: Record<string, unknown>) {
+  const script = asRecord(content.script);
+  const sections = Array.isArray(script.sections) ? script.sections : [];
+  return sections.reduce((total, section) => {
+    const duration = asRecord(section).duration_seconds;
+    return total + (typeof duration === "number" && Number.isFinite(duration) && duration > 0
+      ? duration
+      : 0);
+  }, 0);
+}
+
 function resolveSourceMode(params: {
   hasCustomSlides: boolean;
   scriptSectionCount: number;
@@ -65,12 +77,17 @@ function resolveTargetSlideCount(params: {
   scriptSectionCount: number;
   sourceMode: DeckBriefSourceMode;
   storyboardItemCount: number;
+  totalDurationSeconds: number;
 }) {
   if (params.sourceMode === "custom_request") {
     return Math.min(params.customSlideCount, 24);
   }
   if (params.sourceMode === "script") {
-    return Math.min(params.scriptSectionCount + 1, 9);
+    // The cover is included; visual support changes roughly every 30 seconds.
+    const durationTarget = params.totalDurationSeconds > 0
+      ? Math.ceil(params.totalDurationSeconds / 30) + 1
+      : 0;
+    return Math.min(Math.max(params.scriptSectionCount + 1, durationTarget), 24);
   }
   if (params.sourceMode === "storyboard") {
     return Math.min(params.storyboardItemCount + 1, 11);
@@ -83,6 +100,7 @@ export function buildDeckBrief(params: BuildDeckBriefParams): DeckBrief {
   const script = asRecord(content.script);
   const scriptSectionCount = countScriptSections(content);
   const storyboardItemCount = countStoryboardItems(content);
+  const totalDurationSeconds = totalScriptDurationSeconds(content);
   const customSlideCount = params.input.customSlides?.length || 0;
   const hasCustomSlides = customSlideCount > 0;
   const sourceMode = resolveSourceMode({
@@ -99,11 +117,13 @@ export function buildDeckBrief(params: BuildDeckBriefParams): DeckBrief {
     scriptSectionCount,
     sourceMode,
     storyboardItemCount,
+    totalDurationSeconds,
     targetSlideCount: resolveTargetSlideCount({
       customSlideCount,
       scriptSectionCount,
       sourceMode,
       storyboardItemCount,
+      totalDurationSeconds,
     }),
     template: params.input.template,
     title: params.input.metadata?.title ||

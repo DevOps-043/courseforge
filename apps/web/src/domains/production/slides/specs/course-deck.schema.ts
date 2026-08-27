@@ -142,6 +142,7 @@ export const courseSlideSpecSchema = z.object({
     learningObjectiveId: z.string().max(120).optional(),
     mustKeepClaims: z.array(z.string().min(1).max(240)).default([]),
     sourceRefs: z.array(z.string().min(1).max(120)).default([]),
+    targetSlideCount: z.number().int().min(1).max(24).optional(),
   }).default({
     mustKeepClaims: [],
     sourceRefs: [],

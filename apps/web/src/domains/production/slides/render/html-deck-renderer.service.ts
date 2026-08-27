@@ -181,11 +181,17 @@ function renderFrameworkSlide(slide: CourseSlideSpec, deck: CourseDeckSpec, isAc
   const items = bulletItems(slide).slice(0, 3);
   const cards = (items.length ? items : slide.bodyBlocks.map((block) => block.text || "").filter(Boolean))
     .slice(0, 3)
-    .map((item, index) => `<div class="card anim-fade-up stagger-${index + 1}">
+    .map((item, index) => {
+      const separator = item.indexOf(":");
+      const label = separator > 0 ? item.slice(0, separator).trim() : item;
+      const description = separator > 0 ? item.slice(separator + 1).trim() : "";
+
+      return `<div class="card anim-fade-up stagger-${index + 1}">
       <div class="card-index">${String(index + 1).padStart(2, "0")}</div>
-      <h3>${escapeHtml(item.split(":")[0] || `Idea ${index + 1}`)}</h3>
-      <p>${escapeHtml(item.includes(":") ? item.split(":").slice(1).join(":").trim() : item)}</p>
-    </div>`)
+      <h3>${escapeHtml(label || `Idea ${index + 1}`)}</h3>
+      ${description ? `<p>${escapeHtml(description)}</p>` : ""}
+    </div>`;
+    })
     .join("");
 
   return `<section class="slide ${isActive ? "active " : ""}framework-slide" data-screen-label="${String(slide.order).padStart(2, "0")} ${escapeHtml(slide.title)}" data-title="${escapeHtml(slide.title)}">

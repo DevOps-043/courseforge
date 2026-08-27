@@ -143,6 +143,54 @@ describe("SofLIA - Engine slide deck generation", () => {
     assert.equal(deck.sourceSnapshot.source, "component_content");
   });
 
+  it("expands a long narrated lesson with distinct source-backed slides", () => {
+    const sourceInsights = Array.from({ length: 8 }, (_, index) => ({
+      bodyItems: [`Evidencia concreta ${index + 1} para aplicar la leccion.`],
+      sourceRef: `source-${index + 1}`,
+      title: `Idea respaldada ${index + 1}`,
+      type: "concept" as const,
+    }));
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-duration",
+      component: {
+        content: {
+          script: {
+            sections: Array.from({ length: 4 }, (_, index) => ({
+              duration_seconds: 60,
+              on_screen_text: `Tema ${index + 1}\nAplicacion concreta ${index + 1}`,
+              section_number: index + 1,
+            })),
+          },
+        },
+        id: "component-duration",
+        sourcePack: { insights: sourceInsights, items: [], sourceRefs: sourceInsights.map((item) => item.sourceRef) },
+        type: "VIDEO_THEORETICAL",
+      },
+      input: { locale: "es", template: "course-module" },
+    });
+    const report = validateCourseDeckQuality({ deckSpec: deck, html: renderCourseDeckHtml(deck) });
+
+    assert.equal(deck.slides.length, 9);
+    assert.equal(deck.slides.filter((slide) => slide.id.startsWith("evidence-")).length, 4);
+    assert.equal(report.findings.some((finding) => finding.code === "insufficient_slide_coverage"), false);
+  });
+
+  it("does not render a card description when the item has no description", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-framework",
+      component: { content: {}, id: "component-framework", type: "VIDEO_THEORETICAL" },
+      input: {
+        customSlides: [{ bullets: ["Yoga", "Atencion plena"], title: "Regula el estres", type: "objectives" }],
+        locale: "es",
+        template: "course-module",
+      },
+    });
+    const html = renderCourseDeckHtml(deck);
+
+    assert.match(html, /<h3>Yoga<\/h3>\s*<\/div>/);
+    assert.doesNotMatch(html, /<h3>Yoga<\/h3>\s*<p>Yoga<\/p>/);
+  });
+
   it("keeps avatar narration in speaker notes instead of visible slide content", () => {
     const narration = "Primero presentamos el objetivo con una explicacion larga que debe quedarse solo para el avatar.";
     const deck = buildCourseDeckSpecFromComponent({
