@@ -136,6 +136,15 @@ const productionAssetSourceSchema = z.object({
   sourceWidth: z.number().int().positive().max(16_384).optional(),
 }).strict();
 
+const assemblyBrandAssetSourceSchema = z.object({
+  assemblyBrandAssetId: uuidSchema,
+  /** Result of media probing; branding videos default to fail-closed when absent. */
+  hasAudio: z.boolean().optional(),
+  placement: z.enum(["INTRO", "OUTRO"]),
+  sourceHeight: z.number().int().positive().max(16_384).optional(),
+  sourceWidth: z.number().int().positive().max(16_384).optional(),
+}).strict();
+
 export const compositionClipSchema = z.object({
   crop: compositionVisualCropSchema.optional(),
   durationSeconds: boundedSecondsSchema.positive(),
@@ -148,6 +157,7 @@ export const compositionClipSchema = z.object({
   /** Controls source fitting independently from layout and explicit crop. */
   mediaFit: z.enum(COMPOSITION_MEDIA_FIT_MODES).optional(),
   source: z.discriminatedUnion("type", [
+    assemblyBrandAssetSourceSchema.extend({ type: z.literal("ASSEMBLY_BRAND_ASSET") }),
     deckSourceSchema.extend({ type: z.literal("DECK_SLIDE") }),
     productionAssetSourceSchema.extend({ type: z.literal("PRODUCTION_ASSET") }),
   ]),
@@ -178,8 +188,11 @@ export const compositionClipSchema = z.object({
   if (clip.kind === "DECK_SLIDE" && clip.source.type !== "DECK_SLIDE") {
     context.addIssue({ code: "custom", message: "Un clip de deck debe conservar su fuente HTML." });
   }
-  if (clip.kind !== "DECK_SLIDE" && clip.source.type !== "PRODUCTION_ASSET") {
-    context.addIssue({ code: "custom", message: "Un clip multimedia debe referenciar un asset de Producción." });
+  if (clip.kind !== "DECK_SLIDE" && clip.source.type !== "PRODUCTION_ASSET" && clip.source.type !== "ASSEMBLY_BRAND_ASSET") {
+    context.addIssue({ code: "custom", message: "Un clip multimedia debe referenciar un asset válido." });
+  }
+  if (clip.source.type === "ASSEMBLY_BRAND_ASSET" && clip.kind !== "VIDEO") {
+    context.addIssue({ code: "custom", message: "Intro y outro deben ser clips de video." });
   }
 });
 
@@ -248,3 +261,9 @@ export type CompositionVisualCrop = z.infer<typeof compositionVisualCropSchema>;
 export type CompositionAudioMix = z.infer<typeof compositionAudioMixSchema>;
 export type CompositionEditorDocument = z.infer<typeof compositionEditorDocumentSchema>;
 export type CompositionTrack = z.infer<typeof compositionTrackSchema>;
+
+export function getCompositionClipMediaAssetId(clip: CompositionClip) {
+  if (clip.source.type === "PRODUCTION_ASSET") return clip.source.productionAssetId;
+  if (clip.source.type === "ASSEMBLY_BRAND_ASSET") return clip.source.assemblyBrandAssetId;
+  return null;
+}

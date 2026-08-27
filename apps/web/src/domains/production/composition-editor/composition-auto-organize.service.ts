@@ -27,12 +27,23 @@ export function buildCompositionAutoOrganizePatch(params: {
     .filter((clip) => clip.source.type === "DECK_SLIDE")
     .sort((left, right) => (left.source.type === "DECK_SLIDE" ? left.source.slideIndex : 0) - (right.source.type === "DECK_SLIDE" ? right.source.slideIndex : 0));
   const resolution = resolveCompositionDuration({ assets, slideCount: deckClips.length });
+  const introDuration = document.clips
+    .filter((clip) => clip.source.type === "ASSEMBLY_BRAND_ASSET" && clip.source.placement === "INTRO")
+    .reduce((duration, clip) => Math.max(duration, clip.durationSeconds), 0);
+  const outroDuration = document.clips
+    .filter((clip) => clip.source.type === "ASSEMBLY_BRAND_ASSET" && clip.source.placement === "OUTRO")
+    .reduce((duration, clip) => Math.max(duration, clip.durationSeconds), 0);
+  const contentStart = introDuration;
   const manualTimelineEnd = document.clips
-    .filter((clip) => clip.timingSource === "USER_EDITED")
+    .filter((clip) => clip.timingSource === "USER_EDITED" && clip.source.type !== "ASSEMBLY_BRAND_ASSET")
     .reduce((latest, clip) => Math.max(latest, clip.startSeconds + clip.durationSeconds), 0);
+  const authoredContentDuration = Math.max(0, manualTimelineEnd - contentStart);
+  const contentDuration = params.includeCanvasDuration === false
+    ? Math.max(0.05, document.canvas.durationSeconds - introDuration - outroDuration)
+    : Math.max(resolution.durationSeconds, authoredContentDuration);
   const canvasDuration = params.includeCanvasDuration === false
     ? document.canvas.durationSeconds
-    : Math.max(resolution.durationSeconds, manualTimelineEnd);
+    : roundSeconds(introDuration + contentDuration + outroDuration);
   const timelineAssetIds = new Set(document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []));
   const requiredDurationAssets = resolution.source === "voice"
     ? assets.filter((asset) => asset.timelineRole === "VOICE")
@@ -60,8 +71,8 @@ export function buildCompositionAutoOrganizePatch(params: {
   for (let index = 0; index < deckClips.length; index += 1) {
     const clip = deckClips[index]!;
     if (clip.timingSource === "USER_EDITED") continue;
-    const startSeconds = roundSeconds(canvasDuration * index / deckClips.length);
-    const endSeconds = index === deckClips.length - 1 ? canvasDuration : roundSeconds(canvasDuration * (index + 1) / deckClips.length);
+    const startSeconds = roundSeconds(contentStart + contentDuration * index / deckClips.length);
+    const endSeconds = index === deckClips.length - 1 ? contentStart + contentDuration : roundSeconds(contentStart + contentDuration * (index + 1) / deckClips.length);
     clipOperations.push({ clipId: clip.id, durationSeconds: Math.max(0.05, endSeconds - startSeconds), startSeconds, type: "clip.estimated-timing" });
   }
 
@@ -70,11 +81,11 @@ export function buildCompositionAutoOrganizePatch(params: {
     const preferredDurations = clips.map((clip) => {
       if (clip.source.type !== "PRODUCTION_ASSET") return clip.durationSeconds;
       const asset = sourceById.get(clip.source.productionAssetId);
-      return Math.min(canvasDuration, asset?.durationSeconds || (trackId === "voice" || trackId === "music" || trackId === "avatar" ? canvasDuration : clip.kind === "IMAGE" ? 5 : 8));
+      return Math.min(contentDuration, asset?.durationSeconds || (trackId === "voice" || trackId === "music" || trackId === "avatar" ? contentDuration : clip.kind === "IMAGE" ? 5 : 8));
     });
     const totalPreferredDuration = preferredDurations.reduce((total, value) => total + value, 0);
-    const durationScale = trackId !== "music" && totalPreferredDuration > canvasDuration ? canvasDuration / totalPreferredDuration : 1;
-    let cursor = 0;
+    const durationScale = trackId !== "music" && totalPreferredDuration > contentDuration ? contentDuration / totalPreferredDuration : 1;
+    let cursor = contentStart;
     for (let index = 0; index < clips.length; index += 1) {
       const clip = clips[index]!;
       if (clip.timingSource === "USER_EDITED") {
@@ -83,16 +94,16 @@ export function buildCompositionAutoOrganizePatch(params: {
       }
       const sequential = trackId !== "music";
       const durationSeconds = sequential
-        ? Math.max(0.05, Math.min(preferredDurations[index]! * durationScale, canvasDuration - cursor))
+        ? Math.max(0.05, Math.min(preferredDurations[index]! * durationScale, contentStart + contentDuration - cursor))
         : preferredDurations[index]!;
-      clipOperations.push({ clipId: clip.id, durationSeconds, startSeconds: sequential ? cursor : 0, type: "clip.estimated-timing" });
+      clipOperations.push({ clipId: clip.id, durationSeconds, startSeconds: sequential ? cursor : contentStart, type: "clip.estimated-timing" });
       if (sequential) cursor += durationSeconds;
     }
   }
 
   const canvasOperation: CompositionEditorPatchOperation = {
     clipId: "canvas",
-    durationMode: canvasDuration > resolution.durationSeconds + 0.001 ? "USER_EDITED" : "AUTO",
+    durationMode: canvasDuration > introDuration + resolution.durationSeconds + outroDuration + 0.001 ? "USER_EDITED" : "AUTO",
     durationSeconds: canvasDuration,
     durationSource: resolution.source,
     type: "composition.canvas-duration",

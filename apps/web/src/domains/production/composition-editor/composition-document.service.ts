@@ -246,18 +246,36 @@ async function assertAddedAssetsBelongToDraft(params: {
     }
     return [];
   }))];
-  if (assetIds.length === 0) return;
+  const brandingAssetIds = [...new Set(params.patch.operations.flatMap((operation) => {
+    if (operation.type === "clip.add" && operation.clip.source.type === "ASSEMBLY_BRAND_ASSET") {
+      return [operation.clip.source.assemblyBrandAssetId];
+    }
+    if (operation.type === "document.restore" || operation.type === "document.reconcile") {
+      return operation.document.clips.flatMap((clip) => (
+        clip.source.type === "ASSEMBLY_BRAND_ASSET" ? [clip.source.assemblyBrandAssetId] : []
+      ));
+    }
+    return [];
+  }))];
+  if (assetIds.length === 0 && brandingAssetIds.length === 0) return;
 
-  const { data, error } = await params.supabase
-    .from("video_composition_draft_assets")
-    .select("production_asset_id")
-    .eq("draft_id", params.draftId)
-    .eq("organization_id", params.organizationId)
-    .in("production_asset_id", assetIds);
+  const [{ data, error }, { data: branding, error: brandingError }] = await Promise.all([
+    assetIds.length > 0
+      ? params.supabase.from("video_composition_draft_assets").select("production_asset_id").eq("draft_id", params.draftId).eq("organization_id", params.organizationId).in("production_asset_id", assetIds)
+      : Promise.resolve({ data: [], error: null }),
+    brandingAssetIds.length > 0
+      ? params.supabase.from("video_composition_draft_branding").select("intro_asset_id, outro_asset_id").eq("draft_id", params.draftId).eq("organization_id", params.organizationId).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
   if (error) throw error;
+  if (brandingError) throw brandingError;
   const linkedIds = new Set((data || []).map((row: { production_asset_id: string }) => row.production_asset_id));
   if (assetIds.some((assetId) => !linkedIds.has(assetId))) {
     throw new CompositionDocumentError("El asset seleccionado no está vinculado a este borrador.");
+  }
+  const linkedBrandingIds = new Set([branding?.intro_asset_id, branding?.outro_asset_id].filter((id): id is string => typeof id === "string"));
+  if (brandingAssetIds.some((assetId) => !linkedBrandingIds.has(assetId))) {
+    throw new CompositionDocumentError("El intro u outro seleccionado no está vinculado a este borrador.");
   }
 }
 

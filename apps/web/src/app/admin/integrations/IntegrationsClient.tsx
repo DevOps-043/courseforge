@@ -10,6 +10,7 @@ import type {
   CloudStorageProvider,
 } from "@/domains/production/cloud-storage/types";
 import { ProviderIntegrationCard } from "./ProviderIntegrationCard";
+import { AssemblyBrandingCard } from "./AssemblyBrandingCard";
 
 const PROVIDER_LABELS: Record<CloudStorageProvider, string> = {
   google_drive: "Google Drive",
@@ -74,7 +75,7 @@ export default function IntegrationsClient({
             <p className="engine-eyebrow !mb-1 !text-[var(--engine-text-muted)]">Directorio de servicios</p>
             <h2>Conectores de la organización</h2>
           </div>
-          <span>{connections.length + 1} proveedores</span>
+          <span>{connections.length + 3} servicios</span>
         </div>
         {connections.map((connection) => (
           <section
@@ -161,6 +162,7 @@ export default function IntegrationsClient({
           connectionPath="/api/production/hyperframes/connection"
           validatePath="/api/production/hyperframes/connection/validate"
         />
+        <AssemblyBrandingCard />
       </div>
     </div>
   );

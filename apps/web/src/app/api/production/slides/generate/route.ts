@@ -9,7 +9,9 @@ import type { MaterialAssets } from "@/domains/materials/types/materials.types";
 import {
   getAuthenticatedUser,
   getAuthorizedMaterialComponentAdmin,
+  getServiceRoleClient,
 } from "@/lib/server/artifact-action-auth";
+import { verifyBackgroundPayload } from "@/lib/server/background-payload-signature";
 import {
   buildProductionIdempotencyKey,
   createOrReuseProductionJob,
@@ -241,13 +243,16 @@ export async function POST(request: Request) {
   }
 
   const { componentId } = parsed.data;
-  const supabase = await createClient();
-  const authenticatedUser = await getAuthenticatedUser(supabase);
-  if (!authenticatedUser) {
-    return NextResponse.json({ error: "No autorizado." }, { status: 401 });
-  }
+  const internalRequest = getAutomationRequest(request, componentId);
+  const supabase = internalRequest ? null : await createClient();
+  const authenticatedUser = internalRequest
+    ? { userId: internalRequest.createdBy }
+    : await getAuthenticatedUser(supabase!);
+  if (!authenticatedUser) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
 
-  const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
+  const authorizedComponent = internalRequest
+    ? await getInternalAuthorizedComponent(componentId, internalRequest.organizationId)
+    : await getAuthorizedMaterialComponentAdmin(componentId);
   if (!authorizedComponent) {
     return NextResponse.json(
       { error: "Componente no encontrado para esta empresa" },
@@ -327,6 +332,9 @@ export async function runSlideDeckGeneration(params: {
     componentId,
     supabase: authorizedComponent.admin,
   });
+  if (internalRequest && context.organizationId !== internalRequest.organizationId) {
+    return NextResponse.json({ error: "Componente no encontrado para esta empresa" }, { status: 404 });
+  }
   const currentAssets = (authorizedComponent.component.assets || {}) as MaterialAssets;
   const sourcePack = await loadSlideSourcePack({
     artifactId: authorizedComponent.artifactId,
@@ -722,4 +730,36 @@ export async function runSlideDeckGeneration(params: {
       { status: 500 },
     );
   }
+}
+
+function getAutomationRequest(request: Request, componentId: string): { createdBy: string; organizationId: string } | null {
+  const raw = request.headers.get("x-production-automation");
+  if (!raw) return null;
+  try {
+    const value = verifyBackgroundPayload<{ componentId: string; createdBy: string; organizationId: string }>(JSON.parse(raw));
+    return value.componentId === componentId && value.createdBy && value.organizationId ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+async function getInternalAuthorizedComponent(componentId: string, organizationId: string) {
+  const admin = getServiceRoleClient();
+  const { data: component, error } = await admin
+    .from("material_components")
+    .select("id, type, content, assets, material_lesson_id, material_lessons!inner(materials!inner(artifact_id))")
+    .eq("id", componentId)
+    .maybeSingle();
+  if (error || !component) return null;
+  const lesson = Array.isArray(component.material_lessons) ? component.material_lessons[0] : component.material_lessons;
+  const materials = Array.isArray(lesson?.materials) ? lesson.materials[0] : lesson?.materials;
+  const artifactId = materials?.artifact_id;
+  if (!artifactId) return null;
+  const { data: artifact, error: artifactError } = await admin
+    .from("artifacts")
+    .select("organization_id")
+    .eq("id", artifactId)
+    .maybeSingle();
+  if (artifactError || artifact?.organization_id !== organizationId) return null;
+  return { admin, artifactId, component };
 }

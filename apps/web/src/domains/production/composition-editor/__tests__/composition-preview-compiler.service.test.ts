@@ -722,3 +722,21 @@ test("compiles reversible intermediate visibility presets identically for previe
     assert.match(html, /"ease":"power2\.out","offset":1,"values":\{"opacity":1\}/);
   }
 });
+
+test("compiles assembly branding with the same remote variable contract", async () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "a".repeat(64), durationSeconds: 12, fileSizeBytes: 1, mimeType: "video/mp4", productionAssetId: "00000000-0000-4000-8000-000000000081", publicUrl: null, storageBucket: "production-assets", storagePath: "content.mp4", timelineRole: "AVATAR" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 12, subtitle: "Prueba", title: "Branding variable" },
+  });
+  const clip = document.clips[0]!;
+  clip.source = { assemblyBrandAssetId: "00000000-0000-4000-8000-000000000082", hasAudio: true, placement: "INTRO", type: "ASSEMBLY_BRAND_ASSET" };
+  const html = await compileCompositionPreview({
+    assetUrls: new Map(),
+    assetVariableNames: new Map([["00000000-0000-4000-8000-000000000082", "cf_asset_branding"]]),
+    document,
+    target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+  });
+  assert.match(html, /data-hf-src="cf_asset_branding"/);
+  assert.doesNotMatch(html, /src="https:\/\//);
+});

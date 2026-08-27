@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "baseUrl": ".",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "outDir": ".tmp/production-automation-tests",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": [
+    "src/domains/production/automation/**/*.ts",
+    "src/domains/materials/types/materials.types.ts"
+  ],
+  "exclude": ["node_modules"]
+}
