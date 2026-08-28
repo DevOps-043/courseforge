@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
 import {
   buildHeygenCreateClipPayload,
+  getReusableSceneVoiceAsset,
   HeygenScenesService,
   reconcileVoiceClips,
 } from "../heygen-scenes.service";
@@ -123,6 +124,33 @@ describe("HeyGen scene clip builder", () => {
     );
 
     assert.equal(reconciled[0]?.status, "STALE");
+  });
+
+  it("reuses a current independent scene voice when submitting its avatar clip", () => {
+    const scriptHash = createHash("sha256").update("Guion vigente").digest("hex");
+    const reusableVoice = getReusableSceneVoiceAsset({
+      asset_id: "6ae2d2dc-667d-4200-8e0d-0b49f051cf85",
+      clip_id: "scene-1",
+      duration: 4.2,
+      id: "voice-scene-1",
+      order: 1,
+      public_url: "https://cdn.example.com/voice.mp3",
+      script_hash: scriptHash,
+      status: "COMPLETED",
+      storage_path: "production-assets/voice.mp3",
+    }, scriptHash);
+
+    assert.equal(reusableVoice?.publicUrl, "https://cdn.example.com/voice.mp3");
+    assert.equal(reusableVoice?.id, "6ae2d2dc-667d-4200-8e0d-0b49f051cf85");
+    assert.equal(getReusableSceneVoiceAsset({
+      clip_id: "scene-1",
+      id: "voice-scene-1",
+      order: 1,
+      public_url: "https://cdn.example.com/old-voice.mp3",
+      script_hash: "outdated",
+      status: "COMPLETED",
+      storage_path: "production-assets/old-voice.mp3",
+    }, scriptHash), null);
   });
 
   it("preserves manual clips and hidden deleted storyboard clips", () => {

@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { createClient } from "@/utils/supabase/server";
 import { getErrorMessage } from "@/lib/errors";
-import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
+import { dispatchBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { signBackgroundPayload } from "@/lib/server/background-payload-signature";
 import type { MaterialAssets } from "@/domains/materials/types/materials.types";
 import {
@@ -298,14 +298,46 @@ export async function POST(request: Request) {
     );
   }
 
+  const queueInputSnapshot = {
+    component_id: componentId,
+    job_type: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
+    request: parsed.data,
+  };
+  const queuedJob = await createOrReuseProductionJob(authorizedComponent.admin, {
+    context: queueContext,
+    createdBy: authenticatedUser.userId,
+    idempotencyKey: buildProductionIdempotencyKey({
+      componentId,
+      input: queueInputSnapshot,
+      jobType: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
+      provider: PRODUCTION_PROVIDERS.SOFLIA_ENGINE_SLIDES,
+    }),
+    inputSnapshot: queueInputSnapshot,
+    jobType: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
+    provider: PRODUCTION_PROVIDERS.SOFLIA_ENGINE_SLIDES,
+  });
+
+  if (queuedJob.status === PRODUCTION_JOB_STATUSES.SUCCEEDED || queuedJob.status === PRODUCTION_JOB_STATUSES.RUNNING || queuedJob.status === PRODUCTION_JOB_STATUSES.QUEUED) {
+    return NextResponse.json({ success: true, jobId: queuedJob.id, reused: true, status: queuedJob.status }, { status: 202 });
+  }
+
+  const { error: queueError } = await authorizedComponent.admin
+    .from("production_jobs")
+    .update({ status: PRODUCTION_JOB_STATUSES.QUEUED, updated_at: new Date().toISOString() })
+    .eq("id", queuedJob.id);
+  if (queueError) {
+    return NextResponse.json({ error: queueError.message }, { status: 500 });
+  }
+
   const backgroundRequest = {
     createdBy: authenticatedUser.userId,
     organizationId: queueContext.organizationId,
+    jobId: queuedJob.id,
     payload: parsed.data,
   };
   const queuedAt = new Date().toISOString();
   try {
-    await callBackgroundFunctionJson(
+    await dispatchBackgroundFunctionJson(
       "slides-generation-background",
       signBackgroundPayload(backgroundRequest),
       {
@@ -315,6 +347,7 @@ export async function POST(request: Request) {
             const result = await runSlideDeckGeneration({
               authorizedComponent,
               createdBy: authenticatedUser.userId,
+              jobId: queuedJob.id,
               payload: parsed.data,
             });
             return { statusCode: result.status, body: await result.text() };
@@ -323,6 +356,11 @@ export async function POST(request: Request) {
       },
     );
   } catch (error) {
+    await failProductionJob({
+      error,
+      jobId: queuedJob.id,
+      supabase: authorizedComponent.admin,
+    });
     return NextResponse.json(
       { error: getErrorMessage(error, "No se pudo iniciar el worker de slides.") },
       { status: 503 },
@@ -332,7 +370,7 @@ export async function POST(request: Request) {
   return NextResponse.json(
     {
       success: true,
-      job: null,
+      jobId: queuedJob.id,
       queuedAt,
       status: "QUEUED",
       submissionStatus: "QUEUED",
@@ -344,6 +382,7 @@ export async function POST(request: Request) {
 export async function runSlideDeckGeneration(params: {
   authorizedComponent: NonNullable<Awaited<ReturnType<typeof getAuthorizedMaterialComponentAdmin>>>;
   createdBy: string;
+  jobId?: string;
   payload: z.infer<typeof requestBodySchema>;
 }) {
   const {
@@ -403,14 +442,16 @@ export async function runSlideDeckGeneration(params: {
     jobType: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
     provider: PRODUCTION_PROVIDERS.SOFLIA_ENGINE_SLIDES,
   });
-  const job = await createOrReuseProductionJob(authorizedComponent.admin, {
-    context,
-    createdBy: params.createdBy,
-    idempotencyKey,
-    inputSnapshot,
-    jobType: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
-    provider: PRODUCTION_PROVIDERS.SOFLIA_ENGINE_SLIDES,
-  });
+  const job = params.jobId
+    ? { id: params.jobId, status: PRODUCTION_JOB_STATUSES.QUEUED }
+    : await createOrReuseProductionJob(authorizedComponent.admin, {
+        context,
+        createdBy: params.createdBy,
+        idempotencyKey,
+        inputSnapshot,
+        jobType: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
+        provider: PRODUCTION_PROVIDERS.SOFLIA_ENGINE_SLIDES,
+      });
 
   if (
     !forceRegenerate &&

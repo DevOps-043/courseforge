@@ -13,6 +13,8 @@ import {
   Layers3,
   List,
   Loader2,
+  Minus,
+  Plus,
   Palette,
   Save,
   Send,
@@ -22,6 +24,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { EngineSelect } from "@/components/ui/EngineSelect";
+import { SOFLIA_SLIDE_TEMPLATE_BACKGROUND } from "@/domains/production/slides/templates/slide-template-theme";
 
 type SlideLayoutId = "center" | "closing" | "data" | "framework" | "split" | "split_reverse";
 type SlideTypeId = string;
@@ -101,12 +104,12 @@ const EMPTY_STATE: StudioState = {
 };
 
 const DEFAULT_TOKENS: DesignTokens = {
-  accent: "var(--engine-accent)",
+  accent: "#00D4B3",
   accent2: "#2D7D6E",
-  background: "#F7FAFC",
+  background: SOFLIA_SLIDE_TEMPLATE_BACKGROUND,
   muted: "#65758B",
   surface: "#FFFFFF",
-  text: "var(--engine-primary)",
+  text: "#0A2540",
 };
 
 const DEFAULT_MODIFIERS: TemplateModifiers = {
@@ -155,7 +158,6 @@ const FALLBACK_SLIDE_TYPES: TemplateSlideType[] = [
 ];
 
 const COLOR_FIELDS: Array<{ key: keyof DesignTokens; label: string }> = [
-  { key: "background", label: "Fondo" },
   { key: "surface", label: "Superficie" },
   { key: "accent", label: "Acento" },
   { key: "accent2", label: "Acento 2" },
@@ -178,7 +180,12 @@ function googleFontCssUrl(family: string) {
 interface DirtyOverrides {
   designTokens: boolean;
   modifiers: boolean;
+  slideTypes: boolean;
 }
+
+type StudioOperation = "idle" | "loading" | "updating_spec" | "saving_package" | "sending_message";
+
+const HEX_COLOR_PATTERN = /^#[0-9A-F]{6}$/;
 
 async function readJson(response: Response) {
   const payload = await response.json().catch(() => null);
@@ -225,13 +232,50 @@ function buildBlueprintOverride(
   baseBlueprint: SlideTemplateSpec["templateBlueprint"] | undefined,
   designTokens: DesignTokens,
   modifiers: TemplateModifiers,
-  dirtyOverrides: DirtyOverrides = { designTokens: true, modifiers: true },
+  slideTypes: TemplateSlideType[],
+  dirtyOverrides: DirtyOverrides = { designTokens: true, modifiers: true, slideTypes: true },
 ) {
+  const normalizedDesignTokens = {
+    ...designTokens,
+    background: SOFLIA_SLIDE_TEMPLATE_BACKGROUND,
+  };
+
   return {
     ...(baseBlueprint || {}),
-    ...(dirtyOverrides.designTokens ? { designTokens } : {}),
+    ...(dirtyOverrides.designTokens ? { designTokens: normalizedDesignTokens } : {}),
     ...(dirtyOverrides.modifiers ? { modifiers } : {}),
-    slideTypes: baseBlueprint?.slideTypes?.length ? baseBlueprint.slideTypes : FALLBACK_SLIDE_TYPES,
+    slideTypes: dirtyOverrides.slideTypes
+      ? slideTypes
+      : baseBlueprint?.slideTypes?.length
+        ? baseBlueprint.slideTypes
+        : FALLBACK_SLIDE_TYPES,
+  };
+}
+
+function getInvalidColorLabels(tokens: DesignTokens) {
+  return COLOR_FIELDS
+    .filter(({ key }) => !HEX_COLOR_PATTERN.test(tokens[key].toUpperCase()))
+    .map(({ label }) => label);
+}
+
+function createSlideType(label: string): TemplateSlideType | null {
+  const normalizedLabel = label.trim().replace(/\s+/g, " ");
+  const id = normalizedLabel
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
+
+  if (!/^[a-z][a-z0-9_]{1,47}$/.test(id)) return null;
+
+  return {
+    id,
+    label: normalizedLabel.slice(0, 80),
+    defaultLayout: "split",
+    purpose: `Explicar ${normalizedLabel.toLowerCase()} con una idea principal y evidencia de apoyo.`,
+    requiredContent: ["main_point", "supporting_evidence", "learner_takeaway"],
   };
 }
 
@@ -376,15 +420,18 @@ export function SlideTemplateStudioClient() {
   const [title, setTitle] = useState("Plantilla HTML de slides");
   const [designTokens, setDesignTokens] = useState<DesignTokens>(DEFAULT_TOKENS);
   const [modifiers, setModifiers] = useState<TemplateModifiers>(DEFAULT_MODIFIERS);
-  const [dirtyOverrides, setDirtyOverrides] = useState<DirtyOverrides>({ designTokens: false, modifiers: false });
+  const [slideTypes, setSlideTypes] = useState<TemplateSlideType[]>(FALLBACK_SLIDE_TYPES);
+  const [newSlideTypeLabel, setNewSlideTypeLabel] = useState("");
+  const [dirtyOverrides, setDirtyOverrides] = useState<DirtyOverrides>({ designTokens: false, modifiers: false, slideTypes: false });
   const [slidePreviewMode, setSlidePreviewMode] = useState<SlidePreviewMode>("grid");
   const [loadedConversationId, setLoadedConversationId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [operation, setOperation] = useState<StudioOperation>("idle");
   const [organizationFonts, setOrganizationFonts] = useState<OrganizationSlideFont[]>([]);
   const [uploadingFont, setUploadingFont] = useState(false);
 
   const latestSpec = state.specs[0]?.spec_json;
-  const previewSlides = useMemo(() => getPreviewSlides(latestSpec), [latestSpec]);
+  const busy = operation !== "idle";
+  const previewSlides = useMemo(() => slideTypes.length ? slideTypes : getPreviewSlides(latestSpec), [latestSpec, slideTypes]);
   const downloadHref = latestDownloadHref(state);
   const adminBasePath = params?.empresaSlug ? `/${params.empresaSlug}/admin` : "/admin";
 
@@ -394,7 +441,7 @@ export function SlideTemplateStudioClient() {
 
     let cancelled = false;
     setLoadedConversationId(conversationId);
-    setBusy(true);
+    setOperation("loading");
     refresh(conversationId)
       .catch((error) => {
         if (!cancelled) {
@@ -402,7 +449,7 @@ export function SlideTemplateStudioClient() {
         }
       })
       .finally(() => {
-        if (!cancelled) setBusy(false);
+        if (!cancelled) setOperation("idle");
       });
 
     return () => {
@@ -484,9 +531,10 @@ export function SlideTemplateStudioClient() {
 
     const spec = payload.specs?.[0]?.spec_json as SlideTemplateSpec | undefined;
     if (spec?.templateBlueprint) {
-      setDesignTokens(spec.templateBlueprint.designTokens);
+      setDesignTokens({ ...spec.templateBlueprint.designTokens, background: SOFLIA_SLIDE_TEMPLATE_BACKGROUND });
       setModifiers(spec.templateBlueprint.modifiers);
-      setDirtyOverrides({ designTokens: false, modifiers: false });
+      setSlideTypes(spec.templateBlueprint.slideTypes);
+      setDirtyOverrides({ designTokens: false, modifiers: false, slideTypes: false });
     }
   }
 
@@ -511,14 +559,51 @@ export function SlideTemplateStudioClient() {
     return payload.conversation.id as string;
   }
 
-  async function run(action: () => Promise<void>) {
-    setBusy(true);
+  function validateEditableTokens() {
+    const invalidFields = getInvalidColorLabels(designTokens);
+    if (invalidFields.length > 0) {
+      toast.error(`Usa colores HEX válidos en: ${invalidFields.join(", ")}.`);
+      return false;
+    }
+    return true;
+  }
+
+  function addSlideType() {
+    const slideType = createSlideType(newSlideTypeLabel);
+    if (!slideType) {
+      toast.error("El chip debe tener al menos dos caracteres y comenzar con una letra.");
+      return;
+    }
+    if (slideTypes.some((item) => item.id === slideType.id)) {
+      toast.error("Ya existe un tipo de slide con ese nombre.");
+      return;
+    }
+    if (slideTypes.length >= 12) {
+      toast.error("Una plantilla admite hasta 12 tipos de slide.");
+      return;
+    }
+    setSlideTypes((current) => [...current, slideType]);
+    setDirtyOverrides((current) => ({ ...current, slideTypes: true }));
+    setNewSlideTypeLabel("");
+  }
+
+  function removeSlideType(id: string) {
+    if (slideTypes.length <= 1) {
+      toast.error("La plantilla debe conservar al menos un tipo de slide.");
+      return;
+    }
+    setSlideTypes((current) => current.filter((item) => item.id !== id));
+    setDirtyOverrides((current) => ({ ...current, slideTypes: true }));
+  }
+
+  async function run(nextOperation: Exclude<StudioOperation, "idle">, action: () => Promise<void>) {
+    setOperation(nextOperation);
     try {
       await action();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo completar la accion.");
     } finally {
-      setBusy(false);
+      setOperation("idle");
     }
   }
 
@@ -527,7 +612,7 @@ export function SlideTemplateStudioClient() {
     const content = prompt.trim();
     if (!content) return;
 
-    await run(async () => {
+    await run("sending_message", async () => {
       const conversationId = await ensureConversation();
       await fetchJson(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/messages`, {
         method: "POST",
@@ -546,9 +631,10 @@ export function SlideTemplateStudioClient() {
   }
 
   async function createSpec() {
-    await run(async () => {
+    if (!validateEditableTokens()) return;
+    await run("updating_spec", async () => {
       const conversationId = await ensureConversation();
-      const hasDirtyOverrides = dirtyOverrides.designTokens || dirtyOverrides.modifiers;
+      const hasDirtyOverrides = dirtyOverrides.designTokens || dirtyOverrides.modifiers || dirtyOverrides.slideTypes;
       const payload = await fetchJson(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/specs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -557,7 +643,7 @@ export function SlideTemplateStudioClient() {
           ...(hasDirtyOverrides
             ? {
                 overrides: {
-                  templateBlueprint: buildBlueprintOverride(latestSpec?.templateBlueprint, designTokens, modifiers, dirtyOverrides),
+                  templateBlueprint: buildBlueprintOverride(latestSpec?.templateBlueprint, designTokens, modifiers, slideTypes, dirtyOverrides),
                 },
               }
             : {}),
@@ -565,8 +651,9 @@ export function SlideTemplateStudioClient() {
       });
       const spec = payload.spec?.spec_json as SlideTemplateSpec | undefined;
       if (spec?.templateBlueprint) {
-        setDesignTokens(spec.templateBlueprint.designTokens);
+        setDesignTokens({ ...spec.templateBlueprint.designTokens, background: SOFLIA_SLIDE_TEMPLATE_BACKGROUND });
         setModifiers(spec.templateBlueprint.modifiers);
+        setSlideTypes(spec.templateBlueprint.slideTypes);
       }
       await refresh(conversationId);
       toast.success("Spec de template actualizada.");
@@ -574,9 +661,10 @@ export function SlideTemplateStudioClient() {
   }
 
   async function savePackage() {
-    await run(async () => {
+    if (!validateEditableTokens()) return;
+    await run("saving_package", async () => {
       const conversationId = await ensureConversation();
-      const hasDirtyOverrides = dirtyOverrides.designTokens || dirtyOverrides.modifiers;
+      const hasDirtyOverrides = dirtyOverrides.designTokens || dirtyOverrides.modifiers || dirtyOverrides.slideTypes;
       const specPayload = await fetchJson(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/specs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -585,7 +673,7 @@ export function SlideTemplateStudioClient() {
           ...(hasDirtyOverrides
             ? {
                 overrides: {
-                  templateBlueprint: buildBlueprintOverride(latestSpec?.templateBlueprint, designTokens, modifiers, dirtyOverrides),
+                  templateBlueprint: buildBlueprintOverride(latestSpec?.templateBlueprint, designTokens, modifiers, slideTypes, dirtyOverrides),
                 },
               }
             : {}),
@@ -749,6 +837,49 @@ export function SlideTemplateStudioClient() {
                   : "space-y-3"
               }`}
             >
+              <div className={slidePreviewMode === "grid" ? "col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-2.5 dark:border-white/10 dark:bg-[var(--engine-canvas)]" : "rounded-lg border border-gray-200 bg-gray-50 p-2.5 dark:border-white/10 dark:bg-[var(--engine-canvas)]"}>
+                <p className="text-[11px] font-black uppercase tracking-wide text-gray-500 dark:text-gray-400">Chips de tipos de slide</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {slideTypes.map((slideType) => (
+                    <span key={slideType.id} className="inline-flex items-center gap-1 rounded-full border border-[var(--engine-accent)]/30 bg-[var(--engine-accent)]/10 py-0.5 pl-2 pr-1 text-[11px] font-bold text-[#007F6D] dark:text-[var(--engine-accent)]">
+                      {slideType.label}
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => removeSlideType(slideType.id)}
+                        className="inline-flex h-4 w-4 items-center justify-center rounded-full transition hover:bg-black/10 disabled:cursor-not-allowed"
+                        title={`Quitar ${slideType.label}`}
+                        aria-label={`Quitar ${slideType.label}`}
+                      >
+                        <Minus size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    value={newSlideTypeLabel}
+                    disabled={busy}
+                    onChange={(event) => setNewSlideTypeLabel(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        addSlideType();
+                      }
+                    }}
+                    placeholder="Nuevo tipo, ej. Comparativo"
+                    className="min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs outline-none focus:border-[var(--engine-accent)] dark:border-white/10 dark:bg-[var(--engine-surface-solid)]"
+                  />
+                  <button
+                    type="button"
+                    disabled={busy || !newSlideTypeLabel.trim()}
+                    onClick={addSlideType}
+                    className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-bold text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-200"
+                  >
+                    <Plus size={13} /> Añadir
+                  </button>
+                </div>
+              </div>
               {previewSlides.map((slideType) => (
                 <div
                   key={slideType.id}
@@ -803,6 +934,11 @@ export function SlideTemplateStudioClient() {
               <h2 className="text-sm font-black">Modificadores</h2>
             </div>
             <div className="min-h-0 space-y-3 overflow-y-auto p-3">
+              <div className="rounded-lg border border-sky-200 bg-sky-50 p-2 text-[11px] leading-4 text-sky-900 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-100">
+                <span className="font-black">Fondo base bloqueado: {SOFLIA_SLIDE_TEMPLATE_BACKGROUND}.</span>{" "}
+                El modo Claro/Oscuro se define al generar el deck; la plantilla conserva layouts, tipografías y acentos.
+              </div>
+
               <div className="grid grid-cols-3 gap-2">
                 {COLOR_FIELDS.map((field) => (
                   <label key={field.key} className="text-xs font-bold text-gray-600 dark:text-gray-300">
@@ -929,6 +1065,14 @@ export function SlideTemplateStudioClient() {
                   Guardar ZIP
                 </button>
               </div>
+              {operation !== "idle" && (
+                <p className="text-center text-[11px] font-semibold text-gray-500 dark:text-gray-400" role="status">
+                  {operation === "sending_message" && "Actualizando la conversación…"}
+                  {operation === "updating_spec" && "Validando y guardando la spec…"}
+                  {operation === "saving_package" && "Empaquetando y guardando el ZIP…"}
+                  {operation === "loading" && "Cargando la plantilla…"}
+                </p>
+              )}
             </div>
           </section>
         </aside>

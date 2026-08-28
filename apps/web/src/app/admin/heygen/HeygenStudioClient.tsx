@@ -54,6 +54,7 @@ interface AvatarSceneClip {
   storyboard_take_number?: number;
   visual_type?: string;
   voice_preset_id?: string;
+  voice_speed?: number;
 }
 
 interface VoiceSceneClip {
@@ -61,8 +62,9 @@ interface VoiceSceneClip {
   duration?: number;
   id: string;
   order: number;
-  public_url: string;
-  status: "COMPLETED" | "FAILED" | "STALE";
+  error_message?: string;
+  public_url?: string;
+  status: "DRAFT" | "COMPLETED" | "FAILED" | "STALE";
 }
 
 interface AvatarPreset {
@@ -195,6 +197,7 @@ export default function HeygenStudioClient({
     useState<AvatarGenerationMode>(isCourseContext ? "scene_clips" : "single_video");
   const [sceneClips, setSceneClips] = useState<AvatarSceneClip[]>([]);
   const [voiceClips, setVoiceClips] = useState<VoiceSceneClip[]>([]);
+  const [generatingVoiceClipIds, setGeneratingVoiceClipIds] = useState<string[]>([]);
   const [selectedSceneClipIds, setSelectedSceneClipIds] = useState<string[]>([]);
   const [sceneClipPanelOverrides, setSceneClipPanelOverrides] = useState<
     Record<string, boolean>
@@ -757,6 +760,40 @@ export default function HeygenStudioClient({
     }
   };
 
+  const handleGenerateSceneVoice = async (clipId: string) => {
+    if (!connection.connected || !componentId) {
+      toast.error("Configura la API key de HeyGen antes de generar voces por escena.");
+      return;
+    }
+
+    setGeneratingVoiceClipIds((current) => [...current, clipId]);
+    setErrorMessage(null);
+    try {
+      await saveSceneClips(sceneClips);
+      const response = await fetch("/api/production/heygen/clips/voice", {
+        body: JSON.stringify({ clipIds: [clipId], componentId }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const payload = await readApiResponse(response);
+      if (!response.ok || !payload.success) {
+        throw new Error(readApiErrorMessage(payload, "No se pudo generar la voz de esta escena."));
+      }
+
+      setSceneClips((payload.data?.clips || sceneClips) as AvatarSceneClip[]);
+      setVoiceClips((payload.data?.voiceClips || []) as VoiceSceneClip[]);
+      const job = (payload.data?.jobs || [])[0];
+      if (job?.errorMessage) throw new Error(job.errorMessage);
+      toast.success("Voz de escena generada.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudo generar la voz de esta escena.";
+      setErrorMessage(message);
+      toast.error(message);
+    } finally {
+      setGeneratingVoiceClipIds((current) => current.filter((id) => id !== clipId));
+    }
+  };
+
   const handleCheckClipStatus = async () => {
     if (!componentId) return;
 
@@ -1024,6 +1061,7 @@ export default function HeygenStudioClient({
               ) : (
                 visibleSceneClips.map((clip, clipIndex) => {
                   const voiceClip = voiceClips.find((voice) => voice.clip_id === clip.id);
+                  const isGeneratingVoice = generatingVoiceClipIds.includes(clip.id);
                   const isPanelExpanded = isSceneClipPanelExpanded(clip);
                   const scriptPreview =
                     clip.script_text.length > 140
@@ -1112,8 +1150,10 @@ export default function HeygenStudioClient({
                                   <span>Voz separada · escena {voiceClip.order}</span>
                                   <span>{voiceClip.status}{voiceClip.duration ? ` · ${voiceClip.duration.toFixed(1)}s` : ""}</span>
                                 </div>
-                                {voiceClip.status === "COMPLETED" ? (
+                                {voiceClip.status === "COMPLETED" && voiceClip.public_url ? (
                                   <audio src={voiceClip.public_url} controls preload="metadata" className="h-8 w-full" />
+                                ) : voiceClip.error_message ? (
+                                  <p className="mt-1 text-[11px] text-red-600 dark:text-red-300">{voiceClip.error_message}</p>
                                 ) : null}
                               </div>
                             ) : null}
@@ -1141,6 +1181,21 @@ export default function HeygenStudioClient({
                                 placeholder="Voz default"
                               />
                               <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
+                                Velocidad de voz
+                                <input
+                                  type="number"
+                                  min={0.5}
+                                  max={2}
+                                  step={0.05}
+                                  value={clip.voice_speed ?? 1}
+                                  disabled={isGeneratingClips || isGeneratingVoice}
+                                  onChange={(event) => updateSceneClip(clip.id, {
+                                    voice_speed: Math.min(2, Math.max(0.5, Number(event.target.value) || 1)),
+                                  })}
+                                  className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white"
+                                />
+                              </label>
+                              <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
                                 Fondo
                                 <input
                                   value={clip.background?.value || clip.background?.url || ""}
@@ -1157,6 +1212,15 @@ export default function HeygenStudioClient({
                                 />
                               </label>
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => handleGenerateSceneVoice(clip.id)}
+                              disabled={isGeneratingClips || isGeneratingVoice || !connection.connected || !clip.script_text.trim()}
+                              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300"
+                            >
+                              {isGeneratingVoice ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                              {voiceClip ? "Regenerar voz" : "Generar voz"}
+                            </button>
                           </>
                         )}
                       </div>

@@ -9,6 +9,7 @@ import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
 
 interface SlidesGenerationBackgroundRequest {
   createdBy: string;
+  jobId?: string;
   organizationId: string;
   payload: {
     componentId: string;
@@ -32,6 +33,7 @@ export const handler: Handler = async (event) => {
   const result = await runSlideDeckGeneration({
     authorizedComponent,
     createdBy: request.createdBy,
+    jobId: request.jobId,
     payload: request.payload as Parameters<typeof runSlideDeckGeneration>[0]["payload"],
   });
   if (!result.ok) {

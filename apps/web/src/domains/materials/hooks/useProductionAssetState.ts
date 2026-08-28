@@ -316,6 +316,7 @@ export function useProductionAssetState({
   const [isUploadingSlides, setIsUploadingSlides] = useState(false);
   const [isExportingOpenDesign, setIsExportingOpenDesign] = useState(false);
   const [isGeneratingSofliaSlides, setIsGeneratingSofliaSlides] = useState(false);
+  const [sofliaSlidesGenerationStatus, setSofliaSlidesGenerationStatus] = useState<string | null>(null);
   const [isPreparingAnimatedDeck, setIsPreparingAnimatedDeck] = useState(false);
 
   // HeyGen generation states
@@ -689,6 +690,7 @@ export function useProductionAssetState({
     appearanceOnly = false,
   ) => {
     setIsGeneratingSofliaSlides(true);
+    setSofliaSlidesGenerationStatus("QUEUED");
     try {
       const regenerationRequestId = crypto.randomUUID();
       const response = await fetch("/api/production/slides/generate", {
@@ -717,7 +719,8 @@ export function useProductionAssetState({
         toast.info("Deck en cola. La generacion continuara en segundo plano.");
         const completed = await waitForSlideGeneration({
           componentId: component.id,
-          createdAfter: data.queuedAt,
+          jobId: data.jobId,
+          onStatus: setSofliaSlidesGenerationStatus,
         });
         data = { success: true, assets: completed.assets };
       }
@@ -766,6 +769,7 @@ export function useProductionAssetState({
       toast.error(`Error al generar deck SofLIA - Engine: ${err.message}`);
     } finally {
       setIsGeneratingSofliaSlides(false);
+      setSofliaSlidesGenerationStatus(null);
     }
   };
 
@@ -1584,6 +1588,7 @@ export function useProductionAssetState({
     isUploadingSlides,
     isExportingOpenDesign,
     isGeneratingSofliaSlides,
+    sofliaSlidesGenerationStatus,
     isPreparingAnimatedDeck,
 
     // Refs

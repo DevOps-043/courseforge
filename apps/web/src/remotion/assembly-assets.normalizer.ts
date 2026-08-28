@@ -1,4 +1,4 @@
-import type { MaterialAssets } from "@/domains/materials/types/materials.types";
+import type { MaterialAssets, VoiceClip } from "@/domains/materials/types/materials.types";
 import { repairCommonUtf8Mojibake } from "../domains/production/text/mojibake.service";
 import type {
   AssemblyAvatarClip,
@@ -208,7 +208,9 @@ export function normalizeAssemblyAssets(
 
   const completedVoiceByClipId = new Map(
     (a.voice_clips ?? [])
-      .filter((clip) => clip.status === "COMPLETED" && Boolean(clip.public_url))
+      .filter((clip): clip is VoiceClip & { public_url: string } =>
+        clip.status === "COMPLETED" && Boolean(clip.public_url),
+      )
       .map((clip) => [clip.clip_id, clip] as const),
   );
   const hasCompleteVoiceClipMapping = completedAvatarClipSources.length > 0

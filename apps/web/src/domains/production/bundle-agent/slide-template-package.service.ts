@@ -12,6 +12,7 @@ import {
   type CourseDeckSpec,
   type CourseSlideSpec,
 } from "../slides/specs/course-deck.schema";
+import { SOFLIA_SLIDE_TEMPLATE_BACKGROUND } from "../slides/templates/slide-template-theme";
 
 function templateAssetPath(fileName: string) {
   return [
@@ -42,7 +43,7 @@ const hexColorSchema = z.string().trim().regex(/^#[0-9a-fA-F]{6}$/);
 const slideTemplateDesignTokensSchema = z.object({
   accent: hexColorSchema.default("#00D4B3"),
   accent2: hexColorSchema.default("#2D7D6E"),
-  background: hexColorSchema.default("#F7FAFC"),
+  background: hexColorSchema.default(SOFLIA_SLIDE_TEMPLATE_BACKGROUND),
   muted: hexColorSchema.default("#65758B"),
   surface: hexColorSchema.default("#FFFFFF"),
   text: hexColorSchema.default("#0A2540"),
@@ -646,7 +647,7 @@ function normalizeLightSlideTemplateTokens(
 ) {
   return slideTemplateDesignTokensSchema.parse({
     ...tokens,
-    background: isLightTemplateColor(tokens.background) ? tokens.background : "#F7FAFC",
+    background: SOFLIA_SLIDE_TEMPLATE_BACKGROUND,
     muted: isLightTemplateColor(tokens.muted) ? "#65758B" : tokens.muted,
     surface: isLightTemplateColor(tokens.surface) ? tokens.surface : "#FFFFFF",
     text: isLightTemplateColor(tokens.text) ? "#0A2540" : tokens.text,
@@ -660,6 +661,10 @@ function mergeSlideTemplateBlueprintOverride(
   const blueprintOverrides = asPlainRecord(overrides);
   const designTokenOverrides = asPlainRecord(blueprintOverrides.designTokens);
   const modifierOverrides = asPlainRecord(blueprintOverrides.modifiers);
+  const slideTypes = Array.isArray(blueprintOverrides.slideTypes)
+    ? blueprintOverrides.slideTypes
+    : baseBlueprint.slideTypes;
+  const parsedSlideTypes = z.array(slideTemplateTypeDefinitionSchema).min(1).max(12).parse(slideTypes);
 
   return slideTemplateBlueprintSchema.parse({
     ...baseBlueprint,
@@ -674,14 +679,12 @@ function mergeSlideTemplateBlueprintOverride(
     })),
     layouts: Array.isArray(blueprintOverrides.layouts)
       ? blueprintOverrides.layouts
-      : baseBlueprint.layouts,
+      : inferLayouts(parsedSlideTypes),
     modifiers: {
       ...baseBlueprint.modifiers,
       ...modifierOverrides,
     },
-    slideTypes: Array.isArray(blueprintOverrides.slideTypes)
-      ? blueprintOverrides.slideTypes
-      : baseBlueprint.slideTypes,
+    slideTypes: parsedSlideTypes,
   });
 }
 

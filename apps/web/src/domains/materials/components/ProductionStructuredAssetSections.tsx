@@ -253,6 +253,24 @@ function AnimatedDeckPreview({
   );
 }
 
+function GeneratedHtmlDeckPreview({ sourceUrl }: { sourceUrl: string }) {
+  return (
+    <div className="mt-3 overflow-hidden rounded-xl border border-purple-100 bg-white p-3 shadow-sm dark:border-purple-500/10 dark:bg-[var(--engine-canvas)]/60">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2 text-xs font-bold text-gray-800 dark:text-gray-100">
+          <Eye size={14} className="text-purple-500" /> Vista previa del HTML generado
+        </span>
+        <a href={sourceUrl} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-purple-700 hover:underline dark:text-purple-300">
+          Abrir HTML
+        </a>
+      </div>
+      <div className="aspect-video overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-white/10">
+        <iframe title="Vista previa del HTML de slides" src={sourceUrl} sandbox="allow-scripts" className="h-full w-full border-0" />
+      </div>
+    </div>
+  );
+}
+
 function buildHtmlPreviewHref(slides: SlidesAsset | null) {
   if (!slides?.html_content_path) {
     return slides?.html_public_url;
@@ -635,6 +653,7 @@ export function BackgroundMusicSection({
 interface SofliaHtmlSlidesSectionProps {
   slides: SlidesAsset | null;
   isGeneratingSofliaSlides: boolean;
+  generationStatus?: string | null;
   isUploading: boolean;
   isPreparingAnimatedDeck: boolean;
   isLoadingSlideTemplates?: boolean;
@@ -667,6 +686,7 @@ interface SofliaHtmlSlidesSectionProps {
 export function SofliaHtmlSlidesSection({
   slides,
   isGeneratingSofliaSlides,
+  generationStatus,
   isUploading,
   isPreparingAnimatedDeck,
   isLoadingSlideTemplates = false,
@@ -702,6 +722,7 @@ export function SofliaHtmlSlidesSection({
     : 0;
   const renderableSlideCount = slides?.images?.length || 0;
   const hasSourceReference = Boolean(slides?.html_public_url || slides?.html_content_path);
+  const htmlPreviewHref = buildHtmlPreviewHref(slides);
   const canPrepareAnimatedDeck = Boolean(slides?.html_content_path);
   const selectedSlideTemplate = slideTemplates.find(
     (template) => template.id === selectedSlideTemplateRunId,
@@ -759,6 +780,11 @@ export function SofliaHtmlSlidesSection({
                   : "text-green-600 bg-green-50 dark:bg-green-500/10 dark:text-green-300"
             }`}>
               QA {qaStatus}{qaFindingCount > 0 ? ` · ${qaFindingCount}` : ""}
+            </span>
+          )}
+          {isGeneratingSofliaSlides && generationStatus && (
+            <span className="flex items-center gap-1 text-[10px] font-semibold text-blue-700 dark:text-blue-300">
+              <Loader2 size={10} className="animate-spin" /> {generationStatus === "RUNNING" ? "Generando contenido y visuales" : "En cola de generación"}
             </span>
           )}
         </div>
@@ -881,6 +907,12 @@ export function SofliaHtmlSlidesSection({
                 { value: "dark", label: "Oscuro · superficies SofLIA" },
               ]}
             />
+            <p className="mt-1 text-[10px] leading-4 text-gray-500 dark:text-gray-400">
+              {selectedAppearance === "dark"
+                ? "Oscuro: fondo y superficies oscuras con texto claro."
+                : "Claro: fondo luminoso y texto de alto contraste."}{" "}
+              La plantilla mantiene sus layouts, tipografías y acentos.
+            </p>
           </div>
           {hasSourceReference ? (
             <button
@@ -944,6 +976,8 @@ export function SofliaHtmlSlidesSection({
           sourceUrl={buildHtmlPreviewHref(slides)}
         />
       )}
+
+      {!animatedDeck && htmlPreviewHref && <GeneratedHtmlDeckPreview sourceUrl={htmlPreviewHref} />}
 
       {slideImages.length > 0 && (
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">

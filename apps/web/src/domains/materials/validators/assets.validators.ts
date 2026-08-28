@@ -91,6 +91,7 @@ export const avatarClipSchema = z.object({
   script_text: z.string().trim(),
   avatar_preset_id: z.string().trim().optional(),
   voice_preset_id: z.string().trim().optional(),
+  voice_speed: z.number().min(0.5).max(2).optional(),
   background: avatarClipBackgroundSchema.optional(),
   public_url: internalMediaUrlSchema.optional(),
   storage_path: z.string().trim().optional(),
@@ -107,11 +108,12 @@ export const avatarClipSchema = z.object({
 });
 
 export const voiceClipSchema = z.object({
+  asset_id: z.string().uuid().optional(),
   id: z.string().trim(),
   clip_id: z.string().trim(),
   order: z.number().int().min(1),
-  storage_path: z.string().trim(),
-  public_url: internalMediaUrlSchema,
+  storage_path: z.string().trim().optional(),
+  public_url: internalMediaUrlSchema.optional(),
   file_name: z.string().trim().optional(),
   duration: z.number().positive().optional(),
   external_id: z.string().trim().optional(),
@@ -122,7 +124,7 @@ export const voiceClipSchema = z.object({
     start: z.number().nonnegative(),
     word: z.string(),
   })).optional(),
-  status: z.enum(["COMPLETED", "FAILED", "STALE"]),
+  status: z.enum(["DRAFT", "COMPLETED", "FAILED", "STALE"]),
   error_message: z.string().trim().optional(),
 });
 

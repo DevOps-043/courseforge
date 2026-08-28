@@ -143,6 +143,7 @@ export function SofliaEngineSlidesGenerator({
   const [simpleSlidesText, setSimpleSlidesText] = useState("");
   const [customSlidesJson, setCustomSlidesJson] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStatus, setGenerationStatus] = useState<string | null>(null);
   const [lastGeneratedUrl, setLastGeneratedUrl] = useState<string | null>(null);
 
   const effectiveComponentId = manualComponentId.trim() || selectedComponentId;
@@ -161,6 +162,7 @@ export function SofliaEngineSlidesGenerator({
     }
 
     setIsGenerating(true);
+    setGenerationStatus("QUEUED");
     try {
       const customSlides =
         slidesInputMode === "json"
@@ -191,7 +193,8 @@ export function SofliaEngineSlidesGenerator({
         toast.info("Deck en cola. La generacion continuara en segundo plano.");
         const completed = await waitForSlideGeneration({
           componentId: effectiveComponentId,
-          createdAfter: payload.queuedAt,
+          jobId: payload.jobId,
+          onStatus: setGenerationStatus,
         });
         payload = { success: true, assets: completed.assets };
       }
@@ -206,6 +209,7 @@ export function SofliaEngineSlidesGenerator({
       toast.error(error instanceof Error ? error.message : "No se pudo generar el deck.");
     } finally {
       setIsGenerating(false);
+      setGenerationStatus(null);
     }
   };
 
@@ -360,7 +364,7 @@ export function SofliaEngineSlidesGenerator({
                 </Link>
               )}
             </div>
-          ) : <span>{effectiveComponentId ? "Fuente validada · listo para generar" : "Selecciona una fuente para continuar"}</span>}
+          ) : isGenerating ? <span>{generationStatus === "RUNNING" ? "Generando contenido y visuales…" : "Deck en cola de generación…"}</span> : <span>{effectiveComponentId ? "Fuente validada · listo para generar" : "Selecciona una fuente para continuar"}</span>}
         </div>
         <button
           type="button"

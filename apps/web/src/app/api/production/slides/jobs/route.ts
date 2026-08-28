@@ -10,12 +10,14 @@ import { createClient } from "@/utils/supabase/server";
 const querySchema = z.object({
   componentId: z.string().uuid(),
   createdAfter: z.string().datetime().optional(),
+  jobId: z.string().uuid().optional(),
 });
 
 export async function GET(request: Request) {
   const parsed = querySchema.safeParse({
     componentId: new URL(request.url).searchParams.get("componentId"),
     createdAfter: new URL(request.url).searchParams.get("createdAfter") || undefined,
+    jobId: new URL(request.url).searchParams.get("jobId") || undefined,
   });
   if (!parsed.success) {
     return NextResponse.json({ error: "Parametros invalidos." }, { status: 400 });
@@ -37,7 +39,9 @@ export async function GET(request: Request) {
     .eq("job_type", PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION)
     .order("created_at", { ascending: false })
     .limit(1);
-  if (parsed.data.createdAfter) {
+  if (parsed.data.jobId) {
+    query = query.eq("id", parsed.data.jobId);
+  } else if (parsed.data.createdAfter) {
     query = query.gte("created_at", parsed.data.createdAfter);
   }
   const { data, error } = await query.maybeSingle();
