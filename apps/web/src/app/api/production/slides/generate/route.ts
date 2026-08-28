@@ -194,6 +194,13 @@ async function resolveSlideTemplateDesignSystem(params: {
     accent2: typeof designTokens?.accent2 === "string" ? designTokens.accent2 : undefined,
     background: typeof designTokens?.background === "string" ? designTokens.background : undefined,
     fontPairing: typeof modifiers?.fontPairing === "string" ? modifiers.fontPairing : undefined,
+    font: asRecord(modifiers?.font) && typeof asRecord(modifiers?.font)?.family === "string"
+      ? {
+          family: asRecord(modifiers?.font)?.family as string,
+          source: asRecord(modifiers?.font)?.source === "uploaded" ? "uploaded" : "google",
+          cssUrl: typeof asRecord(modifiers?.font)?.cssUrl === "string" ? asRecord(modifiers?.font)?.cssUrl as string : undefined,
+        }
+      : undefined,
     muted: typeof designTokens?.muted === "string" ? designTokens.muted : undefined,
     selectedSlideTemplateRunId: run.id as string,
     surface: typeof designTokens?.surface === "string" ? designTokens.surface : undefined,
@@ -518,6 +525,7 @@ export async function runSlideDeckGeneration(params: {
             accent2: selectedSlideTemplate.accent2 || generatedDeckSpec.designSystem.accent2,
             background: selectedSlideTemplate.background || generatedDeckSpec.designSystem.background,
             fontPairing: selectedSlideTemplate.fontPairing || generatedDeckSpec.designSystem.fontPairing,
+            font: selectedSlideTemplate.font || generatedDeckSpec.designSystem.font,
             muted: selectedSlideTemplate.muted || generatedDeckSpec.designSystem.muted,
             surface: selectedSlideTemplate.surface || generatedDeckSpec.designSystem.surface,
             text: selectedSlideTemplate.text || generatedDeckSpec.designSystem.text,

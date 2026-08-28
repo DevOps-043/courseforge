@@ -155,6 +155,13 @@ export const courseDeckDesignSystemSchema = z.object({
   background: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   brandLabel: z.string().min(1).max(80).default("SofLIA - Engine"),
   fontPairing: z.enum(["system_sans", "editorial_serif", "technical_mono"]).optional(),
+  /** A font selected by the organization. `cssUrl` is a Google Fonts stylesheet
+   * or an organization-owned uploaded font file. */
+  font: z.object({
+    cssUrl: z.string().url().max(2000).optional(),
+    family: z.string().trim().regex(/^[a-zA-Z0-9 ._-]+$/).min(1).max(120),
+    source: z.enum(["google", "uploaded"]),
+  }).optional(),
   muted: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   surface: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   text: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),

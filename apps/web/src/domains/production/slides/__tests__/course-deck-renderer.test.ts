@@ -592,6 +592,24 @@ describe("SofLIA - Engine slide deck generation", () => {
     assert.doesNotMatch(html, /<script>alert/);
   });
 
+  it("loads an organization-selected Google Font into the rendered deck", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-font",
+      component: { content: {}, id: "component-font", type: "VIDEO_THEORETICAL" },
+      input: { locale: "es", template: "course-module" },
+    });
+    deck.designSystem.font = {
+      family: "Montserrat",
+      source: "google",
+      cssUrl: "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap",
+    };
+    const html = renderCourseDeckHtml(deck);
+
+    assert.match(html, /fonts\.googleapis\.com\/css2\?family=Montserrat/);
+    assert.match(html, /--font-display: 'Montserrat', Arial/);
+    assert.match(html, /--font-ui: 'Montserrat', Arial/);
+  });
+
   it("repairs mojibake in generated deck text before rendering HTML", () => {
     const deck = buildCourseDeckSpecFromComponent({
       artifactId: "artifact-1",

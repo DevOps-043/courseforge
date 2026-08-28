@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Cable, Clapperboard, Gauge, LibraryBig, Presentation, Settings2, Shapes, UserRoundCheck, UsersRound } from 'lucide-react';
+import { Cable, Clapperboard, Gauge, LayoutTemplate, LibraryBig, Presentation, Settings2, Shapes, UserRoundCheck, UsersRound } from 'lucide-react';
 import SharedSidebarLayout, { NavItemConfig } from '@/components/layout/SharedSidebarLayout';
 import type { SidebarProfile } from '@/components/layout/layout.types';
 
@@ -25,6 +25,7 @@ export default function AdminLayoutClient({
         { href: `${basePath}/heygen`, icon: <UserRoundCheck size={22} />, label: 'Avatares' },
         { href: `${basePath}/library`, icon: <LibraryBig size={22} />, label: 'Biblioteca' },
         { href: `${basePath}/slides`, icon: <Presentation size={22} />, label: 'Slides' },
+        { href: `${basePath}/templates`, icon: <LayoutTemplate size={22} />, label: 'Plantillas' },
         { href: `${basePath}/assembly`, icon: <Clapperboard size={22} />, label: 'Ensamble' },
         { href: `${basePath}/integrations`, icon: <Cable size={22} />, label: 'Integraciones' },
         { href: `${basePath}/settings`, icon: <Settings2 size={22} />, label: 'Configuración' },

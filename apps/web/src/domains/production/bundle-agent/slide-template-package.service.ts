@@ -52,6 +52,11 @@ const slideTemplateModifiersSchema = z.object({
   cornerRadius: z.number().int().min(0).max(32).default(8),
   density: z.enum(["compact", "comfortable", "spacious"]).default("comfortable"),
   fontPairing: z.enum(["system_sans", "editorial_serif", "technical_mono"]).default("system_sans"),
+  font: z.object({
+    cssUrl: z.string().url().max(2000).optional(),
+    family: z.string().trim().regex(/^[a-zA-Z0-9 ._-]+$/).min(1).max(120),
+    source: z.enum(["google", "uploaded"]),
+  }).optional(),
   showBrandMark: z.boolean().default(true),
 });
 

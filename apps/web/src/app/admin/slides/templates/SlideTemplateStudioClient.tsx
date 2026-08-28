@@ -53,7 +53,15 @@ interface TemplateModifiers {
   cornerRadius: number;
   density: "compact" | "comfortable" | "spacious";
   fontPairing: "system_sans" | "editorial_serif" | "technical_mono";
+  font?: { family: string; source: "google" | "uploaded"; cssUrl?: string };
   showBrandMark: boolean;
+}
+
+interface OrganizationSlideFont {
+  id: string;
+  family: string;
+  source: "google" | "uploaded";
+  cssUrl?: string;
 }
 
 interface TemplateLayout {
@@ -161,6 +169,12 @@ const DENSITY_PADDING: Record<TemplateModifiers["density"], number> = {
   spacious: 50,
 };
 
+const GOOGLE_FONT_FAMILIES = ["Inter", "Roboto", "Montserrat", "Open Sans", "Lato", "Poppins", "Raleway", "Merriweather", "Playfair Display", "Source Sans 3"];
+
+function googleFontCssUrl(family: string) {
+  return `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family).replace(/%20/g, "+")}:wght@400;500;600;700&display=swap`;
+}
+
 interface DirtyOverrides {
   designTokens: boolean;
   modifiers: boolean;
@@ -199,7 +213,9 @@ function getRoleLabel(role: string) {
   return "SofLIA";
 }
 
-function getFontFamily(fontPairing: TemplateModifiers["fontPairing"]) {
+function getFontFamily(modifiers: TemplateModifiers) {
+  if (modifiers.font?.family) return `'${modifiers.font.family}', Arial, Helvetica, sans-serif`;
+  const { fontPairing } = modifiers;
   if (fontPairing === "editorial_serif") return "Georgia, 'Times New Roman', serif";
   if (fontPairing === "technical_mono") return "'SFMono-Regular', Consolas, 'Liberation Mono', monospace";
   return "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
@@ -252,7 +268,7 @@ function SlidePreview({
     "--studio-surface": tokens.surface,
     "--studio-text": tokens.text,
     borderRadius: `${modifiers.cornerRadius}px`,
-    fontFamily: getFontFamily(modifiers.fontPairing),
+    fontFamily: getFontFamily(modifiers),
   } as CSSProperties;
 
   return (
@@ -364,6 +380,8 @@ export function SlideTemplateStudioClient() {
   const [slidePreviewMode, setSlidePreviewMode] = useState<SlidePreviewMode>("grid");
   const [loadedConversationId, setLoadedConversationId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [organizationFonts, setOrganizationFonts] = useState<OrganizationSlideFont[]>([]);
+  const [uploadingFont, setUploadingFont] = useState(false);
 
   const latestSpec = state.specs[0]?.spec_json;
   const previewSlides = useMemo(() => getPreviewSlides(latestSpec), [latestSpec]);
@@ -391,6 +409,65 @@ export function SlideTemplateStudioClient() {
       cancelled = true;
     };
   }, [loadedConversationId, searchParams]);
+
+  useEffect(() => {
+    fetchJson("/api/admin/slides/fonts", { cache: "no-store" })
+      .then((payload) => setOrganizationFonts(payload.fonts || []))
+      .catch(() => setOrganizationFonts([]));
+  }, []);
+
+  useEffect(() => {
+    const cssUrl = modifiers.font?.cssUrl;
+    if (!cssUrl) return;
+    const selector = modifiers.font?.source === "google" ? "link" : "style";
+    const existing = document.querySelector(`${selector}[data-slide-font-url="${CSS.escape(cssUrl)}"]`);
+    if (existing) return;
+    if (modifiers.font?.source === "google") {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = cssUrl;
+      link.dataset.slideFontUrl = cssUrl;
+      document.head.appendChild(link);
+    } else if (modifiers.font?.family) {
+      const style = document.createElement("style");
+      style.dataset.slideFontUrl = cssUrl;
+      style.textContent = `@font-face { font-family: '${modifiers.font.family}'; src: url('${cssUrl}'); font-display: swap; }`;
+      document.head.appendChild(style);
+    }
+  }, [modifiers.font]);
+
+  async function selectOrganizationFont(font: OrganizationSlideFont | undefined) {
+    setDirtyOverrides((current) => ({ ...current, modifiers: true }));
+    setModifiers((current) => ({ ...current, font: font ? { family: font.family, source: font.source, cssUrl: font.cssUrl } : undefined }));
+  }
+
+  async function addGoogleFont(family: string) {
+    const cssUrl = googleFontCssUrl(family);
+    let font = organizationFonts.find((item) => item.source === "google" && item.family === family);
+    if (!font) {
+      const payload = await fetchJson("/api/admin/slides/fonts", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ family, source: "google", cssUrl }),
+      });
+      font = payload.font;
+      setOrganizationFonts((current) => [font!, ...current]);
+    }
+    await selectOrganizationFont(font);
+  }
+
+  async function uploadOrganizationFont(file: File | null) {
+    if (!file) return;
+    setUploadingFont(true);
+    try {
+      const family = file.name.replace(/\.(woff2?|ttf|otf)$/i, "").replace(/[-_]+/g, " ").trim();
+      const form = new FormData(); form.set("family", family); form.set("file", file);
+      const payload = await fetchJson("/api/admin/slides/fonts", { method: "POST", body: form });
+      setOrganizationFonts((current) => [payload.font, ...current]);
+      await selectOrganizationFont(payload.font);
+      toast.success("Fuente de empresa agregada.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo importar la fuente.");
+    } finally { setUploadingFont(false); }
+  }
 
   async function refresh(conversationId = state.conversation?.id) {
     if (!conversationId) return;
@@ -766,20 +843,43 @@ export function SlideTemplateStudioClient() {
                 <label className="text-xs font-bold text-gray-600 dark:text-gray-300">
                   Tipografia
                   <EngineSelect
-                    value={modifiers.fontPairing}
+                    value={modifiers.font ? `org:${modifiers.font.family}:${modifiers.font.source}` : `system:${modifiers.fontPairing}`}
                     onValueChange={(value) => {
+                      if (value.startsWith("google:")) {
+                        void addGoogleFont(value.slice("google:".length));
+                        return;
+                      }
+                      if (value.startsWith("org:")) {
+                        const [, family, source] = value.split(":");
+                        void selectOrganizationFont(organizationFonts.find((font) => font.family === family && font.source === source));
+                        return;
+                      }
                       setDirtyOverrides((current) => ({ ...current, modifiers: true }));
-                      setModifiers((current) => ({ ...current, fontPairing: value as TemplateModifiers["fontPairing"] }));
+                      setModifiers((current) => ({ ...current, font: undefined, fontPairing: value.slice("system:".length) as TemplateModifiers["fontPairing"] }));
                     }}
                     className="mt-1"
                     options={[
-                      { value: "system_sans", label: "Sans de sistema" },
-                      { value: "editorial_serif", label: "Serif editorial" },
-                      { value: "technical_mono", label: "Mono técnica" },
+                      { value: "system:system_sans", label: "Sans de sistema" },
+                      { value: "system:editorial_serif", label: "Serif editorial" },
+                      { value: "system:technical_mono", label: "Mono técnica" },
+                      ...GOOGLE_FONT_FAMILIES.map((family) => ({ value: `google:${family}`, label: `Google Fonts · ${family}` })),
+                      ...organizationFonts.map((font) => ({ value: `org:${font.family}:${font.source}`, label: `${font.source === "uploaded" ? "Empresa" : "Google guardada"} · ${font.family}` })),
                     ]}
                   />
                 </label>
               </div>
+
+              <label className="block text-xs font-bold text-gray-600 dark:text-gray-300">
+                Importar fuente de empresa
+                <input
+                  type="file"
+                  accept=".woff,.woff2,.ttf,.otf,font/woff,font/woff2,font/ttf,font/otf"
+                  disabled={uploadingFont}
+                  onChange={(event) => { void uploadOrganizationFont(event.target.files?.[0] || null); event.currentTarget.value = ""; }}
+                  className="mt-1 block w-full text-xs text-gray-500 file:mr-3 file:rounded-md file:border-0 file:bg-[var(--engine-accent)]/10 file:px-3 file:py-1.5 file:font-semibold file:text-[var(--engine-accent-strong)] hover:file:bg-[var(--engine-accent)]/20"
+                />
+                <span className="mt-1 block font-normal text-[11px] text-gray-500 dark:text-gray-400">.woff2, .woff, .ttf u .otf · máximo 10 MB · solo para esta empresa</span>
+              </label>
 
               <label className="block text-xs font-bold text-gray-600 dark:text-gray-300">
                 Radio {modifiers.cornerRadius}px

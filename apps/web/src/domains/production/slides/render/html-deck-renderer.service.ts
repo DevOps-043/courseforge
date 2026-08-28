@@ -260,14 +260,18 @@ function renderSlide(slide: CourseSlideSpec, deck: CourseDeckSpec, isActive: boo
 
 function renderCss(deck: CourseDeckSpec) {
   const theme = resolveCourseDeckTheme(deck);
-  const displayFont = deck.designSystem.fontPairing === "system_sans"
+  const selectedFont = deck.designSystem.font;
+  const customFontStack = selectedFont
+    ? `'${selectedFont.family.replace(/'/g, "\\'")}', Arial, Helvetica, sans-serif`
+    : null;
+  const displayFont = customFontStack || (deck.designSystem.fontPairing === "system_sans"
     ? "Arial, Helvetica, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
     : deck.designSystem.fontPairing === "technical_mono"
       ? "'SFMono-Regular', Consolas, 'Liberation Mono', monospace"
-      : "Georgia, 'Times New Roman', Cambria, serif";
-  const bodyFont = deck.designSystem.fontPairing === "technical_mono"
+      : "Georgia, 'Times New Roman', Cambria, serif");
+  const bodyFont = customFontStack || (deck.designSystem.fontPairing === "technical_mono"
     ? "'SFMono-Regular', Consolas, 'Liberation Mono', monospace"
-    : "Arial, Helvetica, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+    : "Arial, Helvetica, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
   return `:root {
   --font-display: ${displayFont};
   --font-ui: ${bodyFont};
@@ -852,12 +856,21 @@ export function renderCourseDeckHtml(deck: CourseDeckSpec) {
     .map((slide, index) => renderSlide(slide, deck, index === 0))
     .join("\n");
 
+  const fontStyle = deck.designSystem.font?.source === "uploaded" && deck.designSystem.font.cssUrl
+    ? `<style>@font-face { font-family: '${escapeHtml(deck.designSystem.font.family)}'; src: url('${escapeHtml(deck.designSystem.font.cssUrl)}'); font-display: swap; }</style>`
+    : "";
+  const fontLink = deck.designSystem.font?.source === "google" && deck.designSystem.font.cssUrl
+    ? `<link rel="stylesheet" href="${escapeHtml(deck.designSystem.font.cssUrl)}">`
+    : "";
+
   return `<!doctype html>
 <html lang="${deck.locale}" data-appearance="${deck.appearance}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=${deck.width}, initial-scale=1">
   <title>${escapeHtml(deck.sourceSnapshot.title || "SofLIA - Engine Deck")}</title>
+  ${fontLink}
+  ${fontStyle}
   <style>${renderCss(deck)}</style>
 </head>
 <body>
