@@ -145,6 +145,7 @@ describe("HyperFrames source assets", () => {
   it("preserves scene identity for interleaved avatar and voice assets", () => {
     const references = collectInternalMaterialAssetReferences({
       avatar_clips: [{
+        asset_name: "Lección 6 · Apertura",
         id: "scene-1",
         order: 1,
         status: "COMPLETED",
@@ -170,12 +171,13 @@ describe("HyperFrames source assets", () => {
 
     assert.deepEqual(references.map((reference) => ({
       clipId: reference.sceneClipId,
+      displayName: reference.displayName,
       order: reference.sceneOrder,
       role: reference.timelineRole,
     })), [
-      { clipId: "scene-1", order: 1, role: "VOICE" },
-      { clipId: "scene-2", order: 2, role: "VOICE" },
-      { clipId: "scene-1", order: 1, role: "AVATAR" },
+      { clipId: "scene-1", displayName: "Lección 6 · Apertura", order: 1, role: "VOICE" },
+      { clipId: "scene-2", displayName: undefined, order: 2, role: "VOICE" },
+      { clipId: "scene-1", displayName: "Lección 6 · Apertura", order: 1, role: "AVATAR" },
     ]);
   });
 

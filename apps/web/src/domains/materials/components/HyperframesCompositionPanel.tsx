@@ -15,6 +15,7 @@ interface VideoAsset {
   durationSeconds?: number;
   eligibleForRevision: boolean;
   metadata: {
+    asset_display_name?: string | null;
     detached_from_asset_id?: string | null;
     detached_from_clip_id?: string | null;
     file_name?: string | null;
@@ -73,6 +74,8 @@ export function HyperframesCompositionPanel({
   const [agentInstruction, setAgentInstruction] = useState("");
   const [generationMode, setGenerationMode] = useState<"AUTOMATIC" | "AGENT_ASSISTED">("AUTOMATIC");
   const [animatedDeck, setAnimatedDeck] = useState<{ animationCount: number; slideCount: number } | null>(null);
+  const [pendingHeygenClipCount, setPendingHeygenClipCount] = useState(0);
+  const [assetSyncVersion, setAssetSyncVersion] = useState(0);
   const uniqueAssets = useMemo(() => (
     [...new Map(assets.map((asset) => [asset.productionAssetId, asset])).values()]
   ), [assets]);
@@ -88,7 +91,7 @@ export function HyperframesCompositionPanel({
     hasAudio: asset.hasAudio,
     id: asset.productionAssetId,
     isEditable: asset.sourceType === "PRODUCTION_MEDIA",
-    label: asset.metadata.file_name || asset.mimeType,
+    label: asset.metadata.asset_display_name || asset.metadata.file_name || asset.mimeType,
     mimeType: asset.mimeType,
     previewUrl: draftId ? `/api/production/hyperframes/drafts/${draftId}/assets/${asset.productionAssetId}` : null,
     sourceHeight: typeof asset.metadata.source_height === "number" ? asset.metadata.source_height : undefined,
@@ -130,6 +133,7 @@ export function HyperframesCompositionPanel({
         const syncPayload = await syncResponse.json();
         if (!syncResponse.ok) throw new Error(syncPayload.error || "No se pudieron actualizar los assets de Producción.");
         setAnimatedDeck(syncPayload.data?.animatedDeck || null);
+        setPendingHeygenClipCount(Number(syncPayload.data?.heygenPendingClipCount) || 0);
       } catch (error) {
         const message = error instanceof Error ? error.message : "No se pudieron actualizar los assets de Producción.";
         setSyncWarning(message);
@@ -174,6 +178,44 @@ export function HyperframesCompositionPanel({
   }, [componentId, componentTitle, refreshAssets]);
 
   useEffect(() => { void loadInitialData(); }, [loadInitialData]);
+
+  const reconcilePendingHeygenAssets = useCallback(async () => {
+    if (!composition || busy !== null) return;
+    try {
+      const syncResponse = await fetch("/api/production/hyperframes/assets/sync", {
+        body: JSON.stringify({ componentId }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const syncPayload = await syncResponse.json();
+      if (!syncResponse.ok) throw new Error(syncPayload.error || "No se pudieron actualizar los clips de HeyGen.");
+      const nextPending = Number(syncPayload.data?.heygenPendingClipCount) || 0;
+      setPendingHeygenClipCount(nextPending);
+      await refreshAssets();
+
+      // Re-running draft initialization performs a non-destructive document
+      // reconciliation and appends every newly imported scene to the timeline.
+      const draftResponse = await fetch(`/api/production/hyperframes/compositions/${composition.id}/draft`, {
+        method: "POST",
+      });
+      const draftPayload = await draftResponse.json();
+      if (!draftResponse.ok) throw new Error(draftPayload.error || "No se pudo actualizar el timeline.");
+      setDraftId(draftPayload.data.draftId as string);
+      if ((Number(syncPayload.data?.synchronized) || 0) > 0) {
+        setAssetSyncVersion((value) => value + 1);
+      }
+    } catch (error) {
+      console.warn("[VideoAssemblyStudio] No se pudieron reconciliar clips pendientes:", error);
+    }
+  }, [busy, componentId, composition, refreshAssets]);
+
+  useEffect(() => {
+    if (pendingHeygenClipCount <= 0 || !draftId) return;
+    const timer = window.setTimeout(() => {
+      void reconcilePendingHeygenAssets();
+    }, 8_000);
+    return () => window.clearTimeout(timer);
+  }, [draftId, pendingHeygenClipCount, reconcilePendingHeygenAssets]);
 
   const pollRender = useCallback(async (requestId?: string) => {
     const target = requestId || renderRequest?.id;
@@ -295,7 +337,7 @@ export function HyperframesCompositionPanel({
       {editorError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-100">No se pudo preparar el editor: {editorError}</p>}
       {draftId && (
         <div className="min-h-0 flex-1">
-          <NativeCompositionPreview assets={studioAssets} componentId={componentId} compositionId={composition?.id || ""} draftId={draftId} lessons={lessonLibrary} onAssetsChanged={refreshAssets} onContinueToPublication={onContinueToPublication} onSelectLesson={onSelectLesson} onVideoCompleted={onVideoCompleted} selectedLessonId={selectedLessonId} />
+          <NativeCompositionPreview key={`${draftId}:${assetSyncVersion}`} assets={studioAssets} componentId={componentId} compositionId={composition?.id || ""} draftId={draftId} lessons={lessonLibrary} onAssetsChanged={refreshAssets} onContinueToPublication={onContinueToPublication} onSelectLesson={onSelectLesson} onVideoCompleted={onVideoCompleted} selectedLessonId={selectedLessonId} />
         </div>
       )}
       {renderRequest?.providerStatus.toLowerCase() === "completed" && <p className="flex items-center gap-2 text-xs font-medium text-green-700 dark:text-green-400"><CheckCircle2 size={15} /> Video final importado en Courseforge.</p>}

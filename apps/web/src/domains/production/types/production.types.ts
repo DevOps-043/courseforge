@@ -77,11 +77,14 @@ export type ProductionQaStatus =
 
 export interface ProductionComponentContext {
   artifactId: string;
+  artifactTitle?: string | null;
   componentId: string;
   componentType: string;
   lessonId: string | null;
+  lessonTitle?: string | null;
   materialLessonId: string | null;
   moduleId: string | null;
+  moduleTitle?: string | null;
   organizationId: string | null;
 }
 

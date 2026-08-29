@@ -17,6 +17,7 @@ import {
   HeygenRepository,
   resolveHeygenStorageObjectPath,
 } from "./heygen.repository";
+import { resolveHeygenJobFileStem } from "./heygen-asset-naming";
 
 export interface HeygenImportedVoiceAsset {
   durationSeconds: number | null;
@@ -70,11 +71,12 @@ export class HeygenAudioImportService {
       url: params.speech.audioUrl,
     });
     const context = buildContextFromJob(params.job);
+    const fileStem = resolveHeygenJobFileStem(params.job.input_snapshot, "audio");
     const objectPath = [
       "heygen",
       context.artifactId,
       context.componentId,
-      `${params.job.id}-voice.${downloaded.extension}`,
+      `${fileStem}-${params.job.id.slice(0, 8)}.${downloaded.extension}`,
     ].join("/");
 
     const { error: uploadError } = await this.supabase.storage
@@ -100,6 +102,9 @@ export class HeygenAudioImportService {
       fileSizeBytes: downloaded.buffer.byteLength,
       jobId: params.job.id,
       metadata: {
+        asset_display_name: typeof params.job.input_snapshot?.asset_display_name === "string"
+          ? params.job.input_snapshot.asset_display_name
+          : null,
         file_name: objectPath.split("/").at(-1),
         imported_at: new Date().toISOString(),
         provider_request_id: params.speech.requestId || null,

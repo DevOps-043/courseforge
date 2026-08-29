@@ -29,6 +29,7 @@ type OutputFormat = "mp4" | "webm";
 type AvatarGenerationMode = "scene_clips" | "single_video" | "voiceover";
 
 interface AvatarSceneClip {
+  asset_name?: string;
   avatar_preset_id?: string;
   background?: {
     asset_id?: string;
@@ -1308,6 +1309,23 @@ export default function HeygenStudioClient({
                           </p>
                         ) : (
                           <>
+                            <label className="mt-3 flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
+                              Nombre del asset
+                              <input
+                                type="text"
+                                maxLength={120}
+                                value={clip.asset_name || ""}
+                                disabled={isGeneratingClips}
+                                onChange={(event) => updateSceneClip(clip.id, {
+                                  asset_name: event.target.value || undefined,
+                                })}
+                                placeholder={`Se usará el nombre de la lección · Escena ${String(clip.order).padStart(2, "0")}`}
+                                className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white"
+                              />
+                              <span className="font-normal normal-case tracking-normal text-gray-400 dark:text-slate-500">
+                                Se mostrará como título en HeyGen y nombrará el MP4/MP3 al regresar.
+                              </span>
+                            </label>
                             <textarea
                               value={clip.script_text}
                               disabled={isGeneratingClips}

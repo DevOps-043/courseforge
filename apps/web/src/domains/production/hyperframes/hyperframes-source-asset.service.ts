@@ -22,6 +22,7 @@ const SUPPORTED_HYPERFRAMES_MIME = /^(audio|font|image|video)\/[a-z0-9.+-]+$/i;
 interface InternalMaterialAssetReference {
   detachedFromAssetId?: string;
   detachedFromClipId?: string;
+  displayName?: string;
   durationSeconds?: number;
   fileName: string | null;
   hasAudio?: boolean;
@@ -131,6 +132,7 @@ export function collectInternalMaterialAssetReferences(rawAssets: unknown): Inte
     timelineRole: InternalMaterialAssetReference["timelineRole"] = "VISUAL",
     timelineVariant?: InternalMaterialAssetReference["timelineVariant"],
     scene?: { clipId: string; order: number },
+    displayName?: string,
   ) => {
     if (!isRecord(value) || typeof value.storage_path !== "string") return;
     const storageBucket = value.storage_path.split("/", 1)[0];
@@ -145,6 +147,7 @@ export function collectInternalMaterialAssetReferences(rawAssets: unknown): Inte
     references.push({
       ...(typeof value.detached_from_asset_id === "string" ? { detachedFromAssetId: value.detached_from_asset_id } : {}),
       ...(typeof value.detached_from_clip_id === "string" ? { detachedFromClipId: value.detached_from_clip_id } : {}),
+      ...(displayName ? { displayName } : {}),
       ...(durationSeconds ? { durationSeconds } : {}),
       fileName: typeof value.file_name === "string" ? value.file_name : null,
       ...(hasAudio !== undefined ? { hasAudio } : {}),
@@ -160,6 +163,11 @@ export function collectInternalMaterialAssetReferences(rawAssets: unknown): Inte
   };
 
   const usesSceneClips = assets.avatar_generation_mode === "scene_clips";
+  const avatarSceneNames = new Map(asArray(assets.avatar_clips).flatMap((item) => (
+    isRecord(item) && typeof item.id === "string" && typeof item.asset_name === "string"
+      ? [[item.id, item.asset_name] as const]
+      : []
+  )));
   if (!usesSceneClips) add(assets.voice_audio, "audio/mpeg", "PRODUCTION_MEDIA", "VOICE");
   if (usesSceneClips) {
     for (const item of asArray(assets.voice_clips)) {
@@ -167,7 +175,7 @@ export function collectInternalMaterialAssetReferences(rawAssets: unknown): Inte
       const clipId = typeof item.clip_id === "string" ? item.clip_id : "";
       const order = positiveInteger(item.order);
       if (!clipId || !order) continue;
-      add(item, "audio/mpeg", "PRODUCTION_MEDIA", "VOICE", "CLIP", { clipId, order });
+      add(item, "audio/mpeg", "PRODUCTION_MEDIA", "VOICE", "CLIP", { clipId, order }, avatarSceneNames.get(clipId));
     }
   }
   add(assets.background_music, "audio/mpeg", "PRODUCTION_MEDIA", "AUDIO");
@@ -180,7 +188,7 @@ export function collectInternalMaterialAssetReferences(rawAssets: unknown): Inte
       const clipId = typeof item.id === "string" ? item.id : "";
       const order = positiveInteger(item.order);
       if (!clipId || !order) continue;
-      add(item, "video/mp4", "PRODUCTION_MEDIA", "AVATAR", "CLIP", { clipId, order });
+      add(item, "video/mp4", "PRODUCTION_MEDIA", "AVATAR", "CLIP", { clipId, order }, typeof item.asset_name === "string" ? item.asset_name : undefined);
     }
   }
   const slides = isRecord(assets.slides) ? assets.slides : {};
@@ -368,6 +376,7 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
       && existing.checksum
       && (reference.durationSeconds === undefined || preciseDurationSeconds(existing.duration_milliseconds, existing.duration_seconds) === reference.durationSeconds)
       && isRecord(existing.metadata)
+      && (reference.displayName === undefined || existing.metadata.asset_display_name === reference.displayName)
       && (reference.detachedFromAssetId === undefined || existing.metadata.detached_from_asset_id === reference.detachedFromAssetId)
       && (reference.detachedFromClipId === undefined || existing.metadata.detached_from_clip_id === reference.detachedFromClipId)
       && (reference.hasAudio === undefined || existing.metadata.has_audio === reference.hasAudio)
@@ -396,6 +405,7 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
       material_component_id: context.componentId,
       material_lesson_id: context.materialLessonId,
       metadata: {
+        ...(reference.displayName ? { asset_display_name: reference.displayName } : {}),
         assembly_source_type: reference.sourceType,
         ...(reference.detachedFromAssetId ? { detached_from_asset_id: reference.detachedFromAssetId } : {}),
         ...(reference.detachedFromClipId ? { detached_from_clip_id: reference.detachedFromClipId } : {}),
