@@ -2,6 +2,7 @@ import { createClient } from "@/utils/supabase/client";
 import {
   applyMaterialsQaDecisionAction,
   forceResetMaterialsGenerationAction,
+  getArtifactComponentsSnapshotAction,
   getLessonComponentsSnapshotAction,
   getMaterialsSnapshotAction,
   markMaterialLessonForFixAction,
@@ -51,6 +52,22 @@ export const materialsService = {
     return selectLatestComponentsByType(
       (result.components || []) as MaterialComponent[],
     );
+  },
+
+  async getArtifactComponents(artifactId: string): Promise<MaterialComponent[]> {
+    const result = await getArtifactComponentsSnapshotAction(artifactId);
+    if (!result.success) {
+      throw new Error(result.error || "No se pudieron cargar los componentes de producción");
+    }
+
+    const componentsByLesson = new Map<string, MaterialComponent[]>();
+    for (const component of (result.components || []) as MaterialComponent[]) {
+      const lessonComponents = componentsByLesson.get(component.material_lesson_id) || [];
+      lessonComponents.push(component);
+      componentsByLesson.set(component.material_lesson_id, lessonComponents);
+    }
+
+    return [...componentsByLesson.values()].flatMap(selectLatestComponentsByType);
   },
 
   async startMaterialsGeneration(artifactId: string) {

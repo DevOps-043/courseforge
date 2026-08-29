@@ -15,12 +15,13 @@ import {
     ProductionStatus,
     StoryboardItem,
 } from '../types/materials.types';
-import { Loader2, Clapperboard, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { Loader2, Clapperboard, CheckCircle2, Clock, AlertCircle, Layers3, Minus, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePathname } from 'next/navigation';
 import { PRODUCTION_COMPLETION_RECHECK_DELAY_MS } from '@/shared/constants/timing';
 import { PRODUCTION_THEME } from './production-asset-ui';
 import { ProductionAutomationReviewPanel } from '@/domains/production/automation/ProductionAutomationReviewPanel';
+import { LessonProductionSection } from './LessonProductionSection';
 
 interface VisualProductionContainerProps {
     artifactId: string;
@@ -36,12 +37,15 @@ interface ProductionGroup {
 
 export function VisualProductionContainer({ artifactId, assetsComplete, onStatusChange }: VisualProductionContainerProps) {
     const pathname = usePathname();
-    const { materials, getLessonComponents, refresh } = useMaterials(artifactId);
+    const { materials, getArtifactComponents, refresh } = useMaterials(artifactId);
     const [productionItems, setProductionItems] = useState<ProductionGroup[]>([]);
+    const [expandedLessonIds, setExpandedLessonIds] = useState<Set<string>>(new Set());
+    const [mountedLessonIds, setMountedLessonIds] = useState<Set<string>>(new Set());
     const [isLoading, setIsLoading] = useState(true);
     const [isAssetsComplete, setIsAssetsComplete] = useState(Boolean(assetsComplete));
     const pendingAssetsRef = useRef<Record<string, Partial<MaterialAssets>>>({});
     const saveQueuesRef = useRef<Map<string, Promise<void>>>(new Map());
+    const knownProductionLessonIdsRef = useRef<Set<string>>(new Set());
 
     useEffect(() => {
         setIsAssetsComplete(Boolean(assetsComplete));
@@ -75,9 +79,11 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
 
             setIsLoading(true);
             try {
-                // Process lessons in parallel chunks to avoid blocking but ensure speed
-                const promises = materials.lessons.map(async (lesson) => {
-                    const components = await getLessonComponents(lesson.id);
+                const artifactComponents = await getArtifactComponents();
+                const results = materials.lessons.map((lesson) => {
+                    const components = artifactComponents.filter(
+                        (component) => component.material_lesson_id === lesson.id,
+                    );
                     // Filter for "Produce-able" components
                     // VIDEO types (Theoretical, Demo, Guide) and DEMO_GUIDE (for screencast)
                     const produceable = components.filter(c =>
@@ -90,8 +96,6 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
                     return null;
                 });
 
-                const results = await Promise.all(promises);
-
                 // Filter nulls and sort by lesson order (which is preserved in materials.lessons)
                 const validItems = results.filter((item): item is ProductionGroup => item !== null);
 
@@ -102,17 +106,38 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
                     return idxA - idxB;
                 });
 
+                const nextLessonIds = new Set(sortedItems.map((item) => item.lesson.id));
+                const previouslyKnownLessonIds = knownProductionLessonIdsRef.current;
+                setExpandedLessonIds((current) => {
+                    const nextExpandedLessonIds = new Set(
+                        [...current].filter((lessonId) => nextLessonIds.has(lessonId)),
+                    );
+                    if (previouslyKnownLessonIds.size === 0 && sortedItems[0]) {
+                        nextExpandedLessonIds.add(sortedItems[0].lesson.id);
+                    }
+                    return nextExpandedLessonIds;
+                });
+                setMountedLessonIds((current) => {
+                    const nextMountedLessonIds = new Set(
+                        [...current].filter((lessonId) => nextLessonIds.has(lessonId)),
+                    );
+                    if (previouslyKnownLessonIds.size === 0 && sortedItems[0]) {
+                        nextMountedLessonIds.add(sortedItems[0].lesson.id);
+                    }
+                    return nextMountedLessonIds;
+                });
+                knownProductionLessonIdsRef.current = nextLessonIds;
                 setProductionItems(sortedItems);
 
             } catch (err) {
-                console.error('Error fetching production items:', err);
+                console.warn('Could not load production items:', err);
             } finally {
                 setIsLoading(false);
             }
         };
 
         fetchProductionItems();
-    }, [materials, getLessonComponents]);
+    }, [materials, getArtifactComponents]);
 
     const handleGeneratePrompts = async (
         componentId: string,
@@ -250,6 +275,63 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
         return () => clearTimeout(timer);
     }, [progressStats.percentage, isAssetsComplete, artifactId, productionItems.length, onStatusChange, isLoading]);
 
+    const allLessonsExpanded = productionItems.every((group) =>
+        expandedLessonIds.has(group.lesson.id),
+    );
+    const allLessonsCollapsed = productionItems.every((group) =>
+        !expandedLessonIds.has(group.lesson.id),
+    );
+
+    const productionModules = useMemo(() => {
+        const modules: Array<{
+            id: string;
+            title: string;
+            lessons: Array<{ group: ProductionGroup; lessonNumber: number }>;
+        }> = [];
+        const modulesById = new Map<string, (typeof modules)[number]>();
+
+        productionItems.forEach((group, lessonIndex) => {
+            const moduleId = group.lesson.module_id || group.lesson.module_title || 'module-without-title';
+            let productionModule = modulesById.get(moduleId);
+
+            if (!productionModule) {
+                productionModule = {
+                    id: moduleId,
+                    title: group.lesson.module_title || 'Módulo sin título',
+                    lessons: [],
+                };
+                modulesById.set(moduleId, productionModule);
+                modules.push(productionModule);
+            }
+
+            productionModule.lessons.push({ group, lessonNumber: lessonIndex + 1 });
+        });
+
+        return modules;
+    }, [productionItems]);
+
+    const toggleLesson = (lessonId: string) => {
+        setExpandedLessonIds((current) => {
+            const next = new Set(current);
+            if (next.has(lessonId)) next.delete(lessonId);
+            else {
+                next.add(lessonId);
+                setMountedLessonIds((mounted) => new Set(mounted).add(lessonId));
+            }
+            return next;
+        });
+    };
+
+    const expandAllLessons = () => {
+        const lessonIds = new Set(productionItems.map((group) => group.lesson.id));
+        setMountedLessonIds(lessonIds);
+        setExpandedLessonIds(lessonIds);
+    };
+
+    const collapseAllLessons = () => {
+        setExpandedLessonIds(new Set());
+    };
+
     if (isLoading) {
         return (
             <div className={`flex flex-col items-center justify-center py-20 ${PRODUCTION_THEME.panel}`}>
@@ -328,32 +410,79 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
             </div>
 
             {/* Production List */}
-            <div className="space-y-8">
-                {productionItems.map((group) => (
-                    <div key={group.lesson.id} className="space-y-4">
-                        <div className="flex items-center gap-4">
-                            <div className="h-px flex-1 bg-gray-200 dark:bg-[var(--engine-muted)]/20"></div>
-                            <h3 className="rounded-full border border-gray-200 bg-gray-50 px-4 py-1 font-mono text-xs uppercase tracking-wider text-gray-600 dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)] dark:text-[var(--engine-muted)]">
-                                {group.lesson.lesson_title}
-                            </h3>
-                            <div className="h-px flex-1 bg-gray-200 dark:bg-[var(--engine-muted)]/20"></div>
+            <div className="space-y-4">
+                <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-[var(--engine-muted)]/10 dark:bg-[var(--engine-surface-solid)] sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <p className={`text-sm font-bold ${PRODUCTION_THEME.primaryText}`}>
+                            Producción por lección
+                        </p>
+                        <p className={`text-xs ${PRODUCTION_THEME.secondaryText}`}>
+                            {productionItems.length} {productionItems.length === 1 ? 'lección disponible' : 'lecciones disponibles'}
+                        </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        <button
+                            type="button"
+                            onClick={expandAllLessons}
+                            disabled={allLessonsExpanded}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:border-[var(--engine-info)]/30 hover:text-[var(--engine-info)] disabled:cursor-default disabled:opacity-40 dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)] dark:text-gray-300"
+                        >
+                            <Plus size={13} aria-hidden="true" />
+                            Expandir todas
+                        </button>
+                        <button
+                            type="button"
+                            onClick={collapseAllLessons}
+                            disabled={allLessonsCollapsed}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:border-[var(--engine-info)]/30 hover:text-[var(--engine-info)] disabled:cursor-default disabled:opacity-40 dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)] dark:text-gray-300"
+                        >
+                            <Minus size={13} aria-hidden="true" />
+                            Colapsar todas
+                        </button>
+                    </div>
+                </div>
+
+                {productionModules.map((productionModule) => (
+                    <section key={productionModule.id} className="space-y-3" aria-labelledby={`production-module-${productionModule.id}`}>
+                        <div className="flex items-center gap-3 pt-3">
+                            <div className="h-px flex-1 bg-gradient-to-r from-transparent to-[var(--engine-info)]/25" />
+                            <div className="flex max-w-[min(100%,48rem)] items-center gap-2.5 rounded-full border border-[var(--engine-info)]/20 bg-blue-50/80 px-4 py-2 text-[var(--engine-info)] shadow-sm dark:bg-[var(--engine-info)]/10">
+                                <Layers3 size={15} className="shrink-0" aria-hidden="true" />
+                                <h3 id={`production-module-${productionModule.id}`} className="truncate text-xs font-bold uppercase tracking-[0.1em]">
+                                    {productionModule.title}
+                                </h3>
+                                <span className="shrink-0 rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold tabular-nums dark:bg-[var(--engine-canvas)]">
+                                    {productionModule.lessons.length}
+                                </span>
+                            </div>
+                            <div className="h-px flex-1 bg-gradient-to-l from-transparent to-[var(--engine-info)]/25" />
                         </div>
 
-                        <div className="grid gap-6">
-                            {group.components.map((component) => (
-                                <ProductionAssetCard
-                                    key={component.id}
-                                    component={component}
-                                    lessonTitle={group.lesson.lesson_title}
-                                    onGeneratePrompts={handleGeneratePrompts}
-                                    onAssetChange={handleAssetChange}
-                                    slideTemplatesHref={slideTemplatesHref}
-                                    slideTemplateStudioHref={slideTemplateStudioHref}
-                                    sofliaSlidesHref={buildSofliaSlidesHref(component.id)}
+                        <div className="space-y-3">
+                            {productionModule.lessons.map(({ group, lessonNumber }) => (
+                                <LessonProductionSection
+                                    key={group.lesson.id}
+                                    lesson={group.lesson}
+                                    components={group.components}
+                                    lessonNumber={lessonNumber}
+                                    expanded={expandedLessonIds.has(group.lesson.id)}
+                                    onToggle={() => toggleLesson(group.lesson.id)}
+                                    componentCards={mountedLessonIds.has(group.lesson.id) ? group.components.map((component) => (
+                                        <ProductionAssetCard
+                                            key={component.id}
+                                            component={component}
+                                            lessonTitle={group.lesson.lesson_title}
+                                            onGeneratePrompts={handleGeneratePrompts}
+                                            onAssetChange={handleAssetChange}
+                                            slideTemplatesHref={slideTemplatesHref}
+                                            slideTemplateStudioHref={slideTemplateStudioHref}
+                                            sofliaSlidesHref={buildSofliaSlidesHref(component.id)}
+                                        />
+                                    )) : null}
                                 />
                             ))}
                         </div>
-                    </div>
+                    </section>
                 ))}
             </div>
         </div>

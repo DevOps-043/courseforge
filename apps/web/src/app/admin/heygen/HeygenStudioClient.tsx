@@ -6,10 +6,12 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   AudioLines,
   ArrowLeft,
+  BookOpen,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   ExternalLink,
+  Layers3,
   Loader2,
   Plus,
   RefreshCw,
@@ -21,6 +23,7 @@ import {
 import { toast } from "sonner";
 import { EngineSelect } from "@/components/ui/EngineSelect";
 import { readApiResponse } from "@/lib/client/api-response";
+import type { ProductionCourseContext } from "@/domains/production/course-context/production-course-context";
 
 type AspectRatio = "16:9" | "9:16";
 type Engine = "avatar_iv" | "avatar_v";
@@ -133,6 +136,7 @@ interface CurrentJob {
 }
 
 interface HeygenStudioClientProps {
+  courseContext?: ProductionCourseContext | null;
   organizationLabel: string;
 }
 
@@ -162,6 +166,7 @@ const CLIP_STATUS_LABELS: Record<AvatarSceneClip["status"], string> = {
 };
 
 export default function HeygenStudioClient({
+  courseContext,
   organizationLabel,
 }: HeygenStudioClientProps) {
   const router = useRouter();
@@ -979,6 +984,42 @@ export default function HeygenStudioClient({
           </div>
         </div>
       </header>
+
+      {isCourseContext ? (
+        courseContext ? (
+          <section
+            aria-label="Contexto del taller"
+            className="grid gap-3 rounded-2xl border border-rose-200 bg-gradient-to-r from-rose-50 to-orange-50 p-4 dark:border-rose-500/20 dark:from-rose-500/10 dark:to-orange-500/5 sm:grid-cols-2"
+          >
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-rose-600 shadow-sm dark:bg-white/10 dark:text-rose-300">
+                <Layers3 size={17} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-rose-700/70 dark:text-rose-300/70">Taller</p>
+                <p className="mt-1 truncate text-sm font-bold text-gray-950 dark:text-white" title={courseContext.workshopTitle}>
+                  {courseContext.workshopTitle}
+                </p>
+              </div>
+            </div>
+            <div className="flex min-w-0 items-start gap-3 sm:border-l sm:border-rose-200 sm:pl-4 dark:sm:border-rose-500/20">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-rose-600 shadow-sm dark:bg-white/10 dark:text-rose-300">
+                <BookOpen size={17} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-rose-700/70 dark:text-rose-300/70">Lección</p>
+                <p className="mt-1 truncate text-sm font-bold text-gray-950 dark:text-white" title={courseContext.lessonTitle}>
+                  {courseContext.lessonTitle}
+                </p>
+              </div>
+            </div>
+          </section>
+        ) : (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-700 dark:text-amber-300">
+            No se pudo verificar el taller y la lección asociados a este componente.
+          </div>
+        )
+      ) : null}
 
       {errorMessage ? (
         <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-600 dark:text-red-300">

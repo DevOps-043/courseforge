@@ -26,6 +26,7 @@ interface UseMaterialsReturn {
   forceResetGeneration: () => Promise<void>;
   refresh: () => Promise<void>;
   getLessonComponents: (lessonId: string) => Promise<MaterialComponent[]>;
+  getArtifactComponents: () => Promise<MaterialComponent[]>;
   isGenerating: boolean;
   isValidating: boolean;
   isReadyForQA: boolean;
@@ -275,6 +276,10 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
     return materialsService.getLessonComponents(lessonId);
   }, []);
 
+  const getArtifactComponents = useCallback(async () => {
+    return materialsService.getArtifactComponents(artifactId);
+  }, [artifactId]);
+
   return {
     materials,
     loading,
@@ -289,6 +294,7 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
     forceResetGeneration,
     refresh: loadMaterials,
     getLessonComponents,
+    getArtifactComponents,
     isGenerating: isGenerating || false,
     isValidating: materials?.state === 'PHASE3_VALIDATING',
     isReadyForQA: materials?.state === 'PHASE3_READY_FOR_QA',

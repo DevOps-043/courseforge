@@ -16,6 +16,11 @@ import {
   CompositionSnapshotError,
   listCompositionSnapshots,
 } from "@/domains/production/composition-editor/composition-snapshot.service";
+import {
+  COMPOSITION_VERSION_FALLBACK_HEADER,
+  formatCompositionDocumentEtag,
+  resolveCompositionDocumentPrecondition,
+} from "@/domains/production/composition-editor/composition-document-version";
 import { createClient } from "@/utils/supabase/server";
 
 interface RouteContext { params: Promise<{ compositionId: string }>; }
@@ -26,7 +31,10 @@ const revisionRequestSchema = z.object({
   selectedAssetIds: z.array(z.string().uuid()).min(1).max(250).optional(),
 }).strict();
 
-const activateSnapshotSchema = z.object({ revisionId: z.string().uuid() }).strict();
+const activateSnapshotSchema = z.object({
+  draftId: z.string().uuid(),
+  revisionId: z.string().uuid(),
+}).strict();
 
 export async function GET(_request: Request, context: RouteContext) {
   try {
@@ -49,14 +57,33 @@ export async function PUT(request: Request, context: RouteContext) {
     const authorization = await authorize();
     if (authorization instanceof NextResponse) return authorization;
     const compositionId = z.string().uuid().parse((await context.params).compositionId);
-    const { revisionId } = activateSnapshotSchema.parse(await request.json());
+    const precondition = resolveCompositionDocumentPrecondition({
+      fallbackHeader: request.headers.get(COMPOSITION_VERSION_FALLBACK_HEADER),
+      ifMatchHeader: request.headers.get("if-match"),
+    });
+    if (!precondition.ok) {
+      return NextResponse.json({
+        error: "Falta la versión actual del timeline para restaurar el snapshot.",
+        code: "COMPOSITION_IF_MATCH_REQUIRED",
+      }, { status: 428, headers: { "Cache-Control": "private, no-store" } });
+    }
+    const { draftId, revisionId } = activateSnapshotSchema.parse(await request.json());
     const data = await activateCompositionSnapshot({
       compositionId,
+      draftId,
+      expectedDocumentHash: precondition.documentHash,
       organizationId: authorization.organizationId,
       revisionId,
+      signal: AbortSignal.any([request.signal, AbortSignal.timeout(15_000)]),
       supabase: authorization.admin,
+      userId: authorization.userId,
     });
-    return NextResponse.json({ success: true, data }, { headers: { "Cache-Control": "private, no-store" } });
+    return NextResponse.json({ success: true, data }, {
+      headers: {
+        "Cache-Control": "private, no-store",
+        ETag: formatCompositionDocumentEtag(data.documentHash),
+      },
+    });
   } catch (error) {
     return respondSnapshotError(error, "No se pudo restaurar el snapshot.");
   }

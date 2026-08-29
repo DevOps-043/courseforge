@@ -107,6 +107,24 @@ export async function fetchLessonComponentsSnapshot(
     .order("iteration_number", { ascending: false });
 }
 
+export async function fetchArtifactComponentsSnapshot(
+  admin: SupabaseClient,
+  artifactId: string,
+) {
+  return admin
+    .from("material_components")
+    .select(`
+      ${MATERIAL_COMPONENTS_SNAPSHOT_SELECT},
+      material_lessons!inner (
+        materials!inner (
+          artifact_id
+        )
+      )
+    `)
+    .eq("material_lessons.materials.artifact_id", artifactId)
+    .order("iteration_number", { ascending: false });
+}
+
 export async function fetchArtifactMaterialsRecord(
   admin: SupabaseClient,
   artifactId: string,

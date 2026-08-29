@@ -8,6 +8,7 @@ import { formatCompositionTimecode, parseCompositionTimecode } from "@/domains/p
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
 import type { CompositionAgentProposalEnvelope } from "@/domains/production/composition-editor/composition-agent-proposal.types";
 import type { CompositionAgentRecoveryMetadata } from "@/domains/production/composition-editor/composition-agent-recovery.service";
+import type { CompositionPresetCatalogEntry } from "@/domains/production/composition-editor/composition-preset.types";
 import { applyCompositionEditorPatches, ensureCanvasDurationForClipPatches } from "@/domains/production/composition-editor/editor-patch.service";
 import { resolveCompositionTrackDefinition } from "@/domains/production/composition-editor/composition-track-registry";
 import {
@@ -25,6 +26,11 @@ import { AudioMixControls } from "./AudioMixControls";
 import { VolumeSlider } from "./VolumeSlider";
 import { LayerDepthControls } from "./LayerDepthControls";
 import { CompositionMotionControls } from "./CompositionMotionControls";
+import {
+  CompositionPresetPanel,
+  type AppliedCompositionPreset,
+  type CompositionPresetPreviewState,
+} from "./CompositionPresetPanel";
 import { buildCompositionAutoOrganizePatch } from "@/domains/production/composition-editor/composition-auto-organize.service";
 import { buildCompositionDurationRecalculationPatch } from "@/domains/production/composition-editor/composition-duration-recalculation.service";
 import { deriveCompositionScenes } from "@/domains/production/composition-editor/composition-scene.service";
@@ -88,6 +94,7 @@ type CompositionSnapshotEntry = {
   documentVersion: number;
   id: string;
   isActive: boolean;
+  isCurrentDocument: boolean;
   projectArchiveSizeBytes: number;
   renderProfile: HyperframesRenderSettings | null;
   renderProfileId: HyperframesRenderProfileId | null;
@@ -225,6 +232,12 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const [agentProposal, setAgentProposal] = useState<AgentProposal | null>(null);
   const [lastAppliedAgentProposal, setLastAppliedAgentProposal] = useState<AgentProposal | null>(null);
   const [proposing, setProposing] = useState(false);
+  const [presetPanelOpen, setPresetPanelOpen] = useState(false);
+  const [presetEntries, setPresetEntries] = useState<CompositionPresetCatalogEntry[]>([]);
+  const [presetCatalogLoading, setPresetCatalogLoading] = useState(false);
+  const [presetBusy, setPresetBusy] = useState(false);
+  const [presetPreview, setPresetPreview] = useState<CompositionPresetPreviewState | null>(null);
+  const [lastAppliedPreset, setLastAppliedPreset] = useState<AppliedCompositionPreset | null>(null);
   const [assembly, setAssembly] = useState<ActiveAssembly | null>(null);
   const [snapshotHistory, setSnapshotHistory] = useState<CompositionSnapshotEntry[] | null>(null);
   const [snapshotHistoryOpen, setSnapshotHistoryOpen] = useState(false);
@@ -572,9 +585,11 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     ? DURATION_SOURCE_LABELS[payload.document.canvas.durationSource]
     : null;
   const savedPreviewUrl = useMemo(() => payload && previewDocumentHash ? `/api/production/hyperframes/drafts/${draftId}/preview?v=${encodeURIComponent(previewDocumentHash)}&r=${previewRefreshKey}` : null, [draftId, payload, previewDocumentHash, previewRefreshKey]);
-  const previewUrl = agentProposal
-    ? `/api/production/hyperframes/drafts/${draftId}/agent-proposals/${agentProposal.proposalId}/preview`
-    : savedPreviewUrl;
+  const previewUrl = presetPreview
+    ? `/api/production/hyperframes/drafts/${draftId}/preset-applications/${presetPreview.applicationId}/preview`
+    : agentProposal
+      ? `/api/production/hyperframes/drafts/${draftId}/agent-proposals/${agentProposal.proposalId}/preview`
+      : savedPreviewUrl;
   useEffect(() => {
     pendingSeekSecondsRef.current = null;
     setPlaying(false);
@@ -598,13 +613,13 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   useEffect(() => {
     if (!previewReady) return;
     postPreviewMessage({
-      editingEnabled: directEditingEnabled && !agentProposal,
-      cropEnabled: visualCropEnabled && !agentProposal,
+      editingEnabled: directEditingEnabled && !agentProposal && !presetPreview,
+      cropEnabled: visualCropEnabled && !agentProposal && !presetPreview,
       gridVisible,
       snapEnabled,
       type: "courseforge-composition-editor-settings",
     });
-  }, [agentProposal, directEditingEnabled, gridVisible, previewReady, snapEnabled, visualCropEnabled]);
+  }, [agentProposal, directEditingEnabled, gridVisible, presetPreview, previewReady, snapEnabled, visualCropEnabled]);
   useEffect(() => {
     if (previewReady) postPreviewMessage({ scale: previewZoom, type: "courseforge-composition-preview-zoom" });
   }, [previewReady, previewZoom]);
@@ -664,7 +679,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   };
   const refreshPreviewDocument = (autoPlay = false, reason: PreviewReloadReason = "MANUAL") => {
     const currentPayload = payloadRef.current;
-    if (!currentPayload || agentProposal) return;
+    if (!currentPayload || agentProposal || presetPreview) return;
     pausePreviewForMutation();
     autoPlayAfterPreviewRefreshRef.current = autoPlay;
     previewDocumentHashRef.current = currentPayload.documentHash;
@@ -713,6 +728,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   ): Promise<boolean> {
     const currentPayload = payloadRef.current;
     if (!currentPayload || (!queuedSave && saveInFlightRef.current)) return false;
+    if (presetPreview) {
+      setSaveError("Confirma o descarta el preset antes de realizar otra edición.");
+      return false;
+    }
     if (agentProposal && source !== "AGENT") {
       setSaveError("Confirma o descarta la propuesta antes de realizar otra edición.");
       return false;
@@ -736,6 +755,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     const runtimeBaseHash = previewRuntimeBaseHashRef.current;
     const canApplyIncrementally = COMPOSITION_PREVIEW_SYNC_V2_ENABLED
       && agentProposal === null
+      && presetPreview === null
       && previewReady
       && visualPatch !== null
       && runtimeBaseHash !== null
@@ -1228,6 +1248,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
 
   async function requestAgentProposal(instruction: string) {
     if (!payload) return;
+    if (presetPreview) {
+      setSaveError("Confirma o descarta el preset antes de solicitar otra edición.");
+      return;
+    }
     setProposing(true);
     setSaveError(null);
     try {
@@ -1367,6 +1391,152 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     }
   }
 
+  async function loadCompositionPresets() {
+    setPresetCatalogLoading(true);
+    try {
+      const response = await fetch("/api/production/hyperframes/composition-presets", { cache: "no-store" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "No se pudo cargar el catálogo de presets.");
+      setPresetEntries(body.data as CompositionPresetCatalogEntry[]);
+    } catch (caught) {
+      setSaveError(caught instanceof Error ? caught.message : "No se pudo cargar el catálogo de presets.");
+    } finally {
+      setPresetCatalogLoading(false);
+    }
+  }
+
+  async function createCompositionPreset(input: { description: string; instruction?: string; mode: "INSTRUCTIONS" | "MANUAL"; name: string }) {
+    setPresetBusy(true);
+    setSaveError(null);
+    try {
+      const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/composition-presets`, {
+        body: JSON.stringify(input),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "No se pudo crear el preset.");
+      await loadCompositionPresets();
+    } catch (caught) {
+      setSaveError(caught instanceof Error ? caught.message : "No se pudo crear el preset.");
+    } finally {
+      setPresetBusy(false);
+    }
+  }
+
+  async function previewCompositionPreset(presetId: string) {
+    const currentPayload = payloadRef.current;
+    if (!currentPayload || presetBusy || saving) return;
+    if (agentProposal) {
+      setSaveError("Confirma o descarta la propuesta de SofLIA antes de abrir un preset.");
+      return;
+    }
+    setPresetBusy(true);
+    setSaveError(null);
+    try {
+      const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/preset-applications`, {
+        body: JSON.stringify({ presetId }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "No se pudo preparar el preview del preset.");
+      const preview = body.data as CompositionPresetPreviewState;
+      if (preview.baseDocumentHash !== currentPayload.documentHash) {
+        throw new Error("La composición cambió antes de abrir el preview. Actualiza el catálogo y vuelve a intentar.");
+      }
+      setLastAppliedPreset(null);
+      setPresetPreview(preview);
+      setPresetPanelOpen(true);
+    } catch (caught) {
+      setSaveError(caught instanceof Error ? caught.message : "No se pudo preparar el preview del preset.");
+    } finally {
+      setPresetBusy(false);
+    }
+  }
+
+  async function applyCompositionPresetPreview() {
+    const preview = presetPreview;
+    const currentPayload = payloadRef.current;
+    if (!preview || !currentPayload || presetBusy || saveInFlightRef.current) return;
+    setPresetBusy(true);
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/preset-applications/${preview.applicationId}/apply`, {
+        headers: {
+          "If-Match": formatCompositionDocumentEtag(currentPayload.documentHash),
+          [COMPOSITION_VERSION_FALLBACK_HEADER]: currentPayload.documentHash,
+        },
+        method: "POST",
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "No se pudo aplicar el preset.");
+      const nextPayload = body.data as DocumentPayload;
+      nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
+      payloadRef.current = nextPayload;
+      setPayload(nextPayload);
+      previewDocumentHashRef.current = nextPayload.documentHash;
+      previewRuntimeBaseHashRef.current = nextPayload.documentHash;
+      setPreviewDocumentHash(nextPayload.documentHash);
+      setPreviewDirty(false);
+      setPresetPreview(null);
+      setLastAppliedPreset({ applicationId: preview.applicationId, name: preview.preset.name });
+    } catch (caught) {
+      setSaveError(caught instanceof Error ? caught.message : "No se pudo aplicar el preset.");
+    } finally {
+      setPresetBusy(false);
+      setSaving(false);
+    }
+  }
+
+  async function dismissCompositionPresetPreview() {
+    const preview = presetPreview;
+    setPresetPreview(null);
+    if (!preview) return;
+    try {
+      await fetch(`/api/production/hyperframes/drafts/${draftId}/preset-applications/${preview.applicationId}`, { method: "DELETE" });
+    } catch {
+      // The durable preview is short lived and cannot mutate the document after
+      // it disappears from this session without its unguessable id.
+    }
+  }
+
+  async function undoLastCompositionPreset() {
+    const applied = lastAppliedPreset;
+    const currentPayload = payloadRef.current;
+    if (!applied || !currentPayload || presetBusy || saveInFlightRef.current) return;
+    if (!window.confirm(`¿Restaurar la versión completa anterior a “${applied.name}”?`)) return;
+    setPresetBusy(true);
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/preset-applications/${applied.applicationId}/undo`, {
+        headers: {
+          "If-Match": formatCompositionDocumentEtag(currentPayload.documentHash),
+          [COMPOSITION_VERSION_FALLBACK_HEADER]: currentPayload.documentHash,
+        },
+        method: "POST",
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "No se pudo deshacer el preset.");
+      const nextPayload = body.data as DocumentPayload;
+      nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
+      payloadRef.current = nextPayload;
+      setPayload(nextPayload);
+      previewDocumentHashRef.current = nextPayload.documentHash;
+      previewRuntimeBaseHashRef.current = nextPayload.documentHash;
+      setPreviewDocumentHash(nextPayload.documentHash);
+      setPreviewDirty(false);
+      setLastAppliedPreset(null);
+    } catch (caught) {
+      setSaveError(caught instanceof Error ? caught.message : "No se pudo deshacer el preset.");
+    } finally {
+      setPresetBusy(false);
+      setSaving(false);
+    }
+  }
+
   async function prepareAssembly() {
     setAssembling(true); setAssemblyError(null); setAssemblyNotice(null); setRenderStatus("validating");
     try {
@@ -1391,18 +1561,73 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   }
 
   async function restoreSnapshot(snapshot: CompositionSnapshotEntry) {
-    if (snapshot.isActive || assembling) return;
+    if ((snapshot.isActive && snapshot.isCurrentDocument) || assembling) return;
+    const currentPayload = payloadRef.current;
+    if (!currentPayload) return;
+    if (saveInFlightRef.current || saving || presetBusy) {
+      setAssemblyError("Espera a que termine el cambio actual antes de restaurar un snapshot.");
+      return;
+    }
+    if (agentProposal || presetPreview) {
+      setAssemblyError("Confirma o descarta el preview pendiente antes de restaurar un snapshot.");
+      return;
+    }
     setAssembling(true);
     setAssemblyError(null);
     setAssemblyNotice(null);
     try {
       const response = await fetch(`/api/production/hyperframes/compositions/${compositionId}/revisions`, {
-        body: JSON.stringify({ revisionId: snapshot.id }),
-        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draftId, revisionId: snapshot.id }),
+        headers: {
+          "Content-Type": "application/json",
+          "If-Match": formatCompositionDocumentEtag(currentPayload.documentHash),
+          [COMPOSITION_VERSION_FALLBACK_HEADER]: currentPayload.documentHash,
+        },
         method: "PUT",
       });
-      const body = await readCompositionApiResponse<{ data?: { id: string; status: "READY_FOR_PREVIEW" }; error?: string }>(response, "No se pudo restaurar el snapshot.");
-      if (!response.ok || !body.data) throw new Error(body.error || "No se pudo restaurar el snapshot.");
+      const body = await readCompositionApiResponse<{
+        data?: {
+          document: CompositionEditorDocument;
+          documentHash: string;
+          id: string;
+          restoredVersion: number;
+          status: "READY_FOR_PREVIEW";
+        };
+        error?: string;
+      }>(response, "No se pudo restaurar el snapshot.");
+      if (!response.ok || !body.data) {
+        if (response.status === 409) await loadDocument();
+        throw new Error(body.error || "No se pudo restaurar el snapshot.");
+      }
+
+      pausePreviewForMutation();
+      const restoredPayload: DocumentPayload = {
+        document: body.data.document,
+        documentHash: resolveCompositionDocumentVersion(body.data.documentHash),
+        version: body.data.restoredVersion,
+      };
+      payloadRef.current = restoredPayload;
+      setPayload(restoredPayload);
+      if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
+        previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
+          documentHash: restoredPayload.documentHash,
+          type: "DOCUMENT_LOADED",
+        });
+      }
+      previewDocumentHashRef.current = restoredPayload.documentHash;
+      previewRuntimeBaseHashRef.current = restoredPayload.documentHash;
+      setPreviewDocumentHash(restoredPayload.documentHash);
+      setPreviewDirty(false);
+      pendingPreviewRestoreSecondsRef.current = null;
+      playheadSecondsRef.current = 0;
+      setSeconds(0);
+      setSelectedHfId(null);
+      setSelectedAnimationId(null);
+      setManualInspectorOpen(false);
+      setRemovalRangeStart(null);
+      setHistory(null);
+      setLastAppliedAgentProposal(null);
+      setLastAppliedPreset(null);
       setAssembly({
         projectArchiveSizeBytes: snapshot.projectArchiveSizeBytes,
         renderProfile: snapshot.renderProfile,
@@ -1417,6 +1642,8 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       setRenderStatus("idle");
       setRenderRequestId(null);
       setRenderProviderStatus(null);
+      setAssemblyNotice(`Snapshot ${snapshot.revisionNumber} restaurado en el timeline y en la salida de ensamble.`);
+      await loadBrandingAvailability();
       await loadSnapshotHistory();
     } catch (caught) {
       setAssemblyError(caught instanceof Error ? caught.message : "No se pudo restaurar el snapshot.");
@@ -1771,6 +1998,21 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
 
   return (
     <section className={`${styles.studio} courseforge-composition-studio`}>
+      <CompositionPresetPanel
+        activePreview={presetPreview}
+        busy={saving || presetBusy}
+        entries={presetEntries}
+        lastApplied={lastAppliedPreset}
+        loading={presetCatalogLoading}
+        onApply={applyCompositionPresetPreview}
+        onClose={() => setPresetPanelOpen(false)}
+        onCreate={createCompositionPreset}
+        onDismiss={dismissCompositionPresetPreview}
+        onPreview={previewCompositionPreset}
+        onReload={loadCompositionPresets}
+        onUndo={undoLastCompositionPreset}
+        open={presetPanelOpen}
+      />
       {saveError && (
         <CompositionErrorToast
           message={saveError}
@@ -1798,7 +2040,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           <div className={styles.previewToolbar}>
             <div className={styles.previewIdentity}>
               <span className={styles.previewIdentityIcon}><Clapperboard size={14} aria-hidden="true" /></span>
-              <span className={styles.previewTitle}>Ensamble <small>v{payload.version} · {formatSeconds(duration)}</small>{agentProposal ? <span className={styles.pendingBadge}>Propuesta sin guardar</span> : previewDirty ? <span className={styles.pendingBadge}>Cambios pendientes</span> : null}</span>
+              <span className={styles.previewTitle}>Ensamble <small>v{payload.version} · {formatSeconds(duration)}</small>{presetPreview ? <span className={styles.pendingBadge}>Preview de preset</span> : agentProposal ? <span className={styles.pendingBadge}>Propuesta sin guardar</span> : previewDirty ? <span className={styles.pendingBadge}>Cambios pendientes</span> : null}</span>
             </div>
             <div className={styles.previewTools}>
               <div className={styles.toolbarGroup} aria-label="Edición principal">
@@ -1833,6 +2075,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
                 <button type="button" onClick={() => void loadDocument()} className={styles.toolIconButton} title="Recargar composición" aria-label="Recargar composición"><RefreshCw size={14} /></button>
               </div>
               <div className={styles.toolbarActionGroup}>
+                <button type="button" disabled={Boolean(agentProposal)} onClick={() => { setPresetPanelOpen(true); void loadCompositionPresets(); }} className={styles.toolButton} title="Aplicar o crear un preset dinámico"><Clapperboard size={13} /><span>Presets</span></button>
                 <button type="button" onClick={() => { setManualInspectorOpen(true); setInspectorTab("assistant"); }} className={`${styles.toolButton} ${styles.assistantTool}`} title="Ajustar la composición con SofLIA"><Sparkles size={13} /><span>SofLIA</span></button>
                 {onContinueToPublication && <button type="button" onClick={onContinueToPublication} className={`${styles.toolButton} ${styles.publishTool}`} title="Continuar a publicación"><span>Publicar</span><ArrowRight size={13} /></button>}
               </div>
@@ -1868,7 +2111,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           {playbackError && <div role="alert" className="flex items-center justify-between gap-3 border-t border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-300/30 dark:bg-amber-400/10 dark:text-amber-100"><span>{playbackError}</span><button type="button" onClick={refreshPreviewMedia} className="shrink-0 rounded border border-amber-400/50 px-2 py-1 font-semibold hover:bg-amber-100 dark:border-amber-200/50 dark:hover:bg-amber-200/10">Recargar medios</button></div>}
           <div className={styles.transport}>
             <button type="button" disabled={saving || !previewReady || previewMediaState === "PREPARING"} onClick={togglePreviewPlayback} title={previewDirty ? "Actualizar el preview y reproducir" : transportActive ? "Pausar" : "Reproducir"} className={styles.transportPrimary}>{transportActive ? <Pause size={14} /> : <Play size={14} />}</button>
-            <button type="button" disabled={saving || !previewReady || Boolean(agentProposal)} onClick={() => refreshPreviewDocument(false)} title="Actualizar el preview con los cambios guardados" aria-label="Actualizar preview" className={`${styles.transportSecondary} ${previewDirty ? styles.transportSecondaryDirty : ""}`}><RefreshCw size={13} /></button>
+            <button type="button" disabled={saving || !previewReady || Boolean(agentProposal) || Boolean(presetPreview)} onClick={() => refreshPreviewDocument(false)} title="Actualizar el preview con los cambios guardados" aria-label="Actualizar preview" className={`${styles.transportSecondary} ${previewDirty ? styles.transportSecondaryDirty : ""}`}><RefreshCw size={13} /></button>
             <input aria-label="Posición del preview" disabled={saving || !previewReady} type="range" min="0" max={duration} step="0.05" value={Math.min(seconds, duration)} onPointerDown={beginScrub} onChange={(event) => seek(Number(event.target.value))} className={styles.transportProgress} style={{ "--transport-progress": `${duration > 0 ? Math.min(100, (seconds / duration) * 100) : 0}%` } as CSSProperties} />
             <span className={styles.transportTime}>{formatSeconds(seconds)} / {formatSeconds(duration)}</span>
           </div>
@@ -2175,7 +2418,18 @@ function AssemblyActions({ assembly, busy, compact = false, durationSeconds, err
           <div><strong id="snapshot-history-title">Versiones de salida</strong><span>{history?.length || 0} snapshots disponibles</span></div>
           <button type="button" aria-label="Cerrar versiones" onClick={onHistoryToggle}><X size={15} /></button>
         </div>
-        {history && history.length > 0 ? <div className={styles.snapshotList}>{history.map((snapshot) => <div key={snapshot.id} className={styles.snapshotRow}><span><strong>Versión {snapshot.revisionNumber}{snapshot.isActive ? " · activa" : ""}</strong><small>Documento v{snapshot.documentVersion} · {findHyperframesRenderProfile(snapshot.renderProfile)?.label || "Perfil anterior"} · {new Date(snapshot.createdAt).toLocaleString()}</small></span><button type="button" disabled={busy || snapshot.isActive} onClick={() => void onRestore(snapshot)} className={styles.deliveryActionGhost}>{snapshot.isActive ? "En uso" : "Restaurar"}</button></div>)}</div> : <p className={styles.snapshotEmpty}>Todavía no hay versiones guardadas.</p>}
+        <p className={styles.snapshotEmpty}>Restaurar reemplaza el timeline editable y la salida activa con el contenido de esa versión.</p>
+        {history && history.length > 0 ? <div className={styles.snapshotList}>{history.map((snapshot) => {
+          const fullyRestored = snapshot.isActive && snapshot.isCurrentDocument;
+          const actionLabel = fullyRestored
+            ? "En uso"
+            : snapshot.isActive
+              ? "Restaurar timeline"
+              : snapshot.isCurrentDocument
+                ? "Activar salida"
+                : "Restaurar";
+          return <div key={snapshot.id} className={styles.snapshotRow}><span><strong>Versión {snapshot.revisionNumber}{snapshot.isActive ? " · salida activa" : ""}{snapshot.isCurrentDocument ? " · en timeline" : ""}</strong><small>Documento v{snapshot.documentVersion} · {findHyperframesRenderProfile(snapshot.renderProfile)?.label || "Perfil anterior"} · {new Date(snapshot.createdAt).toLocaleString()}</small></span><button type="button" disabled={busy || fullyRestored} onClick={() => void onRestore(snapshot)} className={styles.deliveryActionGhost}>{actionLabel}</button></div>;
+        })}</div> : <p className={styles.snapshotEmpty}>Todavía no hay versiones guardadas.</p>}
       </aside>
     </>}
   </section>;
