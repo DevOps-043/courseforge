@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { PRODUCTION_MEDIA_CACHE_CONTROL_SECONDS } from "../../media-storage.config";
-import { PRODUCTION_ASSET_TYPES } from "../../types/production.types";
+import {
+  PRODUCTION_ASSET_TYPES,
+  PRODUCTION_QA_STATUSES,
+} from "../../types/production.types";
 import {
   HEYGEN_ALLOWED_AUDIO_HOSTS,
   HEYGEN_AUDIO_IMPORT_TIMEOUT_MS,
@@ -10,7 +13,10 @@ import {
   type HeygenProductionJobRow,
   type HeygenSupabaseClient,
 } from "./heygen.types";
-import { HeygenRepository } from "./heygen.repository";
+import {
+  HeygenRepository,
+  resolveHeygenStorageObjectPath,
+} from "./heygen.repository";
 
 export interface HeygenImportedVoiceAsset {
   durationSeconds: number | null;
@@ -116,6 +122,32 @@ export class HeygenAudioImportService {
       storagePath,
       wordTimestamps: params.speech.wordTimestamps,
     };
+  }
+
+  async discardImportedVoice(asset: HeygenImportedVoiceAsset) {
+    const objectPath = resolveHeygenStorageObjectPath({
+      storage_bucket: HEYGEN_VIDEO_STORAGE_BUCKET,
+      storage_path: asset.storagePath,
+    });
+    let cleanupError: unknown = null;
+    if (objectPath) {
+      const { error } = await this.supabase.storage
+        .from(HEYGEN_VIDEO_STORAGE_BUCKET)
+        .remove([objectPath]);
+      cleanupError = error;
+    }
+
+    const { error: archiveError } = await this.supabase
+      .from("production_assets")
+      .update({
+        public_url: null,
+        qa_status: PRODUCTION_QA_STATUSES.ARCHIVED,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", asset.id)
+      .eq("asset_type", PRODUCTION_ASSET_TYPES.VOICE_AUDIO);
+    if (archiveError) throw archiveError;
+    if (cleanupError) throw cleanupError;
   }
 }
 

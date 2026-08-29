@@ -10,6 +10,7 @@ import {
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { runHeygenAvatarClipsBackground } from "@/domains/production/providers/heygen/heygen-avatar-background.service";
+import { HeygenApiError } from "@/domains/production/providers/heygen/heygen.client";
 import {
   HeygenScenesService,
   HeygenScenesServiceError,
@@ -65,6 +66,15 @@ export async function POST(request: Request) {
       authorizedComponent.admin,
       heygenAuth.client,
     );
+    if (payload.generationTarget === "avatar") {
+      await service.assertAvatarGenerationPreflight({
+        clipIds: payload.clipIds,
+        clips: payload.clips,
+        componentId: payload.componentId,
+        engine: payload.engine,
+        speed: payload.speed,
+      });
+    }
     const queued = await service.queueSceneClips({
       clipIds: payload.clipIds,
       clips: payload.clips,
@@ -137,6 +147,13 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: error.message, code: error.code },
         { status: error.status },
+      );
+    }
+
+    if (error instanceof HeygenApiError) {
+      return NextResponse.json(
+        { error: `No se pudo verificar el saldo de HeyGen antes de generar. ${error.message}` },
+        { status: error.status === 429 ? 429 : 502 },
       );
     }
 
