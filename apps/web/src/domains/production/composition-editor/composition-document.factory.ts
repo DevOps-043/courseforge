@@ -86,9 +86,17 @@ export function appendMissingProductionAssetClips(
     }
   }
 
+  const sceneTimingByAssetId = buildSceneAssetTimings(assets, document.canvas.durationSeconds);
   const clips = [
     ...document.clips,
-    ...buildAssetClips(missingAssets, document.canvas.durationSeconds, document.clips.length, document.canvas.width, document.canvas.height),
+    ...buildAssetClips(
+      missingAssets,
+      document.canvas.durationSeconds,
+      document.clips.length,
+      document.canvas.width,
+      document.canvas.height,
+      sceneTimingByAssetId,
+    ),
   ];
   return {
     changed: true,
@@ -110,6 +118,14 @@ export function reconcileCompositionDocument(params: {
   productionAssets: HyperframesProjectAsset[];
 }) {
   const productionAssets = selectAuthoritativeTimelineAssets(params.productionAssets);
+  const automaticDuration = params.document.canvas.durationMode === "AUTO"
+    ? resolveCompositionDuration({
+        assets: productionAssets,
+        slideCount: params.document.clips.filter((clip) => clip.kind === "DECK_SLIDE").length,
+      })
+    : null;
+  const canvasDurationSeconds = automaticDuration?.durationSeconds
+    || params.document.canvas.durationSeconds;
   const productionAssetById = new Map(productionAssets.map((asset) => [asset.productionAssetId, asset]));
   const withoutDeckDependencies = params.document.clips.filter((clip) => (
     clip.source.type !== "PRODUCTION_ASSET" || !params.deckDependencyAssetIds.has(clip.source.productionAssetId)
@@ -122,7 +138,7 @@ export function reconcileCompositionDocument(params: {
   let clipSynchronizationChanged = false;
   const sceneTimingByAssetId = buildSceneAssetTimings(
     productionAssets,
-    params.document.canvas.durationSeconds,
+    canvasDurationSeconds,
   );
   const synchronizedClips = withoutInactiveProductionAssets.map((clip) => {
     if (clip.source.type !== "PRODUCTION_ASSET") return clip;
@@ -187,6 +203,10 @@ export function reconcileCompositionDocument(params: {
     ...params.document,
     canvas: {
       ...params.document.canvas,
+      ...(automaticDuration ? {
+        durationSeconds: automaticDuration.durationSeconds,
+        durationSource: automaticDuration.source,
+      } : {}),
       fps: DEFAULT_COMPOSITION_RENDER_FPS,
     },
     clips: synchronizedClips,
@@ -200,6 +220,10 @@ export function reconcileCompositionDocument(params: {
     changed: removedDeckDependencyCount > 0
       || removedInactiveProductionAssetCount > 0
       || clipSynchronizationChanged
+      || Boolean(automaticDuration && (
+        automaticDuration.durationSeconds !== params.document.canvas.durationSeconds
+        || automaticDuration.source !== params.document.canvas.durationSource
+      ))
       || params.document.canvas.fps !== DEFAULT_COMPOSITION_RENDER_FPS
       || appended.changed,
     document: appended.document,
@@ -258,13 +282,22 @@ function buildDeckClips(deck: HyperframesAnimatedDeckSource | null, durationSeco
   });
 }
 
-function buildAssetClips(assets: HyperframesProjectAsset[], durationSeconds: number, initialIndex = 0, canvasWidth = 1920, canvasHeight = 1080): CompositionClip[] {
+function buildAssetClips(
+  assets: HyperframesProjectAsset[],
+  durationSeconds: number,
+  initialIndex = 0,
+  canvasWidth = 1920,
+  canvasHeight = 1080,
+  initialTimingByAssetId?: ReadonlyMap<string, { durationSeconds: number; startSeconds: number }>,
+): CompositionClip[] {
   const assetsByTrack = new Map<string, HyperframesProjectAsset[]>();
   for (const asset of assets) {
     const trackId = resolveTrackId(asset);
     assetsByTrack.set(trackId, [...(assetsByTrack.get(trackId) || []), asset]);
   }
-  const timingByAssetId = buildSceneAssetTimings(assets, durationSeconds);
+  const timingByAssetId = new Map(
+    initialTimingByAssetId || buildSceneAssetTimings(assets, durationSeconds),
+  );
   for (const [trackId, groupedAssets] of assetsByTrack) {
     const unpositionedAssets = groupedAssets.filter(
       (asset) => !timingByAssetId.has(asset.productionAssetId),

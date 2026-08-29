@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clapperboard, Film, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -65,6 +65,7 @@ export function HyperframesCompositionPanel({
   const [assets, setAssets] = useState<VideoAsset[]>([]);
   const [composition, setComposition] = useState<VideoComposition | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
+  const [draftDocumentVersion, setDraftDocumentVersion] = useState<number | null>(null);
   const [editorError, setEditorError] = useState<string | null>(null);
   const [syncWarning, setSyncWarning] = useState<string | null>(null);
   const [revisionId, setRevisionId] = useState<string | null>(null);
@@ -73,6 +74,8 @@ export function HyperframesCompositionPanel({
   const [agentInstruction, setAgentInstruction] = useState("");
   const [generationMode, setGenerationMode] = useState<"AUTOMATIC" | "AGENT_ASSISTED">("AUTOMATIC");
   const [animatedDeck, setAnimatedDeck] = useState<{ animationCount: number; slideCount: number } | null>(null);
+  const sceneAssetFingerprintRef = useRef<string | null>(null);
+  const sceneAssetRefreshInFlightRef = useRef(false);
   const uniqueAssets = useMemo(() => (
     [...new Map(assets.map((asset) => [asset.productionAssetId, asset])).values()]
   ), [assets]);
@@ -120,6 +123,8 @@ export function HyperframesCompositionPanel({
     setSyncWarning(null);
     setAnimatedDeck(null);
     setDraftId(null);
+    setDraftDocumentVersion(null);
+    sceneAssetFingerprintRef.current = null;
     try {
       try {
         const syncResponse = await fetch("/api/production/hyperframes/assets/sync", {
@@ -164,6 +169,7 @@ export function HyperframesCompositionPanel({
         return;
       }
       setDraftId(draftPayload.data.draftId as string);
+      setDraftDocumentVersion(draftPayload.data.documentVersion as number);
     } catch (error) {
       const message = error instanceof Error ? error.message : "No se pudo abrir el estudio de video.";
       setEditorError(message);
@@ -174,6 +180,57 @@ export function HyperframesCompositionPanel({
   }, [componentId, componentTitle, refreshAssets]);
 
   useEffect(() => { void loadInitialData(); }, [loadInitialData]);
+
+  useEffect(() => {
+    if (!composition?.id || !draftId) return;
+    let disposed = false;
+
+    const reconcileNewSceneAssets = async () => {
+      if (document.visibilityState === "hidden" || sceneAssetRefreshInFlightRef.current) return;
+      sceneAssetRefreshInFlightRef.current = true;
+      try {
+        const scenesResponse = await fetch(
+          `/api/production/heygen/scenes?componentId=${encodeURIComponent(componentId)}&t=${Date.now()}`,
+          { cache: "no-store" },
+        );
+        const scenesPayload = await scenesResponse.json();
+        if (!scenesResponse.ok) throw new Error(scenesPayload.error || "No se pudieron consultar los clips de Producción.");
+        const fingerprint = buildSceneAssetFingerprint(scenesPayload.data);
+        if (fingerprint === sceneAssetFingerprintRef.current) return;
+
+        const syncResponse = await fetch("/api/production/hyperframes/assets/sync", {
+          body: JSON.stringify({ componentId }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        });
+        const syncPayload = await syncResponse.json();
+        if (!syncResponse.ok) throw new Error(syncPayload.error || "No se pudieron sincronizar los nuevos clips.");
+        await refreshAssets();
+
+        const draftResponse = await fetch(`/api/production/hyperframes/compositions/${composition.id}/draft`, {
+          method: "POST",
+        });
+        const draftPayload = await draftResponse.json();
+        if (!draftResponse.ok) throw new Error(draftPayload.error || "No se pudo reconciliar el timeline.");
+        if (disposed) return;
+        sceneAssetFingerprintRef.current = fingerprint;
+        setDraftDocumentVersion(draftPayload.data.documentVersion as number);
+      } catch (error) {
+        if (!disposed) {
+          console.warn("[HyperFrames editor] Automatic scene asset reconciliation failed:", error);
+        }
+      } finally {
+        sceneAssetRefreshInFlightRef.current = false;
+      }
+    };
+
+    void reconcileNewSceneAssets();
+    const intervalId = window.setInterval(() => { void reconcileNewSceneAssets(); }, 10_000);
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+    };
+  }, [componentId, composition?.id, draftId, refreshAssets]);
 
   const pollRender = useCallback(async (requestId?: string) => {
     const target = requestId || renderRequest?.id;
@@ -295,7 +352,7 @@ export function HyperframesCompositionPanel({
       {editorError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-100">No se pudo preparar el editor: {editorError}</p>}
       {draftId && (
         <div className="min-h-0 flex-1">
-          <NativeCompositionPreview assets={studioAssets} componentId={componentId} compositionId={composition?.id || ""} draftId={draftId} lessons={lessonLibrary} onAssetsChanged={refreshAssets} onContinueToPublication={onContinueToPublication} onSelectLesson={onSelectLesson} onVideoCompleted={onVideoCompleted} selectedLessonId={selectedLessonId} />
+          <NativeCompositionPreview key={`${draftId}:${draftDocumentVersion || 0}`} assets={studioAssets} componentId={componentId} compositionId={composition?.id || ""} draftId={draftId} lessons={lessonLibrary} onAssetsChanged={refreshAssets} onContinueToPublication={onContinueToPublication} onSelectLesson={onSelectLesson} onVideoCompleted={onVideoCompleted} selectedLessonId={selectedLessonId} />
         </div>
       )}
       {renderRequest?.providerStatus.toLowerCase() === "completed" && <p className="flex items-center gap-2 text-xs font-medium text-green-700 dark:text-green-400"><CheckCircle2 size={15} /> Video final importado en Courseforge.</p>}
@@ -311,4 +368,22 @@ void ActionButton;
 
 function formatBytes(value: number) {
   return value >= 1024 * 1024 ? `${(value / (1024 * 1024)).toFixed(1)} MB` : value ? `${Math.max(1, Math.round(value / 1024))} KB` : "0 KB";
+}
+
+function buildSceneAssetFingerprint(rawData: unknown) {
+  const data = rawData && typeof rawData === "object" ? rawData as Record<string, unknown> : {};
+  const avatarClips = Array.isArray(data.clips) ? data.clips : [];
+  const voiceClips = Array.isArray(data.voiceClips) ? data.voiceClips : [];
+  const references = [...avatarClips, ...voiceClips].flatMap((value) => {
+    if (!value || typeof value !== "object") return [];
+    const clip = value as Record<string, unknown>;
+    const storagePath = typeof clip.storage_path === "string" ? clip.storage_path : "";
+    const status = typeof clip.status === "string" ? clip.status : "";
+    if (!storagePath || status !== "COMPLETED") return [];
+    const id = typeof clip.clip_id === "string"
+      ? clip.clip_id
+      : typeof clip.id === "string" ? clip.id : storagePath;
+    return [`${id}:${storagePath}`];
+  });
+  return references.sort().join("|");
 }

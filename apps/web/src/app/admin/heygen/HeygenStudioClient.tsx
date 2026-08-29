@@ -759,7 +759,10 @@ export default function HeygenStudioClient({
 
   const handleReturnToCourseFlow = () => {
     if (safeReturnTo) {
-      router.push(safeReturnTo);
+      // Production assets are updated by background workers while this module
+      // is open. A client-router return can reuse the previous RSC payload and
+      // display only the clips that existed before entering HeyGen.
+      window.location.assign(safeReturnTo);
       return;
     }
 

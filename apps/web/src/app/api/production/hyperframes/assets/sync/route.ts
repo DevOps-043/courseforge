@@ -59,6 +59,10 @@ async function refreshPendingHeygenClips(params: {
   organizationId: string;
   userId: string;
 }) {
+  await new HeygenScenesService(params.admin).recoverCompletedSceneAssets({
+    componentId: params.componentId,
+    organizationId: params.organizationId,
+  });
   const { data: component, error } = await params.admin
     .from("material_components")
     .select("assets")

@@ -427,6 +427,45 @@ export class HeygenRepository {
     return (data || null) as HeygenProductionJobRow | null;
   }
 
+  async listSucceededSceneMediaJobs(params: {
+    componentId: string;
+    organizationId: string;
+  }) {
+    const { data, error } = await this.supabase
+      .from("production_jobs")
+      .select(
+        [
+          "id",
+          "artifact_id",
+          "material_lesson_id",
+          "material_component_id",
+          "lesson_id",
+          "module_id",
+          "organization_id",
+          "status",
+          "input_snapshot",
+          "output_snapshot",
+          "provider_job_id",
+          "provider_error",
+          "duration_seconds",
+          "updated_at",
+        ].join(", "),
+      )
+      .eq("organization_id", params.organizationId)
+      .eq("material_component_id", params.componentId)
+      .eq("provider", PRODUCTION_PROVIDERS.HEYGEN)
+      .eq("status", PRODUCTION_JOB_STATUSES.SUCCEEDED)
+      .in("job_type", [
+        PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_CLIP,
+        PRODUCTION_JOB_TYPES.HEYGEN_VOICEOVER,
+      ])
+      .order("updated_at", { ascending: false })
+      .limit(500);
+
+    if (error) throw error;
+    return (data || []) as unknown as HeygenProductionJobRow[];
+  }
+
   async markVideoJobWaitingProvider(params: {
     jobId: string;
     outputFormat?: string | null;

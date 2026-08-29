@@ -28,7 +28,11 @@ export async function GET(request: Request) {
     if (auth.response) return auth.response;
 
     const service = new HeygenScenesService(auth.authorizedComponent.admin);
-    const existingClips = auth.authorizedComponent.component.assets?.avatar_clips || [];
+    const recoveredAssets = await service.recoverCompletedSceneAssets({
+      componentId,
+      organizationId: auth.tenant.organizationId,
+    });
+    const existingClips = recoveredAssets.avatar_clips || [];
     const clips = service.buildSceneClips({
       componentContent: auth.authorizedComponent.component.content,
       existingClips,
@@ -38,11 +42,11 @@ export async function GET(request: Request) {
       success: true,
       data: {
         avatarGenerationMode:
-          auth.authorizedComponent.component.assets?.avatar_generation_mode || "scene_clips",
+          recoveredAssets.avatar_generation_mode || "scene_clips",
         clips,
         componentId,
-        voiceAudio: auth.authorizedComponent.component.assets?.voice_audio || null,
-        voiceClips: auth.authorizedComponent.component.assets?.voice_clips || [],
+        voiceAudio: recoveredAssets.voice_audio || null,
+        voiceClips: recoveredAssets.voice_clips || [],
       },
     });
   } catch (error: unknown) {

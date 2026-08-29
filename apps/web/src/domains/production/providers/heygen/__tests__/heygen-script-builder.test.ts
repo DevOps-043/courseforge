@@ -5,6 +5,7 @@ import {
   buildHeygenCreateClipPayload,
   getReusableSceneVoiceAsset,
   HeygenScenesService,
+  mergeAuthoredSceneClip,
   reconcileVoiceClips,
   selectPromotableAvatarVoices,
 } from "../heygen-scenes.service";
@@ -82,6 +83,51 @@ describe("HeyGen script builder", () => {
 });
 
 describe("HeyGen scene clip builder", () => {
+  it("preserves completed generated media when the author saves a stale scene form", () => {
+    const merged = mergeAuthoredSceneClip(
+      {
+        id: "scene-1",
+        order: 1,
+        script_text: "Guion vigente",
+        public_url: "https://cdn.example.com/avatar-1.mp4",
+        storage_path: "production-assets/avatar-1.mp4",
+        job_id: "job-1",
+        status: "COMPLETED",
+      },
+      {
+        id: "scene-1",
+        order: 1,
+        script_text: "Guion vigente",
+        status: "DRAFT",
+      },
+    );
+
+    assert.equal(merged.status, "COMPLETED");
+    assert.equal(merged.job_id, "job-1");
+    assert.equal(merged.storage_path, "production-assets/avatar-1.mp4");
+  });
+
+  it("marks generated media stale when an authored scene changes its script", () => {
+    const merged = mergeAuthoredSceneClip(
+      {
+        id: "scene-1",
+        order: 1,
+        script_text: "Guion anterior",
+        status: "COMPLETED",
+        voice_status: "COMPLETED",
+      },
+      {
+        id: "scene-1",
+        order: 1,
+        script_text: "Guion nuevo",
+        status: "DRAFT",
+      },
+    );
+
+    assert.equal(merged.status, "STALE");
+    assert.equal(merged.voice_status, "STALE");
+  });
+
   it("uses the separated voice URL as the timing source for every avatar clip", () => {
     const payload = buildHeygenCreateClipPayload({
       audioUrl: "https://files.heygen.ai/voice-scene-1.mp3",

@@ -15,10 +15,13 @@
     "src/domains/materials/components/lesson-production-progress.ts",
     "src/domains/materials/lib/material-lesson-order.ts",
     "src/domains/production/course-context/production-course-context.ts",
+    "src/app/admin/artifacts/artifacts-list.types.ts",
+    "src/app/admin/artifacts/artifacts-list.utils.ts",
     "src/domains/materials/components/__tests__/production-media-preview.test.ts",
     "src/domains/materials/components/__tests__/lesson-production-progress.test.ts",
     "src/domains/materials/lib/__tests__/material-lesson-order.test.ts",
-    "src/domains/production/course-context/__tests__/production-course-context.test.ts"
+    "src/domains/production/course-context/__tests__/production-course-context.test.ts",
+    "src/app/admin/artifacts/__tests__/artifacts-list-progress.test.ts"
   ],
   "exclude": ["node_modules"]
 }

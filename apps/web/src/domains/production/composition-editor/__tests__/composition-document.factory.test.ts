@@ -292,6 +292,45 @@ test("keeps avatar and voice-only scenes interleaved on one shared scene clock",
   ]);
 });
 
+test("expands an automatic canvas and appends newly completed scene voices without overlap", () => {
+  const voiceAsset = (order: number) => ({
+    checksum: String(order).repeat(64),
+    durationSeconds: 4,
+    fileSizeBytes: 4,
+    label: `Voz · Escena ${order}`,
+    mimeType: "audio/mpeg",
+    productionAssetId: `00000000-0000-4000-8000-0000000003${String(order).padStart(2, "0")}`,
+    publicUrl: null,
+    sceneClipId: `scene-${order}`,
+    sceneOrder: order,
+    storageBucket: "production-assets",
+    storagePath: `production-assets/voice-incremental-${order}.mp3`,
+    timelineRole: "VOICE" as const,
+    timelineVariant: "CLIP" as const,
+  });
+  const firstVoice = voiceAsset(1);
+  const secondVoice = voiceAsset(2);
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [firstVoice],
+    plan: { accentColor: "#38BDF8", durationSeconds: 4, subtitle: "Prueba", title: "Incremental" },
+  });
+
+  const reconciled = reconcileCompositionDocument({
+    deckDependencyAssetIds: new Set(),
+    document,
+    productionAssets: [firstVoice, secondVoice],
+  });
+  const voices = reconciled.document.clips.filter((clip) => clip.trackId === "voice");
+
+  assert.equal(reconciled.changed, true);
+  assert.equal(reconciled.addedProductionAssetCount, 1);
+  assert.equal(reconciled.document.canvas.durationSeconds, 8);
+  assert.equal(reconciled.document.canvas.durationSource, "voice");
+  assert.deepEqual(voices.map((clip) => clip.startSeconds), [0, 4]);
+  assert.deepEqual(voices.map((clip) => clip.durationSeconds), [4, 4]);
+});
+
 test("reconciles newly available avatar media into an existing draft document", () => {
   const document = createInitialCompositionDocument({
     animatedDeck: {
