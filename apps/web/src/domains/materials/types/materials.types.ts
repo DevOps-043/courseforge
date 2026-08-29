@@ -155,6 +155,8 @@ export interface AvatarClip {
     job_id?: string;
     status: AvatarClipStatus;
     error_message?: string;
+    voice_status?: AvatarClipStatus;
+    voice_error_message?: string;
     script_hash?: string;
     source_hash?: string;
 }

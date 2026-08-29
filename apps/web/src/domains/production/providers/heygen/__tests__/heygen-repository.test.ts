@@ -92,6 +92,38 @@ describe("HeyGen generated asset storage reconciliation", () => {
   });
 });
 
+describe("HeyGen catalog cleanup", () => {
+  it("archives a non-default preset without deleting it", async () => {
+    const fake = createCatalogArchiveFake({ isDefault: false });
+    const repository = new HeygenRepository(fake.client as never);
+
+    const result = await repository.setCatalogPresetArchived({
+      archived: true,
+      kind: "voice",
+      organizationId: "22222222-2222-4222-8222-222222222222",
+      presetId: "33333333-3333-4333-8333-333333333333",
+    });
+
+    assert.equal(result, "UPDATED");
+    assert.equal(typeof fake.updates[0]?.archived_at, "string");
+  });
+
+  it("protects the default preset from cleanup", async () => {
+    const fake = createCatalogArchiveFake({ isDefault: true });
+    const repository = new HeygenRepository(fake.client as never);
+
+    const result = await repository.setCatalogPresetArchived({
+      archived: true,
+      kind: "avatar",
+      organizationId: "22222222-2222-4222-8222-222222222222",
+      presetId: "33333333-3333-4333-8333-333333333333",
+    });
+
+    assert.equal(result, "DEFAULT");
+    assert.equal(fake.updates.length, 0);
+  });
+});
+
 function createRepositoryFake(params: {
   exists: boolean;
   storageError?: { message: string } | null;
@@ -165,4 +197,33 @@ function createRepositoryFake(params: {
   };
 
   return { archivedUpdates, client, listCalls };
+}
+
+function createCatalogArchiveFake(params: { isDefault: boolean }) {
+  const updates: Array<Record<string, unknown>> = [];
+  const readQuery = {
+    eq() { return this; },
+    async maybeSingle() {
+      return { data: { id: "33333333-3333-4333-8333-333333333333", is_default: params.isDefault }, error: null };
+    },
+  };
+  const client = {
+    from(table: string) {
+      assert.ok(table === "heygen_avatar_presets" || table === "heygen_voice_presets");
+      return {
+        select() { return readQuery; },
+        update(payload: Record<string, unknown>) {
+          updates.push(payload);
+          return {
+            eq() {
+              return {
+                async eq() { return { error: null }; },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+  return { client, updates };
 }

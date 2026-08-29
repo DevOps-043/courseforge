@@ -160,11 +160,17 @@ export class BundleAgentWorkflowService {
     const specHash = computeSpecHash(spec);
     const { data: latest } = await this.context.admin
       .from("soflia_bundle_specs")
-      .select("version_number")
+      .select("*")
       .eq("conversation_id", conversationId)
       .order("version_number", { ascending: false })
       .limit(1)
       .maybeSingle();
+
+    // Repeated UI submissions are idempotent: do not create a new version or
+    // an extra tool message when the normalized spec has not changed.
+    if (latest?.spec_hash === specHash) {
+      return latest;
+    }
 
     const { data, error } = await this.context.admin
       .from("soflia_bundle_specs")

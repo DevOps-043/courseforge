@@ -42,6 +42,7 @@ export async function runHeygenAvatarClipsBackground(
       clipIds: options.clipIds,
       componentId: options.componentId,
       errorMessage: message,
+      generationTarget: options.generationTarget,
     }).catch(() => undefined);
     console.error("[HeyGen Avatar Background] Failed:", {
       componentId: options.componentId,

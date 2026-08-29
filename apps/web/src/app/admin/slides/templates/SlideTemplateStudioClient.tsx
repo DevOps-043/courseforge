@@ -13,12 +13,16 @@ import {
   Layers3,
   List,
   Loader2,
+  Moon,
   Palette,
+  Plus,
   Save,
   Send,
   Settings2,
   Sparkles,
+  Sun,
   User,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { EngineSelect } from "@/components/ui/EngineSelect";
@@ -93,12 +97,21 @@ const EMPTY_STATE: StudioState = {
 };
 
 const DEFAULT_TOKENS: DesignTokens = {
-  accent: "var(--engine-accent)",
+  accent: "#00D4B3",
   accent2: "#2D7D6E",
   background: "#F7FAFC",
   muted: "#65758B",
   surface: "#FFFFFF",
-  text: "var(--engine-primary)",
+  text: "#0A2540",
+};
+
+const DARK_TOKENS: DesignTokens = {
+  accent: "#2DD4BF",
+  accent2: "#8B5CF6",
+  background: "#05070B",
+  muted: "#94A3B8",
+  surface: "#111827",
+  text: "#F8FAFC",
 };
 
 const DEFAULT_MODIFIERS: TemplateModifiers = {
@@ -164,6 +177,7 @@ const DENSITY_PADDING: Record<TemplateModifiers["density"], number> = {
 interface DirtyOverrides {
   designTokens: boolean;
   modifiers: boolean;
+  slideTypes: boolean;
 }
 
 async function readJson(response: Response) {
@@ -209,13 +223,16 @@ function buildBlueprintOverride(
   baseBlueprint: SlideTemplateSpec["templateBlueprint"] | undefined,
   designTokens: DesignTokens,
   modifiers: TemplateModifiers,
-  dirtyOverrides: DirtyOverrides = { designTokens: true, modifiers: true },
+  slideTypes: TemplateSlideType[],
+  dirtyOverrides: DirtyOverrides = { designTokens: true, modifiers: true, slideTypes: true },
 ) {
   return {
     ...(baseBlueprint || {}),
     ...(dirtyOverrides.designTokens ? { designTokens } : {}),
     ...(dirtyOverrides.modifiers ? { modifiers } : {}),
-    slideTypes: baseBlueprint?.slideTypes?.length ? baseBlueprint.slideTypes : FALLBACK_SLIDE_TYPES,
+    slideTypes: dirtyOverrides.slideTypes
+      ? slideTypes
+      : baseBlueprint?.slideTypes?.length ? baseBlueprint.slideTypes : FALLBACK_SLIDE_TYPES,
   };
 }
 
@@ -360,13 +377,14 @@ export function SlideTemplateStudioClient() {
   const [title, setTitle] = useState("Plantilla HTML de slides");
   const [designTokens, setDesignTokens] = useState<DesignTokens>(DEFAULT_TOKENS);
   const [modifiers, setModifiers] = useState<TemplateModifiers>(DEFAULT_MODIFIERS);
-  const [dirtyOverrides, setDirtyOverrides] = useState<DirtyOverrides>({ designTokens: false, modifiers: false });
+  const [slideTypes, setSlideTypes] = useState<TemplateSlideType[]>(FALLBACK_SLIDE_TYPES);
+  const [dirtyOverrides, setDirtyOverrides] = useState<DirtyOverrides>({ designTokens: false, modifiers: false, slideTypes: false });
   const [slidePreviewMode, setSlidePreviewMode] = useState<SlidePreviewMode>("grid");
   const [loadedConversationId, setLoadedConversationId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [operation, setOperation] = useState<"loading" | "message" | "saving_spec" | "packaging" | null>(null);
 
   const latestSpec = state.specs[0]?.spec_json;
-  const previewSlides = useMemo(() => getPreviewSlides(latestSpec), [latestSpec]);
+  const previewSlides = useMemo(() => slideTypes.length ? slideTypes : getPreviewSlides(latestSpec), [latestSpec, slideTypes]);
   const downloadHref = latestDownloadHref(state);
   const adminBasePath = params?.empresaSlug ? `/${params.empresaSlug}/admin` : "/admin";
 
@@ -376,7 +394,7 @@ export function SlideTemplateStudioClient() {
 
     let cancelled = false;
     setLoadedConversationId(conversationId);
-    setBusy(true);
+    setOperation("loading");
     refresh(conversationId)
       .catch((error) => {
         if (!cancelled) {
@@ -384,7 +402,7 @@ export function SlideTemplateStudioClient() {
         }
       })
       .finally(() => {
-        if (!cancelled) setBusy(false);
+        if (!cancelled) setOperation(null);
       });
 
     return () => {
@@ -409,7 +427,8 @@ export function SlideTemplateStudioClient() {
     if (spec?.templateBlueprint) {
       setDesignTokens(spec.templateBlueprint.designTokens);
       setModifiers(spec.templateBlueprint.modifiers);
-      setDirtyOverrides({ designTokens: false, modifiers: false });
+      setSlideTypes(spec.templateBlueprint.slideTypes);
+      setDirtyOverrides({ designTokens: false, modifiers: false, slideTypes: false });
     }
   }
 
@@ -434,15 +453,43 @@ export function SlideTemplateStudioClient() {
     return payload.conversation.id as string;
   }
 
-  async function run(action: () => Promise<void>) {
-    setBusy(true);
+  async function run(nextOperation: NonNullable<typeof operation>, action: () => Promise<void>) {
+    if (operation) return;
+    setOperation(nextOperation);
     try {
       await action();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo completar la accion.");
     } finally {
-      setBusy(false);
+      setOperation(null);
     }
+  }
+
+  async function persistTitle(conversationId: string) {
+    if (title.trim() === state.conversation?.title) return;
+    await fetchJson(`/api/admin/remotion/bundle-agent/conversations/${conversationId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: title.trim() }),
+    });
+  }
+
+  function buildSpecRequestBody() {
+    const hasDirtyOverrides = dirtyOverrides.designTokens || dirtyOverrides.modifiers || dirtyOverrides.slideTypes;
+    return {
+      artifactKind: "slide_template",
+      ...(hasDirtyOverrides ? {
+        overrides: {
+          templateBlueprint: buildBlueprintOverride(
+            latestSpec?.templateBlueprint,
+            designTokens,
+            modifiers,
+            slideTypes,
+            dirtyOverrides,
+          ),
+        },
+      } : {}),
+    };
   }
 
   async function sendMessage(event?: FormEvent) {
@@ -450,7 +497,7 @@ export function SlideTemplateStudioClient() {
     const content = prompt.trim();
     if (!content) return;
 
-    await run(async () => {
+    await run("message", async () => {
       const conversationId = await ensureConversation();
       await fetchJson(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/messages`, {
         method: "POST",
@@ -469,22 +516,13 @@ export function SlideTemplateStudioClient() {
   }
 
   async function createSpec() {
-    await run(async () => {
+    await run("saving_spec", async () => {
       const conversationId = await ensureConversation();
-      const hasDirtyOverrides = dirtyOverrides.designTokens || dirtyOverrides.modifiers;
+      await persistTitle(conversationId);
       const payload = await fetchJson(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/specs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          artifactKind: "slide_template",
-          ...(hasDirtyOverrides
-            ? {
-                overrides: {
-                  templateBlueprint: buildBlueprintOverride(latestSpec?.templateBlueprint, designTokens, modifiers, dirtyOverrides),
-                },
-              }
-            : {}),
-        }),
+        body: JSON.stringify(buildSpecRequestBody()),
       });
       const spec = payload.spec?.spec_json as SlideTemplateSpec | undefined;
       if (spec?.templateBlueprint) {
@@ -497,22 +535,13 @@ export function SlideTemplateStudioClient() {
   }
 
   async function savePackage() {
-    await run(async () => {
+    await run("packaging", async () => {
       const conversationId = await ensureConversation();
-      const hasDirtyOverrides = dirtyOverrides.designTokens || dirtyOverrides.modifiers;
+      await persistTitle(conversationId);
       const specPayload = await fetchJson(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/specs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          artifactKind: "slide_template",
-          ...(hasDirtyOverrides
-            ? {
-                overrides: {
-                  templateBlueprint: buildBlueprintOverride(latestSpec?.templateBlueprint, designTokens, modifiers, dirtyOverrides),
-                },
-              }
-            : {}),
-        }),
+        body: JSON.stringify(buildSpecRequestBody()),
       });
       await fetchJson(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/generate`, {
         method: "POST",
@@ -521,7 +550,7 @@ export function SlideTemplateStudioClient() {
           artifactKind: "slide_template",
           specId: specPayload.spec?.id,
         }),
-      }, 60000);
+      }, 120000);
       await refresh(conversationId);
       toast.success("Template HTML guardado como ZIP.");
     });
@@ -616,11 +645,11 @@ export function SlideTemplateStudioClient() {
               />
               <button
                 type="submit"
-                disabled={busy || !prompt.trim()}
+                disabled={Boolean(operation) || !prompt.trim()}
                 className="inline-flex w-12 items-center justify-center rounded-lg bg-[var(--engine-accent-strong)] text-white transition hover:bg-[#008f79] disabled:cursor-not-allowed disabled:bg-gray-300"
                 title="Enviar"
               >
-                {busy ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
+                {operation === "message" ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
               </button>
             </div>
           </form>
@@ -726,6 +755,67 @@ export function SlideTemplateStudioClient() {
               <h2 className="text-sm font-black">Modificadores</h2>
             </div>
             <div className="min-h-0 space-y-3 overflow-y-auto p-3">
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300">Tipos de slide</span>
+                  <button
+                    type="button"
+                    disabled={!FALLBACK_SLIDE_TYPES.some((candidate) => !slideTypes.some((item) => item.id === candidate.id))}
+                    onClick={() => {
+                      const candidate = FALLBACK_SLIDE_TYPES.find((item) => !slideTypes.some((current) => current.id === item.id));
+                      if (!candidate) return;
+                      setSlideTypes((current) => [...current, candidate]);
+                      setDirtyOverrides((current) => ({ ...current, slideTypes: true }));
+                    }}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-[var(--engine-accent-strong)] disabled:opacity-40"
+                  >
+                    <Plus size={12} /> Agregar tipo
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {slideTypes.map((slideType) => (
+                    <span key={slideType.id} className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-bold text-gray-700 dark:border-white/10 dark:bg-white/5 dark:text-gray-200">
+                      {slideType.label}
+                      <button
+                        type="button"
+                        aria-label={`Quitar ${slideType.label}`}
+                        disabled={slideTypes.length === 1}
+                        onClick={() => {
+                          setSlideTypes((current) => current.filter((item) => item.id !== slideType.id));
+                          setDirtyOverrides((current) => ({ ...current, slideTypes: true }));
+                        }}
+                        className="rounded-full p-0.5 hover:bg-black/5 disabled:opacity-30 dark:hover:bg-white/10"
+                      >
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDesignTokens(DEFAULT_TOKENS);
+                    setDirtyOverrides((current) => ({ ...current, designTokens: true }));
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-bold dark:border-white/10"
+                >
+                  <Sun size={13} /> Apariencia clara
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDesignTokens(DARK_TOKENS);
+                    setDirtyOverrides((current) => ({ ...current, designTokens: true }));
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-bold dark:border-white/10"
+                >
+                  <Moon size={13} /> Apariencia oscura
+                </button>
+              </div>
+
               <div className="grid grid-cols-3 gap-2">
                 {COLOR_FIELDS.map((field) => (
                   <label key={field.key} className="text-xs font-bold text-gray-600 dark:text-gray-300">
@@ -813,20 +903,20 @@ export function SlideTemplateStudioClient() {
                 <button
                   type="button"
                   onClick={createSpec}
-                  disabled={busy}
+                  disabled={Boolean(operation)}
                   className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-black text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
                 >
-                  {busy ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
-                  Actualizar spec
+                  {operation === "saving_spec" ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
+                  {operation === "saving_spec" ? "Guardando spec…" : "Actualizar spec"}
                 </button>
                 <button
                   type="button"
                   onClick={savePackage}
-                  disabled={busy}
+                  disabled={Boolean(operation)}
                   className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--engine-accent-strong)] px-3 py-2 text-sm font-black text-white transition hover:bg-[#008f79] disabled:cursor-not-allowed disabled:bg-gray-300"
                 >
-                  {busy ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-                  Guardar ZIP
+                  {operation === "packaging" ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                  {operation === "packaging" ? "Generando HTML…" : "Guardar HTML + ZIP"}
                 </button>
               </div>
             </div>

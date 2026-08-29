@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
+  AudioLines,
   ArrowLeft,
   CheckCircle2,
   ChevronDown,
@@ -54,6 +55,8 @@ interface AvatarSceneClip {
   storyboard_take_number?: number;
   visual_type?: string;
   voice_preset_id?: string;
+  voice_error_message?: string;
+  voice_status?: "DRAFT" | "WAITING_PROVIDER" | "COMPLETED" | "FAILED" | "STALE";
 }
 
 interface VoiceSceneClip {
@@ -66,6 +69,7 @@ interface VoiceSceneClip {
 }
 
 interface AvatarPreset {
+  archived_at?: string | null;
   heygen_avatar_look_id?: string | null;
   id: string;
   is_default?: boolean;
@@ -77,6 +81,7 @@ interface AvatarPreset {
 }
 
 interface VoicePreset {
+  archived_at?: string | null;
   gender?: string | null;
   heygen_voice_id?: string | null;
   id: string;
@@ -172,6 +177,8 @@ export default function HeygenStudioClient({
 
   const [avatarPresets, setAvatarPresets] = useState<AvatarPreset[]>([]);
   const [voicePresets, setVoicePresets] = useState<VoicePreset[]>([]);
+  const [archivedAvatarPresets, setArchivedAvatarPresets] = useState<AvatarPreset[]>([]);
+  const [archivedVoicePresets, setArchivedVoicePresets] = useState<VoicePreset[]>([]);
   const [selectedAvatarPresetId, setSelectedAvatarPresetId] = useState("");
   const [selectedVoicePresetId, setSelectedVoicePresetId] = useState("");
   const [engine, setEngine] = useState<Engine>("avatar_iv");
@@ -206,9 +213,11 @@ export default function HeygenStudioClient({
   });
   const [isLoadingPresets, setIsLoadingPresets] = useState(false);
   const [isSyncingCatalog, setIsSyncingCatalog] = useState(false);
+  const [updatingPresetId, setUpdatingPresetId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isLoadingScenes, setIsLoadingScenes] = useState(false);
   const [isGeneratingClips, setIsGeneratingClips] = useState(false);
+  const [sceneGenerationTarget, setSceneGenerationTarget] = useState<"avatar" | "voice_only" | null>(null);
   const [isCheckingClipStatus, setIsCheckingClipStatus] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -231,6 +240,8 @@ export default function HeygenStudioClient({
       const voices = (payload.data?.voices || []) as VoicePreset[];
       setAvatarPresets(avatars);
       setVoicePresets(voices);
+      setArchivedAvatarPresets((payload.data?.archivedAvatars || []) as AvatarPreset[]);
+      setArchivedVoicePresets((payload.data?.archivedVoices || []) as VoicePreset[]);
 
       setSelectedAvatarPresetId((current) =>
         current || avatars.find((preset) => preset.is_default)?.id || avatars[0]?.id || "",
@@ -692,9 +703,9 @@ export default function HeygenStudioClient({
     }
   };
 
-  const handleGenerateSelectedClips = async () => {
+  const handleGenerateSelectedClips = async (generationTarget: "avatar" | "voice_only") => {
     if (!connection.connected || !componentId) {
-      toast.error("Configura la API key de HeyGen antes de generar clips de avatar.");
+      toast.error("Configura la API key de HeyGen antes de generar contenido.");
       return;
     }
 
@@ -704,6 +715,7 @@ export default function HeygenStudioClient({
     }
 
     setIsGeneratingClips(true);
+    setSceneGenerationTarget(generationTarget);
     setErrorMessage(null);
 
     try {
@@ -716,6 +728,7 @@ export default function HeygenStudioClient({
           clips,
           componentId,
           engine,
+          generationTarget,
           brandGlossaryId: brandGlossaryId || undefined,
           locale: voiceLocale || undefined,
           motionPrompt: motionPrompt || undefined,
@@ -739,21 +752,51 @@ export default function HeygenStudioClient({
       setVoiceClips((payload.data?.voiceClips || []) as VoiceSceneClip[]);
       setSceneClips(nextClips);
       const failedCount = nextClips.filter(
-        (clip) => selectedSceneClipIds.includes(clip.id) && clip.status === "FAILED",
+        (clip) => selectedSceneClipIds.includes(clip.id) && (
+          generationTarget === "voice_only" ? clip.voice_status === "FAILED" : clip.status === "FAILED"
+        ),
       ).length;
       if (failedCount > 0) {
-        toast.error(`${failedCount} escenas fueron rechazadas por el proveedor.`);
+        toast.error(`${failedCount} escenas no pudieron generar ${generationTarget === "voice_only" ? "voz" : "avatar"}.`);
       } else if (payload.data?.submissionStatus === "QUEUED") {
-        toast.success(`Lote en cola: ${selectedSceneClipIds.length} escenas.`);
+        toast.success(`Lote de ${generationTarget === "voice_only" ? "voces" : "avatares"} en cola: ${selectedSceneClipIds.length} escenas.`);
       } else {
-        toast.success(`Lote de avatares enviado: ${selectedSceneClipIds.length} escenas.`);
+        toast.success(`${generationTarget === "voice_only" ? "Voces generadas" : "Avatares enviados"}: ${selectedSceneClipIds.length} escenas.`);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al generar clips de avatar.";
+      const message = error instanceof Error
+        ? error.message
+        : `Error al generar ${generationTarget === "voice_only" ? "voces" : "clips de avatar"}.`;
       setErrorMessage(message);
       toast.error(message);
     } finally {
       setIsGeneratingClips(false);
+      setSceneGenerationTarget(null);
+    }
+  };
+
+  const handlePresetArchived = async (
+    kind: "avatar" | "voice",
+    presetId: string,
+    archived: boolean,
+  ) => {
+    setUpdatingPresetId(presetId);
+    try {
+      const response = await fetch("/api/production/heygen/presets", {
+        body: JSON.stringify({ archived, kind, presetId }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      });
+      const payload = await readApiResponse(response);
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || "No se pudo actualizar el preset.");
+      }
+      await loadPresets();
+      toast.success(archived ? "Preset ocultado del catalogo activo." : "Preset restaurado al catalogo.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo actualizar el preset.");
+    } finally {
+      setUpdatingPresetId(null);
     }
   };
 
@@ -792,6 +835,7 @@ export default function HeygenStudioClient({
   const isVoiceoverMode = avatarGenerationMode === "voiceover";
   const visibleSceneClips = sceneClips.filter((clip) => !clip.deleted);
   const completedSceneClips = visibleSceneClips.filter((clip) => clip.status === "COMPLETED");
+  const completedVoiceClips = voiceClips.filter((clip) => clip.status === "COMPLETED");
   const sceneDurationSeconds = completedSceneClips.reduce(
     (total, clip) => total + (typeof clip.duration === "number" ? clip.duration : 0),
     0,
@@ -826,6 +870,8 @@ export default function HeygenStudioClient({
   });
   const filteredVoices = voicePresets.filter((preset) => !normalizedCatalogQuery
     || `${preset.name || ""} ${preset.language || ""} ${preset.gender || ""}`.toLowerCase().includes(normalizedCatalogQuery));
+  const duplicateAvatarNames = findDuplicatePresetNames(avatarPresets);
+  const duplicateVoiceNames = findDuplicatePresetNames(voicePresets);
   const integrationsPath = params?.empresaSlug
     ? `/${params.empresaSlug}/admin/integrations`
     : "/admin/integrations";
@@ -954,6 +1000,25 @@ export default function HeygenStudioClient({
             </span>
           </div>
 
+          {isCourseContext ? (
+            <div className="mb-5 grid gap-2 rounded-xl border border-gray-100 bg-gray-50 p-3 sm:grid-cols-4 dark:border-white/5 dark:bg-[var(--engine-canvas)]">
+              {[
+                { complete: visibleSceneClips.length > 0, label: "1. Guion", value: `${visibleSceneClips.length} escenas` },
+                { complete: completedVoiceClips.length === visibleSceneClips.length && visibleSceneClips.length > 0, label: "2. Voz", value: `${completedVoiceClips.length}/${visibleSceneClips.length}` },
+                { complete: completedSceneClips.length === visibleSceneClips.length && visibleSceneClips.length > 0, label: "3. Avatar", value: `${completedSceneClips.length}/${visibleSceneClips.length}` },
+                { complete: false, label: "4. Editor", value: "ensamble final" },
+              ].map((step) => (
+                <div key={step.label} className="rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-[var(--engine-surface-solid)]">
+                  <div className="flex items-center gap-2 text-xs font-bold text-gray-700 dark:text-slate-200">
+                    <span className={`h-2 w-2 rounded-full ${step.complete ? "bg-emerald-500" : "bg-amber-400"}`} />
+                    {step.label}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">{step.value}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
           {!isCourseContext ? (
             <div className="mb-4 grid gap-3">
               <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
@@ -1069,8 +1134,13 @@ export default function HeygenStudioClient({
                             </label>
                           </div>
                           <div className="flex items-center gap-2">
+                            {clip.voice_status ? (
+                              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getClipStatusClassName(clip.voice_status)}`}>
+                                Voz: {CLIP_STATUS_LABELS[clip.voice_status] || clip.voice_status}
+                              </span>
+                            ) : null}
                             <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getClipStatusClassName(clip.status)}`}>
-                              {CLIP_STATUS_LABELS[clip.status] || clip.status}
+                              Avatar: {CLIP_STATUS_LABELS[clip.status] || clip.status}
                             </span>
                             <button
                               type="button"
@@ -1104,6 +1174,11 @@ export default function HeygenStudioClient({
                             {clip.error_message ? (
                               <p className="mt-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-600 dark:text-red-300">
                                 {clip.error_message}
+                              </p>
+                            ) : null}
+                            {clip.voice_error_message ? (
+                              <p className="mt-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-600 dark:text-red-300">
+                                Voz: {clip.voice_error_message}
                               </p>
                             ) : null}
                             {voiceClip ? (
@@ -1314,7 +1389,21 @@ export default function HeygenStudioClient({
               <>
                 <button
                   type="button"
-                  onClick={handleGenerateSelectedClips}
+                  onClick={() => handleGenerateSelectedClips("voice_only")}
+                  disabled={
+                    isGeneratingClips ||
+                    isLoadingPresets ||
+                    !connection.connected ||
+                    selectedSceneClipIds.length === 0
+                  }
+                  className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300"
+                >
+                  {sceneGenerationTarget === "voice_only" ? <Loader2 size={16} className="animate-spin" /> : <AudioLines size={16} />}
+                  Generar voz de escenas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleGenerateSelectedClips("avatar")}
                   disabled={
                     isGeneratingClips ||
                     isLoadingPresets ||
@@ -1323,8 +1412,8 @@ export default function HeygenStudioClient({
                   }
                   className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-rose-500/15 transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isGeneratingClips ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                  Generar escenas seleccionadas
+                  {sceneGenerationTarget === "avatar" ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                  Generar avatar de escenas
                 </button>
                 <button
                   type="button"
@@ -1466,23 +1555,57 @@ export default function HeygenStudioClient({
           items={filteredAvatars.map((preset) => ({
             id: preset.id,
             imageUrl: preset.preview_image_url || undefined,
+            isDuplicate: duplicateAvatarNames.has(normalizePresetName(preset.name)),
             isDefault: Boolean(preset.is_default),
             meta: preset.heygen_avatar_look_id || preset.status || undefined,
             name: preset.name || preset.id,
           }))}
+          kind="avatar"
+          onArchive={(presetId) => handlePresetArchived("avatar", presetId, true)}
           title="Avatares"
+          updatingPresetId={updatingPresetId}
         />
         <PresetList
           emptyText="Sin voces sincronizadas."
           items={filteredVoices.map((preset) => ({
             id: preset.id,
+            isDuplicate: duplicateVoiceNames.has(normalizePresetName(preset.name)),
             isDefault: Boolean(preset.is_default),
             meta: [preset.language, preset.gender, preset.voice_type].filter(Boolean).join(" · "),
             name: preset.name || preset.id,
           }))}
+          kind="voice"
+          onArchive={(presetId) => handlePresetArchived("voice", presetId, true)}
           title="Voces"
+          updatingPresetId={updatingPresetId}
         />
       </section>
+
+      {(archivedAvatarPresets.length > 0 || archivedVoicePresets.length > 0) ? (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5 dark:border-amber-500/20 dark:bg-amber-500/5">
+          <div className="mb-3">
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white">Recursos ocultos</h2>
+            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">La limpieza no elimina recursos de HeyGen. Puedes restaurarlos en cualquier momento.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {[
+              ...archivedAvatarPresets.map((preset) => ({ ...preset, kind: "avatar" as const })),
+              ...archivedVoicePresets.map((preset) => ({ ...preset, kind: "voice" as const })),
+            ].map((preset) => (
+              <button
+                key={`${preset.kind}-${preset.id}`}
+                type="button"
+                disabled={updatingPresetId === preset.id}
+                onClick={() => handlePresetArchived(preset.kind, preset.id, false)}
+                className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 disabled:opacity-60 dark:border-amber-500/20 dark:bg-black/10 dark:text-amber-200"
+              >
+                {updatingPresetId === preset.id ? <Loader2 className="animate-spin" size={13} /> : <RefreshCw size={13} />}
+                Restaurar {preset.name || preset.id}
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -1733,17 +1856,24 @@ function GeneratedVideoLibrary({
 function PresetList({
   emptyText,
   items,
+  kind,
+  onArchive,
   title,
+  updatingPresetId,
 }: {
   emptyText: string;
   items: {
     id: string;
     imageUrl?: string;
+    isDuplicate: boolean;
     isDefault: boolean;
     meta?: string;
     name: string;
   }[];
+  kind: "avatar" | "voice";
+  onArchive: (presetId: string) => void;
   title: string;
+  updatingPresetId: string | null;
 }) {
   return (
     <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-white/5 dark:bg-[var(--engine-surface-solid)]">
@@ -1783,11 +1913,35 @@ function PresetList({
               </div>
               {item.isDefault ? (
                 <CheckCircle2 className="shrink-0 text-emerald-500" size={18} />
-              ) : null}
+              ) : (
+                <button
+                  type="button"
+                  disabled={updatingPresetId === item.id}
+                  onClick={() => onArchive(item.id)}
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-400 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 disabled:opacity-60 dark:border-white/10 dark:hover:border-amber-500/30 dark:hover:bg-amber-500/10 dark:hover:text-amber-300"
+                  title={`Ocultar ${kind === "avatar" ? "avatar" : "voz"}${item.isDuplicate ? " duplicado" : ""}`}
+                >
+                  {updatingPresetId === item.id ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
+                </button>
+              )}
+              {item.isDuplicate ? <span className="rounded-full bg-amber-500/10 px-2 py-1 text-[9px] font-bold uppercase text-amber-700 dark:text-amber-300">Duplicado</span> : null}
             </div>
           ))}
         </div>
       )}
     </section>
   );
+}
+
+function normalizePresetName(value?: string | null) {
+  return (value || "").trim().toLocaleLowerCase().replace(/\s+/g, " ");
+}
+
+function findDuplicatePresetNames(items: Array<{ name?: string | null }>) {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const name = normalizePresetName(item.name);
+    if (name) counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  return new Set([...counts.entries()].filter(([, count]) => count > 1).map(([name]) => name));
 }

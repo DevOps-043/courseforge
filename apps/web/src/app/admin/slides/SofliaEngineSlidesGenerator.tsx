@@ -2,12 +2,12 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ArrowLeft, FileJson, FileText, Layers3, Loader2, RefreshCw, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 import { readApiResponse } from "@/lib/client/api-response";
 import { waitForSlideGeneration } from "@/lib/client/slide-generation";
 import { EngineSelect } from "@/components/ui/EngineSelect";
+import { resolveSlideHtmlPreviewUrl } from "@/lib/client/slide-preview";
 
 export interface SlideGenerationCandidate {
   artifactId: string;
@@ -127,7 +127,6 @@ export function SofliaEngineSlidesGenerator({
   initialComponentId,
   returnTo,
 }: SofliaEngineSlidesGeneratorProps) {
-  const router = useRouter();
   const initialCandidate = initialComponentId
     ? candidates.find((candidate) => candidate.componentId === initialComponentId)
     : null;
@@ -195,13 +194,16 @@ export function SofliaEngineSlidesGenerator({
         payload = { success: true, assets: completed.assets };
       }
 
-      setLastGeneratedUrl(payload.htmlPublicUrl || payload.assets?.slides_url || null);
+      const previewUrl = resolveSlideHtmlPreviewUrl(payload.assets);
+      if (!previewUrl) {
+        throw new Error("El deck terminó, pero no devolvió una ruta HTML para visualizarlo.");
+      }
+      setLastGeneratedUrl(previewUrl);
       toast.success(
         payload.reused
           ? "Deck SofLIA - Engine recuperado"
           : "Deck SofLIA - Engine generado",
       );
-      router.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo generar el deck.");
     } finally {
@@ -326,6 +328,23 @@ export function SofliaEngineSlidesGenerator({
               <span>Deck SofLIA</span>
             </div>
           </div>
+          {lastGeneratedUrl ? (
+            <div className="mt-4 overflow-hidden rounded-2xl border border-gray-200 bg-slate-950 shadow-sm dark:border-white/10">
+              <div className="flex items-center justify-between border-b border-white/10 px-4 py-2 text-xs font-semibold text-white">
+                <span>Vista previa HTML generada</span>
+                <a href={lastGeneratedUrl} target="_blank" rel="noreferrer" className="text-[var(--engine-accent)] hover:underline">
+                  Abrir en una pestaña
+                </a>
+              </div>
+              <iframe
+                key={lastGeneratedUrl}
+                src={lastGeneratedUrl}
+                title="Vista previa del deck HTML generado"
+                className="aspect-video w-full bg-white"
+                sandbox="allow-scripts allow-same-origin"
+              />
+            </div>
+          ) : null}
         </div>
       </div>
 

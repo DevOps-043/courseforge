@@ -39,10 +39,12 @@ export class HeygenRepository {
           "status",
           "is_default",
           "metadata",
+          "archived_at",
           "synced_at",
         ].join(", "),
       )
       .eq("organization_id", organizationId)
+      .is("archived_at", null)
       .order("is_default", { ascending: false })
       .order("synced_at", { ascending: false, nullsFirst: false })
       .limit(1000);
@@ -65,16 +67,69 @@ export class HeygenRepository {
           "preview_audio_url",
           "is_default",
           "metadata",
+          "archived_at",
           "synced_at",
         ].join(", "),
       )
       .eq("organization_id", organizationId)
+      .is("archived_at", null)
       .order("is_default", { ascending: false })
       .order("synced_at", { ascending: false, nullsFirst: false })
       .limit(1000);
 
     if (error) throw error;
     return data || [];
+  }
+
+  async listArchivedAvatarPresets(organizationId: string) {
+    const { data, error } = await this.supabase
+      .from("heygen_avatar_presets")
+      .select("id, heygen_avatar_look_id, name, is_default, archived_at")
+      .eq("organization_id", organizationId)
+      .not("archived_at", "is", null)
+      .order("archived_at", { ascending: false })
+      .limit(250);
+    if (error) throw error;
+    return data || [];
+  }
+
+  async listArchivedVoicePresets(organizationId: string) {
+    const { data, error } = await this.supabase
+      .from("heygen_voice_presets")
+      .select("id, heygen_voice_id, name, is_default, archived_at")
+      .eq("organization_id", organizationId)
+      .not("archived_at", "is", null)
+      .order("archived_at", { ascending: false })
+      .limit(250);
+    if (error) throw error;
+    return data || [];
+  }
+
+  async setCatalogPresetArchived(params: {
+    archived: boolean;
+    kind: "avatar" | "voice";
+    organizationId: string;
+    presetId: string;
+  }) {
+    const table = params.kind === "avatar" ? "heygen_avatar_presets" : "heygen_voice_presets";
+    const { data: preset, error: readError } = await this.supabase
+      .from(table)
+      .select("id, is_default")
+      .eq("organization_id", params.organizationId)
+      .eq("id", params.presetId)
+      .maybeSingle();
+    if (readError) throw readError;
+    if (!preset) return "NOT_FOUND" as const;
+    if (params.archived && preset.is_default === true) return "DEFAULT" as const;
+
+    const now = new Date().toISOString();
+    const { error } = await this.supabase
+      .from(table)
+      .update({ archived_at: params.archived ? now : null, updated_at: now })
+      .eq("organization_id", params.organizationId)
+      .eq("id", params.presetId);
+    if (error) throw error;
+    return "UPDATED" as const;
   }
 
   async markWorkspaceSyncSucceeded(organizationId: string, syncedAt: string) {
@@ -186,6 +241,7 @@ export class HeygenRepository {
       .select("id")
       .eq("organization_id", organizationId)
       .eq("is_default", true)
+      .is("archived_at", null)
       .maybeSingle();
 
     if (error) throw error;
@@ -209,7 +265,8 @@ export class HeygenRepository {
           "metadata",
         ].join(", "),
       )
-      .eq("organization_id", params.organizationId);
+      .eq("organization_id", params.organizationId)
+      .is("archived_at", null);
 
     query = params.presetId
       ? query.eq("id", params.presetId)
@@ -227,7 +284,8 @@ export class HeygenRepository {
     let query = this.supabase
       .from("heygen_voice_presets")
       .select("id, heygen_voice_id, name, is_default")
-      .eq("organization_id", params.organizationId);
+      .eq("organization_id", params.organizationId)
+      .is("archived_at", null);
 
     query = params.presetId
       ? query.eq("id", params.presetId)
@@ -244,6 +302,7 @@ export class HeygenRepository {
       .select("id")
       .eq("organization_id", organizationId)
       .eq("is_default", true)
+      .is("archived_at", null)
       .maybeSingle();
 
     if (error) throw error;

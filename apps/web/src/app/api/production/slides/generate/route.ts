@@ -332,9 +332,6 @@ export async function runSlideDeckGeneration(params: {
     componentId,
     supabase: authorizedComponent.admin,
   });
-  if (internalRequest && context.organizationId !== internalRequest.organizationId) {
-    return NextResponse.json({ error: "Componente no encontrado para esta empresa" }, { status: 404 });
-  }
   const currentAssets = (authorizedComponent.component.assets || {}) as MaterialAssets;
   const sourcePack = await loadSlideSourcePack({
     artifactId: authorizedComponent.artifactId,

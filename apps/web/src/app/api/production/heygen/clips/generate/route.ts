@@ -69,6 +69,7 @@ export async function POST(request: Request) {
       clipIds: payload.clipIds,
       clips: payload.clips,
       componentId: payload.componentId,
+      generationTarget: payload.generationTarget,
       organizationId: tenant.organizationId,
     });
     const backgroundRequest = {
@@ -103,6 +104,7 @@ export async function POST(request: Request) {
         clipIds: payload.clipIds,
         componentId: payload.componentId,
         errorMessage: message,
+        generationTarget: payload.generationTarget,
       });
       throw new HeygenScenesServiceError(message, 503);
     }

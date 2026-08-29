@@ -108,7 +108,9 @@ export const heygenAvatarClipSchema = z
     storage_path: z.string().trim().optional(),
     storyboard_take_number: z.number().int().min(1).optional(),
     visual_type: z.string().trim().optional(),
+    voice_error_message: z.string().trim().optional(),
     voice_preset_id: z.string().uuid().optional(),
+    voice_status: heygenAvatarClipStatusSchema.optional(),
   })
   .strict();
 
@@ -130,6 +132,7 @@ export const heygenGenerateClipsRequestSchema = z
     clips: z.array(heygenAvatarClipSchema),
     componentId: z.string().uuid(),
     engine: z.enum(["avatar_iv", "avatar_v"]).default("avatar_iv"),
+    generationTarget: z.enum(["avatar", "voice_only"]).default("avatar"),
     folderId: z.string().trim().min(1).max(255).optional(),
     locale: z.string().trim().min(2).max(35).optional(),
     motionPrompt: z.string().trim().min(1).max(1000).optional(),

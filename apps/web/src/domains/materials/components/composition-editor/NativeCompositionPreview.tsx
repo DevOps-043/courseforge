@@ -27,6 +27,7 @@ import { LayerDepthControls } from "./LayerDepthControls";
 import { CompositionMotionControls } from "./CompositionMotionControls";
 import { buildCompositionAutoOrganizePatch } from "@/domains/production/composition-editor/composition-auto-organize.service";
 import { buildCompositionDurationRecalculationPatch } from "@/domains/production/composition-editor/composition-duration-recalculation.service";
+import { deriveCompositionScenes } from "@/domains/production/composition-editor/composition-scene.service";
 import {
   COMPOSITION_VERSION_FALLBACK_HEADER,
   formatCompositionDocumentEtag,
@@ -1763,6 +1764,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       onRestore={restoreSnapshot}
     />
   );
+  const compositionScenes = deriveCompositionScenes(payload.document);
+  const activeSceneId = compositionScenes.find((scene) =>
+    seconds >= scene.startSeconds && seconds < scene.startSeconds + scene.durationSeconds
+  )?.id;
 
   return (
     <section className={`${styles.studio} courseforge-composition-studio`}>
@@ -1833,6 +1838,26 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
               </div>
             </div>
           </div>
+          {compositionScenes.length > 0 && (
+            <nav aria-label="Microeditor por escenas" className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-white/10 bg-black/10 px-3 py-2">
+              <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400">Escenas</span>
+              {compositionScenes.map((scene) => (
+                <button
+                  key={scene.id}
+                  type="button"
+                  aria-current={activeSceneId === scene.id ? "step" : undefined}
+                  onClick={() => {
+                    seek(scene.startSeconds);
+                    selectClip(scene.primaryHfId);
+                  }}
+                  className={`shrink-0 rounded-md border px-2.5 py-1 text-[10px] font-semibold transition ${activeSceneId === scene.id ? "border-emerald-400/50 bg-emerald-400/10 text-emerald-200" : "border-white/10 text-slate-400 hover:border-white/20 hover:text-white"}`}
+                  title={`${scene.roles.join(" + ")} · ${formatCompositionTimecode(scene.durationSeconds)}`}
+                >
+                  {scene.label}
+                </button>
+              ))}
+            </nav>
+          )}
           <div className={`${styles.previewViewport} courseforge-composition-preview-viewport`}>
             <div className={styles.previewFrame}>
               <iframe ref={frameRef} title="Preview completo de composición" src={previewUrl} sandbox="allow-scripts" allow="autoplay" className="absolute inset-0 h-full w-full" />

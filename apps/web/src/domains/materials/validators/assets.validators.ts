@@ -102,6 +102,8 @@ export const avatarClipSchema = z.object({
   job_id: z.string().trim().optional(),
   status: avatarClipStatusSchema,
   error_message: z.string().trim().optional(),
+  voice_status: avatarClipStatusSchema.optional(),
+  voice_error_message: z.string().trim().optional(),
   script_hash: z.string().trim().optional(),
   source_hash: z.string().trim().optional(),
 });

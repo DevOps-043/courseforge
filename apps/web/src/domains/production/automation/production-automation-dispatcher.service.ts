@@ -186,6 +186,7 @@ export class ProductionAutomationDispatcher {
       clipIds: pendingClips.map((clip) => clip.id),
       clips: configuredClips,
       componentId: component.id,
+      generationTarget: "avatar",
       organizationId: params.organizationId,
     });
     await service.generateSceneClips({
@@ -197,8 +198,10 @@ export class ProductionAutomationDispatcher {
         clips: queued.clips,
         componentId: component.id,
         engine: params.avatar.engine,
+        generationTarget: "avatar",
         outputFormat: params.avatar.outputFormat,
         resolution: params.avatar.resolution,
+        speed: 1,
       },
       organizationId: params.organizationId,
     });

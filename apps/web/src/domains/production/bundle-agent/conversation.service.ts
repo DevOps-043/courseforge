@@ -151,6 +151,25 @@ export class BundleAgentConversationService {
     };
   }
 
+  async updateConversation(conversationId: string, input: { title?: string | null }) {
+    await this.assertConversationAccess(conversationId);
+    const title = input.title?.replace(/\s+/g, " ").trim();
+    if (!title || title.length > 120) {
+      throw new Error("El nombre de la plantilla debe tener entre 1 y 120 caracteres.");
+    }
+
+    const { data, error } = await this.context.admin
+      .from("soflia_bundle_conversations")
+      .update({ title, updated_at: new Date().toISOString() })
+      .eq("id", conversationId)
+      .eq("organization_id", this.context.organizationId)
+      .select("*")
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
   async assertConversationAccess(conversationId: string) {
     const { data, error } = await this.context.admin
       .from("soflia_bundle_conversations")

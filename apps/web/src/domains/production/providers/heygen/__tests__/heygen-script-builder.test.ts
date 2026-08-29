@@ -92,8 +92,10 @@ describe("HeyGen scene clip builder", () => {
         clips: [],
         componentId: "component-1",
         engine: "avatar_iv",
+        generationTarget: "avatar",
         outputFormat: "mp4",
         resolution: "1080p",
+        speed: 1,
       },
     });
 
