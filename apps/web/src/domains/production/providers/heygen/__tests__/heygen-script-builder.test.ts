@@ -6,7 +6,14 @@ import {
   getReusableSceneVoiceAsset,
   HeygenScenesService,
   reconcileVoiceClips,
+  selectPromotableAvatarVoices,
 } from "../heygen-scenes.service";
+import { resetGeneratedSceneAssets } from "../heygen-scene-assets";
+import {
+  estimateHeygenAvatarGenerationBudget,
+  readHeygenAvailableBalance,
+} from "../heygen-billing";
+import { PRODUCTION_JOB_STATUSES } from "../../../types/production.types";
 import { buildHeygenScriptFromComponent } from "../heygen-script-builder";
 
 describe("HeyGen script builder", () => {
@@ -199,5 +206,156 @@ describe("HeyGen scene clip builder", () => {
         ["manual-split", "manual", false],
       ],
     );
+  });
+
+  it("clears generated avatar and voice assets without deleting the scene", () => {
+    const reset = resetGeneratedSceneAssets({
+      avatarClips: [
+        {
+          avatar_preset_id: "avatar-preset-1",
+          duration: 33.9,
+          external_id: "heygen-video-1",
+          file_name: "scene-1.mp4",
+          generation_revision: 2,
+          has_audio: false,
+          id: "scene-1",
+          job_id: "job-1",
+          order: 1,
+          origin: "storyboard",
+          provider: "HEYGEN",
+          public_url: "https://cdn.example.com/scene-1.mp4",
+          script_hash: "script-hash",
+          script_text: "Guion que debe conservarse.",
+          source_hash: "source-hash",
+          status: "COMPLETED",
+          storage_path: "heygen/scene-1.mp4",
+          voice_preset_id: "voice-preset-1",
+          voice_status: "COMPLETED",
+          voice_speed: 1.1,
+        },
+        {
+          id: "scene-2",
+          order: 2,
+          public_url: "https://cdn.example.com/scene-2.mp4",
+          script_text: "Otra escena.",
+          status: "COMPLETED",
+        },
+      ],
+      clipIds: ["scene-1"],
+      voiceClips: [
+        {
+          clip_id: "scene-1",
+          id: "voice-scene-1",
+          order: 1,
+          public_url: "https://cdn.example.com/scene-1.mp3",
+          script_hash: "script-hash",
+          status: "COMPLETED",
+        },
+        {
+          clip_id: "scene-2",
+          id: "voice-scene-2",
+          order: 2,
+          public_url: "https://cdn.example.com/scene-2.mp3",
+          script_hash: "other-hash",
+          status: "COMPLETED",
+        },
+      ],
+    });
+
+    assert.deepEqual(reset.voiceClips.map((clip) => clip.clip_id), ["scene-2"]);
+    assert.deepEqual(reset.avatarClips[0], {
+      avatar_preset_id: "avatar-preset-1",
+      generation_revision: 3,
+      id: "scene-1",
+      order: 1,
+      origin: "storyboard",
+      script_text: "Guion que debe conservarse.",
+      source_hash: "source-hash",
+      status: "DRAFT",
+      voice_preset_id: "voice-preset-1",
+      voice_speed: 1.1,
+      voice_status: "DRAFT",
+    });
+    assert.equal(reset.avatarClips[1]?.public_url, "https://cdn.example.com/scene-2.mp4");
+  });
+
+  it("does not publish provisional voice tracks while an avatar is pending or failed", () => {
+    const voiceClip = {
+      clip_id: "scene-1",
+      id: "voice-scene-1",
+      order: 1,
+      public_url: "https://cdn.example.com/scene-1.mp3",
+      script_hash: "script-hash",
+      status: "COMPLETED" as const,
+    };
+    const promotable = selectPromotableAvatarVoices([
+      {
+        clipId: "scene-1",
+        jobId: "job-pending",
+        providerJobId: "provider-pending",
+        status: PRODUCTION_JOB_STATUSES.WAITING_PROVIDER,
+        voiceClip,
+      },
+      {
+        clipId: "scene-2",
+        jobId: "job-failed",
+        providerJobId: null,
+        status: PRODUCTION_JOB_STATUSES.FAILED,
+        voiceClip: { ...voiceClip, clip_id: "scene-2", id: "voice-scene-2" },
+      },
+      {
+        clipId: "scene-3",
+        jobId: "job-completed",
+        providerJobId: "provider-completed",
+        status: PRODUCTION_JOB_STATUSES.SUCCEEDED,
+        voiceClip: { ...voiceClip, clip_id: "scene-3", id: "voice-scene-3" },
+      },
+    ]);
+
+    assert.deepEqual(promotable.map((clip) => clip.clip_id), ["scene-3"]);
+  });
+});
+
+describe("HeyGen avatar billing preflight", () => {
+  it("reads the documented wallet remaining_balance field", () => {
+    assert.deepEqual(readHeygenAvailableBalance({
+      billingType: "wallet",
+      email: null,
+      firstName: null,
+      lastName: null,
+      raw: {},
+      subscription: null,
+      usageBased: null,
+      username: "QA",
+      wallet: { currency: "usd", remaining_balance: 0 },
+    }), { available: 0, unit: "usd" });
+  });
+
+  it("estimates the complete avatar batch before generating provisional audio", () => {
+    const budget = estimateHeygenAvatarGenerationBudget({
+      account: {
+        billingType: "wallet",
+        email: null,
+        firstName: null,
+        lastName: null,
+        raw: {},
+        subscription: null,
+        usageBased: null,
+        username: "QA",
+        wallet: { currency: "usd", remaining_balance: 1 },
+      },
+      clips: [{
+        id: "scene-1",
+        order: 1,
+        script_text: Array.from({ length: 145 }, () => "palabra").join(" "),
+        status: "DRAFT",
+      }],
+      engine: "avatar_iv",
+      speed: 1,
+    });
+
+    assert.equal(budget.estimatedDurationSeconds, 60);
+    assert.ok(budget.estimatedCost > 4);
+    assert.equal(budget.available, 1);
   });
 });

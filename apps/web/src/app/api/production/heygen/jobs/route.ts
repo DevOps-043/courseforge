@@ -8,6 +8,11 @@ import {
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { HeygenRepository } from "@/domains/production/providers/heygen/heygen.repository";
+import {
+  PRODUCTION_ASSET_TYPES,
+  PRODUCTION_JOB_STATUSES,
+  PRODUCTION_JOB_TYPES,
+} from "@/domains/production/types/production.types";
 import { createClient } from "@/utils/supabase/server";
 
 const latestJobQuerySchema = z.object({
@@ -64,10 +69,20 @@ export async function GET(request: Request) {
       });
     }
 
+    const jobType = typeof latestJob.input_snapshot?.job_type === "string"
+      ? latestJob.input_snapshot.job_type
+      : null;
     const [asset, voiceAsset] = await Promise.all([
-      repository.findAvatarVideoAssetByJob(latestJob.id),
+      repository.findAvatarVideoAssetByJob(
+        latestJob.id,
+        jobType === PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_CLIP
+          ? PRODUCTION_ASSET_TYPES.AVATAR_VIDEO_CLIP
+          : PRODUCTION_ASSET_TYPES.AVATAR_VIDEO,
+      ),
       repository.findVoiceAudioAssetByJob(latestJob.id),
     ]);
+    const exposeVoiceAsset = jobType !== PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_CLIP
+      || latestJob.status === PRODUCTION_JOB_STATUSES.SUCCEEDED;
 
     return NextResponse.json({
       success: true,
@@ -79,7 +94,7 @@ export async function GET(request: Request) {
               storagePath: asset.storage_path || null,
             }
           : null,
-        voiceAsset: voiceAsset?.public_url && voiceAsset.storage_path
+        voiceAsset: exposeVoiceAsset && voiceAsset?.public_url && voiceAsset.storage_path
           ? {
               durationSeconds:
                 voiceAsset.duration_seconds ||
@@ -101,9 +116,7 @@ export async function GET(request: Request) {
               ? latestJob.output_snapshot.provider_request_id
               : null),
           providerError: latestJob.provider_error || null,
-          jobType: typeof latestJob.input_snapshot?.job_type === "string"
-            ? latestJob.input_snapshot.job_type
-            : null,
+          jobType,
           providerModel: latestJob.provider_model || null,
           status: latestJob.status,
           updatedAt: latestJob.updated_at || null,

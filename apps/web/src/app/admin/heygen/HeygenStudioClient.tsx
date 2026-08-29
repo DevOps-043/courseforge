@@ -43,6 +43,7 @@ interface AvatarSceneClip {
   error_message?: string;
   external_id?: string;
   file_name?: string;
+  generation_revision?: number;
   has_audio?: boolean;
   id: string;
   job_id?: string;
@@ -210,6 +211,7 @@ export default function HeygenStudioClient({
   const [sceneClips, setSceneClips] = useState<AvatarSceneClip[]>([]);
   const [voiceClips, setVoiceClips] = useState<VoiceSceneClip[]>([]);
   const [generatingVoiceClipIds, setGeneratingVoiceClipIds] = useState<string[]>([]);
+  const [resettingSceneClipIds, setResettingSceneClipIds] = useState<string[]>([]);
   const [selectedSceneClipIds, setSelectedSceneClipIds] = useState<string[]>([]);
   const [sceneClipPanelOverrides, setSceneClipPanelOverrides] = useState<
     Record<string, boolean>
@@ -394,6 +396,7 @@ export default function HeygenStudioClient({
       const clips = (payload.data?.clips || []) as AvatarSceneClip[];
       setVoiceClips((payload.data?.voiceClips || []) as VoiceSceneClip[]);
       setSceneClips(clips);
+      await loadLatestJob();
       if (notify) {
         const completed = clips.filter((clip) => clip.status === "COMPLETED").length;
         toast.info(`Clips completados: ${completed}/${clips.length}.`);
@@ -409,7 +412,7 @@ export default function HeygenStudioClient({
     } finally {
       if (notify) setIsCheckingClipStatus(false);
     }
-  }, [componentId]);
+  }, [componentId, loadLatestJob]);
 
   useEffect(() => {
     loadConnection();
@@ -431,13 +434,19 @@ export default function HeygenStudioClient({
 
   useEffect(() => {
     if (!connection.connected || !componentId) return;
-    if (!sceneClips.some((clip) => clip.status === "WAITING_PROVIDER")) return;
+    const hasPendingAvatar = sceneClips.some((clip) => clip.status === "WAITING_PROVIDER");
+    const hasFailedAvatarVoice = sceneClips.some((clip) => (
+      clip.status === "FAILED"
+      && Boolean(clip.job_id)
+      && voiceClips.some((voiceClip) => voiceClip.clip_id === clip.id)
+    ));
+    if (!hasPendingAvatar && !hasFailedAvatarVoice) return;
 
     const timeoutId = window.setTimeout(() => {
       void refreshSceneClipStatuses(false);
-    }, 8_000);
+    }, hasPendingAvatar ? 8_000 : 250);
     return () => window.clearTimeout(timeoutId);
-  }, [componentId, connection.connected, refreshSceneClipStatuses, sceneClips]);
+  }, [componentId, connection.connected, refreshSceneClipStatuses, sceneClips, voiceClips]);
 
   useEffect(() => {
     const activeClipIds = new Set(
@@ -691,6 +700,44 @@ export default function HeygenStudioClient({
     setSelectedSceneClipIds((current) => current.filter((id) => id !== clipId));
   };
 
+  const handleResetSceneAssets = async (clipIds: string[]) => {
+    if (!componentId || clipIds.length === 0) return;
+    const confirmed = window.confirm(
+      clipIds.length === 1
+        ? "Se borrarán el avatar y la voz generados de esta escena. La escena, su guion y su configuración se conservarán para volver a generarla."
+        : `Se borrarán los assets generados de ${clipIds.length} escenas. Los guiones y configuraciones se conservarán para repetir la prueba.`,
+    );
+    if (!confirmed) return;
+
+    setErrorMessage(null);
+    setResettingSceneClipIds((current) => [...new Set([...current, ...clipIds])]);
+    try {
+      const response = await fetch("/api/production/heygen/scenes", {
+        body: JSON.stringify({ clipIds, componentId }),
+        headers: { "Content-Type": "application/json" },
+        method: "DELETE",
+      });
+      const payload = await readApiResponse(response);
+      if (!response.ok || !payload.success) {
+        throw new Error(readApiErrorMessage(payload, "No se pudieron limpiar los assets generados."));
+      }
+
+      setSceneClips((payload.data?.clips || []) as AvatarSceneClip[]);
+      setVoiceClips((payload.data?.voiceClips || []) as VoiceSceneClip[]);
+      toast.success(
+        clipIds.length === 1
+          ? "Assets borrados. La escena está lista para volver a generarse."
+          : "Assets generados borrados. Las escenas están listas para repetir la prueba.",
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudieron limpiar los assets generados.";
+      setErrorMessage(message);
+      toast.error(message);
+    } finally {
+      setResettingSceneClipIds((current) => current.filter((id) => !clipIds.includes(id)));
+    }
+  };
+
   const toggleSceneClip = (clipId: string) => {
     setSelectedSceneClipIds((current) =>
       current.includes(clipId)
@@ -894,6 +941,11 @@ export default function HeygenStudioClient({
   const isSceneMode = isCourseContext && avatarGenerationMode === "scene_clips";
   const isVoiceoverMode = avatarGenerationMode === "voiceover";
   const visibleSceneClips = sceneClips.filter((clip) => !clip.deleted);
+  const resettableSceneClipIds = visibleSceneClips.flatMap((clip) => (
+    hasGeneratedSceneAssets(clip, voiceClips.find((voice) => voice.clip_id === clip.id))
+      ? [clip.id]
+      : []
+  ));
   const completedSceneClips = visibleSceneClips.filter((clip) => clip.status === "COMPLETED");
   const completedVoiceClips = voiceClips.filter((clip) => clip.status === "COMPLETED");
   const sceneDurationSeconds = completedSceneClips.reduce(
@@ -1155,6 +1207,26 @@ export default function HeygenStudioClient({
                   >
                     Guardar cambios
                   </button>
+                  {resettableSceneClipIds.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleResetSceneAssets(resettableSceneClipIds)}
+                      disabled={
+                        isGeneratingClips
+                        || isLoadingScenes
+                        || resettingSceneClipIds.length > 0
+                        || visibleSceneClips.some((clip) => (
+                          clip.status === "WAITING_PROVIDER"
+                          || clip.voice_status === "WAITING_PROVIDER"
+                        ))
+                      }
+                      className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+                      title="Borrar avatar y voz generados, conservando las escenas"
+                    >
+                      {resettingSceneClipIds.length > 0 ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                      Limpiar generados
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => setSelectedSceneClipIds(visibleSceneClips.map((clip) => clip.id))}
@@ -1186,6 +1258,8 @@ export default function HeygenStudioClient({
                 visibleSceneClips.map((clip, clipIndex) => {
                   const voiceClip = voiceClips.find((voice) => voice.clip_id === clip.id);
                   const isGeneratingVoice = generatingVoiceClipIds.includes(clip.id);
+                  const isResettingScene = resettingSceneClipIds.includes(clip.id);
+                  const hasGeneratedAssets = hasGeneratedSceneAssets(clip, voiceClip);
                   const isPanelExpanded = isSceneClipPanelExpanded(clip);
                   const scriptPreview =
                     clip.script_text.length > 140
@@ -1241,12 +1315,25 @@ export default function HeygenStudioClient({
                             </span>
                             <button
                               type="button"
-                              onClick={() => deleteSceneClip(clip.id)}
-                              disabled={isGeneratingClips}
+                              onClick={() => (
+                                hasGeneratedAssets
+                                  ? void handleResetSceneAssets([clip.id])
+                                  : deleteSceneClip(clip.id)
+                              )}
+                              disabled={
+                                isGeneratingClips
+                                || isResettingScene
+                                || clip.status === "WAITING_PROVIDER"
+                                || clip.voice_status === "WAITING_PROVIDER"
+                              }
                               className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
-                              title="Eliminar clip"
+                              title={
+                                hasGeneratedAssets
+                                  ? "Borrar avatar y voz generados; conservar la escena"
+                                  : "Eliminar escena"
+                              }
                             >
-                              <Trash2 size={14} />
+                              {isResettingScene ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                             </button>
                           </div>
                         </div>
@@ -2067,4 +2154,19 @@ function findDuplicatePresetNames(items: Array<{ name?: string | null }>) {
     if (name) counts.set(name, (counts.get(name) || 0) + 1);
   }
   return new Set([...counts.entries()].filter(([, count]) => count > 1).map(([name]) => name));
+}
+
+function hasGeneratedSceneAssets(
+  clip: AvatarSceneClip,
+  voiceClip?: VoiceSceneClip,
+) {
+  return Boolean(
+    voiceClip
+    || clip.public_url
+    || clip.storage_path
+    || clip.job_id
+    || clip.external_id
+    || clip.status !== "DRAFT"
+    || (clip.voice_status && clip.voice_status !== "DRAFT"),
+  );
 }

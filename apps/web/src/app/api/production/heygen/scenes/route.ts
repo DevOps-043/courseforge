@@ -11,7 +11,10 @@ import {
   HeygenScenesService,
   HeygenScenesServiceError,
 } from "@/domains/production/providers/heygen/heygen-scenes.service";
-import { heygenScenesPatchRequestSchema } from "@/domains/production/providers/heygen/heygen.validators";
+import {
+  heygenScenesPatchRequestSchema,
+  heygenScenesResetRequestSchema,
+} from "@/domains/production/providers/heygen/heygen.validators";
 import { createClient } from "@/utils/supabase/server";
 
 const componentIdSchema = z.string().uuid();
@@ -72,6 +75,27 @@ export async function PATCH(request: Request) {
     });
   } catch (error: unknown) {
     return handleScenesError(error, "guardar escenas HeyGen");
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const payload = heygenScenesResetRequestSchema.parse(
+      await request.json().catch(() => ({})),
+    );
+    const auth = await authorizeComponent(payload.componentId, "limpiar assets de escenas HeyGen");
+    if (auth.response) return auth.response;
+
+    const service = new HeygenScenesService(auth.authorizedComponent.admin);
+    const data = await service.resetSceneAssets({
+      clipIds: payload.clipIds,
+      componentId: payload.componentId,
+      organizationId: auth.tenant.organizationId,
+    });
+
+    return NextResponse.json({ success: true, data });
+  } catch (error: unknown) {
+    return handleScenesError(error, "limpiar assets de escenas HeyGen");
   }
 }
 

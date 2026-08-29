@@ -133,6 +133,8 @@ export type AvatarClipStatus =
 export interface AvatarClip {
     id: string;
     order: number;
+    /** Increments when generated media is cleared so a retry cannot reuse an old successful job. */
+    generation_revision?: number;
     deleted?: boolean;
     origin?: 'storyboard' | 'manual';
     storyboard_take_number?: number;

@@ -416,6 +416,7 @@ export class HeygenRepository {
       .eq("provider", PRODUCTION_PROVIDERS.HEYGEN)
       .in("job_type", [
         PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_VIDEO,
+        PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_CLIP,
         PRODUCTION_JOB_TYPES.HEYGEN_VOICEOVER,
       ])
       .order("created_at", { ascending: false })

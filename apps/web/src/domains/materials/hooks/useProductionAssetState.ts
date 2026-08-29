@@ -10,6 +10,7 @@ import { uploadWithSignedUrl } from "@/lib/storage-upload";
 import { validateHyperframesMediaAsset } from "@/domains/production/hyperframes/hyperframes-media-constraints";
 import { HYPERFRAMES_ASSET_DELIVERY_MODES } from "@/domains/production/hyperframes/hyperframes.types";
 import { HYPERFRAMES_PRIVATE_SOURCE_BUCKET } from "@/domains/production/media-storage.config";
+import { resetGeneratedSceneAssets } from "@/domains/production/providers/heygen/heygen-scene-assets";
 import type { CloudStorageProvider } from "@/domains/production/cloud-storage/types";
 import {
   MAX_VIDEO_UPLOAD_SIZE_BYTES,
@@ -1004,39 +1005,29 @@ export function useProductionAssetState({
   };
 
   const clearAvatarVideo = () => {
+    const reset = resetGeneratedSceneAssets({
+      avatarClips,
+      clipIds: avatarClips.map((clip) => clip.id),
+      voiceClips,
+    });
     setAvatarVideo(null);
-    setAvatarClips([]);
-    setVoiceClips([]);
+    setAvatarClips(reset.avatarClips);
+    setVoiceClips(reset.voiceClips);
     onAssetChange?.(component.id, {
-      avatar_clips: [],
+      avatar_clips: reset.avatarClips,
       avatar_video: null as any,
-      voice_clips: [],
+      voice_clips: reset.voiceClips,
     });
     toast.info("Videos de avatar removidos");
   };
 
   const removeAvatarClip = (clipId: string) => {
-    const updatedClips = avatarClips.map((clip) => clip.id === clipId
-      ? {
-          ...clip,
-          error_message: undefined,
-          external_id: undefined,
-          file_name: undefined,
-          job_id: undefined,
-          public_url: undefined,
-          duration: undefined,
-          provider: undefined,
-          source_hash: undefined,
-          status: "DRAFT" as const,
-          storage_path: undefined,
-        }
-      : clip);
-    setAvatarClips(updatedClips);
-    const updatedVoiceClips = voiceClips.filter((clip) => clip.clip_id !== clipId);
-    setVoiceClips(updatedVoiceClips);
+    const reset = resetGeneratedSceneAssets({ avatarClips, clipIds: [clipId], voiceClips });
+    setAvatarClips(reset.avatarClips);
+    setVoiceClips(reset.voiceClips);
     onAssetChange?.(component.id, {
-      avatar_clips: updatedClips,
-      voice_clips: updatedVoiceClips,
+      avatar_clips: reset.avatarClips,
+      voice_clips: reset.voiceClips,
     });
     toast.info("Video de avatar retirado; la escena queda disponible para regenerar");
   };

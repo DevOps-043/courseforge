@@ -96,6 +96,7 @@ export const heygenAvatarClipSchema = z
     has_audio: z.boolean().optional(),
     id: z.string().trim().min(1),
     deleted: z.boolean().optional(),
+    generation_revision: z.number().int().min(0).optional(),
     job_id: z.string().uuid().optional(),
     order: z.number().int().min(1),
     origin: z.enum(["storyboard", "manual"]).optional(),
@@ -119,6 +120,13 @@ export const heygenScenesPatchRequestSchema = z
   .object({
     avatarGenerationMode: z.enum(["scene_clips", "single_video", "voiceover"]).optional(),
     clips: z.array(heygenAvatarClipSchema),
+    componentId: z.string().uuid(),
+  })
+  .strict();
+
+export const heygenScenesResetRequestSchema = z
+  .object({
+    clipIds: z.array(z.string().trim().min(1)).min(1).max(50),
     componentId: z.string().uuid(),
   })
   .strict();
