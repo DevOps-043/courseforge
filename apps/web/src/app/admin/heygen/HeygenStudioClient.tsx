@@ -75,6 +75,17 @@ interface VoiceSceneClip {
   status: "DRAFT" | "COMPLETED" | "FAILED" | "STALE";
 }
 
+interface HistoricalSceneRecoveryReport {
+  alreadyAvailableAvatarCount: number;
+  matchedJobCount: number;
+  pendingAvatarCount: number;
+  recoveredAvatarCount: number;
+  recoveredVoiceCount: number;
+  renamedAssetCount: number;
+  skipped: string[];
+  unresolvedSceneCount: number;
+}
+
 interface AvatarPreset {
   archived_at?: string | null;
   heygen_avatar_look_id?: string | null;
@@ -228,6 +239,8 @@ export default function HeygenStudioClient({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isLoadingScenes, setIsLoadingScenes] = useState(false);
   const [isGeneratingClips, setIsGeneratingClips] = useState(false);
+  const [isRecoveringHistoricalAssets, setIsRecoveringHistoricalAssets] = useState(false);
+  const [historicalRecoveryReport, setHistoricalRecoveryReport] = useState<HistoricalSceneRecoveryReport | null>(null);
   const [sceneGenerationTarget, setSceneGenerationTarget] = useState<"avatar" | "voice_only" | null>(null);
   const [isCheckingClipStatus, setIsCheckingClipStatus] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
@@ -803,6 +816,47 @@ export default function HeygenStudioClient({
     }
   };
 
+  const handleRecoverHistoricalAssets = async () => {
+    if (!componentId || !connection.connected) {
+      toast.error("Conecta HeyGen para consultar los videos históricos de esta lección.");
+      return;
+    }
+
+    setIsRecoveringHistoricalAssets(true);
+    setHistoricalRecoveryReport(null);
+    setErrorMessage(null);
+    try {
+      const response = await fetch("/api/production/heygen/scenes", {
+        body: JSON.stringify({ componentId }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const payload = await readApiResponse(response);
+      if (!response.ok || !payload.success) {
+        throw new Error(readApiErrorMessage(payload, "No se pudieron recuperar los assets históricos."));
+      }
+
+      const report = payload.data?.report as HistoricalSceneRecoveryReport;
+      setSceneClips((payload.data?.clips || []) as AvatarSceneClip[]);
+      setVoiceClips((payload.data?.voiceClips || []) as VoiceSceneClip[]);
+      setHistoricalRecoveryReport(report);
+      if (payload.data?.editorSyncWarning) toast.warning(payload.data.editorSyncWarning);
+      if (report.pendingAvatarCount > 0) {
+        toast.success(`Recuperación iniciada: ${report.pendingAvatarCount} videos históricos siguen procesándose.`);
+      } else if (report.recoveredAvatarCount > 0 || report.recoveredVoiceCount > 0) {
+        toast.success("Assets históricos recuperados y sincronizados con el editor.");
+      } else {
+        toast.success("La revisión terminó; los assets disponibles ya estaban sincronizados.");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudieron recuperar los assets históricos.";
+      setErrorMessage(message);
+      toast.error(message);
+    } finally {
+      setIsRecoveringHistoricalAssets(false);
+    }
+  };
+
   const handleGenerateSelectedClips = async (generationTarget: "avatar" | "voice_only") => {
     if (!connection.connected || !componentId) {
       toast.error("Configura la API key de HeyGen antes de generar contenido.");
@@ -1080,6 +1134,26 @@ export default function HeygenStudioClient({
         </div>
       ) : null}
 
+      {historicalRecoveryReport ? (
+        <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3 text-sm text-blue-800 dark:text-blue-200">
+          <p className="font-bold">Reporte de recuperación histórica</p>
+          <p className="mt-1">
+            {historicalRecoveryReport.recoveredAvatarCount} avatares y {historicalRecoveryReport.recoveredVoiceCount} voces recuperados; {historicalRecoveryReport.alreadyAvailableAvatarCount} avatares ya estaban disponibles; {historicalRecoveryReport.pendingAvatarCount} siguen procesándose.
+          </p>
+          <p className="mt-1 text-xs text-blue-700/80 dark:text-blue-300/80">
+            Jobs relacionados: {historicalRecoveryReport.matchedJobCount}. Nombres/metadatos actualizados: {historicalRecoveryReport.renamedAssetCount}. Escenas sin resolver: {historicalRecoveryReport.unresolvedSceneCount}.
+          </p>
+          {historicalRecoveryReport.skipped.length > 0 ? (
+            <details className="mt-2 text-xs">
+              <summary className="cursor-pointer font-semibold">Ver escenas no recuperables</summary>
+              <ul className="mt-1 list-disc space-y-1 pl-5">
+                {historicalRecoveryReport.skipped.map((message) => <li key={message}>{message}</li>)}
+              </ul>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
+
       {connection.connected ? (
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-700 dark:text-emerald-300">
           HeyGen está conectado. La configuración de la integración se administra desde {" "}
@@ -1203,10 +1277,25 @@ export default function HeygenStudioClient({
                   <button
                     type="button"
                     onClick={handleSaveSceneEdits}
-                    disabled={isGeneratingClips || isLoadingScenes}
+                    disabled={isGeneratingClips || isLoadingScenes || isRecoveringHistoricalAssets}
                     className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
                   >
                     Guardar cambios
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleRecoverHistoricalAssets()}
+                    disabled={
+                      !connection.connected
+                      || isGeneratingClips
+                      || isLoadingScenes
+                      || isRecoveringHistoricalAssets
+                    }
+                    className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300"
+                    title="Recupera archivos desde jobs y video IDs existentes; no genera videos nuevos ni consume créditos"
+                  >
+                    {isRecoveringHistoricalAssets ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                    Recuperar históricos
                   </button>
                   {resettableSceneClipIds.length > 0 ? (
                     <button

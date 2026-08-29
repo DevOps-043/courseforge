@@ -7,6 +7,12 @@ import {
   getAuthorizedMaterialComponentAdmin,
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
+import { syncHyperframesSourceAssetsFromProduction } from "@/domains/production/hyperframes/hyperframes-source-asset.service";
+import { HeygenApiError } from "@/domains/production/providers/heygen/heygen.client";
+import {
+  getHeygenClientForOrganization,
+  HeygenCredentialResolverError,
+} from "@/domains/production/providers/heygen/heygen-credential-resolver.service";
 import {
   HeygenScenesService,
   HeygenScenesServiceError,
@@ -18,6 +24,67 @@ import {
 import { createClient } from "@/utils/supabase/server";
 
 const componentIdSchema = z.string().uuid();
+
+export async function POST(request: Request) {
+  try {
+    const componentId = componentIdSchema.parse(
+      (await request.json().catch(() => ({})))?.componentId,
+    );
+    const auth = await authorizeComponent(componentId, "recuperar assets históricos de HeyGen");
+    if (auth.response) return auth.response;
+
+    const heygenAuth = await getHeygenClientForOrganization({
+      allowGlobalFallback: false,
+      organizationId: auth.tenant.organizationId,
+      supabase: auth.authorizedComponent.admin,
+    });
+    const service = new HeygenScenesService(
+      auth.authorizedComponent.admin,
+      heygenAuth.client,
+    );
+    const recovered = await service.recoverHistoricalSceneAssets({
+      componentId,
+      createdBy: auth.authenticatedUser.userId,
+      organizationId: auth.tenant.organizationId,
+    });
+
+    let editorSync: Record<string, unknown> | null = null;
+    let editorSyncWarning: string | null = null;
+    try {
+      editorSync = await syncHyperframesSourceAssetsFromProduction({
+        componentId,
+        createdBy: auth.authenticatedUser.userId,
+        organizationId: auth.tenant.organizationId,
+        supabase: auth.authorizedComponent.admin,
+      });
+    } catch (syncError) {
+      editorSyncWarning = "Los clips se recuperaron, pero el editor no pudo sincronizarse automáticamente.";
+      console.warn("[API /production/heygen/scenes] Historical recovery editor sync failed:", {
+        componentId,
+        message: getErrorMessage(syncError),
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: { ...recovered, editorSync, editorSyncWarning },
+    });
+  } catch (error: unknown) {
+    if (error instanceof HeygenCredentialResolverError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status },
+      );
+    }
+    if (error instanceof HeygenApiError) {
+      return NextResponse.json(
+        { error: "No se pudo consultar uno de los videos históricos en HeyGen." },
+        { status: error.status === 429 ? 429 : 502 },
+      );
+    }
+    return handleScenesError(error, "recuperar assets históricos de HeyGen");
+  }
+}
 
 export async function GET(request: Request) {
   try {

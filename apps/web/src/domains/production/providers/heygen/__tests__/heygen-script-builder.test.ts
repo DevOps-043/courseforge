@@ -7,6 +7,7 @@ import {
   HeygenScenesService,
   mergeSceneClipsForConcurrentGeneration,
   reconcileVoiceClips,
+  selectRecoverableHistoricalSceneJobs,
   selectPromotableAvatarVoices,
 } from "../heygen-scenes.service";
 import { resetGeneratedSceneAssets } from "../heygen-scene-assets";
@@ -70,6 +71,48 @@ describe("HeyGen script builder", () => {
     assert.equal(merged.filter((clip) => clip.status === "COMPLETED").length, 4);
     assert.deepEqual(merged.map((clip) => clip.public_url), current.map((clip) => clip.public_url));
     assert.equal(merged[0]?.asset_name, "Nombre actualizado");
+  });
+
+  it("recovers the newest usable historical job without retrying a credit failure", () => {
+    const common = {
+      artifact_id: "artifact-1",
+      material_component_id: "component-1",
+      organization_id: "organization-1",
+    };
+    const selected = selectRecoverableHistoricalSceneJobs([
+      {
+        ...common,
+        id: "job-credit-failure",
+        input_snapshot: { clip_id: "scene-1" },
+        provider_job_id: null,
+        status: PRODUCTION_JOB_STATUSES.FAILED,
+      },
+      {
+        ...common,
+        id: "job-scene-1-completed",
+        input_snapshot: { clip_id: "scene-1" },
+        provider_job_id: "heygen-video-1",
+        status: PRODUCTION_JOB_STATUSES.SUCCEEDED,
+      },
+      {
+        ...common,
+        id: "job-scene-2-current",
+        input_snapshot: { clip_id: "scene-2" },
+        provider_job_id: "heygen-video-2-current",
+        status: PRODUCTION_JOB_STATUSES.WAITING_PROVIDER,
+      },
+      {
+        ...common,
+        id: "job-scene-2-old",
+        input_snapshot: { clip_id: "scene-2" },
+        provider_job_id: "heygen-video-2-old",
+        status: PRODUCTION_JOB_STATUSES.SUCCEEDED,
+      },
+    ]);
+
+    assert.equal(selected.get("scene-1")?.id, "job-scene-1-completed");
+    assert.equal(selected.get("scene-2")?.id, "job-scene-2-current");
+    assert.equal(selected.size, 2);
   });
 
   it("builds a talking-head script from video script sections", () => {

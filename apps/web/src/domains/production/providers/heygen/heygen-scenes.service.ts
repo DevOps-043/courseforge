@@ -32,6 +32,7 @@ import {
   type HeygenAvatarVideoOutputFormat,
   type HeygenAvatarVideoResolution,
   type HeygenCreateVideoRequest,
+  type HeygenProductionJobRow,
   type HeygenSupabaseClient,
 } from "./heygen.types";
 import { HeygenVideoImportService } from "./heygen-video-import.service";
@@ -82,6 +83,17 @@ interface HeygenSceneVoiceJobResult {
   errorMessage?: string;
   jobId: string | null;
   voiceClip: VoiceClip;
+}
+
+export interface HeygenHistoricalSceneRecoveryReport {
+  alreadyAvailableAvatarCount: number;
+  matchedJobCount: number;
+  pendingAvatarCount: number;
+  recoveredAvatarCount: number;
+  recoveredVoiceCount: number;
+  renamedAssetCount: number;
+  skipped: string[];
+  unresolvedSceneCount: number;
 }
 
 export class HeygenScenesService {
@@ -236,6 +248,161 @@ export class HeygenScenesService {
     return {
       clips: materialAssets.avatar_clips || [],
       voiceClips: materialAssets.voice_clips || [],
+    };
+  }
+
+  /**
+   * Rebuilds scene media references from historical jobs. This method never
+   * submits a create-video or text-to-speech request; it only promotes local
+   * files or polls an existing provider video id.
+   */
+  async recoverHistoricalSceneAssets(params: {
+    componentId: string;
+    createdBy?: string | null;
+    organizationId: string;
+  }) {
+    const context = await resolveProductionComponentContext({
+      componentId: params.componentId,
+      supabase: this.supabase,
+    });
+    if (context.organizationId !== params.organizationId) {
+      throw new HeygenScenesServiceError(
+        "El componente no pertenece a la empresa activa.",
+        403,
+      );
+    }
+
+    const { data: component, error: componentError } = await this.supabase
+      .from("material_components")
+      .select("content, assets")
+      .eq("id", params.componentId)
+      .single();
+    if (componentError) throw componentError;
+
+    const originalAssets = isRecord(component?.assets)
+      ? component.assets as MaterialAssets
+      : {};
+    const originalClips = sortClips(originalAssets.avatar_clips || []);
+    const originalVoiceClips = originalAssets.voice_clips || [];
+    const clips = this.buildSceneClips({
+      componentContent: component?.content,
+      existingClips: originalClips,
+    });
+    const jobs = await this.repository.listAvatarClipJobsForComponent({
+      componentId: params.componentId,
+      organizationId: params.organizationId,
+    });
+    const jobsByClipId = selectRecoverableHistoricalSceneJobs(jobs);
+    const skipped: string[] = [];
+    let matchedJobCount = 0;
+    let renamedAssetCount = 0;
+
+    const stagedClips: AvatarClip[] = [];
+    for (const clip of clips) {
+      const names = buildHeygenSceneAssetNames({ clip, context });
+      const recoveredName = clip.asset_name
+        || readString(jobsByClipId.get(clip.id)?.input_snapshot?.asset_display_name)
+        || names.displayName;
+      if (!clip.asset_name && recoveredName) renamedAssetCount += 1;
+
+      if (hasCompletedAvatarMedia(clip)) {
+        stagedClips.push({ ...clip, asset_name: recoveredName });
+        continue;
+      }
+
+      const job = jobsByClipId.get(clip.id);
+      if (!job) {
+        stagedClips.push({ ...clip, asset_name: recoveredName });
+        skipped.push(`Escena ${clip.order}: no se encontró un job histórico recuperable.`);
+        continue;
+      }
+
+      const existingVideo = await this.repository.findAvatarVideoAssetByJob(
+        job.id,
+        PRODUCTION_ASSET_TYPES.AVATAR_VIDEO_CLIP,
+      );
+      const providerJobId = job.provider_job_id || readProviderJobId(job.output_snapshot);
+      if (!existingVideo && !providerJobId) {
+        stagedClips.push({ ...clip, asset_name: recoveredName });
+        skipped.push(`Escena ${clip.order}: el job no conserva un video ni un identificador de HeyGen.`);
+        continue;
+      }
+
+      matchedJobCount += 1;
+      if (!job.provider_job_id && providerJobId) {
+        await this.repository.restoreProviderJobId({ jobId: job.id, providerJobId });
+      }
+      stagedClips.push({
+        ...clip,
+        asset_name: recoveredName,
+        error_message: undefined,
+        generation_revision: readNonNegativeInteger(job.input_snapshot?.generation_revision)
+          ?? clip.generation_revision,
+        job_id: job.id,
+        status: "WAITING_PROVIDER",
+      });
+    }
+
+    await this.saveSceneClips({
+      avatarGenerationMode: "scene_clips",
+      clips: stagedClips,
+      componentId: params.componentId,
+      voiceClips: originalVoiceClips,
+    });
+    const refreshed = await this.refreshSceneClipStatuses({
+      componentId: params.componentId,
+      createdBy: params.createdBy,
+      organizationId: params.organizationId,
+    });
+    const recoveredClips = refreshed.clips;
+    const recoveredVoiceClips = refreshed.voiceClips;
+
+    let metadataBackfillCount = 0;
+    for (const clip of recoveredClips) {
+      if (!clip.job_id || !clip.asset_name) continue;
+      const [videoAsset, voiceAsset] = await Promise.all([
+        this.repository.findAvatarVideoAssetByJob(
+          clip.job_id,
+          PRODUCTION_ASSET_TYPES.AVATAR_VIDEO_CLIP,
+        ),
+        this.repository.findVoiceAudioAssetByJob(clip.job_id),
+      ]);
+      for (const asset of [videoAsset, voiceAsset]) {
+        if (!asset) continue;
+        if (await this.repository.backfillGeneratedAssetDisplayName({
+          asset,
+          displayName: clip.asset_name,
+        })) metadataBackfillCount += 1;
+      }
+    }
+
+    const originallyCompleted = new Set(
+      originalClips.filter(hasCompletedAvatarMedia).map((clip) => clip.id),
+    );
+    const originalCompletedVoices = new Set(
+      originalVoiceClips.filter(hasCompletedVoiceMedia).map((clip) => clip.clip_id),
+    );
+    const report: HeygenHistoricalSceneRecoveryReport = {
+      alreadyAvailableAvatarCount: originallyCompleted.size,
+      matchedJobCount,
+      pendingAvatarCount: recoveredClips.filter((clip) => clip.status === "WAITING_PROVIDER").length,
+      recoveredAvatarCount: recoveredClips.filter((clip) => (
+        hasCompletedAvatarMedia(clip) && !originallyCompleted.has(clip.id)
+      )).length,
+      recoveredVoiceCount: recoveredVoiceClips.filter((clip) => (
+        hasCompletedVoiceMedia(clip) && !originalCompletedVoices.has(clip.clip_id)
+      )).length,
+      renamedAssetCount: renamedAssetCount + metadataBackfillCount,
+      skipped,
+      unresolvedSceneCount: recoveredClips.filter((clip) => (
+        !clip.deleted && !hasCompletedAvatarMedia(clip) && clip.status !== "WAITING_PROVIDER"
+      )).length,
+    };
+
+    return {
+      clips: recoveredClips,
+      report,
+      voiceClips: recoveredVoiceClips,
     };
   }
 
@@ -1416,6 +1583,37 @@ function replaceClip(clips: AvatarClip[], clipId: string, nextClip: AvatarClip) 
 
 function sortClips(clips: AvatarClip[]) {
   return [...clips].sort((left, right) => left.order - right.order);
+}
+
+/** Selects the newest usable historical generation for each scene. */
+export function selectRecoverableHistoricalSceneJobs(jobs: HeygenProductionJobRow[]) {
+  const selected = new Map<string, HeygenProductionJobRow>();
+  for (const job of jobs) {
+    const clipId = readString(job.input_snapshot?.clip_id);
+    if (!clipId || selected.has(clipId)) continue;
+    const hasProviderVideo = Boolean(job.provider_job_id || readProviderJobId(job.output_snapshot));
+    if (job.status !== PRODUCTION_JOB_STATUSES.SUCCEEDED && !hasProviderVideo) continue;
+    selected.set(clipId, job);
+  }
+  return selected;
+}
+
+function hasCompletedAvatarMedia(clip: AvatarClip) {
+  return clip.status === "COMPLETED" && Boolean(clip.public_url && clip.storage_path);
+}
+
+function hasCompletedVoiceMedia(clip: VoiceClip) {
+  return clip.status === "COMPLETED" && Boolean(clip.public_url && clip.storage_path);
+}
+
+function readNonNegativeInteger(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 const AVATAR_PROGRESS_KEYS = [

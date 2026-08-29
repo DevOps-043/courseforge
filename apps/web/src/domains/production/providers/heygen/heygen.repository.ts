@@ -385,6 +385,82 @@ export class HeygenRepository {
     return (data || null) as HeygenProductionJobRow | null;
   }
 
+  async listAvatarClipJobsForComponent(params: {
+    componentId: string;
+    organizationId: string;
+  }) {
+    const { data, error } = await this.supabase
+      .from("production_jobs")
+      .select(
+        [
+          "id",
+          "artifact_id",
+          "material_lesson_id",
+          "material_component_id",
+          "lesson_id",
+          "module_id",
+          "organization_id",
+          "status",
+          "input_snapshot",
+          "output_snapshot",
+          "provider_job_id",
+          "provider_error",
+          "provider_model",
+          "duration_seconds",
+          "created_at",
+          "updated_at",
+        ].join(", "),
+      )
+      .eq("organization_id", params.organizationId)
+      .eq("material_component_id", params.componentId)
+      .eq("provider", PRODUCTION_PROVIDERS.HEYGEN)
+      .eq("job_type", PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_CLIP)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    return (data || []) as unknown as HeygenProductionJobRow[];
+  }
+
+  async restoreProviderJobId(params: { jobId: string; providerJobId: string }) {
+    const { error } = await this.supabase
+      .from("production_jobs")
+      .update({
+        provider_job_id: params.providerJobId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", params.jobId)
+      .is("provider_job_id", null);
+
+    if (error) throw error;
+  }
+
+  async backfillGeneratedAssetDisplayName(params: {
+    asset: HeygenProductionAssetRow;
+    displayName: string;
+  }) {
+    const fileName = params.asset.storage_path?.split("/").at(-1) || null;
+    const metadata = params.asset.metadata || {};
+    if (
+      metadata.asset_display_name === params.displayName
+      && (!fileName || metadata.file_name === fileName)
+    ) return false;
+
+    const { error } = await this.supabase
+      .from("production_assets")
+      .update({
+        metadata: {
+          ...metadata,
+          asset_display_name: params.displayName,
+          ...(fileName ? { file_name: fileName } : {}),
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", params.asset.id);
+
+    if (error) throw error;
+    return true;
+  }
+
   async getLatestHeygenMediaJobForComponent(params: {
     componentId: string;
     organizationId: string;
