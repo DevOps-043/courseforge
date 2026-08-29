@@ -164,10 +164,13 @@ export function CurationDashboard({
   const submitPdf = async (lesson: CurationLessonOption, file?: File) => {
     if (!file) return;
     setBusy(`pdf:${lesson.id}`);
-    await onAddPdf({ lessonId: lesson.id, lessonTitle: lesson.title }, file);
-    setBusy(null);
-    const input = fileInputs.current[lesson.id];
-    if (input) input.value = "";
+    try {
+      await onAddPdf({ lessonId: lesson.id, lessonTitle: lesson.title }, file);
+    } finally {
+      setBusy(null);
+      const input = fileInputs.current[lesson.id];
+      if (input) input.value = "";
+    }
   };
 
   return (

@@ -198,7 +198,12 @@ export function useCuration(artifactId: string) {
   };
 
   const addManualPdf = async (lesson: ManualSourceLesson, file: File) => {
-    if (file.type !== "application/pdf" || !file.name.toLowerCase().endsWith(".pdf")) {
+    const hasPdfExtension = file.name.toLowerCase().endsWith(".pdf");
+    const hasSupportedPdfMimeType =
+      file.type === "application/pdf" ||
+      file.type === "application/x-pdf" ||
+      file.type === "";
+    if (!hasPdfExtension || !hasSupportedPdfMimeType) {
       toast.error("Selecciona un archivo PDF valido");
       return false;
     }
@@ -206,39 +211,46 @@ export function useCuration(artifactId: string) {
       toast.error("El PDF no puede superar 25 MB");
       return false;
     }
-    const safeName = file.name
-      .normalize("NFKD")
-      .replace(/[^\w.-]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-    const upload = await uploadWithSignedUrl(
-      "curation-sources",
-      `curation-sources/${artifactId}/${crypto.randomUUID()}-${safeName}`,
-      file,
-      {
-        artifactId,
-        purpose: "curation-source-pdf",
-        contentType: "application/pdf",
+    try {
+      const safeName = file.name
+        .normalize("NFKD")
+        .replace(/[^\w.-]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      const upload = await uploadWithSignedUrl(
+        "curation-sources",
+        `curation-sources/${artifactId}/${crypto.randomUUID()}-${safeName}`,
+        file,
+        {
+          artifactId,
+          purpose: "curation-source-pdf",
+          contentType: "application/pdf",
+          fileSizeBytes: file.size,
+          upsert: false,
+          deliveryMode: "server-only",
+        },
+      );
+      const result = await registerManualCurationPdfAction(artifactId, lesson, {
+        storagePath: upload.path,
+        fileName: file.name,
+        mimeType: "application/pdf",
         fileSizeBytes: file.size,
-        upsert: false,
-      },
-    );
-    const result = await registerManualCurationPdfAction(artifactId, lesson, {
-      storagePath: upload.path,
-      fileName: file.name,
-      mimeType: "application/pdf",
-      fileSizeBytes: file.size,
-    });
-    if (!result.success) {
-      toast.error(result.error || "No se pudo registrar el PDF");
+      });
+      if (!result.success) {
+        toast.error(result.error || "No se pudo registrar el PDF");
+        return false;
+      }
+      toast.success(
+        result.validation?.status === "valid"
+          ? "PDF agregado y validado"
+          : "PDF agregado; revisa su estado",
+      );
+      await fetchCurationData();
+      return true;
+    } catch (error) {
+      console.error("[Curation] Manual PDF upload failed:", error);
+      toast.error(error instanceof Error ? error.message : "No se pudo subir el PDF");
       return false;
     }
-    toast.success(
-      result.validation?.status === "valid"
-        ? "PDF agregado y validado"
-        : "PDF agregado; revisa su estado",
-    );
-    await fetchCurationData();
-    return true;
   };
 
   const validateRow = async (rowId: string) => {

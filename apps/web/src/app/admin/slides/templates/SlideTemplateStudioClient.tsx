@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -65,6 +65,21 @@ interface OrganizationSlideFont {
   family: string;
   source: "google" | "uploaded";
   cssUrl?: string;
+}
+
+function organizationFontIdentity(font: Pick<OrganizationSlideFont, "family" | "source">) {
+  return `${font.source}:${font.family.trim().toLowerCase()}`;
+}
+
+function mergeOrganizationFonts(fonts: OrganizationSlideFont[]) {
+  const fontsByIdentity = new Map<string, OrganizationSlideFont>();
+  for (const font of fonts) {
+    const identity = organizationFontIdentity(font);
+    if (!fontsByIdentity.has(identity)) {
+      fontsByIdentity.set(identity, font);
+    }
+  }
+  return [...fontsByIdentity.values()];
 }
 
 interface TemplateLayout {
@@ -428,10 +443,20 @@ export function SlideTemplateStudioClient() {
   const [operation, setOperation] = useState<StudioOperation>("idle");
   const [organizationFonts, setOrganizationFonts] = useState<OrganizationSlideFont[]>([]);
   const [uploadingFont, setUploadingFont] = useState(false);
+  const [selectedFontFileName, setSelectedFontFileName] = useState("");
+  const fontInputId = useId();
 
   const latestSpec = state.specs[0]?.spec_json;
   const busy = operation !== "idle";
   const previewSlides = useMemo(() => slideTypes.length ? slideTypes : getPreviewSlides(latestSpec), [latestSpec, slideTypes]);
+  const selectedOrganizationFont = useMemo(
+    () => modifiers.font
+      ? organizationFonts.find(
+        (font) => font.family === modifiers.font?.family && font.source === modifiers.font.source,
+      )
+      : undefined,
+    [modifiers.font, organizationFonts],
+  );
   const downloadHref = latestDownloadHref(state);
   const adminBasePath = params?.empresaSlug ? `/${params.empresaSlug}/admin` : "/admin";
 
@@ -459,7 +484,7 @@ export function SlideTemplateStudioClient() {
 
   useEffect(() => {
     fetchJson("/api/admin/slides/fonts", { cache: "no-store" })
-      .then((payload) => setOrganizationFonts(payload.fonts || []))
+      .then((payload) => setOrganizationFonts(mergeOrganizationFonts(payload.fonts || [])))
       .catch(() => setOrganizationFonts([]));
   }, []);
 
@@ -496,24 +521,28 @@ export function SlideTemplateStudioClient() {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ family, source: "google", cssUrl }),
       });
       font = payload.font;
-      setOrganizationFonts((current) => [font!, ...current]);
+      setOrganizationFonts((current) => mergeOrganizationFonts([font!, ...current]));
     }
     await selectOrganizationFont(font);
   }
 
   async function uploadOrganizationFont(file: File | null) {
     if (!file) return;
+    setSelectedFontFileName(file.name);
     setUploadingFont(true);
     try {
       const family = file.name.replace(/\.(woff2?|ttf|otf)$/i, "").replace(/[-_]+/g, " ").trim();
       const form = new FormData(); form.set("family", family); form.set("file", file);
       const payload = await fetchJson("/api/admin/slides/fonts", { method: "POST", body: form });
-      setOrganizationFonts((current) => [payload.font, ...current]);
+      setOrganizationFonts((current) => mergeOrganizationFonts([payload.font, ...current]));
       await selectOrganizationFont(payload.font);
-      toast.success("Fuente de empresa agregada.");
+      toast.success(payload.created === false ? "La fuente ya estaba disponible y se seleccionó." : "Fuente de empresa agregada.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo importar la fuente.");
-    } finally { setUploadingFont(false); }
+    } finally {
+      setUploadingFont(false);
+      setSelectedFontFileName("");
+    }
   }
 
   async function refresh(conversationId = state.conversation?.id) {
@@ -990,15 +1019,14 @@ export function SlideTemplateStudioClient() {
                 <label className="text-xs font-bold text-gray-600 dark:text-gray-300">
                   Tipografia
                   <EngineSelect
-                    value={modifiers.font ? `org:${modifiers.font.family}:${modifiers.font.source}` : `system:${modifiers.fontPairing}`}
+                    value={selectedOrganizationFont ? `org:${selectedOrganizationFont.id}` : `system:${modifiers.fontPairing}`}
                     onValueChange={(value) => {
                       if (value.startsWith("google:")) {
                         void addGoogleFont(value.slice("google:".length));
                         return;
                       }
                       if (value.startsWith("org:")) {
-                        const [, family, source] = value.split(":");
-                        void selectOrganizationFont(organizationFonts.find((font) => font.family === family && font.source === source));
+                        void selectOrganizationFont(organizationFonts.find((font) => font.id === value.slice("org:".length)));
                         return;
                       }
                       setDirtyOverrides((current) => ({ ...current, modifiers: true }));
@@ -1010,23 +1038,35 @@ export function SlideTemplateStudioClient() {
                       { value: "system:editorial_serif", label: "Serif editorial" },
                       { value: "system:technical_mono", label: "Mono técnica" },
                       ...GOOGLE_FONT_FAMILIES.map((family) => ({ value: `google:${family}`, label: `Google Fonts · ${family}` })),
-                      ...organizationFonts.map((font) => ({ value: `org:${font.family}:${font.source}`, label: `${font.source === "uploaded" ? "Empresa" : "Google guardada"} · ${font.family}` })),
+                      ...organizationFonts.map((font) => ({ value: `org:${font.id}`, label: `${font.source === "uploaded" ? "Empresa" : "Google guardada"} · ${font.family}` })),
                     ]}
                   />
                 </label>
               </div>
 
-              <label className="block text-xs font-bold text-gray-600 dark:text-gray-300">
+              <div className="block text-xs font-bold text-gray-600 dark:text-gray-300">
                 Importar fuente de empresa
                 <input
+                  id={fontInputId}
                   type="file"
                   accept=".woff,.woff2,.ttf,.otf,font/woff,font/woff2,font/ttf,font/otf"
                   disabled={uploadingFont}
-                  onChange={(event) => { void uploadOrganizationFont(event.target.files?.[0] || null); event.currentTarget.value = ""; }}
-                  className="mt-1 block w-full text-xs text-gray-500 file:mr-3 file:rounded-md file:border-0 file:bg-[var(--engine-accent)]/10 file:px-3 file:py-1.5 file:font-semibold file:text-[var(--engine-accent-strong)] hover:file:bg-[var(--engine-accent)]/20"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] || null;
+                    void uploadOrganizationFont(file);
+                    event.currentTarget.value = "";
+                  }}
+                  className="sr-only"
                 />
+                <label
+                  htmlFor={fontInputId}
+                  className="mt-1 flex cursor-pointer items-center justify-between gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-700 hover:border-[var(--engine-accent)] dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-gray-200"
+                >
+                  <span className="min-w-0 truncate">{uploadingFont ? "Importando fuente..." : selectedFontFileName || "Ningún archivo seleccionado"}</span>
+                  <span className="shrink-0 rounded-md bg-[var(--engine-accent)]/10 px-3 py-1.5 font-semibold text-[var(--engine-accent-strong)]">Seleccionar archivo</span>
+                </label>
                 <span className="mt-1 block font-normal text-[11px] text-gray-500 dark:text-gray-400">.woff2, .woff, .ttf u .otf · máximo 10 MB · solo para esta empresa</span>
-              </label>
+              </div>
 
               <label className="block text-xs font-bold text-gray-600 dark:text-gray-300">
                 Radio {modifiers.cornerRadius}px

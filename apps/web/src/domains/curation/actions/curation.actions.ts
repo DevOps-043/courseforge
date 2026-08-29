@@ -467,9 +467,12 @@ export async function registerManualCurationPdfAction(
     fileSizeBytes: number;
   },
 ) {
+  let storageAdmin: Awaited<ReturnType<typeof getArtifactAdminContext>>["admin"] | null = null;
+  let shouldRemoveUnregisteredUpload = false;
   try {
     const { admin, authUser, artifact } =
       await getArtifactAdminContext(artifactId);
+    storageAdmin = admin;
     const canonicalLesson = await resolveManualSourceLesson(
       admin,
       artifactId,
@@ -485,7 +488,17 @@ export async function registerManualCurationPdfAction(
     if (!artifact.organization_id || !file.storagePath.startsWith(expectedPathPrefix)) {
       throw new Error("La ruta del PDF no pertenece a este curso.");
     }
-    const curationId = await getOrCreateCurationId(admin, artifactId);
+    const { data: existingSource, error: existingSourceError } = await admin
+      .from("curation_rows")
+      .select("id")
+      .eq("storage_bucket", "curation-sources")
+      .eq("storage_path", file.storagePath)
+      .maybeSingle();
+    if (existingSourceError) throw new Error(existingSourceError.message);
+    if (existingSource) {
+      throw new Error("Este PDF ya fue registrado como fuente de curaduria.");
+    }
+    shouldRemoveUnregisteredUpload = true;
     const { data: blob, error: downloadError } = await admin.storage
       .from("curation-sources")
       .download(file.storagePath);
@@ -496,6 +509,7 @@ export async function registerManualCurationPdfAction(
       new Uint8Array(await blob.arrayBuffer()),
       file.mimeType,
     );
+    const curationId = await getOrCreateCurationId(admin, artifactId);
 
     const { error } = await admin.from("curation_rows").insert({
       curation_id: curationId,
@@ -518,6 +532,7 @@ export async function registerManualCurationPdfAction(
       ...validationColumns(validation.report, validation.isValid),
     });
     if (error) throw new Error(error.message);
+    shouldRemoveUnregisteredUpload = false;
 
     await markDownstreamDirtyAction(
       artifactId,
@@ -526,6 +541,14 @@ export async function registerManualCurationPdfAction(
     );
     return { success: true, validation: validation.report };
   } catch (error) {
+    if (shouldRemoveUnregisteredUpload && storageAdmin) {
+      const { error: cleanupError } = await storageAdmin.storage
+        .from("curation-sources")
+        .remove([file.storagePath]);
+      if (cleanupError) {
+        console.error("[CurationActions] Failed to remove unregistered PDF:", cleanupError.message);
+      }
+    }
     return {
       success: false,
       error: getErrorMessage(error, "No se pudo registrar el PDF."),
