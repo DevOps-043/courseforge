@@ -27,6 +27,8 @@ interface InternalMaterialAssetReference {
   hasAudio?: boolean;
   mimeType: string | null;
   publicUrl: string | null;
+  sceneClipId?: string;
+  sceneOrder?: number;
   sourceType: "DECK_DEPENDENCY" | "PRODUCTION_MEDIA";
   sourceHeight?: number;
   sourceWidth?: number;
@@ -45,6 +47,8 @@ export interface HyperframesSourceAssetCandidate extends HyperframesAssetManifes
   hasAudio?: boolean;
   metadata: Record<string, unknown>;
   qaStatus: string;
+  sceneClipId?: string;
+  sceneOrder?: number;
   sourceType: "DECK_DEPENDENCY" | "PRODUCTION_MEDIA";
   timelineRole: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL" | "VOICE";
   timelineVariant?: "CLIP" | "FULL";
@@ -65,6 +69,8 @@ export function inspectHyperframesSourceAsset(input: {
   mimeType: string | null;
   productionAssetId: string;
   qaStatus?: string | null;
+  sceneClipId?: string;
+  sceneOrder?: number;
   sourceType: "DECK_DEPENDENCY" | "PRODUCTION_MEDIA";
   storagePath: string | null;
   timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL" | "VOICE";
@@ -105,6 +111,8 @@ export function inspectHyperframesSourceAsset(input: {
     ...(input.hasAudio !== undefined ? { hasAudio: input.hasAudio } : {}),
     metadata: input.metadata || {},
     qaStatus: input.qaStatus || "PENDING",
+    sceneClipId: input.sceneClipId,
+    sceneOrder: input.sceneOrder,
     sourceType: input.sourceType,
     timelineRole: input.timelineRole || "VISUAL",
     timelineVariant: input.timelineVariant,
@@ -122,6 +130,7 @@ export function collectInternalMaterialAssetReferences(rawAssets: unknown): Inte
     sourceType: InternalMaterialAssetReference["sourceType"] = "PRODUCTION_MEDIA",
     timelineRole: InternalMaterialAssetReference["timelineRole"] = "VISUAL",
     timelineVariant?: InternalMaterialAssetReference["timelineVariant"],
+    scene?: { clipId: string; order: number },
   ) => {
     if (!isRecord(value) || typeof value.storage_path !== "string") return;
     const storageBucket = value.storage_path.split("/", 1)[0];
@@ -141,6 +150,7 @@ export function collectInternalMaterialAssetReferences(rawAssets: unknown): Inte
       ...(hasAudio !== undefined ? { hasAudio } : {}),
       mimeType: typeof value.content_type === "string" ? value.content_type : mimeType || null,
       publicUrl: typeof value.public_url === "string" ? value.public_url : null,
+      ...(scene ? { sceneClipId: scene.clipId, sceneOrder: scene.order } : {}),
       sourceType,
       ...(sourceHeight && sourceWidth ? { sourceHeight, sourceWidth } : {}),
       storagePath: value.storage_path,
@@ -154,7 +164,10 @@ export function collectInternalMaterialAssetReferences(rawAssets: unknown): Inte
   if (usesSceneClips) {
     for (const item of asArray(assets.voice_clips)) {
       if (!isRecord(item) || item.status !== "COMPLETED") continue;
-      add(item, "audio/mpeg", "PRODUCTION_MEDIA", "VOICE", "CLIP");
+      const clipId = typeof item.clip_id === "string" ? item.clip_id : "";
+      const order = positiveInteger(item.order);
+      if (!clipId || !order) continue;
+      add(item, "audio/mpeg", "PRODUCTION_MEDIA", "VOICE", "CLIP", { clipId, order });
     }
   }
   add(assets.background_music, "audio/mpeg", "PRODUCTION_MEDIA", "AUDIO");
@@ -164,7 +177,10 @@ export function collectInternalMaterialAssetReferences(rawAssets: unknown): Inte
   if (usesSceneClips) {
     for (const item of asArray(assets.avatar_clips)) {
       if (!isRecord(item) || item.deleted === true) continue;
-      add(item, "video/mp4", "PRODUCTION_MEDIA", "AVATAR", "CLIP");
+      const clipId = typeof item.id === "string" ? item.id : "";
+      const order = positiveInteger(item.order);
+      if (!clipId || !order) continue;
+      add(item, "video/mp4", "PRODUCTION_MEDIA", "AVATAR", "CLIP", { clipId, order });
     }
   }
   const slides = isRecord(assets.slides) ? assets.slides : {};
@@ -355,6 +371,8 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
       && (reference.detachedFromAssetId === undefined || existing.metadata.detached_from_asset_id === reference.detachedFromAssetId)
       && (reference.detachedFromClipId === undefined || existing.metadata.detached_from_clip_id === reference.detachedFromClipId)
       && (reference.hasAudio === undefined || existing.metadata.has_audio === reference.hasAudio)
+      && (reference.sceneClipId === undefined || existing.metadata.scene_clip_id === reference.sceneClipId)
+      && (reference.sceneOrder === undefined || existing.metadata.scene_order === reference.sceneOrder)
       && existing.metadata.timeline_role === reference.timelineRole
       && (reference.sourceHeight === undefined || existing.metadata.source_height === reference.sourceHeight)
       && (reference.sourceWidth === undefined || existing.metadata.source_width === reference.sourceWidth)
@@ -383,6 +401,8 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
         ...(reference.detachedFromClipId ? { detached_from_clip_id: reference.detachedFromClipId } : {}),
         file_name: reference.fileName || stored.fileName,
         ...(reference.hasAudio !== undefined ? { has_audio: reference.hasAudio } : {}),
+        ...(reference.sceneClipId ? { scene_clip_id: reference.sceneClipId } : {}),
+        ...(reference.sceneOrder ? { scene_order: reference.sceneOrder } : {}),
         source_provider: "production_step",
         ...(reference.sourceHeight && reference.sourceWidth ? {
           source_height: reference.sourceHeight,
@@ -471,6 +491,12 @@ export async function listHyperframesSourceAssets(params: {
       mimeType: asset.mime_type,
       productionAssetId: asset.id,
       qaStatus: asset.qa_status,
+      sceneClipId: reference.sceneClipId
+        || (isRecord(asset.metadata) && typeof asset.metadata.scene_clip_id === "string"
+          ? asset.metadata.scene_clip_id
+          : undefined),
+      sceneOrder: reference.sceneOrder
+        || positiveInteger(isRecord(asset.metadata) ? asset.metadata.scene_order : undefined),
       sourceType: reference?.sourceType || "PRODUCTION_MEDIA",
       storagePath: asset.storage_path,
       timelineRole: reference?.timelineRole || (isAvatarRegistryAsset ? "AVATAR" : "VISUAL"),

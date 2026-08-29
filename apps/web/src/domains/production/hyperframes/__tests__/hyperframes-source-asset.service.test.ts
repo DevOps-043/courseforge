@@ -142,6 +142,43 @@ describe("HyperFrames source assets", () => {
     assert.equal(references.find((asset) => asset.storagePath.endsWith("authored-audio.mp4"))?.hasAudio, true);
   });
 
+  it("preserves scene identity for interleaved avatar and voice assets", () => {
+    const references = collectInternalMaterialAssetReferences({
+      avatar_clips: [{
+        id: "scene-1",
+        order: 1,
+        status: "COMPLETED",
+        storage_path: "production-assets/heygen/avatar-1.mp4",
+      }, {
+        id: "scene-2",
+        order: 2,
+        status: "DRAFT",
+      }],
+      avatar_generation_mode: "scene_clips",
+      voice_clips: [{
+        clip_id: "scene-1",
+        order: 1,
+        status: "COMPLETED",
+        storage_path: "production-assets/heygen/voice-1.mp3",
+      }, {
+        clip_id: "scene-2",
+        order: 2,
+        status: "COMPLETED",
+        storage_path: "production-assets/heygen/voice-2.mp3",
+      }],
+    });
+
+    assert.deepEqual(references.map((reference) => ({
+      clipId: reference.sceneClipId,
+      order: reference.sceneOrder,
+      role: reference.timelineRole,
+    })), [
+      { clipId: "scene-1", order: 1, role: "VOICE" },
+      { clipId: "scene-2", order: 2, role: "VOICE" },
+      { clipId: "scene-1", order: 1, role: "AVATAR" },
+    ]);
+  });
+
   it("registers editor-detached audio as an editable narration source", () => {
     const references = collectInternalMaterialAssetReferences({
       detached_audio_clips: [{

@@ -242,6 +242,56 @@ test("places multiple avatar clips consecutively and records their source durati
   assert.deepEqual(avatarClips.map((clip) => clip.sourceDurationSeconds), [12, 8]);
 });
 
+test("keeps avatar and voice-only scenes interleaved on one shared scene clock", () => {
+  const voiceAssets = [1, 2, 3, 4, 5, 6].map((order) => ({
+    checksum: String(order).repeat(64),
+    durationSeconds: 4,
+    fileSizeBytes: 4,
+    label: `Voz · Escena ${order}`,
+    mimeType: "audio/mpeg",
+    productionAssetId: `00000000-0000-4000-8000-0000000001${String(order).padStart(2, "0")}`,
+    publicUrl: null,
+    sceneClipId: `scene-${order}`,
+    sceneOrder: order,
+    storageBucket: "production-assets",
+    storagePath: `production-assets/voice-${order}.mp3`,
+    timelineRole: "VOICE" as const,
+    timelineVariant: "CLIP" as const,
+  }));
+  const avatarAssets = [1, 3, 5].map((order) => ({
+    checksum: "a".repeat(64),
+    durationSeconds: 4,
+    fileSizeBytes: 8,
+    label: `Avatar · Escena ${order}`,
+    mimeType: "video/mp4",
+    productionAssetId: `00000000-0000-4000-8000-0000000002${String(order).padStart(2, "0")}`,
+    publicUrl: null,
+    sceneClipId: `scene-${order}`,
+    sceneOrder: order,
+    storageBucket: "production-assets",
+    storagePath: `production-assets/avatar-${order}.mp4`,
+    timelineRole: "AVATAR" as const,
+    timelineVariant: "CLIP" as const,
+  }));
+
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [...voiceAssets, ...avatarAssets],
+    plan: { accentColor: "#38BDF8", durationSeconds: 24, subtitle: "Prueba", title: "Intercalado" },
+  });
+  const voices = document.clips.filter((clip) => clip.trackId === "voice");
+  const avatars = document.clips.filter((clip) => clip.trackId === "avatar");
+
+  assert.equal(document.canvas.durationSeconds, 24);
+  assert.deepEqual(voices.map((clip) => clip.startSeconds), [0, 4, 8, 12, 16, 20]);
+  assert.deepEqual(avatars.map((clip) => clip.startSeconds), [0, 8, 16]);
+  assert.deepEqual(avatars.map((clip) => clip.label), [
+    "Avatar · Escena 1",
+    "Avatar · Escena 3",
+    "Avatar · Escena 5",
+  ]);
+});
+
 test("reconciles newly available avatar media into an existing draft document", () => {
   const document = createInitialCompositionDocument({
     animatedDeck: {

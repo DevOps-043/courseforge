@@ -11,6 +11,8 @@ import {
   HyperframesSourceAssetError,
   syncHyperframesSourceAssetsFromProduction,
 } from "@/domains/production/hyperframes/hyperframes-source-asset.service";
+import { getHeygenClientForOrganization } from "@/domains/production/providers/heygen/heygen-credential-resolver.service";
+import { HeygenScenesService } from "@/domains/production/providers/heygen/heygen-scenes.service";
 import { createClient } from "@/utils/supabase/server";
 
 const inputSchema = z.object({ componentId: z.string().uuid() }).strict();
@@ -27,11 +29,18 @@ export async function POST(request: Request) {
     }
     const tenant = await resolveActiveTenantContext();
     if (!tenant) return NextResponse.json({ error: "Empresa no válida o no autorizada." }, { status: 403 });
+    const admin = getServiceRoleClient();
+    await refreshPendingHeygenClips({
+      admin,
+      componentId: input.componentId,
+      organizationId: tenant.organizationId,
+      userId: user.userId,
+    });
     const data = await syncHyperframesSourceAssetsFromProduction({
       componentId: input.componentId,
       createdBy: user.userId,
       organizationId: tenant.organizationId,
-      supabase: getServiceRoleClient(),
+      supabase: admin,
     });
     return NextResponse.json({ success: true, data });
   } catch (error) {
@@ -41,5 +50,48 @@ export async function POST(request: Request) {
     }
     console.error("[API /production/hyperframes/assets/sync] Unexpected error:", { message: getErrorMessage(error) });
     return NextResponse.json({ error: "No se pudieron preparar los assets del paso de Producción." }, { status: 500 });
+  }
+}
+
+async function refreshPendingHeygenClips(params: {
+  admin: ReturnType<typeof getServiceRoleClient>;
+  componentId: string;
+  organizationId: string;
+  userId: string;
+}) {
+  const { data: component, error } = await params.admin
+    .from("material_components")
+    .select("assets")
+    .eq("id", params.componentId)
+    .maybeSingle();
+  if (error) throw error;
+  const assets = component?.assets && typeof component.assets === "object"
+    ? component.assets as Record<string, unknown>
+    : {};
+  const avatarClips = Array.isArray(assets.avatar_clips) ? assets.avatar_clips : [];
+  const hasPendingAvatar = avatarClips.some((clip) => (
+    clip && typeof clip === "object"
+    && (clip as Record<string, unknown>).status === "WAITING_PROVIDER"
+  ));
+  if (!hasPendingAvatar) return;
+
+  try {
+    const auth = await getHeygenClientForOrganization({
+      allowGlobalFallback: false,
+      organizationId: params.organizationId,
+      supabase: params.admin,
+    });
+    await new HeygenScenesService(params.admin, auth.client).refreshSceneClipStatuses({
+      componentId: params.componentId,
+      createdBy: params.userId,
+      organizationId: params.organizationId,
+    });
+  } catch (refreshError) {
+    // Asset sync remains usable for already imported media. A transient HeyGen
+    // lookup must not prevent the editor from opening.
+    console.warn("[Hyperframes assets sync] Pending HeyGen clips could not be refreshed:", {
+      componentId: params.componentId,
+      message: getErrorMessage(refreshError),
+    });
   }
 }

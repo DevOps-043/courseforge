@@ -10,6 +10,8 @@ export interface HyperframesProjectAsset extends HyperframesAssetManifestItem {
   hasAudio?: boolean;
   label?: string;
   publicUrl: string | null;
+  sceneClipId?: string;
+  sceneOrder?: number;
   sourceHeight?: number;
   sourceWidth?: number;
   storageBucket: string;

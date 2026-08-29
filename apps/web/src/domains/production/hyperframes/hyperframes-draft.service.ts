@@ -155,10 +155,14 @@ export async function initializeHyperframesDraft(params: {
       durationSeconds: asset.durationSeconds,
       fileSizeBytes: asset.fileSizeBytes,
       hasAudio: asset.hasAudio,
-      label: typeof asset.metadata.file_name === "string" ? asset.metadata.file_name : undefined,
+      label: asset.sceneOrder
+        ? `${asset.timelineRole === "AVATAR" ? "Avatar" : "Voz"} · Escena ${asset.sceneOrder}`
+        : typeof asset.metadata.file_name === "string" ? asset.metadata.file_name : undefined,
       mimeType: asset.mimeType,
       productionAssetId: asset.productionAssetId,
       publicUrl: null,
+      sceneClipId: asset.sceneClipId,
+      sceneOrder: asset.sceneOrder,
       sourceHeight: positiveMetadataDimension(asset.metadata.source_height),
       sourceWidth: positiveMetadataDimension(asset.metadata.source_width),
       storageBucket: "production-assets",

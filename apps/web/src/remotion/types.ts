@@ -112,6 +112,7 @@ export const assemblyAvatarClipSchema = z.object({
   url: z.string().url(),
   durationInFrames: z.number().int().positive(),
   order: z.number().int().min(1),
+  startInFrames: z.number().int().min(0).optional(),
 });
 export type AssemblyAvatarClip = z.infer<typeof assemblyAvatarClipSchema>;
 
@@ -120,6 +121,7 @@ export const assemblyVoiceClipSchema = z.object({
   url: z.string().url(),
   durationInFrames: z.number().int().positive(),
   order: z.number().int().min(1),
+  startInFrames: z.number().int().min(0).optional(),
 });
 export type AssemblyVoiceClip = z.infer<typeof assemblyVoiceClipSchema>;
 

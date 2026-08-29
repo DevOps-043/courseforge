@@ -120,6 +120,10 @@ export function reconcileCompositionDocument(params: {
   ));
   const removedInactiveProductionAssetCount = withoutDeckDependencies.length - withoutInactiveProductionAssets.length;
   let clipSynchronizationChanged = false;
+  const sceneTimingByAssetId = buildSceneAssetTimings(
+    productionAssets,
+    params.document.canvas.durationSeconds,
+  );
   const synchronizedClips = withoutInactiveProductionAssets.map((clip) => {
     if (clip.source.type !== "PRODUCTION_ASSET") return clip;
     const source = productionAssetById.get(clip.source.productionAssetId);
@@ -141,12 +145,21 @@ export function reconcileCompositionDocument(params: {
       || clip.source.sourceWidth !== sourceDimensions?.width
     );
     const sourceAudioChanged = clip.source.hasAudio !== source.hasAudio;
+    const synchronizedSceneTiming = clip.timingSource === "ESTIMATED"
+      ? sceneTimingByAssetId.get(source.productionAssetId)
+      : undefined;
+    const sceneTimingChanged = Boolean(synchronizedSceneTiming) && (
+      clip.startSeconds !== synchronizedSceneTiming?.startSeconds
+      || clip.durationSeconds !== synchronizedSceneTiming?.durationSeconds
+    );
     clipSynchronizationChanged ||= clip.trackId !== track.id
       || isUnframedLegacyBroll
       || sourceDimensionsChanged
-      || sourceAudioChanged;
+      || sourceAudioChanged
+      || sceneTimingChanged;
     return {
       ...clip,
+      ...(synchronizedSceneTiming ? synchronizedSceneTiming : {}),
       ...(isUnframedLegacyBroll ? { mediaFit: "CONTAIN" as const } : {}),
       ...(isUnframedLegacyBroll && sourceDimensions && usesGeneratedCanvasLayout ? {
         layout: resolveDefaultCompositionClipLayout({
@@ -251,16 +264,20 @@ function buildAssetClips(assets: HyperframesProjectAsset[], durationSeconds: num
     const trackId = resolveTrackId(asset);
     assetsByTrack.set(trackId, [...(assetsByTrack.get(trackId) || []), asset]);
   }
-  const timingByAssetId = new Map<string, { durationSeconds: number; startSeconds: number }>();
+  const timingByAssetId = buildSceneAssetTimings(assets, durationSeconds);
   for (const [trackId, groupedAssets] of assetsByTrack) {
-    const preferredDurations = groupedAssets.map((asset) => resolveInitialAssetDuration(asset, durationSeconds, trackId));
+    const unpositionedAssets = groupedAssets.filter(
+      (asset) => !timingByAssetId.has(asset.productionAssetId),
+    );
+    if (unpositionedAssets.length === 0) continue;
+    const preferredDurations = unpositionedAssets.map((asset) => resolveInitialAssetDuration(asset, durationSeconds, trackId));
     const totalPreferredDuration = preferredDurations.reduce((total, value) => total + value, 0);
     const durationScale = trackId !== "music" && totalPreferredDuration > durationSeconds
       ? durationSeconds / totalPreferredDuration
       : 1;
     let cursor = 0;
-    for (let index = 0; index < groupedAssets.length; index++) {
-      const asset = groupedAssets[index]!;
+    for (let index = 0; index < unpositionedAssets.length; index++) {
+      const asset = unpositionedAssets[index]!;
       const preferredDuration = preferredDurations[index]!;
       const isSequential = trackId !== "music";
       const duration = isSequential
@@ -316,6 +333,73 @@ function buildAssetClips(assets: HyperframesProjectAsset[], durationSeconds: num
         : {}),
     };
   });
+}
+
+/**
+ * Scene media is authored on one shared clock. An avatar and its independent
+ * voice overlap in the same slot, while a voice-only scene intentionally leaves
+ * a visual gap. This preserves interleaved patterns such as avatar/voice/avatar.
+ */
+export function buildSceneAssetTimings(
+  assets: HyperframesProjectAsset[],
+  canvasDurationSeconds: number,
+) {
+  const sceneAssets = assets.filter((asset) => (
+    Number.isInteger(asset.sceneOrder)
+    && (asset.sceneOrder || 0) > 0
+    && (asset.timelineRole === "AVATAR" || asset.timelineRole === "VOICE")
+  ));
+  if (sceneAssets.length === 0) {
+    return new Map<string, { durationSeconds: number; startSeconds: number }>();
+  }
+
+  const assetsBySceneOrder = new Map<number, HyperframesProjectAsset[]>();
+  for (const asset of sceneAssets) {
+    const order = asset.sceneOrder!;
+    assetsBySceneOrder.set(order, [...(assetsBySceneOrder.get(order) || []), asset]);
+  }
+
+  const scenes = [...assetsBySceneOrder.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([order, groupedAssets]) => {
+      const voiceDuration = groupedAssets
+        .filter((asset) => asset.timelineRole === "VOICE")
+        .map((asset) => asset.durationSeconds || 0)
+        .find((duration) => duration > 0);
+      const measuredDuration = Math.max(
+        0,
+        ...groupedAssets.map((asset) => asset.durationSeconds || 0),
+      );
+      return {
+        assets: groupedAssets,
+        durationSeconds: voiceDuration || measuredDuration || 5,
+        order,
+      };
+    });
+  const preferredTotalDuration = scenes.reduce(
+    (total, scene) => total + scene.durationSeconds,
+    0,
+  );
+  const durationScale = preferredTotalDuration > canvasDurationSeconds
+    ? canvasDurationSeconds / preferredTotalDuration
+    : 1;
+  const timingByAssetId = new Map<string, { durationSeconds: number; startSeconds: number }>();
+  let cursor = 0;
+  for (const scene of scenes) {
+    const remainingDuration = Math.max(0.05, canvasDurationSeconds - cursor);
+    const durationSeconds = roundSeconds(Math.max(
+      0.05,
+      Math.min(scene.durationSeconds * durationScale, remainingDuration),
+    ));
+    for (const asset of scene.assets) {
+      timingByAssetId.set(asset.productionAssetId, {
+        durationSeconds,
+        startSeconds: roundSeconds(cursor),
+      });
+    }
+    cursor += durationSeconds;
+  }
+  return timingByAssetId;
 }
 
 function resolveInitialAssetDuration(asset: HyperframesProjectAsset, canvasDuration: number, trackId: string) {

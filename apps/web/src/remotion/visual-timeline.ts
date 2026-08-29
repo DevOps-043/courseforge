@@ -269,9 +269,10 @@ function buildAvatarClipSegments(props: AssemblyInputProps): VisualTimelineSegme
 
   for (let index = 0; index < ordered.length; index += 1) {
     const clip = ordered[index]!;
+    const startFrame = clip.startInFrames ?? cursor;
     const durationInFrames = Math.min(
       clip.durationInFrames,
-      Math.max(0, props.totalDurationInFrames - cursor),
+      Math.max(0, props.totalDurationInFrames - startFrame),
     );
 
     const segment = buildSegment({
@@ -279,7 +280,7 @@ function buildAvatarClipSegments(props: AssemblyInputProps): VisualTimelineSegme
       trackKind: "avatar",
       layerId: getAvatarClipItemLayerId(clip.order),
       label: `Avatar ${clip.order}`,
-      startFrame: cursor,
+      startFrame,
       durationInFrames,
       sourceUrl: clip.url,
       sourceStartFrame: 0,
@@ -298,7 +299,9 @@ function buildAvatarClipSegments(props: AssemblyInputProps): VisualTimelineSegme
       ? getAvatarClipCrossfadeFrames(clip, nextClip)
       : 0;
 
-    cursor += Math.max(1, durationInFrames - crossfadeFrames);
+    cursor = clip.startInFrames === undefined
+      ? cursor + Math.max(1, durationInFrames - crossfadeFrames)
+      : Math.max(cursor, startFrame + durationInFrames);
     if (cursor >= props.totalDurationInFrames) {
       break;
     }
@@ -413,28 +416,37 @@ export function buildVisualTimeline(props: AssemblyInputProps): VisualTimeline {
   const avatarClipSegments = props.avatarClips.length > 0
     ? buildAvatarClipSegments(props)
     : [];
-  const voiceClipByOrder = new Map(
-    props.voiceClips.map((clip) => [clip.order, clip] as const),
-  );
-  const voiceClipSegments = avatarClipSegments.flatMap((avatarSegment) => {
-    const orderMatch = avatarSegment.id.match(/^avatar-(\d+)$/);
-    const voiceClip = orderMatch ? voiceClipByOrder.get(Number(orderMatch[1])) : undefined;
-    if (!voiceClip) return [];
-    const segment = buildSegment({
-      id: `voice-${voiceClip.order}`,
-      trackKind: "audio",
-      label: `Voz ${voiceClip.order}`,
-      startFrame: avatarSegment.startFrame,
-      durationInFrames: Math.min(avatarSegment.durationInFrames, voiceClip.durationInFrames),
-      sourceUrl: voiceClip.url,
-      sourceStartFrame: 0,
-      sourceEndFrame: voiceClip.durationInFrames,
-      sourceDurationInFrames: voiceClip.durationInFrames,
-      loopMode: "none",
-      totalDurationInFrames: props.totalDurationInFrames,
+  const avatarSegmentByOrder = new Map(avatarClipSegments.flatMap((segment) => {
+    const orderMatch = segment.id.match(/^avatar-(\d+)$/);
+    return orderMatch ? [[Number(orderMatch[1]), segment] as const] : [];
+  }));
+  let voiceCursor = 0;
+  const voiceClipSegments = [...props.voiceClips]
+    .sort((left, right) => left.order - right.order)
+    .flatMap((voiceClip) => {
+      const avatarSegment = avatarSegmentByOrder.get(voiceClip.order);
+      const startFrame = voiceClip.startInFrames ?? avatarSegment?.startFrame ?? voiceCursor;
+      const durationInFrames = Math.min(
+        avatarSegment?.durationInFrames ?? voiceClip.durationInFrames,
+        voiceClip.durationInFrames,
+        Math.max(0, props.totalDurationInFrames - startFrame),
+      );
+      const segment = buildSegment({
+        id: `voice-${voiceClip.order}`,
+        trackKind: "audio",
+        label: `Voz ${voiceClip.order}`,
+        startFrame,
+        durationInFrames,
+        sourceUrl: voiceClip.url,
+        sourceStartFrame: 0,
+        sourceEndFrame: voiceClip.durationInFrames,
+        sourceDurationInFrames: voiceClip.durationInFrames,
+        loopMode: "none",
+        totalDurationInFrames: props.totalDurationInFrames,
+      });
+      voiceCursor = Math.max(voiceCursor, startFrame + durationInFrames);
+      return segment ? [segment] : [];
     });
-    return segment ? [segment] : [];
-  });
   const audioSegments = [
     props.voiceAudioUrl
       ? buildFullDurationSegment({

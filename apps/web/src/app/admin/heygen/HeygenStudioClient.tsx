@@ -372,6 +372,40 @@ export default function HeygenStudioClient({
     }
   }, [componentId]);
 
+  const refreshSceneClipStatuses = useCallback(async (notify: boolean) => {
+    if (!componentId) return;
+    if (notify) setIsCheckingClipStatus(true);
+
+    try {
+      const response = await fetch(
+        `/api/production/heygen/clips/status?componentId=${encodeURIComponent(componentId)}`,
+        { cache: "no-store" },
+      );
+      const payload = await readApiResponse(response);
+      if (!response.ok || !payload.success) {
+        throw new Error(readApiErrorMessage(payload, "No se pudo consultar el estado de clips."));
+      }
+
+      const clips = (payload.data?.clips || []) as AvatarSceneClip[];
+      setVoiceClips((payload.data?.voiceClips || []) as VoiceSceneClip[]);
+      setSceneClips(clips);
+      if (notify) {
+        const completed = clips.filter((clip) => clip.status === "COMPLETED").length;
+        toast.info(`Clips completados: ${completed}/${clips.length}.`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Error al consultar clips de avatar.";
+      if (notify) {
+        setErrorMessage(message);
+        toast.error(message);
+      } else {
+        console.warn("[HeyGen Studio] Automatic clip refresh failed:", message);
+      }
+    } finally {
+      if (notify) setIsCheckingClipStatus(false);
+    }
+  }, [componentId]);
+
   useEffect(() => {
     loadConnection();
   }, [loadConnection]);
@@ -389,6 +423,16 @@ export default function HeygenStudioClient({
     if (!connection.connected) return;
     loadScenes();
   }, [connection.connected, loadScenes]);
+
+  useEffect(() => {
+    if (!connection.connected || !componentId) return;
+    if (!sceneClips.some((clip) => clip.status === "WAITING_PROVIDER")) return;
+
+    const timeoutId = window.setTimeout(() => {
+      void refreshSceneClipStatuses(false);
+    }, 8_000);
+    return () => window.clearTimeout(timeoutId);
+  }, [componentId, connection.connected, refreshSceneClipStatuses, sceneClips]);
 
   useEffect(() => {
     const activeClipIds = new Set(
@@ -838,34 +882,8 @@ export default function HeygenStudioClient({
   };
 
   const handleCheckClipStatus = async () => {
-    if (!componentId) return;
-
-    setIsCheckingClipStatus(true);
     setErrorMessage(null);
-
-    try {
-      const response = await fetch(
-        `/api/production/heygen/clips/status?componentId=${encodeURIComponent(componentId)}`,
-        { cache: "no-store" },
-      );
-      const payload = await readApiResponse(response);
-
-      if (!response.ok || !payload.success) {
-        throw new Error(readApiErrorMessage(payload, "No se pudo consultar el estado de clips."));
-      }
-
-      const clips = (payload.data?.clips || []) as AvatarSceneClip[];
-      setVoiceClips((payload.data?.voiceClips || []) as VoiceSceneClip[]);
-      setSceneClips(clips);
-      const completed = clips.filter((clip) => clip.status === "COMPLETED").length;
-      toast.info(`Clips completados: ${completed}/${clips.length}.`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al consultar clips de avatar.";
-      setErrorMessage(message);
-      toast.error(message);
-    } finally {
-      setIsCheckingClipStatus(false);
-    }
+    await refreshSceneClipStatuses(true);
   };
 
   const isSceneMode = isCourseContext && avatarGenerationMode === "scene_clips";

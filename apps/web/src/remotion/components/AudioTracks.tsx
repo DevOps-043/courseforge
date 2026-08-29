@@ -96,31 +96,36 @@ function VoiceClipTracks({
   segments?: VisualTimelineSegment[];
 }) {
   const ordered = [...clips].sort((left, right) => left.order - right.order);
-  const byOrder = new Map(ordered.map((clip) => [clip.order, clip] as const));
 
   if (segments && segments.length > 0) {
     const orderedSegments = [...segments].sort(
       (left, right) => left.startFrame - right.startFrame || left.id.localeCompare(right.id),
     );
-    return orderedSegments.map((segment, index) => {
+    const segmentByOrder = new Map(orderedSegments.flatMap((segment) => {
       const match = segment.id.match(/^avatar-(\d+)$/);
-      const clip = match ? byOrder.get(Number(match[1])) : undefined;
-      if (!clip) return null;
+      return match ? [[Number(match[1]), segment] as const] : [];
+    }));
+    return ordered.map((clip) => {
+      const segment = segmentByOrder.get(clip.order);
+      const segmentIndex = segment ? orderedSegments.indexOf(segment) : -1;
       const fades = getAvatarSegmentCrossfadeFrames({
-        current: segment,
-        previous: orderedSegments[index - 1],
-        next: orderedSegments[index + 1],
+        current: segment || {
+          endFrame: (clip.startInFrames || 0) + clip.durationInFrames,
+          startFrame: clip.startInFrames || 0,
+        },
+        previous: segmentIndex > 0 ? orderedSegments[segmentIndex - 1] : undefined,
+        next: segmentIndex >= 0 ? orderedSegments[segmentIndex + 1] : undefined,
       });
-      const sourceStartFrame = segment.sourceStartFrame ?? 0;
-      const sourceEndFrame = segment.sourceEndFrame ?? clip.durationInFrames;
+      const sourceStartFrame = segment?.sourceStartFrame ?? 0;
+      const sourceEndFrame = segment?.sourceEndFrame ?? clip.durationInFrames;
       const sequenceDurationInFrames = Math.min(
-        segment.durationInFrames,
+        segment?.durationInFrames ?? clip.durationInFrames,
         Math.max(1, sourceEndFrame - sourceStartFrame),
       );
       return (
         <Sequence
           key={`voice-${clip.clipId}`}
-          from={segment.startFrame}
+          from={segment?.startFrame ?? clip.startInFrames ?? 0}
           durationInFrames={sequenceDurationInFrames}
         >
           <VoiceClipAudio
@@ -141,8 +146,10 @@ function VoiceClipTracks({
     const next = ordered[index + 1];
     const fadeInFrames = previous ? getAvatarClipCrossfadeFrames(previous, clip) : 0;
     const fadeOutFrames = next ? getAvatarClipCrossfadeFrames(clip, next) : 0;
-    const startFrame = cursor;
-    cursor += Math.max(1, clip.durationInFrames - fadeOutFrames);
+    const startFrame = clip.startInFrames ?? cursor;
+    cursor = clip.startInFrames === undefined
+      ? cursor + Math.max(1, clip.durationInFrames - fadeOutFrames)
+      : Math.max(cursor, startFrame + clip.durationInFrames);
     return (
       <Sequence
         key={`voice-${clip.clipId}`}

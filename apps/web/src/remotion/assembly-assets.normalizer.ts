@@ -6,7 +6,6 @@ import type {
   AssemblySlide,
   AssemblyVoiceClip,
 } from "./types";
-import { getAvatarClipEffectiveDurationInFrames } from "./avatar-clip-transitions";
 import { durationSecondsToFrames } from "./media-duration";
 
 const DEFAULT_CLIP_SECONDS = 5;
@@ -188,16 +187,44 @@ export function normalizeAssemblyAssets(
     )
     .map(({ originalIndex: _originalIndex, ...clip }) => clip);
 
-  const completedAvatarClipSources = (a.avatar_clips ?? []).filter(isCompletedAvatarClip);
+  const activeSceneSources = (a.avatar_clips ?? [])
+    .filter((clip) => !clip.deleted)
+    .sort((left, right) => left.order - right.order);
+  const completedVoiceByClipId = new Map(
+    (a.voice_clips ?? [])
+      .filter((clip): clip is VoiceClip & { public_url: string } =>
+        clip.status === "COMPLETED" && Boolean(clip.public_url),
+      )
+      .map((clip) => [clip.clip_id, clip] as const),
+  );
+  const sceneTimingByClipId = new Map<string, { durationInFrames: number; startInFrames: number }>();
+  let sceneCursor = 0;
+  for (const scene of activeSceneSources) {
+    const voiceClip = completedVoiceByClipId.get(scene.id);
+    const durationInFrames = durationSecondsToFrames(
+      isPositiveNumber(voiceClip?.duration)
+        ? voiceClip.duration
+        : isPositiveNumber(scene.duration)
+          ? scene.duration
+          : DEFAULT_CLIP_SECONDS,
+      fps,
+    );
+    sceneTimingByClipId.set(scene.id, { durationInFrames, startInFrames: sceneCursor });
+    sceneCursor += durationInFrames;
+  }
+
+  const completedAvatarClipSources = activeSceneSources.filter(isCompletedAvatarClip);
   const avatarClips = completedAvatarClipSources
     .map((clip, index) => ({
       clipId: clip.id,
       url: clip.public_url as string,
-      durationInFrames: durationSecondsToFrames(
-        isPositiveNumber(clip.duration) ? clip.duration : DEFAULT_CLIP_SECONDS,
-        fps,
-      ),
+      durationInFrames: sceneTimingByClipId.get(clip.id)?.durationInFrames
+        || durationSecondsToFrames(
+          isPositiveNumber(clip.duration) ? clip.duration : DEFAULT_CLIP_SECONDS,
+          fps,
+        ),
       order: isPositiveNumber(clip.order) ? clip.order : index + 1,
+      startInFrames: sceneTimingByClipId.get(clip.id)?.startInFrames,
       originalIndex: index,
     }))
     .sort(
@@ -206,39 +233,25 @@ export function normalizeAssemblyAssets(
     )
     .map(({ originalIndex: _originalIndex, ...clip }) => clip);
 
-  const completedVoiceByClipId = new Map(
-    (a.voice_clips ?? [])
-      .filter((clip): clip is VoiceClip & { public_url: string } =>
-        clip.status === "COMPLETED" && Boolean(clip.public_url),
-      )
-      .map((clip) => [clip.clip_id, clip] as const),
-  );
-  const hasCompleteVoiceClipMapping = completedAvatarClipSources.length > 0
-    && completedAvatarClipSources.every((avatarClip) => {
+  const voiceClips = activeSceneSources
+    .flatMap((avatarClip, index) => {
       const voiceClip = completedVoiceByClipId.get(avatarClip.id);
-      return Boolean(
-        voiceClip
-        && (!avatarClip.script_hash || voiceClip.script_hash === avatarClip.script_hash),
-      );
-    });
-  const voiceClips = hasCompleteVoiceClipMapping
-    ? completedAvatarClipSources.map((avatarClip, index) => {
-        const voiceClip = completedVoiceByClipId.get(avatarClip.id)!;
-        return {
-          clipId: avatarClip.id,
-          url: voiceClip.public_url,
-          durationInFrames: durationSecondsToFrames(
-            isPositiveNumber(voiceClip.duration)
-              ? voiceClip.duration
-              : isPositiveNumber(avatarClip.duration)
-                ? avatarClip.duration
-                : DEFAULT_CLIP_SECONDS,
+      if (!voiceClip || (avatarClip.script_hash && voiceClip.script_hash !== avatarClip.script_hash)) {
+        return [];
+      }
+      return {
+        clipId: avatarClip.id,
+        url: voiceClip.public_url,
+        durationInFrames: sceneTimingByClipId.get(avatarClip.id)?.durationInFrames
+          || durationSecondsToFrames(
+            isPositiveNumber(voiceClip.duration) ? voiceClip.duration : DEFAULT_CLIP_SECONDS,
             fps,
           ),
-          order: isPositiveNumber(avatarClip.order) ? avatarClip.order : index + 1,
-        };
-      }).sort((left, right) => left.order - right.order)
-    : [];
+        order: isPositiveNumber(avatarClip.order) ? avatarClip.order : index + 1,
+        startInFrames: sceneTimingByClipId.get(avatarClip.id)?.startInFrames,
+      };
+    })
+    .sort((left, right) => left.order - right.order);
 
   const explicitBrollTotalSeconds = (a.b_roll_clips ?? [])
     .filter(
@@ -250,10 +263,12 @@ export function normalizeAssemblyAssets(
     (sum, clip) => sum + clip.durationInFrames / fps,
     0,
   );
-  const avatarClipTotalSeconds =
-    getAvatarClipEffectiveDurationInFrames(avatarClips) / fps;
-  const voiceClipTotalSeconds =
-    getAvatarClipEffectiveDurationInFrames(voiceClips) / fps;
+  const avatarClipTotalSeconds = avatarClips.length > 0
+    ? Math.max(...avatarClips.map((clip) => (clip.startInFrames || 0) + clip.durationInFrames)) / fps
+    : 0;
+  const voiceClipTotalSeconds = voiceClips.length > 0
+    ? Math.max(...voiceClips.map((clip) => (clip.startInFrames || 0) + clip.durationInFrames)) / fps
+    : 0;
 
   const voiceDurationSeconds = a.avatar_generation_mode !== "scene_clips"
     && isPositiveNumber(a.voice_audio?.duration)

@@ -591,8 +591,12 @@ export class HeygenScenesService {
             storage_path: existingAsset.storage_path,
             status: "COMPLETED",
           });
+          continue;
         }
-        continue;
+        // A worker can finish importing and mark the provider job before the
+        // material JSON is promoted. If the registry row was lost/archived,
+        // query HeyGen again and rebuild the local MP4 instead of leaving the
+        // scene permanently represented only by its separated voice track.
       }
 
       if (job.status === PRODUCTION_JOB_STATUSES.FAILED) {
