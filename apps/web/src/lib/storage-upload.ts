@@ -5,7 +5,7 @@ import { PUBLIC_PRODUCTION_MEDIA_BUCKETS } from '@/domains/production/media-stor
 const RESUMABLE_UPLOAD_THRESHOLD_BYTES = 6 * 1024 * 1024;
 const TUS_CHUNK_SIZE_BYTES = 6 * 1024 * 1024;
 
-interface SignedUploadResult {
+interface BrowserDeliveryUploadResult {
     publicUrl: string;
     path: string;
 }
@@ -19,6 +19,15 @@ interface SignedUploadOptions {
     upsert?: boolean;
     signal?: AbortSignal;
     onProgress?: (uploadedBytes: number, totalBytes: number) => void;
+    deliveryMode?: 'server-only';
+}
+
+interface ServerOnlySignedUploadOptions extends SignedUploadOptions {
+    /**
+     * The uploaded object is consumed by a server action immediately after upload.
+     * No browser delivery URL is created for private source documents.
+     */
+    deliveryMode: 'server-only';
 }
 
 /**
@@ -26,12 +35,24 @@ interface SignedUploadOptions {
  * Works for both GoTrue and Auth Bridge users — avoids RLS violations
  * that occur when the browser client has no active GoTrue session.
  */
+export function uploadWithSignedUrl(
+    bucket: string,
+    filePath: string,
+    file: File,
+    options: ServerOnlySignedUploadOptions,
+): Promise<{ path: string }>;
+export function uploadWithSignedUrl(
+    bucket: string,
+    filePath: string,
+    file: File,
+    options?: SignedUploadOptions,
+): Promise<BrowserDeliveryUploadResult>;
 export async function uploadWithSignedUrl(
     bucket: string,
     filePath: string,
     file: File,
     options: SignedUploadOptions = {},
-): Promise<SignedUploadResult> {
+): Promise<BrowserDeliveryUploadResult | { path: string }> {
     // 1. Request a signed upload URL from the server (auth handled server-side)
     const response = await fetch('/api/storage/signed-upload-url', {
         method: 'POST',
@@ -82,6 +103,10 @@ export async function uploadWithSignedUrl(
             });
         if (uploadError) throw uploadError;
         options.onProgress?.(file.size, file.size);
+    }
+
+    if (options.deliveryMode === 'server-only') {
+        return { path };
     }
 
     // 3. Private sources keep a stable authenticated application URL. The
