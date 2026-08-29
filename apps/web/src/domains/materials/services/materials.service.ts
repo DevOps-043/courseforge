@@ -18,6 +18,7 @@ import type {
   MaterialLesson,
 } from "../types/materials.types";
 import { selectLatestComponentsByType } from "../lib/material-component-versions";
+import { sortMaterialLessonsCanonically } from "../lib/material-lesson-order";
 
 export const materialsService = {
   async getMaterialsByArtifactId(
@@ -34,7 +35,9 @@ export const materialsService = {
 
     return {
       ...data,
-      lessons: (result.lessons || []) as MaterialLesson[],
+      lessons: sortMaterialLessonsCanonically(
+        (result.lessons || []) as MaterialLesson[],
+      ),
       global_blockers: data.global_blockers || [],
       dod: data.dod || { checklist: [], automatic_checks: [] },
       qa_decision: data.qa_decision,

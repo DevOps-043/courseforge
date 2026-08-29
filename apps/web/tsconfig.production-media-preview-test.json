@@ -13,9 +13,11 @@
   "include": [
     "src/domains/materials/components/production-media-preview.ts",
     "src/domains/materials/components/lesson-production-progress.ts",
+    "src/domains/materials/lib/material-lesson-order.ts",
     "src/domains/production/course-context/production-course-context.ts",
     "src/domains/materials/components/__tests__/production-media-preview.test.ts",
     "src/domains/materials/components/__tests__/lesson-production-progress.test.ts",
+    "src/domains/materials/lib/__tests__/material-lesson-order.test.ts",
     "src/domains/production/course-context/__tests__/production-course-context.test.ts"
   ],
   "exclude": ["node_modules"]

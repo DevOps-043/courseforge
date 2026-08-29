@@ -12,7 +12,6 @@ import {
     MaterialAssets,
     MaterialComponent,
     MaterialLesson,
-    ProductionStatus,
     StoryboardItem,
 } from '../types/materials.types';
 import { Loader2, Clapperboard, CheckCircle2, Clock, AlertCircle, Layers3, Minus, Plus } from 'lucide-react';
@@ -22,6 +21,7 @@ import { PRODUCTION_COMPLETION_RECHECK_DELAY_MS } from '@/shared/constants/timin
 import { PRODUCTION_THEME } from './production-asset-ui';
 import { ProductionAutomationReviewPanel } from '@/domains/production/automation/ProductionAutomationReviewPanel';
 import { LessonProductionSection } from './LessonProductionSection';
+import { getProductionProgress } from './lesson-production-progress';
 
 interface VisualProductionContainerProps {
     artifactId: string;
@@ -218,19 +218,11 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
     // Calculate global production progress
     const progressStats = useMemo(() => {
         const allComponents = productionItems.flatMap(g => g.components);
-        const total = allComponents.length;
-        if (total === 0) return { total: 0, completed: 0, inProgress: 0, pending: 0, percentage: 0 };
-
-        const completed = allComponents.filter(c =>
-            (c.assets?.production_status as ProductionStatus) === 'COMPLETED'
-        ).length;
-        const inProgress = allComponents.filter(c =>
-            (c.assets?.production_status as ProductionStatus) === 'IN_PROGRESS'
-        ).length;
-        const pending = total - completed - inProgress;
-        const percentage = Math.round((completed / total) * 100);
-
-        return { total, completed, inProgress, pending, percentage };
+        const progress = getProductionProgress(allComponents);
+        return {
+            ...progress,
+            pending: progress.total - progress.completed - progress.inProgress,
+        };
     }, [productionItems]);
 
     // Auto-complete artifact production status
@@ -392,20 +384,17 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
                 </div>
 
                 {/* Progress Bar */}
-                <div className="relative h-2 bg-gray-200 dark:bg-[var(--engine-canvas)] rounded-full overflow-hidden">
+                <div className="relative h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-[var(--engine-canvas)]">
                     <div
-                        className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-500 to-green-400 transition-all duration-500"
+                        className="absolute inset-y-0 left-0 bg-gradient-to-r from-[var(--engine-info)] via-cyan-400 to-green-500 transition-all duration-500"
                         style={{ width: `${progressStats.percentage}%` }}
                     />
-                    {progressStats.inProgress > 0 && (
-                        <div
-                            className="absolute inset-y-0 bg-yellow-500/50 transition-all duration-500"
-                            style={{
-                                left: `${progressStats.percentage}%`,
-                                width: `${(progressStats.inProgress / progressStats.total) * 100}%`
-                            }}
-                        />
-                    )}
+                    <span className="absolute inset-y-0 left-1/2 w-px bg-white/90 shadow-[0_0_0_1px_rgba(15,23,42,0.12)]" aria-hidden="true" />
+                </div>
+                <div className={`mt-1.5 grid grid-cols-3 text-[10px] font-semibold ${PRODUCTION_THEME.secondaryText}`}>
+                    <span className="text-left">0%</span>
+                    <span className="text-center">Assets listos · 50%</span>
+                    <span className="text-right">Video final · 100%</span>
                 </div>
             </div>
 

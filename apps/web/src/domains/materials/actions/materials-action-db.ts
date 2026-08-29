@@ -86,8 +86,8 @@ export async function fetchMaterialsSnapshot(
     .from("material_lessons")
     .select(MATERIAL_LESSONS_SNAPSHOT_SELECT)
     .eq("materials_id", materials.id)
-    .order("module_id", { ascending: true })
-    .order("lesson_id", { ascending: true });
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 
   return {
     materials,

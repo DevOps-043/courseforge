@@ -162,7 +162,7 @@ function resolveProductionStatus(
     hasRequiredAvatar &&
     hasRequiredClips
   ) {
-    return "COMPLETED";
+    return "IN_PROGRESS";
   }
 
   if (
