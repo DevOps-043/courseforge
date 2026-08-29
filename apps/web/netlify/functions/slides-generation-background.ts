@@ -5,10 +5,12 @@ import {
 } from "../../src/lib/server/background-payload-signature";
 import { getAuthorizedMaterialComponentAdminForTenant } from "../../src/lib/server/artifact-action-auth";
 import { runSlideDeckGeneration } from "../../src/app/api/production/slides/generate/route";
+import { failProductionJob } from "../../src/domains/production/jobs/production-jobs.service";
 import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
 
 interface SlidesGenerationBackgroundRequest {
   createdBy: string;
+  jobId?: string;
   organizationId: string;
   payload: {
     componentId: string;
@@ -21,21 +23,34 @@ export const handler: Handler = async (event) => {
 
   const envelope = parseJsonBody<SignedBackgroundPayload>(event);
   const request = verifyBackgroundPayload<SlidesGenerationBackgroundRequest>(envelope);
-  const authorizedComponent = await getAuthorizedMaterialComponentAdminForTenant(
-    request.payload.componentId,
-    request.organizationId,
-  );
-  if (!authorizedComponent) {
-    throw new Error("Componente de slides no encontrado para la organizacion firmada.");
-  }
+  let authorizedComponent: Awaited<ReturnType<typeof getAuthorizedMaterialComponentAdminForTenant>> = null;
+  try {
+    authorizedComponent = await getAuthorizedMaterialComponentAdminForTenant(
+      request.payload.componentId,
+      request.organizationId,
+    );
+    if (!authorizedComponent) {
+      throw new Error("Componente de slides no encontrado para la organizacion firmada.");
+    }
 
-  const result = await runSlideDeckGeneration({
-    authorizedComponent,
-    createdBy: request.createdBy,
-    payload: request.payload as Parameters<typeof runSlideDeckGeneration>[0]["payload"],
-  });
-  if (!result.ok) {
-    throw new Error(await result.text());
+    const result = await runSlideDeckGeneration({
+      authorizedComponent,
+      createdBy: request.createdBy,
+      jobId: request.jobId,
+      payload: request.payload as Parameters<typeof runSlideDeckGeneration>[0]["payload"],
+    });
+    if (!result.ok) {
+      throw new Error(await result.text());
+    }
+  } catch (error) {
+    if (request.jobId && authorizedComponent) {
+      await failProductionJob({
+        error,
+        jobId: request.jobId,
+        supabase: authorizedComponent.admin,
+      });
+    }
+    throw error;
   }
   return { statusCode: 200, body: "completed" };
 };

@@ -111,6 +111,7 @@ export const heygenAvatarClipSchema = z
     voice_error_message: z.string().trim().optional(),
     voice_preset_id: z.string().uuid().optional(),
     voice_status: heygenAvatarClipStatusSchema.optional(),
+    voice_speed: z.number().min(0.5).max(2).optional(),
   })
   .strict();
 
@@ -143,6 +144,13 @@ export const heygenGenerateClipsRequestSchema = z
     resolution: z.enum(["720p", "1080p", "4k"]).default("1080p"),
     speed: z.number().min(0.5).max(1.5).default(1),
     volume: z.number().min(0).max(1).default(1),
+  })
+  .strict();
+
+export const heygenGenerateSceneVoiceRequestSchema = z
+  .object({
+    clipIds: z.array(z.string().trim().min(1)).min(1).max(12),
+    componentId: z.string().uuid(),
   })
   .strict();
 

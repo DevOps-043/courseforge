@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createOrReuseProductionJob } from "../production-jobs.service";
+import { createOrReuseProductionJob, failProductionJob } from "../production-jobs.service";
 
 const context = {
   artifactId: "artifact-1",
@@ -97,4 +97,23 @@ test("keeps the existing failed job when retry was not requested", async () => {
   });
 
   assert.equal(result.status, "FAILED");
+});
+
+test("persists a structured QA diagnostic when a production job fails", async () => {
+  const updates: Record<string, unknown>[] = [];
+  const query = {
+    eq() { return Promise.resolve({ error: null }); },
+    update(value: Record<string, unknown>) { updates.push(value); return this; },
+  };
+  const supabase = { from() { return query; } } as unknown as SupabaseClient;
+
+  await failProductionJob({
+    error: new Error("QA estructural fallida"),
+    jobId: "job-qa",
+    outputSnapshot: { qa_status: "FAIL", slide_count: 9 },
+    supabase,
+  });
+
+  assert.equal(updates[0]?.status, "FAILED");
+  assert.deepEqual(updates[0]?.output_snapshot, { qa_status: "FAIL", slide_count: 9 });
 });

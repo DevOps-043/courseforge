@@ -1,4 +1,5 @@
 import type { CourseDeckSpec, SlideDeckGenerateInput } from "../specs/course-deck.schema";
+import { targetSlideCountForScript } from "../planning/slide-coverage-policy.service";
 
 export type DeckBriefSourceMode = "custom_request" | "script" | "storyboard" | "fallback";
 
@@ -11,6 +12,7 @@ export interface DeckBrief {
   sourceMode: DeckBriefSourceMode;
   storyboardItemCount: number;
   targetSlideCount: number;
+  totalDurationSeconds: number;
   template: CourseDeckSpec["template"];
   title?: string;
 }
@@ -43,6 +45,26 @@ function countStoryboardItems(content: Record<string, unknown>) {
   return Array.isArray(content.storyboard) ? content.storyboard.length : 0;
 }
 
+function visibleBeatCount(section: Record<string, unknown>) {
+  const visibleLines = (typeof section.on_screen_text === "string" ? section.on_screen_text : "")
+    .split(/\n|\u2022|- /)
+    .map((line) => line.trim())
+    .filter(Boolean).length;
+  const hasSuccessCriterion = Boolean(compactText(section.success_criteria));
+  return Math.min(Math.max(visibleLines + Number(hasSuccessCriterion), 1), 3);
+}
+
+function totalScriptDurationSeconds(content: Record<string, unknown>) {
+  const script = asRecord(content.script);
+  const sections = Array.isArray(script.sections) ? script.sections : [];
+  return sections.reduce((total, section) => {
+    const duration = asRecord(section).duration_seconds;
+    return total + (typeof duration === "number" && Number.isFinite(duration) && duration > 0
+      ? duration
+      : 0);
+  }, 0);
+}
+
 function resolveSourceMode(params: {
   hasCustomSlides: boolean;
   scriptSectionCount: number;
@@ -62,7 +84,7 @@ function resolveSourceMode(params: {
 
 function resolveTargetSlideCount(params: {
   customSlideCount: number;
-  scriptSectionCount: number;
+  scriptVisualBeats: Array<{ visibleBeatCount: number }>;
   sourceMode: DeckBriefSourceMode;
   storyboardItemCount: number;
 }) {
@@ -70,7 +92,7 @@ function resolveTargetSlideCount(params: {
     return Math.min(params.customSlideCount, 24);
   }
   if (params.sourceMode === "script") {
-    return Math.min(params.scriptSectionCount + 1, 9);
+    return targetSlideCountForScript(params.scriptVisualBeats);
   }
   if (params.sourceMode === "storyboard") {
     return Math.min(params.storyboardItemCount + 1, 11);
@@ -82,7 +104,11 @@ export function buildDeckBrief(params: BuildDeckBriefParams): DeckBrief {
   const content = asRecord(params.component.content);
   const script = asRecord(content.script);
   const scriptSectionCount = countScriptSections(content);
+  const scriptVisualBeats = Array.isArray(script.sections)
+    ? script.sections.map((section) => ({ visibleBeatCount: visibleBeatCount(asRecord(section)) }))
+    : [];
   const storyboardItemCount = countStoryboardItems(content);
+  const totalDurationSeconds = totalScriptDurationSeconds(content);
   const customSlideCount = params.input.customSlides?.length || 0;
   const hasCustomSlides = customSlideCount > 0;
   const sourceMode = resolveSourceMode({
@@ -99,9 +125,10 @@ export function buildDeckBrief(params: BuildDeckBriefParams): DeckBrief {
     scriptSectionCount,
     sourceMode,
     storyboardItemCount,
+    totalDurationSeconds,
     targetSlideCount: resolveTargetSlideCount({
       customSlideCount,
-      scriptSectionCount,
+      scriptVisualBeats,
       sourceMode,
       storyboardItemCount,
     }),

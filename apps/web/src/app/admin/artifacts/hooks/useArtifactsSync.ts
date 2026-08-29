@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import type { Artifact } from "../artifacts-list.types";
 import { isStandaloneAssemblyArtifact } from "../artifacts-list.utils";
@@ -24,8 +23,6 @@ export function useArtifactsSync(
   artifacts: Artifact[],
   setArtifacts: SetArtifacts,
 ) {
-  const router = useRouter();
-
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
@@ -42,7 +39,6 @@ export function useArtifactsSync(
             }
 
             setArtifacts((prev) => [payload.new as Artifact, ...prev]);
-            router.refresh();
             return;
           }
 
@@ -62,12 +58,6 @@ export function useArtifactsSync(
               ),
             );
 
-            if (
-              payload.new.state === "READY_FOR_QA" ||
-              payload.new.state === "ESCALATED"
-            ) {
-              router.refresh();
-            }
             return;
           }
 
@@ -83,7 +73,7 @@ export function useArtifactsSync(
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [router, setArtifacts]);
+  }, [setArtifacts]);
 
   useEffect(() => {
     const generatingItems = artifacts.filter(
@@ -115,7 +105,6 @@ export function useArtifactsSync(
         ((data || []) as ArtifactPollingRow[]).map((row) => [row.id, row]),
       );
 
-      let changed = false;
       setArtifacts((prev) =>
         prev.map((artifact) => {
           const freshArtifact = freshArtifactsById.get(artifact.id);
@@ -126,7 +115,6 @@ export function useArtifactsSync(
               Boolean(freshArtifact.production_complete) !==
                 Boolean(artifact.production_complete))
           ) {
-            changed = true;
             return {
               ...artifact,
               ...freshArtifact,
@@ -137,12 +125,8 @@ export function useArtifactsSync(
           return artifact;
         }),
       );
-
-      if (changed) {
-        router.refresh();
-      }
     }, 4000);
 
     return () => clearInterval(interval);
-  }, [artifacts, router, setArtifacts]);
+  }, [artifacts, setArtifacts]);
 }

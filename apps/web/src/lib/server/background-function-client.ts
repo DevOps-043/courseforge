@@ -192,3 +192,19 @@ export async function callBackgroundFunctionJson<
 
   return parseRemoteResponse<TData>(response, options.fallbackError);
 }
+
+/** Dispatches a background task without coupling the caller's response time to local execution. */
+export async function dispatchBackgroundFunctionJson(
+  functionName: string,
+  payload: BackgroundFunctionPayload,
+  options: BackgroundFunctionOptions,
+) {
+  if (!isProductionEnvironment() && options.localHandlerLoader) {
+    void tryLocalHandler(functionName, payload, options).catch((error) => {
+      console.error(`[BackgroundFunctionClient] Local handler failed: ${functionName}`, error);
+    });
+    return;
+  }
+
+  await callBackgroundFunctionJson(functionName, payload, options);
+}

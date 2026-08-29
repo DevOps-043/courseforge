@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Clapperboard, Film, Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useMaterials } from "../hooks/useMaterials";
 import { HyperframesCompositionPanel } from "./HyperframesCompositionPanel";
 import { PRODUCTION_THEME } from "./production-asset-ui";
@@ -57,7 +56,6 @@ export function PostproductionAssemblyContainer({
   onNext,
   singleVideoOnly = false,
 }: PostproductionAssemblyContainerProps) {
-  const router = useRouter();
   const { materials, getLessonComponents, refresh } = useMaterials(artifactId);
   const [components, setComponents] = useState<VideoComponent[]>([]);
   const [activeComponentId, setActiveComponentId] = useState<string | null>(initialComponentId || null);
@@ -113,7 +111,6 @@ export function PostproductionAssemblyContainer({
   const handleVideoCompleted = async () => {
     await refresh();
     await loadComponents();
-    router.refresh();
   };
 
   if (isLoading) {

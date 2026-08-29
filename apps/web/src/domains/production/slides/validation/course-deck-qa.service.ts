@@ -232,6 +232,64 @@ function validateChartContracts(
   }
 }
 
+function normalizedVisibleText(value: string) {
+  return value
+    .toLocaleLowerCase("es")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function validateContentUniquenessAndCoverage(
+  deckSpec: CourseDeckSpec,
+  findings: CourseDeckQaFinding[],
+) {
+  const seenSlides = new Map<string, string>();
+  const requiredSlideCount = Math.max(
+    0,
+    ...deckSpec.slides.map((slide) => slide.validationHints.targetSlideCount || 0),
+  );
+
+  if (requiredSlideCount > deckSpec.slides.length) {
+    pushFinding(findings, {
+      code: "insufficient_slide_coverage",
+      message: `El video requiere al menos ${requiredSlideCount} slides por su duracion, pero el deck solo tiene ${deckSpec.slides.length}.`,
+      severity: "error",
+    });
+  }
+
+  for (const slide of deckSpec.slides) {
+    const title = normalizedVisibleText(slide.title);
+    const bodyItems = slide.bodyBlocks.flatMap((block) =>
+      block.kind === "bullets" ? block.items || [] : block.text ? [block.text] : [],
+    );
+    if (title && bodyItems.some((item) => normalizedVisibleText(item) === title)) {
+      pushFinding(findings, {
+        code: "repeated_card_copy",
+        message: "La slide repite su titulo como contenido visible.",
+        severity: "error",
+        slideId: slide.id,
+      });
+    }
+
+    const signature = normalizedVisibleText([slide.title, slide.subtitle || "", ...bodyItems].join(" "));
+    if (!signature) continue;
+    const firstSlideId = seenSlides.get(signature);
+    if (firstSlideId) {
+      pushFinding(findings, {
+        code: "duplicate_slide_copy",
+        message: `La slide repite el contenido visible de ${firstSlideId}.`,
+        severity: "error",
+        slideId: slide.id,
+      });
+    } else {
+      seenSlides.set(signature, slide.id);
+    }
+  }
+}
+
 function validateVisibleLanguage(deckSpec: CourseDeckSpec, findings: CourseDeckQaFinding[]) {
   for (const slide of deckSpec.slides) {
     if (hasUnexpectedVisibleLanguage(visibleTextForSlide(slide), deckSpec.locale)) {
@@ -403,9 +461,11 @@ function buildChecks(findings: CourseDeckQaFinding[]) {
     textDensity: !findings.some((finding) =>
       finding.severity === "error" && [
         "excessive_slide_text",
+        "duplicate_slide_copy",
         "long_slide_point",
         "long_slide_subtitle",
         "long_slide_title",
+        "repeated_card_copy",
         "too_many_slide_points",
       ].includes(finding.code),
     ),
@@ -442,6 +502,7 @@ export function validateCourseDeckQuality(params: {
 
   validateSlideOrder(params.deckSpec, findings);
   validateTextDensity(params.deckSpec, findings);
+  validateContentUniquenessAndCoverage(params.deckSpec, findings);
   validateVisibleLanguage(params.deckSpec, findings);
   validateChartContracts(params.deckSpec, params.html, findings);
   validateVisualAssetContracts(params.deckSpec, params.html, findings);

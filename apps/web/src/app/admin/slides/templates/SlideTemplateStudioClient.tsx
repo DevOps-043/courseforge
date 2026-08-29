@@ -13,19 +13,18 @@ import {
   Layers3,
   List,
   Loader2,
-  Moon,
-  Palette,
+  Minus,
   Plus,
+  Palette,
   Save,
   Send,
   Settings2,
   Sparkles,
-  Sun,
   User,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { EngineSelect } from "@/components/ui/EngineSelect";
+import { SOFLIA_SLIDE_TEMPLATE_BACKGROUND } from "@/domains/production/slides/templates/slide-template-theme";
 
 type SlideLayoutId = "center" | "closing" | "data" | "framework" | "split" | "split_reverse";
 type SlideTypeId = string;
@@ -57,7 +56,15 @@ interface TemplateModifiers {
   cornerRadius: number;
   density: "compact" | "comfortable" | "spacious";
   fontPairing: "system_sans" | "editorial_serif" | "technical_mono";
+  font?: { family: string; source: "google" | "uploaded"; cssUrl?: string };
   showBrandMark: boolean;
+}
+
+interface OrganizationSlideFont {
+  id: string;
+  family: string;
+  source: "google" | "uploaded";
+  cssUrl?: string;
 }
 
 interface TemplateLayout {
@@ -99,19 +106,10 @@ const EMPTY_STATE: StudioState = {
 const DEFAULT_TOKENS: DesignTokens = {
   accent: "#00D4B3",
   accent2: "#2D7D6E",
-  background: "#F7FAFC",
+  background: SOFLIA_SLIDE_TEMPLATE_BACKGROUND,
   muted: "#65758B",
   surface: "#FFFFFF",
   text: "#0A2540",
-};
-
-const DARK_TOKENS: DesignTokens = {
-  accent: "#2DD4BF",
-  accent2: "#8B5CF6",
-  background: "#05070B",
-  muted: "#94A3B8",
-  surface: "#111827",
-  text: "#F8FAFC",
 };
 
 const DEFAULT_MODIFIERS: TemplateModifiers = {
@@ -160,7 +158,6 @@ const FALLBACK_SLIDE_TYPES: TemplateSlideType[] = [
 ];
 
 const COLOR_FIELDS: Array<{ key: keyof DesignTokens; label: string }> = [
-  { key: "background", label: "Fondo" },
   { key: "surface", label: "Superficie" },
   { key: "accent", label: "Acento" },
   { key: "accent2", label: "Acento 2" },
@@ -174,11 +171,21 @@ const DENSITY_PADDING: Record<TemplateModifiers["density"], number> = {
   spacious: 50,
 };
 
+const GOOGLE_FONT_FAMILIES = ["Inter", "Roboto", "Montserrat", "Open Sans", "Lato", "Poppins", "Raleway", "Merriweather", "Playfair Display", "Source Sans 3"];
+
+function googleFontCssUrl(family: string) {
+  return `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family).replace(/%20/g, "+")}:wght@400;500;600;700&display=swap`;
+}
+
 interface DirtyOverrides {
   designTokens: boolean;
   modifiers: boolean;
   slideTypes: boolean;
 }
+
+type StudioOperation = "idle" | "loading" | "updating_spec" | "saving_package" | "sending_message";
+
+const HEX_COLOR_PATTERN = /^#[0-9A-F]{6}$/;
 
 async function readJson(response: Response) {
   const payload = await response.json().catch(() => null);
@@ -213,7 +220,9 @@ function getRoleLabel(role: string) {
   return "SofLIA";
 }
 
-function getFontFamily(fontPairing: TemplateModifiers["fontPairing"]) {
+function getFontFamily(modifiers: TemplateModifiers) {
+  if (modifiers.font?.family) return `'${modifiers.font.family}', Arial, Helvetica, sans-serif`;
+  const { fontPairing } = modifiers;
   if (fontPairing === "editorial_serif") return "Georgia, 'Times New Roman', serif";
   if (fontPairing === "technical_mono") return "'SFMono-Regular', Consolas, 'Liberation Mono', monospace";
   return "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
@@ -226,13 +235,47 @@ function buildBlueprintOverride(
   slideTypes: TemplateSlideType[],
   dirtyOverrides: DirtyOverrides = { designTokens: true, modifiers: true, slideTypes: true },
 ) {
+  const normalizedDesignTokens = {
+    ...designTokens,
+    background: SOFLIA_SLIDE_TEMPLATE_BACKGROUND,
+  };
+
   return {
     ...(baseBlueprint || {}),
-    ...(dirtyOverrides.designTokens ? { designTokens } : {}),
+    ...(dirtyOverrides.designTokens ? { designTokens: normalizedDesignTokens } : {}),
     ...(dirtyOverrides.modifiers ? { modifiers } : {}),
     slideTypes: dirtyOverrides.slideTypes
       ? slideTypes
-      : baseBlueprint?.slideTypes?.length ? baseBlueprint.slideTypes : FALLBACK_SLIDE_TYPES,
+      : baseBlueprint?.slideTypes?.length
+        ? baseBlueprint.slideTypes
+        : FALLBACK_SLIDE_TYPES,
+  };
+}
+
+function getInvalidColorLabels(tokens: DesignTokens) {
+  return COLOR_FIELDS
+    .filter(({ key }) => !HEX_COLOR_PATTERN.test(tokens[key].toUpperCase()))
+    .map(({ label }) => label);
+}
+
+function createSlideType(label: string): TemplateSlideType | null {
+  const normalizedLabel = label.trim().replace(/\s+/g, " ");
+  const id = normalizedLabel
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
+
+  if (!/^[a-z][a-z0-9_]{1,47}$/.test(id)) return null;
+
+  return {
+    id,
+    label: normalizedLabel.slice(0, 80),
+    defaultLayout: "split",
+    purpose: `Explicar ${normalizedLabel.toLowerCase()} con una idea principal y evidencia de apoyo.`,
+    requiredContent: ["main_point", "supporting_evidence", "learner_takeaway"],
   };
 }
 
@@ -269,7 +312,7 @@ function SlidePreview({
     "--studio-surface": tokens.surface,
     "--studio-text": tokens.text,
     borderRadius: `${modifiers.cornerRadius}px`,
-    fontFamily: getFontFamily(modifiers.fontPairing),
+    fontFamily: getFontFamily(modifiers),
   } as CSSProperties;
 
   return (
@@ -378,12 +421,16 @@ export function SlideTemplateStudioClient() {
   const [designTokens, setDesignTokens] = useState<DesignTokens>(DEFAULT_TOKENS);
   const [modifiers, setModifiers] = useState<TemplateModifiers>(DEFAULT_MODIFIERS);
   const [slideTypes, setSlideTypes] = useState<TemplateSlideType[]>(FALLBACK_SLIDE_TYPES);
+  const [newSlideTypeLabel, setNewSlideTypeLabel] = useState("");
   const [dirtyOverrides, setDirtyOverrides] = useState<DirtyOverrides>({ designTokens: false, modifiers: false, slideTypes: false });
   const [slidePreviewMode, setSlidePreviewMode] = useState<SlidePreviewMode>("grid");
   const [loadedConversationId, setLoadedConversationId] = useState<string | null>(null);
-  const [operation, setOperation] = useState<"loading" | "message" | "saving_spec" | "packaging" | null>(null);
+  const [operation, setOperation] = useState<StudioOperation>("idle");
+  const [organizationFonts, setOrganizationFonts] = useState<OrganizationSlideFont[]>([]);
+  const [uploadingFont, setUploadingFont] = useState(false);
 
   const latestSpec = state.specs[0]?.spec_json;
+  const busy = operation !== "idle";
   const previewSlides = useMemo(() => slideTypes.length ? slideTypes : getPreviewSlides(latestSpec), [latestSpec, slideTypes]);
   const downloadHref = latestDownloadHref(state);
   const adminBasePath = params?.empresaSlug ? `/${params.empresaSlug}/admin` : "/admin";
@@ -402,13 +449,72 @@ export function SlideTemplateStudioClient() {
         }
       })
       .finally(() => {
-        if (!cancelled) setOperation(null);
+        if (!cancelled) setOperation("idle");
       });
 
     return () => {
       cancelled = true;
     };
   }, [loadedConversationId, searchParams]);
+
+  useEffect(() => {
+    fetchJson("/api/admin/slides/fonts", { cache: "no-store" })
+      .then((payload) => setOrganizationFonts(payload.fonts || []))
+      .catch(() => setOrganizationFonts([]));
+  }, []);
+
+  useEffect(() => {
+    const cssUrl = modifiers.font?.cssUrl;
+    if (!cssUrl) return;
+    const selector = modifiers.font?.source === "google" ? "link" : "style";
+    const existing = document.querySelector(`${selector}[data-slide-font-url="${CSS.escape(cssUrl)}"]`);
+    if (existing) return;
+    if (modifiers.font?.source === "google") {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = cssUrl;
+      link.dataset.slideFontUrl = cssUrl;
+      document.head.appendChild(link);
+    } else if (modifiers.font?.family) {
+      const style = document.createElement("style");
+      style.dataset.slideFontUrl = cssUrl;
+      style.textContent = `@font-face { font-family: '${modifiers.font.family}'; src: url('${cssUrl}'); font-display: swap; }`;
+      document.head.appendChild(style);
+    }
+  }, [modifiers.font]);
+
+  async function selectOrganizationFont(font: OrganizationSlideFont | undefined) {
+    setDirtyOverrides((current) => ({ ...current, modifiers: true }));
+    setModifiers((current) => ({ ...current, font: font ? { family: font.family, source: font.source, cssUrl: font.cssUrl } : undefined }));
+  }
+
+  async function addGoogleFont(family: string) {
+    const cssUrl = googleFontCssUrl(family);
+    let font = organizationFonts.find((item) => item.source === "google" && item.family === family);
+    if (!font) {
+      const payload = await fetchJson("/api/admin/slides/fonts", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ family, source: "google", cssUrl }),
+      });
+      font = payload.font;
+      setOrganizationFonts((current) => [font!, ...current]);
+    }
+    await selectOrganizationFont(font);
+  }
+
+  async function uploadOrganizationFont(file: File | null) {
+    if (!file) return;
+    setUploadingFont(true);
+    try {
+      const family = file.name.replace(/\.(woff2?|ttf|otf)$/i, "").replace(/[-_]+/g, " ").trim();
+      const form = new FormData(); form.set("family", family); form.set("file", file);
+      const payload = await fetchJson("/api/admin/slides/fonts", { method: "POST", body: form });
+      setOrganizationFonts((current) => [payload.font, ...current]);
+      await selectOrganizationFont(payload.font);
+      toast.success("Fuente de empresa agregada.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo importar la fuente.");
+    } finally { setUploadingFont(false); }
+  }
 
   async function refresh(conversationId = state.conversation?.id) {
     if (!conversationId) return;
@@ -425,7 +531,7 @@ export function SlideTemplateStudioClient() {
 
     const spec = payload.specs?.[0]?.spec_json as SlideTemplateSpec | undefined;
     if (spec?.templateBlueprint) {
-      setDesignTokens(spec.templateBlueprint.designTokens);
+      setDesignTokens({ ...spec.templateBlueprint.designTokens, background: SOFLIA_SLIDE_TEMPLATE_BACKGROUND });
       setModifiers(spec.templateBlueprint.modifiers);
       setSlideTypes(spec.templateBlueprint.slideTypes);
       setDirtyOverrides({ designTokens: false, modifiers: false, slideTypes: false });
@@ -453,15 +559,52 @@ export function SlideTemplateStudioClient() {
     return payload.conversation.id as string;
   }
 
-  async function run(nextOperation: NonNullable<typeof operation>, action: () => Promise<void>) {
-    if (operation) return;
+  function validateEditableTokens() {
+    const invalidFields = getInvalidColorLabels(designTokens);
+    if (invalidFields.length > 0) {
+      toast.error(`Usa colores HEX válidos en: ${invalidFields.join(", ")}.`);
+      return false;
+    }
+    return true;
+  }
+
+  function addSlideType() {
+    const slideType = createSlideType(newSlideTypeLabel);
+    if (!slideType) {
+      toast.error("El chip debe tener al menos dos caracteres y comenzar con una letra.");
+      return;
+    }
+    if (slideTypes.some((item) => item.id === slideType.id)) {
+      toast.error("Ya existe un tipo de slide con ese nombre.");
+      return;
+    }
+    if (slideTypes.length >= 12) {
+      toast.error("Una plantilla admite hasta 12 tipos de slide.");
+      return;
+    }
+    setSlideTypes((current) => [...current, slideType]);
+    setDirtyOverrides((current) => ({ ...current, slideTypes: true }));
+    setNewSlideTypeLabel("");
+  }
+
+  function removeSlideType(id: string) {
+    if (slideTypes.length <= 1) {
+      toast.error("La plantilla debe conservar al menos un tipo de slide.");
+      return;
+    }
+    setSlideTypes((current) => current.filter((item) => item.id !== id));
+    setDirtyOverrides((current) => ({ ...current, slideTypes: true }));
+  }
+
+  async function run(nextOperation: Exclude<StudioOperation, "idle">, action: () => Promise<void>) {
+    if (busy) return;
     setOperation(nextOperation);
     try {
       await action();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo completar la accion.");
     } finally {
-      setOperation(null);
+      setOperation("idle");
     }
   }
 
@@ -497,7 +640,7 @@ export function SlideTemplateStudioClient() {
     const content = prompt.trim();
     if (!content) return;
 
-    await run("message", async () => {
+    await run("sending_message", async () => {
       const conversationId = await ensureConversation();
       await fetchJson(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/messages`, {
         method: "POST",
@@ -516,7 +659,8 @@ export function SlideTemplateStudioClient() {
   }
 
   async function createSpec() {
-    await run("saving_spec", async () => {
+    if (!validateEditableTokens()) return;
+    await run("updating_spec", async () => {
       const conversationId = await ensureConversation();
       await persistTitle(conversationId);
       const payload = await fetchJson(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/specs`, {
@@ -526,8 +670,9 @@ export function SlideTemplateStudioClient() {
       });
       const spec = payload.spec?.spec_json as SlideTemplateSpec | undefined;
       if (spec?.templateBlueprint) {
-        setDesignTokens(spec.templateBlueprint.designTokens);
+        setDesignTokens({ ...spec.templateBlueprint.designTokens, background: SOFLIA_SLIDE_TEMPLATE_BACKGROUND });
         setModifiers(spec.templateBlueprint.modifiers);
+        setSlideTypes(spec.templateBlueprint.slideTypes);
       }
       await refresh(conversationId);
       toast.success("Spec de template actualizada.");
@@ -535,7 +680,8 @@ export function SlideTemplateStudioClient() {
   }
 
   async function savePackage() {
-    await run("packaging", async () => {
+    if (!validateEditableTokens()) return;
+    await run("saving_package", async () => {
       const conversationId = await ensureConversation();
       await persistTitle(conversationId);
       const specPayload = await fetchJson(`/api/admin/remotion/bundle-agent/conversations/${conversationId}/specs`, {
@@ -639,17 +785,18 @@ export function SlideTemplateStudioClient() {
             <div className="flex gap-2">
               <textarea
                 value={prompt}
+                disabled={busy}
                 onChange={(event) => setPrompt(event.target.value)}
                 placeholder="Ej. Necesito una plantilla corporativa para cursos de liderazgo, con portada, objetivos, explicacion, graficas solo cuando haya datos, y cierre practico."
                 className="h-14 flex-1 resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--engine-accent)] dark:border-white/10 dark:bg-[var(--engine-canvas)]"
               />
               <button
                 type="submit"
-                disabled={Boolean(operation) || !prompt.trim()}
+                disabled={busy || !prompt.trim()}
                 className="inline-flex w-12 items-center justify-center rounded-lg bg-[var(--engine-accent-strong)] text-white transition hover:bg-[#008f79] disabled:cursor-not-allowed disabled:bg-gray-300"
                 title="Enviar"
               >
-                {operation === "message" ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
+                {operation === "sending_message" ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
               </button>
             </div>
           </form>
@@ -701,6 +848,49 @@ export function SlideTemplateStudioClient() {
                   : "space-y-3"
               }`}
             >
+              <div className={slidePreviewMode === "grid" ? "col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-2.5 dark:border-white/10 dark:bg-[var(--engine-canvas)]" : "rounded-lg border border-gray-200 bg-gray-50 p-2.5 dark:border-white/10 dark:bg-[var(--engine-canvas)]"}>
+                <p className="text-[11px] font-black uppercase tracking-wide text-gray-500 dark:text-gray-400">Chips de tipos de slide</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {slideTypes.map((slideType) => (
+                    <span key={slideType.id} className="inline-flex items-center gap-1 rounded-full border border-[var(--engine-accent)]/30 bg-[var(--engine-accent)]/10 py-0.5 pl-2 pr-1 text-[11px] font-bold text-[#007F6D] dark:text-[var(--engine-accent)]">
+                      {slideType.label}
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => removeSlideType(slideType.id)}
+                        className="inline-flex h-4 w-4 items-center justify-center rounded-full transition hover:bg-black/10 disabled:cursor-not-allowed"
+                        title={`Quitar ${slideType.label}`}
+                        aria-label={`Quitar ${slideType.label}`}
+                      >
+                        <Minus size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    value={newSlideTypeLabel}
+                    disabled={busy}
+                    onChange={(event) => setNewSlideTypeLabel(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        addSlideType();
+                      }
+                    }}
+                    placeholder="Nuevo tipo, ej. Comparativo"
+                    className="min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs outline-none focus:border-[var(--engine-accent)] dark:border-white/10 dark:bg-[var(--engine-surface-solid)]"
+                  />
+                  <button
+                    type="button"
+                    disabled={busy || !newSlideTypeLabel.trim()}
+                    onClick={addSlideType}
+                    className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-bold text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-200"
+                  >
+                    <Plus size={13} /> Añadir
+                  </button>
+                </div>
+              </div>
               {previewSlides.map((slideType) => (
                 <div
                   key={slideType.id}
@@ -755,65 +945,9 @@ export function SlideTemplateStudioClient() {
               <h2 className="text-sm font-black">Modificadores</h2>
             </div>
             <div className="min-h-0 space-y-3 overflow-y-auto p-3">
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300">Tipos de slide</span>
-                  <button
-                    type="button"
-                    disabled={!FALLBACK_SLIDE_TYPES.some((candidate) => !slideTypes.some((item) => item.id === candidate.id))}
-                    onClick={() => {
-                      const candidate = FALLBACK_SLIDE_TYPES.find((item) => !slideTypes.some((current) => current.id === item.id));
-                      if (!candidate) return;
-                      setSlideTypes((current) => [...current, candidate]);
-                      setDirtyOverrides((current) => ({ ...current, slideTypes: true }));
-                    }}
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-[var(--engine-accent-strong)] disabled:opacity-40"
-                  >
-                    <Plus size={12} /> Agregar tipo
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {slideTypes.map((slideType) => (
-                    <span key={slideType.id} className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-bold text-gray-700 dark:border-white/10 dark:bg-white/5 dark:text-gray-200">
-                      {slideType.label}
-                      <button
-                        type="button"
-                        aria-label={`Quitar ${slideType.label}`}
-                        disabled={slideTypes.length === 1}
-                        onClick={() => {
-                          setSlideTypes((current) => current.filter((item) => item.id !== slideType.id));
-                          setDirtyOverrides((current) => ({ ...current, slideTypes: true }));
-                        }}
-                        className="rounded-full p-0.5 hover:bg-black/5 disabled:opacity-30 dark:hover:bg-white/10"
-                      >
-                        <X size={11} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDesignTokens(DEFAULT_TOKENS);
-                    setDirtyOverrides((current) => ({ ...current, designTokens: true }));
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-bold dark:border-white/10"
-                >
-                  <Sun size={13} /> Apariencia clara
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDesignTokens(DARK_TOKENS);
-                    setDirtyOverrides((current) => ({ ...current, designTokens: true }));
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-bold dark:border-white/10"
-                >
-                  <Moon size={13} /> Apariencia oscura
-                </button>
+              <div className="rounded-lg border border-sky-200 bg-sky-50 p-2 text-[11px] leading-4 text-sky-900 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-100">
+                <span className="font-black">Fondo base bloqueado: {SOFLIA_SLIDE_TEMPLATE_BACKGROUND}.</span>{" "}
+                El modo Claro/Oscuro se define al generar el deck; la plantilla conserva layouts, tipografías y acentos.
               </div>
 
               <div className="grid grid-cols-3 gap-2">
@@ -856,20 +990,43 @@ export function SlideTemplateStudioClient() {
                 <label className="text-xs font-bold text-gray-600 dark:text-gray-300">
                   Tipografia
                   <EngineSelect
-                    value={modifiers.fontPairing}
+                    value={modifiers.font ? `org:${modifiers.font.family}:${modifiers.font.source}` : `system:${modifiers.fontPairing}`}
                     onValueChange={(value) => {
+                      if (value.startsWith("google:")) {
+                        void addGoogleFont(value.slice("google:".length));
+                        return;
+                      }
+                      if (value.startsWith("org:")) {
+                        const [, family, source] = value.split(":");
+                        void selectOrganizationFont(organizationFonts.find((font) => font.family === family && font.source === source));
+                        return;
+                      }
                       setDirtyOverrides((current) => ({ ...current, modifiers: true }));
-                      setModifiers((current) => ({ ...current, fontPairing: value as TemplateModifiers["fontPairing"] }));
+                      setModifiers((current) => ({ ...current, font: undefined, fontPairing: value.slice("system:".length) as TemplateModifiers["fontPairing"] }));
                     }}
                     className="mt-1"
                     options={[
-                      { value: "system_sans", label: "Sans de sistema" },
-                      { value: "editorial_serif", label: "Serif editorial" },
-                      { value: "technical_mono", label: "Mono técnica" },
+                      { value: "system:system_sans", label: "Sans de sistema" },
+                      { value: "system:editorial_serif", label: "Serif editorial" },
+                      { value: "system:technical_mono", label: "Mono técnica" },
+                      ...GOOGLE_FONT_FAMILIES.map((family) => ({ value: `google:${family}`, label: `Google Fonts · ${family}` })),
+                      ...organizationFonts.map((font) => ({ value: `org:${font.family}:${font.source}`, label: `${font.source === "uploaded" ? "Empresa" : "Google guardada"} · ${font.family}` })),
                     ]}
                   />
                 </label>
               </div>
+
+              <label className="block text-xs font-bold text-gray-600 dark:text-gray-300">
+                Importar fuente de empresa
+                <input
+                  type="file"
+                  accept=".woff,.woff2,.ttf,.otf,font/woff,font/woff2,font/ttf,font/otf"
+                  disabled={uploadingFont}
+                  onChange={(event) => { void uploadOrganizationFont(event.target.files?.[0] || null); event.currentTarget.value = ""; }}
+                  className="mt-1 block w-full text-xs text-gray-500 file:mr-3 file:rounded-md file:border-0 file:bg-[var(--engine-accent)]/10 file:px-3 file:py-1.5 file:font-semibold file:text-[var(--engine-accent-strong)] hover:file:bg-[var(--engine-accent)]/20"
+                />
+                <span className="mt-1 block font-normal text-[11px] text-gray-500 dark:text-gray-400">.woff2, .woff, .ttf u .otf · máximo 10 MB · solo para esta empresa</span>
+              </label>
 
               <label className="block text-xs font-bold text-gray-600 dark:text-gray-300">
                 Radio {modifiers.cornerRadius}px
@@ -903,22 +1060,30 @@ export function SlideTemplateStudioClient() {
                 <button
                   type="button"
                   onClick={createSpec}
-                  disabled={Boolean(operation)}
+                  disabled={busy}
                   className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-black text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
                 >
-                  {operation === "saving_spec" ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
-                  {operation === "saving_spec" ? "Guardando spec…" : "Actualizar spec"}
+                  {operation === "updating_spec" ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
+                  {operation === "updating_spec" ? "Guardando spec…" : "Actualizar spec"}
                 </button>
                 <button
                   type="button"
                   onClick={savePackage}
-                  disabled={Boolean(operation)}
+                  disabled={busy}
                   className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--engine-accent-strong)] px-3 py-2 text-sm font-black text-white transition hover:bg-[#008f79] disabled:cursor-not-allowed disabled:bg-gray-300"
                 >
-                  {operation === "packaging" ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-                  {operation === "packaging" ? "Generando HTML…" : "Guardar HTML + ZIP"}
+                  {operation === "saving_package" ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                  {operation === "saving_package" ? "Generando HTML…" : "Guardar HTML + ZIP"}
                 </button>
               </div>
+              {operation !== "idle" && (
+                <p className="text-center text-[11px] font-semibold text-gray-500 dark:text-gray-400" role="status">
+                  {operation === "sending_message" && "Actualizando la conversación…"}
+                  {operation === "updating_spec" && "Validando y guardando la spec…"}
+                  {operation === "saving_package" && "Empaquetando y guardando el ZIP…"}
+                  {operation === "loading" && "Cargando la plantilla…"}
+                </p>
+              )}
             </div>
           </section>
         </aside>

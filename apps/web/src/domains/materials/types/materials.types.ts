@@ -140,6 +140,7 @@ export interface AvatarClip {
     script_text: string;
     avatar_preset_id?: string;
     voice_preset_id?: string;
+    voice_speed?: number;
     background?: {
         value?: string;
         url?: string;
@@ -162,18 +163,19 @@ export interface AvatarClip {
 }
 
 export interface VoiceClip {
+    asset_id?: string;
     id: string;
     clip_id: string;
     order: number;
-    storage_path: string;
-    public_url: string;
+    storage_path?: string;
+    public_url?: string;
     file_name?: string;
     duration?: number;
     external_id?: string;
     provider?: string;
     script_hash: string;
     word_timestamps?: { word: string; start: number; end: number }[];
-    status: Extract<AvatarClipStatus, 'COMPLETED' | 'FAILED' | 'STALE'>;
+    status: Extract<AvatarClipStatus, 'DRAFT' | 'COMPLETED' | 'FAILED' | 'STALE'>;
     error_message?: string;
 }
 
@@ -263,6 +265,7 @@ export interface MaterialAssets {
         width?: number;
     } | null;
     slides?: {
+        appearance?: 'light' | 'dark';
         open_design_project_id?: string;
         html_content_path?: string;
         html_public_url?: string;

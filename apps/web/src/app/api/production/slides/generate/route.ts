@@ -3,13 +3,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { createClient } from "@/utils/supabase/server";
 import { getErrorMessage } from "@/lib/errors";
-import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
+import { dispatchBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { signBackgroundPayload } from "@/lib/server/background-payload-signature";
 import type { MaterialAssets } from "@/domains/materials/types/materials.types";
 import {
   getAuthenticatedUser,
   getAuthorizedMaterialComponentAdmin,
   getServiceRoleClient,
+  MaterialComponentLookupUnavailableError,
 } from "@/lib/server/artifact-action-auth";
 import { verifyBackgroundPayload } from "@/lib/server/background-payload-signature";
 import {
@@ -52,6 +53,7 @@ const BUCKET = "production-assets";
 const SLIDE_COPY_PIPELINE_VERSION = "visible-copy-synthesis-v4";
 
 const requestBodySchema = slideDeckGenerateInputSchema.extend({
+  appearanceOnly: z.boolean().optional(),
   componentId: z.string().min(1),
   forceRegenerate: z.boolean().optional(),
   regenerationRequestId: z.string().uuid().optional(),
@@ -192,6 +194,13 @@ async function resolveSlideTemplateDesignSystem(params: {
     accent2: typeof designTokens?.accent2 === "string" ? designTokens.accent2 : undefined,
     background: typeof designTokens?.background === "string" ? designTokens.background : undefined,
     fontPairing: typeof modifiers?.fontPairing === "string" ? modifiers.fontPairing : undefined,
+    font: asRecord(modifiers?.font) && typeof asRecord(modifiers?.font)?.family === "string"
+      ? {
+          family: asRecord(modifiers?.font)?.family as string,
+          source: asRecord(modifiers?.font)?.source === "uploaded" ? "uploaded" : "google",
+          cssUrl: typeof asRecord(modifiers?.font)?.cssUrl === "string" ? asRecord(modifiers?.font)?.cssUrl as string : undefined,
+        }
+      : undefined,
     muted: typeof designTokens?.muted === "string" ? designTokens.muted : undefined,
     selectedSlideTemplateRunId: run.id as string,
     surface: typeof designTokens?.surface === "string" ? designTokens.surface : undefined,
@@ -250,9 +259,27 @@ export async function POST(request: Request) {
     : await getAuthenticatedUser(supabase!);
   if (!authenticatedUser) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
 
-  const authorizedComponent = internalRequest
-    ? await getInternalAuthorizedComponent(componentId, internalRequest.organizationId)
-    : await getAuthorizedMaterialComponentAdmin(componentId);
+  let authorizedComponent;
+  try {
+    authorizedComponent = internalRequest
+      ? await getInternalAuthorizedComponent(componentId, internalRequest.organizationId)
+      : await getAuthorizedMaterialComponentAdmin(componentId);
+  } catch (error) {
+    if (error instanceof MaterialComponentLookupUnavailableError) {
+      return NextResponse.json(
+        {
+          code: error.code,
+          error: error.message,
+          retryable: error.retryable,
+        },
+        {
+          headers: { "Retry-After": "5" },
+          status: 503,
+        },
+      );
+    }
+    throw error;
+  }
   if (!authorizedComponent) {
     return NextResponse.json(
       { error: "Componente no encontrado para esta empresa" },
@@ -271,31 +298,78 @@ export async function POST(request: Request) {
     );
   }
 
+  const queueInputSnapshot = {
+    component_id: componentId,
+    job_type: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
+    request: parsed.data,
+  };
+  const queuedJob = await createOrReuseProductionJob(authorizedComponent.admin, {
+    context: queueContext,
+    createdBy: authenticatedUser.userId,
+    idempotencyKey: buildProductionIdempotencyKey({
+      componentId,
+      input: queueInputSnapshot,
+      jobType: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
+      provider: PRODUCTION_PROVIDERS.SOFLIA_ENGINE_SLIDES,
+    }),
+    inputSnapshot: queueInputSnapshot,
+    jobType: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
+    provider: PRODUCTION_PROVIDERS.SOFLIA_ENGINE_SLIDES,
+  });
+
+  if (queuedJob.status === PRODUCTION_JOB_STATUSES.SUCCEEDED || queuedJob.status === PRODUCTION_JOB_STATUSES.RUNNING || queuedJob.status === PRODUCTION_JOB_STATUSES.QUEUED) {
+    return NextResponse.json({ success: true, jobId: queuedJob.id, reused: true, status: queuedJob.status }, { status: 202 });
+  }
+
+  const { error: queueError } = await authorizedComponent.admin
+    .from("production_jobs")
+    .update({ status: PRODUCTION_JOB_STATUSES.QUEUED, updated_at: new Date().toISOString() })
+    .eq("id", queuedJob.id);
+  if (queueError) {
+    return NextResponse.json({ error: queueError.message }, { status: 500 });
+  }
+
   const backgroundRequest = {
     createdBy: authenticatedUser.userId,
     organizationId: queueContext.organizationId,
+    jobId: queuedJob.id,
     payload: parsed.data,
   };
   const queuedAt = new Date().toISOString();
   try {
-    await callBackgroundFunctionJson(
+    await dispatchBackgroundFunctionJson(
       "slides-generation-background",
       signBackgroundPayload(backgroundRequest),
       {
         fallbackError: "No se pudo iniciar el worker de slides.",
         localHandlerLoader: async () => ({
           handler: async () => {
-            const result = await runSlideDeckGeneration({
-              authorizedComponent,
-              createdBy: authenticatedUser.userId,
-              payload: parsed.data,
-            });
-            return { statusCode: result.status, body: await result.text() };
+            try {
+              const result = await runSlideDeckGeneration({
+                authorizedComponent,
+                createdBy: authenticatedUser.userId,
+                jobId: queuedJob.id,
+                payload: parsed.data,
+              });
+              return { statusCode: result.status, body: await result.text() };
+            } catch (error) {
+              await failProductionJob({
+                error,
+                jobId: queuedJob.id,
+                supabase: authorizedComponent.admin,
+              });
+              throw error;
+            }
           },
         }),
       },
     );
   } catch (error) {
+    await failProductionJob({
+      error,
+      jobId: queuedJob.id,
+      supabase: authorizedComponent.admin,
+    });
     return NextResponse.json(
       { error: getErrorMessage(error, "No se pudo iniciar el worker de slides.") },
       { status: 503 },
@@ -305,7 +379,7 @@ export async function POST(request: Request) {
   return NextResponse.json(
     {
       success: true,
-      job: null,
+      jobId: queuedJob.id,
       queuedAt,
       status: "QUEUED",
       submissionStatus: "QUEUED",
@@ -317,9 +391,11 @@ export async function POST(request: Request) {
 export async function runSlideDeckGeneration(params: {
   authorizedComponent: NonNullable<Awaited<ReturnType<typeof getAuthorizedMaterialComponentAdmin>>>;
   createdBy: string;
+  jobId?: string;
   payload: z.infer<typeof requestBodySchema>;
 }) {
   const {
+    appearanceOnly = false,
     componentId,
     forceRegenerate = false,
     regenerationRequestId,
@@ -332,6 +408,9 @@ export async function runSlideDeckGeneration(params: {
     componentId,
     supabase: authorizedComponent.admin,
   });
+  if (context.artifactId !== authorizedComponent.artifactId) {
+    return NextResponse.json({ error: "Componente no encontrado para esta empresa" }, { status: 404 });
+  }
   const currentAssets = (authorizedComponent.component.assets || {}) as MaterialAssets;
   const sourcePack = await loadSlideSourcePack({
     artifactId: authorizedComponent.artifactId,
@@ -354,6 +433,7 @@ export async function runSlideDeckGeneration(params: {
     sourcePack,
   });
   const inputSnapshot = {
+    appearance_only: appearanceOnly,
     component_id: componentId,
     copy_synthesis: {
       signature: synthesisSignature,
@@ -371,14 +451,17 @@ export async function runSlideDeckGeneration(params: {
     jobType: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
     provider: PRODUCTION_PROVIDERS.SOFLIA_ENGINE_SLIDES,
   });
-  const job = await createOrReuseProductionJob(authorizedComponent.admin, {
-    context,
-    createdBy: params.createdBy,
-    idempotencyKey,
-    inputSnapshot,
-    jobType: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
-    provider: PRODUCTION_PROVIDERS.SOFLIA_ENGINE_SLIDES,
-  });
+  const job = params.jobId
+    ? { id: params.jobId, status: PRODUCTION_JOB_STATUSES.QUEUED }
+    : await createOrReuseProductionJob(authorizedComponent.admin, {
+        context,
+        createdBy: params.createdBy,
+        idempotencyKey,
+        inputSnapshot,
+        jobType: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
+        provider: PRODUCTION_PROVIDERS.SOFLIA_ENGINE_SLIDES,
+      });
+  let failedQaReport: ReturnType<typeof validateCourseDeckQuality> | null = null;
 
   if (
     !forceRegenerate &&
@@ -415,7 +498,7 @@ export async function runSlideDeckGeneration(params: {
         assets: currentAssets,
         componentId,
         copySynthesisSignature: synthesisSignature,
-        forceRegenerate,
+        forceRegenerate: forceRegenerate && !appearanceOnly,
         slideTemplateRunId,
       })
       ? null
@@ -486,12 +569,14 @@ export async function runSlideDeckGeneration(params: {
     const deckSpecWithTemplate = selectedSlideTemplate
       ? courseDeckSpecSchema.parse({
           ...generatedDeckSpec,
+          appearance: input.appearance,
           designSystem: {
             ...generatedDeckSpec.designSystem,
             accent: selectedSlideTemplate.accent || generatedDeckSpec.designSystem.accent,
             accent2: selectedSlideTemplate.accent2 || generatedDeckSpec.designSystem.accent2,
             background: selectedSlideTemplate.background || generatedDeckSpec.designSystem.background,
             fontPairing: selectedSlideTemplate.fontPairing || generatedDeckSpec.designSystem.fontPairing,
+            font: selectedSlideTemplate.font || generatedDeckSpec.designSystem.font,
             muted: selectedSlideTemplate.muted || generatedDeckSpec.designSystem.muted,
             surface: selectedSlideTemplate.surface || generatedDeckSpec.designSystem.surface,
             text: selectedSlideTemplate.text || generatedDeckSpec.designSystem.text,
@@ -499,10 +584,25 @@ export async function runSlideDeckGeneration(params: {
             visualStyleGuide: selectedSlideTemplate.visualStyleGuide || generatedDeckSpec.designSystem.visualStyleGuide,
           },
         })
-      : generatedDeckSpec;
+      : courseDeckSpecSchema.parse({
+          ...generatedDeckSpec,
+          appearance: input.appearance,
+        });
+    const structuralHtml = renderCourseDeckHtml(deckSpecWithTemplate);
+    failedQaReport = validateCourseDeckQuality({
+      deckSpec: deckSpecWithTemplate,
+      html: structuralHtml,
+    });
+    if (failedQaReport.status === "FAIL") {
+      const failingCodes = failedQaReport.findings
+        .filter((finding) => finding.severity === "error")
+        .map((finding) => finding.code)
+        .join(", ");
+      throw new Error(`Deck SofLIA - Engine no paso QA estructural: ${failingCodes}`);
+    }
     const plannedDeckSpec = planDeckVisualAssets({
       deckSpec: deckSpecWithTemplate,
-      forceRegenerate,
+      forceRegenerate: forceRegenerate && !appearanceOnly,
     });
     const backgroundVisuals = input.generateVisuals !== false
       ? await generateSlideVisualAssets({
@@ -564,6 +664,7 @@ export async function runSlideDeckGeneration(params: {
         material_lesson_id: context.materialLessonId,
         lesson_id: context.lessonId,
         metadata: {
+          appearance: deckSpec.appearance,
           copy_pipeline_version: SLIDE_COPY_PIPELINE_VERSION,
           copy_synthesis_signature: synthesisSignature,
           slide_count: deckSpec.slides.length,
@@ -592,6 +693,7 @@ export async function runSlideDeckGeneration(params: {
         material_lesson_id: context.materialLessonId,
         lesson_id: context.lessonId,
         metadata: {
+          appearance: deckSpec.appearance,
           copy_pipeline_version: SLIDE_COPY_PIPELINE_VERSION,
           copy_synthesis_signature: synthesisSignature,
           qa_status: qaReport.status,
@@ -649,6 +751,7 @@ export async function runSlideDeckGeneration(params: {
       slides_url: htmlUpload.publicUrl,
       slides: {
         ...(currentAssets.slides || {}),
+        appearance: deckSpec.appearance,
         copy_pipeline_version: SLIDE_COPY_PIPELINE_VERSION,
         copy_synthesis_signature: synthesisSignature,
         html_content_path: htmlUpload.storagePath,
@@ -681,6 +784,7 @@ export async function runSlideDeckGeneration(params: {
       .update({
         completed_at: now,
         output_snapshot: {
+          appearance: deckSpec.appearance,
           background_visual_job_id: backgroundVisuals.jobId,
           background_visuals_generated: backgroundVisuals.generatedCount,
           html_storage_path: htmlUpload.storagePath,
@@ -719,6 +823,11 @@ export async function runSlideDeckGeneration(params: {
     await failProductionJob({
       error,
       jobId: job.id,
+      outputSnapshot: failedQaReport ? {
+        qa_report: failedQaReport,
+        qa_status: failedQaReport.status,
+        slide_count: failedQaReport.summary.slideCount,
+      } : undefined,
       supabase: authorizedComponent.admin,
     });
     console.error("[production/slides/generate] Unexpected error:", error);
@@ -747,7 +856,8 @@ async function getInternalAuthorizedComponent(componentId: string, organizationI
     .select("id, type, content, assets, material_lesson_id, material_lessons!inner(materials!inner(artifact_id))")
     .eq("id", componentId)
     .maybeSingle();
-  if (error || !component) return null;
+  if (error) throw new MaterialComponentLookupUnavailableError();
+  if (!component) return null;
   const lesson = Array.isArray(component.material_lessons) ? component.material_lessons[0] : component.material_lessons;
   const materials = Array.isArray(lesson?.materials) ? lesson.materials[0] : lesson?.materials;
   const artifactId = materials?.artifact_id;
@@ -757,6 +867,7 @@ async function getInternalAuthorizedComponent(componentId: string, organizationI
     .select("organization_id")
     .eq("id", artifactId)
     .maybeSingle();
-  if (artifactError || artifact?.organization_id !== organizationId) return null;
+  if (artifactError) throw new MaterialComponentLookupUnavailableError();
+  if (artifact?.organization_id !== organizationId) return null;
   return { admin, artifactId, component };
 }

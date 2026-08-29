@@ -12,6 +12,7 @@ import {
   type CourseDeckSpec,
   type CourseSlideSpec,
 } from "../slides/specs/course-deck.schema";
+import { SOFLIA_SLIDE_TEMPLATE_BACKGROUND } from "../slides/templates/slide-template-theme";
 
 function templateAssetPath(fileName: string) {
   return [
@@ -42,7 +43,7 @@ const hexColorSchema = z.string().trim().regex(/^#[0-9a-fA-F]{6}$/);
 const slideTemplateDesignTokensSchema = z.object({
   accent: hexColorSchema.default("#00D4B3"),
   accent2: hexColorSchema.default("#2D7D6E"),
-  background: hexColorSchema.default("#F7FAFC"),
+  background: hexColorSchema.default(SOFLIA_SLIDE_TEMPLATE_BACKGROUND),
   muted: hexColorSchema.default("#65758B"),
   surface: hexColorSchema.default("#FFFFFF"),
   text: hexColorSchema.default("#0A2540"),
@@ -52,6 +53,11 @@ const slideTemplateModifiersSchema = z.object({
   cornerRadius: z.number().int().min(0).max(32).default(8),
   density: z.enum(["compact", "comfortable", "spacious"]).default("comfortable"),
   fontPairing: z.enum(["system_sans", "editorial_serif", "technical_mono"]).default("system_sans"),
+  font: z.object({
+    cssUrl: z.string().url().max(2000).optional(),
+    family: z.string().trim().regex(/^[a-zA-Z0-9 ._-]+$/).min(1).max(120),
+    source: z.enum(["google", "uploaded"]),
+  }).optional(),
   showBrandMark: z.boolean().default(true),
 });
 
@@ -629,6 +635,25 @@ function asPlainRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function isLightTemplateColor(hex: string) {
+  const red = Number.parseInt(hex.slice(1, 3), 16);
+  const green = Number.parseInt(hex.slice(3, 5), 16);
+  const blue = Number.parseInt(hex.slice(5, 7), 16);
+  return (red * 299 + green * 587 + blue * 114) / 1000 >= 150;
+}
+
+function normalizeLightSlideTemplateTokens(
+  tokens: z.infer<typeof slideTemplateDesignTokensSchema>,
+) {
+  return slideTemplateDesignTokensSchema.parse({
+    ...tokens,
+    background: SOFLIA_SLIDE_TEMPLATE_BACKGROUND,
+    muted: isLightTemplateColor(tokens.muted) ? "#65758B" : tokens.muted,
+    surface: isLightTemplateColor(tokens.surface) ? tokens.surface : "#FFFFFF",
+    text: isLightTemplateColor(tokens.text) ? "#0A2540" : tokens.text,
+  });
+}
+
 function mergeSlideTemplateBlueprintOverride(
   baseBlueprint: z.infer<typeof slideTemplateBlueprintSchema>,
   overrides: unknown,
@@ -636,6 +661,10 @@ function mergeSlideTemplateBlueprintOverride(
   const blueprintOverrides = asPlainRecord(overrides);
   const designTokenOverrides = asPlainRecord(blueprintOverrides.designTokens);
   const modifierOverrides = asPlainRecord(blueprintOverrides.modifiers);
+  const slideTypes = Array.isArray(blueprintOverrides.slideTypes)
+    ? blueprintOverrides.slideTypes
+    : baseBlueprint.slideTypes;
+  const parsedSlideTypes = z.array(slideTemplateTypeDefinitionSchema).min(1).max(12).parse(slideTypes);
 
   return slideTemplateBlueprintSchema.parse({
     ...baseBlueprint,
@@ -644,20 +673,18 @@ function mergeSlideTemplateBlueprintOverride(
       ...baseBlueprint.agents,
       ...asPlainRecord(blueprintOverrides.agents),
     },
-    designTokens: {
+    designTokens: normalizeLightSlideTemplateTokens(slideTemplateDesignTokensSchema.parse({
       ...baseBlueprint.designTokens,
       ...designTokenOverrides,
-    },
+    })),
     layouts: Array.isArray(blueprintOverrides.layouts)
       ? blueprintOverrides.layouts
-      : baseBlueprint.layouts,
+      : inferLayouts(parsedSlideTypes),
     modifiers: {
       ...baseBlueprint.modifiers,
       ...modifierOverrides,
     },
-    slideTypes: Array.isArray(blueprintOverrides.slideTypes)
-      ? blueprintOverrides.slideTypes
-      : baseBlueprint.slideTypes,
+    slideTypes: parsedSlideTypes,
   });
 }
 
@@ -726,6 +753,7 @@ function buildSlideTemplateExampleDeck(spec: {
     .map((slideType, index) => createExampleSlide(slideType, index + 1));
 
   return courseDeckSpecSchema.parse({
+    appearance: "light",
     artifactId: "slide-template-example",
     designSystem: {
       accent: spec.templateBlueprint.designTokens.accent,

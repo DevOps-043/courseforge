@@ -15,6 +15,33 @@ import {
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import type { CloudStorageProvider } from "@/domains/production/cloud-storage/types";
 
+/**
+ * Narrow snapshot for phase-one progress. It deliberately avoids loading the
+ * complete artifact workspace while a background job is updating the record.
+ */
+export async function getArtifactGenerationSnapshotAction(artifactId: string) {
+  const supabase = await createClient();
+  const authUser = await getAuthenticatedUser(supabase);
+  if (!authUser) return { success: false as const, error: "Unauthorized" };
+
+  const authorized = await getAuthorizedArtifactAdmin(artifactId);
+  if (!authorized) {
+    return { success: false as const, error: "Artifact not found or inaccessible" };
+  }
+
+  const { data: artifact, error } = await authorized.admin
+    .from("artifacts")
+    .select("descripcion, generation_metadata, nombres, objetivos, production_complete, qa_status, state, validation_report")
+    .eq("id", artifactId)
+    .single();
+
+  if (error || !artifact) {
+    return { success: false as const, error: error?.message || "Artifact snapshot unavailable" };
+  }
+
+  return { success: true as const, artifact };
+}
+
 export async function generateArtifactAction(formData: {
   title: string;
   description: string;

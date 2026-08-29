@@ -24,10 +24,12 @@ import {
   type VisualAssignmentMap,
 } from "../agents/visual-template-selection-agent.service";
 import {
+  buildSourceInsights,
   firstSourceLead,
   sourceLinesForSlide,
   type SlideSourcePack,
 } from "../content/slide-source-pack.service";
+import { buildScriptSlideSegments } from "./slide-coverage-policy.service";
 
 interface BuildCourseDeckSpecParams {
   artifactId: string;
@@ -106,6 +108,20 @@ function limitItems(items: string[], maxItems = 4) {
     .map((item) => limitText(item, 240))
     .filter(Boolean)
     .slice(0, maxItems);
+}
+
+function visualBeatLines(section: ScriptSectionLike) {
+  const explicitLines = typeof section.on_screen_text === "string"
+    ? section.on_screen_text.split(/\n|\u2022|- /).map((line) => line.trim()).filter(Boolean)
+    : [];
+  const primaryLines = explicitLines.length > 0
+    ? explicitLines
+    : buildVisibleLinesFromScriptSection(section);
+  const successCriterion = compactEducationalText(section.success_criteria);
+  return Array.from(new Set([
+    ...primaryLines,
+    ...(successCriterion ? [successCriterion] : []),
+  ])).slice(0, 3);
 }
 
 function titleFromContent(content: Record<string, unknown>, fallback: string) {
@@ -198,6 +214,65 @@ function buildChartSlides(
       },
     };
   });
+}
+
+function normalizedSlideSignature(slide: CourseSlideSpec) {
+  return [slide.title, slide.subtitle || "", ...slide.bodyBlocks.flatMap((block) =>
+    block.kind === "bullets" ? block.items || [] : block.text ? [block.text] : [],
+  )]
+    .join(" ")
+    .toLocaleLowerCase("es")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildAdditionalEvidenceSlides(params: {
+  existingSlides: CourseSlideSpec[];
+  sourcePack?: SlideSourcePack;
+  startOrder: number;
+  targetSlideCount: number;
+}): CourseSlideSpec[] {
+  const needed = Math.max(0, params.targetSlideCount - (params.existingSlides.length + 1));
+  if (needed === 0) return [];
+
+  const insights = params.sourcePack?.insights?.length
+    ? params.sourcePack.insights
+    : buildSourceInsights(params.sourcePack?.items || []);
+  const seen = new Set(params.existingSlides.map(normalizedSlideSignature));
+  const slides: CourseSlideSpec[] = [];
+
+  for (const insight of insights) {
+    if (slides.length >= needed) break;
+    const type = insight.type === "practice"
+      ? "worked_example"
+      : insight.type === "question"
+        ? "knowledge_check"
+        : insight.type === "summary" ? "summary" : "concept";
+    const copy = buildVisibleSlideCopy({
+      fallbackBody: "Contenido pendiente de sintetizar desde fuentes aprobadas.",
+      fallbackTitle: "Evidencia de la leccion",
+      slideType: type,
+      visibleLines: [insight.title, ...insight.bodyItems],
+    });
+    const slide: CourseSlideSpec = {
+      bodyBlocks: [{ items: limitItems(copy.bodyItems), kind: "bullets" }],
+      citations: [],
+      id: `evidence-${slides.length + 1}`,
+      order: params.startOrder + slides.length,
+      title: copy.title,
+      type,
+      validationHints: { mustKeepClaims: [], sourceRefs: [insight.sourceRef] },
+    };
+    const signature = normalizedSlideSignature(slide);
+    if (!signature || seen.has(signature)) continue;
+    seen.add(signature);
+    slides.push(slide);
+  }
+
+  return slides;
 }
 
 function resolvePlanning(params: BuildCourseDeckSpecParams) {
@@ -307,18 +382,27 @@ function buildSlidesFromScript(
     return [];
   }
 
-  const contentSlides = sections.slice(0, 8).map((section, index): CourseSlideSpec => {
+  const sectionBeatLines = sections.map(visualBeatLines);
+  const contentSlides = buildScriptSlideSegments(sectionBeatLines.map((lines) => ({
+    visibleBeatCount: lines.length,
+  }))).map((segment, index): CourseSlideSpec => {
+    const section = sections[segment.sectionIndex]!;
     const narration = compactText(section.narration_text);
-    const id = `script-section-${section.section_number || index + 1}`;
+    const sectionNumber = section.section_number || segment.sectionIndex + 1;
+    const id = segment.part === 1
+      ? `script-section-${sectionNumber}`
+      : `script-section-${sectionNumber}-part-${segment.part}`;
     const plannedSlide = plannedSlideById(slidePlan, id);
-    const baseVisibleLines = buildVisibleLinesFromScriptSection(section);
+    const baseVisibleLines = sectionBeatLines[segment.sectionIndex] || [];
     const resolvedSlideType = plannedSlide?.type || (index === 0 ? "concept" : "worked_example");
     const sourceVisibleLines = sourceLinesForSlide(sourcePack, index, {
       slideType: resolvedSlideType,
     });
     const visibleLines = sourceVisibleLines.length > 0
       ? sourceVisibleLines
-      : baseVisibleLines;
+      : segment.part === 1
+        ? baseVisibleLines
+        : [baseVisibleLines[segment.part - 1] || baseVisibleLines[0] || "Idea clave de la leccion"];
     const sourceRefs = sourceRefsForSlide(slidePlan, id, ["component.content.script"]);
     const copy = buildVisibleSlideCopy({
       fallbackBody: "Contenido pendiente de sintetizar desde fuentes aprobadas.",
@@ -351,6 +435,12 @@ function buildSlidesFromScript(
   });
   const coverSourceRefs = sourceRefsForSlide(slidePlan, "cover", ["component.content.script"]);
   const chartSlides = buildChartSlides(content, contentSlides.length + 2, sourcePack);
+  const additionalEvidenceSlides = buildAdditionalEvidenceSlides({
+    existingSlides: [...contentSlides, ...chartSlides],
+    sourcePack,
+    startOrder: contentSlides.length + chartSlides.length + 2,
+    targetSlideCount: slidePlan.targetSlideCount,
+  });
 
   return [
     {
@@ -372,6 +462,7 @@ function buildSlidesFromScript(
     },
     ...contentSlides,
     ...chartSlides,
+    ...additionalEvidenceSlides,
   ];
 }
 
@@ -505,6 +596,13 @@ export function buildCourseDeckSpecFromComponent(params: BuildCourseDeckSpecPara
   const slides = generatedSlides.length > 0
     ? generatedSlides
     : fallbackSlides(title, resolvedVisualAssignments);
+  const slidesWithCoverageTarget = slides.map((slide) => ({
+    ...slide,
+    validationHints: {
+      ...slide.validationHints,
+      targetSlideCount: slidePlan.targetSlideCount,
+    },
+  }));
   const source = customSlides
     ? "custom_request"
     : params.input.metadata
@@ -512,6 +610,7 @@ export function buildCourseDeckSpecFromComponent(params: BuildCourseDeckSpecPara
       : "component_content";
 
   return courseDeckSpecSchema.parse({
+    appearance: params.input.appearance,
     artifactId: params.artifactId,
     designSystem: {
       brandLabel: params.input.metadata?.brandLabel || "SofLIA - Engine",
@@ -521,7 +620,7 @@ export function buildCourseDeckSpecFromComponent(params: BuildCourseDeckSpecPara
     locale: params.input.locale,
     materialComponentId: params.component.id,
     schemaVersion: COURSE_DECK_SCHEMA_VERSION,
-    slides,
+    slides: slidesWithCoverageTarget,
     sourceSnapshot: {
       componentType,
       source,

@@ -316,6 +316,8 @@ export function useProductionAssetState({
   const [isUploadingSlides, setIsUploadingSlides] = useState(false);
   const [isExportingOpenDesign, setIsExportingOpenDesign] = useState(false);
   const [isGeneratingSofliaSlides, setIsGeneratingSofliaSlides] = useState(false);
+  const [sofliaSlidesGenerationStatus, setSofliaSlidesGenerationStatus] = useState<string | null>(null);
+  const [sofliaSlidesGenerationError, setSofliaSlidesGenerationError] = useState<string | null>(null);
   const [isPreparingAnimatedDeck, setIsPreparingAnimatedDeck] = useState(false);
 
   // HeyGen generation states
@@ -683,23 +685,39 @@ export function useProductionAssetState({
   };
 
   // 3. Generated HTML export & Upload ZIP/HTML
-  const handleSofliaEngineSlideGeneration = async (slideTemplateRunId?: string | null) => {
+  const handleSofliaEngineSlideGeneration = async (
+    slideTemplateRunId?: string | null,
+    appearance: "light" | "dark" = slidesAsset?.appearance || "light",
+    appearanceOnly = false,
+  ) => {
+    let didFail = false;
     setIsGeneratingSofliaSlides(true);
+    setSofliaSlidesGenerationStatus("QUEUED");
+    setSofliaSlidesGenerationError(null);
     try {
-      const regenerationRequestId = crypto.randomUUID();
-      const response = await fetch("/api/production/slides/generate", {
-        method: "POST",
+      const response = await fetch(
+        appearanceOnly
+          ? "/api/production/slides/appearance"
+          : "/api/production/slides/generate",
+        {
+        method: appearanceOnly ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           componentId: component.id,
-          forceRegenerate: true,
-          locale: "es",
-          metadata: {
-            brandLabel: "SofLIA - Engine",
-          },
-          regenerationRequestId,
-          ...(slideTemplateRunId ? { slideTemplateRunId } : {}),
-          template: "course-module",
+          ...(appearanceOnly
+            ? { appearance }
+            : {
+                appearance,
+                appearanceOnly: false,
+                forceRegenerate: true,
+                locale: "es",
+                metadata: {
+                  brandLabel: "SofLIA - Engine",
+                },
+                regenerationRequestId: crypto.randomUUID(),
+                ...(slideTemplateRunId ? { slideTemplateRunId } : {}),
+                template: "course-module",
+              }),
         }),
       });
 
@@ -711,7 +729,8 @@ export function useProductionAssetState({
         toast.info("Deck en cola. La generacion continuara en segundo plano.");
         const completed = await waitForSlideGeneration({
           componentId: component.id,
-          createdAfter: data.queuedAt,
+          jobId: data.jobId,
+          onStatus: setSofliaSlidesGenerationStatus,
         });
         data = { success: true, assets: completed.assets };
       }
@@ -735,14 +754,21 @@ export function useProductionAssetState({
       }
       onAssetChange?.(component.id, updatedAssets);
       toast.success(
-        data.reused
+        appearanceOnly
+          ? `Apariencia ${appearance === "dark" ? "oscura" : "clara"} aplicada al deck`
+          : data.reused
           ? "Deck SofLIA - Engine recuperado"
           : "Deck SofLIA - Engine regenerado",
       );
     } catch (err: any) {
-      toast.error(`Error al generar deck SofLIA - Engine: ${err.message}`);
+      didFail = true;
+      const message = err instanceof Error ? err.message : "No se pudo generar el deck SofLIA - Engine.";
+      setSofliaSlidesGenerationStatus("FAILED");
+      setSofliaSlidesGenerationError(message);
+      toast.error(`Error al generar deck SofLIA - Engine: ${message}`);
     } finally {
       setIsGeneratingSofliaSlides(false);
+      if (!didFail) setSofliaSlidesGenerationStatus(null);
     }
   };
 
@@ -1561,6 +1587,8 @@ export function useProductionAssetState({
     isUploadingSlides,
     isExportingOpenDesign,
     isGeneratingSofliaSlides,
+    sofliaSlidesGenerationStatus,
+    sofliaSlidesGenerationError,
     isPreparingAnimatedDeck,
 
     // Refs

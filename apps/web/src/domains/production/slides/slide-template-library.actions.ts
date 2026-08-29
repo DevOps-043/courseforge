@@ -67,12 +67,21 @@ export async function getSlideTemplatePackagesAction(): Promise<{ success: boole
 }
 
 async function resolveOrganizationId(): Promise<string | null> {
-  const tenant = await resolveActiveTenantContext();
-  if (tenant?.organizationId) return tenant.organizationId;
   const bridgeUser = await getAuthBridgeUser();
   if (bridgeUser?.active_organization_id) return bridgeUser.active_organization_id;
   if (bridgeUser?.organization_ids?.length) return bridgeUser.organization_ids[0];
-  return (await getUserOrganizations())[0]?.id || null;
+  const cookieOrganization = (await getUserOrganizations())[0]?.id;
+  if (cookieOrganization) return cookieOrganization;
+
+  // This is only a final fallback. The library must not depend on the profile
+  // role lookup, which can be temporarily unavailable while the tenant layout
+  // has already authenticated the current request.
+  try {
+    return (await resolveActiveTenantContext())?.organizationId || null;
+  } catch (error) {
+    console.warn("[SlideTemplateLibrary] Active tenant lookup unavailable; no organization fallback.");
+    return null;
+  }
 }
 function asRecord(value: unknown): Record<string, any> | null { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : null; }
 function getLayouts(value: unknown): string[] { const spec = asRecord(value); const layouts = asRecord(spec?.templateBlueprint)?.layouts; return Array.isArray(layouts) ? layouts.map((item) => { const row = asRecord(item); return row?.label || row?.id; }).filter((item): item is string => typeof item === "string") : []; }

@@ -182,7 +182,30 @@ describe("SofLIA Bundle Agent services", () => {
     assert.equal(spec.templateBlueprint.slideTypes.length > 0, true);
   });
 
-  it("keeps clear text readable over a light gray slide-template background", () => {
+  it("persists user-managed slide-type chips as part of a template blueprint override", () => {
+    const spec = buildSlideTemplateSpecFromConversation({
+      title: "Template de decisiones",
+      messages: [{ role: "USER", content_redacted: "Quiero una plantilla para decisiones de negocio." }],
+      overrides: {
+        templateBlueprint: {
+          slideTypes: [
+            {
+              id: "decision_matrix",
+              label: "Matriz de decisión",
+              defaultLayout: "framework",
+              purpose: "Comparar alternativas mediante criterios explícitos.",
+              requiredContent: ["alternatives", "criteria", "recommendation"],
+            },
+          ],
+        },
+      },
+    });
+
+    assert.deepEqual(spec.templateBlueprint.slideTypes.map((slideType) => slideType.id), ["decision_matrix"]);
+    assert.deepEqual(spec.templateBlueprint.layouts.map((layout) => layout.id), ["framework"]);
+  });
+
+  it("keeps clear text readable over the locked slide-template background", () => {
     const spec = buildSlideTemplateSpecFromConversation({
       title: "Template elegante",
       messages: [
@@ -193,13 +216,13 @@ describe("SofLIA Bundle Agent services", () => {
       ],
     });
 
-    assert.equal(spec.templateBlueprint.designTokens.background, "#F3F4F6");
+    assert.equal(spec.templateBlueprint.designTokens.background, "#F7FAFC");
     assert.equal(spec.templateBlueprint.designTokens.accent, "#D6A21E");
     assert.equal(spec.templateBlueprint.designTokens.accent2, "#3B1D5C");
     assert.equal(spec.templateBlueprint.designTokens.text, "#0A2540");
   });
 
-  it("uses white text only when explicitly requested for slide-template conversations", () => {
+  it("keeps accessible dark text when white text is requested for a light slide template", () => {
     const spec = buildSlideTemplateSpecFromConversation({
       title: "Template elegante",
       messages: [
@@ -210,11 +233,11 @@ describe("SofLIA Bundle Agent services", () => {
       ],
     });
 
-    assert.equal(spec.templateBlueprint.designTokens.background, "#F3F4F6");
-    assert.equal(spec.templateBlueprint.designTokens.text, "#F8FAFC");
+    assert.equal(spec.templateBlueprint.designTokens.background, "#F7FAFC");
+    assert.equal(spec.templateBlueprint.designTokens.text, "#0A2540");
   });
 
-  it("applies white primary and secondary text from explicit slide-template feedback", () => {
+  it("keeps accessible text roles for explicit light slide-template feedback", () => {
     const spec = buildSlideTemplateSpecFromConversation({
       title: "Template elegante",
       messages: [
@@ -225,9 +248,39 @@ describe("SofLIA Bundle Agent services", () => {
       ],
     });
 
-    assert.equal(spec.templateBlueprint.designTokens.background, "#F3F4F6");
-    assert.equal(spec.templateBlueprint.designTokens.text, "#F8FAFC");
-    assert.equal(spec.templateBlueprint.designTokens.muted, "#F8FAFC");
+    assert.equal(spec.templateBlueprint.designTokens.background, "#F7FAFC");
+    assert.equal(spec.templateBlueprint.designTokens.text, "#0A2540");
+    assert.equal(spec.templateBlueprint.designTokens.muted, "#65758B");
+  });
+
+  it("normalizes dark slide-template requests to the required light base", () => {
+    const spec = buildSlideTemplateSpecFromConversation({
+      title: "Template nocturno",
+      messages: [{
+        role: "USER",
+        content_redacted: "Quiero una plantilla oscura, cinematografica, con fondo negro.",
+      }],
+    });
+
+    assert.equal(spec.templateBlueprint.designTokens.background, "#F7FAFC");
+    assert.equal(spec.templateBlueprint.designTokens.surface, "#FFFFFF");
+    assert.equal(spec.templateBlueprint.designTokens.text, "#0A2540");
+  });
+
+  it("locks the reusable template background even when a light custom value is supplied", () => {
+    const spec = buildSlideTemplateSpecFromConversation({
+      title: "Template con fondo personalizado",
+      messages: [],
+      overrides: {
+        templateBlueprint: {
+          designTokens: {
+            background: "#FFF7ED",
+          },
+        },
+      },
+    });
+
+    assert.equal(spec.templateBlueprint.designTokens.background, "#F7FAFC");
   });
 
   it("honors explicitly requested slide-template slide types", () => {
