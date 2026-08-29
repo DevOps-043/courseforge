@@ -14,6 +14,7 @@ import {
 } from "../types/production.types";
 
 interface ArtifactRelation {
+  idea_central?: string | null;
   organization_id?: string | null;
 }
 
@@ -24,8 +25,10 @@ interface MaterialRelation {
 
 interface MaterialLessonRelation {
   lesson_id?: string | null;
+  lesson_title?: string | null;
   materials?: MaterialRelation | MaterialRelation[] | null;
   module_id?: string | null;
+  module_title?: string | null;
 }
 
 interface MaterialComponentContextRecord {
@@ -85,10 +88,10 @@ export async function resolveProductionComponentContext(params: {
       `
         id, type, material_lesson_id,
         material_lessons (
-          lesson_id, module_id,
+          lesson_id, lesson_title, module_id, module_title,
           materials (
             artifact_id,
-            artifacts ( organization_id )
+            artifacts ( idea_central, organization_id )
           )
         )
       `,
@@ -115,11 +118,14 @@ export async function resolveProductionComponentContext(params: {
 
   return {
     artifactId: material.artifact_id,
+    artifactTitle: artifact?.idea_central || null,
     componentId: component.id,
     componentType: component.type,
     lessonId: lesson?.lesson_id || null,
+    lessonTitle: lesson?.lesson_title || null,
     materialLessonId: component.material_lesson_id || null,
     moduleId: lesson?.module_id || null,
+    moduleTitle: lesson?.module_title || null,
     organizationId: artifact?.organization_id || null,
   };
 }

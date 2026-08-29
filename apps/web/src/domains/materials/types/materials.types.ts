@@ -133,6 +133,8 @@ export type AvatarClipStatus =
 export interface AvatarClip {
     id: string;
     order: number;
+    /** Optional author-facing name used for HeyGen and returned media files. */
+    asset_name?: string;
     /** Increments when generated media is cleared so a retry cannot reuse an old successful job. */
     generation_revision?: number;
     deleted?: boolean;

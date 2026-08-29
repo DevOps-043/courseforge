@@ -4,6 +4,7 @@ import { createInitialCompositionDocument } from "../composition-document.factor
 import { applyCompositionPresetDefinition, CompositionPresetApplicationError } from "../composition-preset-application.service";
 import { findBuiltInCompositionPreset } from "../composition-preset-builtins";
 import { extractCompositionPresetDefinition } from "../composition-preset-extraction.service";
+import { parseRecoverableCompositionPresetApplication } from "../composition-preset-store.service";
 
 test("extracts a manual sequence and adapts five authored items to fifteen assets", () => {
   const authored = createDocument(5, 50);
@@ -60,6 +61,36 @@ test("extraction stores no asset ids, labels, URLs, HTML or course copy", () => 
   const serialized = JSON.stringify(definition);
 
   assert.doesNotMatch(serialized, /Sensitive course title|Private subtitle|B-roll 1|00000000-0000-4000/i);
+});
+
+test("recovers undo only when the applied preset produced the current document", () => {
+  const currentDocumentHash = "a".repeat(64);
+  const row = {
+    id: "00000000-0000-4000-8000-000000000123",
+    proposed_document_hash: currentDocumentHash,
+    status: "APPLIED",
+    summary: { affectedClipCount: 4, presetName: "Academia dinámica" },
+  };
+
+  assert.deepEqual(parseRecoverableCompositionPresetApplication(row, currentDocumentHash), {
+    applicationId: row.id,
+    name: "Academia dinámica",
+  });
+  assert.equal(parseRecoverableCompositionPresetApplication(row, "b".repeat(64)), null);
+});
+
+test("fails closed when a recoverable preset application is malformed or no longer applied", () => {
+  const currentDocumentHash = "c".repeat(64);
+  const baseRow = {
+    id: "00000000-0000-4000-8000-000000000456",
+    proposed_document_hash: currentDocumentHash,
+    status: "APPLIED",
+    summary: { presetName: "Presentador discreto" },
+  };
+
+  assert.equal(parseRecoverableCompositionPresetApplication({ ...baseRow, status: "UNDONE" }, currentDocumentHash), null);
+  assert.equal(parseRecoverableCompositionPresetApplication({ ...baseRow, summary: {} }, currentDocumentHash), null);
+  assert.equal(parseRecoverableCompositionPresetApplication({ ...baseRow, id: "not-a-uuid" }, currentDocumentHash), null);
 });
 
 function createDocument(assetCount: number, durationSeconds: number) {

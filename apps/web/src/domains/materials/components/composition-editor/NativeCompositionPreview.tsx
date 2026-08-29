@@ -316,6 +316,21 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     setStudioResizing(false);
   };
 
+  const loadRecoverablePresetApplication = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/preset-applications`, {
+        cache: "no-store",
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "No se pudo recuperar el preset aplicado.");
+      setLastAppliedPreset((body.data || null) as AppliedCompositionPreset | null);
+    } catch {
+      // Undo is only exposed when the server can prove that the current document
+      // is exactly the version produced by the application.
+      setLastAppliedPreset(null);
+    }
+  }, [draftId]);
+
   const loadDocument = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -350,12 +365,14 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       setHistory(null);
       setAgentProposal(null);
       setLastAppliedAgentProposal(null);
+      setLastAppliedPreset(null);
+      void loadRecoverablePresetApplication();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "No se pudo cargar la composición.");
     } finally {
       setLoading(false);
     }
-  }, [draftId]);
+  }, [draftId, loadRecoverablePresetApplication]);
 
   const loadBrandingAvailability = useCallback(async () => {
     try {
@@ -817,6 +834,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         payloadRef.current = nextPayload;
         setPayload(nextPayload);
         setPreviewDirty(nextPayload.documentHash !== previewDocumentHashRef.current);
+        setLastAppliedPreset(null);
         if (runtimePatchPromise) refreshPreviewDocument(false, "SAVE_RECOVERY");
         setFailedSave({ operations: effectiveOperations, source, summary });
         setSaveError(body.error || "La composición cambió en otra sesión. El preview se actualizó con la última versión.");
@@ -834,6 +852,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       }
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
+      setLastAppliedPreset(null);
       if (runtimePatchPromise) {
         const runtimeOutcome = await runtimePatchPromise;
         previewTelemetryRef.current?.record({
@@ -1406,12 +1425,18 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   }
 
   async function createCompositionPreset(input: { description: string; instruction?: string; mode: "INSTRUCTIONS" | "MANUAL"; name: string }) {
+    const currentPayload = payloadRef.current;
+    if (!currentPayload || presetBusy || saving) return;
     setPresetBusy(true);
     setSaveError(null);
     try {
       const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/composition-presets`, {
         body: JSON.stringify(input),
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "If-Match": formatCompositionDocumentEtag(currentPayload.documentHash),
+          [COMPOSITION_VERSION_FALLBACK_HEADER]: currentPayload.documentHash,
+        },
         method: "POST",
       });
       const body = await response.json();

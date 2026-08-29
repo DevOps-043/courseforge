@@ -32,6 +32,18 @@ type StoreParams = {
   supabase: SupabaseClient<any, "public", any>;
 };
 
+export type RecoverableCompositionPresetApplication = {
+  applicationId: string;
+  name: string;
+};
+
+const recoverableCompositionPresetApplicationRowSchema = z.object({
+  id: z.string().uuid(),
+  proposed_document_hash: z.string().regex(/^[a-f0-9]{64}$/i),
+  status: z.literal("APPLIED"),
+  summary: z.object({ presetName: z.string().trim().min(1).max(120) }).passthrough(),
+});
+
 export async function listCompositionPresetCatalog(params: StoreParams): Promise<CompositionPresetCatalogEntry[]> {
   const { data, error } = await params.supabase
     .from("video_composition_presets")
@@ -100,6 +112,7 @@ export async function createCompositionPresetPreview(params: StoreParams & {
   presetId: string;
   userId: string;
 }) {
+  await expirePendingCompositionPresetApplications(params);
   const [current, preset] = await Promise.all([
     getCurrentCompositionDocument(params),
     resolveCompositionPreset(params),
@@ -151,9 +164,45 @@ export async function getCompositionPresetPreviewDocument(params: StoreParams & 
 }) {
   const stored = await getStoredApplication(params);
   if (stored.status !== "PENDING" || Date.parse(stored.expiresAt) <= Date.now()) {
+    if (stored.status === "PENDING") await expireCompositionPresetApplication(params);
     throw new CompositionPresetStoreError("El preview del preset ya no está disponible.", "COMPOSITION_PRESET_PREVIEW_EXPIRED", 410);
   }
   return compositionEditorDocumentSchema.parse(stored.proposedDocument);
+}
+
+/**
+ * Returns the only preset application that can still be undone safely. Matching
+ * the current document hash prevents an old application from overwriting edits
+ * made after the preset was applied.
+ */
+export async function getRecoverableCompositionPresetApplication(params: StoreParams & {
+  draftId: string;
+}): Promise<RecoverableCompositionPresetApplication | null> {
+  const current = await getCurrentCompositionDocument(params);
+  const { data, error } = await params.supabase
+    .from("video_composition_preset_applications")
+    .select("id, proposed_document_hash, status, summary")
+    .eq("draft_id", params.draftId)
+    .eq("organization_id", params.organizationId)
+    .eq("status", "APPLIED")
+    .eq("proposed_document_hash", current.documentHash)
+    .order("applied_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw normalizePresetStorageError(error);
+  return parseRecoverableCompositionPresetApplication(data, current.documentHash);
+}
+
+export function parseRecoverableCompositionPresetApplication(
+  row: unknown,
+  currentDocumentHash: string,
+): RecoverableCompositionPresetApplication | null {
+  const parsed = recoverableCompositionPresetApplicationRowSchema.safeParse(row);
+  if (!parsed.success || parsed.data.proposed_document_hash !== currentDocumentHash) return null;
+  return {
+    applicationId: parsed.data.id,
+    name: parsed.data.summary.presetName,
+  };
 }
 
 export async function applyStoredCompositionPreset(params: StoreParams & {
@@ -262,6 +311,29 @@ async function getStoredApplication(params: StoreParams & { applicationId: strin
     proposedDocument: data.proposed_document,
     status: data.status as PresetApplicationStatus,
   };
+}
+
+async function expirePendingCompositionPresetApplications(params: StoreParams & { draftId: string }) {
+  const now = new Date().toISOString();
+  const { error } = await params.supabase
+    .from("video_composition_preset_applications")
+    .update({ status: "EXPIRED", updated_at: now })
+    .eq("draft_id", params.draftId)
+    .eq("organization_id", params.organizationId)
+    .eq("status", "PENDING")
+    .lt("expires_at", now);
+  if (error) throw normalizePresetStorageError(error);
+}
+
+async function expireCompositionPresetApplication(params: StoreParams & { applicationId: string; draftId: string }) {
+  const { error } = await params.supabase
+    .from("video_composition_preset_applications")
+    .update({ status: "EXPIRED", updated_at: new Date().toISOString() })
+    .eq("id", params.applicationId)
+    .eq("draft_id", params.draftId)
+    .eq("organization_id", params.organizationId)
+    .eq("status", "PENDING");
+  if (error) throw normalizePresetStorageError(error);
 }
 
 function parseOutcome(data: unknown) {

@@ -15,6 +15,7 @@ interface VideoAsset {
   durationSeconds?: number;
   eligibleForRevision: boolean;
   metadata: {
+    asset_display_name?: string | null;
     detached_from_asset_id?: string | null;
     detached_from_clip_id?: string | null;
     file_name?: string | null;
@@ -76,6 +77,7 @@ export function HyperframesCompositionPanel({
   const [animatedDeck, setAnimatedDeck] = useState<{ animationCount: number; slideCount: number } | null>(null);
   const sceneAssetFingerprintRef = useRef<string | null>(null);
   const sceneAssetRefreshInFlightRef = useRef(false);
+  const [pendingHeygenClipCount, setPendingHeygenClipCount] = useState(0);
   const uniqueAssets = useMemo(() => (
     [...new Map(assets.map((asset) => [asset.productionAssetId, asset])).values()]
   ), [assets]);
@@ -91,7 +93,7 @@ export function HyperframesCompositionPanel({
     hasAudio: asset.hasAudio,
     id: asset.productionAssetId,
     isEditable: asset.sourceType === "PRODUCTION_MEDIA",
-    label: asset.metadata.file_name || asset.mimeType,
+    label: asset.metadata.asset_display_name || asset.metadata.file_name || asset.mimeType,
     mimeType: asset.mimeType,
     previewUrl: draftId ? `/api/production/hyperframes/drafts/${draftId}/assets/${asset.productionAssetId}` : null,
     sourceHeight: typeof asset.metadata.source_height === "number" ? asset.metadata.source_height : undefined,
@@ -135,6 +137,7 @@ export function HyperframesCompositionPanel({
         const syncPayload = await syncResponse.json();
         if (!syncResponse.ok) throw new Error(syncPayload.error || "No se pudieron actualizar los assets de Producción.");
         setAnimatedDeck(syncPayload.data?.animatedDeck || null);
+        setPendingHeygenClipCount(Number(syncPayload.data?.heygenPendingClipCount) || 0);
       } catch (error) {
         const message = error instanceof Error ? error.message : "No se pudieron actualizar los assets de Producción.";
         setSyncWarning(message);
@@ -181,56 +184,62 @@ export function HyperframesCompositionPanel({
 
   useEffect(() => { void loadInitialData(); }, [loadInitialData]);
 
+  const reconcileSceneAssets = useCallback(async () => {
+    if (!composition || busy !== null || document.visibilityState === "hidden" || sceneAssetRefreshInFlightRef.current) return;
+    sceneAssetRefreshInFlightRef.current = true;
+    try {
+      const scenesResponse = await fetch(
+        `/api/production/heygen/scenes?componentId=${encodeURIComponent(componentId)}&t=${Date.now()}`,
+        { cache: "no-store" },
+      );
+      const scenesPayload = await scenesResponse.json();
+      if (!scenesResponse.ok) throw new Error(scenesPayload.error || "No se pudieron consultar los clips de Producción.");
+      const fingerprint = buildSceneAssetFingerprint(scenesPayload.data);
+      const observedPendingCount = countPendingHeygenClips(scenesPayload.data);
+      setPendingHeygenClipCount(observedPendingCount);
+      const assetsChanged = fingerprint !== sceneAssetFingerprintRef.current;
+      if (!assetsChanged && observedPendingCount === 0) return;
+
+      const syncResponse = await fetch("/api/production/hyperframes/assets/sync", {
+        body: JSON.stringify({ componentId }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const syncPayload = await syncResponse.json();
+      if (!syncResponse.ok) throw new Error(syncPayload.error || "No se pudieron actualizar los clips de HeyGen.");
+      const nextPending = Number(syncPayload.data?.heygenPendingClipCount) || 0;
+      setPendingHeygenClipCount(nextPending);
+      const synchronized = Number(syncPayload.data?.synchronized) || 0;
+      if (!assetsChanged && synchronized === 0) return;
+
+      await refreshAssets();
+      const draftResponse = await fetch(`/api/production/hyperframes/compositions/${composition.id}/draft`, {
+        method: "POST",
+      });
+      const draftPayload = await draftResponse.json();
+      if (!draftResponse.ok) throw new Error(draftPayload.error || "No se pudo actualizar el timeline.");
+      setDraftId(draftPayload.data.draftId as string);
+      setDraftDocumentVersion(draftPayload.data.documentVersion as number);
+      sceneAssetFingerprintRef.current = fingerprint;
+    } catch (error) {
+      console.warn("[HyperFrames editor] Automatic scene asset reconciliation failed:", error);
+    } finally {
+      sceneAssetRefreshInFlightRef.current = false;
+    }
+  }, [busy, componentId, composition, refreshAssets]);
+
   useEffect(() => {
-    if (!composition?.id || !draftId) return;
-    let disposed = false;
-
-    const reconcileNewSceneAssets = async () => {
-      if (document.visibilityState === "hidden" || sceneAssetRefreshInFlightRef.current) return;
-      sceneAssetRefreshInFlightRef.current = true;
-      try {
-        const scenesResponse = await fetch(
-          `/api/production/heygen/scenes?componentId=${encodeURIComponent(componentId)}&t=${Date.now()}`,
-          { cache: "no-store" },
-        );
-        const scenesPayload = await scenesResponse.json();
-        if (!scenesResponse.ok) throw new Error(scenesPayload.error || "No se pudieron consultar los clips de Producción.");
-        const fingerprint = buildSceneAssetFingerprint(scenesPayload.data);
-        if (fingerprint === sceneAssetFingerprintRef.current) return;
-
-        const syncResponse = await fetch("/api/production/hyperframes/assets/sync", {
-          body: JSON.stringify({ componentId }),
-          headers: { "Content-Type": "application/json" },
-          method: "POST",
-        });
-        const syncPayload = await syncResponse.json();
-        if (!syncResponse.ok) throw new Error(syncPayload.error || "No se pudieron sincronizar los nuevos clips.");
-        await refreshAssets();
-
-        const draftResponse = await fetch(`/api/production/hyperframes/compositions/${composition.id}/draft`, {
-          method: "POST",
-        });
-        const draftPayload = await draftResponse.json();
-        if (!draftResponse.ok) throw new Error(draftPayload.error || "No se pudo reconciliar el timeline.");
-        if (disposed) return;
-        sceneAssetFingerprintRef.current = fingerprint;
-        setDraftDocumentVersion(draftPayload.data.documentVersion as number);
-      } catch (error) {
-        if (!disposed) {
-          console.warn("[HyperFrames editor] Automatic scene asset reconciliation failed:", error);
-        }
-      } finally {
-        sceneAssetRefreshInFlightRef.current = false;
-      }
-    };
-
-    void reconcileNewSceneAssets();
-    const intervalId = window.setInterval(() => { void reconcileNewSceneAssets(); }, 10_000);
+    if (!draftId) return;
+    const timer = window.setTimeout(() => {
+      void reconcileSceneAssets();
+    }, pendingHeygenClipCount > 0 ? 8_000 : 30_000);
+    const handleFocus = () => { void reconcileSceneAssets(); };
+    window.addEventListener("focus", handleFocus);
     return () => {
-      disposed = true;
-      window.clearInterval(intervalId);
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", handleFocus);
     };
-  }, [componentId, composition?.id, draftId, refreshAssets]);
+  }, [draftId, pendingHeygenClipCount, reconcileSceneAssets]);
 
   const pollRender = useCallback(async (requestId?: string) => {
     const target = requestId || renderRequest?.id;
@@ -379,11 +388,21 @@ function buildSceneAssetFingerprint(rawData: unknown) {
     const clip = value as Record<string, unknown>;
     const storagePath = typeof clip.storage_path === "string" ? clip.storage_path : "";
     const status = typeof clip.status === "string" ? clip.status : "";
-    if (!storagePath || status !== "COMPLETED") return [];
     const id = typeof clip.clip_id === "string"
       ? clip.clip_id
       : typeof clip.id === "string" ? clip.id : storagePath;
-    return [`${id}:${storagePath}`];
+    if (!id) return [];
+    const jobId = typeof clip.job_id === "string" ? clip.job_id : "";
+    return [`${id}:${status}:${jobId}:${storagePath}`];
   });
   return references.sort().join("|");
+}
+
+function countPendingHeygenClips(rawData: unknown) {
+  const data = rawData && typeof rawData === "object" ? rawData as Record<string, unknown> : {};
+  const clips = Array.isArray(data.clips) ? data.clips : [];
+  return clips.filter((value) => (
+    value && typeof value === "object"
+    && (value as Record<string, unknown>).status === "WAITING_PROVIDER"
+  )).length;
 }

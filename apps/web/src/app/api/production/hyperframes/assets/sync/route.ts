@@ -30,19 +30,22 @@ export async function POST(request: Request) {
     const tenant = await resolveActiveTenantContext();
     if (!tenant) return NextResponse.json({ error: "Empresa no válida o no autorizada." }, { status: 403 });
     const admin = getServiceRoleClient();
-    await refreshPendingHeygenClips({
+    const heygenPendingClipCount = await refreshPendingHeygenClips({
       admin,
       componentId: input.componentId,
       organizationId: tenant.organizationId,
       userId: user.userId,
     });
-    const data = await syncHyperframesSourceAssetsFromProduction({
+    const synchronizedAssets = await syncHyperframesSourceAssetsFromProduction({
       componentId: input.componentId,
       createdBy: user.userId,
       organizationId: tenant.organizationId,
       supabase: admin,
     });
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json({
+      success: true,
+      data: { ...synchronizedAssets, heygenPendingClipCount },
+    });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: "Component ID inválido." }, { status: 400 });
     if (error instanceof HyperframesSourceAssetError) {
@@ -77,7 +80,7 @@ async function refreshPendingHeygenClips(params: {
     clip && typeof clip === "object"
     && (clip as Record<string, unknown>).status === "WAITING_PROVIDER"
   ));
-  if (!hasPendingAvatar) return;
+  if (!hasPendingAvatar) return 0;
 
   try {
     const auth = await getHeygenClientForOrganization({
@@ -98,4 +101,21 @@ async function refreshPendingHeygenClips(params: {
       message: getErrorMessage(refreshError),
     });
   }
+
+  const { data: refreshedComponent, error: refreshedError } = await params.admin
+    .from("material_components")
+    .select("assets")
+    .eq("id", params.componentId)
+    .maybeSingle();
+  if (refreshedError) throw refreshedError;
+  const refreshedAssets = refreshedComponent?.assets && typeof refreshedComponent.assets === "object"
+    ? refreshedComponent.assets as Record<string, unknown>
+    : {};
+  const refreshedClips = Array.isArray(refreshedAssets.avatar_clips)
+    ? refreshedAssets.avatar_clips
+    : [];
+  return refreshedClips.filter((clip) => (
+    clip && typeof clip === "object"
+    && (clip as Record<string, unknown>).status === "WAITING_PROVIDER"
+  )).length;
 }

@@ -87,6 +87,7 @@ export const heygenAvatarClipStatusSchema = z.enum([
 
 export const heygenAvatarClipSchema = z
   .object({
+    asset_name: z.string().trim().min(1).max(120).optional(),
     avatar_preset_id: z.string().uuid().optional(),
     background: heygenBackgroundSchema.optional(),
     duration: z.number().positive().optional(),

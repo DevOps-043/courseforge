@@ -6,7 +6,9 @@ import {
   getReusableSceneVoiceAsset,
   HeygenScenesService,
   mergeAuthoredSceneClip,
+  mergeSceneClipsForConcurrentGeneration,
   reconcileVoiceClips,
+  selectRecoverableHistoricalSceneJobs,
   selectPromotableAvatarVoices,
 } from "../heygen-scenes.service";
 import { resetGeneratedSceneAssets } from "../heygen-scene-assets";
@@ -16,8 +18,132 @@ import {
 } from "../heygen-billing";
 import { PRODUCTION_JOB_STATUSES } from "../../../types/production.types";
 import { buildHeygenScriptFromComponent } from "../heygen-script-builder";
+import {
+  buildHeygenSceneAssetNames,
+  resolveHeygenJobFileStem,
+} from "../heygen-asset-naming";
 
 describe("HeyGen script builder", () => {
+  it("uses an authored scene name for the HeyGen title and returned files", () => {
+    const names = buildHeygenSceneAssetNames({
+      clip: { asset_name: "Lección 6 – Cierre ejecutivo", id: "scene-4", order: 4 },
+      context: { lessonTitle: "Título de respaldo" },
+    });
+
+    assert.equal(names.videoTitle, "Lección 6 – Cierre ejecutivo · Avatar");
+    assert.equal(names.videoFileStem, "leccion-6-cierre-ejecutivo-avatar");
+    assert.equal(names.audioFileStem, "leccion-6-cierre-ejecutivo-voz");
+    assert.equal(resolveHeygenJobFileStem({ video_file_stem: names.videoFileStem }, "video"), names.videoFileStem);
+  });
+
+  it("falls back to a lesson and scene name when the author leaves it blank", () => {
+    const names = buildHeygenSceneAssetNames({
+      clip: { id: "scene-2", order: 2 },
+      context: { lessonTitle: "Propuesta de valor" },
+    });
+
+    assert.equal(names.displayName, "Propuesta de valor · Escena 02");
+    assert.equal(names.videoTitle, "Propuesta de valor · Escena 02 · Avatar");
+  });
+
+  it("does not let a stale worker collapse completed scene media to its last clip", () => {
+    const current = [1, 2, 3, 4].map((order) => ({
+      asset_name: order === 1 ? "Nombre actualizado" : undefined,
+      duration: 10 + order,
+      id: `scene-${order}`,
+      job_id: `00000000-0000-4000-8000-00000000000${order}`,
+      order,
+      public_url: `https://cdn.example.com/avatar-${order}.mp4`,
+      script_text: `Escena ${order}`,
+      status: "COMPLETED" as const,
+      storage_path: `production-assets/avatar-${order}.mp4`,
+    }));
+    const staleWorker = current.map((clip, index) => ({
+      ...clip,
+      asset_name: undefined,
+      duration: index === 3 ? clip.duration : undefined,
+      public_url: index === 3 ? clip.public_url : undefined,
+      status: index === 3 ? "COMPLETED" as const : "WAITING_PROVIDER" as const,
+      storage_path: index === 3 ? clip.storage_path : undefined,
+    }));
+
+    const merged = mergeSceneClipsForConcurrentGeneration(current, staleWorker);
+
+    assert.equal(merged.filter((clip) => clip.status === "COMPLETED").length, 4);
+    assert.deepEqual(merged.map((clip) => clip.public_url), current.map((clip) => clip.public_url));
+    assert.equal(merged[0]?.asset_name, "Nombre actualizado");
+  });
+
+  it("prefers provider progress from the newest generation revision", () => {
+    const merged = mergeSceneClipsForConcurrentGeneration(
+      [{
+        generation_revision: 2,
+        id: "scene-1",
+        job_id: "job-new",
+        order: 1,
+        script_text: "Guion vigente",
+        status: "WAITING_PROVIDER",
+      }],
+      [{
+        generation_revision: 1,
+        id: "scene-1",
+        job_id: "job-old",
+        order: 1,
+        public_url: "https://cdn.example.com/old.mp4",
+        script_text: "Guion anterior",
+        status: "COMPLETED",
+        storage_path: "production-assets/old.mp4",
+      }],
+    );
+
+    assert.equal(merged[0]?.generation_revision, 2);
+    assert.equal(merged[0]?.job_id, "job-new");
+    assert.equal(merged[0]?.status, "WAITING_PROVIDER");
+    assert.equal(merged[0]?.public_url, undefined);
+  });
+
+  it("recovers the newest usable historical job without retrying a credit failure", () => {
+    const common = {
+      artifact_id: "artifact-1",
+      material_component_id: "component-1",
+      organization_id: "organization-1",
+    };
+    const selected = selectRecoverableHistoricalSceneJobs([
+      {
+        ...common,
+        id: "job-credit-failure",
+        input_snapshot: { clip_id: "scene-1" },
+        provider_job_id: null,
+        status: PRODUCTION_JOB_STATUSES.FAILED,
+      },
+      {
+        ...common,
+        id: "job-scene-1-completed",
+        input_snapshot: { clip_id: "scene-1" },
+        provider_job_id: "heygen-video-1",
+        status: PRODUCTION_JOB_STATUSES.SUCCEEDED,
+      },
+      {
+        ...common,
+        id: "job-scene-2-current",
+        input_snapshot: { clip_id: "scene-2" },
+        provider_job_id: "heygen-video-2-current",
+        status: PRODUCTION_JOB_STATUSES.WAITING_PROVIDER,
+      },
+      {
+        ...common,
+        id: "job-scene-2-old",
+        input_snapshot: { clip_id: "scene-2" },
+        provider_job_id: "heygen-video-2-old",
+        status: PRODUCTION_JOB_STATUSES.SUCCEEDED,
+      },
+    ]);
+
+    assert.equal(selected.get("scene-1")?.id, "job-scene-1-completed");
+    assert.equal(selected.get("scene-2")?.id, "job-scene-2-current");
+    assert.equal(selected.size, 2);
+  });
+
   it("builds a talking-head script from video script sections", () => {
     const script = buildHeygenScriptFromComponent({
       componentContent: {
@@ -126,6 +252,7 @@ describe("HeyGen scene clip builder", () => {
 
     assert.equal(merged.status, "STALE");
     assert.equal(merged.voice_status, "STALE");
+    assert.equal(merged.generation_revision, 1);
   });
 
   it("uses the separated voice URL as the timing source for every avatar clip", () => {
