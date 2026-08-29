@@ -41,8 +41,10 @@ const SOFLIA_APPEARANCE_TOKENS: Record<CourseDeckAppearance, Omit<CourseDeckThem
  * preserving the template's brand accents. This prevents arbitrary template
  * prompts from producing unreadable light/dark combinations.
  */
-export function resolveCourseDeckTheme(deck: CourseDeckSpec): CourseDeckTheme {
-  const appearance = deck.appearance || "light";
+export function resolveCourseDeckThemeForAppearance(
+  deck: CourseDeckSpec,
+  appearance: CourseDeckAppearance,
+): CourseDeckTheme {
   const structuralTokens = SOFLIA_APPEARANCE_TOKENS[appearance];
 
   return {
@@ -52,4 +54,8 @@ export function resolveCourseDeckTheme(deck: CourseDeckSpec): CourseDeckTheme {
       ? "#00D4B3"
       : deck.designSystem.accent2 || "#138A87",
   };
+}
+
+export function resolveCourseDeckTheme(deck: CourseDeckSpec): CourseDeckTheme {
+  return resolveCourseDeckThemeForAppearance(deck, deck.appearance || "light");
 }

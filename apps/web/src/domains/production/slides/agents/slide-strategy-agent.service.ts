@@ -1,6 +1,7 @@
 import type { CourseSlideSpec, SlideDeckGenerateInput } from "../specs/course-deck.schema";
 import type { DeckBrief } from "./deck-brief-agent.service";
 import type { EvidencePack } from "./lesson-evidence-agent.service";
+import { buildScriptSlideSegments } from "../planning/slide-coverage-policy.service";
 
 export interface PlannedSlide {
   id: string;
@@ -28,6 +29,7 @@ interface BuildSlidePlanParams {
 }
 
 interface ScriptSectionLike {
+  duration_seconds?: number;
   best_practices?: unknown[];
   common_errors?: unknown[];
   on_screen_action?: string;
@@ -56,6 +58,14 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function compactText(value: unknown): string {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+}
+
+function visualBeatCount(section: ScriptSectionLike) {
+  const visibleLines = (typeof section.on_screen_text === "string" ? section.on_screen_text : "")
+    .split(/\n|\u2022|- /)
+    .map((line) => line.trim())
+    .filter(Boolean).length;
+  return Math.min(Math.max(visibleLines + Number(Boolean(compactText(section.success_criteria))), 1), 3);
 }
 
 function includesAny(value: string, patterns: string[]) {
@@ -286,13 +296,23 @@ function planScriptSlides(
       sourceRefs: ["component.content.script", ...evidenceRefsForSlide(evidence)],
       type: "cover",
     },
-    ...sections.slice(0, 8).map((section, index): PlannedSlide => ({
-      id: `script-section-${section.section_number || index + 1}`,
-      order: index + 2,
-      purpose: "Convertir una seccion del guion en apoyo visual breve.",
-      sourceRefs: ["component.content.script", ...evidenceRefsForSlide(evidence)],
-      type: planTypeFromScriptSection(section, index, evidence),
-    })),
+    ...buildScriptSlideSegments(sections.map((section) => ({
+      visibleBeatCount: visualBeatCount(section),
+    }))).map((segment, index): PlannedSlide => {
+      const section = sections[segment.sectionIndex]!;
+      const sectionNumber = section.section_number || segment.sectionIndex + 1;
+      return {
+        id: segment.part === 1
+          ? `script-section-${sectionNumber}`
+          : `script-section-${sectionNumber}-part-${segment.part}`,
+        order: index + 2,
+        purpose: segment.totalParts === 1
+          ? "Convertir una seccion del guion en apoyo visual breve."
+          : "Convertir un tramo narrativo en apoyo visual breve y secuencial.",
+        sourceRefs: ["component.content.script", ...evidenceRefsForSlide(evidence)],
+        type: planTypeFromScriptSection(section, segment.part - 1, evidence),
+      };
+    }),
   ];
 }
 

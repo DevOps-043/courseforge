@@ -1,4 +1,5 @@
 import type { CourseDeckSpec, SlideDeckGenerateInput } from "../specs/course-deck.schema";
+import { targetSlideCountForScript } from "../planning/slide-coverage-policy.service";
 
 export type DeckBriefSourceMode = "custom_request" | "script" | "storyboard" | "fallback";
 
@@ -44,6 +45,15 @@ function countStoryboardItems(content: Record<string, unknown>) {
   return Array.isArray(content.storyboard) ? content.storyboard.length : 0;
 }
 
+function visibleBeatCount(section: Record<string, unknown>) {
+  const visibleLines = (typeof section.on_screen_text === "string" ? section.on_screen_text : "")
+    .split(/\n|\u2022|- /)
+    .map((line) => line.trim())
+    .filter(Boolean).length;
+  const hasSuccessCriterion = Boolean(compactText(section.success_criteria));
+  return Math.min(Math.max(visibleLines + Number(hasSuccessCriterion), 1), 3);
+}
+
 function totalScriptDurationSeconds(content: Record<string, unknown>) {
   const script = asRecord(content.script);
   const sections = Array.isArray(script.sections) ? script.sections : [];
@@ -74,20 +84,15 @@ function resolveSourceMode(params: {
 
 function resolveTargetSlideCount(params: {
   customSlideCount: number;
-  scriptSectionCount: number;
+  scriptVisualBeats: Array<{ visibleBeatCount: number }>;
   sourceMode: DeckBriefSourceMode;
   storyboardItemCount: number;
-  totalDurationSeconds: number;
 }) {
   if (params.sourceMode === "custom_request") {
     return Math.min(params.customSlideCount, 24);
   }
   if (params.sourceMode === "script") {
-    // The cover is included; visual support changes roughly every 30 seconds.
-    const durationTarget = params.totalDurationSeconds > 0
-      ? Math.ceil(params.totalDurationSeconds / 30) + 1
-      : 0;
-    return Math.min(Math.max(params.scriptSectionCount + 1, durationTarget), 24);
+    return targetSlideCountForScript(params.scriptVisualBeats);
   }
   if (params.sourceMode === "storyboard") {
     return Math.min(params.storyboardItemCount + 1, 11);
@@ -99,6 +104,9 @@ export function buildDeckBrief(params: BuildDeckBriefParams): DeckBrief {
   const content = asRecord(params.component.content);
   const script = asRecord(content.script);
   const scriptSectionCount = countScriptSections(content);
+  const scriptVisualBeats = Array.isArray(script.sections)
+    ? script.sections.map((section) => ({ visibleBeatCount: visibleBeatCount(asRecord(section)) }))
+    : [];
   const storyboardItemCount = countStoryboardItems(content);
   const totalDurationSeconds = totalScriptDurationSeconds(content);
   const customSlideCount = params.input.customSlides?.length || 0;
@@ -120,10 +128,9 @@ export function buildDeckBrief(params: BuildDeckBriefParams): DeckBrief {
     totalDurationSeconds,
     targetSlideCount: resolveTargetSlideCount({
       customSlideCount,
-      scriptSectionCount,
+      scriptVisualBeats,
       sourceMode,
       storyboardItemCount,
-      totalDurationSeconds,
     }),
     template: params.input.template,
     title: params.input.metadata?.title ||

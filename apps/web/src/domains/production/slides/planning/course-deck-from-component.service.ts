@@ -29,6 +29,7 @@ import {
   sourceLinesForSlide,
   type SlideSourcePack,
 } from "../content/slide-source-pack.service";
+import { buildScriptSlideSegments } from "./slide-coverage-policy.service";
 
 interface BuildCourseDeckSpecParams {
   artifactId: string;
@@ -107,6 +108,20 @@ function limitItems(items: string[], maxItems = 4) {
     .map((item) => limitText(item, 240))
     .filter(Boolean)
     .slice(0, maxItems);
+}
+
+function visualBeatLines(section: ScriptSectionLike) {
+  const explicitLines = typeof section.on_screen_text === "string"
+    ? section.on_screen_text.split(/\n|\u2022|- /).map((line) => line.trim()).filter(Boolean)
+    : [];
+  const primaryLines = explicitLines.length > 0
+    ? explicitLines
+    : buildVisibleLinesFromScriptSection(section);
+  const successCriterion = compactEducationalText(section.success_criteria);
+  return Array.from(new Set([
+    ...primaryLines,
+    ...(successCriterion ? [successCriterion] : []),
+  ])).slice(0, 3);
 }
 
 function titleFromContent(content: Record<string, unknown>, fallback: string) {
@@ -367,18 +382,27 @@ function buildSlidesFromScript(
     return [];
   }
 
-  const contentSlides = sections.slice(0, 8).map((section, index): CourseSlideSpec => {
+  const sectionBeatLines = sections.map(visualBeatLines);
+  const contentSlides = buildScriptSlideSegments(sectionBeatLines.map((lines) => ({
+    visibleBeatCount: lines.length,
+  }))).map((segment, index): CourseSlideSpec => {
+    const section = sections[segment.sectionIndex]!;
     const narration = compactText(section.narration_text);
-    const id = `script-section-${section.section_number || index + 1}`;
+    const sectionNumber = section.section_number || segment.sectionIndex + 1;
+    const id = segment.part === 1
+      ? `script-section-${sectionNumber}`
+      : `script-section-${sectionNumber}-part-${segment.part}`;
     const plannedSlide = plannedSlideById(slidePlan, id);
-    const baseVisibleLines = buildVisibleLinesFromScriptSection(section);
+    const baseVisibleLines = sectionBeatLines[segment.sectionIndex] || [];
     const resolvedSlideType = plannedSlide?.type || (index === 0 ? "concept" : "worked_example");
     const sourceVisibleLines = sourceLinesForSlide(sourcePack, index, {
       slideType: resolvedSlideType,
     });
     const visibleLines = sourceVisibleLines.length > 0
       ? sourceVisibleLines
-      : baseVisibleLines;
+      : segment.part === 1
+        ? baseVisibleLines
+        : [baseVisibleLines[segment.part - 1] || baseVisibleLines[0] || "Idea clave de la leccion"];
     const sourceRefs = sourceRefsForSlide(slidePlan, id, ["component.content.script"]);
     const copy = buildVisibleSlideCopy({
       fallbackBody: "Contenido pendiente de sintetizar desde fuentes aprobadas.",

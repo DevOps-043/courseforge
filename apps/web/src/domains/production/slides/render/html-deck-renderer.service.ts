@@ -1,7 +1,7 @@
 import { renderCourseChartSvg } from "../charts/svg-chart-renderer.service";
 import { repairCommonUtf8Mojibake } from "../../text/mojibake.service";
 import type { CourseDeckSpec, CourseSlideSpec } from "../specs/course-deck.schema";
-import { resolveCourseDeckTheme } from "./course-deck-theme.service";
+import { resolveCourseDeckThemeForAppearance } from "./course-deck-theme.service";
 
 function escapeHtml(value: string) {
   return repairCommonUtf8Mojibake(value)
@@ -259,7 +259,8 @@ function renderSlide(slide: CourseSlideSpec, deck: CourseDeckSpec, isActive: boo
 }
 
 function renderCss(deck: CourseDeckSpec) {
-  const theme = resolveCourseDeckTheme(deck);
+  const lightTheme = resolveCourseDeckThemeForAppearance(deck, "light");
+  const darkTheme = resolveCourseDeckThemeForAppearance(deck, "dark");
   const selectedFont = deck.designSystem.font;
   const customFontStack = selectedFont
     ? `'${selectedFont.family.replace(/'/g, "\\'")}', Arial, Helvetica, sans-serif`
@@ -272,10 +273,8 @@ function renderCss(deck: CourseDeckSpec) {
   const bodyFont = customFontStack || (deck.designSystem.fontPairing === "technical_mono"
     ? "'SFMono-Regular', Consolas, 'Liberation Mono', monospace"
     : "Arial, Helvetica, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
-  return `:root {
-  --font-display: ${displayFont};
-  --font-ui: ${bodyFont};
-  color-scheme: ${deck.appearance};
+  const renderAppearanceVariables = (appearance: "light" | "dark", theme: typeof lightTheme) => `:root[data-appearance="${appearance}"] {
+  color-scheme: ${appearance};
   --bg: ${theme.background};
   --bg-positive: ${theme.backgroundPositive};
   --shell: ${theme.surface};
@@ -287,12 +286,20 @@ function renderCss(deck: CourseDeckSpec) {
   --accent-accessible: ${theme.accent2};
   --muted: ${theme.muted};
   --grid-line: rgba(var(--chrome-rgb), 0.10);
+}`;
+
+  return `/* soflia-appearance-variables:v1 */
+:root {
+  --font-display: ${displayFont};
+  --font-ui: ${bodyFont};
   --type-display-hero: 126px;
   --type-display-large: 86px;
   --type-lead: 30px;
   --type-body: 24px;
   --type-label: 14px;
 }
+${renderAppearanceVariables("light", lightTheme)}
+${renderAppearanceVariables("dark", darkTheme)}
 * { box-sizing: border-box; }
 html, body {
   margin: 0;

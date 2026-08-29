@@ -328,12 +328,14 @@ export async function completeBrollPromptProductionJob(
 export async function failProductionJob(params: {
   error: unknown;
   jobId: string;
+  outputSnapshot?: Record<string, unknown>;
   supabase: SupabaseClient;
 }) {
   const { error: updateError } = await params.supabase
     .from("production_jobs")
     .update({
       failed_at: new Date().toISOString(),
+      ...(params.outputSnapshot ? { output_snapshot: params.outputSnapshot } : {}),
       provider_error: normalizeError(params.error),
       status: PRODUCTION_JOB_STATUSES.FAILED,
       updated_at: new Date().toISOString(),

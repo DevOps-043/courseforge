@@ -41,6 +41,19 @@ describe("SofLIA - Engine slide deck generation", () => {
     assert.match(html, /--accent: #2d7d6e/i);
   });
 
+  it("embeds both approved appearance palettes so a deck can switch without regeneration", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-dual-appearance",
+      component: { content: {}, id: "component-dual-appearance", type: "VIDEO_THEORETICAL" },
+      input: { locale: "es", template: "course-module" },
+    });
+    const html = renderCourseDeckHtml(deck);
+
+    assert.match(html, /soflia-appearance-variables:v1/);
+    assert.match(html, /:root\[data-appearance="light"\][\s\S]*--bg: #F3F7F8/);
+    assert.match(html, /:root\[data-appearance="dark"\][\s\S]*--bg: #0F1419/);
+  });
+
   it("keeps generated visual support copy within the compact reading budget", () => {
     const deck = buildCourseDeckSpecFromComponent({
       artifactId: "artifact-1",
@@ -143,7 +156,7 @@ describe("SofLIA - Engine slide deck generation", () => {
     assert.equal(deck.sourceSnapshot.source, "component_content");
   });
 
-  it("expands a long narrated lesson with distinct source-backed slides", () => {
+  it("uses up to three explicit visual beats per script section", () => {
     const sourceInsights = Array.from({ length: 8 }, (_, index) => ({
       bodyItems: [`Evidencia concreta ${index + 1} para aplicar la leccion.`],
       sourceRef: `source-${index + 1}`,
@@ -171,7 +184,35 @@ describe("SofLIA - Engine slide deck generation", () => {
     const report = validateCourseDeckQuality({ deckSpec: deck, html: renderCourseDeckHtml(deck) });
 
     assert.equal(deck.slides.length, 9);
-    assert.equal(deck.slides.filter((slide) => slide.id.startsWith("evidence-")).length, 4);
+    assert.equal(deck.slides.filter((slide) => slide.id.includes("-part-")).length, 4);
+    assert.equal(deck.slides.every((slide) => slide.validationHints.sourceRefs.length > 0), true);
+    assert.equal(report.findings.some((finding) => finding.code === "insufficient_slide_coverage"), false);
+  });
+
+  it("does not turn long avatar narration into additional visible slides", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-long-script",
+      component: {
+        content: {
+          script: {
+            sections: Array.from({ length: 7 }, (_, index) => ({
+              duration_seconds: index === 0 ? 96 : 94,
+              narration_text: `Paso ${index + 1}. Explicamos una decision concreta, su motivo y la comprobacion que confirma el resultado esperado.`,
+              on_screen_text: `Paso ${index + 1}\nAccion y comprobacion`,
+              section_number: index + 1,
+            })),
+          },
+        },
+        id: "component-long-script",
+        sourcePack: { insights: [], items: [], sourceRefs: [] },
+        type: "VIDEO_GUIDE",
+      },
+      input: { locale: "es", template: "course-module" },
+    });
+    const report = validateCourseDeckQuality({ deckSpec: deck, html: renderCourseDeckHtml(deck) });
+
+    assert.equal(deck.slides.length, 15);
+    assert.equal(Math.max(...deck.slides.map((slide) => slide.validationHints.targetSlideCount || 0)), 15);
     assert.equal(report.findings.some((finding) => finding.code === "insufficient_slide_coverage"), false);
   });
 
@@ -793,10 +834,10 @@ describe("SofLIA - Engine slide deck generation", () => {
     assert.equal(result.qaReport.status, "PASS");
     assert.equal(result.deckSpec.designSystem.brandLabel, "SofLIA - Engine");
     assert.equal(result.stages[1]?.output.hasSourceRefs, false);
-    assert.equal(result.stages[2]?.output.plannedSlideCount, 3);
+    assert.equal(result.stages[2]?.output.plannedSlideCount, 5);
     assert.equal(result.stages[2]?.output.modelName, "gpt-4o");
     assert.equal(result.stages[2]?.output.modelSettingType, "SLIDES_STRATEGY_AGENT");
-    assert.equal(result.stages[3]?.output.assignmentCount, 3);
+    assert.equal(result.stages[3]?.output.assignmentCount, 5);
     assert.equal(result.deckSpec.slides[0]?.renderHints?.layout, "center");
   });
 

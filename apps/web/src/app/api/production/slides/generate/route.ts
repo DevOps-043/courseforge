@@ -344,13 +344,22 @@ export async function POST(request: Request) {
         fallbackError: "No se pudo iniciar el worker de slides.",
         localHandlerLoader: async () => ({
           handler: async () => {
-            const result = await runSlideDeckGeneration({
-              authorizedComponent,
-              createdBy: authenticatedUser.userId,
-              jobId: queuedJob.id,
-              payload: parsed.data,
-            });
-            return { statusCode: result.status, body: await result.text() };
+            try {
+              const result = await runSlideDeckGeneration({
+                authorizedComponent,
+                createdBy: authenticatedUser.userId,
+                jobId: queuedJob.id,
+                payload: parsed.data,
+              });
+              return { statusCode: result.status, body: await result.text() };
+            } catch (error) {
+              await failProductionJob({
+                error,
+                jobId: queuedJob.id,
+                supabase: authorizedComponent.admin,
+              });
+              throw error;
+            }
           },
         }),
       },
@@ -452,6 +461,7 @@ export async function runSlideDeckGeneration(params: {
         jobType: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
         provider: PRODUCTION_PROVIDERS.SOFLIA_ENGINE_SLIDES,
       });
+  let failedQaReport: ReturnType<typeof validateCourseDeckQuality> | null = null;
 
   if (
     !forceRegenerate &&
@@ -578,6 +588,18 @@ export async function runSlideDeckGeneration(params: {
           ...generatedDeckSpec,
           appearance: input.appearance,
         });
+    const structuralHtml = renderCourseDeckHtml(deckSpecWithTemplate);
+    failedQaReport = validateCourseDeckQuality({
+      deckSpec: deckSpecWithTemplate,
+      html: structuralHtml,
+    });
+    if (failedQaReport.status === "FAIL") {
+      const failingCodes = failedQaReport.findings
+        .filter((finding) => finding.severity === "error")
+        .map((finding) => finding.code)
+        .join(", ");
+      throw new Error(`Deck SofLIA - Engine no paso QA estructural: ${failingCodes}`);
+    }
     const plannedDeckSpec = planDeckVisualAssets({
       deckSpec: deckSpecWithTemplate,
       forceRegenerate: forceRegenerate && !appearanceOnly,
@@ -801,6 +823,11 @@ export async function runSlideDeckGeneration(params: {
     await failProductionJob({
       error,
       jobId: job.id,
+      outputSnapshot: failedQaReport ? {
+        qa_report: failedQaReport,
+        qa_status: failedQaReport.status,
+        slide_count: failedQaReport.summary.slideCount,
+      } : undefined,
       supabase: authorizedComponent.admin,
     });
     console.error("[production/slides/generate] Unexpected error:", error);

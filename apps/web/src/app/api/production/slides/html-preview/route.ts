@@ -50,7 +50,7 @@ export async function GET(request: Request) {
   const html = await data.text();
   return new Response(html, {
     headers: {
-      "Cache-Control": "private, max-age=60",
+      "Cache-Control": "private, no-store",
       "Content-Security-Policy": [
         "default-src 'self' data: blob:",
         "img-src * data: blob:",

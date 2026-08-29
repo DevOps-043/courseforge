@@ -276,7 +276,7 @@ function buildHtmlPreviewHref(slides: SlidesAsset | null) {
     return slides?.html_public_url;
   }
 
-  return `/api/production/slides/html-preview?path=${encodeURIComponent(slides.html_content_path)}`;
+  return `/api/production/slides/html-preview?path=${encodeURIComponent(slides.html_content_path)}&appearance=${slides.appearance || "light"}`;
 }
 
 // ---------------------------------------------------------
@@ -654,6 +654,7 @@ interface SofliaHtmlSlidesSectionProps {
   slides: SlidesAsset | null;
   isGeneratingSofliaSlides: boolean;
   generationStatus?: string | null;
+  generationError?: string | null;
   isUploading: boolean;
   isPreparingAnimatedDeck: boolean;
   isLoadingSlideTemplates?: boolean;
@@ -687,6 +688,7 @@ export function SofliaHtmlSlidesSection({
   slides,
   isGeneratingSofliaSlides,
   generationStatus,
+  generationError,
   isUploading,
   isPreparingAnimatedDeck,
   isLoadingSlideTemplates = false,
@@ -785,6 +787,11 @@ export function SofliaHtmlSlidesSection({
           {isGeneratingSofliaSlides && generationStatus && (
             <span className="flex items-center gap-1 text-[10px] font-semibold text-blue-700 dark:text-blue-300">
               <Loader2 size={10} className="animate-spin" /> {generationStatus === "RUNNING" ? "Generando contenido y visuales" : "En cola de generación"}
+            </span>
+          )}
+          {generationError && (
+            <span role="alert" className="max-w-full text-[10px] font-semibold text-red-700 dark:text-red-300">
+              Generación fallida: {generationError}
             </span>
           )}
         </div>

@@ -317,6 +317,7 @@ export function useProductionAssetState({
   const [isExportingOpenDesign, setIsExportingOpenDesign] = useState(false);
   const [isGeneratingSofliaSlides, setIsGeneratingSofliaSlides] = useState(false);
   const [sofliaSlidesGenerationStatus, setSofliaSlidesGenerationStatus] = useState<string | null>(null);
+  const [sofliaSlidesGenerationError, setSofliaSlidesGenerationError] = useState<string | null>(null);
   const [isPreparingAnimatedDeck, setIsPreparingAnimatedDeck] = useState(false);
 
   // HeyGen generation states
@@ -689,25 +690,34 @@ export function useProductionAssetState({
     appearance: "light" | "dark" = slidesAsset?.appearance || "light",
     appearanceOnly = false,
   ) => {
+    let didFail = false;
     setIsGeneratingSofliaSlides(true);
     setSofliaSlidesGenerationStatus("QUEUED");
+    setSofliaSlidesGenerationError(null);
     try {
-      const regenerationRequestId = crypto.randomUUID();
-      const response = await fetch("/api/production/slides/generate", {
-        method: "POST",
+      const response = await fetch(
+        appearanceOnly
+          ? "/api/production/slides/appearance"
+          : "/api/production/slides/generate",
+        {
+        method: appearanceOnly ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          appearance,
-          appearanceOnly,
           componentId: component.id,
-          forceRegenerate: true,
-          locale: "es",
-          metadata: {
-            brandLabel: "SofLIA - Engine",
-          },
-          regenerationRequestId,
-          ...(slideTemplateRunId ? { slideTemplateRunId } : {}),
-          template: "course-module",
+          ...(appearanceOnly
+            ? { appearance }
+            : {
+                appearance,
+                appearanceOnly: false,
+                forceRegenerate: true,
+                locale: "es",
+                metadata: {
+                  brandLabel: "SofLIA - Engine",
+                },
+                regenerationRequestId: crypto.randomUUID(),
+                ...(slideTemplateRunId ? { slideTemplateRunId } : {}),
+                template: "course-module",
+              }),
         }),
       });
 
@@ -725,22 +735,7 @@ export function useProductionAssetState({
         data = { success: true, assets: completed.assets };
       }
 
-      let generatedSlides = data.assets?.slides as SlidesAsset | undefined;
-      if (appearanceOnly && generatedSlides?.html_content_path) {
-        const prepareResponse = await fetch("/api/production/slides/animated-deck/prepare", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            componentId: component.id,
-            htmlContentPath: generatedSlides.html_content_path,
-          }),
-        });
-        const preparedData = await readApiResponse(prepareResponse);
-        if (!prepareResponse.ok || !preparedData.success || !preparedData.assets?.slides?.animated_deck) {
-          throw new Error(preparedData.error || "La apariencia cambió, pero no se pudo actualizar su vista previa.");
-        }
-        generatedSlides = preparedData.assets.slides as SlidesAsset;
-      }
+      const generatedSlides = data.assets?.slides as SlidesAsset | undefined;
       const generatedSlidesUrl =
         data.assets?.slides_url || generatedSlides?.html_public_url || slidesUrl;
 
@@ -766,10 +761,14 @@ export function useProductionAssetState({
           : "Deck SofLIA - Engine regenerado",
       );
     } catch (err: any) {
-      toast.error(`Error al generar deck SofLIA - Engine: ${err.message}`);
+      didFail = true;
+      const message = err instanceof Error ? err.message : "No se pudo generar el deck SofLIA - Engine.";
+      setSofliaSlidesGenerationStatus("FAILED");
+      setSofliaSlidesGenerationError(message);
+      toast.error(`Error al generar deck SofLIA - Engine: ${message}`);
     } finally {
       setIsGeneratingSofliaSlides(false);
-      setSofliaSlidesGenerationStatus(null);
+      if (!didFail) setSofliaSlidesGenerationStatus(null);
     }
   };
 
@@ -1589,6 +1588,7 @@ export function useProductionAssetState({
     isExportingOpenDesign,
     isGeneratingSofliaSlides,
     sofliaSlidesGenerationStatus,
+    sofliaSlidesGenerationError,
     isPreparingAnimatedDeck,
 
     // Refs
