@@ -86,8 +86,8 @@ export async function fetchMaterialsSnapshot(
     .from("material_lessons")
     .select(MATERIAL_LESSONS_SNAPSHOT_SELECT)
     .eq("materials_id", materials.id)
-    .order("module_id", { ascending: true })
-    .order("lesson_id", { ascending: true });
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 
   return {
     materials,
@@ -104,6 +104,24 @@ export async function fetchLessonComponentsSnapshot(
     .from("material_components")
     .select(MATERIAL_COMPONENTS_SNAPSHOT_SELECT)
     .eq("material_lesson_id", lessonId)
+    .order("iteration_number", { ascending: false });
+}
+
+export async function fetchArtifactComponentsSnapshot(
+  admin: SupabaseClient,
+  artifactId: string,
+) {
+  return admin
+    .from("material_components")
+    .select(`
+      ${MATERIAL_COMPONENTS_SNAPSHOT_SELECT},
+      material_lessons!inner (
+        materials!inner (
+          artifact_id
+        )
+      )
+    `)
+    .eq("material_lessons.materials.artifact_id", artifactId)
     .order("iteration_number", { ascending: false });
 }
 

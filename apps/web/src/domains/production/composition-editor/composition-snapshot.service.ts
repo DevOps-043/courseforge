@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import JSZip from "jszip";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getCurrentCompositionDocument } from "./composition-document.service";
+import { getCurrentCompositionDocument, hashCompositionDocument } from "./composition-document.service";
+import { compositionEditorDocumentSchema } from "./composition-document.types";
 import {
   COMPOSITION_COMPILATION_TARGETS,
   compileCompositionPreview,
@@ -46,6 +47,7 @@ export type CompositionSnapshotSummary = {
   documentVersion: number;
   id: string;
   isActive: boolean;
+  isCurrentDocument: boolean;
   projectArchiveSizeBytes: number;
   renderProfile: HyperframesRenderSettings | null;
   renderProfileId: string | null;
@@ -293,6 +295,21 @@ export async function listCompositionSnapshots(params: {
   if (compositionError) throw compositionError;
   if (!composition) throw new CompositionSnapshotError("La composición no existe.", 404);
 
+  const { data: draft, error: draftError } = await params.supabase
+    .from("video_composition_drafts")
+    .select("id")
+    .eq("composition_id", params.compositionId)
+    .eq("organization_id", params.organizationId)
+    .maybeSingle();
+  if (draftError) throw draftError;
+  const currentDocumentHash = draft
+    ? (await getCurrentCompositionDocument({
+      draftId: String(draft.id),
+      organizationId: params.organizationId,
+      supabase: params.supabase,
+    })).documentHash
+    : null;
+
   const { data, error } = await params.supabase
     .from("video_composition_revisions")
     .select("id, revision_number, project_archive_size_bytes, manifest, created_at")
@@ -308,12 +325,14 @@ export async function listCompositionSnapshots(params: {
     snapshots: (data || []).map((row) => {
       const manifest = asRecord(row.manifest);
       const persistedRenderProfile = readPersistedRenderProfile(manifest);
+      const documentHash = typeof manifest.draft_document_hash === "string" ? manifest.draft_document_hash : "";
       return {
         createdAt: String(row.created_at),
-        documentHash: typeof manifest.draft_document_hash === "string" ? manifest.draft_document_hash : "",
+        documentHash,
         documentVersion: typeof manifest.draft_document_version === "number" ? manifest.draft_document_version : 0,
         id: String(row.id),
         isActive: row.id === composition.active_revision_id,
+        isCurrentDocument: documentHash.length > 0 && documentHash === currentDocumentHash,
         projectArchiveSizeBytes: Number(row.project_archive_size_bytes),
         renderProfile: persistedRenderProfile.settings,
         renderProfileId: persistedRenderProfile.id,
@@ -324,12 +343,16 @@ export async function listCompositionSnapshots(params: {
   };
 }
 
-/** Reactivates a prior immutable snapshot; approval is intentionally revoked. */
+/** Restores the immutable snapshot and its source document into the editable timeline. */
 export async function activateCompositionSnapshot(params: {
   compositionId: string;
+  draftId: string;
+  expectedDocumentHash: string;
   organizationId: string;
   revisionId: string;
+  signal?: AbortSignal;
   supabase: SupabaseClient<any, "public", any>;
+  userId: string;
 }) {
   const { data: revision, error } = await params.supabase
     .from("video_composition_revisions")
@@ -341,21 +364,78 @@ export async function activateCompositionSnapshot(params: {
     .maybeSingle();
   if (error) throw error;
   if (!revision) throw new CompositionSnapshotError("El snapshot no existe o no pertenece a esta composición.", 404);
-  await setActiveCompositionSnapshot(params);
   const manifest = asRecord(revision.manifest);
+  const targetDocumentHash = typeof manifest.draft_document_hash === "string" ? manifest.draft_document_hash : "";
+  const targetDocumentVersion = typeof manifest.draft_document_version === "number" ? manifest.draft_document_version : 0;
+  if (!/^[a-f0-9]{64}$/.test(targetDocumentHash) || !Number.isInteger(targetDocumentVersion) || targetDocumentVersion < 1) {
+    throw new CompositionSnapshotError("Este snapshot no contiene una versión editable del timeline.", 409);
+  }
+  let restoreRequest = params.supabase.rpc("restore_video_composition_snapshot_to_editor", {
+    p_actor_id: params.userId,
+    p_composition_id: params.compositionId,
+    p_draft_id: params.draftId,
+    p_expected_document_hash: params.expectedDocumentHash,
+    p_organization_id: params.organizationId,
+    p_revision_id: params.revisionId,
+  }).retry(false);
+  if (params.signal) restoreRequest = restoreRequest.abortSignal(params.signal);
+  const { data: restoreData, error: restoreError } = await restoreRequest;
+  if (restoreError) {
+    const candidate = restoreError as { code?: unknown; message?: unknown };
+    if (candidate.code === "PGRST202" || /Could not find the function/i.test(String(candidate.message || ""))) {
+      throw new CompositionSnapshotError("La restauración del timeline requiere aplicar la migración más reciente.", 503);
+    }
+    throw restoreError;
+  }
+  const restoreResult = Array.isArray(restoreData) ? restoreData[0] : restoreData;
+  if (!restoreResult || typeof restoreResult.outcome !== "string") {
+    throw new CompositionSnapshotError("El almacenamiento devolvió un resultado de restauración inválido.", 500);
+  }
+  assertSnapshotRestoreOutcome(restoreResult.outcome);
+  const document = compositionEditorDocumentSchema.parse(restoreResult.document);
+  const restoredDocumentHash = String(restoreResult.document_hash || "");
+  if (restoredDocumentHash !== targetDocumentHash || hashCompositionDocument(document) !== restoredDocumentHash) {
+    throw new CompositionSnapshotError("El documento histórico del snapshot no superó la verificación de integridad.", 500);
+  }
   const persistedRenderProfile = readPersistedRenderProfile(manifest);
   return {
     createdAt: String(revision.created_at),
-    documentHash: typeof manifest.draft_document_hash === "string" ? manifest.draft_document_hash : "",
-    documentVersion: typeof manifest.draft_document_version === "number" ? manifest.draft_document_version : 0,
+    document,
+    documentHash: restoredDocumentHash,
+    documentVersion: targetDocumentVersion,
     id: String(revision.id),
     isActive: true,
+    isCurrentDocument: true,
     projectArchiveSizeBytes: Number(revision.project_archive_size_bytes),
     renderProfile: persistedRenderProfile.settings,
     renderProfileId: persistedRenderProfile.id,
     revisionNumber: Number(revision.revision_number),
+    restoredVersion: Number(restoreResult.version),
     status: "READY_FOR_PREVIEW" as const,
   };
+}
+
+function assertSnapshotRestoreOutcome(outcome: string) {
+  if (outcome === "RESTORED" || outcome === "ACTIVATED" || outcome === "ALREADY_RESTORED") return;
+  if (outcome === "CONFLICT") {
+    throw new CompositionSnapshotError("La composición cambió en otra sesión. Recarga el timeline antes de restaurar.", 409);
+  }
+  if (outcome === "BUSY") {
+    throw new CompositionSnapshotError("Ya hay otro cambio guardándose. Espera un momento y vuelve a intentar.", 409);
+  }
+  if (outcome === "NOT_EDITABLE") {
+    throw new CompositionSnapshotError("El borrador ya no está disponible para edición.", 409);
+  }
+  if (outcome === "INVALID_SNAPSHOT") {
+    throw new CompositionSnapshotError("Este snapshot no contiene una versión editable válida.", 409);
+  }
+  if (outcome === "SOURCE_NOT_FOUND") {
+    throw new CompositionSnapshotError("No se encontró el documento histórico asociado al snapshot.", 409);
+  }
+  if (outcome === "SOURCE_ASSET_UNAVAILABLE") {
+    throw new CompositionSnapshotError("Un intro u outro histórico ya no está disponible para restaurar el timeline.", 409);
+  }
+  throw new CompositionSnapshotError("El snapshot no existe o ya no puede restaurarse.", 404);
 }
 
 async function setActiveCompositionSnapshot(params: {
@@ -405,7 +485,7 @@ async function readSnapshotBrandingAssets(params: { draftId: string; organizatio
     .from("organization_assembly_assets")
     .select("id, checksum, file_size_bytes, metadata, mime_type, storage_bucket, storage_path")
     .eq("organization_id", params.organizationId)
-    .eq("status", "APPROVED")
+    .in("status", ["APPROVED", "ARCHIVED"])
     .in("id", ids);
   if (error) throw error;
   if ((data || []).length !== ids.length) throw new CompositionSnapshotError("No se pudo resolver intro u outro para el snapshot.", 409);

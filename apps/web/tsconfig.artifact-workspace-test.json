@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "baseUrl": ".",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "outDir": ".tmp/artifact-workspace-tests",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": [
+    "src/lib/client/artifact-workspace-preferences.ts",
+    "src/lib/client/__tests__/artifact-workspace-preferences.test.ts"
+  ],
+  "exclude": ["node_modules"]
+}

@@ -64,7 +64,7 @@ export async function resolveCompositionPreviewAssetUrls(params: {
       ? params.supabase.from("production_assets").select("id, checksum, storage_bucket, storage_path").eq("organization_id", params.organizationId).in("id", productionAssetIds)
       : Promise.resolve({ data: [], error: null }),
     brandingAssetIds.length > 0
-      ? params.supabase.from("organization_assembly_assets").select("id, checksum, storage_bucket, storage_path").eq("organization_id", params.organizationId).eq("status", "APPROVED").in("id", brandingAssetIds)
+      ? params.supabase.from("organization_assembly_assets").select("id, checksum, storage_bucket, storage_path").eq("organization_id", params.organizationId).in("status", ["APPROVED", "ARCHIVED"]).in("id", brandingAssetIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (assetsError) throw assetsError;

@@ -14,6 +14,7 @@ import {
 } from "./materials-action-helpers";
 import {
   countNonApprovableLessons,
+  fetchArtifactComponentsSnapshot,
   fetchArtifactMaterialsRecord,
   fetchLessonComponentsSnapshot,
   fetchMaterialsSnapshot,
@@ -75,6 +76,27 @@ export async function getLessonComponentsSnapshotAction(lessonId: string) {
 
     if (error) {
       console.error("[MaterialsActions] Components snapshot error:", error);
+      return createMaterialsActionError(error.message);
+    }
+
+    return { success: true as const, components: components || [] };
+  });
+}
+
+export async function getArtifactComponentsSnapshotAction(artifactId: string) {
+  return withMaterialsActionBoundary("Unhandled artifact components snapshot error", async () => {
+    const context = await getAuthorizedArtifactMaterialsContext(artifactId);
+    if (!context.ok) {
+      return context.errorResult;
+    }
+
+    const { data: components, error } = await fetchArtifactComponentsSnapshot(
+      context.admin,
+      artifactId,
+    );
+
+    if (error) {
+      console.error("[MaterialsActions] Artifact components snapshot error:", error);
       return createMaterialsActionError(error.message);
     }
 

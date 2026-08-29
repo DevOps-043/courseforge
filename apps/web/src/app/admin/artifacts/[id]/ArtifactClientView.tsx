@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   getArtifactGenerationSnapshotAction,
   regenerateArtifactAction,
@@ -9,12 +9,13 @@ import {
 } from "@/domains/artifacts/actions/artifact.actions";
 import {
   buildWorkflowSnapshot,
-  getWorkflowStep,
   isCurationApprovedFromSnapshot,
   isInstructionalPlanApproved,
   isMaterialsApprovedFromSnapshot,
   isSyllabusApproved,
 } from "@/lib/artifact-workflow";
+import type { ArtifactWorkflowStep } from "@/lib/client/artifact-workspace-preferences";
+import { useArtifactWorkspacePreferences } from "@/hooks/useArtifactWorkspacePreferences";
 import { getArtifactDisplayState } from "../artifacts-list.utils";
 import type {
   PublicationProfile,
@@ -73,9 +74,6 @@ export default function ArtifactClientView({
   const [activeTab, setActiveTab] = useState<"content" | "validation">(
     "content",
   );
-  const [currentStep, setCurrentStep] = useState(() =>
-    getWorkflowStep(buildWorkflowSnapshot(artifact, publicationRequest)),
-  );
   const [feedback, setFeedback] = useState("");
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [reviewState, setReviewState] = useState<
@@ -99,6 +97,26 @@ export default function ArtifactClientView({
     message: string;
     type: "success" | "error" | "info";
   }>({ show: false, message: "", type: "info" });
+
+  const snapshot = buildWorkflowSnapshot(artifact, publicationRequest);
+  const syllabusApproved = isSyllabusApproved(snapshot);
+  const planApproved = isInstructionalPlanApproved(snapshot);
+  const curationApproved = isCurationApprovedFromSnapshot(snapshot);
+  const materialsApproved = isMaterialsApprovedFromSnapshot(snapshot);
+  const baseDone = reviewState === "approved" || syllabusApproved;
+
+  const canAccessStep = useCallback((step: ArtifactWorkflowStep) => {
+    if (step === 1) return true;
+    if (step === 2) return baseDone;
+    if (step === 3) return syllabusApproved;
+    if (step === 4) return planApproved;
+    if (step === 5) return curationApproved;
+    return materialsApproved;
+  }, [baseDone, curationApproved, materialsApproved, planApproved, syllabusApproved]);
+  const { currentStep, setCurrentStep } = useArtifactWorkspacePreferences({
+    artifactId: artifact.id,
+    canAccessStep,
+  });
 
   useEffect(() => {
     setArtifact(initialArtifact);
@@ -301,17 +319,11 @@ export default function ArtifactClientView({
 
   // Construir snapshot — extrae solo campos primitivos del artifact.
   // Elimina contaminación cruzada entre fases.
-  const snapshot = buildWorkflowSnapshot(artifact, publicationRequest);
   const productionComplete =
     localProductionComplete || snapshot.productionComplete;
   const assetsComplete = snapshot.assetsComplete;
-  const syllabusApproved = isSyllabusApproved(snapshot);
-  const planApproved = isInstructionalPlanApproved(snapshot);
-  const curationApproved = isCurationApprovedFromSnapshot(snapshot);
-  const materialsApproved = isMaterialsApprovedFromSnapshot(snapshot);
 
   // Cada paso se marca como "done" solo por su propia fase
-  const baseDone = reviewState === "approved" || syllabusApproved;
   const syllabusDone = syllabusApproved;
   const planDone = planApproved;
   const curationDone = curationApproved;
