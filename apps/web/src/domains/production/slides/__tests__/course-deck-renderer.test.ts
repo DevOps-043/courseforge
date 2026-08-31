@@ -99,6 +99,86 @@ describe("SofLIA - Engine slide deck generation", () => {
     assert.equal(report.findings.some((finding) => finding.code === "visible_copy_wrong_language"), true);
   });
 
+  it("fails QA when learner-facing copy exposes production metadata", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-production-copy",
+      component: { content: {}, id: "component-production-copy", type: "VIDEO_THEORETICAL" },
+      input: {
+        customSlides: [{
+          bullets: ["Usar el B-roll indicado en el storyboard para esta toma."],
+          title: "Instrucción interna",
+        }],
+        locale: "es",
+        template: "course-module",
+      },
+    });
+    const report = validateCourseDeckQuality({ deckSpec: deck, html: renderCourseDeckHtml(deck) });
+
+    assert.equal(report.status, "FAIL");
+    assert.equal(report.checks.productionMetadataLeakage, false);
+    assert.equal(report.findings.some((finding) => finding.code === "visible_production_metadata"), true);
+  });
+
+  it("alternates compatible layouts for consecutive concept slides", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-layout-diversity",
+      component: {
+        content: {
+          script: {
+            sections: Array.from({ length: 5 }, (_, index) => ({
+              on_screen_text: `Concepto ${index + 1}\nPrincipio educativo ${index + 1}`,
+              section_number: index + 1,
+            })),
+            title: "Diversidad visual",
+          },
+        },
+        id: "component-layout-diversity",
+        type: "VIDEO_THEORETICAL",
+      },
+      input: { locale: "es", template: "course-module" },
+    });
+    const layouts = deck.slides
+      .filter((slide) => slide.type === "concept")
+      .map((slide) => slide.renderHints?.layout);
+
+    assert.ok(new Set(layouts).size >= 2);
+    assert.equal(layouts.some((layout, index) => index > 0 && layout === layouts[index - 1]), false);
+    assert.equal(validateCourseDeckQuality({ deckSpec: deck, html: renderCourseDeckHtml(deck) }).checks.visualDiversity, true);
+  });
+
+  it("warns when an imported deck repeats one content layout", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-layout-warning",
+      component: {
+        content: {
+          script: {
+            sections: Array.from({ length: 4 }, (_, index) => ({
+              on_screen_text: `Tema ${index + 1}\nIdea ${index + 1}`,
+              section_number: index + 1,
+            })),
+          },
+        },
+        id: "component-layout-warning",
+        type: "VIDEO_THEORETICAL",
+      },
+      input: { locale: "es", template: "course-module" },
+    });
+    const repeatedDeck = {
+      ...deck,
+      slides: deck.slides.map((slide) => slide.type === "concept"
+        ? { ...slide, renderHints: { ...slide.renderHints, layout: "split" as const } }
+        : slide),
+    };
+    const report = validateCourseDeckQuality({
+      deckSpec: repeatedDeck,
+      html: renderCourseDeckHtml(repeatedDeck),
+    });
+
+    assert.equal(report.status, "WARN");
+    assert.equal(report.checks.visualDiversity, false);
+    assert.equal(report.findings.some((finding) => finding.code === "low_layout_diversity"), true);
+  });
+
   it("records the synthesis stage while preserving explicitly supplied manual copy", async () => {
     const result = await generateCourseDeckWithCopySynthesisQualityGate({
       artifactId: "artifact-1",
@@ -837,6 +917,8 @@ describe("SofLIA - Engine slide deck generation", () => {
     assert.equal(result.stages[2]?.output.plannedSlideCount, 5);
     assert.equal(result.stages[2]?.output.modelName, "gpt-4o");
     assert.equal(result.stages[2]?.output.modelSettingType, "SLIDES_STRATEGY_AGENT");
+    assert.equal(result.stages[2]?.output.executionMode, "DETERMINISTIC");
+    assert.equal(result.stages[2]?.output.modelExecuted, false);
     assert.equal(result.stages[3]?.output.assignmentCount, 5);
     assert.equal(result.deckSpec.slides[0]?.renderHints?.layout, "center");
   });

@@ -2,6 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { getOptionalGeminiApiKey, getOptionalOpenAIApiKey } from "../../../../lib/server/env";
 import type { SlideSourcePack } from "../content/slide-source-pack.service";
+import { containsProductionMetadataLeak } from "../content/slide-visible-content.service";
 import {
   copyBudgetForSlideType,
   hasUnexpectedVisibleLanguage,
@@ -160,6 +161,10 @@ function hasDeckLocaleMismatch(deckSpec: CourseDeckSpec) {
   );
 }
 
+function hasDeckProductionMetadataLeak(deckSpec: CourseDeckSpec) {
+  return deckSpec.slides.some((slide) => containsProductionMetadataLeak(slideVisibleText(slide)));
+}
+
 function normalizeSynthesis(params: {
   deckSpec: CourseDeckSpec;
   response: unknown;
@@ -297,6 +302,9 @@ export async function synthesizeDeckVisibleCopy(params: SynthesizeVisibleCopyPar
       }
       if (hasDeckLocaleMismatch(deckSpec)) {
         throw new Error(`El proveedor no genero copy en el idioma solicitado (${params.deckSpec.locale}).`);
+      }
+      if (hasDeckProductionMetadataLeak(deckSpec)) {
+        throw new Error("El proveedor incluyo metadatos internos de produccion en el copy visible.");
       }
       return {
         deckSpec,

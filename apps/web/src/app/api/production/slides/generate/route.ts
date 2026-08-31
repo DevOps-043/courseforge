@@ -50,7 +50,7 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const BUCKET = "production-assets";
-const SLIDE_COPY_PIPELINE_VERSION = "visible-copy-synthesis-v4";
+const SLIDE_COPY_PIPELINE_VERSION = "visible-copy-synthesis-v5";
 
 const requestBodySchema = slideDeckGenerateInputSchema.extend({
   appearanceOnly: z.boolean().optional(),

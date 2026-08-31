@@ -33,12 +33,50 @@ function layoutForSlideType(type: CourseSlideSpec["type"], hasEvidence: boolean)
   return "split";
 }
 
+function alternateLayoutsForSlideType(
+  type: CourseSlideSpec["type"],
+  hasEvidence: boolean,
+): CourseSlideLayout[] {
+  if (["data_explainer", "cover", "quote", "transition", "summary"].includes(type)) {
+    return [];
+  }
+  if (["objectives", "exercise", "knowledge_check", "diagram"].includes(type)) {
+    return hasEvidence ? ["split_reverse", "split"] : ["split", "split_reverse"];
+  }
+  return hasEvidence ? ["split_reverse", "split"] : ["split", "split_reverse"];
+}
+
+function selectLayout(params: {
+  assignments: VisualSlideAssignment[];
+  hasEvidence: boolean;
+  type: CourseSlideSpec["type"];
+}) {
+  const preferred = layoutForSlideType(params.type, params.hasEvidence);
+  const previous = params.assignments.at(-1)?.layout;
+  if (previous !== preferred) return preferred;
+
+  const counts = params.assignments.reduce<Partial<Record<CourseSlideLayout, number>>>((totals, assignment) => {
+    totals[assignment.layout] = (totals[assignment.layout] || 0) + 1;
+    return totals;
+  }, {});
+  const alternatives = alternateLayoutsForSlideType(params.type, params.hasEvidence)
+    .filter((layout) => layout !== previous);
+  return alternatives.sort((left, right) => (counts[left] || 0) - (counts[right] || 0))[0] || preferred;
+}
+
 export function buildVisualAssignmentMap(slidePlan: SlidePlan): VisualAssignmentMap {
-  const assignments = slidePlan.slides.map((slide): VisualSlideAssignment => ({
-    layout: layoutForSlideType(slide.type, slide.sourceRefs.length > 0),
-    purpose: slide.purpose,
-    slideId: slide.id,
-  }));
+  const assignments = slidePlan.slides.reduce<VisualSlideAssignment[]>((planned, slide) => {
+    planned.push({
+      layout: selectLayout({
+        assignments: planned,
+        hasEvidence: slide.sourceRefs.length > 0,
+        type: slide.type,
+      }),
+      purpose: slide.purpose,
+      slideId: slide.id,
+    });
+    return planned;
+  }, []);
   const layoutCounts = assignments.reduce<Record<CourseSlideLayout, number>>(
     (totals, assignment) => {
       totals[assignment.layout] += 1;

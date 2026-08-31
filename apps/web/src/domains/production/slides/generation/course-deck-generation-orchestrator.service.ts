@@ -94,9 +94,12 @@ function agentStageOutput(
   params: GenerateCourseDeckParams,
   key: SlideAgentPromptKey,
 ) {
+  const canExecuteConfiguredModel = key === "visibleCopy";
   return {
     ...promptStageOutput(params.agentPrompts, key),
     ...modelStageOutput(params.agentModels, key),
+    executionMode: canExecuteConfiguredModel ? "MODEL_OR_FALLBACK" : "DETERMINISTIC",
+    modelExecuted: false,
   };
 }
 
@@ -305,6 +308,18 @@ export async function generateCourseDeckWithCopySynthesisQualityGate(
         prompt: params.agentPrompts?.visibleCopy,
         sourcePack: params.component.sourcePack,
       });
+  const manualCopy = synthesis.trace.model === "manual-input";
+  const deterministicFallback = synthesis.trace.provider === "deterministic_fallback" && !manualCopy;
+  console.info("[SlideGenerator] Visible copy synthesis completed", {
+    appliedSlideCount: synthesis.trace.appliedSlideCount,
+    componentId: params.component.id,
+    event: "slide_visible_copy_synthesized",
+    model: synthesis.trace.model,
+    modelExecuted: synthesis.trace.provider !== "deterministic_fallback",
+    provider: synthesis.trace.provider,
+    usedFallback: deterministicFallback,
+    warningPresent: Boolean(synthesis.trace.warning),
+  });
   const html = renderCourseDeckHtml(synthesis.deckSpec);
   const qaReport = validateCourseDeckQuality({ deckSpec: synthesis.deckSpec, html });
   const retainedStages = draft.stages.filter((stage) =>
@@ -323,7 +338,9 @@ export async function generateCourseDeckWithCopySynthesisQualityGate(
         output: {
           ...agentStageOutput(params, "visibleCopy"),
           appliedSlideCount: synthesis.trace.appliedSlideCount,
+          executionMode: manualCopy ? "MANUAL" : deterministicFallback ? "DETERMINISTIC_FALLBACK" : "MODEL",
           model: synthesis.trace.model,
+          modelExecuted: synthesis.trace.provider !== "deterministic_fallback",
           provider: synthesis.trace.provider,
           warning: synthesis.trace.warning,
         },

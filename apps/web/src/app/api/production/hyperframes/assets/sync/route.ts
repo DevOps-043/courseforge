@@ -62,25 +62,11 @@ async function refreshPendingHeygenClips(params: {
   organizationId: string;
   userId: string;
 }) {
-  await new HeygenScenesService(params.admin).recoverCompletedSceneAssets({
+  const recoveryService = new HeygenScenesService(params.admin);
+  await recoveryService.recoverCompletedSceneAssets({
     componentId: params.componentId,
     organizationId: params.organizationId,
   });
-  const { data: component, error } = await params.admin
-    .from("material_components")
-    .select("assets")
-    .eq("id", params.componentId)
-    .maybeSingle();
-  if (error) throw error;
-  const assets = component?.assets && typeof component.assets === "object"
-    ? component.assets as Record<string, unknown>
-    : {};
-  const avatarClips = Array.isArray(assets.avatar_clips) ? assets.avatar_clips : [];
-  const hasPendingAvatar = avatarClips.some((clip) => (
-    clip && typeof clip === "object"
-    && (clip as Record<string, unknown>).status === "WAITING_PROVIDER"
-  ));
-  if (!hasPendingAvatar) return 0;
 
   try {
     const auth = await getHeygenClientForOrganization({
@@ -88,11 +74,20 @@ async function refreshPendingHeygenClips(params: {
       organizationId: params.organizationId,
       supabase: params.admin,
     });
-    await new HeygenScenesService(params.admin, auth.client).refreshSceneClipStatuses({
+    const recovery = await new HeygenScenesService(params.admin, auth.client).recoverHistoricalSceneAssets({
       componentId: params.componentId,
       createdBy: params.userId,
       organizationId: params.organizationId,
     });
+    console.info("[Hyperframes assets sync] Historical HeyGen reconciliation completed", {
+      componentId: params.componentId,
+      event: "heygen_scene_assets_reconciled",
+      matchedJobCount: recovery.report.matchedJobCount,
+      pendingAvatarCount: recovery.report.pendingAvatarCount,
+      recoveredAvatarCount: recovery.report.recoveredAvatarCount,
+      unresolvedSceneCount: recovery.report.unresolvedSceneCount,
+    });
+    return recovery.report.pendingAvatarCount;
   } catch (refreshError) {
     // Asset sync remains usable for already imported media. A transient HeyGen
     // lookup must not prevent the editor from opening.
@@ -102,19 +97,19 @@ async function refreshPendingHeygenClips(params: {
     });
   }
 
-  const { data: refreshedComponent, error: refreshedError } = await params.admin
+  const { data: component, error } = await params.admin
     .from("material_components")
     .select("assets")
     .eq("id", params.componentId)
     .maybeSingle();
-  if (refreshedError) throw refreshedError;
-  const refreshedAssets = refreshedComponent?.assets && typeof refreshedComponent.assets === "object"
-    ? refreshedComponent.assets as Record<string, unknown>
+  if (error) throw error;
+  const assets = component?.assets && typeof component.assets === "object"
+    ? component.assets as Record<string, unknown>
     : {};
-  const refreshedClips = Array.isArray(refreshedAssets.avatar_clips)
-    ? refreshedAssets.avatar_clips
+  const avatarClips = Array.isArray(assets.avatar_clips)
+    ? assets.avatar_clips
     : [];
-  return refreshedClips.filter((clip) => (
+  return avatarClips.filter((clip) => (
     clip && typeof clip === "object"
     && (clip as Record<string, unknown>).status === "WAITING_PROVIDER"
   )).length;

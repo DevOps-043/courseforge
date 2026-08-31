@@ -64,6 +64,15 @@ const PRODUCTION_DIRECTION_PATTERNS = [
   /\bzoom\b/,
 ];
 
+const PRODUCTION_METADATA_PATTERNS = [
+  /\bstoryboard\b/,
+  /\btimecode\b/,
+  /\bb[-\s]?roll\b/,
+  /\binstrucciones? de produccion\b/,
+  /\bnotas? de narracion\b/,
+  /\bprompt(?:s)? (?:visual|de imagen|de video)\b/,
+];
+
 export function isProductionDirectionText(value: unknown) {
   const text = compactText(value);
   if (!text) {
@@ -72,6 +81,14 @@ export function isProductionDirectionText(value: unknown) {
 
   const normalized = normalizeForTextAnalysis(text);
   return PRODUCTION_DIRECTION_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+/** Detects internal production metadata that must never become learner-facing copy. */
+export function containsProductionMetadataLeak(value: unknown) {
+  const text = compactText(value);
+  if (!text) return false;
+  const normalized = normalizeForTextAnalysis(text);
+  return PRODUCTION_METADATA_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 export function compactEducationalText(value: unknown) {

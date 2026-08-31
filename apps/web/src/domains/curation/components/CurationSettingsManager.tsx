@@ -33,6 +33,14 @@ import type { SystemPrompt } from "@/domains/prompts/types";
 type CurationConfig = ModelSettingsRecord;
 
 const OBSOLETE_SETTING_TYPES = new Set(["LIA MODEL", "LIA_MODEL", "COMPUTER"]);
+const DETERMINISTIC_SLIDE_SETTING_TYPES = new Set([
+  "SLIDES_DECK_BRIEF_AGENT",
+  "SLIDES_EVIDENCE_AGENT",
+  "SLIDES_STRATEGY_AGENT",
+  "SLIDE_TEMPLATE_TYPE_AGENT",
+  "SLIDES_VISUAL_TEMPLATE_AGENT",
+  "SLIDES_QA_AGENT",
+]);
 
 const SETTING_ORDER = [
   "ARTIFACT_BASE",
@@ -934,6 +942,7 @@ export function CurationSettingsManager() {
     const isGreen = metadata.accent === "green";
     const modelOptions = getModelOptions(setting.setting_type);
     const reasoningOptions = getReasoningOptions(setting.setting_type);
+    const usesConfiguredModel = !DETERMINISTIC_SLIDE_SETTING_TYPES.has(setting.setting_type);
     const accentText = isGreen ? "text-[#10B981]" : "text-[var(--engine-accent)]";
     const accentBg = isGreen
       ? "bg-[#10B981]/10 text-[#10B981]"
@@ -956,7 +965,7 @@ export function CurationSettingsManager() {
 
         <div className="engine-settings-phase__content">
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+        {usesConfiguredModel ? <><div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
           <PremiumSelect
             label="Modelo Principal"
             icon={<Zap size={12} className={accentText} />}
@@ -1031,9 +1040,13 @@ export function CurationSettingsManager() {
               <span>Creativo (1.0)</span>
             </div>
           </div>
-        </div>
+        </div></> : (
+          <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-900 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-100">
+            Esta etapa usa reglas deterministas y validación tipada. Cambiar modelo, temperatura o prompt no modifica su resultado.
+          </div>
+        )}
 
-        <div className="space-y-3">
+        {usesConfiguredModel && <div className="space-y-3">
           <div className="flex items-center gap-2">
             <MessageSquareCode size={15} className={accentText} />
             <h5 className="text-xs font-bold text-gray-500 dark:text-[var(--engine-text-muted)] uppercase tracking-wider">
@@ -1064,7 +1077,7 @@ export function CurationSettingsManager() {
               No hay prompts configurables asociados directamente a este paso.
             </div>
           )}
-        </div>
+        </div>}
 
         </div>
 
