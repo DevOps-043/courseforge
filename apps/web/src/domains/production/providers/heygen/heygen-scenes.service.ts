@@ -92,13 +92,19 @@ interface HeygenSceneVoiceJobResult {
 
 export interface HeygenHistoricalSceneRecoveryReport {
   alreadyAvailableAvatarCount: number;
+  expectedAvatarSceneCount: number;
+  expectedVoiceOnlySceneCount: number;
+  incompleteExpectedMediaCount: number;
   matchedJobCount: number;
   importedHistoricalAvatarCount: number;
   pendingAvatarCount: number;
+  pendingExpectedMediaCount: number;
   recoveredAvatarCount: number;
   recoveredVoiceCount: number;
   renamedAssetCount: number;
   skipped: string[];
+  readySceneCount: number;
+  unconfiguredSceneCount: number;
   unresolvedSceneCount: number;
 }
 
@@ -292,9 +298,15 @@ export class HeygenScenesService {
       .single();
     if (componentError) throw componentError;
 
-    const originalAssets = isRecord(component?.assets)
+    const baselineAssets = isRecord(component?.assets)
       ? component.assets as MaterialAssets
       : {};
+    // Recover voices and already-imported videos first. The explicit historical
+    // action must be complete even when the studio GET was never opened.
+    const originalAssets = await this.recoverCompletedSceneAssets({
+      componentId: params.componentId,
+      organizationId: params.organizationId,
+    });
     const originalClips = sortClips(originalAssets.avatar_clips || []);
     const originalVoiceClips = originalAssets.voice_clips || [];
     const clips = this.buildSceneClips({
@@ -312,15 +324,29 @@ export class HeygenScenesService {
       jobs,
       skipped,
     });
-    const jobsByClipId = selectRecoverableHistoricalSceneJobsForClips(clips, jobs);
+    const avatarJobsByClipId = selectRecoverableHistoricalSceneJobsForClips(
+      clips,
+      jobs.filter((job) => job.job_type === PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_CLIP),
+    );
+    const originalVoiceByClipId = new Map(
+      originalVoiceClips.map((voiceClip) => [voiceClip.clip_id, voiceClip]),
+    );
+    const classifiedClips = clips.map((clip) => ({
+      ...clip,
+      expected_media_mode: inferSceneExpectedMediaMode({
+        avatarJob: avatarJobsByClipId.get(clip.id),
+        clip,
+        voiceClip: originalVoiceByClipId.get(clip.id),
+      }),
+    }));
     let matchedJobCount = 0;
     let renamedAssetCount = 0;
 
     const stagedClips: AvatarClip[] = [];
-    for (const clip of clips) {
+    for (const clip of classifiedClips) {
       const names = buildHeygenSceneAssetNames({ clip, context });
       const recoveredName = clip.asset_name
-        || readString(jobsByClipId.get(clip.id)?.input_snapshot?.asset_display_name)
+        || readString(avatarJobsByClipId.get(clip.id)?.input_snapshot?.asset_display_name)
         || names.displayName;
       if (!clip.asset_name && recoveredName) renamedAssetCount += 1;
 
@@ -329,10 +355,12 @@ export class HeygenScenesService {
         continue;
       }
 
-      const job = jobsByClipId.get(clip.id);
+      const job = avatarJobsByClipId.get(clip.id);
       if (!job) {
         stagedClips.push({ ...clip, asset_name: recoveredName });
-        skipped.push(`Escena ${clip.order}: no se encontró un job histórico recuperable.`);
+        if (clip.expected_media_mode === "avatar") {
+          skipped.push(`Escena ${clip.order}: no se encontró un job histórico de avatar recuperable.`);
+        }
         continue;
       }
 
@@ -390,16 +418,23 @@ export class HeygenScenesService {
     }
 
     const originallyCompleted = new Set(
-      originalClips.filter(hasCompletedAvatarMedia).map((clip) => clip.id),
+      (baselineAssets.avatar_clips || []).filter(hasCompletedAvatarMedia).map((clip) => clip.id),
     );
     const originalCompletedVoices = new Set(
-      originalVoiceClips.filter(hasCompletedVoiceMedia).map((clip) => clip.clip_id),
+      (baselineAssets.voice_clips || []).filter(hasCompletedVoiceMedia).map((clip) => clip.clip_id),
     );
+    const readiness = summarizeSceneMediaReadiness(recoveredClips, recoveredVoiceClips);
     const report: HeygenHistoricalSceneRecoveryReport = {
       alreadyAvailableAvatarCount: originallyCompleted.size,
+      expectedAvatarSceneCount: readiness.expectedAvatarSceneCount,
+      expectedVoiceOnlySceneCount: readiness.expectedVoiceOnlySceneCount,
+      incompleteExpectedMediaCount: readiness.incompleteExpectedMediaCount,
       matchedJobCount,
       importedHistoricalAvatarCount,
-      pendingAvatarCount: recoveredClips.filter((clip) => clip.status === "WAITING_PROVIDER").length,
+      pendingAvatarCount: recoveredClips.filter((clip) => (
+        clip.expected_media_mode === "avatar" && clip.status === "WAITING_PROVIDER"
+      )).length,
+      pendingExpectedMediaCount: readiness.pendingExpectedMediaCount,
       recoveredAvatarCount: recoveredClips.filter((clip) => (
         hasCompletedAvatarMedia(clip) && !originallyCompleted.has(clip.id)
       )).length,
@@ -408,9 +443,9 @@ export class HeygenScenesService {
       )).length,
       renamedAssetCount: renamedAssetCount + metadataBackfillCount,
       skipped,
-      unresolvedSceneCount: recoveredClips.filter((clip) => (
-        !clip.deleted && !hasCompletedAvatarMedia(clip) && clip.status !== "WAITING_PROVIDER"
-      )).length,
+      readySceneCount: readiness.readySceneCount,
+      unconfiguredSceneCount: readiness.unconfiguredSceneCount,
+      unresolvedSceneCount: readiness.unresolvedSceneCount,
     };
 
     return {
@@ -448,10 +483,20 @@ export class HeygenScenesService {
     const queuedClips = currentClips.filter((clip) => !clip.deleted).map((clip) => {
       if (!selectedIds.has(clip.id)) return clip;
       return params.generationTarget === "voice_only"
-        ? { ...clip, voice_error_message: undefined, voice_status: "WAITING_PROVIDER" as const }
+        ? {
+            ...clip,
+            // Generating a missing separated voice for an avatar must not
+            // downgrade the scene's editorial contract to voice-only.
+            expected_media_mode: clip.expected_media_mode === "avatar"
+              ? "avatar" as const
+              : "voice_only" as const,
+            voice_error_message: undefined,
+            voice_status: "WAITING_PROVIDER" as const,
+          }
         : {
             ...clip,
             error_message: undefined,
+            expected_media_mode: "avatar" as const,
             external_id: undefined,
             job_id: undefined,
             status: "WAITING_PROVIDER" as const,
@@ -461,6 +506,7 @@ export class HeygenScenesService {
       assetsPatch: { avatar_generation_mode: "scene_clips" },
       avatarClips: queuedClips.filter((clip) => selectedIds.has(clip.id)),
       componentId: params.componentId,
+      preserveAuthoredFields: false,
     });
     return {
       clips: sortClips(assets.avatar_clips || queuedClips),
@@ -885,6 +931,26 @@ export class HeygenScenesService {
     );
     const voicePatches: VoiceClip[] = [];
 
+    const expectedAvatarJobs = selectRecoverableHistoricalSceneJobsForClips(
+      clips,
+      jobs.filter((job) => job.job_type === PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_CLIP),
+    );
+    const expectedVoiceJobs = selectRecoverableHistoricalSceneJobsForClips(
+      clips,
+      jobs.filter((job) => job.job_type === PRODUCTION_JOB_TYPES.HEYGEN_VOICEOVER),
+    );
+    for (const clip of clips) {
+      const expectedMediaMode = inferSceneExpectedMediaMode({
+        avatarJob: expectedAvatarJobs.get(clip.id),
+        clip,
+        voiceClip: currentVoiceByClipId.get(clip.id),
+        voiceJob: expectedVoiceJobs.get(clip.id),
+      });
+      if (expectedMediaMode && expectedMediaMode !== clip.expected_media_mode) {
+        avatarPatches.set(clip.id, { ...clip, expected_media_mode: expectedMediaMode });
+      }
+    }
+
     const voiceJobGroups = [
       jobs.filter((job) => job.job_type === PRODUCTION_JOB_TYPES.HEYGEN_VOICEOVER),
       jobs.filter((job) => (
@@ -952,6 +1018,7 @@ export class HeygenScenesService {
             external_id: job.provider_job_id || clip.external_id,
             file_name: avatarAsset.storage_path.split("/").at(-1) || clip.file_name,
             has_audio: false,
+            expected_media_mode: "avatar",
             job_id: job.id,
             provider: PRODUCTION_PROVIDERS.HEYGEN,
             public_url: avatarAsset.public_url,
@@ -960,6 +1027,13 @@ export class HeygenScenesService {
             storage_path: avatarAsset.storage_path,
           });
         }
+      }
+    }
+
+    for (const voicePatch of voicePatches) {
+      const clip = clips.find((candidate) => candidate.id === voicePatch.clip_id);
+      if (clip && !avatarPatches.has(clip.id) && !clip.expected_media_mode) {
+        avatarPatches.set(clip.id, { ...clip, expected_media_mode: "voice_only" });
       }
     }
 
@@ -1903,6 +1977,7 @@ export function mergeAuthoredSceneClip(existing: AvatarClip | undefined, incomin
   const generatedState = {
     duration: existing.duration,
     error_message: existing.error_message,
+    expected_media_mode: incoming.expected_media_mode ?? existing.expected_media_mode,
     external_id: existing.external_id,
     file_name: existing.file_name,
     generation_revision: scriptChanged
@@ -2037,6 +2112,77 @@ function chooseAvatarProgressWinner(current: AvatarClip, incoming: AvatarClip) {
   if (current.job_id && !incoming.job_id) return current;
   if (incoming.job_id && !current.job_id) return incoming;
   return current;
+}
+
+function inferSceneExpectedMediaMode(params: {
+  avatarJob?: HeygenProductionJobRow;
+  clip: AvatarClip;
+  voiceClip?: VoiceClip;
+  voiceJob?: HeygenProductionJobRow;
+}): AvatarClip["expected_media_mode"] {
+  if (params.clip.expected_media_mode) return params.clip.expected_media_mode;
+  if (
+    hasCompletedAvatarMedia(params.clip)
+    || params.clip.status === "WAITING_PROVIDER"
+    || Boolean(params.clip.job_id)
+    || Boolean(params.avatarJob)
+  ) return "avatar";
+  if (
+    (params.voiceClip && hasCompletedVoiceMedia(params.voiceClip))
+    || params.clip.voice_status === "WAITING_PROVIDER"
+    || Boolean(params.voiceJob)
+  ) return "voice_only";
+  return undefined;
+}
+
+export function summarizeSceneMediaReadiness(clips: AvatarClip[], voiceClips: VoiceClip[]) {
+  const voiceByClipId = new Map(voiceClips.map((voiceClip) => [voiceClip.clip_id, voiceClip]));
+  let expectedAvatarSceneCount = 0;
+  let expectedVoiceOnlySceneCount = 0;
+  let incompleteExpectedMediaCount = 0;
+  let pendingExpectedMediaCount = 0;
+  let readySceneCount = 0;
+  let unconfiguredSceneCount = 0;
+
+  for (const clip of clips) {
+    if (clip.deleted) continue;
+    if (!clip.expected_media_mode) {
+      unconfiguredSceneCount += 1;
+      continue;
+    }
+    if (clip.expected_media_mode === "none") {
+      readySceneCount += 1;
+      continue;
+    }
+    if (clip.expected_media_mode === "avatar") {
+      expectedAvatarSceneCount += 1;
+      const voiceClip = voiceByClipId.get(clip.id);
+      const hasRequiredVoice = clip.has_audio === true
+        || Boolean(voiceClip && hasCompletedVoiceMedia(voiceClip));
+      if (hasCompletedAvatarMedia(clip) && hasRequiredVoice) readySceneCount += 1;
+      else if (clip.status === "WAITING_PROVIDER" || clip.voice_status === "WAITING_PROVIDER") {
+        pendingExpectedMediaCount += 1;
+      }
+      else incompleteExpectedMediaCount += 1;
+      continue;
+    }
+
+    expectedVoiceOnlySceneCount += 1;
+    const voiceClip = voiceByClipId.get(clip.id);
+    if (voiceClip && hasCompletedVoiceMedia(voiceClip)) readySceneCount += 1;
+    else if (clip.voice_status === "WAITING_PROVIDER") pendingExpectedMediaCount += 1;
+    else incompleteExpectedMediaCount += 1;
+  }
+
+  return {
+    expectedAvatarSceneCount,
+    expectedVoiceOnlySceneCount,
+    incompleteExpectedMediaCount,
+    pendingExpectedMediaCount,
+    readySceneCount,
+    unconfiguredSceneCount,
+    unresolvedSceneCount: incompleteExpectedMediaCount + unconfiguredSceneCount,
+  };
 }
 
 /**

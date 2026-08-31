@@ -130,6 +130,9 @@ export type AvatarClipStatus =
     | 'FAILED'
     | 'STALE';
 
+/** Defines the media contract used to decide whether a scene is complete. */
+export type AvatarClipExpectedMediaMode = 'avatar' | 'voice_only' | 'none';
+
 export interface AvatarClip {
     id: string;
     order: number;
@@ -137,6 +140,8 @@ export interface AvatarClip {
     asset_name?: string;
     /** Increments when generated media is cleared so a retry cannot reuse an old successful job. */
     generation_revision?: number;
+    /** Undefined means a legacy or new scene still needs an explicit editorial decision. */
+    expected_media_mode?: AvatarClipExpectedMediaMode;
     deleted?: boolean;
     origin?: 'storyboard' | 'manual';
     storyboard_take_number?: number;

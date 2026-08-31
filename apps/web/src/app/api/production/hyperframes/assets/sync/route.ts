@@ -84,7 +84,9 @@ async function refreshPendingHeygenClips(params: {
       event: "heygen_scene_assets_reconciled",
       matchedJobCount: recovery.report.matchedJobCount,
       pendingAvatarCount: recovery.report.pendingAvatarCount,
+      pendingExpectedMediaCount: recovery.report.pendingExpectedMediaCount,
       recoveredAvatarCount: recovery.report.recoveredAvatarCount,
+      unconfiguredSceneCount: recovery.report.unconfiguredSceneCount,
       unresolvedSceneCount: recovery.report.unresolvedSceneCount,
     });
     return recovery.report.pendingAvatarCount;

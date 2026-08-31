@@ -97,6 +97,7 @@ export const heygenAvatarClipSchema = z
     has_audio: z.boolean().optional(),
     id: z.string().trim().min(1),
     deleted: z.boolean().optional(),
+    expected_media_mode: z.enum(["avatar", "voice_only", "none"]).optional(),
     generation_revision: z.number().int().min(0).optional(),
     job_id: z.string().uuid().optional(),
     order: z.number().int().min(1),

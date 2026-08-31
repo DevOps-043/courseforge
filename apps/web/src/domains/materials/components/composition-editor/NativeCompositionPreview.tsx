@@ -182,9 +182,15 @@ type HistoricalRecoveryResponse = {
     editorSyncWarning?: string | null;
     report?: {
       importedHistoricalAvatarCount?: number;
+      expectedAvatarSceneCount?: number;
+      expectedVoiceOnlySceneCount?: number;
+      incompleteExpectedMediaCount?: number;
       pendingAvatarCount?: number;
+      pendingExpectedMediaCount?: number;
       recoveredAvatarCount?: number;
       recoveredVoiceCount?: number;
+      readySceneCount?: number;
+      unconfiguredSceneCount?: number;
       unresolvedSceneCount?: number;
     };
   };
@@ -1316,6 +1322,13 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         toast.success(`${pendingAvatarCount} avatares históricos todavía están procesándose.`);
       } else {
         toast.success("La revisión terminó; no se encontraron assets históricos nuevos.");
+      }
+      const unconfiguredSceneCount = report?.unconfiguredSceneCount || 0;
+      const incompleteExpectedMediaCount = report?.incompleteExpectedMediaCount || 0;
+      if (unconfiguredSceneCount > 0) {
+        toast.warning(`${unconfiguredSceneCount} escenas aún requieren definir su modalidad en el módulo de avatares.`);
+      } else if (incompleteExpectedMediaCount > 0) {
+        toast.warning(`${incompleteExpectedMediaCount} escenas todavía no cumplen el medio configurado.`);
       }
       if (responsePayload.data?.editorSyncWarning) toast.warning(responsePayload.data.editorSyncWarning);
     } catch (error) {

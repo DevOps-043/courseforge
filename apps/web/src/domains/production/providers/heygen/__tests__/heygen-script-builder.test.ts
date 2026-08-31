@@ -11,6 +11,7 @@ import {
   selectRecoverableHistoricalSceneJobs,
   selectRecoverableHistoricalSceneJobsForClips,
   selectPromotableAvatarVoices,
+  summarizeSceneMediaReadiness,
 } from "../heygen-scenes.service";
 import { resetGeneratedSceneAssets } from "../heygen-scene-assets";
 import {
@@ -265,6 +266,111 @@ describe("HeyGen scene clip builder", () => {
     assert.equal(merged.status, "STALE");
     assert.equal(merged.voice_status, "STALE");
     assert.equal(merged.generation_revision, 1);
+  });
+
+  it("preserves the explicit media contract when an older form omits it", () => {
+    const merged = mergeAuthoredSceneClip(
+      {
+        expected_media_mode: "voice_only",
+        id: "scene-1",
+        order: 1,
+        script_text: "Guion vigente",
+        status: "DRAFT",
+      },
+      {
+        id: "scene-1",
+        order: 1,
+        script_text: "Guion vigente",
+        status: "DRAFT",
+      },
+    );
+
+    assert.equal(merged.expected_media_mode, "voice_only");
+  });
+
+  it("measures completeness from each scene media contract", () => {
+    const summary = summarizeSceneMediaReadiness(
+      [
+        {
+          expected_media_mode: "avatar",
+          has_audio: false,
+          id: "scene-avatar",
+          order: 1,
+          public_url: "https://cdn.example.com/avatar.mp4",
+          script_text: "Avatar",
+          status: "COMPLETED",
+          storage_path: "production-assets/avatar.mp4",
+        },
+        {
+          expected_media_mode: "voice_only",
+          id: "scene-voice",
+          order: 2,
+          script_text: "Voz",
+          status: "DRAFT",
+        },
+        {
+          id: "scene-unconfigured",
+          order: 3,
+          script_text: "Pendiente",
+          status: "DRAFT",
+        },
+        {
+          expected_media_mode: "none",
+          id: "scene-none",
+          order: 4,
+          script_text: "Sin medio",
+          status: "DRAFT",
+        },
+      ],
+      [
+        {
+          clip_id: "scene-avatar",
+          id: "voice-avatar",
+          order: 1,
+          public_url: "https://cdn.example.com/avatar.mp3",
+          script_hash: "hash-avatar",
+          status: "COMPLETED",
+          storage_path: "production-assets/avatar.mp3",
+        },
+        {
+          clip_id: "scene-voice",
+          id: "voice-only",
+          order: 2,
+          public_url: "https://cdn.example.com/voice.mp3",
+          script_hash: "hash-voice",
+          status: "COMPLETED",
+          storage_path: "production-assets/voice.mp3",
+        },
+      ],
+    );
+
+    assert.deepEqual(summary, {
+      expectedAvatarSceneCount: 1,
+      expectedVoiceOnlySceneCount: 1,
+      incompleteExpectedMediaCount: 0,
+      pendingExpectedMediaCount: 0,
+      readySceneCount: 3,
+      unconfiguredSceneCount: 1,
+      unresolvedSceneCount: 1,
+    });
+  });
+
+  it("does not call an avatar complete when its required separate voice is missing", () => {
+    const summary = summarizeSceneMediaReadiness([
+      {
+        expected_media_mode: "avatar",
+        has_audio: false,
+        id: "scene-1",
+        order: 1,
+        public_url: "https://cdn.example.com/avatar.mp4",
+        script_text: "Avatar",
+        status: "COMPLETED",
+        storage_path: "production-assets/avatar.mp4",
+      },
+    ], []);
+
+    assert.equal(summary.readySceneCount, 0);
+    assert.equal(summary.incompleteExpectedMediaCount, 1);
   });
 
   it("does not attach a historical video to a reused scene id with a different script", () => {

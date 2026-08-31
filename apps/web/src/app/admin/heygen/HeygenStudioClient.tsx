@@ -43,6 +43,7 @@ interface AvatarSceneClip {
   deleted?: boolean;
   duration?: number;
   error_message?: string;
+  expected_media_mode?: "avatar" | "voice_only" | "none";
   external_id?: string;
   file_name?: string;
   generation_revision?: number;
@@ -78,13 +79,19 @@ interface VoiceSceneClip {
 
 interface HistoricalSceneRecoveryReport {
   alreadyAvailableAvatarCount: number;
+  expectedAvatarSceneCount: number;
+  expectedVoiceOnlySceneCount: number;
+  incompleteExpectedMediaCount: number;
   importedHistoricalAvatarCount: number;
   matchedJobCount: number;
   pendingAvatarCount: number;
+  pendingExpectedMediaCount: number;
   recoveredAvatarCount: number;
   recoveredVoiceCount: number;
   renamedAssetCount: number;
   skipped: string[];
+  readySceneCount: number;
+  unconfiguredSceneCount: number;
   unresolvedSceneCount: number;
 }
 
@@ -179,6 +186,13 @@ const CLIP_STATUS_LABELS: Record<AvatarSceneClip["status"], string> = {
   STALE: "Desactualizado",
   WAITING_PROVIDER: "Esperando proveedor",
 };
+
+const EXPECTED_MEDIA_MODE_LABELS = {
+  avatar: "Espera avatar",
+  none: "Sin medio hablado",
+  unconfigured: "Modalidad pendiente",
+  voice_only: "Espera sólo voz",
+} as const;
 
 export default function HeygenStudioClient({
   courseContext,
@@ -853,6 +867,11 @@ export default function HeygenStudioClient({
       } else {
         toast.success("La revisión terminó; los assets disponibles ya estaban sincronizados.");
       }
+      if (report.unconfiguredSceneCount > 0) {
+        toast.warning(`${report.unconfiguredSceneCount} escenas todavía requieren definir si esperan avatar, sólo voz o ningún medio hablado.`);
+      } else if (report.incompleteExpectedMediaCount > 0) {
+        toast.warning(`${report.incompleteExpectedMediaCount} escenas aún no cumplen el medio configurado.`);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "No se pudieron recuperar los assets históricos.";
       setErrorMessage(message);
@@ -1146,7 +1165,10 @@ export default function HeygenStudioClient({
             {historicalRecoveryReport.recoveredAvatarCount} avatares vinculados a escenas vigentes, {historicalRecoveryReport.importedHistoricalAvatarCount} videos históricos importados y {historicalRecoveryReport.recoveredVoiceCount} voces recuperadas; {historicalRecoveryReport.alreadyAvailableAvatarCount} avatares ya estaban disponibles; {historicalRecoveryReport.pendingAvatarCount} siguen procesándose.
           </p>
           <p className="mt-1 text-xs text-blue-700/80 dark:text-blue-300/80">
-            Jobs relacionados: {historicalRecoveryReport.matchedJobCount}. Nombres/metadatos actualizados: {historicalRecoveryReport.renamedAssetCount}. Escenas sin resolver: {historicalRecoveryReport.unresolvedSceneCount}.
+            Completas según modalidad: {historicalRecoveryReport.readySceneCount}. Avatar esperado: {historicalRecoveryReport.expectedAvatarSceneCount}. Sólo voz: {historicalRecoveryReport.expectedVoiceOnlySceneCount}. Modalidad pendiente: {historicalRecoveryReport.unconfiguredSceneCount}. Medios faltantes: {historicalRecoveryReport.incompleteExpectedMediaCount}. En proceso: {historicalRecoveryReport.pendingExpectedMediaCount}.
+          </p>
+          <p className="mt-1 text-xs text-blue-700/80 dark:text-blue-300/80">
+            Jobs relacionados: {historicalRecoveryReport.matchedJobCount}. Nombres/metadatos actualizados: {historicalRecoveryReport.renamedAssetCount}. Escenas que requieren decisión o acción: {historicalRecoveryReport.unresolvedSceneCount}.
           </p>
           {historicalRecoveryReport.skipped.length > 0 ? (
             <details className="mt-2 text-xs">
@@ -1397,17 +1419,22 @@ export default function HeygenStudioClient({
                                   {clip.visual_type}
                                 </span>
                               ) : null}
+                              <span className={`rounded-full px-2 py-1 text-xs font-semibold ${getExpectedMediaModeClassName(clip.expected_media_mode)}`}>
+                                {EXPECTED_MEDIA_MODE_LABELS[clip.expected_media_mode || "unconfigured"]}
+                              </span>
                             </label>
                           </div>
                           <div className="flex items-center gap-2">
-                            {clip.voice_status ? (
-                              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getClipStatusClassName(clip.voice_status)}`}>
-                                Voz: {CLIP_STATUS_LABELS[clip.voice_status] || clip.voice_status}
+                            {(clip.expected_media_mode === "voice_only" || clip.voice_status) ? (
+                              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getClipStatusClassName(clip.voice_status || "DRAFT")}`}>
+                                Voz: {CLIP_STATUS_LABELS[clip.voice_status || "DRAFT"]}
                               </span>
                             ) : null}
-                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getClipStatusClassName(clip.status)}`}>
-                              Avatar: {CLIP_STATUS_LABELS[clip.status] || clip.status}
-                            </span>
+                            {(clip.expected_media_mode === "avatar" || hasGeneratedAssets && clip.status !== "DRAFT") ? (
+                              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getClipStatusClassName(clip.status)}`}>
+                                Avatar: {CLIP_STATUS_LABELS[clip.status] || clip.status}
+                              </span>
+                            ) : null}
                             <button
                               type="button"
                               onClick={() => (
@@ -1444,6 +1471,25 @@ export default function HeygenStudioClient({
                           </p>
                         ) : (
                           <>
+                            <label className="mt-3 flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
+                              Medio esperado
+                              <select
+                                value={clip.expected_media_mode || ""}
+                                disabled={isGeneratingClips || clip.status === "WAITING_PROVIDER" || clip.voice_status === "WAITING_PROVIDER"}
+                                onChange={(event) => updateSceneClip(clip.id, {
+                                  expected_media_mode: (event.target.value || undefined) as AvatarSceneClip["expected_media_mode"],
+                                })}
+                                className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white"
+                              >
+                                <option value="" disabled={Boolean(clip.expected_media_mode)}>Pendiente de definir</option>
+                                <option value="avatar">Avatar y voz separada</option>
+                                <option value="voice_only">Sólo voz en off</option>
+                                <option value="none">No requiere medio hablado</option>
+                              </select>
+                              <span className="font-normal normal-case tracking-normal text-gray-400 dark:text-slate-500">
+                                Define qué debe existir para considerar completa esta escena.
+                              </span>
+                            </label>
                             <label className="mt-3 flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
                               Nombre del asset
                               <input
@@ -2026,6 +2072,13 @@ function getClipStatusClassName(status: AvatarSceneClip["status"]) {
     return "bg-blue-500/10 text-blue-700 dark:text-blue-300";
   }
   return "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-slate-300";
+}
+
+function getExpectedMediaModeClassName(mode: AvatarSceneClip["expected_media_mode"]) {
+  if (mode === "avatar") return "bg-rose-500/10 text-rose-700 dark:text-rose-300";
+  if (mode === "voice_only") return "bg-blue-500/10 text-blue-700 dark:text-blue-300";
+  if (mode === "none") return "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-slate-300";
+  return "bg-amber-500/10 text-amber-700 dark:text-amber-300";
 }
 
 function readApiErrorMessage(payload: any, fallback: string) {
