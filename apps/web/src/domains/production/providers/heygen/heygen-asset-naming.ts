@@ -3,12 +3,33 @@ import type { ProductionComponentContext } from "../../types/production.types";
 
 const MAX_HEYGEN_TITLE_LENGTH = 120;
 const MAX_FILE_STEM_LENGTH = 96;
+const HEYGEN_JOB_TOKEN_PREFIX = "CFJOB-";
+const HEYGEN_JOB_TOKEN_LENGTH = HEYGEN_JOB_TOKEN_PREFIX.length + 36;
 
 export interface HeygenSceneAssetNames {
   audioFileStem: string;
   displayName: string;
   videoFileStem: string;
   videoTitle: string;
+}
+
+/**
+ * Keeps the provider dashboard readable while embedding a durable Courseforge
+ * job identity. If the worker dies after HeyGen accepts the request but before
+ * Postgres stores video_id, the catalog can still repair the correlation.
+ */
+export function buildCorrelatedHeygenVideoTitle(title: string, jobId: string) {
+  const suffix = ` · ${HEYGEN_JOB_TOKEN_PREFIX}${jobId}`;
+  return `${title.slice(0, Math.max(0, MAX_HEYGEN_TITLE_LENGTH - suffix.length))}${suffix}`;
+}
+
+export function readHeygenJobIdFromVideoTitle(title: unknown) {
+  if (typeof title !== "string") return null;
+  const match = title.match(new RegExp(`${HEYGEN_JOB_TOKEN_PREFIX}([0-9a-f-]{36})$`, "i"));
+  if (!match || match[0].length !== HEYGEN_JOB_TOKEN_LENGTH) return null;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(match[1])
+    ? match[1].toLowerCase()
+    : null;
 }
 
 /**

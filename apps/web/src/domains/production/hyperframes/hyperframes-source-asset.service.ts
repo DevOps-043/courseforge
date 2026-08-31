@@ -42,6 +42,25 @@ export function isSupportedHyperframesSourceMime(mimeType: string | null | undef
   return SUPPORTED_HYPERFRAMES_MIME.test(mimeType || "");
 }
 
+export function shouldExposeProductionRegistryAsset(params: {
+  assetType: string;
+  hasActiveReference: boolean;
+  qaStatus?: string | null;
+}) {
+  if (params.qaStatus === PRODUCTION_QA_STATUSES.ARCHIVED) return false;
+  if (params.hasActiveReference) return true;
+  return params.assetType === PRODUCTION_ASSET_TYPES.AVATAR_VIDEO
+    || params.assetType === PRODUCTION_ASSET_TYPES.AVATAR_VIDEO_CLIP
+    || params.assetType === PRODUCTION_ASSET_TYPES.VOICE_AUDIO;
+}
+
+export function isAutomaticTimelineSourceAsset(asset: {
+  metadata: Record<string, unknown>;
+  sourceType: "DECK_DEPENDENCY" | "PRODUCTION_MEDIA";
+}) {
+  return asset.sourceType === "PRODUCTION_MEDIA" && asset.metadata.historical_only !== true;
+}
+
 export interface HyperframesSourceAssetCandidate extends HyperframesAssetManifestItem {
   durationSeconds?: number;
   eligibleForRevision: boolean;
@@ -473,11 +492,13 @@ export async function listHyperframesSourceAssets(params: {
       PRODUCTION_ASSET_TYPES.SOURCE_MEDIA,
       PRODUCTION_ASSET_TYPES.AVATAR_VIDEO,
       PRODUCTION_ASSET_TYPES.AVATAR_VIDEO_CLIP,
+      PRODUCTION_ASSET_TYPES.VOICE_AUDIO,
     ])
     .not("checksum", "is", null)
     .not("file_size_bytes", "is", null)
     .not("mime_type", "is", null)
     .not("storage_path", "is", null)
+    .neq("qa_status", PRODUCTION_QA_STATUSES.ARCHIVED)
     .order("created_at", { ascending: false });
   if (error) throw error;
 
@@ -487,32 +508,41 @@ export async function listHyperframesSourceAssets(params: {
     const isAvatarRegistryAsset =
       asset.asset_type === PRODUCTION_ASSET_TYPES.AVATAR_VIDEO
       || asset.asset_type === PRODUCTION_ASSET_TYPES.AVATAR_VIDEO_CLIP;
+    const isVoiceRegistryAsset = asset.asset_type === PRODUCTION_ASSET_TYPES.VOICE_AUDIO;
     // Material assets are the mutable Production source of truth. Registry
     // rows are provenance and may outlive a video cleared for regeneration.
-    if (!reference) return [];
+    if (!shouldExposeProductionRegistryAsset({
+      assetType: asset.asset_type,
+      hasActiveReference: Boolean(reference),
+      qaStatus: asset.qa_status,
+    })) return [];
     if (typeof asset.storage_path !== "string" || seenStoragePaths.has(asset.storage_path)) return [];
     seenStoragePaths.add(asset.storage_path);
+    const assetMetadata = isRecord(asset.metadata) ? asset.metadata : {};
     const candidate = inspectHyperframesSourceAsset({
       checksum: asset.checksum,
       durationSeconds: preciseDurationSeconds(asset.duration_milliseconds, asset.duration_seconds),
       fileSizeBytes: asset.file_size_bytes,
-      hasAudio: reference.hasAudio ?? optionalBoolean(isRecord(asset.metadata) ? asset.metadata.has_audio : undefined),
-      metadata: isRecord(asset.metadata) ? asset.metadata : {},
+      hasAudio: reference?.hasAudio ?? optionalBoolean(isRecord(asset.metadata) ? asset.metadata.has_audio : undefined),
+      metadata: reference ? assetMetadata : { ...assetMetadata, historical_only: true },
       mimeType: asset.mime_type,
       productionAssetId: asset.id,
       qaStatus: asset.qa_status,
-      sceneClipId: reference.sceneClipId
+      sceneClipId: reference?.sceneClipId
         || (isRecord(asset.metadata) && typeof asset.metadata.scene_clip_id === "string"
           ? asset.metadata.scene_clip_id
           : undefined),
-      sceneOrder: reference.sceneOrder
+      sceneOrder: reference?.sceneOrder
         || positiveInteger(isRecord(asset.metadata) ? asset.metadata.scene_order : undefined),
       sourceType: reference?.sourceType || "PRODUCTION_MEDIA",
       storagePath: asset.storage_path,
-      timelineRole: reference?.timelineRole || (isAvatarRegistryAsset ? "AVATAR" : "VISUAL"),
+      timelineRole: reference?.timelineRole
+        || (isAvatarRegistryAsset ? "AVATAR" : isVoiceRegistryAsset ? "VOICE" : "VISUAL"),
       timelineVariant: reference?.timelineVariant
         || (isRecord(asset.metadata) && asset.metadata.timeline_variant === "FULL" ? "FULL" : undefined)
-        || (isAvatarRegistryAsset ? (asset.asset_type === PRODUCTION_ASSET_TYPES.AVATAR_VIDEO ? "FULL" : "CLIP") : undefined),
+        || (isAvatarRegistryAsset
+          ? (asset.asset_type === PRODUCTION_ASSET_TYPES.AVATAR_VIDEO ? "FULL" : "CLIP")
+          : isVoiceRegistryAsset ? "CLIP" : undefined),
     });
     return candidate ? [candidate] : [];
   });

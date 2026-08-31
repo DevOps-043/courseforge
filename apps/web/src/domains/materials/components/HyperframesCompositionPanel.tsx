@@ -8,7 +8,6 @@ import {
   type CompositionStudioAsset,
   type CompositionStudioLesson,
 } from "./composition-editor/NativeCompositionPreview";
-import { EngineSelect } from "@/components/ui/EngineSelect";
 
 interface VideoAsset {
   checksum: string;
@@ -45,6 +44,7 @@ interface RenderRequest {
 }
 
 type BusyAction = "approve" | "generate" | "render" | "poll" | "prepare" | null;
+type PreparationStep = "SYNCING_ASSETS" | "LOADING_ASSETS" | "PREPARING_COMPOSITION" | "OPENING_EDITOR" | "READY";
 
 export function HyperframesCompositionPanel({
   componentId,
@@ -72,8 +72,7 @@ export function HyperframesCompositionPanel({
   const [revisionId, setRevisionId] = useState<string | null>(null);
   const [renderRequest, setRenderRequest] = useState<RenderRequest | null>(null);
   const [busy, setBusy] = useState<BusyAction>("prepare");
-  const [agentInstruction, setAgentInstruction] = useState("");
-  const [generationMode, setGenerationMode] = useState<"AUTOMATIC" | "AGENT_ASSISTED">("AUTOMATIC");
+  const [preparationStep, setPreparationStep] = useState<PreparationStep>("SYNCING_ASSETS");
   const [animatedDeck, setAnimatedDeck] = useState<{ animationCount: number; slideCount: number } | null>(null);
   const sceneAssetFingerprintRef = useRef<string | null>(null);
   const sceneAssetRefreshInFlightRef = useRef(false);
@@ -121,6 +120,7 @@ export function HyperframesCompositionPanel({
 
   const loadInitialData = useCallback(async () => {
     setBusy("prepare");
+    setPreparationStep("SYNCING_ASSETS");
     setEditorError(null);
     setSyncWarning(null);
     setAnimatedDeck(null);
@@ -148,8 +148,10 @@ export function HyperframesCompositionPanel({
 
       // Asset visibility must not depend on creating the editable draft. If a
       // draft needs repair, the author still sees exactly what Production sent.
+      setPreparationStep("LOADING_ASSETS");
       await refreshAssets();
 
+      setPreparationStep("PREPARING_COMPOSITION");
       const compositionResponse = await fetch("/api/production/hyperframes/compositions", {
         body: JSON.stringify({ componentId, name: componentTitle }),
         headers: { "Content-Type": "application/json" },
@@ -161,6 +163,7 @@ export function HyperframesCompositionPanel({
       setComposition(nextComposition);
       setRevisionId(nextComposition.active_revision_id || null);
 
+      setPreparationStep("OPENING_EDITOR");
       const draftResponse = await fetch(`/api/production/hyperframes/compositions/${nextComposition.id}/draft`, {
         method: "POST",
       });
@@ -173,6 +176,7 @@ export function HyperframesCompositionPanel({
       }
       setDraftId(draftPayload.data.draftId as string);
       setDraftDocumentVersion(draftPayload.data.documentVersion as number);
+      setPreparationStep("READY");
     } catch (error) {
       const message = error instanceof Error ? error.message : "No se pudo abrir el estudio de video.";
       setEditorError(message);
@@ -275,7 +279,7 @@ export function HyperframesCompositionPanel({
     setBusy("generate");
     try {
       const response = await fetch(`/api/production/hyperframes/compositions/${composition.id}/revisions`, {
-        body: JSON.stringify({ agentInstruction: agentInstruction || undefined, generationMode }),
+        body: JSON.stringify({ generationMode: "AUTOMATIC" }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
@@ -337,31 +341,23 @@ export function HyperframesCompositionPanel({
 
   return (
     <section className={draftId ? "flex h-full min-h-0 flex-col [&>p]:hidden" : "space-y-5 rounded-xl border border-[var(--engine-accent)]/40 bg-[var(--engine-accent)]/5 p-4 dark:border-[var(--engine-accent)]/25 dark:bg-[var(--engine-accent)]/[0.04]"}>
-      <div className={draftId ? "hidden" : "flex flex-wrap items-start justify-between gap-3"}>
-        <div>
-          <h4 className="flex items-center gap-2 text-base font-bold text-[var(--engine-primary)] dark:text-[var(--engine-accent)]"><Sparkles size={17} /> Estudio de video</h4>
-          <p className="mt-1 text-xs text-slate-600 dark:text-gray-400">Los assets vienen del paso de Producción y se vinculan automáticamente al video seleccionado.</p>
-        </div>
-        <button type="button" onClick={() => void loadInitialData()} disabled={busy !== null} className="rounded-lg p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white" title="Actualizar assets"><RefreshCw className={busy === "prepare" ? "animate-spin" : ""} size={15} /></button>
-      </div>
-
-      <div className={draftId ? "hidden" : "rounded-lg border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-[var(--engine-canvas)]"}>
-        <div className="mb-2 flex items-center justify-between gap-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-gray-400">Assets vinculados ({uniqueAssets.length})</p><span className="text-[11px] text-slate-500 dark:text-gray-500">{formatBytes(totalAssetBytes)} remotos</span></div>
-        {busy === "prepare" ? <p className="flex items-center gap-2 text-xs text-slate-500 dark:text-gray-400"><Loader2 className="animate-spin" size={14} /> Preparando assets de Producción…</p> : uniqueAssets.length === 0 && !animatedDeck ? <p className="text-xs text-amber-700 dark:text-amber-300">No hay medios internos compatibles para este video. Agrégalos en el paso de Producción y vuelve aquí.</p> : <><div className="grid max-h-44 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">{uniqueAssets.map((asset) => <div key={asset.productionAssetId} className={`rounded-lg border p-2 text-xs ${asset.eligibleForRevision ? "border-slate-200 bg-slate-50 text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-gray-300" : "border-red-300 bg-red-50 text-red-900 dark:border-red-400/40 dark:bg-red-500/10 dark:text-red-100"}`}><div className="flex items-center gap-2"><Film size={13} className={`shrink-0 ${asset.eligibleForRevision ? "text-cyan-600 dark:text-cyan-300" : "text-red-600 dark:text-red-300"}`} /><span className="min-w-0 flex-1 truncate">{asset.metadata.file_name || asset.mimeType}</span><span className="text-[10px]">{formatBytes(asset.fileSizeBytes)}</span></div><p className="mt-1 text-[10px] text-slate-500 dark:text-gray-400">{asset.sourceType === "DECK_DEPENDENCY" ? "Recurso interno del deck HTML" : "Medio remoto de Producción"}</p>{asset.validationErrors.map((error, errorIndex) => <p key={`${asset.productionAssetId}-${errorIndex}`} className="mt-1 text-[10px] leading-4 text-red-700 dark:text-red-200">{error}</p>)}</div>)}</div>{hasAssetSizeErrors && <div role="alert" className="mt-3 rounded-lg border border-red-300 bg-red-50 p-3 text-xs text-red-900 dark:border-red-400/40 dark:bg-red-500/10 dark:text-red-100"><p className="flex items-center gap-2 font-bold"><AlertTriangle size={15} /> Preview bloqueado por asset incompatible</p><p className="mt-1 leading-5">{sizeErrorMessage}</p></div>}{animatedDeck && <p className="mt-2 text-xs text-cyan-700 dark:text-cyan-300">Deck HTML animado: {animatedDeck.slideCount} diapositivas · {animatedDeck.animationCount} animaciones. Se mantiene como HTML, no se rasteriza.</p>}</>}
-      </div>
-
-      <div className={draftId ? "hidden" : "grid gap-3 md:grid-cols-2"}>
-        <label className="text-xs text-slate-600 dark:text-gray-400">Modo de creación<EngineSelect className="mt-1" value={generationMode} onValueChange={(value) => setGenerationMode(value as "AUTOMATIC" | "AGENT_ASSISTED")} options={[{ value: "AUTOMATIC", label: "Automático" }, { value: "AGENT_ASSISTED", label: "Asistido por agente" }]} /></label>
-        <label className="text-xs text-slate-600 dark:text-gray-400">Instrucción al agente (opcional)<input value={agentInstruction} onChange={(event) => setAgentInstruction(event.target.value)} maxLength={1000} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white" placeholder="Ej. tono sobrio y directo" /></label>
-      </div>
-
-      <p className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-900 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-100">El preview completo se actualiza automáticamente después de cada edición. El envío a render se volverá a conectar en la siguiente fase, cuando pueda generar un snapshot exacto de esta versión.</p>
-
-      {syncWarning && <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">No se pudo actualizar el registro de assets: {syncWarning} Se muestran los assets vinculados previamente.</p>}
-      {editorError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-100">No se pudo preparar el editor: {editorError}</p>}
+      {!draftId && (
+        <CompositionPreparationView
+          animatedDeck={animatedDeck}
+          assetCount={uniqueAssets.length}
+          blockedAssetCount={blockedAssets.length}
+          componentTitle={componentTitle}
+          error={editorError}
+          onRetry={() => void loadInitialData()}
+          pendingClipCount={pendingHeygenClipCount}
+          step={preparationStep}
+          syncWarning={syncWarning}
+          totalAssetBytes={totalAssetBytes}
+        />
+      )}
       {draftId && (
         <div className="min-h-0 flex-1">
-          <NativeCompositionPreview key={`${draftId}:${draftDocumentVersion || 0}`} assets={studioAssets} componentId={componentId} compositionId={composition?.id || ""} draftId={draftId} lessons={lessonLibrary} onAssetsChanged={refreshAssets} onContinueToPublication={onContinueToPublication} onSelectLesson={onSelectLesson} onVideoCompleted={onVideoCompleted} selectedLessonId={selectedLessonId} />
+          <NativeCompositionPreview key={`${draftId}:${draftDocumentVersion || 0}`} assets={studioAssets} componentId={componentId} compositionId={composition?.id || ""} draftId={draftId} lessons={lessonLibrary} onAssetsChanged={refreshAssets} onContinueToPublication={onContinueToPublication} onRefreshProductionAssets={loadInitialData} onSelectLesson={onSelectLesson} onVideoCompleted={onVideoCompleted} selectedLessonId={selectedLessonId} />
         </div>
       )}
       {renderRequest?.providerStatus.toLowerCase() === "completed" && <p className="flex items-center gap-2 text-xs font-medium text-green-700 dark:text-green-400"><CheckCircle2 size={15} /> Video final importado en Courseforge.</p>}
@@ -369,11 +365,104 @@ export function HyperframesCompositionPanel({
   );
 }
 
-function ActionButton({ active, disabled, label, onClick, primary = false }: { active: boolean; disabled: boolean; label: string; onClick: () => void; primary?: boolean }) {
-  return <button type="button" disabled={disabled} onClick={onClick} className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${primary ? "bg-[var(--engine-primary)] text-white hover:bg-[#0d2f4d]" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-gray-200 dark:hover:bg-white/10"}`}>{active ? <Loader2 className="animate-spin" size={14} /> : <Clapperboard size={14} />}{label}</button>;
-}
+const PREPARATION_STEPS: Array<{ key: Exclude<PreparationStep, "READY">; label: string }> = [
+  { key: "SYNCING_ASSETS", label: "Sincronizando" },
+  { key: "LOADING_ASSETS", label: "Revisando medios" },
+  { key: "PREPARING_COMPOSITION", label: "Creando ensamble" },
+  { key: "OPENING_EDITOR", label: "Abriendo editor" },
+];
 
-void ActionButton;
+function CompositionPreparationView({
+  animatedDeck,
+  assetCount,
+  blockedAssetCount,
+  componentTitle,
+  error,
+  onRetry,
+  pendingClipCount,
+  step,
+  syncWarning,
+  totalAssetBytes,
+}: {
+  animatedDeck: { animationCount: number; slideCount: number } | null;
+  assetCount: number;
+  blockedAssetCount: number;
+  componentTitle: string;
+  error: string | null;
+  onRetry: () => void;
+  pendingClipCount: number;
+  step: PreparationStep;
+  syncWarning: string | null;
+  totalAssetBytes: number;
+}) {
+  const activeStepIndex = step === "READY"
+    ? PREPARATION_STEPS.length
+    : Math.max(0, PREPARATION_STEPS.findIndex((candidate) => candidate.key === step));
+  const progress = step === "READY"
+    ? 100
+    : Math.round(((activeStepIndex + 0.35) / PREPARATION_STEPS.length) * 100);
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-cyan-200/80 bg-gradient-to-br from-white via-cyan-50/60 to-emerald-50/70 px-5 py-8 shadow-sm dark:border-cyan-400/15 dark:from-[var(--engine-surface-solid)] dark:via-cyan-950/20 dark:to-emerald-950/20 sm:px-8">
+      <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-cyan-300/20 blur-3xl dark:bg-cyan-400/10" />
+      <div className="pointer-events-none absolute -bottom-24 -left-20 h-56 w-56 rounded-full bg-emerald-300/20 blur-3xl dark:bg-emerald-400/10" />
+
+      <div className="relative mx-auto max-w-4xl">
+        <div className="flex flex-col items-center text-center">
+          <div className={`flex h-14 w-14 items-center justify-center rounded-2xl border shadow-sm ${error ? "border-red-200 bg-red-50 text-red-600 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-300" : "border-cyan-200 bg-white text-cyan-700 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-200"}`}>
+            {error ? <AlertTriangle size={24} /> : <Clapperboard size={25} />}
+          </div>
+          <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-700 dark:text-cyan-300">
+            {error ? "Preparación interrumpida" : "Preparando ensamble"}
+          </p>
+          <h2 className="mt-1 text-xl font-bold text-slate-900 dark:text-white">
+            {error ? "No pudimos abrir el editor" : "Organizando los assets de tu lección"}
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+            {error
+              ? error
+              : <>Estamos vinculando <strong>{componentTitle}</strong> con el timeline. El editor se abrirá automáticamente cuando todo esté listo.</>}
+          </p>
+        </div>
+
+        {!error ? (
+          <>
+            <div className="mt-7 h-1.5 overflow-hidden rounded-full bg-slate-200/80 dark:bg-white/10">
+              <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-emerald-400 transition-[width] duration-500" style={{ width: `${progress}%` }} />
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {PREPARATION_STEPS.map((candidate, index) => {
+                const completed = index < activeStepIndex || step === "READY";
+                const active = index === activeStepIndex && step !== "READY";
+                return (
+                  <div key={candidate.key} className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-semibold ${completed ? "border-emerald-200 bg-emerald-50/80 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300" : active ? "border-cyan-200 bg-white text-cyan-700 shadow-sm dark:border-cyan-400/20 dark:bg-white/5 dark:text-cyan-200" : "border-slate-200/80 bg-white/50 text-slate-400 dark:border-white/5 dark:bg-white/[0.02] dark:text-slate-500"}`}>
+                    {completed ? <CheckCircle2 size={15} /> : active ? <Loader2 className="animate-spin" size={15} /> : <span className="flex h-[15px] w-[15px] items-center justify-center rounded-full border border-current text-[8px]">{index + 1}</span>}
+                    {candidate.label}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <div className="mt-6 flex justify-center">
+            <button type="button" onClick={onRetry} className="inline-flex items-center gap-2 rounded-xl bg-[var(--engine-primary)] px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90">
+              <RefreshCw size={15} /> Reintentar preparación
+            </button>
+          </div>
+        )}
+
+        <div className="mt-6 flex flex-wrap justify-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/70 bg-white/70 px-3 py-1.5 shadow-sm dark:border-white/10 dark:bg-white/5"><Film size={13} className="text-cyan-600" /> {assetCount} assets · {formatBytes(totalAssetBytes)}</span>
+          {animatedDeck ? <span className="inline-flex items-center gap-1.5 rounded-full border border-white/70 bg-white/70 px-3 py-1.5 shadow-sm dark:border-white/10 dark:bg-white/5"><Sparkles size={13} className="text-violet-500" /> {animatedDeck.slideCount} diapositivas · {animatedDeck.animationCount} animaciones</span> : null}
+          {pendingClipCount > 0 ? <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-700 dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-300"><Loader2 className="animate-spin" size={13} /> {pendingClipCount} clips procesándose</span> : null}
+          {blockedAssetCount > 0 ? <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-red-700 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-300"><AlertTriangle size={13} /> {blockedAssetCount} requieren revisión</span> : null}
+        </div>
+
+        {syncWarning ? <p role="status" className="mx-auto mt-4 max-w-2xl rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-center text-xs text-amber-800 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200">{syncWarning} Se usarán los assets vinculados previamente.</p> : null}
+      </div>
+    </div>
+  );
+}
 
 function formatBytes(value: number) {
   return value >= 1024 * 1024 ? `${(value / (1024 * 1024)).toFixed(1)} MB` : value ? `${Math.max(1, Math.round(value / 1024))} KB` : "0 KB";

@@ -200,6 +200,13 @@ export interface HeygenVideoDetails {
   videoUrl?: string | null;
 }
 
+export interface HeygenVideoCatalogItem {
+  createdAt?: number | string | null;
+  status: HeygenVideoStatus;
+  title?: string | null;
+  videoId: string;
+}
+
 export interface HeygenAvatarVideoGenerationOptions {
   aspectRatio: HeygenAvatarVideoAspectRatio;
   autoPromote: boolean;
@@ -261,6 +268,7 @@ export interface HeygenProductionJobRow {
   duration_seconds?: number | null;
   id: string;
   input_snapshot?: Record<string, unknown> | null;
+  job_type?: string | null;
   material_component_id?: string | null;
   material_lesson_id?: string | null;
   lesson_id?: string | null;

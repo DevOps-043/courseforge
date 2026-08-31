@@ -129,6 +129,144 @@ export class HeygenAudioImportService {
     };
   }
 
+  /**
+   * Resolves one speech request without paying for it twice. Recovery order:
+   * registry row, already uploaded Storage object, provider URL checkpoint,
+   * and only then a new HeyGen request.
+   */
+  async resolveVoiceAsset(params: {
+    createdBy?: string | null;
+    generateSpeech: () => Promise<HeygenGeneratedSpeech>;
+    job: HeygenProductionJobRow;
+    scriptHash: string;
+    voiceProviderId: string;
+  }): Promise<HeygenImportedVoiceAsset> {
+    const existing = await this.findImportedVoice(params.job.id);
+    if (existing) return existing;
+
+    const checkpoint = parseHeygenSpeechCheckpoint(params.job.output_snapshot);
+    const uploaded = await this.recoverUploadedVoice({
+      createdBy: params.createdBy,
+      job: params.job,
+      scriptHash: params.scriptHash,
+      speech: checkpoint,
+      voiceProviderId: params.voiceProviderId,
+    });
+    if (uploaded) return uploaded;
+
+    if (checkpoint) {
+      try {
+        return await this.importGeneratedSpeech({
+          createdBy: params.createdBy,
+          job: params.job,
+          scriptHash: params.scriptHash,
+          speech: checkpoint,
+          voiceProviderId: params.voiceProviderId,
+        });
+      } catch (error) {
+        console.warn("[HeyGen voice] Stored provider URL could not be imported; generating a replacement", {
+          jobId: params.job.id,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    const speech = await params.generateSpeech();
+    await this.repository.checkpointGeneratedSpeech({
+      jobId: params.job.id,
+      outputSnapshot: params.job.output_snapshot,
+      speech,
+    });
+    return this.importGeneratedSpeech({
+      createdBy: params.createdBy,
+      job: params.job,
+      scriptHash: params.scriptHash,
+      speech,
+      voiceProviderId: params.voiceProviderId,
+    });
+  }
+
+  async recoverUploadedVoice(params: {
+    createdBy?: string | null;
+    job: HeygenProductionJobRow;
+    scriptHash: string;
+    speech?: HeygenGeneratedSpeech | null;
+    voiceProviderId: string;
+  }): Promise<HeygenImportedVoiceAsset | null> {
+    const context = buildContextFromJob(params.job);
+    const fileStem = resolveHeygenJobFileStem(params.job.input_snapshot, "audio");
+    const directory = ["heygen", context.artifactId, context.componentId].join("/");
+    const objectPrefix = `${fileStem}-${params.job.id.slice(0, 8)}.`;
+    const { data, error } = await this.supabase.storage
+      .from(HEYGEN_VIDEO_STORAGE_BUCKET)
+      .list(directory, { limit: 100, search: objectPrefix });
+    if (error) throw error;
+
+    const matches = (data || [])
+      .filter((entry) => entry.name === `${objectPrefix}mp3` || entry.name === `${objectPrefix}wav`)
+      .sort((left, right) => String(right.updated_at || right.created_at || "")
+        .localeCompare(String(left.updated_at || left.created_at || "")));
+    const stored = matches[0];
+    if (!stored) return null;
+    if (matches.length > 1) {
+      console.warn("[HeyGen voice] Multiple stored audio candidates found", {
+        jobId: params.job.id,
+        selected: stored.name,
+      });
+    }
+
+    const objectPath = `${directory}/${stored.name}`;
+    const { data: blob, error: downloadError } = await this.supabase.storage
+      .from(HEYGEN_VIDEO_STORAGE_BUCKET)
+      .download(objectPath);
+    if (downloadError) throw downloadError;
+    const buffer = Buffer.from(await blob.arrayBuffer());
+    if (buffer.byteLength > HEYGEN_MAX_AUDIO_IMPORT_SIZE_BYTES) {
+      throw new Error("La voz almacenada de HeyGen excede el limite de importacion.");
+    }
+    const mimeType = stored.name.endsWith(".wav") ? "audio/wav" : "audio/mpeg";
+    const { data: { publicUrl } } = this.supabase.storage
+      .from(HEYGEN_VIDEO_STORAGE_BUCKET)
+      .getPublicUrl(objectPath);
+    const storagePath = `${HEYGEN_VIDEO_STORAGE_BUCKET}/${objectPath}`;
+    const speech = params.speech || null;
+    const asset = await this.repository.insertGeneratedMediaAsset({
+      assetType: PRODUCTION_ASSET_TYPES.VOICE_AUDIO,
+      checksum: createHash("sha256").update(buffer).digest("hex"),
+      context,
+      createdBy: params.createdBy || null,
+      durationSeconds: speech?.durationSeconds || params.job.duration_seconds || null,
+      externalUrl: speech?.audioUrl || null,
+      fileSizeBytes: buffer.byteLength,
+      jobId: params.job.id,
+      metadata: {
+        asset_display_name: typeof params.job.input_snapshot?.asset_display_name === "string"
+          ? params.job.input_snapshot.asset_display_name
+          : null,
+        file_name: stored.name,
+        recovered_from_storage_at: new Date().toISOString(),
+        provider_request_id: speech?.requestId || null,
+        script_hash: params.scriptHash,
+        voice_provider_id: params.voiceProviderId,
+        word_timestamps: speech?.wordTimestamps || [],
+      },
+      mimeType,
+      providerJobId: speech?.requestId || params.job.id,
+      publicUrl,
+      storageBucket: HEYGEN_VIDEO_STORAGE_BUCKET,
+      storagePath,
+    });
+
+    return {
+      durationSeconds: speech?.durationSeconds || params.job.duration_seconds || null,
+      id: asset.id,
+      providerRequestId: speech?.requestId || null,
+      publicUrl,
+      storagePath,
+      wordTimestamps: speech?.wordTimestamps || [],
+    };
+  }
+
   async discardImportedVoice(asset: HeygenImportedVoiceAsset) {
     const objectPath = resolveHeygenStorageObjectPath({
       storage_bucket: HEYGEN_VIDEO_STORAGE_BUCKET,
@@ -265,6 +403,28 @@ function parseWordTimestamps(value: unknown): HeygenGeneratedSpeech["wordTimesta
       || typeof entry.start !== "number" || typeof entry.end !== "number") return [];
     return [{ word: entry.word, start: entry.start, end: entry.end }];
   });
+}
+
+export function parseHeygenSpeechCheckpoint(
+  outputSnapshot: Record<string, unknown> | null | undefined,
+): HeygenGeneratedSpeech | null {
+  const raw = isRecord(outputSnapshot?.speech_checkpoint)
+    ? outputSnapshot.speech_checkpoint
+    : null;
+  if (
+    !raw
+    || typeof raw.audio_url !== "string"
+    || !raw.audio_url
+    || typeof raw.duration_seconds !== "number"
+    || raw.duration_seconds <= 0
+  ) return null;
+  return {
+    audioUrl: raw.audio_url,
+    durationSeconds: raw.duration_seconds,
+    raw: { recovered_from_checkpoint: true },
+    requestId: typeof raw.provider_request_id === "string" ? raw.provider_request_id : null,
+    wordTimestamps: parseWordTimestamps(raw.word_timestamps),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

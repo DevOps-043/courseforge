@@ -12,6 +12,7 @@ import {
 } from "../composition-duration.service";
 import { normalizeCompositionTrackTopology } from "../composition-track-registry";
 import { formatCompositionTimecode, parseCompositionTimecode } from "../composition-timecode";
+import { applyCompositionEditorPatches } from "../editor-patch.service";
 
 test("preserves deck HTML as editable clips and labels missing timings as estimated", () => {
   const document = createInitialCompositionDocument({
@@ -470,4 +471,62 @@ test("removes only deck-owned raster assets from an existing timeline", () => {
   assert.equal(reconciled.removedDeckDependencyCount, 1);
   assert.equal(reconciled.document.clips.some((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.productionAssetId === deckAssetId), false);
   assert.equal(reconciled.document.clips.some((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.productionAssetId === avatarAssetId && clip.trackId === "avatar"), true);
+});
+
+test("preserves retained clip bounds and removes orphan animations when production assets change", () => {
+  const previousAvatar = {
+    checksum: "a".repeat(64), durationSeconds: 40, fileSizeBytes: 4, mimeType: "video/mp4",
+    productionAssetId: "00000000-0000-4000-8000-000000000071", publicUrl: null,
+    storageBucket: "production-assets", storagePath: "production-assets/avatar-previous.mp4",
+    timelineRole: "AVATAR" as const, timelineVariant: "FULL" as const,
+  };
+  const nextVoice = {
+    checksum: "b".repeat(64), durationSeconds: 10, fileSizeBytes: 4, mimeType: "audio/mpeg",
+    productionAssetId: "00000000-0000-4000-8000-000000000072", publicUrl: null,
+    storageBucket: "production-assets", storagePath: "production-assets/voice-current.mp3",
+    timelineRole: "VOICE" as const, timelineVariant: "FULL" as const,
+  };
+  const initial = createInitialCompositionDocument({
+    animatedDeck: {
+      css: "", fonts: [], height: 1080,
+      slides: Array.from({ length: 5 }, (_, index) => ({
+        animationCount: 0,
+        classes: "slide",
+        html: `<h1>${index + 1}</h1>`,
+        index,
+        label: `Diapositiva ${index + 1}`,
+      })),
+      width: 1920,
+    },
+    assets: [previousAvatar],
+    plan: { accentColor: "#38BDF8", durationSeconds: 40, subtitle: "Prueba", title: "Cambio de fuentes" },
+  });
+  const previousAvatarClip = initial.clips.find((clip) => (
+    clip.source.type === "PRODUCTION_ASSET"
+    && clip.source.productionAssetId === previousAvatar.productionAssetId
+  ))!;
+  const animated = applyCompositionEditorPatches(initial, [{
+    animationId: "motion-previous-avatar",
+    clipId: previousAvatarClip.id,
+    durationSeconds: 0.5,
+    presetId: "FADE_IN",
+    type: "animation.add-preset",
+  }]);
+
+  const reconciled = reconcileCompositionDocument({
+    deckDependencyAssetIds: new Set(),
+    document: animated,
+    productionAssets: [nextVoice],
+  });
+
+  assert.equal(reconciled.document.canvas.durationSeconds, 40);
+  assert.equal(reconciled.document.canvas.durationSource, "voice");
+  assert.equal(reconciled.document.motion.animations.length, 0);
+  assert.equal(reconciled.removedInactiveProductionAssetCount, 1);
+  assert.equal(reconciled.removedOrphanAnimationCount, 1);
+  assert.equal(reconciled.document.clips.some((clip) => clip.id === previousAvatarClip.id), false);
+  assert.equal(reconciled.document.clips.some((clip) => (
+    clip.source.type === "PRODUCTION_ASSET"
+    && clip.source.productionAssetId === nextVoice.productionAssetId
+  )), true);
 });

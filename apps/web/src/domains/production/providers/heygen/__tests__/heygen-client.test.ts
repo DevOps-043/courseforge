@@ -29,6 +29,34 @@ describe("HeyGen separated track client", () => {
     assert.ok(requested.some((url) => url.includes("type=private")));
   });
 
+  it("paginates the remote video catalog used to repair orphaned jobs", async () => {
+    const requested: string[] = [];
+    const client = new HeygenClient({
+      apiKey: "test-key",
+      fetchImpl: async (input) => {
+        const url = String(input);
+        requested.push(url);
+        const secondPage = url.includes("token=next-page");
+        return Response.json({
+          data: [{
+            created_at: secondPage ? 2 : 1,
+            status: "completed",
+            title: secondPage ? "Second" : "First",
+            video_id: secondPage ? "video-2" : "video-1",
+          }],
+          has_more: !secondPage,
+          next_token: secondPage ? null : "next-page",
+        });
+      },
+    });
+
+    const result = await client.listAllVideos();
+
+    assert.deepEqual(result.data.map((video) => video.videoId), ["video-1", "video-2"]);
+    assert.ok(requested[0]?.includes("/v3/videos?"));
+    assert.ok(requested[1]?.includes("token=next-page"));
+  });
+
   it("validates audio-only translation and estimates its public rate", () => {
     const action = heygenPlatformActionSchema.parse({
       action: "translate_video",

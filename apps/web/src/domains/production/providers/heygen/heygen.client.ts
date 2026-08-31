@@ -10,6 +10,7 @@ import {
   type HeygenGenerateSpeechRequest,
   type HeygenPage,
   type HeygenVideoDetails,
+  type HeygenVideoCatalogItem,
 } from "./heygen.types";
 import {
   heygenApiErrorPayloadSchema,
@@ -260,6 +261,50 @@ export class HeygenClient {
       videoPageUrl: readString(details.video_page_url),
       videoUrl: readString(details.video_url),
     };
+  }
+
+  async listVideos(params: { token?: string } = {}): Promise<HeygenPage<HeygenVideoCatalogItem>> {
+    const raw = await this.requestJson({
+      method: "GET",
+      path: withQuery("/v3/videos", {
+        limit: HEYGEN_DEFAULT_PAGE_SIZE,
+        token: params.token,
+      }),
+    });
+    const root = toRecord(raw) || {};
+    const rows = Array.isArray(root.data) ? root.data : [];
+    return {
+      data: rows.flatMap((row) => {
+        const item = toRecord(row);
+        const videoId = readString(item?.video_id) || readString(item?.id);
+        if (!item || !videoId) return [];
+        return [{
+          createdAt: readNumber(item.created_at) ?? readString(item.created_at),
+          status: readString(item.status) || "unknown",
+          title: readString(item.title) || readString(item.name),
+          videoId,
+        } satisfies HeygenVideoCatalogItem];
+      }),
+      hasMore: root.has_more === true,
+      nextToken: readString(root.next_token),
+      raw: root,
+    };
+  }
+
+  async listAllVideos(): Promise<HeygenPage<HeygenVideoCatalogItem>> {
+    const data: HeygenVideoCatalogItem[] = [];
+    let token: string | undefined;
+    let raw: Record<string, unknown> = {};
+    for (let page = 0; page < 20; page += 1) {
+      const response = await this.listVideos({ token });
+      data.push(...response.data);
+      raw = response.raw;
+      if (!response.hasMore || !response.nextToken) {
+        return { data, hasMore: false, nextToken: null, raw };
+      }
+      token = response.nextToken;
+    }
+    return { data, hasMore: true, nextToken: token || null, raw };
   }
 
   private async collectPages(

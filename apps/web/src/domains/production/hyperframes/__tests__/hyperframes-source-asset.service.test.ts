@@ -4,7 +4,9 @@ import {
   collectInternalMaterialAssetReferences,
   extractHyperframesAnimatedDeck,
   inspectHyperframesSourceAsset,
+  isAutomaticTimelineSourceAsset,
   isSupportedHyperframesSourceMime,
+  shouldExposeProductionRegistryAsset,
 } from "../hyperframes-source-asset.service";
 
 describe("HyperFrames source assets", () => {
@@ -13,6 +15,37 @@ describe("HyperFrames source assets", () => {
     assert.equal(isSupportedHyperframesSourceMime("audio/mpeg"), true);
     assert.equal(isSupportedHyperframesSourceMime("text/html"), false);
     assert.equal(isSupportedHyperframesSourceMime("application/zip"), false);
+  });
+
+  it("keeps recovered avatar and voice history visible without reviving archived media", () => {
+    assert.equal(shouldExposeProductionRegistryAsset({
+      assetType: "AVATAR_VIDEO_CLIP",
+      hasActiveReference: false,
+      qaStatus: "READY_FOR_QA",
+    }), true);
+    assert.equal(shouldExposeProductionRegistryAsset({
+      assetType: "AVATAR_VIDEO_CLIP",
+      hasActiveReference: false,
+      qaStatus: "ARCHIVED",
+    }), false);
+    assert.equal(shouldExposeProductionRegistryAsset({
+      assetType: "VOICE_AUDIO",
+      hasActiveReference: false,
+      qaStatus: "READY_FOR_QA",
+    }), true);
+    assert.equal(shouldExposeProductionRegistryAsset({
+      assetType: "VOICE_AUDIO",
+      hasActiveReference: false,
+      qaStatus: "ARCHIVED",
+    }), false);
+    assert.equal(isAutomaticTimelineSourceAsset({
+      metadata: { historical_only: true },
+      sourceType: "PRODUCTION_MEDIA",
+    }), false);
+    assert.equal(isAutomaticTimelineSourceAsset({
+      metadata: {},
+      sourceType: "PRODUCTION_MEDIA",
+    }), true);
   });
 
   it("keeps a ready animated deck as HTML rather than slide images", () => {

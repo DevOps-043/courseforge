@@ -16,6 +16,7 @@ import {
 import { buildDeterministicPlan } from "./hyperframes-plan.service";
 import {
   extractHyperframesAnimatedDeck,
+  isAutomaticTimelineSourceAsset,
   listHyperframesSourceAssets,
 } from "./hyperframes-source-asset.service";
 
@@ -149,7 +150,7 @@ export async function initializeHyperframesDraft(params: {
   // Images referenced inside the deck remain part of that HTML source. They
   // must not become duplicate, user-editable image clips in the timeline.
   const assets = candidates
-    .filter((asset) => asset.sourceType === "PRODUCTION_MEDIA")
+    .filter(isAutomaticTimelineSourceAsset)
     .map((asset) => ({
       checksum: asset.checksum,
       durationSeconds: asset.durationSeconds,

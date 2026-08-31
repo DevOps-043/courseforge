@@ -145,9 +145,21 @@ export class HeygenVideoImportService {
           ? params.job.input_snapshot.asset_display_name
           : null,
         file_name: objectPath.split("/").at(-1),
+        has_audio: params.job.input_snapshot?.separate_tracks === true ? false : true,
         imported_at: new Date().toISOString(),
         output_format: params.video.outputFormat || downloadedVideo.extension,
         provider: PRODUCTION_PROVIDERS.HEYGEN,
+        scene_clip_id: typeof params.job.input_snapshot?.clip_id === "string"
+          ? params.job.input_snapshot.clip_id
+          : null,
+        scene_order: typeof params.job.input_snapshot?.scene_order === "number"
+          ? params.job.input_snapshot.scene_order
+          : null,
+        script_hash: typeof params.job.input_snapshot?.script_hash === "string"
+          ? params.job.input_snapshot.script_hash
+          : null,
+        timeline_role: "AVATAR",
+        timeline_variant: params.assetType === PRODUCTION_ASSET_TYPES.AVATAR_VIDEO_CLIP ? "CLIP" : "FULL",
         thumbnail_url: params.video.thumbnailUrl || null,
       },
       mimeType: downloadedVideo.contentType,

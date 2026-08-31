@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createOrReuseProductionJob, failProductionJob } from "../production-jobs.service";
+import {
+  createOrReuseProductionJob,
+  failProductionJob,
+  preserveRetryableProviderCheckpoint,
+} from "../production-jobs.service";
 
 const context = {
   artifactId: "artifact-1",
@@ -97,6 +101,22 @@ test("keeps the existing failed job when retry was not requested", async () => {
   });
 
   assert.equal(result.status, "FAILED");
+});
+
+test("preserves only the generated speech checkpoint across a retry", () => {
+  assert.deepEqual(preserveRetryableProviderCheckpoint({
+    provider_job_id: "discard-me",
+    speech_checkpoint: {
+      audio_url: "https://resource.heygen.ai/audio.mp3",
+      duration_seconds: 8.4,
+    },
+  }), {
+    speech_checkpoint: {
+      audio_url: "https://resource.heygen.ai/audio.mp3",
+      duration_seconds: 8.4,
+    },
+  });
+  assert.deepEqual(preserveRetryableProviderCheckpoint({ provider_job_id: "discard-me" }), {});
 });
 
 test("persists a structured QA diagnostic when a production job fails", async () => {

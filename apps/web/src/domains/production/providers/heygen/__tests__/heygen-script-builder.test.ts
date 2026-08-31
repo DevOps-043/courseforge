@@ -9,6 +9,7 @@ import {
   mergeSceneClipsForConcurrentGeneration,
   reconcileVoiceClips,
   selectRecoverableHistoricalSceneJobs,
+  selectRecoverableHistoricalSceneJobsForClips,
   selectPromotableAvatarVoices,
 } from "../heygen-scenes.service";
 import { resetGeneratedSceneAssets } from "../heygen-scene-assets";
@@ -20,6 +21,8 @@ import { PRODUCTION_JOB_STATUSES } from "../../../types/production.types";
 import { buildHeygenScriptFromComponent } from "../heygen-script-builder";
 import {
   buildHeygenSceneAssetNames,
+  buildCorrelatedHeygenVideoTitle,
+  readHeygenJobIdFromVideoTitle,
   resolveHeygenJobFileStem,
 } from "../heygen-asset-naming";
 
@@ -72,6 +75,15 @@ describe("HeyGen script builder", () => {
     assert.equal(merged.filter((clip) => clip.status === "COMPLETED").length, 4);
     assert.deepEqual(merged.map((clip) => clip.public_url), current.map((clip) => clip.public_url));
     assert.equal(merged[0]?.asset_name, "Nombre actualizado");
+  });
+
+  it("embeds a durable job correlation without exceeding HeyGen's title limit", () => {
+    const jobId = "7adc8b88-d144-432a-9046-2528e1c54bfd";
+    const title = buildCorrelatedHeygenVideoTitle("Una lección con un título muy largo ".repeat(8), jobId);
+
+    assert.ok(title.length <= 120);
+    assert.equal(readHeygenJobIdFromVideoTitle(title), jobId);
+    assert.equal(readHeygenJobIdFromVideoTitle("Avatar 1"), null);
   });
 
   it("prefers provider progress from the newest generation revision", () => {
@@ -253,6 +265,76 @@ describe("HeyGen scene clip builder", () => {
     assert.equal(merged.status, "STALE");
     assert.equal(merged.voice_status, "STALE");
     assert.equal(merged.generation_revision, 1);
+  });
+
+  it("does not attach a historical video to a reused scene id with a different script", () => {
+    const currentScript = "Guion vigente";
+    const historicalScript = "Guion anterior";
+    const selected = selectRecoverableHistoricalSceneJobsForClips(
+      [{ id: "scene-1", order: 1, script_text: currentScript, status: "DRAFT" }],
+      [{
+        artifact_id: "artifact-1",
+        id: "job-old",
+        input_snapshot: {
+          clip_id: "scene-1",
+          script_hash: createHash("sha256").update(historicalScript).digest("hex"),
+        },
+        material_component_id: "component-1",
+        organization_id: "organization-1",
+        provider_job_id: "heygen-video-old",
+        status: PRODUCTION_JOB_STATUSES.SUCCEEDED,
+      }],
+    );
+
+    assert.equal(selected.size, 0);
+  });
+
+  it("remaps a historical job when its script hash uniquely moved to another scene id", () => {
+    const script = "Guion que conserva identidad";
+    const job = {
+      artifact_id: "artifact-1",
+      id: "job-moved",
+      input_snapshot: {
+        clip_id: "scene-9",
+        script_hash: createHash("sha256").update(script).digest("hex"),
+      },
+      material_component_id: "component-1",
+      organization_id: "organization-1",
+      provider_job_id: "heygen-video-moved",
+      status: PRODUCTION_JOB_STATUSES.SUCCEEDED,
+    };
+    const selected = selectRecoverableHistoricalSceneJobsForClips(
+      [
+        { id: "scene-1", order: 1, script_text: "Otro guion", status: "DRAFT" },
+        { id: "scene-2", order: 2, script_text: script, status: "DRAFT" },
+      ],
+      [job],
+    );
+
+    assert.equal(selected.get("scene-2")?.id, "job-moved");
+  });
+
+  it("keeps a failed voice job eligible only for non-generating historical recovery", () => {
+    const clips = [{
+      id: "scene-1",
+      order: 1,
+      script_text: "Narración vigente",
+      status: "DRAFT" as const,
+    }];
+    const jobs = [{
+      artifact_id: "artifact-1",
+      id: "voice-job-1",
+      input_snapshot: {
+        clip_id: "scene-1",
+        script_hash: createHash("sha256").update("Narración vigente").digest("hex"),
+      },
+      job_type: "HEYGEN_VOICEOVER",
+      status: "FAILED",
+    }];
+
+    const selected = selectRecoverableHistoricalSceneJobsForClips(clips, jobs);
+
+    assert.equal(selected.get("scene-1")?.id, "voice-job-1");
   });
 
   it("uses the separated voice URL as the timing source for every avatar clip", () => {

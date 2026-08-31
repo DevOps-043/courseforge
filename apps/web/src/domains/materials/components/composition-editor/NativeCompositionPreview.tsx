@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronRight, Clapperboard, Crop, Eye, EyeOff, FileQuestion, GripHorizontal, Grid3X3, History, Image as ImageIcon, Loader2, Magnet, Maximize2, Minimize2, Minus, MousePointer2, Music2, PanelRight, Pause, Play, Plus, RefreshCw, RotateCcw, Save, Scan, Scissors, Send, SlidersHorizontal, Sparkles, Trash2, Video, X } from "lucide-react";
+import { toast } from "sonner";
 import type { CompositionClip, CompositionEditorDocument, CompositionTrack, CompositionVisualCrop } from "@/domains/production/composition-editor/composition-document.types";
 import { formatCompositionTimecode, parseCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
@@ -170,10 +171,27 @@ interface NativeCompositionPreviewProps {
   lessons: CompositionStudioLesson[];
   onContinueToPublication?: () => void;
   onAssetsChanged?: () => Promise<void> | void;
+  onRefreshProductionAssets?: () => Promise<void> | void;
   onVideoCompleted?: () => void;
   onSelectLesson: (lessonId: string) => void;
   selectedLessonId: string | null;
 }
+
+type HistoricalRecoveryResponse = {
+  data?: {
+    editorSyncWarning?: string | null;
+    report?: {
+      importedHistoricalAvatarCount?: number;
+      pendingAvatarCount?: number;
+      recoveredAvatarCount?: number;
+      recoveredVoiceCount?: number;
+      unresolvedSceneCount?: number;
+    };
+  };
+  error?: string;
+  hint?: string;
+  success?: boolean;
+};
 
 async function readCompositionApiResponse<T>(response: Response, fallbackMessage: string): Promise<T> {
   const contentType = response.headers.get("content-type") || "";
@@ -191,7 +209,7 @@ async function readCompositionApiResponse<T>(response: Response, fallbackMessage
 }
 
 /** The native assembly studio: library, full preview, timeline and contextual inspector. */
-export function NativeCompositionPreview({ assets, componentId, compositionId, draftId, lessons, onAssetsChanged, onContinueToPublication, onSelectLesson, onVideoCompleted, selectedLessonId }: NativeCompositionPreviewProps) {
+export function NativeCompositionPreview({ assets, componentId, compositionId, draftId, lessons, onAssetsChanged, onContinueToPublication, onRefreshProductionAssets, onSelectLesson, onVideoCompleted, selectedLessonId }: NativeCompositionPreviewProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const previewShellRef = useRef<HTMLDivElement | null>(null);
   const studioGridRef = useRef<HTMLDivElement | null>(null);
@@ -228,6 +246,8 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const [saving, setSaving] = useState(false);
   const [separatingAudio, setSeparatingAudio] = useState(false);
   const [separatingAudioProgress, setSeparatingAudioProgress] = useState(0);
+  const [refreshingProductionAssets, setRefreshingProductionAssets] = useState(false);
+  const [recoveringHistoricalAssets, setRecoveringHistoricalAssets] = useState(false);
   const [failedSave, setFailedSave] = useState<{ operations: CompositionEditorPatchOperation[]; source: "AGENT" | "USER"; summary: string } | null>(null);
   const [agentProposal, setAgentProposal] = useState<AgentProposal | null>(null);
   const [lastAppliedAgentProposal, setLastAppliedAgentProposal] = useState<AgentProposal | null>(null);
@@ -1248,6 +1268,65 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     await savePatch(operations, "Organizó los tiempos estimados sin reemplazar el layout manual.");
   }
 
+  async function refreshProductionAssets() {
+    if (!onRefreshProductionAssets) return;
+    setRefreshingProductionAssets(true);
+    setSaveError(null);
+    try {
+      await onRefreshProductionAssets();
+      toast.success("Assets de Producción actualizados.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudieron actualizar los assets de Producción.";
+      setSaveError(message);
+      toast.error(message);
+    } finally {
+      setRefreshingProductionAssets(false);
+    }
+  }
+
+  async function recoverHistoricalAssets() {
+    if (!componentId) return;
+    setRecoveringHistoricalAssets(true);
+    setSaveError(null);
+    try {
+      const response = await fetch("/api/production/heygen/scenes", {
+        body: JSON.stringify({ componentId }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const responsePayload = await readCompositionApiResponse<HistoricalRecoveryResponse>(
+        response,
+        "No se pudieron recuperar los assets históricos.",
+      );
+      if (!response.ok || !responsePayload.success) {
+        const detail = [responsePayload.error, responsePayload.hint].filter(Boolean).join(" ");
+        throw new Error(detail || "No se pudieron recuperar los assets históricos.");
+      }
+
+      await onAssetsChanged?.();
+      await loadDocument();
+      const report = responsePayload.data?.report;
+      const recoveredAvatarCount = report?.recoveredAvatarCount || 0;
+      const importedHistoricalAvatarCount = report?.importedHistoricalAvatarCount || 0;
+      const recoveredVoiceCount = report?.recoveredVoiceCount || 0;
+      const pendingAvatarCount = report?.pendingAvatarCount || 0;
+      if (recoveredAvatarCount > 0 || importedHistoricalAvatarCount > 0 || recoveredVoiceCount > 0) {
+        toast.success(`Recuperados: ${recoveredAvatarCount} avatares vigentes, ${importedHistoricalAvatarCount} históricos y ${recoveredVoiceCount} voces.`);
+      } else if (pendingAvatarCount > 0) {
+        toast.success(`${pendingAvatarCount} avatares históricos todavía están procesándose.`);
+      } else {
+        toast.success("La revisión terminó; no se encontraron assets históricos nuevos.");
+      }
+      if (responsePayload.data?.editorSyncWarning) toast.warning(responsePayload.data.editorSyncWarning);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudieron recuperar los assets históricos.";
+      setSaveError(message);
+      toast.error(message);
+    } finally {
+      setRecoveringHistoricalAssets(false);
+    }
+  }
+
   async function placeAssemblyBranding() {
     if (saving || saveInFlightRef.current) return;
     setSaving(true);
@@ -2179,7 +2258,16 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
 
         <section className={styles.timelinePanel}>
           <div className={styles.timelineScroll}>
-            <div className={`${styles.durationStrip} ${durationSourceLabel ? "" : styles.durationStripWarning}`}><span>{durationSourceLabel ? `Duración total: ${formatCompositionTimecode(duration)} · ${durationSourceLabel}` : "Define el asset que controla la duración del contenido."}</span><div className={styles.durationActions}><button type="button" disabled={saving} onClick={() => void recalculateDuration()} className={styles.durationAction}>Recalcular duración</button><button type="button" disabled={saving} onClick={() => void organizeTimeline()} className={styles.durationAction}>Organizar timeline</button>{(brandingAvailability?.hasIntro || brandingAvailability?.hasOutro) && <button type="button" disabled={saving} onClick={() => void placeAssemblyBranding()} className={styles.durationAction}>Colocar intro/outro</button>}</div></div>
+            <div className={`${styles.durationStrip} ${durationSourceLabel ? "" : styles.durationStripWarning}`}>
+              <span>{durationSourceLabel ? `Duración total: ${formatCompositionTimecode(duration)} · ${durationSourceLabel}` : "Define el asset que controla la duración del contenido."}</span>
+              <div className={styles.durationActions}>
+                <button type="button" disabled={saving} onClick={() => void recalculateDuration()} className={styles.durationAction}>Recalcular duración</button>
+                <button type="button" disabled={saving} onClick={() => void organizeTimeline()} className={styles.durationAction}>Organizar timeline</button>
+                <button type="button" disabled={saving || refreshingProductionAssets || recoveringHistoricalAssets} onClick={() => void refreshProductionAssets()} className={styles.durationAction}>{refreshingProductionAssets ? "Actualizando…" : "Actualizar assets"}</button>
+                <button type="button" disabled={saving || refreshingProductionAssets || recoveringHistoricalAssets} onClick={() => void recoverHistoricalAssets()} className={styles.durationAction}>{recoveringHistoricalAssets ? "Recuperando…" : "Recuperar históricos"}</button>
+                {(brandingAvailability?.hasIntro || brandingAvailability?.hasOutro) && <button type="button" disabled={saving} onClick={() => void placeAssemblyBranding()} className={styles.durationAction}>Colocar intro/outro</button>}
+              </div>
+            </div>
             <AudioMixControls audioMix={payload.document.audioMix} disabled={saving} onUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)} />
             <CompositionTimeline assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))} document={payload.document} currentTime={seconds} saving={saving} selectedAnimationId={selectedAnimationId} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={selectAnimation} onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)} onClearSelection={clearSelection} onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)} onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)} onSeek={seek} onSelect={selectClip} onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)} onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Ajustó el inicio de ${clip.label} desde la timeline.`)} />
             {estimatedClipCount > 0 && <p className={styles.estimatedWarning}><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}

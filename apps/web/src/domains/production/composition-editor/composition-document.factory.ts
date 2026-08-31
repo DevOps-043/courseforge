@@ -124,8 +124,6 @@ export function reconcileCompositionDocument(params: {
         slideCount: params.document.clips.filter((clip) => clip.kind === "DECK_SLIDE").length,
       })
     : null;
-  const canvasDurationSeconds = automaticDuration?.durationSeconds
-    || params.document.canvas.durationSeconds;
   const productionAssetById = new Map(productionAssets.map((asset) => [asset.productionAssetId, asset]));
   const withoutDeckDependencies = params.document.clips.filter((clip) => (
     clip.source.type !== "PRODUCTION_ASSET" || !params.deckDependencyAssetIds.has(clip.source.productionAssetId)
@@ -135,6 +133,18 @@ export function reconcileCompositionDocument(params: {
     clip.source.type !== "PRODUCTION_ASSET" || productionAssetById.has(clip.source.productionAssetId)
   ));
   const removedInactiveProductionAssetCount = withoutDeckDependencies.length - withoutInactiveProductionAssets.length;
+  // Reconciliation must never make retained authored content invalid. A newly
+  // resolved duration source may be shorter than deck clips or manual edits
+  // that still belong to the document, so it can expand the canvas but cannot
+  // shrink it below the last surviving clip.
+  const retainedClipEndSeconds = withoutInactiveProductionAssets.reduce(
+    (latestEnd, clip) => Math.max(latestEnd, clip.startSeconds + clip.durationSeconds),
+    0,
+  );
+  const canvasDurationSeconds = Math.max(
+    automaticDuration?.durationSeconds || params.document.canvas.durationSeconds,
+    retainedClipEndSeconds,
+  );
   let clipSynchronizationChanged = false;
   const sceneTimingByAssetId = buildSceneAssetTimings(
     productionAssets,
@@ -199,17 +209,27 @@ export function reconcileCompositionDocument(params: {
       synchronizedTracks.push(requiredTrack);
     }
   }
+  const synchronizedClipIds = new Set(synchronizedClips.map((clip) => clip.id));
+  const synchronizedAnimations = params.document.motion.animations.filter((animation) => (
+    synchronizedClipIds.has(animation.target.clipId)
+  ));
+  const removedOrphanAnimationCount = params.document.motion.animations.length - synchronizedAnimations.length;
+  const nextDurationSource = automaticDuration?.source || params.document.canvas.durationSource;
   const documentWithoutDeckDependencies = compositionEditorDocumentSchema.parse({
     ...params.document,
     canvas: {
       ...params.document.canvas,
       ...(automaticDuration ? {
-        durationSeconds: automaticDuration.durationSeconds,
+        durationSeconds: canvasDurationSeconds,
         durationSource: automaticDuration.source,
       } : {}),
       fps: DEFAULT_COMPOSITION_RENDER_FPS,
     },
     clips: synchronizedClips,
+    motion: {
+      ...params.document.motion,
+      animations: synchronizedAnimations,
+    },
     tracks: synchronizedTracks.filter((track) => (
       track.kind === "DECK" || synchronizedClips.some((clip) => clip.trackId === track.id)
     )),
@@ -219,16 +239,16 @@ export function reconcileCompositionDocument(params: {
     addedProductionAssetCount: appended.document.clips.length - documentWithoutDeckDependencies.clips.length,
     changed: removedDeckDependencyCount > 0
       || removedInactiveProductionAssetCount > 0
+      || removedOrphanAnimationCount > 0
       || clipSynchronizationChanged
-      || Boolean(automaticDuration && (
-        automaticDuration.durationSeconds !== params.document.canvas.durationSeconds
-        || automaticDuration.source !== params.document.canvas.durationSource
-      ))
+      || canvasDurationSeconds !== params.document.canvas.durationSeconds
+      || nextDurationSource !== params.document.canvas.durationSource
       || params.document.canvas.fps !== DEFAULT_COMPOSITION_RENDER_FPS
       || appended.changed,
     document: appended.document,
     removedDeckDependencyCount,
     removedInactiveProductionAssetCount,
+    removedOrphanAnimationCount,
   };
 }
 

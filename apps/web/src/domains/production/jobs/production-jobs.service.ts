@@ -58,6 +58,17 @@ function normalizeError(error: unknown) {
   return { message: String(error) };
 }
 
+export function preserveRetryableProviderCheckpoint(
+  outputSnapshot: Record<string, unknown> | null | undefined,
+) {
+  if (!outputSnapshot || typeof outputSnapshot !== "object") return {};
+  const speechCheckpoint = outputSnapshot.speech_checkpoint;
+  if (!speechCheckpoint || typeof speechCheckpoint !== "object" || Array.isArray(speechCheckpoint)) {
+    return {};
+  }
+  return { speech_checkpoint: speechCheckpoint };
+}
+
 export function buildProductionIdempotencyKey(params: {
   componentId: string;
   input: unknown;
@@ -165,7 +176,10 @@ export async function createOrReuseProductionJob(
         .update({
           attempt: (existingJob.attempt || 1) + 1,
           failed_at: null,
-          output_snapshot: {},
+          // Speech generation is synchronous and may already have consumed
+          // provider credits. Keep only its recovery checkpoint so a retry can
+          // import the same audio instead of generating (and charging) again.
+          output_snapshot: preserveRetryableProviderCheckpoint(existingJob.output_snapshot),
           provider_callback_id: null,
           provider_error: null,
           provider_job_id: null,

@@ -189,29 +189,26 @@ export class HeygenVideoService {
     });
     if (!persistedJob) throw new HeygenVideoServiceError("No se pudo recuperar el job de voz en off.", 500);
 
-    let voiceAsset = await this.audioImportService.findImportedVoice(job.id);
-    if (!voiceAsset) {
-      try {
-        await markProductionJobRunning({ jobId: job.id, supabase: this.supabase });
-        const speech = await this.client.generateSpeech({
+    let voiceAsset;
+    try {
+      await markProductionJobRunning({ jobId: job.id, supabase: this.supabase });
+      voiceAsset = await this.audioImportService.resolveVoiceAsset({
+        createdBy: params.createdBy,
+        generateSpeech: () => this.client.generateSpeech({
           input_type: params.options.inputType || "text",
           language: params.options.language,
           locale: params.options.locale,
           speed: params.options.speed,
           text: script.scriptText,
           voice_id: voice.heygen_voice_id,
-        });
-        voiceAsset = await this.audioImportService.importGeneratedSpeech({
-          createdBy: params.createdBy,
-          job: persistedJob,
-          scriptHash: script.scriptHash,
-          speech,
-          voiceProviderId: voice.heygen_voice_id,
-        });
-      } catch (error) {
-        await failProductionJob({ error, jobId: job.id, supabase: this.supabase });
-        throw error;
-      }
+        }),
+        job: persistedJob,
+        scriptHash: script.scriptHash,
+        voiceProviderId: voice.heygen_voice_id,
+      });
+    } catch (error) {
+      await failProductionJob({ error, jobId: job.id, supabase: this.supabase });
+      throw error;
     }
 
     await this.repository.promoteVoiceAudioToMaterialAssets({
@@ -493,18 +490,17 @@ export class HeygenVideoService {
     speechOptions: Pick<HeygenAvatarVideoGenerationOptions, "locale" | "speed">;
     voiceProviderId: string;
   }) {
-    const speech = await this.client.generateSpeech({
-      input_type: "text",
-      locale: params.speechOptions.locale,
-      speed: params.speechOptions.speed || 1,
-      text: params.scriptText,
-      voice_id: params.voiceProviderId,
-    });
-    return this.audioImportService.importGeneratedSpeech({
+    return this.audioImportService.resolveVoiceAsset({
       createdBy: params.createdBy,
+      generateSpeech: () => this.client.generateSpeech({
+        input_type: "text",
+        locale: params.speechOptions.locale,
+        speed: params.speechOptions.speed || 1,
+        text: params.scriptText,
+        voice_id: params.voiceProviderId,
+      }),
       job: params.job,
       scriptHash: params.scriptHash,
-      speech,
       voiceProviderId: params.voiceProviderId,
     });
   }

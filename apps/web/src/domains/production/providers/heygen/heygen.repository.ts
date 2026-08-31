@@ -2,6 +2,7 @@ import type {
   HeygenAvatarPresetGenerationRow,
   HeygenAvatarLook,
   HeygenAvatarPresetRow,
+  HeygenGeneratedSpeech,
   HeygenProductionAssetRow,
   HeygenProductionJobRow,
   HeygenSupabaseClient,
@@ -370,6 +371,7 @@ export class HeygenRepository {
           "organization_id",
           "status",
           "input_snapshot",
+          "job_type",
           "output_snapshot",
           "provider_job_id",
           "provider_error",
@@ -402,6 +404,7 @@ export class HeygenRepository {
           "organization_id",
           "status",
           "input_snapshot",
+          "job_type",
           "output_snapshot",
           "provider_job_id",
           "provider_error",
@@ -478,6 +481,7 @@ export class HeygenRepository {
           "organization_id",
           "status",
           "input_snapshot",
+          "job_type",
           "output_snapshot",
           "provider_job_id",
           "provider_error",
@@ -503,7 +507,7 @@ export class HeygenRepository {
     return (data || null) as HeygenProductionJobRow | null;
   }
 
-  async listSucceededSceneMediaJobs(params: {
+  async listRecoverableSceneMediaJobs(params: {
     componentId: string;
     organizationId: string;
   }) {
@@ -520,6 +524,7 @@ export class HeygenRepository {
           "organization_id",
           "status",
           "input_snapshot",
+          "job_type",
           "output_snapshot",
           "provider_job_id",
           "provider_error",
@@ -530,7 +535,10 @@ export class HeygenRepository {
       .eq("organization_id", params.organizationId)
       .eq("material_component_id", params.componentId)
       .eq("provider", PRODUCTION_PROVIDERS.HEYGEN)
-      .eq("status", PRODUCTION_JOB_STATUSES.SUCCEEDED)
+      .in("status", [
+        PRODUCTION_JOB_STATUSES.SUCCEEDED,
+        PRODUCTION_JOB_STATUSES.FAILED,
+      ])
       .in("job_type", [
         PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_CLIP,
         PRODUCTION_JOB_TYPES.HEYGEN_VOICEOVER,
@@ -550,7 +558,7 @@ export class HeygenRepository {
     requestSnapshot: Record<string, unknown>;
   }) {
     const now = new Date().toISOString();
-    const { error } = await this.supabase
+    const { data, error } = await this.supabase
       .from("production_jobs")
       .update({
         output_snapshot: {
@@ -564,9 +572,43 @@ export class HeygenRepository {
         status: PRODUCTION_JOB_STATUSES.WAITING_PROVIDER,
         updated_at: now,
       })
-      .eq("id", params.jobId);
+      .eq("id", params.jobId)
+      .select("id")
+      .maybeSingle();
 
     if (error) throw error;
+    if (!data?.id) throw new Error("No se pudo persistir la correlación del video de HeyGen.");
+  }
+
+  async checkpointGeneratedSpeech(params: {
+    jobId: string;
+    outputSnapshot?: Record<string, unknown> | null;
+    speech: HeygenGeneratedSpeech;
+  }) {
+    const now = new Date().toISOString();
+    const { data, error } = await this.supabase
+      .from("production_jobs")
+      .update({
+        output_snapshot: {
+          ...(params.outputSnapshot || {}),
+          speech_checkpoint: {
+            audio_url: params.speech.audioUrl,
+            duration_seconds: params.speech.durationSeconds,
+            generated_at: now,
+            provider_request_id: params.speech.requestId || null,
+            word_timestamps: params.speech.wordTimestamps,
+          },
+        },
+        started_at: now,
+        status: PRODUCTION_JOB_STATUSES.RUNNING,
+        updated_at: now,
+      })
+      .eq("id", params.jobId)
+      .select("id")
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data?.id) throw new Error("No se pudo guardar el checkpoint del audio de HeyGen.");
   }
 
   async markVideoJobSucceeded(params: {

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Clapperboard, Film, Loader2 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useMaterials } from "../hooks/useMaterials";
 import { HyperframesCompositionPanel } from "./HyperframesCompositionPanel";
 import { PRODUCTION_THEME } from "./production-asset-ui";
@@ -56,6 +57,8 @@ export function PostproductionAssemblyContainer({
   onNext,
   singleVideoOnly = false,
 }: PostproductionAssemblyContainerProps) {
+  const searchParams = useSearchParams();
+  const returnedComponentId = searchParams.get("componentId");
   const { materials, getLessonComponents, refresh } = useMaterials(artifactId);
   const [components, setComponents] = useState<VideoComponent[]>([]);
   const [activeComponentId, setActiveComponentId] = useState<string | null>(initialComponentId || null);
@@ -87,7 +90,10 @@ export function PostproductionAssemblyContainer({
         : singleVideoOnly
           ? allComponents.slice(0, 1)
           : allComponents;
-      const preferredComponent = scoped.find(hasProductionMedia) || scoped[0] || null;
+      const preferredComponent = scoped.find((component) => component.id === returnedComponentId)
+        || scoped.find(hasProductionMedia)
+        || scoped[0]
+        || null;
       setComponents(scoped);
       setActiveComponentId((current) => current && scoped.some((component) => component.id === current)
         ? current
@@ -98,7 +104,7 @@ export function PostproductionAssemblyContainer({
     } finally {
       setIsLoading(false);
     }
-  }, [getLessonComponents, initialComponentId, materials?.lessons]);
+  }, [getLessonComponents, initialComponentId, materials?.lessons, returnedComponentId, singleVideoOnly]);
 
   useEffect(() => { void loadComponents(); }, [loadComponents]);
 

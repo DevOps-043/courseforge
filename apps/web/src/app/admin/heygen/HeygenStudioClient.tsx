@@ -9,6 +9,7 @@ import {
   BookOpen,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ExternalLink,
   Layers3,
@@ -77,6 +78,7 @@ interface VoiceSceneClip {
 
 interface HistoricalSceneRecoveryReport {
   alreadyAvailableAvatarCount: number;
+  importedHistoricalAvatarCount: number;
   matchedJobCount: number;
   pendingAvatarCount: number;
   recoveredAvatarCount: number;
@@ -1141,7 +1143,7 @@ export default function HeygenStudioClient({
         <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3 text-sm text-blue-800 dark:text-blue-200">
           <p className="font-bold">Reporte de recuperación histórica</p>
           <p className="mt-1">
-            {historicalRecoveryReport.recoveredAvatarCount} avatares y {historicalRecoveryReport.recoveredVoiceCount} voces recuperados; {historicalRecoveryReport.alreadyAvailableAvatarCount} avatares ya estaban disponibles; {historicalRecoveryReport.pendingAvatarCount} siguen procesándose.
+            {historicalRecoveryReport.recoveredAvatarCount} avatares vinculados a escenas vigentes, {historicalRecoveryReport.importedHistoricalAvatarCount} videos históricos importados y {historicalRecoveryReport.recoveredVoiceCount} voces recuperadas; {historicalRecoveryReport.alreadyAvailableAvatarCount} avatares ya estaban disponibles; {historicalRecoveryReport.pendingAvatarCount} siguen procesándose.
           </p>
           <p className="mt-1 text-xs text-blue-700/80 dark:text-blue-300/80">
             Jobs relacionados: {historicalRecoveryReport.matchedJobCount}. Nombres/metadatos actualizados: {historicalRecoveryReport.renamedAssetCount}. Escenas sin resolver: {historicalRecoveryReport.unresolvedSceneCount}.
@@ -1882,6 +1884,7 @@ export default function HeygenStudioClient({
           }))}
           kind="avatar"
           onArchive={(presetId) => handlePresetArchived("avatar", presetId, true)}
+          paginationKey={`${normalizedCatalogQuery}:${catalogOwnership}`}
           title="Avatares"
           updatingPresetId={updatingPresetId}
         />
@@ -1896,6 +1899,7 @@ export default function HeygenStudioClient({
           }))}
           kind="voice"
           onArchive={(presetId) => handlePresetArchived("voice", presetId, true)}
+          paginationKey={normalizedCatalogQuery}
           title="Voces"
           updatingPresetId={updatingPresetId}
         />
@@ -2178,6 +2182,7 @@ function PresetList({
   items,
   kind,
   onArchive,
+  paginationKey,
   title,
   updatingPresetId,
 }: {
@@ -2192,9 +2197,25 @@ function PresetList({
   }[];
   kind: "avatar" | "voice";
   onArchive: (presetId: string) => void;
+  paginationKey: string;
   title: string;
   updatingPresetId: string | null;
 }) {
+  const pageSize = kind === "avatar" ? 9 : 10;
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const [currentPage, setCurrentPage] = useState(1);
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pageStart = (safeCurrentPage - 1) * pageSize;
+  const visibleItems = items.slice(pageStart, pageStart + pageSize);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [paginationKey]);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
+
   return (
     <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-white/5 dark:bg-[var(--engine-surface-solid)]">
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -2208,46 +2229,78 @@ function PresetList({
           {emptyText}
         </div>
       ) : (
-        <div className={title === "Avatares" ? "engine-avatar-gallery" : "engine-voice-gallery"}>
-          {items.map((item) => (
-            <div
-              key={item.id}
-              className="engine-preset-card"
-            >
-              {item.imageUrl ? (
-                <img
-                  src={item.imageUrl}
-                  alt=""
-                  className="engine-preset-card__image"
-                />
-              ) : (
-                <div className="engine-preset-card__fallback">
-                  <UserRoundCog size={20} />
+        <>
+          <div className={kind === "avatar" ? "engine-avatar-gallery" : "engine-voice-gallery"}>
+            {visibleItems.map((item) => (
+              <div
+                key={item.id}
+                className="engine-preset-card"
+              >
+                {item.imageUrl ? (
+                  <img
+                    src={item.imageUrl}
+                    alt=""
+                    className="engine-preset-card__image"
+                  />
+                ) : (
+                  <div className="engine-preset-card__fallback">
+                    <UserRoundCog size={20} />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-gray-900 dark:text-white">{item.name}</p>
+                  <p className="truncate font-mono text-[10px] text-gray-500 dark:text-slate-400">
+                    {item.meta || item.id}
+                  </p>
                 </div>
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-bold text-gray-900 dark:text-white">{item.name}</p>
-                <p className="truncate font-mono text-[10px] text-gray-500 dark:text-slate-400">
-                  {item.meta || item.id}
-                </p>
+                {item.isDefault ? (
+                  <CheckCircle2 className="shrink-0 text-emerald-500" size={18} />
+                ) : (
+                  <button
+                    type="button"
+                    disabled={updatingPresetId === item.id}
+                    onClick={() => onArchive(item.id)}
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-400 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 disabled:opacity-60 dark:border-white/10 dark:hover:border-amber-500/30 dark:hover:bg-amber-500/10 dark:hover:text-amber-300"
+                    title={`Ocultar ${kind === "avatar" ? "avatar" : "voz"}${item.isDuplicate ? " duplicado" : ""}`}
+                  >
+                    {updatingPresetId === item.id ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
+                  </button>
+                )}
+                {item.isDuplicate ? <span className="rounded-full bg-amber-500/10 px-2 py-1 text-[9px] font-bold uppercase text-amber-700 dark:text-amber-300">Duplicado</span> : null}
               </div>
-              {item.isDefault ? (
-                <CheckCircle2 className="shrink-0 text-emerald-500" size={18} />
-              ) : (
+            ))}
+          </div>
+          {totalPages > 1 ? (
+            <nav className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4 dark:border-white/5" aria-label={`Paginación de ${title.toLowerCase()}`}>
+              <span className="text-xs font-medium text-gray-500 dark:text-slate-400">
+                Mostrando {pageStart + 1}–{Math.min(pageStart + pageSize, items.length)} de {items.length}
+              </span>
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  disabled={updatingPresetId === item.id}
-                  onClick={() => onArchive(item.id)}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-400 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 disabled:opacity-60 dark:border-white/10 dark:hover:border-amber-500/30 dark:hover:bg-amber-500/10 dark:hover:text-amber-300"
-                  title={`Ocultar ${kind === "avatar" ? "avatar" : "voz"}${item.isDuplicate ? " duplicado" : ""}`}
+                  disabled={safeCurrentPage === 1}
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                  aria-label={`Página anterior de ${title.toLowerCase()}`}
                 >
-                  {updatingPresetId === item.id ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
+                  <ChevronLeft size={14} /> Anterior
                 </button>
-              )}
-              {item.isDuplicate ? <span className="rounded-full bg-amber-500/10 px-2 py-1 text-[9px] font-bold uppercase text-amber-700 dark:text-amber-300">Duplicado</span> : null}
-            </div>
-          ))}
-        </div>
+                <span className="min-w-16 text-center text-xs font-semibold text-gray-600 dark:text-slate-300">
+                  {safeCurrentPage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={safeCurrentPage === totalPages}
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                  aria-label={`Página siguiente de ${title.toLowerCase()}`}
+                >
+                  Siguiente <ChevronRight size={14} />
+                </button>
+              </div>
+            </nav>
+          ) : null}
+        </>
       )}
     </section>
   );
