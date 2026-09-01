@@ -77,6 +77,27 @@ describe("HyperFrames source assets", () => {
 
     assert.equal(deck?.slides[0]?.html, "<h1>Uno</h1>");
     assert.equal(deck?.slides[0]?.animationCount, 2);
+    assert.equal(deck?.appearance, "light");
+  });
+
+  it("inherits appearance and repairs CSS from ready legacy decks", () => {
+    const deck = extractHyperframesAnimatedDeck({
+      slides: {
+        appearance: "dark",
+        animated_deck: {
+          css: '.deck-scope :root[data-appearance="dark"] { --bg: #0F1419; }',
+          fonts: [],
+          height: 1080,
+          slides: [{ animationCount: 0, classes: "slide active", html: "<h1>Legado</h1>", index: 1, label: "Legado" }],
+          status: "READY_FOR_RENDER",
+          width: 1920,
+        },
+      },
+    });
+
+    assert.equal(deck?.appearance, "dark");
+    assert.match(deck?.css || "", /\.deck-scope\[data-appearance="dark"\]/);
+    assert.doesNotMatch(deck?.css || "", /\.deck-scope\s+:root/);
   });
 
   it("marks rasterized slides as deck dependencies when the HTML deck is ready", () => {
