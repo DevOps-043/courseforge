@@ -8,6 +8,7 @@ import { buildCourseDeckSpecFromComponent } from "../planning/course-deck-from-c
 import { renderCourseDeckHtml } from "../render/html-deck-renderer.service";
 import { validateCourseDeckQuality } from "../validation/course-deck-qa.service";
 import { planDeckVisualAssets } from "../visuals/slide-visual-asset-planning.service";
+import { prepareAnimatedDeckForRemotion } from "../../validation/animated-deck-preprocessor.service";
 
 describe("SofLIA - Engine slide deck generation", () => {
   it("uses the approved light appearance by default", () => {
@@ -97,6 +98,20 @@ describe("SofLIA - Engine slide deck generation", () => {
     assert.equal(report.status, "FAIL");
     assert.equal(report.checks.visibleLanguage, false);
     assert.equal(report.findings.some((finding) => finding.code === "visible_copy_wrong_language"), true);
+  });
+
+  it("keeps appearance variables usable through the animated-deck pipeline", () => {
+    const deck = buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-embedded-appearance",
+      component: { content: {}, id: "component-embedded-appearance", type: "VIDEO_THEORETICAL" },
+      input: { appearance: "dark", locale: "es", template: "course-module" },
+    });
+    const prepared = prepareAnimatedDeckForRemotion(renderCourseDeckHtml(deck));
+
+    assert.equal(prepared.deck.appearance, "dark");
+    assert.match(prepared.css, /\.deck-scope\[data-appearance="light"\][\s\S]*--bg: #F3F7F8/);
+    assert.match(prepared.css, /\.deck-scope\[data-appearance="dark"\][\s\S]*--bg: #0F1419/);
+    assert.doesNotMatch(prepared.css, /\.deck-scope\s+:root/);
   });
 
   it("fails QA when learner-facing copy exposes production metadata", () => {

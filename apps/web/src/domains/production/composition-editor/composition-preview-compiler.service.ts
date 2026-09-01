@@ -18,6 +18,10 @@ import {
   resolveCompositionPreviewClipVolume,
   resolveCompositionPreviewMediaFit,
 } from "./composition-preview-visual-state";
+import {
+  normalizeAnimatedDeckAppearance,
+  repairLegacyAnimatedDeckAppearanceSelectors,
+} from "../animated-deck/animated-deck-appearance.service";
 
 export class CompositionPreviewCompilerError extends Error {}
 
@@ -58,8 +62,9 @@ export async function compileCompositionPreview(params: {
   const volumeAutomations = buildCompositionVolumeAutomations(document);
   const automatedClipIds = new Set(volumeAutomations.map((automation) => automation.targetClipId));
   const deckStyles = document.deckStyles
-    ? `${document.deckStyles.fontUrls.map((url) => `@import url(${JSON.stringify(replaceUrls(url, params.deckAssetUrls))});`).join("\n")}\n${replaceUrls(document.deckStyles.css, params.deckAssetUrls)}`
+    ? `${document.deckStyles.fontUrls.map((url) => `@import url(${JSON.stringify(replaceUrls(url, params.deckAssetUrls))});`).join("\n")}\n${replaceUrls(repairLegacyAnimatedDeckAppearanceSelectors(document.deckStyles.css), params.deckAssetUrls)}`
     : "";
+  const deckAppearance = normalizeAnimatedDeckAppearance(document.deckStyles?.appearance);
   const clips = document.clips
     .slice()
     .sort((left, right) => left.layout.zIndex - right.layout.zIndex || left.startSeconds - right.startSeconds)
@@ -69,6 +74,7 @@ export async function compileCompositionPreview(params: {
       params.assetVariableNames,
       params.assetUrls,
       params.deckAssetUrls,
+      deckAppearance,
       target,
       requireRuntimeTrackIndex(timelineLayout.trackIndexByClipId, clip.id),
       timelineLayout.audioTrackIndexByClipId.get(clip.id),
@@ -138,6 +144,7 @@ function renderClip(
   assetVariableNames: Map<string, string> | undefined,
   assetUrls: Map<string, string>,
   deckAssetUrls: Map<string, string> | undefined,
+  deckAppearance: "light" | "dark",
   target: CompositionCompilationTarget,
   runtimeTrackIndex: number,
   runtimeAudioTrackIndex: number | undefined,
@@ -160,7 +167,7 @@ function renderClip(
   const hasSynchronizedVideoAudio = clip.kind === "VIDEO"
     && compositionClipHasConfigurableAudio(clip, track);
   if (clip.source.type === "DECK_SLIDE") {
-    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
+    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope" data-appearance="${deckAppearance}"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
   }
   const mediaAssetId = getCompositionClipMediaAssetId(clip);
   if (!mediaAssetId) throw new CompositionPreviewCompilerError(`El clip ${clip.id} no tiene un asset multimedia válido.`);

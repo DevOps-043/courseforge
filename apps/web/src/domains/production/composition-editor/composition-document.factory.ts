@@ -59,6 +59,7 @@ export function createInitialCompositionDocument(params: {
     },
     clips,
     deckStyles: params.animatedDeck ? {
+      appearance: params.animatedDeck.appearance || "light",
       css: params.animatedDeck.css,
       fontUrls: params.animatedDeck.fonts.map((font) => font.href),
     } : null,

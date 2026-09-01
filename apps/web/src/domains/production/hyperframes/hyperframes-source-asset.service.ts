@@ -16,6 +16,10 @@ import {
 } from "./hyperframes.types";
 import { validateHyperframesMediaAsset } from "./hyperframes-media-constraints";
 import { HYPERFRAMES_SOURCE_BUCKETS } from "../media-storage.config";
+import {
+  normalizeAnimatedDeckAppearance,
+  repairLegacyAnimatedDeckAppearanceSelectors,
+} from "../animated-deck/animated-deck-appearance.service";
 
 const SUPPORTED_HYPERFRAMES_MIME = /^(audio|font|image|video)\/[a-z0-9.+-]+$/i;
 
@@ -249,7 +253,10 @@ export function extractHyperframesAnimatedDeck(rawAssets: unknown): HyperframesA
   if (!isRecord(animatedDeck)) return null;
   if (animatedDeck.status !== "READY_FOR_PREVIEW" && animatedDeck.status !== "READY_FOR_RENDER") return null;
   const parsed = hyperframesAnimatedDeckSourceSchema.safeParse({
-    css: animatedDeck.css,
+    appearance: normalizeAnimatedDeckAppearance(animatedDeck.appearance ?? slides.appearance),
+    css: repairLegacyAnimatedDeckAppearanceSelectors(
+      typeof animatedDeck.css === "string" ? animatedDeck.css : "",
+    ),
     fonts: animatedDeck.fonts,
     height: animatedDeck.height,
     slides: animatedDeck.slides,

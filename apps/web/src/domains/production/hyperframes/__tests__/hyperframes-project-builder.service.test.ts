@@ -40,7 +40,8 @@ describe("HyperFrames internal project builder", () => {
   it("preserves animated deck HTML and exposes its preview timeline", async () => {
     const project = await buildInternalHyperframesProject({
       animatedDeck: {
-        css: ".slide { opacity: calc(var(--deck-t) + .1); }",
+        appearance: "dark",
+        css: '.deck-scope :root[data-appearance="dark"] { --bg: #0F1419; } .slide { opacity: calc(var(--deck-t) + .1); }',
         fonts: [],
         height: 1080,
         slides: [
@@ -59,6 +60,9 @@ describe("HyperFrames internal project builder", () => {
     assert.match(html, /<h1>Primera<\/h1>/);
     assert.match(html, /class="deck-shell"/);
     assert.match(html, /class="deck-stage"/);
+    assert.match(html, /class="deck-scope" data-appearance="dark"/);
+    assert.match(html, /\.deck-scope\[data-appearance="dark"\] \{ --bg: #0F1419; \}/);
+    assert.doesNotMatch(html, /\.deck-scope\s+:root/);
     assert.match(html, /data-deck-start="0"/);
     assert.match(html, /courseforge-preview-seek/);
     assert.equal(project.previewTimeline.tracks[0]?.segments.length, 2);

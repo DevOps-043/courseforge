@@ -1,4 +1,9 @@
 import { repairCommonUtf8Mojibake } from "../text/mojibake.service";
+import {
+  readAnimatedDeckAppearanceFromHtml,
+  repairLegacyAnimatedDeckAppearanceSelectors,
+  type AnimatedDeckAppearance,
+} from "../animated-deck/animated-deck-appearance.service";
 
 export const ANIMATED_DECK_SCHEMA_VERSION = "animated-deck-v1";
 
@@ -44,6 +49,7 @@ export interface AnimatedDeckSlide {
 
 export interface AnimatedDeckDocument {
   schemaVersion: typeof ANIMATED_DECK_SCHEMA_VERSION;
+  appearance: AnimatedDeckAppearance;
   width: number;
   height: number;
   slides: AnimatedDeckSlide[];
@@ -263,7 +269,9 @@ function scopeSelector(selector: string) {
     .map((raw) => {
       const value = raw.trim();
       if (!value) return value;
-      if (value === ":root") return ".deck-scope";
+      if (value === ":root" || /^:root(?=[\s\[.#:])/.test(value)) {
+        return `.deck-scope${value.slice(":root".length)}`;
+      }
       if (value === "*") return ".deck-scope *";
       if (value.startsWith(".deck-scope")) return value;
       return `.deck-scope ${value}`;
@@ -578,6 +586,7 @@ export function prepareAnimatedDeckForRemotion(
   options: PrepareAnimatedDeckOptions = {},
 ): PreparedAnimatedDeck {
   const normalizedSourceHtml = repairCommonUtf8Mojibake(sourceHtml);
+  const appearance = readAnimatedDeckAppearanceFromHtml(normalizedSourceHtml);
   const removedScripts = countMatches(normalizedSourceHtml, SCRIPT_RE);
   const fontLinks = extractGoogleFontLinks(normalizedSourceHtml);
   const htmlWithoutScripts = fontLinks.html.replace(SCRIPT_RE, "");
@@ -587,7 +596,9 @@ export function prepareAnimatedDeckForRemotion(
   const fonts = mergeFonts([...fontLinks.fonts, ...importedFonts.fonts]);
   const fontCss = buildFontImportCss(fonts);
   const rawCss = dropRules(importedFonts.css, isControlChromeSelector);
-  const scopedCss = makeAnimationsDeterministic(scopeCss(rawCss));
+  const scopedCss = repairLegacyAnimatedDeckAppearanceSelectors(
+    makeAnimationsDeterministic(scopeCss(rawCss)),
+  );
   const css = [fontCss, scopedCss]
     .filter((part) => part.trim().length > 0)
     .join("\n")
@@ -647,6 +658,7 @@ export function prepareAnimatedDeckForRemotion(
     cleanup,
     css,
     deck: {
+      appearance,
       height: ANIMATED_DECK_HEIGHT,
       schemaVersion: ANIMATED_DECK_SCHEMA_VERSION,
       slides: preparedSlides,

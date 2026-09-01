@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ANIMATED_DECK_APPEARANCES } from "../animated-deck/animated-deck-appearance.service";
 import {
   COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS,
   DEFAULT_COMPOSITION_RENDER_FPS,
@@ -124,6 +125,8 @@ const deckSourceSchema = z.object({
 }).strict();
 
 const deckStylesSchema = z.object({
+  /** Optional only for composition documents created before deck appearances. */
+  appearance: z.enum(ANIMATED_DECK_APPEARANCES).optional(),
   css: z.string().max(200_000),
   fontUrls: z.array(z.string().url()).max(32),
 }).strict();

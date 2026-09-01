@@ -247,6 +247,7 @@ function buildFailedAnimatedDeck(params: {
 
   return {
     animated_slide_count: 0,
+    appearance: params.currentAssets.slides?.appearance || "light",
     cleanup_report: {},
     css: "",
     error_message: message,
@@ -340,6 +341,7 @@ export async function POST(request: Request) {
 
     const animatedDeck: NonNullable<NonNullable<MaterialAssets["slides"]>["animated_deck"]> = {
       animated_slide_count: prepared.animatedSlideCount,
+      appearance: prepared.deck.appearance,
       cleanup_report: { ...prepared.cleanup },
       css: prepared.css,
       deck_json_path: `${BUCKET}/${deckJsonPath}`,
@@ -361,6 +363,7 @@ export async function POST(request: Request) {
       final_video_assembly_stale: true,
       slides: {
         ...(currentAssets.slides || {}),
+        appearance: prepared.deck.appearance,
         animated_deck: animatedDeck,
         html_content_path: sourceHtmlPath,
       },

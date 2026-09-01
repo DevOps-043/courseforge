@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { HYPERFRAMES_RENDER_PROFILE_IDS } from "./hyperframes-render-profiles";
+import { ANIMATED_DECK_APPEARANCES } from "../animated-deck/animated-deck-appearance.service";
 
 export const HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES = 200 * 1024 * 1024;
 export const HYPERFRAMES_REMOTE_VIDEO_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
@@ -55,6 +56,8 @@ export const hyperframesAssetManifestSchema = z
   .max(250, "La composición excede el máximo de assets permitidos.");
 
 export const hyperframesAnimatedDeckSourceSchema = z.object({
+  /** Optional only for decks persisted before appearance-aware composition. */
+  appearance: z.enum(ANIMATED_DECK_APPEARANCES).optional(),
   css: z.string().max(200_000),
   fonts: z.array(z.object({ family: z.string().min(1).max(160), href: z.string().url() })).max(32),
   height: z.number().int().min(1).max(8_192),

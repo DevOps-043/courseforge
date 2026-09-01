@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ANIMATED_DECK_APPEARANCES } from "@/domains/production/animated-deck/animated-deck-appearance.service";
 
 const internalMediaUrlSchema = z.string().refine((value) => {
   if (value.startsWith("/api/storage/media?")) return true;
@@ -191,6 +192,7 @@ export const animatedDeckSlideSchema = z.object({
 
 export const animatedDeckSchema = z.object({
   animated_slide_count: z.number().int().min(0),
+  appearance: z.enum(ANIMATED_DECK_APPEARANCES).optional(),
   cleanup_report: z.record(z.string(), z.unknown()),
   css: z.string(),
   deck_css_path: z.string().trim().optional(),
@@ -212,7 +214,7 @@ export const animatedDeckSchema = z.object({
 
 // Schema for Slides asset group
 export const slidesSchema = z.object({
-  appearance: z.enum(["light", "dark"]).optional(),
+  appearance: z.enum(ANIMATED_DECK_APPEARANCES).optional(),
   open_design_project_id: z.string().trim().optional(),
   html_content_path: z.string().trim().optional(),
   html_public_url: z.string().url().optional(),

@@ -1,3 +1,5 @@
+import type { AnimatedDeckAppearance } from "@/domains/production/animated-deck/animated-deck-appearance.service";
+
 // Estados del Paso 5 (ya definidos en SQL)
 export type Esp05StepState =
     | 'PHASE3_DRAFT'
@@ -284,7 +286,7 @@ export interface MaterialAssets {
         width?: number;
     } | null;
     slides?: {
-        appearance?: 'light' | 'dark';
+        appearance?: AnimatedDeckAppearance;
         open_design_project_id?: string;
         html_content_path?: string;
         html_public_url?: string;
@@ -301,6 +303,7 @@ export interface MaterialAssets {
         spec_content_path?: string;
         animated_deck?: {
             status: 'PENDING' | 'VALIDATING' | 'READY_FOR_PREVIEW' | 'READY_FOR_RENDER' | 'FAILED';
+            appearance?: AnimatedDeckAppearance;
             source: 'manual_upload' | 'open_design_import';
             source_html_path: string;
             deck_json_path?: string;

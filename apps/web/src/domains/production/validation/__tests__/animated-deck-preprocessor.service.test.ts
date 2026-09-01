@@ -7,11 +7,13 @@ import {
 } from "../animated-deck-preprocessor.service";
 
 const MIXED_DECK = `<!doctype html>
-<html>
+<html data-appearance="light">
 <head>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap">
   <style>
     :root { --accent: #00D4B3; }
+    :root[data-appearance="light"] { --bg: #F3F7F8; --text: #0A2540; }
+    :root[data-appearance="dark"] { --bg: #0F1419; --text: #FFFFFF; }
     html, body { margin: 0; }
     .deck-shell { position: fixed; inset: 0; }
     .deck-stage { width: 1920px; height: 1080px; }
@@ -46,6 +48,7 @@ describe("prepareAnimatedDeckForRemotion", () => {
     const result = prepareAnimatedDeckForRemotion(MIXED_DECK);
 
     assert.equal(result.deck.slides.length, 2);
+    assert.equal(result.deck.appearance, "light");
     assert.equal(result.animatedSlideCount, 1);
     assert.equal(result.staticSlideCount, 1);
     assert.equal(result.deck.slides[0].label, "01 Animated");
@@ -55,8 +58,28 @@ describe("prepareAnimatedDeckForRemotion", () => {
     assert.equal(result.deck.slides[1].animationCount, 0);
     assert.doesNotMatch(result.deck.slides[0].html, /onclick|B-ROLL/);
     assert.match(result.css, /\.deck-scope \.slide/);
+    assert.match(result.css, /\.deck-scope\[data-appearance="light"\]\s*\{[^}]*--bg: #F3F7F8/);
+    assert.match(result.css, /\.deck-scope\[data-appearance="dark"\]\s*\{[^}]*--bg: #0F1419/);
+    assert.doesNotMatch(result.css, /\.deck-scope\s+:root/);
     assert.match(result.css, /animation-play-state: paused/);
     assert.match(result.css, /--deck-t/);
+  });
+
+  it("preserves the selected dark appearance while scoping theme variables", () => {
+    const result = prepareAnimatedDeckForRemotion(
+      MIXED_DECK.replace('data-appearance="light"', 'data-appearance="dark"'),
+    );
+
+    assert.equal(result.deck.appearance, "dark");
+    assert.match(result.css, /\.deck-scope\[data-appearance="dark"\]/);
+  });
+
+  it("accepts a valid unquoted appearance attribute", () => {
+    const result = prepareAnimatedDeckForRemotion(
+      MIXED_DECK.replace('data-appearance="light"', "data-appearance=dark"),
+    );
+
+    assert.equal(result.deck.appearance, "dark");
   });
 
   it("repairs common UTF-8 mojibake before storing slide HTML", () => {

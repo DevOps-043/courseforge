@@ -164,7 +164,8 @@ test("signs preview assets in bounded parallel batches", async () => {
 test("compiles the native document into a seekable preview with stable visual ids", async () => {
   const document = createInitialCompositionDocument({
     animatedDeck: {
-      css: ".slide { color: white; }", fonts: [], height: 1080, width: 1920,
+      appearance: "dark",
+      css: '.deck-scope[data-appearance="dark"] { --bg: #0F1419; } .slide { color: white; }', fonts: [], height: 1080, width: 1920,
       slides: [{ animationCount: 1, classes: "slide", html: '<h1>Uno</h1><img src="https://cdn.test/deck.png" />', index: 0, label: "Uno" }],
     },
     assets: [],
@@ -199,7 +200,8 @@ test("compiles the native document into a seekable preview with stable visual id
   assert.match(html, /--preview-user-scale/);
   assert.match(html, /composition-viewport/);
   assert.match(html, /fitCompositionToViewport/);
-  assert.match(html, /class="deck-scope"/);
+  assert.match(html, /class="deck-scope" data-appearance="dark"/);
+  assert.match(html, /\.deck-scope\[data-appearance="dark"\] \{ --bg: #0F1419; \}/);
   assert.match(html, /class="deck-shell"/);
   assert.match(html, /class="deck-stage"/);
   assert.match(html, /<section class="slide">/);
@@ -211,6 +213,26 @@ test("compiles the native document into a seekable preview with stable visual id
   for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
     assert.doesNotThrow(() => new Script(match[1]));
   }
+});
+
+test("repairs appearance selectors in persisted legacy composition documents", async () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: {
+      appearance: "light",
+      css: '.deck-scope :root[data-appearance="light"] { --bg: #F3F7F8; --blue-deep: #0A2540; }',
+      fonts: [],
+      height: 1080,
+      slides: [{ animationCount: 0, classes: "slide", html: "<h1>Legado</h1>", index: 0, label: "Legado" }],
+      width: 1920,
+    },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 5, subtitle: "Prueba", title: "Deck legado" },
+  });
+  const html = await compileCompositionPreview({ assetUrls: new Map(), document });
+
+  assert.match(html, /class="deck-scope" data-appearance="light"/);
+  assert.match(html, /\.deck-scope\[data-appearance="light"\] \{ --bg: #F3F7F8;/);
+  assert.doesNotMatch(html, /\.deck-scope\s+:root/);
 });
 
 test("applies an HTML slide crop identically in preview and HyperFrames render", async () => {
