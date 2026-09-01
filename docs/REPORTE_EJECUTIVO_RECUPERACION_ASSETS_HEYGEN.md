@@ -203,3 +203,20 @@ El incidente de recuperación de assets puede cerrarse cuando:
 ## 12. Conclusión
 
 No existe evidencia de pérdida física de los videos o audios identificados. La solución aplicada recuperó y conservó correctamente el historial, impidió vincular contenido obsoleto a guiones nuevos, protegió futuras generaciones de voz y avatar y corrigió el modelo de completitud. El trabajo restante ya no es técnico: consiste en decidir la modalidad de las escenas 1, 3 y 7 y generar únicamente los medios correspondientes al guion vigente.
+
+## 13. Auditoría operacional de IDs históricos
+
+Se ejecutó una auditoría externa de sólo lectura para determinar si era necesario reasignar manualmente assets cuyos IDs no coinciden con las escenas actuales.
+
+Resultados:
+
+- 10 jobs de HeyGen revisados.
+- 14 assets de voz o avatar comprobados físicamente en Storage; faltantes: 0.
+- 16 vínculos existentes en el borrador de la lección.
+- 14 archivos de HeyGen cubiertos por esos vínculos; archivos sin cobertura: 0.
+- Coincidencias seguras entre un ID histórico diferente y un guion vigente: 0.
+- Tres jobs conservan los IDs `scene-1`, `scene-3` y `scene-7`, pero sus huellas corresponden a guiones anteriores.
+
+Cinco registros originales de proveedor no aparecen directamente en `video_composition_draft_assets` porque el editor los representa mediante registros `SOURCE_MEDIA` equivalentes que apuntan al mismo bucket y archivo. Esto es el comportamiento esperado y no representa pérdida ni desvinculación.
+
+La operación concluyó sin escrituras. No se creó un mapeo forzado porque habría duplicado referencias o colocado narraciones anteriores sobre escenas vigentes. Los assets históricos ya permanecen disponibles dentro de la lección, pero fuera de la inserción automática en timeline.

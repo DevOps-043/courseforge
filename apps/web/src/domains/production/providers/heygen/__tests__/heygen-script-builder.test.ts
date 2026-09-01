@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
 import {
+  assertSceneGenerationContract,
   buildHeygenCreateClipPayload,
   getReusableSceneVoiceAsset,
   HeygenScenesService,
@@ -26,6 +27,7 @@ import {
   readHeygenJobIdFromVideoTitle,
   resolveHeygenJobFileStem,
 } from "../heygen-asset-naming";
+import { evaluateProductionItemReadiness } from "../../../automation/production-automation-readiness.service";
 
 describe("HeyGen script builder", () => {
   it("uses an authored scene name for the HeyGen title and returned files", () => {
@@ -718,5 +720,51 @@ describe("HeyGen avatar billing preflight", () => {
     assert.equal(budget.estimatedDurationSeconds, 60);
     assert.ok(budget.estimatedCost > 4);
     assert.equal(budget.available, 1);
+  });
+});
+
+describe("HeyGen scene generation contract", () => {
+  const clips = [
+    { expected_media_mode: "avatar" as const, id: "avatar-scene", order: 1, script_text: "Avatar", status: "DRAFT" as const },
+    { expected_media_mode: "voice_only" as const, id: "voice-scene", order: 2, script_text: "Voz", status: "DRAFT" as const },
+    { expected_media_mode: "none" as const, id: "silent-scene", order: 3, script_text: "", status: "DRAFT" as const },
+  ];
+
+  it("allows voice generation for avatar and voice-only scenes", () => {
+    assert.deepEqual(
+      assertSceneGenerationContract({
+        clipIds: ["avatar-scene", "voice-scene"],
+        clips,
+        generationTarget: "voice_only",
+      }).map((clip) => clip.id),
+      ["avatar-scene", "voice-scene"],
+    );
+  });
+
+  it("blocks avatar generation for voice-only or silent scenes", () => {
+    assert.throws(
+      () => assertSceneGenerationContract({
+        clipIds: ["voice-scene", "silent-scene"],
+        clips,
+        generationTarget: "avatar",
+      }),
+      /no está configurada para avatar/,
+    );
+  });
+
+  it("measures readiness from each persisted media mode", () => {
+    const readiness = evaluateProductionItemReadiness({
+      assets: {
+        avatar_generation_mode: "scene_clips",
+        avatar_clips: [
+          { expected_media_mode: "voice_only", id: "voice-scene", order: 1, script_hash: "hash-1", script_text: "Voz", status: "DRAFT" },
+          { expected_media_mode: "none", id: "silent-scene", order: 2, script_text: "", status: "DRAFT" },
+        ],
+        voice_clips: [{ clip_id: "voice-scene", id: "voice-1", order: 1, public_url: "https://cdn.example.com/voice.mp3", script_hash: "hash-1", status: "COMPLETED" }],
+      },
+      requirements: [{ kind: "AVATAR_AND_VOICE", reason: "Narración" }],
+    });
+
+    assert.equal(readiness.complete, true);
   });
 });

@@ -73,14 +73,26 @@ function evaluateAvatarAndVoice(assets: MaterialAssets) {
         .filter((clip) => clip.status === "COMPLETED" && Boolean(clip.public_url))
         .map((clip) => [clip.clip_id, clip]),
     );
-    const complete = avatars.length > 0 && avatars.every((avatar) => {
+    const incomplete = avatars.filter((avatar) => {
       const voice = voices.get(avatar.id);
-      return avatar.status === "COMPLETED"
-        && Boolean(avatar.public_url)
-        && Boolean(voice)
+      const hasCurrentVoice = Boolean(voice)
         && (!avatar.script_hash || voice?.script_hash === avatar.script_hash);
+      if (avatar.expected_media_mode === "none") return false;
+      if (avatar.expected_media_mode === "voice_only") return !hasCurrentVoice;
+      if (avatar.expected_media_mode === "avatar") {
+        return avatar.status !== "COMPLETED"
+          || !avatar.public_url
+          || !hasCurrentVoice;
+      }
+      return true;
     });
-    return { complete, detail: complete ? undefined : "Faltan clips de avatar o voz sincronizada." };
+    const complete = avatars.length > 0 && incomplete.length === 0;
+    return {
+      complete,
+      detail: complete
+        ? undefined
+        : `${incomplete.length || avatars.length} escenas no cumplen su medio esperado o siguen sin configurar.`,
+    };
   }
 
   const complete = Boolean(

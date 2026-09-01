@@ -229,10 +229,46 @@ export async function createOrReuseProductionJob(
     .single();
 
   if (error) {
+    if ((error as { code?: string }).code === "23505") {
+      let concurrentQuery = supabase
+        .from("production_jobs")
+        .select("id, attempt, output_snapshot, provider_job_id, status")
+        .eq("idempotency_key", params.idempotencyKey)
+        .eq("job_type", params.jobType)
+        .eq("provider", params.provider);
+      concurrentQuery = params.context.organizationId
+        ? concurrentQuery.eq("organization_id", params.context.organizationId)
+        : concurrentQuery.is("organization_id", null);
+      const { data: concurrentJob, error: concurrentError } = await concurrentQuery.single();
+      if (concurrentError) throw concurrentError;
+      return concurrentJob as ProductionJobRecord;
+    }
     throw error;
   }
 
   return data as ProductionJobRecord;
+}
+
+/** Atomically grants one worker permission to start a billable provider call. */
+export async function claimPendingProductionJob(params: {
+  jobId: string;
+  supabase: SupabaseClient;
+}) {
+  const now = new Date().toISOString();
+  const { data, error } = await params.supabase
+    .from("production_jobs")
+    .update({
+      started_at: now,
+      status: PRODUCTION_JOB_STATUSES.RUNNING,
+      updated_at: now,
+    })
+    .eq("id", params.jobId)
+    .eq("status", PRODUCTION_JOB_STATUSES.PENDING)
+    .select("id")
+    .maybeSingle();
+
+  if (error) throw error;
+  return Boolean(data?.id);
 }
 
 export async function markProductionJobRunning(params: {

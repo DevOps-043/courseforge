@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { HeygenApiError, HeygenClient } from "../heygen.client";
 import { buildResolutionRejectionHint } from "../heygen-request-constraints";
-import { heygenGenerateVoiceoverRequestSchema, heygenJobStatusResponseSchema } from "../heygen.validators";
+import {
+  heygenGenerateClipsRequestSchema,
+  heygenGenerateVoiceoverRequestSchema,
+  heygenJobStatusResponseSchema,
+} from "../heygen.validators";
 import { readApiResponse } from "../../../../../lib/client/api-response";
 import { estimateHeygenCost } from "../heygen-cost.service";
 import { heygenPlatformActionSchema } from "../heygen-platform.validators";
@@ -166,6 +170,22 @@ describe("HeyGen separated track client", () => {
     assert.equal(payload.script, "Narración independiente");
     assert.equal(payload.speed, 1.15);
     assert.equal("avatarPresetId" in payload, false);
+  });
+
+  it("requires an explicit target for scene generation", () => {
+    const result = heygenGenerateClipsRequestSchema.safeParse({
+      clipIds: ["scene-1"],
+      clips: [{
+        expected_media_mode: "voice_only",
+        id: "scene-1",
+        order: 1,
+        script_text: "Narración",
+        status: "DRAFT",
+      }],
+      componentId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+
+    assert.equal(result.success, false);
   });
 
   it("retries an idempotent video submission after a transient provider failure", async () => {

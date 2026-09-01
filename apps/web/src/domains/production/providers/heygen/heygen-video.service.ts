@@ -1,8 +1,8 @@
 import {
   buildProductionIdempotencyKey,
+  claimPendingProductionJob,
   createOrReuseProductionJob,
   failProductionJob,
-  markProductionJobRunning,
   resolveProductionComponentContext,
 } from "../../jobs/production-jobs.service";
 import {
@@ -159,7 +159,11 @@ export class HeygenVideoService {
     const jobInput = {
       component_id: context.componentId,
       component_type: context.componentType,
+      generation_target: "voice_only",
       job_type: PRODUCTION_JOB_TYPES.HEYGEN_VOICEOVER,
+      provider_endpoint: "/v3/voices/speech",
+      provider_operation: "text_to_speech",
+      request_origin: "component_voiceover_generation",
       script_hash: script.scriptHash,
       input_type: params.options.inputType || "text",
       language: params.options.language || null,
@@ -189,25 +193,44 @@ export class HeygenVideoService {
     });
     if (!persistedJob) throw new HeygenVideoServiceError("No se pudo recuperar el job de voz en off.", 500);
 
-    let voiceAsset;
+    let voiceAsset = await this.audioImportService.findImportedVoice(job.id);
+    let claimed = false;
+    if (!voiceAsset) {
+      if (job.status === PRODUCTION_JOB_STATUSES.PENDING) {
+        claimed = await claimPendingProductionJob({ jobId: job.id, supabase: this.supabase });
+        if (!claimed) {
+          throw new HeygenVideoServiceError(
+            "La misma voz en off ya se está generando. Consulta su estado antes de reintentar.",
+            409,
+          );
+        }
+      } else {
+        throw new HeygenVideoServiceError(
+          "La generación existente no tiene un audio recuperable. Usa el flujo de recuperación o restablece el job antes de generar otra voz.",
+          409,
+        );
+      }
+    }
+
     try {
-      await markProductionJobRunning({ jobId: job.id, supabase: this.supabase });
-      voiceAsset = await this.audioImportService.resolveVoiceAsset({
-        createdBy: params.createdBy,
-        generateSpeech: () => this.client.generateSpeech({
-          input_type: params.options.inputType || "text",
-          language: params.options.language,
-          locale: params.options.locale,
-          speed: params.options.speed,
-          text: script.scriptText,
-          voice_id: voice.heygen_voice_id,
-        }),
-        job: persistedJob,
-        scriptHash: script.scriptHash,
-        voiceProviderId: voice.heygen_voice_id,
-      });
+      if (!voiceAsset) {
+        voiceAsset = await this.audioImportService.resolveVoiceAsset({
+          createdBy: params.createdBy,
+          generateSpeech: () => this.client.generateSpeech({
+            input_type: params.options.inputType || "text",
+            language: params.options.language,
+            locale: params.options.locale,
+            speed: params.options.speed,
+            text: script.scriptText,
+            voice_id: voice.heygen_voice_id,
+          }),
+          job: persistedJob,
+          scriptHash: script.scriptHash,
+          voiceProviderId: voice.heygen_voice_id,
+        });
+      }
     } catch (error) {
-      await failProductionJob({ error, jobId: job.id, supabase: this.supabase });
+      if (claimed) await failProductionJob({ error, jobId: job.id, supabase: this.supabase });
       throw error;
     }
 
@@ -355,31 +378,8 @@ export class HeygenVideoService {
       retryFailed: true,
     });
 
-    if (
-      job.status !== PRODUCTION_JOB_STATUSES.PENDING &&
-      job.status !== PRODUCTION_JOB_STATUSES.RETRY_SCHEDULED
-    ) {
-      let existingVoice = await this.audioImportService.findImportedVoice(job.id);
-      if (!existingVoice) {
-        const persistedJob = await this.repository.getProductionJob({
-          jobId: job.id,
-          organizationId: params.organizationId,
-        });
-        if (!persistedJob) {
-          throw new HeygenVideoServiceError(
-            "No se pudo recuperar el job de HeyGen para reparar su locucion.",
-            500,
-          );
-        }
-        existingVoice = await this.generateAndImportVoice({
-          createdBy: params.createdBy,
-          job: persistedJob,
-          scriptHash: script.scriptHash,
-          scriptText: script.scriptText,
-          speechOptions: params.options,
-          voiceProviderId: providerVoiceId,
-        });
-      }
+    if (job.status !== PRODUCTION_JOB_STATUSES.PENDING) {
+      const existingVoice = await this.audioImportService.findImportedVoice(job.id);
       return {
         jobId: job.id,
         providerJobId:
@@ -396,6 +396,18 @@ export class HeygenVideoService {
     });
     if (!persistedJob) {
       throw new HeygenVideoServiceError("No se pudo recuperar el job de HeyGen.", 500);
+    }
+    if (job.status === PRODUCTION_JOB_STATUSES.PENDING) {
+      const claimed = await claimPendingProductionJob({ jobId: job.id, supabase: this.supabase });
+      if (!claimed) {
+        return {
+          jobId: job.id,
+          providerJobId: null,
+          script: buildScriptSummary(script),
+          status: PRODUCTION_JOB_STATUSES.RUNNING,
+          voiceAsset: null,
+        };
+      }
     }
 
     let voiceAsset = await this.audioImportService.findImportedVoice(job.id);
@@ -780,8 +792,12 @@ function buildAvatarVideoJobInputSnapshot(params: {
     component_id: params.componentId,
     component_type: params.componentType,
     engine: params.engine,
+    generation_target: "avatar",
     job_type: PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_VIDEO,
     output_format: params.outputFormat,
+    provider_endpoint: "/v3/videos",
+    provider_operation: "avatar_video",
+    request_origin: "component_avatar_generation",
     locale: params.locale,
     motion_prompt: params.motionPrompt,
     pitch: params.pitch,

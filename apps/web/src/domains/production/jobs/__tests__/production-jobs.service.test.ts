@@ -2,10 +2,25 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  claimPendingProductionJob,
   createOrReuseProductionJob,
   failProductionJob,
   preserveRetryableProviderCheckpoint,
 } from "../production-jobs.service";
+
+test("claims a pending billable job only when the conditional update wins", async () => {
+  const filters: Array<[string, string]> = [];
+  const query = {
+    eq(column: string, value: string) { filters.push([column, value]); return this; },
+    maybeSingle() { return Promise.resolve({ data: { id: "job-1" }, error: null }); },
+    select() { return this; },
+    update() { return this; },
+  };
+  const supabase = { from() { return query; } } as unknown as SupabaseClient;
+
+  assert.equal(await claimPendingProductionJob({ jobId: "job-1", supabase }), true);
+  assert.deepEqual(filters, [["id", "job-1"], ["status", "PENDING"]]);
+});
 
 const context = {
   artifactId: "artifact-1",

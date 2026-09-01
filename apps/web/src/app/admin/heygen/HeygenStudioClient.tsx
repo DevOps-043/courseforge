@@ -25,6 +25,10 @@ import { toast } from "sonner";
 import { EngineSelect } from "@/components/ui/EngineSelect";
 import { readApiResponse } from "@/lib/client/api-response";
 import type { ProductionCourseContext } from "@/domains/production/course-context/production-course-context";
+import {
+  sceneSupportsGenerationTarget,
+  selectSceneIdsForGeneration,
+} from "@/domains/production/providers/heygen/heygen-scene-generation-policy";
 
 type AspectRatio = "16:9" | "9:16";
 type Engine = "avatar_iv" | "avatar_v";
@@ -399,7 +403,7 @@ export default function HeygenStudioClient({
       }
       setSceneClips(clips);
       setSelectedSceneClipIds((current) =>
-        current.length > 0 ? current : clips.map((clip) => clip.id),
+        current.filter((clipId) => clips.some((clip) => clip.id === clipId && !clip.deleted)),
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Error al cargar escenas de avatar.";
@@ -892,6 +896,20 @@ export default function HeygenStudioClient({
       return;
     }
 
+    const incompatibleClips = sceneClips.filter(
+      (clip) => selectedSceneClipIds.includes(clip.id)
+        && !sceneSupportsGenerationTarget(clip, generationTarget),
+    );
+    if (incompatibleClips.length > 0) {
+      const sceneLabels = incompatibleClips.map((clip) => clip.order).join(", ");
+      toast.error(
+        generationTarget === "avatar"
+          ? `Las escenas ${sceneLabels} no están configuradas para avatar. Selecciona “Avatares” para evitar cargos incorrectos.`
+          : `Las escenas ${sceneLabels} no están configuradas para voz. Define primero el medio esperado.`,
+      );
+      return;
+    }
+
     setIsGeneratingClips(true);
     setSceneGenerationTarget(generationTarget);
     setErrorMessage(null);
@@ -1346,10 +1364,17 @@ export default function HeygenStudioClient({
                   ) : null}
                   <button
                     type="button"
-                    onClick={() => setSelectedSceneClipIds(visibleSceneClips.map((clip) => clip.id))}
+                    onClick={() => setSelectedSceneClipIds(selectSceneIdsForGeneration(visibleSceneClips, "voice_only"))}
                     className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
                   >
-                    Todas
+                    Voces
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSceneClipIds(selectSceneIdsForGeneration(visibleSceneClips, "avatar"))}
+                    className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                  >
+                    Avatares
                   </button>
                   <button
                     type="button"

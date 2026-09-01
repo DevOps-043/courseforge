@@ -6,9 +6,9 @@ import type {
 } from "@/domains/materials/types/materials.types";
 import {
   buildProductionIdempotencyKey,
+  claimPendingProductionJob,
   createOrReuseProductionJob,
   failProductionJob,
-  markProductionJobRunning,
   resolveProductionComponentContext,
 } from "../../jobs/production-jobs.service";
 import {
@@ -49,6 +49,10 @@ import {
   buildHeygenSceneAssetNames,
   readHeygenJobIdFromVideoTitle,
 } from "./heygen-asset-naming";
+import {
+  sceneSupportsGenerationTarget,
+  type HeygenSceneGenerationTarget,
+} from "./heygen-scene-generation-policy";
 
 export class HeygenScenesServiceError extends Error {
   readonly status: number;
@@ -70,6 +74,7 @@ export interface HeygenSceneClipGenerationOptions {
   generationTarget: "avatar" | "voice_only";
   locale?: string;
   outputFormat: HeygenAvatarVideoOutputFormat;
+  requestOrigin?: "admin_heygen_studio" | "production_automation";
   resolution: HeygenAvatarVideoResolution;
   speed: number;
 }
@@ -106,6 +111,53 @@ export interface HeygenHistoricalSceneRecoveryReport {
   readySceneCount: number;
   unconfiguredSceneCount: number;
   unresolvedSceneCount: number;
+}
+
+class HeygenJobAlreadyRunningError extends Error {
+  constructor() {
+    super("La misma generación ya está en curso.");
+    this.name = "HeygenJobAlreadyRunningError";
+  }
+}
+
+/**
+ * Enforces the editorial media contract before any billable provider call.
+ * The persisted scene is authoritative; callers cannot upgrade a voice-only
+ * scene to an avatar by changing only the request payload.
+ */
+export function assertSceneGenerationContract(params: {
+  clipIds: string[];
+  clips: AvatarClip[];
+  generationTarget: HeygenSceneGenerationTarget;
+}) {
+  const selectedIds = new Set(params.clipIds);
+  const selectedClips = params.clips.filter(
+    (clip) => selectedIds.has(clip.id) && !clip.deleted,
+  );
+
+  if (selectedClips.length !== selectedIds.size) {
+    throw new HeygenScenesServiceError(
+      "Una o más escenas ya no existen. Actualiza el estudio e inténtalo de nuevo.",
+      409,
+    );
+  }
+
+  const incompatible = selectedClips.filter(
+    (clip) => !sceneSupportsGenerationTarget(clip, params.generationTarget),
+  );
+
+  if (incompatible.length === 0) return selectedClips;
+
+  const sceneLabels = incompatible
+    .map((clip) => `escena ${clip.order}`)
+    .join(", ");
+  const requiredMode = params.generationTarget === "avatar"
+    ? "avatar"
+    : "voz o avatar";
+  throw new HeygenScenesServiceError(
+    `La generación se bloqueó porque ${sceneLabels} no está configurada para ${requiredMode}. Revisa el medio esperado antes de consumir créditos de HeyGen.`,
+    409,
+  );
 }
 
 export class HeygenScenesService {
@@ -476,9 +528,11 @@ export class HeygenScenesService {
     const currentAssets = await this.readComponentAssets(params.componentId);
     const currentClips = sortClips(currentAssets.avatar_clips || params.clips);
     const selectedIds = new Set(params.clipIds);
-    if (!currentClips.some((clip) => selectedIds.has(clip.id) && !clip.deleted)) {
-      throw new HeygenScenesServiceError("Selecciona al menos una escena para generar.");
-    }
+    assertSceneGenerationContract({
+      clipIds: params.clipIds,
+      clips: currentClips,
+      generationTarget: params.generationTarget,
+    });
 
     const queuedClips = currentClips.filter((clip) => !clip.deleted).map((clip) => {
       if (!selectedIds.has(clip.id)) return clip;
@@ -560,6 +614,11 @@ export class HeygenScenesService {
     if (selectedClips.length === 0) {
       throw new HeygenScenesServiceError("Selecciona al menos una escena activa para generar su voz.");
     }
+    assertSceneGenerationContract({
+      clipIds: params.clipIds,
+      clips,
+      generationTarget: "voice_only",
+    });
 
     let voiceClips = reconcileVoiceClips(currentAssets.voice_clips || [], clips);
     const jobs: HeygenSceneVoiceJobResult[] = [];
@@ -574,6 +633,7 @@ export class HeygenScenesService {
         jobs.push(result);
         voiceClips = upsertVoiceClips(voiceClips, [result.voiceClip]);
       } catch (error) {
+        if (error instanceof HeygenJobAlreadyRunningError) continue;
         const message = error instanceof Error ? error.message : String(error);
         const failedVoiceClip = createFailedVoiceClip(clip, message);
         jobs.push({
@@ -723,6 +783,11 @@ export class HeygenScenesService {
     if (selectedClips.length === 0) {
       throw new HeygenScenesServiceError("Selecciona al menos una escena para generar voz.");
     }
+    assertSceneGenerationContract({
+      clipIds: params.options.clipIds,
+      clips: authoritativeClips,
+      generationTarget: "voice_only",
+    });
 
     let clips = authoritativeClips;
     let voiceClips = reconcileVoiceClips(
@@ -748,7 +813,11 @@ export class HeygenScenesService {
         return {
           ...clip,
           voice_error_message: result.errorMessage,
-          voice_status: result.status === PRODUCTION_JOB_STATUSES.SUCCEEDED ? "COMPLETED" as const : "FAILED" as const,
+          voice_status: result.status === PRODUCTION_JOB_STATUSES.SUCCEEDED
+            ? "COMPLETED" as const
+            : result.status === PRODUCTION_JOB_STATUSES.RUNNING
+              ? "WAITING_PROVIDER" as const
+              : "FAILED" as const,
         };
       });
       const materialAssets = await this.mergeSceneClipPatch({
@@ -792,9 +861,13 @@ export class HeygenScenesService {
         audio_file_stem: assetNames.audioFileStem,
         clip_id: params.clip.id,
         component_id: params.context.componentId,
+        expected_media_mode: params.clip.expected_media_mode,
         generation_target: "voice_only",
         job_type: PRODUCTION_JOB_TYPES.HEYGEN_VOICEOVER,
         locale: params.options.locale || null,
+        provider_endpoint: "/v3/voices/speech",
+        provider_operation: "text_to_speech",
+        request_origin: params.options.requestOrigin || "admin_heygen_studio",
         script_hash: scriptHash,
         speed: params.options.speed,
         voice_preset_id: voice.id,
@@ -817,8 +890,36 @@ export class HeygenScenesService {
       });
       createdJobId = job.id;
 
+      const existingVoiceAsset = await this.audioImportService.findImportedVoice(job.id);
+      if (existingVoiceAsset) {
+        return {
+          clipId: params.clip.id,
+          jobId: job.id,
+          providerJobId: existingVoiceAsset.providerRequestId || null,
+          status: PRODUCTION_JOB_STATUSES.SUCCEEDED,
+          voiceClip: toVoiceClip({ asset: existingVoiceAsset, clip: params.clip, scriptHash }),
+        };
+      }
+      if (job.status !== PRODUCTION_JOB_STATUSES.PENDING) {
+        return {
+          clipId: params.clip.id,
+          jobId: job.id,
+          providerJobId: null,
+          status: PRODUCTION_JOB_STATUSES.RUNNING,
+        };
+      }
+
       const persistedJob = await this.repository.getProductionJob({ jobId: job.id, organizationId: params.organizationId });
       if (!persistedJob) throw new HeygenScenesServiceError("No se pudo recuperar el job de voz.", 500);
+      const claimed = await claimPendingProductionJob({ jobId: job.id, supabase: this.supabase });
+      if (!claimed) {
+        return {
+          clipId: params.clip.id,
+          jobId: job.id,
+          providerJobId: null,
+          status: PRODUCTION_JOB_STATUSES.RUNNING,
+        };
+      }
       const voiceAsset = await this.audioImportService.resolveVoiceAsset({
         createdBy: params.createdBy,
         generateSpeech: () => this.client.generateSpeech({
@@ -831,18 +932,16 @@ export class HeygenScenesService {
         scriptHash,
         voiceProviderId: voice.heygen_voice_id,
       });
-      if (job.status !== PRODUCTION_JOB_STATUSES.SUCCEEDED) {
-        await this.repository.markVideoJobSucceeded({
-          durationSeconds: voiceAsset.durationSeconds,
-          jobId: job.id,
-          outputSnapshot: {
-            audio_asset_id: voiceAsset.id,
-            duration_seconds: voiceAsset.durationSeconds,
-            generation_target: "voice_only",
-            provider_request_id: voiceAsset.providerRequestId,
-          },
-        });
-      }
+      await this.repository.markVideoJobSucceeded({
+        durationSeconds: voiceAsset.durationSeconds,
+        jobId: job.id,
+        outputSnapshot: {
+          audio_asset_id: voiceAsset.id,
+          duration_seconds: voiceAsset.durationSeconds,
+          generation_target: "voice_only",
+          provider_request_id: voiceAsset.providerRequestId,
+        },
+      });
 
       return {
         clipId: params.clip.id,
@@ -1383,9 +1482,14 @@ export class HeygenScenesService {
       component_id: params.context.componentId,
       component_type: params.context.componentType,
       engine: params.options.engine,
+      expected_media_mode: params.clip.expected_media_mode,
+      generation_target: "avatar",
       generation_revision: params.clip.generation_revision ?? 0,
       job_type: PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_CLIP,
       output_format: params.options.outputFormat,
+      provider_endpoint: "/v3/videos",
+      provider_operation: "avatar_video",
+      request_origin: params.options.requestOrigin || "admin_heygen_studio",
       scene_order: params.clip.order,
       script_hash: scriptHash,
       separate_tracks: true,
@@ -1429,6 +1533,15 @@ export class HeygenScenesService {
     });
     if (!persistedJob) {
       throw new HeygenScenesServiceError("No se pudo recuperar el job del clip de HeyGen.", 500);
+    }
+    const claimed = await claimPendingProductionJob({ jobId: job.id, supabase: this.supabase });
+    if (!claimed) {
+      return {
+        clipId: params.clip.id,
+        jobId: job.id,
+        providerJobId: null,
+        status: PRODUCTION_JOB_STATUSES.RUNNING,
+      };
     }
 
     const reusableVoiceAsset = getReusableSceneVoiceAsset(params.existingVoiceClip, scriptHash);
@@ -1579,8 +1692,13 @@ export class HeygenScenesService {
       clip_id: params.clip.id,
       component_id: params.context.componentId,
       component_type: params.context.componentType,
+      expected_media_mode: params.clip.expected_media_mode,
+      generation_target: "voice_only",
       generation_revision: params.clip.generation_revision ?? 0,
       job_type: PRODUCTION_JOB_TYPES.HEYGEN_VOICEOVER,
+      provider_endpoint: "/v3/voices/speech",
+      provider_operation: "text_to_speech",
+      request_origin: "admin_heygen_studio",
       script_hash: scriptHash,
       speed: params.clip.voice_speed ?? 1,
       voice_preset_id: voice.id,
@@ -1609,22 +1727,32 @@ export class HeygenScenesService {
       throw new HeygenScenesServiceError("No se pudo recuperar el job de voz de la escena.", 500);
     }
 
-    let voiceAsset;
+    let voiceAsset = await this.audioImportService.findImportedVoice(job.id);
+    let claimed = false;
+    if (!voiceAsset) {
+      if (job.status === PRODUCTION_JOB_STATUSES.PENDING) {
+        claimed = await claimPendingProductionJob({ jobId: job.id, supabase: this.supabase });
+        if (!claimed) throw new HeygenJobAlreadyRunningError();
+      } else if (job.status === PRODUCTION_JOB_STATUSES.RUNNING) {
+        throw new HeygenJobAlreadyRunningError();
+      }
+    }
     try {
-      await markProductionJobRunning({ jobId: job.id, supabase: this.supabase });
-      voiceAsset = await this.audioImportService.resolveVoiceAsset({
-        createdBy: params.createdBy,
-        generateSpeech: () => this.client.generateSpeech({
-          speed: params.clip.voice_speed ?? 1,
-          text: params.clip.script_text,
-          voice_id: voice.heygen_voice_id,
-        }),
-        job: persistedJob,
-        scriptHash,
-        voiceProviderId: voice.heygen_voice_id,
-      });
+      if (!voiceAsset) {
+        voiceAsset = await this.audioImportService.resolveVoiceAsset({
+          createdBy: params.createdBy,
+          generateSpeech: () => this.client.generateSpeech({
+            speed: params.clip.voice_speed ?? 1,
+            text: params.clip.script_text,
+            voice_id: voice.heygen_voice_id,
+          }),
+          job: persistedJob,
+          scriptHash,
+          voiceProviderId: voice.heygen_voice_id,
+        });
+      }
     } catch (error) {
-      await failProductionJob({ error, jobId: job.id, supabase: this.supabase });
+      if (claimed) await failProductionJob({ error, jobId: job.id, supabase: this.supabase });
       throw error;
     }
 
@@ -1662,6 +1790,11 @@ export class HeygenScenesService {
     if (selectedClips.length === 0) {
       throw new HeygenScenesServiceError("Selecciona al menos una escena para generar.");
     }
+    assertSceneGenerationContract({
+      clipIds: params.clipIds,
+      clips: params.clips,
+      generationTarget: "avatar",
+    });
 
     const [account, currentAssets] = await Promise.all([
       this.client.getCurrentUser(),

@@ -1,6 +1,6 @@
 import { getErrorMessage } from "@/lib/errors";
 import { signBackgroundPayload } from "@/lib/server/background-payload-signature";
-import type { MaterialAssets } from "@/domains/materials/types/materials.types";
+import type { AvatarClip, MaterialAssets } from "@/domains/materials/types/materials.types";
 import { getHeygenClientForOrganization } from "../providers/heygen/heygen-credential-resolver.service";
 import { HeygenScenesService } from "../providers/heygen/heygen-scenes.service";
 import { HeygenVideoService } from "../providers/heygen/heygen-video.service";
@@ -174,37 +174,71 @@ export class ProductionAutomationDispatcher {
       ...clip,
       // A reviewed clip-level correction wins over the course/lesson profile.
       // Both values are explicit; no provider default is allowed here.
-      avatar_preset_id: clip.avatar_preset_id || params.avatar.avatarPresetId,
+      avatar_preset_id: clip.expected_media_mode === "avatar"
+        ? clip.avatar_preset_id || params.avatar.avatarPresetId
+        : clip.avatar_preset_id,
       voice_preset_id: clip.voice_preset_id || params.avatar.voicePresetId,
     }));
-    const pendingClips = configuredClips.filter((clip) => !clip.deleted && clip.status !== "COMPLETED");
-    if (pendingClips.length === 0) {
-      throw new Error("El storyboard no contiene escenas narradas que se puedan enviar a HeyGen.");
+    const activeClips = configuredClips.filter((clip) => !clip.deleted);
+    const unconfiguredClips = activeClips.filter((clip) => !clip.expected_media_mode);
+    if (unconfiguredClips.length > 0) {
+      throw new Error(
+        `Define el medio esperado de las escenas ${unconfiguredClips.map((clip) => clip.order).join(", ")} antes de ejecutar la automatización.`,
+      );
     }
 
-    const queued = await service.queueSceneClips({
-      clipIds: pendingClips.map((clip) => clip.id),
-      clips: configuredClips,
-      componentId: component.id,
-      generationTarget: "avatar",
-      organizationId: params.organizationId,
-    });
-    await service.generateSceneClips({
-      createdBy: params.createdBy,
-      options: {
-        aspectRatio: params.avatar.aspectRatio,
-        caption: params.avatar.caption,
-        clipIds: pendingClips.map((clip) => clip.id),
-        clips: queued.clips,
+    const voiceByClipId = new Map(
+      (component.assets?.voice_clips || []).map((voiceClip) => [voiceClip.clip_id, voiceClip]),
+    );
+    const hasCurrentVoice = (clip: (typeof activeClips)[number]) => {
+      const voiceClip = voiceByClipId.get(clip.id);
+      return voiceClip?.status === "COMPLETED"
+        && Boolean(voiceClip.public_url)
+        && (!clip.script_hash || voiceClip.script_hash === clip.script_hash);
+    };
+    const voiceOnlyClips = activeClips.filter(
+      (clip) => (
+        clip.expected_media_mode === "voice_only"
+        || (clip.expected_media_mode === "avatar" && clip.status === "COMPLETED")
+      ) && !hasCurrentVoice(clip),
+    );
+    const avatarClips = activeClips.filter(
+      (clip) => clip.expected_media_mode === "avatar" && clip.status !== "COMPLETED",
+    );
+
+    let workingClips: AvatarClip[] = configuredClips;
+    for (const batch of [
+      { clips: voiceOnlyClips, generationTarget: "voice_only" as const },
+      { clips: avatarClips, generationTarget: "avatar" as const },
+    ]) {
+      if (batch.clips.length === 0) continue;
+      const clipIds = batch.clips.map((clip) => clip.id);
+      const queued = await service.queueSceneClips({
+        clipIds,
+        clips: workingClips,
         componentId: component.id,
-        engine: params.avatar.engine,
-        generationTarget: "avatar",
-        outputFormat: params.avatar.outputFormat,
-        resolution: params.avatar.resolution,
-        speed: 1,
-      },
-      organizationId: params.organizationId,
-    });
+        generationTarget: batch.generationTarget,
+        organizationId: params.organizationId,
+      });
+      const generated = await service.generateSceneClips({
+        createdBy: params.createdBy,
+        options: {
+          aspectRatio: params.avatar.aspectRatio,
+          caption: params.avatar.caption,
+          clipIds,
+          clips: queued.clips,
+          componentId: component.id,
+          engine: params.avatar.engine,
+          generationTarget: batch.generationTarget,
+          outputFormat: params.avatar.outputFormat,
+          requestOrigin: "production_automation",
+          resolution: params.avatar.resolution,
+          speed: 1,
+        },
+        organizationId: params.organizationId,
+      });
+      workingClips = generated.clips;
+    }
   }
 
   private async dispatchAvatarVideo(params: {

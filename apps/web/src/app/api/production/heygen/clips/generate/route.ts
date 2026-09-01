@@ -88,6 +88,7 @@ export async function POST(request: Request) {
       options: {
         ...payload,
         clips: queued.clips,
+        requestOrigin: "admin_heygen_studio" as const,
       },
     };
 
