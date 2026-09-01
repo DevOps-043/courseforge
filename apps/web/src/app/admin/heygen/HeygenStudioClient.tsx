@@ -26,6 +26,7 @@ import { EngineSelect } from "@/components/ui/EngineSelect";
 import { readApiResponse } from "@/lib/client/api-response";
 import type { ProductionCourseContext } from "@/domains/production/course-context/production-course-context";
 import {
+  buildSceneGenerateAllPlan,
   sceneSupportsGenerationTarget,
   selectSceneIdsForGeneration,
 } from "@/domains/production/providers/heygen/heygen-scene-generation-policy";
@@ -266,7 +267,7 @@ export default function HeygenStudioClient({
   const [isGeneratingClips, setIsGeneratingClips] = useState(false);
   const [isRecoveringHistoricalAssets, setIsRecoveringHistoricalAssets] = useState(false);
   const [historicalRecoveryReport, setHistoricalRecoveryReport] = useState<HistoricalSceneRecoveryReport | null>(null);
-  const [sceneGenerationTarget, setSceneGenerationTarget] = useState<"avatar" | "voice_only" | null>(null);
+  const [sceneGenerationTarget, setSceneGenerationTarget] = useState<"all" | "avatar" | "voice_only" | null>(null);
   const [isCheckingClipStatus, setIsCheckingClipStatus] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -968,6 +969,125 @@ export default function HeygenStudioClient({
       const message = error instanceof Error
         ? error.message
         : `Error al generar ${generationTarget === "voice_only" ? "voces" : "clips de avatar"}.`;
+      setErrorMessage(message);
+      toast.error(message);
+    } finally {
+      setIsGeneratingClips(false);
+      setSceneGenerationTarget(null);
+    }
+  };
+
+  const handleGenerateAllClips = async () => {
+    if (!connection.connected || !componentId) {
+      toast.error("Configura la API key de HeyGen antes de generar contenido.");
+      return;
+    }
+
+    const plan = buildSceneGenerateAllPlan(sceneClips, selectedSceneClipIds);
+    if (plan.avatarClipIds.length === 0 && plan.voiceOnlyClipIds.length === 0) {
+      toast.error("La selección no contiene escenas configuradas para avatar o sólo voz.");
+      return;
+    }
+
+    const avatarIds = new Set(plan.avatarClipIds);
+    const voiceOnlyIds = new Set(plan.voiceOnlyClipIds);
+    const avatarClipsToGenerate = sceneClips.filter((clip) => avatarIds.has(clip.id));
+    const voiceOnlyClipsToGenerate = sceneClips.filter((clip) => voiceOnlyIds.has(clip.id));
+    const selectedAvatar = avatarPresets.find((preset) => preset.id === selectedAvatarPresetId);
+    const avatarQuote = estimateHeygenGenerationQuote({
+      avatarType: selectedAvatar?.avatar_type,
+      engine,
+      includeSpeech: true,
+      resolution,
+      scripts: avatarClipsToGenerate.map((clip) => clip.script_text),
+      speed: voiceSpeed,
+    });
+    const voiceOnlyQuote = estimateHeygenGenerationQuote({
+      includeSpeech: true,
+      scripts: voiceOnlyClipsToGenerate.map((clip) => clip.script_text),
+      speed: voiceSpeed,
+    });
+    const estimatedTotalUsd = avatarQuote.totalUsd + voiceOnlyQuote.totalUsd;
+    const confirmed = window.confirm(
+      [
+        "Se generará todo el contenido hablado seleccionado:",
+        `• ${plan.avatarClipIds.length} escena${plan.avatarClipIds.length === 1 ? "" : "s"} con avatar y voz`,
+        `• ${plan.voiceOnlyClipIds.length} escena${plan.voiceOnlyClipIds.length === 1 ? "" : "s"} sólo con voz`,
+        `Costo API estimado: US$${estimatedTotalUsd.toFixed(2)}.`,
+        "HeyGen confirmará el cobro final. ¿Deseas continuar?",
+      ].join("\n"),
+    );
+    if (!confirmed) return;
+
+    setIsGeneratingClips(true);
+    setSceneGenerationTarget("all");
+    setErrorMessage(null);
+
+    let submittedAvatarCount = 0;
+    let submittedVoiceCount = 0;
+    try {
+      let clips = await saveSceneClips(sceneClips);
+      let latestVoiceClips = voiceClips;
+
+      const submitBatch = async (
+        generationTarget: "avatar" | "voice_only",
+        clipIds: string[],
+      ) => {
+        const response = await fetch("/api/production/heygen/clips/generate", {
+          body: JSON.stringify({
+            aspectRatio,
+            caption,
+            clipIds,
+            clips,
+            componentId,
+            engine,
+            generationTarget,
+            brandGlossaryId: brandGlossaryId || undefined,
+            locale: voiceLocale || undefined,
+            motionPrompt: motionPrompt || undefined,
+            outputFormat,
+            pitch: voicePitch,
+            removeBackground: outputFormat === "webm" || removeBackground,
+            resolution,
+            speed: Math.min(1.5, voiceSpeed),
+            volume: voiceVolume,
+          }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        });
+        const payload = await readApiResponse(response);
+        if (!response.ok || !payload.success) {
+          throw new Error(readApiErrorMessage(
+            payload,
+            generationTarget === "avatar"
+              ? "No se pudieron encolar los avatares."
+              : "No se pudieron encolar las voces.",
+          ));
+        }
+
+        clips = (payload.data?.clips || clips) as AvatarSceneClip[];
+        latestVoiceClips = (payload.data?.voiceClips || latestVoiceClips) as VoiceSceneClip[];
+        setSceneClips(clips);
+        setVoiceClips(latestVoiceClips);
+      };
+
+      if (plan.avatarClipIds.length > 0) {
+        await submitBatch("avatar", plan.avatarClipIds);
+        submittedAvatarCount = plan.avatarClipIds.length;
+      }
+      if (plan.voiceOnlyClipIds.length > 0) {
+        await submitBatch("voice_only", plan.voiceOnlyClipIds);
+        submittedVoiceCount = plan.voiceOnlyClipIds.length;
+      }
+
+      toast.success(
+        `Generación completa en cola: ${submittedAvatarCount} avatares y ${submittedVoiceCount} voces.`,
+      );
+    } catch (error) {
+      const partialSubmission = submittedAvatarCount > 0 || submittedVoiceCount > 0
+        ? ` Ya quedaron en cola ${submittedAvatarCount} avatares y ${submittedVoiceCount} voces; no los vuelvas a enviar.`
+        : "";
+      const message = `${error instanceof Error ? error.message : "No se pudo generar todo el contenido."}${partialSubmission}`;
       setErrorMessage(message);
       toast.error(message);
     } finally {
@@ -1817,6 +1937,24 @@ export default function HeygenStudioClient({
           <div className="mt-5 flex flex-wrap gap-3">
             {isSceneMode ? (
               <>
+                <button
+                  type="button"
+                  onClick={handleGenerateAllClips}
+                  disabled={
+                    isGeneratingClips ||
+                    isLoadingPresets ||
+                    !connection.connected ||
+                    (
+                      buildSceneGenerateAllPlan(visibleSceneClips, selectedSceneClipIds).avatarClipIds.length === 0 &&
+                      buildSceneGenerateAllPlan(visibleSceneClips, selectedSceneClipIds).voiceOnlyClipIds.length === 0
+                    )
+                  }
+                  title="Genera, dentro de la selección, avatar sólo donde corresponde y voz en las escenas configuradas como sólo voz"
+                  className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/15 transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {sceneGenerationTarget === "all" ? <Loader2 size={16} className="animate-spin" /> : <Layers3 size={16} />}
+                  Generar todo
+                </button>
                 <button
                   type="button"
                   onClick={() => handleGenerateSelectedClips("voice_only")}

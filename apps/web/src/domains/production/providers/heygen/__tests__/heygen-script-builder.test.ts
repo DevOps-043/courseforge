@@ -15,6 +15,7 @@ import {
   summarizeSceneMediaReadiness,
 } from "../heygen-scenes.service";
 import { resetGeneratedSceneAssets } from "../heygen-scene-assets";
+import { buildSceneGenerateAllPlan } from "../heygen-scene-generation-policy";
 import {
   estimateHeygenAvatarGenerationBudget,
   readHeygenAvailableBalance,
@@ -750,6 +751,20 @@ describe("HeyGen scene generation contract", () => {
       }),
       /no está configurada para avatar/,
     );
+  });
+
+  it("splits a mixed generate-all request without charging avatar for voice-only scenes", () => {
+    assert.deepEqual(buildSceneGenerateAllPlan(clips), {
+      avatarClipIds: ["avatar-scene"],
+      voiceOnlyClipIds: ["voice-scene"],
+    });
+  });
+
+  it("limits generate-all to the checked mixed scenes", () => {
+    assert.deepEqual(buildSceneGenerateAllPlan(clips, ["voice-scene", "silent-scene"]), {
+      avatarClipIds: [],
+      voiceOnlyClipIds: ["voice-scene"],
+    });
   });
 
   it("measures readiness from each persisted media mode", () => {
