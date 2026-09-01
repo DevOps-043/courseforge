@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createInitialCompositionDocument } from "../composition-document.factory";
+import { resolveCompositionAssetInsertionTiming } from "../composition-asset-placement.service";
 import { buildCompositionTimelineLayout } from "../composition-timeline-layout.service";
 
 const BROLL_IDS = [
@@ -67,4 +68,86 @@ test("separa profundidades visuales aunque sus tiempos no se solapen", () => {
 
   assert.deepEqual(brollGroups.map((group) => group.zIndex), [7, 2]);
   assert.equal(brollGroups[0]?.clips[0]?.id, document.clips[2]!.id);
+});
+
+test("inserta en el playhead y permite solapamiento cuando la pista ya llega al final", () => {
+  const timing = resolveCompositionAssetInsertionTiming({
+    canvasDurationSeconds: 137,
+    isSequential: true,
+    occupiedUntilSeconds: 137,
+    playheadSeconds: 103,
+    preferredDurationSeconds: 20,
+  });
+
+  assert.deepEqual(timing, {
+    durationSeconds: 20,
+    overlapsExistingClips: true,
+    startSeconds: 103,
+  });
+});
+
+test("desplaza hacia atrás un asset superpuesto para conservarlo dentro del canvas", () => {
+  const timing = resolveCompositionAssetInsertionTiming({
+    canvasDurationSeconds: 137,
+    isSequential: true,
+    occupiedUntilSeconds: 137,
+    playheadSeconds: 132,
+    preferredDurationSeconds: 20,
+  });
+
+  assert.deepEqual(timing, {
+    durationSeconds: 20,
+    overlapsExistingClips: true,
+    startSeconds: 117,
+  });
+});
+
+test("mantiene la inserción consecutiva mientras todavía queda espacio", () => {
+  const timing = resolveCompositionAssetInsertionTiming({
+    canvasDurationSeconds: 137,
+    isSequential: true,
+    occupiedUntilSeconds: 100,
+    playheadSeconds: 25,
+    preferredDurationSeconds: 20,
+  });
+
+  assert.deepEqual(timing, {
+    durationSeconds: 20,
+    overlapsExistingClips: false,
+    startSeconds: 100,
+  });
+});
+
+test("coloca un audio de voz después del canvas para extender la duración total", () => {
+  const timing = resolveCompositionAssetInsertionTiming({
+    canvasDurationSeconds: 137,
+    extendCanvasForSequentialAsset: true,
+    isSequential: true,
+    occupiedUntilSeconds: 137,
+    playheadSeconds: 103,
+    preferredDurationSeconds: 20,
+  });
+
+  assert.deepEqual(timing, {
+    durationSeconds: 20,
+    overlapsExistingClips: false,
+    startSeconds: 137,
+  });
+});
+
+test("conserva completa una voz aunque dure más que el canvas actual", () => {
+  const timing = resolveCompositionAssetInsertionTiming({
+    canvasDurationSeconds: 10,
+    extendCanvasForSequentialAsset: true,
+    isSequential: true,
+    occupiedUntilSeconds: 10,
+    playheadSeconds: 5,
+    preferredDurationSeconds: 24,
+  });
+
+  assert.deepEqual(timing, {
+    durationSeconds: 24,
+    overlapsExistingClips: false,
+    startSeconds: 10,
+  });
 });

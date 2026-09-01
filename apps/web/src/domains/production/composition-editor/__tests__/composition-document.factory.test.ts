@@ -332,6 +332,44 @@ test("expands an automatic canvas and appends newly completed scene voices witho
   assert.deepEqual(voices.map((clip) => clip.durationSeconds), [4, 4]);
 });
 
+test("appends a second manual voice after a user-edited canvas and extends its duration", () => {
+  const voiceAsset = (order: number, durationSeconds: number) => ({
+    checksum: String(order).repeat(64),
+    durationSeconds,
+    fileSizeBytes: 4,
+    label: `Voz manual ${order}`,
+    mimeType: "audio/mpeg",
+    productionAssetId: `00000000-0000-4000-8000-0000000004${String(order).padStart(2, "0")}`,
+    publicUrl: null,
+    storageBucket: "production-assets",
+    storagePath: `production-assets/manual-voice-${order}.mp3`,
+    timelineRole: "VOICE" as const,
+  });
+  const firstVoice = voiceAsset(1, 12);
+  const secondVoice = voiceAsset(2, 18);
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [firstVoice],
+    plan: { accentColor: "#38BDF8", durationSeconds: 12, subtitle: "Prueba", title: "Voces manuales" },
+  });
+  document.canvas.durationMode = "USER_EDITED";
+
+  const reconciled = reconcileCompositionDocument({
+    deckDependencyAssetIds: new Set(),
+    document,
+    productionAssets: [firstVoice, secondVoice],
+  });
+  const voices = reconciled.document.clips
+    .filter((clip) => clip.trackId === "voice")
+    .sort((left, right) => left.startSeconds - right.startSeconds);
+
+  assert.equal(reconciled.addedProductionAssetCount, 1);
+  assert.equal(reconciled.document.canvas.durationSeconds, 30);
+  assert.equal(reconciled.document.canvas.durationSource, "voice");
+  assert.deepEqual(voices.map((clip) => clip.startSeconds), [0, 12]);
+  assert.deepEqual(voices.map((clip) => clip.durationSeconds), [12, 18]);
+});
+
 test("reconciles newly available avatar media into an existing draft document", () => {
   const document = createInitialCompositionDocument({
     animatedDeck: {
@@ -449,6 +487,38 @@ test("reconciles legacy FPS and explicit source-audio metadata", () => {
   assert.equal(reconciled.changed, true);
   assert.equal(reconciled.document.canvas.fps, 25);
   assert.equal(source.type === "PRODUCTION_ASSET" ? source.hasAudio : undefined, false);
+});
+
+test("reconciles legacy production filenames to the canonical asset label", () => {
+  const productionAssetId = "00000000-0000-4000-8000-000000000096";
+  const legacyLabel = "e1c8e5ea-ae83-42af-8d5d-c393f2c32d99-voice.mp3";
+  const canonicalLabel = "Lección 1.4: Mapeo y Segmentación del Mercado B2B Digital · Escena 01 · Voz";
+  const baseAsset = {
+    checksum: "6".repeat(64), durationSeconds: 8, fileSizeBytes: 4,
+    mimeType: "audio/mpeg", productionAssetId, publicUrl: null,
+    storageBucket: "production-assets", storagePath: `production-assets/${legacyLabel}`,
+    timelineRole: "VOICE" as const,
+  };
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ ...baseAsset, label: legacyLabel }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Legacy" },
+  });
+
+  const reconciled = reconcileCompositionDocument({
+    deckDependencyAssetIds: new Set(),
+    document,
+    productionAssets: [{ ...baseAsset, label: canonicalLabel }],
+  });
+  const secondPass = reconcileCompositionDocument({
+    deckDependencyAssetIds: new Set(),
+    document: reconciled.document,
+    productionAssets: [{ ...baseAsset, label: canonicalLabel }],
+  });
+
+  assert.equal(reconciled.changed, true);
+  assert.equal(reconciled.document.clips[0]?.label, canonicalLabel);
+  assert.equal(secondPass.changed, false);
 });
 
 test("removes only deck-owned raster assets from an existing timeline", () => {

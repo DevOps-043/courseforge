@@ -82,6 +82,19 @@ describe("lesson production progress", () => {
     });
   });
 
+  it("counts manually uploaded voice clips as a valid voice source", () => {
+    const component = componentWithAssets({
+      manual_voice_clips: [{
+        id: "manual-voice-1",
+        order: 1,
+        storage_path: "production-assets/voices/voice-1.mp3",
+        public_url: "/voice-1.mp3",
+      }],
+    });
+
+    assert.equal(getComponentProductionPercentage(component), 8);
+  });
+
   it("averages component progress for lesson and global summaries", () => {
     const assetsReady = componentWithAssets({
       voice_audio: { storage_path: "voice.mp3", public_url: "/voice.mp3" },

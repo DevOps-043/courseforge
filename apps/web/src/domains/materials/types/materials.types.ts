@@ -228,6 +228,16 @@ export interface MaterialAssets {
         word_timestamps?: { word: string; start: number; end: number }[];
         last_uploaded_at?: string;
     };
+    manual_voice_clips?: {
+        id: string;
+        order: number;
+        storage_path: string;
+        public_url: string;
+        file_name?: string;
+        duration?: number;
+        provider?: string;
+        last_uploaded_at?: string;
+    }[];
     voice_clips?: VoiceClip[];
     background_music?: {
         storage_path: string;

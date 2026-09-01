@@ -1,20 +1,20 @@
 # Reporte ejecutivo: recuperación y sincronización de assets de HeyGen
 
-**Fecha de revisión:** 31 de agosto de 2026  
+**Fecha de revisión:** 1 de septiembre de 2026
 **Curso auditado:** Ventas  
 **Lección:** Lección 2.5: Optimización de la Comunicación con IA para el Seguimiento  
 **Componente:** `3b54169f-9371-4339-991f-78eac4a48f8d`  
-**Estado general:** Recuperación histórica correcta; contrato de completitud por escena implementado; producción vigente pendiente de decisión editorial en tres escenas.
+**Estado general:** Recuperación histórica, reasignación operacional y sincronización del editor completadas; pendiente únicamente la validación editorial de reproducción.
 
 ## 1. Resumen ejecutivo
 
 La investigación confirmó que los videos y audios generados anteriormente no se perdieron. Los cuatro videos identificados existen en HeyGen, están marcados como completados, fueron importados al almacenamiento interno y permanecen disponibles en el editor. Los diez audios registrados también existen físicamente.
 
-La percepción de pérdida surgió porque tres videos históricos corresponden a versiones anteriores de los guiones de las escenas 1, 3 y 7. El sistema actualizado evita vincularlos automáticamente a los guiones vigentes, ya que hacerlo produciría narración incorrecta y sincronización labial inconsistente.
+La percepción de pérdida surgió porque tres videos históricos corresponden a versiones anteriores de los guiones de las escenas 1, 3 y 7. El sistema actualizado evita vincular automáticamente un histórico cuando su huella no coincide, ya que hacerlo normalmente podría producir narración incorrecta y sincronización labial inconsistente.
 
-La recuperación histórica está completa respecto de los assets que realmente fueron generados. Si los guiones actuales son definitivos, deben regenerarse únicamente las escenas 1, 3 y 7. No es necesario regenerar las escenas 2, 4, 5 o 6.
+Para esta lección se autorizó reutilizar expresamente esos tres videos. Se aplicó una reasignación externa, acotada y reversible de cada job a su escena, incluyendo la voz separada; después se ejecutó el mismo servicio de sincronización que usa el editor. El resultado vigente es de cuatro avatares y siete voces completas.
 
-La revisión final cerró además el problema de interpretación: cada escena ahora conserva explícitamente si espera avatar, sólo voz o ningún medio hablado. Las escenas heredadas que no pueden clasificarse con evidencia segura se muestran como “modalidad pendiente” en lugar de asumirse como avatares faltantes.
+La revisión final cerró además el problema de interpretación: cada escena conserva explícitamente si espera avatar, sólo voz o ningún medio hablado. Las escenas heredadas que no puedan clasificarse con evidencia segura seguirán mostrándose como “modalidad pendiente”; esta reparación forzada no debilita esa regla general.
 
 ## 2. Problema observado
 
@@ -36,7 +36,7 @@ La causa no fue una sola eliminación de archivos. Fue una combinación de corre
 3. Los assets anteriores seguían existiendo, pero ya no eran semánticamente compatibles con el contenido vigente.
 4. La interfaz mostraba conteos de medios sin explicar cuáles estaban activos y cuáles eran históricos.
 
-## 4. Evidencia confirmada en la segunda auditoría
+## 4. Evidencia confirmada antes de la reasignación
 
 La revisión cruzó base de datos, Storage, jobs, borrador de composición, timeline y HeyGen.
 
@@ -62,26 +62,37 @@ Los 13 segmentos de la timeline coinciden con la interfaz:
 - 1 clip de avatar vigente;
 - 4 clips de voz vigentes.
 
+La verificación posterior confirmó:
+
+| Comprobación final | Resultado |
+|---|---:|
+| Avatares vigentes completos | 4 |
+| Voces vigentes completas | 7 |
+| Medios reasignados presentes en el documento activo | 6 de 6 |
+| Versión vigente del borrador tras normalizar etiquetas | 32 |
+| Archivos físicos faltantes | 0 |
+| Escenas objetivo con trazabilidad de reparación | 3 de 3 |
+
 ## 5. Estado por escena
 
 | Escena | Voz vigente | Avatar vigente | Interpretación |
 |---|---:|---:|---|
-| 1 | No | No | Existe una generación histórica, pero usa otro guion. |
+| 1 | Sí | Sí | Histórico reasignado de forma explícita y auditada. |
 | 2 | Sí | No | Correcta como escena de voz en off. |
-| 3 | No | No | Existe una generación histórica, pero usa otro guion. |
+| 3 | Sí | Sí | Histórico reasignado de forma explícita y auditada. |
 | 4 | Sí | No | Correcta como escena de voz en off. |
 | 5 | Sí | Sí | Completa y compatible con el guion vigente. |
 | 6 | Sí | No | Correcta como escena de voz en off. |
-| 7 | No | No | Existe una generación histórica, pero usa otro guion. |
+| 7 | Sí | Sí | Histórico reasignado de forma explícita y auditada. |
 
 Distribución de los 14 medios de proveedor:
 
-- 5 vigentes: avatar de escena 5 y voces de escenas 2, 4, 5 y 6.
-- 9 históricos: avatares y voces anteriores de escenas 1, 3 y 7, más tres voces de escenas manuales que ya no forman parte del storyboard.
+- 11 vigentes: avatares de escenas 1, 3, 5 y 7, más voces de las siete escenas.
+- 3 históricos: voces de escenas manuales que ya no forman parte del storyboard.
 
 ## 6. Solución aplicada
 
-La solución implementada refuerza la trazabilidad y recuperación sin revivir contenido incompatible:
+La solución general implementada refuerza la trazabilidad y evita revivir contenido incompatible automáticamente:
 
 - Correlación durable entre job local y video remoto mediante un identificador incluido en el título de nuevas generaciones.
 - Lectura paginada del catálogo remoto de HeyGen para reparar jobs huérfanos.
@@ -104,32 +115,25 @@ La solución implementada refuerza la trazabilidad y recuperación sin revivir c
 
 ## 7. Estado actual de la solución
 
-La recuperación puede considerarse técnicamente correcta para este incidente:
+La recuperación y la reasignación operacional están completas para este incidente:
 
 - No quedan videos identificados en HeyGen pendientes de importar.
 - No hay archivos registrados pero ausentes en Storage.
-- No existen referencias rotas desde la timeline.
-- Los históricos permanecen disponibles sin sustituir contenido vigente.
-- Los reintentos futuros de voz tienen una ruta de recuperación durable.
+- Las escenas 1, 3 y 7 apuntan explícitamente a sus tres jobs históricos de avatar y a sus voces asociadas.
+- El componente conserva cuatro avatares y siete voces con estado `COMPLETED`.
+- El borrador del editor incorporó los seis medios reasignados en la versión 27 y actualmente conserva la versión 32 después de ediciones posteriores y la normalización de etiquetas.
+- Los reintentos futuros de voz y avatar conservan una ruta de recuperación durable.
 
-La lección no debe marcarse todavía como producción audiovisual completa hasta decidir la modalidad de las escenas 1, 3 y 7. Si el patrón aprobado sigue siendo avatar en escenas impares y voz en off en escenas pares, faltan nuevas generaciones sólo para esas tres escenas.
-
-Después de ejecutar nuevamente la recuperación, el resultado esperado es:
-
-- escenas 2, 4 y 6 clasificadas como `voice_only` y completas;
-- escena 5 clasificada como `avatar` y completa por contar con video y voz separada;
-- escenas 1, 3 y 7 como modalidad pendiente, sin vincular sus medios históricos incompatibles;
-- cero falsos positivos que reporten falta de avatar en escenas configuradas como voz en off.
+La reasignación de las escenas 1, 3 y 7 es una excepción operacional autorizada: los medios se generaron con versiones anteriores de sus guiones. Para impedir que una recuperación futura los vuelva a clasificar como obsoletos, el componente conserva la huella vigente mientras `production_assets.metadata.forced_scene_assignment` registra tanto la huella histórica como la actual, el motivo, la escena y el identificador de reparación.
 
 ## 8. Acciones pendientes
 
 ### Obligatorias para cerrar esta lección
 
-1. Confirmar que los guiones actuales de las escenas 1, 3 y 7 son definitivos.
-2. Definir su modalidad en el módulo de avatares. Si deben usar avatar, generarlas allí; la generación producirá también sus pistas de voz separadas.
-3. Ejecutar `Actualizar assets` cuando HeyGen complete los tres videos.
-4. Verificar que la timeline termine con cuatro avatares y siete voces vigentes, si ese es el patrón editorial aprobado.
-5. Revisar sincronización y duración antes de aprobar o renderizar.
+1. Abrir nuevamente el artefacto con una sesión válida; el borrador ya quedó sincronizado y cargará su versión vigente.
+2. Reproducir las escenas 1, 3 y 7 para confirmar editorialmente que el audio histórico sigue correspondiendo al texto y orden visual deseados.
+3. Revisar sincronización y duración antes de aprobar o renderizar.
+4. Si algún guion histórico ya no es aceptable, regenerar únicamente esa escena desde el módulo de avatares; no repetir la reasignación completa.
 
 ### Obligatorias antes de declarar el fix desplegado
 
@@ -192,17 +196,19 @@ Definir cuánto tiempo deben conservarse las generaciones históricas y cuándo 
 
 ## 11. Criterio de cierre
 
-El incidente de recuperación de assets puede cerrarse cuando:
+La reparación de datos queda técnicamente cerrada porque:
 
-- el fix esté desplegado y verificado en el ambiente objetivo;
-- las escenas 1, 3 y 7 tengan una modalidad explícita y se generen sólo los medios que esa decisión requiera;
-- la timeline contenga exactamente los medios esperados según el contrato editorial;
-- una nueva sincronización reporte cero archivos faltantes y cero referencias rotas;
-- la recuperación reporte cero medios esperados incompletos y cero escenas sin modalidad.
+- las escenas 1, 3 y 7 tienen modalidad `avatar` y medios completos;
+- la lección contiene exactamente cuatro avatares y siete voces;
+- los seis archivos reasignados existen en Storage, están enlazados al borrador y aparecen en el documento vigente;
+- la operación conserva evento de auditoría y metadatos de procedencia reversibles;
+- no se modificaron otras lecciones, componentes ni organizaciones.
+
+Permanece como validación editorial reproducir las tres escenas reasignadas antes del render final.
 
 ## 12. Conclusión
 
-No existe evidencia de pérdida física de los videos o audios identificados. La solución aplicada recuperó y conservó correctamente el historial, impidió vincular contenido obsoleto a guiones nuevos, protegió futuras generaciones de voz y avatar y corrigió el modelo de completitud. El trabajo restante ya no es técnico: consiste en decidir la modalidad de las escenas 1, 3 y 7 y generar únicamente los medios correspondientes al guion vigente.
+No existía pérdida física de los videos o audios: el problema era de correlación y vigencia tras cambiar los IDs y guiones de escena. La solución general conserva historial, evita asociaciones automáticas ambiguas y protege futuras generaciones. Para esta lección concreta se aplicó, además, una reasignación externa y auditada de los tres pares video/voz solicitados. El componente y el editor ya reflejan cuatro avatares y siete voces; sólo falta la revisión editorial de reproducción.
 
 ## 13. Auditoría operacional de IDs históricos
 
@@ -217,6 +223,43 @@ Resultados:
 - Coincidencias seguras entre un ID histórico diferente y un guion vigente: 0.
 - Tres jobs conservan los IDs `scene-1`, `scene-3` y `scene-7`, pero sus huellas corresponden a guiones anteriores.
 
-Cinco registros originales de proveedor no aparecen directamente en `video_composition_draft_assets` porque el editor los representa mediante registros `SOURCE_MEDIA` equivalentes que apuntan al mismo bucket y archivo. Esto es el comportamiento esperado y no representa pérdida ni desvinculación.
+Después de sincronizar, los seis medios objetivo no aparecen mediante sus IDs originales de proveedor en `video_composition_draft_assets`: el editor los representa con seis registros `SOURCE_MEDIA` canónicos que apuntan al mismo bucket y archivo. Los seis están enlazados y presentes en el documento activo; esto es el comportamiento esperado y no representa pérdida ni desvinculación.
 
-La operación concluyó sin escrituras. No se creó un mapeo forzado porque habría duplicado referencias o colocado narraciones anteriores sobre escenas vigentes. Los assets históricos ya permanecen disponibles dentro de la lección, pero fuera de la inserción automática en timeline.
+La auditoría inicial concluyó correctamente que no existía una coincidencia automática segura. Posteriormente, con autorización explícita para reutilizar esos contenidos históricos, se ejecutó una reparación externa con simulación previa, validación de tenant, componente, lección, jobs y archivos físicos.
+
+Mapeo aplicado:
+
+- job `7adc8b88-d144-432a-9046-2528e1c54bfd` → `scene-1`;
+- job `b71806d6-3cf1-4bf6-86e1-0f4bd62a3be2` → `scene-3`;
+- job `d787704f-9b73-4f3a-9d9f-03f31d802199` → `scene-7`.
+
+Trazabilidad:
+
+- reparación: `e4087bef-a194-4d72-8685-b6a1e167880f`;
+- evento: `b7d62951-513c-4900-aa07-4a6063a54dde`;
+- tipo de evento: `HEYGEN_HISTORICAL_SCENE_FORCE_REMAP`;
+- seis assets anotados con la huella histórica, la huella asignada, el motivo y la escena destino;
+- borrador reconciliado de la versión 26 a la 27;
+- resultado final verificado: cuatro avatares completos, siete voces completas y seis medios reasignados presentes en el documento activo.
+
+## 14. Normalización de nombres de audio en el editor
+
+Una auditoría posterior detectó nueve clips de voz cuyos assets ya tenían metadatos canónicos, pero cuyos documentos de composición conservaban etiquetas creadas antes del estándar actual:
+
+- seis clips de la Lección 1.4 mostraban el UUID físico del archivo MP3;
+- tres clips de la Lección 2.5 mostraban el formato corto `Voz · Escena N`;
+- las demás voces vigentes del curso ya cumplían el estándar.
+
+Se corrigió la reconciliación para que los clips vinculados a assets de Producción adopten también su etiqueta canónica. El estándar visible es:
+
+```text
+Lección <número>: <título> · Escena <NN> · Voz
+```
+
+La reparación actualizó únicamente documentos versionados:
+
+- Lección 1.4: seis etiquetas, borrador 14 → 15;
+- Lección 2.5: tres etiquetas, borrador 31 → 32;
+- etiquetas fuera del estándar después de la operación: 0.
+
+Los objetos de Storage no se movieron ni renombraron. Sus UUID permanecen como identidad física estable, mientras el nombre descriptivo se mantiene como metadato y etiqueta del editor. No cambiaron rutas, referencias, duraciones, posiciones, volumen ni contenido de audio.

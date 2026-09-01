@@ -255,7 +255,7 @@ export function HyperframesCompositionPanel({
       if (!response.ok) throw new Error(payload.error || "No se pudo consultar el render.");
       setRenderRequest((current) => current ? { ...current, providerStatus: payload.data.providerStatus } : current);
       if (payload.data.action === "IMPORT_QUEUED") {
-        toast.success("Render terminado; Courseforge importará el video en segundo plano.");
+        toast.success("Render terminado; SofLIA - Engine importará el video en segundo plano.");
       } else if (payload.data.action === "FAIL") {
         toast.error("El servicio de render reportó un fallo.");
       }
@@ -360,7 +360,7 @@ export function HyperframesCompositionPanel({
           <NativeCompositionPreview key={`${draftId}:${draftDocumentVersion || 0}`} assets={studioAssets} componentId={componentId} compositionId={composition?.id || ""} draftId={draftId} lessons={lessonLibrary} onAssetsChanged={refreshAssets} onContinueToPublication={onContinueToPublication} onRefreshProductionAssets={loadInitialData} onSelectLesson={onSelectLesson} onVideoCompleted={onVideoCompleted} selectedLessonId={selectedLessonId} />
         </div>
       )}
-      {renderRequest?.providerStatus.toLowerCase() === "completed" && <p className="flex items-center gap-2 text-xs font-medium text-green-700 dark:text-green-400"><CheckCircle2 size={15} /> Video final importado en Courseforge.</p>}
+      {renderRequest?.providerStatus.toLowerCase() === "completed" && <p className="flex items-center gap-2 text-xs font-medium text-green-700 dark:text-green-400"><CheckCircle2 size={15} /> Video final importado en SofLIA - Engine.</p>}
     </section>
   );
 }

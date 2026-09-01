@@ -71,6 +71,7 @@ export function createInitialCompositionDocument(params: {
 export function appendMissingProductionAssetClips(
   document: CompositionEditorDocument,
   assets: HyperframesProjectAsset[],
+  voiceAppendStartSeconds = document.canvas.durationSeconds,
 ) {
   assets = selectAuthoritativeTimelineAssets(assets);
   const existingAssetIds = new Set(document.clips.flatMap((clip) => (
@@ -87,11 +88,31 @@ export function appendMissingProductionAssetClips(
   }
 
   const sceneTimingByAssetId = buildSceneAssetTimings(assets, document.canvas.durationSeconds);
+  const hasExistingVoiceAsset = document.clips.some((clip) => (
+    clip.trackId === "voice" && clip.source.type === "PRODUCTION_ASSET"
+  ));
+  const missingStandaloneVoices = missingAssets.filter((candidate) => (
+    candidate.timelineRole === "VOICE" && !candidate.sceneOrder
+  ));
+  const voicesToAppend = hasExistingVoiceAsset || missingStandaloneVoices.length > 1
+    ? missingStandaloneVoices
+    : [];
+  let extendedVoiceCursor = voiceAppendStartSeconds;
+  for (const asset of voicesToAppend) {
+    const durationSeconds = roundSeconds(asset.durationSeconds && asset.durationSeconds > 0
+      ? asset.durationSeconds
+      : 5);
+    sceneTimingByAssetId.set(asset.productionAssetId, {
+      durationSeconds,
+      startSeconds: roundSeconds(extendedVoiceCursor),
+    });
+    extendedVoiceCursor += durationSeconds;
+  }
   const clips = [
     ...document.clips,
     ...buildAssetClips(
       missingAssets,
-      document.canvas.durationSeconds,
+      extendedVoiceCursor,
       document.clips.length,
       document.canvas.width,
       document.canvas.height,
@@ -102,6 +123,12 @@ export function appendMissingProductionAssetClips(
     changed: true,
     document: compositionEditorDocumentSchema.parse({
       ...document,
+      canvas: extendedVoiceCursor > document.canvas.durationSeconds ? {
+        ...document.canvas,
+        durationMode: "USER_EDITED",
+        durationSeconds: roundSeconds(extendedVoiceCursor),
+        durationSource: "voice",
+      } : document.canvas,
       clips,
       tracks: tracks.sort((left, right) => left.order - right.order),
     }),
@@ -171,6 +198,8 @@ export function reconcileCompositionDocument(params: {
       || clip.source.sourceWidth !== sourceDimensions?.width
     );
     const sourceAudioChanged = clip.source.hasAudio !== source.hasAudio;
+    const synchronizedLabel = resolveProductionAssetClipLabel(source, clip.label);
+    const labelChanged = clip.label !== synchronizedLabel;
     const synchronizedSceneTiming = clip.timingSource === "ESTIMATED"
       ? sceneTimingByAssetId.get(source.productionAssetId)
       : undefined;
@@ -182,9 +211,11 @@ export function reconcileCompositionDocument(params: {
       || isUnframedLegacyBroll
       || sourceDimensionsChanged
       || sourceAudioChanged
+      || labelChanged
       || sceneTimingChanged;
     return {
       ...clip,
+      label: synchronizedLabel,
       ...(synchronizedSceneTiming ? synchronizedSceneTiming : {}),
       ...(isUnframedLegacyBroll ? { mediaFit: "CONTAIN" as const } : {}),
       ...(isUnframedLegacyBroll && sourceDimensions && usesGeneratedCanvasLayout ? {
@@ -234,7 +265,11 @@ export function reconcileCompositionDocument(params: {
       track.kind === "DECK" || synchronizedClips.some((clip) => clip.trackId === track.id)
     )),
   });
-  const appended = appendMissingProductionAssetClips(documentWithoutDeckDependencies, productionAssets);
+  const appended = appendMissingProductionAssetClips(
+    documentWithoutDeckDependencies,
+    productionAssets,
+    params.document.canvas.durationSeconds,
+  );
   return {
     addedProductionAssetCount: appended.document.clips.length - documentWithoutDeckDependencies.clips.length,
     changed: removedDeckDependencyCount > 0
@@ -362,7 +397,7 @@ function buildAssetClips(
       hidden: false,
       id: `asset-${asset.productionAssetId}`,
       kind,
-      label: asset.label?.trim() || `Asset ${initialIndex + index + 1}`,
+      label: resolveProductionAssetClipLabel(asset, `Asset ${initialIndex + index + 1}`),
       layout: resolveDefaultCompositionClipLayout({
         canvas: { height: canvasHeight, width: canvasWidth },
         clipKind: kind,
@@ -386,6 +421,10 @@ function buildAssetClips(
         : {}),
     };
   });
+}
+
+function resolveProductionAssetClipLabel(asset: HyperframesProjectAsset, fallback: string) {
+  return (asset.label?.trim() || fallback).slice(0, 120);
 }
 
 /**

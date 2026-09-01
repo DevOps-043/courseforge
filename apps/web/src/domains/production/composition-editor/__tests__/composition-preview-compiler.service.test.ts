@@ -52,7 +52,7 @@ test("compiles HyperFrames media as provider variables instead of ZIP paths", as
   assert.match(html, new RegExp(`data-hf-src="${variableName}"`));
   assert.match(
     html,
-    new RegExp(`<html lang="es" data-composition-variables='\\[{&quot;default&quot;:&quot;&quot;,&quot;id&quot;:&quot;${variableName}&quot;,&quot;label&quot;:&quot;Courseforge remote asset&quot;,&quot;type&quot;:&quot;string&quot;}\\]'`),
+    new RegExp(`<html lang="es" data-composition-variables='\\[{&quot;default&quot;:&quot;&quot;,&quot;id&quot;:&quot;${variableName}&quot;,&quot;label&quot;:&quot;SofLIA - Engine remote asset&quot;,&quot;type&quot;:&quot;string&quot;}\\]'`),
   );
   assert.doesNotMatch(html, /src="https:\/\/project\.supabase\.co\/avatar\.mp4"/);
 });

@@ -34,6 +34,7 @@ import {
 } from "./CompositionPresetPanel";
 import { buildCompositionAutoOrganizePatch } from "@/domains/production/composition-editor/composition-auto-organize.service";
 import { buildCompositionDurationRecalculationPatch } from "@/domains/production/composition-editor/composition-duration-recalculation.service";
+import { resolveCompositionAssetInsertionTiming } from "@/domains/production/composition-editor/composition-asset-placement.service";
 import { deriveCompositionScenes } from "@/domains/production/composition-editor/composition-scene.service";
 import {
   COMPOSITION_VERSION_FALLBACK_HEADER,
@@ -987,20 +988,20 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     const occupiedUntil = currentPayload.document.clips
       .filter((candidate) => candidate.trackId === trackId)
       .reduce((latest, candidate) => Math.max(latest, candidate.startSeconds + candidate.durationSeconds), 0);
-    const clipDuration = Math.min(
-      preferredDuration,
-      currentPayload.document.canvas.durationSeconds - (isSequential ? occupiedUntil : 0),
-    );
-    if (clipDuration < 0.05) {
-      setSaveError("No hay espacio disponible para este asset. Aplica la plantilla base o ajusta la duración del video.");
-      return;
-    }
+    const insertionTiming = resolveCompositionAssetInsertionTiming({
+      canvasDurationSeconds: currentPayload.document.canvas.durationSeconds,
+      extendCanvasForSequentialAsset: trackDefinition.semanticRole === "VOICE",
+      isSequential,
+      occupiedUntilSeconds: occupiedUntil,
+      playheadSeconds: playheadSecondsRef.current,
+      preferredDurationSeconds: preferredDuration,
+    });
     const clipKind: CompositionClip["kind"] = isAudio ? "AUDIO" : asset.mimeType.startsWith("video/") ? "VIDEO" : "IMAGE";
     const sourceDimensions = asset.sourceWidth && asset.sourceHeight
       ? { height: asset.sourceHeight, width: asset.sourceWidth }
       : null;
     const clip: CompositionClip = {
-      durationSeconds: clipDuration,
+      durationSeconds: insertionTiming.durationSeconds,
       hfId: clipId,
       hidden: false,
       id: clipId,
@@ -1016,7 +1017,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       },
       ...(asset.durationSeconds && asset.durationSeconds > 0 ? { sourceDurationSeconds: asset.durationSeconds } : {}),
       sourceOffsetSeconds: 0,
-      startSeconds: isSequential ? occupiedUntil : 0,
+      startSeconds: insertionTiming.startSeconds,
       timingSource: "ESTIMATED",
       trackId,
     };
@@ -1027,7 +1028,11 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       // it when the latest server version no longer contains that track.
       track: trackDefinition,
       type: "clip.add",
-    }], `Agregó ${asset.label} a la línea de tiempo.`);
+    }], trackDefinition.semanticRole === "VOICE"
+      ? `Agregó ${asset.label} al final y extendió la duración del video.`
+      : insertionTiming.overlapsExistingClips
+        ? `Agregó ${asset.label} a la línea de tiempo en una subfila superpuesta.`
+        : `Agregó ${asset.label} a la línea de tiempo.`);
     if (added) selectClip(clip.hfId);
   }
 
@@ -2450,15 +2455,15 @@ function AssemblyActions({ assembly, busy, compact = false, durationSeconds, err
   const label = renderStatus === "validating"
     ? "Validando snapshot…"
     : renderStatus === "sending" || normalizedProviderStatus === "UPLOADING"
-      ? "Courseforge está subiendo el ZIP validado a HeyGen."
+      ? "SofLIA - Engine está subiendo el ZIP validado a HeyGen."
       : normalizedProviderStatus === "SUBMITTING"
-        ? "ZIP recibido por HeyGen. Courseforge está creando el render."
+        ? "ZIP recibido por HeyGen. SofLIA - Engine está creando el render."
         : renderStatus === "rendering"
           ? normalizedProviderStatus === "QUEUED" || normalizedProviderStatus === "RETRY_SCHEDULED"
-            ? "Courseforge está preparando la importación del video. Puedes cerrar o recargar esta página."
-            : `HeyGen está procesando el video${providerStatus ? ` (${providerStatus.toLowerCase()})` : ""}. Courseforge lo importará al terminar; puedes cerrar o recargar esta página.`
+            ? "SofLIA - Engine está preparando la importación del video. Puedes cerrar o recargar esta página."
+            : `HeyGen está procesando el video${providerStatus ? ` (${providerStatus.toLowerCase()})` : ""}. SofLIA - Engine lo importará al terminar; puedes cerrar o recargar esta página.`
           : renderStatus === "completed"
-            ? "Video completado e importado en Courseforge."
+            ? "Video completado e importado en SofLIA - Engine."
             : "";
   const summary = renderStatus === "completed"
     ? "El video final ya está disponible."

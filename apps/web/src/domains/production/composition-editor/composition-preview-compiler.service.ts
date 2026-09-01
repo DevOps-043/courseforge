@@ -200,7 +200,7 @@ function renderHyperframesCompositionVariables(
   const declarations = [...assetVariableNames.values()].map((name) => ({
     default: "",
     id: name,
-    label: "Courseforge remote asset",
+    label: "SofLIA - Engine remote asset",
     type: "string",
   }));
   return ` data-composition-variables='${escapeAttribute(JSON.stringify(declarations))}'`;

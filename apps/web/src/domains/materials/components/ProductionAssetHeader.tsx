@@ -22,6 +22,7 @@ interface ProductionAssetHeaderProps {
   screencastUrl: string;
   finalVideoUrl: string;
   voiceAudio?: any;
+  manualVoiceClips?: any[];
   voiceClips?: any[];
   backgroundMusic?: any;
   bRollClips?: any[];
@@ -41,6 +42,7 @@ export function ProductionAssetHeader({
   screencastUrl,
   finalVideoUrl,
   voiceAudio,
+  manualVoiceClips,
   voiceClips,
   backgroundMusic,
   bRollClips,
@@ -96,6 +98,7 @@ export function ProductionAssetHeader({
               label="Voz"
               completed={
                 Boolean(voiceAudio) ||
+                Boolean(manualVoiceClips?.length) ||
                 Boolean(voiceClips?.length) ||
                 Boolean(avatarVideo?.has_audio)
               }

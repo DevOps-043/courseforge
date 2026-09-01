@@ -27,6 +27,7 @@ import {
 import { toast } from "sonner";
 import type {
   VoiceAudio,
+  ManualVoiceClip,
   VoiceClip,
   AvatarClip,
   AvatarGenerationMode,
@@ -284,11 +285,13 @@ function buildHtmlPreviewHref(slides: SlidesAsset | null) {
 // ---------------------------------------------------------
 interface VoiceAudioSectionProps {
   voiceAudio: VoiceAudio | null;
+  manualVoiceClips: ManualVoiceClip[];
   voiceClips: VoiceClip[];
   isUploading: boolean;
   fileRef: React.RefObject<HTMLInputElement | null>;
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onClear: () => void;
+  onRemoveManualClip: (clipId: string) => void;
   uploadError: string | null;
   uploadFileName: string | null;
   uploadStatus: "idle" | "validating" | "uploading" | "saving" | "succeeded" | "failed";
@@ -304,11 +307,13 @@ interface VoiceAudioSectionProps {
 
 export function VoiceAudioSection({
   voiceAudio,
+  manualVoiceClips,
   voiceClips,
   isUploading,
   fileRef,
   onUpload,
   onClear,
+  onRemoveManualClip,
   uploadError,
   uploadFileName,
   uploadStatus,
@@ -327,66 +332,46 @@ export function VoiceAudioSection({
         <div className="flex items-center gap-2">
           <Mic size={14} className="text-[var(--engine-info)]" />
           <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Audio de Voz (Locución)</span>
-          {(voiceAudio || voiceClips.length > 0) && (
+          {(voiceAudio || manualVoiceClips.length > 0 || voiceClips.length > 0) && (
             <span className="flex items-center gap-0.5 text-[10px] font-semibold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 px-1.5 py-0.5 rounded-full">
-              <CheckCircle2 size={10} /> {voiceClips.length > 0 ? `${voiceClips.length} clips` : "Subido"}
+              <CheckCircle2 size={10} /> {`${manualVoiceClips.length + voiceClips.length + (voiceAudio ? 1 : 0)} audio(s)`}
             </span>
           )}
         </div>
 
         <div className="flex items-center gap-1.5">
-          {voiceAudio ? (
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-gray-550 dark:text-gray-400 truncate max-w-[150px] font-medium" title={voiceAudio.file_name || voiceAudio.storage_path.split("/").pop()}>
-                {voiceAudio.file_name || voiceAudio.storage_path.split("/").pop()}
-                {voiceAudio.duration && ` (${voiceAudio.duration}s)`}
-              </span>
-              <button
-                onClick={() => fileRef.current?.click()}
-                disabled={isUploading}
-                className="px-2 py-1 rounded bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/20 text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50"
-              >
-                {isUploading ? <Loader2 size={10} className="animate-spin" /> : "Re-subir"}
-              </button>
-              <button
-                onClick={() => setIsModalOpen(true)}
-                className="px-2 py-1 rounded border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300 text-[10px] font-bold hover:bg-blue-100 transition-colors"
-              >
-                Drive
-              </button>
-              <button
-                onClick={onClear}
-                className="p-1 text-red-500 hover:text-red-705 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition-colors cursor-pointer"
-                title="Eliminar audio de voz"
-              >
-                <X size={12} />
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => fileRef.current?.click()}
-                disabled={isUploading}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white dark:bg-[var(--engine-surface-solid)] dark:border-[var(--engine-muted)]/20 text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all cursor-pointer"
-              >
-                {isUploading ? (
-                  <Loader2 className="animate-spin text-[var(--engine-info)]" size={10} />
-                ) : (
-                  <Upload size={10} />
-                )}
-                <span>Subir MP3</span>
-              </button>
-              <button
-                onClick={() => setIsModalOpen(true)}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50/50 hover:bg-blue-100/70 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300 text-[10px] font-bold transition-all cursor-pointer"
-              >
-                <HardDrive size={10} />
-                <span>Drive</span>
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={isUploading}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white dark:bg-[var(--engine-surface-solid)] dark:border-[var(--engine-muted)]/20 text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all cursor-pointer"
+            >
+              {isUploading ? <Loader2 className="animate-spin text-[var(--engine-info)]" size={10} /> : <Upload size={10} />}
+              <span>Añadir audio</span>
+            </button>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50/50 hover:bg-blue-100/70 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300 text-[10px] font-bold transition-all cursor-pointer"
+            >
+              <HardDrive size={10} />
+              <span>Drive</span>
+            </button>
+            {voiceAudio ? <button onClick={onClear} className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded" title="Eliminar audio de voz legado"><X size={12} /></button> : null}
+          </div>
         </div>
       </div>
+      {manualVoiceClips.length > 0 ? (
+        <div className="mt-3 space-y-2 border-t border-gray-200 pt-3 dark:border-white/10">
+          {[...manualVoiceClips].sort((left, right) => left.order - right.order).map((clip) => (
+            <div key={clip.id} className="flex items-center gap-2 rounded-lg bg-white p-2 dark:bg-white/5">
+              <div className="min-w-0 flex-1">
+                <ProductionMediaPreview durationSeconds={clip.duration} kind="audio" label={clip.file_name || `Audio ${clip.order}`} src={clip.public_url} />
+              </div>
+              <button type="button" onClick={() => onRemoveManualClip(clip.id)} className="shrink-0 rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10" title="Eliminar este audio"><Trash2 size={12} /></button>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {voiceClips.length > 0 ? (
         <div className="mt-3 space-y-2 border-t border-gray-200 pt-3 dark:border-white/10">
           {[...voiceClips].sort((left, right) => left.order - right.order).map((clip) => (
@@ -449,6 +434,7 @@ export function VoiceAudioSection({
 
       <input
         type="file"
+        multiple
         ref={fileRef}
         onChange={onUpload}
         className="hidden"

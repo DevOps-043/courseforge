@@ -123,7 +123,7 @@ function buildSlideSvg(slide: {
   <rect width="1920" height="1080" fill="url(#bg)"/>
   <rect x="72" y="72" width="1776" height="936" rx="44" fill="#1E293B" stroke="#334155" stroke-width="2"/>
   <rect x="72" y="72" width="14" height="936" rx="7" fill="url(#accent)"/>
-  <text x="120" y="118" fill="#38BDF8" font-size="24" font-weight="700" letter-spacing="3">COURSEFORGE</text>
+  <text x="120" y="118" fill="#38BDF8" font-size="24" font-weight="700" letter-spacing="3">SOFLIA - ENGINE</text>
   <text x="1700" y="118" fill="#94A3B8" font-size="28" font-weight="700">${String(slide.index).padStart(2, '0')}</text>
   ${titleSvg}
   ${bulletsDotsSvg}

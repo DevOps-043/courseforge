@@ -27,6 +27,7 @@ import type {
 } from "../types/materials.types";
 import type {
   VoiceAudio,
+  ManualVoiceClip,
   VoiceClip,
   BackgroundMusic,
   BRollClip,
@@ -280,6 +281,9 @@ export function useProductionAssetState({
   const [voiceAudio, setVoiceAudio] = useState<VoiceAudio | null>(
     (component.assets as any)?.voice_audio || null
   );
+  const [manualVoiceClips, setManualVoiceClips] = useState<ManualVoiceClip[]>(
+    (component.assets as any)?.manual_voice_clips || [],
+  );
   const [voiceClips, setVoiceClips] = useState<VoiceClip[]>(
     (component.assets as any)?.voice_clips || [],
   );
@@ -369,6 +373,7 @@ export function useProductionAssetState({
   useEffect(() => {
     if (isUploadingVoice) return;
     setVoiceAudio((component.assets as any)?.voice_audio || null);
+    setManualVoiceClips((component.assets as any)?.manual_voice_clips || []);
     setVoiceClips((component.assets as any)?.voice_clips || []);
   }, [component.assets, isUploadingVoice]);
 
@@ -534,48 +539,57 @@ export function useProductionAssetState({
 
   // 1. Voice Audio Upload
   const handleVoiceUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
 
     setIsUploadingVoice(true);
-    setVoiceUploadFileName(file.name);
+    setVoiceUploadFileName(files.length === 1 ? files[0]!.name : `${files.length} archivos de voz`);
     setVoiceUploadError(null);
     setVoiceUploadStatus("validating");
     try {
-      assertHyperframesMediaFile(file);
-      setVoiceUploadStatus("uploading");
-      const fileName = `voices/${component.id}-voice-${Date.now()}.${file.name.split('.').pop()}`;
-      const { publicUrl, path } = await uploadWithSignedUrl(HYPERFRAMES_PRIVATE_SOURCE_BUCKET, fileName, file, {
-        componentId: component.id,
-      });
+      files.forEach((file) => assertHyperframesMediaFile(file));
+      const uploadedClips: ManualVoiceClip[] = [];
+      for (const [index, file] of files.entries()) {
+        setVoiceUploadStatus("uploading");
+        const clipId = crypto.randomUUID();
+        const extension = file.name.split('.').pop();
+        const fileName = `voices/${component.id}-voice-${Date.now()}-${index}-${clipId}.${extension}`;
+        const { publicUrl, path } = await uploadWithSignedUrl(HYPERFRAMES_PRIVATE_SOURCE_BUCKET, fileName, file, {
+          componentId: component.id,
+        });
 
-      let duration = 0;
-      try {
-        duration = await detectLocalMediaDuration(file);
-      } catch (e) {
-        console.warn('Could not auto-detect local voice duration:', e);
-      }
-      if (!duration) {
+        let duration = 0;
         try {
-          duration = await detectDirectVideoDuration(publicUrl);
+          duration = await detectLocalMediaDuration(file);
         } catch (e) {
-          console.warn('Could not auto-detect uploaded voice duration:', e);
+          console.warn('Could not auto-detect local voice duration:', e);
         }
+        if (!duration) {
+          try {
+            duration = await detectDirectVideoDuration(publicUrl);
+          } catch (e) {
+            console.warn('Could not auto-detect uploaded voice duration:', e);
+          }
+        }
+
+        uploadedClips.push({
+          id: clipId,
+          order: manualVoiceClips.length + index + 1,
+          storage_path: `${HYPERFRAMES_PRIVATE_SOURCE_BUCKET}/${path}`,
+          public_url: publicUrl,
+          file_name: file.name,
+          duration: duration || undefined,
+          provider: 'upload',
+          last_uploaded_at: new Date().toISOString(),
+        });
       }
 
-      const newVoice: VoiceAudio = {
-        storage_path: `${HYPERFRAMES_PRIVATE_SOURCE_BUCKET}/${path}`,
-        public_url: publicUrl,
-        file_name: file.name,
-        duration: duration || undefined,
-        provider: 'upload',
-        last_uploaded_at: new Date().toISOString(),
-      };
+      const updatedClips = [...manualVoiceClips, ...uploadedClips];
       setVoiceUploadStatus("saving");
-      await onAssetChange?.(component.id, { voice_audio: newVoice });
-      setVoiceAudio(newVoice);
+      await onAssetChange?.(component.id, { manual_voice_clips: updatedClips });
+      setManualVoiceClips(updatedClips);
       setVoiceUploadStatus("succeeded");
-      toast.success('Audio de voz subido correctamente');
+      toast.success(files.length === 1 ? 'Audio de voz añadido correctamente' : `${files.length} audios de voz añadidos`);
     } catch (err: any) {
       const message = getErrorMessage(err, "No se pudo completar la carga de voz.");
       setVoiceUploadError(message);
@@ -995,6 +1009,15 @@ export function useProductionAssetState({
   const clearVoiceAudio = () => {
     setVoiceAudio(null);
     onAssetChange?.(component.id, { voice_audio: null as any });
+    toast.info("Audio de voz removido");
+  };
+
+  const removeManualVoiceClip = (clipId: string) => {
+    const updatedClips = manualVoiceClips
+      .filter((clip) => clip.id !== clipId)
+      .map((clip, index) => ({ ...clip, order: index + 1 }));
+    setManualVoiceClips(updatedClips);
+    onAssetChange?.(component.id, { manual_voice_clips: updatedClips });
     toast.info("Audio de voz removido");
   };
 
@@ -1450,8 +1473,25 @@ export function useProductionAssetState({
         // Update local states
         switch (type) {
           case "voice":
-            setVoiceAudio(data.assets.voice_audio);
-            onAssetChange?.(component.id, { voice_audio: data.assets.voice_audio });
+            {
+              const importedClips = Array.isArray(data.assets.manual_voice_clips)
+                ? data.assets.manual_voice_clips as ManualVoiceClip[]
+                : [];
+              const importedClip = importedClips.at(-1);
+              let measuredDuration = importedClip?.duration;
+              if (importedClip && !measuredDuration) {
+                try {
+                  measuredDuration = await detectDirectVideoDuration(importedClip.public_url);
+                } catch (durationError) {
+                  console.warn("Could not detect imported voice duration:", durationError);
+                }
+              }
+              const updatedClips = importedClip && measuredDuration
+                ? importedClips.map((clip) => clip.id === importedClip.id ? { ...clip, duration: measuredDuration } : clip)
+                : importedClips;
+              setManualVoiceClips(updatedClips);
+              await onAssetChange?.(component.id, { manual_voice_clips: updatedClips });
+            }
             toast.success(`Voz importada exitosamente de ${providerLabel}`);
             break;
           case "music":
@@ -1561,6 +1601,7 @@ export function useProductionAssetState({
 
     // Structured states & loaders
     voiceAudio,
+    manualVoiceClips,
     voiceClips,
     voiceUploadError,
     voiceUploadFileName,
@@ -1626,6 +1667,7 @@ export function useProductionAssetState({
     handleBrollClipUpload,
     removeBrollClip,
     clearVoiceAudio,
+    removeManualVoiceClip,
     clearBackgroundMusic,
     clearAvatarVideo,
     removeAvatarClip,

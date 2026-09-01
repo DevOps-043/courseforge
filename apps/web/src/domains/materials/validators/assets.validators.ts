@@ -27,6 +27,11 @@ export const voiceAudioSchema = z.object({
   last_uploaded_at: z.string().datetime().optional(),
 });
 
+export const manualVoiceClipSchema = voiceAudioSchema.extend({
+  id: z.string().trim().min(1),
+  order: z.number().int().min(1),
+});
+
 // Schema for Background Music asset
 export const backgroundMusicSchema = z.object({
   storage_path: z.string().trim(),
@@ -254,6 +259,7 @@ export const materialAssetsSchema = z.object({
   
   // New structured visual assets
   voice_audio: voiceAudioSchema.optional(),
+  manual_voice_clips: z.array(manualVoiceClipSchema).optional(),
   voice_clips: z.array(voiceClipSchema).optional(),
   background_music: backgroundMusicSchema.optional(),
   detached_audio_clips: z.array(detachedAudioClipSchema).optional(),
@@ -293,6 +299,7 @@ export const materialAssetsSchema = z.object({
 });
 
 export type VoiceAudio = z.infer<typeof voiceAudioSchema>;
+export type ManualVoiceClip = z.infer<typeof manualVoiceClipSchema>;
 export type VoiceClip = z.infer<typeof voiceClipSchema>;
 export type BackgroundMusic = z.infer<typeof backgroundMusicSchema>;
 export type BRollClip = z.infer<typeof bRollClipSchema>;

@@ -61,6 +61,14 @@ export function isAutomaticTimelineSourceAsset(asset: {
   return asset.sourceType === "PRODUCTION_MEDIA" && asset.metadata.historical_only !== true;
 }
 
+export function isRecoverableManualVoiceRegistryAsset(asset: {
+  assetType: string;
+  metadata?: Record<string, unknown> | null;
+}) {
+  return asset.assetType === PRODUCTION_ASSET_TYPES.SOURCE_MEDIA
+    && (asset.metadata?.import_type === "voice" || asset.metadata?.timeline_role === "VOICE");
+}
+
 export interface HyperframesSourceAssetCandidate extends HyperframesAssetManifestItem {
   durationSeconds?: number;
   eligibleForRevision: boolean;
@@ -188,6 +196,9 @@ export function collectInternalMaterialAssetReferences(rawAssets: unknown): Inte
       : []
   )));
   if (!usesSceneClips) add(assets.voice_audio, "audio/mpeg", "PRODUCTION_MEDIA", "VOICE");
+  for (const item of asArray(assets.manual_voice_clips)) {
+    add(item, "audio/mpeg", "PRODUCTION_MEDIA", "VOICE");
+  }
   if (usesSceneClips) {
     for (const item of asArray(assets.voice_clips)) {
       if (!isRecord(item) || item.status !== "COMPLETED") continue;
@@ -505,26 +516,30 @@ export async function listHyperframesSourceAssets(params: {
   const seenStoragePaths = new Set<string>();
   return (data || []).flatMap((asset) => {
     const reference = referenceByPath.get(asset.storage_path);
+    const assetMetadata = isRecord(asset.metadata) ? asset.metadata : {};
     const isAvatarRegistryAsset =
       asset.asset_type === PRODUCTION_ASSET_TYPES.AVATAR_VIDEO
       || asset.asset_type === PRODUCTION_ASSET_TYPES.AVATAR_VIDEO_CLIP;
     const isVoiceRegistryAsset = asset.asset_type === PRODUCTION_ASSET_TYPES.VOICE_AUDIO;
+    const isManualVoiceRegistryAsset = isRecoverableManualVoiceRegistryAsset({
+      assetType: asset.asset_type,
+      metadata: assetMetadata,
+    });
     // Material assets are the mutable Production source of truth. Registry
     // rows are provenance and may outlive a video cleared for regeneration.
     if (!shouldExposeProductionRegistryAsset({
       assetType: asset.asset_type,
-      hasActiveReference: Boolean(reference),
+      hasActiveReference: Boolean(reference) || isManualVoiceRegistryAsset,
       qaStatus: asset.qa_status,
     })) return [];
     if (typeof asset.storage_path !== "string" || seenStoragePaths.has(asset.storage_path)) return [];
     seenStoragePaths.add(asset.storage_path);
-    const assetMetadata = isRecord(asset.metadata) ? asset.metadata : {};
     const candidate = inspectHyperframesSourceAsset({
       checksum: asset.checksum,
       durationSeconds: preciseDurationSeconds(asset.duration_milliseconds, asset.duration_seconds),
       fileSizeBytes: asset.file_size_bytes,
       hasAudio: reference?.hasAudio ?? optionalBoolean(isRecord(asset.metadata) ? asset.metadata.has_audio : undefined),
-      metadata: reference ? assetMetadata : { ...assetMetadata, historical_only: true },
+      metadata: reference || isManualVoiceRegistryAsset ? assetMetadata : { ...assetMetadata, historical_only: true },
       mimeType: asset.mime_type,
       productionAssetId: asset.id,
       qaStatus: asset.qa_status,
@@ -537,7 +552,7 @@ export async function listHyperframesSourceAssets(params: {
       sourceType: reference?.sourceType || "PRODUCTION_MEDIA",
       storagePath: asset.storage_path,
       timelineRole: reference?.timelineRole
-        || (isAvatarRegistryAsset ? "AVATAR" : isVoiceRegistryAsset ? "VOICE" : "VISUAL"),
+        || (isAvatarRegistryAsset ? "AVATAR" : isVoiceRegistryAsset || isManualVoiceRegistryAsset ? "VOICE" : "VISUAL"),
       timelineVariant: reference?.timelineVariant
         || (isRecord(asset.metadata) && asset.metadata.timeline_variant === "FULL" ? "FULL" : undefined)
         || (isAvatarRegistryAsset

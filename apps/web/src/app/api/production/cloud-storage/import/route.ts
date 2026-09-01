@@ -108,15 +108,24 @@ export async function POST(request: Request) {
     const updatedAssets = { ...currentAssets };
 
     switch (type) {
-      case "voice":
-        updatedAssets.voice_audio = {
-          storage_path: result.storagePath,
-          public_url: result.publicUrl,
-          file_name: result.fileName,
-          provider: "custom",
-          last_uploaded_at: new Date().toISOString(),
-        };
+      case "voice": {
+        const currentManualVoices = Array.isArray(currentAssets.manual_voice_clips)
+          ? currentAssets.manual_voice_clips
+          : [];
+        updatedAssets.manual_voice_clips = [
+          ...currentManualVoices,
+          {
+            id: productionAssetId || `${body.provider}-${Date.now()}`,
+            order: currentManualVoices.length + 1,
+            storage_path: result.storagePath,
+            public_url: result.publicUrl,
+            file_name: result.fileName,
+            provider: body.provider,
+            last_uploaded_at: new Date().toISOString(),
+          },
+        ];
         break;
+      }
       case "music":
         updatedAssets.background_music = {
           storage_path: result.storagePath,

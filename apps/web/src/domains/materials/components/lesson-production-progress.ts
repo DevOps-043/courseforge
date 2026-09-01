@@ -10,6 +10,7 @@ export interface LessonProductionProgress {
 function hasVoice(assets: MaterialAssets) {
   return Boolean(
     assets.voice_audio ||
+      assets.manual_voice_clips?.length ||
       assets.voice_clips?.length ||
       assets.avatar_video?.has_audio,
   );

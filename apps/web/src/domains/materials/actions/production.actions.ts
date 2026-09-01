@@ -145,6 +145,7 @@ function resolveProductionStatus(
   const hasRequiredScreencast = !needsScreencast || Boolean(assets.screencast_url);
   const hasRequiredVoice = !needsVoice || Boolean(
     assets.voice_audio?.public_url ||
+    assets.manual_voice_clips?.some((clip) => clip.public_url) ||
     hasCompletedVoiceClips ||
     assets.avatar_video?.public_url || 
     hasCompletedAvatarClips ||
@@ -168,7 +169,7 @@ function resolveProductionStatus(
   if (
     hasRenderableSlides(assets) ||
     Boolean(assets.screencast_url) ||
-    Boolean(assets.voice_audio?.public_url || hasCompletedVoiceClips || assets.video_url) ||
+    Boolean(assets.voice_audio?.public_url || assets.manual_voice_clips?.some((clip) => clip.public_url) || hasCompletedVoiceClips || assets.video_url) ||
     hasAvatarAsset ||
     Boolean(assets.b_roll_clips?.length || assets.b_roll_prompts)
   ) {
@@ -360,6 +361,21 @@ function sanitizeVoiceClipDurations(
   ) as NonNullable<MaterialAssets["voice_clips"]>[number]);
 }
 
+function sanitizeManualVoiceClipDurations(
+  currentClips: MaterialAssets["manual_voice_clips"],
+  incomingClips: MaterialAssets["manual_voice_clips"] | null | undefined,
+  mergedClips: MaterialAssets["manual_voice_clips"] | null | undefined,
+) {
+  if (!Array.isArray(mergedClips)) return mergedClips;
+  const currentById = new Map((currentClips || []).map((clip) => [clip.id, clip] as const));
+  const incomingById = new Map((incomingClips || []).map((clip) => [clip.id, clip] as const));
+  return mergedClips.map((clip) => sanitizeTimedAssetDuration(
+    currentById.get(clip.id),
+    incomingById.get(clip.id),
+    clip,
+  ) as NonNullable<MaterialAssets["manual_voice_clips"]>[number]);
+}
+
 function sourceSignature(assets: Partial<MaterialAssets>) {
   const broll = (assets.b_roll_clips || []).map((clip) => ({
     id: clip.id,
@@ -380,6 +396,11 @@ function sourceSignature(assets: Partial<MaterialAssets>) {
     scriptHash: clip.script_hash,
     status: clip.status,
   }));
+  const manualVoiceClips = (assets.manual_voice_clips || []).map((clip) => ({
+    id: clip.id,
+    order: clip.order,
+    ref: assetReferenceKey(clip),
+  }));
   const slideImages = (assets.slides?.images || []).map((slide) => ({
     index: slide.slide_index,
     ref: assetReferenceKey(slide),
@@ -387,6 +408,7 @@ function sourceSignature(assets: Partial<MaterialAssets>) {
 
   return JSON.stringify({
     voice: assetReferenceKey(assets.voice_audio),
+    manualVoiceClips,
     voiceClips,
     avatar: assetReferenceKey(assets.avatar_video),
     avatarGenerationMode: assets.avatar_generation_mode || "",
@@ -455,6 +477,7 @@ function collectProductionStoragePaths(assets: Partial<MaterialAssets>) {
   };
 
   add(assets.voice_audio?.storage_path);
+  for (const clip of assets.manual_voice_clips || []) add(clip.storage_path);
   for (const clip of assets.voice_clips || []) add(clip.storage_path);
   add(assets.background_music?.storage_path);
   for (const clip of assets.b_roll_clips || []) add(clip.storage_path);
@@ -532,6 +555,14 @@ function sanitizeMaterialAssetMetadata(params: {
       incomingAssets.voice_audio,
       sanitizedAssets.voice_audio,
     ) as MaterialAssets["voice_audio"];
+  }
+
+  if (hasOwnProperty(incomingAssets, "manual_voice_clips")) {
+    sanitizedAssets.manual_voice_clips = sanitizeManualVoiceClipDurations(
+      currentAssets.manual_voice_clips,
+      incomingAssets.manual_voice_clips,
+      sanitizedAssets.manual_voice_clips,
+    ) as MaterialAssets["manual_voice_clips"];
   }
 
   if (hasOwnProperty(incomingAssets, "voice_clips")) {

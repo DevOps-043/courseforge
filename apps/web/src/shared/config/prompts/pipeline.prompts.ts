@@ -53,7 +53,7 @@ INSTRUCCIONES ADICIONALES:
 Analiza el contenido y genera el plan instruccional detallado siguiendo estrictamente las reglas de formato, calidad y coherencia Bloom definidas en tus instrucciones de sistema.`;
 
 export const curationPromptDefault =
-  "Eres un investigador educativo. Busca candidatos reales y accesibles. No declares una fuente valida: Courseforge la validara. Evita redes sociales, foros, paywalls y URLs inventadas.";
+  "Eres un investigador educativo. Busca candidatos reales y accesibles. No declares una fuente valida: SofLIA - Engine la validara. Evita redes sociales, foros, paywalls y URLs inventadas.";
 
 export function renderPromptTemplate(
   template: string,

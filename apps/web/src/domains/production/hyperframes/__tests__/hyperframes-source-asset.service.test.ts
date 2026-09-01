@@ -5,6 +5,7 @@ import {
   extractHyperframesAnimatedDeck,
   inspectHyperframesSourceAsset,
   isAutomaticTimelineSourceAsset,
+  isRecoverableManualVoiceRegistryAsset,
   isSupportedHyperframesSourceMime,
   shouldExposeProductionRegistryAsset,
 } from "../hyperframes-source-asset.service";
@@ -15,6 +16,17 @@ describe("HyperFrames source assets", () => {
     assert.equal(isSupportedHyperframesSourceMime("audio/mpeg"), true);
     assert.equal(isSupportedHyperframesSourceMime("text/html"), false);
     assert.equal(isSupportedHyperframesSourceMime("application/zip"), false);
+  });
+
+  it("recovers manual cloud voices persisted before multi-audio references existed", () => {
+    assert.equal(isRecoverableManualVoiceRegistryAsset({
+      assetType: "SOURCE_MEDIA",
+      metadata: { import_type: "voice", source_provider: "google_drive" },
+    }), true);
+    assert.equal(isRecoverableManualVoiceRegistryAsset({
+      assetType: "SOURCE_MEDIA",
+      metadata: { import_type: "music" },
+    }), false);
   });
 
   it("keeps recovered avatar and voice history visible without reviving archived media", () => {
@@ -228,6 +240,29 @@ describe("HyperFrames source assets", () => {
     assert.equal(references[0]?.durationSeconds, 12.5);
     assert.equal(references[0]?.mimeType, "audio/wav");
     assert.equal(references[0]?.timelineRole, "VOICE");
+  });
+
+  it("exposes every manually uploaded voice as an independent timeline asset", () => {
+    const references = collectInternalMaterialAssetReferences({
+      manual_voice_clips: [{
+        duration: 12,
+        file_name: "voice-1.mp3",
+        id: "manual-voice-1",
+        order: 1,
+        storage_path: "production-assets/voices/voice-1.mp3",
+      }, {
+        duration: 18,
+        file_name: "voice-2.mp3",
+        id: "manual-voice-2",
+        order: 2,
+        storage_path: "production-assets/voices/voice-2.mp3",
+      }],
+    });
+
+    assert.equal(references.length, 2);
+    assert.deepEqual(references.map((asset) => asset.timelineRole), ["VOICE", "VOICE"]);
+    assert.deepEqual(references.map((asset) => asset.durationSeconds), [12, 18]);
+    assert.deepEqual(references.map((asset) => asset.fileName), ["voice-1.mp3", "voice-2.mp3"]);
   });
 
   it("accepts a video above the embedded limit when Storage delivers it remotely", () => {

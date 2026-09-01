@@ -29,6 +29,10 @@ import {
   sceneSupportsGenerationTarget,
   selectSceneIdsForGeneration,
 } from "@/domains/production/providers/heygen/heygen-scene-generation-policy";
+import {
+  estimateHeygenGenerationQuote,
+  type HeygenGenerationQuote,
+} from "@/domains/production/providers/heygen/heygen-cost.service";
 
 type AspectRatio = "16:9" | "9:16";
 type Engine = "avatar_iv" | "avatar_v";
@@ -101,6 +105,7 @@ interface HistoricalSceneRecoveryReport {
 
 interface AvatarPreset {
   archived_at?: string | null;
+  avatar_type?: string | null;
   heygen_avatar_look_id?: string | null;
   id: string;
   is_default?: boolean;
@@ -1045,6 +1050,29 @@ export default function HeygenStudioClient({
   ));
   const completedSceneClips = visibleSceneClips.filter((clip) => clip.status === "COMPLETED");
   const completedVoiceClips = voiceClips.filter((clip) => clip.status === "COMPLETED");
+  const selectedAvatar = avatarPresets.find((preset) => preset.id === selectedAvatarPresetId);
+  const selectedSceneClips = visibleSceneClips.filter((clip) => selectedSceneClipIds.includes(clip.id));
+  const sceneQuote = estimateHeygenGenerationQuote({
+    avatarType: selectedAvatar?.avatar_type,
+    engine,
+    includeSpeech: true,
+    resolution,
+    scripts: selectedSceneClips.map((clip) => clip.script_text),
+    speed: voiceSpeed,
+  });
+  const sceneVoiceQuote = estimateHeygenGenerationQuote({
+    includeSpeech: true,
+    scripts: selectedSceneClips.map((clip) => clip.script_text),
+    speed: voiceSpeed,
+  });
+  const standaloneQuote = estimateHeygenGenerationQuote({
+    avatarType: selectedAvatar?.avatar_type,
+    engine: isVoiceoverMode ? undefined : engine,
+    includeSpeech: true,
+    resolution,
+    scripts: [standaloneScript],
+    speed: voiceSpeed,
+  });
   const sceneDurationSeconds = completedSceneClips.reduce(
     (total, clip) => total + (typeof clip.duration === "number" ? clip.duration : 0),
     0,
@@ -1777,6 +1805,15 @@ export default function HeygenStudioClient({
             </details>
           ) : null}
 
+          {(isSceneMode || !isCourseContext) ? (
+            <GenerationQuote
+              quote={isSceneMode ? sceneQuote : standaloneQuote}
+              sceneCount={isSceneMode ? selectedSceneClips.length : undefined}
+              title={isSceneMode ? "Cotización de la selección" : "Cotización previa"}
+              voiceOnlyQuote={isSceneMode ? sceneVoiceQuote : undefined}
+            />
+          ) : null}
+
           <div className="mt-5 flex flex-wrap gap-3">
             {isSceneMode ? (
               <>
@@ -2053,6 +2090,41 @@ function InsertSceneClipButton({
       <Plus size={14} />
       {label}
     </button>
+  );
+}
+
+function GenerationQuote({
+  quote,
+  sceneCount,
+  title,
+  voiceOnlyQuote,
+}: {
+  quote: HeygenGenerationQuote;
+  sceneCount?: number;
+  title: string;
+  voiceOnlyQuote?: HeygenGenerationQuote;
+}) {
+  const hasContent = quote.durationSeconds > 0;
+  return (
+    <div className="mt-5 rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3 text-sm text-violet-950 dark:text-violet-100">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="font-bold">{title}</p>
+        <span className="text-base font-extrabold tabular-nums">
+          {hasContent ? `≈ US$${quote.totalUsd.toFixed(2)}` : "Escribe o selecciona un guion"}
+        </span>
+      </div>
+      {hasContent ? (
+        <p className="mt-1 text-xs text-violet-800/80 dark:text-violet-200/80">
+          {sceneCount !== undefined ? `${sceneCount} escena${sceneCount === 1 ? "" : "s"} · ` : ""}
+          {formatDuration(quote.durationSeconds)} estimados · avatar US${quote.avatarUsd.toFixed(2)}
+          {quote.includesSpeech ? ` + voz US$${quote.speechUsd.toFixed(2)}` : ""}.
+          {voiceOnlyQuote ? ` Sólo voz: ≈ US$${voiceOnlyQuote.totalUsd.toFixed(2)}.` : ""}
+        </p>
+      ) : null}
+      <p className="mt-1 text-[11px] text-violet-800/70 dark:text-violet-200/70">
+        Referencia de tarifa API por duración; el saldo y el cobro final los confirma HeyGen. La opción “Sólo voz” no incluye render de avatar.
+      </p>
+    </div>
   );
 }
 

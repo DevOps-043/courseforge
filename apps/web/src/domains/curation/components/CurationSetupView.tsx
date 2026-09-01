@@ -41,7 +41,7 @@ export function CurationSetupView({
           Paso 4: Curaduria de Fuentes (Fase 2)
         </h2>
         <p className="text-gray-500 dark:text-[var(--engine-text-muted)] text-base leading-relaxed max-w-2xl ml-12">
-          OpenAI propone candidatos y Courseforge valida acceso, contenido y
+          OpenAI propone candidatos y SofLIA - Engine valida acceso, contenido y
           calidad. Tambien puedes trabajar solo con URLs y PDFs propios.
         </p>
       </div>

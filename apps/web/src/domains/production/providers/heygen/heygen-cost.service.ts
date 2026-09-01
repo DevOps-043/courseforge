@@ -13,6 +13,58 @@ export const HEYGEN_PUBLIC_RATES_USD = {
   videoAgentPerSecond: 0.0333,
 } as const;
 
+const NARRATION_WORDS_PER_MINUTE = 145;
+
+export interface HeygenGenerationQuote {
+  avatarUsd: number;
+  durationSeconds: number;
+  includesSpeech: boolean;
+  speechUsd: number;
+  totalUsd: number;
+}
+
+/**
+ * Client-safe, indicative API quote. It deliberately models only the requests
+ * SofLIA - Engine sends to HeyGen (speech and/or avatar video), never an avatar
+ * for an audio-only request. Provider billing remains authoritative.
+ */
+export function estimateHeygenGenerationQuote(params: {
+  avatarType?: string | null;
+  engine?: "avatar_iv" | "avatar_v";
+  includeSpeech: boolean;
+  resolution?: "720p" | "1080p" | "4k";
+  scripts: string[];
+  speed?: number;
+}): HeygenGenerationQuote {
+  const speed = Math.max(0.5, params.speed || 1);
+  const durationSeconds = Math.ceil(params.scripts.reduce((total, script) => {
+    const words = script.trim().split(/\s+/).filter(Boolean).length;
+    if (words === 0) return total;
+    return total + Math.max(1, (words / NARRATION_WORDS_PER_MINUTE) * 60 / speed);
+  }, 0));
+  const avatarType = (params.avatarType || "").toLowerCase();
+  const isPhotoAvatar = avatarType.includes("photo");
+  const is4k = params.resolution === "4k";
+  // HeyGen publishes Avatar IV API rates by look type. Avatar V does not yet
+  // expose a separate public API table, so use the conservative Studio/Digital
+  // Twin Avatar IV reference rate until the provider publishes one.
+  const avatarRate = isPhotoAvatar
+    ? (is4k ? 4 / 60 : 3 / 60)
+    : (is4k ? 5 / 60 : 4 / 60);
+  const avatarUsd = params.engine ? durationSeconds * avatarRate : 0;
+  const speechUsd = params.includeSpeech
+    ? durationSeconds * HEYGEN_PUBLIC_RATES_USD.ttsPerSecond
+    : 0;
+
+  return {
+    avatarUsd: roundMoney(avatarUsd),
+    durationSeconds,
+    includesSpeech: params.includeSpeech,
+    speechUsd: roundMoney(speechUsd),
+    totalUsd: roundMoney(avatarUsd + speechUsd),
+  };
+}
+
 export function estimateHeygenCost(params: {
   durationSeconds?: number | null;
   itemCount?: number;

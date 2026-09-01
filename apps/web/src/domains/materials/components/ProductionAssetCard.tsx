@@ -108,6 +108,7 @@ export function ProductionAssetCard({
 
     // Structured states & loaders
     voiceAudio,
+    manualVoiceClips,
     voiceClips,
     voiceUploadError,
     voiceUploadFileName,
@@ -169,6 +170,7 @@ export function ProductionAssetCard({
     handleBrollClipUpload,
     removeBrollClip,
     clearVoiceAudio,
+    removeManualVoiceClip,
     clearBackgroundMusic,
     clearAvatarVideo,
     removeAvatarClip,
@@ -265,6 +267,7 @@ export function ProductionAssetCard({
         screencastUrl={screencastUrl}
         finalVideoUrl={finalVideoUrl}
         voiceAudio={voiceAudio}
+        manualVoiceClips={manualVoiceClips}
         voiceClips={voiceClips}
         backgroundMusic={backgroundMusic}
         bRollClips={bRollClips}
@@ -290,6 +293,7 @@ export function ProductionAssetCard({
               
               <VoiceAudioSection
                 voiceAudio={voiceAudio}
+                manualVoiceClips={manualVoiceClips}
                 voiceClips={voiceClips}
                 uploadError={voiceUploadError}
                 uploadFileName={voiceUploadFileName}
@@ -298,6 +302,7 @@ export function ProductionAssetCard({
                 fileRef={voiceFileRef}
                 onUpload={handleVoiceUpload}
                 onClear={clearVoiceAudio}
+                onRemoveManualClip={removeManualVoiceClip}
                 isSearchingDrive={isSearchingGoogleDrive}
                 isImportingDrive={isImportingGoogleDrive}
                 driveSearchResults={googleDriveSearchResults}

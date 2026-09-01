@@ -186,7 +186,7 @@ export function CurationDashboard({
 
       {isGenerating && (
         <div className="border border-[var(--engine-accent)]/20 bg-[var(--engine-accent)]/5 p-4 text-sm text-[#008f79] dark:text-[var(--engine-accent)]">
-          OpenAI esta buscando candidatos. Courseforge valida cada resultado antes de guardarlo.
+          OpenAI esta buscando candidatos. SofLIA - Engine valida cada resultado antes de guardarlo.
         </div>
       )}
 
