@@ -489,6 +489,66 @@ test("reconciles legacy FPS and explicit source-audio metadata", () => {
   assert.equal(source.type === "PRODUCTION_ASSET" ? source.hasAudio : undefined, false);
 });
 
+test("adds a prepared deck to a draft created before its slides and preserves subsequent manual timing", () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{
+      checksum: "e".repeat(64), durationSeconds: 15, fileSizeBytes: 4, mimeType: "audio/mpeg",
+      productionAssetId: "00000000-0000-4000-8000-000000000080", publicUrl: null,
+      storageBucket: "production-assets", storagePath: "production-assets/voice.mp3", timelineRole: "VOICE",
+    }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 15, subtitle: "Prueba", title: "Sin deck inicial" },
+  });
+  const deck = {
+    css: ".slide { color: white; }", fonts: [], height: 1080,
+    slides: [
+      { animationCount: 0, classes: "slide active", html: "<h1>Uno</h1>", index: 0, label: "Uno" },
+      { animationCount: 0, classes: "slide active", html: "<h1>Dos</h1>", index: 1, label: "Dos" },
+      { animationCount: 0, classes: "slide active", html: "<h1>Tres</h1>", index: 2, label: "Tres" },
+    ],
+    width: 1920,
+  };
+
+  const reconciled = reconcileCompositionDocument({
+    animatedDeck: deck,
+    deckDependencyAssetIds: new Set(),
+    document,
+    productionAssets: [{
+      checksum: "e".repeat(64), durationSeconds: 15, fileSizeBytes: 4, mimeType: "audio/mpeg",
+      productionAssetId: "00000000-0000-4000-8000-000000000080", publicUrl: null,
+      storageBucket: "production-assets", storagePath: "production-assets/voice.mp3", timelineRole: "VOICE",
+    }],
+  });
+  const slides = reconciled.document.clips.filter((clip) => clip.kind === "DECK_SLIDE");
+
+  assert.equal(reconciled.changed, true);
+  assert.equal(reconciled.document.tracks.some((track) => track.id === "deck"), true);
+  assert.equal(reconciled.document.deckStyles?.css, deck.css);
+  assert.deepEqual(slides.map((clip) => clip.source.type === "DECK_SLIDE" ? clip.source.html : null), ["<h1>Uno</h1>", "<h1>Dos</h1>", "<h1>Tres</h1>"]);
+
+  slides[0]!.startSeconds = 1;
+  slides[0]!.durationSeconds = 4;
+  slides[0]!.timingSource = "USER_EDITED";
+  const refreshed = reconcileCompositionDocument({
+    animatedDeck: {
+      ...deck,
+      slides: [{ ...deck.slides[0]!, html: "<h1>Uno actualizado</h1>" }, ...deck.slides.slice(1)],
+    },
+    deckDependencyAssetIds: new Set(),
+    document: reconciled.document,
+    productionAssets: [{
+      checksum: "e".repeat(64), durationSeconds: 15, fileSizeBytes: 4, mimeType: "audio/mpeg",
+      productionAssetId: "00000000-0000-4000-8000-000000000080", publicUrl: null,
+      storageBucket: "production-assets", storagePath: "production-assets/voice.mp3", timelineRole: "VOICE",
+    }],
+  });
+  const refreshedFirstSlide = refreshed.document.clips.find((clip) => clip.id === "deck-slide-0")!;
+  assert.equal(refreshedFirstSlide.startSeconds, 1);
+  assert.equal(refreshedFirstSlide.durationSeconds, 4);
+  assert.equal(refreshedFirstSlide.timingSource, "USER_EDITED");
+  assert.equal(refreshedFirstSlide.source.type === "DECK_SLIDE" && refreshedFirstSlide.source.html, "<h1>Uno actualizado</h1>");
+});
+
 test("reconciles legacy production filenames to the canonical asset label", () => {
   const productionAssetId = "00000000-0000-4000-8000-000000000096";
   const legacyLabel = "e1c8e5ea-ae83-42af-8d5d-c393f2c32d99-voice.mp3";

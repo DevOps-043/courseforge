@@ -274,186 +274,226 @@ export function ProductionAssetCard({
         avatarVideo={avatarVideo}
       />
 
-      <div className={`grid grid-cols-1 gap-6 p-6 ${hideStoryboard ? "" : "md:grid-cols-2"}`}>
-        {!hideStoryboard && (
-          <div className="space-y-4">
-            <ProductionStoryboardViewer
-              content={component.content as Record<string, unknown>}
-            />
-          </div>
+      <div className="p-6">
+        {component.type.includes("VIDEO") && (
+          <h4 className="mb-4 text-xs font-bold uppercase tracking-wider text-gray-500">
+            Recursos del Video
+          </h4>
         )}
 
-        <div className="space-y-6">
-          {/* Structured Asset Form for Video Components */}
-          {component.type.includes("VIDEO") && (
-            <div className="space-y-4 border-b pb-4 dark:border-[var(--engine-muted)]/10">
-              <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                Recursos del Video
-              </h4>
-              
-              <VoiceAudioSection
-                voiceAudio={voiceAudio}
-                manualVoiceClips={manualVoiceClips}
-                voiceClips={voiceClips}
-                uploadError={voiceUploadError}
-                uploadFileName={voiceUploadFileName}
-                uploadStatus={voiceUploadStatus}
-                isUploading={isUploadingVoice}
-                fileRef={voiceFileRef}
-                onUpload={handleVoiceUpload}
-                onClear={clearVoiceAudio}
-                onRemoveManualClip={removeManualVoiceClip}
-                isSearchingDrive={isSearchingGoogleDrive}
-                isImportingDrive={isImportingGoogleDrive}
-                driveSearchResults={googleDriveSearchResults}
-                searchDrive={searchGoogleDrive}
-                importDriveAsset={importGoogleDriveAsset}
-                clearDriveSearchResults={() => setGoogleDriveSearchResults([])}
-              />
-              
-              <BackgroundMusicSection
-                backgroundMusic={backgroundMusic}
-                isUploading={isUploadingMusic}
-                fileRef={musicFileRef}
-                onUpload={handleMusicUpload}
-                onClear={clearBackgroundMusic}
-                isSearchingArtlist={isSearchingArtlist}
-                isImportingArtlist={isImportingArtlist}
-                artlistSearchResults={artlistSearchResults}
-                searchArtlist={searchArtlist}
-                importArtlistAsset={importArtlistAsset}
-                clearArtlistSearchResults={() => setArtlistSearchResults([])}
-                isSearchingDrive={isSearchingGoogleDrive}
-                isImportingDrive={isImportingGoogleDrive}
-                driveSearchResults={googleDriveSearchResults}
-                searchDrive={searchGoogleDrive}
-                importDriveAsset={importGoogleDriveAsset}
-                clearDriveSearchResults={() => setGoogleDriveSearchResults([])}
-              />
-              
-              <SofliaHtmlSlidesSection
-                slides={slidesAsset}
-                isGeneratingSofliaSlides={isGeneratingSofliaSlides}
-                generationStatus={sofliaSlidesGenerationStatus}
-                generationError={sofliaSlidesGenerationError}
-                isUploading={isUploadingSlides}
-                isPreparingAnimatedDeck={isPreparingAnimatedDeck}
-                isLoadingSlideTemplates={isLoadingSlideTemplates}
-                selectedSlideTemplateRunId={selectedSlideTemplateRunId}
-                showSofliaGeneration={!hideGeneratedAssetTools}
-                slideTemplates={availableSlideTemplates}
-                slideTemplatesHref={slideTemplatesHref}
-                slideTemplateStudioHref={slideTemplateStudioHref}
-                sofliaSlidesHref={sofliaSlidesHref}
-                fileRef={slidesFileRef}
-                onGenerateSofliaSlides={handleSofliaEngineSlideGeneration}
-                onSelectSlideTemplate={setSelectedSlideTemplateRunId}
-                onUpload={handleSlidesZipUpload}
-                onPrepareAnimatedDeck={prepareUploadedHtmlSlidesAsAnimatedDeck}
-                onClear={clearSlidesAsset}
-                isSearchingDrive={isSearchingGoogleDrive}
-                isImportingDrive={isImportingGoogleDrive}
-                driveSearchResults={googleDriveSearchResults}
-                searchDrive={searchGoogleDrive}
-                importDriveAsset={importGoogleDriveAsset}
-                clearDriveSearchResults={() => setGoogleDriveSearchResults([])}
-              />
-              
-              <BRollClipsSection
-                clips={bRollClips}
-                isUploading={isUploadingBroll}
-                fileRef={brollFileRef}
-                onUpload={handleBrollClipUpload}
-                onDelete={removeBrollClip}
-                isSearchingArtlist={isSearchingArtlist}
-                isImportingArtlist={isImportingArtlist}
-                artlistSearchResults={artlistSearchResults}
-                searchArtlist={searchArtlist}
-                importArtlistAsset={importArtlistAsset}
-                clearArtlistSearchResults={() => setArtlistSearchResults([])}
-                bRollPrompts={bRollPrompts}
-                isSearchingDrive={isSearchingGoogleDrive}
-                isImportingDrive={isImportingGoogleDrive}
-                driveSearchResults={googleDriveSearchResults}
-                searchDrive={searchGoogleDrive}
-                importDriveAsset={importGoogleDriveAsset}
-                clearDriveSearchResults={() => setGoogleDriveSearchResults([])}
-              />
-              
-              <AvatarVideoSection
-                componentId={component.id}
-                avatarClips={avatarClips}
-                avatarGenerationMode={avatarGenerationMode}
-                avatarVideo={avatarVideo}
-                aspectRatio={heygenAspectRatio}
-                avatarPresets={heygenAvatarPresets}
-                captionEnabled={heygenCaptionEnabled}
-                engine={heygenEngine}
-                jobId={heygenJobId}
-                jobStatus={heygenJobStatus}
-                providerJobId={heygenProviderJobId}
-                resolution={heygenResolution}
-                isUploading={isUploadingAvatar}
-                isSyncing={isSyncingHeygen}
-                isLoadingPresets={isLoadingHeygenPresets}
-                selectedAvatarPresetId={selectedHeygenAvatarPresetId}
-                selectedVoicePresetId={selectedHeygenVoicePresetId}
-                syncProgress={heygenSyncProgress}
-                syncError={heygenError}
-                voicePresets={heygenVoicePresets}
-                fileRef={avatarFileRef}
-                onUpload={handleAvatarUpload}
-                onHeygenStatusCheck={handleHeygenStatusCheck}
-                onRefreshPresets={loadHeygenPresets}
-                onClear={clearAvatarVideo}
-                onDeleteClip={removeAvatarClip}
-                onAspectRatioChange={setHeygenAspectRatio}
-                onAvatarPresetChange={setSelectedHeygenAvatarPresetId}
-                onCaptionEnabledChange={setHeygenCaptionEnabled}
-                onEngineChange={setHeygenEngine}
-                onResolutionChange={setHeygenResolution}
-                onVoicePresetChange={setSelectedHeygenVoicePresetId}
-                isSearchingDrive={isSearchingGoogleDrive}
-                isImportingDrive={isImportingGoogleDrive}
-                driveSearchResults={googleDriveSearchResults}
-                searchDrive={searchGoogleDrive}
-                importDriveAsset={importGoogleDriveAsset}
-                clearDriveSearchResults={() => setGoogleDriveSearchResults([])}
+        <div
+          className={`columns-1 gap-6 ${
+            component.type.includes("VIDEO") || !hideStoryboard
+              ? "lg:columns-2"
+              : ""
+          }`}
+        >
+          {!hideStoryboard && (
+            <div className="mb-4 inline-block w-full break-inside-avoid align-top">
+              <ProductionStoryboardViewer
+                content={component.content as Record<string, unknown>}
               />
             </div>
           )}
 
-          {requiresPrompts && !hideGeneratedAssetTools && (
-            <ProductionAssetPromptsSection
-              bRollPrompts={bRollPrompts}
-              copyToClipboard={copyToClipboard}
-              isGenerating={isGenerating}
-              onGeneratePrompts={handleGeneratePrompts}
-              onPromptsChange={(value) =>
-                updateAsset("b_roll_prompts", value, setBRollPrompts)
-              }
-            />
+          {/* Structured Asset Form for Video Components */}
+          {component.type.includes("VIDEO") && (
+            <>
+              <div className="mb-4 inline-block w-full break-inside-avoid align-top">
+                <VoiceAudioSection
+                  voiceAudio={voiceAudio}
+                  manualVoiceClips={manualVoiceClips}
+                  voiceClips={voiceClips}
+                  uploadError={voiceUploadError}
+                  uploadFileName={voiceUploadFileName}
+                  uploadStatus={voiceUploadStatus}
+                  isUploading={isUploadingVoice}
+                  fileRef={voiceFileRef}
+                  onUpload={handleVoiceUpload}
+                  onClear={clearVoiceAudio}
+                  onRemoveManualClip={removeManualVoiceClip}
+                  isSearchingDrive={isSearchingGoogleDrive}
+                  isImportingDrive={isImportingGoogleDrive}
+                  driveSearchResults={googleDriveSearchResults}
+                  searchDrive={searchGoogleDrive}
+                  importDriveAsset={importGoogleDriveAsset}
+                  clearDriveSearchResults={() =>
+                    setGoogleDriveSearchResults([])
+                  }
+                />
+              </div>
+
+              <div className="mb-4 inline-block w-full break-inside-avoid align-top">
+                <BackgroundMusicSection
+                  backgroundMusic={backgroundMusic}
+                  isUploading={isUploadingMusic}
+                  fileRef={musicFileRef}
+                  onUpload={handleMusicUpload}
+                  onClear={clearBackgroundMusic}
+                  isSearchingArtlist={isSearchingArtlist}
+                  isImportingArtlist={isImportingArtlist}
+                  artlistSearchResults={artlistSearchResults}
+                  searchArtlist={searchArtlist}
+                  importArtlistAsset={importArtlistAsset}
+                  clearArtlistSearchResults={() => setArtlistSearchResults([])}
+                  isSearchingDrive={isSearchingGoogleDrive}
+                  isImportingDrive={isImportingGoogleDrive}
+                  driveSearchResults={googleDriveSearchResults}
+                  searchDrive={searchGoogleDrive}
+                  importDriveAsset={importGoogleDriveAsset}
+                  clearDriveSearchResults={() =>
+                    setGoogleDriveSearchResults([])
+                  }
+                />
+              </div>
+
+              <div className="mb-4 inline-block w-full break-inside-avoid align-top">
+                <SofliaHtmlSlidesSection
+                  slides={slidesAsset}
+                  isGeneratingSofliaSlides={isGeneratingSofliaSlides}
+                  generationStatus={sofliaSlidesGenerationStatus}
+                  generationError={sofliaSlidesGenerationError}
+                  isUploading={isUploadingSlides}
+                  isPreparingAnimatedDeck={isPreparingAnimatedDeck}
+                  isLoadingSlideTemplates={isLoadingSlideTemplates}
+                  selectedSlideTemplateRunId={selectedSlideTemplateRunId}
+                  showSofliaGeneration={!hideGeneratedAssetTools}
+                  slideTemplates={availableSlideTemplates}
+                  slideTemplatesHref={slideTemplatesHref}
+                  slideTemplateStudioHref={slideTemplateStudioHref}
+                  sofliaSlidesHref={sofliaSlidesHref}
+                  fileRef={slidesFileRef}
+                  onGenerateSofliaSlides={handleSofliaEngineSlideGeneration}
+                  onSelectSlideTemplate={setSelectedSlideTemplateRunId}
+                  onUpload={handleSlidesZipUpload}
+                  onPrepareAnimatedDeck={
+                    prepareUploadedHtmlSlidesAsAnimatedDeck
+                  }
+                  onClear={clearSlidesAsset}
+                  isSearchingDrive={isSearchingGoogleDrive}
+                  isImportingDrive={isImportingGoogleDrive}
+                  driveSearchResults={googleDriveSearchResults}
+                  searchDrive={searchGoogleDrive}
+                  importDriveAsset={importGoogleDriveAsset}
+                  clearDriveSearchResults={() =>
+                    setGoogleDriveSearchResults([])
+                  }
+                />
+              </div>
+
+              <div className="mb-4 inline-block w-full break-inside-avoid align-top">
+                <BRollClipsSection
+                  clips={bRollClips}
+                  isUploading={isUploadingBroll}
+                  fileRef={brollFileRef}
+                  onUpload={handleBrollClipUpload}
+                  onDelete={removeBrollClip}
+                  isSearchingArtlist={isSearchingArtlist}
+                  isImportingArtlist={isImportingArtlist}
+                  artlistSearchResults={artlistSearchResults}
+                  searchArtlist={searchArtlist}
+                  importArtlistAsset={importArtlistAsset}
+                  clearArtlistSearchResults={() => setArtlistSearchResults([])}
+                  bRollPrompts={bRollPrompts}
+                  isSearchingDrive={isSearchingGoogleDrive}
+                  isImportingDrive={isImportingGoogleDrive}
+                  driveSearchResults={googleDriveSearchResults}
+                  searchDrive={searchGoogleDrive}
+                  importDriveAsset={importGoogleDriveAsset}
+                  clearDriveSearchResults={() =>
+                    setGoogleDriveSearchResults([])
+                  }
+                />
+              </div>
+
+              <div className="mb-4 inline-block w-full break-inside-avoid align-top">
+                <AvatarVideoSection
+                  componentId={component.id}
+                  avatarClips={avatarClips}
+                  avatarGenerationMode={avatarGenerationMode}
+                  avatarVideo={avatarVideo}
+                  aspectRatio={heygenAspectRatio}
+                  avatarPresets={heygenAvatarPresets}
+                  captionEnabled={heygenCaptionEnabled}
+                  engine={heygenEngine}
+                  jobId={heygenJobId}
+                  jobStatus={heygenJobStatus}
+                  providerJobId={heygenProviderJobId}
+                  resolution={heygenResolution}
+                  isUploading={isUploadingAvatar}
+                  isSyncing={isSyncingHeygen}
+                  isLoadingPresets={isLoadingHeygenPresets}
+                  selectedAvatarPresetId={selectedHeygenAvatarPresetId}
+                  selectedVoicePresetId={selectedHeygenVoicePresetId}
+                  syncProgress={heygenSyncProgress}
+                  syncError={heygenError}
+                  voicePresets={heygenVoicePresets}
+                  fileRef={avatarFileRef}
+                  onUpload={handleAvatarUpload}
+                  onHeygenStatusCheck={handleHeygenStatusCheck}
+                  onRefreshPresets={loadHeygenPresets}
+                  onClear={clearAvatarVideo}
+                  onDeleteClip={removeAvatarClip}
+                  onAspectRatioChange={setHeygenAspectRatio}
+                  onAvatarPresetChange={setSelectedHeygenAvatarPresetId}
+                  onCaptionEnabledChange={setHeygenCaptionEnabled}
+                  onEngineChange={setHeygenEngine}
+                  onResolutionChange={setHeygenResolution}
+                  onVoicePresetChange={setSelectedHeygenVoicePresetId}
+                  isSearchingDrive={isSearchingGoogleDrive}
+                  isImportingDrive={isImportingGoogleDrive}
+                  driveSearchResults={googleDriveSearchResults}
+                  searchDrive={searchGoogleDrive}
+                  importDriveAsset={importGoogleDriveAsset}
+                  clearDriveSearchResults={() =>
+                    setGoogleDriveSearchResults([])
+                  }
+                />
+              </div>
+            </>
           )}
 
-          {(component.type === "DEMO_GUIDE" || component.type === "VIDEO_GUIDE") && (
-            <ProductionAssetScreencastSection
-              screencastUrl={screencastUrl}
-              onScreencastUrlChange={(value) =>
-                updateAsset("screencast_url", value, setScreencastUrl)
-              }
-            />
+          {requiresPrompts && !hideGeneratedAssetTools && (
+            <div className="mb-4 inline-block w-full break-inside-avoid align-top">
+              <ProductionAssetPromptsSection
+                bRollPrompts={bRollPrompts}
+                copyToClipboard={copyToClipboard}
+                isGenerating={isGenerating}
+                onGeneratePrompts={handleGeneratePrompts}
+                onPromptsChange={(value) =>
+                  updateAsset("b_roll_prompts", value, setBRollPrompts)
+                }
+              />
+            </div>
+          )}
+
+          {(component.type === "DEMO_GUIDE" ||
+            component.type === "VIDEO_GUIDE") && (
+            <div className="mb-4 inline-block w-full break-inside-avoid align-top">
+              <ProductionAssetScreencastSection
+                screencastUrl={screencastUrl}
+                onScreencastUrlChange={(value) =>
+                  updateAsset("screencast_url", value, setScreencastUrl)
+                }
+              />
+            </div>
           )}
 
           {finalVideoUrl ? (
-            <section className="space-y-3">
-              <h4 className={PRODUCTION_THEME.sectionTitle}>VIDEO FINAL</h4>
-              <ProductionMediaPreview
-                durationSeconds={component.assets?.video_duration}
-                kind="video"
-                label={component.assets?.final_video_file_name || "Video final de producción"}
-                src={finalVideoUrl}
-              />
-            </section>
+            <div className="mb-4 inline-block w-full break-inside-avoid align-top">
+              <section className="space-y-3">
+                <h4 className={PRODUCTION_THEME.sectionTitle}>VIDEO FINAL</h4>
+                <ProductionMediaPreview
+                  durationSeconds={component.assets?.video_duration}
+                  kind="video"
+                  label={
+                    component.assets?.final_video_file_name ||
+                    "Video final de producción"
+                  }
+                  src={finalVideoUrl}
+                />
+              </section>
+            </div>
           ) : null}
         </div>
       </div>

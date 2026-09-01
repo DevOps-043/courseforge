@@ -42,8 +42,10 @@ export function buildProductionAssetReconciliationOperations(
   document: Parameters<typeof reconcileCompositionDocument>[0]["document"],
   assets: Parameters<typeof reconcileCompositionDocument>[0]["productionAssets"],
   deckDependencyAssetIds: Set<string> = new Set(),
+  animatedDeck: Parameters<typeof reconcileCompositionDocument>[0]["animatedDeck"] = null,
 ) {
   const reconciled = reconcileCompositionDocument({
+    animatedDeck,
     deckDependencyAssetIds,
     document,
     productionAssets: assets,
@@ -262,6 +264,7 @@ async function loadOrCreateInitialDocument(params: {
       current.document,
       params.assets,
       params.deckDependencyAssetIds,
+      params.animatedDeck,
     );
     if (operations.length === 0) {
       return { created: false, document: current.document, version: current.version };

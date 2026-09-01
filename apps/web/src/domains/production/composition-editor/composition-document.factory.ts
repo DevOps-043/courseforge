@@ -140,6 +140,7 @@ export function appendMissingProductionAssetClips(
  * used by the deck HTML are not independently editable timeline media.
  */
 export function reconcileCompositionDocument(params: {
+  animatedDeck?: HyperframesAnimatedDeckSource | null;
   deckDependencyAssetIds: ReadonlySet<string>;
   document: CompositionEditorDocument;
   productionAssets: HyperframesProjectAsset[];
@@ -148,7 +149,11 @@ export function reconcileCompositionDocument(params: {
   const automaticDuration = params.document.canvas.durationMode === "AUTO"
     ? resolveCompositionDuration({
         assets: productionAssets,
-        slideCount: params.document.clips.filter((clip) => clip.kind === "DECK_SLIDE").length,
+        // A deck can be generated after a draft has been opened. Use the
+        // freshly resolved source instead of the persisted clip count so the
+        // new slides receive a valid canvas on their first synchronization.
+        slideCount: params.animatedDeck?.slides.length
+          ?? params.document.clips.filter((clip) => clip.kind === "DECK_SLIDE").length,
       })
     : null;
   const productionAssetById = new Map(productionAssets.map((asset) => [asset.productionAssetId, asset]));
@@ -235,11 +240,24 @@ export function reconcileCompositionDocument(params: {
     };
   });
   const synchronizedTracks = [...params.document.tracks];
-  for (const requiredTrack of buildTracks(productionAssets, null)) {
+  for (const requiredTrack of buildTracks(productionAssets, params.animatedDeck || null)) {
     if (!synchronizedTracks.some((track) => track.id === requiredTrack.id)) {
       synchronizedTracks.push(requiredTrack);
     }
   }
+  const synchronizedCanvas = {
+    ...params.document.canvas,
+    ...(automaticDuration ? {
+      durationSeconds: canvasDurationSeconds,
+      durationSource: automaticDuration.source,
+    } : {}),
+    fps: DEFAULT_COMPOSITION_RENDER_FPS,
+  };
+  const deckReconciliation = reconcileDeckSlideClips({
+    animatedDeck: params.animatedDeck,
+    canvasDurationSeconds: synchronizedCanvas.durationSeconds,
+    clips: synchronizedClips,
+  });
   const synchronizedClipIds = new Set(synchronizedClips.map((clip) => clip.id));
   const synchronizedAnimations = params.document.motion.animations.filter((animation) => (
     synchronizedClipIds.has(animation.target.clipId)
@@ -248,15 +266,12 @@ export function reconcileCompositionDocument(params: {
   const nextDurationSource = automaticDuration?.source || params.document.canvas.durationSource;
   const documentWithoutDeckDependencies = compositionEditorDocumentSchema.parse({
     ...params.document,
-    canvas: {
-      ...params.document.canvas,
-      ...(automaticDuration ? {
-        durationSeconds: canvasDurationSeconds,
-        durationSource: automaticDuration.source,
-      } : {}),
-      fps: DEFAULT_COMPOSITION_RENDER_FPS,
-    },
-    clips: synchronizedClips,
+    canvas: synchronizedCanvas,
+    clips: deckReconciliation.clips,
+    deckStyles: params.animatedDeck ? {
+      css: params.animatedDeck.css,
+      fontUrls: params.animatedDeck.fonts.map((font) => font.href),
+    } : params.document.deckStyles,
     motion: {
       ...params.document.motion,
       animations: synchronizedAnimations,
@@ -276,6 +291,7 @@ export function reconcileCompositionDocument(params: {
       || removedInactiveProductionAssetCount > 0
       || removedOrphanAnimationCount > 0
       || clipSynchronizationChanged
+      || deckReconciliation.changed
       || canvasDurationSeconds !== params.document.canvas.durationSeconds
       || nextDurationSource !== params.document.canvas.durationSource
       || params.document.canvas.fps !== DEFAULT_COMPOSITION_RENDER_FPS
@@ -285,6 +301,62 @@ export function reconcileCompositionDocument(params: {
     removedInactiveProductionAssetCount,
     removedOrphanAnimationCount,
   };
+}
+
+/**
+ * Adds a prepared deck to an existing draft without resetting authored timing,
+ * layout, visibility, or motion. Existing slides are refreshed in place so a
+ * regenerated deck cannot leave stale HTML behind; slides not yet represented
+ * in the document are inserted with the standard estimated timing.
+ */
+function reconcileDeckSlideClips(params: {
+  animatedDeck: HyperframesAnimatedDeckSource | null | undefined;
+  canvasDurationSeconds: number;
+  clips: CompositionClip[];
+}) {
+  if (!params.animatedDeck) return { changed: false, clips: params.clips };
+
+  const generatedClips = buildDeckClips(params.animatedDeck, params.canvasDurationSeconds);
+  const existingBySlideIndex = new Map(
+    params.clips.flatMap((clip) => (
+      isDeckSlideClip(clip) ? [[clip.source.slideIndex, clip] as const] : []
+    )),
+  );
+  let changed = false;
+  const refreshedById = new Map<string, CompositionClip>();
+
+  for (const generated of generatedClips) {
+    if (!isDeckSlideClip(generated)) continue;
+    const existing = existingBySlideIndex.get(generated.source.slideIndex);
+    if (!existing) {
+      refreshedById.set(generated.id, generated);
+      changed = true;
+      continue;
+    }
+    const sourceChanged = existing.source.html !== generated.source.html
+      || existing.source.classes !== generated.source.classes
+      || existing.label !== generated.label;
+    if (!sourceChanged) continue;
+    refreshedById.set(existing.id, {
+      ...existing,
+      label: generated.label,
+      source: generated.source,
+    });
+    changed = true;
+  }
+
+  if (!changed) return { changed: false, clips: params.clips };
+  const refreshedClips = params.clips.map((clip) => refreshedById.get(clip.id) || clip);
+  const newClips = generatedClips.filter((clip) => (
+    isDeckSlideClip(clip) && !existingBySlideIndex.has(clip.source.slideIndex)
+  ));
+  return { changed: true, clips: [...refreshedClips, ...newClips] };
+}
+
+function isDeckSlideClip(
+  clip: CompositionClip,
+): clip is CompositionClip & { source: Extract<CompositionClip["source"], { type: "DECK_SLIDE" }> } {
+  return clip.source.type === "DECK_SLIDE";
 }
 
 export function resolveCanvasDuration(params: {
