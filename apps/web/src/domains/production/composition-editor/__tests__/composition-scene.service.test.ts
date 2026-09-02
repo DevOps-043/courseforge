@@ -49,3 +49,30 @@ test("uses narrative scenes, exposes script cues and reports visual corresponden
   if (narrative.clips[0]!.source.type === "DECK_SLIDE") narrative.clips[0]!.source.slideKey = "d".repeat(64);
   assert.equal(deriveCompositionScenes(narrative)[0]?.visualsMatch, false);
 });
+
+test("plans progressive narrative intervals before voice or avatar clips exist", () => {
+  const narrative = structuredClone(document);
+  narrative.clips = narrative.clips.filter((clip) => clip.trackId === "deck");
+  narrative.narrativeScenes = [
+    {
+      id: "narrative-1", order: 1, label: "Primera escena", scriptText: "Una palabra",
+      scriptHash: "a".repeat(64), needsReview: true,
+    },
+    {
+      id: "narrative-2", order: 2, label: "Segunda escena", scriptText: "Dos palabras ocupan más tiempo",
+      scriptHash: "b".repeat(64), needsReview: true,
+    },
+  ];
+
+  const scenes = deriveCompositionScenes(narrative);
+
+  assert.equal(scenes[0]?.startSeconds, 0);
+  assert.ok((scenes[0]?.durationSeconds || 0) > 0);
+  assert.ok((scenes[1]?.startSeconds || 0) > scenes[0]!.startSeconds);
+  assert.ok((scenes[1]?.durationSeconds || 0) > 0);
+  assert.equal(
+    Math.round(((scenes[1]?.startSeconds || 0) + (scenes[1]?.durationSeconds || 0)) * 1000) / 1000,
+    narrative.canvas.durationSeconds,
+  );
+  assert.equal(scenes[0]?.primaryHfId, "slide-1");
+});

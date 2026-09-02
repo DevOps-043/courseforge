@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
-import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronRight, Clapperboard, Crop, Eye, EyeOff, FileQuestion, GripHorizontal, Grid3X3, History, Image as ImageIcon, Loader2, Magnet, Maximize2, Minimize2, Minus, MousePointer2, Music2, PanelRight, Pause, Play, Plus, RefreshCw, RotateCcw, Save, Scan, Scissors, Send, SlidersHorizontal, Sparkles, Trash2, Video, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronRight, Clapperboard, Crop, Eye, EyeOff, FileQuestion, GripHorizontal, Grid3X3, History, Image as ImageIcon, Loader2, Magnet, Maximize2, Minimize2, Minus, MousePointer2, Music2, PanelRight, Pause, Play, Plus, RefreshCw, RotateCcw, Save, Scan, Scissors, ScrollText, Send, SlidersHorizontal, Sparkles, Trash2, Video, X } from "lucide-react";
 import { toast } from "sonner";
 import type { CompositionClip, CompositionEditorDocument, CompositionTrack, CompositionVisualCrop } from "@/domains/production/composition-editor/composition-document.types";
 import { formatCompositionTimecode, parseCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
@@ -2259,6 +2259,18 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const activeSceneId = compositionScenes.find((scene) =>
     seconds >= scene.startSeconds && seconds < scene.startSeconds + scene.durationSeconds
   )?.id;
+  const narrativeLibrary = compositionScenes.length > 0 ? (
+    <CompositionNarrativePanel
+      document={payload.document}
+      scenes={compositionScenes}
+      currentTime={seconds}
+      onSeek={(time) => { beginScrub(); seek(time); }}
+      onSelect={selectClip}
+      applying={applyingPreassembly}
+      onApply={() => void applyNarrativePreassembly()}
+      onOpenSceneBuilder={openSceneBuilder}
+    />
+  ) : null;
 
   return (
     <section className={`${styles.studio} courseforge-composition-studio`}>
@@ -2298,7 +2310,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         } as CSSProperties}
         className={`${styles.editorGrid} ${inspectorOpen ? styles.editorGridWithInspector : ""}`}
       >
-        <StudioLibrary assets={assets} delivery={deliveryMenu} lessons={lessons} onAddAsset={addAssetToTimeline} onSelectLesson={onSelectLesson} selectedLessonId={selectedLessonId} onSelectAsset={selectClip} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))} />
+        <StudioLibrary assets={assets} delivery={deliveryMenu} lessons={lessons} narrative={narrativeLibrary} narrativeCount={compositionScenes.length} onAddAsset={addAssetToTimeline} onSelectLesson={onSelectLesson} selectedLessonId={selectedLessonId} onSelectAsset={selectClip} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))} />
 
         <section ref={previewShellRef} className={`${styles.previewPanel} ${previewFullscreen ? styles.previewFullscreen : ""}`}>
           <div className={styles.previewToolbar}>
@@ -2365,7 +2377,6 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
               ))}
             </nav>
           )}
-          <CompositionNarrativePanel document={payload.document} scenes={compositionScenes} currentTime={seconds} onSeek={(time) => { beginScrub(); seek(time); }} onSelect={selectClip} applying={applyingPreassembly} onApply={() => void applyNarrativePreassembly()} onOpenSceneBuilder={openSceneBuilder} />
           <div className={`${styles.previewViewport} courseforge-composition-preview-viewport`}>
             <div className={styles.previewFrame}>
               <iframe ref={frameRef} title="Preview completo de composición" src={previewUrl} sandbox="allow-scripts" allow="autoplay" className="absolute inset-0 h-full w-full" />
@@ -2714,10 +2725,12 @@ function renderQualityLabel(quality: HyperframesRenderSettings["quality"]) {
   return quality === "high" ? "alta" : quality === "draft" ? "borrador" : "estándar";
 }
 
-function StudioLibrary({ assets, delivery, lessons, onAddAsset, onSelectAsset, onSelectLesson, selectedHfId, selectedLessonId, timelineAssetIds }: {
+function StudioLibrary({ assets, delivery, lessons, narrative, narrativeCount, onAddAsset, onSelectAsset, onSelectLesson, selectedHfId, selectedLessonId, timelineAssetIds }: {
   assets: CompositionStudioAsset[];
   delivery: ReactNode;
   lessons: CompositionStudioLesson[];
+  narrative: ReactNode;
+  narrativeCount: number;
   onAddAsset: (asset: CompositionStudioAsset) => void;
   onSelectAsset: (hfId: string) => void;
   onSelectLesson: (lessonId: string) => void;
@@ -2725,16 +2738,22 @@ function StudioLibrary({ assets, delivery, lessons, onAddAsset, onSelectAsset, o
   selectedLessonId: string | null;
   timelineAssetIds: Set<string>;
 }) {
-  const [activeView, setActiveView] = useState<"assets" | "delivery" | "lessons">("lessons");
+  const [activeView, setActiveView] = useState<"assets" | "delivery" | "lessons" | "narrative">("lessons");
+  useEffect(() => {
+    if (!narrative && activeView === "narrative") setActiveView("lessons");
+  }, [activeView, narrative]);
 
   return <aside className={styles.library}>
-    <div className={styles.panelTabs} role="tablist" aria-label="Biblioteca del ensamble">
+    <div className={`${styles.panelTabs} ${narrative ? styles.panelTabsWithNarrative : ""}`} role="tablist" aria-label="Biblioteca del ensamble">
       <button type="button" role="tab" aria-selected={activeView === "lessons"} onClick={() => setActiveView("lessons")} className={`${styles.panelTab} ${activeView === "lessons" ? styles.panelTabActive : ""}`}>
         <Clapperboard size={14} aria-hidden="true" /> Videos <span className={styles.tabCount}>{lessons.length}</span>
       </button>
       <button type="button" role="tab" aria-selected={activeView === "assets"} onClick={() => setActiveView("assets")} className={`${styles.panelTab} ${activeView === "assets" ? styles.panelTabActive : ""}`}>
         <ImageIcon size={14} aria-hidden="true" /> Medios <span className={styles.tabCount}>{assets.length}</span>
       </button>
+      {narrative && <button type="button" role="tab" aria-selected={activeView === "narrative"} onClick={() => setActiveView("narrative")} className={`${styles.panelTab} ${activeView === "narrative" ? styles.panelTabActive : ""}`}>
+        <ScrollText size={14} aria-hidden="true" /> Guion <span className={styles.tabCount}>{narrativeCount}</span>
+      </button>}
       <button type="button" role="tab" aria-selected={activeView === "delivery"} onClick={() => setActiveView("delivery")} className={`${styles.panelTab} ${activeView === "delivery" ? styles.panelTabActive : ""}`}>
         <Send size={14} aria-hidden="true" /> Entrega
       </button>
@@ -2759,7 +2778,8 @@ function StudioLibrary({ assets, delivery, lessons, onAddAsset, onSelectAsset, o
             <button type="button" disabled={!asset.isEditable || !asset.valid || inTimeline} onClick={() => onAddAsset(asset)} title={inTimeline ? "Este asset ya está en la línea de tiempo" : "Añadir a la línea de tiempo"} className={`${styles.assetAdd} ${inTimeline ? styles.assetAddComplete : ""}`}>{inTimeline ? <><CheckCircle2 size={12} /> En timeline</> : <><Plus size={12} /> Añadir a timeline</>}</button>
           </div>;
         })}
-      </div> : <div className={styles.deliveryMenu} role="tabpanel">{delivery}</div>}
+      </div> : activeView === "narrative" ? <div className={styles.narrativeMenu} role="tabpanel">{narrative}</div>
+        : <div className={styles.deliveryMenu} role="tabpanel">{delivery}</div>}
     </div>
   </aside>;
 }
