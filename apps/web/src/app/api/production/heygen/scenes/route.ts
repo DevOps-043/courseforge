@@ -7,7 +7,8 @@ import {
   getAuthorizedMaterialComponentAdmin,
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
-import { syncHyperframesSourceAssetsFromProduction } from "@/domains/production/hyperframes/hyperframes-source-asset.service";
+import { extractHyperframesAnimatedDeck, syncHyperframesSourceAssetsFromProduction } from "@/domains/production/hyperframes/hyperframes-source-asset.service";
+import { buildSceneVisualCatalog, validateSceneVisualPlans } from "@/domains/production/composition-editor/composition-narrative-source.service";
 import { initializeHyperframesDraft } from "@/domains/production/hyperframes/hyperframes-draft.service";
 import { HeygenApiError } from "@/domains/production/providers/heygen/heygen.client";
 import {
@@ -132,6 +133,7 @@ export async function GET(request: Request) {
         componentId,
         voiceAudio: recoveredAssets.voice_audio || null,
         voiceClips: recoveredAssets.voice_clips || [],
+        visualCatalog: buildSceneVisualCatalog(extractHyperframesAnimatedDeck(recoveredAssets)),
       },
     });
   } catch (error: unknown) {
@@ -150,7 +152,7 @@ export async function PATCH(request: Request) {
     const service = new HeygenScenesService(auth.authorizedComponent.admin);
     const materialAssets = await service.saveSceneClips({
       avatarGenerationMode: payload.avatarGenerationMode,
-      clips: payload.clips,
+      clips: validateSceneVisualPlans(payload.clips, buildSceneVisualCatalog(extractHyperframesAnimatedDeck(auth.authorizedComponent.component.assets))),
       componentId: payload.componentId,
     });
 

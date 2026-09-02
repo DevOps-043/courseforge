@@ -19,6 +19,7 @@ import {
   scaleCompositionCropInsets,
 } from "./composition-visual-crop.service";
 import { compositionClipHasConfigurableAudio } from "./composition-clip-audio.service";
+import { compositionClipExclusionKey } from "./composition-source-selection";
 
 export class CompositionEditorPatchError extends Error {
   constructor(message: string) {
@@ -65,7 +66,12 @@ function removeClipOrThrow(document: CompositionEditorDocument, clipId: string) 
   if (document.clips.length === 1) {
     throw new CompositionEditorPatchError("La composición debe conservar al menos un clip.");
   }
+  const removed = document.clips.find((candidate) => candidate.id === clipId)!;
+  const exclusionKey = compositionClipExclusionKey(removed);
   document.clips = document.clips.filter((candidate) => candidate.id !== clipId);
+  if (!document.clips.some((clip) => compositionClipExclusionKey(clip) === exclusionKey)) {
+    document.excludedSources = [...new Set([...(document.excludedSources || []), exclusionKey])];
+  }
   document.motion.animations = document.motion.animations.filter(
     (animation) => animation.target.clipId !== clipId,
   );
@@ -281,6 +287,11 @@ export function applyCompositionEditorPatches(
         throw new CompositionEditorPatchError("El clip no puede terminar después del final del video.");
       }
       next.clips.push(operation.clip);
+      if (next.excludedSources) {
+        const key = compositionClipExclusionKey(operation.clip);
+        next.excludedSources = next.excludedSources.filter((excluded) => excluded !== key
+          && !(operation.clip.source.type === "DECK_SLIDE" && excluded === `deck:${operation.clip.source.slideIndex}`));
+      }
       continue;
     }
 

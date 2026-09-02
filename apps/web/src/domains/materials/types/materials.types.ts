@@ -136,6 +136,7 @@ export type AvatarClipStatus =
 export type AvatarClipExpectedMediaMode = 'avatar' | 'voice_only' | 'none';
 
 export interface AvatarClip {
+    visual_plan?: import('../../production/composition-editor/composition-narrative.types').SceneVisualPlan;
     id: string;
     order: number;
     /** Optional author-facing name used for HeyGen and returned media files. */

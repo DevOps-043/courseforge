@@ -14,6 +14,7 @@ function createBrollDocument() {
       fileSizeBytes: 4,
       hasAudio: true,
       mimeType: "video/mp4",
+      hasAudio: true,
       productionAssetId: "00000000-0000-4000-8000-000000000041",
       publicUrl: null,
       storageBucket: "production-assets",
@@ -66,4 +67,18 @@ test("fails closed for opacity and non-visual batches", () => {
     document,
     operations: [{ clipId: clip.id, startSeconds: 1, type: "clip.move" }],
   }), null);
+});
+
+test("sends the complete motion state for live animation edits", () => {
+  const document = createBrollDocument();
+  const clip = document.clips[0]!;
+  const operations: CompositionEditorPatchOperation[] = [{
+    animationId: "motion-live-fade", clipId: clip.id, durationSeconds: 0.8,
+    presetId: "FADE_IN", type: "animation.add-preset",
+  }];
+  const optimistic = applyCompositionEditorPatches(document, operations, "USER");
+  const patch = buildCompositionPreviewVisualPatch({ document: optimistic, operations });
+  assert.equal(patch?.changes.length, 0);
+  assert.equal(patch?.motion?.[0]?.id, "motion-live-fade");
+  assert.equal(patch?.motion?.[0]?.targetId, `${clip.id}-motion`);
 });

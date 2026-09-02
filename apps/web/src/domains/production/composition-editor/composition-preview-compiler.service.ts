@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { getCompositionClipMediaAssetId, type CompositionClip, type CompositionEditorDocument, type CompositionTrack } from "./composition-document.types";
-import { resolveCompositionAnimationWindow } from "./composition-motion-scheduling.service";
+import { buildCompositionMotionRuntime } from "./composition-motion-runtime";
 import {
   buildCompositionVolumeAutomations,
   type CompositionClipVolumeAutomation,
@@ -194,7 +194,7 @@ function renderClip(
 }
 
 function renderMediaSourceAttribute(sourceUrl: string | undefined, variableName: string | undefined) {
-  if (variableName) return `data-hf-src="${escapeAttribute(variableName)}"`;
+  if (variableName) return `data-var-src="${escapeAttribute(variableName)}"`;
   if (sourceUrl) return `src="${escapeAttribute(sourceUrl)}"`;
   throw new CompositionPreviewCompilerError("No se pudo resolver la fuente de un medio.");
 }
@@ -239,18 +239,7 @@ function renderTimelineInitializer(
     kind: clip.kind,
     start: clip.startSeconds,
   }));
-  const motionAnimations = document.motion.animations.map((animation) => {
-    const clip = document.clips.find((candidate) => candidate.id === animation.target.clipId)!;
-    const relativeStart = resolveCompositionAnimationWindow(animation, clip.durationSeconds).start;
-    return {
-      duration: animation.timing.durationSeconds,
-      id: animation.id,
-      keyframes: animation.keyframes,
-      loop: animation.loop,
-      start: clip.startSeconds + relativeStart,
-      targetId: `${clip.id}-motion`,
-    };
-  });
+  const motionAnimations = buildCompositionMotionRuntime(document);
   return `<script>
     (() => {
       const clips = ${JSON.stringify(clipMetadata)};
@@ -296,6 +285,7 @@ function renderTimelineInitializer(
           );
         }
       }
+      function addMotion(timeline, motionAnimations) {
       for (const animation of motionAnimations) {
         const target = document.getElementById(animation.targetId);
         const first = animation.keyframes[0];
@@ -333,6 +323,25 @@ function renderTimelineInitializer(
           }, animation.start + previous.offset * animation.duration);
         }
       }
+      }
+      let motionTimeline = gsap.timeline();
+      let motionTargets = new Set(motionAnimations.map((animation) => animation.targetId));
+      addMotion(motionTimeline, motionAnimations);
+      timeline.add(motionTimeline, 0);
+      window.__courseforgeReplaceMotion = (animations) => {
+        const nextTargets = new Set(animations.map((animation) => animation.targetId));
+        if ([...nextTargets].some((id) => !document.getElementById(id))) throw new Error("MOTION_TARGET_NOT_FOUND");
+        timeline.remove(motionTimeline);
+        motionTimeline.kill();
+        for (const id of new Set([...motionTargets, ...nextTargets])) {
+          const target = document.getElementById(id);
+          if (target) gsap.set(target, { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 });
+        }
+        motionTargets = nextTargets;
+        motionTimeline = gsap.timeline();
+        addMotion(motionTimeline, animations);
+        timeline.add(motionTimeline, 0);
+      };
       window.__timelines = window.__timelines || {};
       window.__timelines["courseforge-composition"] = timeline;
     })();
@@ -1059,7 +1068,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           return;
         }
         const changes = message.patch?.changes;
-        if (!Number.isInteger(message.sequence) || message.sequence < 1 || !Array.isArray(changes) || changes.length < 1 || changes.length > 100) {
+        if (!Number.isInteger(message.sequence) || message.sequence < 1 || !Array.isArray(changes) || changes.length > 100
+          || (changes.length === 0 && !Array.isArray(message.patch?.motion))
+          || (message.patch?.motion !== undefined && (!Array.isArray(message.patch.motion) || message.patch.motion.length > 200))) {
           finish(false, "INVALID_PATCH");
           return;
         }
@@ -1101,6 +1112,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
               if (volumeTarget.dataset.volumeAutomated !== "true") volumeTarget.volume = change.volume;
             }
           }
+          if (message.patch.motion !== undefined) window.__courseforgeReplaceMotion(message.patch.motion);
           seek(currentTime);
           finish(true, "APPLIED");
         } catch {

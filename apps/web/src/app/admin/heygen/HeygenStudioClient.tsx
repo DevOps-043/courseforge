@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { SceneVisualSelector } from "@/domains/materials/components/composition-editor/SceneVisualSelector";
+import type { SceneVisualCatalog } from "@/domains/production/composition-editor/composition-narrative.types";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -42,6 +44,7 @@ type OutputFormat = "mp4" | "webm";
 type AvatarGenerationMode = "scene_clips" | "single_video" | "voiceover";
 
 interface AvatarSceneClip {
+  visual_plan?: import("@/domains/production/composition-editor/composition-narrative.types").SceneVisualPlan;
   asset_name?: string;
   avatar_preset_id?: string;
   background?: {
@@ -247,6 +250,7 @@ export default function HeygenStudioClient({
   const [avatarGenerationMode, setAvatarGenerationMode] =
     useState<AvatarGenerationMode>(isCourseContext ? "scene_clips" : "single_video");
   const [sceneClips, setSceneClips] = useState<AvatarSceneClip[]>([]);
+  const [visualCatalog, setVisualCatalog] = useState<SceneVisualCatalog | null>(null);
   const [voiceClips, setVoiceClips] = useState<VoiceSceneClip[]>([]);
   const [generatingVoiceClipIds, setGeneratingVoiceClipIds] = useState<string[]>([]);
   const [resettingSceneClipIds, setResettingSceneClipIds] = useState<string[]>([]);
@@ -386,6 +390,7 @@ export default function HeygenStudioClient({
       }
 
       const clips = (payload.data?.clips || []) as AvatarSceneClip[];
+      setVisualCatalog((payload.data?.visualCatalog as SceneVisualCatalog) || null);
       setVoiceClips((payload.data?.voiceClips || []) as VoiceSceneClip[]);
       const loadedMode = (payload.data?.avatarGenerationMode as AvatarGenerationMode) || "scene_clips";
       setAvatarGenerationMode(loadedMode);
@@ -1686,6 +1691,7 @@ export default function HeygenStudioClient({
                               onChange={(event) => updateSceneClip(clip.id, { script_text: event.target.value })}
                               className="mt-3 min-h-28 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm leading-relaxed text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white"
                             />
+                            <SceneVisualSelector catalog={visualCatalog} scriptText={clip.script_text} plan={clip.visual_plan} disabled={isGeneratingClips || isGeneratingVoice} onChange={(visual_plan) => updateSceneClip(clip.id, { visual_plan })} />
                             {clip.error_message ? (
                               <p className="mt-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-600 dark:text-red-300">
                                 {clip.error_message}

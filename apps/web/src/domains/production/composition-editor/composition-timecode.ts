@@ -1,5 +1,10 @@
 const TIMECODE_PRECISION = 1000;
 
+export function stepCompositionFrame(time: number, direction: -1 | 1, fps: number, duration: number, coarse = false) {
+  const nextFrame = Math.round(time * fps) + direction * (coarse ? fps : 1);
+  return Math.max(0, Math.min(duration, nextFrame / fps));
+}
+
 /** Formats persisted seconds as an unambiguous human timecode. */
 export function formatCompositionTimecode(value: number) {
   if (!Number.isFinite(value) || value < 0) return "";

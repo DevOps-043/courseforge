@@ -9,6 +9,7 @@ import {
   readCompositionAnimationRuntime,
 } from "./composition-preview-compiler.service";
 import { validateHyperframesPreflight } from "../hyperframes/hyperframes-preflight.service";
+import { HYPERFRAMES_MEDIA_BINDING_VERSION } from "../hyperframes/hyperframes-render-media.service";
 import {
   buildHyperframesAssetVariableNames,
   buildHyperframesAssetVariableSchema,
@@ -88,6 +89,7 @@ export async function snapshotCompositionDocument(params: {
     .eq("composition_id", params.compositionId)
     .contains("manifest", {
       asset_delivery_mode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
+      media_binding_version: HYPERFRAMES_MEDIA_BINDING_VERSION,
       draft_document_hash: current.documentHash,
       render_profile: persistedRenderProfile,
     })
@@ -213,6 +215,7 @@ export async function snapshotCompositionDocument(params: {
     generation_mode: "AUTOMATIC",
     manifest: {
       asset_delivery_mode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
+      media_binding_version: HYPERFRAMES_MEDIA_BINDING_VERSION,
       asset_manifest: manifest,
       canvas_duration_seconds: current.document.canvas.durationSeconds,
       draft_document_hash: current.documentHash,

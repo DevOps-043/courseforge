@@ -34,7 +34,7 @@ export const compositionPreviewMetricContextSchema = z.object({
   operationCount: z.number().int().min(1).max(100).optional(),
   operationNames: z.array(z.string().regex(/^[a-z0-9.-]+$/).max(80)).max(12).optional(),
   outcome: z.enum(["CONFLICT", "ERROR", "SUCCESS"]).optional(),
-  reloadReason: z.enum(["DIRTY_PLAYBACK", "MANUAL", "MEDIA_RECOVERY", "SAVE_RECOVERY"]).optional(),
+  reloadReason: z.enum(["EDIT_SAVED", "DIRTY_PLAYBACK", "MANUAL", "MEDIA_RECOVERY", "SAVE_RECOVERY"]).optional(),
   runtimeOutcome: z.enum(["APPLIED", "DISPOSED", "INVALID_PATCH", "RUNTIME_ERROR", "SEND_REJECTED", "TARGET_NOT_FOUND", "TIMEOUT", "VERSION_MISMATCH"]).optional(),
   requestBytes: z.number().int().min(0).max(COMPOSITION_PREVIEW_TELEMETRY_CONFIG.maxRequestBytes).optional(),
   source: z.enum(["AGENT", "USER"]).optional(),

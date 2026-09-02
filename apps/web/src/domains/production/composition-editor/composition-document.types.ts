@@ -5,6 +5,7 @@ import {
   DEFAULT_COMPOSITION_RENDER_FPS,
 } from "./composition-document.types.constants";
 import { compositionMotionSchema } from "./composition-motion.types";
+import { compositionNarrativeSceneSchema } from "./composition-narrative.types";
 import { resolveCompositionAnimationWindow } from "./composition-motion-scheduling.service";
 import {
   COMPOSITION_LAYER_MAX,
@@ -119,6 +120,7 @@ export const compositionAudioMixSchema = z.object({
 });
 
 const deckSourceSchema = z.object({
+  slideKey: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   classes: z.string().trim().min(1).max(2_000).default("slide active"),
   html: z.string().min(1).max(100_000),
   slideIndex: z.number().int().min(0).max(1_000),
@@ -149,6 +151,7 @@ const assemblyBrandAssetSourceSchema = z.object({
 }).strict();
 
 export const compositionClipSchema = z.object({
+  sceneId: z.string().min(1).max(160).optional(),
   crop: compositionVisualCropSchema.optional(),
   durationSeconds: boundedSecondsSchema.positive(),
   hidden: z.boolean().default(false),
@@ -200,6 +203,8 @@ export const compositionClipSchema = z.object({
 });
 
 export const compositionEditorDocumentSchema = z.object({
+  excludedSources: z.array(z.string().min(1).max(200)).max(1000).optional(),
+  narrativeScenes: z.array(compositionNarrativeSceneSchema).max(250).optional(),
   audioMix: compositionAudioMixSchema,
   canvas: z.object({
     durationMode: z.enum(["AUTO", "USER_EDITED"]).optional(),

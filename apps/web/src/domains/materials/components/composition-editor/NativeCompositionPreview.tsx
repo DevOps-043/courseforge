@@ -6,6 +6,8 @@ import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronRight, Cla
 import { toast } from "sonner";
 import type { CompositionClip, CompositionEditorDocument, CompositionTrack, CompositionVisualCrop } from "@/domains/production/composition-editor/composition-document.types";
 import { formatCompositionTimecode, parseCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
+import { resolveCompositionAnimationWindow } from "@/domains/production/composition-editor/composition-motion-scheduling.service";
+import { CompositionNarrativePanel } from "./CompositionNarrativePanel";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
 import type { CompositionAgentProposalEnvelope } from "@/domains/production/composition-editor/composition-agent-proposal.types";
 import type { CompositionAgentRecoveryMetadata } from "@/domains/production/composition-editor/composition-agent-recovery.service";
@@ -87,7 +89,7 @@ import styles from "./CompositionStudio.module.css";
 type DocumentPayload = { document: CompositionEditorDocument; documentHash: string; version: number };
 type AssemblyBrandingAvailability = { hasIntro: boolean; hasOutro: boolean };
 type SavePatchOptions = { preservePreviewRuntime?: boolean };
-type PreviewReloadReason = "DIRTY_PLAYBACK" | "MANUAL" | "MEDIA_RECOVERY" | "SAVE_RECOVERY";
+type PreviewReloadReason = "EDIT_SAVED" | "DIRTY_PLAYBACK" | "MANUAL" | "MEDIA_RECOVERY" | "SAVE_RECOVERY";
 type PendingEditTelemetry = {
   operationCount: number;
   operationNames: string[];
@@ -295,7 +297,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   if (!saveQueueRef.current) {
     saveQueueRef.current = new CompositionSaveQueue(
       (saveCommand) => saveCommand(),
-      undefined,
+      (snapshot) => setSaving(snapshot.status === "RUNNING" || snapshot.pendingCount > 0),
       () => setSaveError("Hay demasiados cambios pendientes. Espera a que termine el guardado actual."),
     );
   }
@@ -305,6 +307,9 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
 
   const [selectedHfId, setSelectedHfId] = useState<string | null>(null);
   const [selectedAnimationId, setSelectedAnimationId] = useState<string | null>(null);
+  const [applyingPreassembly, setApplyingPreassembly] = useState(false);
+  const animationPlaybackEndRef = useRef<number | null>(null);
+  const previewReadyRef = useRef(false);
   const [manualInspectorOpen, setManualInspectorOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<"assistant" | "properties">("properties");
   const [directEditingEnabled, setDirectEditingEnabled] = useState(true);
@@ -507,6 +512,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         pendingSeekSecondsRef.current = null;
         playheadSecondsRef.current = message.seconds;
         setSeconds(message.seconds);
+        if (animationPlaybackEndRef.current !== null && message.seconds >= animationPlaybackEndRef.current) {
+          animationPlaybackEndRef.current = null;
+          postPreviewMessage({ type: "courseforge-composition-pause" });
+        }
         if (decision.completesRestore && autoPlayAfterPreviewRefreshRef.current) {
           autoPlayAfterPreviewRefreshRef.current = false;
           postPreviewMessage({ type: "courseforge-composition-play" });
@@ -524,6 +533,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         previewTelemetryRef.current?.record(message.metric);
       }
       if (message.type === "courseforge-composition-ready") {
+        previewReadyRef.current = true;
         const readyDocumentHash = previewDocumentHashRef.current;
         if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED && readyDocumentHash) {
           previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
@@ -652,6 +662,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       : savedPreviewUrl;
   useEffect(() => {
     pendingSeekSecondsRef.current = null;
+    previewReadyRef.current = false;
     setPlaying(false);
     setPreviewReady(false);
     setPreviewMediaState("PREPARING");
@@ -724,6 +735,21 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const selectAnimation = (animationId: string, clipHfId: string) => {
     selectClip(clipHfId);
     setSelectedAnimationId(animationId);
+    const document = payloadRef.current?.document;
+    const animation = document?.motion.animations.find((item) => item.id === animationId);
+    const clip = document?.clips.find((item) => item.hfId === clipHfId);
+    if (animation && clip) seek(clip.startSeconds + resolveCompositionAnimationWindow(animation, clip.durationSeconds).start);
+  };
+  const playSelectedAnimation = () => {
+    const document = payloadRef.current?.document;
+    const animation = document?.motion.animations.find((item) => item.id === selectedAnimationId);
+    const clip = document?.clips.find((item) => item.id === animation?.target.clipId);
+    if (!animation || !clip) return;
+    const window = resolveCompositionAnimationWindow(animation, clip.durationSeconds);
+    seek(clip.startSeconds + window.start);
+    animationPlaybackEndRef.current = clip.startSeconds + window.end;
+    if (previewDirty) refreshPreviewDocument(true, "DIRTY_PLAYBACK");
+    else postPreviewMessage({ type: "courseforge-composition-play" });
   };
   const clearSelection = () => {
     setSelectedHfId(null);
@@ -737,6 +763,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     setPendingPreviewMediaIds([]);
   };
   const pausePreviewForMutation = () => {
+    previewReadyRef.current = false;
     pendingPreviewRestoreSecondsRef.current = playheadSecondsRef.current;
     pendingSeekSecondsRef.current = null;
     postPreviewMessage({ type: "courseforge-composition-pause" });
@@ -794,9 +821,6 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     source: "AGENT" | "USER" = "USER",
     options: SavePatchOptions = {},
   ): Promise<boolean> {
-    if (!COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
-      return executeSavePatch(operations, summary, source, options, false);
-    }
     return saveQueueRef.current!.enqueue(() => executeSavePatch(operations, summary, source, options, true));
   }
 
@@ -831,14 +855,15 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, { type: "EDIT_ACCEPTED" });
       previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, { type: "SAVE_STARTED" });
     }
-    const visualPatch = updateStrategy === "LIVE_DOM"
+    const isMotionEdit = effectiveOperations.length > 0 && effectiveOperations.every((operation) => operation.type.startsWith("animation."));
+    const visualPatch = updateStrategy === "LIVE_DOM" || isMotionEdit
       ? buildCompositionPreviewVisualPatch({ document: optimisticDocument, operations: effectiveOperations })
       : null;
     const runtimeBaseHash = previewRuntimeBaseHashRef.current;
-    const canApplyIncrementally = COMPOSITION_PREVIEW_SYNC_V2_ENABLED
+    const canApplyIncrementally = (COMPOSITION_PREVIEW_SYNC_V2_ENABLED || isMotionEdit)
       && agentProposal === null
       && presetPreview === null
-      && previewReady
+      && previewReadyRef.current
       && visualPatch !== null
       && runtimeBaseHash !== null
       && previewDocumentHashRef.current === currentPayload.documentHash;
@@ -900,7 +925,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         setPayload(nextPayload);
         setPreviewDirty(nextPayload.documentHash !== previewDocumentHashRef.current);
         setLastAppliedPreset(null);
-        if (runtimePatchPromise) refreshPreviewDocument(false, "SAVE_RECOVERY");
+        refreshPreviewDocument(false, "SAVE_RECOVERY");
         setFailedSave({ operations: effectiveOperations, source, summary });
         setSaveError(body.error || "La composición cambió en otra sesión. El preview se actualizó con la última versión.");
         return false;
@@ -928,7 +953,8 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         });
         if (runtimeOutcome.applied) {
           previewDocumentHashRef.current = nextPayload.documentHash;
-          setPreviewDocumentHash(nextPayload.documentHash);
+          // The iframe URL describes its compiled base. Updating it here would
+          // reload the iframe after every successfully acknowledged live edit.
           setPreviewDirty(false);
           const pendingEditTelemetry = pendingEditTelemetryRef.current;
           if (pendingEditTelemetry) {
@@ -999,8 +1025,54 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         name: "save_roundtrip_ms",
       });
       saveInFlightRef.current = false;
-      setSaving(false);
+      setSaving(saveQueueRef.current!.snapshot().pendingCount > 0);
     }
+  }
+
+  async function applyNarrativePreassembly() {
+    return saveQueueRef.current!.enqueue(async () => {
+      const currentPayload = payloadRef.current;
+      if (!currentPayload) return false;
+      setApplyingPreassembly(true);
+      setSaveError(null);
+      try {
+        const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/document`, {
+          body: JSON.stringify({ action: "preassemble" }),
+          headers: {
+            "Content-Type": "application/json",
+            "If-Match": formatCompositionDocumentEtag(currentPayload.documentHash),
+            [COMPOSITION_VERSION_FALLBACK_HEADER]: currentPayload.documentHash,
+          },
+          method: "POST",
+        });
+        const body = await readCompositionApiResponse<{ data?: DocumentPayload; error?: string }>(response, "No se pudo aplicar el preensamble.");
+        if (!response.ok || !body.data) throw new Error(body.error || "No se pudo aplicar el preensamble.");
+        const nextPayload = body.data;
+        nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
+        payloadRef.current = nextPayload;
+        setPayload(nextPayload);
+        refreshPreviewDocument(false, "EDIT_SAVED");
+        toast.success("Preensamble aplicado con las duraciones reales de las escenas.");
+        return true;
+      } catch (caught) {
+        setSaveError(caught instanceof Error ? caught.message : "No se pudo aplicar el preensamble.");
+        return false;
+      } finally {
+        setApplyingPreassembly(false);
+      }
+    });
+  }
+
+  function openSceneBuilder() {
+    const current = new URL(window.location.href);
+    const adminIndex = current.pathname.indexOf("/admin");
+    const tenantPrefix = adminIndex > 0 ? current.pathname.slice(0, adminIndex) : "";
+    const query = new URLSearchParams({
+      componentId,
+      returnTo: `${current.pathname}${current.search}${current.hash}`,
+      source: "course",
+    });
+    window.location.assign(`${tenantPrefix}/admin/heygen?${query.toString()}`);
   }
 
   async function addAssetToTimeline(asset: CompositionStudioAsset) {
@@ -2293,6 +2365,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
               ))}
             </nav>
           )}
+          <CompositionNarrativePanel document={payload.document} scenes={compositionScenes} currentTime={seconds} onSeek={(time) => { beginScrub(); seek(time); }} onSelect={selectClip} applying={applyingPreassembly} onApply={() => void applyNarrativePreassembly()} onOpenSceneBuilder={openSceneBuilder} />
           <div className={`${styles.previewViewport} courseforge-composition-preview-viewport`}>
             <div className={styles.previewFrame}>
               <iframe ref={frameRef} title="Preview completo de composición" src={previewUrl} sandbox="allow-scripts" allow="autoplay" className="absolute inset-0 h-full w-full" />
@@ -2302,10 +2375,11 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           </div>
           {playbackError && <div role="alert" className="flex items-center justify-between gap-3 border-t border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-300/30 dark:bg-amber-400/10 dark:text-amber-100"><span>{playbackError}</span><button type="button" onClick={refreshPreviewMedia} className="shrink-0 rounded border border-amber-400/50 px-2 py-1 font-semibold hover:bg-amber-100 dark:border-amber-200/50 dark:hover:bg-amber-200/10">Recargar medios</button></div>}
           <div className={styles.transport}>
+            {selectedAnimationId && <button type="button" disabled={saving || !previewReady} onClick={playSelectedAnimation} className={styles.toolButton}>Ver animación</button>}
             <button type="button" disabled={saving || !previewReady || previewMediaState === "PREPARING"} onClick={togglePreviewPlayback} title={previewDirty ? "Actualizar el preview y reproducir" : transportActive ? "Pausar" : "Reproducir"} className={styles.transportPrimary}>{transportActive ? <Pause size={14} /> : <Play size={14} />}</button>
             <button type="button" disabled={saving || !previewReady || Boolean(agentProposal) || Boolean(presetPreview)} onClick={() => refreshPreviewDocument(false)} title="Actualizar el preview con los cambios guardados" aria-label="Actualizar preview" className={`${styles.transportSecondary} ${previewDirty ? styles.transportSecondaryDirty : ""}`}><RefreshCw size={13} /></button>
-            <input aria-label="Posición del preview" disabled={saving || !previewReady} type="range" min="0" max={duration} step="0.05" value={Math.min(seconds, duration)} onPointerDown={beginScrub} onChange={(event) => seek(Number(event.target.value))} className={styles.transportProgress} style={{ "--transport-progress": `${duration > 0 ? Math.min(100, (seconds / duration) * 100) : 0}%` } as CSSProperties} />
-            <span className={styles.transportTime}>{formatSeconds(seconds)} / {formatSeconds(duration)}</span>
+            <input aria-label="Posición del preview" disabled={saving || !previewReady} type="range" min="0" max={duration} step={1 / payload.document.canvas.fps} value={Math.min(seconds, duration)} onPointerDown={beginScrub} onChange={(event) => seek(Number(event.target.value))} className={styles.transportProgress} style={{ "--transport-progress": `${duration > 0 ? Math.min(100, (seconds / duration) * 100) : 0}%` } as CSSProperties} />
+            <span className={styles.transportTime}>{formatCompositionTimecode(seconds)} / {formatCompositionTimecode(duration)}</span>
           </div>
         </section>
 
@@ -2364,7 +2438,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
 
         {inspectorOpen && <aside className={styles.inspector}>
           <div className={styles.inspectorHeader}><div className={styles.inspectorTabs}><button type="button" onClick={() => setInspectorTab("properties")} className={`${styles.inspectorTab} ${inspectorTab === "properties" ? styles.inspectorTabActive : ""}`}>Propiedades</button><button type="button" onClick={() => setInspectorTab("assistant")} className={`${styles.inspectorTab} ${inspectorTab === "assistant" ? styles.inspectorTabActive : ""}`}>SofLIA</button></div><button type="button" onClick={clearSelection} className={styles.inspectorClose} title="Cerrar inspector" aria-label="Cerrar inspector"><X size={15} /></button></div>
-          <div className={styles.inspectorBody}>{inspectorTab === "properties" ? <CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} separatingAudio={separatingAudio} separatingAudioProgress={separatingAudioProgress} selectedAnimationId={selectedAnimationId} onAnimationSelect={setSelectedAnimationId} onDetachAudio={separateSelectedVideoAudio} onPatch={savePatch} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} /> : <AgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={requestAgentProposal} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}</div>
+          <div className={styles.inspectorBody}>{inspectorTab === "properties" ? <CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} separatingAudio={separatingAudio} separatingAudioProgress={separatingAudioProgress} selectedAnimationId={selectedAnimationId} onAnimationSelect={(id) => { if (id && selectedClip) selectAnimation(id, selectedClip.hfId); else setSelectedAnimationId(null); }} onDetachAudio={separateSelectedVideoAudio} onPatch={savePatch} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} /> : <AgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={requestAgentProposal} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}</div>
         </aside>}
       </div>
     </section>
