@@ -13,6 +13,7 @@ import {
 } from "../types/production.types";
 import { HyperframesCloudClient } from "./hyperframes-cloud.client";
 import { resolveHyperframesAssetVariables } from "./hyperframes-asset-delivery.service";
+import { HYPERFRAMES_MEDIA_BINDING_VERSION, materializeHyperframesRenderMedia } from "./hyperframes-render-media.service";
 import { validateHyperframesPreflight } from "./hyperframes-preflight.service";
 import {
   HYPERFRAMES_ASSET_DELIVERY_MODES,
@@ -172,6 +173,7 @@ export class HyperframesRenderSubmissionService {
       resolution: effectiveInput.resolution || "1080p",
       revision_id: revision.id,
       asset_delivery_mode: revisionContract.deliveryMode,
+      media_binding_version: HYPERFRAMES_MEDIA_BINDING_VERSION,
       variables: revision.variables_values || {},
     };
     const baseIdempotencyKey = buildProductionIdempotencyKey({
@@ -381,11 +383,17 @@ export class HyperframesRenderSubmissionService {
     }
 
     try {
+      const remoteAssetVariables = deliveryMode === HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES
+        ? await resolveHyperframesAssetVariables({ assets: manifest, supabase: this.supabase })
+        : {};
       let providerAssetId = request.provider_asset_id;
       await this.assertNotCancelled(request.id);
       if (!providerAssetId) {
         await this.markUploading(jobId, request.id);
-        const archiveBytes = await this.downloadAndVerifyArchive(revision, manifest, deliveryMode);
+        const snapshotBytes = await this.downloadAndVerifyArchive(revision, manifest, deliveryMode);
+        const archiveBytes = deliveryMode === HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES
+          ? await materializeHyperframesRenderMedia({ archive: snapshotBytes, entryPoint: revision.entry_point, assetVariables: remoteAssetVariables })
+          : snapshotBytes;
         await this.assertNotCancelled(request.id);
         const upload = await client.uploadProjectArchive({
           bytes: archiveBytes,
@@ -399,9 +407,6 @@ export class HyperframesRenderSubmissionService {
           requestId: request.id,
         });
       }
-      const remoteAssetVariables = deliveryMode === HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES
-        ? await resolveHyperframesAssetVariables({ assets: manifest, supabase: this.supabase })
-        : {};
       await this.assertNotCancelled(request.id);
       const render = await client.createRender({
         aspectRatio: input.aspectRatio,

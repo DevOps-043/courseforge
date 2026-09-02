@@ -194,7 +194,7 @@ function renderClip(
 }
 
 function renderMediaSourceAttribute(sourceUrl: string | undefined, variableName: string | undefined) {
-  if (variableName) return `data-hf-src="${escapeAttribute(variableName)}"`;
+  if (variableName) return `data-var-src="${escapeAttribute(variableName)}"`;
   if (sourceUrl) return `src="${escapeAttribute(sourceUrl)}"`;
   throw new CompositionPreviewCompilerError("No se pudo resolver la fuente de un medio.");
 }

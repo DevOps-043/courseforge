@@ -49,7 +49,7 @@ test("compiles HyperFrames media as provider variables instead of ZIP paths", as
     target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
   });
 
-  assert.match(html, new RegExp(`data-hf-src="${variableName}"`));
+  assert.match(html, new RegExp(`data-var-src="${variableName}"`));
   assert.match(
     html,
     new RegExp(`<html lang="es" data-composition-variables='\\[{&quot;default&quot;:&quot;&quot;,&quot;id&quot;:&quot;${variableName}&quot;,&quot;label&quot;:&quot;SofLIA - Engine remote asset&quot;,&quot;type&quot;:&quot;string&quot;}\\]'`),
@@ -759,6 +759,6 @@ test("compiles assembly branding with the same remote variable contract", async 
     document,
     target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
   });
-  assert.match(html, /data-hf-src="cf_asset_branding"/);
+  assert.match(html, /data-var-src="cf_asset_branding"/);
   assert.doesNotMatch(html, /src="https:\/\//);
 });
