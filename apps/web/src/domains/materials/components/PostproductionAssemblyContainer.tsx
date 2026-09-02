@@ -78,17 +78,23 @@ export function PostproductionAssemblyContainer({
     }
     setIsLoading(true);
     try {
-      const lessonTitles = new Map(
-        materials.lessons.map((lesson) => [lesson.id, lesson.lesson_title]),
+      const lessonMetadata = new Map(
+        materials.lessons.map((lesson, index) => [lesson.id, {
+          order: index,
+          title: lesson.lesson_title,
+        }]),
       );
       const artifactComponents = await getArtifactComponents();
       const allComponents = artifactComponents
         .filter((component) => component.type.includes("VIDEO"))
+        .sort((left, right) =>
+          (lessonMetadata.get(left.material_lesson_id)?.order ?? Number.MAX_SAFE_INTEGER)
+          - (lessonMetadata.get(right.material_lesson_id)?.order ?? Number.MAX_SAFE_INTEGER))
         .map((component) => ({
           assets: component.assets,
           content: component.content,
           id: component.id,
-          lessonTitle: lessonTitles.get(component.material_lesson_id) || "Lección",
+          lessonTitle: lessonMetadata.get(component.material_lesson_id)?.title || "Lección",
           type: component.type,
         } satisfies VideoComponent));
       const scoped = initialComponentId
