@@ -1975,9 +1975,13 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         setRenderStatus("failed");
         setRenderProviderStatus(importFailed ? latestRender.importStatus : latestRender.providerStatus);
         setAssemblyError(
-          completedVideo
-            ? "El render de esta revisión falló en HeyGen. El último video completado sigue disponible para publicación; puedes reintentar esta revisión sin perderlo."
-            : "El render de esta revisión falló en HeyGen. Puedes volver a intentarlo.",
+          importFailed && !providerFailed
+            ? completedVideo
+              ? "HeyGen terminó este render, pero Courseforge no pudo importar el video final. El último video completado sigue disponible; revisa el diagnóstico antes de reintentar."
+              : "HeyGen terminó este render, pero Courseforge no pudo importar el video final. Revisa el diagnóstico antes de reintentar."
+            : completedVideo
+              ? "HeyGen reportó que este render falló. El último video completado sigue disponible para publicación; puedes reintentar esta revisión sin perderlo."
+              : "HeyGen reportó que este render falló. Puedes volver a intentarlo.",
         );
         return;
       }
@@ -2241,7 +2245,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       providerStatus={renderProviderStatus}
       renderStatus={renderStatus}
       importStatus={renderImportStatus}
-      diagnostics={<RenderDiagnosticsPanel requestId={diagnosticRequestId} pendingStartedAt={renderStatus === "sending" ? renderStartedAt : null} onCancelled={() => { cancelledRenderRef.current = diagnosticRequestId; setRenderStatus("cancelled"); setRenderRequestId(null); setAssemblyError(null); }} />}
+      diagnostics={<RenderDiagnosticsPanel requestId={diagnosticRequestId} pendingStartedAt={renderStatus === "sending" ? renderStartedAt : null} knownStatus={renderStatus} onCancelled={() => { cancelledRenderRef.current = diagnosticRequestId; setRenderStatus("cancelled"); setRenderRequestId(null); setAssemblyError(null); }} />}
       selectedRenderProfileId={selectedRenderProfileId}
       onApprove={approveAssembly}
       onDeleteAndRender={deletePriorVideoAndRender}
