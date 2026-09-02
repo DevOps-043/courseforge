@@ -1,12 +1,7 @@
+import { resolveAuthorizedRenderContext } from "../../_render-route-support";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getErrorDetails, getErrorMessage } from "@/lib/errors";
-import {
-  canReviewContent,
-  getAuthenticatedUser,
-  getServiceRoleClient,
-} from "@/lib/server/artifact-action-auth";
-import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import {
   HyperframesCloudApiError,
 } from "@/domains/production/hyperframes/hyperframes-cloud.client";
@@ -19,7 +14,6 @@ import {
   HyperframesRenderPollingService,
 } from "@/domains/production/hyperframes/hyperframes-render-polling.service";
 import { HyperframesRenderRecoveryService } from "@/domains/production/hyperframes/hyperframes-render-recovery.service";
-import { createClient } from "@/utils/supabase/server";
 
 interface RouteContext {
   params: Promise<{ requestId: string }>;
@@ -125,42 +119,4 @@ export async function POST(_request: Request, context: RouteContext) {
       { status: 500 },
     );
   }
-}
-
-async function resolveAuthorizedRenderContext() {
-  const supabase = await createClient();
-  const authenticatedUser = await getAuthenticatedUser(supabase);
-  if (!authenticatedUser) {
-    return {
-      admin: null as never,
-      organizationId: null as never,
-      response: NextResponse.json({ error: "No autorizado." }, { status: 401 }),
-    };
-  }
-  if (!(await canReviewContent(authenticatedUser.userId))) {
-    return {
-      admin: null as never,
-      organizationId: null as never,
-      response: NextResponse.json(
-        { error: "No tienes permisos para consultar renders de HyperFrames." },
-        { status: 403 },
-      ),
-    };
-  }
-  const tenant = await resolveActiveTenantContext();
-  if (!tenant) {
-    return {
-      admin: null as never,
-      organizationId: null as never,
-      response: NextResponse.json(
-        { error: "Empresa no válida o no autorizada." },
-        { status: 403 },
-      ),
-    };
-  }
-  return {
-    admin: getServiceRoleClient(),
-    organizationId: tenant.organizationId,
-    response: null,
-  };
 }

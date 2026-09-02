@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { sanitizeRenderDiagnostic } from "./hyperframes-render-diagnostics";
 import {
   PRODUCTION_JOB_STATUSES,
   PRODUCTION_JOB_TYPES,
@@ -15,6 +16,8 @@ interface RecoverableProductionJob {
 }
 
 interface RecoverableRenderRequestRow {
+  cancelled_at?: string | null;
+  provider_error?: { message?: string } | null;
   composition_revision_id: string;
   id: string;
   import_status: string;
@@ -23,6 +26,8 @@ interface RecoverableRenderRequestRow {
 }
 
 export interface RecoverableHyperframesRender {
+  cancelledAt?: string | null;
+  providerError?: string | null;
   compositionRevisionId: string;
   id: string;
   providerRenderId: string | null;
@@ -54,7 +59,7 @@ export class HyperframesRenderRecoveryService {
     const { data, error } = await this.supabase
       .from("hyperframes_render_requests")
       .select(
-        "id, composition_revision_id, import_status, provider_render_id, provider_status",
+        "id, composition_revision_id, import_status, provider_render_id, provider_status, cancelled_at, provider_error",
       )
       .eq("id", params.requestId)
       .eq("organization_id", params.organizationId)
@@ -98,7 +103,7 @@ export class HyperframesRenderRecoveryService {
       const { data: request, error: requestError } = await this.supabase
         .from("hyperframes_render_requests")
         .select(
-          "id, composition_revision_id, import_status, provider_render_id, provider_status",
+          "id, composition_revision_id, import_status, provider_render_id, provider_status, cancelled_at, provider_error",
         )
         .eq("organization_id", params.organizationId)
         .eq("production_job_id", latestJob.id)
@@ -136,6 +141,8 @@ function toRecoverableRender(
 ): RecoverableHyperframesRender | null {
   if (!row) return null;
   return {
+    ...(row.cancelled_at !== undefined ? { cancelledAt: row.cancelled_at } : {}),
+    ...(row.provider_error !== undefined ? { providerError: sanitizeRenderDiagnostic(row.provider_error?.message) || null } : {}),
     compositionRevisionId: row.composition_revision_id,
     id: row.id,
     providerRenderId: row.provider_render_id,

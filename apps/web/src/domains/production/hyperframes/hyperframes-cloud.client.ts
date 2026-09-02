@@ -82,6 +82,7 @@ export class HyperframesCloudClient {
       body: params.bytes as unknown as BodyInit,
       headers: normalizeHeaders(upload.upload_headers),
       method: "PUT",
+      signal: AbortSignal.timeout(120_000),
     });
     if (!putResponse.ok) {
       throw new HyperframesCloudApiError(
@@ -168,6 +169,7 @@ export class HyperframesCloudClient {
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       headers,
       method,
+      signal: AbortSignal.timeout(30_000),
     });
     if (!response.ok) throw await toApiError(response);
 

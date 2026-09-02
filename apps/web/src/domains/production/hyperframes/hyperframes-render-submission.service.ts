@@ -309,7 +309,7 @@ export class HyperframesRenderSubmissionService {
       idempotency_key: string;
       production_job_id: string;
     };
-    if (request.provider_render_id) return;
+    if (request.provider_render_id || request.provider_status === "FAILED") return;
 
     const { data: storedJob, error: jobError } = await this.supabase
       .from("production_jobs")
@@ -382,9 +382,11 @@ export class HyperframesRenderSubmissionService {
 
     try {
       let providerAssetId = request.provider_asset_id;
+      await this.assertNotCancelled(request.id);
       if (!providerAssetId) {
         await this.markUploading(jobId, request.id);
         const archiveBytes = await this.downloadAndVerifyArchive(revision, manifest, deliveryMode);
+        await this.assertNotCancelled(request.id);
         const upload = await client.uploadProjectArchive({
           bytes: archiveBytes,
           fileName: `${revision.id}.zip`,
@@ -400,6 +402,7 @@ export class HyperframesRenderSubmissionService {
       const remoteAssetVariables = deliveryMode === HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES
         ? await resolveHyperframesAssetVariables({ assets: manifest, supabase: this.supabase })
         : {};
+      await this.assertNotCancelled(request.id);
       const render = await client.createRender({
         aspectRatio: input.aspectRatio,
         assetId: providerAssetId,
@@ -468,6 +471,13 @@ export class HyperframesRenderSubmissionService {
     return { jobId: job.id as string, request: request as ExistingRequest | null };
   }
 
+  private async assertNotCancelled(requestId: string) {
+    const { data, error } = await this.supabase.from("hyperframes_render_requests")
+      .select("cancelled_at").eq("id", requestId).single();
+    if (error) throw error;
+    if (data.cancelled_at) throw new HyperframesRenderSubmissionError("El proceso fue cancelado.");
+  }
+
   private async hasFailedAttempt(params: {
     idempotencyKey: string;
     organizationId: string;
@@ -479,7 +489,7 @@ export class HyperframesRenderSubmissionService {
       .eq("idempotency_key", params.idempotencyKey)
       .eq("job_type", PRODUCTION_JOB_TYPES.HYPERFRAMES_RENDER)
       .eq("provider", PRODUCTION_PROVIDERS.HYPERFRAMES)
-      .eq("status", PRODUCTION_JOB_STATUSES.FAILED)
+      .in("status", [PRODUCTION_JOB_STATUSES.FAILED, PRODUCTION_JOB_STATUSES.CANCELLED])
       .maybeSingle();
     if (error) throw error;
     return Boolean(data?.id);

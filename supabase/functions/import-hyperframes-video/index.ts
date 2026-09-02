@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { getOrganizationHyperframesApiKey } from "../_shared/credentials.ts";
-import { getHyperframesRender } from "../_shared/heygen.ts";
+import { getHyperframesRender, HeygenHttpError } from "../_shared/heygen.ts";
+import { importRetryDelaySeconds, isPermanentProviderFailure } from "../_shared/hyperframes-retry-policy.ts";
 import { authorizeWorker, jsonResponse, logEvent, methodNotAllowed } from "../_shared/http.ts";
 import { rpc } from "../_shared/supabase.ts";
 import {
@@ -11,6 +12,7 @@ import {
   readTusOffset,
   TUS_CHUNK_BYTES,
   TusUploadExpiredError,
+  StorageHttpError,
 } from "../_shared/tus.ts";
 
 const CHUNKS_PER_INVOCATION = 4;
@@ -68,8 +70,10 @@ Deno.serve(async (request) => {
 });
 
 async function processImport(claim: ImportClaim): Promise<void> {
+  let stage = "credentials";
   try {
     const apiKey = await getOrganizationHyperframesApiKey(claim.organization_id);
+    stage = "provider_status";
     const detail = await getHyperframesRender(apiKey, claim.provider_render_id);
     if (detail.status !== "completed" || !detail.video_url) {
       throw new RetryableImportError("HeyGen render is not ready for import.");
@@ -79,6 +83,7 @@ async function processImport(claim: ImportClaim): Promise<void> {
     }
     assertSafeVideoUrl(detail.video_url);
 
+    stage = "source_probe";
     const source = await probeSource(detail.video_url, detail.format);
     if (source.size > MAX_FINAL_VIDEO_BYTES) throw new TerminalImportError("Final video exceeds the 2 GiB storage limit.");
     if (claim.source_size_bytes && claim.source_size_bytes !== source.size) {
@@ -97,6 +102,7 @@ async function processImport(claim: ImportClaim): Promise<void> {
       objectPath,
       size: source.size,
     });
+    stage = "storage_upload";
     let uploadUrl = claim.tus_upload_url || await createUpload();
     let offset: number;
     try {
@@ -108,23 +114,27 @@ async function processImport(claim: ImportClaim): Promise<void> {
     }
     if (offset > source.size) throw new TerminalImportError("Storage offset exceeds the source size.");
 
+    // Persist the upload location before transferring bytes. A timeout must not
+    // lose the resumable upload, and each checkpoint also checks cancellation.
+    const checkpoint = () => rpc<void>("save_hyperframes_import_progress", {
+      p_import_id: claim.import_id, p_lease_token: claim.lease_token,
+      p_source_content_type: source.contentType, p_source_size_bytes: source.size,
+      p_storage_path: objectPath, p_tus_upload_url: uploadUrl, p_uploaded_bytes: offset,
+    });
+    stage = "checkpoint";
+    await checkpoint();
     for (let chunkIndex = 0; chunkIndex < CHUNKS_PER_INVOCATION && offset < source.size; chunkIndex += 1) {
+      stage = "source_download";
       const end = Math.min(offset + TUS_CHUNK_BYTES, source.size) - 1;
       const bytes = await downloadRange(detail.video_url, offset, end, source.size);
+      stage = "storage_chunk";
       offset = await appendTusChunk(uploadUrl, offset, bytes);
+      stage = "checkpoint";
+      await checkpoint();
     }
 
-    await rpc<void>("save_hyperframes_import_progress", {
-      p_import_id: claim.import_id,
-      p_lease_token: claim.lease_token,
-      p_source_content_type: source.contentType,
-      p_source_size_bytes: source.size,
-      p_storage_path: objectPath,
-      p_tus_upload_url: uploadUrl,
-      p_uploaded_bytes: offset,
-    });
-
     if (offset === source.size) {
+      stage = "finalizing";
       await rpc<string>("complete_hyperframes_render_import", {
         p_duration_seconds: detail.duration || null,
         p_import_id: claim.import_id,
@@ -145,13 +155,15 @@ async function processImport(claim: ImportClaim): Promise<void> {
       p_retry_after_seconds: 15,
     });
   } catch (error) {
-    const terminal = error instanceof TerminalImportError || claim.failure_count >= 8;
+    const terminal = error instanceof TerminalImportError || claim.failure_count >= 8
+      || (error instanceof HeygenHttpError && isPermanentProviderFailure(error.status))
+      || (error instanceof StorageHttpError && isPermanentProviderFailure(error.status));
     try {
       await rpc<void>("reschedule_hyperframes_render_import", {
-        p_error_message: safeMessage(error),
+        p_error_message: `[${stage}] ${safeMessage(error)}`,
         p_import_id: claim.import_id,
         p_lease_token: claim.lease_token,
-        p_retry_after_seconds: Math.min(30 * 2 ** Math.min(claim.attempt_count, 5), 1800),
+        p_retry_after_seconds: importRetryDelaySeconds(claim.failure_count),
         p_terminal: terminal,
       });
     } catch (rescheduleError) {

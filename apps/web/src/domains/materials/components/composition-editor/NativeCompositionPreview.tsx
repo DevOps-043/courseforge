@@ -23,6 +23,8 @@ import {
   resolveCompositionClipDefaultVolume,
 } from "@/domains/production/composition-editor/composition-clip-audio.service";
 import { CompositionTimeline } from "./CompositionTimeline";
+import { RenderDiagnosticsPanel } from "./RenderDiagnosticsPanel";
+import { renderStageLabel } from "@/domains/production/hyperframes/hyperframes-render-diagnostics";
 import { AudioMixControls } from "./AudioMixControls";
 import { VolumeSlider } from "./VolumeSlider";
 import { LayerDepthControls } from "./LayerDepthControls";
@@ -109,6 +111,8 @@ type ActiveAssembly = {
   status: "READY_FOR_PREVIEW" | "READY_FOR_RENDER";
 };
 type RenderAttemptSummary = {
+  cancelledAt?: string | null;
+  providerError?: string | null;
   compositionRevisionId: string;
   id: string;
   importStatus: string;
@@ -271,8 +275,12 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const [assemblyError, setAssemblyError] = useState<string | null>(null);
   const [assemblyNotice, setAssemblyNotice] = useState<string | null>(null);
   const [assembling, setAssembling] = useState(false);
-  const [renderStatus, setRenderStatus] = useState<"idle" | "validating" | "sending" | "rendering" | "completed" | "failed">("idle");
+  const [renderStatus, setRenderStatus] = useState<"idle" | "validating" | "sending" | "rendering" | "completed" | "failed" | "cancelled">("idle");
   const [renderRequestId, setRenderRequestId] = useState<string | null>(null);
+  const [diagnosticRequestId, setDiagnosticRequestId] = useState<string | null>(null);
+  const [renderStartedAt, setRenderStartedAt] = useState<string | null>(null);
+  const [renderImportStatus, setRenderImportStatus] = useState("NONE");
+  const cancelledRenderRef = useRef<string | null>(null);
   const [renderProviderStatus, setRenderProviderStatus] = useState<string | null>(null);
   const [renderRecovery, setRenderRecovery] = useState<CompositionRenderRecoveryState | null>(null);
   const [selectedRenderProfileId, setSelectedRenderProfileId] = useState<HyperframesRenderProfileId>(
@@ -452,6 +460,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     setAssemblyNotice(null);
     setRenderStatus("idle");
     setRenderRequestId(null);
+    setDiagnosticRequestId(null);
+    setRenderStartedAt(null);
+    setRenderImportStatus("NONE");
+    cancelledRenderRef.current = null;
     setRenderProviderStatus(null);
     setRenderRecovery(null);
     void loadSnapshotHistory(controller.signal).catch((caught) => {
@@ -1792,9 +1804,14 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       const response = await fetch(`/api/production/hyperframes/renders/${requestId}/poll`, { method: "POST" });
       const body = await readCompositionApiResponse<{ data: { action: string; providerStatus: string }; error?: string }>(response, "No se pudo consultar el render.");
       if (!response.ok) throw new Error(body.error || "No se pudo consultar el render.");
+      if (cancelledRenderRef.current === requestId) return;
 
       setRenderProviderStatus(body.data.providerStatus as string);
-      if (body.data.action === "FAIL") {
+      if (body.data.action === "CANCELLED") {
+        setRenderStatus("cancelled"); setRenderRequestId(null); setAssemblyError(null);
+      } else if (body.data.action === "COMPLETED") {
+        setRenderStatus("completed"); setRenderRequestId(null); setAssemblyError(null);
+      } else if (body.data.action === "FAIL") {
         setRenderStatus("failed");
         setRenderRequestId(null);
         setAssemblyError("El envío o HeyGen reportaron que el render falló. Puedes volver a intentarlo.");
@@ -1822,15 +1839,13 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     }>(response, "No se pudo recuperar el render pendiente.");
     if (!response.ok) throw new Error(body.error || "No se pudo recuperar el render pendiente.");
     setRenderRecovery(body.data || null);
+    setDiagnosticRequestId(body.data?.activeRender?.id || body.data?.latestRender?.id || null);
     if (!body.data?.activeRender?.id) return false;
 
     const requestId = body.data.activeRender.id;
+    setRenderImportStatus(body.data.activeRender.importStatus || "NONE");
     setRenderRequestId(requestId);
-    setRenderProviderStatus(
-      body.data.activeRender.importStatus && body.data.activeRender.importStatus !== "NONE"
-        ? body.data.activeRender.importStatus
-        : body.data.activeRender.providerStatus,
-    );
+    setRenderProviderStatus(body.data.activeRender.providerStatus);
     setRenderStatus("rendering");
     setAssemblyError(null);
     void pollAssemblyRender(requestId);
@@ -1846,6 +1861,9 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     const completedVideoMatchesActiveRevision = completedVideo?.compositionRevisionId === assembly.revisionId;
 
     if (latestMatchesActiveRevision && latestRender) {
+      if (latestRender.cancelledAt) {
+        setRenderStatus("cancelled"); setAssemblyError(null); return;
+      }
       const providerFailed = latestRender.providerStatus.toUpperCase() === "FAILED";
       const importFailed = latestRender.importStatus.toUpperCase() === "FAILED";
       if (providerFailed || importFailed) {
@@ -1905,13 +1923,18 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     const applyDurableRenderState = (row: {
       import_status?: string;
       provider_status?: string;
+      cancelled_at?: string | null;
+      provider_error?: { message?: string } | null;
     }) => {
-      if (!active) return;
+      if (!active || cancelledRenderRef.current === renderRequestId) return;
       const providerStatus = row.provider_status || "PENDING";
       const importStatus = row.import_status || "NONE";
-      setRenderProviderStatus(importStatus !== "NONE" ? importStatus : providerStatus);
+      setRenderProviderStatus(providerStatus);
+      setRenderImportStatus(importStatus);
 
-      if (importStatus === "COMPLETED") {
+      if (row.cancelled_at) {
+        setRenderStatus("cancelled"); setRenderRequestId(null); setAssemblyError(null);
+      } else if (importStatus === "COMPLETED") {
         setRenderStatus("completed");
         setRenderRequestId(null);
         setAssemblyError(null);
@@ -1932,22 +1955,32 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         setAssemblyError(null);
       }
     };
+    let refreshInFlight = false;
     const refreshDurableRenderState = async () => {
-      const response = await fetch(
-        `/api/production/hyperframes/renders/${encodeURIComponent(renderRequestId)}/poll`,
-        { cache: "no-store" },
-      );
-      const body = await readCompositionApiResponse<{
-        data?: { importStatus: string; providerStatus: string };
-        error?: string;
-      }>(response, "No se pudo actualizar el estado del render.");
-      if (!response.ok || !body.data) {
-        throw new Error(body.error || "No se pudo actualizar el estado del render.");
-      }
-      applyDurableRenderState({
-        import_status: body.data.importStatus,
-        provider_status: body.data.providerStatus,
-      });
+      if (refreshInFlight || !active) return;
+      refreshInFlight = true;
+      try {
+        const response = await fetch(
+          `/api/production/hyperframes/renders/${encodeURIComponent(renderRequestId)}/poll`,
+          { cache: "no-store", signal: AbortSignal.timeout(12_000) },
+        );
+        const body = await readCompositionApiResponse<{
+          data?: RenderAttemptSummary;
+          error?: string;
+        }>(response, "No se pudo actualizar el estado del render.");
+        if (!response.ok || !body.data) {
+          throw new Error(body.error || "No se pudo actualizar el estado del render.");
+        }
+        applyDurableRenderState({
+          import_status: body.data.importStatus,
+          provider_status: body.data.providerStatus,
+          cancelled_at: body.data.cancelledAt,
+          provider_error: body.data.providerError ? { message: body.data.providerError } : null,
+        });
+      } finally { refreshInFlight = false; }
+    };
+    const reportRefreshError = (error: unknown) => {
+      if (active) setAssemblyError(`No se pudo actualizar el estado: ${error instanceof Error ? error.message : "error de conexión"}. Se volverá a intentar.`);
     };
     const channel = supabase
       .channel(`hyperframes-render:${renderRequestId}`)
@@ -1968,12 +2001,12 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       )
       .subscribe((status: string) => {
         if (status !== "SUBSCRIBED") return;
-        void refreshDurableRenderState().catch(() => undefined);
+        void refreshDurableRenderState().catch(reportRefreshError);
       });
     const refreshTimer = window.setInterval(() => {
-      void refreshDurableRenderState().catch(() => undefined);
+      void refreshDurableRenderState().catch(reportRefreshError);
     }, 15_000);
-    void refreshDurableRenderState().catch(() => undefined);
+    void refreshDurableRenderState().catch(reportRefreshError);
     return () => {
       active = false;
       window.clearInterval(refreshTimer);
@@ -1989,8 +2022,9 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       return;
     }
     setAssembling(true); setAssemblyError(null); setAssemblyNotice(null); setRenderStatus("sending");
+    setRenderStartedAt(new Date().toISOString()); setDiagnosticRequestId(null); setRenderImportStatus("NONE");
     try {
-      const attemptId = options.forceNewAttempt || renderStatus === "failed"
+      const attemptId = options.forceNewAttempt || renderStatus === "failed" || renderStatus === "cancelled"
         ? crypto.randomUUID()
         : undefined;
       const response = await fetch("/api/production/hyperframes/renders", {
@@ -2006,6 +2040,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       const body = await readCompositionApiResponse<{ data: { providerStatus: string; renderRequestId: string }; error?: string }>(response, "No se pudo enviar el render.");
       if (!response.ok) throw new Error(body.error || "No se pudo enviar el render.");
       const requestId = body.data.renderRequestId as string;
+      setDiagnosticRequestId(requestId);
       setRenderRequestId(requestId);
       setRenderProviderStatus(body.data.providerStatus as string);
       setRenderStatus("rendering");
@@ -2100,6 +2135,8 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       priorCompletedVideo={Boolean(renderRecovery?.completedVideo && renderRecovery.completedVideo.compositionRevisionId !== assembly?.revisionId)}
       providerStatus={renderProviderStatus}
       renderStatus={renderStatus}
+      importStatus={renderImportStatus}
+      diagnostics={<RenderDiagnosticsPanel requestId={diagnosticRequestId} pendingStartedAt={renderStatus === "sending" ? renderStartedAt : null} onCancelled={() => { cancelledRenderRef.current = diagnosticRequestId; setRenderStatus("cancelled"); setRenderRequestId(null); setAssemblyError(null); }} />}
       selectedRenderProfileId={selectedRenderProfileId}
       onApprove={approveAssembly}
       onDeleteAndRender={deletePriorVideoAndRender}
@@ -2426,7 +2463,9 @@ function AgentConversation({ lastAppliedProposal, onApprove, onDismiss, onPropos
   </section>;
 }
 
-function AssemblyActions({ assembly, busy, compact = false, durationSeconds, error, notice, history, historyOpen, onApprove, onDeleteAndRender, onHistoryToggle, onPrepare, onProfileChange, onRender, onRestore, priorCompletedVideo, providerStatus, renderStatus, selectedRenderProfileId }: {
+function AssemblyActions({ diagnostics, importStatus, assembly, busy, compact = false, durationSeconds, error, notice, history, historyOpen, onApprove, onDeleteAndRender, onHistoryToggle, onPrepare, onProfileChange, onRender, onRestore, priorCompletedVideo, providerStatus, renderStatus, selectedRenderProfileId }: {
+  diagnostics: ReactNode;
+  importStatus: string;
   assembly: ActiveAssembly | null;
   busy: boolean;
   compact?: boolean;
@@ -2444,7 +2483,7 @@ function AssemblyActions({ assembly, busy, compact = false, durationSeconds, err
   onRestore: (snapshot: CompositionSnapshotEntry) => void;
   priorCompletedVideo: boolean;
   providerStatus: string | null;
-  renderStatus: "idle" | "validating" | "sending" | "rendering" | "completed" | "failed";
+  renderStatus: "idle" | "validating" | "sending" | "rendering" | "completed" | "failed" | "cancelled";
   selectedRenderProfileId: HyperframesRenderProfileId;
 }) {
   const selectedProfile = getHyperframesRenderProfile(selectedRenderProfileId);
@@ -2452,19 +2491,11 @@ function AssemblyActions({ assembly, busy, compact = false, durationSeconds, err
   const profileMatchesAssembly = !assembly
     || sameHyperframesRenderSettings(assembly.renderProfile, selectedProfile);
   const normalizedProviderStatus = providerStatus?.toUpperCase() || null;
-  const label = renderStatus === "validating"
-    ? "Validando snapshot…"
-    : renderStatus === "sending" || normalizedProviderStatus === "UPLOADING"
-      ? "SofLIA - Engine está subiendo el ZIP validado a HeyGen."
-      : normalizedProviderStatus === "SUBMITTING"
-        ? "ZIP recibido por HeyGen. SofLIA - Engine está creando el render."
-        : renderStatus === "rendering"
-          ? normalizedProviderStatus === "QUEUED" || normalizedProviderStatus === "RETRY_SCHEDULED"
-            ? "SofLIA - Engine está preparando la importación del video. Puedes cerrar o recargar esta página."
-            : `HeyGen está procesando el video${providerStatus ? ` (${providerStatus.toLowerCase()})` : ""}. SofLIA - Engine lo importará al terminar; puedes cerrar o recargar esta página.`
-          : renderStatus === "completed"
-            ? "Video completado e importado en SofLIA - Engine."
-            : "";
+  const label = renderStatus === "validating" ? "Validando snapshot…"
+    : renderStatus === "cancelled" ? "Proceso cancelado. Puedes iniciar otro intento."
+    : renderStatus === "sending" ? "Registrando el render…"
+    : renderStatus === "rendering" ? renderStageLabel(normalizedProviderStatus || "PENDING", importStatus)
+    : renderStatus === "completed" ? "Video completado e importado en SofLIA - Engine." : "";
   const summary = renderStatus === "completed"
     ? "El video final ya está disponible."
     : assembly
@@ -2525,13 +2556,15 @@ function AssemblyActions({ assembly, busy, compact = false, durationSeconds, err
       </label>
 
       <div className={styles.deliveryActions}>
-        <button type="button" disabled={busy || renderBudget.requiresSegmentation} onClick={() => void onPrepare()} className={styles.deliveryActionSecondary}><Clapperboard size={14} /> {busy && renderStatus === "validating" ? "Preparando…" : assembly ? "Nueva versión" : "Crear snapshot"}</button>
+        <button type="button" disabled={busy || activeRender || renderBudget.requiresSegmentation} onClick={() => void onPrepare()} className={styles.deliveryActionSecondary}><Clapperboard size={14} /> {busy && renderStatus === "validating" ? "Preparando…" : assembly ? "Nueva versión" : "Crear snapshot"}</button>
         <button type="button" disabled={busy || history === null} onClick={onHistoryToggle} className={styles.deliveryActionGhost}><History size={14} /> Versiones {history ? history.length : ""}</button>
         {assembly?.status === "READY_FOR_PREVIEW" && <button type="button" disabled={busy || !profileMatchesAssembly} onClick={() => void onApprove()} className={styles.deliveryActionPrimary}><CheckCircle2 size={14} /> Aprobar salida</button>}
         {assembly?.status === "READY_FOR_RENDER" && <button type="button" disabled={busy || activeRender || renderStatus === "completed" || !profileMatchesAssembly || renderBudget.requiresSegmentation} onClick={() => void onRender()} className={`${styles.deliveryActionPrimary} ${renderStatus === "completed" ? styles.deliveryActionComplete : ""}`}>{renderStatus === "completed" ? <CheckCircle2 size={14} /> : <Send size={14} />} {activeRender ? "Render en curso" : renderStatus === "completed" ? "Render completado" : renderStatus === "failed" ? "Reintentar render" : "Renderizar video"}</button>}
         {assembly?.status === "READY_FOR_RENDER" && priorCompletedVideo && <button type="button" disabled={busy || activeRender} onClick={() => void onDeleteAndRender()} className={styles.deliveryActionDanger}><Trash2 size={14} /> Reemplazar</button>}
       </div>
     </div>
+
+    {diagnostics}
 
     {(notice || !profileMatchesAssembly || label || priorCompletedVideo || error || renderBudget.recommendedSegmentCount > 1) && <div className={styles.deliveryMessages}>
       {notice && <p role="status" data-tone="success"><CheckCircle2 size={12} />{notice}</p>}

@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { getOrganizationHyperframesApiKey } from "../_shared/credentials.ts";
 import { getHyperframesRender, HeygenHttpError } from "../_shared/heygen.ts";
+import { isPermanentProviderFailure } from "../_shared/hyperframes-retry-policy.ts";
 import { authorizeWorker, jsonResponse, logEvent, methodNotAllowed } from "../_shared/http.ts";
 import { rpc } from "../_shared/supabase.ts";
 
@@ -64,6 +65,13 @@ async function processClaim(
       requestId: claim.request_id,
     });
   } catch (error) {
+    if (error instanceof HeygenHttpError && isPermanentProviderFailure(error.status)) {
+      await rpc<string>("apply_hyperframes_reconciliation", {
+        p_failure_message: safeMessage(error), p_lease_token: claim.lease_token,
+        p_provider_render_id: claim.provider_render_id, p_provider_status: "failed", p_request_id: claim.request_id,
+      });
+      return;
+    }
     const retryAfter = error instanceof HeygenHttpError && error.status === 429
       ? 120
       : Math.min(30 * 2 ** Math.min(claim.retry_count, 5), 900);
