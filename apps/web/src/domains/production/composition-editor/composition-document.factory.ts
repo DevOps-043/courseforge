@@ -22,6 +22,9 @@ import {
 } from "./composition-default-layout.service";
 import { DEFAULT_COMPOSITION_LAYER } from "./composition-layer-depth";
 import { DEFAULT_COMPOSITION_RENDER_FPS } from "./composition-document.types.constants";
+import type { CompositionNarrativeScene } from "./composition-narrative.types";
+import { compositionSlideKey, narrativeFingerprint } from "./composition-narrative-source.service";
+import { isCompositionClipExcluded } from "./composition-source-selection";
 
 /**
  * Creates the first editable document from internal Production sources.
@@ -29,6 +32,7 @@ import { DEFAULT_COMPOSITION_RENDER_FPS } from "./composition-document.types.con
  * no authored slide duration; user edits become the render source of truth.
  */
 export function createInitialCompositionDocument(params: {
+  narrativeScenes?: CompositionNarrativeScene[];
   animatedDeck: HyperframesAnimatedDeckSource | null;
   assets: HyperframesProjectAsset[];
   plan: HyperframesPlan;
@@ -38,11 +42,12 @@ export function createInitialCompositionDocument(params: {
   const timelineAssets = selectAuthoritativeTimelineAssets(params.assets);
   const tracks = buildTracks(timelineAssets, params.animatedDeck);
   const clips = [
-    ...buildDeckClips(params.animatedDeck, durationSeconds),
+    ...buildNarrativeDeckClips(params.animatedDeck, durationSeconds, timelineAssets, params.narrativeScenes),
     ...buildAssetClips(timelineAssets, durationSeconds, 0, params.animatedDeck?.width || 1920, params.animatedDeck?.height || 1080),
   ];
   if (clips.length === 0) throw new Error("No hay fuentes internas para crear la composición.");
   return compositionEditorDocumentSchema.parse({
+    ...(params.narrativeScenes?.length ? { narrativeScenes: params.narrativeScenes } : {}),
     audioMix: {
       ducking: {
         ...DEFAULT_COMPOSITION_DUCKING_SETTINGS,
@@ -78,7 +83,8 @@ export function appendMissingProductionAssetClips(
   const existingAssetIds = new Set(document.clips.flatMap((clip) => (
     clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []
   )));
-  const missingAssets = assets.filter((asset) => !existingAssetIds.has(asset.productionAssetId));
+  const missingAssets = assets.filter((asset) => !existingAssetIds.has(asset.productionAssetId)
+    && !document.excludedSources?.includes(`asset:${asset.productionAssetId}`));
   if (missingAssets.length === 0) return { changed: false, document };
 
   const tracks = [...document.tracks];
@@ -141,6 +147,8 @@ export function appendMissingProductionAssetClips(
  * used by the deck HTML are not independently editable timeline media.
  */
 export function reconcileCompositionDocument(params: {
+  narrativeScenes?: CompositionNarrativeScene[];
+  replaceNarrativeTiming?: boolean;
   animatedDeck?: HyperframesAnimatedDeckSource | null;
   deckDependencyAssetIds: ReadonlySet<string>;
   document: CompositionEditorDocument;
@@ -214,6 +222,7 @@ export function reconcileCompositionDocument(params: {
       || clip.durationSeconds !== synchronizedSceneTiming?.durationSeconds
     );
     clipSynchronizationChanged ||= clip.trackId !== track.id
+      || clip.sceneId !== source.sceneClipId
       || isUnframedLegacyBroll
       || sourceDimensionsChanged
       || sourceAudioChanged
@@ -221,6 +230,7 @@ export function reconcileCompositionDocument(params: {
       || sceneTimingChanged;
     return {
       ...clip,
+      sceneId: source.sceneClipId,
       label: synchronizedLabel,
       ...(synchronizedSceneTiming ? synchronizedSceneTiming : {}),
       ...(isUnframedLegacyBroll ? { mediaFit: "CONTAIN" as const } : {}),
@@ -258,8 +268,12 @@ export function reconcileCompositionDocument(params: {
     animatedDeck: params.animatedDeck,
     canvasDurationSeconds: synchronizedCanvas.durationSeconds,
     clips: synchronizedClips,
+    excludedSources: params.document.excludedSources,
+    assets: productionAssets,
+    narrativeScenes: params.narrativeScenes,
+    replaceNarrativeTiming: params.replaceNarrativeTiming,
   });
-  const synchronizedClipIds = new Set(synchronizedClips.map((clip) => clip.id));
+  const synchronizedClipIds = new Set(deckReconciliation.clips.map((clip) => clip.id));
   const synchronizedAnimations = params.document.motion.animations.filter((animation) => (
     synchronizedClipIds.has(animation.target.clipId)
   ));
@@ -267,6 +281,7 @@ export function reconcileCompositionDocument(params: {
   const nextDurationSource = automaticDuration?.source || params.document.canvas.durationSource;
   const documentWithoutDeckDependencies = compositionEditorDocumentSchema.parse({
     ...params.document,
+    ...(params.narrativeScenes !== undefined ? { narrativeScenes: params.narrativeScenes } : {}),
     canvas: synchronizedCanvas,
     clips: deckReconciliation.clips,
     deckStyles: params.animatedDeck ? {
@@ -288,7 +303,8 @@ export function reconcileCompositionDocument(params: {
   );
   return {
     addedProductionAssetCount: appended.document.clips.length - documentWithoutDeckDependencies.clips.length,
-    changed: removedDeckDependencyCount > 0
+    changed: (params.narrativeScenes !== undefined && JSON.stringify(params.narrativeScenes) !== JSON.stringify(params.document.narrativeScenes))
+      || removedDeckDependencyCount > 0
       || removedInactiveProductionAssetCount > 0
       || removedOrphanAnimationCount > 0
       || clipSynchronizationChanged
@@ -314,13 +330,33 @@ function reconcileDeckSlideClips(params: {
   animatedDeck: HyperframesAnimatedDeckSource | null | undefined;
   canvasDurationSeconds: number;
   clips: CompositionClip[];
+  excludedSources?: string[];
+  assets: HyperframesProjectAsset[];
+  narrativeScenes?: CompositionNarrativeScene[];
+  replaceNarrativeTiming?: boolean;
 }) {
   if (!params.animatedDeck) return { changed: false, clips: params.clips };
 
-  const generatedClips = buildDeckClips(params.animatedDeck, params.canvasDurationSeconds);
+  const generatedClips = buildNarrativeDeckClips(params.animatedDeck, params.canvasDurationSeconds, params.assets, params.narrativeScenes)
+    .filter((clip) => params.replaceNarrativeTiming || !isCompositionClipExcluded(clip, params.excludedSources));
+  const hasNarrativePlan = canPreassembleScenes(params.narrativeScenes, params.assets);
+  const existingDeck = params.clips.filter(isDeckSlideClip);
+  // Never rebuild authored timing automatically. A changed or incomplete plan
+  // also keeps its last arrangement until it can be reviewed against real media.
+  if (existingDeck.some((clip) => clip.sceneId) && !hasNarrativePlan) return { changed: false, clips: params.clips };
+  if (hasNarrativePlan) {
+    if (!params.replaceNarrativeTiming && existingDeck.length > 0) return { changed: false, clips: params.clips };
+    const authoredById = new Map(existingDeck.map((clip) => [clip.id, clip]));
+    const nextDeck = generatedClips.map((clip) => {
+      const authored = authoredById.get(clip.id);
+      return authored ? { ...clip, hidden: authored.hidden, layout: authored.layout } : clip;
+    });
+    const clips = [...params.clips.filter((clip) => !isDeckSlideClip(clip)), ...nextDeck];
+    return { changed: JSON.stringify(existingDeck) !== JSON.stringify(nextDeck), clips };
+  }
   const existingBySlideIndex = new Map(
     params.clips.flatMap((clip) => (
-      isDeckSlideClip(clip) ? [[clip.source.slideIndex, clip] as const] : []
+      isDeckSlideClip(clip) ? [[clip.source.slideKey || String(clip.source.slideIndex), clip] as const] : []
     )),
   );
   let changed = false;
@@ -328,13 +364,16 @@ function reconcileDeckSlideClips(params: {
 
   for (const generated of generatedClips) {
     if (!isDeckSlideClip(generated)) continue;
-    const existing = existingBySlideIndex.get(generated.source.slideIndex);
-    if (!existing) {
+    const existing = existingBySlideIndex.get(generated.source.slideKey!)
+      || existingBySlideIndex.get(String(generated.source.slideIndex))
+      || params.clips.find((clip) => isDeckSlideClip(clip) && clip.source.slideIndex === generated.source.slideIndex);
+    if (!existing || !isDeckSlideClip(existing)) {
       refreshedById.set(generated.id, generated);
       changed = true;
       continue;
     }
     const sourceChanged = existing.source.html !== generated.source.html
+      || existing.source.slideKey !== generated.source.slideKey
       || existing.source.classes !== generated.source.classes
       || existing.label !== generated.label;
     if (!sourceChanged) continue;
@@ -349,7 +388,8 @@ function reconcileDeckSlideClips(params: {
   if (!changed) return { changed: false, clips: params.clips };
   const refreshedClips = params.clips.map((clip) => refreshedById.get(clip.id) || clip);
   const newClips = generatedClips.filter((clip) => (
-    isDeckSlideClip(clip) && !existingBySlideIndex.has(clip.source.slideIndex)
+    isDeckSlideClip(clip) && !existingBySlideIndex.has(clip.source.slideKey!) && !existingBySlideIndex.has(String(clip.source.slideIndex))
+      && !params.clips.some((existing) => isDeckSlideClip(existing) && existing.source.slideIndex === clip.source.slideIndex)
   ));
   return { changed: true, clips: [...refreshedClips, ...newClips] };
 }
@@ -398,6 +438,7 @@ function buildDeckClips(deck: HyperframesAnimatedDeckSource | null, durationSeco
       label: slide.label || `Diapositiva ${position + 1}`,
       layout: { height: deck.height, opacity: 1, rotation: 0, width: deck.width, x: 0, y: 0, zIndex: DEFAULT_COMPOSITION_LAYER.DECK },
       source: {
+        slideKey: compositionSlideKey(slide),
         classes: slide.classes,
         html: slide.html,
         slideIndex: slide.index,
@@ -407,6 +448,38 @@ function buildDeckClips(deck: HyperframesAnimatedDeckSource | null, durationSeco
       timingSource: "ESTIMATED" as const,
       trackId: "deck",
     };
+  });
+}
+
+export function canPreassembleScenes(scenes: CompositionNarrativeScene[] | undefined, assets: HyperframesProjectAsset[]) {
+  return Boolean(scenes?.length && scenes.every((scene) => !scene.needsReview && scene.visualPlan
+    && assets.some((asset) => asset.sceneClipId === scene.id && (asset.durationSeconds || 0) > 0
+      && Number.isInteger(asset.sceneOrder) && asset.sceneOrder! > 0
+      && (asset.timelineRole === "VOICE" || asset.timelineRole === "AVATAR"))));
+}
+
+function buildNarrativeDeckClips(deck: HyperframesAnimatedDeckSource | null, durationSeconds: number,
+  assets: HyperframesProjectAsset[], scenes?: CompositionNarrativeScene[]): CompositionClip[] {
+  const defaults = buildDeckClips(deck, durationSeconds);
+  if (!deck || !canPreassembleScenes(scenes, assets)) return defaults;
+  const byKey = new Map(defaults.map((clip) => [clip.source.type === "DECK_SLIDE" ? clip.source.slideKey : "", clip]));
+  const timings = buildSceneAssetTimings(assets, durationSeconds);
+  return scenes!.flatMap((scene) => {
+    const asset = assets.find((candidate) => candidate.sceneClipId === scene.id && timings.has(candidate.productionAssetId));
+    if (!asset) return [];
+    const timing = timings.get(asset.productionAssetId)!;
+    const selections = scene.visualPlan!.slides;
+    const totalWeight = selections.reduce((sum, slide) => sum + slide.weight, 0);
+    let consumedWeight = 0;
+    return selections.flatMap((selection, index) => {
+      const base = byKey.get(selection.key);
+      if (!base) return [];
+      const startSeconds = roundSeconds(timing.startSeconds + timing.durationSeconds * consumedWeight / totalWeight);
+      consumedWeight += selection.weight;
+      const end = roundSeconds(timing.startSeconds + timing.durationSeconds * consumedWeight / totalWeight);
+      const id = `scene-slide-${narrativeFingerprint(scene.id).slice(0, 16)}-${selection.key.slice(0, 16)}-${index}`;
+      return [{ ...base, id, hfId: id, sceneId: scene.id, startSeconds, durationSeconds: roundSeconds(end - startSeconds) }];
+    });
   });
 }
 
@@ -466,6 +539,7 @@ function buildAssetClips(
       : null;
     return {
       durationSeconds: timing.durationSeconds,
+      ...(asset.sceneClipId ? { sceneId: asset.sceneClipId } : {}),
       hfId: `asset-${asset.productionAssetId}`,
       hidden: false,
       id: `asset-${asset.productionAssetId}`,

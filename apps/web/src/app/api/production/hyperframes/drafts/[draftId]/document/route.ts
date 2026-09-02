@@ -13,6 +13,7 @@ import {
 } from "@/domains/production/composition-editor/composition-document.service";
 import { compositionEditorPatchRequestSchema } from "@/domains/production/composition-editor/editor-patch.types";
 import { createClient } from "@/utils/supabase/server";
+import { initializeHyperframesDraft, HyperframesDraftError } from "@/domains/production/hyperframes/hyperframes-draft.service";
 import {
   COMPOSITION_VERSION_FALLBACK_HEADER,
   describeCompositionDocumentVersion,
@@ -21,6 +22,32 @@ import {
 } from "@/domains/production/composition-editor/composition-document-version";
 
 interface RouteContext { params: Promise<{ draftId: string }>; }
+
+/** Explicitly replaces slide timing with the reviewed narrative plan. */
+export async function POST(request: Request, context: RouteContext) {
+  try {
+    const authorization = await authorize();
+    if (authorization instanceof NextResponse) return authorization;
+    z.object({ action: z.literal("preassemble") }).strict().parse(await request.json());
+    const draftId = z.string().uuid().parse((await context.params).draftId);
+    const precondition = resolveCompositionDocumentPrecondition({ ifMatchHeader: request.headers.get("if-match"), fallbackHeader: request.headers.get(COMPOSITION_VERSION_FALLBACK_HEADER) });
+    if (!precondition.ok) return NextResponse.json({ error: "Recarga la composición antes de aplicar el preensamble." }, { status: 428 });
+    const { data: draft, error } = await authorization.admin.from("video_composition_drafts").select("composition_id")
+      .eq("id", draftId).eq("organization_id", authorization.organizationId).maybeSingle();
+    if (error) throw error;
+    if (!draft) return NextResponse.json({ error: "Borrador no encontrado." }, { status: 404 });
+    await initializeHyperframesDraft({ compositionId: draft.composition_id, organizationId: authorization.organizationId,
+      supabase: authorization.admin, userId: authorization.userId, preassemblyVersion: precondition.documentHash });
+    const data = await getCurrentCompositionDocument({ draftId, organizationId: authorization.organizationId, supabase: authorization.admin });
+    return NextResponse.json({ success: true, data }, { headers: { "Cache-Control": "private, no-store", ETag: formatCompositionDocumentEtag(data.documentHash) } });
+  } catch (error) {
+    if (error instanceof CompositionDocumentConflictError) return NextResponse.json({ error: error.message, data: error.current }, { status: 409 });
+    if (error instanceof HyperframesDraftError || error instanceof CompositionDocumentError) return NextResponse.json({ error: error.message }, { status: error.status });
+    if (error instanceof z.ZodError) return NextResponse.json({ error: "El plan no cabe en los tiempos actuales. Revisa sus animaciones y duraciones." }, { status: 422 });
+    console.error("[Composition preassembly]", getErrorMessage(error));
+    return NextResponse.json({ error: "No se pudo aplicar el preensamble." }, { status: 500 });
+  }
+}
 
 /** Returns the native editor document; no source HTML or Storage path is exposed. */
 export async function GET(request: Request, context: RouteContext) {

@@ -11,7 +11,7 @@ import {
   resolveCompositionDuration,
 } from "../composition-duration.service";
 import { normalizeCompositionTrackTopology } from "../composition-track-registry";
-import { formatCompositionTimecode, parseCompositionTimecode } from "../composition-timecode";
+import { formatCompositionTimecode, parseCompositionTimecode, stepCompositionFrame } from "../composition-timecode";
 import { applyCompositionEditorPatches } from "../editor-patch.service";
 
 test("preserves deck HTML as editable clips and labels missing timings as estimated", () => {
@@ -48,6 +48,13 @@ test("formats and parses editor timecodes without decimal ambiguity", () => {
   assert.equal(parseCompositionTimecode("00:01.050"), 1.05);
   assert.equal(parseCompositionTimecode("1,5"), 1.5);
   assert.equal(parseCompositionTimecode("00:65"), null);
+});
+
+test("steps the playhead by an exact frame or one coarse second", () => {
+  assert.equal(stepCompositionFrame(1, 1, 25, 5), 1.04);
+  assert.equal(stepCompositionFrame(1, -1, 25, 5), 0.96);
+  assert.equal(stepCompositionFrame(1, 1, 25, 5, true), 2);
+  assert.equal(stepCompositionFrame(0, -1, 25, 5), 0);
 });
 
 test("keeps production media as references instead of copying files", () => {
@@ -659,4 +666,51 @@ test("preserves retained clip bounds and removes orphan animations when producti
     clip.source.type === "PRODUCTION_ASSET"
     && clip.source.productionAssetId === nextVoice.productionAssetId
   )), true);
+});
+
+test("keeps a removed slide excluded when Production sources reconcile", () => {
+  const deck = { css: "", fonts: [], height: 1080, slides: [
+    { animationCount: 0, classes: "slide", html: "<h1>Uno</h1>", index: 0, label: "Uno" },
+    { animationCount: 0, classes: "slide", html: "<h1>Dos</h1>", index: 1, label: "Dos" },
+  ], width: 1920 };
+  const initial = createInitialCompositionDocument({ animatedDeck: deck, assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 10, subtitle: "", title: "Exclusión" } });
+  const removed = applyCompositionEditorPatches(initial, [{ clipId: "deck-slide-1", type: "clip.remove" }]);
+  const reconciled = reconcileCompositionDocument({ animatedDeck: deck, deckDependencyAssetIds: new Set(), document: removed, productionAssets: [] });
+  assert.equal(reconciled.document.clips.some((clip) => clip.id === "deck-slide-1"), false);
+  assert.equal(reconciled.changed, false);
+  assert.equal(removed.excludedSources?.length, 1);
+});
+
+test("preassembles selected slides on measured narrative scene durations", () => {
+  const deck = { css: "", fonts: [], height: 1080, slides: [
+    { animationCount: 0, classes: "slide", html: "<h1>Uno</h1>", index: 0, label: "Uno" },
+    { animationCount: 0, classes: "slide", html: "<h1>Dos</h1>", index: 1, label: "Dos" },
+    { animationCount: 0, classes: "slide", html: "<h1>Tres</h1>", index: 2, label: "Tres" },
+  ], width: 1920 };
+  const base = createInitialCompositionDocument({ animatedDeck: deck, assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 12, subtitle: "", title: "Preensamble" } });
+  const keys = base.clips.filter((clip) => clip.source.type === "DECK_SLIDE")
+    .map((clip) => clip.source.type === "DECK_SLIDE" ? clip.source.slideKey! : "");
+  const assets = [{ checksum: "1".repeat(64), durationSeconds: 12, fileSizeBytes: 4, hasAudio: true,
+    mimeType: "audio/mpeg", productionAssetId: "00000000-0000-4000-8000-000000000091", publicUrl: null,
+    sceneClipId: "scene-one", sceneOrder: 1, storageBucket: "production-assets", storagePath: "voice.mp3", timelineRole: "VOICE" as const }];
+  const scenes = [{ id: "scene-one", order: 1, label: "Escena uno", scriptText: "Texto", scriptHash: "a".repeat(64), needsReview: false,
+    visualPlan: { deckRevision: "b".repeat(64), scriptHash: "a".repeat(64), slides: [
+      { key: keys[0]!, label: "Uno", weight: 1 }, { key: keys[2]!, label: "Tres", weight: 2 },
+    ] } }];
+  const result = createInitialCompositionDocument({ animatedDeck: deck, assets, narrativeScenes: scenes,
+    plan: { accentColor: "#38BDF8", durationSeconds: 12, subtitle: "", title: "Preensamble" } });
+  const slides = result.clips.filter((clip) => clip.kind === "DECK_SLIDE");
+  assert.deepEqual(slides.map((clip) => clip.label), ["Uno", "Tres"]);
+  assert.deepEqual(slides.map((clip) => clip.durationSeconds), [4, 8]);
+  assert.deepEqual(slides.map((clip) => clip.sceneId), ["scene-one", "scene-one"]);
+
+  const passiveSync = reconcileCompositionDocument({ animatedDeck: deck, deckDependencyAssetIds: new Set(),
+    document: base, narrativeScenes: scenes, productionAssets: assets });
+  assert.deepEqual(passiveSync.document.clips.filter((clip) => clip.kind === "DECK_SLIDE").map((clip) => clip.label), ["Uno", "Dos", "Tres"]);
+
+  const explicitPreassembly = reconcileCompositionDocument({ animatedDeck: deck, deckDependencyAssetIds: new Set(),
+    document: base, narrativeScenes: scenes, productionAssets: assets, replaceNarrativeTiming: true });
+  assert.deepEqual(explicitPreassembly.document.clips.filter((clip) => clip.kind === "DECK_SLIDE").map((clip) => clip.label), ["Uno", "Tres"]);
 });

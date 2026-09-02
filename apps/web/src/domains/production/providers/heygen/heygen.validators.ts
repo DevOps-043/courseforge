@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sceneVisualPlanSchema } from "../../composition-editor/composition-narrative.types";
 
 const heygenBackgroundSchema = z
   .object({
@@ -87,6 +88,7 @@ export const heygenAvatarClipStatusSchema = z.enum([
 
 export const heygenAvatarClipSchema = z
   .object({
+    visual_plan: sceneVisualPlanSchema.optional(),
     asset_name: z.string().trim().min(1).max(120).optional(),
     avatar_preset_id: z.string().uuid().optional(),
     background: heygenBackgroundSchema.optional(),

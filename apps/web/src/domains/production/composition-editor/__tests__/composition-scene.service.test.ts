@@ -29,3 +29,23 @@ test("derives one editable scene per slide and includes overlapping assets", () 
   assert.deepEqual(scenes[0].roles, ["DECK", "VOICE"]);
   assert.equal(scenes[1].startSeconds, 5);
 });
+
+test("uses narrative scenes, exposes script cues and reports visual correspondence", () => {
+  const narrative = structuredClone(document);
+  narrative.clips[0]!.sceneId = "narrative-1";
+  narrative.clips[2]!.sceneId = "narrative-1";
+  narrative.clips[0]!.source = { ...narrative.clips[0]!.source, slideKey: "a".repeat(64) } as typeof narrative.clips[0]["source"];
+  narrative.narrativeScenes = [{
+    id: "narrative-1", order: 1, label: "Idea principal", scriptText: "Explica el concepto principal.",
+    scriptHash: "b".repeat(64), needsReview: false,
+    wordTimestamps: [{ word: "Explica", start: 0.2, end: 0.7 }],
+    visualPlan: { deckRevision: "c".repeat(64), scriptHash: "b".repeat(64), slides: [{ key: "a".repeat(64), label: "Slide 1", weight: 1 }] },
+  }];
+  const scenes = deriveCompositionScenes(narrative);
+  assert.equal(scenes.length, 1);
+  assert.equal(scenes[0]?.scriptText, "Explica el concepto principal.");
+  assert.deepEqual(scenes[0]?.wordCues, [{ word: "Explica", start: 0.2, end: 0.7 }]);
+  assert.equal(scenes[0]?.visualsMatch, true);
+  if (narrative.clips[0]!.source.type === "DECK_SLIDE") narrative.clips[0]!.source.slideKey = "d".repeat(64);
+  assert.equal(deriveCompositionScenes(narrative)[0]?.visualsMatch, false);
+});
