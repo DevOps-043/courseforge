@@ -59,32 +59,38 @@ export function PostproductionAssemblyContainer({
 }: PostproductionAssemblyContainerProps) {
   const searchParams = useSearchParams();
   const returnedComponentId = searchParams.get("componentId");
-  const { materials, getLessonComponents, refresh } = useMaterials(artifactId);
+  const {
+    materials,
+    loading: materialsLoading,
+    getArtifactComponents,
+    refresh,
+  } = useMaterials(artifactId);
   const [components, setComponents] = useState<VideoComponent[]>([]);
   const [activeComponentId, setActiveComponentId] = useState<string | null>(initialComponentId || null);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadComponents = useCallback(async () => {
     if (!materials?.lessons) {
+      if (materialsLoading) return;
       setComponents([]);
       setIsLoading(false);
       return;
     }
     setIsLoading(true);
     try {
-      const groups = await Promise.all(materials.lessons.map(async (lesson) => {
-        const lessonComponents = await getLessonComponents(lesson.id);
-        return lessonComponents
-          .filter((component) => component.type.includes("VIDEO"))
-          .map((component) => ({
-            assets: component.assets,
-            content: component.content,
-            id: component.id,
-            lessonTitle: lesson.lesson_title,
-            type: component.type,
-          } satisfies VideoComponent));
-      }));
-      const allComponents = groups.flat();
+      const lessonTitles = new Map(
+        materials.lessons.map((lesson) => [lesson.id, lesson.lesson_title]),
+      );
+      const artifactComponents = await getArtifactComponents();
+      const allComponents = artifactComponents
+        .filter((component) => component.type.includes("VIDEO"))
+        .map((component) => ({
+          assets: component.assets,
+          content: component.content,
+          id: component.id,
+          lessonTitle: lessonTitles.get(component.material_lesson_id) || "Lección",
+          type: component.type,
+        } satisfies VideoComponent));
       const scoped = initialComponentId
         ? allComponents.filter((component) => component.id === initialComponentId)
         : singleVideoOnly
@@ -104,7 +110,7 @@ export function PostproductionAssemblyContainer({
     } finally {
       setIsLoading(false);
     }
-  }, [getLessonComponents, initialComponentId, materials?.lessons, returnedComponentId, singleVideoOnly]);
+  }, [getArtifactComponents, initialComponentId, materials?.lessons, materialsLoading, returnedComponentId, singleVideoOnly]);
 
   useEffect(() => { void loadComponents(); }, [loadComponents]);
 
