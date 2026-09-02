@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   classifyCompositionPreviewOperation,
   classifyCompositionPreviewOperations,
+  requiresCompositionPreviewReload,
 } from "../composition-preview-operation-policy";
 
 test("classifies visual, timeline and structural operations explicitly", () => {
@@ -12,6 +13,12 @@ test("classifies visual, timeline and structural operations explicitly", () => {
   assert.equal(classifyCompositionPreviewOperation({ type: "document.reconcile" }), "FULL_RELOAD");
   assert.equal(classifyCompositionPreviewOperation({ type: "track.update" }), "FULL_RELOAD");
   assert.equal(classifyCompositionPreviewOperation({ type: "future.unknown" }), "FULL_RELOAD");
+});
+
+test("requires a compiled preview refresh for timeline and structural changes", () => {
+  assert.equal(requiresCompositionPreviewReload("LIVE_DOM"), false);
+  assert.equal(requiresCompositionPreviewReload("LIVE_TIMELINE"), true);
+  assert.equal(requiresCompositionPreviewReload("FULL_RELOAD"), true);
 });
 
 test("selects the safest strategy for a mixed patch batch", () => {

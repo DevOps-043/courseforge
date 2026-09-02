@@ -58,3 +58,13 @@ export function classifyCompositionPreviewOperations(
     return STRATEGY_PRIORITY[candidate] > STRATEGY_PRIORITY[selected] ? candidate : selected;
   }, "LIVE_DOM");
 }
+
+/**
+ * The iframe can apply only visual DOM patches in place. Timeline and
+ * structural changes must rebuild the compiled preview to remain truthful.
+ */
+export function requiresCompositionPreviewReload(
+  strategy: CompositionPreviewUpdateStrategy,
+): boolean {
+  return strategy !== "LIVE_DOM";
+}

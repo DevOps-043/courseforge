@@ -60,7 +60,10 @@ import {
   parseCompositionPreviewIframeMessage,
   type CompositionPreviewParentCommandInput,
 } from "@/domains/production/composition-editor/composition-preview-protocol";
-import { classifyCompositionPreviewOperations } from "@/domains/production/composition-editor/composition-preview-operation-policy";
+import {
+  classifyCompositionPreviewOperations,
+  requiresCompositionPreviewReload,
+} from "@/domains/production/composition-editor/composition-preview-operation-policy";
 import { buildCompositionPreviewVisualPatch } from "@/domains/production/composition-editor/composition-preview-visual-patch";
 import { EngineSelect } from "@/components/ui/EngineSelect";
 import { hasCompositionCrop, normalizeCompositionCropInsets, resolveCompositionCropInsets, type CompositionCropInsets } from "@/domains/production/composition-editor/composition-visual-crop.service";
@@ -238,6 +241,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const pendingPreviewRestoreSecondsRef = useRef<number | null>(null);
   const previewDocumentHashRef = useRef<string | null>(null);
   const previewRuntimeBaseHashRef = useRef<string | null>(null);
+  const previewReloadRequestRef = useRef(0);
   const autoPlayAfterPreviewRefreshRef = useRef(false);
   const previewTelemetryRef = useRef<CompositionPreviewTelemetryBuffer | null>(null);
   const previewReloadTelemetryRef = useRef<{ reason: PreviewReloadReason; startedAt: number } | null>(null);
@@ -659,6 +663,15 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const estimatedClipCount = payload?.document.clips.filter((clip) => clip.timingSource === "ESTIMATED").length || 0;
   const selectedClip = payload?.document.clips.find((clip) => clip.hfId === selectedHfId) ?? null;
   const inspectorOpen = manualInspectorOpen || Boolean(selectedClip);
+  const previewStatusLabel = presetPreview
+    ? "Preview de preset"
+    : agentProposal
+      ? "Propuesta sin guardar"
+      : saving || (!previewReady && previewMediaState === "PREPARING")
+        ? "Actualizando preview…"
+        : previewDirty
+          ? "Cambios pendientes"
+          : null;
 
   const postPreviewMessage = (message: CompositionPreviewParentCommandInput) => {
     const command = createCompositionPreviewParentCommand(message);
@@ -736,6 +749,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const refreshPreviewDocument = (autoPlay = false, reason: PreviewReloadReason = "MANUAL") => {
     const currentPayload = payloadRef.current;
     if (!currentPayload || agentProposal || presetPreview) return;
+    previewReloadRequestRef.current += 1;
     pausePreviewForMutation();
     autoPlayAfterPreviewRefreshRef.current = autoPlay;
     previewDocumentHashRef.current = currentPayload.documentHash;
@@ -750,6 +764,17 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     }
     previewReloadTelemetryRef.current = { reason, startedAt: performance.now() };
     setPreviewRefreshKey((current) => current + 1);
+  };
+  const scheduleSavedPreviewReload = (autoPlay: boolean) => {
+    const requestId = previewReloadRequestRef.current + 1;
+    previewReloadRequestRef.current = requestId;
+    void saveQueueRef.current!.whenIdle().then(() => {
+      // Several edits can be committed before the queue settles. Only the
+      // newest request is allowed to rebuild the iframe, avoiding stale or
+      // duplicate previews between consecutive asset edits.
+      if (previewReloadRequestRef.current !== requestId) return;
+      refreshPreviewDocument(autoPlay, "SAVE_RECOVERY");
+    });
   };
   const togglePreviewPlayback = () => {
     if (transportActive) {
@@ -801,6 +826,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       return false;
     }
     const updateStrategy = classifyCompositionPreviewOperations(effectiveOperations);
+    const requiresCompiledPreviewReload = requiresCompositionPreviewReload(updateStrategy);
     if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
       previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, { type: "EDIT_ACCEPTED" });
       previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, { type: "SAVE_STARTED" });
@@ -931,6 +957,13 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         }
       } else {
         setPreviewDirty(nextPayload.documentHash !== previewDocumentHashRef.current);
+        // Timeline and structural operations cannot be applied to the iframe
+        // with a visual DOM patch. Also recover any visual edit made while the
+        // iframe was unavailable. In both cases the saved document must become
+        // the source of a fresh preview without requiring user interaction.
+        if (requiresCompiledPreviewReload || !canApplyIncrementally) {
+          scheduleSavedPreviewReload(playing || previewMediaState === "BUFFERING");
+        }
       }
       if (source === "USER") setLastAppliedAgentProposal(null);
       return true;
@@ -2199,7 +2232,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           <div className={styles.previewToolbar}>
             <div className={styles.previewIdentity}>
               <span className={styles.previewIdentityIcon}><Clapperboard size={14} aria-hidden="true" /></span>
-              <span className={styles.previewTitle}>Ensamble <small>v{payload.version} · {formatSeconds(duration)}</small>{presetPreview ? <span className={styles.pendingBadge}>Preview de preset</span> : agentProposal ? <span className={styles.pendingBadge}>Propuesta sin guardar</span> : previewDirty ? <span className={styles.pendingBadge}>Cambios pendientes</span> : null}</span>
+              <span className={styles.previewTitle}>Ensamble <small>v{payload.version} · {formatSeconds(duration)}</small>{previewStatusLabel ? <span className={styles.pendingBadge}>{previewStatusLabel}</span> : null}</span>
             </div>
             <div className={styles.previewTools}>
               <div className={styles.toolbarGroup} aria-label="Edición principal">

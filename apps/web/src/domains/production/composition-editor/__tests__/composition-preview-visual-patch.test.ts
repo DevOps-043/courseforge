@@ -12,6 +12,7 @@ function createBrollDocument() {
       checksum: "7".repeat(64),
       durationSeconds: 8,
       fileSizeBytes: 4,
+      hasAudio: true,
       mimeType: "video/mp4",
       productionAssetId: "00000000-0000-4000-8000-000000000041",
       publicUrl: null,

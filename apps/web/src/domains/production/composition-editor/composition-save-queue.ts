@@ -13,6 +13,7 @@ type QueueEntry<TCommand> = {
 /** Serializes saves and fails closed: one failed command cancels the queued tail. */
 export class CompositionSaveQueue<TCommand> {
   private readonly entries: Array<QueueEntry<TCommand>> = [];
+  private readonly idleWaiters: Array<() => void> = [];
   private running = false;
 
   constructor(
@@ -40,6 +41,12 @@ export class CompositionSaveQueue<TCommand> {
     };
   }
 
+  /** Resolves after the active save and every queued command have settled. */
+  whenIdle(): Promise<void> {
+    if (!this.running && this.entries.length === 0) return Promise.resolve();
+    return new Promise<void>((resolve) => this.idleWaiters.push(resolve));
+  }
+
   private async drain() {
     if (this.running) return;
     this.running = true;
@@ -63,10 +70,15 @@ export class CompositionSaveQueue<TCommand> {
     } finally {
       this.running = false;
       this.emitState();
+      this.resolveIdleWaiters();
     }
   }
 
   private emitState() {
     this.onStateChange?.(this.snapshot());
+  }
+
+  private resolveIdleWaiters() {
+    this.idleWaiters.splice(0).forEach((resolve) => resolve());
   }
 }
