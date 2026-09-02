@@ -354,6 +354,10 @@
   background: color-mix(in srgb, var(--studio-panel-raised) 58%, transparent);
 }
 
+.panelTabsWithNarrative {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .panelTab {
   display: inline-flex;
   min-height: 2.25rem;
@@ -412,6 +416,10 @@
 }
 
 .deliveryMenu {
+  min-height: 100%;
+}
+
+.narrativeMenu {
   min-height: 100%;
 }
 

@@ -33,13 +33,20 @@ export function deriveCompositionScenes(
   const hiddenTracks = new Set(document.tracks.filter((track) => track.hidden).map((track) => track.id));
   const visibleClips = document.clips.filter((clip) => !clip.hidden && !hiddenTracks.has(clip.trackId));
   if (document.narrativeScenes?.length) {
+    const plannedTimings = buildNarrativeSceneTimings(
+      document.narrativeScenes,
+      document.canvas.durationSeconds,
+    );
     return document.narrativeScenes.map((scene) => {
       const media = visibleClips.filter((clip) => clip.sceneId === scene.id
         && ["VOICE", "AVATAR"].includes(roleByTrackId.get(clip.trackId) || ""));
       const voices = media.filter((clip) => roleByTrackId.get(clip.trackId) === "VOICE");
       const anchors = (voices.length ? voices : media).sort((a, b) => a.startSeconds - b.startSeconds);
-      const startSeconds = anchors[0]?.startSeconds || 0;
-      const endSeconds = Math.max(startSeconds, ...anchors.map((clip) => clip.startSeconds + clip.durationSeconds));
+      const planned = plannedTimings.get(scene.id) || { durationSeconds: 0, startSeconds: 0 };
+      const startSeconds = anchors[0]?.startSeconds ?? planned.startSeconds;
+      const endSeconds = anchors.length > 0
+        ? Math.max(startSeconds, ...anchors.map((clip) => clip.startSeconds + clip.durationSeconds))
+        : startSeconds + planned.durationSeconds;
       const sceneClips = visibleClips.filter((clip) => overlaps(clip, startSeconds, endSeconds));
       const expectedKeys = scene.visualPlan?.slides.map((slide) => slide.key) || [];
       const actualKeys = sceneClips.filter((clip) => clip.source.type === "DECK_SLIDE")
@@ -54,7 +61,7 @@ export function deriveCompositionScenes(
       return {
         id: scene.id, label: scene.label, scriptText: scene.scriptText,
         startSeconds, durationSeconds: endSeconds - startSeconds,
-        primaryHfId: anchors[0]?.hfId || "",
+        primaryHfId: anchors[0]?.hfId || sceneClips[0]?.hfId || "",
         clipHfIds: sceneClips.map((clip) => clip.hfId),
         roles: [...new Set(sceneClips.flatMap((clip) => { const role = roleByTrackId.get(clip.trackId); return role ? [role] : []; }))],
         needsReview: scene.needsReview || !anchors.length,
@@ -91,4 +98,45 @@ export function deriveCompositionScenes(
       startSeconds,
     };
   });
+}
+
+/**
+ * Draft narration can exist before voice/avatar media is generated. Give those
+ * scenes deterministic, progressive intervals instead of collapsing all of
+ * them to 00:00. Authored word timestamps win; otherwise spoken word count is
+ * used as a stable proxy and scaled to the current canvas duration.
+ */
+function buildNarrativeSceneTimings(
+  scenes: NonNullable<CompositionEditorDocument["narrativeScenes"]>,
+  canvasDurationSeconds: number,
+) {
+  const safeDuration = Number.isFinite(canvasDurationSeconds)
+    ? Math.max(0, canvasDurationSeconds)
+    : 0;
+  const weights = scenes.map((scene) => {
+    const timestampDuration = Math.max(0, ...(scene.wordTimestamps || []).map((word) => word.end));
+    if (timestampDuration > 0) return timestampDuration;
+    return Math.max(1, scene.scriptText.trim().split(/\s+/).filter(Boolean).length);
+  });
+  const totalWeight = weights.reduce((total, weight) => total + weight, 0);
+  const timings = new Map<string, { durationSeconds: number; startSeconds: number }>();
+  let cursor = 0;
+  scenes.forEach((scene, index) => {
+    const remaining = Math.max(0, safeDuration - cursor);
+    const durationSeconds = index === scenes.length - 1
+      ? remaining
+      : totalWeight > 0
+        ? Math.min(remaining, safeDuration * weights[index]! / totalWeight)
+        : 0;
+    timings.set(scene.id, {
+      durationSeconds: roundSceneTime(durationSeconds),
+      startSeconds: roundSceneTime(cursor),
+    });
+    cursor += durationSeconds;
+  });
+  return timings;
+}
+
+function roundSceneTime(value: number) {
+  return Math.round(value * 1000) / 1000;
 }
