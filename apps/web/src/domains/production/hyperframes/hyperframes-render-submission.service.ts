@@ -14,6 +14,7 @@ import {
 import { HyperframesCloudClient } from "./hyperframes-cloud.client";
 import { resolveHyperframesAssetVariables } from "./hyperframes-asset-delivery.service";
 import { validateHyperframesPreflight } from "./hyperframes-preflight.service";
+import { validateHyperframesArchiveHtmlContract } from "./hyperframes-html-contract.service";
 import {
   HYPERFRAMES_ASSET_DELIVERY_MODES,
   HYPERFRAMES_COMPOSITION_FORMAT,
@@ -720,6 +721,17 @@ export class HyperframesRenderSubmissionService {
     const actualHash = createHash("sha256").update(archive).digest("hex");
     if (actualHash !== revision.project_hash.toLowerCase()) {
       throw new HyperframesRenderSubmissionError("El hash del archivo de proyecto no coincide con la revisión aprobada.");
+    }
+    const htmlContract = await validateHyperframesArchiveHtmlContract({
+      archive,
+      deliveryMode,
+      entryPoint: revision.entry_point,
+    });
+    if (!htmlContract.valid) {
+      throw new HyperframesRenderSubmissionError(
+        `La revisión no cumple el contrato multimedia de HyperFrames: ${htmlContract.errors.join(" ")} Regenera el snapshot antes de renderizar.`,
+        409,
+      );
     }
     return archive;
   }

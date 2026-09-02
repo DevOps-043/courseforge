@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import "./hyperframes-html-contract.service.test";
 import { describe, it } from "node:test";
 import {
   HYPERFRAMES_ASSET_DELIVERY_MODES,

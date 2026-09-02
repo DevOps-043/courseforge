@@ -9,6 +9,7 @@ import {
   readCompositionAnimationRuntime,
 } from "./composition-preview-compiler.service";
 import { validateHyperframesPreflight } from "../hyperframes/hyperframes-preflight.service";
+import { validateHyperframesHtmlContract } from "../hyperframes/hyperframes-html-contract.service";
 import {
   buildHyperframesAssetVariableNames,
   buildHyperframesAssetVariableSchema,
@@ -168,6 +169,11 @@ export async function snapshotCompositionDocument(params: {
     }),
     readCompositionAnimationRuntime(),
   ]);
+  const htmlContract = validateHyperframesHtmlContract({
+    deliveryMode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
+    html: snapshotHtml,
+  });
+  if (!htmlContract.valid) throw new CompositionSnapshotError(htmlContract.errors.join(" "));
   zip.file("index.html", snapshotHtml);
   zip.file("assets/gsap.min.js", animationRuntime);
   zip.file("composition-document.json", JSON.stringify(current.document, null, 2));
