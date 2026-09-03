@@ -114,7 +114,24 @@ export function CompositionPresetPanel({
 
             <section className="mt-6 border-t border-slate-200 pt-5 dark:border-white/10">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Crear preset</h3>
-              <div className="mt-3 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 dark:bg-white/5"><button type="button" onClick={() => setMode("MANUAL")} className={`rounded-md px-2 py-1.5 text-xs font-bold ${mode === "MANUAL" ? "bg-white text-slate-900 shadow dark:bg-white/15 dark:text-white" : "text-slate-500"}`}>Desde edición</button><button type="button" onClick={() => setMode("INSTRUCTIONS")} className={`rounded-md px-2 py-1.5 text-xs font-bold ${mode === "INSTRUCTIONS" ? "bg-white text-slate-900 shadow dark:bg-white/15 dark:text-white" : "text-slate-500"}`}>Con SofLIA</button></div>
+              <div className="mt-3 grid grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 dark:border-white/10 dark:bg-white/5" role="group" aria-label="Modo de creación del preset">
+                <button
+                  type="button"
+                  aria-pressed={mode === "MANUAL"}
+                  onClick={() => setMode("MANUAL")}
+                  className={`rounded-md px-2 py-2 text-xs font-bold transition-colors ${mode === "MANUAL" ? "bg-cyan-600 text-white shadow-sm shadow-cyan-950/30 dark:bg-cyan-400 dark:text-slate-950" : "text-slate-500 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"}`}
+                >
+                  Desde edición
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={mode === "INSTRUCTIONS"}
+                  onClick={() => setMode("INSTRUCTIONS")}
+                  className={`rounded-md px-2 py-2 text-xs font-bold transition-colors ${mode === "INSTRUCTIONS" ? "bg-violet-600 text-white shadow-sm shadow-violet-950/30 dark:bg-violet-400 dark:text-slate-950" : "text-slate-500 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"}`}
+                >
+                  Con SofLIA
+                </button>
+              </div>
               <label className="mt-3 block text-[11px] font-bold text-slate-600 dark:text-slate-300">Nombre<input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} className="mt-1 w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm font-normal outline-none focus:border-cyan-500 dark:border-white/15" placeholder="Ej. Academia dinámica" /></label>
               <label className="mt-3 block text-[11px] font-bold text-slate-600 dark:text-slate-300">Descripción<input value={description} onChange={(event) => setDescription(event.target.value)} maxLength={500} className="mt-1 w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm font-normal outline-none focus:border-cyan-500 dark:border-white/15" placeholder="Cuándo conviene usarlo" /></label>
               {mode === "INSTRUCTIONS" && <label className="mt-3 block text-[11px] font-bold text-slate-600 dark:text-slate-300">Instrucción<textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} maxLength={1500} rows={4} className="mt-1 w-full resize-none rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm font-normal outline-none focus:border-cyan-500 dark:border-white/15" placeholder="Presentador abajo a la derecha, diapositivas completas y entradas suaves…" /></label>}
@@ -127,4 +144,3 @@ export function CompositionPresetPanel({
     </div>
   );
 }
-

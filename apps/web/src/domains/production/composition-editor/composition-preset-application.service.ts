@@ -20,7 +20,7 @@ export class CompositionPresetApplicationError extends Error {
 }
 
 export type CompositionPresetApplicationWarning = {
-  code: "LOCKED_TRACK_SKIPPED" | "OPTIONAL_SLOT_EMPTY";
+  code: "AUDIO_TIMING_PRESERVED" | "LOCKED_TRACK_SKIPPED" | "OPTIONAL_SLOT_EMPTY" | "VISUAL_LAYER_OBSCURED";
   message: string;
   ruleId: string;
 };
@@ -33,6 +33,7 @@ export function applyCompositionPresetDefinition(params: {
   const definition = compositionDynamicPresetDefinitionSchema.parse(params.definition);
   const next = structuredClone(params.document);
   const warnings: CompositionPresetApplicationWarning[] = [];
+  const appliedRuleByClipId = new Map<string, string>();
   let affectedClipCount = 0;
   let affectedTrackCount = 0;
   let generatedAnimationCount = 0;
@@ -71,12 +72,20 @@ export function applyCompositionPresetDefinition(params: {
     }
     const timings = resolveRuleTimings(rule, editableClips, next);
     const editableClipIds = new Set(editableClips.map((clip) => clip.id));
+    editableClipIds.forEach((clipId) => appliedRuleByClipId.set(clipId, rule.id));
     if (rule.replaceAnimations) {
       next.motion.animations = next.motion.animations.filter((animation) => !editableClipIds.has(animation.target.clipId));
     }
     editableClips.forEach((clip, index) => {
       const variant = rule.variants[index % rule.variants.length]!;
-      applyVariant(clip, variant, timings[index], next);
+      const timingWasPreserved = applyVariant(clip, variant, timings[index], next);
+      if (timingWasPreserved) {
+        warnings.push({
+          code: "AUDIO_TIMING_PRESERVED",
+          message: `Se conservó el timing de ${clip.label}: el preset excedía la duración disponible de su audio.`,
+          ruleId: rule.id,
+        });
+      }
       variant.animations.forEach((animation, animationIndex) => {
         if (next.motion.animations.length >= 200) {
           throw new CompositionPresetApplicationError(
@@ -105,6 +114,7 @@ export function applyCompositionPresetDefinition(params: {
   if (definition.audioMix) {
     next.audioMix.ducking = { ...next.audioMix.ducking, ...definition.audioMix.ducking };
   }
+  warnings.push(...findVisualLayerObscurationWarnings(next, appliedRuleByClipId));
   let document: CompositionEditorDocument;
   try {
     document = compositionEditorDocumentSchema.parse(next);
@@ -118,6 +128,63 @@ export function applyCompositionPresetDefinition(params: {
     throw new CompositionPresetApplicationError("El preset no encontró elementos editables.", "COMPOSITION_PRESET_NO_EFFECT", 409);
   }
   return { affectedClipCount, affectedTrackCount, document, generatedAnimationCount, warnings };
+}
+
+/**
+ * Presets deliberately leave unrelated B-roll intact. Warn before committing
+ * when that untouched media would cover a deck or avatar changed by the preset.
+ */
+function findVisualLayerObscurationWarnings(
+  document: CompositionEditorDocument,
+  appliedRuleByClipId: ReadonlyMap<string, string>,
+): CompositionPresetApplicationWarning[] {
+  const tracksById = new Map(document.tracks.map((track) => [track.id, track]));
+  const brollClips = document.clips.filter((clip) => (
+    tracksById.get(clip.trackId)?.semanticRole === "BROLL"
+    && !clip.hidden
+    && !appliedRuleByClipId.has(clip.id)
+  ));
+  if (brollClips.length === 0) return [];
+
+  const warnings: CompositionPresetApplicationWarning[] = [];
+  for (const target of document.clips) {
+    const ruleId = appliedRuleByClipId.get(target.id);
+    const targetRole = tracksById.get(target.trackId)?.semanticRole;
+    if (!ruleId || target.hidden || (targetRole !== "AVATAR" && targetRole !== "DECK")) continue;
+
+    for (const broll of brollClips) {
+      if (
+        broll.layout.zIndex <= target.layout.zIndex
+        || !clipsOverlapInTime(broll, target)
+        || !clipCoversMostOfTarget(broll, target)
+      ) continue;
+      warnings.push({
+        code: "VISUAL_LAYER_OBSCURED",
+        message: `El B-roll ${broll.label} puede cubrir ${target.label} entre ${formatTimestamp(Math.max(broll.startSeconds, target.startSeconds))} y ${formatTimestamp(Math.min(clipEnd(broll), clipEnd(target)))}.`,
+        ruleId,
+      });
+    }
+  }
+  return warnings;
+}
+
+function clipsOverlapInTime(left: CompositionClip, right: CompositionClip) {
+  return left.startSeconds < clipEnd(right) && right.startSeconds < clipEnd(left);
+}
+
+function clipCoversMostOfTarget(cover: CompositionClip, target: CompositionClip) {
+  const overlapWidth = Math.max(0, Math.min(cover.layout.x + cover.layout.width, target.layout.x + target.layout.width) - Math.max(cover.layout.x, target.layout.x));
+  const overlapHeight = Math.max(0, Math.min(cover.layout.y + cover.layout.height, target.layout.y + target.layout.height) - Math.max(cover.layout.y, target.layout.y));
+  return overlapWidth * overlapHeight >= target.layout.width * target.layout.height * 0.9;
+}
+
+function clipEnd(clip: CompositionClip) {
+  return clip.startSeconds + clip.durationSeconds;
+}
+
+function formatTimestamp(totalSeconds: number) {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 function resolveRuleTimings(
@@ -176,7 +243,13 @@ function applyVariant(
   timing: { durationSeconds: number; startSeconds: number } | undefined,
   document: CompositionEditorDocument,
 ) {
-  if (timing) {
+  const timingWouldExceedAudioSource = Boolean(
+    timing
+    && clip.kind === "AUDIO"
+    && clip.sourceDurationSeconds !== undefined
+    && (clip.sourceOffsetSeconds || 0) + timing.durationSeconds > clip.sourceDurationSeconds + 0.001,
+  );
+  if (timing && !timingWouldExceedAudioSource) {
     clip.startSeconds = timing.startSeconds;
     clip.durationSeconds = timing.durationSeconds;
     clip.timingSource = "USER_EDITED";
@@ -205,9 +278,9 @@ function applyVariant(
   }
   if (variant.mediaFit && (clip.kind === "IMAGE" || clip.kind === "VIDEO")) clip.mediaFit = variant.mediaFit;
   if (variant.volume !== undefined) clip.volume = variant.volume;
+  return timingWouldExceedAudioSource;
 }
 
 function createAnimationId(ruleId: string, clipIndex: number, animationIndex: number) {
   return `motion-preset-${ruleId.replace(/[^a-z0-9-]/gi, "-").toLowerCase().slice(0, 72)}-${clipIndex + 1}-${animationIndex + 1}`;
 }
-

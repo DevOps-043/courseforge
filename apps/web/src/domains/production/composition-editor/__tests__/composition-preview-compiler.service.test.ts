@@ -235,6 +235,35 @@ test("repairs appearance selectors in persisted legacy composition documents", a
   assert.doesNotMatch(html, /\.deck-scope\s+:root/);
 });
 
+test("scales an inset deck with contain semantics instead of clipping its authored canvas", async () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: {
+      css: ".slide { background: white; }",
+      fonts: [],
+      height: 1080,
+      slides: [{ animationCount: 0, classes: "slide", html: "<h1>Escalada</h1>", index: 0, label: "Escalada" }],
+      width: 1920,
+    },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 5, subtitle: "Prueba", title: "Deck inset" },
+  });
+  const slide = document.clips.find((clip) => clip.kind === "DECK_SLIDE")!;
+  slide.layout = { ...slide.layout, height: 540, width: 864, x: 960, y: 270 };
+
+  const previewHtml = await compileCompositionPreview({ assetUrls: new Map(), document });
+  const renderHtml = await compileCompositionPreview({
+    assetUrls: new Map(),
+    document,
+    target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+  });
+
+  const expectedDeckFrame = 'style="position:absolute;width:1920px;height:1080px;left:0px;top:27px;transform:scale(0.45);transform-origin:top left;overflow:hidden;"';
+  for (const html of [previewHtml, renderHtml]) {
+    assert.ok(html.includes(expectedDeckFrame));
+    assert.doesNotMatch(html, /\.deck-content \.deck-scope,/);
+  }
+});
+
 test("applies an HTML slide crop identically in preview and HyperFrames render", async () => {
   const document = createInitialCompositionDocument({
     animatedDeck: {

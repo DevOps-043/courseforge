@@ -407,6 +407,15 @@
   scrollbar-width: thin;
 }
 
+/* Focus mode keeps the rail compact. The account menu must remain reachable
+   without forcing the navigation rail to expand and consume editor space. */
+.sidebarCollapsed .accountMenu {
+  right: auto;
+  bottom: 0.45rem;
+  left: calc(100% + 0.65rem);
+  width: min(18rem, calc(100vw - 6.5rem));
+}
+
 .menuLabel {
   margin: 0;
   padding: 0.55rem 0.62rem 0.42rem;

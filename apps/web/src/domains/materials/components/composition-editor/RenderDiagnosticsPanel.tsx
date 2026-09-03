@@ -141,7 +141,7 @@ export function RenderDiagnosticsPanel({ requestId, pendingStartedAt, knownStatu
       <button type="button" onClick={() => void cancel()} disabled={cancelling} className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-red-700 disabled:opacity-50 dark:text-red-300">
         {cancelling ? <Loader2 size={13} className="animate-spin" /> : <Square size={13} />} {cancelling ? "Cancelando…" : "Cancelar proceso"}
       </button>
-      <p className="mt-1 text-[10px] opacity-75">Detiene la importación y los reintentos en Courseforge. HeyGen puede continuar un render ya aceptado.</p>
+      <p className="mt-1 text-[10px] opacity-75">SofLIA Engine detendrá la importación y los reintentos. Un procesamiento remoto ya iniciado puede continuar.</p>
     </>}
     <details className="mt-3" open={Boolean(data?.error || connectionError)}>
       <summary className="cursor-pointer font-medium">Consola de diagnóstico ({data?.events.length || 0})</summary>

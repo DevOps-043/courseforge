@@ -123,7 +123,7 @@ export default function SharedSidebarLayout({
     ? true
     : isFocusModeRequested
       ? false
-      : isPinned || isHovered;
+      : isPinned || isHovered || isUserMenuOpen;
   const sidebarWidth = isMobile ? 280 : isExpanded ? 264 : 72;
 
   const cycleTheme = () => {
@@ -211,9 +211,12 @@ export default function SharedSidebarLayout({
 
         <div className={styles.accountArea}>
           <AnimatePresence>
-            {isUserMenuOpen && isExpanded && (
+            {isUserMenuOpen && (
               <motion.div
+                id="sidebar-account-menu"
                 className={styles.accountMenu}
+                role="dialog"
+                aria-label="Menú de cuenta"
                 initial={{ opacity: 0, y: 10, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 8, scale: 0.98 }}
@@ -245,6 +248,8 @@ export default function SharedSidebarLayout({
             type="button"
             className={`${styles.accountButton} ${isUserMenuOpen ? styles.accountButtonOpen : ''}`}
             aria-expanded={isUserMenuOpen}
+            aria-controls="sidebar-account-menu"
+            aria-haspopup="dialog"
             onClick={() => setIsUserMenuOpen((current) => !current)}
           >
             <span className={styles.avatar}>

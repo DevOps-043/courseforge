@@ -55,6 +55,97 @@ test("built-in presets fail closed when a required role is unavailable", () => {
   );
 });
 
+test("all system presets apply with valid layers and their intended role hierarchy", () => {
+  for (const preset of [
+    findBuiltInCompositionPreset("system-presenter-corner")!,
+    findBuiltInCompositionPreset("system-presenter-focus")!,
+    findBuiltInCompositionPreset("system-visual-story")!,
+  ]) {
+    const applied = applyCompositionPresetDefinition({ definition: preset.definition, document: createSystemPresetDocument() });
+    assert.ok(applied.document.clips.every((clip) => clip.layout.zIndex >= 0 && clip.layout.zIndex <= 10), `${preset.name} debe respetar el rango de capas.`);
+    assert.equal(applied.warnings.some((warning) => warning.code === "VISUAL_LAYER_OBSCURED"), false, `${preset.name} controla sus propios B-rolls.`);
+  }
+
+  const corner = applyCompositionPresetDefinition({ definition: findBuiltInCompositionPreset("system-presenter-corner")!.definition, document: createSystemPresetDocument() }).document;
+  assert.ok(layerOf(corner, "avatar") > layerOf(corner, "broll"));
+  assert.ok(layerOf(corner, "broll") > layerOf(corner, "deck"));
+
+  const focus = applyCompositionPresetDefinition({ definition: findBuiltInCompositionPreset("system-presenter-focus")!.definition, document: createSystemPresetDocument() }).document;
+  assert.ok(layerOf(focus, "deck") > layerOf(focus, "broll"));
+  assert.ok(layerOf(focus, "broll") > layerOf(focus, "avatar"));
+
+  const visualStory = applyCompositionPresetDefinition({ definition: findBuiltInCompositionPreset("system-visual-story")!.definition, document: createSystemPresetDocument() }).document;
+  assert.ok(layerOf(visualStory, "broll") > layerOf(visualStory, "deck"));
+  assert.ok(layerOf(visualStory, "visual") > layerOf(visualStory, "deck"));
+  assert.ok(layerOf(visualStory, "visual") > layerOf(visualStory, "broll"));
+});
+
+test("preserves an audio timing when a preset would exceed its trimmed source", () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{
+      checksum: "7".repeat(64), durationSeconds: 5, fileSizeBytes: 1_024,
+      label: "Narración recortada", mimeType: "audio/mpeg",
+      productionAssetId: "00000000-0000-4000-8000-000000000777",
+      publicUrl: null, storageBucket: "production-assets", storagePath: "voice/trimmed.mp3", timelineRole: "VOICE",
+    }],
+    plan: { accentColor: "#00D4B3", durationSeconds: 10, subtitle: "Prueba", title: "Audio válido" },
+  });
+  document.canvas.durationSeconds = 10;
+  const audio = document.clips.find((clip) => clip.kind === "AUDIO")!;
+  audio.sourceOffsetSeconds = 2;
+  audio.durationSeconds = 3;
+  const { definition } = extractCompositionPresetDefinition(document);
+  const voiceRule = definition.rules.find((rule) => rule.selector.semanticRole === "VOICE")!;
+  voiceRule.timing = { endRatio: 1, mode: "STACK", startRatio: 0 };
+
+  const applied = applyCompositionPresetDefinition({ definition, document });
+  const result = applied.document.clips.find((clip) => clip.id === audio.id)!;
+
+  assert.equal(result.startSeconds, audio.startSeconds);
+  assert.equal(result.durationSeconds, 3);
+  assert.deepEqual(applied.warnings, [{
+    code: "AUDIO_TIMING_PRESERVED",
+    message: "Se conservó el timing de Narración recortada: el preset excedía la duración disponible de su audio.",
+    ruleId: voiceRule.id,
+  }]);
+});
+
+test("warns before an unchanged B-roll layer covers an avatar adjusted by a preset", () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [
+      {
+        checksum: "8".repeat(64), durationSeconds: 10, fileSizeBytes: 1_024,
+        label: "Avatar", mimeType: "video/mp4",
+        productionAssetId: "00000000-0000-4000-8000-000000000888",
+        publicUrl: null, storageBucket: "production-assets", storagePath: "avatars/presenter.mp4", timelineRole: "AVATAR",
+      },
+      {
+        checksum: "9".repeat(64), durationSeconds: 10, fileSizeBytes: 1_024,
+        label: "B-roll de fondo", mimeType: "video/mp4",
+        productionAssetId: "00000000-0000-4000-8000-000000000999",
+        publicUrl: null, storageBucket: "production-assets", storagePath: "broll/background.mp4", timelineRole: "BROLL",
+      },
+    ],
+    plan: { accentColor: "#00D4B3", durationSeconds: 10, subtitle: "Prueba", title: "Capas" },
+  });
+  const avatar = document.clips.find((clip) => clip.trackId === "avatar")!;
+  const broll = document.clips.find((clip) => clip.trackId === "broll")!;
+  avatar.layout.zIndex = 2;
+  broll.layout = { height: 1080, opacity: 1, rotation: 0, width: 1920, x: 0, y: 0, zIndex: 5 };
+  const { definition } = extractCompositionPresetDefinition(document);
+  definition.rules = definition.rules.filter((rule) => rule.selector.semanticRole === "AVATAR");
+
+  const applied = applyCompositionPresetDefinition({ definition, document });
+
+  assert.deepEqual(applied.warnings, [{
+    code: "VISUAL_LAYER_OBSCURED",
+    message: "El B-roll B-roll de fondo puede cubrir Avatar entre 00:00 y 00:10.",
+    ruleId: "slot-avatar",
+  }]);
+});
+
 test("extraction stores no asset ids, labels, URLs, HTML or course copy", () => {
   const document = createDocument(2, 10);
   const { definition } = extractCompositionPresetDefinition(document);
@@ -120,5 +211,27 @@ function createDocument(assetCount: number, durationSeconds: number) {
 function readAssetId(clip: ReturnType<typeof createDocument>["clips"][number]) {
   if (clip.source.type !== "PRODUCTION_ASSET") throw new Error("Expected production asset.");
   return clip.source.productionAssetId;
+}
+
+function createSystemPresetDocument() {
+  return createInitialCompositionDocument({
+    animatedDeck: {
+      css: ".slide { color: white; }",
+      fonts: [],
+      height: 1080,
+      slides: [{ animationCount: 0, classes: "slide", html: "<section>Slide</section>", index: 0, label: "Slide" }],
+      width: 1920,
+    },
+    assets: [
+      { checksum: "2".repeat(64), durationSeconds: 10, fileSizeBytes: 1_024, label: "Presentador", mimeType: "video/mp4", productionAssetId: "00000000-0000-4000-8000-000000000222", publicUrl: null, storageBucket: "production-assets", storagePath: "avatars/presenter.mp4", timelineRole: "AVATAR" },
+      { checksum: "3".repeat(64), durationSeconds: 10, fileSizeBytes: 1_024, label: "Apoyo visual", mimeType: "video/mp4", productionAssetId: "00000000-0000-4000-8000-000000000333", publicUrl: null, storageBucket: "production-assets", storagePath: "broll/support.mp4", timelineRole: "BROLL" },
+      { checksum: "4".repeat(64), durationSeconds: 10, fileSizeBytes: 1_024, label: "Gráfico", mimeType: "video/mp4", productionAssetId: "00000000-0000-4000-8000-000000000444", publicUrl: null, storageBucket: "production-assets", storagePath: "visual/chart.mp4", timelineRole: "VISUAL" },
+    ],
+    plan: { accentColor: "#00D4B3", durationSeconds: 10, subtitle: "Prueba", title: "Preset del sistema" },
+  });
+}
+
+function layerOf(document: ReturnType<typeof createSystemPresetDocument>, trackId: string) {
+  return document.clips.find((clip) => clip.trackId === trackId)?.layout.zIndex ?? -1;
 }
 

@@ -332,7 +332,9 @@
 }
 
 .library {
+  container-type: inline-size;
   display: flex;
+  min-width: 0;
   min-height: 0;
   grid-column: 1;
   grid-row: 1;
@@ -342,6 +344,61 @@
   border-radius: 1rem;
   background: color-mix(in srgb, var(--studio-panel) 94%, transparent);
   box-shadow: 0 0.9rem 2.5rem rgb(0 0 0 / 0.2), inset 0 1px 0 rgb(255 255 255 / 0.035);
+}
+
+/* The script needs enough vertical room to review several scenes at once.
+   It occupies the left rail through the timeline while the timeline remains usable. */
+.libraryNarrative {
+  grid-row: 1 / 4;
+}
+
+.library {
+  view-transition-name: composition-studio-library;
+}
+
+.timelinePanel {
+  view-transition-name: composition-studio-timeline;
+}
+
+.resizer {
+  view-transition-name: composition-studio-resizer;
+}
+
+@supports not (view-transition-name: composition-studio-library) {
+  .libraryNarrative {
+    animation: narrative-rail-enter 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .libraryNarrative .libraryBody {
+    animation: narrative-content-enter 200ms cubic-bezier(0.22, 1, 0.36, 1) 35ms both;
+  }
+}
+
+@keyframes narrative-rail-enter {
+  from { opacity: 0.72; transform: translateY(0.45rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes narrative-content-enter {
+  from { opacity: 0; transform: translateY(0.3rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+:global(::view-transition-group(composition-studio-library)),
+:global(::view-transition-group(composition-studio-timeline)),
+:global(::view-transition-group(composition-studio-resizer)) {
+  animation-duration: 280ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.editorGrid:has(.libraryNarrative) .timelinePanel,
+.editorGridWithInspector:has(.libraryNarrative) .timelinePanel {
+  grid-column: 2;
+}
+
+.editorGrid:has(.libraryNarrative) .resizer,
+.editorGridWithInspector:has(.libraryNarrative) .resizer {
+  grid-column: 2;
 }
 
 .panelTabs {
@@ -360,6 +417,7 @@
 
 .panelTab {
   display: inline-flex;
+  min-width: 0;
   min-height: 2.25rem;
   align-items: center;
   justify-content: center;
@@ -370,6 +428,7 @@
   background: transparent;
   font-size: 0.64rem;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .panelTab:hover,
@@ -426,6 +485,7 @@
 .lessonList,
 .assetList {
   display: grid;
+  min-width: 0;
   gap: 0.35rem;
 }
 
@@ -508,6 +568,8 @@
 }
 
 .assetItem {
+  box-sizing: border-box;
+  min-width: 0;
   padding: 0.48rem;
 }
 
@@ -532,6 +594,8 @@
 
 .assetAdd {
   display: inline-flex;
+  box-sizing: border-box;
+  max-width: 100%;
   width: 100%;
   min-height: 1.85rem;
   align-items: center;
@@ -544,6 +608,12 @@
   background: rgb(255 255 255 / 0.025);
   font-size: 0.56rem;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.assetAdd span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .assetAdd:hover:not(:disabled) {
@@ -556,6 +626,30 @@
   border-color: color-mix(in srgb, var(--engine-success) 22%, var(--studio-border));
   color: var(--studio-success-text);
   background: color-mix(in srgb, var(--engine-success) 6%, transparent);
+}
+
+@container (max-width: 21rem) {
+  .panelTabsWithNarrative {
+    gap: 0.12rem;
+    padding: 0.32rem;
+  }
+
+  .panelTabsWithNarrative .panelTab {
+    min-height: 2.05rem;
+    gap: 0.22rem;
+    padding: 0.2rem 0.1rem;
+    font-size: 0.58rem;
+  }
+
+  .panelTabsWithNarrative .panelTab svg {
+    display: none;
+  }
+
+  .panelTabsWithNarrative .tabCount {
+    min-width: 1rem;
+    height: 1rem;
+    padding: 0 0.18rem;
+  }
 }
 
 .previewPanel {
@@ -1967,8 +2061,14 @@
   }
 
   .library { grid-row: 1; min-height: 16rem; }
+  .libraryNarrative { grid-row: 1; }
   .previewPanel { grid-row: 2; }
   .timelinePanel { grid-row: 3; min-height: 18rem; }
+
+  .editorGrid:has(.libraryNarrative) .timelinePanel,
+  .editorGridWithInspector:has(.libraryNarrative) .timelinePanel {
+    grid-column: 1;
+  }
   .inspector { grid-row: 4; min-height: 22rem; }
   .resizer { display: none; }
 
@@ -2067,7 +2167,16 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .historyMenu {
+  .historyMenu,
+  .libraryNarrative,
+  .libraryNarrative .libraryBody {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
+
+  :global(::view-transition-group(composition-studio-library)),
+  :global(::view-transition-group(composition-studio-timeline)),
+  :global(::view-transition-group(composition-studio-resizer)) {
     animation-duration: 1ms;
   }
 

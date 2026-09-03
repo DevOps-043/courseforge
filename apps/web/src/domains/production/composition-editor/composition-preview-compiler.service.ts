@@ -70,6 +70,7 @@ export async function compileCompositionPreview(params: {
     .sort((left, right) => left.layout.zIndex - right.layout.zIndex || left.startSeconds - right.startSeconds)
     .map((clip) => renderClip(
       clip,
+      document.canvas,
       tracksById.get(clip.trackId),
       params.assetVariableNames,
       params.assetUrls,
@@ -119,7 +120,7 @@ export async function compileCompositionPreview(params: {
     ${isInteractivePreview ? `.composition-audio-unlock { position: absolute; left: 50%; bottom: 28px; z-index: 2147483647; display: none; transform: translateX(-50%); border: 1px solid rgba(255,255,255,.55); border-radius: 999px; background: rgba(2,6,23,.92); color: #fff; padding: 12px 18px; font: 700 16px/1 system-ui, sans-serif; box-shadow: 0 10px 30px rgba(0,0,0,.4); cursor: pointer; }
     .composition-audio-unlock[data-visible="true"] { display: block; }` : ""}
     .deck-content { overflow: hidden; }
-    .deck-content .deck-scope, .deck-content .deck-shell, .deck-content .deck-stage, .deck-content .deck-stage > .slide { width: 100%; height: 100%; }
+    .deck-content .deck-shell, .deck-content .deck-stage, .deck-content .deck-stage > .slide { width: 100%; height: 100%; }
     ${deckStyles}
   </style>
 </head>
@@ -140,6 +141,7 @@ export async function compileCompositionPreview(params: {
 
 function renderClip(
   clip: CompositionClip,
+  canvas: Pick<CompositionEditorDocument["canvas"], "height" | "width">,
   track: CompositionTrack | undefined,
   assetVariableNames: Map<string, string> | undefined,
   assetUrls: Map<string, string>,
@@ -167,7 +169,8 @@ function renderClip(
   const hasSynchronizedVideoAudio = clip.kind === "VIDEO"
     && compositionClipHasConfigurableAudio(clip, track);
   if (clip.source.type === "DECK_SLIDE") {
-    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope" data-appearance="${deckAppearance}"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
+    const deckContainStyle = renderDeckContainStyle(clip, canvas);
+    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope" data-appearance="${deckAppearance}" style="${deckContainStyle}"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
   }
   const mediaAssetId = getCompositionClipMediaAssetId(clip);
   if (!mediaAssetId) throw new CompositionPreviewCompilerError(`El clip ${clip.id} no tiene un asset multimedia válido.`);
@@ -191,6 +194,27 @@ function renderClip(
     ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" ${mediaSource} muted playsinline loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset}${hidden}></video>${hasSynchronizedVideoAudio ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${hidden} ${mediaSource} loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset} data-volume="${volume}"></audio>` : ""}`
     : `<img class="composition-media" ${mediaSource} alt="" />`;
   return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${media}</div></div></section>`;
+}
+
+/**
+ * Deck markup is authored in the canvas coordinate space. Preset layouts can
+ * make a deck clip smaller or change its aspect ratio, so scale that source
+ * frame with `contain` semantics instead of shrinking its viewport and
+ * clipping the authored slide.
+ */
+function renderDeckContainStyle(
+  clip: CompositionClip,
+  canvas: Pick<CompositionEditorDocument["canvas"], "height" | "width">,
+) {
+  const scale = Math.min(
+    clip.layout.width / canvas.width,
+    clip.layout.height / canvas.height,
+  );
+  const width = canvas.width * scale;
+  const height = canvas.height * scale;
+  const left = (clip.layout.width - width) / 2;
+  const top = (clip.layout.height - height) / 2;
+  return `position:absolute;width:${canvas.width}px;height:${canvas.height}px;left:${left}px;top:${top}px;transform:scale(${scale});transform-origin:top left;overflow:hidden;`;
 }
 
 function renderMediaSourceAttribute(sourceUrl: string | undefined, variableName: string | undefined) {

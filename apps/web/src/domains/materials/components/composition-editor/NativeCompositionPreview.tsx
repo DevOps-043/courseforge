@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronRight, Clapperboard, Crop, Eye, EyeOff, FileQuestion, GripHorizontal, Grid3X3, History, Image as ImageIcon, Loader2, Magnet, Maximize2, Minimize2, Minus, MousePointer2, Music2, PanelRight, Pause, Play, Plus, RefreshCw, RotateCcw, Save, Scan, Scissors, ScrollText, Send, SlidersHorizontal, Sparkles, Trash2, Video, X } from "lucide-react";
 import { toast } from "sonner";
@@ -2746,19 +2747,35 @@ function StudioLibrary({ assets, delivery, lessons, narrative, narrativeCount, o
   useEffect(() => {
     if (!narrative && activeView === "narrative") setActiveView("lessons");
   }, [activeView, narrative]);
+  const selectView = useCallback((nextView: "assets" | "delivery" | "lessons" | "narrative") => {
+    if (nextView === activeView) return;
+    const updateView = () => flushSync(() => setActiveView(nextView));
+    const transitionDocument = document as Document & {
+      startViewTransition?: (updateCallback: () => void) => unknown;
+    };
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !transitionDocument.startViewTransition) {
+      updateView();
+      return;
+    }
+    try {
+      transitionDocument.startViewTransition(updateView);
+    } catch {
+      updateView();
+    }
+  }, [activeView]);
 
-  return <aside className={styles.library}>
+  return <aside className={`${styles.library} ${activeView === "narrative" ? styles.libraryNarrative : ""}`}>
     <div className={`${styles.panelTabs} ${narrative ? styles.panelTabsWithNarrative : ""}`} role="tablist" aria-label="Biblioteca del ensamble">
-      <button type="button" role="tab" aria-selected={activeView === "lessons"} onClick={() => setActiveView("lessons")} className={`${styles.panelTab} ${activeView === "lessons" ? styles.panelTabActive : ""}`}>
+      <button type="button" role="tab" aria-selected={activeView === "lessons"} onClick={() => selectView("lessons")} className={`${styles.panelTab} ${activeView === "lessons" ? styles.panelTabActive : ""}`}>
         <Clapperboard size={14} aria-hidden="true" /> Videos <span className={styles.tabCount}>{lessons.length}</span>
       </button>
-      <button type="button" role="tab" aria-selected={activeView === "assets"} onClick={() => setActiveView("assets")} className={`${styles.panelTab} ${activeView === "assets" ? styles.panelTabActive : ""}`}>
+      <button type="button" role="tab" aria-selected={activeView === "assets"} onClick={() => selectView("assets")} className={`${styles.panelTab} ${activeView === "assets" ? styles.panelTabActive : ""}`}>
         <ImageIcon size={14} aria-hidden="true" /> Medios <span className={styles.tabCount}>{assets.length}</span>
       </button>
-      {narrative && <button type="button" role="tab" aria-selected={activeView === "narrative"} onClick={() => setActiveView("narrative")} className={`${styles.panelTab} ${activeView === "narrative" ? styles.panelTabActive : ""}`}>
+      {narrative && <button type="button" role="tab" aria-selected={activeView === "narrative"} onClick={() => selectView("narrative")} className={`${styles.panelTab} ${activeView === "narrative" ? styles.panelTabActive : ""}`}>
         <ScrollText size={14} aria-hidden="true" /> Guion <span className={styles.tabCount}>{narrativeCount}</span>
       </button>}
-      <button type="button" role="tab" aria-selected={activeView === "delivery"} onClick={() => setActiveView("delivery")} className={`${styles.panelTab} ${activeView === "delivery" ? styles.panelTabActive : ""}`}>
+      <button type="button" role="tab" aria-selected={activeView === "delivery"} onClick={() => selectView("delivery")} className={`${styles.panelTab} ${activeView === "delivery" ? styles.panelTabActive : ""}`}>
         <Send size={14} aria-hidden="true" /> Entrega
       </button>
     </div>
@@ -2779,7 +2796,10 @@ function StudioLibrary({ assets, delivery, lessons, narrative, narrativeCount, o
               <AssetThumbnail asset={asset} />
               <span className="min-w-0 flex-1"><span className={styles.itemTitle}>{asset.label}</span><span className={styles.assetMetaRow}><span className={styles.itemMeta}>{asset.sourceLabel}</span><span className={styles.itemMeta}>{asset.sizeLabel}</span></span></span>
             </button>
-            <button type="button" disabled={!asset.isEditable || !asset.valid || inTimeline} onClick={() => onAddAsset(asset)} title={inTimeline ? "Este asset ya está en la línea de tiempo" : "Añadir a la línea de tiempo"} className={`${styles.assetAdd} ${inTimeline ? styles.assetAddComplete : ""}`}>{inTimeline ? <><CheckCircle2 size={12} /> En timeline</> : <><Plus size={12} /> Añadir a timeline</>}</button>
+            <button type="button" disabled={!asset.isEditable || !asset.valid || inTimeline} onClick={() => onAddAsset(asset)} title={inTimeline ? "Este asset ya está en la línea de tiempo" : "Añadir a la línea de tiempo"} className={`${styles.assetAdd} ${inTimeline ? styles.assetAddComplete : ""}`}>
+              {inTimeline ? <CheckCircle2 size={12} /> : <Plus size={12} />}
+              <span>{inTimeline ? "En timeline" : "Añadir a timeline"}</span>
+            </button>
           </div>;
         })}
       </div> : activeView === "narrative" ? <div className={styles.narrativeMenu} role="tabpanel">{narrative}</div>
