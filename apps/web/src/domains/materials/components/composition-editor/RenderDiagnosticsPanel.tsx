@@ -18,9 +18,12 @@ const STAGES: Record<string, string> = {
 const bytes = (value: number) => value < 1024 * 1024
   ? `${(value / 1024).toFixed(1)} KiB` : `${(value / 1024 / 1024).toFixed(1)} MiB`;
 
-export function RenderDiagnosticsPanel({ requestId, pendingStartedAt, onCancelled }: {
+type KnownRenderStatus = "idle" | "validating" | "sending" | "rendering" | "completed" | "failed" | "cancelled";
+
+export function RenderDiagnosticsPanel({ requestId, pendingStartedAt, knownStatus, onCancelled }: {
   requestId: string | null;
   pendingStartedAt: string | null;
+  knownStatus: KnownRenderStatus;
   onCancelled: () => void;
 }) {
   const [data, setData] = useState<HyperframesRenderDiagnostics | null>(null);
@@ -62,7 +65,9 @@ export function RenderDiagnosticsPanel({ requestId, pendingStartedAt, onCancelle
     return () => { controller.abort(); window.clearInterval(timer); };
   }, [requestId]);
 
-  const terminal = data ? isRenderTerminal(data) : false;
+  const terminal = data
+    ? isRenderTerminal(data)
+    : knownStatus === "completed" || knownStatus === "failed" || knownStatus === "cancelled";
   useEffect(() => {
     if (terminal || (!requestId && !pendingStartedAt)) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1_000);
@@ -106,7 +111,15 @@ export function RenderDiagnosticsPanel({ requestId, pendingStartedAt, onCancelle
       <span className="flex items-center gap-1.5"><Timer size={14} /> Tiempo total</span>
       <output aria-label="Tiempo de render" className="font-mono text-base font-semibold tabular-nums">{formatRenderElapsed(elapsed)}</output>
     </div>
-    <p className="mt-1 font-medium">{data ? renderStageLabel(data.providerStatus, data.importStatus, data.cancelledAt) : "Recuperando estado del proceso…"}</p>
+    <p className="mt-1 font-medium">{data
+      ? renderStageLabel(data.providerStatus, data.importStatus, data.cancelledAt)
+      : knownStatus === "failed"
+        ? "Recuperando el diagnóstico del fallo…"
+        : knownStatus === "completed"
+          ? "Recuperando el diagnóstico final…"
+          : knownStatus === "cancelled"
+            ? "Recuperando el diagnóstico de la cancelación…"
+            : "Recuperando estado del proceso…"}</p>
     {data && <div className="mt-2 space-y-1 text-[11px]">
       <p>ZIP: {bytes(data.archiveSizeBytes)} · Intentos de importación: {data.attempts} · Fallos: {data.failures}</p>
       {data.sourceSizeBytes !== null && <>
@@ -117,7 +130,11 @@ export function RenderDiagnosticsPanel({ requestId, pendingStartedAt, onCancelle
       {!terminal && data.nextAttemptAt && <p>Próximo intento: {new Date(data.nextAttemptAt).toLocaleTimeString()}</p>}
     </div>}
     {(stalled || longRunning) && <p role="status" className="mt-2 flex gap-1 text-amber-700 dark:text-amber-300"><AlertTriangle size={14} className="shrink-0" />{stalled ? "Sin actividad registrada durante al menos 5 minutos." : "El proceso lleva más de 30 minutos."} Puedes revisar la consola o cancelar.</p>}
-    {data?.error && !data.cancelledAt && <p role="alert" className="mt-2 break-words text-red-700 dark:text-red-300">{data.error}</p>}
+    {data?.error && !data.cancelledAt && <p role="alert" className="mt-2 break-words text-red-700 dark:text-red-300">
+      {data.importStatus.toUpperCase() === "FAILED" && data.providerStatus.toUpperCase() === "COMPLETED"
+        ? `HeyGen terminó el render, pero la importación del video fue rechazada: ${data.error}`
+        : data.error}
+    </p>}
     {connectionError && <p role="alert" className="mt-2 break-words text-amber-700 dark:text-amber-300">Estado sin confirmar: {connectionError} Se volverá a consultar.</p>}
     {cancelError && <p role="alert" className="mt-2 text-red-700 dark:text-red-300">{cancelError}</p>}
     {requestId && !terminal && <>
