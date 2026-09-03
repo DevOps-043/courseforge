@@ -51,6 +51,42 @@ test("edita la lÃ­nea de tiempo sin alterar la referencia del asset", () => {
   assert.deepEqual(result.source, video.source);
 });
 
+test("mueve en conjunto un avatar de escena y su voz asociada", () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [
+      {
+        checksum: "1".repeat(64), durationSeconds: 8, fileSizeBytes: 42, hasAudio: true,
+        mimeType: "video/mp4", productionAssetId: "11111111-1111-4111-8111-111111111121",
+        publicUrl: null, sceneClipId: "scene-avatar-1", sceneOrder: 1,
+        storageBucket: "production-assets", storagePath: "production-assets/avatar-scene-1.mp4", timelineRole: "AVATAR",
+      },
+      {
+        checksum: "2".repeat(64), durationSeconds: 8, fileSizeBytes: 42,
+        mimeType: "audio/mpeg", productionAssetId: "22222222-2222-4222-8222-222222222232",
+        publicUrl: null, sceneClipId: "scene-avatar-1", sceneOrder: 1,
+        storageBucket: "production-assets", storagePath: "production-assets/voice-scene-1.mp3", timelineRole: "VOICE",
+      },
+    ],
+    plan: { accentColor: "#38BDF8", durationSeconds: 20, subtitle: "Prueba", title: "Avatar vinculado" },
+  });
+  document.canvas.durationSeconds = 20;
+  const avatar = document.clips.find((clip) => clip.trackId === "avatar")!;
+  const voice = document.clips.find((clip) => clip.trackId === "voice" && clip.sceneId === "scene-avatar-1")!;
+
+  const movedFromAvatar = applyCompositionEditorPatches(document, [{
+    clipId: avatar.id, startSeconds: 4, type: "clip.move",
+  }]);
+  assert.equal(movedFromAvatar.clips.find((clip) => clip.id === avatar.id)?.startSeconds, 4);
+  assert.equal(movedFromAvatar.clips.find((clip) => clip.id === voice.id)?.startSeconds, 4);
+
+  const movedFromVoice = applyCompositionEditorPatches(movedFromAvatar, [{
+    clipId: voice.id, startSeconds: 7, type: "clip.move",
+  }]);
+  assert.equal(movedFromVoice.clips.find((clip) => clip.id === avatar.id)?.startSeconds, 7);
+  assert.equal(movedFromVoice.clips.find((clip) => clip.id === voice.id)?.startSeconds, 7);
+});
+
 test("aplica un recorte visual no destructivo y conserva timing, layout y fuente", () => {
   const document = baseDocument();
   const video = document.clips.find((clip) => clip.kind === "VIDEO")!;

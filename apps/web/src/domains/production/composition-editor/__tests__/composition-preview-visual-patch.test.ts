@@ -14,7 +14,6 @@ function createBrollDocument() {
       fileSizeBytes: 4,
       hasAudio: true,
       mimeType: "video/mp4",
-      hasAudio: true,
       productionAssetId: "00000000-0000-4000-8000-000000000041",
       publicUrl: null,
       storageBucket: "production-assets",

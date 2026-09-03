@@ -20,6 +20,7 @@ import {
 } from "./composition-visual-crop.service";
 import { compositionClipHasConfigurableAudio } from "./composition-clip-audio.service";
 import { compositionClipExclusionKey } from "./composition-source-selection";
+import { resolveLinkedAvatarAudioClip } from "./composition-avatar-audio-link.service";
 
 export class CompositionEditorPatchError extends Error {
   constructor(message: string) {
@@ -106,6 +107,9 @@ export function ensureCanvasDurationForClipPatches(
     } else if (operation.type === "clip.move") {
       const timing = timings.get(operation.clipId);
       if (timing) timing.startSeconds = operation.startSeconds;
+      const linkedClip = resolveLinkedAvatarAudioClip(document, operation.clipId);
+      const linkedTiming = linkedClip ? timings.get(linkedClip.id) : null;
+      if (linkedTiming) linkedTiming.startSeconds = operation.startSeconds;
     } else if (operation.type === "clip.duration") {
       const timing = timings.get(operation.clipId);
       if (timing) timing.durationSeconds = operation.durationSeconds;
@@ -530,9 +534,22 @@ export function applyCompositionEditorPatches(
       if (currentTrack.locked || destinationTrack.locked) {
         throw new CompositionEditorPatchError("No puedes mover un clip desde o hacia un track bloqueado.");
       }
+      const linkedClip = resolveLinkedAvatarAudioClip(next, clip.id);
+      const linkedTrack = linkedClip
+        ? next.tracks.find((track) => track.id === linkedClip.trackId)
+        : null;
+      if (linkedClip && (!linkedTrack || linkedTrack.locked)) {
+        throw new CompositionEditorPatchError("No puedes mover un avatar mientras su voz asociada está en un track bloqueado.");
+      }
       clip.startSeconds = operation.startSeconds;
       clip.trackId = destinationTrack.id;
       clip.timingSource = "USER_EDITED";
+      if (linkedClip) {
+        // Keep each medium on its own semantic track. The link owns timing,
+        // not track assignment, so narration remains independently mixable.
+        linkedClip.startSeconds = operation.startSeconds;
+        linkedClip.timingSource = "USER_EDITED";
+      }
     }
 
     if (operation.type === "clip.duration") {
