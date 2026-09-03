@@ -23,6 +23,70 @@ export interface HeygenGenerationQuote {
   totalUsd: number;
 }
 
+export interface HeygenSceneGenerationQuote {
+  avatar: HeygenGenerationQuote;
+  emptyScriptClipIds: string[];
+  ignoredClipIds: string[];
+  plan: {
+    avatarClipIds: string[];
+    voiceOnlyClipIds: string[];
+  };
+  total: HeygenGenerationQuote;
+  voiceOnly: HeygenGenerationQuote;
+}
+
+type HeygenQuotableScene = {
+  deleted?: boolean;
+  expected_media_mode?: "avatar" | "voice_only" | "none";
+  id: string;
+  script_text: string;
+};
+
+/**
+ * Produces the quote from the exact split that Generate all submits. This
+ * prevents a voice-only scene from being shown or budgeted as an avatar.
+ */
+export function estimateHeygenSceneGenerationQuote(params: {
+  avatarType?: string | null;
+  clips: HeygenQuotableScene[];
+  engine: "avatar_iv" | "avatar_v";
+  resolution?: "720p" | "1080p" | "4k";
+  selectedClipIds: readonly string[];
+  speed?: number;
+}): HeygenSceneGenerationQuote {
+  const plan = buildSceneGenerateAllPlan(params.clips, params.selectedClipIds);
+  const clipsById = new Map(params.clips.map((clip) => [clip.id, clip]));
+  const avatarClips = plan.avatarClipIds.map((id) => clipsById.get(id)).filter(isDefined);
+  const voiceOnlyClips = plan.voiceOnlyClipIds.map((id) => clipsById.get(id)).filter(isDefined);
+  const billableIds = new Set([...plan.avatarClipIds, ...plan.voiceOnlyClipIds]);
+  const emptyScriptClipIds = [...avatarClips, ...voiceOnlyClips]
+    .filter((clip) => !clip.script_text.trim())
+    .map((clip) => clip.id);
+  const ignoredClipIds = params.selectedClipIds.filter((id) => !billableIds.has(id));
+  const avatar = estimateHeygenGenerationQuote({
+    avatarType: params.avatarType,
+    engine: params.engine,
+    includeSpeech: true,
+    resolution: params.resolution,
+    scripts: avatarClips.map((clip) => clip.script_text),
+    speed: params.speed,
+  });
+  const voiceOnly = estimateHeygenGenerationQuote({
+    includeSpeech: true,
+    scripts: voiceOnlyClips.map((clip) => clip.script_text),
+    speed: params.speed,
+  });
+
+  return {
+    avatar,
+    emptyScriptClipIds,
+    ignoredClipIds,
+    plan,
+    total: combineQuotes(avatar, voiceOnly),
+    voiceOnly,
+  };
+}
+
 /**
  * Client-safe, indicative API quote. It deliberately models only the requests
  * SofLIA - Engine sends to HeyGen (speech and/or avatar video), never an avatar
@@ -120,3 +184,18 @@ export function buildHybridCourseEstimate(params: {
 function roundMoney(value: number) {
   return Math.round(value * 10_000) / 10_000;
 }
+
+function combineQuotes(...quotes: HeygenGenerationQuote[]): HeygenGenerationQuote {
+  return {
+    avatarUsd: roundMoney(quotes.reduce((total, quote) => total + quote.avatarUsd, 0)),
+    durationSeconds: quotes.reduce((total, quote) => total + quote.durationSeconds, 0),
+    includesSpeech: quotes.some((quote) => quote.includesSpeech),
+    speechUsd: roundMoney(quotes.reduce((total, quote) => total + quote.speechUsd, 0)),
+    totalUsd: roundMoney(quotes.reduce((total, quote) => total + quote.totalUsd, 0)),
+  };
+}
+
+function isDefined<T>(value: T | undefined): value is T {
+  return value !== undefined;
+}
+import { buildSceneGenerateAllPlan } from "./heygen-scene-generation-policy";

@@ -16,6 +16,7 @@ import {
 } from "../heygen-scenes.service";
 import { resetGeneratedSceneAssets } from "../heygen-scene-assets";
 import { buildSceneGenerateAllPlan } from "../heygen-scene-generation-policy";
+import { estimateHeygenSceneGenerationQuote } from "../heygen-cost.service";
 import {
   estimateHeygenAvatarGenerationBudget,
   readHeygenAvailableBalance,
@@ -765,6 +766,37 @@ describe("HeyGen scene generation contract", () => {
       avatarClipIds: [],
       voiceOnlyClipIds: ["voice-scene"],
     });
+  });
+
+  it("quotes mixed scenes using the same split that generate-all submits", () => {
+    const minuteScript = Array.from({ length: 145 }, () => "palabra").join(" ");
+    const quote = estimateHeygenSceneGenerationQuote({
+      avatarType: "digital_twin",
+      clips: [
+        { expected_media_mode: "avatar" as const, id: "avatar", script_text: minuteScript },
+        { expected_media_mode: "voice_only" as const, id: "voice", script_text: minuteScript },
+        { expected_media_mode: "none" as const, id: "silent", script_text: "" },
+      ],
+      engine: "avatar_iv",
+      selectedClipIds: ["avatar", "voice", "silent"],
+    });
+
+    assert.deepEqual(quote.plan, { avatarClipIds: ["avatar"], voiceOnlyClipIds: ["voice"] });
+    assert.equal(quote.avatar.totalUsd, 4.04);
+    assert.equal(quote.voiceOnly.totalUsd, 0.04);
+    assert.equal(quote.total.totalUsd, 4.08);
+    assert.deepEqual(quote.ignoredClipIds, ["silent"]);
+  });
+
+  it("blocks a billable scene without a script before it can be queued", () => {
+    assert.throws(
+      () => assertSceneGenerationContract({
+        clipIds: ["empty-avatar"],
+        clips: [{ expected_media_mode: "avatar", id: "empty-avatar", order: 4, script_text: "   ", status: "DRAFT" }],
+        generationTarget: "avatar",
+      }),
+      /no contiene texto/,
+    );
   });
 
   it("measures readiness from each persisted media mode", () => {

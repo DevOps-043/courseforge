@@ -213,6 +213,7 @@ export async function createOrReuseProductionJob(
     .insert({
       artifact_id: params.context.artifactId,
       created_by: params.createdBy || null,
+      estimated_cost_cents: params.estimatedCostCents ?? null,
       idempotency_key: params.idempotencyKey,
       input_snapshot: params.inputSnapshot,
       job_type: params.jobType,

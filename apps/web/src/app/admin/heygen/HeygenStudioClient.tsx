@@ -34,7 +34,9 @@ import {
 } from "@/domains/production/providers/heygen/heygen-scene-generation-policy";
 import {
   estimateHeygenGenerationQuote,
+  estimateHeygenSceneGenerationQuote,
   type HeygenGenerationQuote,
+  type HeygenSceneGenerationQuote,
 } from "@/domains/production/providers/heygen/heygen-cost.service";
 
 type AspectRatio = "16:9" | "9:16";
@@ -988,38 +990,35 @@ export default function HeygenStudioClient({
       return;
     }
 
-    const plan = buildSceneGenerateAllPlan(sceneClips, selectedSceneClipIds);
+    const selectedAvatar = avatarPresets.find((preset) => preset.id === selectedAvatarPresetId);
+    const generationQuote = estimateHeygenSceneGenerationQuote({
+      avatarType: selectedAvatar?.avatar_type,
+      clips: sceneClips,
+      engine,
+      resolution,
+      selectedClipIds: selectedSceneClipIds,
+      speed: voiceSpeed,
+    });
+    const plan = generationQuote.plan;
     if (plan.avatarClipIds.length === 0 && plan.voiceOnlyClipIds.length === 0) {
       toast.error("La selección no contiene escenas configuradas para avatar o sólo voz.");
       return;
     }
-
-    const avatarIds = new Set(plan.avatarClipIds);
-    const voiceOnlyIds = new Set(plan.voiceOnlyClipIds);
-    const avatarClipsToGenerate = sceneClips.filter((clip) => avatarIds.has(clip.id));
-    const voiceOnlyClipsToGenerate = sceneClips.filter((clip) => voiceOnlyIds.has(clip.id));
-    const selectedAvatar = avatarPresets.find((preset) => preset.id === selectedAvatarPresetId);
-    const avatarQuote = estimateHeygenGenerationQuote({
-      avatarType: selectedAvatar?.avatar_type,
-      engine,
-      includeSpeech: true,
-      resolution,
-      scripts: avatarClipsToGenerate.map((clip) => clip.script_text),
-      speed: voiceSpeed,
-    });
-    const voiceOnlyQuote = estimateHeygenGenerationQuote({
-      includeSpeech: true,
-      scripts: voiceOnlyClipsToGenerate.map((clip) => clip.script_text),
-      speed: voiceSpeed,
-    });
-    const estimatedTotalUsd = avatarQuote.totalUsd + voiceOnlyQuote.totalUsd;
+    if (generationQuote.emptyScriptClipIds.length > 0) {
+      const scenes = sceneClips
+        .filter((clip) => generationQuote.emptyScriptClipIds.includes(clip.id))
+        .map((clip) => clip.order)
+        .join(", ");
+      toast.error(`Agrega un guion a la${generationQuote.emptyScriptClipIds.length === 1 ? " escena" : "s escenas"} ${scenes} antes de generar. No se envió ninguna solicitud a HeyGen.`);
+      return;
+    }
     const confirmed = window.confirm(
       [
         "Se generará todo el contenido hablado seleccionado:",
         `• ${plan.avatarClipIds.length} escena${plan.avatarClipIds.length === 1 ? "" : "s"} con avatar y voz`,
         `• ${plan.voiceOnlyClipIds.length} escena${plan.voiceOnlyClipIds.length === 1 ? "" : "s"} sólo con voz`,
-        `Costo API estimado: US$${estimatedTotalUsd.toFixed(2)}.`,
-        "HeyGen confirmará el cobro final. ¿Deseas continuar?",
+        `Referencia estimada: US$${generationQuote.total.totalUsd.toFixed(2)} (avatar US$${generationQuote.avatar.totalUsd.toFixed(2)} + sólo voz US$${generationQuote.voiceOnly.totalUsd.toFixed(2)}).`,
+        "HeyGen puede cobrar según la duración final y el plan contratado. ¿Deseas continuar?",
       ].join("\n"),
     );
     if (!confirmed) return;
@@ -1176,18 +1175,12 @@ export default function HeygenStudioClient({
   const completedSceneClips = visibleSceneClips.filter((clip) => clip.status === "COMPLETED");
   const completedVoiceClips = voiceClips.filter((clip) => clip.status === "COMPLETED");
   const selectedAvatar = avatarPresets.find((preset) => preset.id === selectedAvatarPresetId);
-  const selectedSceneClips = visibleSceneClips.filter((clip) => selectedSceneClipIds.includes(clip.id));
-  const sceneQuote = estimateHeygenGenerationQuote({
+  const sceneGenerationQuote = estimateHeygenSceneGenerationQuote({
     avatarType: selectedAvatar?.avatar_type,
+    clips: visibleSceneClips,
     engine,
-    includeSpeech: true,
     resolution,
-    scripts: selectedSceneClips.map((clip) => clip.script_text),
-    speed: voiceSpeed,
-  });
-  const sceneVoiceQuote = estimateHeygenGenerationQuote({
-    includeSpeech: true,
-    scripts: selectedSceneClips.map((clip) => clip.script_text),
+    selectedClipIds: selectedSceneClipIds,
     speed: voiceSpeed,
   });
   const standaloneQuote = estimateHeygenGenerationQuote({
@@ -1933,10 +1926,9 @@ export default function HeygenStudioClient({
 
           {(isSceneMode || !isCourseContext) ? (
             <GenerationQuote
-              quote={isSceneMode ? sceneQuote : standaloneQuote}
-              sceneCount={isSceneMode ? selectedSceneClips.length : undefined}
+              quote={isSceneMode ? sceneGenerationQuote.total : standaloneQuote}
+              sceneGenerationQuote={isSceneMode ? sceneGenerationQuote : undefined}
               title={isSceneMode ? "Cotización de la selección" : "Cotización previa"}
-              voiceOnlyQuote={isSceneMode ? sceneVoiceQuote : undefined}
             />
           ) : null}
 
@@ -2239,14 +2231,12 @@ function InsertSceneClipButton({
 
 function GenerationQuote({
   quote,
-  sceneCount,
+  sceneGenerationQuote,
   title,
-  voiceOnlyQuote,
 }: {
   quote: HeygenGenerationQuote;
-  sceneCount?: number;
+  sceneGenerationQuote?: HeygenSceneGenerationQuote;
   title: string;
-  voiceOnlyQuote?: HeygenGenerationQuote;
 }) {
   const hasContent = quote.durationSeconds > 0;
   return (
@@ -2259,14 +2249,28 @@ function GenerationQuote({
       </div>
       {hasContent ? (
         <p className="mt-1 text-xs text-violet-800/80 dark:text-violet-200/80">
-          {sceneCount !== undefined ? `${sceneCount} escena${sceneCount === 1 ? "" : "s"} · ` : ""}
-          {formatDuration(quote.durationSeconds)} estimados · avatar US${quote.avatarUsd.toFixed(2)}
-          {quote.includesSpeech ? ` + voz US$${quote.speechUsd.toFixed(2)}` : ""}.
-          {voiceOnlyQuote ? ` Sólo voz: ≈ US$${voiceOnlyQuote.totalUsd.toFixed(2)}.` : ""}
+          {sceneGenerationQuote
+            ? <>
+              {sceneGenerationQuote.plan.avatarClipIds.length} avatar{sceneGenerationQuote.plan.avatarClipIds.length === 1 ? "" : "es"} + {sceneGenerationQuote.plan.voiceOnlyClipIds.length} sólo voz · {formatDuration(quote.durationSeconds)} estimados. Avatar: US${sceneGenerationQuote.avatar.totalUsd.toFixed(2)} · sólo voz: US${sceneGenerationQuote.voiceOnly.totalUsd.toFixed(2)}.
+            </>
+            : <>
+              {formatDuration(quote.durationSeconds)} estimados · avatar US${quote.avatarUsd.toFixed(2)}
+              {quote.includesSpeech ? ` + voz US$${quote.speechUsd.toFixed(2)}` : ""}.
+            </>}
+        </p>
+      ) : null}
+      {sceneGenerationQuote?.emptyScriptClipIds.length ? (
+        <p className="mt-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+          Hay {sceneGenerationQuote.emptyScriptClipIds.length} escena{sceneGenerationQuote.emptyScriptClipIds.length === 1 ? "" : "s"} facturable{sceneGenerationQuote.emptyScriptClipIds.length === 1 ? "" : "s"} sin guion. El envío se bloqueará hasta corregirla{sceneGenerationQuote.emptyScriptClipIds.length === 1 ? "" : "s"}.
+        </p>
+      ) : null}
+      {sceneGenerationQuote?.ignoredClipIds.length ? (
+        <p className="mt-1 text-[11px] text-violet-800/70 dark:text-violet-200/70">
+          {sceneGenerationQuote.ignoredClipIds.length} escena{sceneGenerationQuote.ignoredClipIds.length === 1 ? "" : "s"} seleccionada{sceneGenerationQuote.ignoredClipIds.length === 1 ? "" : "s"} no requiere{sceneGenerationQuote.ignoredClipIds.length === 1 ? "" : "n"} contenido hablado y no se incluye{sceneGenerationQuote.ignoredClipIds.length === 1 ? "" : "n"} en el monto.
         </p>
       ) : null}
       <p className="mt-1 text-[11px] text-violet-800/70 dark:text-violet-200/70">
-        Referencia de tarifa API por duración; el saldo y el cobro final los confirma HeyGen. La opción “Sólo voz” no incluye render de avatar.
+        Referencia de tarifa API por duración; no es una factura ni una confirmación de cobro de HeyGen. La opción “Sólo voz” no incluye render de avatar.
       </p>
     </div>
   );

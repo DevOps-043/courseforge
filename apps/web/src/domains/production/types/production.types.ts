@@ -99,6 +99,7 @@ export interface ProductionJobRecord {
 export interface CreateProductionJobParams {
   context: ProductionComponentContext;
   createdBy?: string | null;
+  estimatedCostCents?: number | null;
   idempotencyKey: string;
   inputSnapshot: Record<string, unknown>;
   jobType: ProductionJobType;

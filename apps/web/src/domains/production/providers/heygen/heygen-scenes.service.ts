@@ -44,6 +44,7 @@ import {
 import { assertTrackDurationsAligned } from "./heygen-video.service";
 import { resetGeneratedSceneAssets } from "./heygen-scene-assets";
 import { estimateHeygenAvatarGenerationBudget } from "./heygen-billing";
+import { estimateHeygenGenerationQuote } from "./heygen-cost.service";
 import {
   buildCorrelatedHeygenVideoTitle,
   buildHeygenSceneAssetNames,
@@ -146,7 +147,22 @@ export function assertSceneGenerationContract(params: {
     (clip) => !sceneSupportsGenerationTarget(clip, params.generationTarget),
   );
 
-  if (incompatible.length === 0) return selectedClips;
+  if (incompatible.length === 0) {
+    for (const clip of selectedClips) {
+      try {
+        assertHeygenTextInputWithinLimits({
+          label: `La escena ${clip.order}`,
+          text: clip.script_text,
+        });
+      } catch (error) {
+        if (error instanceof HeygenRequestValidationError) {
+          throw new HeygenScenesServiceError(error.message, error.status);
+        }
+        throw error;
+      }
+    }
+    return selectedClips;
+  }
 
   const sceneLabels = incompatible
     .map((clip) => `escena ${clip.order}`)
@@ -1501,6 +1517,13 @@ export class HeygenScenesService {
     const job = await createOrReuseProductionJob(this.supabase, {
       context: params.context,
       createdBy: params.createdBy,
+      estimatedCostCents: toEstimatedCostCents(estimateHeygenGenerationQuote({
+        engine: params.options.engine,
+        includeSpeech: true,
+        resolution: params.options.resolution,
+        scripts: [params.clip.script_text],
+        speed: params.options.speed,
+      }).totalUsd),
       idempotencyKey: buildProductionIdempotencyKey({
         componentId: params.context.componentId,
         input: jobInput,
@@ -1707,6 +1730,11 @@ export class HeygenScenesService {
     const job = await createOrReuseProductionJob(this.supabase, {
       context: params.context,
       createdBy: params.createdBy,
+      estimatedCostCents: toEstimatedCostCents(estimateHeygenGenerationQuote({
+        includeSpeech: true,
+        scripts: [params.clip.script_text],
+        speed: params.clip.voice_speed ?? 1,
+      }).totalUsd),
       idempotencyKey: buildProductionIdempotencyKey({
         componentId: params.context.componentId,
         input: jobInput,
@@ -2520,6 +2548,10 @@ function readPositiveInteger(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) && value > 0
     ? value
     : 0;
+}
+
+function toEstimatedCostCents(usd: number) {
+  return Number.isFinite(usd) && usd > 0 ? Math.round(usd * 100) : 0;
 }
 
 function readString(value: unknown) {
