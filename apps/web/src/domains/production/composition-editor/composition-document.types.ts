@@ -37,6 +37,20 @@ export const DEFAULT_COMPOSITION_DUCKING_SETTINGS = {
   triggerRoles: ["VOICE", "AVATAR"] as const,
 };
 
+/**
+ * Timeline times are persisted at millisecond precision. A much smaller
+ * tolerance absorbs IEEE-754 representation noise without accepting a real
+ * user-visible overrun.
+ */
+export const COMPOSITION_TIMELINE_BOUNDARY_EPSILON_SECONDS = 0.000001;
+
+export function exceedsCompositionTimelineBoundary(
+  endSeconds: number,
+  boundarySeconds: number,
+) {
+  return endSeconds > boundarySeconds + COMPOSITION_TIMELINE_BOUNDARY_EPSILON_SECONDS;
+}
+
 const editorIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i);
 const uuidSchema = z.string().uuid();
 const finiteNumberSchema = z.number().finite();
@@ -230,8 +244,24 @@ export const compositionEditorDocumentSchema = z.object({
   const hfIds = new Set<string>();
   for (const clip of document.clips) {
     if (!trackIds.has(clip.trackId)) context.addIssue({ code: "custom", message: `El clip ${clip.id} no pertenece a un track válido.` });
-    if (clip.startSeconds + clip.durationSeconds > document.canvas.durationSeconds) {
-      context.addIssue({ code: "custom", message: `El clip ${clip.id} excede la duración del canvas.` });
+    if (exceedsCompositionTimelineBoundary(
+      clip.startSeconds + clip.durationSeconds,
+      document.canvas.durationSeconds,
+    )) {
+      const clipEndSeconds = clip.startSeconds + clip.durationSeconds;
+      context.addIssue({
+        code: "custom",
+        message: `El clip ${clip.id} excede la duración del canvas.`,
+        params: {
+          canvasDurationSeconds: document.canvas.durationSeconds,
+          clipEndSeconds,
+          clipId: clip.id,
+          clipStartSeconds: clip.startSeconds,
+          durationSeconds: clip.durationSeconds,
+          issueType: "COMPOSITION_TIMELINE_BOUNDARY",
+          overflowSeconds: clipEndSeconds - document.canvas.durationSeconds,
+        },
+      });
     }
     if (clipIds.has(clip.id)) context.addIssue({ code: "custom", message: `El id de clip ${clip.id} está duplicado.` });
     if (hfIds.has(clip.hfId)) context.addIssue({ code: "custom", message: `El id visual ${clip.hfId} está duplicado.` });

@@ -1,6 +1,7 @@
 import {
   COMPOSITION_DOCUMENT_FORMAT,
   compositionEditorDocumentSchema,
+  exceedsCompositionTimelineBoundary,
   type CompositionEditorDocument,
 } from "./composition-document.types";
 import type { CompositionEditorPatchOperation } from "./editor-patch.types";
@@ -260,7 +261,10 @@ export function applyCompositionEditorPatches(
       if (operation.clipId !== "canvas") {
         throw new CompositionEditorPatchError("La operación de duración debe dirigirse al canvas.");
       }
-      if (next.clips.some((clip) => clip.startSeconds + clip.durationSeconds > operation.durationSeconds)) {
+      if (next.clips.some((clip) => exceedsCompositionTimelineBoundary(
+        clip.startSeconds + clip.durationSeconds,
+        operation.durationSeconds,
+      ))) {
         throw new CompositionEditorPatchError("Reduce primero los clips que terminan después de la nueva duración.");
       }
       next.canvas.durationSeconds = operation.durationSeconds;

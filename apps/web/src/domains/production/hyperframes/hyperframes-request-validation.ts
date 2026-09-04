@@ -17,6 +17,34 @@ export function summarizeHyperframesValidationIssues(error: z.ZodError) {
   }));
 }
 
+/** Extracts numeric timeline diagnostics without exposing composition content. */
+export function summarizeCompositionTimelineBoundaryIssues(error: z.ZodError) {
+  return error.issues.flatMap((issue) => {
+    const params = "params" in issue && isRecord(issue.params) ? issue.params : null;
+    if (params?.issueType !== "COMPOSITION_TIMELINE_BOUNDARY") return [];
+
+    const clipId = typeof params.clipId === "string" ? params.clipId : null;
+    const clipStartSeconds = readFiniteNumber(params.clipStartSeconds);
+    const durationSeconds = readFiniteNumber(params.durationSeconds);
+    const clipEndSeconds = readFiniteNumber(params.clipEndSeconds);
+    const canvasDurationSeconds = readFiniteNumber(params.canvasDurationSeconds);
+    const overflowSeconds = readFiniteNumber(params.overflowSeconds);
+    if (!clipId || clipStartSeconds === null || durationSeconds === null || clipEndSeconds === null || canvasDurationSeconds === null || overflowSeconds === null) {
+      return [];
+    }
+
+    return [{ canvasDurationSeconds, clipEndSeconds, clipId, clipStartSeconds, durationSeconds, overflowSeconds }];
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readFiniteNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 export type HyperframesSnapshotRenderProfile = HyperframesRenderSettings;
 
 type RequestedRenderProfile = {

@@ -3,6 +3,7 @@ import test from "node:test";
 import { createInitialCompositionDocument } from "../composition-document.factory";
 import { buildCompositionAutoOrganizePatch } from "../composition-auto-organize.service";
 import { COMPOSITION_DOCUMENT_FORMAT, compositionEditorDocumentSchema, LEGACY_COMPOSITION_DOCUMENT_FORMAT } from "../composition-document.types";
+import { summarizeCompositionTimelineBoundaryIssues } from "../../hyperframes/hyperframes-request-validation";
 import {
   applyCompositionEditorPatches,
   CompositionEditorPatchError,
@@ -806,6 +807,54 @@ test("actualiza documentos V1 a V2 sin perder su estado existente", () => {
   assert.equal(updated.format, COMPOSITION_DOCUMENT_FORMAT);
   assert.equal(updated.motion.schemaVersion, 2);
   assert.equal(updated.clips.find((candidate) => candidate.id === clip.id)?.hidden, true);
+});
+
+test("acepta el límite del canvas cuando la suma decimal solo excede por precisión IEEE-754", () => {
+  const document = baseDocument();
+  const slide = document.clips.find((clip) => clip.kind === "DECK_SLIDE")!;
+  document.clips = [slide];
+  document.canvas.durationSeconds = 3.131;
+  slide.startSeconds = 1.566;
+  slide.durationSeconds = 1.565;
+
+  assert.equal(slide.startSeconds + slide.durationSeconds > document.canvas.durationSeconds, true);
+  assert.doesNotThrow(() => compositionEditorDocumentSchema.parse(document));
+  assert.doesNotThrow(() => applyCompositionEditorPatches(document, [{
+    clipId: "canvas",
+    durationSeconds: 3.131,
+    type: "composition.canvas-duration",
+  }]));
+});
+
+test("mantiene el rechazo para un clip que realmente rebasa el canvas", () => {
+  const document = baseDocument();
+  const slide = document.clips.find((clip) => clip.kind === "DECK_SLIDE")!;
+  document.clips = [slide];
+  document.canvas.durationSeconds = 3.131;
+  slide.startSeconds = 1.566;
+  slide.durationSeconds = 1.567;
+
+  const parsed = compositionEditorDocumentSchema.safeParse(document);
+  assert.equal(parsed.success, false);
+  if (!parsed.success) {
+    const diagnostics = summarizeCompositionTimelineBoundaryIssues(parsed.error);
+    assert.equal(diagnostics.length, 1);
+    const diagnostic = diagnostics[0]!;
+    const { overflowSeconds, ...boundary } = diagnostic;
+    assert.deepEqual(boundary, {
+      canvasDurationSeconds: 3.131,
+      clipEndSeconds: 3.133,
+      clipId: slide.id,
+      clipStartSeconds: 1.566,
+      durationSeconds: 1.567,
+    });
+    assert.ok(Math.abs(overflowSeconds - 0.002) < 0.000001);
+  }
+  assert.throws(() => applyCompositionEditorPatches(document, [{
+    clipId: "canvas",
+    durationSeconds: 3.131,
+    type: "composition.canvas-duration",
+  }]), CompositionEditorPatchError);
 });
 
 test("añade motion sin modificar layout ni timing y lo elimina en cascada con el clip", () => {

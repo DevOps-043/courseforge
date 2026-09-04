@@ -5,6 +5,7 @@ import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/
 import { resolveActiveTenantContext, TenantContextLookupError } from "@/lib/server/tenant-context";
 import { initializeHyperframesDraft, HyperframesDraftError } from "@/domains/production/hyperframes/hyperframes-draft.service";
 import {
+  summarizeCompositionTimelineBoundaryIssues,
   summarizeHyperframesValidationIssues,
   validateHyperframesCompositionId,
 } from "@/domains/production/hyperframes/hyperframes-request-validation";
@@ -60,6 +61,7 @@ async function initializeDraftResponse(params: {
       console.error("[API /production/hyperframes/compositions/:id/draft] Composition data validation failed:", {
         compositionId: params.compositionId,
         issues: summarizeHyperframesValidationIssues(error),
+        timelineBoundaryIssues: summarizeCompositionTimelineBoundaryIssues(error),
       });
       return NextResponse.json(
         {
