@@ -18,6 +18,7 @@ interface VideoAsset {
     detached_from_asset_id?: string | null;
     detached_from_clip_id?: string | null;
     file_name?: string | null;
+    historical_only?: boolean;
     source_height?: number | null;
     source_provider?: string | null;
     source_width?: number | null;
@@ -76,16 +77,20 @@ export function HyperframesCompositionPanel({
   const [animatedDeck, setAnimatedDeck] = useState<{ animationCount: number; slideCount: number } | null>(null);
   const sceneAssetFingerprintRef = useRef<string | null>(null);
   const sceneAssetRefreshInFlightRef = useRef(false);
+  const preparationRunRef = useRef(0);
   const [pendingHeygenClipCount, setPendingHeygenClipCount] = useState(0);
   const uniqueAssets = useMemo(() => (
     [...new Map(assets.map((asset) => [asset.productionAssetId, asset])).values()]
   ), [assets]);
+  const activeTimelineAssets = useMemo(() => uniqueAssets.filter((asset) => (
+    asset.sourceType === "PRODUCTION_MEDIA" && asset.metadata.historical_only !== true
+  )), [uniqueAssets]);
   const totalAssetBytes = useMemo(() => (
-    [...new Map(uniqueAssets.map((asset) => [asset.checksum, asset])).values()]
+    [...new Map(activeTimelineAssets.map((asset) => [asset.checksum, asset])).values()]
       .reduce((total, asset) => total + asset.fileSizeBytes, 0)
-  ), [uniqueAssets]);
-  const blockedAssets = useMemo(() => uniqueAssets.filter((asset) => !asset.eligibleForRevision), [uniqueAssets]);
-  const studioAssets = useMemo<CompositionStudioAsset[]>(() => uniqueAssets.filter((asset) => asset.sourceType === "PRODUCTION_MEDIA").map((asset) => ({
+  ), [activeTimelineAssets]);
+  const blockedAssets = useMemo(() => activeTimelineAssets.filter((asset) => !asset.eligibleForRevision), [activeTimelineAssets]);
+  const studioAssets = useMemo<CompositionStudioAsset[]>(() => activeTimelineAssets.map((asset) => ({
     durationSeconds: asset.durationSeconds,
     detachedFromAssetId: asset.metadata.detached_from_asset_id || undefined,
     detachedFromClipId: asset.metadata.detached_from_clip_id || undefined,
@@ -98,11 +103,11 @@ export function HyperframesCompositionPanel({
     sourceHeight: typeof asset.metadata.source_height === "number" ? asset.metadata.source_height : undefined,
     sourceWidth: typeof asset.metadata.source_width === "number" ? asset.metadata.source_width : undefined,
     sizeLabel: formatBytes(asset.fileSizeBytes),
-    sourceLabel: asset.sourceType === "DECK_DEPENDENCY" ? "Recurso interno del deck" : "Medio de Producción",
+    sourceLabel: "Medio de Producción",
     timelineRole: asset.timelineRole,
     timelineVariant: asset.timelineVariant,
     valid: asset.eligibleForRevision,
-  })), [draftId, uniqueAssets]);
+  })), [activeTimelineAssets, draftId]);
   const hasAssetSizeErrors = blockedAssets.length > 0;
   const sizeErrorMessage = useMemo(() => {
     const names = blockedAssets.map((asset) => asset.metadata.file_name || asset.mimeType);
@@ -111,21 +116,32 @@ export function HyperframesCompositionPanel({
       : "Hay assets bloqueados que requieren corrección antes de generar el preview.";
   }, [blockedAssets]);
 
-  const refreshAssets = useCallback(async () => {
+  const fetchAssets = useCallback(async () => {
     const response = await fetch(`/api/production/hyperframes/assets?componentId=${encodeURIComponent(componentId)}&t=${Date.now()}`, { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "No se pudieron actualizar los assets del editor.");
-    setAssets(payload.data as VideoAsset[]);
+    return payload.data as VideoAsset[];
   }, [componentId]);
 
+  const refreshAssets = useCallback(async () => {
+    setAssets(await fetchAssets());
+  }, [fetchAssets]);
+
   const loadInitialData = useCallback(async () => {
+    const preparationRun = ++preparationRunRef.current;
+    const isCurrentPreparation = () => preparationRunRef.current === preparationRun;
     setBusy("prepare");
     setPreparationStep("SYNCING_ASSETS");
     setEditorError(null);
     setSyncWarning(null);
     setAnimatedDeck(null);
+    setAssets([]);
+    setComposition(null);
     setDraftId(null);
     setDraftDocumentVersion(null);
+    setRevisionId(null);
+    setRenderRequest(null);
+    setPendingHeygenClipCount(0);
     sceneAssetFingerprintRef.current = null;
     try {
       try {
@@ -135,10 +151,12 @@ export function HyperframesCompositionPanel({
           method: "POST",
         });
         const syncPayload = await syncResponse.json();
+        if (!isCurrentPreparation()) return;
         if (!syncResponse.ok) throw new Error(syncPayload.error || "No se pudieron actualizar los assets de Producción.");
         setAnimatedDeck(syncPayload.data?.animatedDeck || null);
         setPendingHeygenClipCount(Number(syncPayload.data?.heygenPendingClipCount) || 0);
       } catch (error) {
+        if (!isCurrentPreparation()) return;
         const message = error instanceof Error ? error.message : "No se pudieron actualizar los assets de Producción.";
         setSyncWarning(message);
         // Existing registry rows remain usable. A failed refresh must not hide
@@ -149,7 +167,9 @@ export function HyperframesCompositionPanel({
       // Asset visibility must not depend on creating the editable draft. If a
       // draft needs repair, the author still sees exactly what Production sent.
       setPreparationStep("LOADING_ASSETS");
-      await refreshAssets();
+      const nextAssets = await fetchAssets();
+      if (!isCurrentPreparation()) return;
+      setAssets(nextAssets);
 
       setPreparationStep("PREPARING_COMPOSITION");
       const compositionResponse = await fetch("/api/production/hyperframes/compositions", {
@@ -158,6 +178,7 @@ export function HyperframesCompositionPanel({
         method: "POST",
       });
       const compositionPayload = await compositionResponse.json();
+      if (!isCurrentPreparation()) return;
       if (!compositionResponse.ok) throw new Error(compositionPayload.error || "No se pudo preparar la composición.");
       const nextComposition = compositionPayload.data as VideoComposition;
       setComposition(nextComposition);
@@ -168,6 +189,7 @@ export function HyperframesCompositionPanel({
         method: "POST",
       });
       const draftPayload = await draftResponse.json();
+      if (!isCurrentPreparation()) return;
       if (!draftResponse.ok) {
         const message = draftPayload.error || "No se pudo preparar el proyecto de edición.";
         setEditorError(message);
@@ -178,15 +200,19 @@ export function HyperframesCompositionPanel({
       setDraftDocumentVersion(draftPayload.data.documentVersion as number);
       setPreparationStep("READY");
     } catch (error) {
+      if (!isCurrentPreparation()) return;
       const message = error instanceof Error ? error.message : "No se pudo abrir el estudio de video.";
       setEditorError(message);
       toast.error(message);
     } finally {
-      setBusy(null);
+      if (isCurrentPreparation()) setBusy(null);
     }
-  }, [componentId, componentTitle, refreshAssets]);
+  }, [componentId, componentTitle, fetchAssets]);
 
-  useEffect(() => { void loadInitialData(); }, [loadInitialData]);
+  useEffect(() => {
+    void loadInitialData();
+    return () => { preparationRunRef.current += 1; };
+  }, [loadInitialData]);
 
   const reconcileSceneAssets = useCallback(async () => {
     if (!composition || busy !== null || document.visibilityState === "hidden" || sceneAssetRefreshInFlightRef.current) return;
@@ -344,7 +370,7 @@ export function HyperframesCompositionPanel({
       {!draftId && (
         <CompositionPreparationView
           animatedDeck={animatedDeck}
-          assetCount={uniqueAssets.length}
+          assetCount={activeTimelineAssets.length}
           blockedAssetCount={blockedAssets.length}
           componentTitle={componentTitle}
           error={editorError}

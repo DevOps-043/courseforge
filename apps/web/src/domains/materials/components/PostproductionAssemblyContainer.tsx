@@ -182,6 +182,7 @@ export function PostproductionAssemblyContainer({
         <div className="h-full min-w-0">
           {activeComponent && (
             <HyperframesCompositionPanel
+              key={activeComponent.id}
               componentId={activeComponent.id}
               componentTitle={getComponentTitle(activeComponent)}
               lessonLibrary={components.map((component) => ({

@@ -197,7 +197,8 @@ export class HeygenScenesService {
     existingClips?: AvatarClip[];
   }): AvatarClip[] {
     const baseClips = readStoryboardScenes(params.componentContent);
-    const existingById = new Map((params.existingClips || []).map((clip) => [clip.id, clip]));
+    const existingClips = params.existingClips || [];
+    const existingById = new Map(existingClips.map((clip) => [clip.id, clip]));
     const mergedBaseClips = baseClips.map((baseClip) => {
       const existing = existingById.get(baseClip.id);
       if (!existing) return baseClip;
@@ -212,7 +213,9 @@ export class HeygenScenesService {
       return {
         ...baseClip,
         ...existing,
-        order: baseClip.order,
+        // Order is authored state once manual scenes have been interleaved.
+        // Resetting it to the storyboard index creates duplicate positions.
+        order: existing.order,
         storyboard_take_number: baseClip.storyboard_take_number,
         visual_type: baseClip.visual_type,
         status: shouldMarkStale ? "STALE" : existing.status,
@@ -220,11 +223,14 @@ export class HeygenScenesService {
       };
     });
 
-    const manualClips = (params.existingClips || []).filter(
+    const manualClips = existingClips.filter(
       (clip) => clip.origin === "manual" && !clip.deleted,
     );
 
-    return sortClips([...mergedBaseClips, ...manualClips]);
+    return normalizeActiveSceneOrder(
+      [...mergedBaseClips, ...manualClips],
+      existingClips,
+    );
   }
 
   async saveSceneClips(params: {
@@ -2130,6 +2136,31 @@ function replaceClip(clips: AvatarClip[], clipId: string, nextClip: AvatarClip) 
 
 function sortClips(clips: AvatarClip[]) {
   return [...clips].sort((left, right) => left.order - right.order);
+}
+
+/**
+ * Restores the unique 1..N order invariant after storyboard/manual merging.
+ * Existing array position is the deterministic tiebreaker for legacy rows
+ * that already contain duplicate order values.
+ */
+function normalizeActiveSceneOrder(clips: AvatarClip[], existingClips: AvatarClip[]) {
+  const existingPositionById = new Map(
+    existingClips.map((clip, index) => [clip.id, index]),
+  );
+  const fallbackPosition = existingClips.length + clips.length;
+  const sorted = [...clips].sort((left, right) => (
+    left.order - right.order
+    || (existingPositionById.get(left.id) ?? fallbackPosition)
+      - (existingPositionById.get(right.id) ?? fallbackPosition)
+    || left.id.localeCompare(right.id)
+  ));
+  let nextOrder = 1;
+  return sorted.map((clip) => {
+    if (clip.deleted) return clip;
+    const order = nextOrder;
+    nextOrder += 1;
+    return clip.order === order ? clip : { ...clip, order };
+  });
 }
 
 export function mergeAuthoredSceneClip(existing: AvatarClip | undefined, incoming: AvatarClip) {

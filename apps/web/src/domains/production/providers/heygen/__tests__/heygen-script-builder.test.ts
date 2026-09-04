@@ -573,6 +573,32 @@ describe("HeyGen scene clip builder", () => {
     );
   });
 
+  it("repairs duplicate scene orders without losing the authored manual position", () => {
+    const service = new HeygenScenesService({} as any, {} as any);
+    const clips = service.buildSceneClips({
+      componentContent: {
+        storyboard: [
+          { narration_text: "Escena uno.", take_number: 1 },
+          { narration_text: "Escena dos.", take_number: 2 },
+        ],
+      },
+      existingClips: [
+        { id: "scene-1", order: 1, origin: "storyboard", script_text: "Escena uno.", status: "DRAFT" },
+        { id: "manual-between", order: 2, origin: "manual", script_text: "Escena intermedia.", status: "DRAFT" },
+        { id: "scene-2", order: 2, origin: "storyboard", script_text: "Escena dos.", status: "DRAFT" },
+      ],
+    });
+
+    assert.deepEqual(
+      clips.map((clip) => [clip.id, clip.order]),
+      [
+        ["scene-1", 1],
+        ["manual-between", 2],
+        ["scene-2", 3],
+      ],
+    );
+  });
+
   it("clears generated avatar and voice assets without deleting the scene", () => {
     const reset = resetGeneratedSceneAssets({
       avatarClips: [

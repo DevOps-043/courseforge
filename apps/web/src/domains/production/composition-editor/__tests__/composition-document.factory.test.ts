@@ -300,6 +300,58 @@ test("keeps avatar and voice-only scenes interleaved on one shared scene clock",
   ]);
 });
 
+test("keeps distinct scene identities sequential when legacy scene orders collide", () => {
+  const longerVoice = {
+    checksum: "7".repeat(64),
+    durationSeconds: 21.603,
+    fileSizeBytes: 4,
+    label: "Voz generada · Escena 6",
+    mimeType: "audio/mpeg",
+    productionAssetId: "00000000-0000-4000-8000-000000000171",
+    publicUrl: null,
+    sceneClipId: "scene-6",
+    sceneOrder: 6,
+    storageBucket: "production-assets",
+    storagePath: "production-assets/voice-scene-6.mp3",
+    timelineRole: "VOICE" as const,
+    timelineVariant: "CLIP" as const,
+  };
+  const shorterManualVoice = {
+    ...longerVoice,
+    checksum: "8".repeat(64),
+    durationSeconds: 13.322,
+    label: "Voz manual · Escena 6",
+    productionAssetId: "00000000-0000-4000-8000-000000000172",
+    sceneClipId: "manual-scene-6",
+    storagePath: "production-assets/manual-voice-scene-6.mp3",
+  };
+  const deck = {
+    css: "",
+    fonts: [],
+    height: 1080,
+    slides: [{ animationCount: 0, classes: "slide", html: "<h1>Base</h1>", index: 0, label: "Base" }],
+    width: 1920,
+  };
+  const initial = createInitialCompositionDocument({
+    animatedDeck: deck,
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 5, subtitle: "", title: "Colisión heredada" },
+  });
+
+  const reconciled = reconcileCompositionDocument({
+    animatedDeck: deck,
+    deckDependencyAssetIds: new Set(),
+    document: initial,
+    productionAssets: [longerVoice, shorterManualVoice],
+  });
+  const voices = reconciled.document.clips.filter((clip) => clip.trackId === "voice");
+
+  assert.equal(reconciled.document.canvas.durationSeconds, 34.925);
+  assert.deepEqual(voices.map((clip) => clip.startSeconds), [0, 21.603]);
+  assert.deepEqual(voices.map((clip) => clip.durationSeconds), [21.603, 13.322]);
+  assert.deepEqual(voices.map((clip) => clip.sourceDurationSeconds), [21.603, 13.322]);
+});
+
 test("expands an automatic canvas and appends newly completed scene voices without overlap", () => {
   const voiceAsset = (order: number) => ({
     checksum: String(order).repeat(64),

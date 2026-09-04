@@ -592,27 +592,46 @@ export function buildSceneAssetTimings(
     return new Map<string, { durationSeconds: number; startSeconds: number }>();
   }
 
-  const assetsBySceneOrder = new Map<number, HyperframesProjectAsset[]>();
-  for (const asset of sceneAssets) {
-    const order = asset.sceneOrder!;
-    assetsBySceneOrder.set(order, [...(assetsBySceneOrder.get(order) || []), asset]);
+  const sceneGroups = new Map<string, {
+    assets: HyperframesProjectAsset[];
+    firstSeenIndex: number;
+    order: number;
+  }>();
+  for (const [index, asset] of sceneAssets.entries()) {
+    // sceneClipId is the narrative identity used by resolveCompositionDuration.
+    // sceneOrder is presentation metadata and may temporarily collide while a
+    // manual scene is being reconciled with its originating storyboard.
+    const identity = asset.sceneClipId
+      ? `scene:${asset.sceneClipId}`
+      : `legacy-order:${asset.sceneOrder}`;
+    const existing = sceneGroups.get(identity);
+    if (existing) {
+      existing.assets.push(asset);
+      continue;
+    }
+    sceneGroups.set(identity, {
+      assets: [asset],
+      firstSeenIndex: index,
+      order: asset.sceneOrder!,
+    });
   }
 
-  const scenes = [...assetsBySceneOrder.entries()]
-    .sort(([left], [right]) => left - right)
-    .map(([order, groupedAssets]) => {
-      const voiceDuration = groupedAssets
-        .filter((asset) => asset.timelineRole === "VOICE")
-        .map((asset) => asset.durationSeconds || 0)
-        .find((duration) => duration > 0);
+  const scenes = [...sceneGroups.values()]
+    .sort((left, right) => left.order - right.order || left.firstSeenIndex - right.firstSeenIndex)
+    .map((group) => {
+      const voiceDuration = Math.max(
+        0,
+        ...group.assets
+          .filter((asset) => asset.timelineRole === "VOICE")
+          .map((asset) => asset.durationSeconds || 0),
+      );
       const measuredDuration = Math.max(
         0,
-        ...groupedAssets.map((asset) => asset.durationSeconds || 0),
+        ...group.assets.map((asset) => asset.durationSeconds || 0),
       );
       return {
-        assets: groupedAssets,
+        assets: group.assets,
         durationSeconds: voiceDuration || measuredDuration || 5,
-        order,
       };
     });
   const preferredTotalDuration = scenes.reduce(
@@ -626,17 +645,23 @@ export function buildSceneAssetTimings(
   let cursor = 0;
   for (const scene of scenes) {
     const remainingDuration = Math.max(0.05, canvasDurationSeconds - cursor);
-    const durationSeconds = roundSeconds(Math.max(
+    const sceneDurationSeconds = roundSeconds(Math.max(
       0.05,
       Math.min(scene.durationSeconds * durationScale, remainingDuration),
     ));
     for (const asset of scene.assets) {
+      // Audio cannot be extended beyond its media boundary. This defensive
+      // cap also keeps legacy duplicate registry rows readable during repair.
+      const assetDurationSeconds = asset.mimeType.startsWith("audio/")
+        && asset.durationSeconds
+        ? Math.min(sceneDurationSeconds, asset.durationSeconds)
+        : sceneDurationSeconds;
       timingByAssetId.set(asset.productionAssetId, {
-        durationSeconds,
+        durationSeconds: roundSeconds(assetDurationSeconds),
         startSeconds: roundSeconds(cursor),
       });
     }
-    cursor += durationSeconds;
+    cursor += sceneDurationSeconds;
   }
   return timingByAssetId;
 }
