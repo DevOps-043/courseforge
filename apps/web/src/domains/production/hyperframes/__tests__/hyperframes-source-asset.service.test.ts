@@ -5,6 +5,8 @@ import {
   extractHyperframesAnimatedDeck,
   inspectHyperframesSourceAsset,
   isAutomaticTimelineSourceAsset,
+  isHyperframesSourceDurationCurrent,
+  isHyperframesSourceMetadataCurrent,
   isRecoverableManualVoiceRegistryAsset,
   isSupportedHyperframesSourceMime,
   shouldExposeProductionRegistryAsset,
@@ -245,6 +247,46 @@ describe("HyperFrames source assets", () => {
       { clipId: "scene-2", displayName: undefined, order: 2, role: "VOICE" },
       { clipId: "scene-1", displayName: "Lección 6 · Apertura", order: 1, role: "AVATAR" },
     ]);
+  });
+
+  it("compares synchronized durations at the persisted millisecond precision", () => {
+    assert.equal(isHyperframesSourceDurationCurrent(13_455, 13, 13.4546), true);
+    assert.equal(isHyperframesSourceDurationCurrent(13_455, 13, 13.456), false);
+    assert.equal(isHyperframesSourceDurationCurrent(null, 13, undefined), true);
+  });
+
+  it("detects stale scene identity when an active source becomes standalone", () => {
+    const standaloneReference = collectInternalMaterialAssetReferences({
+      voice_audio: {
+        file_name: "voice.mp3",
+        storage_path: "production-assets/voices/voice.mp3",
+      },
+    })[0]!;
+    const staleMetadata = {
+      assembly_source_type: "PRODUCTION_MEDIA",
+      file_name: "voice.mp3",
+      scene_clip_id: "legacy-scene",
+      scene_order: 4,
+      source_provider: "production_step",
+      timeline_role: "VOICE",
+      timeline_variant: "CLIP",
+    };
+
+    assert.equal(isHyperframesSourceMetadataCurrent(
+      staleMetadata,
+      standaloneReference,
+      "voice.mp3",
+    ), false);
+    assert.equal(isHyperframesSourceMetadataCurrent(
+      {
+        assembly_source_type: "PRODUCTION_MEDIA",
+        file_name: "voice.mp3",
+        source_provider: "production_step",
+        timeline_role: "VOICE",
+      },
+      standaloneReference,
+      "voice.mp3",
+    ), true);
   });
 
   it("registers editor-detached audio as an editable narration source", () => {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   appendMissingProductionAssetClips,
+  buildSceneAssetTimings,
   createInitialCompositionDocument,
   reconcileCompositionDocument,
 } from "../composition-document.factory";
@@ -352,6 +353,29 @@ test("keeps distinct scene identities sequential when legacy scene orders collid
   assert.deepEqual(voices.map((clip) => clip.sourceDurationSeconds), [21.603, 13.322]);
 });
 
+test("quantizes scaled scene timings without crossing the canvas boundary", () => {
+  const durations = [0.29855970890481504, 1.218294964014145, 0.05137858539769043];
+  const assets = durations.map((durationSeconds, index) => ({
+    checksum: String(index + 1).repeat(64),
+    durationSeconds,
+    fileSizeBytes: 4,
+    mimeType: "audio/mpeg",
+    productionAssetId: `00000000-0000-4000-8000-0000000005${String(index + 1).padStart(2, "0")}`,
+    publicUrl: null,
+    sceneClipId: `rounding-scene-${index + 1}`,
+    sceneOrder: index + 1,
+    storageBucket: "production-assets",
+    storagePath: `production-assets/rounding-${index + 1}.mp3`,
+    timelineRole: "VOICE" as const,
+    timelineVariant: "CLIP" as const,
+  }));
+  const canvasDurationSeconds = 1.451;
+  const timings = buildSceneAssetTimings(assets, canvasDurationSeconds);
+  const latestEnd = Math.max(...[...timings.values()].map((timing) => timing.startSeconds + timing.durationSeconds));
+
+  assert.ok(latestEnd <= canvasDurationSeconds);
+});
+
 test("expands an automatic canvas and appends newly completed scene voices without overlap", () => {
   const voiceAsset = (order: number) => ({
     checksum: String(order).repeat(64),
@@ -427,6 +451,68 @@ test("appends a second manual voice after a user-edited canvas and extends its d
   assert.equal(reconciled.document.canvas.durationSource, "voice");
   assert.deepEqual(voices.map((clip) => clip.startSeconds), [0, 12]);
   assert.deepEqual(voices.map((clip) => clip.durationSeconds), [12, 18]);
+});
+
+test("uses the expanded automatic canvas when distributing newly available media", () => {
+  const initial = createInitialCompositionDocument({
+    animatedDeck: {
+      css: "", fonts: [], height: 1080,
+      slides: [
+        { animationCount: 0, classes: "slide", html: "<h1>Uno</h1>", index: 0, label: "Uno" },
+        { animationCount: 0, classes: "slide", html: "<h1>Dos</h1>", index: 1, label: "Dos" },
+      ],
+      width: 1920,
+    },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 10, subtitle: "", title: "Expansión" },
+  });
+  const voice = {
+    checksum: "a".repeat(64), durationSeconds: 20, fileSizeBytes: 4, mimeType: "audio/mpeg",
+    productionAssetId: "00000000-0000-4000-8000-000000000581", publicUrl: null,
+    storageBucket: "production-assets", storagePath: "production-assets/new-voice.mp3", timelineRole: "VOICE" as const,
+  };
+  const broll = {
+    checksum: "b".repeat(64), durationSeconds: 16, fileSizeBytes: 4, mimeType: "video/mp4",
+    productionAssetId: "00000000-0000-4000-8000-000000000582", publicUrl: null,
+    storageBucket: "production-assets", storagePath: "production-assets/new-broll.mp4", timelineRole: "BROLL" as const,
+  };
+
+  const reconciled = reconcileCompositionDocument({
+    deckDependencyAssetIds: new Set(),
+    document: initial,
+    productionAssets: [voice, broll],
+  });
+  const voiceClip = reconciled.document.clips.find((clip) => clip.trackId === "voice")!;
+  const brollClip = reconciled.document.clips.find((clip) => clip.trackId === "broll")!;
+
+  assert.equal(reconciled.document.canvas.durationSeconds, 20);
+  assert.equal(voiceClip.durationSeconds, 20);
+  assert.equal(brollClip.durationSeconds, 16);
+});
+
+test("refreshes regenerated audio bounds without producing an invalid clip", () => {
+  const asset = {
+    checksum: "c".repeat(64), durationSeconds: 12, fileSizeBytes: 4, mimeType: "audio/mpeg",
+    productionAssetId: "00000000-0000-4000-8000-000000000583", publicUrl: null,
+    storageBucket: "production-assets", storagePath: "production-assets/regenerated-voice.mp3", timelineRole: "VOICE" as const,
+  };
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [asset],
+    plan: { accentColor: "#38BDF8", durationSeconds: 12, subtitle: "", title: "Regeneración" },
+  });
+  document.canvas.durationMode = "USER_EDITED";
+
+  const reconciled = reconcileCompositionDocument({
+    deckDependencyAssetIds: new Set(),
+    document,
+    productionAssets: [{ ...asset, checksum: "d".repeat(64), durationSeconds: 7.25 }],
+  });
+  const voice = reconciled.document.clips.find((clip) => clip.trackId === "voice")!;
+
+  assert.equal(reconciled.changed, true);
+  assert.equal(voice.durationSeconds, 7.25);
+  assert.equal(voice.sourceDurationSeconds, 7.25);
 });
 
 test("reconciles newly available avatar media into an existing draft document", () => {

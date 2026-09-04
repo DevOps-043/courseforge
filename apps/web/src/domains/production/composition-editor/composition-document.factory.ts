@@ -119,7 +119,7 @@ export function appendMissingProductionAssetClips(
     ...document.clips,
     ...buildAssetClips(
       missingAssets,
-      extendedVoiceCursor,
+      Math.max(document.canvas.durationSeconds, extendedVoiceCursor),
       document.clips.length,
       document.canvas.width,
       document.canvas.height,
@@ -217,9 +217,23 @@ export function reconcileCompositionDocument(params: {
     const synchronizedSceneTiming = clip.timingSource === "ESTIMATED"
       ? sceneTimingByAssetId.get(source.productionAssetId)
       : undefined;
+    const synchronizedSourceDuration = source.durationSeconds && source.durationSeconds > 0
+      ? roundSeconds(source.durationSeconds)
+      : clip.sourceDurationSeconds;
+    const synchronizedSourceOffset = synchronizedSourceDuration !== undefined
+      && (clip.sourceOffsetSeconds || 0) >= synchronizedSourceDuration
+      ? Math.max(0, roundSeconds(synchronizedSourceDuration - 0.001))
+      : clip.sourceOffsetSeconds;
+    const proposedDuration = synchronizedSceneTiming?.durationSeconds || clip.durationSeconds;
+    const synchronizedDuration = clip.kind === "AUDIO" && synchronizedSourceDuration !== undefined
+      ? Math.max(0.001, roundSeconds(Math.min(
+          proposedDuration,
+          synchronizedSourceDuration - (synchronizedSourceOffset || 0),
+        )))
+      : proposedDuration;
     const sceneTimingChanged = Boolean(synchronizedSceneTiming) && (
       clip.startSeconds !== synchronizedSceneTiming?.startSeconds
-      || clip.durationSeconds !== synchronizedSceneTiming?.durationSeconds
+      || clip.durationSeconds !== synchronizedDuration
     );
     clipSynchronizationChanged ||= clip.trackId !== track.id
       || clip.sceneId !== source.sceneClipId
@@ -228,11 +242,20 @@ export function reconcileCompositionDocument(params: {
       || sourceAudioChanged
       || labelChanged
       || sceneTimingChanged;
+    clipSynchronizationChanged ||= clip.sourceDurationSeconds !== synchronizedSourceDuration
+      || clip.sourceOffsetSeconds !== synchronizedSourceOffset;
     return {
       ...clip,
       sceneId: source.sceneClipId,
       label: synchronizedLabel,
-      ...(synchronizedSceneTiming ? synchronizedSceneTiming : {}),
+      ...(synchronizedSceneTiming ? {
+        durationSeconds: synchronizedDuration,
+        startSeconds: synchronizedSceneTiming.startSeconds,
+      } : clip.kind === "AUDIO" && synchronizedDuration !== clip.durationSeconds
+        ? { durationSeconds: synchronizedDuration }
+        : {}),
+      ...(synchronizedSourceDuration !== undefined ? { sourceDurationSeconds: synchronizedSourceDuration } : {}),
+      ...(synchronizedSourceOffset !== undefined ? { sourceOffsetSeconds: synchronizedSourceOffset } : {}),
       ...(isUnframedLegacyBroll ? { mediaFit: "CONTAIN" as const } : {}),
       ...(isUnframedLegacyBroll && sourceDimensions && usesGeneratedCanvasLayout ? {
         layout: resolveDefaultCompositionClipLayout({
@@ -465,9 +488,19 @@ function buildNarrativeDeckClips(deck: HyperframesAnimatedDeckSource | null, dur
   const byKey = new Map(defaults.map((clip) => [clip.source.type === "DECK_SLIDE" ? clip.source.slideKey : "", clip]));
   const timings = buildSceneAssetTimings(assets, durationSeconds);
   return scenes!.flatMap((scene) => {
-    const asset = assets.find((candidate) => candidate.sceneClipId === scene.id && timings.has(candidate.productionAssetId));
-    if (!asset) return [];
-    const timing = timings.get(asset.productionAssetId)!;
+    const sceneTimings = assets.flatMap((candidate) => {
+      const timing = candidate.sceneClipId === scene.id
+        ? timings.get(candidate.productionAssetId)
+        : undefined;
+      return timing ? [timing] : [];
+    });
+    if (sceneTimings.length === 0) return [];
+    const sceneStartSeconds = Math.min(...sceneTimings.map((timing) => timing.startSeconds));
+    const sceneEndSeconds = Math.max(...sceneTimings.map((timing) => timing.startSeconds + timing.durationSeconds));
+    const timing = {
+      durationSeconds: roundSeconds(sceneEndSeconds - sceneStartSeconds),
+      startSeconds: roundSeconds(sceneStartSeconds),
+    };
     const selections = scene.visualPlan!.slides;
     const totalWeight = selections.reduce((sum, slide) => sum + slide.weight, 0);
     let consumedWeight = 0;
@@ -641,14 +674,14 @@ export function buildSceneAssetTimings(
   const durationScale = preferredTotalDuration > canvasDurationSeconds
     ? canvasDurationSeconds / preferredTotalDuration
     : 1;
+  const allocatedDurations = allocateSceneDurations(
+    scenes.map((scene) => scene.durationSeconds * durationScale),
+    canvasDurationSeconds,
+  );
   const timingByAssetId = new Map<string, { durationSeconds: number; startSeconds: number }>();
   let cursor = 0;
-  for (const scene of scenes) {
-    const remainingDuration = Math.max(0.05, canvasDurationSeconds - cursor);
-    const sceneDurationSeconds = roundSeconds(Math.max(
-      0.05,
-      Math.min(scene.durationSeconds * durationScale, remainingDuration),
-    ));
+  for (const [sceneIndex, scene] of scenes.entries()) {
+    const sceneDurationSeconds = allocatedDurations[sceneIndex]!;
     for (const asset of scene.assets) {
       // Audio cannot be extended beyond its media boundary. This defensive
       // cap also keeps legacy duplicate registry rows readable during repair.
@@ -661,9 +694,28 @@ export function buildSceneAssetTimings(
         startSeconds: roundSeconds(cursor),
       });
     }
-    cursor += sceneDurationSeconds;
+    cursor = roundSeconds(cursor + sceneDurationSeconds);
   }
   return timingByAssetId;
+}
+
+/**
+ * Quantizes scene durations once, reserving at least one millisecond for every
+ * remaining scene. Independent floating-point rounding could otherwise make
+ * the last clip cross the canvas boundary and invalidate the whole document.
+ */
+function allocateSceneDurations(durations: number[], canvasDurationSeconds: number) {
+  const canvasMilliseconds = Math.max(1, Math.round(canvasDurationSeconds * 1_000));
+  let remainingMilliseconds = canvasMilliseconds;
+  return durations.map((duration, index) => {
+    const remainingSceneCount = durations.length - index - 1;
+    const maximumMilliseconds = Math.max(1, remainingMilliseconds - remainingSceneCount);
+    const durationMilliseconds = index === durations.length - 1
+      ? Math.max(1, Math.min(Math.round(duration * 1_000), remainingMilliseconds))
+      : Math.max(1, Math.min(Math.round(duration * 1_000), maximumMilliseconds));
+    remainingMilliseconds = Math.max(0, remainingMilliseconds - durationMilliseconds);
+    return durationMilliseconds / 1_000;
+  });
 }
 
 function resolveInitialAssetDuration(asset: HyperframesProjectAsset, canvasDuration: number, trackId: string) {

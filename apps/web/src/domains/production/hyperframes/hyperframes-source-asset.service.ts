@@ -23,7 +23,7 @@ import {
 
 const SUPPORTED_HYPERFRAMES_MIME = /^(audio|font|image|video)\/[a-z0-9.+-]+$/i;
 
-interface InternalMaterialAssetReference {
+export interface InternalMaterialAssetReference {
   detachedFromAssetId?: string;
   detachedFromClipId?: string;
   displayName?: string;
@@ -41,6 +41,16 @@ interface InternalMaterialAssetReference {
   timelineRole: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL" | "VOICE";
   timelineVariant?: "CLIP" | "FULL";
 }
+
+type SourceAssetRegistryRow = {
+  checksum: string | null;
+  duration_milliseconds: number | null;
+  duration_seconds: number | null;
+  file_size_bytes: number | null;
+  id: string;
+  metadata: Record<string, unknown> | null;
+  mime_type: string | null;
+};
 
 export function isSupportedHyperframesSourceMime(mimeType: string | null | undefined) {
   return SUPPORTED_HYPERFRAMES_MIME.test(mimeType || "");
@@ -301,15 +311,13 @@ export async function registerImportedHyperframesSourceAsset(params: {
     throw new HyperframesSourceAssetError("El componente no pertenece a la empresa activa.", 403);
   }
 
-  const { data: existing, error: existingError } = await params.supabase
-    .from("production_assets")
-    .select("id")
-    .eq("organization_id", params.organizationId)
-    .eq("material_component_id", params.componentId)
-    .eq("storage_bucket", storageBucket)
-    .eq("storage_path", params.importedAsset.storagePath)
-    .maybeSingle();
-  if (existingError) throw existingError;
+  const existing = await findActiveSourceAssetByStorage({
+    componentId: params.componentId,
+    organizationId: params.organizationId,
+    storageBucket,
+    storagePath: params.importedAsset.storagePath,
+    supabase: params.supabase,
+  });
   if (existing?.id) return existing.id as string;
 
   const { data, error } = await params.supabase
@@ -343,7 +351,19 @@ export async function registerImportedHyperframesSourceAsset(params: {
     })
     .select("id")
     .single();
-  if (error) throw error;
+  if (error) {
+    if (isUniqueViolation(error)) {
+      const concurrent = await findActiveSourceAssetByStorage({
+        componentId: params.componentId,
+        organizationId: params.organizationId,
+        storageBucket,
+        storagePath: params.importedAsset.storagePath,
+        supabase: params.supabase,
+      });
+      if (concurrent?.id) return concurrent.id as string;
+    }
+    throw error;
+  }
   return data.id as string;
 }
 
@@ -373,20 +393,13 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
   const skipped: string[] = [];
   for (const reference of collectInternalMaterialAssetReferences(component?.assets)) {
     const stored = parseStoredPath(reference.storagePath);
-    const { data: existing, error: existingError } = await params.supabase
-      .from("production_assets")
-      .select("id, checksum, duration_milliseconds, duration_seconds, file_size_bytes, mime_type, metadata")
-      .eq("organization_id", params.organizationId)
-      .eq("material_component_id", params.componentId)
-      .eq("asset_type", PRODUCTION_ASSET_TYPES.SOURCE_MEDIA)
-      .eq("storage_bucket", stored.storageBucket)
-      .eq("storage_path", reference.storagePath)
-      // Historical retries may have produced duplicate provenance rows before
-      // this synchronization became idempotent. One canonical row is enough;
-      // listHyperframesSourceAssets already de-duplicates by storage path.
-      .limit(1)
-      .maybeSingle();
-    if (existingError) throw existingError;
+    const existing = await findActiveSourceAssetByStorage({
+      componentId: params.componentId,
+      organizationId: params.organizationId,
+      storageBucket: stored.storageBucket,
+      storagePath: reference.storagePath,
+      supabase: params.supabase,
+    });
     const metadata = await getStoredFileMetadata(params.supabase, stored);
     const inferredMimeType = mimeTypeFromFileName(reference.fileName || stored.fileName);
     const mimeType = metadata.mimeType
@@ -406,23 +419,15 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
       skipped.push(reference.storagePath);
       continue;
     }
+    const synchronizedMetadata = buildSynchronizedSourceMetadata(reference, stored.fileName);
     if (
       existing?.id
       && existing.file_size_bytes === fileSizeBytes
       && existing.mime_type === mimeType
       && existing.checksum
-      && (reference.durationSeconds === undefined || preciseDurationSeconds(existing.duration_milliseconds, existing.duration_seconds) === reference.durationSeconds)
+      && isHyperframesSourceDurationCurrent(existing.duration_milliseconds, existing.duration_seconds, reference.durationSeconds)
       && isRecord(existing.metadata)
-      && (reference.displayName === undefined || existing.metadata.asset_display_name === reference.displayName)
-      && (reference.detachedFromAssetId === undefined || existing.metadata.detached_from_asset_id === reference.detachedFromAssetId)
-      && (reference.detachedFromClipId === undefined || existing.metadata.detached_from_clip_id === reference.detachedFromClipId)
-      && (reference.hasAudio === undefined || existing.metadata.has_audio === reference.hasAudio)
-      && (reference.sceneClipId === undefined || existing.metadata.scene_clip_id === reference.sceneClipId)
-      && (reference.sceneOrder === undefined || existing.metadata.scene_order === reference.sceneOrder)
-      && existing.metadata.timeline_role === reference.timelineRole
-      && (reference.sourceHeight === undefined || existing.metadata.source_height === reference.sourceHeight)
-      && (reference.sourceWidth === undefined || existing.metadata.source_width === reference.sourceWidth)
-      && (reference.timelineVariant === undefined || existing.metadata.timeline_variant === reference.timelineVariant)
+      && isHyperframesSourceMetadataCurrent(existing.metadata, reference, stored.fileName)
     ) continue;
 
     bytes = bytes || await downloadStoredAssetBytes(params.supabase, stored);
@@ -441,23 +446,7 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
       lesson_id: context.lessonId,
       material_component_id: context.componentId,
       material_lesson_id: context.materialLessonId,
-      metadata: {
-        ...(reference.displayName ? { asset_display_name: reference.displayName } : {}),
-        assembly_source_type: reference.sourceType,
-        ...(reference.detachedFromAssetId ? { detached_from_asset_id: reference.detachedFromAssetId } : {}),
-        ...(reference.detachedFromClipId ? { detached_from_clip_id: reference.detachedFromClipId } : {}),
-        file_name: reference.fileName || stored.fileName,
-        ...(reference.hasAudio !== undefined ? { has_audio: reference.hasAudio } : {}),
-        ...(reference.sceneClipId ? { scene_clip_id: reference.sceneClipId } : {}),
-        ...(reference.sceneOrder ? { scene_order: reference.sceneOrder } : {}),
-        source_provider: "production_step",
-        ...(reference.sourceHeight && reference.sourceWidth ? {
-          source_height: reference.sourceHeight,
-          source_width: reference.sourceWidth,
-        } : {}),
-        timeline_role: reference.timelineRole,
-        ...(reference.timelineVariant ? { timeline_variant: reference.timelineVariant } : {}),
-      },
+      metadata: synchronizedMetadata,
       mime_type: mimeType,
       module_id: context.moduleId,
       organization_id: params.organizationId,
@@ -467,10 +456,36 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
       storage_bucket: stored.storageBucket,
       storage_path: reference.storagePath,
     };
-    const { error: writeError } = existing?.id
-      ? await params.supabase.from("production_assets").update(assetRecord).eq("id", existing.id)
-      : await params.supabase.from("production_assets").insert(assetRecord);
-    if (writeError) throw writeError;
+    if (existing?.id) {
+      const { error: writeError } = await params.supabase
+        .from("production_assets")
+        .update(assetRecord)
+        .eq("id", existing.id);
+      if (writeError) throw writeError;
+    } else {
+      const { error: insertError } = await params.supabase
+        .from("production_assets")
+        .insert(assetRecord);
+      if (insertError && !isUniqueViolation(insertError)) throw insertError;
+      if (insertError) {
+        // Another preparation request registered the same Storage object after
+        // our read. Update that canonical winner so this request still applies
+        // the current role, scene identity and measured duration.
+        const concurrent = await findActiveSourceAssetByStorage({
+          componentId: params.componentId,
+          organizationId: params.organizationId,
+          storageBucket: stored.storageBucket,
+          storagePath: reference.storagePath,
+          supabase: params.supabase,
+        });
+        if (!concurrent?.id) throw insertError;
+        const { error: recoveryError } = await params.supabase
+          .from("production_assets")
+          .update(assetRecord)
+          .eq("id", concurrent.id);
+        if (recoveryError) throw recoveryError;
+      }
+    }
     synchronized += 1;
   }
   return {
@@ -517,7 +532,8 @@ export async function listHyperframesSourceAssets(params: {
     .not("mime_type", "is", null)
     .not("storage_path", "is", null)
     .neq("qa_status", PRODUCTION_QA_STATUSES.ARCHIVED)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false });
   if (error) throw error;
 
   const seenStoragePaths = new Set<string>();
@@ -550,21 +566,22 @@ export async function listHyperframesSourceAssets(params: {
       mimeType: asset.mime_type,
       productionAssetId: asset.id,
       qaStatus: asset.qa_status,
-      sceneClipId: reference?.sceneClipId
-        || (isRecord(asset.metadata) && typeof asset.metadata.scene_clip_id === "string"
-          ? asset.metadata.scene_clip_id
-          : undefined),
-      sceneOrder: reference?.sceneOrder
-        || positiveInteger(isRecord(asset.metadata) ? asset.metadata.scene_order : undefined),
+      sceneClipId: reference
+        ? reference.sceneClipId
+        : typeof assetMetadata.scene_clip_id === "string" ? assetMetadata.scene_clip_id : undefined,
+      sceneOrder: reference
+        ? reference.sceneOrder
+        : positiveInteger(assetMetadata.scene_order),
       sourceType: reference?.sourceType || "PRODUCTION_MEDIA",
       storagePath: asset.storage_path,
       timelineRole: reference?.timelineRole
         || (isAvatarRegistryAsset ? "AVATAR" : isVoiceRegistryAsset || isManualVoiceRegistryAsset ? "VOICE" : "VISUAL"),
-      timelineVariant: reference?.timelineVariant
-        || (isRecord(asset.metadata) && asset.metadata.timeline_variant === "FULL" ? "FULL" : undefined)
-        || (isAvatarRegistryAsset
-          ? (asset.asset_type === PRODUCTION_ASSET_TYPES.AVATAR_VIDEO ? "FULL" : "CLIP")
-          : isVoiceRegistryAsset ? "CLIP" : undefined),
+      timelineVariant: reference
+        ? reference.timelineVariant
+        : assetMetadata.timeline_variant === "FULL" ? "FULL"
+          : isAvatarRegistryAsset
+            ? (asset.asset_type === PRODUCTION_ASSET_TYPES.AVATAR_VIDEO ? "FULL" : "CLIP")
+            : isVoiceRegistryAsset ? "CLIP" : undefined,
     });
     return candidate ? [candidate] : [];
   });
@@ -652,8 +669,95 @@ function preciseDurationSeconds(milliseconds: unknown, legacySeconds: unknown) {
   return precise ?? positiveDuration(legacySeconds);
 }
 
+async function findActiveSourceAssetByStorage(params: {
+  componentId: string;
+  organizationId: string;
+  storageBucket: string;
+  storagePath: string;
+  supabase: SupabaseClient<any, "public", any>;
+}): Promise<SourceAssetRegistryRow | null> {
+  const { data, error } = await params.supabase
+    .from("production_assets")
+    .select("id, checksum, duration_milliseconds, duration_seconds, file_size_bytes, mime_type, metadata")
+    .eq("organization_id", params.organizationId)
+    .eq("material_component_id", params.componentId)
+    .eq("asset_type", PRODUCTION_ASSET_TYPES.SOURCE_MEDIA)
+    .eq("storage_bucket", params.storageBucket)
+    .eq("storage_path", params.storagePath)
+    .neq("qa_status", PRODUCTION_QA_STATUSES.ARCHIVED)
+    // Before the uniqueness migration reaches an environment, always prefer
+    // the same deterministic canonical row that the asset listing will expose.
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data as SourceAssetRegistryRow | null;
+}
+
+export function isHyperframesSourceDurationCurrent(
+  milliseconds: unknown,
+  legacySeconds: unknown,
+  expectedSeconds: number | undefined,
+) {
+  if (expectedSeconds === undefined) return true;
+  const storedSeconds = preciseDurationSeconds(milliseconds, legacySeconds);
+  return storedSeconds !== undefined
+    && Math.round(storedSeconds * 1_000) === Math.round(expectedSeconds * 1_000);
+}
+
+const SYNCHRONIZED_SOURCE_METADATA_KEYS = [
+  "asset_display_name",
+  "assembly_source_type",
+  "detached_from_asset_id",
+  "detached_from_clip_id",
+  "file_name",
+  "has_audio",
+  "scene_clip_id",
+  "scene_order",
+  "source_height",
+  "source_provider",
+  "source_width",
+  "timeline_role",
+  "timeline_variant",
+] as const;
+
+function buildSynchronizedSourceMetadata(reference: InternalMaterialAssetReference, fallbackFileName: string) {
+  return {
+    ...(reference.displayName ? { asset_display_name: reference.displayName } : {}),
+    assembly_source_type: reference.sourceType,
+    ...(reference.detachedFromAssetId ? { detached_from_asset_id: reference.detachedFromAssetId } : {}),
+    ...(reference.detachedFromClipId ? { detached_from_clip_id: reference.detachedFromClipId } : {}),
+    file_name: reference.fileName || fallbackFileName,
+    ...(reference.hasAudio !== undefined ? { has_audio: reference.hasAudio } : {}),
+    ...(reference.sceneClipId ? { scene_clip_id: reference.sceneClipId } : {}),
+    ...(reference.sceneOrder ? { scene_order: reference.sceneOrder } : {}),
+    source_provider: "production_step",
+    ...(reference.sourceHeight && reference.sourceWidth ? {
+      source_height: reference.sourceHeight,
+      source_width: reference.sourceWidth,
+    } : {}),
+    timeline_role: reference.timelineRole,
+    ...(reference.timelineVariant ? { timeline_variant: reference.timelineVariant } : {}),
+  };
+}
+
+export function isHyperframesSourceMetadataCurrent(
+  stored: Record<string, unknown>,
+  reference: InternalMaterialAssetReference,
+  fallbackFileName: string,
+) {
+  const expected = buildSynchronizedSourceMetadata(reference, fallbackFileName);
+  return SYNCHRONIZED_SOURCE_METADATA_KEYS.every((key) => stored[key] === expected[key]);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isUniqueViolation(error: unknown) {
+  return Boolean(error && typeof error === "object" && "code" in error
+    && (error as { code?: unknown }).code === "23505");
 }
 
 function isSafeDeckSource(deck: HyperframesAnimatedDeckSource) {
