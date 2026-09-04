@@ -40,7 +40,7 @@ export class CompositionSnapshotError extends Error {
 }
 
 type AssetRow = { checksum: string; file_size_bytes: number; id: string; metadata: Record<string, unknown> | null; mime_type: string; public_url: string | null; storage_bucket: string; storage_path: string };
-type SnapshotAssetRow = AssetRow & { origin: "BRANDING" | "PRODUCTION" };
+type SnapshotAssetRow = AssetRow & { origin: "BRANDING" | "PRODUCTION" | "SOUND_EFFECT" };
 
 export type CompositionSnapshotSummary = {
   createdAt: string;
@@ -107,14 +107,17 @@ export async function snapshotCompositionDocument(params: {
 
   const referencedAssetIds = [...new Set(current.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))];
   const referencedBrandingAssetIds = [...new Set(current.document.clips.flatMap((clip) => clip.source.type === "ASSEMBLY_BRAND_ASSET" ? [clip.source.assemblyBrandAssetId] : []))];
-  const [clipAssets, brandingAssets, deckDependencies] = await Promise.all([
+  const referencedSoundEffectAssetIds = [...new Set(current.document.clips.flatMap((clip) => clip.source.type === "SOUND_EFFECT_ASSET" ? [clip.source.soundEffectAssetId] : []))];
+  const [clipAssets, brandingAssets, soundEffectAssets, deckDependencies] = await Promise.all([
     readSnapshotAssets(params, referencedAssetIds),
     readSnapshotBrandingAssets(params, referencedBrandingAssetIds),
+    readSnapshotSoundEffectAssets(params, referencedSoundEffectAssetIds),
     readReferencedDeckDependencies(params, current.document),
   ]);
   const assetRows: Array<[string, SnapshotAssetRow]> = [
     ...clipAssets.map((asset): [string, SnapshotAssetRow] => [asset.id, { ...asset, origin: "PRODUCTION" }]),
     ...brandingAssets.map((asset): [string, SnapshotAssetRow] => [asset.id, { ...asset, origin: "BRANDING" }]),
+    ...soundEffectAssets.map((asset): [string, SnapshotAssetRow] => [asset.id, { ...asset, origin: "SOUND_EFFECT" }]),
     ...deckDependencies.map((asset): [string, SnapshotAssetRow] => [asset.id, { ...asset, origin: "PRODUCTION" }]),
   ];
   const assets = [...new Map<string, SnapshotAssetRow>(assetRows).values()];
@@ -242,6 +245,7 @@ export async function snapshotCompositionDocument(params: {
   }
   const productionManifest = manifest.filter((asset) => assets.find((row) => row.id === asset.productionAssetId)?.origin === "PRODUCTION");
   const brandingManifest = manifest.filter((asset) => assets.find((row) => row.id === asset.productionAssetId)?.origin === "BRANDING");
+  const soundEffectManifest = manifest.filter((asset) => assets.find((row) => row.id === asset.productionAssetId)?.origin === "SOUND_EFFECT");
   if (productionManifest.length > 0) {
     const { error: linkError } = await params.supabase.from("video_composition_assets").insert(productionManifest.map((asset) => ({
       composition_revision_id: revision.id, file_size_bytes: asset.fileSizeBytes, mime_type: asset.mimeType, organization_id: params.organizationId,
@@ -273,6 +277,18 @@ export async function snapshotCompositionDocument(params: {
         500,
       );
     }
+  }
+  if (soundEffectManifest.length > 0) {
+    const { error: linkError } = await params.supabase.from("video_composition_sound_effect_assets").insert(soundEffectManifest.map((asset) => ({
+      composition_revision_id: revision.id,
+      file_size_bytes: asset.fileSizeBytes,
+      mime_type: asset.mimeType,
+      organization_id: params.organizationId,
+      sound_effect_asset_id: asset.productionAssetId,
+      source_checksum: asset.checksum,
+      source_storage_path: asset.storagePath,
+    })));
+    if (linkError) throw new CompositionSnapshotError("La revisión se creó, pero no se pudieron vincular sus efectos de sonido.", 500);
   }
   await setActiveCompositionSnapshot({
     compositionId: params.compositionId,
@@ -493,6 +509,27 @@ async function readSnapshotBrandingAssets(params: { draftId: string; organizatio
   if (error) throw error;
   if ((data || []).length !== ids.length) throw new CompositionSnapshotError("No se pudo resolver intro u outro para el snapshot.", 409);
   return (data || []).map((asset) => ({ ...asset, public_url: null })) as AssetRow[];
+}
+
+async function readSnapshotSoundEffectAssets(params: { draftId: string; organizationId: string; supabase: SupabaseClient<any, "public", any> }, ids: string[]) {
+  if (ids.length === 0) return [] as AssetRow[];
+  const { data: linked, error: linkError } = await params.supabase
+    .from("video_composition_draft_sound_effect_assets")
+    .select("sound_effect_asset_id")
+    .eq("draft_id", params.draftId).eq("organization_id", params.organizationId).in("sound_effect_asset_id", ids);
+  if (linkError) throw linkError;
+  if ((linked || []).length !== ids.length) throw new CompositionSnapshotError("El documento contiene efectos de sonido que no pertenecen al borrador.", 409);
+  const { data, error } = await params.supabase.from("sound_effect_assets")
+    .select("id, checksum_sha256, file_size_bytes, mime_type, storage_bucket, storage_path")
+    .eq("organization_id", params.organizationId).eq("status", "READY").in("id", ids);
+  if (error) throw error;
+  if ((data || []).length !== ids.length) throw new CompositionSnapshotError("No se pudo resolver uno o más efectos de sonido del snapshot.", 409);
+  return (data || []).map((asset) => ({
+    ...asset,
+    checksum: asset.checksum_sha256,
+    metadata: { file_name: asset.storage_path.split("/").pop() || "sound-effect" },
+    public_url: null,
+  })) as AssetRow[];
 }
 
 async function readReferencedDeckDependencies(

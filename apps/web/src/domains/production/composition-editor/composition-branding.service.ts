@@ -27,12 +27,6 @@ export async function resolveAssemblyBranding(params: {
   organizationId: string;
   supabase: SupabaseClient<any, "public", any>;
 }): Promise<ResolvedAssemblyBranding> {
-  const { data: settings, error: settingsError } = await params.supabase
-    .from("organization_assembly_settings")
-    .select("default_intro_asset_id, default_outro_asset_id, intro_enabled, outro_enabled")
-    .eq("organization_id", params.organizationId)
-    .maybeSingle();
-  if (settingsError) throw settingsError;
   const { data: draftBranding, error: draftError } = await params.supabase
     .from("video_composition_draft_branding")
     .select("intro_asset_id, intro_source, outro_asset_id")
@@ -40,13 +34,12 @@ export async function resolveAssemblyBranding(params: {
     .eq("organization_id", params.organizationId)
     .maybeSingle();
   if (draftError) throw draftError;
+  // Intros now belong to each video's Production assets. Preserve an explicit
+  // historical draft intro, but never inject a global organization default.
   const usesDraftOverride = draftBranding?.intro_source === "ASSEMBLY_OVERRIDE" || draftBranding?.intro_source === "GENERATED";
-  const introId = usesDraftOverride
-    ? draftBranding?.intro_asset_id
-    : settings?.intro_enabled ? settings.default_intro_asset_id : null;
-  const outroId = usesDraftOverride
-    ? draftBranding?.outro_asset_id
-    : settings?.outro_enabled ? settings.default_outro_asset_id : null;
+  const introId = usesDraftOverride ? draftBranding?.intro_asset_id : null;
+  // Outros are reusable corporate assets, selected explicitly per video.
+  const outroId = draftBranding?.outro_asset_id || null;
   const ids = [introId, outroId].filter((id): id is string => typeof id === "string");
   if (ids.length === 0) return { intro: null, introSource: "ORG_DEFAULT", outro: null };
   const { data, error } = await params.supabase

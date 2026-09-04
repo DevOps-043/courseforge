@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
-import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronRight, Clapperboard, Crop, Eye, EyeOff, FileQuestion, GripHorizontal, Grid3X3, History, Image as ImageIcon, Loader2, Magnet, Maximize2, Minimize2, Minus, MousePointer2, Music2, PanelRight, Pause, Play, Plus, RefreshCw, RotateCcw, Save, Scan, Scissors, ScrollText, Send, SlidersHorizontal, Sparkles, Trash2, Video, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronRight, Clapperboard, Crop, Eye, EyeOff, FileQuestion, Film, GripHorizontal, Grid3X3, History, Image as ImageIcon, Loader2, Magnet, Maximize2, Minimize2, Minus, MousePointer2, Music2, PanelRight, Pause, Play, Plus, RefreshCw, RotateCcw, Save, Scan, Scissors, ScrollText, Send, SlidersHorizontal, Sparkles, Trash2, Video, X } from "lucide-react";
 import { toast } from "sonner";
 import type { CompositionClip, CompositionEditorDocument, CompositionTrack, CompositionVisualCrop } from "@/domains/production/composition-editor/composition-document.types";
 import { formatCompositionTimecode, parseCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
@@ -14,7 +14,7 @@ import type { CompositionAgentProposalEnvelope } from "@/domains/production/comp
 import type { CompositionAgentRecoveryMetadata } from "@/domains/production/composition-editor/composition-agent-recovery.service";
 import type { CompositionPresetCatalogEntry } from "@/domains/production/composition-editor/composition-preset.types";
 import { applyCompositionEditorPatches, ensureCanvasDurationForClipPatches } from "@/domains/production/composition-editor/editor-patch.service";
-import { resolveCompositionTrackDefinition } from "@/domains/production/composition-editor/composition-track-registry";
+import { getCompositionTrackDefinition, resolveCompositionTrackDefinition } from "@/domains/production/composition-editor/composition-track-registry";
 import {
   resolveDefaultCompositionClipLayout,
   resolveDefaultCompositionMediaFit,
@@ -40,6 +40,7 @@ import {
 import { buildCompositionAutoOrganizePatch } from "@/domains/production/composition-editor/composition-auto-organize.service";
 import { buildCompositionDurationRecalculationPatch } from "@/domains/production/composition-editor/composition-duration-recalculation.service";
 import { resolveCompositionAssetInsertionTiming } from "@/domains/production/composition-editor/composition-asset-placement.service";
+import { reconcileProductionIntroDocument } from "@/domains/production/composition-editor/composition-production-intro.service";
 import { deriveCompositionScenes } from "@/domains/production/composition-editor/composition-scene.service";
 import {
   COMPOSITION_VERSION_FALLBACK_HEADER,
@@ -69,6 +70,7 @@ import {
 } from "@/domains/production/composition-editor/composition-preview-operation-policy";
 import { buildCompositionPreviewVisualPatch } from "@/domains/production/composition-editor/composition-preview-visual-patch";
 import { EngineSelect } from "@/components/ui/EngineSelect";
+import { SoundEffectPreviewButton } from "@/components/production/SoundEffectPreviewButton";
 import { hasCompositionCrop, normalizeCompositionCropInsets, resolveCompositionCropInsets, type CompositionCropInsets } from "@/domains/production/composition-editor/composition-visual-crop.service";
 import { createClient as createBrowserSupabaseClient } from "@/utils/supabase/client";
 import {
@@ -88,7 +90,12 @@ import {
 import styles from "./CompositionStudio.module.css";
 
 type DocumentPayload = { document: CompositionEditorDocument; documentHash: string; version: number };
-type AssemblyBrandingAvailability = { hasIntro: boolean; hasOutro: boolean };
+type AssemblyBrandingAvailability = {
+  hasIntro: boolean;
+  hasOutro: boolean;
+  outros: Array<{ duration_milliseconds: number; id: string; name: string }>;
+  selectedOutroAssetId: string | null;
+};
 type SavePatchOptions = { preservePreviewRuntime?: boolean };
 type PreviewReloadReason = "EDIT_SAVED" | "DIRTY_PLAYBACK" | "MANUAL" | "MEDIA_RECOVERY" | "SAVE_RECOVERY";
 type PendingEditTelemetry = {
@@ -133,6 +140,14 @@ type CompositionRenderRecoveryState = {
   activeRender: RenderAttemptSummary | null;
   completedVideo: DurableCompletedVideo | null;
   latestRender: RenderAttemptSummary | null;
+};
+type SoundEffectCatalogItem = {
+  category: "AMBIENCE" | "EMPHASIS" | "IMPACT" | "OTHER" | "TRANSITION" | "UI";
+  description: string;
+  durationMilliseconds: number;
+  id: string;
+  name: string;
+  tags: string[];
 };
 type AgentProposal = CompositionAgentProposalEnvelope & {
   documentHash: string;
@@ -1154,6 +1169,93 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     if (added) selectClip(clip.hfId);
   }
 
+  async function addSoundEffectToTimeline(soundEffect: SoundEffectCatalogItem) {
+    const currentPayload = payloadRef.current;
+    if (!currentPayload || soundEffect.durationMilliseconds <= 0) return;
+    const linked = await fetch("/api/production/sound-effects", {
+      body: JSON.stringify({ draftId, soundEffectAssetId: soundEffect.id }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    const response = await readCompositionApiResponse<{ data?: { durationMilliseconds?: number }; error?: string }>(
+      linked,
+      "No se pudo preparar el efecto de sonido.",
+    );
+    if (!linked.ok) {
+      setSaveError(response.error || "No se pudo vincular el efecto de sonido al borrador.");
+      return;
+    }
+    const sourceDurationSeconds = (response.data?.durationMilliseconds || soundEffect.durationMilliseconds) / 1000;
+    const track = getCompositionTrackDefinition("SFX");
+    const occupiedIds = new Set(currentPayload.document.clips.map((clip) => clip.id));
+    let suffix = 1;
+    let clipId = `sfx-${soundEffect.id}`;
+    while (occupiedIds.has(clipId)) clipId = `sfx-${soundEffect.id}-${suffix++}`;
+    const startSeconds = Math.min(
+      Math.max(0, playheadSecondsRef.current),
+      Math.max(0, currentPayload.document.canvas.durationSeconds - 1 / currentPayload.document.canvas.fps),
+    );
+    const durationSeconds = Math.min(sourceDurationSeconds, currentPayload.document.canvas.durationSeconds - startSeconds);
+    if (durationSeconds <= 0) {
+      setSaveError("Mueve el cursor dentro de la duración del video antes de añadir un efecto.");
+      return;
+    }
+    const clip: CompositionClip = {
+      durationSeconds,
+      hfId: clipId,
+      hidden: false,
+      id: clipId,
+      kind: "AUDIO",
+      label: soundEffect.name,
+      layout: resolveDefaultCompositionClipLayout({ canvas: currentPayload.document.canvas, clipKind: "AUDIO", sourceDimensions: null, track }),
+      mediaFit: resolveDefaultCompositionMediaFit({ clipKind: "AUDIO", track }),
+      source: { soundEffectAssetId: soundEffect.id, type: "SOUND_EFFECT_ASSET" },
+      sourceDurationSeconds,
+      sourceOffsetSeconds: 0,
+      startSeconds,
+      timingSource: "USER_EDITED",
+      trackId: track.id,
+      volume: 0.7,
+    };
+    const saved = await savePatch([{ clip, clipId, track, type: "clip.add" }], `Añadió el efecto ${soundEffect.name} al cursor.`);
+    if (saved) selectClip(clip.hfId);
+  }
+
+  async function setProductionIntro(asset: CompositionStudioAsset) {
+    const currentPayload = payloadRef.current;
+    if (!currentPayload || !asset.isEditable || !asset.valid || !asset.mimeType.startsWith("video/")) return;
+    const durationSeconds = asset.durationSeconds || 0;
+    if (durationSeconds <= 0) {
+      setSaveError("La intro necesita una duración medida antes de usarla.");
+      return;
+    }
+    const document = reconcileProductionIntroDocument(currentPayload.document, {
+      durationSeconds,
+      hasAudio: asset.hasAudio,
+      id: asset.id,
+      label: asset.label,
+      mimeType: asset.mimeType,
+      sourceHeight: asset.sourceHeight,
+      sourceWidth: asset.sourceWidth,
+    });
+    const saved = await savePatch(
+      [{ document, type: "document.restore" }],
+      `Configuró ${asset.label} como intro y desplazó el contenido del video.`,
+    );
+    if (saved) selectClip("production-intro-media");
+  }
+
+  async function clearProductionIntro() {
+    const currentPayload = payloadRef.current;
+    if (!currentPayload) return;
+    const hasIntro = currentPayload.document.clips.some((clip) => (
+      clip.source.type === "PRODUCTION_ASSET" && clip.source.placement === "INTRO"
+    ));
+    if (!hasIntro) return;
+    const document = reconcileProductionIntroDocument(currentPayload.document, null);
+    await savePatch([{ document, type: "document.restore" }], "Quitó la intro y reacomodó el contenido del video.");
+  }
+
   async function separateSelectedVideoAudio(clip: CompositionClip) {
     if (clip.kind !== "VIDEO" || clip.source.type !== "PRODUCTION_ASSET") return;
     const sourceAssetId = clip.source.productionAssetId;
@@ -1463,15 +1565,21 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     }
   }
 
-  async function placeAssemblyBranding() {
+  async function placeAssemblyBranding(outroAssetId?: string | null) {
     if (saving || saveInFlightRef.current) return;
     setSaving(true);
     setSaveError(null);
     try {
-      const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/branding`, { method: "POST" });
+      const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/branding`, {
+        ...(outroAssetId === undefined ? {} : {
+          body: JSON.stringify({ outroAssetId }),
+          headers: { "Content-Type": "application/json" },
+        }),
+        method: "POST",
+      });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "No se pudo colocar el intro y outro.");
-      setBrandingAvailability({ hasIntro: Boolean(body.data?.branding?.intro), hasOutro: Boolean(body.data?.branding?.outro) });
+      await loadBrandingAvailability();
       await loadDocument();
     } catch (caught) {
       setSaveError(caught instanceof Error ? caught.message : "No se pudo colocar el intro y outro.");
@@ -2315,7 +2423,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         } as CSSProperties}
         className={`${styles.editorGrid} ${inspectorOpen ? styles.editorGridWithInspector : ""}`}
       >
-        <StudioLibrary assets={assets} delivery={deliveryMenu} lessons={lessons} narrative={narrativeLibrary} narrativeCount={compositionScenes.length} onAddAsset={addAssetToTimeline} onSelectLesson={onSelectLesson} selectedLessonId={selectedLessonId} onSelectAsset={selectClip} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))} />
+        <StudioLibrary assets={assets} delivery={deliveryMenu} draftId={draftId} introAssetId={payload.document.clips.find((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.placement === "INTRO")?.source.productionAssetId || null} lessons={lessons} narrative={narrativeLibrary} narrativeCount={compositionScenes.length} onAddAsset={addAssetToTimeline} onAddSoundEffect={addSoundEffectToTimeline} onClearIntro={clearProductionIntro} onSelectLesson={onSelectLesson} onSelectAsset={selectClip} onSetIntro={setProductionIntro} selectedLessonId={selectedLessonId} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))} />
 
         <section ref={previewShellRef} className={`${styles.previewPanel} ${previewFullscreen ? styles.previewFullscreen : ""}`}>
           <div className={styles.previewToolbar}>
@@ -2443,7 +2551,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
                 <button type="button" disabled={saving} onClick={() => void organizeTimeline()} className={styles.durationAction}>Organizar timeline</button>
                 <button type="button" disabled={saving || refreshingProductionAssets || recoveringHistoricalAssets} onClick={() => void refreshProductionAssets()} className={styles.durationAction}>{refreshingProductionAssets ? "Actualizando…" : "Actualizar assets"}</button>
                 <button type="button" disabled={saving || refreshingProductionAssets || recoveringHistoricalAssets} onClick={() => void recoverHistoricalAssets()} className={styles.durationAction}>{recoveringHistoricalAssets ? "Recuperando…" : "Recuperar históricos"}</button>
-                {(brandingAvailability?.hasIntro || brandingAvailability?.hasOutro) && <button type="button" disabled={saving} onClick={() => void placeAssemblyBranding()} className={styles.durationAction}>Colocar intro/outro</button>}
+                {brandingAvailability && <select value={brandingAvailability.selectedOutroAssetId || ""} disabled={saving} onChange={(event) => void placeAssemblyBranding(event.target.value || null)} className={styles.durationAction} aria-label="Outro de este video"><option value="">Sin outro</option>{brandingAvailability.outros.map((outro) => <option key={outro.id} value={outro.id}>{outro.name} · {(outro.duration_milliseconds / 1000).toFixed(1)} s</option>)}</select>}
               </div>
             </div>
             <AudioMixControls audioMix={payload.document.audioMix} disabled={saving} onUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)} />
@@ -2730,24 +2838,56 @@ function renderQualityLabel(quality: HyperframesRenderSettings["quality"]) {
   return quality === "high" ? "alta" : quality === "draft" ? "borrador" : "estándar";
 }
 
-function StudioLibrary({ assets, delivery, lessons, narrative, narrativeCount, onAddAsset, onSelectAsset, onSelectLesson, selectedHfId, selectedLessonId, timelineAssetIds }: {
+function StudioLibrary({ assets, delivery, draftId, introAssetId, lessons, narrative, narrativeCount, onAddAsset, onAddSoundEffect, onClearIntro, onSelectAsset, onSelectLesson, onSetIntro, selectedHfId, selectedLessonId, timelineAssetIds }: {
   assets: CompositionStudioAsset[];
   delivery: ReactNode;
+  draftId: string;
+  introAssetId: string | null;
   lessons: CompositionStudioLesson[];
   narrative: ReactNode;
   narrativeCount: number;
   onAddAsset: (asset: CompositionStudioAsset) => void;
+  onAddSoundEffect: (soundEffect: SoundEffectCatalogItem) => void;
+  onClearIntro: () => void;
   onSelectAsset: (hfId: string) => void;
   onSelectLesson: (lessonId: string) => void;
+  onSetIntro: (asset: CompositionStudioAsset) => void;
   selectedHfId: string | null;
   selectedLessonId: string | null;
   timelineAssetIds: Set<string>;
 }) {
-  const [activeView, setActiveView] = useState<"assets" | "delivery" | "lessons" | "narrative">("lessons");
+  const [activeView, setActiveView] = useState<"assets" | "delivery" | "lessons" | "narrative" | "sfx">("lessons");
+  const [soundEffects, setSoundEffects] = useState<SoundEffectCatalogItem[]>([]);
+  const [soundEffectsLoading, setSoundEffectsLoading] = useState(false);
+  const [soundEffectsError, setSoundEffectsError] = useState<string | null>(null);
+  const [soundEffectQuery, setSoundEffectQuery] = useState("");
+  const [soundEffectCategory, setSoundEffectCategory] = useState<"" | SoundEffectCatalogItem["category"]>("TRANSITION");
   useEffect(() => {
     if (!narrative && activeView === "narrative") setActiveView("lessons");
   }, [activeView, narrative]);
-  const selectView = useCallback((nextView: "assets" | "delivery" | "lessons" | "narrative") => {
+  const loadSoundEffects = useCallback(async () => {
+    setSoundEffectsLoading(true);
+    setSoundEffectsError(null);
+    try {
+      const query = new URLSearchParams({ limit: "25" });
+      if (soundEffectQuery.trim()) query.set("query", soundEffectQuery.trim());
+      if (soundEffectCategory) query.set("category", soundEffectCategory);
+      const response = await fetch(`/api/production/sound-effects?${query.toString()}`, { cache: "no-store" });
+      const result = await readCompositionApiResponse<{ data?: SoundEffectCatalogItem[]; error?: string }>(response, "No se pudo cargar la biblioteca de efectos.");
+      if (!response.ok) throw new Error(result.error || "No se pudo cargar la biblioteca de efectos.");
+      setSoundEffects(result.data || []);
+    } catch (error) {
+      setSoundEffectsError(error instanceof Error ? error.message : "No se pudo cargar la biblioteca de efectos.");
+    } finally {
+      setSoundEffectsLoading(false);
+    }
+  }, [soundEffectCategory, soundEffectQuery]);
+  useEffect(() => {
+    if (activeView !== "sfx") return;
+    const timeout = window.setTimeout(() => void loadSoundEffects(), 180);
+    return () => window.clearTimeout(timeout);
+  }, [activeView, loadSoundEffects]);
+  const selectView = useCallback((nextView: "assets" | "delivery" | "lessons" | "narrative" | "sfx") => {
     if (nextView === activeView) return;
     const updateView = () => flushSync(() => setActiveView(nextView));
     const transitionDocument = document as Document & {
@@ -2771,6 +2911,9 @@ function StudioLibrary({ assets, delivery, lessons, narrative, narrativeCount, o
       </button>
       <button type="button" role="tab" aria-selected={activeView === "assets"} onClick={() => selectView("assets")} className={`${styles.panelTab} ${activeView === "assets" ? styles.panelTabActive : ""}`}>
         <ImageIcon size={14} aria-hidden="true" /> Medios <span className={styles.tabCount}>{assets.length}</span>
+      </button>
+      <button type="button" role="tab" aria-selected={activeView === "sfx"} onClick={() => selectView("sfx")} className={`${styles.panelTab} ${activeView === "sfx" ? styles.panelTabActive : ""}`}>
+        <Music2 size={14} aria-hidden="true" /> SFX
       </button>
       {narrative && <button type="button" role="tab" aria-selected={activeView === "narrative"} onClick={() => selectView("narrative")} className={`${styles.panelTab} ${activeView === "narrative" ? styles.panelTabActive : ""}`}>
         <ScrollText size={14} aria-hidden="true" /> Guion <span className={styles.tabCount}>{narrativeCount}</span>
@@ -2800,9 +2943,21 @@ function StudioLibrary({ assets, delivery, lessons, narrative, narrativeCount, o
               {inTimeline ? <CheckCircle2 size={12} /> : <Plus size={12} />}
               <span>{inTimeline ? "En timeline" : "Añadir a timeline"}</span>
             </button>
+            {asset.mimeType.startsWith("video/") && <button type="button" disabled={!asset.isEditable || !asset.valid || !asset.durationSeconds} onClick={() => introAssetId === asset.id ? onClearIntro() : onSetIntro(asset)} title="Usar este asset de Producción como intro" className={styles.assetAdd}>
+              <Film size={12} />
+              <span>{introAssetId === asset.id ? "Quitar intro" : "Usar como intro"}</span>
+            </button>}
           </div>;
         })}
-      </div> : activeView === "narrative" ? <div className={styles.narrativeMenu} role="tabpanel">{narrative}</div>
+      </div> : activeView === "sfx" ? <div className={styles.assetList} role="tabpanel">
+        <label className={styles.sfxSearch}><span className="sr-only">Buscar efectos de sonido</span><input value={soundEffectQuery} onChange={(event) => setSoundEffectQuery(event.target.value)} placeholder="Buscar whoosh, click…" /></label>
+        <select className={styles.sfxCategory} value={soundEffectCategory} onChange={(event) => setSoundEffectCategory(event.target.value as "" | SoundEffectCatalogItem["category"])} aria-label="Categoría de efectos">
+          <option value="">Todas las categorías</option><option value="TRANSITION">Transición</option><option value="EMPHASIS">Énfasis</option><option value="UI">UI</option><option value="IMPACT">Impacto</option><option value="AMBIENCE">Ambiente</option><option value="OTHER">Otros</option>
+        </select>
+        {soundEffectsLoading ? <p className={styles.libraryEmpty}>Cargando efectos…</p> : soundEffectsError ? <p className={styles.libraryEmpty}>{soundEffectsError}</p> : soundEffects.length === 0 ? <p className={styles.libraryEmpty}>No hay efectos disponibles todavía.</p> : soundEffects.map((soundEffect) => <div key={soundEffect.id} className={styles.assetItem}>
+          <span className={styles.assetMain}><span className="relative flex h-9 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-violet-100 text-violet-700 dark:border-white/10 dark:bg-violet-500/10 dark:text-violet-200"><Music2 size={18} /></span><span className="min-w-0 flex-1"><span className={styles.itemTitle}>{soundEffect.name}</span><span className={styles.assetMetaRow}><span className={styles.itemMeta}>{soundEffect.category.toLowerCase()}</span><span className={styles.itemMeta}>{(soundEffect.durationMilliseconds / 1000).toFixed(2)} s</span></span></span></span>
+          <span className="flex flex-none items-center gap-1"><SoundEffectPreviewButton soundEffectId={soundEffect.id} /><button type="button" onClick={() => onAddSoundEffect(soundEffect)} title={`Añadir ${soundEffect.name} al cursor`} className={styles.assetAdd}><Plus size={12} /><span>Añadir al cursor</span></button></span>
+        </div>)}</div> : activeView === "narrative" ? <div className={styles.narrativeMenu} role="tabpanel">{narrative}</div>
         : <div className={styles.deliveryMenu} role="tabpanel">{delivery}</div>}
     </div>
   </aside>;

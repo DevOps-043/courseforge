@@ -531,7 +531,7 @@ export class HyperframesRenderSubmissionService {
   }
 
   private async getRevisionAssets(revisionId: string) {
-    const [{ data, error }, { data: branding, error: brandingError }] = await Promise.all([
+    const [{ data, error }, { data: branding, error: brandingError }, { data: soundEffects, error: soundEffectsError }] = await Promise.all([
       this.supabase
         .from("video_composition_assets")
         .select("production_asset_id, source_checksum, source_storage_path, file_size_bytes, mime_type")
@@ -540,9 +540,14 @@ export class HyperframesRenderSubmissionService {
         .from("video_composition_brand_assets")
         .select("organization_assembly_asset_id, source_checksum, source_storage_bucket, source_storage_path, file_size_bytes, mime_type")
         .eq("composition_revision_id", revisionId),
+      this.supabase
+        .from("video_composition_sound_effect_assets")
+        .select("sound_effect_asset_id, source_checksum, source_storage_path, file_size_bytes, mime_type")
+        .eq("composition_revision_id", revisionId),
     ]);
     if (error) throw error;
     if (brandingError) throw brandingError;
+    if (soundEffectsError) throw soundEffectsError;
     return [
       ...((data || []) as StoredRevisionAsset[]),
       ...(branding || []).map((row) => ({
@@ -551,6 +556,14 @@ export class HyperframesRenderSubmissionService {
         production_asset_id: String(row.organization_assembly_asset_id),
         source_checksum: String(row.source_checksum),
         source_storage_bucket: String(row.source_storage_bucket),
+        source_storage_path: String(row.source_storage_path),
+      })),
+      ...(soundEffects || []).map((row) => ({
+        file_size_bytes: Number(row.file_size_bytes),
+        mime_type: String(row.mime_type),
+        production_asset_id: String(row.sound_effect_asset_id),
+        source_checksum: String(row.source_checksum),
+        source_storage_bucket: "sound-effect-assets",
         source_storage_path: String(row.source_storage_path),
       })),
     ];

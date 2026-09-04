@@ -10,6 +10,7 @@ const TRACK_DEFINITIONS: Record<CompositionTrackRole, CompositionTrack> = {
   AVATAR: { hidden: false, id: "avatar", kind: "VISUAL", label: "Avatar", locked: false, muted: false, order: 10, semanticRole: "AVATAR", volume: 1 },
   VOICE: { hidden: false, id: "voice", kind: "AUDIO", label: "Voz / narración", locked: false, muted: false, order: 20, semanticRole: "VOICE", volume: 1 },
   MUSIC: { hidden: false, id: "music", kind: "AUDIO", label: "Música", locked: false, muted: false, order: 30, semanticRole: "MUSIC", volume: 0.25 },
+  SFX: { hidden: false, id: "sfx", kind: "AUDIO", label: "Efectos de sonido", locked: false, muted: false, order: 35, semanticRole: "SFX", volume: 0.7 },
   BROLL: { hidden: false, id: "broll", kind: "VISUAL", label: "B-roll", locked: false, muted: false, order: 40, semanticRole: "BROLL", volume: 1 },
   VISUAL: { hidden: false, id: "visual", kind: "VISUAL", label: "Medios visuales", locked: false, muted: false, order: 50, semanticRole: "VISUAL", volume: 1 },
   OVERLAY: { hidden: false, id: "overlay", kind: "OVERLAY", label: "Gráficos y overlays", locked: false, muted: false, order: 60, semanticRole: "OVERLAY", volume: 1 },
@@ -40,6 +41,7 @@ export function normalizeCompositionTrackTopology(
   const normalizedClips = document.clips.map((clip) => {
     if (clip.source.type === "DECK_SLIDE") return { ...clip, trackId: TRACK_DEFINITIONS.DECK.id };
     if (clip.source.type === "ASSEMBLY_BRAND_ASSET") return clip;
+    if (clip.source.type === "SOUND_EFFECT_ASSET") return { ...clip, trackId: TRACK_DEFINITIONS.SFX.id };
     const storedRole = normalizeProductionTimelineRole(assetRoles.get(clip.source.productionAssetId));
     const role = storedRole
       ? resolveCompositionTrackRole({ mimeType: clip.kind === "AUDIO" ? "audio/unknown" : "application/octet-stream", timelineRole: storedRole })
@@ -82,6 +84,7 @@ function inferLegacyTrackRole(trackId: string, kind: CompositionEditorDocument["
   if (trackId === "avatar") return "AVATAR";
   if (trackId === "voice") return "VOICE";
   if (trackId === "music" || trackId === "audio") return kind === "AUDIO" ? "MUSIC" : undefined;
+  if (trackId === "sfx") return kind === "AUDIO" ? "SFX" : undefined;
   if (trackId === "broll") return "BROLL";
   if (trackId === "visual") return "VISUAL";
   if (trackId === "overlay") return "OVERLAY";

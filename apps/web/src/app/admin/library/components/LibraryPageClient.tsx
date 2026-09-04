@@ -15,6 +15,7 @@ import type { ComponentType, ProductionStatus } from '@/domains/materials/types/
 import { searchMaterialsAction, type MaterialSearchResult } from '../actions';
 import { LibraryResultCard } from './LibraryResultCard';
 import { EngineSelect } from '@/components/ui/EngineSelect';
+import { SoundEffectLibraryPanel } from './SoundEffectLibraryPanel';
 
 const PAGE_SIZE = 24;
 
@@ -31,6 +32,7 @@ export function LibraryPageClient() {
     const [selectedComponentType, setSelectedComponentType] = useState<ComponentType | 'ALL'>('ALL');
     const [selectedStatus, setSelectedStatus] = useState<ProductionStatus | 'ALL'>('ALL');
     const [selectedAssetType, setSelectedAssetType] = useState<LibraryAssetType>('ALL');
+    const [activeView, setActiveView] = useState<'materials' | 'sound-effects'>('materials');
 
     const filtersActive =
         selectedCategory !== 'ALL' ||
@@ -127,6 +129,12 @@ export function LibraryPageClient() {
                 <span>Materiales y assets</span>
             </div>
 
+            <div className="flex w-fit rounded-lg border border-[var(--engine-muted)]/20 bg-[var(--engine-surface-solid)] p-1 text-sm">
+                <button type="button" onClick={() => setActiveView('materials')} className={`rounded-md px-4 py-2 transition-colors ${activeView === 'materials' ? 'bg-[var(--engine-accent)] text-[var(--engine-primary)]' : 'text-gray-400 hover:text-white'}`}>Materiales</button>
+                <button type="button" onClick={() => setActiveView('sound-effects')} className={`rounded-md px-4 py-2 transition-colors ${activeView === 'sound-effects' ? 'bg-[var(--engine-accent)] text-[var(--engine-primary)]' : 'text-gray-400 hover:text-white'}`}>Efectos de sonido</button>
+            </div>
+
+            {activeView === 'sound-effects' ? <SoundEffectLibraryPanel /> : <>
             <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-[var(--engine-muted)]/10 dark:bg-[var(--engine-surface-solid)]">
                 <form onSubmit={handleSearch} className="flex flex-col gap-2 md:flex-row">
                     <div className="relative flex-1">
@@ -297,6 +305,7 @@ export function LibraryPageClient() {
                     </div>
                 ) : null}
             </div>
+            </>}
         </div>
     );
 }

@@ -24,7 +24,7 @@ export const COMPOSITION_DURATION_SOURCES = [
   "slides",
 ] as const;
 export type CompositionDurationSource = typeof COMPOSITION_DURATION_SOURCES[number];
-export const COMPOSITION_TRACK_ROLES = ["DECK", "AVATAR", "VOICE", "MUSIC", "BROLL", "VISUAL", "OVERLAY"] as const;
+export const COMPOSITION_TRACK_ROLES = ["DECK", "AVATAR", "VOICE", "MUSIC", "SFX", "BROLL", "VISUAL", "OVERLAY"] as const;
 export type CompositionTrackRole = typeof COMPOSITION_TRACK_ROLES[number];
 export const COMPOSITION_MEDIA_FIT_MODES = ["CONTAIN", "COVER"] as const;
 export type CompositionMediaFit = typeof COMPOSITION_MEDIA_FIT_MODES[number];
@@ -150,6 +150,8 @@ const deckStylesSchema = z.object({
 const productionAssetSourceSchema = z.object({
   /** Result of media probing; absent on documents created before audio detection. */
   hasAudio: z.boolean().optional(),
+  /** A Production asset intentionally reserved for the opening of this video. */
+  placement: z.literal("INTRO").optional(),
   productionAssetId: uuidSchema,
   sourceHeight: z.number().int().positive().max(16_384).optional(),
   sourceWidth: z.number().int().positive().max(16_384).optional(),
@@ -162,6 +164,11 @@ const assemblyBrandAssetSourceSchema = z.object({
   placement: z.enum(["INTRO", "OUTRO"]),
   sourceHeight: z.number().int().positive().max(16_384).optional(),
   sourceWidth: z.number().int().positive().max(16_384).optional(),
+}).strict();
+
+/** A reusable, organization-scoped library item; its binary never lives in the document. */
+const soundEffectAssetSourceSchema = z.object({
+  soundEffectAssetId: uuidSchema,
 }).strict();
 
 export const compositionClipSchema = z.object({
@@ -180,6 +187,7 @@ export const compositionClipSchema = z.object({
     assemblyBrandAssetSourceSchema.extend({ type: z.literal("ASSEMBLY_BRAND_ASSET") }),
     deckSourceSchema.extend({ type: z.literal("DECK_SLIDE") }),
     productionAssetSourceSchema.extend({ type: z.literal("PRODUCTION_ASSET") }),
+    soundEffectAssetSourceSchema.extend({ type: z.literal("SOUND_EFFECT_ASSET") }),
   ]),
   sourceDurationSeconds: sourceMediaSecondsSchema.positive().optional(),
   sourceOffsetSeconds: sourceMediaSecondsSchema.optional(),
@@ -208,7 +216,7 @@ export const compositionClipSchema = z.object({
   if (clip.kind === "DECK_SLIDE" && clip.source.type !== "DECK_SLIDE") {
     context.addIssue({ code: "custom", message: "Un clip de deck debe conservar su fuente HTML." });
   }
-  if (clip.kind !== "DECK_SLIDE" && clip.source.type !== "PRODUCTION_ASSET" && clip.source.type !== "ASSEMBLY_BRAND_ASSET") {
+  if (clip.kind !== "DECK_SLIDE" && clip.source.type !== "PRODUCTION_ASSET" && clip.source.type !== "ASSEMBLY_BRAND_ASSET" && clip.source.type !== "SOUND_EFFECT_ASSET") {
     context.addIssue({ code: "custom", message: "Un clip multimedia debe referenciar un asset válido." });
   }
   if (clip.source.type === "ASSEMBLY_BRAND_ASSET" && clip.kind !== "VIDEO") {
@@ -303,5 +311,6 @@ export type CompositionTrack = z.infer<typeof compositionTrackSchema>;
 export function getCompositionClipMediaAssetId(clip: CompositionClip) {
   if (clip.source.type === "PRODUCTION_ASSET") return clip.source.productionAssetId;
   if (clip.source.type === "ASSEMBLY_BRAND_ASSET") return clip.source.assemblyBrandAssetId;
+  if (clip.source.type === "SOUND_EFFECT_ASSET") return clip.source.soundEffectAssetId;
   return null;
 }

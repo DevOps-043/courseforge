@@ -611,6 +611,34 @@
   white-space: nowrap;
 }
 
+.sfxSearch input,
+.sfxCategory {
+  width: 100%;
+  border: 1px solid var(--studio-border);
+  border-radius: 0.5rem;
+  color: var(--studio-text);
+  background: var(--studio-panel-raised);
+  font: inherit;
+  font-size: 0.68rem;
+}
+
+.sfxSearch input {
+  padding: 0.5rem 0.6rem;
+}
+
+.sfxCategory {
+  margin-top: 0.38rem;
+  padding: 0.42rem 0.5rem;
+}
+
+.libraryEmpty {
+  margin: 1rem 0.35rem;
+  color: var(--studio-muted);
+  font-size: 0.68rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
 .assetAdd span {
   overflow: hidden;
   text-overflow: ellipsis;

@@ -5,6 +5,7 @@ export function compositionClipExclusionKey(clip: CompositionClip) {
     return clip.sceneId ? `clip:${clip.id}` : `deck:${clip.source.slideKey || clip.source.slideIndex}`;
   }
   if (clip.source.type === "PRODUCTION_ASSET") return `asset:${clip.source.productionAssetId}`;
+  if (clip.source.type === "SOUND_EFFECT_ASSET") return `sfx:${clip.source.soundEffectAssetId}`;
   return `brand:${clip.source.assemblyBrandAssetId}`;
 }
 

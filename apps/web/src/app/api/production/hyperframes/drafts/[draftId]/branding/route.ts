@@ -7,6 +7,7 @@ import { applyAndAppendCompositionDocumentPatches, CompositionDocumentError, get
 import { createClient } from "@/utils/supabase/server";
 
 interface RouteContext { params: Promise<{ draftId: string }>; }
+const outroSelectionSchema = z.object({ outroAssetId: z.string().uuid().nullable() }).strict();
 
 /** Reports only whether approved branding is available; Storage identity stays server-side. */
 export async function GET(_request: Request, context: RouteContext) {
@@ -14,14 +15,24 @@ export async function GET(_request: Request, context: RouteContext) {
     const authorization = await authorize();
     if (authorization instanceof NextResponse) return authorization;
     const draftId = z.string().uuid().parse((await context.params).draftId);
-    const branding = await resolveAssemblyBranding({
-      draftId,
-      organizationId: authorization.organizationId,
-      supabase: authorization.admin,
-    });
+    const [branding, { data: outros, error: outrosError }, { data: selected, error: selectedError }] = await Promise.all([
+      resolveAssemblyBranding({
+        draftId,
+        organizationId: authorization.organizationId,
+        supabase: authorization.admin,
+      }),
+      authorization.admin.from("organization_assembly_assets").select("id, name, duration_milliseconds").eq("organization_id", authorization.organizationId).eq("kind", "OUTRO").eq("status", "APPROVED").order("created_at", { ascending: false }),
+      authorization.admin.from("video_composition_draft_branding").select("outro_asset_id").eq("draft_id", draftId).eq("organization_id", authorization.organizationId).maybeSingle(),
+    ]);
+    if (outrosError || selectedError) throw outrosError || selectedError;
     return NextResponse.json({
       success: true,
-      data: { hasIntro: Boolean(branding.intro), hasOutro: Boolean(branding.outro) },
+      data: {
+        hasIntro: Boolean(branding.intro),
+        hasOutro: Boolean(branding.outro),
+        outros: outros || [],
+        selectedOutroAssetId: selected?.outro_asset_id || null,
+      },
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: "Identificador de borrador inválido." }, { status: 400 });
@@ -31,11 +42,30 @@ export async function GET(_request: Request, context: RouteContext) {
 }
 
 /** Resolves and freezes approved organization branding for a single draft. */
-export async function POST(_request: Request, context: RouteContext) {
+export async function POST(request: Request, context: RouteContext) {
   try {
     const authorization = await authorize();
     if (authorization instanceof NextResponse) return authorization;
     const draftId = z.string().uuid().parse((await context.params).draftId);
+    const rawBody = await request.text();
+    const requestedSelection = rawBody ? outroSelectionSchema.parse(JSON.parse(rawBody)) : null;
+    if (requestedSelection) {
+      if (requestedSelection.outroAssetId) {
+        const { data: outro } = await authorization.admin.from("organization_assembly_assets").select("id").eq("id", requestedSelection.outroAssetId).eq("organization_id", authorization.organizationId).eq("kind", "OUTRO").eq("status", "APPROVED").maybeSingle();
+        if (!outro) return NextResponse.json({ error: "El outro seleccionado no pertenece a esta empresa o no está aprobado." }, { status: 400 });
+      }
+      const { error: selectionError } = await authorization.admin.from("video_composition_draft_branding").upsert({
+        draft_id: draftId,
+        organization_id: authorization.organizationId,
+        intro_asset_id: null,
+        intro_source: "ASSEMBLY_OVERRIDE",
+        outro_asset_id: requestedSelection.outroAssetId,
+        resolved_at: new Date().toISOString(),
+        resolved_by: authorization.userId,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "draft_id" });
+      if (selectionError) throw selectionError;
+    }
     const branding = await resolveAssemblyBranding({
       draftId,
       organizationId: authorization.organizationId,
@@ -66,7 +96,7 @@ export async function POST(_request: Request, context: RouteContext) {
       patch: {
         operations: [{ document, type: "document.reconcile" }],
         source: "USER",
-        summary: "Colocó intro y outro configurados para la empresa.",
+        summary: "Actualizó el outro seleccionado para este video.",
       },
       supabase: authorization.admin,
       userId: authorization.userId,
