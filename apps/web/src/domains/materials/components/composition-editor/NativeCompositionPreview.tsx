@@ -2423,7 +2423,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         } as CSSProperties}
         className={`${styles.editorGrid} ${inspectorOpen ? styles.editorGridWithInspector : ""}`}
       >
-        <StudioLibrary assets={assets} delivery={deliveryMenu} draftId={draftId} introAssetId={payload.document.clips.find((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.placement === "INTRO")?.source.productionAssetId || null} lessons={lessons} narrative={narrativeLibrary} narrativeCount={compositionScenes.length} onAddAsset={addAssetToTimeline} onAddSoundEffect={addSoundEffectToTimeline} onClearIntro={clearProductionIntro} onSelectLesson={onSelectLesson} onSelectAsset={selectClip} onSetIntro={setProductionIntro} selectedLessonId={selectedLessonId} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))} />
+        <StudioLibrary assets={assets} delivery={deliveryMenu} introAssetId={payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.placement === "INTRO" ? [clip.source.productionAssetId] : [])[0] || null} lessons={lessons} narrative={narrativeLibrary} narrativeCount={compositionScenes.length} onAddAsset={addAssetToTimeline} onAddSoundEffect={addSoundEffectToTimeline} onClearIntro={clearProductionIntro} onSelectLesson={onSelectLesson} onSelectAsset={selectClip} onSetIntro={setProductionIntro} selectedLessonId={selectedLessonId} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))} />
 
         <section ref={previewShellRef} className={`${styles.previewPanel} ${previewFullscreen ? styles.previewFullscreen : ""}`}>
           <div className={styles.previewToolbar}>
@@ -2838,10 +2838,9 @@ function renderQualityLabel(quality: HyperframesRenderSettings["quality"]) {
   return quality === "high" ? "alta" : quality === "draft" ? "borrador" : "estándar";
 }
 
-function StudioLibrary({ assets, delivery, draftId, introAssetId, lessons, narrative, narrativeCount, onAddAsset, onAddSoundEffect, onClearIntro, onSelectAsset, onSelectLesson, onSetIntro, selectedHfId, selectedLessonId, timelineAssetIds }: {
+function StudioLibrary({ assets, delivery, introAssetId, lessons, narrative, narrativeCount, onAddAsset, onAddSoundEffect, onClearIntro, onSelectAsset, onSelectLesson, onSetIntro, selectedHfId, selectedLessonId, timelineAssetIds }: {
   assets: CompositionStudioAsset[];
   delivery: ReactNode;
-  draftId: string;
   introAssetId: string | null;
   lessons: CompositionStudioLesson[];
   narrative: ReactNode;

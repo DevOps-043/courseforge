@@ -13,6 +13,7 @@ SofLIA - Engine es una plataforma multi-tenant para crear, validar, producir y p
 - **Servicios**: Gamma API, Google Search grounding, SofLIA API, Google Drive, Microsoft Graph/OneDrive, Artlist, AWS Remotion Lambda, S3, CodeBuild y CloudFront para templates externos.
 - **Editor de composicion**: el dominio `production/composition-editor` gestiona documento, assets, pistas, mezcla de audio, profundidad de capas, presets de movimiento, auto-organizacion y patches validados de propuestas del agente. El documento se persiste como versiones inmutables con hash y auditoria; el RPC `append_video_composition_draft_document_v2` devuelve resultados explicitos de guardado y evita colas de bloqueo.
 - **HyperFrames**: el dominio `production/hyperframes` cubre borradores, composiciones, preflight, revisiones, preview, render y sincronizacion de assets; sus rutas viven bajo `/api/production/hyperframes`.
+- **Fuente de verdad HyperFrames**: antes de cambiar documento, SFX, preview, snapshot ZIP, variables, upload o render, leer y actualizar `docs/architecture/hyperframes-composition-render-flow-source-of-truth.md` en el mismo cambio.
 
 ## Protocolo De Sincronizacion Documental
 
@@ -381,3 +382,4 @@ API/Remotion legacy, solo si se usa `apps/api`:
 - Preferir validadores Zod y servicios de dominio sobre logica en componentes.
 - Mantener business rules fuera de route handlers cuando exista dominio equivalente.
 - Mantener `courseforge-composition-v2` como unica fuente editable para motion: `document.motion` es canonico y el HTML/timeline se compila desde ese documento. Ver [ADR de motion](docs/architecture/adr-composition-motion-source-of-truth.md).
+- Para medios y render HyperFrames, mantener separados el snapshot inmutable sin credenciales y el ZIP desechable con URLs firmadas materializadas justo antes del upload. Ver [fuente de verdad del flujo](docs/architecture/hyperframes-composition-render-flow-source-of-truth.md).

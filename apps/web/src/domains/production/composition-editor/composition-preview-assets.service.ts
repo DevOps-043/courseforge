@@ -6,6 +6,7 @@ import {
   elapsedMilliseconds,
   type CompositionPreviewAssetDiagnostics,
 } from "./composition-preview-performance";
+import { readReadyLinkedSoundEffectAssetIds } from "./composition-sound-effect-assets.service";
 
 export const COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS = 60 * 60;
 export const COMPOSITION_PREVIEW_SIGNING_CONCURRENCY = 6;
@@ -42,28 +43,27 @@ export async function resolveCompositionPreviewAssetUrls(params: {
   }
 
   const draftLinkQueryStartedAt = performance.now();
-  const [{ data: draftLinks, error: draftLinksError }, { data: draftBranding, error: draftBrandingError }, { data: draftSoundEffects, error: draftSoundEffectsError }] = await Promise.all([
+  const [{ data: draftLinks, error: draftLinksError }, { data: draftBranding, error: draftBrandingError }, linkedSoundEffectIds] = await Promise.all([
     productionAssetIds.length > 0
       ? params.supabase.from("video_composition_draft_assets").select("production_asset_id").eq("draft_id", params.draftId).eq("organization_id", params.organizationId).in("production_asset_id", productionAssetIds)
       : Promise.resolve({ data: [], error: null }),
     brandingAssetIds.length > 0
       ? params.supabase.from("video_composition_draft_branding").select("intro_asset_id, outro_asset_id").eq("draft_id", params.draftId).eq("organization_id", params.organizationId).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
-    soundEffectAssetIds.length > 0
-      ? params.supabase.from("video_composition_draft_sound_effect_assets").select("sound_effect_asset_id, sound_effect_assets!inner(status)").eq("draft_id", params.draftId).eq("organization_id", params.organizationId).in("sound_effect_asset_id", soundEffectAssetIds)
-      : Promise.resolve({ data: [], error: null }),
+    readReadyLinkedSoundEffectAssetIds({
+      draftId: params.draftId,
+      organizationId: params.organizationId,
+      soundEffectAssetIds,
+      supabase: params.supabase,
+    }),
   ]);
   if (draftLinksError) throw draftLinksError;
   if (draftBrandingError) throw draftBrandingError;
-  if (draftSoundEffectsError) throw draftSoundEffectsError;
   const draftLinkQueryMs = elapsedMilliseconds(draftLinkQueryStartedAt);
   const linkedIds = new Set((draftLinks || []).map((link) => link.production_asset_id as string));
   const brandingLinks = new Set([draftBranding?.intro_asset_id, draftBranding?.outro_asset_id].filter((id): id is string => typeof id === "string"));
   const missingLinks = productionAssetIds.filter((assetId) => !linkedIds.has(assetId));
   const missingBrandingLinks = brandingAssetIds.filter((assetId) => !brandingLinks.has(assetId));
-  const linkedSoundEffectIds = new Set((draftSoundEffects || [])
-    .filter((row) => row.sound_effect_assets?.some((asset) => asset.status === "READY"))
-    .map((row: { sound_effect_asset_id: string }) => row.sound_effect_asset_id));
   const missingSoundEffectLinks = soundEffectAssetIds.filter((assetId) => !linkedSoundEffectIds.has(assetId));
   if (missingLinks.length > 0 || missingBrandingLinks.length > 0 || missingSoundEffectLinks.length > 0) {
     throw new CompositionPreviewCompilerError("La composición referencia assets que no pertenecen al borrador.");

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { PremiumSelect } from "@/shared/components/PremiumSelect";
+import { HelpTooltip } from "@/components/ui/HelpTooltip";
 import {
   getModelSettingsAction,
   getSystemPromptHistoryAction,
@@ -506,22 +507,7 @@ function getPromptHelpText(prompt: SystemPrompt) {
 }
 
 function PromptHelpTooltip({ text }: { text: string }) {
-  return (
-    <span className="relative inline-flex group">
-      <button
-        type="button"
-        onClick={(event) => event.stopPropagation()}
-        onKeyDown={(event) => event.stopPropagation()}
-        aria-label="Ver ayuda del prompt"
-        className="w-5 h-5 rounded-full border border-gray-300 dark:border-[var(--engine-muted)]/40 text-[11px] font-bold text-gray-500 dark:text-[var(--engine-text-muted)] hover:border-[var(--engine-accent)] hover:text-[var(--engine-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--engine-accent)]/30 transition-colors"
-      >
-        ?
-      </button>
-      <span className="pointer-events-none absolute left-1/2 top-7 z-30 hidden w-80 -translate-x-1/2 rounded-lg border border-gray-200 bg-white p-3 text-left text-xs font-normal leading-relaxed text-gray-600 shadow-xl shadow-black/10 group-hover:block group-focus-within:block dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-surface-solid)] dark:text-gray-300">
-        {text}
-      </span>
-    </span>
-  );
+  return <HelpTooltip ariaLabel="Ver ayuda del prompt" stopPropagation>{text}</HelpTooltip>;
 }
 
 function PhasePromptEditor({

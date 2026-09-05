@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { getErrorMessage } from "@/lib/errors";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
@@ -85,9 +86,12 @@ export async function GET(request: Request, context: RouteContext) {
 
 /** Appends one validated editor version. The If-Match hash prevents silent overwrites. */
 export async function PUT(request: Request, context: RouteContext) {
+  const diagnosticId = randomUUID();
+  let updateStage = "AUTHORIZE";
   try {
     const authorization = await authorize();
     if (authorization instanceof NextResponse) return authorization;
+    updateStage = "PRECONDITION";
     const { draftId } = await context.params;
     const rawIfMatch = request.headers.get("if-match");
     const rawFallbackVersion = request.headers.get(COMPOSITION_VERSION_FALLBACK_HEADER);
@@ -123,8 +127,10 @@ export async function PUT(request: Request, context: RouteContext) {
         receivedVersion: describeCompositionDocumentVersion(precondition.documentHash),
       });
     }
+    updateStage = "PATCH_VALIDATION";
     const body = compositionEditorPatchRequestSchema.parse(await request.json());
     const persistenceSignal = AbortSignal.any([request.signal, AbortSignal.timeout(15_000)]);
+    updateStage = "APPLY_AND_APPEND";
     const data = await applyAndAppendCompositionDocumentPatches({
       draftId: z.string().uuid().parse(draftId),
       expectedDocumentHash: precondition.documentHash,
@@ -152,8 +158,17 @@ export async function PUT(request: Request, context: RouteContext) {
     if (error instanceof CompositionDocumentPersistenceError) return compositionErrorResponse(error);
     if (error instanceof CompositionDocumentError) return NextResponse.json({ error: error.message, code: "COMPOSITION_DOCUMENT_ERROR", retryable: false }, { status: error.status });
     if (isTransientStorageError(error)) return storageUnavailableResponse();
-    console.error("[API /production/hyperframes/drafts/:id/document] Unexpected update error:", serializeError(error));
-    return NextResponse.json({ error: "No se pudo guardar la edición de la composición." }, { status: 500 });
+    console.error("[API /production/hyperframes/drafts/:id/document] Unexpected update error:", {
+      diagnosticId,
+      error: serializeError(error),
+      stage: updateStage,
+    });
+    return NextResponse.json({
+      error: "No se pudo guardar la edición de la composición.",
+      code: "COMPOSITION_UPDATE_FAILED",
+      diagnosticId,
+      retryable: true,
+    }, { status: 500 });
   }
 }
 

@@ -286,6 +286,7 @@ export async function snapshotCompositionDocument(params: {
       organization_id: params.organizationId,
       sound_effect_asset_id: asset.productionAssetId,
       source_checksum: asset.checksum,
+      source_storage_bucket: asset.storageBucket,
       source_storage_path: asset.storagePath,
     })));
     if (linkError) throw new CompositionSnapshotError("La revisión se creó, pero no se pudieron vincular sus efectos de sonido.", 500);

@@ -542,7 +542,7 @@ export class HyperframesRenderSubmissionService {
         .eq("composition_revision_id", revisionId),
       this.supabase
         .from("video_composition_sound_effect_assets")
-        .select("sound_effect_asset_id, source_checksum, source_storage_path, file_size_bytes, mime_type")
+        .select("sound_effect_asset_id, source_checksum, source_storage_bucket, source_storage_path, file_size_bytes, mime_type")
         .eq("composition_revision_id", revisionId),
     ]);
     if (error) throw error;
@@ -563,7 +563,7 @@ export class HyperframesRenderSubmissionService {
         mime_type: String(row.mime_type),
         production_asset_id: String(row.sound_effect_asset_id),
         source_checksum: String(row.source_checksum),
-        source_storage_bucket: "sound-effect-assets",
+        source_storage_bucket: String(row.source_storage_bucket),
         source_storage_path: String(row.source_storage_path),
       })),
     ];

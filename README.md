@@ -212,6 +212,8 @@ La produccion visual combina dos rutas complementarias:
 
 El editor de composicion permite gestionar assets, pistas, timecodes, profundidad de capas, mezcla de audio, autoorganizacion y presets de movimiento. Las propuestas del agente se convierten en patches validados antes de actualizar un documento de composicion versionado; cada version se identifica con un hash para detectar conflictos de edicion y producir previews reproducibles.
 
+El contrato operativo de documento, SFX, preview, snapshot ZIP, entrega de medios y render administrado se mantiene en [Fuente de verdad del flujo HyperFrames](docs/architecture/hyperframes-composition-render-flow-source-of-truth.md). Todo cambio a ese flujo debe actualizar ese documento y su historial en el mismo PR.
+
 El sistema activo usa `desktop_worker`. Los caminos `local` y `lambda` quedan como legado en `apps/api`.
 
 - `desktop_worker`

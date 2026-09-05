@@ -52,7 +52,7 @@ export function SoundEffectPreviewButton({ soundEffectId }: SoundEffectPreviewBu
             type="button"
             onClick={() => void togglePreview()}
             disabled={isStarting}
-            className="flex h-8 items-center justify-center gap-1 rounded-md border border-[var(--engine-muted)]/20 px-2 text-xs text-gray-300 transition-colors hover:border-[var(--engine-accent)]/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex h-8 items-center justify-center gap-1 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:border-[var(--engine-accent)]/50 hover:bg-slate-50 hover:text-slate-950 dark:border-[var(--engine-muted)]/20 dark:bg-transparent dark:text-gray-300 dark:hover:bg-[var(--engine-surface-hover)] dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
             aria-label={isPlaying ? 'Pausar preescucha' : 'Escuchar efecto'}
             title={isPlaying ? 'Pausar' : 'Escuchar'}
         >

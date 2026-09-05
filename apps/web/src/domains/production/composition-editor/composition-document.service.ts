@@ -9,6 +9,7 @@ import { buildCompositionAgentDiff } from "./composition-agent-diff.service";
 import { assertCompositionAgentOperationsAllowed, CompositionAgentPolicyError } from "./composition-agent-policy.service";
 import { validateCompositionAgentSimulation, CompositionAgentValidationError } from "./composition-agent-validation.service";
 import { normalizeCompositionDocumentLayerDepths } from "./composition-layer-depth";
+import { readReadyLinkedSoundEffectAssetIds } from "./composition-sound-effect-assets.service";
 
 export class CompositionDocumentError extends Error {
   constructor(message: string, readonly status = 400) {
@@ -270,20 +271,22 @@ async function assertAddedAssetsBelongToDraft(params: {
   }))];
   if (assetIds.length === 0 && brandingAssetIds.length === 0 && soundEffectAssetIds.length === 0) return;
 
-  const [{ data, error }, { data: branding, error: brandingError }, { data: soundEffects, error: soundEffectsError }] = await Promise.all([
+  const [{ data, error }, { data: branding, error: brandingError }, linkedSoundEffectIds] = await Promise.all([
     assetIds.length > 0
       ? params.supabase.from("video_composition_draft_assets").select("production_asset_id").eq("draft_id", params.draftId).eq("organization_id", params.organizationId).in("production_asset_id", assetIds)
       : Promise.resolve({ data: [], error: null }),
     brandingAssetIds.length > 0
       ? params.supabase.from("video_composition_draft_branding").select("intro_asset_id, outro_asset_id").eq("draft_id", params.draftId).eq("organization_id", params.organizationId).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
-    soundEffectAssetIds.length > 0
-      ? params.supabase.from("video_composition_draft_sound_effect_assets").select("sound_effect_asset_id, sound_effect_assets!inner(status)").eq("draft_id", params.draftId).eq("organization_id", params.organizationId).in("sound_effect_asset_id", soundEffectAssetIds)
-      : Promise.resolve({ data: [], error: null }),
+    readReadyLinkedSoundEffectAssetIds({
+      draftId: params.draftId,
+      organizationId: params.organizationId,
+      soundEffectAssetIds,
+      supabase: params.supabase,
+    }),
   ]);
   if (error) throw error;
   if (brandingError) throw brandingError;
-  if (soundEffectsError) throw soundEffectsError;
   const linkedIds = new Set((data || []).map((row: { production_asset_id: string }) => row.production_asset_id));
   if (assetIds.some((assetId) => !linkedIds.has(assetId))) {
     throw new CompositionDocumentError("El asset seleccionado no está vinculado a este borrador.");
@@ -292,11 +295,8 @@ async function assertAddedAssetsBelongToDraft(params: {
   if (brandingAssetIds.some((assetId) => !linkedBrandingIds.has(assetId))) {
     throw new CompositionDocumentError("El intro u outro seleccionado no está vinculado a este borrador.");
   }
-  const linkedSoundEffectIds = new Set((soundEffects || [])
-    .filter((row) => row.sound_effect_assets?.some((asset) => asset.status === "READY"))
-    .map((row: { sound_effect_asset_id: string }) => row.sound_effect_asset_id));
   if (soundEffectAssetIds.some((assetId) => !linkedSoundEffectIds.has(assetId))) {
-    throw new CompositionDocumentError("El efecto de sonido seleccionado no está listo o no está vinculado a este borrador.");
+    throw new CompositionDocumentError("El efecto de sonido seleccionado no está listo o no está vinculado a este borrador.", 409);
   }
 }
 
