@@ -174,3 +174,53 @@ export async function resolveModelSetting(
     thinkingLevel: data?.thinking_level || defaults.thinkingLevel,
   };
 }
+
+/**
+ * Resolves a required database-backed model configuration.
+ * Unlike resolveModelSetting, this function never substitutes code defaults.
+ */
+export async function resolveConfiguredModelSetting(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  settingType: string,
+  organizationId?: string | null,
+): Promise<ModelSettingResult> {
+  const selectActiveSetting = async (orgId?: string | null) => {
+    let query = supabase
+      .from("model_settings")
+      .select("model_name, fallback_model, temperature, thinking_level")
+      .eq("setting_type", settingType)
+      .eq("is_active", true)
+      .order("id", { ascending: false })
+      .limit(1);
+
+    query = orgId
+      ? query.eq("organization_id", orgId)
+      : query.is("organization_id", null);
+
+    const { data, error } = await query.maybeSingle();
+    if (error) {
+      throw new Error(
+        `No se pudo consultar la configuracion de modelo ${settingType}: ${error.message}`,
+      );
+    }
+    return data;
+  };
+
+  const organizationSetting = organizationId
+    ? await selectActiveSetting(organizationId)
+    : null;
+  const configuredSetting = organizationSetting || await selectActiveSetting(null);
+
+  if (!configuredSetting?.model_name?.trim()) {
+    throw new Error(
+      `MODEL_SETTING_NOT_CONFIGURED: Configura un modelo principal activo para ${settingType} en Configuracion antes de ejecutar esta fase.`,
+    );
+  }
+
+  return {
+    model: configuredSetting.model_name.trim(),
+    fallbackModel: configuredSetting.fallback_model?.trim() || "",
+    temperature: configuredSetting.temperature ?? 0.7,
+    thinkingLevel: configuredSetting.thinking_level || "medium",
+  };
+}

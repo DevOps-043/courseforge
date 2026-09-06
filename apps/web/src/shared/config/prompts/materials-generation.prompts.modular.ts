@@ -15,6 +15,7 @@
  *   MATERIALS_EXERCISE          → exercisePromptDefault
  *   VIDEO_BROLL_PROMPTS         → videoBrollPromptsDefault (Fase 6 — Producción)
  */
+import { GLOBAL_VIDEO_DURATION_PROMPTS } from "./global-video-duration.prompts";
 
 // --------------------------------------------------------------------------
 // PROMPT CODE-TO-TYPE MAPPING
@@ -65,50 +66,7 @@ export const CLIP_GENERATION_PROMPT_CODE = 'CLIP_GENERATION_PROMPTS';
 // DEFAULT PROMPTS (used as fallback when not found in DB)
 // --------------------------------------------------------------------------
 
-export const systemPromptDefault = `Actúa como **motor de producción instruccional** para microlearning de IA.
-
-Estás ejecutando la **FASE 3 de 3** (Plan → Curaduría → Producción).
-
-Tu misión en esta fase:
-
-Generar los **materiales finales** de una lección usando el **Prompt Maestro v2.4**, a partir del plan instruccional (F1) y las fuentes curadas (F2).
-
----
-
-## Reglas globales
-
-1. **Formato de salida**
-
-   - **IMPORTANTE: Responde SOLO con JSON válido.**
-   - No uses Markdown, tablas o texto fuera del JSON.
-   - La estructura JSON debe ser exactamente la especificada en el schema de salida.
-
-2. **Cero descargables obligatorios**
-
-   - NO diseñes actividades que requieran descargar/subir archivos, datasets, .zip, repos, etc.
-   - Todo debe ser **reproducible en pantalla** mediante texto e instrucciones.
-
-3. **Accesibilidad**
-
-   - Español neutro, tono profesional y cercano.
-   - Contenido subtitulable; evita depender de elementos visuales no descriptibles.
-
-4. **Coherencia Bloom ↔ contenido**
-   - Respeta la combinación mínima requerida según la Matriz Bloom.
-   - Revisa que el tipo de contenido generado corresponda al nivel máximo Bloom del OA.
-
-5. **Usa como referencia:**
-   - Los OA del plan instruccional
-   - Las fuentes de Fase 2 (para ejemplos, casos, terminología)
-   - NO copies texto de terceros de forma literal para material de lectura, pero el guion final en el storyboard sí debe ser el texto definitivo a locutar.
-
-**REGLAS CRÍTICAS DEL JSON:**
-1. **components** debe incluir TODOS los componentes solicitados.
-2. **source_refs_used** debe listar los IDs de las fuentes realmente utilizadas.
-3. NO uses campos adicionales fuera de los especificados.
-4. NO incluyas texto fuera del JSON (ni explicaciones, ni Markdown, ni tablas).
-
-**IMPORTANTE FINAL:** Responde SOLO con el JSON, sin texto adicional. El sistema parseará directamente el JSON y validará la estructura.`;
+export const systemPromptDefault = GLOBAL_VIDEO_DURATION_PROMPTS.MATERIALS_SYSTEM;
 
 export const readingPromptDefault = `## Lectura (Refuerzo)
 
@@ -153,81 +111,13 @@ export const quizPromptDefault = `## Cuestionario Formativo (Fin de lección)
 - Las opciones deben ser texto limpio. NO incluyas prefijos, letras, numeros, bullets ni etiquetas como "A.", "B)", "C -", "1." dentro de cada opcion; el frontend rotula las opciones.
 - Cada opcion debe contener contenido pedagogico sustantivo. Nunca generes opciones que sean solo "A", "B", "C", "D", numeros, etiquetas vacias o placeholders.`;
 
-export const videoTheoreticalPromptDefault = `## Video Teórico (Explicativo)
+export const videoTheoreticalPromptDefault = GLOBAL_VIDEO_DURATION_PROMPTS.MATERIALS_VIDEO_THEORETICAL;
 
-**Cuándo usarlo:** Introducir un concepto de IA (qué es, por qué importa) y preparar la práctica posterior.
-**Público:** Profesionales no técnicos, analistas, docentes, líderes.
-**Objetivos (Bloom):** Comprender conceptos clave; identificar ejemplos; explicar con sus palabras.
+export const videoDemoPromptDefault = GLOBAL_VIDEO_DURATION_PROMPTS.MATERIALS_VIDEO_DEMO;
 
-**Estructura (orientativa):**
-- 00:00–00:45 Introducción
-- 00:45–03:00 Desarrollo conceptual
-- 03:00–05:30 Aplicaciones y ejemplos
-- 05:30–06:30 Cierre y reflexión
+export const videoGuidePromptDefault = GLOBAL_VIDEO_DURATION_PROMPTS.MATERIALS_VIDEO_GUIDE;
 
-**Generación requerida:**
-- Guion con secciones numeradas
-- Storyboard con timecodes y descripciones visuales
-- 1 pregunta de reflexión embebida (sin micro-prácticas)
-
-**REGLA DE ORO PARA STORYBOARDS:**
-El texto narrativo (narration_text) en el storyboard DEBE SER EL GUIÓN EXACTO Y LITERAL que se va a leer. NO hagas resúmenes. Escribe palabra por palabra lo que el locutor dirá. La sincronización entre guion y visuales debe ser perfecta y 1:1.`;
-
-export const videoDemoPromptDefault = `## Video Demo (Demostrativo)
-
-**Cuándo:** Mostrar cómo se hace una tarea/flujo con IA (ej.: ChatGPT, Gemini, Copilot).
-**Objetivos (Bloom):** Aplicar un flujo básico; analizar pasos y buenas prácticas; evaluar el resultado.
-
-**Estructura (orientativa):**
-- 00:00–00:45 Introducción
-- 00:45–02:00 Entorno
-- 02:00–07:30 Demostración guiada
-- 07:30–09:30 Conclusiones
-
-**Generación requerida:**
-- Guion narrado con pasos claros (palabra por palabra)
-- Storyboard vinculando ese guion literal con capturas reales y acciones en pantalla
-- Enfatiza buenas prácticas y errores comunes
-
-**REGLA DE ORO PARA STORYBOARDS:**
-El narration_text en el storyboard DEBE SER EL GUIÓN EXACTO Y LITERAL. NO hagas resúmenes. Sincronización guion-visuales perfecta y 1:1.`;
-
-export const videoGuidePromptDefault = `## Video Guía (Práctica guiada)
-
-**Cuándo:** El participante realiza la tarea siguiendo pasos.
-**Objetivos (Bloom):** Aplicar instrucciones; justificar decisiones; crear un resultado funcional.
-
-**Estructura (orientativa):**
-- 00:00–00:45 Introducción
-- 00:45–02:00 Preparación
-- 02:00–09:00 Ejecución guiada
-- 09:00–11:00 Revisión
-- 11:00–12:00 Cierre reflexivo
-
-**Generación requerida:**
-- Guion detallado con pasos numerados (palabra por palabra)
-- Storyboard vinculando el guion literal con capturas paso a paso
-- Instrucciones paso a paso para ejercicio paralelo (texto separado)
-- Criterios de éxito visibles
-- Evita descargables obligatorios
-
-**REGLA DE ORO PARA STORYBOARDS:**
-El narration_text en el storyboard DEBE SER EL GUIÓN EXACTO Y LITERAL. NO hagas resúmenes. Sincronización guion-visuales perfecta y 1:1.`;
-
-export const demoGuidePromptDefault = `## Guía Demo (Paso a paso)
-
-**Cuándo:** Cuando requires_demo_guide: true en el plan instruccional. Guía detallada paso a paso con screenshots y video script.
-**Objetivos (Bloom):** Aplicar instrucciones paso a paso; reproducir un flujo específico con IA.
-
-**Generación requerida:**
-- Pasos numerados con instrucciones claras
-- Placeholder de screenshot por paso
-- Tips y warnings opcionales
-- Video script con secciones y storyboard completo
-- Ejercicio paralelo con resultados esperados
-
-**REGLA DE ORO PARA STORYBOARDS:**
-El narration_text en el storyboard DEBE SER EL GUIÓN EXACTO Y LITERAL. NO hagas resúmenes. Sincronización guion-visuales perfecta y 1:1.`;
+export const demoGuidePromptDefault = GLOBAL_VIDEO_DURATION_PROMPTS.MATERIALS_DEMO_GUIDE;
 
 export const exercisePromptDefault = `## Ejercicio Práctico
 
@@ -246,67 +136,9 @@ export const exercisePromptDefault = `## Ejercicio Práctico
 // PHASE 6 — PRODUCTION: Video B-Roll Prompt Generation
 // --------------------------------------------------------------------------
 
-export const clipGenerationPromptsDefault = `Eres un experto Director de Fotografía y Curador de Contenido Audiovisual para catálogos de stock (como Artlist).
-Tu tarea es convertir descripciones del guion y del storyboard en palabras clave, términos de búsqueda y estados de ánimo (keywords, search terms, and moods) en inglés altamente efectivos para buscar clips de B-roll en una biblioteca de stock.
+export const clipGenerationPromptsDefault = GLOBAL_VIDEO_DURATION_PROMPTS.CLIP_GENERATION_PROMPTS;
 
-ESTRUCTURA DEL STRING DE BÚSQUEDA ESPERADO (para "generated_prompt"):
-- Una frase corta o lista de 3-5 palabras clave separadas por comas, optimizadas para motores de búsqueda de stock (ej: "office developer typing, close-up keyboard, dark workspace" o "network digital abstract glowing nodes").
-- Manténlo conciso, simple y descriptivo del sujeto principal y el ambiente.
-
-REGLAS DE ORO:
-- IDIOMA: Las palabras clave generadas en "generated_prompt" deben estar única y exclusivamente en inglés.
-- RELEVANCIA PEDAGÓGICA: El término de búsqueda debe capturar la esencia visual y conceptual de la escena.
-- SIN TEXTO ADICIONAL: Devuelve exclusivamente un JSON con la estructura indicada a continuación.
-
-FORMATO DE SALIDA:
-Devuelve un JSON válido con la siguiente estructura:
-{
-  "prompts": [
-    {
-      "scene_index": number,
-      "original_description": string,
-      "generated_prompt": string
-    }
-  ]
-}`;
-
-export const videoBrollPromptsDefault = `Eres un experto Prompt Engineer para Google VEO (Modelos BO2/BO3) y Director de Fotografía.
-Tu tarea es convertir escenas de un storyboard en PROMPTS DE VIDEO perfectos, optimizados para Veo.
-IMPORTANTE: Los prompts DEBEN estar en INGLÉS para que Veo capte mejor las indicaciones.
-
-ESTRUCTURA JERÁRQUICA OBLIGATORIA (Bestructura Veo):
-Debes seguir este orden estricto, ya que Veo da más peso al inicio del prompt:
-
-1. [Shot Type & Camera Movement]: Define composición y ángulo (e.g., "Extremely close shot, low-angle shot, tracking shot").
-2. [Subject & Action]: Personaje principal y qué hace. (e.g., "A young woman stands").
-3. [Subject Details]: Vestimenta, rasgos, expresión. (e.g., "wearing a white space suit, blue eyes").
-4. [Environment/Context]: Escenario, hora, clima. (e.g., "in a snowy desert, looking at camera").
-5. [Mood/Lighting/Visuals]: Atmósfera, luz, estilo. (e.g., "cinematic aspect, blurred background, cold blue tones, 4k").
-
-REGLAS DE ORO (Secretos de Experto):
-- SOLO EN INGLÉS: Traduce todo el contenido visual al inglés.
-- SOLO LO VISIBLE: Escribe solamente lo que está en el frame. Si es un close-up de la cara, NO describas los zapatos.
-- CONSISTENCIA: Mantén los mismos rasgos del personaje si aparecen en múltiples escenas.
-- FLUIDEZ: Describe movimiento natural.
-
-EJEMPLO PERFECTO:
-Original: "Una persona escribiendo rápido en una oficina oscura."
-Prompt Optimizado: "Close-up cinematic shot. Hands typing rapidly on a mechanical keyboard. Fingers illuminated by soft blue monitor glow. In a dimly lit modern office workspace. High contrast, bokeh background, tech atmosphere, 4k resolution."
-
-TU TAREA:
-Genera un prompt en INGLÉS optimizado para cada escena del storyboard recibido.
-
-FORMATO DE SALIDA:
-Devuelve un JSON válido con la siguiente estructura:
-{
-  "prompts": [
-    {
-      "scene_index": number,
-      "original_description": string,
-      "generated_prompt": string
-    }
-  ]
-}`;
+export const videoBrollPromptsDefault = GLOBAL_VIDEO_DURATION_PROMPTS.VIDEO_BROLL_PROMPTS;
 
 // --------------------------------------------------------------------------
 // MAP: prompt code → default content

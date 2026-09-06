@@ -1,5 +1,6 @@
 import type { CourseDeckSpec, SlideDeckGenerateInput } from "../specs/course-deck.schema";
 import { targetSlideCountForScript } from "../planning/slide-coverage-policy.service";
+import type { VideoDurationContract } from "@/domains/video-duration/video-duration-policy";
 
 export type DeckBriefSourceMode = "custom_request" | "script" | "storyboard" | "fallback";
 
@@ -22,6 +23,7 @@ interface BuildDeckBriefParams {
     content?: unknown;
     id: string;
     type?: string | null;
+    durationContract?: VideoDurationContract;
   };
   input: SlideDeckGenerateInput;
 }
@@ -87,15 +89,19 @@ function resolveTargetSlideCount(params: {
   scriptVisualBeats: Array<{ visibleBeatCount: number }>;
   sourceMode: DeckBriefSourceMode;
   storyboardItemCount: number;
+  minimumSlideCount?: number;
 }) {
   if (params.sourceMode === "custom_request") {
     return Math.min(params.customSlideCount, 24);
   }
   if (params.sourceMode === "script") {
-    return targetSlideCountForScript(params.scriptVisualBeats);
+    return Math.min(24, Math.max(
+      targetSlideCountForScript(params.scriptVisualBeats),
+      params.minimumSlideCount || 1,
+    ));
   }
   if (params.sourceMode === "storyboard") {
-    return Math.min(params.storyboardItemCount + 1, 11);
+    return Math.min(24, Math.max(params.storyboardItemCount + 1, params.minimumSlideCount || 1));
   }
   return 1;
 }
@@ -131,6 +137,7 @@ export function buildDeckBrief(params: BuildDeckBriefParams): DeckBrief {
       scriptVisualBeats,
       sourceMode,
       storyboardItemCount,
+      minimumSlideCount: params.component.durationContract?.minimumSlideCount,
     }),
     template: params.input.template,
     title: params.input.metadata?.title ||

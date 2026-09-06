@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
-import {
-  COURSE_CONFIG,
-  SYLLABUS_PROMPT,
-} from "@/domains/syllabus/config/syllabus.config";
+import { SYLLABUS_PROMPT } from "@/domains/syllabus/config/syllabus.config";
 import { getErrorMessage } from "@/lib/errors";
 import {
   buildSyllabusResearchPrompt,
@@ -24,6 +21,8 @@ import {
   getAuthorizedArtifactAdminForTenant,
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
+import { applyGeneratedLessonDurationEstimates } from "@/domains/syllabus/lib/lesson-duration-estimator";
+import { resolveArtifactVideoDurationPolicy } from "@/domains/video-duration/video-duration-policy";
 
 interface SyllabusRequestBody {
   objetivos?: string[];
@@ -59,6 +58,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as SyllabusRequestBody;
     const { objetivos, ideaCentral, route, artifactId, accessToken } = body;
+    let artifactGenerationMetadata: unknown;
 
     if (!Array.isArray(objetivos) || !ideaCentral) {
       return NextResponse.json(
@@ -92,6 +92,13 @@ export async function POST(request: NextRequest) {
           { status: 404 },
         );
       }
+
+      const { data: artifactDurationSource } = await authorized.admin
+        .from("artifacts")
+        .select("generation_metadata")
+        .eq("id", artifactId)
+        .maybeSingle();
+      artifactGenerationMetadata = artifactDurationSource?.generation_metadata;
     }
 
     if (isNetlifyDeployment()) {
@@ -184,9 +191,16 @@ export async function POST(request: NextRequest) {
     });
 
     const content = parseSyllabusResponseText(generationResult.text || "");
+    const videoDurationPolicy = resolveArtifactVideoDurationPolicy(
+      artifactGenerationMetadata,
+    );
+    content.modules = applyGeneratedLessonDurationEstimates(
+      content.modules,
+      videoDurationPolicy,
+    );
     content.total_estimated_hours = calculateSyllabusEstimatedHours(
       content.modules,
-      COURSE_CONFIG.avgLessonMinutes,
+      videoDurationPolicy,
     );
 
     const metadata: SyllabusGenerationMetadata = {

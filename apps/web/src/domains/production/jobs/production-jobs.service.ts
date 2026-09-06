@@ -12,6 +12,7 @@ import {
   type ProductionComponentContext,
   type ProductionJobRecord,
 } from "../types/production.types";
+import { videoDurationContractSchema } from "../../video-duration/video-duration-policy";
 
 interface ArtifactRelation {
   idea_central?: string | null;
@@ -32,6 +33,7 @@ interface MaterialLessonRelation {
 }
 
 interface MaterialComponentContextRecord {
+  assets?: unknown;
   id: string;
   material_lesson_id?: string | null;
   material_lessons?: MaterialLessonRelation | MaterialLessonRelation[] | null;
@@ -97,7 +99,7 @@ export async function resolveProductionComponentContext(params: {
     .from("material_components")
     .select(
       `
-        id, type, material_lesson_id,
+        id, type, assets, material_lesson_id,
         material_lessons (
           lesson_id, lesson_title, module_id, module_title,
           materials (
@@ -122,6 +124,11 @@ export async function resolveProductionComponentContext(params: {
   const lesson = firstRelation(component.material_lessons);
   const material = firstRelation(lesson?.materials);
   const artifact = firstRelation(material?.artifacts);
+  const durationContractResult = videoDurationContractSchema.safeParse(
+    component.assets && typeof component.assets === "object"
+      ? (component.assets as Record<string, unknown>).video_duration_contract
+      : null,
+  );
 
   if (!material?.artifact_id) {
     throw new Error("No se pudo resolver el artefacto del componente.");
@@ -138,6 +145,7 @@ export async function resolveProductionComponentContext(params: {
     moduleId: lesson?.module_id || null,
     moduleTitle: lesson?.module_title || null,
     organizationId: artifact?.organization_id || null,
+    videoDurationContract: durationContractResult.success ? durationContractResult.data : null,
   };
 }
 
@@ -407,10 +415,12 @@ export async function failProductionJob(params: {
 export function buildBrollPromptJobInputSnapshot(params: {
   componentId: string;
   storyboard: unknown;
+  videoDurationContract?: unknown;
 }) {
   return {
     component_id: params.componentId,
     storyboard: params.storyboard,
+    video_duration_contract: params.videoDurationContract || null,
     job_type: PRODUCTION_JOB_TYPES.BROLL_PROMPT_GENERATION,
   };
 }

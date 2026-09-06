@@ -2,8 +2,8 @@ import { Handler } from "@netlify/functions";
 import { generateObject } from "ai";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { INSTRUCTIONAL_PLAN_SYSTEM_PROMPT } from "../../src/config/prompts/instructional-plan";
 import { resolvePromptWithFallback } from "../../src/shared/config/prompts/prompt-resolver.service";
+import { GLOBAL_VIDEO_DURATION_PROMPTS } from "../../src/shared/config/prompts/global-video-duration.prompts";
 import {
   INSTRUCTIONAL_PLAN_CONTEXT_PROMPT_CODE,
   INSTRUCTIONAL_PLAN_SYSTEM_PROMPT_CODE,
@@ -20,6 +20,11 @@ import {
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
 import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
+import {
+  resolveArtifactVideoDurationPolicy,
+  type VideoDurationPolicy,
+} from "../../src/domains/video-duration/video-duration-policy";
+import { applyVideoDurationPolicyToPlan } from "../../src/domains/video-duration/video-duration-plan";
 
 const ComponentSchema = z.object({
   type: z
@@ -68,6 +73,7 @@ const GeneratedPlanSchema = z.object({
 
 type BackgroundSupabaseClient = SupabaseClient;
 type GeneratedLessonPlan = z.infer<typeof LessonPlanSchema>;
+type GeneratedBlocker = Record<string, unknown>;
 
 interface RequestBody {
   artifactId?: string;
@@ -77,12 +83,14 @@ interface RequestBody {
 }
 
 interface ArtifactRecord {
+  generation_metadata?: unknown;
   idea_central: string;
   nombres?: string[] | null;
   organization_id?: string | null;
 }
 
 interface SyllabusLessonRecord {
+  estimated_minutes?: number | null;
   id: string;
   objective_specific?: string | null;
   title: string;
@@ -146,7 +154,7 @@ function renderLessonsText(lessons: SyllabusLessonRecord[]) {
   return lessons
     .map(
       (lesson, index) =>
-        `${index + 1}. ID: ${lesson.id}\n   Leccion: ${lesson.title}\n   OA Original: ${lesson.objective_specific || "N/A"}`,
+        `${index + 1}. ID: ${lesson.id}\n   Leccion: ${lesson.title}\n   OA Original: ${lesson.objective_specific || "N/A"}\n   Tiempo total estimado de aprendizaje: ${lesson.estimated_minutes || "N/A"} minutos`,
     )
     .join("\n\n");
 }
@@ -166,6 +174,7 @@ async function upsertInstructionalPlanRecord(
       .from("instructional_plans")
       .update({
         lesson_plans: [],
+        blockers: [],
         validation: null,
         state: "STEP_PROCESSING",
         updated_at: new Date().toISOString(),
@@ -190,8 +199,9 @@ async function generateModulePlans(params: {
   modelName: string;
   systemPromptTemplate: string;
   temperature: number;
+  videoDurationPolicy: VideoDurationPolicy;
 }) {
-  const { artifact, contextPromptTemplate, module, moduleIndex, modelName, systemPromptTemplate, temperature } =
+  const { artifact, contextPromptTemplate, module, moduleIndex, modelName, systemPromptTemplate, temperature, videoDurationPolicy } =
     params;
   const lessons = module.lessons || [];
   const lessonsText = renderLessonsText(lessons);
@@ -212,12 +222,21 @@ async function generateModulePlans(params: {
     temperature,
   });
 
-  return result.object.lesson_plans.map((lessonPlan) => ({
+  const moduleLessonPlans = result.object.lesson_plans.map((lessonPlan) => ({
     ...lessonPlan,
     module_id: module.id || `mod-${moduleIndex}`,
     module_title: module.title,
     module_index: moduleIndex,
   })) as GeneratedLessonPlan[];
+  const lessonPlans = applyVideoDurationPolicyToPlan(
+    moduleLessonPlans,
+    videoDurationPolicy,
+  ) as GeneratedLessonPlan[];
+
+  return {
+    blockers: result.object.blockers as GeneratedBlocker[],
+    lessonPlans,
+  };
 }
 
 export const handler: Handler = async (event) => {
@@ -266,6 +285,7 @@ export const handler: Handler = async (event) => {
     }
 
     const artifact = rawArtifact as ArtifactRecord;
+    const videoDurationPolicy = resolveArtifactVideoDurationPolicy(artifact.generation_metadata);
     const syllabusModules = normalizeSyllabusModules(syllabusRecord.modules);
 
     const promptOrganizationId = artifact.organization_id || null;
@@ -273,7 +293,7 @@ export const handler: Handler = async (event) => {
       resolvePromptWithFallback(
         supabase,
         INSTRUCTIONAL_PLAN_SYSTEM_PROMPT_CODE,
-        INSTRUCTIONAL_PLAN_SYSTEM_PROMPT,
+        GLOBAL_VIDEO_DURATION_PROMPTS.INSTRUCTIONAL_PLAN_SYSTEM,
         promptOrganizationId,
       ),
       resolvePromptWithFallback(
@@ -304,6 +324,7 @@ export const handler: Handler = async (event) => {
     );
 
     let allGeneratedPlans: GeneratedLessonPlan[] = [];
+    let allBlockers: GeneratedBlocker[] = [];
 
     for (let moduleIndex = 0; moduleIndex < syllabusModules.length; moduleIndex++) {
       const module = syllabusModules[moduleIndex];
@@ -317,7 +338,7 @@ export const handler: Handler = async (event) => {
       );
 
       try {
-        const modulePlans = await generateModulePlans({
+        const moduleResult = await generateModulePlans({
           artifact,
           contextPromptTemplate,
           module,
@@ -325,14 +346,17 @@ export const handler: Handler = async (event) => {
           modelName,
           systemPromptTemplate,
           temperature: modelConfig.temperature,
+          videoDurationPolicy,
         });
 
-        allGeneratedPlans = [...allGeneratedPlans, ...modulePlans];
+        allGeneratedPlans = [...allGeneratedPlans, ...moduleResult.lessonPlans];
+        allBlockers = [...allBlockers, ...moduleResult.blockers];
 
         await supabase
           .from("instructional_plans")
           .update({
             lesson_plans: allGeneratedPlans,
+            blockers: allBlockers,
             updated_at: new Date().toISOString(),
           })
           .eq("artifact_id", artifactId);
@@ -354,7 +378,8 @@ export const handler: Handler = async (event) => {
     await supabase
       .from("instructional_plans")
       .update({
-        state: "STEP_READY_FOR_REVIEW",
+        blockers: allBlockers,
+        state: allBlockers.length > 0 ? "STEP_WITH_BLOCKERS" : "STEP_READY_FOR_REVIEW",
         updated_at: new Date().toISOString(),
       })
       .eq("artifact_id", artifactId);

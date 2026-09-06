@@ -3,7 +3,7 @@ import {
   createGeminiClient,
   createServiceRoleClient,
   getGeminiApiKeySource,
-  resolveModelSetting,
+  resolveConfiguredModelSetting,
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
 import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
@@ -344,13 +344,22 @@ export const handler: Handler = async (event) => {
 
     // Resolver modelo desde DB una sola vez por invocación
     const supabaseForSettings = createServiceRoleClient();
-    const modelConfig = await resolveModelSetting(supabaseForSettings, "MATERIALS", {
-      model: "gemini-2.5-flash",
-      fallbackModel: "gemini-2.0-flash",
-      temperature: 0.7,
-      thinkingLevel: "medium",
-    });
-    const models = [modelConfig.model, modelConfig.fallbackModel].filter(Boolean);
+    const modelConfig = await resolveConfiguredModelSetting(
+      supabaseForSettings,
+      "MATERIALS",
+      targetOrganizationId,
+    );
+    const models = Array.from(
+      new Set([modelConfig.model, modelConfig.fallbackModel].filter(Boolean)),
+    );
+    const unsupportedModel = models.find(
+      (model) => !model.startsWith("gemini-"),
+    );
+    if (unsupportedModel) {
+      throw new Error(
+        `UNSUPPORTED_MATERIALS_MODEL: ${unsupportedModel} no pertenece al proveedor Gemini utilizado por Materiales. Actualiza la configuracion de esta fase.`,
+      );
+    }
     console.log(`${logPrefix} Gemini API key source: ${getGeminiApiKeySource()}`);
     console.log(`${logPrefix} Models: ${models.join(", ")}`);
 

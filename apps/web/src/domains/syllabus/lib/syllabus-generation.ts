@@ -2,6 +2,7 @@ import {
   SyllabusGenerationMetadata,
   SyllabusModule,
 } from "../types/syllabus.types";
+import { calculateEstimatedCourseHours } from "./lesson-duration-estimator";
 
 export interface SyllabusGenerationContent {
   modules: SyllabusModule[];
@@ -48,12 +49,7 @@ export function parseSyllabusResponseText(
 
 export function calculateSyllabusEstimatedHours(
   modules: SyllabusModule[],
-  avgLessonMinutes: number,
+  videoPolicyInput?: unknown,
 ) {
-  const totalLessons = modules.reduce(
-    (lessonCount, module) => lessonCount + module.lessons.length,
-    0,
-  );
-
-  return Math.round(((totalLessons * avgLessonMinutes) / 60) * 10) / 10;
+  return calculateEstimatedCourseHours(modules, videoPolicyInput);
 }

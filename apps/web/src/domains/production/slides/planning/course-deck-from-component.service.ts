@@ -30,6 +30,7 @@ import {
   type SlideSourcePack,
 } from "../content/slide-source-pack.service";
 import { buildScriptSlideSegments } from "./slide-coverage-policy.service";
+import type { VideoDurationContract } from "@/domains/video-duration/video-duration-policy";
 
 interface BuildCourseDeckSpecParams {
   artifactId: string;
@@ -39,6 +40,7 @@ interface BuildCourseDeckSpecParams {
     source_refs?: unknown;
     sourcePack?: SlideSourcePack;
     type?: string | null;
+    durationContract?: VideoDurationContract;
   };
   input: SlideDeckGenerateInput;
   planning?: {

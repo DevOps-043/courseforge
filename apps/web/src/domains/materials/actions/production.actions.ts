@@ -653,6 +653,7 @@ export async function generateVideoPromptsAction(
     const inputSnapshot = buildBrollPromptJobInputSnapshot({
       componentId,
       storyboard,
+      videoDurationContract: context.videoDurationContract,
     });
     const productionJob = await createOrReuseProductionJob(admin, {
       context,

@@ -1,3 +1,5 @@
+import { GLOBAL_VIDEO_DURATION_PROMPTS } from "./global-video-duration.prompts";
+
 export const ARTIFACT_BASE_RESEARCH_PROMPT_CODE = "ARTIFACT_BASE_RESEARCH";
 export const ARTIFACT_BASE_PROMPT_CODE = "ARTIFACT_BASE";
 export const SYLLABUS_RESEARCH_PROMPT_CODE = "SYLLABUS_RESEARCH";
@@ -42,15 +44,8 @@ Identifica:
 
 Dame un resumen denso y tecnico.`;
 
-export const instructionalPlanContextPromptDefault = `CONTEXTO DEL CURSO:
-Curso: ${"${courseName}"}
-Idea Central: ${"${ideaCentral}"}
-
-ESTRUCTURA DE LECCIONES A PLANIFICAR (${"${lessonCount}"}):
-${"${lessonsText}"}
-
-INSTRUCCIONES ADICIONALES:
-Analiza el contenido y genera el plan instruccional detallado siguiendo estrictamente las reglas de formato, calidad y coherencia Bloom definidas en tus instrucciones de sistema.`;
+export const instructionalPlanContextPromptDefault =
+  GLOBAL_VIDEO_DURATION_PROMPTS.INSTRUCTIONAL_PLAN;
 
 export const curationPromptDefault =
   "Eres un investigador educativo. Busca candidatos reales y accesibles. No declares una fuente valida: SofLIA - Engine la validara. Evita redes sociales, foros, paywalls y URLs inventadas.";

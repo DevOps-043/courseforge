@@ -8,6 +8,7 @@ import {
   deleteInstructionalPlanAction,
   generateInstructionalPlanAction,
   getInstructionalPlanSnapshotAction,
+  updateInstructionalPlanVideoDurationPolicyAction,
   updateInstructionalPlanStatusAction,
   validateInstructionalPlanAction,
 } from "../actions/plan.actions";
@@ -24,6 +25,10 @@ import { useInstructionalPlanEditor } from "../hooks/useInstructionalPlanEditor"
 import { InstructionalPlanResultsView } from "./InstructionalPlanResultsView";
 import { InstructionalPlanSetupView } from "./InstructionalPlanSetupView";
 import type { InstructionalPlanRecord } from "./plan-view.types";
+import {
+  DEFAULT_VIDEO_DURATION_POLICY,
+  type VideoDurationPolicy,
+} from "@/domains/video-duration/video-duration-policy";
 
 interface InstructionalPlanGenerationContainerProps {
   artifactId: string;
@@ -50,6 +55,9 @@ export function InstructionalPlanGenerationContainer({
   const [loadingPlan, setLoadingPlan] = useState(true);
   const [reviewNotes, setReviewNotes] = useState("");
   const [useCustomPrompt, setUseCustomPrompt] = useState(false);
+  const [videoDurationPolicy, setVideoDurationPolicy] = useState<VideoDurationPolicy>({
+    ...DEFAULT_VIDEO_DURATION_POLICY,
+  });
   const canReview = REVIEWER_ROLE_SET.has(profile?.platform_role || "");
   const lastKnownPlanStateRef = useRef<string | null>(null);
   const lastKnownValidationRef = useRef(false);
@@ -102,6 +110,9 @@ export function InstructionalPlanGenerationContainer({
         }
 
         const plan = (result.plan as InstructionalPlanRecord | null) || null;
+        if (result.videoDurationPolicy) {
+          setVideoDurationPolicy(result.videoDurationPolicy);
+        }
 
         if (!plan) {
           setExistingPlan(null);
@@ -317,6 +328,26 @@ export function InstructionalPlanGenerationContainer({
     router.refresh();
   }, [artifactId, handleGenerate, router]);
 
+  const handleVideoDurationPolicySave = useCallback(async (policy: VideoDurationPolicy) => {
+    const result = await updateInstructionalPlanVideoDurationPolicyAction(artifactId, policy);
+    if (!result.success) {
+      toast.error(result.error || "No se pudo actualizar la duración");
+      return false;
+    }
+
+    if (!result.videoDurationPolicy || !result.lessonPlans) {
+      toast.error("La actualización no devolvió el plan recalculado");
+      return false;
+    }
+    setVideoDurationPolicy(result.videoDurationPolicy);
+    setExistingPlan((currentPlan) => currentPlan
+      ? { ...currentPlan, lesson_plans: result.lessonPlans }
+      : currentPlan);
+    toast.success("Duración actualizada para todos los videos del plan");
+    router.refresh();
+    return true;
+  }, [artifactId, router]);
+
   if (loadingPlan) {
     return (
       <div className="py-10 text-center text-gray-500">
@@ -352,6 +383,8 @@ export function InstructionalPlanGenerationContainer({
         onValidate={handleValidate}
         plan={existingPlan}
         reviewNotes={reviewNotes}
+        videoDurationPolicy={videoDurationPolicy}
+        onVideoDurationPolicySave={handleVideoDurationPolicySave}
       />
     );
   }

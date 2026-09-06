@@ -13,6 +13,7 @@ import {
   ValidationResult,
   runAllValidations,
 } from "../validators/syllabus.validators";
+import { fillMissingLessonDurationEstimates } from "../lib/lesson-duration-estimator";
 
 class SyllabusService {
   private supabase = createClient();
@@ -32,13 +33,7 @@ class SyllabusService {
   }
 
   private sanitizeModules(modules: SyllabusModule[]): SyllabusModule[] {
-    return modules.map((module) => ({
-      ...module,
-      lessons: module.lessons.map((lesson) => ({
-        ...lesson,
-        estimated_minutes: lesson.estimated_minutes || 30,
-      })),
-    }));
+    return fillMissingLessonDurationEstimates(modules);
   }
 
   private sanitizeMetadata(

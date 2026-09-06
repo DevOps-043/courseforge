@@ -80,8 +80,8 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     is_active: true,
   },
   MATERIALS: {
-    model_name: 'gpt-4o',
-    fallback_model: 'gemini-2.0-flash',
+    model_name: 'gemini-3.6-flash',
+    fallback_model: 'gemini-3.5-flash',
     temperature: 0.7,
     thinking_level: 'minimal',
     scope: 'Cursos',
@@ -799,6 +799,22 @@ export async function updateModelSettingsAction(settings: ModelSettingsUpdateInp
 
   const activeOrgId = await getResolvedActiveOrgId();
   const supabaseAdmin = getAdminClient();
+
+  const invalidMaterialsSetting = settings.find(
+    (setting) =>
+      setting.setting_type === 'MATERIALS' &&
+      (!setting.model_name.startsWith('gemini-') ||
+        (Boolean(setting.fallback_model) &&
+          !setting.fallback_model?.startsWith('gemini-'))),
+  );
+
+  if (invalidMaterialsSetting) {
+    return {
+      success: false,
+      error:
+        'Materiales utiliza actualmente el proveedor Gemini. Selecciona modelos Gemini para principal y fallback.',
+    };
+  }
   
   const updates = settings.map(async (setting) => {
       const payload = {

@@ -411,9 +411,17 @@ const OPENAI_REASONING_LEVEL_OPTIONS = [
 ];
 
 function getModelOptions(settingType: string) {
-  return settingType === "SLIDES_IMAGE_GENERATION"
-    ? IMAGE_MODEL_OPTIONS
-    : ALL_MODEL_OPTIONS;
+  if (settingType === "SLIDES_IMAGE_GENERATION") {
+    return IMAGE_MODEL_OPTIONS;
+  }
+
+  if (settingType === "MATERIALS") {
+    return ALL_MODEL_OPTIONS.filter((option) =>
+      option.value.startsWith("gemini-"),
+    );
+  }
+
+  return ALL_MODEL_OPTIONS;
 }
 
 function getReasoningOptions(settingType: string) {

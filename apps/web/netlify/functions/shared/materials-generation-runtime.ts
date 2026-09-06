@@ -1,5 +1,11 @@
 import type { GoogleGenAI } from "@google/genai";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ComponentType } from "../../../src/domains/materials/types/materials.types";
+import {
+  resolveArtifactVideoDurationPolicy,
+  type VideoDurationContract,
+  type VideoDurationPolicy,
+} from "../../../src/domains/video-duration/video-duration-policy";
 import { getFunctionsBaseUrl } from "./bootstrap";
 import {
   buildMaterialsGenerationInput,
@@ -21,6 +27,7 @@ export const START_JITTER_MS = 3000;
 export interface MaterialsGenerationContext {
   lessonPlans: LessonPlanRecord[];
   lessonSources: CurationRowRecord[];
+  videoDurationPolicy: VideoDurationPolicy;
 }
 
 export function wait(milliseconds: number) {
@@ -67,12 +74,23 @@ export async function loadMaterialsGenerationContext(
   supabase: SupabaseClient,
   artifactId: string,
 ): Promise<MaterialsGenerationContext> {
-  const [lessonPlans, lessonSources] = await Promise.all([
+  const [lessonPlans, lessonSources, artifactResult] = await Promise.all([
     loadLessonPlans(supabase, artifactId),
     loadAptaSources(supabase, artifactId),
+    supabase
+      .from("artifacts")
+      .select("generation_metadata")
+      .eq("id", artifactId)
+      .single(),
   ]);
 
-  return { lessonPlans, lessonSources };
+  return {
+    lessonPlans,
+    lessonSources,
+    videoDurationPolicy: resolveArtifactVideoDurationPolicy(
+      artifactResult.data?.generation_metadata,
+    ),
+  };
 }
 
 export async function triggerNextLesson(
@@ -184,8 +202,9 @@ export async function processGenerationResult(params: {
   iterationNumber: number;
   logPrefix: string;
   onlyTypes?: string[];
+  durationContractsByType?: Partial<Record<ComponentType, VideoDurationContract>>;
 }) {
-  const { supabase, lessonId, lessonTitle, result, iterationNumber, logPrefix, onlyTypes } =
+  const { supabase, lessonId, lessonTitle, result, iterationNumber, logPrefix, onlyTypes, durationContractsByType } =
     params;
 
   if (result.success) {
@@ -196,6 +215,7 @@ export async function processGenerationResult(params: {
       iterationNumber,
       logPrefix,
       onlyTypes,
+      durationContractsByType,
     );
     await setLessonState(supabase, lessonId, "GENERATED");
     console.log(`${logPrefix} Generated ${lessonTitle}`);
@@ -223,8 +243,8 @@ export async function generateLessonMaterials(params: {
   iterationNumber?: number;
   /** If set, only regenerate these component types (partial regen). */
   componentTypes?: string[];
-  /** Models to use in order of preference. Falls back to DEFAULT_MODELS if not provided. */
-  models?: string[];
+  /** Database-configured models in primary/fallback order. */
+  models: string[];
 }) {
   const {
     supabase,
@@ -248,6 +268,7 @@ export async function generateLessonMaterials(params: {
     lessonSources,
     iterationNumber: currentIteration,
     fixInstructions,
+    videoDurationPolicy: generationContext.videoDurationPolicy,
   });
 
   const isPartial = componentTypes && componentTypes.length > 0;
@@ -263,10 +284,10 @@ export async function generateLessonMaterials(params: {
     genAI,
     input,
     logPrefix,
+    models,
     supabase,
     componentTypes,
     organizationId,
-    models,
   );
   return processGenerationResult({
     supabase,
@@ -276,5 +297,10 @@ export async function generateLessonMaterials(params: {
     iterationNumber: input.iteration_number,
     logPrefix,
     onlyTypes: isPartial ? componentTypes : undefined,
+    durationContractsByType: Object.fromEntries(
+      input.lesson.components.flatMap((component) => component.duration_contract
+        ? [[component.type, component.duration_contract]]
+        : []),
+    ),
   });
 }

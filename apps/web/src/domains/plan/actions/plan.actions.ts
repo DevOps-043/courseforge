@@ -10,6 +10,13 @@ import {
   getAuthenticatedUser,
   getAuthorizedArtifactAdmin,
 } from "@/lib/server/artifact-action-auth";
+import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
+import {
+  resolveArtifactVideoDurationPolicy,
+  videoDurationPolicySchema,
+  type VideoDurationPolicy,
+} from "@/domains/video-duration/video-duration-policy";
+import { applyVideoDurationPolicyToPlan } from "@/domains/video-duration/video-duration-plan";
 
 export async function generateInstructionalPlanAction(
   artifactId: string,
@@ -161,6 +168,95 @@ export async function updateInstructionalPlanContentAction(
   return { success: true };
 }
 
+export async function updateInstructionalPlanVideoDurationPolicyAction(
+  artifactId: string,
+  policyInput: VideoDurationPolicy,
+) {
+  const parsedPolicy = videoDurationPolicySchema.safeParse(policyInput);
+  if (!parsedPolicy.success) {
+    return {
+      success: false,
+      error: parsedPolicy.error.issues[0]?.message || "Duración inválida",
+    };
+  }
+
+  const supabase = await createClient();
+  const authUser = await getAuthenticatedUser(supabase);
+  if (!authUser) return { success: false, error: "Unauthorized" };
+
+  const authorized = await getAuthorizedArtifactAdmin(artifactId);
+  if (!authorized) {
+    return { success: false, error: "Artifact not found or inaccessible" };
+  }
+
+  const { admin } = authorized;
+  const [{ data: artifact, error: artifactError }, { data: plan, error: planError }] =
+    await Promise.all([
+      admin.from("artifacts").select("generation_metadata").eq("id", artifactId).single(),
+      admin.from("instructional_plans").select("lesson_plans").eq("artifact_id", artifactId).maybeSingle(),
+    ]);
+
+  if (artifactError || !artifact) {
+    return { success: false, error: artifactError?.message || "Artifact not found" };
+  }
+  if (planError) {
+    return { success: false, error: planError.message };
+  }
+
+  const previousMetadata = (artifact.generation_metadata || {}) as Record<string, unknown>;
+  const originalInput = isRecord(previousMetadata.original_input)
+    ? previousMetadata.original_input
+    : {};
+  const nextMetadata = {
+    ...previousMetadata,
+    original_input: {
+      ...originalInput,
+      videoDurationPolicy: parsedPolicy.data,
+    },
+    video_duration_policy: parsedPolicy.data,
+  };
+  const previousLessonPlans = Array.isArray(plan?.lesson_plans)
+    ? plan.lesson_plans as PlanLessonItem[]
+    : [];
+  const nextLessonPlans = applyVideoDurationPolicyToPlan(
+    previousLessonPlans,
+    parsedPolicy.data,
+  );
+
+  const { error: metadataUpdateError } = await admin
+    .from("artifacts")
+    .update({ generation_metadata: nextMetadata })
+    .eq("id", artifactId);
+  if (metadataUpdateError) {
+    return { success: false, error: metadataUpdateError.message };
+  }
+
+  if (plan) {
+    const { error: planUpdateError } = await admin
+      .from("instructional_plans")
+      .update({ lesson_plans: nextLessonPlans, updated_at: new Date().toISOString() })
+      .eq("artifact_id", artifactId);
+    if (planUpdateError) {
+      await admin
+        .from("artifacts")
+        .update({ generation_metadata: previousMetadata })
+        .eq("id", artifactId);
+      return { success: false, error: planUpdateError.message };
+    }
+  }
+
+  await markDownstreamDirtyAction(artifactId, 3, "Duración objetivo del plan");
+  return {
+    success: true,
+    lessonPlans: nextLessonPlans,
+    videoDurationPolicy: parsedPolicy.data,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export async function deleteInstructionalPlanAction(artifactId: string) {
   const supabase = await createClient();
   const authUser = await getAuthenticatedUser(supabase);
@@ -196,16 +292,23 @@ export async function getInstructionalPlanSnapshotAction(artifactId: string) {
   }
 
   const { admin } = authorized;
-  const { data, error } = await admin
-    .from("instructional_plans")
-    .select("*")
-    .eq("artifact_id", artifactId)
-    .maybeSingle();
+  const [{ data, error }, { data: artifact, error: artifactError }] = await Promise.all([
+    admin.from("instructional_plans").select("*").eq("artifact_id", artifactId).maybeSingle(),
+    admin.from("artifacts").select("generation_metadata").eq("id", artifactId).single(),
+  ]);
 
   if (error) {
     console.error("[PlanActions] Snapshot error:", error);
     return { success: false, error: error.message };
   }
+  if (artifactError) {
+    console.error("[PlanActions] Artifact duration snapshot error:", artifactError);
+    return { success: false, error: artifactError.message };
+  }
 
-  return { success: true, plan: data };
+  return {
+    success: true,
+    plan: data,
+    videoDurationPolicy: resolveArtifactVideoDurationPolicy(artifact?.generation_metadata),
+  };
 }

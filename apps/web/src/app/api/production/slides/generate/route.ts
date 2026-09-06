@@ -302,6 +302,7 @@ export async function POST(request: Request) {
     component_id: componentId,
     job_type: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
     request: parsed.data,
+    video_duration_contract: queueContext.videoDurationContract,
   };
   const queuedJob = await createOrReuseProductionJob(authorizedComponent.admin, {
     context: queueContext,
@@ -444,6 +445,7 @@ export async function runSlideDeckGeneration(params: {
     job_type: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
     regeneration_request_id: forceRegenerate ? regenerationRequestId || randomUUID() : null,
     slide_template_run_id: slideTemplateRunId || null,
+    video_duration_contract: context.videoDurationContract,
   };
   const idempotencyKey = buildProductionIdempotencyKey({
     componentId,
@@ -561,11 +563,21 @@ export async function runSlideDeckGeneration(params: {
           agentPrompts,
           component: {
             ...authorizedComponent.component,
+            durationContract: context.videoDurationContract || undefined,
             sourcePack,
           },
           input,
         });
     const { deckSpec: generatedDeckSpec, stages } = deckGeneration;
+    if (
+      !input.customSlides?.length &&
+      context.videoDurationContract &&
+      generatedDeckSpec.slides.length < context.videoDurationContract.minimumSlideCount
+    ) {
+      throw new Error(
+        `El deck produjo ${generatedDeckSpec.slides.length} diapositivas; el contrato requiere al menos ${context.videoDurationContract.minimumSlideCount}.`,
+      );
+    }
     const deckSpecWithTemplate = selectedSlideTemplate
       ? courseDeckSpecSchema.parse({
           ...generatedDeckSpec,

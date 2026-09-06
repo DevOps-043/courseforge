@@ -6,10 +6,7 @@ import {
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
 import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
-import {
-  COURSE_CONFIG,
-  SYLLABUS_PROMPT,
-} from "../../src/domains/syllabus/config/syllabus.config";
+import { SYLLABUS_PROMPT } from "../../src/domains/syllabus/config/syllabus.config";
 import {
   buildSyllabusResearchPrompt,
   calculateSyllabusEstimatedHours,
@@ -18,6 +15,9 @@ import {
   SyllabusGenerationContent,
 } from "../../src/domains/syllabus/lib/syllabus-generation";
 import { SyllabusGenerationMetadata } from "../../src/domains/syllabus/types/syllabus.types";
+import { applyGeneratedLessonDurationEstimates } from "../../src/domains/syllabus/lib/lesson-duration-estimator";
+import { resolveArtifactVideoDurationPolicy } from "../../src/domains/video-duration/video-duration-policy";
+import { validateCourseDuration } from "../../src/domains/syllabus/validators/syllabus.validators";
 import { resolvePromptWithFallback } from "../../src/shared/config/prompts/prompt-resolver.service";
 import {
   SYLLABUS_PROMPT_CODE,
@@ -98,6 +98,11 @@ function validateGeneratedContent(
     }
   });
 
+  const durationCheck = validateCourseDuration(content.modules);
+  if (!durationCheck.pass) {
+    validationErrors.push(`Error de duración: ${durationCheck.message}.`);
+  }
+
   return validationErrors;
 }
 
@@ -129,7 +134,7 @@ export const handler: Handler = async (event) => {
   try {
     const { data: artifactScope } = await supabase
       .from("artifacts")
-      .select("organization_id")
+      .select("generation_metadata, organization_id")
       .eq("id", artifactId)
       .maybeSingle();
 
@@ -142,6 +147,9 @@ export const handler: Handler = async (event) => {
     console.log(`[Syllabus Background] Model config: ${modelConfig.model} / ${modelConfig.fallbackModel}`);
 
     const promptOrganizationId = artifactScope?.organization_id || null;
+    const videoDurationPolicy = resolveArtifactVideoDurationPolicy(
+      artifactScope?.generation_metadata,
+    );
     const syllabusResearchPromptTemplate = await resolvePromptWithFallback(
       supabase,
       SYLLABUS_RESEARCH_PROMPT_CODE,
@@ -226,6 +234,10 @@ export const handler: Handler = async (event) => {
         });
 
         content = parseSyllabusResponseText(result.text || "");
+        content.modules = applyGeneratedLessonDurationEstimates(
+          content.modules,
+          videoDurationPolicy,
+        );
         validationErrors = validateGeneratedContent(content, objetivos.length);
 
         if (!validationErrors.length) {
@@ -259,7 +271,7 @@ export const handler: Handler = async (event) => {
 
     content.total_estimated_hours = calculateSyllabusEstimatedHours(
       content.modules,
-      COURSE_CONFIG.avgLessonMinutes,
+      videoDurationPolicy,
     );
 
     const metadata: SyllabusGenerationMetadata = {

@@ -62,8 +62,8 @@ const DEFAULT_MODEL_SETTINGS: Record<PipelineModelSettingType, PipelineModelSett
     thinking_level: "low",
   },
   MATERIALS: {
-    fallback_model: "gemini-2.0-flash",
-    model_name: "gpt-4o",
+    fallback_model: "gemini-3.5-flash",
+    model_name: "gemini-3.6-flash",
     setting_type: "MATERIALS",
     temperature: 0.7,
     thinking_level: "minimal",

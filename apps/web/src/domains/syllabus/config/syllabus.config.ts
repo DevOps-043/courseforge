@@ -1,7 +1,6 @@
 
 export const COURSE_CONFIG = {
   maxTotalHours: 12,
-  avgLessonMinutes: 30,
   minLessonsPerModule: 3,
   maxLessonsPerModule: 8,
   idealLessonsPerModule: 5,
@@ -25,8 +24,9 @@ export const SYLLABUS_PROMPT = `Eres un experto en diseño instruccional. Genera
 
 **RESTRICCIONES DE DURACIÓN:**
 - El curso NO puede exceder ${COURSE_CONFIG.maxTotalHours} horas en total
-- Cada lección tiene una duración promedio de ${COURSE_CONFIG.avgLessonMinutes} minutos
-- Esto significa un MÁXIMO aproximado de ${Math.floor((COURSE_CONFIG.maxTotalHours * 60) / COURSE_CONFIG.avgLessonMinutes)} lecciones en total
+- estimated_minutes debe variar según la complejidad del objetivo y considerar video, diálogo, lectura, evaluación y práctica
+- Las lecciones conceptuales suelen requerir menos tiempo que las de aplicación, análisis, evaluación o creación
+- No uses una duración fija para todas las lecciones; el sistema recalculará la estimación final con la política configurada
 
 **REGLAS DE ESTRUCTURA (MUY IMPORTANTE):**
 1. Genera entre ${COURSE_CONFIG.minModules} y ${COURSE_CONFIG.maxModules} módulos según la complejidad del tema
@@ -54,8 +54,7 @@ export const SYLLABUS_PROMPT = `Eres un experto en diseño instruccional. Genera
       "lessons": [
         {
           "title": "Lección 1.1: Título único y específico",
-          "objective_specific": "El participante será capaz de [verbo] [contenido específico] mediante [método].",
-          "estimated_minutes": 30
+          "objective_specific": "El participante será capaz de [verbo] [contenido específico] mediante [método]."
         }
       ]
     }
@@ -68,5 +67,6 @@ INSTRUCCIONES FINALES:
 3. Cada módulo DEBE tener entre ${COURSE_CONFIG.minLessonsPerModule} y ${COURSE_CONFIG.maxLessonsPerModule} lecciones - NO menos de ${COURSE_CONFIG.minLessonsPerModule}
 4. Asegúrate de cubrir TODOS los objetivos generales proporcionados
 5. El temario debe ser profesional y de nivel empresarial
+6. No generes estimated_minutes: el sistema lo calcula con una política central según la duración de video y la complejidad Bloom
 
 Responde SOLO con JSON válido.`;

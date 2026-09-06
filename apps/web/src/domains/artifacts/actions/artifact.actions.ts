@@ -14,6 +14,11 @@ import {
 } from "@/lib/server/artifact-action-auth";
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import type { CloudStorageProvider } from "@/domains/production/cloud-storage/types";
+import {
+  resolveVideoDurationPolicy,
+  videoDurationPolicySchema,
+  type VideoDurationPolicy,
+} from "@/domains/video-duration/video-duration-policy";
 
 /**
  * Narrow snapshot for phase-one progress. It deliberately avoids loading the
@@ -50,6 +55,7 @@ export async function generateArtifactAction(formData: {
   courseId?: string;
   cloudStorageProvider?: CloudStorageProvider | null;
   useGoogleDrive?: boolean;
+  videoDurationPolicy?: VideoDurationPolicy;
 }) {
   const supabase = await createClient();
   const authUser = await getAuthenticatedUser(supabase);
@@ -62,6 +68,14 @@ export async function generateArtifactAction(formData: {
   const activeOrgId = tenant?.organizationId ?? (await getActiveOrganizationId());
 
   try {
+    const parsedVideoDurationPolicy = videoDurationPolicySchema.safeParse(formData.videoDurationPolicy);
+    if (formData.videoDurationPolicy && !parsedVideoDurationPolicy.success) {
+      return {
+        success: false,
+        error: parsedVideoDurationPolicy.error.issues[0]?.message || "Configuracion de duracion invalida",
+      };
+    }
+    const videoDurationPolicy = resolveVideoDurationPolicy(parsedVideoDurationPolicy.data);
     let finalCourseId = formData.courseId?.trim();
     if (!finalCourseId) {
       const prefix = formData.title
@@ -82,8 +96,9 @@ export async function generateArtifactAction(formData: {
         objetivos: [],
         descripcion: {},
         generation_metadata: {
-          original_input: formData,
+          original_input: { ...formData, videoDurationPolicy },
           started_at: new Date().toISOString(),
+          video_duration_policy: videoDurationPolicy,
         },
         state: "GENERATING",
         created_by: authUser.userId,
@@ -100,7 +115,7 @@ export async function generateArtifactAction(formData: {
       "generate-artifact-background",
       {
         artifactId: artifact.id,
-        formData,
+        formData: { ...formData, videoDurationPolicy },
         userId: authUser.userId,
         userToken: accessToken,
           cloudStorageProvider:

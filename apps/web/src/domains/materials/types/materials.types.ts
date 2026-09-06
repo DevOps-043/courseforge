@@ -1,4 +1,5 @@
 import type { AnimatedDeckAppearance } from "@/domains/production/animated-deck/animated-deck-appearance.service";
+import type { VideoDurationContract } from "@/domains/video-duration/video-duration-policy";
 
 // Estados del Paso 5 (ya definidos en SQL)
 export type Esp05StepState =
@@ -207,6 +208,7 @@ export interface MaterialAssets {
     final_video_layout_stale?: boolean;
     video_duration?: number;
     assembly_target_duration_seconds?: number;
+    video_duration_contract?: VideoDurationContract;
     layout_overrides?: Record<string, unknown>[];
     layout_overrides_updated_at?: string;
     timeline_overrides?: Record<string, unknown>[];
@@ -409,7 +411,11 @@ export interface MaterialsGenerationInput {
         module_id: string;
         module_title: string;
         oa_text: string;
-        components: { type: ComponentType; summary: string }[];
+        components: {
+            type: ComponentType;
+            summary: string;
+            duration_contract?: VideoDurationContract;
+        }[];
         quiz_spec: QuizSpec | null;
         requires_demo_guide: boolean;
     };

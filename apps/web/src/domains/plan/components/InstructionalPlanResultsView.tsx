@@ -11,6 +11,8 @@ import {
   InstructionalPlanRecord,
   PlanLessonItem,
 } from "./plan-view.types";
+import type { VideoDurationPolicy } from "@/domains/video-duration/video-duration-policy";
+import { VideoDurationCoursePolicyEditor } from "./VideoDurationCoursePolicyEditor";
 
 interface InstructionalPlanResultsViewProps {
   canReview: boolean;
@@ -44,6 +46,8 @@ interface InstructionalPlanResultsViewProps {
   onValidate: () => Promise<void> | void;
   plan: InstructionalPlanRecord;
   reviewNotes: string;
+  videoDurationPolicy: VideoDurationPolicy;
+  onVideoDurationPolicySave: (policy: VideoDurationPolicy) => Promise<boolean>;
 }
 
 export function InstructionalPlanResultsView({
@@ -71,6 +75,8 @@ export function InstructionalPlanResultsView({
   onValidate,
   plan,
   reviewNotes,
+  videoDurationPolicy,
+  onVideoDurationPolicySave,
 }: InstructionalPlanResultsViewProps) {
   const modules = groupPlanModules(plan.lesson_plans);
 
@@ -109,6 +115,12 @@ export function InstructionalPlanResultsView({
           isIterating={isGenerating}
         />
       )}
+
+      <VideoDurationCoursePolicyEditor
+        disabled={isGenerating || isValidating}
+        onSave={onVideoDurationPolicySave}
+        value={videoDurationPolicy}
+      />
 
       <div className="space-y-8">
         {modules.map((module, modulePosition) => (

@@ -21,7 +21,10 @@
     "qa:composition-preview-runtime": "tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/composition-editor/qa/generate-composition-preview-fixture.js && node .tmp/hyperframes-tests/domains/production/composition-editor/qa/run-composition-preview-runtime-smoke.js",
     "test:curation": "tsc -p tsconfig.curation-test.json && node .tmp/curation-tests/netlify/functions/shared/curation-v2/__tests__/validation.test.js && node .tmp/curation-tests/netlify/functions/shared/curation-v2/__tests__/coverage.test.js && node .tmp/curation-tests/netlify/functions/shared/curation-v2/__tests__/workflow.integration.test.js",
     "test:render-diagnostics": "tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-render-diagnostics.test.js",
-    "test:hyperframes-media": "tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-render-media.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-preview-compiler.service.test.js"
+    "test:hyperframes-media": "tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-render-media.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-preview-compiler.service.test.js",
+    "test:video-duration": "tsc -p tsconfig.video-duration-test.json && node .tmp/video-duration-tests/domains/video-duration/__tests__/video-duration-policy.test.js",
+    "test:syllabus-duration": "tsc -p tsconfig.syllabus-duration-test.json && node .tmp/syllabus-duration-tests/domains/syllabus/lib/__tests__/lesson-duration-estimator.test.js",
+    "test:model-json-response": "tsc -p tsconfig.model-json-response-test.json && node .tmp/model-json-response-tests/shared/ai/__tests__/model-json-response.test.js"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",

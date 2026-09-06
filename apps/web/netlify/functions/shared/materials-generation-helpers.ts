@@ -17,8 +17,19 @@ import type {
 } from "../../../src/domains/materials/types/materials.types";
 import { getErrorMessage } from "./errors";
 import { MATERIALS_RETRY_BACKOFF_BASE_MS } from "./timing";
+import {
+  buildVideoDurationContract,
+  isVideoComponentType,
+  resolveVideoDurationValidationMode,
+  type VideoDurationPolicy,
+  videoDurationContractSchema,
+  type VideoDurationContract,
+} from "../../../src/domains/video-duration/video-duration-policy";
+import { validateVideoDurationContent } from "../../../src/domains/video-duration/video-duration-validation";
+import { parseModelJsonResponse } from "../../../src/shared/ai/model-json-response";
 
 interface LessonPlanComponentRecord {
+  duration_contract?: unknown;
   type: ComponentType;
   summary?: string | null;
 }
@@ -59,11 +70,6 @@ export interface CurationRowRecord {
     content_excerpt?: string;
   } | null;
 }
-
-const DEFAULT_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.0-flash",
-];
 
 const DEFAULT_QUIZ_SPEC: QuizSpec = {
   min_questions: 3,
@@ -128,9 +134,16 @@ export function buildMaterialsGenerationInput(params: {
   lessonSources: CurationRowRecord[];
   iterationNumber: number;
   fixInstructions?: string;
+  videoDurationPolicy: VideoDurationPolicy;
 }) {
-  const { lesson, planDetails, lessonSources, iterationNumber, fixInstructions } =
-    params;
+  const {
+    lesson,
+    planDetails,
+    lessonSources,
+    iterationNumber,
+    fixInstructions,
+    videoDurationPolicy,
+  } = params;
   const componentTypes = lesson.expected_components || [];
 
   const input: MaterialsGenerationInput = {
@@ -146,6 +159,7 @@ export function buildMaterialsGenerationInput(params: {
           planDetails?.components?.find(
             (component) => component.type === componentType,
           )?.summary || "",
+        ...resolveComponentDurationContract(planDetails, componentType, videoDurationPolicy),
       })),
       quiz_spec: lesson.quiz_spec || planDetails?.quiz_spec || DEFAULT_QUIZ_SPEC,
       requires_demo_guide:
@@ -169,16 +183,28 @@ export async function generateWithRetry(
   genAI: GoogleGenAI,
   input: MaterialsGenerationInput,
   logPrefix: string,
+  models: string[],
   supabase?: SupabaseClient,
   componentTypes?: string[],
   organizationId?: string | null,
-  models?: string[],
 ) {
-  const modelsToTry = models && models.length > 0 ? models : DEFAULT_MODELS;
-  let lastError = "All retries exhausted";
+  const modelsToTry = Array.from(new Set(models.filter(Boolean)));
+  if (modelsToTry.length === 0) {
+    return {
+      success: false as const,
+      error: "MODEL_SETTING_NOT_CONFIGURED: Materiales no tiene modelos configurados.",
+    };
+  }
+
+  const attemptErrors: string[] = [];
+  const unavailableModels = new Set<string>();
 
   for (let retry = 0; retry < 2; retry++) {
     for (const model of modelsToTry) {
+      if (unavailableModels.has(model)) {
+        continue;
+      }
+
       try {
         console.log(`${logPrefix} Try ${retry + 1}, Model: ${model}`);
         const content = await generateMaterialsWithGemini(
@@ -193,12 +219,25 @@ export async function generateWithRetry(
         return { success: true as const, content };
       } catch (error) {
         const message = getErrorMessage(error, "");
-        lastError = message || lastError;
+        attemptErrors.push(
+          `${model} (intento ${retry + 1}): ${message || "error desconocido"}`,
+        );
         console.warn(`${logPrefix} ${model} failed: ${message}`);
 
         const permissionError = getGeminiBillingOrPermissionError(message);
         if (permissionError) {
           return { success: false as const, error: permissionError };
+        }
+
+        const normalizedMessage = message.toLowerCase();
+        if (
+          normalizedMessage.includes('"code":404') ||
+          normalizedMessage.includes("status code 404") ||
+          normalizedMessage.includes('"status":"not_found"') ||
+          normalizedMessage.includes("is not found for api version")
+        ) {
+          unavailableModels.add(model);
+          continue;
         }
 
         if (message.includes("429") || message.includes("rate limit")) {
@@ -207,9 +246,16 @@ export async function generateWithRetry(
         }
       }
     }
+
+    if (unavailableModels.size === modelsToTry.length) {
+      break;
+    }
   }
 
-  return { success: false as const, error: lastError };
+  return {
+    success: false as const,
+    error: `Fallaron los modelos configurados para Materiales. ${attemptErrors.join(" | ")}`,
+  };
 }
 
 export async function generateMaterialsWithGemini(
@@ -269,16 +315,59 @@ export async function generateMaterialsWithGemini(
   const response = await genAI.models.generateContent({
     model,
     contents: prompt,
-    config: { temperature: 0.7, maxOutputTokens: 16000 },
+    config: {
+      temperature: 0.7,
+      maxOutputTokens: 16000,
+      responseMimeType: "application/json",
+    },
   });
 
-  const responseText = response.text || "";
-  const match = responseText.match(/\{[\s\S]*\}/);
-  if (!match) {
-    throw new Error("No JSON in response");
+  const generated = parseModelJsonResponse<MaterialsGenerationOutput>({
+    finishReason: response.candidates?.[0]?.finishReason,
+    responseText: response.text,
+  });
+  assertGeneratedVideoDurations(input, generated);
+  return generated;
+}
+
+function resolveComponentDurationContract(
+  planDetails: LessonPlanRecord | null | undefined,
+  componentType: string,
+  fallbackPolicy: VideoDurationPolicy,
+) {
+  if (!isVideoComponentType(componentType)) return {};
+  const component = planDetails?.components?.find((candidate) => candidate.type === componentType);
+  const parsed = videoDurationContractSchema.safeParse(component?.duration_contract);
+  return {
+    duration_contract: parsed.success
+      ? parsed.data
+      : buildVideoDurationContract(fallbackPolicy, componentType),
+  };
+}
+
+function assertGeneratedVideoDurations(
+  input: MaterialsGenerationInput,
+  generated: MaterialsGenerationOutput,
+) {
+  const failures: string[] = [];
+  for (const component of input.lesson.components) {
+    if (!component.duration_contract || !isVideoComponentType(component.type)) continue;
+    const content = generated.components?.[component.type];
+    if (!content) continue;
+    const result = validateVideoDurationContent(content, component.duration_contract);
+    failures.push(...result.issues.map((issue) => `${component.type}/${issue.code}: ${issue.message}`));
   }
 
-  return JSON.parse(match[0]) as MaterialsGenerationOutput;
+  if (failures.length > 0) {
+    const message = `VIDEO_DURATION_VALIDATION_FAILED: ${failures.join(" | ")}`;
+    const validationMode = resolveVideoDurationValidationMode(
+      process.env.VIDEO_DURATION_VALIDATION_MODE,
+    );
+    console.warn(`[Video Duration] mode=${validationMode} ${message}`);
+    if (validationMode === "enforce") {
+      throw new Error(message);
+    }
+  }
 }
 
 export async function findOrCreateMaterialLesson(
@@ -344,6 +433,7 @@ export async function saveGeneratedComponents(
   iteration: number,
   logPrefix: string,
   onlyTypes?: string[],
+  durationContractsByType: Partial<Record<ComponentType, VideoDurationContract>> = {},
 ) {
   const components = content.components || {};
   const refs = content.source_refs_used || [];
@@ -377,7 +467,14 @@ export async function saveGeneratedComponents(
       continue;
     }
 
+    const durationContract = durationContractsByType[type as ComponentType];
     const { error: insertError } = await supabase.from("material_components").insert({
+      ...(durationContract ? {
+        assets: {
+          assembly_target_duration_seconds: durationContract.targetDurationSeconds,
+          video_duration_contract: durationContract,
+        },
+      } : {}),
       material_lesson_id: lessonId,
       type,
       content: data,

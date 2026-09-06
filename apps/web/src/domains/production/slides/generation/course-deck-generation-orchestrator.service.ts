@@ -18,6 +18,7 @@ import type {
   SlideDeckGenerateInput,
 } from "../specs/course-deck.schema";
 import type { SlideSourcePack } from "../content/slide-source-pack.service";
+import type { VideoDurationContract } from "@/domains/video-duration/video-duration-policy";
 import {
   validateCourseDeckQuality,
   type CourseDeckQaReport,
@@ -57,6 +58,7 @@ interface GenerateCourseDeckParams {
     source_refs?: unknown;
     sourcePack?: SlideSourcePack;
     type?: string | null;
+    durationContract?: VideoDurationContract;
   };
   input: SlideDeckGenerateInput;
 }

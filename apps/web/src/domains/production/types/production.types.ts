@@ -1,3 +1,5 @@
+import type { VideoDurationContract } from "@/domains/video-duration/video-duration-policy";
+
 export const PRODUCTION_JOB_TYPES = {
   BROLL_PROMPT_GENERATION: "BROLL_PROMPT_GENERATION",
   HEYGEN_AVATAR_CLIP: "HEYGEN_AVATAR_CLIP",
@@ -86,6 +88,7 @@ export interface ProductionComponentContext {
   moduleId: string | null;
   moduleTitle?: string | null;
   organizationId: string | null;
+  videoDurationContract?: VideoDurationContract | null;
 }
 
 export interface ProductionJobRecord {

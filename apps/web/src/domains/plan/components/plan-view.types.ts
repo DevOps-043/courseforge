@@ -3,6 +3,7 @@ export interface PlanComponentItem {
   description?: string;
   summary?: string;
   duration?: string;
+  duration_contract?: import("@/domains/video-duration/video-duration-policy").VideoDurationContract;
   [key: string]: unknown;
 }
 

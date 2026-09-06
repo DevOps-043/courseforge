@@ -1,6 +1,16 @@
 "use server";
 
 import { getErrorMessage } from "@/lib/errors";
+import { getAuthorizedMaterialComponentAdmin } from "@/lib/server/artifact-action-auth";
+import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
+import type { PlanLessonItem } from "@/domains/plan/components/plan-view.types";
+import {
+  buildVideoDurationContract,
+  isVideoComponentType,
+  videoDurationPolicySchema,
+  type VideoDurationPolicy,
+} from "@/domains/video-duration/video-duration-policy";
+import { applyVideoDurationContractToPlanComponent } from "@/domains/video-duration/video-duration-plan";
 import type { Esp05StepState, QADecision } from "../types/materials.types";
 import {
   createMaterialsActionError,
@@ -217,6 +227,76 @@ export async function runMaterialsFixIterationAction(
     console.error("[MaterialsActions] Error triggering fix iteration:", error);
     return createMaterialsActionError(getErrorMessage(error));
   }
+}
+
+export async function updateMaterialComponentVideoDurationAction(
+  componentId: string,
+  policyInput: VideoDurationPolicy,
+) {
+  return withMaterialsActionBoundary("Unhandled video duration update error", async () => {
+    const parsedPolicy = videoDurationPolicySchema.safeParse(policyInput);
+    if (!parsedPolicy.success) {
+      return createMaterialsActionError(
+        parsedPolicy.error.issues[0]?.message || "Duración inválida",
+      );
+    }
+
+    const authorized = await getAuthorizedMaterialComponentAdmin(componentId);
+    if (!authorized) {
+      return createMaterialsActionError("Component not found or inaccessible");
+    }
+    const componentType = authorized.component.type;
+    if (!isVideoComponentType(componentType)) {
+      return createMaterialsActionError("La duración solo se puede aplicar a componentes de video");
+    }
+
+    const contract = buildVideoDurationContract(parsedPolicy.data, componentType);
+    const { admin, artifactId, component } = authorized;
+    const [{ data: lesson, error: lessonError }, { data: plan, error: planError }] = await Promise.all([
+      admin.from("material_lessons").select("lesson_id").eq("id", component.material_lesson_id).single(),
+      admin.from("instructional_plans").select("lesson_plans").eq("artifact_id", artifactId).single(),
+    ]);
+    if (lessonError || !lesson?.lesson_id) {
+      return createMaterialsActionError(lessonError?.message || "No se pudo resolver la lección");
+    }
+    if (planError || !plan) {
+      return createMaterialsActionError(planError?.message || "No se pudo resolver el plan instruccional");
+    }
+    const sourceLessonId = lesson.lesson_id;
+
+    const previousLessonPlans = Array.isArray(plan.lesson_plans)
+      ? plan.lesson_plans as PlanLessonItem[]
+      : [];
+    const nextLessonPlans = applyVideoDurationContractToPlanComponent(
+      previousLessonPlans,
+      sourceLessonId,
+      componentType,
+      contract,
+    );
+    const { error: updatePlanError } = await admin
+      .from("instructional_plans")
+      .update({ lesson_plans: nextLessonPlans, updated_at: new Date().toISOString() })
+      .eq("artifact_id", artifactId);
+    if (updatePlanError) return createMaterialsActionError(updatePlanError.message);
+
+    const { error: updateAssetsError } = await admin.rpc("patch_material_component_assets", {
+      p_assets_patch: {
+        assembly_target_duration_seconds: contract.targetDurationSeconds,
+        final_video_assembly_stale: true,
+        video_duration_contract: contract,
+      },
+      p_component_id: componentId,
+    });
+    if (updateAssetsError) {
+      await admin.from("instructional_plans")
+        .update({ lesson_plans: previousLessonPlans, updated_at: new Date().toISOString() })
+        .eq("artifact_id", artifactId);
+      return createMaterialsActionError(updateAssetsError.message);
+    }
+
+    await markDownstreamDirtyAction(artifactId, 5, "Duración objetivo de video");
+    return { success: true as const, contract };
+  });
 }
 
 export async function validateMaterialsAction(artifactId: string) {

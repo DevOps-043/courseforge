@@ -19,6 +19,8 @@ import {
 import { ComponentViewer } from "./ComponentViewer";
 import { IterationPanel } from "./IterationPanel";
 import { MaterialsDodChecklist } from "./MaterialsDodChecklist";
+import { VideoDurationReviewPanel } from "./VideoDurationReviewPanel";
+import { isVideoComponentType } from "@/domains/video-duration/video-duration-policy";
 
 interface MaterialDetailsModalProps {
   lesson: MaterialLesson;
@@ -183,6 +185,13 @@ export function MaterialDetailsModal({
                         </p>
                       </div>
                     </div>
+                    {isVideoComponentType(selectedComponent.type) ? (
+                      <VideoDurationReviewPanel
+                        component={selectedComponent}
+                        lessonId={lesson.id}
+                        onRegenerate={onIterationStart}
+                      />
+                    ) : null}
                     <div className="material-content-wrapper p-6 rounded-2xl shadow-xl 
                         bg-white dark:bg-[var(--engine-surface-hover)] border border-gray-200 dark:border-white/5 text-gray-900 dark:text-gray-200">
                       <ComponentViewer

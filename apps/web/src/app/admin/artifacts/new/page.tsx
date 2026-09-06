@@ -10,6 +10,11 @@ import { ScormImportFlow } from './components/ScormImportFlow';
 import { CloudStorageProviderSelector } from './components/CloudStorageProviderSelector';
 import { toast } from 'sonner';
 import type { CloudStorageProvider } from '@/domains/production/cloud-storage/types';
+import {
+    createDefaultVideoDurationPolicy,
+    VideoDurationPolicyFields,
+} from '@/domains/artifacts/components/VideoDurationPolicyFields';
+import type { VideoDurationPolicy } from '@/domains/video-duration/video-duration-policy';
 
 interface ArtifactIdeaFormData {
     courseId: string;
@@ -42,6 +47,9 @@ export default function NewArtifactPage({
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [cloudStorageProvider, setCloudStorageProvider] = useState<CloudStorageProvider | null>(null);
+    const [videoDurationPolicy, setVideoDurationPolicy] = useState<VideoDurationPolicy>(
+        createDefaultVideoDurationPolicy,
+    );
     const useGoogleDrive = false;
     const setUseGoogleDrive = (_checked: boolean) => {};
 
@@ -69,7 +77,8 @@ export default function NewArtifactPage({
                 targetAudience: formData.targetAudience,
                 expectedResults: formData.expectedResults,
                 courseId: formData.courseId,
-                cloudStorageProvider
+                cloudStorageProvider,
+                videoDurationPolicy,
             });
 
             if (result.success) {
@@ -234,6 +243,10 @@ export default function NewArtifactPage({
                                             </div>
 
                                             <CloudStorageProviderSelector onProviderChange={handleCloudStorageProviderChange} />
+                                            <VideoDurationPolicyFields
+                                                onChange={setVideoDurationPolicy}
+                                                value={videoDurationPolicy}
+                                            />
                                             {false ? (
                                                 <div className="flex items-center gap-3 pt-3 border-t border-gray-100 dark:border-white/5">
                                                     <input
