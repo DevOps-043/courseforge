@@ -1,4 +1,5 @@
 import type { GoogleGenAI } from "@google/genai";
+import type OpenAI from "openai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   resolvePrompts,
@@ -27,6 +28,8 @@ import {
 } from "../../../src/domains/video-duration/video-duration-policy";
 import { validateVideoDurationContent } from "../../../src/domains/video-duration/video-duration-validation";
 import { parseModelJsonResponse } from "../../../src/shared/ai/model-json-response";
+import { getMaterialsModelProvider } from "../../../src/shared/ai/materials-model-provider";
+import { createGeminiClient, createOpenAiClient } from "./bootstrap";
 
 interface LessonPlanComponentRecord {
   duration_contract?: unknown;
@@ -81,13 +84,16 @@ function wait(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function getGeminiBillingOrPermissionError(message: string) {
+function getProviderBillingOrPermissionError(
+  provider: "gemini" | "openai",
+  message: string,
+) {
   const normalizedMessage = message.toLowerCase();
 
-  if (
+  if (provider === "gemini" && (
     normalizedMessage.includes("lightning dunning decision is deny") ||
     normalizedMessage.includes("dunning decision is deny")
-  ) {
+  )) {
     return "Gemini rechazo la solicitud porque el proyecto de Google Cloud asociado a la API key esta bloqueado por billing/dunning. Revisa facturacion/estado del proyecto en Google Cloud o configura una API key de un proyecto activo y reinicia el servidor.";
   }
 
@@ -96,7 +102,18 @@ function getGeminiBillingOrPermissionError(message: string) {
     normalizedMessage.includes('"code":403') ||
     normalizedMessage.includes("status code 403")
   ) {
-    return "Gemini rechazo la solicitud con 403 PERMISSION_DENIED. Verifica que la API key tenga acceso a Gemini API/Generative Language API, que el proyecto este activo y que el modelo configurado este disponible para ese proyecto.";
+    return provider === "gemini"
+      ? "Gemini rechazo la solicitud con 403 PERMISSION_DENIED. Verifica que la API key tenga acceso a Gemini API/Generative Language API, que el proyecto este activo y que el modelo configurado este disponible para ese proyecto."
+      : "OpenAI rechazo la solicitud por permisos. Verifica OPENAI_API_KEY y que el proyecto tenga acceso al modelo configurado.";
+  }
+
+  if (
+    provider === "openai" &&
+    (normalizedMessage.includes("insufficient_quota") ||
+      normalizedMessage.includes("billing") ||
+      normalizedMessage.includes("quota"))
+  ) {
+    return "OpenAI rechazo la solicitud por cuota o facturacion. Revisa los creditos y limites del proyecto asociado a OPENAI_API_KEY.";
   }
 
   return null;
@@ -180,7 +197,6 @@ export function buildMaterialsGenerationInput(params: {
 }
 
 export async function generateWithRetry(
-  genAI: GoogleGenAI,
   input: MaterialsGenerationInput,
   logPrefix: string,
   models: string[],
@@ -198,6 +214,8 @@ export async function generateWithRetry(
 
   const attemptErrors: string[] = [];
   const unavailableModels = new Set<string>();
+  let geminiClient: GoogleGenAI | undefined;
+  let openAiClient: OpenAI | undefined;
 
   for (let retry = 0; retry < 2; retry++) {
     for (const model of modelsToTry) {
@@ -207,15 +225,32 @@ export async function generateWithRetry(
 
       try {
         console.log(`${logPrefix} Try ${retry + 1}, Model: ${model}`);
-        const content = await generateMaterialsWithGemini(
-          genAI,
-          model,
-          input,
-          logPrefix,
-          supabase,
-          componentTypes,
-          organizationId,
-        );
+        const provider = getMaterialsModelProvider(model);
+        if (!provider) {
+          throw new Error(
+            `UNSUPPORTED_MATERIALS_MODEL: ${model} no pertenece a un proveedor implementado.`,
+          );
+        }
+
+        const content = provider === "gemini"
+          ? await generateMaterialsWithGemini(
+              (geminiClient ||= createGeminiClient()),
+              model,
+              input,
+              logPrefix,
+              supabase,
+              componentTypes,
+              organizationId,
+            )
+          : await generateMaterialsWithOpenAI(
+              (openAiClient ||= createOpenAiClient()),
+              model,
+              input,
+              logPrefix,
+              supabase,
+              componentTypes,
+              organizationId,
+            );
         return { success: true as const, content };
       } catch (error) {
         const message = getErrorMessage(error, "");
@@ -224,9 +259,14 @@ export async function generateWithRetry(
         );
         console.warn(`${logPrefix} ${model} failed: ${message}`);
 
-        const permissionError = getGeminiBillingOrPermissionError(message);
+        const provider = getMaterialsModelProvider(model);
+        const permissionError = provider
+          ? getProviderBillingOrPermissionError(provider, message)
+          : null;
         if (permissionError) {
-          return { success: false as const, error: permissionError };
+          attemptErrors.push(`${model}: ${permissionError}`);
+          unavailableModels.add(model);
+          continue;
         }
 
         const normalizedMessage = message.toLowerCase();
@@ -242,7 +282,7 @@ export async function generateWithRetry(
 
         if (message.includes("429") || message.includes("rate limit")) {
           await wait(MATERIALS_RETRY_BACKOFF_BASE_MS * (retry + 1));
-          break;
+          continue;
         }
       }
     }
@@ -261,6 +301,76 @@ export async function generateWithRetry(
 export async function generateMaterialsWithGemini(
   genAI: GoogleGenAI,
   model: string,
+  input: MaterialsGenerationInput,
+  logPrefix: string,
+  supabase?: SupabaseClient,
+  componentTypes?: string[],
+  organizationId?: string | null,
+) {
+  const prompt = await buildMaterialsPrompt(
+    input,
+    logPrefix,
+    supabase,
+    componentTypes,
+    organizationId,
+  );
+
+  console.log(`${logPrefix} Calling ${model} through Gemini`);
+
+  const response = await genAI.models.generateContent({
+    model,
+    contents: prompt,
+    config: {
+      temperature: 0.7,
+      maxOutputTokens: 16000,
+      responseMimeType: "application/json",
+    },
+  });
+
+  return parseAndValidateMaterialsOutput(
+    input,
+    response.text,
+    response.candidates?.[0]?.finishReason,
+  );
+}
+
+export async function generateMaterialsWithOpenAI(
+  client: OpenAI,
+  model: string,
+  input: MaterialsGenerationInput,
+  logPrefix: string,
+  supabase?: SupabaseClient,
+  componentTypes?: string[],
+  organizationId?: string | null,
+) {
+  const prompt = await buildMaterialsPrompt(
+    input,
+    logPrefix,
+    supabase,
+    componentTypes,
+    organizationId,
+  );
+
+  console.log(`${logPrefix} Calling ${model} through OpenAI`);
+
+  const response = await client.responses.create({
+    model,
+    input: prompt,
+    max_output_tokens: 16000,
+    text: { format: { type: "json_object" } },
+  });
+  const incompleteReason = response.incomplete_details?.reason;
+
+  return parseAndValidateMaterialsOutput(
+    input,
+    response.output_text,
+    response.status === "incomplete" && incompleteReason === "max_output_tokens"
+      ? "MAX_TOKENS"
+      : response.status,
+  );
+}
+
+async function buildMaterialsPrompt(
   input: MaterialsGenerationInput,
   logPrefix: string,
   supabase?: SupabaseClient,
@@ -306,25 +416,20 @@ export async function generateMaterialsWithGemini(
     console.log(`${logPrefix} Using hardcoded modular prompts for: ${effectiveComponentTypes.join(", ")}`);
   }
 
-  const prompt =
+  return (
     basePrompt +
-    `\n\n## DATOS DE ENTRADA\n\`\`\`json\n${JSON.stringify(input, null, 2)}\n\`\`\`\n\nResponde SOLO con JSON valido.`;
+    `\n\n## DATOS DE ENTRADA\n\`\`\`json\n${JSON.stringify(input, null, 2)}\n\`\`\`\n\nResponde SOLO con JSON valido.`
+  );
+}
 
-  console.log(`${logPrefix} Calling ${model}`);
-
-  const response = await genAI.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      temperature: 0.7,
-      maxOutputTokens: 16000,
-      responseMimeType: "application/json",
-    },
-  });
-
+function parseAndValidateMaterialsOutput(
+  input: MaterialsGenerationInput,
+  responseText?: string | null,
+  finishReason?: string | null,
+) {
   const generated = parseModelJsonResponse<MaterialsGenerationOutput>({
-    finishReason: response.candidates?.[0]?.finishReason,
-    responseText: response.text,
+    finishReason,
+    responseText,
   });
   assertGeneratedVideoDurations(input, generated);
   return generated;

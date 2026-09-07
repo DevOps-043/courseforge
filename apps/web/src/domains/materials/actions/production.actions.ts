@@ -667,7 +667,7 @@ export async function generateVideoPromptsAction(
       inputSnapshot,
       jobType: PRODUCTION_JOB_TYPES.BROLL_PROMPT_GENERATION,
       provider: PRODUCTION_PROVIDERS.GEMINI,
-      providerModel: "gemini-2.0-flash",
+      providerModel: "gemini-3.5-flash",
     });
 
     if (

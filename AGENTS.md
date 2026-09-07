@@ -28,7 +28,7 @@ Lia es el asistente IA integrado en toda la app.
 
 - Usuario envía mensaje de texto
 - Llama a `/api/lia` con Gemini + Google Search grounding
-- Modelo: `gemini-2.0-flash`, temperatura 0.7
+- Modelo: `gemini-3.5-flash`, temperatura 0.7
 - Responde en markdown con fuentes citadas
 
 ---
@@ -391,8 +391,8 @@ SUPABASE_SERVICE_ROLE_KEY=
 
 # Gemini
 GOOGLE_GENERATIVE_AI_API_KEY=
-GEMINI_MODEL=gemini-2.0-flash
-GEMINI_SEARCH_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-3.5-flash
+GEMINI_SEARCH_MODEL=gemini-3.5-flash
 
 # OpenAI (fallback)
 OPENAI_API_KEY=

@@ -136,8 +136,8 @@ export const handler: Handler = async (event) => {
 
         const serviceSupabase = createServiceRoleClient();
         const modelConfig = await resolveModelSetting(serviceSupabase, "ARTIFACT_BASE", {
-            model: "gemini-2.5-flash",
-            fallbackModel: "gemini-2.0-flash",
+            model: "gemini-3.5-flash",
+            fallbackModel: "gemini-2.5-flash",
             temperature: 0.7,
             thinkingLevel: "medium",
         }, organizationId || null);

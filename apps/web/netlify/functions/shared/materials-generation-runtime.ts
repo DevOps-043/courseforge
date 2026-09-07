@@ -1,4 +1,3 @@
-import type { GoogleGenAI } from "@google/genai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ComponentType } from "../../../src/domains/materials/types/materials.types";
 import {
@@ -234,7 +233,6 @@ export async function processGenerationResult(params: {
 
 export async function generateLessonMaterials(params: {
   supabase: SupabaseClient;
-  genAI: GoogleGenAI;
   lesson: MaterialLessonRecord;
   generationContext: MaterialsGenerationContext;
   organizationId?: string | null;
@@ -248,7 +246,6 @@ export async function generateLessonMaterials(params: {
 }) {
   const {
     supabase,
-    genAI,
     lesson,
     generationContext,
     organizationId,
@@ -281,7 +278,6 @@ export async function generateLessonMaterials(params: {
   }
 
   const result = await generateWithRetry(
-    genAI,
     input,
     logPrefix,
     models,

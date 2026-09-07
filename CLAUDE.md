@@ -103,7 +103,7 @@ Areas admin principales:
 SofLIA es el asistente integrado en la app.
 
 - API: `POST /api/lia`
-- Modelo principal: Gemini (`gemini-2.0-flash` por defecto en los prompts actuales)
+- Modelo principal: Gemini (`gemini-3.5-flash` por defecto en los prompts actuales)
 - Usa Google Search grounding cuando aplica.
 - Responde en markdown con fuentes.
 - Los prompts y contexto viven principalmente en servicios compartidos y resolvers de prompts.

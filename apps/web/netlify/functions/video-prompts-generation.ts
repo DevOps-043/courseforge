@@ -31,7 +31,7 @@ import { buildCourseDeckSpecFromComponent } from "../../src/domains/production/s
 import { CLIP_GENERATION_PROMPT_CODE } from "../../src/shared/config/prompts/materials-generation.prompts.modular";
 import { resolveSinglePrompt } from "../../src/shared/config/prompts/prompt-resolver.service";
 
-const BROLL_PROMPT_MODEL = "gemini-2.0-flash";
+const BROLL_PROMPT_MODEL = "gemini-3.5-flash";
 
 interface VideoPromptsRequestBody {
   componentId?: string;

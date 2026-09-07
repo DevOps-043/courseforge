@@ -1,6 +1,5 @@
 import { Handler } from "@netlify/functions";
 import {
-  createGeminiClient,
   createServiceRoleClient,
   getGeminiApiKeySource,
   resolveConfiguredModelSetting,
@@ -24,6 +23,7 @@ import {
   triggerNextLesson,
   wait,
 } from "./shared/materials-generation-runtime";
+import { isSupportedMaterialsModel } from "../../src/shared/ai/materials-model-provider";
 import { getCloudStorageService } from "../../src/domains/production/cloud-storage/cloud-storage.service";
 import {
   isCloudStorageProvider,
@@ -200,7 +200,6 @@ async function processSingleLesson(params: {
     componentTypes,
     models,
   } = params;
-  const genAI = createGeminiClient();
   const { supabase, lesson } = await loadSingleLesson(materialsId, lessonId);
   const generationContext = await loadMaterialsGenerationContext(
     supabase,
@@ -215,7 +214,6 @@ async function processSingleLesson(params: {
 
   const output = await generateLessonMaterials({
     supabase,
-    genAI,
     lesson,
     generationContext,
     fixInstructions,
@@ -241,7 +239,6 @@ async function processNextPendingLesson(params: {
 }) {
   const { materialsId, artifactId, organizationId, logPrefix, models } = params;
   const supabase = createServiceRoleClient();
-  const genAI = createGeminiClient();
 
   await wait(Math.random() * START_JITTER_MS);
 
@@ -291,7 +288,6 @@ async function processNextPendingLesson(params: {
   );
   await generateLessonMaterials({
     supabase,
-    genAI,
     lesson,
     generationContext,
     organizationId,
@@ -353,14 +349,16 @@ export const handler: Handler = async (event) => {
       new Set([modelConfig.model, modelConfig.fallbackModel].filter(Boolean)),
     );
     const unsupportedModel = models.find(
-      (model) => !model.startsWith("gemini-"),
+      (model) => !isSupportedMaterialsModel(model),
     );
     if (unsupportedModel) {
       throw new Error(
-        `UNSUPPORTED_MATERIALS_MODEL: ${unsupportedModel} no pertenece al proveedor Gemini utilizado por Materiales. Actualiza la configuracion de esta fase.`,
+        `UNSUPPORTED_MATERIALS_MODEL: ${unsupportedModel} no pertenece a un proveedor implementado para Materiales.`,
       );
     }
-    console.log(`${logPrefix} Gemini API key source: ${getGeminiApiKeySource()}`);
+    if (models.some((model) => model.startsWith("gemini-"))) {
+      console.log(`${logPrefix} Gemini API key source: ${getGeminiApiKeySource()}`);
+    }
     console.log(`${logPrefix} Models: ${models.join(", ")}`);
 
     if ((mode === "single-lesson" || mode === "single-component") && lessonId) {

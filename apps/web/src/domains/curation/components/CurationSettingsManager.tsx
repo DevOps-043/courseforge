@@ -415,12 +415,6 @@ function getModelOptions(settingType: string) {
     return IMAGE_MODEL_OPTIONS;
   }
 
-  if (settingType === "MATERIALS") {
-    return ALL_MODEL_OPTIONS.filter((option) =>
-      option.value.startsWith("gemini-"),
-    );
-  }
-
   return ALL_MODEL_OPTIONS;
 }
 

@@ -12,6 +12,8 @@
   },
   "include": [
     "src/shared/ai/model-json-response.ts",
-    "src/shared/ai/__tests__/model-json-response.test.ts"
+    "src/shared/ai/materials-model-provider.ts",
+    "src/shared/ai/__tests__/model-json-response.test.ts",
+    "src/shared/ai/__tests__/materials-model-provider.test.ts"
   ]
 }

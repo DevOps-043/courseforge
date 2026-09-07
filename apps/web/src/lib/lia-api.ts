@@ -9,13 +9,13 @@ import type {
 } from "@/lib/lia-types";
 
 const DEFAULT_COMPUTER_SETTINGS: LiaSettingsRecord = {
-  model_name: "gemini-2.0-flash-exp",
+  model_name: "gemini-3.5-flash",
   temperature: 0.3,
   setting_type: "COMPUTER",
 };
 
 const DEFAULT_STANDARD_SETTINGS: LiaSettingsRecord = {
-  model_name: "gemini-2.0-flash",
+  model_name: "gemini-3.5-flash",
   temperature: 0.7,
   setting_type: "LIA_MODEL",
 };

@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { getActiveOrganizationId, getAuthBridgeUser } from '@/utils/auth/session';
 import { getSupabaseServiceRoleKey, getSupabaseUrl } from '@/lib/server/env';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
+import { isSupportedMaterialsModel } from '@/shared/ai/materials-model-provider';
 
 interface ModelSettingsUpdateInput {
   fallback_model?: string | null;
@@ -44,7 +45,7 @@ const MODEL_SETTING_TYPES = [
 ] as const;
 const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number], Omit<ModelSettingsRecord, 'id'>> = {
   ARTIFACT_BASE: {
-    model_name: 'gemini-2.0-flash',
+    model_name: 'gemini-3.5-flash',
     fallback_model: 'gpt-4o-mini',
     temperature: 0.7,
     thinking_level: 'medium',
@@ -53,7 +54,7 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     is_active: true,
   },
   SYLLABUS: {
-    model_name: 'gemini-2.0-flash',
+    model_name: 'gemini-3.5-flash',
     fallback_model: 'gpt-4o-mini',
     temperature: 0.7,
     thinking_level: 'medium',
@@ -62,7 +63,7 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     is_active: true,
   },
   INSTRUCTIONAL_PLAN: {
-    model_name: 'gemini-2.0-flash',
+    model_name: 'gemini-3.5-flash',
     fallback_model: 'gpt-4o-mini',
     temperature: 0.7,
     thinking_level: 'medium',
@@ -72,7 +73,7 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
   },
   CURATION: {
     model_name: 'gpt-4o-mini',
-    fallback_model: 'gemini-2.0-flash',
+    fallback_model: 'gemini-2.5-flash',
     temperature: 0.1,
     thinking_level: 'low',
     scope: 'Cursos',
@@ -99,7 +100,7 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
   },
   SLIDES_DECK_BRIEF_AGENT: {
     model_name: 'gpt-4o-mini',
-    fallback_model: 'gemini-2.0-flash',
+    fallback_model: 'gemini-2.5-flash',
     temperature: 0.2,
     thinking_level: 'low',
     scope: 'Modulos: Slides',
@@ -108,7 +109,7 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
   },
   SLIDES_EVIDENCE_AGENT: {
     model_name: 'gpt-4o-mini',
-    fallback_model: 'gemini-2.0-flash',
+    fallback_model: 'gemini-2.5-flash',
     temperature: 0.1,
     thinking_level: 'low',
     scope: 'Modulos: Slides',
@@ -117,7 +118,7 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
   },
   SLIDES_STRATEGY_AGENT: {
     model_name: 'gpt-4o',
-    fallback_model: 'gemini-2.0-flash',
+    fallback_model: 'gemini-2.5-flash',
     temperature: 0.3,
     thinking_level: 'medium',
     scope: 'Modulos: Slides',
@@ -126,7 +127,7 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
   },
   SLIDE_TEMPLATE_TYPE_AGENT: {
     model_name: 'gpt-4o',
-    fallback_model: 'gemini-2.0-flash',
+    fallback_model: 'gemini-2.5-flash',
     temperature: 0.45,
     thinking_level: 'medium',
     scope: 'Modulos: Slides',
@@ -135,7 +136,7 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
   },
   SLIDES_VISIBLE_COPY_AGENT: {
     model_name: 'gpt-4o-mini',
-    fallback_model: 'gemini-2.0-flash',
+    fallback_model: 'gemini-2.5-flash',
     temperature: 0.3,
     thinking_level: 'low',
     scope: 'Modulos: Slides',
@@ -144,7 +145,7 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
   },
   SLIDES_VISUAL_TEMPLATE_AGENT: {
     model_name: 'gpt-4o',
-    fallback_model: 'gemini-2.0-flash',
+    fallback_model: 'gemini-2.5-flash',
     temperature: 0.5,
     thinking_level: 'medium',
     scope: 'Modulos: Slides',
@@ -153,7 +154,7 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
   },
   SLIDES_QA_AGENT: {
     model_name: 'gpt-4o-mini',
-    fallback_model: 'gemini-2.0-flash',
+    fallback_model: 'gemini-2.5-flash',
     temperature: 0.1,
     thinking_level: 'low',
     scope: 'Modulos: Slides',
@@ -803,19 +804,19 @@ export async function updateModelSettingsAction(settings: ModelSettingsUpdateInp
   const invalidMaterialsSetting = settings.find(
     (setting) =>
       setting.setting_type === 'MATERIALS' &&
-      (!setting.model_name.startsWith('gemini-') ||
+      (!isSupportedMaterialsModel(setting.model_name) ||
         (Boolean(setting.fallback_model) &&
-          !setting.fallback_model?.startsWith('gemini-'))),
+          !isSupportedMaterialsModel(setting.fallback_model || ''))),
   );
 
   if (invalidMaterialsSetting) {
     return {
       success: false,
       error:
-        'Materiales utiliza actualmente el proveedor Gemini. Selecciona modelos Gemini para principal y fallback.',
+        'Materiales admite modelos Gemini y OpenAI. Selecciona uno de esos proveedores para principal y fallback.',
     };
   }
-  
+
   const updates = settings.map(async (setting) => {
       const payload = {
         model_name: setting.model_name,
