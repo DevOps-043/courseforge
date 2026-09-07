@@ -88,6 +88,7 @@ export interface TemarioEsp02 {
   // Propiedades de seguimiento de iteración
   upstream_dirty?: boolean;
   upstream_dirty_source?: string;
+  iteration_count?: number;
 }
 
 export interface SyllabusRow extends TemarioEsp02 {

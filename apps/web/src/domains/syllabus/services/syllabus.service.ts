@@ -14,6 +14,11 @@ import {
   runAllValidations,
 } from "../validators/syllabus.validators";
 import { fillMissingLessonDurationEstimates } from "../lib/lesson-duration-estimator";
+import {
+  canIterateSyllabus,
+  getNextSyllabusIteration,
+  SYLLABUS_MAX_ITERATIONS,
+} from "../lib/syllabus-iteration";
 
 class SyllabusService {
   private supabase = createClient();
@@ -60,6 +65,7 @@ class SyllabusService {
     route: Esp02Route;
     objetivos: string[];
     ideaCentral: string;
+    iterationInstructions?: string;
     accessToken?: string;
   }): Promise<
     TemarioEsp02 | { status: string; message: string; data?: TemarioEsp02 }
@@ -67,6 +73,14 @@ class SyllabusService {
     console.log(
       `[SyllabusService] Iniciando generacion para ${params.artifactId} via ruta ${params.route}`,
     );
+
+    const currentSyllabus = await this.getSyllabus(params.artifactId);
+    if (!canIterateSyllabus(currentSyllabus?.iteration_count)) {
+      throw new Error(
+        `El temario alcanzo el limite de ${SYLLABUS_MAX_ITERATIONS} iteraciones.`,
+      );
+    }
+    const previousState = currentSyllabus?.state || SYLLABUS_STATES.DRAFT;
 
     // 1. Actualizar estado a GENERATING (optimista)
     await this.updateStatus(params.artifactId, SYLLABUS_STATES.GENERATING);
@@ -80,12 +94,18 @@ class SyllabusService {
           route: params.route,
           objetivos: params.objetivos,
           ideaCentral: params.ideaCentral,
+          iterationInstructions: params.iterationInstructions,
           accessToken: params.accessToken,
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Error al iniciar la generacion en el servidor");
+        const errorPayload = await response.json().catch(() => null) as {
+          error?: string;
+        } | null;
+        throw new Error(
+          errorPayload?.error || "Error al iniciar la generacion en el servidor",
+        );
       }
 
       const result = (await response.json()) as unknown;
@@ -122,7 +142,7 @@ class SyllabusService {
       return result as { status: string; message: string; data?: TemarioEsp02 };
     } catch (error) {
       console.error("[SyllabusService] Error:", error);
-      await this.updateStatus(params.artifactId, SYLLABUS_STATES.DRAFT);
+      await this.updateStatus(params.artifactId, previousState);
       throw error;
     }
   }
@@ -172,7 +192,7 @@ class SyllabusService {
     validation: ValidationResult | SyllabusValidationReport = this.emptyValidation,
   ): Promise<void> {
     const current = await this.getSyllabus(artifactId);
-    const nextIteration = (current?.iteration_count || 0) + 1;
+    const nextIteration = getNextSyllabusIteration(current?.iteration_count);
 
     const payload = {
       artifact_id: artifactId,
@@ -205,6 +225,7 @@ class SyllabusService {
         validation: { checks: [], automatic_pass: false },
         state: SYLLABUS_STATES.DRAFT,
         qa: { status: "PENDING" },
+        iteration_count: 0,
         updated_at: new Date().toISOString(),
       })
       .eq("artifact_id", artifactId);

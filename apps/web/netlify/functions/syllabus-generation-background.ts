@@ -25,11 +25,17 @@ import {
   renderPromptTemplate,
   syllabusResearchPromptDefault,
 } from "../../src/shared/config/prompts/pipeline.prompts";
+import {
+  canIterateSyllabus,
+  getNextSyllabusIteration,
+  SYLLABUS_MAX_ITERATIONS,
+} from "../../src/domains/syllabus/lib/syllabus-iteration";
 
 interface SyllabusBackgroundRequest {
   accessToken?: string;
   artifactId?: string;
   ideaCentral?: string;
+  iterationInstructions?: string;
   objetivos?: string[];
   route?: string;
 }
@@ -118,7 +124,7 @@ export const handler: Handler = async (event) => {
     return { statusCode: 400, body: "Bad Request: Invalid JSON" };
   }
 
-  const { artifactId, objetivos, ideaCentral, route } = body;
+  const { artifactId, objetivos, ideaCentral, route, iterationInstructions } = body;
 
   if (!artifactId || !Array.isArray(objetivos) || !ideaCentral) {
     return { statusCode: 400, body: "Missing required fields" };
@@ -132,6 +138,34 @@ export const handler: Handler = async (event) => {
   const genAI = createGeminiClient();
 
   try {
+    const { data: currentSyllabus, error: syllabusLookupError } = await supabase
+      .from("syllabus")
+      .select("iteration_count")
+      .eq("artifact_id", artifactId)
+      .maybeSingle();
+
+    if (syllabusLookupError) {
+      throw syllabusLookupError;
+    }
+
+    if (!canIterateSyllabus(currentSyllabus?.iteration_count)) {
+      await supabase
+        .from("syllabus")
+        .update({ state: "STEP_READY_FOR_QA", updated_at: new Date().toISOString() })
+        .eq("artifact_id", artifactId);
+
+      return {
+        statusCode: 409,
+        body: JSON.stringify({
+          error: `El temario alcanzo el limite de ${SYLLABUS_MAX_ITERATIONS} iteraciones.`,
+        }),
+      };
+    }
+
+    const nextIteration = getNextSyllabusIteration(
+      currentSyllabus?.iteration_count,
+    );
+
     const { data: artifactScope } = await supabase
       .from("artifacts")
       .select("generation_metadata, organization_id")
@@ -212,7 +246,9 @@ export const handler: Handler = async (event) => {
       objetivos,
       route,
       researchContext,
-    );
+    ) + (iterationInstructions?.trim()
+      ? `\n\nRETROALIMENTACION PARA ESTA ITERACION:\n${iterationInstructions.trim()}\nRegenera el temario completo aplicando esta retroalimentacion.`
+      : "");
 
     let attempts = 0;
     const maxAttempts = 3;
@@ -294,7 +330,7 @@ export const handler: Handler = async (event) => {
         modules: content.modules,
         source_summary: metadata,
         state: "STEP_REVIEW",
-        iteration_count: 1,
+        iteration_count: nextIteration,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "artifact_id" },

@@ -23,6 +23,10 @@ import {
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { applyGeneratedLessonDurationEstimates } from "@/domains/syllabus/lib/lesson-duration-estimator";
 import { resolveArtifactVideoDurationPolicy } from "@/domains/video-duration/video-duration-policy";
+import {
+  canIterateSyllabus,
+  SYLLABUS_MAX_ITERATIONS,
+} from "@/domains/syllabus/lib/syllabus-iteration";
 
 interface SyllabusRequestBody {
   objetivos?: string[];
@@ -30,6 +34,7 @@ interface SyllabusRequestBody {
   route?: string;
   artifactId?: string;
   accessToken?: string;
+  iterationInstructions?: string;
 }
 
 interface GroundingMetadata {
@@ -57,7 +62,14 @@ function buildLocalPrompt(
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as SyllabusRequestBody;
-    const { objetivos, ideaCentral, route, artifactId, accessToken } = body;
+    const {
+      objetivos,
+      ideaCentral,
+      route,
+      artifactId,
+      accessToken,
+      iterationInstructions,
+    } = body;
     let artifactGenerationMetadata: unknown;
 
     if (!Array.isArray(objetivos) || !ideaCentral) {
@@ -93,6 +105,26 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      const { data: currentSyllabus, error: syllabusLookupError } =
+        await authorized.admin
+          .from("syllabus")
+          .select("iteration_count")
+          .eq("artifact_id", artifactId)
+          .maybeSingle();
+
+      if (syllabusLookupError) {
+        throw syllabusLookupError;
+      }
+
+      if (!canIterateSyllabus(currentSyllabus?.iteration_count)) {
+        return NextResponse.json(
+          {
+            error: `El temario alcanzo el limite de ${SYLLABUS_MAX_ITERATIONS} iteraciones.`,
+          },
+          { status: 409 },
+        );
+      }
+
       const { data: artifactDurationSource } = await authorized.admin
         .from("artifacts")
         .select("generation_metadata")
@@ -118,6 +150,7 @@ export async function POST(request: NextRequest) {
             objetivos,
             ideaCentral,
             route,
+            iterationInstructions,
             accessToken,
           }),
         });
@@ -179,7 +212,9 @@ export async function POST(request: NextRequest) {
       objetivos,
       route,
       researchContext,
-    );
+    ) + (iterationInstructions?.trim()
+      ? `\n\nRETROALIMENTACION PARA ESTA ITERACION:\n${iterationInstructions.trim()}\nRegenera el temario completo aplicando esta retroalimentacion.`
+      : "");
 
     const generationResult = await genAI.models.generateContent({
       model: mainModelName,

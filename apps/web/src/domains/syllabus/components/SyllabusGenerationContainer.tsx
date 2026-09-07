@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { UpstreamChangeAlert } from "@/shared/components/UpstreamChangeAlert";
 import {
   dismissUpstreamDirtyAction,
@@ -22,6 +22,11 @@ import { SyllabusReviewPanel } from "./SyllabusReviewPanel";
 import { SyllabusSetupPanel } from "./SyllabusSetupPanel";
 import { SyllabusStatusPanel } from "./SyllabusStatusPanel";
 import { SyllabusViewer } from "./SyllabusViewer";
+import {
+  canIterateSyllabus,
+  normalizeSyllabusIterationCount,
+  SYLLABUS_MAX_ITERATIONS,
+} from "../lib/syllabus-iteration";
 
 interface SyllabusProfile {
   platform_role?: string | null;
@@ -71,6 +76,7 @@ export function SyllabusGenerationContainer({
   const [reviewNotes, setReviewNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [isObjectivesOpen, setIsObjectivesOpen] = useState(false);
+  const [iterationCount, setIterationCount] = useState(0);
 
   const applyTemario = (generatedTemario: TemarioEsp02 | SyllabusRow) => {
     const nextTemario = buildTemarioForReview(
@@ -82,6 +88,48 @@ export function SyllabusGenerationContainer({
     setTemario(nextTemario);
     setRoute(nextTemario.route);
     setStatus(generatedTemario.state || "STEP_READY_FOR_QA");
+    if (generatedTemario.iteration_count !== undefined) {
+      setIterationCount(
+        normalizeSyllabusIterationCount(generatedTemario.iteration_count),
+      );
+    }
+    setError(null);
+  };
+
+  const handleIterate = async () => {
+    if (!route || status === "STEP_GENERATING") {
+      return;
+    }
+
+    if (!canIterateSyllabus(iterationCount)) {
+      setError(
+        `El temario alcanzo el limite de ${SYLLABUS_MAX_ITERATIONS} iteraciones.`,
+      );
+      return;
+    }
+
+    const previousStatus = status;
+    setStatus("STEP_GENERATING");
+    setError(null);
+
+    try {
+      await syllabusService.startGeneration({
+        artifactId,
+        route,
+        objetivos: initialObjetivos,
+        ideaCentral: initialIdeaCentral,
+        iterationInstructions: reviewNotes.trim() || undefined,
+      });
+      await markDownstreamDirtyAction(artifactId, 2, "Temario");
+    } catch (iterationError) {
+      console.error(iterationError);
+      setError(
+        iterationError instanceof Error
+          ? iterationError.message
+          : "No se pudo iterar el temario.",
+      );
+      setStatus(previousStatus);
+    }
   };
 
   const handleGenerate = async () => {
@@ -206,6 +254,7 @@ export function SyllabusGenerationContainer({
       setReviewNotes("");
       setRoute(null);
       setError(null);
+      setIterationCount(0);
     } catch (resetError) {
       console.error(resetError);
     }
@@ -301,25 +350,61 @@ export function SyllabusGenerationContainer({
         <SyllabusStatusPanel status="STEP_ESCALATED" error={error} />
       )}
 
+      {temario && error && status !== "STEP_ESCALATED" && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
+          {error}
+        </div>
+      )}
+
       {temario && (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <svg
-                className="w-6 h-6 text-green-500"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              Temario Generado
-            </h3>
+            <div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <svg
+                  className="w-6 h-6 text-green-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                Temario Generado
+              </h3>
+              <p className="ml-8 mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Iteración {iterationCount}/{SYLLABUS_MAX_ITERATIONS}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void handleIterate()}
+              disabled={
+                status === "STEP_GENERATING" ||
+                !canIterateSyllabus(iterationCount)
+              }
+              title={
+                canIterateSyllabus(iterationCount)
+                  ? "Regenerar el temario aplicando los comentarios de revisión"
+                  : `Se alcanzó el límite de ${SYLLABUS_MAX_ITERATIONS} iteraciones`
+              }
+              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:border-[var(--engine-accent)] hover:text-[var(--engine-accent)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-[var(--engine-canvas)] dark:text-gray-300"
+            >
+              <RefreshCw
+                size={14}
+                className={status === "STEP_GENERATING" ? "animate-spin" : ""}
+              />
+              {status === "STEP_GENERATING"
+                ? "Iterando..."
+                : canIterateSyllabus(iterationCount)
+                  ? "Iterar temario"
+                  : "Límite alcanzado"}
+            </button>
           </div>
 
           <SyllabusViewer
