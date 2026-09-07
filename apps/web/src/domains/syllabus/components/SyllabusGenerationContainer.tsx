@@ -77,6 +77,7 @@ export function SyllabusGenerationContainer({
   const [loading, setLoading] = useState(false);
   const [isObjectivesOpen, setIsObjectivesOpen] = useState(false);
   const [iterationCount, setIterationCount] = useState(0);
+  const [hasExistingSyllabus, setHasExistingSyllabus] = useState(false);
 
   const applyTemario = (generatedTemario: TemarioEsp02 | SyllabusRow) => {
     const nextTemario = buildTemarioForReview(
@@ -86,6 +87,7 @@ export function SyllabusGenerationContainer({
     );
 
     setTemario(nextTemario);
+    setHasExistingSyllabus(true);
     setRoute(nextTemario.route);
     setStatus(generatedTemario.state || "STEP_READY_FOR_QA");
     if (generatedTemario.iteration_count !== undefined) {
@@ -250,6 +252,7 @@ export function SyllabusGenerationContainer({
     try {
       await syllabusService.deleteSyllabusContent(artifactId);
       setTemario(null);
+      setHasExistingSyllabus(false);
       setStatus("STEP_DRAFT");
       setReviewNotes("");
       setRoute(null);
@@ -266,6 +269,13 @@ export function SyllabusGenerationContainer({
 
       try {
         const data = await syllabusService.getSyllabus(artifactId);
+        if (data) {
+          setHasExistingSyllabus(true);
+          setIterationCount(
+            normalizeSyllabusIterationCount(data.iteration_count),
+          );
+          setRoute(data.route || "B_NO_SOURCE");
+        }
         if (data?.modules?.length) {
           applyTemario(data);
         } else if (data?.state === SYLLABUS_STATES.GENERATING) {
@@ -355,6 +365,41 @@ export function SyllabusGenerationContainer({
           {error}
         </div>
       )}
+
+      {!temario &&
+        hasExistingSyllabus &&
+        status !== "STEP_DRAFT" &&
+        status !== "STEP_GENERATING" &&
+        status !== "STEP_ESCALATED" && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 dark:border-amber-500/20 dark:bg-amber-500/10">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="font-bold text-amber-900 dark:text-amber-200">
+                  El temario no contiene módulos
+                </h3>
+                <p className="mt-1 text-sm text-amber-700 dark:text-amber-300/80">
+                  La generación anterior quedó vacía o incompleta. Puedes iniciar
+                  una nueva iteración para reconstruirlo.
+                </p>
+                <p className="mt-2 text-xs font-semibold text-amber-800 dark:text-amber-200">
+                  Iteración {iterationCount}/{SYLLABUS_MAX_ITERATIONS}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void handleIterate()}
+                disabled={!canIterateSyllabus(iterationCount)}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-500/30 dark:bg-[var(--engine-canvas)] dark:text-amber-200 dark:hover:bg-amber-500/10"
+              >
+                <RefreshCw size={15} />
+                {canIterateSyllabus(iterationCount)
+                  ? "Iterar temario"
+                  : "Límite alcanzado"}
+              </button>
+            </div>
+          </div>
+        )}
 
       {temario && (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
