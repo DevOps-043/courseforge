@@ -13,6 +13,11 @@ import {
 } from "./plan-view.types";
 import type { VideoDurationPolicy } from "@/domains/video-duration/video-duration-policy";
 import { VideoDurationCoursePolicyEditor } from "./VideoDurationCoursePolicyEditor";
+import {
+  canIteratePlan,
+  getPlanIterationCount,
+  PLAN_MAX_ITERATIONS,
+} from "@/domains/plan/lib/plan-iteration";
 
 interface InstructionalPlanResultsViewProps {
   canReview: boolean;
@@ -79,6 +84,8 @@ export function InstructionalPlanResultsView({
   onVideoDurationPolicySave,
 }: InstructionalPlanResultsViewProps) {
   const modules = groupPlanModules(plan.lesson_plans);
+  const iterationCount = getPlanIterationCount(plan.iteration_count, true);
+  const canRegenerate = canIteratePlan(iterationCount);
 
   return (
     <div className="mx-auto max-w-5xl animate-in space-y-8 fade-in pb-20 duration-500">
@@ -92,18 +99,22 @@ export function InstructionalPlanResultsView({
           </h2>
           <p className="ml-12 mt-1 text-sm text-gray-500 dark:text-gray-400">
             {plan.lesson_plans.length} lecciones planificadas • Iteracion{" "}
-            {plan.iteration_count || 1}/5
+            {iterationCount}/{PLAN_MAX_ITERATIONS}
           </p>
         </div>
 
         <button
           type="button"
           onClick={onRegenerate}
-          disabled={isGenerating}
-          className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:border-[var(--engine-accent)] hover:text-[var(--engine-accent)] dark:border-gray-700 dark:bg-[var(--engine-canvas)] dark:text-gray-300 dark:hover:text-[var(--engine-accent)]"
+          disabled={isGenerating || !canRegenerate}
+          className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:border-[var(--engine-accent)] hover:text-[var(--engine-accent)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-[var(--engine-canvas)] dark:text-gray-300 dark:hover:text-[var(--engine-accent)]"
         >
           <RefreshCw size={14} className={isGenerating ? "animate-spin" : ""} />
-          {isGenerating ? "Regenerando..." : "Regenerar"}
+          {isGenerating
+            ? "Regenerando..."
+            : canRegenerate
+              ? "Regenerar"
+              : "Limite alcanzado"}
         </button>
       </div>
 

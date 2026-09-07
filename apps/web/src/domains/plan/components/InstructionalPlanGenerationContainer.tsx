@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { updateArtifactStatusAction } from "@/domains/artifacts/actions/artifact.actions";
 import {
-  deleteInstructionalPlanAction,
   generateInstructionalPlanAction,
   getInstructionalPlanSnapshotAction,
   updateInstructionalPlanVideoDurationPolicyAction,
@@ -29,6 +28,10 @@ import {
   DEFAULT_VIDEO_DURATION_POLICY,
   type VideoDurationPolicy,
 } from "@/domains/video-duration/video-duration-policy";
+import {
+  canIteratePlan,
+  PLAN_MAX_ITERATIONS,
+} from "@/domains/plan/lib/plan-iteration";
 
 interface InstructionalPlanGenerationContainerProps {
   artifactId: string;
@@ -181,6 +184,13 @@ export function InstructionalPlanGenerationContainer({
   });
 
   const handleGenerate = useCallback(async () => {
+    if (existingPlan && !canIteratePlan(existingPlan.iteration_count)) {
+      toast.error(
+        `El plan instruccional alcanzo el limite de ${PLAN_MAX_ITERATIONS} iteraciones.`,
+      );
+      return;
+    }
+
     setIsGenerating(true);
     lastKnownValidationRef.current = false;
     lastKnownPlanStateRef.current = PLAN_STATES.PROCESSING;
@@ -199,6 +209,7 @@ export function InstructionalPlanGenerationContainer({
         artifactId,
         customPrompt,
         useCustomPrompt,
+        existingPlan ? reviewNotes.trim() || undefined : undefined,
       );
 
       if (!result.success) {
@@ -208,6 +219,7 @@ export function InstructionalPlanGenerationContainer({
             : `Error al generar: ${result.error}`,
         );
         setIsGenerating(false);
+        await fetchPlan();
         return;
       }
 
@@ -223,8 +235,9 @@ export function InstructionalPlanGenerationContainer({
       console.error("Error calling plan generation action:", error);
       toast.error("Error de conexion. Intenta de nuevo.");
       setIsGenerating(false);
+      await fetchPlan();
     }
-  }, [artifactId, customPrompt, fetchPlan, router, useCustomPrompt]);
+  }, [artifactId, customPrompt, existingPlan, fetchPlan, reviewNotes, router, useCustomPrompt]);
 
   const handleValidate = useCallback(async () => {
     setIsValidating(true);
@@ -300,16 +313,12 @@ export function InstructionalPlanGenerationContainer({
     }
 
     try {
-      await deleteInstructionalPlanAction(artifactId);
-      setExistingPlan(null);
-      setIsGenerating(false);
-      setIsValidating(false);
-      setReviewNotes("");
       handleCancelEdit();
+      await handleGenerate();
     } catch (error) {
       console.error(error);
     }
-  }, [artifactId, handleCancelEdit]);
+  }, [handleCancelEdit, handleGenerate]);
 
   const handleDismissUpstreamDirty = useCallback(async () => {
     await dismissUpstreamDirtyAction("instructional_plans", artifactId);

@@ -17,11 +17,18 @@ import {
   type VideoDurationPolicy,
 } from "@/domains/video-duration/video-duration-policy";
 import { applyVideoDurationPolicyToPlan } from "@/domains/video-duration/video-duration-plan";
+import {
+  canIteratePlan,
+  getPlanIterationCount,
+  getNextPlanIteration,
+  PLAN_MAX_ITERATIONS,
+} from "@/domains/plan/lib/plan-iteration";
 
 export async function generateInstructionalPlanAction(
   artifactId: string,
   customPrompt?: string,
   useCustomPrompt: boolean = false,
+  iterationInstructions?: string,
 ) {
   const supabase = await createClient();
   const authUser = await getAuthenticatedUser(supabase);
@@ -30,7 +37,88 @@ export async function generateInstructionalPlanAction(
   const accessToken = await getAccessToken(supabase);
   if (!accessToken) return { success: false, error: "Unauthorized" };
 
+  const authorized = await getAuthorizedArtifactAdmin(artifactId);
+  if (!authorized) {
+    return { success: false, error: "Artifact not found or inaccessible" };
+  }
+
+  const { admin } = authorized;
+  let reservedIteration: number | undefined;
+
   try {
+    const { data: currentPlan, error: lookupError } = await admin
+      .from("instructional_plans")
+      .select("id, iteration_count")
+      .eq("artifact_id", artifactId)
+      .maybeSingle();
+
+    if (lookupError) {
+      throw lookupError;
+    }
+
+    const currentIteration = getPlanIterationCount(
+      currentPlan?.iteration_count,
+      Boolean(currentPlan),
+    );
+
+    if (!canIteratePlan(currentIteration)) {
+      return {
+        success: false,
+        error: `El plan instruccional alcanzo el limite de ${PLAN_MAX_ITERATIONS} iteraciones.`,
+      };
+    }
+
+    reservedIteration = getNextPlanIteration(currentIteration);
+
+    if (currentPlan) {
+      const { data: reservedPlan, error: reservationError } = await admin
+        .from("instructional_plans")
+        .update({
+          iteration_count: reservedIteration,
+          state: "STEP_PROCESSING",
+          validation: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", currentPlan.id)
+        .eq("iteration_count", currentPlan.iteration_count || 0)
+        .select("id")
+        .maybeSingle();
+
+      if (reservationError) {
+        throw reservationError;
+      }
+
+      if (!reservedPlan) {
+        return {
+          success: false,
+          error:
+            "Otra iteracion del plan fue iniciada al mismo tiempo. Actualiza la pagina antes de reintentar.",
+        };
+      }
+    } else {
+      const { error: reservationError } = await admin
+        .from("instructional_plans")
+        .insert({
+          artifact_id: artifactId,
+          lesson_plans: [],
+          blockers: [],
+          validation: null,
+          state: "STEP_PROCESSING",
+          iteration_count: reservedIteration,
+        });
+
+      if (reservationError) {
+        if (reservationError.code === "23505") {
+          return {
+            success: false,
+            error:
+              "Otra iteracion del plan fue iniciada al mismo tiempo. Actualiza la pagina antes de reintentar.",
+          };
+        }
+        throw reservationError;
+      }
+    }
+
     await callBackgroundFunctionJson(
       "instructional-plan-background",
       {
@@ -38,6 +126,8 @@ export async function generateInstructionalPlanAction(
         userToken: accessToken,
         customPrompt,
         useCustomPrompt,
+        iterationInstructions,
+        iterationNumber: reservedIteration,
       },
       {
         fallbackError: "Error al iniciar la generacion del plan",
@@ -49,6 +139,13 @@ export async function generateInstructionalPlanAction(
     return { success: true };
   } catch (error: unknown) {
     console.error("[PlanActions] Generation trigger error:", error);
+    if (reservedIteration !== undefined) {
+      await admin
+        .from("instructional_plans")
+        .update({ state: "STEP_FAILED", updated_at: new Date().toISOString() })
+        .eq("artifact_id", artifactId)
+        .eq("iteration_count", reservedIteration);
+    }
     return { success: false, error: getErrorMessage(error) };
   }
 }

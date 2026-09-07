@@ -25,6 +25,12 @@ import {
   type VideoDurationPolicy,
 } from "../../src/domains/video-duration/video-duration-policy";
 import { applyVideoDurationPolicyToPlan } from "../../src/domains/video-duration/video-duration-plan";
+import {
+  canIteratePlan,
+  getPlanIterationCount,
+  getNextPlanIteration,
+  PLAN_MAX_ITERATIONS,
+} from "../../src/domains/plan/lib/plan-iteration";
 
 const ComponentSchema = z.object({
   type: z
@@ -78,6 +84,8 @@ type GeneratedBlocker = Record<string, unknown>;
 interface RequestBody {
   artifactId?: string;
   customPrompt?: string;
+  iterationInstructions?: string;
+  iterationNumber?: number;
   useCustomPrompt?: boolean;
   userToken?: string;
 }
@@ -139,15 +147,26 @@ function normalizeSyllabusModules(rawModules: unknown): SyllabusModuleRecord[] {
 function buildContextPromptTemplate(params: {
   configuredPrompt: string;
   customPrompt?: string;
+  iterationInstructions?: string;
   useCustomPrompt?: boolean;
 }) {
-  const { configuredPrompt, customPrompt, useCustomPrompt } = params;
+  const {
+    configuredPrompt,
+    customPrompt,
+    iterationInstructions,
+    useCustomPrompt,
+  } = params;
 
-  if (useCustomPrompt && customPrompt && customPrompt.trim().length > 0) {
-    return customPrompt;
+  const basePrompt =
+    useCustomPrompt && customPrompt && customPrompt.trim().length > 0
+      ? customPrompt
+      : configuredPrompt || instructionalPlanContextPromptDefault;
+
+  if (!iterationInstructions?.trim()) {
+    return basePrompt;
   }
 
-  return configuredPrompt || instructionalPlanContextPromptDefault;
+  return `${basePrompt}\n\nRETROALIMENTACION PARA ESTA ITERACION:\n${iterationInstructions.trim()}\nRegenera el plan completo aplicando esta retroalimentacion.`;
 }
 
 function renderLessonsText(lessons: SyllabusLessonRecord[]) {
@@ -159,36 +178,95 @@ function renderLessonsText(lessons: SyllabusLessonRecord[]) {
     .join("\n\n");
 }
 
-async function upsertInstructionalPlanRecord(
+async function prepareInstructionalPlanRecord(
   supabase: BackgroundSupabaseClient,
   artifactId: string,
+  reservedIteration?: number,
 ) {
-  const { data: existingPlan } = await supabase
+  const { data: existingPlan, error: lookupError } = await supabase
     .from("instructional_plans")
-    .select("id")
+    .select("id, iteration_count")
     .eq("artifact_id", artifactId)
     .maybeSingle();
 
+  if (lookupError) {
+    throw lookupError;
+  }
+
+  const currentIteration = getPlanIterationCount(
+    existingPlan?.iteration_count,
+    Boolean(existingPlan),
+  );
+  const nextIteration = reservedIteration === undefined
+    ? getNextPlanIteration(currentIteration)
+    : reservedIteration;
+
+  if (
+    !Number.isInteger(nextIteration) ||
+    nextIteration < 1 ||
+    nextIteration > PLAN_MAX_ITERATIONS
+  ) {
+    throw new Error("Numero de iteracion del plan invalido.");
+  }
+
+  if (reservedIteration === undefined && !canIteratePlan(currentIteration)) {
+    throw new Error(
+      `El plan instruccional alcanzo el limite de ${PLAN_MAX_ITERATIONS} iteraciones.`,
+    );
+  }
+
   if (existingPlan) {
-    await supabase
+    let reservationQuery = supabase
       .from("instructional_plans")
       .update({
-        lesson_plans: [],
-        blockers: [],
         validation: null,
         state: "STEP_PROCESSING",
+        iteration_count: nextIteration,
         updated_at: new Date().toISOString(),
       })
       .eq("id", existingPlan.id);
-    return;
+
+    if (reservedIteration === undefined) {
+      reservationQuery = reservationQuery.eq(
+        "iteration_count",
+        existingPlan.iteration_count || 0,
+      );
+    } else {
+      reservationQuery = reservationQuery.eq(
+        "iteration_count",
+        reservedIteration,
+      );
+    }
+
+    const { data: preparedPlan, error: reservationError } = await reservationQuery
+      .select("id")
+      .maybeSingle();
+
+    if (reservationError) {
+      throw reservationError;
+    }
+    if (!preparedPlan) {
+      throw new Error(
+        "Otra iteracion del plan fue iniciada al mismo tiempo.",
+      );
+    }
+    return nextIteration;
   }
 
-  await supabase.from("instructional_plans").insert({
+  const { error: insertError } = await supabase.from("instructional_plans").insert({
     artifact_id: artifactId,
     lesson_plans: [],
+    blockers: [],
     validation: null,
     state: "STEP_PROCESSING",
+    iteration_count: nextIteration,
   });
+
+  if (insertError) {
+    throw insertError;
+  }
+
+  return nextIteration;
 }
 
 async function generateModulePlans(params: {
@@ -245,6 +323,7 @@ export const handler: Handler = async (event) => {
   }
 
   let artifactId: string | undefined;
+  let activeIteration: number | undefined;
   let supabase: BackgroundSupabaseClient | undefined;
 
   try {
@@ -307,10 +386,16 @@ export const handler: Handler = async (event) => {
     const contextPromptTemplate = buildContextPromptTemplate({
       configuredPrompt: contextPromptTemplateFromDb,
       customPrompt: body.customPrompt,
+      iterationInstructions: body.iterationInstructions,
       useCustomPrompt: body.useCustomPrompt,
     });
 
-    await upsertInstructionalPlanRecord(supabase, artifactId);
+    const iterationNumber = await prepareInstructionalPlanRecord(
+      supabase,
+      artifactId,
+      body.iterationNumber,
+    );
+    activeIteration = iterationNumber;
 
     const modelConfig = await resolveModelSetting(createServiceRoleClient(), "INSTRUCTIONAL_PLAN", {
       model: "gemini-3.5-flash",
@@ -352,17 +437,8 @@ export const handler: Handler = async (event) => {
         allGeneratedPlans = [...allGeneratedPlans, ...moduleResult.lessonPlans];
         allBlockers = [...allBlockers, ...moduleResult.blockers];
 
-        await supabase
-          .from("instructional_plans")
-          .update({
-            lesson_plans: allGeneratedPlans,
-            blockers: allBlockers,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("artifact_id", artifactId);
-
         console.log(
-          `[Background Job] Module ${moduleIndex + 1} saved. Total lessons so far: ${allGeneratedPlans.length}`,
+          `[Background Job] Module ${moduleIndex + 1} generated. Total lessons so far: ${allGeneratedPlans.length}`,
         );
       } catch (error: unknown) {
         console.error(
@@ -375,14 +451,32 @@ export const handler: Handler = async (event) => {
       }
     }
 
-    await supabase
+    if (allGeneratedPlans.length === 0) {
+      throw new Error("La generacion no produjo ninguna leccion para el plan.");
+    }
+
+    const { data: completedPlan, error: completionError } = await supabase
       .from("instructional_plans")
       .update({
+        lesson_plans: allGeneratedPlans,
         blockers: allBlockers,
         state: allBlockers.length > 0 ? "STEP_WITH_BLOCKERS" : "STEP_READY_FOR_REVIEW",
+        iteration_count: iterationNumber,
         updated_at: new Date().toISOString(),
       })
-      .eq("artifact_id", artifactId);
+      .eq("artifact_id", artifactId)
+      .eq("iteration_count", iterationNumber)
+      .select("id")
+      .maybeSingle();
+
+    if (completionError) {
+      throw completionError;
+    }
+    if (!completedPlan) {
+      throw new Error(
+        "La iteracion fue reemplazada por una solicitud mas reciente.",
+      );
+    }
 
     console.log(
       `[Background Job] Generation finished successfully for ${allGeneratedPlans.length} lessons.`,
@@ -395,10 +489,16 @@ export const handler: Handler = async (event) => {
     console.error("[Background Job] Fatal Error:", error);
 
     if (supabase && artifactId) {
-      await supabase
+      let failureQuery = supabase
         .from("instructional_plans")
         .update({ state: "STEP_FAILED", updated_at: new Date().toISOString() })
         .eq("artifact_id", artifactId);
+
+      if (activeIteration !== undefined) {
+        failureQuery = failureQuery.eq("iteration_count", activeIteration);
+      }
+
+      await failureQuery;
     }
 
     return {
