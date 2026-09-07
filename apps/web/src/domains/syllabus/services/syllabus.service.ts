@@ -16,7 +16,6 @@ import {
 import { fillMissingLessonDurationEstimates } from "../lib/lesson-duration-estimator";
 import {
   canIterateSyllabus,
-  getNextSyllabusIteration,
   SYLLABUS_MAX_ITERATIONS,
 } from "../lib/syllabus-iteration";
 
@@ -192,7 +191,7 @@ class SyllabusService {
     validation: ValidationResult | SyllabusValidationReport = this.emptyValidation,
   ): Promise<void> {
     const current = await this.getSyllabus(artifactId);
-    const nextIteration = getNextSyllabusIteration(current?.iteration_count);
+    const currentIteration = current?.iteration_count || 1;
 
     const payload = {
       artifact_id: artifactId,
@@ -201,7 +200,7 @@ class SyllabusService {
       source_summary: temario.source_summary || temario.generation_metadata || null,
       validation,
       updated_at: new Date().toISOString(),
-      iteration_count: nextIteration,
+      iteration_count: currentIteration,
     };
 
     const { error } = await this.supabase

@@ -1,6 +1,7 @@
 import { Handler } from "@netlify/functions";
 import {
   createGeminiClient,
+  createOpenAiClient,
   createServiceRoleClient,
   resolveModelSetting,
 } from "./shared/bootstrap";
@@ -30,19 +31,21 @@ import {
   getNextSyllabusIteration,
   SYLLABUS_MAX_ITERATIONS,
 } from "../../src/domains/syllabus/lib/syllabus-iteration";
+import {
+  generateSyllabusJson,
+  generateSyllabusResearch,
+  type SyllabusModelClients,
+} from "../../src/domains/syllabus/lib/syllabus-model-provider";
+import { getTextModelProvider } from "../../src/shared/ai/text-model-provider";
 
 interface SyllabusBackgroundRequest {
   accessToken?: string;
   artifactId?: string;
   ideaCentral?: string;
   iterationInstructions?: string;
+  iterationNumber?: number;
   objetivos?: string[];
   route?: string;
-}
-
-interface GroundingMetadata {
-  webSearchQueries?: string[];
-  groundingChunks?: unknown[];
 }
 
 function buildCorrectionRules(objectiveCount: number) {
@@ -124,7 +127,14 @@ export const handler: Handler = async (event) => {
     return { statusCode: 400, body: "Bad Request: Invalid JSON" };
   }
 
-  const { artifactId, objetivos, ideaCentral, route, iterationInstructions } = body;
+  const {
+    artifactId,
+    objetivos,
+    ideaCentral,
+    route,
+    iterationInstructions,
+    iterationNumber,
+  } = body;
 
   if (!artifactId || !Array.isArray(objetivos) || !ideaCentral) {
     return { statusCode: 400, body: "Missing required fields" };
@@ -135,8 +145,6 @@ export const handler: Handler = async (event) => {
   );
 
   const supabase = createServiceRoleClient();
-  const genAI = createGeminiClient();
-
   try {
     const { data: currentSyllabus, error: syllabusLookupError } = await supabase
       .from("syllabus")
@@ -148,7 +156,10 @@ export const handler: Handler = async (event) => {
       throw syllabusLookupError;
     }
 
-    if (!canIterateSyllabus(currentSyllabus?.iteration_count)) {
+    if (
+      iterationNumber === undefined &&
+      !canIterateSyllabus(currentSyllabus?.iteration_count)
+    ) {
       await supabase
         .from("syllabus")
         .update({ state: "STEP_READY_FOR_QA", updated_at: new Date().toISOString() })
@@ -162,9 +173,36 @@ export const handler: Handler = async (event) => {
       };
     }
 
-    const nextIteration = getNextSyllabusIteration(
-      currentSyllabus?.iteration_count,
-    );
+    const nextIteration = iterationNumber === undefined
+      ? getNextSyllabusIteration(currentSyllabus?.iteration_count)
+      : iterationNumber;
+
+    if (
+      !Number.isInteger(nextIteration) ||
+      nextIteration < 1 ||
+      nextIteration > SYLLABUS_MAX_ITERATIONS
+    ) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: "Numero de iteracion invalido." }),
+      };
+    }
+
+    if (iterationNumber === undefined) {
+      const { error: reservationError } = await supabase
+        .from("syllabus")
+        .update({
+          iteration_count: nextIteration,
+          state: "STEP_GENERATING",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("artifact_id", artifactId)
+        .eq("iteration_count", currentSyllabus?.iteration_count || 0);
+
+      if (reservationError) {
+        throw reservationError;
+      }
+    }
 
     const { data: artifactScope } = await supabase
       .from("artifacts")
@@ -179,6 +217,17 @@ export const handler: Handler = async (event) => {
       thinkingLevel: "medium",
     }, artifactScope?.organization_id || null);
     console.log(`[Syllabus Background] Model config: ${modelConfig.model} / ${modelConfig.fallbackModel}`);
+
+    const configuredModels = Array.from(
+      new Set([modelConfig.model, modelConfig.fallbackModel].filter(Boolean)),
+    );
+    const clients: SyllabusModelClients = {};
+    if (configuredModels.some((model) => getTextModelProvider(model) === "gemini")) {
+      clients.gemini = createGeminiClient();
+    }
+    if (configuredModels.some((model) => getTextModelProvider(model) === "openai")) {
+      clients.openai = createOpenAiClient();
+    }
 
     const promptOrganizationId = artifactScope?.organization_id || null;
     const videoDurationPolicy = resolveArtifactVideoDurationPolicy(
@@ -202,24 +251,18 @@ export const handler: Handler = async (event) => {
     let searchQueries: string[] = [];
 
     try {
-      const searchResult = await genAI.models.generateContent({
+      const searchResult = await generateSyllabusResearch({
+        clients,
         model: searchModelName,
-        contents: renderPromptTemplate(syllabusResearchPromptTemplate, {
+        prompt: renderPromptTemplate(syllabusResearchPromptTemplate, {
           ideaCentral,
           objetivos: objetivos.map((objetivo, index) => `${index + 1}. ${objetivo}`).join("\n"),
         }) || buildSyllabusResearchPrompt(ideaCentral, objetivos),
-        config: {
-          tools: [{ googleSearch: {} }],
-          temperature: 0.7,
-        },
+        temperature: 0.7,
       });
 
-      researchContext = searchResult.text || "";
-      const grounding =
-        (searchResult.candidates?.[0]?.groundingMetadata as GroundingMetadata | undefined) ||
-        null;
-
-      searchQueries = grounding?.webSearchQueries || [];
+      researchContext = searchResult.text;
+      searchQueries = searchResult.searchQueries;
 
       console.log("[Syllabus Background] Investigación completada.");
       console.log(
@@ -227,7 +270,7 @@ export const handler: Handler = async (event) => {
         searchQueries,
       );
       console.log(
-        `[Syllabus Background] URLs de grounding: ${grounding?.groundingChunks?.length || 0}`,
+        `[Syllabus Background] Proveedor de research: ${getTextModelProvider(searchModelName)}`,
       );
     } catch (researchError) {
       const message = getErrorMessage(researchError, "Error desconocido");
@@ -254,22 +297,29 @@ export const handler: Handler = async (event) => {
     const maxAttempts = 3;
     let content: SyllabusGenerationContent | null = null;
     let validationErrors: string[] = [];
+    const attemptErrors: string[] = [];
+    const generationModels = configuredModels.length > 0
+      ? configuredModels
+      : [mainModelName];
+    let architectModelName = mainModelName;
 
     while (attempts < maxAttempts) {
       attempts += 1;
-      console.log(`[Syllabus Background] Intento de generación #${attempts}...`);
+      const attemptModel = generationModels[(attempts - 1) % generationModels.length];
+      console.log(
+        `[Syllabus Background] Intento de generación #${attempts} con ${attemptModel}...`,
+      );
 
       try {
-        const result = await genAI.models.generateContent({
-          model: mainModelName,
-          contents: appendValidationFeedback(basePrompt, validationErrors),
-          config: {
-            temperature: modelConfig.temperature,
-            responseMimeType: "application/json",
-          },
+        const responseText = await generateSyllabusJson({
+          clients,
+          model: attemptModel,
+          prompt: appendValidationFeedback(basePrompt, validationErrors),
+          temperature: modelConfig.temperature,
         });
 
-        content = parseSyllabusResponseText(result.text || "");
+        content = parseSyllabusResponseText(responseText);
+        architectModelName = attemptModel;
         content.modules = applyGeneratedLessonDurationEstimates(
           content.modules,
           videoDurationPolicy,
@@ -290,18 +340,19 @@ export const handler: Handler = async (event) => {
       } catch (generationError) {
         const message = getErrorMessage(generationError, "Error desconocido");
         console.error(
-          `[Syllabus Background] Error parseando/generando en intento ${attempts}:`,
+          `[Syllabus Background] Error con ${attemptModel} en intento ${attempts}:`,
           message,
         );
+        attemptErrors.push(`${attemptModel} (intento ${attempts}): ${message}`);
         validationErrors = [
-          "El formato JSON generado no era válido o hubo un error de red.",
+          `El intento con ${attemptModel} fallo: ${message}`,
         ];
       }
     }
 
     if (!content) {
       throw new Error(
-        "No se pudo generar un JSON válido después de varios intentos.",
+        `No se pudo generar un JSON válido después de varios intentos. ${attemptErrors.join(" | ")}`,
       );
     }
 
@@ -315,7 +366,7 @@ export const handler: Handler = async (event) => {
       search_queries: searchQueries,
       models: {
         search: searchModelName,
-        architect: mainModelName,
+        architect: architectModelName,
       },
       generated_at: new Date().toISOString(),
       validation_attempts: attempts,

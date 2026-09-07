@@ -275,6 +275,12 @@ export function SyllabusGenerationContainer({
             normalizeSyllabusIterationCount(data.iteration_count),
           );
           setRoute(data.route || "B_NO_SOURCE");
+          if (data.state === SYLLABUS_STATES.ESCALATED) {
+            setError(
+              data.source_summary?.error ||
+                "La iteración del temario terminó con un error.",
+            );
+          }
         }
         if (data?.modules?.length) {
           applyTemario(data);
@@ -301,6 +307,18 @@ export function SyllabusGenerationContainer({
     const interval = setInterval(async () => {
       try {
         const data = await syllabusService.getSyllabus(artifactId);
+        if (data) {
+          setHasExistingSyllabus(true);
+          setIterationCount(
+            normalizeSyllabusIterationCount(data.iteration_count),
+          );
+          if (data.state === SYLLABUS_STATES.ESCALATED) {
+            setError(
+              data.source_summary?.error ||
+                "La iteración del temario terminó con un error.",
+            );
+          }
+        }
         if (data?.modules?.length) {
           applyTemario(data);
         } else if (data?.state && data.state !== SYLLABUS_STATES.GENERATING) {

@@ -23,7 +23,7 @@
     "test:render-diagnostics": "tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-render-diagnostics.test.js",
     "test:hyperframes-media": "tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-render-media.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-preview-compiler.service.test.js",
     "test:video-duration": "tsc -p tsconfig.video-duration-test.json && node .tmp/video-duration-tests/domains/video-duration/__tests__/video-duration-policy.test.js",
-    "test:syllabus-duration": "tsc -p tsconfig.syllabus-duration-test.json && node .tmp/syllabus-duration-tests/domains/syllabus/lib/__tests__/lesson-duration-estimator.test.js && node .tmp/syllabus-duration-tests/domains/syllabus/lib/__tests__/syllabus-iteration.test.js",
+    "test:syllabus-duration": "tsc -p tsconfig.syllabus-duration-test.json && node .tmp/syllabus-duration-tests/domains/syllabus/lib/__tests__/lesson-duration-estimator.test.js && node .tmp/syllabus-duration-tests/domains/syllabus/lib/__tests__/syllabus-iteration.test.js && node .tmp/syllabus-duration-tests/domains/syllabus/lib/__tests__/syllabus-model-provider.test.js",
     "test:model-json-response": "tsc -p tsconfig.model-json-response-test.json && node .tmp/model-json-response-tests/shared/ai/__tests__/model-json-response.test.js && node .tmp/model-json-response-tests/shared/ai/__tests__/materials-model-provider.test.js"
   },
   "dependencies": {

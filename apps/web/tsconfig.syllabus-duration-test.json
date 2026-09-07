@@ -13,8 +13,11 @@
   "include": [
     "src/domains/syllabus/lib/lesson-duration-estimator.ts",
     "src/domains/syllabus/lib/syllabus-iteration.ts",
+    "src/domains/syllabus/lib/syllabus-model-provider.ts",
     "src/domains/syllabus/lib/__tests__/lesson-duration-estimator.test.ts",
     "src/domains/syllabus/lib/__tests__/syllabus-iteration.test.ts",
+    "src/domains/syllabus/lib/__tests__/syllabus-model-provider.test.ts",
+    "src/shared/ai/text-model-provider.ts",
     "src/domains/syllabus/types/syllabus.types.ts",
     "src/domains/video-duration/video-duration-policy.ts"
   ]

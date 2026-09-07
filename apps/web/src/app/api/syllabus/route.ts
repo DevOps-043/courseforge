@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 import { SYLLABUS_PROMPT } from "@/domains/syllabus/config/syllabus.config";
 import { getErrorMessage } from "@/lib/errors";
 import {
@@ -12,6 +13,7 @@ import { SyllabusGenerationMetadata } from "@/domains/syllabus/types/syllabus.ty
 import {
   getDeploymentSiteUrl,
   getGeminiApiKey,
+  getOptionalOpenAIApiKey,
   isNetlifyDeployment,
 } from "@/lib/server/env";
 import { getPipelineModelSettings } from "@/lib/server/model-settings";
@@ -25,8 +27,15 @@ import { applyGeneratedLessonDurationEstimates } from "@/domains/syllabus/lib/le
 import { resolveArtifactVideoDurationPolicy } from "@/domains/video-duration/video-duration-policy";
 import {
   canIterateSyllabus,
+  getNextSyllabusIteration,
   SYLLABUS_MAX_ITERATIONS,
 } from "@/domains/syllabus/lib/syllabus-iteration";
+import {
+  generateSyllabusJson,
+  generateSyllabusResearch,
+  type SyllabusModelClients,
+} from "@/domains/syllabus/lib/syllabus-model-provider";
+import { getTextModelProvider } from "@/shared/ai/text-model-provider";
 
 interface SyllabusRequestBody {
   objetivos?: string[];
@@ -71,6 +80,7 @@ export async function POST(request: NextRequest) {
       iterationInstructions,
     } = body;
     let artifactGenerationMetadata: unknown;
+    let reservedIteration: number | undefined;
 
     if (!Array.isArray(objetivos) || !ideaCentral) {
       return NextResponse.json(
@@ -125,6 +135,36 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      reservedIteration = getNextSyllabusIteration(
+        currentSyllabus?.iteration_count,
+      );
+      const { data: reservedSyllabus, error: reservationError } =
+        await authorized.admin
+          .from("syllabus")
+          .update({
+            iteration_count: reservedIteration,
+            state: "STEP_GENERATING",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("artifact_id", artifactId)
+          .eq("iteration_count", currentSyllabus?.iteration_count || 0)
+          .select("id")
+          .maybeSingle();
+
+      if (reservationError) {
+        throw reservationError;
+      }
+
+      if (!reservedSyllabus) {
+        return NextResponse.json(
+          {
+            error:
+              "Otra iteracion del temario fue iniciada al mismo tiempo. Actualiza la pagina antes de reintentar.",
+          },
+          { status: 409 },
+        );
+      }
+
       const { data: artifactDurationSource } = await authorized.admin
         .from("artifacts")
         .select("generation_metadata")
@@ -151,6 +191,7 @@ export async function POST(request: NextRequest) {
             ideaCentral,
             route,
             iterationInstructions,
+            iterationNumber: reservedIteration,
             accessToken,
           }),
         });
@@ -173,27 +214,39 @@ export async function POST(request: NextRequest) {
       "SYLLABUS",
       tenant?.organizationId,
     );
-    const genAI = new GoogleGenAI({ apiKey: getGeminiApiKey() });
     const searchModelName = syllabusSettings.fallback_model || syllabusSettings.model_name;
+    const configuredModels = Array.from(
+      new Set([syllabusSettings.model_name, searchModelName].filter(Boolean)),
+    );
+    const clients: SyllabusModelClients = {};
+    if (configuredModels.some((model) => getTextModelProvider(model) === "gemini")) {
+      clients.gemini = new GoogleGenAI({ apiKey: getGeminiApiKey() });
+    }
+    if (configuredModels.some((model) => getTextModelProvider(model) === "openai")) {
+      const openAiApiKey = getOptionalOpenAIApiKey();
+      if (!openAiApiKey) {
+        throw new Error(
+          "Configuracion incompleta: falta OPENAI_API_KEY para el modelo del temario.",
+        );
+      }
+      clients.openai = new OpenAI({ apiKey: openAiApiKey });
+    }
     const researchPrompt = buildSyllabusResearchPrompt(ideaCentral, objetivos);
 
     let researchContext = "";
     let researchMetadata: GroundingMetadata | null = null;
 
     try {
-      const researchResult = await genAI.models.generateContent({
+      const researchResult = await generateSyllabusResearch({
+        clients,
         model: searchModelName,
-        contents: researchPrompt,
-        config: {
-          tools: [{ googleSearch: {} }],
-          temperature: 0.7,
-        },
+        prompt: researchPrompt,
+        temperature: 0.7,
       });
 
-      researchContext = researchResult.text || "";
+      researchContext = researchResult.text;
       researchMetadata =
-        (researchResult.candidates?.[0]?.groundingMetadata as GroundingMetadata | undefined) ||
-        null;
+        (researchResult.groundingMetadata as GroundingMetadata | undefined) || null;
 
       console.log(
         `[API/ESP-02] Investigación completada (${researchContext.length} chars).`,
@@ -216,16 +269,14 @@ export async function POST(request: NextRequest) {
       ? `\n\nRETROALIMENTACION PARA ESTA ITERACION:\n${iterationInstructions.trim()}\nRegenera el temario completo aplicando esta retroalimentacion.`
       : "");
 
-    const generationResult = await genAI.models.generateContent({
+    const generationText = await generateSyllabusJson({
+      clients,
       model: mainModelName,
-      contents: finalPrompt,
-      config: {
-        temperature: syllabusSettings.temperature,
-        responseMimeType: "application/json",
-      },
+      prompt: finalPrompt,
+      temperature: syllabusSettings.temperature,
     });
 
-    const content = parseSyllabusResponseText(generationResult.text || "");
+    const content = parseSyllabusResponseText(generationText);
     const videoDurationPolicy = resolveArtifactVideoDurationPolicy(
       artifactGenerationMetadata,
     );
