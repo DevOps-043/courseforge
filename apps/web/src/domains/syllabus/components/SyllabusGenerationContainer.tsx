@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { UpstreamChangeAlert } from "@/shared/components/UpstreamChangeAlert";
 import {
   dismissUpstreamDirtyAction,
@@ -333,7 +333,16 @@ export function SyllabusGenerationContainer({
         />
       )}
 
-      <SyllabusGenerationHeader ideaCentral={initialIdeaCentral} />
+      <SyllabusGenerationHeader
+        ideaCentral={initialIdeaCentral}
+        iterationCount={iterationCount}
+        iterationLimit={SYLLABUS_MAX_ITERATIONS}
+        canIterate={canIterateSyllabus(iterationCount)}
+        isIterating={status === "STEP_GENERATING"}
+        onIterate={
+          hasExistingSyllabus ? () => void handleIterate() : undefined
+        }
+      />
 
       <SyllabusObjectivesAccordion
         objectives={initialObjetivos}
@@ -386,24 +395,13 @@ export function SyllabusGenerationContainer({
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => void handleIterate()}
-                disabled={!canIterateSyllabus(iterationCount)}
-                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-500/30 dark:bg-[var(--engine-canvas)] dark:text-amber-200 dark:hover:bg-amber-500/10"
-              >
-                <RefreshCw size={15} />
-                {canIterateSyllabus(iterationCount)
-                  ? "Iterar temario"
-                  : "Límite alcanzado"}
-              </button>
             </div>
           </div>
         )}
 
       {temario && (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="flex justify-between items-center mb-6">
+          <div className="mb-6">
             <div>
               <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 <svg
@@ -421,35 +419,7 @@ export function SyllabusGenerationContainer({
                 </svg>
                 Temario Generado
               </h3>
-              <p className="ml-8 mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Iteración {iterationCount}/{SYLLABUS_MAX_ITERATIONS}
-              </p>
             </div>
-
-            <button
-              type="button"
-              onClick={() => void handleIterate()}
-              disabled={
-                status === "STEP_GENERATING" ||
-                !canIterateSyllabus(iterationCount)
-              }
-              title={
-                canIterateSyllabus(iterationCount)
-                  ? "Regenerar el temario aplicando los comentarios de revisión"
-                  : `Se alcanzó el límite de ${SYLLABUS_MAX_ITERATIONS} iteraciones`
-              }
-              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:border-[var(--engine-accent)] hover:text-[var(--engine-accent)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-[var(--engine-canvas)] dark:text-gray-300"
-            >
-              <RefreshCw
-                size={14}
-                className={status === "STEP_GENERATING" ? "animate-spin" : ""}
-              />
-              {status === "STEP_GENERATING"
-                ? "Iterando..."
-                : canIterateSyllabus(iterationCount)
-                  ? "Iterar temario"
-                  : "Límite alcanzado"}
-            </button>
           </div>
 
           <SyllabusViewer
