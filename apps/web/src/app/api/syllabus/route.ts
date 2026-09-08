@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { signBackgroundPayload } from "@/lib/server/background-payload-signature";
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 import { SYLLABUS_PROMPT } from "@/domains/syllabus/config/syllabus.config";
@@ -185,7 +186,7 @@ export async function POST(request: NextRequest) {
         await fetch(backgroundUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+          body: JSON.stringify(signBackgroundPayload({
             artifactId,
             objetivos,
             ideaCentral,
@@ -193,7 +194,7 @@ export async function POST(request: NextRequest) {
             iterationInstructions,
             iterationNumber: reservedIteration,
             accessToken,
-          }),
+          })),
         });
       } catch (backgroundError) {
         console.error(

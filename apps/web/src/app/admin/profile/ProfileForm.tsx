@@ -37,6 +37,22 @@ interface BoxInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   readOnly?: boolean;
 }
 
+function BoxInput({ label, icon: Icon, readOnly = false, ...props }: BoxInputProps) {
+  return (
+    <div className={`bg-gray-50 dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-white/5 rounded-2xl p-4 flex flex-col gap-2 transition-all group ${readOnly ? 'opacity-60' : 'focus-within:border-[var(--engine-accent)] focus-within:ring-1 focus-within:ring-[var(--engine-accent)]/20 dark:focus-within:border-[var(--engine-accent)]/50 dark:focus-within:bg-[#1A2029]'}`}>
+      <div className="flex items-center gap-2">
+        {Icon && <Icon size={14} className={`text-gray-400 dark:text-slate-600 ${!readOnly && 'group-focus-within:text-[var(--engine-accent)]'} transition-colors`} />}
+        <span className={`text-xs text-gray-500 dark:text-slate-500 font-medium ${!readOnly && 'group-focus-within:text-[var(--engine-accent)]'} transition-colors`}>{label}</span>
+      </div>
+      <input
+        {...props}
+        readOnly={readOnly}
+        className={`w-full bg-transparent text-sm pl-1 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-slate-700 focus:outline-none font-medium ${readOnly ? 'cursor-not-allowed text-gray-400 dark:text-slate-400' : ''}`}
+      />
+    </div>
+  );
+}
+
 export default function ProfileForm({
   user,
   profile,
@@ -193,21 +209,6 @@ export default function ProfileForm({
         toast.success("Foto de perfil actualizada");
     }
   };
-
-  // Boxed Input Component mimicking the reference design
-  const BoxInput = ({ label, icon: Icon, readOnly = false, ...props }: BoxInputProps) => (
-    <div className={`bg-gray-50 dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-white/5 rounded-2xl p-4 flex flex-col gap-2 transition-all group ${readOnly ? 'opacity-60' : 'focus-within:border-[var(--engine-accent)] focus-within:ring-1 focus-within:ring-[var(--engine-accent)]/20 dark:focus-within:border-[var(--engine-accent)]/50 dark:focus-within:bg-[#1A2029]'}`}>
-       <div className="flex items-center gap-2">
-           {Icon && <Icon size={14} className={`text-gray-400 dark:text-slate-600 ${!readOnly && 'group-focus-within:text-[var(--engine-accent)]'} transition-colors`} />}
-           <span className={`text-xs text-gray-500 dark:text-slate-500 font-medium ${!readOnly && 'group-focus-within:text-[var(--engine-accent)]'} transition-colors`}>{label}</span>
-       </div>
-       <input
-         {...props}
-         readOnly={readOnly}
-         className={`w-full bg-transparent text-sm pl-1 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-slate-700 focus:outline-none font-medium ${readOnly ? 'cursor-not-allowed text-gray-400 dark:text-slate-400' : ''}`}
-       />
-    </div>
-  );
 
   return (
       <div className="space-y-8 pb-20 animate-in fade-in zoom-in duration-500">

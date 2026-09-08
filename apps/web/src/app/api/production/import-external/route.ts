@@ -5,27 +5,33 @@ import {
     getAuthenticatedUser,
     getAuthorizedMaterialComponentAdmin,
 } from '@/lib/server/artifact-action-auth';
+import { z } from 'zod';
+import {
+    assertSafeExternalMediaUrl,
+    readResponseWithLimit,
+} from '@/domains/production/external-media-import-policy';
 
 // Limit file sizes imported externally to 150MB to avoid server memory issues in serverless runtimes
 const MAX_IMPORT_SIZE_BYTES = 150 * 1024 * 1024;
 
-interface ImportExternalRequestBody {
-    provider: 'heygen' | 'custom';
-    componentId?: string;
-    videoId?: string;      // Used for Heygen API status query
-    videoUrl?: string;     // Direct URL if provided
-}
+const IMPORT_TIMEOUT_MS = 60_000;
+const importExternalSchema = z.object({
+    provider: z.enum(['heygen', 'custom']),
+    componentId: z.string().uuid(),
+    videoId: z.string().trim().max(500).optional(),
+    videoUrl: z.string().url().max(4_000).optional(),
+}).strict();
 
 export async function POST(request: Request) {
     try {
-        const { provider, componentId, videoId, videoUrl } = (await request.json()) as ImportExternalRequestBody;
-
-        if (!provider || !componentId) {
+        const parsedRequest = importExternalSchema.safeParse(await request.json());
+        if (!parsedRequest.success) {
             return NextResponse.json(
-                { error: 'Faltan parámetros: provider y componentId son requeridos' },
+                { error: 'Solicitud de importación inválida' },
                 { status: 400 },
             );
         }
+        const { provider, componentId, videoId, videoUrl } = parsedRequest.data;
 
         // Authenticate User
         const supabase = await createClient();
@@ -64,11 +70,12 @@ export async function POST(request: Request) {
                 }
             } else {
                 // Fetch direct download URL from Heygen API
-                const heygenResponse = await fetch(`https://api.heygen.com/v2/video_status/${videoId}`, {
+                const heygenResponse = await fetch(`https://api.heygen.com/v2/video_status/${encodeURIComponent(videoId)}`, {
                     headers: {
                         'accept': 'application/json',
                         'X-Api-Key': heygenApiKey,
                     },
+                    signal: AbortSignal.timeout(15_000),
                 });
 
                 if (!heygenResponse.ok) {
@@ -109,8 +116,12 @@ export async function POST(request: Request) {
             );
         }
 
-        // 2. Fetch the video from CDN in chunk/stream or ArrayBuffer
-        const response = await fetch(resolvedVideoUrl);
+        // 2. Reject internal networks and redirects before reading a bounded body.
+        const safeUrl = await assertSafeExternalMediaUrl(resolvedVideoUrl);
+        const response = await fetch(safeUrl, {
+            redirect: 'error',
+            signal: AbortSignal.timeout(IMPORT_TIMEOUT_MS),
+        });
         if (!response.ok) {
             return NextResponse.json(
                 { error: 'No se pudo descargar el video desde el origen externo' },
@@ -118,29 +129,33 @@ export async function POST(request: Request) {
             );
         }
 
-        const contentLengthHeader = response.headers.get('content-length');
-        const contentLength = contentLengthHeader ? parseInt(contentLengthHeader, 10) : 0;
-
-        if (contentLength > MAX_IMPORT_SIZE_BYTES) {
-            return NextResponse.json(
-                { error: 'El archivo excede el límite permitido para transferencia directa (150MB)' },
-                { status: 413 },
-            );
+        const sourceContentType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+        if (!['video/mp4', 'video/webm', 'application/octet-stream'].includes(sourceContentType)) {
+            return NextResponse.json({ error: 'El origen no devolvió un video compatible' }, { status: 415 });
         }
 
-        // Read into buffer (Memory safe up to 150MB limit)
-        const arrayBuffer = await response.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
+        let buffer: Buffer;
+        try {
+            buffer = await readResponseWithLimit(response, MAX_IMPORT_SIZE_BYTES);
+        } catch (error) {
+            if (error instanceof Error && error.message === 'EXTERNAL_MEDIA_TOO_LARGE') {
+                return NextResponse.json(
+                    { error: 'El archivo excede el límite permitido para transferencia directa (150MB)' },
+                    { status: 413 },
+                );
+            }
+            throw error;
+        }
 
         // 3. Upload to Supabase Storage
-        const fileExt = 'mp4';
+        const fileExt = sourceContentType === 'video/webm' ? 'webm' : 'mp4';
         const storagePath = `avatars/${componentId}-avatar.${fileExt}`;
 
         const { error: uploadError } = await admin.storage
             .from('production-assets')
             .upload(storagePath, buffer, {
                 cacheControl: String(PRODUCTION_MEDIA_CACHE_CONTROL_SECONDS),
-                contentType: 'video/mp4',
+                contentType: fileExt === 'webm' ? 'video/webm' : 'video/mp4',
                 upsert: true,
             });
 
@@ -159,30 +174,29 @@ export async function POST(request: Request) {
 
         // 4. Update the material component database record
         const currentAssets = authorizedComponent.component.assets || {};
-        const updatedAssets = {
-            ...currentAssets,
+        const assetsPatch = {
             avatar_video: {
                 provider,
                 external_id: videoId || null,
                 sync_status: 'COMPLETED',
                 public_url: publicUrl,
                 storage_path: `production-assets/${storagePath}`,
-                file_name: videoId ? `${provider}-${videoId}.mp4` : `${provider}-video.mp4`,
+                file_name: videoId ? `${provider}-${videoId}.${fileExt}` : `${provider}-video.${fileExt}`,
                 has_audio: true,
                 duration: currentAssets.video_duration || undefined, // Maintain duration if known
             },
             // Fallback for retrocompatibility: also set the direct final video URL
             final_video_url: publicUrl,
             final_video_source: 'upload',
-            final_video_file_name: videoId ? `${provider}-${videoId}.mp4` : `${provider}-video.mp4`,
+            final_video_file_name: videoId ? `${provider}-${videoId}.${fileExt}` : `${provider}-video.${fileExt}`,
             final_video_storage_path: `production-assets/${storagePath}`,
             updated_at: new Date().toISOString(),
         };
 
-        const { error: updateError } = await admin
-            .from('material_components')
-            .update({ assets: updatedAssets })
-            .eq('id', componentId);
+        const { data: updatedAssets, error: updateError } = await admin.rpc(
+            'patch_material_component_assets',
+            { p_component_id: componentId, p_assets_patch: assetsPatch },
+        );
 
         if (updateError) {
             console.error('[API /production/import-external] DB update error:', updateError);

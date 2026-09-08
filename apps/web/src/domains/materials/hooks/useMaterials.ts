@@ -204,7 +204,7 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
       console.error('Error submitting to QA:', err);
       setError('Error al enviar a QA');
     }
-  }, [materials?.id]);
+  }, [materials]);
 
   const applyQADecision = useCallback(
     async (decision: 'APPROVED' | 'REJECTED', notes?: string) => {
@@ -229,7 +229,7 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
         setError('Error al aplicar decision');
       }
     },
-    [materials?.id],
+    [materials],
   );
 
   const validateMaterials = useCallback(async () => {
@@ -253,7 +253,7 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
       console.error('Error validating materials:', err);
       setError('Error al validar materiales');
     }
-  }, [materials?.artifact_id, loadMaterials]);
+  }, [materials, loadMaterials]);
 
   const forceResetGeneration = useCallback(async () => {
     try {

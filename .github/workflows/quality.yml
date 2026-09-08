@@ -1,0 +1,33 @@
+name: Quality gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-placeholder
+      SUPABASE_SERVICE_ROLE_KEY: ci-service-placeholder
+      COURSEFORGE_JWT_SECRET: ci-jwt-secret-with-sufficient-entropy-placeholder
+      BACKGROUND_FUNCTION_SECRET: ci-background-secret-with-sufficient-entropy-placeholder
+      SOFLIA_INBOX_SUPABASE_URL: https://example.supabase.co
+      SOFLIA_INBOX_SUPABASE_KEY: ci-inbox-placeholder
+      SOFLIA_AUTH_SUPABASE_ANON_KEY: ci-auth-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high

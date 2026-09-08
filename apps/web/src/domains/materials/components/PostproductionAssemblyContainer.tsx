@@ -116,7 +116,7 @@ export function PostproductionAssemblyContainer({
     } finally {
       setIsLoading(false);
     }
-  }, [getArtifactComponents, initialComponentId, materials?.lessons, materialsLoading, returnedComponentId, singleVideoOnly]);
+  }, [getArtifactComponents, initialComponentId, materials, materialsLoading, returnedComponentId, singleVideoOnly]);
 
   useEffect(() => { void loadComponents(); }, [loadComponents]);
 

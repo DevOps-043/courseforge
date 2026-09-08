@@ -8,19 +8,25 @@ import {
   getSupabaseUrl,
 } from './shared/bootstrap';
 import { getErrorMessage } from './shared/errors';
-import { methodNotAllowedResponse, parseJsonBody } from './shared/http';
+import { methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from './shared/http';
 
 const handler: Handler = async (event) => {
   if (event.httpMethod !== 'POST') return methodNotAllowedResponse();
 
   let curationId: string | undefined;
+  let payload: {
+    artifactId?: string;
+    curationId?: string;
+    customPrompt?: string;
+    resume?: boolean;
+  };
   try {
-    const payload = parseJsonBody<{
-      artifactId?: string;
-      curationId?: string;
-      customPrompt?: string;
-      resume?: boolean;
-    }>(event);
+    payload = await parseVerifiedBackgroundBody(event);
+  } catch {
+    return unauthorizedBackgroundResponse();
+  }
+
+  try {
     const { artifactId, customPrompt, resume } = payload;
     curationId = payload.curationId;
     if (!artifactId || !curationId) throw new Error('Missing artifactId or curationId');

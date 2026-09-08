@@ -9,10 +9,10 @@ import type {
 import {
   buildTimelineSnapTargets,
   resolveTimelineSnap,
+  type TimelineClipBounds,
   type TimelineSnapMatch,
   type TimelineSnapTarget,
 } from "./composition-timeline-snap.service";
-import type { CompositionClip } from "./composition-document.types";
 
 const MOTION_WINDOW_EPSILON_SECONDS = 0.001;
 
@@ -108,7 +108,7 @@ export function buildCompositionAnimationTimelineEdit(params: {
 export function buildCompositionAnimationTimelineSnapEdit(params: {
   animation: CompositionAnimation;
   animations: CompositionAnimation[];
-  clips: Array<Pick<CompositionClip, "hidden" | "id" | "label" | "durationSeconds" | "startSeconds">>;
+  clips: TimelineClipBounds[];
   clipDurationSeconds: number;
   clipStartSeconds: number;
   deltaSeconds: number;
@@ -259,7 +259,7 @@ export function planCompositionPresetInsertion(params: {
 function buildCompositionAnimationSnapTargets(params: {
   animation: CompositionAnimation;
   animations: CompositionAnimation[];
-  clips: Array<Pick<CompositionClip, "hidden" | "id" | "label" | "durationSeconds" | "startSeconds">>;
+  clips: TimelineClipBounds[];
   clipDurationSeconds: number;
   clipStartSeconds: number;
   playheadSeconds: number;

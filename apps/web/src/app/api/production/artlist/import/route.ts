@@ -52,10 +52,10 @@ export async function POST(request: Request) {
         const result = await artlistService.importAsset(assetId, type, componentId);
 
         const currentAssets = authorizedComponent.component.assets || {};
-        const updatedAssets = { ...currentAssets };
+        const assetsPatch: Record<string, unknown> = {};
 
         if (type === 'music') {
-            updatedAssets.background_music = {
+            assetsPatch.background_music = {
                 storage_path: result.storagePath,
                 public_url: result.publicUrl,
                 file_name: result.fileName,
@@ -72,16 +72,15 @@ export async function POST(request: Request) {
                 duration: result.duration,
                 order: currentClips.length + 1,
             };
-            updatedAssets.b_roll_clips = [...currentClips, newClip];
+            assetsPatch.b_roll_clips = [...currentClips, newClip];
         }
 
-        updatedAssets.updated_at = new Date().toISOString();
+        assetsPatch.updated_at = new Date().toISOString();
 
-        // Update component assets in DB
-        const { error: updateError } = await admin
-            .from('material_components')
-            .update({ assets: updatedAssets })
-            .eq('id', componentId);
+        const { data: updatedAssets, error: updateError } = await admin.rpc(
+            'patch_material_component_assets',
+            { p_component_id: componentId, p_assets_patch: assetsPatch },
+        );
 
         if (updateError) {
             console.error('[API /artlist/import] DB update error:', updateError);

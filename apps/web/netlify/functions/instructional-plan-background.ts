@@ -14,12 +14,11 @@ import {
   createServiceRoleClient,
   getSupabaseServiceKey,
   getSupabaseUrl,
-  hasSupabaseServiceRoleKey,
   resolveAiModel,
   resolveModelSetting,
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
-import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
+import { methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from "./shared/http";
 import {
   resolveArtifactVideoDurationPolicy,
   type VideoDurationPolicy,
@@ -86,8 +85,8 @@ interface RequestBody {
   customPrompt?: string;
   iterationInstructions?: string;
   iterationNumber?: number;
+  organizationId?: string | null;
   useCustomPrompt?: boolean;
-  userToken?: string;
 }
 
 interface ArtifactRecord {
@@ -114,21 +113,8 @@ interface SyllabusRecord {
   modules?: unknown;
 }
 
-function createBackgroundSupabaseClient(userToken: string) {
-  const supabaseUrl = getSupabaseUrl();
-  const supabaseKey = getSupabaseServiceKey();
-
-  if (hasSupabaseServiceRoleKey()) {
-    console.log("[Background Job] Using Service Role Key (Safe from expiry)");
-    return createClient(supabaseUrl, supabaseKey);
-  }
-
-  console.log("[Background Job] Warn: Using User Token (Risk of JWT expiry)");
-  return createClient(supabaseUrl, supabaseKey, {
-    global: {
-      headers: { Authorization: `Bearer ${userToken}` },
-    },
-  });
+function createBackgroundSupabaseClient() {
+  return createClient(getSupabaseUrl(), getSupabaseServiceKey());
 }
 
 function normalizeSyllabusModules(rawModules: unknown): SyllabusModuleRecord[] {
@@ -325,12 +311,17 @@ export const handler: Handler = async (event) => {
   let artifactId: string | undefined;
   let activeIteration: number | undefined;
   let supabase: BackgroundSupabaseClient | undefined;
+  let body: RequestBody;
+  try {
+    body = await parseVerifiedBackgroundBody(event);
+  } catch {
+    return unauthorizedBackgroundResponse();
+  }
 
   try {
-    const body = parseJsonBody<RequestBody>(event);
     artifactId = body.artifactId;
 
-    if (!artifactId || !body.userToken) {
+    if (!artifactId) {
       return { statusCode: 400, body: "Missing required fields" };
     }
 
@@ -338,7 +329,7 @@ export const handler: Handler = async (event) => {
       `[Background Job] Starting Instructional Plan generation for artifacts/${artifactId}`,
     );
 
-    supabase = createBackgroundSupabaseClient(body.userToken);
+    supabase = createBackgroundSupabaseClient();
 
     const [{ data: rawArtifact, error: artifactError }, { data: rawSyllabus, error: syllabusError }] =
       await Promise.all([
@@ -352,6 +343,10 @@ export const handler: Handler = async (event) => {
 
     if (artifactError || !rawArtifact) {
       throw new Error(`Artifact not found: ${artifactError?.message}`);
+    }
+
+    if (rawArtifact.organization_id !== (body.organizationId ?? null)) {
+      return { statusCode: 404, body: "Artifact not found" };
     }
 
     if (syllabusError) {

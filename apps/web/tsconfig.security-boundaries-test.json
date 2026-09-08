@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "baseUrl": ".",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "outDir": ".tmp/security-boundaries-tests",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": [
+    "src/domains/production/external-media-import-policy.ts",
+    "src/domains/production/__tests__/external-media-import-policy.test.ts",
+    "src/domains/scorm/services/scorm-parser.service.ts",
+    "src/domains/scorm/services/__tests__/scorm-parser-security.test.ts",
+    "src/domains/scorm/types/**/*.ts",
+    "src/lib/server/env.ts",
+    "src/lib/server/background-payload-signature.ts",
+    "src/lib/server/__tests__/background-payload-signature.test.ts",
+    "src/lib/server/__tests__/privileged-background-inventory.test.ts"
+  ],
+  "exclude": ["node_modules"]
+}

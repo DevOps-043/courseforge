@@ -6,7 +6,6 @@ import { callBackgroundFunctionJson } from "@/lib/server/background-function-cli
 import { createClient } from "@/utils/supabase/server";
 import {
   canReviewContent,
-  getAccessToken,
   getAuthenticatedUser,
   getAuthorizedArtifactAdmin,
 } from "@/lib/server/artifact-action-auth";
@@ -33,9 +32,6 @@ export async function generateInstructionalPlanAction(
   const supabase = await createClient();
   const authUser = await getAuthenticatedUser(supabase);
   if (!authUser) return { success: false, error: "Unauthorized" };
-
-  const accessToken = await getAccessToken(supabase);
-  if (!accessToken) return { success: false, error: "Unauthorized" };
 
   const authorized = await getAuthorizedArtifactAdmin(artifactId);
   if (!authorized) {
@@ -123,7 +119,7 @@ export async function generateInstructionalPlanAction(
       "instructional-plan-background",
       {
         artifactId,
-        userToken: accessToken,
+        organizationId: authorized.artifact.organization_id,
         customPrompt,
         useCustomPrompt,
         iterationInstructions,
@@ -155,9 +151,6 @@ export async function validateInstructionalPlanAction(artifactId: string) {
   const authUser = await getAuthenticatedUser(supabase);
   if (!authUser) return { success: false, error: "Unauthorized" };
 
-  const accessToken = await getAccessToken(supabase);
-  if (!accessToken) return { success: false, error: "Unauthorized" };
-
   const authorized = await getAuthorizedArtifactAdmin(artifactId);
   if (!authorized) {
     return { success: false, error: "Artifact not found or inaccessible" };
@@ -175,7 +168,7 @@ export async function validateInstructionalPlanAction(artifactId: string) {
       "validate-plan-background",
       {
         artifactId,
-        userToken: accessToken,
+        organizationId: authorized.artifact.organization_id,
       },
       {
         fallbackError: "Error al validar el plan instruccional",

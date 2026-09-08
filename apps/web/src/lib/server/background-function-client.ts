@@ -1,6 +1,10 @@
 "use server";
 
 import { getBackgroundFunctionsBaseUrl } from "@/lib/server/artifact-action-auth";
+import {
+  signBackgroundPayload,
+  type SignedBackgroundPayload,
+} from "@/lib/server/background-payload-signature";
 import { isProductionEnvironment } from "@/lib/server/env";
 
 type BackgroundFunctionPayload = Record<string, unknown>;
@@ -31,6 +35,19 @@ interface BackgroundFunctionOptions {
 }
 
 const LOCAL_REMOTE_TRIGGER_TIMEOUT_MS = 10_000;
+
+function ensureSignedPayload(
+  payload: BackgroundFunctionPayload,
+): SignedBackgroundPayload {
+  if (
+    typeof payload.payload === "string" &&
+    typeof payload.signature === "string"
+  ) {
+    return payload as SignedBackgroundPayload;
+  }
+
+  return signBackgroundPayload(payload);
+}
 
 function parseJsonOrText<TData>(rawBody: string): TData | { error?: string; message?: string } {
   if (!rawBody) {
@@ -127,9 +144,10 @@ async function tryLocalHandler<TData>(
     return null;
   }
 
+  const signedPayload = ensureSignedPayload(payload);
   const localResponse = await localHandler(
     {
-      body: JSON.stringify(payload),
+      body: JSON.stringify(signedPayload),
       headers: { "Content-Type": "application/json" },
       httpMethod: "POST",
       multiValueHeaders: {},
@@ -166,7 +184,7 @@ async function fetchRemoteFunction(
     return await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(ensureSignedPayload(payload)),
       signal: controller.signal,
     });
   } finally {

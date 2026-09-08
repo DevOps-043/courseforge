@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getErrorMessage } from "@/lib/errors";
+import { getErrorMessage } from "../../../lib/errors";
 import {
   buildProductionIdempotencyKey,
   createOrReuseProductionJob,

@@ -105,14 +105,14 @@ export async function POST(request: Request) {
     });
 
     const currentAssets = authorizedComponent.component.assets || {};
-    const updatedAssets = { ...currentAssets };
+    const assetsPatch: Record<string, unknown> = {};
 
     switch (type) {
       case "voice": {
         const currentManualVoices = Array.isArray(currentAssets.manual_voice_clips)
           ? currentAssets.manual_voice_clips
           : [];
-        updatedAssets.manual_voice_clips = [
+        assetsPatch.manual_voice_clips = [
           ...currentManualVoices,
           {
             id: productionAssetId || `${body.provider}-${Date.now()}`,
@@ -127,7 +127,7 @@ export async function POST(request: Request) {
         break;
       }
       case "music":
-        updatedAssets.background_music = {
+        assetsPatch.background_music = {
           storage_path: result.storagePath,
           public_url: result.publicUrl,
           file_name: result.fileName,
@@ -138,7 +138,7 @@ export async function POST(request: Request) {
         const currentClips = Array.isArray(currentAssets.b_roll_clips)
           ? currentAssets.b_roll_clips
           : [];
-        updatedAssets.b_roll_clips = [
+        assetsPatch.b_roll_clips = [
           ...currentClips,
           {
             id: `${body.provider}-${Date.now()}`,
@@ -155,8 +155,8 @@ export async function POST(request: Request) {
           const currentClips = Array.isArray(currentAssets.avatar_clips)
             ? currentAssets.avatar_clips
             : [];
-          updatedAssets.avatar_generation_mode = "scene_clips";
-          updatedAssets.avatar_clips = [
+          assetsPatch.avatar_generation_mode = "scene_clips";
+          assetsPatch.avatar_clips = [
             ...currentClips,
             {
               id: `${body.provider}-${Date.now()}`,
@@ -172,8 +172,8 @@ export async function POST(request: Request) {
           break;
         }
 
-        updatedAssets.avatar_generation_mode = "single_video";
-        updatedAssets.avatar_video = {
+        assetsPatch.avatar_generation_mode = "single_video";
+        assetsPatch.avatar_video = {
           storage_path: result.storagePath,
           public_url: result.publicUrl,
           file_name: result.fileName,
@@ -229,7 +229,7 @@ export async function POST(request: Request) {
           ...slidesWithoutHtmlSource
         } = currentAssets.slides || {};
         const hasRenderableSlides = importedImages.length > 0 || rasterizedImages.length > 0;
-        updatedAssets.slides = {
+        assetsPatch.slides = {
           ...(hasRenderableSlides ? slidesWithoutHtmlSource : currentAssets.slides),
           ...(hasRenderableSlides
             ? {}
@@ -239,17 +239,17 @@ export async function POST(request: Request) {
               }),
           images: nextImages,
         };
-        updatedAssets.slides_url = nextImages[0]?.public_url || result.publicUrl;
+        assetsPatch.slides_url = nextImages[0]?.public_url || result.publicUrl;
         break;
       }
     }
 
-    updatedAssets.updated_at = new Date().toISOString();
+    assetsPatch.updated_at = new Date().toISOString();
 
-    const { error: updateError } = await admin
-      .from("material_components")
-      .update({ assets: updatedAssets })
-      .eq("id", componentId);
+    const { data: updatedAssets, error: updateError } = await admin.rpc(
+      "patch_material_component_assets",
+      { p_component_id: componentId, p_assets_patch: assetsPatch },
+    );
 
     if (updateError) {
       console.error("[API /cloud-storage/import] DB update error:", updateError);

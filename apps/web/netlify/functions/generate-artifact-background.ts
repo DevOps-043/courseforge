@@ -1,17 +1,14 @@
 import { Handler } from '@netlify/functions';
 import { generateObject } from 'ai';
-import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import {
     createGeminiClient,
     createServiceRoleClient,
     resolveAiModel,
     resolveModelSetting,
-    getSupabaseAnonKey,
-    getSupabaseUrl,
 } from './shared/bootstrap';
 import { getErrorMessage } from './shared/errors';
-import { methodNotAllowedResponse, parseJsonBody } from './shared/http';
+import { methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from './shared/http';
 import { getCloudStorageService } from '../../src/domains/production/cloud-storage/cloud-storage.service';
 import { isCloudStorageProvider, type CloudStorageProvider } from '../../src/domains/production/cloud-storage/types';
 import { resolvePromptWithFallback } from "../../src/shared/config/prompts/prompt-resolver.service";
@@ -51,7 +48,6 @@ interface GenerateArtifactRequestBody {
   feedback?: string;
   formData?: GenerateArtifactFormData;
   userId?: string;
-  userToken?: string;
   cloudStorageProvider?: CloudStorageProvider | null;
   organizationId?: string | null;
   useGoogleDrive?: boolean;
@@ -82,44 +78,50 @@ export const handler: Handler = async (event) => {
         return methodNotAllowedResponse();
     }
 
+    let body: GenerateArtifactRequestBody;
     try {
-        const body = parseJsonBody<GenerateArtifactRequestBody>(event);
-        const { artifactId, formData, userId, userToken, feedback, useGoogleDrive, organizationId } = body;
+        body = await parseVerifiedBackgroundBody(event);
+    } catch {
+        return unauthorizedBackgroundResponse();
+    }
+
+    try {
+        const { artifactId, formData, userId, feedback, useGoogleDrive, organizationId } = body;
         const cloudStorageProvider = isCloudStorageProvider(body.cloudStorageProvider)
             ? body.cloudStorageProvider
             : useGoogleDrive
               ? "google_drive"
               : null;
 
-        if (!artifactId || !formData || !userToken) {
+        if (!artifactId || !formData) {
             return { statusCode: 400, body: 'Missing required fields' };
         }
 
         console.log(`[Background Job] Starting generation for artifacts/${artifactId}`);
 
-        const supabaseUrl = getSupabaseUrl();
-        const supabaseKey = getSupabaseAnonKey();
-        const supabase = createClient(supabaseUrl, supabaseKey, {
-            global: {
-                headers: { Authorization: `Bearer ${userToken}` },
-            },
-        });
+        const serviceSupabase = createServiceRoleClient();
+        const { data: scopedArtifact, error: artifactScopeError } = await serviceSupabase
+            .from('artifacts')
+            .select('organization_id, generation_metadata')
+            .eq('id', artifactId)
+            .maybeSingle();
+
+        if (
+            artifactScopeError ||
+            !scopedArtifact ||
+            scopedArtifact.organization_id !== (organizationId ?? null)
+        ) {
+            return { statusCode: 404, body: 'Artifact not found' };
+        }
 
         // Aprovisionamiento opcional de Google Drive
         if (cloudStorageProvider) {
             try {
-                let { data: { user }, error: authError } = await supabase.auth.getUser();
-                const creatorUserId = userId || user?.id;
-                if (!user && creatorUserId) {
-                    user = { id: creatorUserId } as NonNullable<typeof user>;
-                }
+                const creatorUserId = userId;
                 if (!creatorUserId || !organizationId) {
-                    console.warn("[Background Job] No se pudo obtener el usuario autenticado para crear carpetas en Google Drive:", authError?.message);
+                    console.warn("[Background Job] No se pudo resolver el usuario o la organizacion para crear carpetas cloud.");
                 } else {
-                    if (!user) {
-                        throw new Error("No se pudo resolver user para logging de carpetas cloud.");
-                    }
-                    console.log(`[Background Job] Aprovisionando árbol de carpetas en Google Drive para el usuario ${user.id}...`);
+                    console.log(`[Background Job] Aprovisionando árbol de carpetas en Google Drive para el usuario ${creatorUserId}...`);
                     const cloudStorageService = getCloudStorageService(cloudStorageProvider);
                     const folderTree = await cloudStorageService.setupArtifactFolderTree(
                         artifactId,
@@ -134,7 +136,6 @@ export const handler: Handler = async (event) => {
             }
         }
 
-        const serviceSupabase = createServiceRoleClient();
         const modelConfig = await resolveModelSetting(serviceSupabase, "ARTIFACT_BASE", {
             model: "gemini-3.5-flash",
             fallbackModel: "gemini-2.5-flash",
@@ -302,18 +303,12 @@ export const handler: Handler = async (event) => {
         const allPassed = validationReport.every((result) => result.passed);
 
         // Fetch current artifact to preserve metadata updates (e.g. google_drive config)
-        const { data: currentArtifact } = await supabase
-            .from('artifacts')
-            .select('generation_metadata')
-            .eq('id', artifactId)
-            .single();
-
-        const { error } = await supabase.from('artifacts').update({
+        let updateArtifactQuery = serviceSupabase.from('artifacts').update({
             nombres: content.nombres,
             objetivos: content.objetivos,
             descripcion: content.descripcion,
             generation_metadata: {
-                ...(currentArtifact?.generation_metadata || {}),
+                ...(scopedArtifact.generation_metadata || {}),
                 research_summary: researchContext.slice(0, 2000),
                 search_queries: detectedSearchQueries,
                 model_used: genModelUsed,
@@ -325,6 +320,11 @@ export const handler: Handler = async (event) => {
             validation_report: { results: validationReport, all_passed: allPassed },
             state: allPassed ? 'APPROVED' : 'ESCALATED',
         }).eq('id', artifactId);
+
+        updateArtifactQuery = organizationId
+            ? updateArtifactQuery.eq('organization_id', organizationId)
+            : updateArtifactQuery.is('organization_id', null);
+        const { error } = await updateArtifactQuery;
 
         if (error) {
           throw error;

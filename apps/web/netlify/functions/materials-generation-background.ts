@@ -5,7 +5,11 @@ import {
   resolveConfiguredModelSetting,
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
-import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
+import {
+  methodNotAllowedResponse,
+  parseVerifiedBackgroundBody,
+  unauthorizedBackgroundResponse,
+} from "./shared/http";
 import {
   findOrCreateMaterialLesson,
   type MaterialLessonRecord,
@@ -51,6 +55,28 @@ interface MaterialsLookupRecord {
 
 function buildExecutionId(materialsId: string) {
   return `${materialsId.substring(0, 8)}-${Date.now().toString(36)}`;
+}
+
+async function triggerNextLessonWithLocalFallback(
+  materialsId: string,
+  artifactId: string,
+  logPrefix: string,
+) {
+  return triggerNextLesson(
+    materialsId,
+    artifactId,
+    logPrefix,
+    async (signedBody) => {
+      await Promise.resolve(handler(
+        {
+          body: signedBody,
+          headers: { "Content-Type": "application/json" },
+          httpMethod: "POST",
+        } as unknown as Parameters<Handler>[0],
+        {} as Parameters<Handler>[1],
+      ));
+    },
+  );
 }
 
 function firstRelationRecord(value: unknown): Record<string, unknown> | null {
@@ -260,7 +286,7 @@ async function processNextPendingLesson(params: {
     if (stuckLessons && stuckLessons.length > 0) {
       console.log(`${logPrefix} Resetting ${stuckLessons.length} stuck lessons`);
       await resetGeneratingLessons(supabase, materialsId);
-      await triggerNextLesson(materialsId, artifactId, logPrefix);
+      await triggerNextLessonWithLocalFallback(materialsId, artifactId, logPrefix);
       return {
         statusCode: 200,
         body: JSON.stringify({ success: true, action: "reset-stuck" }),
@@ -297,7 +323,7 @@ async function processNextPendingLesson(params: {
 
   console.log(`${logPrefix} Waiting ${PROCESS_NEXT_DELAY_MS}ms before next...`);
   await wait(PROCESS_NEXT_DELAY_MS);
-  await triggerNextLesson(materialsId, artifactId, logPrefix);
+  await triggerNextLessonWithLocalFallback(materialsId, artifactId, logPrefix);
 
   return {
     statusCode: 200,
@@ -310,10 +336,16 @@ export const handler: Handler = async (event) => {
     return methodNotAllowedResponse();
   }
 
+  let body: RequestBody;
+  try {
+    body = await parseVerifiedBackgroundBody<RequestBody>(event);
+  } catch {
+    return unauthorizedBackgroundResponse();
+  }
+
   let logPrefix = "[Mat unknown]";
 
   try {
-    const body = parseJsonBody<RequestBody>(event);
     const {
       artifactId,
       materialsId,
@@ -391,7 +423,7 @@ export const handler: Handler = async (event) => {
         userId: materials.created_by,
       });
 
-      await triggerNextLesson(materialsId, targetArtifactId, logPrefix);
+      await triggerNextLessonWithLocalFallback(materialsId, targetArtifactId, logPrefix);
       return {
         statusCode: 200,
         body: JSON.stringify({

@@ -190,9 +190,11 @@ export default function RegisterPage() {
                     name="password"
                     value={formData.password}
                     onChange={handleChange}
+                    minLength={10}
+                    maxLength={128}
+                    required
                     className="w-full bg-[#0A0D12] border border-[var(--engine-muted)]/20 rounded-xl py-3 pl-10 pr-10 text-white placeholder-gray-600 focus:outline-none focus:border-[var(--engine-accent)]/50 focus:ring-1 focus:ring-[var(--engine-accent)]/50 transition-all text-sm"
                     placeholder="••••••••"
-                    required
                   />
                   <button 
                     type="button" 

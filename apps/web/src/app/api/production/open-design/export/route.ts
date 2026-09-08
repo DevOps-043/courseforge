@@ -487,8 +487,7 @@ export async function POST(request: Request) {
             ...slidesWithoutHtmlSource
         } = currentAssets.slides || {};
 
-        const updatedAssets = {
-            ...currentAssets,
+        const assetsPatch = {
             slides: {
                 ...slidesWithoutHtmlSource,
                 open_design_project_id: generatedSlidesId,
@@ -497,11 +496,13 @@ export async function POST(request: Request) {
             updated_at: new Date().toISOString(),
         };
 
-        // Save updated assets to material_component
-        await admin
-            .from('material_components')
-            .update({ assets: updatedAssets })
-            .eq('id', componentId);
+        const { error: updateError } = await admin.rpc(
+            'patch_material_component_assets',
+            { p_component_id: componentId, p_assets_patch: assetsPatch },
+        );
+        if (updateError) {
+            throw updateError;
+        }
 
         return NextResponse.json({
             success: true,

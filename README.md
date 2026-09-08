@@ -30,7 +30,7 @@ El producto ya no es solo un generador de cursos. Es un flujo operativo con apro
 | UI | TailwindCSS 4, Framer Motion, lucide-react, Sonner |
 | Estado | Zustand |
 | Backend web | Next.js API routes + Netlify Functions |
-| Backend produccion | Next.js API routes para `desktop_worker`; Express en `apps/api` solo legado |
+| Backend produccion | Next.js API routes para `desktop_worker`; Express en `apps/api` solo legado y sin endpoint de autenticacion |
 | DB/Auth | Supabase PostgreSQL, RLS, Auth Bridge JWT HS256 |
 | IA | Google Gemini principal, OpenAI fallback/bundle agent |
 | Video | Remotion 4.0.484, Remotion Player, Remotion Lambda |
@@ -93,13 +93,14 @@ Comandos utiles:
 ```bash
 npm run build
 npm run lint
-npx tsc -p apps/web/tsconfig.json --noEmit
+npm run typecheck
+npm run verify
 npm run test:remotion --workspace=apps/web
 npm run dev:legacy-api
-npm run test:remotion --workspace=apps/api
+npm run build --workspace=apps/api
 ```
 
-Nota: el lint de `apps/web` aun depende de `next lint`; para validar TypeScript del frontend usa `npx tsc -p apps/web/tsconfig.json --noEmit`.
+`npm run verify` ejecuta lint bloqueante, TypeScript, deteccion de ciclos y las pruebas de fronteras y gaps historicos.
 
 ---
 
@@ -431,6 +432,7 @@ Base:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `COURSEFORGE_JWT_SECRET`
+- `BACKGROUND_FUNCTION_SECRET` (secreto dedicado de al menos 32 caracteres para firmar jobs internos)
 - `NEXT_PUBLIC_APP_URL`
 - `SOFLIA_API_URL`
 - `SOFLIA_API_KEY`
@@ -506,14 +508,8 @@ npm run test:remotion --workspace=apps/web
 Para Remotion/API legacy:
 
 ```bash
-npm run test:remotion --workspace=apps/api
+npm run build --workspace=apps/api
 npm run lint --workspace=apps/api
-```
-
-Para verificar readiness del control plane activo:
-
-```bash
-curl http://localhost:3000/api/v1/production/remotion/readiness
 ```
 
 ---

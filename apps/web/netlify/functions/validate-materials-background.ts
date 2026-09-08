@@ -1,7 +1,7 @@
 import { Handler } from '@netlify/functions';
 import { createServiceRoleClient } from './shared/bootstrap';
 import { getErrorMessage } from './shared/errors';
-import { methodNotAllowedResponse, parseJsonBody } from './shared/http';
+import { methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from './shared/http';
 import { selectLatestComponentsByType } from '../../src/domains/materials/lib/material-component-versions';
 import {
     hasSubstantiveQuizOptionText,
@@ -75,14 +75,24 @@ export const handler: Handler = async (event) => {
         return methodNotAllowedResponse();
     }
 
+    let body: {
+        materialsId?: string;
+        artifactId?: string;
+        lessonId?: string;
+        markForFix?: boolean;
+    };
     try {
-        const body = parseJsonBody<{
+        body = await parseVerifiedBackgroundBody<{
             materialsId?: string;
             artifactId?: string;
             lessonId?: string;
             markForFix?: boolean;
         }>(event);
+    } catch {
+        return unauthorizedBackgroundResponse();
+    }
 
+    try {
         const { materialsId, artifactId, lessonId, markForFix } = body;
 
         // If lessonId is provided, validate only that lesson (or mark for fix)

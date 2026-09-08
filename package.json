@@ -13,6 +13,10 @@
     "build:legacy-api": "npm run build -w apps/api",
     "lint": "npm run lint -w apps/web",
     "lint:legacy-api": "npm run lint -w apps/api",
+    "typecheck": "tsc -p apps/web/tsconfig.json --noEmit --pretty false",
+    "test:security-boundaries": "npm run test:security-boundaries -w apps/web",
+    "architecture:cycles": "madge --circular --extensions ts,tsx --ts-config apps/web/tsconfig.json apps/web/src apps/web/netlify/functions",
+    "verify": "npm run lint && npm run typecheck && npm run architecture:cycles && npm run test:security-boundaries && npm run test:coverage-gaps -w apps/web",
     "docs:audit": "powershell -ExecutionPolicy Bypass -File scripts/audit-documentation.ps1",
     "compliance:sbom": "powershell -ExecutionPolicy Bypass -File scripts/generate-sbom.ps1",
     "compliance:check": "node scripts/check-third-party-compliance.mjs",
@@ -26,6 +30,7 @@
     "concurrently": "^8.2.2",
     "dotenv": "^17.2.3",
     "eslint": "^9.39.2",
+    "madge": "^8.0.0",
     "netlify-cli": "^23.13.3",
     "prettier": "^3.8.0",
     "typescript": "^5.9.3"

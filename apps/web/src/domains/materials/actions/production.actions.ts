@@ -361,6 +361,26 @@ function sanitizeVoiceClipDurations(
   ) as NonNullable<MaterialAssets["voice_clips"]>[number]);
 }
 
+function buildMaterialAssetsPatch(
+  currentAssetsValue: object,
+  nextAssetsValue: object,
+) {
+  const currentAssets = currentAssetsValue as Record<string, unknown>;
+  const nextAssets = nextAssetsValue as Record<string, unknown>;
+  const patch: Record<string, unknown> = {};
+  const keys = new Set([...Object.keys(currentAssets), ...Object.keys(nextAssets)]);
+  for (const key of keys) {
+    if (!(key in nextAssets)) {
+      patch[key] = null;
+      continue;
+    }
+    if (JSON.stringify(currentAssets[key]) !== JSON.stringify(nextAssets[key])) {
+      patch[key] = nextAssets[key] ?? null;
+    }
+  }
+  return patch;
+}
+
 function sanitizeManualVoiceClipDurations(
   currentClips: MaterialAssets["manual_voice_clips"],
   incomingClips: MaterialAssets["manual_voice_clips"] | null | undefined,
@@ -964,10 +984,13 @@ export async function saveRemotionLayoutOverridesAction(
     delete (nextAssets as any).final_video_layout_stale;
   }
 
-  const { error } = await authorized.admin
-    .from("material_components")
-    .update({ assets: nextAssets })
-    .eq("id", componentId);
+  const { error } = await authorized.admin.rpc(
+    "patch_material_component_assets",
+    {
+      p_component_id: componentId,
+      p_assets_patch: buildMaterialAssetsPatch(currentAssets, nextAssets),
+    },
+  );
 
   if (error) {
     console.error("[ProductionActions] Error saving layout overrides:", error);
@@ -1066,10 +1089,13 @@ export async function saveRemotionTimelineOverridesAction(
     delete (nextAssets as any).final_video_assembly_stale;
   }
 
-  const { error } = await authorized.admin
-    .from("material_components")
-    .update({ assets: nextAssets })
-    .eq("id", componentId);
+  const { error } = await authorized.admin.rpc(
+    "patch_material_component_assets",
+    {
+      p_component_id: componentId,
+      p_assets_patch: buildMaterialAssetsPatch(currentAssets, nextAssets),
+    },
+  );
 
   if (error) {
     console.error("[ProductionActions] Error saving timeline overrides:", error);
@@ -1289,10 +1315,13 @@ export async function assembleRemotionVideoAction(
       updated_at: new Date().toISOString(),
     };
 
-    const { error: updateError } = await supabase
-      .from("material_components")
-      .update({ assets: updatedAssets })
-      .eq("id", componentId);
+    const { error: updateError } = await supabase.rpc(
+      "patch_material_component_assets",
+      {
+        p_component_id: componentId,
+        p_assets_patch: buildMaterialAssetsPatch(currentAssets, updatedAssets),
+      },
+    );
 
     if (updateError) {
       console.error("[ProductionActions] Error setting production_status to IN_PROGRESS:", updateError);
@@ -1350,32 +1379,26 @@ export async function assembleRemotionVideoAction(
       } catch (_) {}
 
       // Revert status to PENDING in case of request error
-      await supabase
-        .from("material_components")
-        .update({
-          assets: {
-            ...currentAssets,
-            production_status: "PENDING",
-            updated_at: new Date().toISOString()
-          }
-        })
-        .eq("id", componentId);
+      await supabase.rpc("patch_material_component_assets", {
+        p_component_id: componentId,
+        p_assets_patch: {
+          production_status: "PENDING",
+          updated_at: new Date().toISOString(),
+        },
+      });
 
       return { success: false, error: errorMessage, code: errorCode };
     }
 
     const result = await response.json();
     if (result.status === "FAILED") {
-      await supabase
-        .from("material_components")
-        .update({
-          assets: {
-            ...currentAssets,
-            production_status: "PENDING",
-            updated_at: new Date().toISOString()
-          }
-        })
-        .eq("id", componentId);
+      await supabase.rpc("patch_material_component_assets", {
+        p_component_id: componentId,
+        p_assets_patch: {
+          production_status: "PENDING",
+          updated_at: new Date().toISOString(),
+        },
+      });
 
       return {
         success: false,
@@ -1396,16 +1419,13 @@ export async function assembleRemotionVideoAction(
     
     // Revert status to PENDING
     try {
-      await supabase
-        .from("material_components")
-        .update({
-          assets: {
-            ...currentAssets,
-            production_status: "PENDING",
-            updated_at: new Date().toISOString()
-          }
-        })
-        .eq("id", componentId);
+      await supabase.rpc("patch_material_component_assets", {
+        p_component_id: componentId,
+        p_assets_patch: {
+          production_status: "PENDING",
+          updated_at: new Date().toISOString(),
+        },
+      });
     } catch (_) {}
 
     return { success: false, error: getErrorMessage(error) };
@@ -1549,16 +1569,10 @@ export async function cancelRemotionAssemblyJobsAction(artifactId: string, jobId
         .in("id", componentIds);
 
       for (const component of components || []) {
-        await authorized.admin
-          .from("material_components")
-          .update({
-            assets: {
-              ...(component.assets || {}),
-              production_status: "PENDING",
-              updated_at: now,
-            },
-          })
-          .eq("id", component.id);
+        await authorized.admin.rpc("patch_material_component_assets", {
+          p_component_id: component.id,
+          p_assets_patch: { production_status: "PENDING", updated_at: now },
+        });
       }
     }
 
@@ -1752,10 +1766,13 @@ export async function deleteFinalVideoForPublicationAction(componentId: string) 
     cleanedAssets.dod_checklist = buildDodChecklist(cleanedAssets);
     cleanedAssets.updated_at = new Date().toISOString();
 
-    const { error: updateError } = await supabase
-      .from("material_components")
-      .update({ assets: cleanedAssets })
-      .eq("id", componentId);
+    const { error: updateError } = await supabase.rpc(
+      "patch_material_component_assets",
+      {
+        p_component_id: componentId,
+        p_assets_patch: buildMaterialAssetsPatch(currentAssets, cleanedAssets),
+      },
+    );
 
     if (updateError) {
       return { success: false, error: updateError.message };

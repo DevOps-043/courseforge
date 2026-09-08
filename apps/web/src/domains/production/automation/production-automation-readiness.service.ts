@@ -77,9 +77,12 @@ function evaluateAvatarAndVoice(assets: MaterialAssets) {
       const voice = voices.get(avatar.id);
       const hasCurrentVoice = Boolean(voice)
         && (!avatar.script_hash || voice?.script_hash === avatar.script_hash);
-      if (avatar.expected_media_mode === "none") return false;
-      if (avatar.expected_media_mode === "voice_only") return !hasCurrentVoice;
-      if (avatar.expected_media_mode === "avatar") {
+      // Legacy clips predate expected_media_mode and represented avatar video
+      // by definition, so preserve that contract during readiness checks.
+      const expectedMediaMode = avatar.expected_media_mode || "avatar";
+      if (expectedMediaMode === "none") return false;
+      if (expectedMediaMode === "voice_only") return !hasCurrentVoice;
+      if (expectedMediaMode === "avatar") {
         return avatar.status !== "COMPLETED"
           || !avatar.public_url
           || !hasCurrentVoice;

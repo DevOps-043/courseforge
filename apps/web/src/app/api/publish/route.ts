@@ -11,22 +11,18 @@ import {
     getServiceRoleClient,
 } from '@/lib/server/artifact-action-auth';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
-
-interface PublishRequestPayload {
-    artifactId?: string;
-}
+import { publishRequestSchema } from '@/domains/publication/publication.schemas';
 
 export async function POST(request: Request) {
     try {
-        const payload = (await request.json()) as PublishRequestPayload;
-        const artifactId = payload.artifactId;
-
-        if (!artifactId) {
+        const parsedRequest = publishRequestSchema.safeParse(await request.json());
+        if (!parsedRequest.success) {
             return NextResponse.json(
-                { error: 'Falta artifactId' },
+                { error: 'Solicitud de publicación inválida.' },
                 { status: 400 },
             );
         }
+        const { artifactId } = parsedRequest.data;
 
         const supabase = await createClient();
         const authenticatedUser = await getAuthenticatedUser(supabase);
@@ -130,10 +126,7 @@ export async function POST(request: Request) {
             .eq('id', publicationRequest.id);
 
         if (updateError) {
-            console.error(
-                '[API /publish] Error updating local status:',
-                updateError,
-            );
+            throw new Error(`PUBLICATION_LOCAL_STATE_UPDATE_FAILED: ${updateError.message}`);
         }
 
         revalidatePath(`/admin/artifacts/${artifactId}/publish`);
@@ -148,10 +141,7 @@ export async function POST(request: Request) {
         console.error('[API /publish] Route Error:', error);
         return NextResponse.json(
             {
-                error:
-                    error instanceof Error
-                        ? error.message
-                        : 'Error desconocido al publicar',
+                error: 'No se pudo completar la publicación. Es seguro reintentar con el mismo slug.',
             },
             { status: 500 },
         );

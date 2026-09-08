@@ -1,4 +1,4 @@
-import { createClient } from '@/utils/supabase/server';
+import { getServiceRoleClient } from '@/lib/server/artifact-action-auth';
 import { ScormEnrichmentService } from './scorm-enrichment.service';
 import JSZip from 'jszip';
 import * as cheerio from 'cheerio';
@@ -36,7 +36,7 @@ interface SyllabusModuleSummary {
 export class ScormTransformationService {
 
     async processImport(importId: string, userId: string, organizationId: string) {
-        const supabase = await createClient();
+        const supabase = getServiceRoleClient();
 
         // 1. Get Import Record
         const { data: importRecord, error } = await supabase

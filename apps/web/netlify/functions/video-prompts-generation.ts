@@ -7,7 +7,8 @@ import { getErrorMessage } from "./shared/errors";
 import {
   jsonResponse,
   methodNotAllowedResponse,
-  parseJsonBody,
+  parseVerifiedBackgroundBody,
+  unauthorizedBackgroundResponse,
 } from "./shared/http";
 import { syncBrollPromptsToMaterialComponent } from "../../src/domains/production/assets/production-asset-sync.service";
 import {
@@ -72,7 +73,12 @@ export const handler: Handler = async (event) => {
   let productionJobCompleted = false;
 
   try {
-    requestBody = parseJsonBody<VideoPromptsRequestBody>(event);
+    requestBody = await parseVerifiedBackgroundBody<VideoPromptsRequestBody>(event);
+  } catch {
+    return unauthorizedBackgroundResponse();
+  }
+
+  try {
     activeProductionJobId = requestBody.productionJobId || null;
     const { componentId, productionJobId, storyboard } = requestBody;
 

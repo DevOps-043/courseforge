@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ComponentType } from "../../../src/domains/materials/types/materials.types";
+import { signBackgroundPayload } from "../../../src/lib/server/background-payload-signature";
 import {
   resolveArtifactVideoDurationPolicy,
   type VideoDurationContract,
@@ -96,15 +97,19 @@ export async function triggerNextLesson(
   materialsId: string,
   artifactId: string,
   logPrefix: string,
+  localFallback?: (signedBody: string) => Promise<void>,
 ) {
   const url = `${getFunctionsBaseUrl()}${MATERIALS_FUNCTION_PATH}`;
   console.log(`${logPrefix} Triggering next at: ${url}`);
+  const signedBody = JSON.stringify(
+    signBackgroundPayload({ materialsId, artifactId, mode: "process-next" }),
+  );
 
   try {
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ materialsId, artifactId, mode: "process-next" }),
+      body: signedBody,
     });
     console.log(`${logPrefix} Trigger response: ${response.status}`);
   } catch (error: any) {
@@ -113,35 +118,18 @@ export async function triggerNextLesson(
     // Fallback local execution when not running Netlify CLI locally (ECONNREFUSED on port 8888)
     if (
       process.env.NODE_ENV !== "production" &&
+      localFallback &&
       (error?.code === "ECONNREFUSED" || error?.message?.includes("fetch failed"))
     ) {
       console.log(`${logPrefix} Local fallback: Running next step in-process...`);
-      try {
-        const { handler } = await import("../materials-generation-background");
-        if (handler) {
-          setTimeout(async () => {
-            try {
-              console.log(`${logPrefix} [Fallback] Starting process-next execution...`);
-              await handler(
-                {
-                  body: JSON.stringify({
-                    materialsId,
-                    artifactId,
-                    mode: "process-next",
-                  }),
-                  headers: { "Content-Type": "application/json" },
-                  httpMethod: "POST",
-                } as any,
-                {} as any,
-              );
-            } catch (fallbackErr) {
-              console.error(`${logPrefix} [Fallback] Execution failed:`, fallbackErr);
-            }
-          }, 100);
+      setTimeout(async () => {
+        try {
+          console.log(`${logPrefix} [Fallback] Starting process-next execution...`);
+          await localFallback(signedBody);
+        } catch (fallbackErr) {
+          console.error(`${logPrefix} [Fallback] Execution failed:`, fallbackErr);
         }
-      } catch (importErr) {
-        console.error(`${logPrefix} [Fallback] Failed to import background handler:`, importErr);
-      }
+      }, 100);
     }
   }
 }

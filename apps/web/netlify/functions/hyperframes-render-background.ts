@@ -1,6 +1,6 @@
 import type { Handler } from "@netlify/functions";
 import { runHyperframesRenderBackground } from "../../src/domains/production/hyperframes/hyperframes-render-background.service";
-import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
+import { methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from "./shared/http";
 
 type RenderBackgroundRequest = {
   renderRequestId?: string;
@@ -9,7 +9,13 @@ type RenderBackgroundRequest = {
 export const handler: Handler = async (event) => {
   if (event.httpMethod !== "POST") return methodNotAllowedResponse();
 
-  const { renderRequestId } = parseJsonBody<RenderBackgroundRequest>(event);
+  let request: RenderBackgroundRequest;
+  try {
+    request = await parseVerifiedBackgroundBody<RenderBackgroundRequest>(event);
+  } catch {
+    return unauthorizedBackgroundResponse();
+  }
+  const { renderRequestId } = request;
   if (!renderRequestId) throw new Error("Missing renderRequestId");
 
   await runHyperframesRenderBackground(renderRequestId);

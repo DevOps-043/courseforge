@@ -2,17 +2,14 @@
 // import { Handler } from '@netlify/functions'; // Removed to avoid missing dependency error
 import type { Handler } from '@netlify/functions';
 import { generateObject } from 'ai';
-import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import {
     createGoogleAIProvider,
     createServiceRoleClient,
     resolveModelSetting,
-    getSupabaseAnonKey,
-    getSupabaseUrl,
 } from './shared/bootstrap';
 import { getErrorMessage } from './shared/errors';
-import { methodNotAllowedResponse, parseJsonBody } from './shared/http';
+import { methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from './shared/http';
 
 // EMBEDDED PROMPT TO AVOID IMPORT ISSUES
 const INSTRUCTIONAL_PLAN_VALIDATION_PROMPT = `Actúa como un Auditor de Calidad Instruccional Senior y Experto en Validación Curricular.
@@ -118,28 +115,45 @@ export const handler: Handler = async (event) => {
         return methodNotAllowedResponse();
     }
 
+    let body: {
+        artifactId?: string;
+        organizationId?: string | null;
+    };
     try {
-        const body = parseJsonBody<{
+        body = await parseVerifiedBackgroundBody<{
             artifactId?: string;
-            userToken?: string;
+            organizationId?: string | null;
         }>(event);
+    } catch {
+        return unauthorizedBackgroundResponse();
+    }
 
-        const { artifactId, userToken } = body;
+    try {
+        const { artifactId, organizationId } = body;
 
-        if (!artifactId || !userToken) {
+        if (!artifactId) {
             return { statusCode: 400, body: 'Missing required fields' };
         }
 
         console.log(`[Validation Job] Starting validation for artifacts/${artifactId}`);
 
-        // 2. Setup Supabase Client
-        const supabaseUrl = getSupabaseUrl();
-        const supabaseKey = getSupabaseAnonKey();
-        const supabase = createClient(supabaseUrl, supabaseKey, {
-            global: {
-                headers: { Authorization: `Bearer ${userToken}` },
-            },
-        });
+        // 2. Setup Supabase Client. The request is authenticated by the signed
+        // background envelope and every query remains scoped to its tenant.
+        const supabase = createServiceRoleClient();
+
+        const { data: artifact, error: artifactError } = await supabase
+            .from('artifacts')
+            .select('idea_central, nombres, audiencia_objetivo, organization_id')
+            .eq('id', artifactId)
+            .maybeSingle();
+
+        if (
+            artifactError ||
+            !artifact ||
+            artifact.organization_id !== (organizationId ?? null)
+        ) {
+            return { statusCode: 404, body: 'Artifact not found' };
+        }
 
         // --- STEP 1: FETCH DATA ---
         // Get the Instructional Plan
@@ -150,13 +164,6 @@ export const handler: Handler = async (event) => {
             .single();
 
         if (planError || !plan) throw new Error(`Plan not found: ${planError?.message}`);
-
-        // Get the Artifact for context (Title, Idea Central)
-        const { data: artifact } = await supabase
-            .from('artifacts')
-            .select('idea_central, nombres, audiencia_objetivo, organization_id')
-            .eq('id', artifactId)
-            .single();
 
         const courseName = (artifact?.nombres && artifact.nombres[0]) || artifact?.idea_central || "Curso Desconocido";
 
@@ -175,7 +182,7 @@ export const handler: Handler = async (event) => {
 
         // --- STEP 3: RUN VALIDATION AGENTS ---
         const modelSettings = await resolveModelSetting(
-            createServiceRoleClient(),
+            supabase,
             'INSTRUCTIONAL_PLAN',
             {
                 model: 'gemini-2.5-flash',
@@ -205,7 +212,8 @@ export const handler: Handler = async (event) => {
                 validation: validationOutput,
                 updated_at: new Date().toISOString()
             })
-            .eq('id', plan.id);
+            .eq('id', plan.id)
+            .eq('artifact_id', artifactId);
 
         if (updateError) throw updateError;
 

@@ -64,17 +64,16 @@ export async function POST(request: Request) {
       ...slidesWithoutHtmlSource,
       images: result.images,
     };
-    const updatedAssets = {
-      ...currentAssets,
+    const assetsPatch = {
       slides: updatedSlides,
       slides_url: result.images[0]?.public_url || currentAssets.slides_url || "",
       updated_at: new Date().toISOString(),
     };
 
-    const { error: updateError } = await authorizedComponent.admin
-      .from("material_components")
-      .update({ assets: updatedAssets })
-      .eq("id", componentId);
+    const { data: updatedAssets, error: updateError } = await authorizedComponent.admin.rpc(
+      "patch_material_component_assets",
+      { p_component_id: componentId, p_assets_patch: assetsPatch },
+    );
 
     if (updateError) {
       console.error("[open-design/html-to-png] DB update error:", updateError);

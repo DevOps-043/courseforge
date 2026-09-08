@@ -32,7 +32,7 @@ export function hasSupabaseServiceRoleKey() {
 }
 
 export function getSupabaseServiceKey() {
-  return getOptionalEnv("SUPABASE_SERVICE_ROLE_KEY") || getSupabaseAnonKey();
+  return getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
 }
 
 export function getGeminiApiKey() {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/utils/supabase/server";
 import { getLiaDBContext, generateDBContextSummary } from "@/lib/lia-db-context";
 import {
@@ -15,26 +16,83 @@ import {
   buildSystemInstruction,
   cleanStandardResponse,
   extractGroundingSources,
-  getActiveOrgIdFromCookieHeader,
 } from "@/lib/lia-route-helpers";
 import type { LiaRequestPayload } from "@/lib/lia-types";
-import { getErrorMessage } from "@/lib/errors";
 import {
   getGeminiApiKey,
   getOptionalServerEnvValue,
 } from "@/lib/server/env";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
+import {
+  getAuthenticatedUser,
+  getServiceRoleClient,
+} from "@/lib/server/artifact-action-auth";
+
+const LIA_RATE_LIMIT = 30;
+const LIA_RATE_WINDOW_SECONDS = 60;
+const liaRequestSchema = z.object({
+  actionResult: z.string().max(20_000).optional(),
+  computerUseMode: z.boolean().optional(),
+  domMap: z.string().max(100_000).optional(),
+  messages: z.array(z.object({
+    role: z.string().min(1).max(30),
+    content: z.string().max(20_000),
+  })).min(1).max(50),
+  screenshot: z.string().max(7_000_000).optional(),
+  url: z.string().url().max(2_000).optional(),
+}).strict();
 
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
-    const payload = (await req.json()) as LiaRequestPayload;
-    const useComputerUse = Boolean(payload.computerUseMode && payload.screenshot);
-    const activeOrgId = getActiveOrgIdFromCookieHeader(
-      req.headers.get("cookie") || "",
-    );
+    const authenticatedUser = await getAuthenticatedUser(supabase);
+    if (!authenticatedUser) {
+      return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+    }
+
     const tenant = await resolveActiveTenantContext();
-    const organizationId = tenant?.organizationId || activeOrgId;
+    if (!tenant?.organizationId) {
+      return NextResponse.json(
+        { error: "Empresa no válida o no autorizada." },
+        { status: 403 },
+      );
+    }
+
+    const admin = getServiceRoleClient();
+    const { data: rateLimitRows, error: rateLimitError } = await admin.rpc(
+      "consume_api_rate_limit",
+      {
+        p_limit: LIA_RATE_LIMIT,
+        p_rate_key: `lia:${tenant.organizationId}:${authenticatedUser.userId}`,
+        p_window_seconds: LIA_RATE_WINDOW_SECONDS,
+      },
+    );
+    if (rateLimitError) {
+      console.error("[Lia API] Rate limit unavailable", { code: rateLimitError.code });
+      return NextResponse.json(
+        { error: "Servicio temporalmente no disponible." },
+        { status: 503 },
+      );
+    }
+    const rateLimit = Array.isArray(rateLimitRows) ? rateLimitRows[0] : null;
+    if (!rateLimit?.allowed) {
+      const retryAfter = Math.max(
+        1,
+        Math.ceil((new Date(rateLimit?.reset_at || Date.now()).getTime() - Date.now()) / 1000),
+      );
+      return NextResponse.json(
+        { error: "Demasiadas solicitudes. Intenta nuevamente en un momento." },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } },
+      );
+    }
+
+    const parsedPayload = liaRequestSchema.safeParse(await req.json());
+    if (!parsedPayload.success) {
+      return NextResponse.json({ error: "Solicitud inválida." }, { status: 400 });
+    }
+    const payload: LiaRequestPayload = parsedPayload.data;
+    const useComputerUse = Boolean(payload.computerUseMode && payload.screenshot);
+    const organizationId = tenant.organizationId;
     const settings = await getLiaSettings(supabase, useComputerUse, organizationId);
     const modelName = settings.model_name;
     const config = buildLiaConfig(settings, useComputerUse);
@@ -45,18 +103,13 @@ export async function POST(req: NextRequest) {
     const apiKey = getGeminiApiKey();
 
     console.log("Lia API - API Key check:", {
-      GOOGLE_GENERATIVE_AI_API_KEY: primaryGeminiApiKey
-        ? `Found (${primaryGeminiApiKey.slice(0, 8)}...)`
-        : "NOT FOUND",
-      GOOGLE_API_KEY: fallbackGeminiApiKey
-        ? `Found (${fallbackGeminiApiKey.slice(0, 8)}...)`
-        : "NOT FOUND",
-      usingKey: apiKey ? `Yes (${apiKey.slice(0, 8)}...)` : "NO KEY",
+      GOOGLE_GENERATIVE_AI_API_KEY: Boolean(primaryGeminiApiKey),
+      GOOGLE_API_KEY: Boolean(fallbackGeminiApiKey),
+      usingKey: Boolean(apiKey),
     });
 
     console.log("Lia API - Mode:", useComputerUse ? "COMPUTER" : "STANDARD");
     console.log("Lia API - Model:", modelName);
-    console.log("Lia API - Config:", JSON.stringify(config));
 
     let dbContextSummary = "";
     if (useComputerUse) {
@@ -105,18 +158,11 @@ export async function POST(req: NextRequest) {
           );
 
           if (overrideResponse) {
-            console.log("=== SENDING OVERRIDE TO FRONTEND ===");
-            console.log(
-              "Response data:",
-              JSON.stringify(overrideResponse, null, 2),
-            );
             return NextResponse.json(overrideResponse);
           }
         }
 
         const responseData = buildComputerUseResponse(parsed);
-        console.log("=== SENDING TO FRONTEND ===");
-        console.log("Response data:", JSON.stringify(responseData, null, 2));
         return NextResponse.json(responseData);
       }
     }
@@ -137,7 +183,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error: "Internal Server Error",
-        details: getErrorMessage(error),
       },
       { status: 500 },
     );

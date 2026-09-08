@@ -358,8 +358,7 @@ export async function POST(request: Request) {
       validation_report: { ...prepared.validation },
       width: prepared.deck.width,
     };
-    const updatedAssets: MaterialAssets = {
-      ...currentAssets,
+    const assetsPatch: Partial<MaterialAssets> = {
       final_video_assembly_stale: true,
       slides: {
         ...(currentAssets.slides || {}),
@@ -370,10 +369,10 @@ export async function POST(request: Request) {
       updated_at: new Date().toISOString(),
     };
 
-    const { error: updateError } = await authorizedComponent.admin
-      .from("material_components")
-      .update({ assets: updatedAssets })
-      .eq("id", componentId);
+    const { data: updatedAssets, error: updateError } = await authorizedComponent.admin.rpc(
+      "patch_material_component_assets",
+      { p_component_id: componentId, p_assets_patch: assetsPatch },
+    );
 
     if (updateError) {
       throw new Error(`No se pudo actualizar el componente: ${updateError.message}`);
@@ -390,8 +389,7 @@ export async function POST(request: Request) {
       error,
       sourceHtmlPath,
     });
-    const failedAssets: MaterialAssets = {
-      ...currentAssets,
+    const failedAssetsPatch: Partial<MaterialAssets> = {
       slides: {
         ...(currentAssets.slides || {}),
         animated_deck: failedDeck,
@@ -400,10 +398,10 @@ export async function POST(request: Request) {
       updated_at: new Date().toISOString(),
     };
 
-    await authorizedComponent.admin
-      .from("material_components")
-      .update({ assets: failedAssets })
-      .eq("id", componentId);
+    await authorizedComponent.admin.rpc(
+      "patch_material_component_assets",
+      { p_component_id: componentId, p_assets_patch: failedAssetsPatch },
+    );
 
     console.error("[animated-deck/prepare] Unexpected error:", error);
     return NextResponse.json(

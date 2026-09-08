@@ -3624,12 +3624,15 @@ export class DesktopWorkerControlPlane {
     if (componentLookupError) {
       throw new Error(`MATERIAL_COMPONENT_LOOKUP_FAILED: ${componentLookupError.message}`);
     }
+    if (!component) {
+      throw new Error("MATERIAL_COMPONENT_NOT_FOUND");
+    }
 
-    const { error: componentUpdateError } = await this.supabase
-      .from("material_components")
-      .update({
-        assets: {
-          ...(component?.assets || {}),
+    const { error: componentUpdateError } = await this.supabase.rpc(
+      "patch_material_component_assets",
+      {
+        p_component_id: input.componentId,
+        p_assets_patch: {
           final_video_url: input.publicUrl,
           final_video_source: "desktop_worker",
           final_video_file_name: input.outputStoragePath.split("/").filter(Boolean).pop(),
@@ -3640,8 +3643,8 @@ export class DesktopWorkerControlPlane {
           production_status: "COMPLETED",
           updated_at: new Date().toISOString(),
         },
-      })
-      .eq("id", input.componentId);
+      },
+    );
     if (componentUpdateError) {
       throw new Error(`MATERIAL_COMPONENT_UPDATE_FAILED: ${componentUpdateError.message}`);
     }
@@ -3709,21 +3712,13 @@ export class DesktopWorkerControlPlane {
     });
 
     if (job.material_component_id) {
-      const { data: component } = await this.supabase
-        .from("material_components")
-        .select("assets")
-        .eq("id", job.material_component_id)
-        .maybeSingle();
-      await this.supabase
-        .from("material_components")
-        .update({
-          assets: {
-            ...(component?.assets || {}),
-            production_status: "FAILED",
-            updated_at: new Date().toISOString(),
-          },
-        })
-        .eq("id", job.material_component_id);
+      await this.supabase.rpc("patch_material_component_assets", {
+        p_component_id: job.material_component_id,
+        p_assets_patch: {
+          production_status: "FAILED",
+          updated_at: new Date().toISOString(),
+        },
+      });
     }
 
     await this.updateBatchItemFromJob(job.id, "FAILED", message);

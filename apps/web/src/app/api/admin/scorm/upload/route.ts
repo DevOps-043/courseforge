@@ -4,8 +4,10 @@ import { ScormParserService } from '@/domains/scorm/services/scorm-parser.servic
 import type { ScormManifest } from '@/domains/scorm/types';
 import { randomUUID } from 'crypto';
 import { getErrorMessage } from '@/lib/errors';
-import { getAuthenticatedUser } from '@/lib/server/artifact-action-auth';
+import { getAuthenticatedUser, getServiceRoleClient } from '@/lib/server/artifact-action-auth';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
+
+const MAX_SCORM_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 export async function POST(req: NextRequest) {
     try {
@@ -20,24 +22,29 @@ export async function POST(req: NextRequest) {
         if (!tenant) {
             return NextResponse.json({ error: 'Empresa no valida o no autorizada.' }, { status: 403 });
         }
+        const admin = getServiceRoleClient();
 
         // 2. Parse FormData
         const formData = await req.formData();
-        const file = formData.get('file') as File;
+        const file = formData.get('file');
 
-        if (!file) {
+        if (!(file instanceof File)) {
             return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
         }
 
         if (!file.name.endsWith('.zip')) {
             return NextResponse.json({ error: 'Invalid file type. Only .zip allowed.' }, { status: 400 });
         }
+        if (file.size <= 0 || file.size > MAX_SCORM_UPLOAD_BYTES) {
+            return NextResponse.json({ error: 'El paquete SCORM debe pesar menos de 100 MB.' }, { status: 413 });
+        }
 
         const buffer = Buffer.from(await file.arrayBuffer());
 
         // 3. Upload to Storage
-        const storagePath = `organizations/${tenant.organizationId}/uploads/${authenticatedUser.userId}/${randomUUID()}-${file.name}`;
-        const { error: uploadError } = await supabase.storage
+        const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(-160);
+        const storagePath = `organizations/${tenant.organizationId}/uploads/${authenticatedUser.userId}/${randomUUID()}-${safeFileName}`;
+        const { error: uploadError } = await admin.storage
             .from('scorm-packages')
             .upload(storagePath, file, {
                 contentType: 'application/zip',
@@ -50,7 +57,7 @@ export async function POST(req: NextRequest) {
         }
 
         // 4. Create DB Record (Initial)
-        const { data: importRecord, error: dbError } = await supabase
+        const { data: importRecord, error: dbError } = await admin
             .from('scorm_imports')
             .insert({
                 original_filename: file.name,
@@ -76,7 +83,7 @@ export async function POST(req: NextRequest) {
             const manifest = await parser.parsePackage(buffer);
             const typedManifest = manifest as ScormManifest;
 
-            await supabase
+            await admin
                 .from('scorm_imports')
                 .update({
                     status: 'SCORM_ANALYZED',
@@ -96,7 +103,7 @@ export async function POST(req: NextRequest) {
 
         } catch (parseError: unknown) {
             console.error('Parse Error:', parseError);
-            await supabase
+            await admin
                 .from('scorm_imports')
                 .update({
                     status: 'FAILED',

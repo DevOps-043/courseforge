@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
-import type { PublicationDraftData } from '@/domains/publication/types/publication.types';
-import { getErrorMessage } from '@/lib/errors';
+import { savePublicationDraftRequestSchema } from '@/domains/publication/publication.schemas';
 import {
     getAuthenticatedUser,
     getAuthorizedArtifactAdminForTenant,
@@ -10,18 +9,13 @@ import {
 } from '@/lib/server/artifact-action-auth';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 
-interface SaveDraftRequestBody {
-    artifactId?: string;
-    data?: PublicationDraftData;
-}
-
 export async function POST(request: Request) {
     try {
-        const { artifactId, data } = (await request.json()) as SaveDraftRequestBody;
-
-        if (!artifactId || !data) {
-            return NextResponse.json({ error: 'Falta artifactId' }, { status: 400 });
+        const parsedRequest = savePublicationDraftRequestSchema.safeParse(await request.json());
+        if (!parsedRequest.success) {
+            return NextResponse.json({ error: 'Borrador de publicación inválido.' }, { status: 400 });
         }
+        const { artifactId, data } = parsedRequest.data;
 
         const supabase = await createClient();
         const authenticatedUser = await getAuthenticatedUser(supabase);
@@ -44,54 +38,28 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Falta de permisos. Solo Arquitectos y Admins pueden guardar para publicación.' }, { status: 403 });
         }
 
-        const { data: existing } = await admin
+        const { error } = await admin
             .from('publication_requests')
-            .select('id')
-            .eq('artifact_id', artifactId)
-            .maybeSingle();
-
-        if (existing) {
-            const { error } = await admin
-                .from('publication_requests')
-                .update({
-                    category: data.category,
-                    level: data.level,
-                    instructor_email: data.instructor_email,
-                    slug: data.slug,
-                    price: data.price,
-                    thumbnail_url: data.thumbnail_url,
-                    lesson_videos: data.lesson_videos,
-                    selected_lessons: data.selected_lessons || null,
-                    status: data.status,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', existing.id);
-
-            if (error) throw error;
-        } else {
-            const { error } = await admin
-                .from('publication_requests')
-                .insert({
-                    artifact_id: artifactId,
-                    category: data.category,
-                    level: data.level,
-                    instructor_email: data.instructor_email,
-                    slug: data.slug,
-                    price: data.price,
-                    thumbnail_url: data.thumbnail_url,
-                    lesson_videos: data.lesson_videos,
-                    selected_lessons: data.selected_lessons || null,
-                    status: data.status
-                });
-
-            if (error) throw error;
-        }
+            .upsert({
+                artifact_id: artifactId,
+                category: data.category,
+                level: data.level,
+                instructor_email: data.instructor_email,
+                slug: data.slug,
+                price: data.price,
+                thumbnail_url: data.thumbnail_url || null,
+                lesson_videos: data.lesson_videos,
+                selected_lessons: data.selected_lessons || null,
+                status: data.status,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'artifact_id' });
+        if (error) throw error;
 
         revalidatePath(`/admin/artifacts/${artifactId}/publish`);
         revalidatePath(`/${tenant.organizationSlug}/admin/artifacts/${artifactId}/publish`);
         return NextResponse.json({ success: true });
     } catch (error: unknown) {
         console.error('[API /save-draft] Error:', error);
-        return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+        return NextResponse.json({ success: false, error: 'No se pudo guardar el borrador.' }, { status: 500 });
     }
 }

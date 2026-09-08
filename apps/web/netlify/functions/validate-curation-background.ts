@@ -5,16 +5,23 @@ import {
   type PersistedCurationSource,
 } from "./shared/curation-v2/sources";
 import { getErrorMessage } from "./shared/errors";
-import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
+import { methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from "./shared/http";
 
 const handler: Handler = async (event) => {
   if (event.httpMethod !== "POST") return methodNotAllowedResponse();
 
-  const supabase = createServiceRoleClient();
   let artifactId: string | undefined;
   try {
-    artifactId = parseJsonBody<{ artifactId?: string }>(event).artifactId;
-    if (!artifactId) throw new Error("Missing artifactId");
+    artifactId = (await parseVerifiedBackgroundBody<{ artifactId?: string }>(event)).artifactId;
+  } catch {
+    return unauthorizedBackgroundResponse();
+  }
+  if (!artifactId) {
+    return { statusCode: 400, body: "Missing artifactId" };
+  }
+
+  const supabase = createServiceRoleClient();
+  try {
 
     const { data: curation, error: curationError } = await supabase
       .from("curation")

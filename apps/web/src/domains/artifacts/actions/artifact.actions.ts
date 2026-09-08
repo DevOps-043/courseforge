@@ -8,7 +8,6 @@ import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import type { ArtifactContentUpdates } from "@/app/admin/artifacts/[id]/artifact-view.types";
 import {
   canReviewContent,
-  getAccessToken,
   getAuthenticatedUser,
   getAuthorizedArtifactAdmin,
 } from "@/lib/server/artifact-action-auth";
@@ -60,9 +59,6 @@ export async function generateArtifactAction(formData: {
   const supabase = await createClient();
   const authUser = await getAuthenticatedUser(supabase);
   if (!authUser) return { success: false, error: "Unauthorized (No User)" };
-
-  const accessToken = await getAccessToken(supabase);
-  if (!accessToken) return { success: false, error: "Unauthorized (No Token)" };
 
   const tenant = await resolveActiveTenantContext();
   const activeOrgId = tenant?.organizationId ?? (await getActiveOrganizationId());
@@ -117,7 +113,6 @@ export async function generateArtifactAction(formData: {
         artifactId: artifact.id,
         formData: { ...formData, videoDurationPolicy },
         userId: authUser.userId,
-        userToken: accessToken,
           cloudStorageProvider:
             formData.cloudStorageProvider ||
             (formData.useGoogleDrive ? "google_drive" : null),
@@ -183,9 +178,6 @@ export async function regenerateArtifactAction(
   const authUser = await getAuthenticatedUser(supabase);
   if (!authUser) return { success: false, error: "Unauthorized" };
 
-  const accessToken = await getAccessToken(supabase);
-  if (!accessToken) return { success: false, error: "Unauthorized" };
-
   const tenant = await resolveActiveTenantContext();
   const activeOrgId = tenant?.organizationId ?? (await getActiveOrganizationId());
   let artifactQuery = supabase
@@ -234,7 +226,6 @@ export async function regenerateArtifactAction(
       {
         artifactId,
         userId: authUser.userId,
-        userToken: accessToken,
         organizationId: activeOrgId,
         formData: originalInput,
         feedback,

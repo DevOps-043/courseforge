@@ -8,7 +8,6 @@ import {
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
-import { runHyperframesRenderBackground } from "@/domains/production/hyperframes/hyperframes-render-background.service";
 import {
   HyperframesRenderSubmissionError,
   HyperframesRenderSubmissionService,
@@ -133,13 +132,8 @@ export async function POST(request: Request) {
           { renderRequestId: result.renderRequestId },
           {
             fallbackError: "No se pudo iniciar el worker de render.",
-            localHandlerLoader: async () => ({
-              handler: async (event: { body: string }) => {
-                const localPayload = JSON.parse(event.body) as { renderRequestId: string };
-                await runHyperframesRenderBackground(localPayload.renderRequestId);
-                return { statusCode: 200, body: JSON.stringify({ success: true }) };
-              },
-            }),
+            localHandlerLoader: () =>
+              import("../../../../../../netlify/functions/hyperframes-render-background"),
           },
         );
       } catch (dispatchError) {

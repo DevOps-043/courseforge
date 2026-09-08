@@ -99,12 +99,12 @@ export async function POST(request: Request) {
     });
 
     const currentAssets = authorizedComponent.component.assets || {};
-    const updatedAssets = { ...currentAssets };
+    const assetsPatch: Record<string, unknown> = {};
 
     // Update assets JSON structure depending on the asset type
     switch (type) {
       case "voice":
-        updatedAssets.voice_audio = {
+        assetsPatch.voice_audio = {
           storage_path: result.storagePath,
           public_url: result.publicUrl,
           file_name: result.fileName,
@@ -113,7 +113,7 @@ export async function POST(request: Request) {
         };
         break;
       case "music":
-        updatedAssets.background_music = {
+        assetsPatch.background_music = {
           storage_path: result.storagePath,
           public_url: result.publicUrl,
           file_name: result.fileName,
@@ -129,11 +129,11 @@ export async function POST(request: Request) {
           file_name: result.fileName,
           order: currentClips.length + 1,
         };
-        updatedAssets.b_roll_clips = [...currentClips, newClip];
+        assetsPatch.b_roll_clips = [...currentClips, newClip];
         break;
       }
       case "avatar":
-        updatedAssets.avatar_video = {
+        assetsPatch.avatar_video = {
           storage_path: result.storagePath,
           public_url: result.publicUrl,
           file_name: result.fileName,
@@ -189,7 +189,7 @@ export async function POST(request: Request) {
           ...slidesWithoutHtmlSource
         } = currentAssets.slides || {};
         const hasRenderableSlides = importedImages.length > 0 || rasterizedImages.length > 0;
-        updatedAssets.slides = {
+        assetsPatch.slides = {
           ...(hasRenderableSlides ? slidesWithoutHtmlSource : currentAssets.slides),
           ...(hasRenderableSlides
             ? {}
@@ -199,18 +199,17 @@ export async function POST(request: Request) {
               }),
           images: nextImages,
         };
-        updatedAssets.slides_url = nextImages[0]?.public_url || result.publicUrl; // legacy fallback
+        assetsPatch.slides_url = nextImages[0]?.public_url || result.publicUrl; // legacy fallback
         break;
       }
     }
 
-    updatedAssets.updated_at = new Date().toISOString();
+    assetsPatch.updated_at = new Date().toISOString();
 
-    // Update component assets in Supabase DB
-    const { error: updateError } = await admin
-      .from("material_components")
-      .update({ assets: updatedAssets })
-      .eq("id", componentId);
+    const { data: updatedAssets, error: updateError } = await admin.rpc(
+      "patch_material_component_assets",
+      { p_component_id: componentId, p_assets_patch: assetsPatch },
+    );
 
     if (updateError) {
       console.error("[API /google-drive/import] DB update error:", updateError);

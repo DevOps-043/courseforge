@@ -6,7 +6,11 @@ import {
   resolveModelSetting,
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
-import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
+import {
+  methodNotAllowedResponse,
+  parseVerifiedBackgroundBody,
+  unauthorizedBackgroundResponse,
+} from "./shared/http";
 import { SYLLABUS_PROMPT } from "../../src/domains/syllabus/config/syllabus.config";
 import {
   buildSyllabusResearchPrompt,
@@ -122,9 +126,9 @@ export const handler: Handler = async (event) => {
 
   let body: SyllabusBackgroundRequest;
   try {
-    body = parseJsonBody<SyllabusBackgroundRequest>(event);
+    body = await parseVerifiedBackgroundBody<SyllabusBackgroundRequest>(event);
   } catch {
-    return { statusCode: 400, body: "Bad Request: Invalid JSON" };
+    return unauthorizedBackgroundResponse();
   }
 
   const {
