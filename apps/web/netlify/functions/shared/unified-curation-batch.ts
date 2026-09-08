@@ -3,6 +3,7 @@ import type OpenAI from "openai";
 import type { CurationRowInsert } from "../../../src/shared/types/curation.types";
 import { SOURCES_PER_LESSON } from "./curation-runtime";
 import { generateFreshnessReminder } from "./curation-prompts";
+import { createCurationBatchResponseSchema } from "./curation-v2/structured-output.schemas";
 import {
   buildGroundingFallbackForLesson,
   buildValidatedRowsFromModelSources,
@@ -50,55 +51,8 @@ interface ProcessLessonBatchResult {
   rows: CurationRowInsert[];
 }
 
-const CURATION_RESPONSE_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    lessons: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          lesson_id: { type: "string" },
-          lesson_title: { type: "string" },
-          sources: {
-            type: "array",
-            minItems: 1,
-            maxItems: SOURCES_PER_LESSON,
-            items: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                url: { type: "string" },
-                title: { type: "string" },
-                rationale: { type: "string" },
-                key_topics_covered: {
-                  type: "array",
-                  items: { type: "string" },
-                },
-                estimated_quality: {
-                  type: "number",
-                  minimum: 1,
-                  maximum: 10,
-                },
-              },
-              required: [
-                "url",
-                "title",
-                "rationale",
-                "key_topics_covered",
-                "estimated_quality",
-              ],
-            },
-          },
-        },
-        required: ["lesson_id", "lesson_title", "sources"],
-      },
-    },
-  },
-  required: ["lessons"],
-} as const;
+const CURATION_RESPONSE_SCHEMA =
+  createCurationBatchResponseSchema(SOURCES_PER_LESSON);
 
 function buildBatchPrompt(params: {
   attempt: number;
@@ -123,15 +77,15 @@ ${fullCourseContext}
 
 LESSONS TO RESEARCH
 ${JSON.stringify(
-    batch.map((lesson) => ({
-      lesson_id: lesson.lesson_id,
-      title: lesson.lesson_title,
-      objective: lesson.lesson_objective,
-      module: lesson.module_title,
-    })),
-    null,
-    2,
-  )}
+  batch.map((lesson) => ({
+    lesson_id: lesson.lesson_id,
+    title: lesson.lesson_title,
+    objective: lesson.lesson_objective,
+    module: lesson.module_title,
+  })),
+  null,
+  2,
+)}
 
 TASK: Find 1-2 HIGH-QUALITY sources for EACH lesson above.
 
@@ -330,7 +284,7 @@ export async function processOpenAiLessonBatch({
     fullCourseContext,
   });
 
-  const response = await client.responses.create(({
+  const response = await client.responses.create({
     model: activeModel,
     input: [
       { role: "system", content: systemPrompt },
@@ -354,9 +308,12 @@ export async function processOpenAiLessonBatch({
         return_token_budget: "default",
       },
     ],
-  } as unknown) as Parameters<typeof client.responses.create>[0]);
+  } as unknown as Parameters<typeof client.responses.create>[0]);
 
-  const groundingSources = await extractOpenAiSearchSources(response, courseTitle);
+  const groundingSources = await extractOpenAiSearchSources(
+    response,
+    courseTitle,
+  );
   const responseText = getOpenAiResponseText(response);
 
   return buildRowsFromModelOutput({
@@ -418,7 +375,10 @@ Return ONLY valid JSON matching this shape:
     },
   } as Parameters<typeof client.models.generateContent>[0]);
 
-  const groundingSources = await extractGeminiSearchSources(response, courseTitle);
+  const groundingSources = await extractGeminiSearchSources(
+    response,
+    courseTitle,
+  );
   const responseText = getGeminiResponseText(response);
 
   return buildRowsFromModelOutput({
