@@ -26,6 +26,8 @@ export interface ResolvedPrompts {
     systemPrompt: string;
     /** Per-component prompts keyed by ComponentType */
     componentPrompts: Record<string, string>;
+    /** Resolution provenance for diagnostics; prompt content is never logged. */
+    promptSources: Record<string, 'organization' | 'global' | 'default'>;
 }
 
 interface SystemPromptRow {
@@ -363,7 +365,13 @@ export async function resolvePrompts(
         if (code) codesNeeded.push(code);
     }
 
-    const dbPrompts = await fetchPromptsFromDb(supabase, codesNeeded, organizationId);
+    const promptSources = new Map<string, 'organization' | 'global' | 'default'>();
+    const dbPrompts = await fetchPromptsFromDb(
+        supabase,
+        codesNeeded,
+        organizationId,
+        promptSources,
+    );
 
     const systemPrompt = dbPrompts.get(SYSTEM_PROMPT_CODE) ?? DEFAULT_PROMPTS[SYSTEM_PROMPT_CODE] ?? '';
 
@@ -374,7 +382,15 @@ export async function resolvePrompts(
         componentPrompts[ct] = dbPrompts.get(code) ?? DEFAULT_PROMPTS[code] ?? '';
     }
 
-    return { systemPrompt, componentPrompts };
+    for (const code of codesNeeded) {
+        if (!promptSources.has(code)) promptSources.set(code, 'default');
+    }
+
+    return {
+        systemPrompt,
+        componentPrompts,
+        promptSources: Object.fromEntries(promptSources),
+    };
 }
 
 /**
@@ -429,6 +445,7 @@ async function fetchPromptsFromDb(
     supabase: SupabaseClient,
     codes: string[],
     organizationId?: string | null,
+    promptSources?: Map<string, 'organization' | 'global' | 'default'>,
 ): Promise<Map<string, string>> {
     const result = new Map<string, string>();
 
@@ -447,6 +464,7 @@ async function fetchPromptsFromDb(
             for (const row of orgRows as SystemPromptRow[]) {
                 if (!result.has(row.code)) {
                     result.set(row.code, row.content);
+                    promptSources?.set(row.code, 'organization');
                 }
             }
         }
@@ -468,6 +486,7 @@ async function fetchPromptsFromDb(
             for (const row of globalRows as SystemPromptRow[]) {
                 if (!result.has(row.code)) {
                     result.set(row.code, row.content);
+                    promptSources?.set(row.code, 'global');
                 }
             }
         }

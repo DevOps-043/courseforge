@@ -6,11 +6,13 @@ import {
 export type VideoDurationValidationCode =
   | "INSUFFICIENT_BROLL_COVERAGE"
   | "DECLARED_DURATION_MISMATCH"
+  | "EXCESSIVE_NARRATION"
   | "INSUFFICIENT_NARRATION"
   | "INSUFFICIENT_SLIDE_COVERAGE"
   | "INVALID_SCRIPT_TIMECODES"
   | "INVALID_STORYBOARD_TIMECODES"
   | "SCRIPT_DURATION_OUT_OF_RANGE"
+  | "SCRIPT_TARGET_DURATION_MISMATCH"
   | "STORYBOARD_COVERAGE_MISMATCH"
   | "STORYBOARD_TOO_SHORT";
 
@@ -33,6 +35,42 @@ interface TimedNarrationItem {
   narration_text?: unknown;
   timecode_end?: unknown;
   timecode_start?: unknown;
+}
+
+export function normalizeVideoDurationContent(content: unknown) {
+  const record = asRecord(content);
+  if (!record) return content;
+
+  const scriptKey = asRecord(record.script) ? "script" : asRecord(record.video_script) ? "video_script" : null;
+  if (!scriptKey) return content;
+  const script = asRecord(record[scriptKey]);
+  const sections = asRecordArray(script?.sections);
+  if (!script || sections.length === 0) return content;
+
+  const durations = sections.map((section) => Math.round(readPositiveNumber(section.duration_seconds)));
+  if (durations.some((duration) => duration <= 0)) return content;
+
+  let cursor = 0;
+  const normalizedSections = sections.map((section, index) => {
+    const duration = durations[index];
+    const start = cursor;
+    cursor += duration;
+    return {
+      ...section,
+      duration_seconds: duration,
+      timecode_end: formatTimecode(cursor),
+      timecode_start: formatTimecode(start),
+    };
+  });
+
+  return {
+    ...record,
+    duration_estimate_minutes: Number((cursor / 60).toFixed(4)),
+    [scriptKey]: {
+      ...script,
+      sections: normalizedSections,
+    },
+  };
 }
 
 export function validateVideoDurationContent(
@@ -63,6 +101,13 @@ export function validateVideoDurationContent(
     });
   }
 
+  if (Math.abs(scriptDurationSeconds - contract.targetDurationSeconds) > 5) {
+    issues.push({
+      code: "SCRIPT_TARGET_DURATION_MISMATCH",
+      message: `Las secciones suman ${scriptDurationSeconds}s; deben aproximarse al objetivo de ${contract.targetDurationSeconds}s con tolerancia de 5s.`,
+    });
+  }
+
   const declaredMinutes = readPositiveNumber(record?.duration_estimate_minutes);
   if (declaredMinutes > 0 && Math.abs(declaredMinutes * 60 - scriptDurationSeconds) > 5) {
     issues.push({
@@ -72,10 +117,16 @@ export function validateVideoDurationContent(
   }
 
   const minimumCharacterCount = charactersForDuration(contract.minimumDurationSeconds);
+  const maximumCharacterCount = charactersForDuration(contract.maximumDurationSeconds);
   if (narrationCharacterCount < minimumCharacterCount) {
     issues.push({
       code: "INSUFFICIENT_NARRATION",
       message: `La narración contiene ${narrationCharacterCount} caracteres editoriales (${narrationWordCount} palabras) y equivale a aproximadamente ${estimatedNarrationDurationSeconds}s a ${VIDEO_NARRATION_CHARACTERS_PER_MINUTE} caracteres por minuto; requiere al menos ${minimumCharacterCount} caracteres (${contract.minimumDurationSeconds}s). Hace falta información sustantiva, ejemplos o desarrollo pedagógico para alcanzar la duración sin repeticiones.`,
+    });
+  } else if (narrationCharacterCount > maximumCharacterCount) {
+    issues.push({
+      code: "EXCESSIVE_NARRATION",
+      message: `La narración contiene ${narrationCharacterCount} caracteres editoriales y supera el máximo de ${maximumCharacterCount} caracteres (${contract.maximumDurationSeconds}s). Debe condensarse sin perder contenido esencial.`,
     });
   }
 
@@ -183,6 +234,12 @@ function parseTimecode(value: unknown) {
   const seconds = Number(match[2]);
   if (!Number.isInteger(minutes) || !Number.isInteger(seconds) || seconds > 59) return null;
   return minutes * 60 + seconds;
+}
+
+function formatTimecode(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function countWords(text: string) {

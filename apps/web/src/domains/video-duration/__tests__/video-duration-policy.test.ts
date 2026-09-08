@@ -8,7 +8,10 @@ import {
   resolveVideoDurationValidationMode,
   type VideoDurationContract,
 } from "../video-duration-policy";
-import { validateVideoDurationContent } from "../video-duration-validation";
+import {
+  normalizeVideoDurationContent,
+  validateVideoDurationContent,
+} from "../video-duration-validation";
 import {
   applyVideoDurationContractToPlanComponent,
   applyVideoDurationPolicyToPlan,
@@ -194,23 +197,54 @@ test("reports concrete duration and timeline values", () => {
     (issue) => issue.code === "INVALID_STORYBOARD_TIMECODES",
   );
   assert.match(declaredMismatch?.message || "", /declara 420s.*suman 360s/);
+  assert.ok(result.issues.some((issue) => issue.code === "SCRIPT_TARGET_DURATION_MISMATCH"));
   assert.match(scriptTimeline?.message || "", /comienza en 5s.*debía comenzar en 0s/);
   assert.match(storyboardTimeline?.message || "", /finaliza en 350s.*debía finalizar en 360s/);
+});
+
+test("normalizes model-derived script arithmetic deterministically", () => {
+  const normalized = normalizeVideoDurationContent({
+    duration_estimate_minutes: 7,
+    script: {
+      sections: [
+        {
+          duration_seconds: 100.4,
+          timecode_end: "01:50",
+          timecode_start: "00:10",
+        },
+        {
+          duration_seconds: 319.6,
+          timecode_end: "07:20",
+          timecode_start: "01:55",
+        },
+      ],
+    },
+  }) as {
+    duration_estimate_minutes: number;
+    script: { sections: Array<Record<string, unknown>> };
+  };
+
+  assert.equal(normalized.duration_estimate_minutes, 7);
+  assert.deepEqual(normalized.script.sections.map((section) => ({
+    duration: section.duration_seconds,
+    end: section.timecode_end,
+    start: section.timecode_start,
+  })), [
+    { duration: 100, end: "01:40", start: "00:00" },
+    { duration: 320, end: "07:00", start: "01:40" },
+  ]);
 });
 
 test("accepts a continuous 7-minute script with sufficient visual coverage", () => {
   const contract = buildVideoDurationContract(null);
   const sectionCount = contract.minimumStoryboardTakes;
-  const wordsPerSection = Math.ceil(contract.minimumWordCount / sectionCount);
+  const targetCharactersPerSection = Math.ceil(6_300 / sectionCount);
   let cursor = 0;
   const sections = Array.from({ length: sectionCount }, (_, index) => {
     const duration = index === sectionCount - 1
       ? contract.targetDurationSeconds - cursor
       : Math.floor(contract.targetDurationSeconds / sectionCount);
-    const narration = Array.from(
-      { length: wordsPerSection },
-      (__, wordIndex) => `palabra${index}-${wordIndex}`,
-    ).join(" ");
+    const narration = "a".repeat(targetCharactersPerSection);
     const section = {
       duration_seconds: duration,
       narration_text: narration,

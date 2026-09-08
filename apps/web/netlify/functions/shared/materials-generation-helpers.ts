@@ -26,8 +26,14 @@ import {
   videoDurationContractSchema,
   type VideoDurationContract,
 } from "../../../src/domains/video-duration/video-duration-policy";
-import { validateVideoDurationContent } from "../../../src/domains/video-duration/video-duration-validation";
-import { validateMaterialVideoComponent } from "../../../src/domains/materials/validators/material-video.validators";
+import {
+  normalizeVideoDurationContent,
+  validateVideoDurationContent,
+} from "../../../src/domains/video-duration/video-duration-validation";
+import {
+  buildVideoGenerationGuardrails,
+  validateMaterialVideoComponent,
+} from "../../../src/domains/materials/validators/material-video.validators";
 import { parseModelJsonResponse } from "../../../src/shared/ai/model-json-response";
 import { getMaterialsModelProvider } from "../../../src/shared/ai/materials-model-provider";
 import { createGeminiClient, createOpenAiClient } from "./bootstrap";
@@ -397,6 +403,11 @@ async function buildMaterialsPrompt(
       effectiveComponentTypes,
       organizationId,
     );
+    console.log(
+      `${logPrefix} Prompt sources: ${Object.entries(resolved.promptSources)
+        .map(([code, source]) => `${code}=${source}`)
+        .join(", ")}`,
+    );
     basePrompt = assemblePrompt(resolved, effectiveComponentTypes);
     console.log(`${logPrefix} Using modular prompts for: ${effectiveComponentTypes.join(", ")}`);
   } else {
@@ -411,6 +422,11 @@ async function buildMaterialsPrompt(
       {
         systemPrompt: DEFAULT_PROMPTS[SYSTEM_PROMPT_CODE] ?? "",
         componentPrompts,
+        promptSources: Object.fromEntries(
+          [SYSTEM_PROMPT_CODE, ...effectiveComponentTypes.map(
+            (componentType) => COMPONENT_PROMPT_CODES[componentType],
+          ).filter(Boolean)].map((code) => [code, "default"]),
+        ),
       },
       effectiveComponentTypes,
     );
@@ -419,6 +435,7 @@ async function buildMaterialsPrompt(
 
   return (
     basePrompt +
+    `\n\n${buildVideoGenerationGuardrails(input.lesson.components)}` +
     `\n\n## DATOS DE ENTRADA\n\`\`\`json\n${JSON.stringify(input, null, 2)}\n\`\`\`\n\nResponde SOLO con JSON valido.`
   );
 }
@@ -432,8 +449,24 @@ function parseAndValidateMaterialsOutput(
     finishReason,
     responseText,
   });
+  normalizeGeneratedVideoDurations(input, generated);
   assertGeneratedVideoDurations(input, generated);
   return generated;
+}
+
+function normalizeGeneratedVideoDurations(
+  input: MaterialsGenerationInput,
+  generated: MaterialsGenerationOutput,
+) {
+  const generatedComponents = generated.components as Record<string, unknown>;
+  for (const component of input.lesson.components) {
+    if (!isVideoComponentType(component.type) || !generatedComponents[component.type]) {
+      continue;
+    }
+    generatedComponents[component.type] = normalizeVideoDurationContent(
+      generatedComponents[component.type],
+    );
+  }
 }
 
 function resolveComponentDurationContract(
