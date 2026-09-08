@@ -141,6 +141,63 @@ test("reports short scripts, sparse storyboards and coverage mismatches", () => 
   assert.ok(result.issues.some((issue) => issue.code === "STORYBOARD_COVERAGE_MISMATCH"));
 });
 
+test("uses the prompt character budget as the primary narration threshold", () => {
+  const contract = buildVideoDurationContract(null);
+  const result = validateVideoDurationContent({
+    duration_estimate_minutes: 7,
+    script: {
+      sections: [{
+        duration_seconds: 420,
+        narration_text: Array.from({ length: contract.minimumWordCount }, () => "a").join(" "),
+        timecode_end: "07:00",
+        timecode_start: "00:00",
+      }],
+    },
+    storyboard: [{
+      narration_text: Array.from({ length: contract.minimumWordCount }, () => "a").join(" "),
+      timecode_end: "07:00",
+      timecode_start: "00:00",
+    }],
+  }, contract);
+
+  assert.equal(result.narrationWordCount, contract.minimumWordCount);
+  assert.ok(result.narrationCharacterCount < 5_400);
+  assert.ok(result.issues.some((issue) => issue.code === "INSUFFICIENT_NARRATION"));
+});
+
+test("reports concrete duration and timeline values", () => {
+  const contract = buildVideoDurationContract(null);
+  const result = validateVideoDurationContent({
+    duration_estimate_minutes: 7,
+    script: {
+      sections: [{
+        duration_seconds: 360,
+        narration_text: "Narración breve",
+        timecode_end: "06:00",
+        timecode_start: "00:05",
+      }],
+    },
+    storyboard: [{
+      narration_text: "Narración breve",
+      timecode_end: "05:50",
+      timecode_start: "00:00",
+    }],
+  }, contract);
+
+  const declaredMismatch = result.issues.find(
+    (issue) => issue.code === "DECLARED_DURATION_MISMATCH",
+  );
+  const scriptTimeline = result.issues.find(
+    (issue) => issue.code === "INVALID_SCRIPT_TIMECODES",
+  );
+  const storyboardTimeline = result.issues.find(
+    (issue) => issue.code === "INVALID_STORYBOARD_TIMECODES",
+  );
+  assert.match(declaredMismatch?.message || "", /declara 420s.*suman 360s/);
+  assert.match(scriptTimeline?.message || "", /comienza en 5s.*debía comenzar en 0s/);
+  assert.match(storyboardTimeline?.message || "", /finaliza en 350s.*debía finalizar en 360s/);
+});
+
 test("accepts a continuous 7-minute script with sufficient visual coverage", () => {
   const contract = buildVideoDurationContract(null);
   const sectionCount = contract.minimumStoryboardTakes;

@@ -27,6 +27,7 @@ import {
   type VideoDurationContract,
 } from "../../../src/domains/video-duration/video-duration-policy";
 import { validateVideoDurationContent } from "../../../src/domains/video-duration/video-duration-validation";
+import { validateMaterialVideoComponent } from "../../../src/domains/materials/validators/material-video.validators";
 import { parseModelJsonResponse } from "../../../src/shared/ai/model-json-response";
 import { getMaterialsModelProvider } from "../../../src/shared/ai/materials-model-provider";
 import { createGeminiClient, createOpenAiClient } from "./bootstrap";
@@ -573,6 +574,11 @@ export async function saveGeneratedComponents(
     }
 
     const durationContract = durationContractsByType[type as ComponentType];
+    const componentValidation = validateMaterialVideoComponent(
+      type,
+      data,
+      durationContract,
+    );
     const { error: insertError } = await supabase.from("material_components").insert({
       ...(durationContract ? {
         assets: {
@@ -584,8 +590,8 @@ export async function saveGeneratedComponents(
       type,
       content: data,
       source_refs: refs,
-      validation_status: "PENDING",
-      validation_errors: [],
+      validation_status: componentValidation.status,
+      validation_errors: componentValidation.errors,
       iteration_number: iteration,
     });
 

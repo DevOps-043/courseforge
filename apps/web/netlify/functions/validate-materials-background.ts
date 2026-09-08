@@ -8,6 +8,7 @@ import {
     hasValidQuizCorrectAnswer,
     stripQuizOptionPrefix,
 } from '../../src/domains/materials/lib/quiz-option-format';
+import { collectMaterialVideoValidationErrors } from '../../src/domains/materials/validators/material-video.validators';
 
 interface LessonDod {
     control3_consistency: 'PASS' | 'FAIL' | 'PENDING';
@@ -41,9 +42,13 @@ interface QuizItem {
 }
 
 interface MaterialComponentRecord {
+    assets?: Record<string, unknown> | null;
     content?: Record<string, unknown> | null;
+    id: string;
     iteration_number?: number | null;
     type: string;
+    validation_errors?: string[] | null;
+    validation_status?: string | null;
 }
 
 const STABLE_ID_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
@@ -147,7 +152,7 @@ export const handler: Handler = async (event) => {
             // Get components for this lesson
             const { data: components } = await supabase
                 .from('material_components')
-                .select('type, content, iteration_number')
+                .select('id, type, content, assets, validation_status, validation_errors, iteration_number')
                 .eq('material_lesson_id', lesson.id);
 
             const activeComponents = selectLatestComponentsByType(
@@ -288,8 +293,11 @@ function runInlineValidation(
     );
     errors.push(...dialogueErrors);
 
+    const videoErrors = collectMaterialVideoValidationErrors(components);
+    errors.push(...videoErrors);
+
     // Determine control states
-    const hasCtrl3Error = missing.length > 0 || dialogueErrors.length > 0;
+    const hasCtrl3Error = missing.length > 0 || dialogueErrors.length > 0 || videoErrors.length > 0;
     const hasCtrl4Error = false; // Lenient for now
     const hasCtrl5Error = errors.some(e => e.includes('Quiz') || e.includes('QUIZ') || e.includes('pregunta'));
 
@@ -459,7 +467,7 @@ async function validateSingleLesson(lessonId: string) {
         // Fetch components
         const { data: components } = await supabase
             .from('material_components')
-            .select('type, content, iteration_number')
+            .select('id, type, content, assets, validation_status, validation_errors, iteration_number')
             .eq('material_lesson_id', lessonId);
 
         const activeComponents = selectLatestComponentsByType(

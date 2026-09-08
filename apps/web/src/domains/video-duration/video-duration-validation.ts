@@ -1,4 +1,7 @@
-import type { VideoDurationContract } from "./video-duration-policy";
+import {
+  VIDEO_NARRATION_CHARACTERS_PER_MINUTE,
+  type VideoDurationContract,
+} from "./video-duration-policy";
 
 export type VideoDurationValidationCode =
   | "INSUFFICIENT_BROLL_COVERAGE"
@@ -19,6 +22,8 @@ export interface VideoDurationValidationIssue {
 export interface VideoDurationValidationResult {
   estimatedNarrationDurationSeconds: number;
   issues: VideoDurationValidationIssue[];
+  narrationCharacterCount: number;
+  narrationWordCount: number;
   scriptDurationSeconds: number;
   valid: boolean;
 }
@@ -41,9 +46,10 @@ export function validateVideoDurationContent(
   const scriptDurationSeconds = sumDurations(sections);
   const scriptNarration = joinNarration(sections);
   const storyboardNarration = joinNarration(storyboard);
+  const narrationCharacterCount = countEditorialCharacters(scriptNarration);
+  const narrationWordCount = countWords(scriptNarration);
   const estimatedNarrationDurationSeconds = estimateNarrationDuration(
-    scriptNarration,
-    contract.narrationWordsPerMinute,
+    narrationCharacterCount,
   );
   const issues: VideoDurationValidationIssue[] = [];
 
@@ -61,21 +67,23 @@ export function validateVideoDurationContent(
   if (declaredMinutes > 0 && Math.abs(declaredMinutes * 60 - scriptDurationSeconds) > 5) {
     issues.push({
       code: "DECLARED_DURATION_MISMATCH",
-      message: "duration_estimate_minutes no coincide con la suma de las secciones del guion.",
+      message: `duration_estimate_minutes declara ${Math.round(declaredMinutes * 60)}s, pero las secciones suman ${scriptDurationSeconds}s.`,
     });
   }
 
-  if (estimatedNarrationDurationSeconds < contract.minimumDurationSeconds) {
+  const minimumCharacterCount = charactersForDuration(contract.minimumDurationSeconds);
+  if (narrationCharacterCount < minimumCharacterCount) {
     issues.push({
       code: "INSUFFICIENT_NARRATION",
-      message: `La narración equivale a aproximadamente ${estimatedNarrationDurationSeconds}s a ${contract.narrationWordsPerMinute} palabras por minuto; requiere al menos ${contract.minimumDurationSeconds}s. Hace falta información sustantiva, ejemplos o desarrollo pedagógico para alcanzar la duración sin repeticiones.`,
+      message: `La narración contiene ${narrationCharacterCount} caracteres editoriales (${narrationWordCount} palabras) y equivale a aproximadamente ${estimatedNarrationDurationSeconds}s a ${VIDEO_NARRATION_CHARACTERS_PER_MINUTE} caracteres por minuto; requiere al menos ${minimumCharacterCount} caracteres (${contract.minimumDurationSeconds}s). Hace falta información sustantiva, ejemplos o desarrollo pedagógico para alcanzar la duración sin repeticiones.`,
     });
   }
 
-  if (!hasContinuousTimeline(sections, scriptDurationSeconds)) {
+  const scriptTimelineIssue = findTimelineIssue(sections, scriptDurationSeconds);
+  if (scriptTimelineIssue) {
     issues.push({
       code: "INVALID_SCRIPT_TIMECODES",
-      message: "Los timecodes del guion deben iniciar en 00:00, ser contiguos y coincidir con duration_seconds.",
+      message: `Timecodes inválidos en el guion: ${scriptTimelineIssue}`,
     });
   }
 
@@ -105,10 +113,11 @@ export function validateVideoDurationContent(
     });
   }
 
-  if (!hasContinuousTimeline(storyboard, scriptDurationSeconds, false)) {
+  const storyboardTimelineIssue = findTimelineIssue(storyboard, scriptDurationSeconds, false);
+  if (storyboardTimelineIssue) {
     issues.push({
       code: "INVALID_STORYBOARD_TIMECODES",
-      message: "Los timecodes del storyboard deben cubrir el guion completo sin huecos ni solapamientos.",
+      message: `Timecodes inválidos en el storyboard: ${storyboardTimelineIssue}`,
     });
   }
 
@@ -122,35 +131,48 @@ export function validateVideoDurationContent(
   return {
     estimatedNarrationDurationSeconds,
     issues,
+    narrationCharacterCount,
+    narrationWordCount,
     scriptDurationSeconds,
     valid: issues.length === 0,
   };
 }
 
-function hasContinuousTimeline(
+function findTimelineIssue(
   items: Record<string, unknown>[],
   expectedEndSeconds: number,
   requireDeclaredDuration = true,
-) {
-  if (items.length === 0 || expectedEndSeconds <= 0) return false;
+): string | null {
+  if (items.length === 0) return "no contiene secciones o tomas";
+  if (expectedEndSeconds <= 0) return "la duración total esperada no es válida";
 
   let cursor = 0;
-  for (const rawItem of items) {
+  for (const [index, rawItem] of items.entries()) {
     const item = rawItem as TimedNarrationItem;
     const start = parseTimecode(item.timecode_start);
     const end = parseTimecode(item.timecode_end);
-    if (start === null || end === null || end <= start || Math.abs(start - cursor) > 1) {
-      return false;
+    const position = index + 1;
+    if (start === null || end === null) {
+      return `elemento ${position} contiene un timecode ausente o con formato distinto de MM:SS`;
+    }
+    if (end <= start) return `elemento ${position} termina en ${end}s y comienza en ${start}s`;
+    if (Math.abs(start - cursor) > 1) {
+      return `elemento ${position} comienza en ${start}s; debía comenzar en ${cursor}s`;
     }
 
     if (requireDeclaredDuration) {
       const duration = readPositiveNumber(item.duration_seconds);
-      if (duration <= 0 || Math.abs(end - start - duration) > 1) return false;
+      if (duration <= 0) return `elemento ${position} no declara duration_seconds válido`;
+      if (Math.abs(end - start - duration) > 1) {
+        return `elemento ${position} cubre ${end - start}s, pero declara duration_seconds=${duration}`;
+      }
     }
     cursor = end;
   }
 
-  return Math.abs(cursor - expectedEndSeconds) <= 1;
+  return Math.abs(cursor - expectedEndSeconds) <= 1
+    ? null
+    : `finaliza en ${cursor}s; debía finalizar en ${expectedEndSeconds}s`;
 }
 
 function parseTimecode(value: unknown) {
@@ -163,9 +185,29 @@ function parseTimecode(value: unknown) {
   return minutes * 60 + seconds;
 }
 
-function estimateNarrationDuration(text: string, wordsPerMinute: number) {
-  const wordCount = text.split(/\s+/).filter(Boolean).length;
-  return Math.round((wordCount / wordsPerMinute) * 60);
+function countWords(text: string) {
+  return text.split(/\s+/).filter(Boolean).length;
+}
+
+function countEditorialCharacters(text: string) {
+  return text
+    .replace(/<[^>]*>/g, " ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[`*_>#~]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .length;
+}
+
+function charactersForDuration(seconds: number) {
+  return Math.round((seconds / 60) * VIDEO_NARRATION_CHARACTERS_PER_MINUTE);
+}
+
+function estimateNarrationDuration(characterCount: number) {
+  return Math.round(
+    (characterCount / VIDEO_NARRATION_CHARACTERS_PER_MINUTE) * 60,
+  );
 }
 
 function joinNarration(items: Record<string, unknown>[]) {

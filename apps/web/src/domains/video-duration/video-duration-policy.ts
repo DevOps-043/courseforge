@@ -63,6 +63,9 @@ export const videoDurationContractSchema = videoDurationPolicySchema.extend({
 export type VideoDurationContract = z.infer<typeof videoDurationContractSchema>;
 export type VideoDurationValidationMode = "enforce" | "warn";
 
+/** Editorial pacing used by the materials prompt before real TTS audio exists. */
+export const VIDEO_NARRATION_CHARACTERS_PER_MINUTE = 900;
+
 export function isVideoComponentType(value: unknown): value is VideoComponentType {
   return typeof value === "string" && VIDEO_COMPONENT_TYPES.includes(value as VideoComponentType);
 }
