@@ -99,6 +99,7 @@ export async function triggerNextLesson(
   logPrefix: string,
   localFallback?: (signedBody: string) => Promise<void>,
 ) {
+  const triggerTimeoutMilliseconds = 10_000;
   const url = `${getFunctionsBaseUrl()}${MATERIALS_FUNCTION_PATH}`;
   console.log(`${logPrefix} Triggering next at: ${url}`);
   const signedBody = JSON.stringify(
@@ -110,16 +111,26 @@ export async function triggerNextLesson(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: signedBody,
+      signal: AbortSignal.timeout(triggerTimeoutMilliseconds),
     });
     console.log(`${logPrefix} Trigger response: ${response.status}`);
-  } catch (error: any) {
+    if (!response.ok) {
+      throw new Error(`El encadenamiento de materiales respondió HTTP ${response.status}.`);
+    }
+  } catch (error: unknown) {
     console.error(`${logPrefix} Trigger failed:`, error);
+
+    const errorCode =
+      typeof error === "object" && error !== null && "code" in error
+        ? String(error.code)
+        : "";
+    const errorMessage = error instanceof Error ? error.message : "";
 
     // Fallback local execution when not running Netlify CLI locally (ECONNREFUSED on port 8888)
     if (
       process.env.NODE_ENV !== "production" &&
       localFallback &&
-      (error?.code === "ECONNREFUSED" || error?.message?.includes("fetch failed"))
+      (errorCode === "ECONNREFUSED" || errorMessage.includes("fetch failed"))
     ) {
       console.log(`${logPrefix} Local fallback: Running next step in-process...`);
       setTimeout(async () => {
@@ -130,7 +141,10 @@ export async function triggerNextLesson(
           console.error(`${logPrefix} [Fallback] Execution failed:`, fallbackErr);
         }
       }, 100);
+      return;
     }
+
+    throw error;
   }
 }
 

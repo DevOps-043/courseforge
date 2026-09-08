@@ -59,3 +59,33 @@ test("the legacy Express application cannot expose mock authentication", () => {
   assert.doesNotMatch(authServiceSource, /mock-jwt-token|password\s*===?\s*["']123456["']/);
   assert.match(authServiceSource, /Legacy authentication is disabled/);
 });
+
+test("audited outbound integrations keep explicit deadlines and download budgets", () => {
+  const webRoot = resolve(process.cwd());
+  const oneDriveSource = readFileSync(
+    join(
+      webRoot,
+      "src",
+      "domains",
+      "production",
+      "cloud-storage",
+      "microsoft-graph.service.ts",
+    ),
+    "utf8",
+  );
+  const materialsRuntimeSource = readFileSync(
+    join(
+      webRoot,
+      "netlify",
+      "functions",
+      "shared",
+      "materials-generation-runtime.ts",
+    ),
+    "utf8",
+  );
+
+  assert.match(oneDriveSource, /AbortSignal\.timeout\(timeoutMilliseconds\)/);
+  assert.match(oneDriveSource, /readResponseWithLimit\(contentResponse, MAX_ONEDRIVE_IMPORT_BYTES\)/);
+  assert.match(materialsRuntimeSource, /signal: AbortSignal\.timeout\(triggerTimeoutMilliseconds\)/);
+  assert.match(materialsRuntimeSource, /if \(!response\.ok\)/);
+});

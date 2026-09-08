@@ -48,14 +48,15 @@ Esta sección prevalece sobre la redacción histórica de cada hallazgo. **Imple
 | TD-03 | **Mitigado** | La importación exige HTTPS, rechaza redes privadas/reservadas y redirects, limita tiempo y streaming a 150 MB, y valida MIME. Persiste el riesgo residual de DNS rebinding entre resolución y conexión; la defensa completa requiere control de egress/resolver. |
 | TD-04 | **Mitigado** | Los dos sinks de `body_html` se sanitizan mediante una allowlist DOMPurify. Falta centralizar sanitización server-side al persistir contenido y retirar gradualmente excepciones CSP. |
 | TD-05 | **Implementado; despliegue pendiente** | La migración `20260908121000_harden_legacy_storage_policies.sql` revoca las políticas públicas/transversales heredadas. Debe aplicarse y verificarse contra las políticas efectivas del proyecto remoto. |
-| TD-06 | **Pendiente** | Requiere inventario y reconciliación de migraciones ya aplicadas por ambiente antes de renombrar o crear baseline. |
+| TD-06 | **Parcial** | `db:migrations:check`, incluido en `verify`, congela exactamente las cuatro colisiones y tres dumps históricos conocidos y bloquea cualquier duplicado/SQL no versionado nuevo. Resolver el historial aún requiere inventario y reconciliación de `schema_migrations` por ambiente antes de renombrar o crear baseline. |
 | TD-07 | **Mitigado** | Ya no existen reemplazos completos de `material_components.assets` en el código de aplicación: rutas, acciones, workers y servicios usan el RPC atómico. Una prueba estática bloquea regresiones. Los append sobre un mismo array todavía requieren un RPC especializado o control optimista para evitar conflictos sobre la misma clave. |
 | TD-08 | **Mitigado** | Se retiró `ignoreBuildErrors`, se restauró ESLint 9, se añadieron `typecheck`, `verify` y CI. El baseline conserva advertencias y CI todavía no recrea DB/RLS ni ejecuta toda la matriz funcional histórica. |
 | TD-09 | **Mitigado** | El registro valida el contrato y solo crea cuentas cuando Courseforge y la autoridad SofLIA apuntan al mismo proyecto Supabase; si divergen, instruye solicitar invitación en vez de crear una identidad inutilizable. Falta definir/sincronizar un onboarding multi-proyecto si el producto lo necesita. |
-| TD-10, TD-14, TD-21, TD-24–TD-25 | **Pendiente** | Son cambios estructurales o de producto que requieren fases separadas y, en varios casos, confirmar contexto operativo. |
+| TD-10, TD-14, TD-25 | **Pendiente** | Son cambios estructurales que requieren fases separadas y, en varios casos, confirmar contexto operativo. |
 | TD-12 | **Mitigado** | Se rompieron los tres ciclos comprobados y `madge` no detecta ciclos en 826 archivos. Permanece la inversión de capas en otros flujos y debe resolverse al extraer casos de uso fuera de handlers/rutas. |
 | TD-15 | **Parcial** | La sesión vuelve a propagar correctamente el sentinel de render dinámico y el build dejó de producir los falsos errores de autenticación. Siguen pendientes logging estructurado, correlación, métricas y reducción sistemática de PII/ruido. |
 | TD-20 | **Parcial** | README ya identifica Express como legado y usa comandos existentes; `docs:audit` sigue disponible como evidencia. Falta reconciliar documentos arquitectónicos históricos y decidir retención/anonimización de los CSV versionados. |
+| TD-21 | **Implementado** | La investigación de consumidores confirmó que el buscador de materiales truncado pertenecía a una biblioteca retirada: ningún código productivo lo importaba y la biblioteca vigente está limitada deliberadamente a SFX. Se eliminó el módulo huérfano completo, su catálogo y sus pruebas aisladas en vez de crear nueva infraestructura SQL sin consumidor. |
 | TD-11 | **Parcial** | El parser rechaza ZIPs corruptos, demasiadas entradas, tamaños descomprimidos excesivos y ratios compatibles con zip bombs antes de extraer. Sigue pendiente mover todo el procesamiento a un job durable. |
 | TD-16 | **Implementado** | La configuración service-role ahora falla de forma explícita y ya no degrada silenciosamente a anon. Los jobs de generación/validación intervenidos tampoco dependen de la vigencia del JWT del usuario. |
 | TD-17 | **Parcial** | El guardado de draft usa `upsert` y la publicación ya no devuelve éxito si falla el estado local posterior. Falta outbox/reconciliación automática de extremo a extremo. |
@@ -64,12 +65,14 @@ Esta sección prevalece sobre la redacción histórica de cada hallazgo. **Imple
 | TD-19 | **Implementado en repositorio** | Express ya no monta `/api/v1/auth` y el servicio mock no puede emitir tokens aunque alguien lo vuelva a invocar. Falta verificar/desactivar cualquier despliegue antiguo que no se actualice con este código. |
 | TD-22 | **Parcial** | Lia, publicación, draft e importación externa tienen contratos Zod y respuestas internas más seguras. Falta normalizar el resto de rutas. |
 | TD-23 | **Parcial** | Orígenes de Server Actions exactos y headers globales añadidos; CSP está en `Report-Only` para observar incompatibilidades antes de enforcement. |
+| TD-24 | **Parcial** | Microsoft Graph usa deadlines explícitos y las descargas de OneDrive se rechazan antes o durante streaming al superar 150 MB. El encadenamiento de materiales tiene timeout, verifica HTTP y propaga fallos en producción. Falta extender el presupuesto uniforme, backpressure y telemetría al resto de proveedores. |
 
 ### Verificación posterior a la remediación
 
-- `npm run verify`: **aprobado** (ESLint bloqueante, TypeScript, análisis de ciclos, 9 pruebas de fronteras de seguridad y 19 casos que antes estaban fuera de los scripts).
-- Detección de ciclos: `madge` procesó 826 archivos y reportó **0 dependencias circulares**.
-- Suites dirigidas: **218 pruebas aprobadas** en Auth Bridge, publicación, curación, syllabus/plan, producción visual/HeyGen/Remotion y los gaps recuperados, además de las 9 pruebas de fronteras incluidas en `verify`.
+- `npm run verify`: **aprobado** (ESLint bloqueante, TypeScript, análisis de ciclos, guardia de migraciones, 10 pruebas de fronteras de seguridad y 19 casos que antes estaban fuera de los scripts).
+- Detección de ciclos: `madge` procesó 820 archivos y reportó **0 dependencias circulares**.
+- Guardia de migraciones: **aprobada** sobre 124 SQL; no permite ampliar las colisiones históricas sin reconciliación explícita.
+- Suites dirigidas: **213 pruebas aprobadas** en Auth Bridge, publicación, curación, syllabus/plan, producción visual/HeyGen/Remotion y los gaps recuperados. Cinco pruebas exclusivas del buscador de biblioteca retirado se eliminaron junto con ese código muerto.
 - `npm run build`: **aprobado** con acceso de red para `next/font`.
 - `npm run build:legacy-api` y `npm run lint:legacy-api`: **aprobados**.
 - `npm audit --omit=dev --json`: **0 vulnerabilidades de producción**.

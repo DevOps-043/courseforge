@@ -22,6 +22,22 @@ import type {
 } from "./types";
 import { uploadImportedAssetToStorage } from "./storage-import.service";
 import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
+import { readResponseWithLimit } from "@/domains/production/external-media-import-policy";
+
+const MICROSOFT_GRAPH_REQUEST_TIMEOUT_MS = 15_000;
+const MICROSOFT_GRAPH_DOWNLOAD_TIMEOUT_MS = 60_000;
+const MAX_ONEDRIVE_IMPORT_BYTES = 150 * 1024 * 1024;
+
+function fetchMicrosoftGraph(
+  input: string,
+  init: RequestInit = {},
+  timeoutMilliseconds = MICROSOFT_GRAPH_REQUEST_TIMEOUT_MS,
+) {
+  return fetch(input, {
+    ...init,
+    signal: AbortSignal.timeout(timeoutMilliseconds),
+  });
+}
 
 interface MicrosoftTokenResponse {
   access_token: string;
@@ -51,7 +67,7 @@ export class OneDriveService {
     }
 
     const refreshToken = decryptCredentialToken(creds.refresh_token);
-    const response = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+    const response = await fetchMicrosoftGraph("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -87,7 +103,7 @@ export class OneDriveService {
       ? `https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(parentId)}/children`
       : "https://graph.microsoft.com/v1.0/me/drive/root/children";
 
-    const response = await fetch(endpoint, {
+    const response = await fetchMicrosoftGraph(endpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -101,8 +117,7 @@ export class OneDriveService {
     });
 
     if (!response.ok) {
-      const details = await response.text();
-      throw new Error(`Error de Microsoft Graph al crear carpeta: ${details || response.statusText}`);
+      throw new Error(`Microsoft Graph rechazó la creación de carpeta (${response.status}).`);
     }
 
     return (await response.json()) as GraphDriveItem;
@@ -207,7 +222,7 @@ export class OneDriveService {
       ? `https://graph.microsoft.com/v1.0/me/drive/root/search(q='${encodeURIComponent(escapedQuery)}')?$top=20`
       : "https://graph.microsoft.com/v1.0/me/drive/root/children?$top=20";
 
-    const response = await fetch(endpoint, {
+    const response = await fetchMicrosoftGraph(endpoint, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
@@ -237,7 +252,7 @@ export class OneDriveService {
     const token = await this.refreshUserAccessToken(userId, organizationId);
     const encodedItemId = encodeURIComponent(itemId.trim());
 
-    const metadataResponse = await fetch(
+    const metadataResponse = await fetchMicrosoftGraph(
       `https://graph.microsoft.com/v1.0/me/drive/items/${encodedItemId}?$select=id,name,size,file`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
@@ -247,16 +262,29 @@ export class OneDriveService {
     }
 
     const metadata = (await metadataResponse.json()) as GraphDriveItem;
-    const contentResponse = await fetch(
+    if (typeof metadata.size === "number" && metadata.size > MAX_ONEDRIVE_IMPORT_BYTES) {
+      throw new Error("El archivo de OneDrive supera el límite de importación de 150 MB.");
+    }
+
+    const contentResponse = await fetchMicrosoftGraph(
       `https://graph.microsoft.com/v1.0/me/drive/items/${encodedItemId}/content`,
       { headers: { Authorization: `Bearer ${token}` } },
+      MICROSOFT_GRAPH_DOWNLOAD_TIMEOUT_MS,
     );
 
     if (!contentResponse.ok) {
       throw new Error(`No se pudo descargar el archivo de OneDrive: ${contentResponse.statusText}`);
     }
 
-    const buffer = Buffer.from(await contentResponse.arrayBuffer());
+    let buffer: Buffer;
+    try {
+      buffer = await readResponseWithLimit(contentResponse, MAX_ONEDRIVE_IMPORT_BYTES);
+    } catch (error) {
+      if (error instanceof Error && error.message === "EXTERNAL_MEDIA_TOO_LARGE") {
+        throw new Error("El archivo de OneDrive supera el límite de importación de 150 MB.");
+      }
+      throw error;
+    }
     return uploadImportedAssetToStorage({
       buffer,
       componentId,
