@@ -4,6 +4,7 @@ import {
   canIteratePlan,
   getPlanIterationCount,
   getNextPlanIteration,
+  getPreviousPlanIteration,
   normalizePlanIterationCount,
   PLAN_MAX_ITERATIONS,
 } from "../plan-iteration";
@@ -25,4 +26,10 @@ test("permite generar hasta cinco iteraciones del plan", () => {
 test("bloquea una sexta iteracion del plan", () => {
   assert.equal(canIteratePlan(5), false);
   assert.throws(() => getNextPlanIteration(5), /limite de 5 iteraciones/);
+});
+
+test("revierte solamente la iteracion reservada que fallo", () => {
+  assert.equal(getPreviousPlanIteration(undefined), 0);
+  assert.equal(getPreviousPlanIteration(1), 0);
+  assert.equal(getPreviousPlanIteration(4), 3);
 });

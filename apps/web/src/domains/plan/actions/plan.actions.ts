@@ -21,6 +21,7 @@ import {
   canIteratePlan,
   getPlanIterationCount,
   getNextPlanIteration,
+  getPreviousPlanIteration,
   PLAN_MAX_ITERATIONS,
 } from "@/domains/plan/lib/plan-iteration";
 
@@ -48,7 +49,7 @@ export async function generateInstructionalPlanAction(
   try {
     const { data: currentPlan, error: lookupError } = await admin
       .from("instructional_plans")
-      .select("id, iteration_count")
+      .select("id, iteration_count, lesson_plans")
       .eq("artifact_id", artifactId)
       .maybeSingle();
 
@@ -58,7 +59,8 @@ export async function generateInstructionalPlanAction(
 
     const currentIteration = getPlanIterationCount(
       currentPlan?.iteration_count,
-      Boolean(currentPlan),
+      Array.isArray(currentPlan?.lesson_plans) &&
+        currentPlan.lesson_plans.length > 0,
     );
 
     if (!canIteratePlan(currentIteration)) {
@@ -77,6 +79,7 @@ export async function generateInstructionalPlanAction(
           iteration_count: reservedIteration,
           state: "STEP_PROCESSING",
           validation: null,
+          last_error: null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", currentPlan.id)
@@ -105,6 +108,7 @@ export async function generateInstructionalPlanAction(
           validation: null,
           state: "STEP_PROCESSING",
           iteration_count: reservedIteration,
+          last_error: null,
         });
 
       if (reservationError) {
@@ -140,9 +144,19 @@ export async function generateInstructionalPlanAction(
   } catch (error: unknown) {
     console.error("[PlanActions] Generation trigger error:", error);
     if (reservedIteration !== undefined) {
+      const errorMessage = getErrorMessage(error).slice(0, 500);
       await admin
         .from("instructional_plans")
-        .update({ state: "STEP_FAILED", updated_at: new Date().toISOString() })
+        .update({
+          state: "STEP_FAILED",
+          iteration_count: getPreviousPlanIteration(reservedIteration),
+          last_error: {
+            code: "INSTRUCTIONAL_PLAN_DISPATCH_FAILED",
+            message: errorMessage,
+            occurred_at: new Date().toISOString(),
+          },
+          updated_at: new Date().toISOString(),
+        })
         .eq("artifact_id", artifactId)
         .eq("iteration_count", reservedIteration);
     }
@@ -287,20 +301,36 @@ export async function updateInstructionalPlanVideoDurationPolicyAction(
   }
 
   const { admin } = authorized;
-  const [{ data: artifact, error: artifactError }, { data: plan, error: planError }] =
-    await Promise.all([
-      admin.from("artifacts").select("generation_metadata").eq("id", artifactId).single(),
-      admin.from("instructional_plans").select("lesson_plans").eq("artifact_id", artifactId).maybeSingle(),
-    ]);
+  const [
+    { data: artifact, error: artifactError },
+    { data: plan, error: planError },
+  ] = await Promise.all([
+    admin
+      .from("artifacts")
+      .select("generation_metadata")
+      .eq("id", artifactId)
+      .single(),
+    admin
+      .from("instructional_plans")
+      .select("lesson_plans")
+      .eq("artifact_id", artifactId)
+      .maybeSingle(),
+  ]);
 
   if (artifactError || !artifact) {
-    return { success: false, error: artifactError?.message || "Artifact not found" };
+    return {
+      success: false,
+      error: artifactError?.message || "Artifact not found",
+    };
   }
   if (planError) {
     return { success: false, error: planError.message };
   }
 
-  const previousMetadata = (artifact.generation_metadata || {}) as Record<string, unknown>;
+  const previousMetadata = (artifact.generation_metadata || {}) as Record<
+    string,
+    unknown
+  >;
   const originalInput = isRecord(previousMetadata.original_input)
     ? previousMetadata.original_input
     : {};
@@ -313,7 +343,7 @@ export async function updateInstructionalPlanVideoDurationPolicyAction(
     video_duration_policy: parsedPolicy.data,
   };
   const previousLessonPlans = Array.isArray(plan?.lesson_plans)
-    ? plan.lesson_plans as PlanLessonItem[]
+    ? (plan.lesson_plans as PlanLessonItem[])
     : [];
   const nextLessonPlans = applyVideoDurationPolicyToPlan(
     previousLessonPlans,
@@ -331,7 +361,10 @@ export async function updateInstructionalPlanVideoDurationPolicyAction(
   if (plan) {
     const { error: planUpdateError } = await admin
       .from("instructional_plans")
-      .update({ lesson_plans: nextLessonPlans, updated_at: new Date().toISOString() })
+      .update({
+        lesson_plans: nextLessonPlans,
+        updated_at: new Date().toISOString(),
+      })
       .eq("artifact_id", artifactId);
     if (planUpdateError) {
       await admin
@@ -389,23 +422,37 @@ export async function getInstructionalPlanSnapshotAction(artifactId: string) {
   }
 
   const { admin } = authorized;
-  const [{ data, error }, { data: artifact, error: artifactError }] = await Promise.all([
-    admin.from("instructional_plans").select("*").eq("artifact_id", artifactId).maybeSingle(),
-    admin.from("artifacts").select("generation_metadata").eq("id", artifactId).single(),
-  ]);
+  const [{ data, error }, { data: artifact, error: artifactError }] =
+    await Promise.all([
+      admin
+        .from("instructional_plans")
+        .select("*")
+        .eq("artifact_id", artifactId)
+        .maybeSingle(),
+      admin
+        .from("artifacts")
+        .select("generation_metadata")
+        .eq("id", artifactId)
+        .single(),
+    ]);
 
   if (error) {
     console.error("[PlanActions] Snapshot error:", error);
     return { success: false, error: error.message };
   }
   if (artifactError) {
-    console.error("[PlanActions] Artifact duration snapshot error:", artifactError);
+    console.error(
+      "[PlanActions] Artifact duration snapshot error:",
+      artifactError,
+    );
     return { success: false, error: artifactError.message };
   }
 
   return {
     success: true,
     plan: data,
-    videoDurationPolicy: resolveArtifactVideoDurationPolicy(artifact?.generation_metadata),
+    videoDurationPolicy: resolveArtifactVideoDurationPolicy(
+      artifact?.generation_metadata,
+    ),
   };
 }

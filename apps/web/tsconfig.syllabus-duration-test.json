@@ -18,7 +18,9 @@
     "src/domains/syllabus/lib/__tests__/syllabus-iteration.test.ts",
     "src/domains/syllabus/lib/__tests__/syllabus-model-provider.test.ts",
     "src/domains/plan/lib/plan-iteration.ts",
+    "src/domains/plan/lib/instructional-plan-generation.schema.ts",
     "src/domains/plan/lib/__tests__/plan-iteration.test.ts",
+    "src/domains/plan/lib/__tests__/instructional-plan-generation.schema.test.ts",
     "src/shared/ai/text-model-provider.ts",
     "src/domains/syllabus/types/syllabus.types.ts",
     "src/domains/video-duration/video-duration-policy.ts"

@@ -6,10 +6,7 @@ export function normalizePlanIterationCount(value: unknown) {
     : 0;
 }
 
-export function getPlanIterationCount(
-  value: unknown,
-  hasExistingPlan = false,
-) {
+export function getPlanIterationCount(value: unknown, hasExistingPlan = false) {
   const normalizedValue = normalizePlanIterationCount(value);
   return hasExistingPlan ? Math.max(1, normalizedValue) : normalizedValue;
 }
@@ -27,4 +24,8 @@ export function getNextPlanIteration(value: unknown) {
   }
 
   return currentIteration + 1;
+}
+
+export function getPreviousPlanIteration(value: unknown) {
+  return Math.max(0, normalizePlanIterationCount(value) - 1);
 }

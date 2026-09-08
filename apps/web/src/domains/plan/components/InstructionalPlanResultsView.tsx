@@ -84,7 +84,10 @@ export function InstructionalPlanResultsView({
   onVideoDurationPolicySave,
 }: InstructionalPlanResultsViewProps) {
   const modules = groupPlanModules(plan.lesson_plans);
-  const iterationCount = getPlanIterationCount(plan.iteration_count, true);
+  const iterationCount = getPlanIterationCount(
+    plan.iteration_count,
+    Array.isArray(plan.lesson_plans) && plan.lesson_plans.length > 0,
+  );
   const canRegenerate = canIteratePlan(iterationCount);
 
   return (
