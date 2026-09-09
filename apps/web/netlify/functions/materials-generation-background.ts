@@ -9,6 +9,7 @@ import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
 import {
   findOrCreateMaterialLesson,
   type MaterialLessonRecord,
+  type MaterialsModelRuntimeConfig,
 } from "./shared/materials-generation-helpers";
 import {
   generateLessonMaterials,
@@ -188,6 +189,7 @@ async function processSingleLesson(params: {
   iterationNumber?: number;
   componentTypes?: string[];
   models: string[];
+  modelRuntimeConfig: MaterialsModelRuntimeConfig;
 }) {
   const {
     materialsId,
@@ -199,6 +201,7 @@ async function processSingleLesson(params: {
     iterationNumber,
     componentTypes,
     models,
+    modelRuntimeConfig,
   } = params;
   const { supabase, lesson } = await loadSingleLesson(materialsId, lessonId);
   const generationContext = await loadMaterialsGenerationContext(
@@ -222,6 +225,7 @@ async function processSingleLesson(params: {
     componentTypes,
     organizationId,
     models,
+    modelRuntimeConfig,
   });
 
   return {
@@ -236,8 +240,16 @@ async function processNextPendingLesson(params: {
   organizationId?: string | null;
   logPrefix: string;
   models: string[];
+  modelRuntimeConfig: MaterialsModelRuntimeConfig;
 }) {
-  const { materialsId, artifactId, organizationId, logPrefix, models } = params;
+  const {
+    materialsId,
+    artifactId,
+    organizationId,
+    logPrefix,
+    models,
+    modelRuntimeConfig,
+  } = params;
   const supabase = createServiceRoleClient();
 
   await wait(Math.random() * START_JITTER_MS);
@@ -293,6 +305,7 @@ async function processNextPendingLesson(params: {
     organizationId,
     logPrefix,
     models,
+    modelRuntimeConfig,
   });
 
   console.log(`${logPrefix} Waiting ${PROCESS_NEXT_DELAY_MS}ms before next...`);
@@ -360,6 +373,13 @@ export const handler: Handler = async (event) => {
       console.log(`${logPrefix} Gemini API key source: ${getGeminiApiKeySource()}`);
     }
     console.log(`${logPrefix} Models: ${models.join(", ")}`);
+    const modelRuntimeConfig: MaterialsModelRuntimeConfig = {
+      temperature: modelConfig.temperature,
+      thinkingLevel: modelConfig.thinkingLevel,
+    };
+    console.log(
+      `${logPrefix} Model runtime: temperature=${modelRuntimeConfig.temperature}, thinking=${modelRuntimeConfig.thinkingLevel}`,
+    );
 
     if ((mode === "single-lesson" || mode === "single-component") && lessonId) {
       return processSingleLesson({
@@ -372,6 +392,7 @@ export const handler: Handler = async (event) => {
         logPrefix,
         componentTypes: mode === "single-component" ? componentTypes : undefined,
         models,
+        modelRuntimeConfig,
       });
     }
 
@@ -408,6 +429,7 @@ export const handler: Handler = async (event) => {
         organizationId: targetOrganizationId,
         logPrefix,
         models,
+        modelRuntimeConfig,
       });
     }
 

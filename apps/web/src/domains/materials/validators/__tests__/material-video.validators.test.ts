@@ -17,8 +17,9 @@ test("appends non-overridable video guardrails for organizations with custom pro
   }]);
 
   assert.match(guardrails, /no son personalizables/);
-  assert.match(guardrails, /objetivo 420s/);
-  assert.match(guardrails, /objetivo 6300/);
+  assert.match(guardrails, /objetivo editorial 6300/);
+  assert.match(guardrails, /5985-6615/);
+  assert.match(guardrails, /se derivarán en servidor/);
   assert.match(guardrails, /3 B-roll/);
 });
 
@@ -31,8 +32,8 @@ test("builds a targeted repair prompt from the exact production contract", () =>
   );
 
   assert.match(instructions, /Corrige únicamente VIDEO_DEMO/);
-  assert.match(instructions, /420s/);
-  assert.match(instructions, /6300 caracteres editoriales/);
+  assert.match(instructions, /5985 y 6615 caracteres editoriales/);
+  assert.match(instructions, /objetivo 6300/);
   assert.match(instructions, /3 tomas B-roll/);
   assert.match(instructions, /INSUFFICIENT_BROLL_COVERAGE/);
 });
@@ -53,7 +54,7 @@ test("accepts a video repair that fully passes validation", () => {
   );
 });
 
-test("accepts partial repair progress only when it adds no new errors", () => {
+test("rejects partial repair progress until the candidate fully passes", () => {
   const initialValidation = {
     valid: false,
     issues: [
@@ -76,7 +77,7 @@ test("accepts partial repair progress only when it adds no new errors", () => {
         message: "Narration is still too short",
       }],
     }),
-    true,
+    false,
   );
   assert.equal(
     shouldUseVideoRepairCandidate(initialValidation, {

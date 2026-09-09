@@ -25,6 +25,7 @@ import {
   type CurationRowRecord,
   type LessonPlanRecord,
   type MaterialLessonRecord,
+  type MaterialsModelRuntimeConfig,
 } from "./materials-generation-helpers";
 
 const MATERIALS_FUNCTION_PATH =
@@ -46,6 +47,7 @@ async function repairInvalidGeneratedVideos(params: {
   input: MaterialsGenerationInput;
   logPrefix: string;
   models: string[];
+  modelRuntimeConfig: MaterialsModelRuntimeConfig;
   organizationId?: string | null;
   result: MaterialsGenerationResult;
   supabase: SupabaseClient;
@@ -55,6 +57,7 @@ async function repairInvalidGeneratedVideos(params: {
     input,
     logPrefix,
     models,
+    modelRuntimeConfig,
     organizationId,
     result,
     supabase,
@@ -99,6 +102,7 @@ async function repairInvalidGeneratedVideos(params: {
       repairInput,
       `${logPrefix} [Video repair]`,
       models,
+      modelRuntimeConfig,
       supabase,
       [component.type],
       organizationId,
@@ -123,7 +127,7 @@ async function repairInvalidGeneratedVideos(params: {
     );
     if (!candidateIsBetter) {
       console.warn(
-        `${logPrefix} ${component.type} repair was not better; preserving the original for QA`,
+        `${logPrefix} ${component.type} repair is still invalid; preserving the original for QA`,
       );
       continue;
     }
@@ -361,6 +365,8 @@ export async function generateLessonMaterials(params: {
   componentTypes?: string[];
   /** Database-configured models in primary/fallback order. */
   models: string[];
+  /** Provider-specific generation controls resolved from model_settings. */
+  modelRuntimeConfig: MaterialsModelRuntimeConfig;
 }) {
   const {
     supabase,
@@ -372,6 +378,7 @@ export async function generateLessonMaterials(params: {
     iterationNumber,
     componentTypes,
     models,
+    modelRuntimeConfig,
   } = params;
 
   const lessonSources = findLessonSources(generationContext.lessonSources, lesson);
@@ -399,6 +406,7 @@ export async function generateLessonMaterials(params: {
     input,
     logPrefix,
     models,
+    modelRuntimeConfig,
     supabase,
     componentTypes,
     organizationId,
@@ -408,6 +416,7 @@ export async function generateLessonMaterials(params: {
     input,
     logPrefix,
     models,
+    modelRuntimeConfig,
     organizationId,
     result: initialResult,
     supabase,

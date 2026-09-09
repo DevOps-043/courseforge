@@ -235,6 +235,96 @@ test("normalizes model-derived script arithmetic deterministically", () => {
   ]);
 });
 
+test("derives script and storyboard timing from editorial characters", () => {
+  const contract = buildVideoDurationContract(null, "VIDEO_DEMO");
+  const narration = Array.from({ length: 630 }, () => "contenido").join(" ");
+  const firstHalf = narration.split(" ").slice(0, 315).join(" ");
+  const secondHalf = narration.split(" ").slice(315).join(" ");
+  const normalized = normalizeVideoDurationContent({
+    duration_estimate_minutes: 9.3,
+    script: {
+      sections: [
+        {
+          duration_seconds: 279,
+          narration_text: firstHalf,
+          timecode_end: "04:39",
+          timecode_start: "00:00",
+        },
+        {
+          duration_seconds: 279,
+          narration_text: secondHalf,
+          timecode_end: "09:18",
+          timecode_start: "04:39",
+        },
+      ],
+    },
+    storyboard: [
+      {
+        narration_text: "resumen que no coincide",
+        timecode_end: "03:30",
+        timecode_start: "00:00",
+      },
+      {
+        narration_text: "otro resumen",
+        timecode_end: "07:00",
+        timecode_start: "03:30",
+      },
+    ],
+  }, contract) as {
+    duration_estimate_minutes: number;
+    script: { sections: Array<Record<string, unknown>> };
+    storyboard: Array<Record<string, unknown>>;
+  };
+
+  const expectedSeconds = Math.round((narration.length / 900) * 60);
+  assert.equal(
+    normalized.script.sections.reduce(
+      (total, section) => total + Number(section.duration_seconds),
+      0,
+    ),
+    expectedSeconds,
+  );
+  assert.equal(
+    normalized.storyboard.at(-1)?.timecode_end,
+    formatTimecode(expectedSeconds),
+  );
+  assert.equal(
+    normalized.storyboard.map((take) => take.narration_text).join(" "),
+    narration,
+  );
+  assert.equal(normalized.duration_estimate_minutes, Number((expectedSeconds / 60).toFixed(4)));
+});
+
+test("does not preserve an invented 558-second timeline for short narration", () => {
+  const contract = buildVideoDurationContract(null, "VIDEO_DEMO");
+  const narration = "a".repeat(5_056);
+  const normalized = normalizeVideoDurationContent({
+    duration_estimate_minutes: 7,
+    script: {
+      sections: [{
+        duration_seconds: 558,
+        narration_text: narration,
+        timecode_end: "09:18",
+        timecode_start: "00:00",
+      }],
+    },
+    storyboard: [{
+      narration_text: "resumen distinto",
+      timecode_end: "07:00",
+      timecode_start: "00:00",
+      visual_type: "b_roll",
+    }],
+  }, contract) as Record<string, unknown>;
+  const result = validateVideoDurationContent(normalized, contract);
+
+  assert.equal(result.scriptDurationSeconds, 337);
+  assert.equal(result.estimatedNarrationDurationSeconds, 337);
+  assert.ok(result.issues.some((issue) => issue.code === "INSUFFICIENT_NARRATION"));
+  assert.ok(result.issues.some((issue) => issue.code === "NARRATION_TARGET_MISMATCH"));
+  assert.ok(!result.issues.some((issue) => issue.code === "INVALID_STORYBOARD_TIMECODES"));
+  assert.ok(!result.issues.some((issue) => issue.code === "STORYBOARD_COVERAGE_MISMATCH"));
+});
+
 test("accepts a continuous 7-minute script with sufficient visual coverage", () => {
   const contract = buildVideoDurationContract(null);
   const sectionCount = contract.minimumStoryboardTakes;

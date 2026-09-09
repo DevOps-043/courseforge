@@ -68,6 +68,11 @@ export interface MaterialLessonRecord {
   iteration_count?: number | null;
 }
 
+export interface MaterialsModelRuntimeConfig {
+  temperature: number;
+  thinkingLevel: string;
+}
+
 export interface CurationRowRecord {
   id: string;
   lesson_id?: string | null;
@@ -207,6 +212,7 @@ export async function generateWithRetry(
   input: MaterialsGenerationInput,
   logPrefix: string,
   models: string[],
+  modelRuntimeConfig: MaterialsModelRuntimeConfig,
   supabase?: SupabaseClient,
   componentTypes?: string[],
   organizationId?: string | null,
@@ -248,6 +254,7 @@ export async function generateWithRetry(
               supabase,
               componentTypes,
               organizationId,
+              modelRuntimeConfig,
             )
           : await generateMaterialsWithOpenAI(
               (openAiClient ||= createOpenAiClient()),
@@ -257,6 +264,7 @@ export async function generateWithRetry(
               supabase,
               componentTypes,
               organizationId,
+              modelRuntimeConfig,
             );
         return { success: true as const, content };
       } catch (error) {
@@ -313,6 +321,10 @@ export async function generateMaterialsWithGemini(
   supabase?: SupabaseClient,
   componentTypes?: string[],
   organizationId?: string | null,
+  modelRuntimeConfig: MaterialsModelRuntimeConfig = {
+    temperature: 0.7,
+    thinkingLevel: "medium",
+  },
 ) {
   const prompt = await buildMaterialsPrompt(
     input,
@@ -328,7 +340,7 @@ export async function generateMaterialsWithGemini(
     model,
     contents: prompt,
     config: {
-      temperature: 0.7,
+      temperature: modelRuntimeConfig.temperature,
       maxOutputTokens: 16000,
       responseMimeType: "application/json",
     },
@@ -349,6 +361,10 @@ export async function generateMaterialsWithOpenAI(
   supabase?: SupabaseClient,
   componentTypes?: string[],
   organizationId?: string | null,
+  modelRuntimeConfig: MaterialsModelRuntimeConfig = {
+    temperature: 0.7,
+    thinkingLevel: "medium",
+  },
 ) {
   const prompt = await buildMaterialsPrompt(
     input,
@@ -364,6 +380,7 @@ export async function generateMaterialsWithOpenAI(
     model,
     input: prompt,
     max_output_tokens: 16000,
+    reasoning: { effort: normalizeReasoningEffort(modelRuntimeConfig.thinkingLevel) },
     text: { format: { type: "json_object" } },
   });
   const incompleteReason = response.incomplete_details?.reason;
@@ -405,7 +422,7 @@ async function buildMaterialsPrompt(
     );
     console.log(
       `${logPrefix} Prompt sources: ${Object.entries(resolved.promptSources)
-        .map(([code, source]) => `${code}=${source}`)
+        .map(([code, source]) => `${code}=${source}@${resolved.promptVersions[code] || "unknown"}`)
         .join(", ")}`,
     );
     basePrompt = assemblePrompt(resolved, effectiveComponentTypes);
@@ -427,6 +444,11 @@ async function buildMaterialsPrompt(
             (componentType) => COMPONENT_PROMPT_CODES[componentType],
           ).filter(Boolean)].map((code) => [code, "default"]),
         ),
+        promptVersions: Object.fromEntries(
+          [SYSTEM_PROMPT_CODE, ...effectiveComponentTypes.map(
+            (componentType) => COMPONENT_PROMPT_CODES[componentType],
+          ).filter(Boolean)].map((code) => [code, "code"]),
+        ),
       },
       effectiveComponentTypes,
     );
@@ -440,6 +462,23 @@ async function buildMaterialsPrompt(
   );
 }
 
+function normalizeReasoningEffort(
+  value: string,
+): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {
+  const normalized = value.trim().toLowerCase();
+  switch (normalized) {
+    case "none":
+    case "minimal":
+    case "low":
+    case "medium":
+    case "high":
+    case "xhigh":
+      return normalized;
+    default:
+      return "medium";
+  }
+}
+
 function parseAndValidateMaterialsOutput(
   input: MaterialsGenerationInput,
   responseText?: string | null,
@@ -450,7 +489,7 @@ function parseAndValidateMaterialsOutput(
     responseText,
   });
   normalizeGeneratedVideoDurations(input, generated);
-  assertGeneratedVideoDurations(input, generated);
+  reportGeneratedVideoDurationIssues(input, generated);
   return generated;
 }
 
@@ -465,6 +504,7 @@ function normalizeGeneratedVideoDurations(
     }
     generatedComponents[component.type] = normalizeVideoDurationContent(
       generatedComponents[component.type],
+      component.duration_contract,
     );
   }
 }
@@ -484,7 +524,7 @@ function resolveComponentDurationContract(
   };
 }
 
-function assertGeneratedVideoDurations(
+function reportGeneratedVideoDurationIssues(
   input: MaterialsGenerationInput,
   generated: MaterialsGenerationOutput,
 ) {
@@ -504,7 +544,9 @@ function assertGeneratedVideoDurations(
     );
     console.warn(`[Video Duration] mode=${validationMode} ${message}`);
     if (validationMode === "enforce") {
-      throw new Error(message);
+      console.warn(
+        "[Video Duration] Enforcement is deferred until the targeted repair finishes so recoverable output is not discarded.",
+      );
     }
   }
 }

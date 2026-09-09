@@ -28,12 +28,15 @@ export interface ResolvedPrompts {
     componentPrompts: Record<string, string>;
     /** Resolution provenance for diagnostics; prompt content is never logged. */
     promptSources: Record<string, 'organization' | 'global' | 'default'>;
+    /** Selected database version, or "code" for the bundled fallback. */
+    promptVersions: Record<string, string>;
 }
 
 interface SystemPromptRow {
     code: string;
     content: string;
     is_active: boolean;
+    version: string;
 }
 
 // --------------------------------------------------------------------------
@@ -366,14 +369,25 @@ export async function resolvePrompts(
     }
 
     const promptSources = new Map<string, 'organization' | 'global' | 'default'>();
+    const promptVersions = new Map<string, string>();
     const dbPrompts = await fetchPromptsFromDb(
         supabase,
         codesNeeded,
         organizationId,
         promptSources,
+        promptVersions,
     );
 
-    const systemPrompt = dbPrompts.get(SYSTEM_PROMPT_CODE) ?? DEFAULT_PROMPTS[SYSTEM_PROMPT_CODE] ?? '';
+    let systemPrompt = dbPrompts.get(SYSTEM_PROMPT_CODE) ?? DEFAULT_PROMPTS[SYSTEM_PROMPT_CODE] ?? '';
+    const requestsVideo = componentTypes.some((componentType) => componentType.startsWith('VIDEO_'));
+    if (requestsVideo && !systemPrompt.includes('900 caracteres por minuto')) {
+        console.warn(
+            '[PromptResolver] Ignoring an incompatible MATERIALS_SYSTEM prompt without the character-based video contract.',
+        );
+        systemPrompt = DEFAULT_PROMPTS[SYSTEM_PROMPT_CODE] ?? systemPrompt;
+        promptSources.set(SYSTEM_PROMPT_CODE, 'default');
+        promptVersions.set(SYSTEM_PROMPT_CODE, 'code');
+    }
 
     const componentPrompts: Record<string, string> = {};
     for (const ct of componentTypes) {
@@ -384,12 +398,14 @@ export async function resolvePrompts(
 
     for (const code of codesNeeded) {
         if (!promptSources.has(code)) promptSources.set(code, 'default');
+        if (!promptVersions.has(code)) promptVersions.set(code, 'code');
     }
 
     return {
         systemPrompt,
         componentPrompts,
         promptSources: Object.fromEntries(promptSources),
+        promptVersions: Object.fromEntries(promptVersions),
     };
 }
 
@@ -446,6 +462,7 @@ async function fetchPromptsFromDb(
     codes: string[],
     organizationId?: string | null,
     promptSources?: Map<string, 'organization' | 'global' | 'default'>,
+    promptVersions?: Map<string, string>,
 ): Promise<Map<string, string>> {
     const result = new Map<string, string>();
 
@@ -453,7 +470,7 @@ async function fetchPromptsFromDb(
     if (organizationId) {
         const { data: orgRows } = await supabase
             .from('system_prompts')
-            .select('code, content, is_active, updated_at, created_at')
+            .select('code, content, is_active, version, updated_at, created_at')
             .in('code', codes)
             .eq('organization_id', organizationId)
             .eq('is_active', true)
@@ -465,6 +482,7 @@ async function fetchPromptsFromDb(
                 if (!result.has(row.code)) {
                     result.set(row.code, row.content);
                     promptSources?.set(row.code, 'organization');
+                    promptVersions?.set(row.code, row.version);
                 }
             }
         }
@@ -475,7 +493,7 @@ async function fetchPromptsFromDb(
     if (missingCodes.length > 0) {
         const { data: globalRows } = await supabase
             .from('system_prompts')
-            .select('code, content, is_active, updated_at, created_at')
+            .select('code, content, is_active, version, updated_at, created_at')
             .in('code', missingCodes)
             .is('organization_id', null)
             .eq('is_active', true)
@@ -487,6 +505,7 @@ async function fetchPromptsFromDb(
                 if (!result.has(row.code)) {
                     result.set(row.code, row.content);
                     promptSources?.set(row.code, 'global');
+                    promptVersions?.set(row.code, row.version);
                 }
             }
         }

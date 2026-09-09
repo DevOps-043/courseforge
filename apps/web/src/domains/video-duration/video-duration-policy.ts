@@ -65,6 +65,33 @@ export type VideoDurationValidationMode = "enforce" | "warn";
 
 /** Editorial pacing used by the materials prompt before real TTS audio exists. */
 export const VIDEO_NARRATION_CHARACTERS_PER_MINUTE = 900;
+/** Narrow editorial tolerance around the configured target before timeline generation. */
+export const VIDEO_NARRATION_TARGET_TOLERANCE_RATIO = 0.05;
+
+export interface VideoNarrationCharacterBudget {
+  absoluteMaximum: number;
+  absoluteMinimum: number;
+  target: number;
+  targetMaximum: number;
+  targetMinimum: number;
+}
+
+export function buildVideoNarrationCharacterBudget(
+  contract: Pick<VideoDurationContract, "maximumDurationSeconds" | "minimumDurationSeconds" | "targetDurationSeconds">,
+): VideoNarrationCharacterBudget {
+  const charactersForDuration = (seconds: number) => Math.round(
+    (seconds / 60) * VIDEO_NARRATION_CHARACTERS_PER_MINUTE,
+  );
+  const target = charactersForDuration(contract.targetDurationSeconds);
+
+  return {
+    absoluteMaximum: charactersForDuration(contract.maximumDurationSeconds),
+    absoluteMinimum: charactersForDuration(contract.minimumDurationSeconds),
+    target,
+    targetMaximum: Math.round(target * (1 + VIDEO_NARRATION_TARGET_TOLERANCE_RATIO)),
+    targetMinimum: Math.round(target * (1 - VIDEO_NARRATION_TARGET_TOLERANCE_RATIO)),
+  };
+}
 
 export function isVideoComponentType(value: unknown): value is VideoComponentType {
   return typeof value === "string" && VIDEO_COMPONENT_TYPES.includes(value as VideoComponentType);

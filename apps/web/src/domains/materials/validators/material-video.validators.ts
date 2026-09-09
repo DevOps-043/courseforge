@@ -1,6 +1,6 @@
 import {
+  buildVideoNarrationCharacterBudget,
   isVideoComponentType,
-  VIDEO_NARRATION_CHARACTERS_PER_MINUTE,
   videoDurationContractSchema,
   type VideoDurationContract,
 } from "../../video-duration/video-duration-policy";
@@ -37,17 +37,9 @@ export function buildVideoGenerationGuardrails(
     const parsed = videoDurationContractSchema.safeParse(component.duration_contract);
     if (!parsed.success) return [];
     const contract = parsed.data;
-    const minimumCharacters = Math.round(
-      (contract.minimumDurationSeconds / 60) * VIDEO_NARRATION_CHARACTERS_PER_MINUTE,
-    );
-    const targetCharacters = Math.round(
-      (contract.targetDurationSeconds / 60) * VIDEO_NARRATION_CHARACTERS_PER_MINUTE,
-    );
-    const maximumCharacters = Math.round(
-      (contract.maximumDurationSeconds / 60) * VIDEO_NARRATION_CHARACTERS_PER_MINUTE,
-    );
+    const characterBudget = buildVideoNarrationCharacterBudget(contract);
     return [
-      `- ${component.type}: duración ${contract.minimumDurationSeconds}-${contract.maximumDurationSeconds}s; objetivo ${contract.targetDurationSeconds}s (±5s); narración ${minimumCharacters}-${maximumCharacters} caracteres, objetivo ${targetCharacters}; mínimo ${contract.minimumStoryboardTakes} tomas, ${contract.minimumBrollTakes} B-roll y ${contract.minimumSlideCount} diapositivas potenciales.`,
+      `- ${component.type}: objetivo editorial ${characterBudget.target} caracteres; rango objetivo obligatorio ${characterBudget.targetMinimum}-${characterBudget.targetMaximum} caracteres (±5%); límites absolutos ${characterBudget.absoluteMinimum}-${characterBudget.absoluteMaximum}; la duración efectiva y todos los timecodes se derivarán en servidor a partir de la narración; mínimo ${contract.minimumStoryboardTakes} tomas, ${contract.minimumBrollTakes} B-roll y ${contract.minimumSlideCount} diapositivas potenciales.`,
     ];
   });
   if (contracts.length === 0) return "";
@@ -56,8 +48,9 @@ export function buildVideoGenerationGuardrails(
     "## Guardrails técnicos de video (OBLIGATORIOS)",
     "Estas reglas no son personalizables y prevalecen ante prompts de organización antiguos o contradictorios.",
     ...contracts,
-    "- duration_estimate_minutes debe coincidir con la suma de duration_seconds.",
-    "- Los timecodes deben iniciar en 00:00, ser contiguos, no solaparse y terminar exactamente en la duración total.",
+    "- Prioriza caracteres editoriales. Los presupuestos de palabras son metadatos para TTS y no gobiernan la extensión del guion.",
+    "- No calcules ni ajustes la extensión del texto a partir de duration_seconds: primero escribe la narración dentro del rango objetivo.",
+    "- duration_estimate_minutes, duration_seconds y los timecodes serán normalizados por el servidor desde la narración.",
     "- El storyboard debe cubrir todo el guion y usar narration_text literal en el mismo orden.",
   ].join("\n");
 }
@@ -67,15 +60,12 @@ export function buildVideoRepairInstructions(
   contract: VideoDurationContract,
   validationErrors: string[],
 ) {
-  const targetCharacterCount = Math.round(
-    (contract.targetDurationSeconds / 60) * VIDEO_NARRATION_CHARACTERS_PER_MINUTE,
-  );
+  const characterBudget = buildVideoNarrationCharacterBudget(contract);
   return [
     `Corrige únicamente ${componentType}.`,
     `Problemas detectados: ${validationErrors.join(" | ")}`,
-    `La suma de script.sections[].duration_seconds debe ser ${contract.targetDurationSeconds}s con tolerancia máxima de 5s.`,
-    `duration_estimate_minutes debe ser ${contract.targetDurationSeconds / 60}.`,
-    `La narración debe aproximarse a ${targetCharacterCount} caracteres editoriales y superar el mínimo correspondiente, sin relleno ni repeticiones.`,
+    `La narración debe quedar entre ${characterBudget.targetMinimum} y ${characterBudget.targetMaximum} caracteres editoriales, con objetivo ${characterBudget.target}, sin relleno ni repeticiones.`,
+    "No intentes compensar texto insuficiente aumentando duration_seconds; el servidor derivará la duración desde los caracteres.",
     `El storyboard debe incluir al menos ${contract.minimumStoryboardTakes} tomas, ${contract.minimumBrollTakes} tomas B-roll y cobertura visual suficiente para ${contract.minimumSlideCount} diapositivas potenciales.`,
     "Todos los timecodes deben iniciar en 00:00, ser contiguos, no solaparse y finalizar exactamente con el guion.",
     "Conserva información sustantiva, decisiones, estados observables, errores y verificación; no inventes datos ni interfaces.",
@@ -83,15 +73,10 @@ export function buildVideoRepairInstructions(
 }
 
 export function shouldUseVideoRepairCandidate(
-  initial: Pick<VideoDurationValidationResult, "issues" | "valid">,
+  _initial: Pick<VideoDurationValidationResult, "issues" | "valid">,
   candidate: Pick<VideoDurationValidationResult, "issues" | "valid">,
 ) {
-  if (candidate.valid) return true;
-  const initialIssueCodes = new Set(initial.issues.map((issue) => issue.code));
-  const introducesNewIssue = candidate.issues.some(
-    (issue) => !initialIssueCodes.has(issue.code),
-  );
-  return !introducesNewIssue && candidate.issues.length < initial.issues.length;
+  return candidate.valid;
 }
 
 export function validateMaterialVideoComponent(
