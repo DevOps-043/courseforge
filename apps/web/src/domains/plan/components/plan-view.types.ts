@@ -17,9 +17,9 @@ export interface PlanLessonItem {
   learning_objective?: string;
   oa_text?: string;
   bloom_taxonomy_level?: string;
-  oa_bloom_verb?: string;
-  measurable_criteria?: string;
-  alignment_notes?: string;
+  oa_bloom_verb?: string | null;
+  measurable_criteria?: string | null;
+  alignment_notes?: string | null;
   components: PlanComponentItem[];
   [key: string]: unknown;
 }
@@ -41,6 +41,11 @@ export interface InstructionalPlanRecord {
   qa_decision?: {
     notes?: string;
   };
+  last_error?: {
+    code?: string;
+    message?: string;
+    occurred_at?: string;
+  } | null;
   [key: string]: unknown;
 }
 

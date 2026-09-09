@@ -12,6 +12,8 @@
   },
   "include": [
     "src/domains/video-duration/**/*.ts",
+    "src/domains/materials/validators/material-video.validators.ts",
+    "src/domains/materials/validators/__tests__/material-video.validators.test.ts",
     "src/shared/config/prompts/global-video-duration.prompts.ts"
   ]
 }

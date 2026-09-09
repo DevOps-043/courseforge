@@ -1,13 +1,21 @@
-import type { VideoDurationContract } from "./video-duration-policy";
+import {
+  buildVideoNarrationCharacterBudget,
+  VIDEO_NARRATION_CHARACTERS_PER_MINUTE,
+  VIDEO_NARRATION_TARGET_TOLERANCE_RATIO,
+  type VideoDurationContract,
+} from "./video-duration-policy";
 
 export type VideoDurationValidationCode =
   | "INSUFFICIENT_BROLL_COVERAGE"
   | "DECLARED_DURATION_MISMATCH"
+  | "EXCESSIVE_NARRATION"
   | "INSUFFICIENT_NARRATION"
+  | "NARRATION_TARGET_MISMATCH"
   | "INSUFFICIENT_SLIDE_COVERAGE"
   | "INVALID_SCRIPT_TIMECODES"
   | "INVALID_STORYBOARD_TIMECODES"
   | "SCRIPT_DURATION_OUT_OF_RANGE"
+  | "SCRIPT_TARGET_DURATION_MISMATCH"
   | "STORYBOARD_COVERAGE_MISMATCH"
   | "STORYBOARD_TOO_SHORT";
 
@@ -19,6 +27,8 @@ export interface VideoDurationValidationIssue {
 export interface VideoDurationValidationResult {
   estimatedNarrationDurationSeconds: number;
   issues: VideoDurationValidationIssue[];
+  narrationCharacterCount: number;
+  narrationWordCount: number;
   scriptDurationSeconds: number;
   valid: boolean;
 }
@@ -28,6 +38,69 @@ interface TimedNarrationItem {
   narration_text?: unknown;
   timecode_end?: unknown;
   timecode_start?: unknown;
+}
+
+export function normalizeVideoDurationContent(
+  content: unknown,
+  contract?: VideoDurationContract,
+) {
+  const record = asRecord(content);
+  if (!record) return content;
+
+  const scriptKey = asRecord(record.script) ? "script" : asRecord(record.video_script) ? "video_script" : null;
+  if (!scriptKey) return content;
+  const script = asRecord(record[scriptKey]);
+  const sections = asRecordArray(script?.sections);
+  if (!script || sections.length === 0) return content;
+
+  const sectionNarrations = sections.map((section) => readNarration(section));
+  const scriptNarration = sectionNarrations.filter(Boolean).join(" ");
+  const narrationCharacterCounts = sectionNarrations.map(countEditorialCharacters);
+  const totalNarrationCharacterCount = countEditorialCharacters(scriptNarration);
+  const modelDurations = sections.map(
+    (section) => Math.round(readPositiveNumber(section.duration_seconds)),
+  );
+  const effectiveDurationSeconds = contract && totalNarrationCharacterCount > 0
+    ? estimateNarrationDuration(totalNarrationCharacterCount)
+    : modelDurations.reduce((total, duration) => total + duration, 0);
+  if (effectiveDurationSeconds <= 0) return content;
+
+  const durations = allocateIntegerDuration(
+    narrationCharacterCounts.some((count) => count > 0)
+      ? narrationCharacterCounts
+      : modelDurations,
+    effectiveDurationSeconds,
+  );
+
+  let cursor = 0;
+  const normalizedSections = sections.map((section, index) => {
+    const duration = durations[index];
+    const start = cursor;
+    cursor += duration;
+    return {
+      ...section,
+      duration_seconds: duration,
+      timecode_end: formatTimecode(cursor),
+      timecode_start: formatTimecode(start),
+    };
+  });
+
+  const storyboard = asRecordArray(record.storyboard);
+  const normalizedStoryboard = normalizeStoryboard(
+    storyboard,
+    scriptNarration,
+    effectiveDurationSeconds,
+  );
+
+  return {
+    ...record,
+    duration_estimate_minutes: Number((effectiveDurationSeconds / 60).toFixed(4)),
+    [scriptKey]: {
+      ...script,
+      sections: normalizedSections,
+    },
+    ...(normalizedStoryboard ? { storyboard: normalizedStoryboard } : {}),
+  };
 }
 
 export function validateVideoDurationContent(
@@ -41,9 +114,10 @@ export function validateVideoDurationContent(
   const scriptDurationSeconds = sumDurations(sections);
   const scriptNarration = joinNarration(sections);
   const storyboardNarration = joinNarration(storyboard);
+  const narrationCharacterCount = countEditorialCharacters(scriptNarration);
+  const narrationWordCount = countWords(scriptNarration);
   const estimatedNarrationDurationSeconds = estimateNarrationDuration(
-    scriptNarration,
-    contract.narrationWordsPerMinute,
+    narrationCharacterCount,
   );
   const issues: VideoDurationValidationIssue[] = [];
 
@@ -57,25 +131,57 @@ export function validateVideoDurationContent(
     });
   }
 
+  const targetDurationToleranceSeconds = Math.max(
+    5,
+    Math.round(contract.targetDurationSeconds * VIDEO_NARRATION_TARGET_TOLERANCE_RATIO),
+  );
+  if (
+    Math.abs(scriptDurationSeconds - contract.targetDurationSeconds)
+      > targetDurationToleranceSeconds
+  ) {
+    issues.push({
+      code: "SCRIPT_TARGET_DURATION_MISMATCH",
+      message: `Las secciones suman ${scriptDurationSeconds}s; deben aproximarse al objetivo de ${contract.targetDurationSeconds}s con tolerancia de ${targetDurationToleranceSeconds}s, derivada del presupuesto editorial.`,
+    });
+  }
+
   const declaredMinutes = readPositiveNumber(record?.duration_estimate_minutes);
   if (declaredMinutes > 0 && Math.abs(declaredMinutes * 60 - scriptDurationSeconds) > 5) {
     issues.push({
       code: "DECLARED_DURATION_MISMATCH",
-      message: "duration_estimate_minutes no coincide con la suma de las secciones del guion.",
+      message: `duration_estimate_minutes declara ${Math.round(declaredMinutes * 60)}s, pero las secciones suman ${scriptDurationSeconds}s.`,
     });
   }
 
-  if (estimatedNarrationDurationSeconds < contract.minimumDurationSeconds) {
+  const characterBudget = buildVideoNarrationCharacterBudget(contract);
+  const minimumCharacterCount = characterBudget.absoluteMinimum;
+  const maximumCharacterCount = characterBudget.absoluteMaximum;
+  if (narrationCharacterCount < minimumCharacterCount) {
     issues.push({
       code: "INSUFFICIENT_NARRATION",
-      message: `La narración equivale a aproximadamente ${estimatedNarrationDurationSeconds}s a ${contract.narrationWordsPerMinute} palabras por minuto; requiere al menos ${contract.minimumDurationSeconds}s. Hace falta información sustantiva, ejemplos o desarrollo pedagógico para alcanzar la duración sin repeticiones.`,
+      message: `La narración contiene ${narrationCharacterCount} caracteres editoriales (${narrationWordCount} palabras) y equivale a aproximadamente ${estimatedNarrationDurationSeconds}s a ${VIDEO_NARRATION_CHARACTERS_PER_MINUTE} caracteres por minuto; requiere al menos ${minimumCharacterCount} caracteres (${contract.minimumDurationSeconds}s). Hace falta información sustantiva, ejemplos o desarrollo pedagógico para alcanzar la duración sin repeticiones.`,
+    });
+  } else if (narrationCharacterCount > maximumCharacterCount) {
+    issues.push({
+      code: "EXCESSIVE_NARRATION",
+      message: `La narración contiene ${narrationCharacterCount} caracteres editoriales y supera el máximo de ${maximumCharacterCount} caracteres (${contract.maximumDurationSeconds}s). Debe condensarse sin perder contenido esencial.`,
+    });
+  }
+  if (
+    narrationCharacterCount < characterBudget.targetMinimum
+    || narrationCharacterCount > characterBudget.targetMaximum
+  ) {
+    issues.push({
+      code: "NARRATION_TARGET_MISMATCH",
+      message: `La narración contiene ${narrationCharacterCount} caracteres editoriales; debe aproximarse al objetivo de ${characterBudget.target} caracteres dentro del rango ${characterBudget.targetMinimum}-${characterBudget.targetMaximum} (±${Math.round(VIDEO_NARRATION_TARGET_TOLERANCE_RATIO * 100)}%).`,
     });
   }
 
-  if (!hasContinuousTimeline(sections, scriptDurationSeconds)) {
+  const scriptTimelineIssue = findTimelineIssue(sections, scriptDurationSeconds);
+  if (scriptTimelineIssue) {
     issues.push({
       code: "INVALID_SCRIPT_TIMECODES",
-      message: "Los timecodes del guion deben iniciar en 00:00, ser contiguos y coincidir con duration_seconds.",
+      message: `Timecodes inválidos en el guion: ${scriptTimelineIssue}`,
     });
   }
 
@@ -105,10 +211,11 @@ export function validateVideoDurationContent(
     });
   }
 
-  if (!hasContinuousTimeline(storyboard, scriptDurationSeconds, false)) {
+  const storyboardTimelineIssue = findTimelineIssue(storyboard, scriptDurationSeconds, false);
+  if (storyboardTimelineIssue) {
     issues.push({
       code: "INVALID_STORYBOARD_TIMECODES",
-      message: "Los timecodes del storyboard deben cubrir el guion completo sin huecos ni solapamientos.",
+      message: `Timecodes inválidos en el storyboard: ${storyboardTimelineIssue}`,
     });
   }
 
@@ -122,35 +229,48 @@ export function validateVideoDurationContent(
   return {
     estimatedNarrationDurationSeconds,
     issues,
+    narrationCharacterCount,
+    narrationWordCount,
     scriptDurationSeconds,
     valid: issues.length === 0,
   };
 }
 
-function hasContinuousTimeline(
+function findTimelineIssue(
   items: Record<string, unknown>[],
   expectedEndSeconds: number,
   requireDeclaredDuration = true,
-) {
-  if (items.length === 0 || expectedEndSeconds <= 0) return false;
+): string | null {
+  if (items.length === 0) return "no contiene secciones o tomas";
+  if (expectedEndSeconds <= 0) return "la duración total esperada no es válida";
 
   let cursor = 0;
-  for (const rawItem of items) {
+  for (const [index, rawItem] of items.entries()) {
     const item = rawItem as TimedNarrationItem;
     const start = parseTimecode(item.timecode_start);
     const end = parseTimecode(item.timecode_end);
-    if (start === null || end === null || end <= start || Math.abs(start - cursor) > 1) {
-      return false;
+    const position = index + 1;
+    if (start === null || end === null) {
+      return `elemento ${position} contiene un timecode ausente o con formato distinto de MM:SS`;
+    }
+    if (end <= start) return `elemento ${position} termina en ${end}s y comienza en ${start}s`;
+    if (Math.abs(start - cursor) > 1) {
+      return `elemento ${position} comienza en ${start}s; debía comenzar en ${cursor}s`;
     }
 
     if (requireDeclaredDuration) {
       const duration = readPositiveNumber(item.duration_seconds);
-      if (duration <= 0 || Math.abs(end - start - duration) > 1) return false;
+      if (duration <= 0) return `elemento ${position} no declara duration_seconds válido`;
+      if (Math.abs(end - start - duration) > 1) {
+        return `elemento ${position} cubre ${end - start}s, pero declara duration_seconds=${duration}`;
+      }
     }
     cursor = end;
   }
 
-  return Math.abs(cursor - expectedEndSeconds) <= 1;
+  return Math.abs(cursor - expectedEndSeconds) <= 1
+    ? null
+    : `finaliza en ${cursor}s; debía finalizar en ${expectedEndSeconds}s`;
 }
 
 function parseTimecode(value: unknown) {
@@ -163,9 +283,102 @@ function parseTimecode(value: unknown) {
   return minutes * 60 + seconds;
 }
 
-function estimateNarrationDuration(text: string, wordsPerMinute: number) {
-  const wordCount = text.split(/\s+/).filter(Boolean).length;
-  return Math.round((wordCount / wordsPerMinute) * 60);
+function formatTimecode(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function allocateIntegerDuration(weights: number[], totalSeconds: number) {
+  if (weights.length === 0) return [];
+  const safeWeights = weights.map((weight) => Math.max(0, weight));
+  const weightTotal = safeWeights.reduce((total, weight) => total + weight, 0);
+  const normalizedWeights = weightTotal > 0
+    ? safeWeights
+    : safeWeights.map(() => 1);
+  const normalizedTotal = normalizedWeights.reduce((total, weight) => total + weight, 0);
+  const rawDurations = normalizedWeights.map(
+    (weight) => (weight / normalizedTotal) * totalSeconds,
+  );
+  const durations = rawDurations.map((duration) => Math.floor(duration));
+  let remaining = totalSeconds - durations.reduce((total, duration) => total + duration, 0);
+  const remainderOrder = rawDurations
+    .map((duration, index) => ({ index, remainder: duration - durations[index] }))
+    .sort((left, right) => right.remainder - left.remainder);
+  for (let index = 0; remaining > 0; index++, remaining--) {
+    durations[remainderOrder[index % remainderOrder.length].index] += 1;
+  }
+  return durations;
+}
+
+function normalizeStoryboard(
+  storyboard: Record<string, unknown>[],
+  scriptNarration: string,
+  totalDurationSeconds: number,
+) {
+  if (storyboard.length === 0 || !scriptNarration) return null;
+  const originalWeights = storyboard.map((take) => {
+    const narrationWeight = countEditorialCharacters(readNarration(take));
+    if (narrationWeight > 0) return narrationWeight;
+    const start = parseTimecode(take.timecode_start);
+    const end = parseTimecode(take.timecode_end);
+    return start !== null && end !== null && end > start ? end - start : 1;
+  });
+  const narrationChunks = partitionNarration(scriptNarration, originalWeights);
+  const durations = allocateIntegerDuration(
+    narrationChunks.map((chunk) => Math.max(1, countEditorialCharacters(chunk))),
+    totalDurationSeconds,
+  );
+  let cursor = 0;
+  return storyboard.map((take, index) => {
+    const start = cursor;
+    cursor += durations[index];
+    return {
+      ...take,
+      narration_text: narrationChunks[index],
+      timecode_end: formatTimecode(cursor),
+      timecode_start: formatTimecode(start),
+    };
+  });
+}
+
+function partitionNarration(narration: string, weights: number[]) {
+  const tokens = narration.trim().split(/\s+/).filter(Boolean);
+  if (weights.length === 0) return [];
+  const tokenCounts = allocateIntegerDuration(weights, tokens.length);
+  let cursor = 0;
+  return tokenCounts.map((tokenCount, index) => {
+    const isLast = index === tokenCounts.length - 1;
+    const end = isLast ? tokens.length : cursor + tokenCount;
+    const chunk = tokens.slice(cursor, end).join(" ");
+    cursor = end;
+    return chunk;
+  });
+}
+
+function readNarration(item: Record<string, unknown>) {
+  return typeof item.narration_text === "string" ? item.narration_text.trim() : "";
+}
+
+function countWords(text: string) {
+  return text.split(/\s+/).filter(Boolean).length;
+}
+
+function countEditorialCharacters(text: string) {
+  return text
+    .replace(/<[^>]*>/g, " ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[`*_>#~]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .length;
+}
+
+function estimateNarrationDuration(characterCount: number) {
+  return Math.round(
+    (characterCount / VIDEO_NARRATION_CHARACTERS_PER_MINUTE) * 60,
+  );
 }
 
 function joinNarration(items: Record<string, unknown>[]) {

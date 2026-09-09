@@ -70,9 +70,9 @@ Esta sección prevalece sobre la redacción histórica de cada hallazgo. **Imple
 ### Verificación posterior a la remediación
 
 - `npm run verify`: **aprobado** (ESLint bloqueante, TypeScript, análisis de ciclos, guardia de migraciones, 10 pruebas de fronteras de seguridad y 19 casos que antes estaban fuera de los scripts).
-- Detección de ciclos: `madge` procesó 820 archivos y reportó **0 dependencias circulares**.
-- Guardia de migraciones: **aprobada** sobre 124 SQL; no permite ampliar las colisiones históricas sin reconciliación explícita.
-- Suites dirigidas: **213 pruebas aprobadas** en Auth Bridge, publicación, curación, syllabus/plan, producción visual/HeyGen/Remotion y los gaps recuperados. Cinco pruebas exclusivas del buscador de biblioteca retirado se eliminaron junto con ese código muerto.
+- Detección de ciclos: `madge` procesó 828 archivos después de integrar `main` y reportó **0 dependencias circulares**.
+- Guardia de migraciones: **aprobada** sobre 126 SQL; no permite ampliar las colisiones históricas sin reconciliación explícita.
+- Suites dirigidas: **aprobadas** en Auth Bridge, publicación, curación, schemas de generación, syllabus/plan, validación de duración y producción visual/HeyGen/Remotion. Cinco pruebas exclusivas del buscador de biblioteca retirado se eliminaron junto con ese código muerto.
 - `npm run build`: **aprobado** con acceso de red para `next/font`.
 - `npm run build:legacy-api` y `npm run lint:legacy-api`: **aprobados**.
 - `npm audit --omit=dev --json`: **0 vulnerabilidades de producción**.

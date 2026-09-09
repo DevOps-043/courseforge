@@ -26,7 +26,14 @@ import {
   videoDurationContractSchema,
   type VideoDurationContract,
 } from "../../../src/domains/video-duration/video-duration-policy";
-import { validateVideoDurationContent } from "../../../src/domains/video-duration/video-duration-validation";
+import {
+  normalizeVideoDurationContent,
+  validateVideoDurationContent,
+} from "../../../src/domains/video-duration/video-duration-validation";
+import {
+  buildVideoGenerationGuardrails,
+  validateMaterialVideoComponent,
+} from "../../../src/domains/materials/validators/material-video.validators";
 import { parseModelJsonResponse } from "../../../src/shared/ai/model-json-response";
 import { getMaterialsModelProvider } from "../../../src/shared/ai/materials-model-provider";
 import { createGeminiClient, createOpenAiClient } from "./bootstrap";
@@ -59,6 +66,11 @@ export interface MaterialLessonRecord {
   quiz_spec?: QuizSpec | null;
   requires_demo_guide?: boolean | null;
   iteration_count?: number | null;
+}
+
+export interface MaterialsModelRuntimeConfig {
+  temperature: number;
+  thinkingLevel: string;
 }
 
 export interface CurationRowRecord {
@@ -200,6 +212,7 @@ export async function generateWithRetry(
   input: MaterialsGenerationInput,
   logPrefix: string,
   models: string[],
+  modelRuntimeConfig: MaterialsModelRuntimeConfig,
   supabase?: SupabaseClient,
   componentTypes?: string[],
   organizationId?: string | null,
@@ -241,6 +254,7 @@ export async function generateWithRetry(
               supabase,
               componentTypes,
               organizationId,
+              modelRuntimeConfig,
             )
           : await generateMaterialsWithOpenAI(
               (openAiClient ||= createOpenAiClient()),
@@ -250,6 +264,7 @@ export async function generateWithRetry(
               supabase,
               componentTypes,
               organizationId,
+              modelRuntimeConfig,
             );
         return { success: true as const, content };
       } catch (error) {
@@ -306,6 +321,10 @@ export async function generateMaterialsWithGemini(
   supabase?: SupabaseClient,
   componentTypes?: string[],
   organizationId?: string | null,
+  modelRuntimeConfig: MaterialsModelRuntimeConfig = {
+    temperature: 0.7,
+    thinkingLevel: "medium",
+  },
 ) {
   const prompt = await buildMaterialsPrompt(
     input,
@@ -321,7 +340,7 @@ export async function generateMaterialsWithGemini(
     model,
     contents: prompt,
     config: {
-      temperature: 0.7,
+      temperature: modelRuntimeConfig.temperature,
       maxOutputTokens: 16000,
       responseMimeType: "application/json",
     },
@@ -342,6 +361,10 @@ export async function generateMaterialsWithOpenAI(
   supabase?: SupabaseClient,
   componentTypes?: string[],
   organizationId?: string | null,
+  modelRuntimeConfig: MaterialsModelRuntimeConfig = {
+    temperature: 0.7,
+    thinkingLevel: "medium",
+  },
 ) {
   const prompt = await buildMaterialsPrompt(
     input,
@@ -357,6 +380,7 @@ export async function generateMaterialsWithOpenAI(
     model,
     input: prompt,
     max_output_tokens: 16000,
+    reasoning: { effort: normalizeReasoningEffort(modelRuntimeConfig.thinkingLevel) },
     text: { format: { type: "json_object" } },
   });
   const incompleteReason = response.incomplete_details?.reason;
@@ -396,6 +420,11 @@ async function buildMaterialsPrompt(
       effectiveComponentTypes,
       organizationId,
     );
+    console.log(
+      `${logPrefix} Prompt sources: ${Object.entries(resolved.promptSources)
+        .map(([code, source]) => `${code}=${source}@${resolved.promptVersions[code] || "unknown"}`)
+        .join(", ")}`,
+    );
     basePrompt = assemblePrompt(resolved, effectiveComponentTypes);
     console.log(`${logPrefix} Using modular prompts for: ${effectiveComponentTypes.join(", ")}`);
   } else {
@@ -410,6 +439,16 @@ async function buildMaterialsPrompt(
       {
         systemPrompt: DEFAULT_PROMPTS[SYSTEM_PROMPT_CODE] ?? "",
         componentPrompts,
+        promptSources: Object.fromEntries(
+          [SYSTEM_PROMPT_CODE, ...effectiveComponentTypes.map(
+            (componentType) => COMPONENT_PROMPT_CODES[componentType],
+          ).filter(Boolean)].map((code) => [code, "default"]),
+        ),
+        promptVersions: Object.fromEntries(
+          [SYSTEM_PROMPT_CODE, ...effectiveComponentTypes.map(
+            (componentType) => COMPONENT_PROMPT_CODES[componentType],
+          ).filter(Boolean)].map((code) => [code, "code"]),
+        ),
       },
       effectiveComponentTypes,
     );
@@ -418,8 +457,26 @@ async function buildMaterialsPrompt(
 
   return (
     basePrompt +
+    `\n\n${buildVideoGenerationGuardrails(input.lesson.components)}` +
     `\n\n## DATOS DE ENTRADA\n\`\`\`json\n${JSON.stringify(input, null, 2)}\n\`\`\`\n\nResponde SOLO con JSON valido.`
   );
+}
+
+function normalizeReasoningEffort(
+  value: string,
+): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {
+  const normalized = value.trim().toLowerCase();
+  switch (normalized) {
+    case "none":
+    case "minimal":
+    case "low":
+    case "medium":
+    case "high":
+    case "xhigh":
+      return normalized;
+    default:
+      return "medium";
+  }
 }
 
 function parseAndValidateMaterialsOutput(
@@ -431,8 +488,25 @@ function parseAndValidateMaterialsOutput(
     finishReason,
     responseText,
   });
-  assertGeneratedVideoDurations(input, generated);
+  normalizeGeneratedVideoDurations(input, generated);
+  reportGeneratedVideoDurationIssues(input, generated);
   return generated;
+}
+
+function normalizeGeneratedVideoDurations(
+  input: MaterialsGenerationInput,
+  generated: MaterialsGenerationOutput,
+) {
+  const generatedComponents = generated.components as Record<string, unknown>;
+  for (const component of input.lesson.components) {
+    if (!isVideoComponentType(component.type) || !generatedComponents[component.type]) {
+      continue;
+    }
+    generatedComponents[component.type] = normalizeVideoDurationContent(
+      generatedComponents[component.type],
+      component.duration_contract,
+    );
+  }
 }
 
 function resolveComponentDurationContract(
@@ -450,7 +524,7 @@ function resolveComponentDurationContract(
   };
 }
 
-function assertGeneratedVideoDurations(
+function reportGeneratedVideoDurationIssues(
   input: MaterialsGenerationInput,
   generated: MaterialsGenerationOutput,
 ) {
@@ -470,7 +544,9 @@ function assertGeneratedVideoDurations(
     );
     console.warn(`[Video Duration] mode=${validationMode} ${message}`);
     if (validationMode === "enforce") {
-      throw new Error(message);
+      console.warn(
+        "[Video Duration] Enforcement is deferred until the targeted repair finishes so recoverable output is not discarded.",
+      );
     }
   }
 }
@@ -573,6 +649,11 @@ export async function saveGeneratedComponents(
     }
 
     const durationContract = durationContractsByType[type as ComponentType];
+    const componentValidation = validateMaterialVideoComponent(
+      type,
+      data,
+      durationContract,
+    );
     const { error: insertError } = await supabase.from("material_components").insert({
       ...(durationContract ? {
         assets: {
@@ -584,8 +665,8 @@ export async function saveGeneratedComponents(
       type,
       content: data,
       source_refs: refs,
-      validation_status: "PENDING",
-      validation_errors: [],
+      validation_status: componentValidation.status,
+      validation_errors: componentValidation.errors,
       iteration_number: iteration,
     });
 

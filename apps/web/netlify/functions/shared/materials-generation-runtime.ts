@@ -1,11 +1,21 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ComponentType } from "../../../src/domains/materials/types/materials.types";
+import type {
+  ComponentType,
+  MaterialsGenerationInput,
+  MaterialsGenerationOutput,
+} from "../../../src/domains/materials/types/materials.types";
 import { signBackgroundPayload } from "../../../src/lib/server/background-payload-signature";
 import {
   resolveArtifactVideoDurationPolicy,
+  isVideoComponentType,
   type VideoDurationContract,
   type VideoDurationPolicy,
 } from "../../../src/domains/video-duration/video-duration-policy";
+import { validateVideoDurationContent } from "../../../src/domains/video-duration/video-duration-validation";
+import {
+  buildVideoRepairInstructions,
+  shouldUseVideoRepairCandidate,
+} from "../../../src/domains/materials/validators/material-video.validators";
 import { getFunctionsBaseUrl } from "./bootstrap";
 import {
   buildMaterialsGenerationInput,
@@ -16,6 +26,7 @@ import {
   type CurationRowRecord,
   type LessonPlanRecord,
   type MaterialLessonRecord,
+  type MaterialsModelRuntimeConfig,
 } from "./materials-generation-helpers";
 
 const MATERIALS_FUNCTION_PATH =
@@ -28,6 +39,117 @@ export interface MaterialsGenerationContext {
   lessonPlans: LessonPlanRecord[];
   lessonSources: CurationRowRecord[];
   videoDurationPolicy: VideoDurationPolicy;
+}
+
+type MaterialsGenerationResult = Awaited<ReturnType<typeof generateWithRetry>>;
+
+async function repairInvalidGeneratedVideos(params: {
+  componentTypes?: string[];
+  input: MaterialsGenerationInput;
+  logPrefix: string;
+  models: string[];
+  modelRuntimeConfig: MaterialsModelRuntimeConfig;
+  organizationId?: string | null;
+  result: MaterialsGenerationResult;
+  supabase: SupabaseClient;
+}): Promise<MaterialsGenerationResult> {
+  const {
+    componentTypes,
+    input,
+    logPrefix,
+    models,
+    modelRuntimeConfig,
+    organizationId,
+    result,
+    supabase,
+  } = params;
+  if (!result.success) return result;
+
+  let repairedOutput: MaterialsGenerationOutput = result.content;
+  for (const component of input.lesson.components) {
+    if (!component.duration_contract || !isVideoComponentType(component.type)) {
+      continue;
+    }
+    if (componentTypes && !componentTypes.includes(component.type)) {
+      continue;
+    }
+
+    const initialContent = repairedOutput.components[component.type];
+    if (!initialContent) continue;
+    const initialValidation = validateVideoDurationContent(
+      initialContent,
+      component.duration_contract,
+    );
+    if (initialValidation.valid) continue;
+
+    console.warn(
+      `${logPrefix} Repairing ${component.type} after ${initialValidation.issues.length} duration validation issue(s)`,
+    );
+    const repairInput: MaterialsGenerationInput = {
+      ...input,
+      fix_instructions: buildVideoRepairInstructions(
+        component.type,
+        component.duration_contract,
+        initialValidation.issues.map(
+          (issue) => `${issue.code}: ${issue.message}`,
+        ),
+      ),
+      lesson: {
+        ...input.lesson,
+        components: [component],
+      },
+    };
+    const repairResult = await generateWithRetry(
+      repairInput,
+      `${logPrefix} [Video repair]`,
+      models,
+      modelRuntimeConfig,
+      supabase,
+      [component.type],
+      organizationId,
+    );
+    if (!repairResult.success) {
+      console.warn(`${logPrefix} ${component.type} repair request failed: ${repairResult.error}`);
+      continue;
+    }
+
+    const candidateContent = repairResult.content.components[component.type];
+    if (!candidateContent) {
+      console.warn(`${logPrefix} ${component.type} repair returned no component`);
+      continue;
+    }
+    const candidateValidation = validateVideoDurationContent(
+      candidateContent,
+      component.duration_contract,
+    );
+    const candidateIsBetter = shouldUseVideoRepairCandidate(
+      initialValidation,
+      candidateValidation,
+    );
+    if (!candidateIsBetter) {
+      console.warn(
+        `${logPrefix} ${component.type} repair is still invalid; preserving the original for QA`,
+      );
+      continue;
+    }
+
+    repairedOutput = {
+      ...repairedOutput,
+      components: {
+        ...repairedOutput.components,
+        [component.type]: candidateContent,
+      },
+      source_refs_used: Array.from(new Set([
+        ...(repairedOutput.source_refs_used || []),
+        ...(repairResult.content.source_refs_used || []),
+      ])),
+    };
+    console.log(
+      `${logPrefix} ${component.type} repair ${candidateValidation.valid ? "passed" : `reduced issues to ${candidateValidation.issues.length}`}`,
+    );
+  }
+
+  return { success: true as const, content: repairedOutput };
 }
 
 export function wait(milliseconds: number) {
@@ -245,6 +367,8 @@ export async function generateLessonMaterials(params: {
   componentTypes?: string[];
   /** Database-configured models in primary/fallback order. */
   models: string[];
+  /** Provider-specific generation controls resolved from model_settings. */
+  modelRuntimeConfig: MaterialsModelRuntimeConfig;
 }) {
   const {
     supabase,
@@ -256,6 +380,7 @@ export async function generateLessonMaterials(params: {
     iterationNumber,
     componentTypes,
     models,
+    modelRuntimeConfig,
   } = params;
 
   const lessonSources = findLessonSources(generationContext.lessonSources, lesson);
@@ -279,14 +404,25 @@ export async function generateLessonMaterials(params: {
     console.log(`${logPrefix} Partial regen: ${componentTypes.join(", ")}`);
   }
 
-  const result = await generateWithRetry(
+  const initialResult = await generateWithRetry(
     input,
     logPrefix,
     models,
+    modelRuntimeConfig,
     supabase,
     componentTypes,
     organizationId,
   );
+  const result = await repairInvalidGeneratedVideos({
+    componentTypes,
+    input,
+    logPrefix,
+    models,
+    modelRuntimeConfig,
+    organizationId,
+    result: initialResult,
+    supabase,
+  });
   return processGenerationResult({
     supabase,
     lessonId: lesson.id,

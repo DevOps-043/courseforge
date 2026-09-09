@@ -1,39 +1,6 @@
 import type OpenAI from "openai";
+import { CURATION_SEARCH_RESPONSE_SCHEMA } from "./structured-output.schemas";
 import type { CurationCandidate, CurationLesson } from "./types";
-
-const SEARCH_RESPONSE_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    lessons: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          lesson_id: { type: "string" },
-          sources: {
-            type: "array",
-            maxItems: 5,
-            items: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                url: { type: "string" },
-                title: { type: "string" },
-                rationale: { type: "string" },
-                search_query: { type: "string" },
-              },
-              required: ["url", "title", "rationale", "search_query"],
-            },
-          },
-        },
-        required: ["lesson_id", "sources"],
-      },
-    },
-  },
-  required: ["lessons"],
-} as const;
 
 function responseText(response: unknown) {
   const value = response as { output_text?: unknown };
@@ -48,8 +15,9 @@ export async function searchLessonCandidates(params: {
   customPrompt?: string;
   systemPrompt?: string;
 }) {
-  const { client, model, courseContext, lessons, customPrompt, systemPrompt } = params;
-  const response = await client.responses.create(({
+  const { client, model, courseContext, lessons, customPrompt, systemPrompt } =
+    params;
+  const response = await client.responses.create({
     model,
     input: [
       {
@@ -78,10 +46,10 @@ export async function searchLessonCandidates(params: {
         type: "json_schema",
         name: "courseforge_curation_v2_candidates",
         strict: true,
-        schema: SEARCH_RESPONSE_SCHEMA,
+        schema: CURATION_SEARCH_RESPONSE_SCHEMA,
       },
     },
-  } as unknown) as Parameters<typeof client.responses.create>[0]);
+  } as unknown as Parameters<typeof client.responses.create>[0]);
 
   const parsed = JSON.parse(responseText(response)) as {
     lessons?: Array<{
