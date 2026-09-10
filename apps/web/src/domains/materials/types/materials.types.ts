@@ -232,7 +232,7 @@ export interface MaterialAssets {
         script_hash?: string;
         word_timestamps?: { word: string; start: number; end: number }[];
         last_uploaded_at?: string;
-    };
+    } | null;
     manual_voice_clips?: {
         id: string;
         order: number;
@@ -250,7 +250,7 @@ export interface MaterialAssets {
         file_name?: string;
         duration?: number;
         volume_multiplier?: number;
-    };
+    } | null;
     b_roll_clips?: {
         id: string;
         storage_path: string;
@@ -351,7 +351,7 @@ export interface MaterialAssets {
             file_name?: string;
             content_type?: string;
         }[];
-    };
+    } | null;
 }
 
 // Lección con materiales

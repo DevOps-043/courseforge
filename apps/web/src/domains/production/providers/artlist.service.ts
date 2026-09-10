@@ -1,23 +1,29 @@
 import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
+import {
+  assertSafeExternalMediaUrl,
+  readResponseWithLimit,
+} from "@/domains/production/external-media-import-policy";
+import {
+  DEFAULT_OUTBOUND_DOWNLOAD_TIMEOUT_MS,
+  fetchWithDeadline,
+} from "@/lib/server/outbound-http";
 import { PRODUCTION_MEDIA_CACHE_CONTROL_SECONDS } from "../media-storage.config";
+import {
+  parseArtlistSearchResults,
+  type ArtlistSearchResult,
+  type ArtlistTrack,
+  type ArtlistVideo,
+} from "./artlist.types";
 
-export interface ArtlistTrack {
-  id: string;
-  title: string;
-  artist: string;
-  genre: string;
-  mood: string;
-  public_url: string;
-  duration_seconds: number;
+const MAX_ARTLIST_IMPORT_BYTES = 150 * 1024 * 1024;
+
+interface ArtlistTokenResponse {
+  access_token?: string;
 }
 
-export interface ArtlistVideo {
-  id: string;
-  title: string;
-  tags: string[];
-  public_url: string;
-  duration_seconds: number;
-  thumbnail_url?: string;
+interface ArtlistDownloadResponse {
+  download_url?: string;
+  duration?: number;
 }
 
 // ---------------------------------------------------------
@@ -126,19 +132,25 @@ export class ArtlistService {
   /**
    * Search Artlist Catalog (Music or Video)
    */
-  async search(query: string, type: "music" | "video"): Promise<any[]> {
+  async search(query: string, type: "music" | "video"): Promise<ArtlistSearchResult[]> {
     const cleanQuery = query.trim().toLowerCase();
 
     if (this.isConfigured()) {
       try {
         // Real Enterprise API search logic here
         const token = await this.getAccessToken();
-        const response = await fetch(`https://api.artlist.io/v1/${type}/search?q=${encodeURIComponent(query)}`, {
+        const response = await fetchWithDeadline(`https://api.artlist.io/v1/${type}/search?q=${encodeURIComponent(query)}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (response.ok) {
-          const data = await response.json();
-          return data.results || [];
+          const data: unknown = await response.json();
+          const results = parseArtlistSearchResults(
+            typeof data === "object" && data !== null && "results" in data
+              ? data.results
+              : undefined,
+            type,
+          );
+          if (results.length > 0) return results;
         }
       } catch (err) {
         console.error("[ArtlistService] Real API search failed, falling back to mock:", err);
@@ -198,12 +210,12 @@ export class ArtlistService {
     if (!sourceUrl && this.isConfigured()) {
       try {
         const token = await this.getAccessToken();
-        const response = await fetch(`https://api.artlist.io/v1/${type}/${assetId}/download`, {
+        const response = await fetchWithDeadline(`https://api.artlist.io/v1/${type}/${assetId}/download`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (response.ok) {
-          const data = await response.json();
-          sourceUrl = data.download_url;
+          const data = (await response.json()) as ArtlistDownloadResponse;
+          sourceUrl = data.download_url || "";
           duration = data.duration || 0;
         }
       } catch (err) {
@@ -215,20 +227,33 @@ export class ArtlistService {
       throw new Error(`No se pudo resolver el recurso de Artlist para el ID: ${assetId}`);
     }
 
-    // 1. Fetch file from source in streaming
-    const response = await fetch(sourceUrl);
+    // 1. Validate and fetch the source with a bounded download window.
+    await assertSafeExternalMediaUrl(sourceUrl);
+    const response = await fetchWithDeadline(
+      sourceUrl,
+      {},
+      DEFAULT_OUTBOUND_DOWNLOAD_TIMEOUT_MS,
+    );
     if (!response.ok) {
-      throw new Error(`No se pudo descargar el archivo desde el CDN de Artlist: ${response.statusText}`);
+      throw new Error(`No se pudo descargar el archivo desde el CDN de Artlist (HTTP ${response.status}).`);
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    let buffer: Buffer;
+    try {
+      buffer = await readResponseWithLimit(response, MAX_ARTLIST_IMPORT_BYTES);
+    } catch (error) {
+      if (error instanceof Error && error.message === "EXTERNAL_MEDIA_TOO_LARGE") {
+        throw new Error("El recurso de Artlist supera el limite permitido de 150 MB.");
+      }
+      throw error;
+    }
 
     // 2. Upload to Supabase Storage
     const admin = getServiceRoleClient();
     const fileExt = type === "music" ? "mp3" : "mp4";
     const subfolder = type === "music" ? "music" : "broll";
-    const cleanTitle = title.toLowerCase().replace(/[^a-z0-9]/g, "-");
+    const resolvedTitle = title || assetId;
+    const cleanTitle = resolvedTitle.toLowerCase().replace(/[^a-z0-9]/g, "-");
     const storagePath = `${subfolder}/${componentId}-${cleanTitle}.${fileExt}`;
 
     const { error: uploadError } = await admin.storage
@@ -249,7 +274,7 @@ export class ArtlistService {
       .getPublicUrl(storagePath);
 
     return {
-      fileName: `${title || assetId}.${fileExt}`,
+      fileName: `${resolvedTitle}.${fileExt}`,
       publicUrl,
       storagePath: `production-assets/${storagePath}`,
       duration,
@@ -260,7 +285,7 @@ export class ArtlistService {
    * OAuth credentials validation helper
    */
   private async getAccessToken(): Promise<string> {
-    const response = await fetch("https://id.artlist.io/oauth2/token", {
+    const response = await fetchWithDeadline("https://id.artlist.io/oauth2/token", {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -273,7 +298,10 @@ export class ArtlistService {
       throw new Error("No se pudo obtener el Access Token de Artlist");
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as ArtlistTokenResponse;
+    if (!data.access_token) {
+      throw new Error("Artlist devolvio una respuesta de autenticacion incompleta");
+    }
     return data.access_token;
   }
 }

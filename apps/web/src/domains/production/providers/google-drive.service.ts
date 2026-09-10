@@ -20,7 +20,31 @@ import type {
   ImportedCloudAsset,
   ProductionAssetType,
 } from "@/domains/production/cloud-storage/types";
+import { readResponseWithLimit } from "@/domains/production/external-media-import-policy";
 import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
+import {
+  DEFAULT_OUTBOUND_DOWNLOAD_TIMEOUT_MS,
+  fetchWithDeadline,
+} from "@/lib/server/outbound-http";
+
+const MAX_GOOGLE_DRIVE_IMPORT_BYTES = 150 * 1024 * 1024;
+const MAX_GOOGLE_DRIVE_CONFIRMATION_PAGE_BYTES = 1024 * 1024;
+const GOOGLE_DRIVE_SIZE_LIMIT_ERROR = "El archivo de Google Drive supera el limite permitido de 150 MB.";
+
+interface GoogleTokenResponse {
+  access_token?: string;
+  expires_in?: number;
+}
+
+interface GoogleDriveMetadataResponse {
+  name?: string;
+  mimeType?: string;
+  size?: string;
+}
+
+interface GoogleDriveFolderResponse {
+  id?: string;
+}
 
 export interface DriveFile {
   id: string;
@@ -31,6 +55,25 @@ export interface DriveFile {
 }
 
 const MOCK_DRIVE_FILES: DriveFile[] = [];
+
+function escapeGoogleDriveQueryLiteral(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+async function readGoogleDriveResponse(
+  response: Response,
+  maxBytes = MAX_GOOGLE_DRIVE_IMPORT_BYTES,
+  sizeLimitMessage = GOOGLE_DRIVE_SIZE_LIMIT_ERROR,
+) {
+  try {
+    return await readResponseWithLimit(response, maxBytes);
+  } catch (error) {
+    if (error instanceof Error && error.message === "EXTERNAL_MEDIA_TOO_LARGE") {
+      throw new Error(sizeLimitMessage);
+    }
+    throw error;
+  }
+}
 
 export class GoogleDriveService {
   private serviceAccountKey: string | null;
@@ -49,6 +92,9 @@ export class GoogleDriveService {
   parseFileId(urlOrId: string): string {
     const clean = urlOrId.trim();
     if (!clean.includes("google.com")) {
+      if (!/^[a-zA-Z0-9_-]+$/.test(clean)) {
+        throw new Error("El ID de Google Drive no tiene un formato valido");
+      }
       return clean;
     }
 
@@ -89,7 +135,7 @@ export class GoogleDriveService {
         .setIssuedAt()
         .sign(privateKey);
 
-      const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      const tokenResponse = await fetchWithDeadline("https://oauth2.googleapis.com/token", {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -104,10 +150,14 @@ export class GoogleDriveService {
         throw new Error(`Error en intercambio de token Google: ${tokenResponse.statusText}`);
       }
 
-      const data = await tokenResponse.json();
+      const data = (await tokenResponse.json()) as GoogleTokenResponse;
+      if (!data.access_token) {
+        throw new Error("Google devolvio una respuesta de autenticacion incompleta");
+      }
       return data.access_token;
-    } catch (err: any) {
-      throw new Error(`Autenticación de cuenta de servicio de Google fallida: ${err.message}`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "error desconocido";
+      throw new Error(`Autenticación de cuenta de servicio de Google fallida: ${message}`);
     }
   }
 
@@ -122,10 +172,10 @@ export class GoogleDriveService {
         const accessToken = accessTokenOverride || await this.getAccessToken();
         let searchString = "mimeType != 'application/vnd.google-apps.folder'";
         if (cleanQuery) {
-          searchString += ` and name contains '${query}'`;
+          searchString += ` and name contains '${escapeGoogleDriveQueryLiteral(query)}'`;
         }
 
-        const response = await fetch(
+        const response = await fetchWithDeadline(
           `https://www.googleapis.com/drive/v3/files?pageSize=20&fields=files(id,name,mimeType,size)&q=${encodeURIComponent(
             searchString
           )}`,
@@ -171,12 +221,15 @@ export class GoogleDriveService {
     // 1. Check if mock file first
     const mockFile = MOCK_DRIVE_FILES.find((f) => f.id === fileId);
     if (mockFile && mockFile.public_url) {
-      const response = await fetch(mockFile.public_url);
+      const response = await fetchWithDeadline(
+        mockFile.public_url,
+        {},
+        DEFAULT_OUTBOUND_DOWNLOAD_TIMEOUT_MS,
+      );
       if (!response.ok) {
         throw new Error(`No se pudo descargar el archivo mock desde ${mockFile.public_url}`);
       }
-      const arrayBuffer = await response.arrayBuffer();
-      buffer = Buffer.from(arrayBuffer);
+      buffer = await readGoogleDriveResponse(response);
       fileName = mockFile.name;
       mimeType = mockFile.mimeType;
     }
@@ -190,52 +243,79 @@ export class GoogleDriveService {
       if (activeToken) {
         try {
           // Get metadata
-          const metadataUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=name,mimeType`;
-          const metaRes = await fetch(metadataUrl, {
+          const metadataUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=name,mimeType,size`;
+          const metaRes = await fetchWithDeadline(metadataUrl, {
             headers: { Authorization: `Bearer ${activeToken}` },
           });
           if (metaRes.ok) {
-            const meta = await metaRes.json();
+            const meta = (await metaRes.json()) as GoogleDriveMetadataResponse;
             fileName = meta.name || fileName;
             mimeType = meta.mimeType || "";
+            const declaredSize = Number(meta.size || 0);
+            if (Number.isFinite(declaredSize) && declaredSize > MAX_GOOGLE_DRIVE_IMPORT_BYTES) {
+              throw new Error(GOOGLE_DRIVE_SIZE_LIMIT_ERROR);
+            }
           }
 
           // Get file content
           const downloadUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
-          const downloadRes = await fetch(downloadUrl, {
-            headers: { Authorization: `Bearer ${activeToken}` },
-          });
+          const downloadRes = await fetchWithDeadline(
+            downloadUrl,
+            { headers: { Authorization: `Bearer ${activeToken}` } },
+            DEFAULT_OUTBOUND_DOWNLOAD_TIMEOUT_MS,
+          );
 
           if (!downloadRes.ok) {
             throw new Error(`Google Drive API error de descarga: ${downloadRes.statusText}`);
           }
 
-          const arrayBuffer = await downloadRes.arrayBuffer();
-          buffer = Buffer.from(arrayBuffer);
-        } catch (err: any) {
-          console.warn("[GoogleDriveService] Descarga autenticada fallida, reintentando descarga pública:", err.message);
+          buffer = await readGoogleDriveResponse(downloadRes);
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : "error desconocido";
+          if (message === GOOGLE_DRIVE_SIZE_LIMIT_ERROR) {
+            throw error;
+          }
+          console.warn("[GoogleDriveService] Descarga autenticada fallida, reintentando descarga pública:", message);
         }
       }
 
       // Fallback: Public download
       if (!buffer) {
         let downloadUrl = `https://docs.google.com/uc?export=download&id=${fileId}`;
-        let response = await fetch(downloadUrl);
-        
+        let response = await fetchWithDeadline(
+          downloadUrl,
+          {},
+          DEFAULT_OUTBOUND_DOWNLOAD_TIMEOUT_MS,
+        );
+
         if (!response.ok) {
           throw new Error(`No se pudo descargar el archivo público de Drive: ${response.statusText}`);
         }
 
-        const text = await response.clone().text();
-        const confirmMatch = text.match(/confirm=([a-zA-Z0-9_&-]+)/);
-        if (confirmMatch) {
+        const responseContentType = response.headers.get("content-type") || "";
+        if (responseContentType.includes("text/html")) {
+          const confirmationPage = await readGoogleDriveResponse(
+            response,
+            MAX_GOOGLE_DRIVE_CONFIRMATION_PAGE_BYTES,
+            "La pagina de confirmacion de Google Drive supera el limite permitido.",
+          );
+          const confirmMatch = confirmationPage.toString("utf8").match(/confirm=([a-zA-Z0-9_-]+)/);
+          if (!confirmMatch) {
+            throw new Error("Google Drive no devolvio un archivo publico descargable.");
+          }
           const confirmToken = confirmMatch[1];
           downloadUrl = `https://docs.google.com/uc?export=download&id=${fileId}&confirm=${confirmToken}`;
-          response = await fetch(downloadUrl);
+          response = await fetchWithDeadline(
+            downloadUrl,
+            {},
+            DEFAULT_OUTBOUND_DOWNLOAD_TIMEOUT_MS,
+          );
+          if (!response.ok) {
+            throw new Error(`No se pudo confirmar la descarga publica de Drive (HTTP ${response.status}).`);
+          }
         }
 
-        const arrayBuffer = await response.arrayBuffer();
-        buffer = Buffer.from(arrayBuffer);
+        buffer = await readGoogleDriveResponse(response);
         mimeType = response.headers.get("content-type") || "";
         const contentDispo = response.headers.get("content-disposition") || "";
         const filenameMatch = contentDispo.match(/filename="?([^";]+)"?/);
@@ -278,7 +358,7 @@ export class GoogleDriveService {
     const decryptedRefreshToken = decryptCredentialToken(creds.refresh_token);
 
     // Solicitar renovación del access_token
-    const response = await fetch("https://oauth2.googleapis.com/token", {
+    const response = await fetchWithDeadline("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -293,7 +373,10 @@ export class GoogleDriveService {
       throw new Error("La renovación del token de Google falló. El usuario debe reconectar.");
     }
 
-    const tokenData = await response.json();
+    const tokenData = (await response.json()) as GoogleTokenResponse;
+    if (!tokenData.access_token || !tokenData.expires_in) {
+      throw new Error("Google devolvio una respuesta de renovacion incompleta.");
+    }
     const nextExpires = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
 
     await updateCloudStorageAccessToken({
@@ -311,7 +394,7 @@ export class GoogleDriveService {
    * Crea una carpeta en Google Drive y retorna su ID
    */
   async createFolder(name: string, parentId: string | null, accessToken: string): Promise<string> {
-    const metadata: Record<string, any> = {
+    const metadata: { name: string; mimeType: string; parents?: string[] } = {
       name,
       mimeType: "application/vnd.google-apps.folder",
     };
@@ -319,7 +402,7 @@ export class GoogleDriveService {
       metadata.parents = [parentId];
     }
 
-    const response = await fetch("https://www.googleapis.com/drive/v3/files", {
+    const response = await fetchWithDeadline("https://www.googleapis.com/drive/v3/files", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -329,11 +412,13 @@ export class GoogleDriveService {
     });
 
     if (!response.ok) {
-      const err = await response.json();
-      throw new Error(`Error de Google Drive API al crear carpeta: ${err.error?.message || response.statusText}`);
+      throw new Error(`Error de Google Drive API al crear carpeta (HTTP ${response.status}).`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as GoogleDriveFolderResponse;
+    if (!data.id) {
+      throw new Error("Google Drive no devolvio el ID de la carpeta creada.");
+    }
     return data.id;
   }
 
@@ -371,7 +456,7 @@ export class GoogleDriveService {
       });
 
       return { rootFolderId, folderUrl };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("[GoogleDriveService] Error creando árbol de carpetas:", error);
       throw error;
     }

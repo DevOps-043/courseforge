@@ -23,20 +23,19 @@ import type {
 import { uploadImportedAssetToStorage } from "./storage-import.service";
 import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { readResponseWithLimit } from "@/domains/production/external-media-import-policy";
+import {
+  DEFAULT_OUTBOUND_DOWNLOAD_TIMEOUT_MS,
+  fetchWithDeadline,
+} from "@/lib/server/outbound-http";
 
-const MICROSOFT_GRAPH_REQUEST_TIMEOUT_MS = 15_000;
-const MICROSOFT_GRAPH_DOWNLOAD_TIMEOUT_MS = 60_000;
 const MAX_ONEDRIVE_IMPORT_BYTES = 150 * 1024 * 1024;
 
 function fetchMicrosoftGraph(
   input: string,
   init: RequestInit = {},
-  timeoutMilliseconds = MICROSOFT_GRAPH_REQUEST_TIMEOUT_MS,
+  timeoutMilliseconds?: number,
 ) {
-  return fetch(input, {
-    ...init,
-    signal: AbortSignal.timeout(timeoutMilliseconds),
-  });
+  return fetchWithDeadline(input, init, timeoutMilliseconds);
 }
 
 interface MicrosoftTokenResponse {
@@ -269,7 +268,7 @@ export class OneDriveService {
     const contentResponse = await fetchMicrosoftGraph(
       `https://graph.microsoft.com/v1.0/me/drive/items/${encodedItemId}/content`,
       { headers: { Authorization: `Bearer ${token}` } },
-      MICROSOFT_GRAPH_DOWNLOAD_TIMEOUT_MS,
+      DEFAULT_OUTBOUND_DOWNLOAD_TIMEOUT_MS,
     );
 
     if (!contentResponse.ok) {

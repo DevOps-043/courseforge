@@ -10,6 +10,8 @@ import { getErrorMessage } from '@/lib/errors';
 import type { ScormItem, ScormManifest } from '@/domains/scorm/types';
 import {
     SCORM_REVIEW_STEP_DELAY_MS,
+    SCORM_TRANSFORMATION_MAX_POLLS,
+    SCORM_TRANSFORMATION_POLL_INTERVAL_MS,
     SCORM_UPLOAD_PROGRESS_TICK_MS,
 } from '@/shared/constants/timing';
 
@@ -18,6 +20,16 @@ interface ScormImportFlowProps {
 }
 
 type Step = 'upload' | 'uploading' | 'analyzing' | 'review' | 'success';
+
+interface ScormProcessStatusResponse {
+    artifactId: string | null;
+    kind: 'ready' | 'active' | 'completed' | 'failed' | 'invalid';
+    success: boolean;
+}
+
+function wait(milliseconds: number) {
+    return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+}
 
 function getAxiosErrorMessage(error: unknown, fallback: string) {
     if (axios.isAxiosError(error)) {
@@ -93,15 +105,36 @@ export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
         if (!importId) return;
 
         try {
-            setStep('analyzing'); // Reuse analyzing state or add a new 'processing' state
-            // Or better, add a specific loading state for this final step
+            setStep('analyzing');
+            setProgress(90);
 
-            const response = await axios.post('/api/admin/scorm/process', { importId });
-
-            if (response.data.success) {
+            const response = await axios.post<ScormProcessStatusResponse>('/api/admin/scorm/process', { importId });
+            if (response.data.success && response.data.artifactId) {
                 toast.success('Curso importado y procesado correctamente');
                 onComplete(response.data.artifactId);
+                return;
             }
+
+            for (let attempt = 0; attempt < SCORM_TRANSFORMATION_MAX_POLLS; attempt += 1) {
+                await wait(SCORM_TRANSFORMATION_POLL_INTERVAL_MS);
+                const { data: status } = await axios.get<ScormProcessStatusResponse>(
+                    '/api/admin/scorm/process',
+                    { params: { importId } },
+                );
+                setProgress(Math.min(99, 90 + Math.floor((attempt + 1) / 24)));
+
+                if (status.kind === 'completed' && status.artifactId) {
+                    setProgress(100);
+                    toast.success('Curso importado y procesado correctamente');
+                    onComplete(status.artifactId);
+                    return;
+                }
+                if (status.kind === 'failed' || status.kind === 'invalid') {
+                    throw new Error('La transformación SCORM no pudo completarse.');
+                }
+            }
+
+            throw new Error('La transformación SCORM excedió el tiempo máximo de espera.');
         } catch (err: unknown) {
             console.error(err);
             toast.error('Error al procesar el curso: ' + getAxiosErrorMessage(err, 'Error al procesar el curso'));

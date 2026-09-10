@@ -25,6 +25,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/errors";
 import type {
   VoiceAudio,
   ManualVoiceClip,
@@ -44,6 +45,15 @@ import type {
   CloudStorageFile,
   CloudStorageProvider,
 } from "@/domains/production/cloud-storage/types";
+import {
+  isArtlistTrack,
+  isArtlistVideo,
+  type ArtlistSearchResult,
+} from "@/domains/production/providers/artlist.types";
+import {
+  getGoogleSdkWindow,
+  readGooglePickerFileId,
+} from "@/domains/production/providers/google-picker-runtime.types";
 import { ProductionMediaPreview } from "./ProductionMediaPreview";
 import type { SlideTemplateLibraryItem } from "@/domains/production/slides/slide-template-library.actions";
 import { EngineSelect } from "@/components/ui/EngineSelect";
@@ -299,7 +309,7 @@ interface VoiceAudioSectionProps {
   // Drive props
   isSearchingDrive: boolean;
   isImportingDrive: boolean;
-  driveSearchResults: any[];
+  driveSearchResults: CloudStorageFile[];
   searchDrive: (query: string) => Promise<void>;
   importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   clearDriveSearchResults: () => void;
@@ -469,7 +479,7 @@ interface BackgroundMusicSectionProps {
   // Artlist props
   isSearchingArtlist: boolean;
   isImportingArtlist: boolean;
-  artlistSearchResults: any[];
+  artlistSearchResults: ArtlistSearchResult[];
   searchArtlist: (query: string, type: "music" | "video") => Promise<void>;
   importArtlistAsset: (id: string, type: "music" | "video") => Promise<boolean>;
   clearArtlistSearchResults: () => void;
@@ -477,7 +487,7 @@ interface BackgroundMusicSectionProps {
   // Drive props
   isSearchingDrive: boolean;
   isImportingDrive: boolean;
-  driveSearchResults: any[];
+  driveSearchResults: CloudStorageFile[];
   searchDrive: (query: string) => Promise<void>;
   importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   clearDriveSearchResults: () => void;
@@ -664,7 +674,7 @@ interface SofliaHtmlSlidesSectionProps {
   // Drive props
   isSearchingDrive: boolean;
   isImportingDrive: boolean;
-  driveSearchResults: any[];
+  driveSearchResults: CloudStorageFile[];
   searchDrive: (query: string) => Promise<void>;
   importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   clearDriveSearchResults: () => void;
@@ -1037,7 +1047,7 @@ interface BRollClipsSectionProps {
   // Artlist props
   isSearchingArtlist: boolean;
   isImportingArtlist: boolean;
-  artlistSearchResults: any[];
+  artlistSearchResults: ArtlistSearchResult[];
   searchArtlist: (query: string, type: "music" | "video") => Promise<void>;
   importArtlistAsset: (id: string, type: "music" | "video") => Promise<boolean>;
   clearArtlistSearchResults: () => void;
@@ -1046,7 +1056,7 @@ interface BRollClipsSectionProps {
   // Drive props
   isSearchingDrive: boolean;
   isImportingDrive: boolean;
-  driveSearchResults: any[];
+  driveSearchResults: CloudStorageFile[];
   searchDrive: (query: string) => Promise<void>;
   importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   clearDriveSearchResults: () => void;
@@ -1211,7 +1221,7 @@ interface AvatarVideoSectionProps {
   // Drive props
   isSearchingDrive: boolean;
   isImportingDrive: boolean;
-  driveSearchResults: any[];
+  driveSearchResults: CloudStorageFile[];
   searchDrive: (query: string) => Promise<void>;
   importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   clearDriveSearchResults: () => void;
@@ -1594,7 +1604,7 @@ interface ArtlistSearchModalProps {
   suggestions: string[];
   isSearching: boolean;
   isImporting: boolean;
-  results: any[];
+  results: ArtlistSearchResult[];
   onSearch: (query: string, type: "music" | "video") => Promise<void>;
   onImport: (id: string, type: "music" | "video") => Promise<boolean>;
   onClearResults: () => void;
@@ -1756,7 +1766,7 @@ export function ArtlistSearchModal({
             ) : type === "music" ? (
               // Music List
               <div className="space-y-2">
-                {results.map((track) => (
+                {results.filter(isArtlistTrack).map((track) => (
                   <div
                     key={track.id}
                     className="flex items-center justify-between p-3 rounded-xl border border-gray-100 dark:border-[var(--engine-muted)]/10 bg-gray-50/50 dark:bg-[var(--engine-canvas)]/30 text-xs"
@@ -1792,7 +1802,7 @@ export function ArtlistSearchModal({
             ) : (
               // Video Grid
               <div className="grid grid-cols-2 gap-4">
-                {results.map((video) => (
+                {results.filter(isArtlistVideo).map((video) => (
                   <div
                     key={video.id}
                     className="group flex flex-col rounded-xl border border-gray-105 dark:border-[var(--engine-muted)]/10 bg-gray-50/50 dark:bg-[var(--engine-canvas)]/30 overflow-hidden"
@@ -2073,13 +2083,14 @@ export function GoogleDriveImportModal({
 
   const loadGoogleScripts = (): Promise<void> => {
     return new Promise((resolve, reject) => {
-      if ((window as any).gapi && (window as any).google) {
+      const googleWindow = getGoogleSdkWindow(window);
+      if (googleWindow.gapi && googleWindow.google) {
         resolve();
         return;
       }
 
       const loadGis = () => {
-        if ((window as any).google) {
+        if (googleWindow.google) {
           resolve();
           return;
         }
@@ -2092,7 +2103,7 @@ export function GoogleDriveImportModal({
         document.body.appendChild(gisScript);
       };
 
-      if ((window as any).gapi) {
+      if (googleWindow.gapi) {
         loadGis();
       } else {
         const gapiScript = document.createElement("script");
@@ -2107,8 +2118,13 @@ export function GoogleDriveImportModal({
   };
 
   const initGapi = (): Promise<void> => {
-    return new Promise((resolve) => {
-      (window as any).gapi.load("client:picker", () => {
+    return new Promise((resolve, reject) => {
+      const googleApi = getGoogleSdkWindow(window).gapi;
+      if (!googleApi) {
+        reject(new Error("Google GAPI no esta disponible."));
+        return;
+      }
+      googleApi.load("client:picker", () => {
         resolve();
       });
     });
@@ -2138,10 +2154,15 @@ export function GoogleDriveImportModal({
       };
 
       try {
-        const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+        const googleIdentity = getGoogleSdkWindow(window).google?.accounts.oauth2;
+        if (!googleIdentity) {
+          finishWithError("Google Identity Services no esta disponible.");
+          return;
+        }
+        const tokenClient = googleIdentity.initTokenClient({
           client_id: clientIdStr,
           scope: driveReadonlyScope,
-          callback: (response: any) => {
+          callback: (response) => {
             if (response.error) {
               finishWithError(response.error_description || response.error);
               return;
@@ -2153,7 +2174,7 @@ export function GoogleDriveImportModal({
               finishWithError("No se obtuvo token de acceso de Google.");
             }
           },
-          error_callback: (error: any) => {
+          error_callback: (error) => {
             const errorType = error?.type || error?.message || "popup_failed_to_open";
             finishWithError(`No se pudo abrir o completar el login de Google (${errorType}).`);
           },
@@ -2193,33 +2214,42 @@ export function GoogleDriveImportModal({
       setIsConnecting(false);
 
       // 4. Build and display the Google Picker
-      const view = new (window as any).google.picker.DocsView((window as any).google.picker.ViewId.DOCS);
+      const pickerRuntime = getGoogleSdkWindow(window).google?.picker;
+      if (!pickerRuntime) {
+        throw new Error("Google Picker no esta disponible.");
+      }
+      const view = new pickerRuntime.DocsView(pickerRuntime.ViewId.DOCS);
       
       const allowedMimes = getAllowedDriveMimeTypes();
       view.setMimeTypes(allowedMimes.join(","));
 
       const pickerSize = getPickerSize();
       setIsPickerVisible(true);
-      const picker = new (window as any).google.picker.PickerBuilder()
-        .enableFeature((window as any).google.picker.Feature.NAV_HIDDEN)
+      const picker = new pickerRuntime.PickerBuilder()
+        .enableFeature(pickerRuntime.Feature.NAV_HIDDEN)
         .setDeveloperKey(developerKey)
         .setAppId(getPickerAppId(clientId))
         .setOrigin(window.location.origin)
         .setSize(pickerSize.width, pickerSize.height)
         .setOAuthToken(accessToken)
         .addView(view)
-        .setCallback(async (data: any) => {
-          const action = data[(window as any).google.picker.Response.ACTION];
-          if (action === (window as any).google.picker.Action.CANCEL) {
+        .setCallback(async (data) => {
+          const action = data[pickerRuntime.Response.ACTION];
+          if (action === pickerRuntime.Action.CANCEL) {
             setIsConnecting(false);
             setLocalIsImporting(false);
             setIsPickerVisible(false);
             return;
           }
 
-          if (action === (window as any).google.picker.Action.PICKED) {
-            const doc = data[(window as any).google.picker.Response.DOCUMENTS][0];
-            const fileId = doc[(window as any).google.picker.Document.ID];
+          if (action === pickerRuntime.Action.PICKED) {
+            const fileId = readGooglePickerFileId(data, pickerRuntime);
+            if (!fileId) {
+              toast.error("Google Picker no devolvio un archivo valido.");
+              setIsConnecting(false);
+              setIsPickerVisible(false);
+              return;
+            }
             
             console.log("[GoogleDrivePicker] Picked file ID:", fileId);
             setLocalIsImporting(true);
@@ -2241,12 +2271,17 @@ export function GoogleDriveImportModal({
 
       picker.setVisible(true);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       setIsConnecting(false);
       setLocalIsImporting(false);
       setIsPickerVisible(false);
       console.error("[GoogleDrivePicker] Connection failed:", err);
-      toast.error(err.message || "Error al conectar con Google Drive. Verifica que tu navegador permita ventanas emergentes.");
+      toast.error(
+        getErrorMessage(
+          err,
+          "Error al conectar con Google Drive. Verifica que tu navegador permita ventanas emergentes.",
+        ),
+      );
     }
   };
 

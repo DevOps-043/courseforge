@@ -2,7 +2,18 @@ import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { decrypt } from "@/lib/server/crypto";
 import { validateOAuthState } from "@/lib/server/oauth-state";
 import { oauthPopupResponse } from "@/lib/server/oauth-popup-response";
+import { fetchWithDeadline } from "@/lib/server/outbound-http";
 import { upsertCloudStorageCredentials } from "@/domains/production/cloud-storage/credentials.repository";
+
+interface GoogleOAuthTokenResponse {
+  access_token?: string;
+  expires_in?: number;
+  refresh_token?: string;
+}
+
+interface GoogleUserInfoResponse {
+  email?: string;
+}
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
@@ -22,12 +33,12 @@ export async function GET(request: Request) {
       return oauthPopupResponse({
         provider: "google_drive",
         status: "error",
-        message: error || "oauth_failed",
+        message: "google_oauth_failed",
       });
     }
 
     const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${baseUrl}/api/auth/google/callback`;
-    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    const tokenResponse = await fetchWithDeadline("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -40,13 +51,15 @@ export async function GET(request: Request) {
     });
 
     if (!tokenResponse.ok) {
-      const errData = await tokenResponse.json();
-      throw new Error(errData.error_description || "Error al obtener tokens de Google");
+      throw new Error(`Google rechazo el intercambio OAuth (HTTP ${tokenResponse.status}).`);
     }
 
-    const tokenData = await tokenResponse.json();
+    const tokenData = (await tokenResponse.json()) as GoogleOAuthTokenResponse;
+    if (!tokenData.access_token || !tokenData.expires_in) {
+      throw new Error("Google devolvio una respuesta OAuth incompleta.");
+    }
     const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
-    const userinfoResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+    const userinfoResponse = await fetchWithDeadline("https://www.googleapis.com/oauth2/v2/userinfo", {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
 
@@ -54,14 +67,14 @@ export async function GET(request: Request) {
       throw new Error("No se pudo obtener el email del usuario de Google");
     }
 
-    const googleUser = await userinfoResponse.json();
+    const googleUser = (await userinfoResponse.json()) as GoogleUserInfoResponse;
     const accountEmail = googleUser.email;
     if (!accountEmail) {
       throw new Error("No se devolvio ningun email desde Google");
     }
 
     const adminClient = getServiceRoleClient();
-    let refreshToken = tokenData.refresh_token as string | undefined;
+    let refreshToken = tokenData.refresh_token;
     if (!refreshToken) {
       const { data: existing } = await adminClient
         .from("user_cloud_storage_credentials")
@@ -97,12 +110,15 @@ export async function GET(request: Request) {
       status: "success",
       redirectPath: `/${state.organizationSlug}/admin/integrations?google_connected=true`,
     });
-  } catch (err: any) {
-    console.error("[Google OAuth Callback Error]:", err);
+  } catch (error: unknown) {
+    console.error(
+      "[Google OAuth Callback Error]:",
+      error instanceof Error ? error.message : "unknown_error",
+    );
     return oauthPopupResponse({
       provider: "google_drive",
       status: "error",
-      message: err?.message || "oauth_failed",
+      message: "google_oauth_failed",
     });
   }
 }

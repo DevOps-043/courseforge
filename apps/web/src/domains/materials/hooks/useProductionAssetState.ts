@@ -11,7 +11,11 @@ import { validateHyperframesMediaAsset } from "@/domains/production/hyperframes/
 import { HYPERFRAMES_ASSET_DELIVERY_MODES } from "@/domains/production/hyperframes/hyperframes.types";
 import { HYPERFRAMES_PRIVATE_SOURCE_BUCKET } from "@/domains/production/media-storage.config";
 import { resetGeneratedSceneAssets } from "@/domains/production/providers/heygen/heygen-scene-assets";
-import type { CloudStorageProvider } from "@/domains/production/cloud-storage/types";
+import type {
+  CloudStorageFile,
+  CloudStorageProvider,
+} from "@/domains/production/cloud-storage/types";
+import type { ArtlistSearchResult } from "@/domains/production/providers/artlist.types";
 import {
   MAX_VIDEO_UPLOAD_SIZE_BYTES,
 } from "@/lib/video-platform";
@@ -279,32 +283,32 @@ export function useProductionAssetState({
 
   // New structured visual asset states
   const [voiceAudio, setVoiceAudio] = useState<VoiceAudio | null>(
-    (component.assets as any)?.voice_audio || null
+    component.assets?.voice_audio || null
   );
   const [manualVoiceClips, setManualVoiceClips] = useState<ManualVoiceClip[]>(
-    (component.assets as any)?.manual_voice_clips || [],
+    component.assets?.manual_voice_clips || [],
   );
   const [voiceClips, setVoiceClips] = useState<VoiceClip[]>(
-    (component.assets as any)?.voice_clips || [],
+    component.assets?.voice_clips || [],
   );
   const [backgroundMusic, setBackgroundMusic] = useState<BackgroundMusic | null>(
-    (component.assets as any)?.background_music || null
+    component.assets?.background_music || null
   );
   const [bRollClips, setBRollClips] = useState<BRollClip[]>(
-    (component.assets as any)?.b_roll_clips || []
+    component.assets?.b_roll_clips || []
   );
   const [avatarVideo, setAvatarVideo] = useState<AvatarVideo | null>(
-    (component.assets as any)?.avatar_video || null
+    component.assets?.avatar_video || null
   );
   const [avatarGenerationMode, setAvatarGenerationMode] =
     useState<AvatarGenerationMode>(
-      (component.assets as any)?.avatar_generation_mode || "single_video",
+      component.assets?.avatar_generation_mode || "single_video",
     );
   const [avatarClips, setAvatarClips] = useState<AvatarClip[]>(
-    (component.assets as any)?.avatar_clips || [],
+    component.assets?.avatar_clips || [],
   );
   const [slidesAsset, setSlidesAsset] = useState<SlidesAsset | null>(
-    (component.assets as any)?.slides || null
+    component.assets?.slides || null
   );
 
   // Loader states
@@ -349,12 +353,12 @@ export function useProductionAssetState({
   // Artlist integration states
   const [isSearchingArtlist, setIsSearchingArtlist] = useState(false);
   const [isImportingArtlist, setIsImportingArtlist] = useState(false);
-  const [artlistSearchResults, setArtlistSearchResults] = useState<any[]>([]);
+  const [artlistSearchResults, setArtlistSearchResults] = useState<ArtlistSearchResult[]>([]);
 
   // Google Drive integration states
   const [isSearchingGoogleDrive, setIsSearchingGoogleDrive] = useState(false);
   const [isImportingGoogleDrive, setIsImportingGoogleDrive] = useState(false);
-  const [googleDriveSearchResults, setGoogleDriveSearchResults] = useState<any[]>([]);
+  const [googleDriveSearchResults, setGoogleDriveSearchResults] = useState<CloudStorageFile[]>([]);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const voiceFileRef = useRef<HTMLInputElement>(null);
@@ -372,9 +376,9 @@ export function useProductionAssetState({
 
   useEffect(() => {
     if (isUploadingVoice) return;
-    setVoiceAudio((component.assets as any)?.voice_audio || null);
-    setManualVoiceClips((component.assets as any)?.manual_voice_clips || []);
-    setVoiceClips((component.assets as any)?.voice_clips || []);
+    setVoiceAudio(component.assets?.voice_audio || null);
+    setManualVoiceClips(component.assets?.manual_voice_clips || []);
+    setVoiceClips(component.assets?.voice_clips || []);
   }, [component.assets, isUploadingVoice]);
 
   const loadHeygenPresets = async () => {
@@ -456,7 +460,7 @@ export function useProductionAssetState({
             : [],
         };
         setVoiceAudio((current) => current || recoveredVoice);
-        if (!(component.assets as any)?.voice_audio) {
+        if (!component.assets?.voice_audio) {
           void Promise.resolve(
             onAssetChange?.(component.id, { voice_audio: recoveredVoice }),
           ).catch((error) => {
@@ -489,9 +493,9 @@ export function useProductionAssetState({
   };
 
   const updateAsset = (
-    field: string,
-    value: any,
-    setter: (nextValue: any) => void,
+    field: "b_roll_prompts" | "screencast_url",
+    value: string,
+    setter: (nextValue: string) => void,
   ) => {
     setter(value);
     onAssetChange?.(component.id, { [field]: value });
@@ -590,7 +594,7 @@ export function useProductionAssetState({
       setManualVoiceClips(updatedClips);
       setVoiceUploadStatus("succeeded");
       toast.success(files.length === 1 ? 'Audio de voz añadido correctamente' : `${files.length} audios de voz añadidos`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       const message = getErrorMessage(err, "No se pudo completar la carga de voz.");
       setVoiceUploadError(message);
       setVoiceUploadStatus("failed");
@@ -623,8 +627,8 @@ export function useProductionAssetState({
       setBackgroundMusic(newMusic);
       onAssetChange?.(component.id, { background_music: newMusic });
       toast.success('Música de fondo subida correctamente');
-    } catch (err: any) {
-      toast.error(`Error al subir música: ${err.message}`);
+    } catch (err: unknown) {
+      toast.error(`Error al subir música: ${getErrorMessage(err, "Error desconocido")}`);
     } finally {
       setIsUploadingMusic(false);
       if (musicFileRef.current) musicFileRef.current.value = '';
@@ -760,7 +764,7 @@ export function useProductionAssetState({
       setSlidesUrl(generatedSlidesUrl);
       const updatedAssets: Partial<MaterialAssets> = {
         final_video_assembly_stale: true,
-        production_status: "DECK_READY" as any,
+        production_status: "DECK_READY",
         slides_url: generatedSlidesUrl,
       };
       const nextSlides = generatedSlides || slidesAsset;
@@ -775,7 +779,7 @@ export function useProductionAssetState({
           ? "Deck SofLIA - Engine recuperado"
           : "Deck SofLIA - Engine regenerado",
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       didFail = true;
       const message = err instanceof Error ? err.message : "No se pudo generar el deck SofLIA - Engine.";
       setSofliaSlidesGenerationStatus("FAILED");
@@ -820,8 +824,8 @@ export function useProductionAssetState({
         ? 'Slides exportadas y copiadas al portapapeles'
         : 'Slides exportadas; copia manual requerida');
 
-    } catch (err: any) {
-      toast.error(`Error al exportar slides: ${err.message}`);
+    } catch (err: unknown) {
+      toast.error(`Error al exportar slides: ${getErrorMessage(err, "Error desconocido")}`);
     } finally {
       setIsExportingOpenDesign(false);
     }
@@ -933,8 +937,8 @@ export function useProductionAssetState({
         slides_url: referenceUrl,
       });
       toast.success(`${uploadedImages.length} slide(s) renderizable(s) subidas correctamente`);
-    } catch (err: any) {
-      toast.error(`Error al subir slides: ${err.message}`);
+    } catch (err: unknown) {
+      toast.error(`Error al subir slides: ${getErrorMessage(err, "Error desconocido")}`);
     } finally {
       setIsUploadingSlides(false);
       if (slidesFileRef.current) slidesFileRef.current.value = '';
@@ -989,8 +993,8 @@ export function useProductionAssetState({
       setBRollClips(updatedClips);
       onAssetChange?.(component.id, { b_roll_clips: updatedClips });
       toast.success('Clip de B-Roll subido');
-    } catch (err: any) {
-      toast.error(`Error al subir clip B-Roll: ${err.message}`);
+    } catch (err: unknown) {
+      toast.error(`Error al subir clip B-Roll: ${getErrorMessage(err, "Error desconocido")}`);
     } finally {
       setIsUploadingBroll(false);
       if (brollFileRef.current) brollFileRef.current.value = '';
@@ -1008,7 +1012,7 @@ export function useProductionAssetState({
 
   const clearVoiceAudio = () => {
     setVoiceAudio(null);
-    onAssetChange?.(component.id, { voice_audio: null as any });
+    onAssetChange?.(component.id, { voice_audio: null });
     toast.info("Audio de voz removido");
   };
 
@@ -1023,7 +1027,7 @@ export function useProductionAssetState({
 
   const clearBackgroundMusic = () => {
     setBackgroundMusic(null);
-    onAssetChange?.(component.id, { background_music: null as any });
+    onAssetChange?.(component.id, { background_music: null });
     toast.info("Música de fondo removida");
   };
 
@@ -1038,7 +1042,7 @@ export function useProductionAssetState({
     setVoiceClips(reset.voiceClips);
     onAssetChange?.(component.id, {
       avatar_clips: reset.avatarClips,
-      avatar_video: null as any,
+      avatar_video: null,
       voice_clips: reset.voiceClips,
     });
     toast.info("Videos de avatar removidos");
@@ -1058,7 +1062,7 @@ export function useProductionAssetState({
   const clearSlidesAsset = () => {
     setSlidesAsset(null);
     setSlidesUrl("");
-    onAssetChange?.(component.id, { slides: null as any, slides_url: "" });
+    onAssetChange?.(component.id, { slides: null, slides_url: "" });
     toast.info("Diapositivas removidas");
   };
 
@@ -1113,8 +1117,8 @@ export function useProductionAssetState({
       };
       await onAssetChange?.(component.id, avatarUpdate);
       toast.success('Video completo de avatar subido');
-    } catch (err: any) {
-      toast.error(`Error al subir avatar: ${err.message}`);
+    } catch (err: unknown) {
+      toast.error(`Error al subir avatar: ${getErrorMessage(err, "Error desconocido")}`);
     } finally {
       setIsUploadingAvatar(false);
       if (avatarFileRef.current) avatarFileRef.current.value = '';
@@ -1175,12 +1179,13 @@ export function useProductionAssetState({
       } else {
         setIsSyncingHeygen(false);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = getErrorMessage(err, "Error de importación");
       console.error(err);
       setHeygenSyncProgress(0);
       setIsSyncingHeygen(false);
-      setHeygenError(err.message || 'Error de importación');
-      toast.error(`Error de importación: ${err.message}`);
+      setHeygenError(message);
+      toast.error(`Error de importación: ${message}`);
     } finally {
       // Polling clears this state when HeyGen finishes or times out.
     }

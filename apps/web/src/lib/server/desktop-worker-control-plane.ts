@@ -22,6 +22,27 @@ import {
 } from "@/remotion/timeline-overrides";
 import { mergeTemplateRenderConfigs } from "@/remotion/template-config";
 import { OutputDurationMismatchError } from "@/lib/server/desktop-worker-errors";
+import { parseDesktopWorkerMaterialAssets } from "@/lib/server/desktop-worker-assets";
+import type { MaterialAssets } from "@/domains/materials/types/materials.types";
+import {
+  assertDesktopWorkerCanAccessJob as assertWorkerCanAccessJob,
+  buildStableJsonHash as buildStableHash,
+  deriveDesktopJobDurationContract as deriveDurationContractFromJob,
+  isStaleDesktopJobAssignment as isStaleJobAssignment,
+  isValidDesktopCompositionId as isValidCompositionId,
+  resolveDesktopWorkerRenderInput as resolveWorkerRenderInput,
+} from "@/lib/server/desktop-worker-job-contracts";
+import {
+  readDatabaseRow,
+  readDatabaseRows,
+  type ProductionJobRow,
+  type ProductionRenderBatchItemStatusRow,
+  type RemotionTemplateBuildRow,
+  type RemotionTemplatePreviewRow,
+  type RemotionTemplateVersionRow,
+  type RenderWorkerJobRunRow,
+  type RenderWorkerRow,
+} from "@/lib/server/desktop-worker-db.types";
 
 const WORKER_TOKEN_PREFIX = "swk_";
 const LINK_CODE_PREFIX = "SLIA-";
@@ -30,7 +51,6 @@ const LINK_CODE_TTL_MS = 10 * 60 * 1000;
 const VIDEO_BUCKET = "production-videos";
 const TEMPLATE_BUNDLE_BUCKET = "template-bundles";
 const WORKER_ONLINE_TTL_MS = 60 * 1000;
-const WORKER_JOB_STALE_MS = 2 * 60 * 1000;
 const WORKER_JOB_LEASE_SECONDS = 180;
 const ASSEMBLY_FPS = 30;
 const FALLBACK_DURATION_SECONDS = 10;
@@ -298,20 +318,6 @@ function getLast4(value: string): string {
   return value.slice(-4);
 }
 
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
-  const record = value as Record<string, unknown>;
-  return `{${Object.keys(record)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
-    .join(",")}}`;
-}
-
-function buildStableHash(value: unknown): string {
-  return crypto.createHash("sha256").update(stableStringify(value)).digest("hex");
-}
-
 async function addDirectoryToZip(zip: JSZip, rootDir: string, currentDir = rootDir): Promise<void> {
   const entries = await fsp.readdir(currentDir, { withFileTypes: true });
   for (const entry of entries) {
@@ -527,16 +533,6 @@ function normalizeStoragePath(value: string): { bucket: string; path: string } {
   };
 }
 
-function isValidCompositionId(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  const normalized = value.trim();
-  if (!normalized) return false;
-  if (/^https?:\/\//i.test(normalized)) return false;
-  if (normalized.includes("/") || normalized.includes("\\")) return false;
-  if (/\.html?$/i.test(normalized)) return false;
-  return /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(normalized);
-}
-
 function resolveExternalDesktopRenderTarget(params: {
   version: Record<string, unknown>;
   build: Record<string, unknown>;
@@ -582,29 +578,11 @@ function resolveInternalCompositionId(value: unknown): string {
     : DEFAULT_INTERNAL_COMPOSITION_ID;
 }
 
-function isStaleJobAssignment(job: any, worker: any | null) {
-  if (!job.worker_id) return false;
-  if (!worker || worker.status === "REVOKED") return true;
-  const heartbeatAt = job.worker_heartbeat_at || worker.last_heartbeat_at || job.claimed_at;
-  if (!heartbeatAt) return true;
-  return Date.now() - new Date(heartbeatAt).getTime() > WORKER_JOB_STALE_MS;
-}
-
 function hasUsableFinalVideoUrl(value: unknown): boolean {
   return typeof value === "string" && /^https?:\/\//i.test(value.trim());
 }
 
-function deriveDurationContractFromJob(job: any) {
-  const props = job.input_snapshot?.resolvedProps;
-  const frames = Number(props?.totalDurationFrames ?? props?.totalDurationInFrames);
-  const fps = Number(props?.fps);
-  if (Number.isFinite(frames) && Number.isFinite(fps) && frames > 0 && fps > 0) {
-    return { frames: Math.round(frames), fps, durationSeconds: frames / fps };
-  }
-  return null;
-}
-
-function deriveDurationFromJob(job: any): number {
+function deriveDurationFromJob(job: unknown): number {
   return deriveDurationContractFromJob(job)?.durationSeconds || 0;
 }
 
@@ -662,7 +640,7 @@ function resolveTimelineOverrideDurationSeconds(params: {
  * dejar caer el video a un fallback generico de 10s.
  */
 function resolveAssemblyDurationSeconds(params: {
-  assets: any;
+  assets: Pick<MaterialAssets, "assembly_target_duration_seconds">;
   compositionId: string;
   normalizedDurationSeconds: number;
   timelineOverrides: ReturnType<typeof parseTimelineOverrideManifests>;
@@ -767,21 +745,22 @@ async function verifyMediaDurationsFromUrls(rawAssets: unknown) {
 }
 
 function buildAssemblyInputProps(params: {
-  assets: any;
+  assets: unknown;
   compositionId: string;
   transitionType: unknown;
   templateConfig?: unknown;
   layoutOverrides?: unknown;
   timelineOverrides?: unknown;
 }) {
-  const normalized = normalizeAssemblyAssets(params.assets, ASSEMBLY_FPS);
+  const assets = parseDesktopWorkerMaterialAssets(params.assets);
+  const normalized = normalizeAssemblyAssets(assets, ASSEMBLY_FPS);
   const templateConfig = mergeTemplateRenderConfigs(params.templateConfig, null);
   const layoutOverrides = parseLayoutOverrideManifests(params.layoutOverrides);
   const timelineOverrides = parseTimelineOverrideManifests(
-    params.timelineOverrides ?? params.assets?.timeline_overrides,
+    params.timelineOverrides ?? assets.timeline_overrides,
   );
   const totalSeconds = resolveAssemblyDurationSeconds({
-    assets: params.assets,
+    assets,
     compositionId: params.compositionId,
     normalizedDurationSeconds: normalized.totalDurationSeconds,
     timelineOverrides,
@@ -1116,87 +1095,6 @@ function buildRenderDiagnostics(params: {
   };
 }
 
-function assertWorkerCanAccessJob(
-  worker: WorkerAuthContext,
-  job: any,
-  options: { allowCancelled?: boolean } = {},
-) {
-  if (job.organization_id !== worker.organizationId) {
-    throw new Error("JOB_FORBIDDEN_FOR_WORKER");
-  }
-  if (job.job_type !== "REMOTION_RENDER") {
-    throw new Error("JOB_TYPE_NOT_SUPPORTED");
-  }
-  if (job.input_snapshot?.renderProvider !== "desktop_worker") {
-    throw new Error("JOB_PROVIDER_NOT_DESKTOP_WORKER");
-  }
-  const allowedStatuses = options.allowCancelled
-    ? ["PENDING", "QUEUED", "WAITING_PROVIDER", "RUNNING", "SUCCEEDED", "CANCELLED"]
-    : ["PENDING", "QUEUED", "WAITING_PROVIDER", "RUNNING", "SUCCEEDED"];
-  if (!allowedStatuses.includes(job.status)) {
-    throw new Error("JOB_NOT_CLAIMABLE");
-  }
-  if (job.worker_id && job.worker_id !== worker.id) {
-    throw new Error("JOB_ALREADY_CLAIMED_BY_ANOTHER_WORKER");
-  }
-  if (job.preferred_worker_id && job.preferred_worker_id !== worker.id) {
-    throw new Error("JOB_RESERVED_FOR_ANOTHER_WORKER");
-  }
-}
-
-function resolveWorkerRenderInput(snapshot: Record<string, any>) {
-  const externalServeUrl = typeof snapshot.externalServeUrl === "string" ? snapshot.externalServeUrl.trim() : "";
-  const externalBuildStoragePath = typeof snapshot.externalBuildStoragePath === "string" ? snapshot.externalBuildStoragePath.trim() : "";
-  const isInternalDesktopRender = snapshot.renderMode === "INTERNAL_COMPOSITION";
-  const isDesktopRender =
-    isInternalDesktopRender ||
-    snapshot.renderMode === "EXTERNAL_DESKTOP_SITE_READY" ||
-    (externalServeUrl && /^https:\/\//i.test(externalServeUrl)) ||
-    Boolean(externalBuildStoragePath);
-
-  if (!isDesktopRender) {
-    throw new Error("DESKTOP_WORKER_REQUIRES_TEMPLATE_BUILD");
-  }
-  if (!/^https:\/\//i.test(externalServeUrl) && !externalBuildStoragePath) {
-    throw new Error("DESKTOP_WORKER_BUNDLE_TARGET_INVALID");
-  }
-  if (typeof snapshot.compositionId !== "string" || !snapshot.compositionId.trim()) {
-    throw new Error("EXTERNAL_DESKTOP_COMPOSITION_ID_MISSING");
-  }
-  if (!isValidCompositionId(snapshot.compositionId)) {
-    throw new Error("EXTERNAL_DESKTOP_COMPOSITION_ID_INVALID");
-  }
-  if (!snapshot.resolvedProps || typeof snapshot.resolvedProps !== "object" || Array.isArray(snapshot.resolvedProps)) {
-    throw new Error("EXTERNAL_DESKTOP_PROPS_MISSING");
-  }
-
-  const propsHash =
-    typeof snapshot.propsHash === "string" && snapshot.propsHash
-      ? snapshot.propsHash
-      : buildStableHash(snapshot.resolvedProps);
-
-  return {
-    renderMode: isInternalDesktopRender ? "INTERNAL_COMPOSITION" : "EXTERNAL_DESKTOP_SITE_READY",
-    compositionId: snapshot.compositionId,
-    resolvedProps: snapshot.resolvedProps,
-    propsHash,
-    bundle: {
-      signedUrl: externalServeUrl || externalBuildStoragePath,
-      bundleHash: snapshot.bundleHash || snapshot.buildHash || snapshot.buildId || "external-desktop-site",
-      storagePath: externalBuildStoragePath || externalServeUrl,
-      bundleType: externalBuildStoragePath ? "zip" as const : "serve_url" as const,
-    },
-    renderDiagnostics:
-      snapshot.renderDiagnostics || {
-        renderProvider: "desktop_worker",
-        renderMode: "EXTERNAL_DESKTOP_SITE_READY",
-        compositionId: snapshot.compositionId,
-        propsHash,
-        timeoutInMilliseconds: Number(process.env.REMOTION_LOCAL_RENDER_TIMEOUT_MS || 900000),
-      },
-  };
-}
-
 export class DesktopWorkerControlPlane {
   constructor(private readonly supabase: SupabaseAnyClient = getServiceRoleClient()) {}
 
@@ -1376,11 +1274,12 @@ export class DesktopWorkerControlPlane {
     const { data: previews } = await previewQuery
       .order("created_at", { ascending: false })
       .limit(5);
-    const exactPreview = (previews || []).find((preview: any) =>
+    const previewRows = readDatabaseRows<RemotionTemplatePreviewRow>(previews);
+    const exactPreview = previewRows.find((preview) =>
       preview.props_hash === propsResult.propsHash &&
       (preview.layout_overrides_hash || "") === layoutOverridesHash,
     );
-    const latestSuccessfulPreview = (previews || []).find((preview: any) => preview.status === "SUCCEEDED") || null;
+    const latestSuccessfulPreview = previewRows.find((preview) => preview.status === "SUCCEEDED") || null;
     const preview = exactPreview || null;
     const visualPreview = preview?.status === "SUCCEEDED" ? preview : latestSuccessfulPreview;
     const previewPosterPath = visualPreview ? readNonEmptyString(visualPreview.preview_poster_storage_path) : null;
@@ -1607,10 +1506,10 @@ export class DesktopWorkerControlPlane {
 
     if (error) throw new Error(`WORKER_LIST_FAILED: ${error.message}`);
 
-    const workers = data || [];
-    const runningCounts = await this.countRunningJobsByWorker(workers.map((worker: any) => worker.id));
+    const workers = readDatabaseRows<RenderWorkerRow>(data);
+    const runningCounts = await this.countRunningJobsByWorker(workers.map((worker) => worker.id));
 
-    return workers.map((worker: any) => ({
+    return workers.map((worker) => ({
       ...worker,
       is_primary_bundle_worker: isPrimaryBundleWorker(worker),
       status: resolveComputedWorkerStatus(worker),
@@ -1640,7 +1539,7 @@ export class DesktopWorkerControlPlane {
     if (error) throw new Error(`WORKER_PRIMARY_UPDATE_FAILED: ${error.message}`);
 
     const now = new Date().toISOString();
-    await Promise.all((workers || []).map((worker: any) => {
+    await Promise.all(readDatabaseRows<RenderWorkerRow>(workers).map((worker) => {
       const capabilities = readWorkerCapabilities(worker.capabilities);
       const isPrimary = worker.id === workerId;
       return this.supabase
@@ -2260,7 +2159,7 @@ export class DesktopWorkerControlPlane {
   }) {
     const { data: version, error: versionError } = await this.supabase
       .from("remotion_template_versions")
-      .select("id, template_id, organization_id, status, storage_path, bundle_hash, composition_id, export_mode")
+      .select("id, template_id, organization_id, status, storage_path, bundle_hash, entry_point, composition_id, export_mode")
       .eq("id", input.templateVersionId)
       .maybeSingle();
 
@@ -2343,7 +2242,10 @@ export class DesktopWorkerControlPlane {
       .eq("id", version.id);
 
     if (useServerBundler) {
-      return this.buildTemplateWithServerBundler(version, build);
+      const versionRow = readDatabaseRow<RemotionTemplateVersionRow>(version);
+      const buildRow = readDatabaseRow<RemotionTemplateBuildRow>(build);
+      if (!versionRow || !buildRow) throw new Error("TEMPLATE_BUILD_DATABASE_CONTRACT_INVALID");
+      return this.buildTemplateWithServerBundler(versionRow, buildRow);
     }
 
     return {
@@ -2396,11 +2298,11 @@ export class DesktopWorkerControlPlane {
     if (claimedTemplateBuilds.length > 0) {
       let payloads: ClaimedDesktopWorkerTemplateBuildJob[];
       try {
-        payloads = await Promise.all(claimedTemplateBuilds.map((build: any) => this.buildClaimedTemplateBuildPayload(build)));
+        payloads = await Promise.all(claimedTemplateBuilds.map((build) => this.buildClaimedTemplateBuildPayload(build)));
       } catch (error) {
         await this.releaseTemplateBuildClaims(
           worker.id,
-          claimedTemplateBuilds.map((build: any) => build.id),
+          claimedTemplateBuilds.map((build) => build.id),
           sanitizeText(error instanceof Error ? error.message : String(error), "No se pudo preparar el build para el worker."),
         );
         throw error;
@@ -2442,7 +2344,7 @@ export class DesktopWorkerControlPlane {
       return null;
     }
 
-    const payloads = await Promise.all(claimedJobs.map((job: any) => this.buildClaimedJobPayload(worker, job)));
+    const payloads = await Promise.all(claimedJobs.map((job) => this.buildClaimedJobPayload(worker, job)));
     await this.heartbeat(worker, { status: "BUSY", activeJobIds: payloads.map((job) => job.jobId) });
     return payloads.length === 1 ? payloads[0] : { jobs: payloads };
   }
@@ -2636,7 +2538,10 @@ export class DesktopWorkerControlPlane {
     assertWorkerCanAccessJob(worker, job);
 
     const snapshot = job.input_snapshot || {};
-    const resolved = resolveWorkerRenderInput(snapshot);
+    const resolved = resolveWorkerRenderInput(
+      snapshot,
+      Number(process.env.REMOTION_LOCAL_RENDER_TIMEOUT_MS || 900000),
+    );
     const bundleUrl = await this.createWorkerBundleSignedUrl(resolved.bundle);
     const outputStoragePath = `completed/${job.material_component_id || job.id}/${job.id}-${worker.id}-${Date.now()}.mp4`;
     const { data: signedUpload, error: signedUploadError } = await this.supabase.storage
@@ -2763,7 +2668,7 @@ export class DesktopWorkerControlPlane {
     });
 
     if (error) throw new Error(`JOB_NEXT_LOOKUP_FAILED: ${error.message}`);
-    return data || [];
+    return readDatabaseRows<ProductionJobRow>(data);
   }
 
   private async claimTemplateBuilds(worker: WorkerAuthContext, limit: number) {
@@ -2772,7 +2677,7 @@ export class DesktopWorkerControlPlane {
       .select("id, capabilities")
       .eq("id", worker.id)
       .maybeSingle();
-    const currentIsPrimary = isPrimaryBundleWorker(currentWorker || {});
+    const currentIsPrimary = isPrimaryBundleWorker(readDatabaseRow<RenderWorkerRow>(currentWorker) || {});
 
     let primaryWorkerIds: string[] = [];
     if (!currentIsPrimary) {
@@ -2782,9 +2687,9 @@ export class DesktopWorkerControlPlane {
         .eq("organization_id", worker.organizationId)
         .neq("status", "REVOKED");
 
-      primaryWorkerIds = (primaryWorkers || [])
-        .filter((candidate: any) => isPrimaryBundleWorker(candidate) && resolveComputedWorkerStatus(candidate) !== "OFFLINE")
-        .map((candidate: any) => candidate.id);
+      primaryWorkerIds = readDatabaseRows<RenderWorkerRow>(primaryWorkers)
+        .filter((candidate) => isPrimaryBundleWorker(candidate) && resolveComputedWorkerStatus(candidate) !== "OFFLINE")
+        .map((candidate) => candidate.id);
     }
 
     const now = new Date().toISOString();
@@ -2809,8 +2714,8 @@ export class DesktopWorkerControlPlane {
 
     if (error) throw new Error(`TEMPLATE_BUILD_NEXT_LOOKUP_FAILED: ${error.message}`);
 
-    const claimed: any[] = [];
-    for (const candidate of candidates || []) {
+    const claimed: RemotionTemplateBuildRow[] = [];
+    for (const candidate of readDatabaseRows<RemotionTemplateBuildRow>(candidates)) {
       const { data: updated } = await this.supabase
         .from("remotion_template_builds")
         .update({
@@ -2828,7 +2733,8 @@ export class DesktopWorkerControlPlane {
         .select("*")
         .maybeSingle();
 
-      if (updated) claimed.push(updated);
+      const updatedBuild = readDatabaseRow<RemotionTemplateBuildRow>(updated);
+      if (updatedBuild) claimed.push(updatedBuild);
       if (claimed.length >= limit) break;
     }
 
@@ -2867,8 +2773,8 @@ export class DesktopWorkerControlPlane {
 
     if (error) throw new Error(`TEMPLATE_PREVIEW_NEXT_LOOKUP_FAILED: ${error.message}`);
 
-    const claimed: any[] = [];
-    for (const candidate of candidates || []) {
+    const claimed: RemotionTemplatePreviewRow[] = [];
+    for (const candidate of readDatabaseRows<RemotionTemplatePreviewRow>(candidates)) {
       const { data: updated } = await this.supabase
         .from("remotion_template_previews")
         .update({
@@ -2886,14 +2792,15 @@ export class DesktopWorkerControlPlane {
         .select("*")
         .maybeSingle();
 
-      if (updated) claimed.push(updated);
+      const updatedPreview = readDatabaseRow<RemotionTemplatePreviewRow>(updated);
+      if (updatedPreview) claimed.push(updatedPreview);
       if (claimed.length >= limit) break;
     }
 
     return claimed;
   }
 
-  private async buildClaimedTemplateBuildPayload(build: any): Promise<ClaimedDesktopWorkerTemplateBuildJob> {
+  private async buildClaimedTemplateBuildPayload(build: RemotionTemplateBuildRow): Promise<ClaimedDesktopWorkerTemplateBuildJob> {
     const { data: version, error: versionError } = await this.supabase
       .from("remotion_template_versions")
       .select("id, storage_path, bundle_hash, composition_id, export_mode")
@@ -2934,7 +2841,10 @@ export class DesktopWorkerControlPlane {
     };
   }
 
-  private async buildTemplateWithServerBundler(version: any, build: any) {
+  private async buildTemplateWithServerBundler(
+    version: RemotionTemplateVersionRow,
+    build: RemotionTemplateBuildRow,
+  ) {
     const sourceLocation = normalizeStoragePath(version.storage_path);
     const outputStoragePath = `template-builds/${build.id}/${version.bundle_hash}.zip`;
     const workspaceBuildRoot = path.resolve(process.cwd(), ".tmp", "template-builds", build.id);
@@ -3068,7 +2978,7 @@ export class DesktopWorkerControlPlane {
     }
   }
 
-  private async buildClaimedTemplatePreviewPayload(preview: any): Promise<ClaimedDesktopWorkerTemplatePreviewJob> {
+  private async buildClaimedTemplatePreviewPayload(preview: RemotionTemplatePreviewRow): Promise<ClaimedDesktopWorkerTemplatePreviewJob> {
     const { data: build, error: buildError } = await this.supabase
       .from("remotion_template_builds")
       .select("id, build_output_storage_path, build_hash, bundle_hash, status")
@@ -3128,9 +3038,12 @@ export class DesktopWorkerControlPlane {
     };
   }
 
-  private async buildClaimedJobPayload(worker: WorkerAuthContext, job: any) {
+  private async buildClaimedJobPayload(worker: WorkerAuthContext, job: ProductionJobRow) {
     const snapshot = job.input_snapshot || {};
-    const resolved = resolveWorkerRenderInput(snapshot);
+    const resolved = resolveWorkerRenderInput(
+      snapshot,
+      Number(process.env.REMOTION_LOCAL_RENDER_TIMEOUT_MS || 900000),
+    );
     const bundleUrl = await this.createWorkerBundleSignedUrl(resolved.bundle);
     const outputStoragePath = `completed/${job.material_component_id || job.id}/${job.id}-${worker.id}-${Date.now()}.mp4`;
     const { data: signedUpload, error: signedUploadError } = await this.supabase.storage
@@ -3263,7 +3176,7 @@ export class DesktopWorkerControlPlane {
 
     return {
       jobs: [
-        ...(renderJobs || []).map((job: any) => ({
+        ...readDatabaseRows<ProductionJobRow>(renderJobs).map((job) => ({
           jobType: "render",
           jobId: job.id,
           status: job.status,
@@ -3271,7 +3184,7 @@ export class DesktopWorkerControlPlane {
           outputChecksum: job.output_checksum || null,
           updatedAt: job.updated_at,
         })),
-        ...(builds || []).map((build: any) => ({
+        ...readDatabaseRows<RemotionTemplateBuildRow>(builds).map((build) => ({
           jobType: "template_build",
           jobId: build.id,
           status: build.status,
@@ -3279,7 +3192,7 @@ export class DesktopWorkerControlPlane {
           outputChecksum: build.output_checksum || null,
           updatedAt: build.updated_at,
         })),
-        ...(previews || []).map((preview: any) => ({
+        ...readDatabaseRows<RemotionTemplatePreviewRow>(previews).map((preview) => ({
           jobType: "template_preview",
           jobId: preview.id,
           status: preview.status,
@@ -3397,7 +3310,7 @@ export class DesktopWorkerControlPlane {
       return;
     }
 
-    const results = await Promise.all((runs || []).map((run: any) => {
+    const results = await Promise.all(readDatabaseRows<RenderWorkerJobRunRow>(runs).map((run) => {
       const elapsedMs = run.started_at
         ? Math.max(0, new Date(input.finishedAt).getTime() - new Date(run.started_at).getTime())
         : null;
@@ -3417,7 +3330,7 @@ export class DesktopWorkerControlPlane {
         .eq("id", run.id)
         .eq("worker_id", input.workerId);
     }));
-    const failedUpdate = results.find((result: any) => result?.error);
+    const failedUpdate = results.find((result) => result?.error);
     if (failedUpdate?.error) {
       console.warn("[DesktopWorkerControlPlane] No se pudo cerrar una fila de telemetria", {
         jobId: input.jobId,
@@ -3541,7 +3454,7 @@ export class DesktopWorkerControlPlane {
   }
 
   private async runPostRenderCompletionSideEffects(input: {
-    job: any;
+    job: ProductionJobRow;
     worker: WorkerAuthContext;
     publicUrl: string;
     duration: number;
@@ -3728,7 +3641,7 @@ export class DesktopWorkerControlPlane {
 
   private async completeTemplateBuild(
     worker: WorkerAuthContext,
-    build: any,
+    build: RemotionTemplateBuildRow,
     input: WorkerJobCompleteInput,
   ) {
     if (!input.outputStoragePath || !input.outputStoragePath.startsWith(`${TEMPLATE_BUNDLE_BUCKET}/template-builds/`)) {
@@ -3786,7 +3699,11 @@ export class DesktopWorkerControlPlane {
     return { buildId: build.id, buildHash, buildOutputStoragePath: input.outputStoragePath };
   }
 
-  private async failTemplateBuild(worker: WorkerAuthContext, build: any, input: Record<string, unknown>) {
+  private async failTemplateBuild(
+    worker: WorkerAuthContext,
+    build: RemotionTemplateBuildRow,
+    input: Record<string, unknown>,
+  ) {
     let message = sanitizeText(input.message, "El worker local no pudo compilar la plantilla");
     const code = sanitizeText(input.errorCode, "") || "DESKTOP_WORKER_TEMPLATE_BUILD_FAILED";
     const failedAt = new Date().toISOString();
@@ -3800,9 +3717,10 @@ export class DesktopWorkerControlPlane {
         .eq("id", build.template_version_id)
         .maybeSingle();
 
-      if (version) {
+      const versionRow = readDatabaseRow<RemotionTemplateVersionRow>(version);
+      if (versionRow) {
         try {
-          const recovered = await this.buildTemplateWithServerBundler(version, {
+          const recovered = await this.buildTemplateWithServerBundler(versionRow, {
             ...build,
             provider_status: "SERVER_BUNDLER_RECOVERY",
             provider_status_detail: "Worker no pudo ejecutar esbuild; recuperando build en servidor local.",
@@ -3844,7 +3762,7 @@ export class DesktopWorkerControlPlane {
 
   private async completeTemplatePreview(
     worker: WorkerAuthContext,
-    preview: any,
+    preview: RemotionTemplatePreviewRow,
     input: WorkerJobCompleteInput,
   ) {
     const outputStoragePath = sanitizeText(input.outputStoragePath, "");
@@ -3928,7 +3846,11 @@ export class DesktopWorkerControlPlane {
     return { previewId: preview.id, previewPosterUrl, previewVideoUrl };
   }
 
-  private async failTemplatePreview(worker: WorkerAuthContext, preview: any, input: Record<string, unknown>) {
+  private async failTemplatePreview(
+    worker: WorkerAuthContext,
+    preview: RemotionTemplatePreviewRow,
+    input: Record<string, unknown>,
+  ) {
     const message = sanitizeText(input.message, "El worker local no pudo generar el preview externo");
     const code = sanitizeText(input.errorCode, "") || "DESKTOP_WORKER_TEMPLATE_PREVIEW_FAILED";
     const failedAt = new Date().toISOString();
@@ -3962,20 +3884,21 @@ export class DesktopWorkerControlPlane {
       .eq("id", buildId)
       .maybeSingle();
 
-    if (error || !build) return null;
-    if (build.organization_id !== worker.organizationId) {
+    const buildRow = readDatabaseRow<RemotionTemplateBuildRow>(build);
+    if (error || !buildRow) return null;
+    if (buildRow.organization_id !== worker.organizationId) {
       throw new Error("TEMPLATE_BUILD_FORBIDDEN_FOR_WORKER");
     }
-    if (build.cloud_provider !== "desktop_worker") {
+    if (buildRow.cloud_provider !== "desktop_worker") {
       throw new Error("TEMPLATE_BUILD_PROVIDER_NOT_DESKTOP_WORKER");
     }
-    if (!["BUILDING", "BUILD_FAILED", "BUILT"].includes(build.status)) {
+    if (!["BUILDING", "BUILD_FAILED", "BUILT"].includes(buildRow.status)) {
       throw new Error("TEMPLATE_BUILD_NOT_CLAIMABLE");
     }
-    if (build.worker_id && build.worker_id !== worker.id) {
+    if (buildRow.worker_id && buildRow.worker_id !== worker.id) {
       throw new Error("TEMPLATE_BUILD_CLAIMED_BY_ANOTHER_WORKER");
     }
-    return build;
+    return buildRow;
   }
 
   private async getAuthorizedTemplatePreview(worker: WorkerAuthContext, previewId: string) {
@@ -3985,17 +3908,18 @@ export class DesktopWorkerControlPlane {
       .eq("id", previewId)
       .maybeSingle();
 
-    if (error || !preview) return null;
-    if (preview.organization_id !== worker.organizationId) {
+    const previewRow = readDatabaseRow<RemotionTemplatePreviewRow>(preview);
+    if (error || !previewRow) return null;
+    if (previewRow.organization_id !== worker.organizationId) {
       throw new Error("TEMPLATE_PREVIEW_FORBIDDEN_FOR_WORKER");
     }
-    if (!["QUEUED", "RUNNING", "FAILED", "SUCCEEDED"].includes(preview.status)) {
+    if (!["QUEUED", "RUNNING", "FAILED", "SUCCEEDED"].includes(previewRow.status)) {
       throw new Error("TEMPLATE_PREVIEW_NOT_CLAIMABLE");
     }
-    if (preview.worker_id && preview.worker_id !== worker.id) {
+    if (previewRow.worker_id && previewRow.worker_id !== worker.id) {
       throw new Error("TEMPLATE_PREVIEW_CLAIMED_BY_ANOTHER_WORKER");
     }
-    return preview;
+    return previewRow;
   }
 
   private async getAuthorizedWorkerJob(
@@ -4009,9 +3933,10 @@ export class DesktopWorkerControlPlane {
       .eq("id", jobId)
       .single();
 
-    if (error || !job) throw new Error("JOB_NOT_FOUND");
-    assertWorkerCanAccessJob(worker, job, options);
-    return job;
+    const jobRow = readDatabaseRow<ProductionJobRow>(job);
+    if (error || !jobRow) throw new Error("JOB_NOT_FOUND");
+    assertWorkerCanAccessJob(worker, jobRow, options);
+    return jobRow;
   }
 
   private async resolveAuthorizedTelemetryTarget(worker: WorkerAuthContext, jobId: string) {
@@ -4064,11 +3989,12 @@ export class DesktopWorkerControlPlane {
       renderBatchId: job.render_batch_id || null,
       artifactId: job.artifact_id || null,
       materialComponentId: job.material_component_id || null,
-      templateVersionId: job.input_snapshot?.templateVersionId || null,
-      compositionId: job.input_snapshot?.compositionId || null,
-      bundleHash: job.input_snapshot?.desktopBundleHash || job.input_snapshot?.bundleHash || null,
-      propsHash: job.input_snapshot?.propsHash || null,
-      outputStoragePath: job.output_snapshot?.outputStoragePath || null,
+      templateVersionId: readNonEmptyString(job.input_snapshot.templateVersionId),
+      compositionId: readNonEmptyString(job.input_snapshot.compositionId),
+      bundleHash: readNonEmptyString(job.input_snapshot.desktopBundleHash)
+        || readNonEmptyString(job.input_snapshot.bundleHash),
+      propsHash: readNonEmptyString(job.input_snapshot.propsHash),
+      outputStoragePath: readNonEmptyString(job.output_snapshot.outputStoragePath),
       remoteStatus: job.status || null,
       terminalAt: readTelemetryTerminalAt(job),
     };
@@ -4112,10 +4038,10 @@ export class DesktopWorkerControlPlane {
       .from("production_render_batch_items")
       .select("status")
       .eq("batch_id", item.batch_id);
-    const rows = items || [];
-    const completedItems = rows.filter((row: any) => row.status === "SUCCEEDED").length;
-    const failedItems = rows.filter((row: any) => row.status === "FAILED").length;
-    const terminalItems = rows.filter((row: any) => ["SUCCEEDED", "FAILED", "CANCELLED"].includes(row.status)).length;
+    const rows = readDatabaseRows<ProductionRenderBatchItemStatusRow>(items);
+    const completedItems = rows.filter((row) => row.status === "SUCCEEDED").length;
+    const failedItems = rows.filter((row) => row.status === "FAILED").length;
+    const terminalItems = rows.filter((row) => ["SUCCEEDED", "FAILED", "CANCELLED"].includes(row.status)).length;
     const nextStatus = terminalItems < rows.length
       ? "RUNNING"
       : failedItems > 0 && completedItems > 0
@@ -4141,7 +4067,7 @@ export class DesktopWorkerControlPlane {
       .select("id, status, last_heartbeat_at")
       .eq("id", workerId)
       .maybeSingle();
-    return data || null;
+    return readDatabaseRow<RenderWorkerRow>(data);
   }
 
   private async resetDesktopJob(jobId: string, inputSnapshot: Record<string, unknown>, message: string) {

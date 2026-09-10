@@ -1,4 +1,4 @@
-import { getServiceRoleClient } from '@/lib/server/artifact-action-auth';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { ScormEnrichmentService } from './scorm-enrichment.service';
 import JSZip from 'jszip';
 import * as cheerio from 'cheerio';
@@ -6,10 +6,19 @@ import sanitizeHtml from 'sanitize-html';
 import { randomUUID } from 'crypto';
 import { ReadingContent } from '../../materials/types/materials.types';
 import type { ScormManifest, ScormResource } from '../types';
+import {
+    isQueuedScormTransformation,
+    SCORM_IMPORT_STATUS,
+    SCORM_PROCESSING_STEP,
+} from '../scorm-job-contracts';
 
 interface ScormImportRecord {
+    artifact_id: string | null;
+    created_by: string | null;
     id: string;
     manifest_raw: ScormManifest;
+    processing_step: string | null;
+    status: string;
     storage_path: string;
 }
 
@@ -34,20 +43,48 @@ interface SyllabusModuleSummary {
 }
 
 export class ScormTransformationService {
+    constructor(private readonly supabase: SupabaseClient) {}
 
-    async processImport(importId: string, userId: string, organizationId: string) {
-        const supabase = getServiceRoleClient();
+    async processImport(importId: string, organizationId: string) {
+        const supabase = this.supabase;
 
         // 1. Get Import Record
         const { data: importRecord, error } = await supabase
             .from('scorm_imports')
-            .select('id, manifest_raw, storage_path')
+            .select('id, artifact_id, created_by, manifest_raw, processing_step, status, storage_path')
             .eq('id', importId)
             .eq('organization_id', organizationId)
             .single();
 
         if (error || !importRecord) throw new Error('Import not found');
-        const typedImportRecord = importRecord as ScormImportRecord;
+        const currentImport = importRecord as ScormImportRecord;
+        if (currentImport.status === SCORM_IMPORT_STATUS.completed && currentImport.artifact_id) {
+            return { artifactId: currentImport.artifact_id, completed: true, alreadyCompleted: true };
+        }
+        if (!isQueuedScormTransformation(currentImport.status, currentImport.processing_step)) {
+            return { artifactId: currentImport.artifact_id, completed: false, alreadyProcessing: true };
+        }
+        if (!currentImport.created_by) throw new Error('SCORM import creator is missing');
+
+        const { data: claimedImport, error: claimError } = await supabase
+            .from('scorm_imports')
+            .update({ processing_step: SCORM_PROCESSING_STEP.running })
+            .eq('id', importId)
+            .eq('organization_id', organizationId)
+            .eq('status', SCORM_IMPORT_STATUS.transforming)
+            .eq('processing_step', SCORM_PROCESSING_STEP.queued)
+            .select('id, artifact_id, created_by, manifest_raw, processing_step, status, storage_path')
+            .maybeSingle();
+
+        if (claimError) throw new Error(`Failed to claim SCORM import: ${claimError.message}`);
+        if (!claimedImport) {
+            return { artifactId: currentImport.artifact_id, completed: false, alreadyProcessing: true };
+        }
+        const typedImportRecord = claimedImport as ScormImportRecord;
+        const userId = typedImportRecord.created_by;
+        if (!userId) throw new Error('SCORM import creator is missing');
+
+        try {
 
         // 2. Download Zip 
         const { data: zipData, error: downloadError } = await supabase
@@ -106,6 +143,16 @@ export class ScormTransformationService {
             throw new Error('Failed to create artifact: ' + artifactError?.message);
         }
         const typedArtifact = artifact as ArtifactRecord;
+
+        const { error: artifactLinkError } = await supabase
+            .from('scorm_imports')
+            .update({ artifact_id: typedArtifact.id, processing_step: 'ARTIFACT_CREATED' })
+            .eq('id', importId)
+            .eq('organization_id', organizationId)
+            .eq('processing_step', SCORM_PROCESSING_STEP.running);
+        if (artifactLinkError) {
+            throw new Error(`Failed to link SCORM artifact: ${artifactLinkError.message}`);
+        }
 
         // 6. Construct Syllabus Structure & Extract Content
         const syllabusModules: SyllabusModuleSummary[] = [];
@@ -171,16 +218,21 @@ export class ScormTransformationService {
                     .select()
                     .single();
 
-                if (!matLessonError && matLesson) {
-                    // Create MaterialComponents
-                    for (const compContent of components) {
-                        await supabase.from('material_components').insert({
-                            material_lesson_id: matLesson.id,
-                            type: 'READING', // Defaulting to READING for now
-                            content: compContent,
-                            iteration_number: 1,
-                            validation_status: 'PENDING'
-                        });
+                if (matLessonError || !matLesson) {
+                    throw new Error(`Failed to create SCORM material lesson: ${matLessonError?.message || 'Unknown error'}`);
+                }
+
+                // Create MaterialComponents
+                for (const compContent of components) {
+                    const { error: componentError } = await supabase.from('material_components').insert({
+                        material_lesson_id: matLesson.id,
+                        type: 'READING', // Defaulting to READING for now
+                        content: compContent,
+                        iteration_number: 1,
+                        validation_status: 'PENDING'
+                    });
+                    if (componentError) {
+                        throw new Error(`Failed to create SCORM material component: ${componentError.message}`);
                     }
                 }
 
@@ -199,23 +251,44 @@ export class ScormTransformationService {
         }
 
         // 7. Create Syllabus
-        await supabase.from('syllabus').insert({
+        const { error: syllabusError } = await supabase.from('syllabus').insert({
             artifact_id: typedArtifact.id,
             modules: syllabusModules,
             state: 'STEP_DRAFT'
         });
+        if (syllabusError) throw new Error(`Failed to create SCORM syllabus: ${syllabusError.message}`);
 
         // 8. Update Import Status
-        await supabase
+        const { error: completionError } = await supabase
             .from('scorm_imports')
             .update({
                 status: 'COMPLETED',
                 artifact_id: typedArtifact.id,
+                processing_step: 'COMPLETED',
                 completed_at: new Date().toISOString()
             })
-            .eq('id', importId);
+            .eq('id', importId)
+            .eq('organization_id', organizationId);
+        if (completionError) throw new Error(`Failed to complete SCORM import: ${completionError.message}`);
 
-        return { artifactId: typedArtifact.id };
+        return { artifactId: typedArtifact.id, completed: true };
+        } catch (transformationError) {
+            console.error('[SCORM/transformation] Processing failed', {
+                importId,
+                organizationId,
+                error: transformationError instanceof Error ? transformationError.message : String(transformationError),
+            });
+            await supabase
+                .from('scorm_imports')
+                .update({
+                    error_message: 'La transformación SCORM no pudo completarse.',
+                    processing_step: 'FAILED',
+                    status: SCORM_IMPORT_STATUS.failed,
+                })
+                .eq('id', importId)
+                .eq('organization_id', organizationId);
+            throw new Error('SCORM_TRANSFORMATION_FAILED');
+        }
     }
 
     private async extractResourceContent(zip: JSZip, href: string): Promise<ReadingContent | null> {

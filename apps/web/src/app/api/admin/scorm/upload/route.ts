@@ -4,7 +4,7 @@ import { ScormParserService } from '@/domains/scorm/services/scorm-parser.servic
 import type { ScormManifest } from '@/domains/scorm/types';
 import { randomUUID } from 'crypto';
 import { getErrorMessage } from '@/lib/errors';
-import { getAuthenticatedUser, getServiceRoleClient } from '@/lib/server/artifact-action-auth';
+import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from '@/lib/server/artifact-action-auth';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 
 const MAX_SCORM_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -21,6 +21,9 @@ export async function POST(req: NextRequest) {
         const tenant = await resolveActiveTenantContext();
         if (!tenant) {
             return NextResponse.json({ error: 'Empresa no valida o no autorizada.' }, { status: 403 });
+        }
+        if (!await canReviewContent(authenticatedUser.userId, tenant)) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
         const admin = getServiceRoleClient();
 
@@ -71,6 +74,12 @@ export async function POST(req: NextRequest) {
 
         if (dbError) {
             console.error('DB Insert Error:', dbError);
+            const { error: cleanupError } = await admin.storage
+                .from('scorm-packages')
+                .remove([storagePath]);
+            if (cleanupError) {
+                console.error('SCORM orphan cleanup failed:', cleanupError);
+            }
             return NextResponse.json({ error: 'Failed to create import record' }, { status: 500 });
         }
 

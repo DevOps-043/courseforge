@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { ANIMATED_DECK_APPEARANCES } from "@/domains/production/animated-deck/animated-deck-appearance.service";
+import { ANIMATED_DECK_APPEARANCES } from "../../production/animated-deck/animated-deck-appearance.service";
+import { videoDurationContractSchema } from "../../video-duration/video-duration-policy";
 
 const internalMediaUrlSchema = z.string().refine((value) => {
   if (value.startsWith("/api/storage/media?")) return true;
@@ -39,7 +40,7 @@ export const backgroundMusicSchema = z.object({
   public_url: internalMediaUrlSchema,
   file_name: z.string().trim().optional(),
   duration: z.number().positive().optional(),
-  volume_multiplier: z.number().min(0).max(1).default(0.15),
+  volume_multiplier: z.number().min(0).max(1).optional(),
 });
 
 // Schema for B-roll Video clips
@@ -218,6 +219,12 @@ export const slidesSchema = z.object({
   open_design_project_id: z.string().trim().optional(),
   html_content_path: z.string().trim().optional(),
   html_public_url: z.string().url().optional(),
+  prepared_at: z.string().optional(),
+  prepared_from_storyboard: z.boolean().optional(),
+  prepared_slide_count: z.number().int().nonnegative().optional(),
+  prepared_spec: z.record(z.string(), z.unknown()).optional(),
+  copy_pipeline_version: z.string().trim().optional(),
+  copy_synthesis_signature: z.string().trim().optional(),
   qa_content_path: z.string().trim().optional(),
   qa_report: z.record(z.string(), z.unknown()).optional(),
   selected_slide_template_run_id: z.string().trim().optional(),
@@ -236,6 +243,14 @@ export const productionStatusSchema = z.enum([
   "COMPLETED",
 ]);
 
+export const productionDodChecklistSchema = z.object({
+  has_b_roll_prompts: z.boolean(),
+  has_final_video_url: z.boolean(),
+  has_screencast_url: z.boolean(),
+  has_slides_url: z.boolean(),
+  has_video_url: z.boolean(),
+});
+
 // Main Material Assets schema matching MaterialAssets interface
 export const materialAssetsSchema = z.object({
   slides_url: z.string().url().or(z.literal("")).optional(),
@@ -244,12 +259,15 @@ export const materialAssetsSchema = z.object({
   screencast_url: z.string().url().or(z.literal("")).optional(),
   notes: z.string().trim().optional(),
   final_video_url: z.string().url().or(z.literal("")).optional(),
-  final_video_source: z.enum(["upload", "link", "desktop_worker"]).optional(),
+  final_video_asset_provider: z.string().trim().optional(),
+  final_video_source: z.enum(["upload", "link", "desktop_worker", "hyperframes_cloud"]).optional(),
   final_video_file_name: z.string().trim().optional(),
   final_video_storage_path: z.string().trim().optional(),
   final_video_layout_stale: z.boolean().optional(),
   final_video_assembly_stale: z.boolean().optional(),
   video_duration: z.number().nonnegative().optional(),
+  assembly_target_duration_seconds: z.number().nonnegative().optional(),
+  video_duration_contract: videoDurationContractSchema.optional(),
   layout_overrides: z.array(z.record(z.string(), z.unknown())).optional(),
   layout_overrides_updated_at: z.string().optional(),
   timeline_overrides: z.array(z.record(z.string(), z.unknown())).optional(),
@@ -257,19 +275,20 @@ export const materialAssetsSchema = z.object({
   production_status: productionStatusSchema.optional(),
   gamma_deck_id: z.string().trim().optional(),
   png_export_path: z.string().trim().optional(),
+  dod_checklist: productionDodChecklistSchema.optional(),
   updated_at: z.string().optional(),
   
   // New structured visual assets
-  voice_audio: voiceAudioSchema.optional(),
+  voice_audio: voiceAudioSchema.nullable().optional(),
   manual_voice_clips: z.array(manualVoiceClipSchema).optional(),
   voice_clips: z.array(voiceClipSchema).optional(),
-  background_music: backgroundMusicSchema.optional(),
+  background_music: backgroundMusicSchema.nullable().optional(),
   detached_audio_clips: z.array(detachedAudioClipSchema).optional(),
   b_roll_clips: z.array(bRollClipSchema).optional(),
   avatar_generation_mode: avatarGenerationModeSchema.optional(),
   avatar_clips: z.array(avatarClipSchema).optional(),
   avatar_video: avatarVideoSchema.nullable().optional(),
-  slides: slidesSchema.optional(),
+  slides: slidesSchema.nullable().optional(),
 }).superRefine((assets, context) => {
   const seenClipIds = new Set<string>();
   for (const [index, voiceClip] of (assets.voice_clips || []).entries()) {

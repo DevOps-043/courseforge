@@ -1,6 +1,18 @@
 import { validateOAuthState } from "@/lib/server/oauth-state";
 import { oauthPopupResponse } from "@/lib/server/oauth-popup-response";
+import { fetchWithDeadline } from "@/lib/server/outbound-http";
 import { upsertCloudStorageCredentials } from "@/domains/production/cloud-storage/credentials.repository";
+
+interface MicrosoftOAuthTokenResponse {
+  access_token?: string;
+  expires_in?: number;
+  refresh_token?: string;
+}
+
+interface MicrosoftProfileResponse {
+  mail?: string;
+  userPrincipalName?: string;
+}
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
@@ -19,12 +31,12 @@ export async function GET(request: Request) {
       return oauthPopupResponse({
         provider: "onedrive",
         status: "error",
-        message: error || "microsoft_oauth_failed",
+        message: "microsoft_oauth_failed",
       });
     }
 
     const redirectUri = process.env.MICROSOFT_REDIRECT_URI || `${baseUrl}/api/auth/microsoft/callback`;
-    const tokenResponse = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+    const tokenResponse = await fetchWithDeadline("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -38,16 +50,15 @@ export async function GET(request: Request) {
     });
 
     if (!tokenResponse.ok) {
-      const details = await tokenResponse.text();
-      throw new Error(`Error al obtener tokens de Microsoft: ${details}`);
+      throw new Error(`Microsoft rechazo el intercambio OAuth (HTTP ${tokenResponse.status}).`);
     }
 
-    const tokenData = await tokenResponse.json();
-    if (!tokenData.refresh_token) {
+    const tokenData = (await tokenResponse.json()) as MicrosoftOAuthTokenResponse;
+    if (!tokenData.access_token || !tokenData.expires_in || !tokenData.refresh_token) {
       throw new Error("Microsoft no devolvio refresh_token. Revisa el scope offline_access.");
     }
 
-    const profileResponse = await fetch("https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName", {
+    const profileResponse = await fetchWithDeadline("https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName", {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
 
@@ -55,7 +66,7 @@ export async function GET(request: Request) {
       throw new Error("No se pudo obtener el perfil de Microsoft Graph");
     }
 
-    const profile = await profileResponse.json();
+    const profile = (await profileResponse.json()) as MicrosoftProfileResponse;
     const accountEmail = profile.mail || profile.userPrincipalName;
     if (!accountEmail) {
       throw new Error("Microsoft no devolvio email de cuenta");
@@ -77,12 +88,15 @@ export async function GET(request: Request) {
       status: "success",
       redirectPath: `/${state.organizationSlug}/admin/integrations?onedrive_connected=true`,
     });
-  } catch (error: any) {
-    console.error("[Microsoft OAuth Callback Error]:", error);
+  } catch (error: unknown) {
+    console.error(
+      "[Microsoft OAuth Callback Error]:",
+      error instanceof Error ? error.message : "unknown_error",
+    );
     return oauthPopupResponse({
       provider: "onedrive",
       status: "error",
-      message: error?.message || "microsoft_oauth_failed",
+      message: "microsoft_oauth_failed",
     });
   }
 }
