@@ -1,6 +1,4 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getErrorMessage } from "@/lib/errors";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -14,27 +12,37 @@ import {
 import { getHeygenClientForOrganization } from "@/domains/production/providers/heygen/heygen-credential-resolver.service";
 import { HeygenScenesService } from "@/domains/production/providers/heygen/heygen-scenes.service";
 import { createClient } from "@/utils/supabase/server";
+import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
+
+const MAX_HYPERFRAMES_ASSET_SYNC_REQUEST_BYTES = 4 * 1024;
 
 const inputSchema = z.object({ componentId: z.string().uuid() }).strict();
 
 /** Synchronizes assets from the preceding Production step; it never moves or deletes files. */
 export async function POST(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.hyperframes.assets.sync", { correlationId: requestId });
   try {
-    const input = inputSchema.parse(await request.json().catch(() => ({})));
+    const parsed = await parseJsonRequest(request, inputSchema, MAX_HYPERFRAMES_ASSET_SYNC_REQUEST_BYTES);
+    if (!parsed.success) return apiErrorResponse({ code: parsed.reason === "too_large" ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest, message: parsed.reason === "too_large" ? "La solicitud excede el tamaño permitido." : "Component ID inválido.", requestId, status: parsed.reason === "too_large" ? 413 : 400 });
+    const input = parsed.data;
     const supabase = await createClient();
     const user = await getAuthenticatedUser(supabase);
-    if (!user) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+    if (!user) return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
     if (!(await canReviewContent(user.userId))) {
-      return NextResponse.json({ error: "No tienes permisos para preparar assets de video." }, { status: 403 });
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para preparar assets de video.", requestId, status: 403 });
     }
     const tenant = await resolveActiveTenantContext();
-    if (!tenant) return NextResponse.json({ error: "Empresa no válida o no autorizada." }, { status: 403 });
+    if (!tenant) return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 });
     const admin = getServiceRoleClient();
     const heygenPendingClipCount = await refreshPendingHeygenClips({
       admin,
       componentId: input.componentId,
       organizationId: tenant.organizationId,
       userId: user.userId,
+      requestId,
     });
     const synchronizedAssets = await syncHyperframesSourceAssetsFromProduction({
       componentId: input.componentId,
@@ -42,17 +50,13 @@ export async function POST(request: Request) {
       organizationId: tenant.organizationId,
       supabase: admin,
     });
-    return NextResponse.json({
-      success: true,
-      data: { ...synchronizedAssets, heygenPendingClipCount },
-    });
+    return apiSuccessResponse({ data: { ...synchronizedAssets, heygenPendingClipCount } }, { requestId });
   } catch (error) {
-    if (error instanceof z.ZodError) return NextResponse.json({ error: "Component ID inválido." }, { status: 400 });
     if (error instanceof HyperframesSourceAssetError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return apiErrorResponse({ code: mapStatusToErrorCode(error.status), message: error.message, requestId, status: error.status });
     }
-    console.error("[API /production/hyperframes/assets/sync] Unexpected error:", { message: getErrorMessage(error) });
-    return NextResponse.json({ error: "No se pudieron preparar los assets del paso de Producción." }, { status: 500 });
+    logger.error("production.hyperframes.assets.sync_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudieron preparar los assets del paso de Producción.", requestId, retryable: true, status: 500 });
   }
 }
 
@@ -61,7 +65,9 @@ async function refreshPendingHeygenClips(params: {
   componentId: string;
   organizationId: string;
   userId: string;
+  requestId: string;
 }) {
+  const logger = createOperationalLogger("production.hyperframes.assets.sync", { correlationId: params.requestId });
   const recoveryService = new HeygenScenesService(params.admin);
   await recoveryService.recoverCompletedSceneAssets({
     componentId: params.componentId,
@@ -79,9 +85,8 @@ async function refreshPendingHeygenClips(params: {
       createdBy: params.userId,
       organizationId: params.organizationId,
     });
-    console.info("[Hyperframes assets sync] Historical HeyGen reconciliation completed", {
+    logger.info("production.hyperframes.assets.heygen_reconciled", {
       componentId: params.componentId,
-      event: "heygen_scene_assets_reconciled",
       matchedJobCount: recovery.report.matchedJobCount,
       pendingAvatarCount: recovery.report.pendingAvatarCount,
       pendingExpectedMediaCount: recovery.report.pendingExpectedMediaCount,
@@ -93,9 +98,9 @@ async function refreshPendingHeygenClips(params: {
   } catch (refreshError) {
     // Asset sync remains usable for already imported media. A transient HeyGen
     // lookup must not prevent the editor from opening.
-    console.warn("[Hyperframes assets sync] Pending HeyGen clips could not be refreshed:", {
+    logger.warn("production.hyperframes.assets.heygen_refresh_failed", {
       componentId: params.componentId,
-      message: getErrorMessage(refreshError),
+      error: refreshError,
     });
   }
 
@@ -115,4 +120,11 @@ async function refreshPendingHeygenClips(params: {
     clip && typeof clip === "object"
     && (clip as Record<string, unknown>).status === "WAITING_PROVIDER"
   )).length;
+}
+
+function mapStatusToErrorCode(status: number) {
+  if (status === 403) return API_ERROR_CODE.roleForbidden;
+  if (status === 404) return API_ERROR_CODE.resourceNotFound;
+  if (status === 409) return API_ERROR_CODE.conflict;
+  return API_ERROR_CODE.invalidRequest;
 }

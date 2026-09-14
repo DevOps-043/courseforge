@@ -1,6 +1,4 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getErrorMessage } from "@/lib/errors";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -14,12 +12,17 @@ import {
   PRODUCTION_JOB_TYPES,
 } from "@/domains/production/types/production.types";
 import { createClient } from "@/utils/supabase/server";
+import { API_ERROR_CODE } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
 const latestJobQuerySchema = z.object({
   componentId: z.string().uuid(),
 });
 
 export async function GET(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.heygen.jobs", { correlationId: requestId });
   try {
     const query = latestJobQuerySchema.parse({
       componentId: new URL(request.url).searchParams.get("componentId"),
@@ -27,33 +30,24 @@ export async function GET(request: Request) {
     const supabase = await createClient();
     const authenticatedUser = await getAuthenticatedUser(supabase);
     if (!authenticatedUser) {
-      return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+      return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
     }
 
     const canReview = await canReviewContent(authenticatedUser.userId);
     if (!canReview) {
-      return NextResponse.json(
-        { error: "No tienes permisos para consultar jobs de HeyGen." },
-        { status: 403 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para consultar jobs de HeyGen.", requestId, status: 403 });
     }
 
     const tenant = await resolveActiveTenantContext();
     if (!tenant) {
-      return NextResponse.json(
-        { error: "Empresa no valida o no autorizada." },
-        { status: 403 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no valida o no autorizada.", requestId, status: 403 });
     }
 
     const authorizedComponent = await getAuthorizedMaterialComponentAdmin(
       query.componentId,
     );
     if (!authorizedComponent) {
-      return NextResponse.json(
-        { error: "Componente no encontrado para esta empresa." },
-        { status: 404 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Componente no encontrado para esta empresa.", requestId, status: 404 });
     }
 
     const repository = new HeygenRepository(authorizedComponent.admin);
@@ -63,10 +57,9 @@ export async function GET(request: Request) {
     });
 
     if (!latestJob) {
-      return NextResponse.json({
-        success: true,
+      return apiSuccessResponse({
         data: { asset: null, latestJob: null },
-      });
+      }, { requestId });
     }
 
     const jobType = typeof latestJob.input_snapshot?.job_type === "string"
@@ -84,8 +77,7 @@ export async function GET(request: Request) {
     const exposeVoiceAsset = jobType !== PRODUCTION_JOB_TYPES.HEYGEN_AVATAR_CLIP
       || latestJob.status === PRODUCTION_JOB_STATUSES.SUCCEEDED;
 
-    return NextResponse.json({
-      success: true,
+    return apiSuccessResponse({
       data: {
         asset: asset
           ? {
@@ -122,22 +114,13 @@ export async function GET(request: Request) {
           updatedAt: latestJob.updated_at || null,
         },
       },
-    });
+    }, { requestId });
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Parametros invalidos para consultar jobs de HeyGen." },
-        { status: 400 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Parametros invalidos para consultar jobs de HeyGen.", requestId, status: 400 });
     }
 
-    console.error("[API /production/heygen/jobs] Unexpected error:", {
-      message: getErrorMessage(error),
-    });
-
-    return NextResponse.json(
-      { error: "Error interno del servidor al consultar jobs de HeyGen." },
-      { status: 500 },
-    );
+    logger.error("production.heygen.jobs.read_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "Error interno del servidor al consultar jobs de HeyGen.", requestId, retryable: true, status: 500 });
   }
 }

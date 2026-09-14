@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
 import { HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES } from "./hyperframes.types";
 import { HYPERFRAMES_DURABLE_RENDER_PROFILE } from "./hyperframes-media-constraints";
+import { readJsonResponseWithLimit } from "../../../lib/server/outbound-http";
 
 const DEFAULT_HEYGEN_API_BASE_URL = "https://api.heygen.com";
 const COMPLETION_RETRY_DELAYS_MS = [250, 500, 1_000] as const;
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_:.-]{1,255}$/;
+const MAX_HYPERFRAMES_CLOUD_JSON_BYTES = 2 * 1024 * 1024;
+const MAX_HYPERFRAMES_CLOUD_ERROR_BYTES = 32 * 1024;
 
 export type HyperframesCloudRenderStatus =
   | "queued"
@@ -173,7 +176,7 @@ export class HyperframesCloudClient {
     });
     if (!response.ok) throw await toApiError(response);
 
-    const payload = (await response.json()) as unknown;
+    const payload = await readJsonResponseWithLimit(response, MAX_HYPERFRAMES_CLOUD_JSON_BYTES);
     if (payload && typeof payload === "object" && "data" in payload) {
       return (payload as { data: T }).data;
     }
@@ -201,7 +204,10 @@ function normalizeHeaders(headers: Record<string, unknown>) {
 async function toApiError(response: Response) {
   const fallbackMessage = `HeyGen rechazó la solicitud (${response.status}).`;
   try {
-    const body = (await response.json()) as { error?: { code?: unknown; message?: unknown } };
+    const body = await readJsonResponseWithLimit<{ error?: { code?: unknown; message?: unknown } }>(
+      response,
+      MAX_HYPERFRAMES_CLOUD_ERROR_BYTES,
+    );
     return new HyperframesCloudApiError(
       typeof body.error?.message === "string" ? body.error.message : fallbackMessage,
       response.status,

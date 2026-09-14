@@ -1,4 +1,8 @@
+import { readJsonResponseWithLimit } from "../../../../lib/server/outbound-http";
+
 const LIVEAVATAR_API_BASE_URL = "https://api.liveavatar.com";
+const MAX_LIVEAVATAR_JSON_BYTES = 2 * 1024 * 1024;
+const MAX_LIVEAVATAR_ERROR_BYTES = 32 * 1024;
 
 export class LiveAvatarApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -42,12 +46,15 @@ export class LiveAvatarClient {
       signal: AbortSignal.timeout(20_000),
     });
     if (!response.ok) {
-      const payload = await response.json().catch(() => null) as { message?: unknown } | null;
+      const payload = await readJsonResponseWithLimit<{ message?: unknown }>(
+        response,
+        MAX_LIVEAVATAR_ERROR_BYTES,
+      ).catch(() => null);
       throw new LiveAvatarApiError(
         typeof payload?.message === "string" ? payload.message : `LiveAvatar rechazó la solicitud (${response.status}).`,
         response.status,
       );
     }
-    return response.json() as Promise<unknown>;
+    return readJsonResponseWithLimit(response, MAX_LIVEAVATAR_JSON_BYTES);
   }
 }

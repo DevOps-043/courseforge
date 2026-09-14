@@ -1,5 +1,6 @@
 import { getErrorMessage } from "@/lib/errors";
 import { signBackgroundPayload } from "@/lib/server/background-payload-signature";
+import { readJsonResponseWithLimit } from "@/lib/server/outbound-http";
 import type { AvatarClip, MaterialAssets } from "@/domains/materials/types/materials.types";
 import { getHeygenClientForOrganization } from "../providers/heygen/heygen-credential-resolver.service";
 import { HeygenScenesService } from "../providers/heygen/heygen-scenes.service";
@@ -26,6 +27,8 @@ type ComponentRow = {
   id: string;
   type: string;
 };
+
+const MAX_INTERNAL_DISPATCH_ERROR_BYTES = 32 * 1024;
 
 /**
  * Dispatches source-asset jobs only. It deliberately never creates a
@@ -308,7 +311,10 @@ export class ProductionAutomationDispatcher {
       method: "POST",
     }));
     if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
+      const payload = await readJsonResponseWithLimit<{ error?: unknown }>(
+        response,
+        MAX_INTERNAL_DISPATCH_ERROR_BYTES,
+      ).catch((): { error?: unknown } => ({}));
       throw new Error(typeof payload.error === "string" ? payload.error : "No se pudieron generar las diapositivas.");
     }
   }

@@ -11,9 +11,10 @@ interface BrowserDeliveryUploadResult {
 }
 
 interface SignedUploadOptions {
+    assetKind?: 'INTRO' | 'OUTRO';
     artifactId?: string;
     componentId?: string;
-    purpose?: 'template-bundle' | 'production-asset' | 'thumbnail' | 'production-video' | 'bundle-agent-reference' | 'curation-source-pdf';
+    purpose?: 'template-bundle' | 'production-asset' | 'thumbnail' | 'production-video' | 'bundle-agent-reference' | 'curation-source-pdf' | 'assembly-branding';
     contentType?: string;
     fileSizeBytes?: number;
     upsert?: boolean;
@@ -59,7 +60,8 @@ export async function uploadWithSignedUrl(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             bucket,
-            filePath,
+            ...(filePath ? { filePath } : {}),
+            assetKind: options.assetKind,
             artifactId: options.artifactId,
             componentId: options.componentId,
             purpose: options.purpose,

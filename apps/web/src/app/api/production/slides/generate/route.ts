@@ -1,8 +1,6 @@
-import { NextResponse } from "next/server";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { createClient } from "@/utils/supabase/server";
-import { getErrorMessage } from "@/lib/errors";
 import { dispatchBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { signBackgroundPayload } from "@/lib/server/background-payload-signature";
 import type { MaterialAssets } from "@/domains/materials/types/materials.types";
@@ -45,16 +43,20 @@ import {
   visualAssetPlanSummary,
 } from "@/domains/production/slides/visuals/slide-visual-asset-planning.service";
 import { generateSlideVisualAssets } from "@/domains/production/slides/visuals/slide-visual-asset-generation.service";
+import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const BUCKET = "production-assets";
 const SLIDE_COPY_PIPELINE_VERSION = "visible-copy-synthesis-v5";
+const MAX_SLIDE_GENERATION_REQUEST_BYTES = 64 * 1024;
 
-const requestBodySchema = slideDeckGenerateInputSchema.extend({
+export const slideDeckGenerationRequestSchema = slideDeckGenerateInputSchema.extend({
   appearanceOnly: z.boolean().optional(),
-  componentId: z.string().min(1),
+  componentId: z.string().uuid(),
   forceRegenerate: z.boolean().optional(),
   regenerationRequestId: z.string().uuid().optional(),
   slideTemplateRunId: z.string().uuid().optional(),
@@ -243,21 +245,26 @@ async function uploadTextAsset(params: {
 }
 
 export async function POST(request: Request) {
-  const parsed = requestBodySchema.safeParse(await request.json());
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.slides.generate", { correlationId: requestId });
+  const parsed = await parseJsonRequest(request, slideDeckGenerationRequestSchema, MAX_SLIDE_GENERATION_REQUEST_BYTES);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Solicitud invalida.", issues: parsed.error.issues },
-      { status: 400 },
-    );
+    return apiErrorResponse({
+      code: parsed.reason === "too_large" ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
+      message: parsed.reason === "too_large" ? "La solicitud excede el tamaño permitido." : "La solicitud de generación no es válida.",
+      requestId,
+      status: parsed.reason === "too_large" ? 413 : 400,
+    });
   }
 
+  try {
   const { componentId } = parsed.data;
   const internalRequest = getAutomationRequest(request, componentId);
   const supabase = internalRequest ? null : await createClient();
   const authenticatedUser = internalRequest
     ? { userId: internalRequest.createdBy }
     : await getAuthenticatedUser(supabase!);
-  if (!authenticatedUser) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+  if (!authenticatedUser) return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
 
   let authorizedComponent;
   try {
@@ -266,25 +273,12 @@ export async function POST(request: Request) {
       : await getAuthorizedMaterialComponentAdmin(componentId);
   } catch (error) {
     if (error instanceof MaterialComponentLookupUnavailableError) {
-      return NextResponse.json(
-        {
-          code: error.code,
-          error: error.message,
-          retryable: error.retryable,
-        },
-        {
-          headers: { "Retry-After": "5" },
-          status: 503,
-        },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.dependencyUnavailable, details: { reason: error.code }, headers: { "Retry-After": "5" }, message: error.message, requestId, retryable: error.retryable, status: 503 });
     }
     throw error;
   }
   if (!authorizedComponent) {
-    return NextResponse.json(
-      { error: "Componente no encontrado para esta empresa" },
-      { status: 404 },
-    );
+    return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Componente no encontrado para esta empresa.", requestId, status: 404 });
   }
 
   const queueContext = await resolveProductionComponentContext({
@@ -292,10 +286,7 @@ export async function POST(request: Request) {
     supabase: authorizedComponent.admin,
   });
   if (!queueContext.organizationId) {
-    return NextResponse.json(
-      { error: "No se pudo resolver la organizacion del componente." },
-      { status: 409 },
-    );
+    return apiErrorResponse({ code: API_ERROR_CODE.conflict, message: "No se pudo resolver la organización del componente.", requestId, status: 409 });
   }
 
   const queueInputSnapshot = {
@@ -319,7 +310,7 @@ export async function POST(request: Request) {
   });
 
   if (queuedJob.status === PRODUCTION_JOB_STATUSES.SUCCEEDED || queuedJob.status === PRODUCTION_JOB_STATUSES.RUNNING || queuedJob.status === PRODUCTION_JOB_STATUSES.QUEUED) {
-    return NextResponse.json({ success: true, jobId: queuedJob.id, reused: true, status: queuedJob.status }, { status: 202 });
+    return apiSuccessResponse({ jobId: queuedJob.id, reused: true, status: queuedJob.status }, { requestId, status: 202 });
   }
 
   const { error: queueError } = await authorizedComponent.admin
@@ -327,7 +318,8 @@ export async function POST(request: Request) {
     .update({ status: PRODUCTION_JOB_STATUSES.QUEUED, updated_at: new Date().toISOString() })
     .eq("id", queuedJob.id);
   if (queueError) {
-    return NextResponse.json({ error: queueError.message }, { status: 500 });
+    logger.error("production.slides.queue_reset_failed", queueError, { componentId, jobId: queuedJob.id });
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo reactivar el trabajo de slides.", requestId, retryable: true, status: 500 });
   }
 
   const backgroundRequest = {
@@ -352,7 +344,7 @@ export async function POST(request: Request) {
                 jobId: queuedJob.id,
                 payload: parsed.data,
               });
-              return { statusCode: result.status, body: await result.text() };
+              return { statusCode: 200, body: JSON.stringify(result) };
             } catch (error) {
               await failProductionJob({
                 error,
@@ -371,29 +363,30 @@ export async function POST(request: Request) {
       jobId: queuedJob.id,
       supabase: authorizedComponent.admin,
     });
-    return NextResponse.json(
-      { error: getErrorMessage(error, "No se pudo iniciar el worker de slides.") },
-      { status: 503 },
-    );
+    logger.error("production.slides.dispatch_failed", error, { componentId, jobId: queuedJob.id });
+    return apiErrorResponse({ code: API_ERROR_CODE.dependencyUnavailable, message: "No se pudo iniciar el worker de slides.", requestId, retryable: true, status: 503 });
   }
 
-  return NextResponse.json(
+  return apiSuccessResponse(
     {
-      success: true,
       jobId: queuedJob.id,
       queuedAt,
       status: "QUEUED",
       submissionStatus: "QUEUED",
     },
-    { status: 202 },
+    { requestId, status: 202 },
   );
+  } catch (error) {
+    logger.error("production.slides.request_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo iniciar la generación de slides.", requestId, retryable: true, status: 500 });
+  }
 }
 
 export async function runSlideDeckGeneration(params: {
   authorizedComponent: NonNullable<Awaited<ReturnType<typeof getAuthorizedMaterialComponentAdmin>>>;
   createdBy: string;
   jobId?: string;
-  payload: z.infer<typeof requestBodySchema>;
+  payload: z.infer<typeof slideDeckGenerationRequestSchema>;
 }) {
   const {
     appearanceOnly = false,
@@ -410,7 +403,7 @@ export async function runSlideDeckGeneration(params: {
     supabase: authorizedComponent.admin,
   });
   if (context.artifactId !== authorizedComponent.artifactId) {
-    return NextResponse.json({ error: "Componente no encontrado para esta empresa" }, { status: 404 });
+    throw new Error("Componente de slides fuera del artefacto autorizado.");
   }
   const currentAssets = (authorizedComponent.component.assets || {}) as MaterialAssets;
   const sourcePack = await loadSlideSourcePack({
@@ -473,12 +466,12 @@ export async function runSlideDeckGeneration(params: {
       job.status === PRODUCTION_JOB_STATUSES.WAITING_PROVIDER
     )
   ) {
-    return NextResponse.json({
+    return {
       success: true,
       reused: true,
       job,
       assets: authorizedComponent.component.assets || {},
-    });
+    };
   }
 
   try {
@@ -822,7 +815,7 @@ export async function runSlideDeckGeneration(params: {
       throw jobUpdateError;
     }
 
-    return NextResponse.json({
+    return {
       success: true,
       assets: updatedAssets,
       deckSpec,
@@ -830,7 +823,7 @@ export async function runSlideDeckGeneration(params: {
       jobId: job.id,
       qaReport,
       stages,
-    });
+    };
   } catch (error: unknown) {
     await failProductionJob({
       error,
@@ -842,11 +835,9 @@ export async function runSlideDeckGeneration(params: {
       } : undefined,
       supabase: authorizedComponent.admin,
     });
-    console.error("[production/slides/generate] Unexpected error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "No se pudo generar el deck." },
-      { status: 500 },
-    );
+    createOperationalLogger("production.slides.generation_worker", { jobId: job.id })
+      .error("production.slides.generation_failed", error, { componentId });
+    throw error;
   }
 }
 

@@ -1,6 +1,4 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getErrorMessage } from "@/lib/errors";
 import { proposeCompositionEdits, CompositionAgentProposalError } from "@/domains/production/composition-editor/composition-agent.service";
 import { getCurrentCompositionDocument } from "@/domains/production/composition-editor/composition-document.service";
 import { applyCompositionEditorPatches } from "@/domains/production/composition-editor/editor-patch.service";
@@ -12,22 +10,32 @@ import {
   compositionPresetErrorResponse,
   resolveCompositionPresetMutationPrecondition,
 } from "../../../_composition-preset-route-support";
+import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
+
+const MAX_COMPOSITION_PRESET_REQUEST_BYTES = 16 * 1024;
 
 interface RouteContext { params: Promise<{ draftId: string }>; }
 
 /** Creates a reusable preset from the saved manual edit or a constrained AI transformation. */
 export async function POST(request: Request, context: RouteContext) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.hyperframes.composition_presets", { correlationId: requestId });
   try {
-    const authorization = await authorizeCompositionPresetRequest();
-    if (authorization instanceof NextResponse) return authorization;
+    const authorization = await authorizeCompositionPresetRequest(requestId);
+    if (authorization.response) return authorization.response;
     const draftId = z.string().uuid().parse((await context.params).draftId);
     const precondition = resolveCompositionPresetMutationPrecondition({
       documentId: draftId,
       operation: "CREATE",
       request,
+      requestId,
     });
     if (!precondition.ok) return precondition.response;
-    const body = compositionPresetCreateRequestSchema.parse(await request.json());
+    const parsed = await parseJsonRequest(request, compositionPresetCreateRequestSchema, MAX_COMPOSITION_PRESET_REQUEST_BYTES);
+    if (!parsed.success) return apiErrorResponse({ code: parsed.reason === "too_large" ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest, message: parsed.reason === "too_large" ? "La solicitud excede el tamaño permitido." : "Los datos del preset no son válidos.", requestId, status: parsed.reason === "too_large" ? 413 : 400 });
+    const body = parsed.data;
     const current = await getCurrentCompositionDocument({
       draftId,
       organizationId: authorization.organizationId,
@@ -64,35 +72,27 @@ export async function POST(request: Request, context: RouteContext) {
       supabase: authorization.admin,
       userId: authorization.userId,
     });
-    console.info("[CompositionPresets] Preset created", {
+    logger.info("production.hyperframes.composition_preset_created", {
       diagnosticCount: extracted.diagnostics.length,
       event: "composition_preset_created",
       mode: body.mode,
       ruleCount: extracted.definition.rules.length,
     });
-    return NextResponse.json({ success: true, data }, {
+    return apiSuccessResponse({ data }, {
       status: 201,
       headers: { "Cache-Control": "private, no-store" },
+      requestId,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.issues[0]?.message || "Los datos del preset no son válidos." }, {
-        status: 400,
-        headers: { "Cache-Control": "private, no-store" },
-      });
+      return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, headers: { "Cache-Control": "private, no-store" }, message: error.issues[0]?.message || "Los datos del preset no son válidos.", requestId, status: 400 });
     }
     if (error instanceof CompositionAgentProposalError) {
-      return NextResponse.json({ error: error.message, code: error.code, retryable: error.retryable }, {
-        status: error.status,
-        headers: { "Cache-Control": "private, no-store" },
-      });
+      return apiErrorResponse({ code: error.status === 503 ? API_ERROR_CODE.dependencyUnavailable : API_ERROR_CODE.invalidRequest, details: { reason: error.code }, headers: { "Cache-Control": "private, no-store" }, message: error.message, requestId, retryable: error.retryable, status: error.status });
     }
-    if (error instanceof CompositionPresetStoreError) return compositionPresetErrorResponse(error);
-    console.error("[CompositionPresets] Creation failed", { message: getErrorMessage(error) });
-    return NextResponse.json({ error: "No se pudo crear el preset." }, {
-      status: 500,
-      headers: { "Cache-Control": "private, no-store" },
-    });
+    if (error instanceof CompositionPresetStoreError) return compositionPresetErrorResponse(error, requestId);
+    logger.error("production.hyperframes.composition_preset_create_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, headers: { "Cache-Control": "private, no-store" }, message: "No se pudo crear el preset.", requestId, retryable: true, status: 500 });
   }
 }
 

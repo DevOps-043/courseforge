@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getErrorMessage } from "@/lib/errors";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import {
@@ -9,13 +8,18 @@ import {
   SOUND_EFFECT_PREVIEW_URL_TTL_SECONDS,
 } from "@/domains/production/sound-effects/sound-effect-library.service";
 import { createClient } from "@/utils/supabase/server";
+import { API_ERROR_CODE } from "@/lib/server/api-contract";
+import { apiErrorResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
 interface RouteContext { params: Promise<{ soundEffectId: string }>; }
 
 /** Redirects a tenant-authorized request to a short-lived private Storage URL. */
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.sound_effects.preview", { correlationId: requestId });
   try {
-    const authorization = await authorize();
+    const authorization = await authorize(requestId);
     if (authorization instanceof NextResponse) return authorization;
     const { soundEffectId } = await context.params;
     const asset = await getReadySoundEffectStorageIdentity({
@@ -29,24 +33,26 @@ export async function GET(_request: Request, context: RouteContext) {
       .createSignedUrl(relativePath, SOUND_EFFECT_PREVIEW_URL_TTL_SECONDS);
     if (error || !data?.signedUrl) throw error || new Error("No se pudo firmar el audio.");
     return NextResponse.redirect(data.signedUrl, {
-      headers: { "Cache-Control": "private, no-store" },
+      headers: { "Cache-Control": "private, no-store", "x-request-id": requestId },
       status: 302,
     });
   } catch (error) {
-    if (error instanceof z.ZodError) return NextResponse.json({ error: "Identificador de efecto inválido." }, { status: 400 });
-    if (error instanceof SoundEffectLibraryError) return NextResponse.json({ error: error.message }, { status: error.status });
-    console.error("[API /production/sound-effects/:id/preview] Unexpected error:", { message: getErrorMessage(error) });
-    return NextResponse.json({ error: "No se pudo preparar el audio para la preescucha." }, { status: 500 });
+    if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Identificador de efecto inválido.", requestId, status: 400 });
+    if (error instanceof SoundEffectLibraryError) {
+      return apiErrorResponse({ code: error.status === 404 ? API_ERROR_CODE.resourceNotFound : API_ERROR_CODE.invalidRequest, message: error.message, requestId, status: error.status });
+    }
+    logger.error("production.sound_effects.preview_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo preparar el audio para la preescucha.", requestId, retryable: true, status: 500 });
   }
 }
 
-async function authorize() {
+async function authorize(requestId: string) {
   const supabase = await createClient();
   const user = await getAuthenticatedUser(supabase);
-  if (!user) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+  if (!user) return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
   const tenant = await resolveActiveTenantContext();
   if (!tenant || !(await canReviewContent(user.userId, tenant))) {
-    return NextResponse.json({ error: "No tienes permisos para escuchar efectos de sonido." }, { status: 403 });
+    return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para escuchar efectos de sonido.", requestId, status: 403 });
   }
   return { admin: getServiceRoleClient(), organizationId: tenant.organizationId };
 }

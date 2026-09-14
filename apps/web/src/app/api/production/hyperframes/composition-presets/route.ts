@@ -1,21 +1,23 @@
-import { NextResponse } from "next/server";
-import { getErrorMessage } from "@/lib/errors";
 import { listCompositionPresetCatalog, CompositionPresetStoreError } from "@/domains/production/composition-editor/composition-preset-store.service";
 import { authorizeCompositionPresetRequest, compositionPresetErrorResponse } from "../_composition-preset-route-support";
+import { API_ERROR_CODE } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.hyperframes.composition_presets", { correlationId: requestId });
   try {
-    const authorization = await authorizeCompositionPresetRequest();
-    if (authorization instanceof NextResponse) return authorization;
+    const authorization = await authorizeCompositionPresetRequest(requestId);
+    if (authorization.response) return authorization.response;
     const data = await listCompositionPresetCatalog({
       organizationId: authorization.organizationId,
       supabase: authorization.admin,
     });
-    return NextResponse.json({ success: true, data }, { headers: { "Cache-Control": "private, no-store" } });
+    return apiSuccessResponse({ data }, { headers: { "Cache-Control": "private, no-store" }, requestId });
   } catch (error) {
-    if (error instanceof CompositionPresetStoreError) return compositionPresetErrorResponse(error);
-    console.error("[CompositionPresets] Catalog failed", { message: getErrorMessage(error) });
-    return NextResponse.json({ error: "No se pudo cargar el catálogo de presets." }, { status: 500 });
+    if (error instanceof CompositionPresetStoreError) return compositionPresetErrorResponse(error, requestId);
+    logger.error("production.hyperframes.composition_presets.list_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo cargar el catálogo de presets.", requestId, retryable: true, status: 500 });
   }
 }
-

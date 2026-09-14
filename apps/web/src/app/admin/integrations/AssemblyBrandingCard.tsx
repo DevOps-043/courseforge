@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Film, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { inspectLocalVideoFile } from "@/domains/materials/media/video-file-metadata.client";
+import { validateAssemblyVideoFile } from "@/domains/production/assembly-branding/assembly-branding-upload";
+import { uploadWithSignedUrl } from "@/lib/storage-upload";
 
 type Kind = "OUTRO";
 type Asset = { created_at: string; duration_milliseconds: number; file_size_bytes: number; id: string; kind: Kind; mime_type: string; name: string; status: string };
@@ -24,10 +26,36 @@ export function AssemblyBrandingCard() {
   async function upload(kind: Kind, file: File) {
     setBusy(kind);
     try {
+      const validation = validateAssemblyVideoFile(file);
+      if (!validation.success) {
+        const messages = {
+          empty: "El video está vacío.",
+          too_large: "El video supera el límite de 100 MB.",
+          unsupported_type: "Solo se permiten videos MP4 o WebM.",
+        } as const;
+        throw new Error(messages[validation.reason]);
+      }
       const metadata = await inspectLocalVideoFile(file);
       if (metadata.duration <= 0) throw new Error("No se pudo medir la duración del video.");
-      const form = new FormData(); form.set("kind", kind); form.set("file", file);
-      const response = await fetch("/api/production/assembly-branding", { body: form, method: "POST" });
+      const uploaded = await uploadWithSignedUrl("production-assets", "", file, {
+        assetKind: kind,
+        contentType: file.type,
+        deliveryMode: "server-only",
+        fileSizeBytes: file.size,
+        purpose: "assembly-branding",
+        upsert: false,
+      });
+      const response = await fetch("/api/production/assembly-branding", {
+        body: JSON.stringify({
+          fileSizeBytes: file.size,
+          kind,
+          mimeType: file.type,
+          name: file.name,
+          path: uploaded.path,
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      });
       const body = await response.json(); if (!response.ok) throw new Error(body.error);
       await load();
       toast.success("Outro subido a la biblioteca corporativa.");

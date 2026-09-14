@@ -1,6 +1,4 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getErrorMessage } from "@/lib/errors";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext, TenantContextLookupError } from "@/lib/server/tenant-context";
 import { initializeHyperframesDraft, HyperframesDraftError } from "@/domains/production/hyperframes/hyperframes-draft.service";
@@ -11,34 +9,37 @@ import {
 } from "@/domains/production/hyperframes/hyperframes-request-validation";
 import { CompositionDocumentError } from "@/domains/production/composition-editor/composition-document.service";
 import { createClient } from "@/utils/supabase/server";
+import { API_ERROR_CODE } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
 interface RouteContext { params: Promise<{ compositionId: string }>; }
 
 /** Allocates and hydrates the mutable editor project without generating a render revision. */
-export async function POST(_request: Request, context: RouteContext) {
+export async function POST(request: Request, context: RouteContext) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.hyperframes.composition.draft", { correlationId: requestId });
   try {
-    const authorization = await authorize();
-    if (authorization instanceof NextResponse) return authorization;
+    const authorization = await authorize(requestId);
+    if (authorization.response) return authorization.response;
     const { compositionId } = await context.params;
     const validatedCompositionId = validateHyperframesCompositionId(compositionId);
     if (!validatedCompositionId.success) {
-      return NextResponse.json(
-        { error: "Identificador de composición inválido.", code: "COMPOSITION_ID_INVALID" },
-        { status: 400 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, details: { reason: "COMPOSITION_ID_INVALID" }, message: "Identificador de composición inválido.", requestId, status: 400 });
     }
     return initializeDraftResponse({
       admin: authorization.admin,
       compositionId: validatedCompositionId.data,
       organizationId: authorization.organizationId,
       userId: authorization.userId,
+      requestId,
     });
   } catch (error) {
     if (error instanceof TenantContextLookupError) {
-      return NextResponse.json({ error: error.message, code: error.code, retryable: true }, { status: 503 });
+      return apiErrorResponse({ code: API_ERROR_CODE.dependencyUnavailable, details: { reason: error.code }, message: error.message, requestId, retryable: true, status: 503 });
     }
-    console.error("[API /production/hyperframes/compositions/:id/draft] Unexpected request error:", serializeError(error));
-    return NextResponse.json({ error: "No se pudo preparar el proyecto de edición." }, { status: 500 });
+    logger.error("production.hyperframes.composition.draft_request_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo preparar el proyecto de edición.", requestId, retryable: true, status: 500 });
   }
 }
 
@@ -47,7 +48,9 @@ async function initializeDraftResponse(params: {
   compositionId: string;
   organizationId: string;
   userId: string;
+  requestId: string;
 }) {
+  const logger = createOperationalLogger("production.hyperframes.composition.draft", { correlationId: params.requestId });
   try {
     const draft = await initializeHyperframesDraft({
       compositionId: params.compositionId,
@@ -55,29 +58,23 @@ async function initializeDraftResponse(params: {
       supabase: params.admin,
       userId: params.userId,
     });
-    return NextResponse.json({ success: true, data: draft });
+    return apiSuccessResponse({ data: draft }, { requestId: params.requestId });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      console.error("[API /production/hyperframes/compositions/:id/draft] Composition data validation failed:", {
+      logger.warn("production.hyperframes.composition.draft_data_invalid", {
         compositionId: params.compositionId,
         issues: summarizeHyperframesValidationIssues(error),
         timelineBoundaryIssues: summarizeCompositionTimelineBoundaryIssues(error),
       });
-      return NextResponse.json(
-        {
-          error: "Los datos de la composición no cumplen el formato requerido.",
-          code: "COMPOSITION_DATA_INVALID",
-        },
-        { status: 422 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, details: { reason: "COMPOSITION_DATA_INVALID" }, message: "Los datos de la composición no cumplen el formato requerido.", requestId: params.requestId, status: 422 });
     }
-    if (error instanceof HyperframesDraftError) return NextResponse.json({ error: error.message }, { status: error.status });
+    if (error instanceof HyperframesDraftError) return apiErrorResponse({ code: mapStatusToErrorCode(error.status), message: error.message, requestId: params.requestId, status: error.status });
     if (error instanceof CompositionDocumentError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return apiErrorResponse({ code: mapStatusToErrorCode(error.status), message: error.message, requestId: params.requestId, status: error.status });
     }
-    if (isTransientStorageError(error)) return NextResponse.json({ error: "El almacenamiento del editor está ocupado. Intenta preparar el proyecto nuevamente.", code: "COMPOSITION_STORAGE_UNAVAILABLE", retryable: true }, { status: 503 });
-    console.error("[API /production/hyperframes/compositions/:id/draft] Unexpected error:", serializeError(error));
-    return NextResponse.json({ error: "No se pudo preparar el proyecto de edición." }, { status: 500 });
+    if (isTransientStorageError(error)) return apiErrorResponse({ code: API_ERROR_CODE.dependencyUnavailable, details: { reason: "COMPOSITION_STORAGE_UNAVAILABLE" }, message: "El almacenamiento del editor está ocupado. Intenta preparar el proyecto nuevamente.", requestId: params.requestId, retryable: true, status: 503 });
+    logger.error("production.hyperframes.composition.draft_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo preparar el proyecto de edición.", requestId: params.requestId, retryable: true, status: 500 });
   }
 }
 
@@ -88,10 +85,10 @@ function serializeError(error: unknown) {
       code: typeof candidate.code === "string" ? candidate.code : null,
       details: typeof candidate.details === "string" ? candidate.details.slice(0, 500) : null,
       hint: typeof candidate.hint === "string" ? candidate.hint.slice(0, 300) : null,
-      message: typeof candidate.message === "string" ? candidate.message.slice(0, 500) : getErrorMessage(error),
+      message: typeof candidate.message === "string" ? candidate.message.slice(0, 500) : "unknown",
     };
   }
-  return { message: getErrorMessage(error) };
+  return { message: error instanceof Error ? error.message : "unknown" };
 }
 
 function isTransientStorageError(error: unknown) {
@@ -100,12 +97,19 @@ function isTransientStorageError(error: unknown) {
     || /timed out acquiring connection|connection pool|pool timeout|fetch failed/i.test(serialized.message);
 }
 
-async function authorize() {
+async function authorize(requestId: string) {
   const supabase = await createClient();
   const user = await getAuthenticatedUser(supabase);
-  if (!user) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+  if (!user) return { response: apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 }) } as const;
   const tenant = await resolveActiveTenantContext();
-  if (!tenant) return NextResponse.json({ error: "Empresa no válida o no autorizada." }, { status: 403 });
-  if (!(await canReviewContent(user.userId, tenant))) return NextResponse.json({ error: "No tienes permisos para editar videos." }, { status: 403 });
-  return { admin: getServiceRoleClient(), organizationId: tenant.organizationId, userId: user.userId };
+  if (!tenant) return { response: apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 }) } as const;
+  if (!(await canReviewContent(user.userId, tenant))) return { response: apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para editar videos.", requestId, status: 403 }) } as const;
+  return { admin: getServiceRoleClient(), organizationId: tenant.organizationId, userId: user.userId, response: null };
+}
+
+function mapStatusToErrorCode(status: number) {
+  if (status === 403) return API_ERROR_CODE.roleForbidden;
+  if (status === 404) return API_ERROR_CODE.resourceNotFound;
+  if (status === 409) return API_ERROR_CODE.conflict;
+  return API_ERROR_CODE.invalidRequest;
 }

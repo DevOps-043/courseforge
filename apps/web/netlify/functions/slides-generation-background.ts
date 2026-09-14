@@ -1,28 +1,25 @@
 import type { Handler } from "@netlify/functions";
-import {
-  verifyBackgroundPayload,
-  type SignedBackgroundPayload,
-} from "../../src/lib/server/background-payload-signature";
+import { z } from "zod";
 import { getAuthorizedMaterialComponentAdminForTenant } from "../../src/lib/server/artifact-action-auth";
-import { runSlideDeckGeneration } from "../../src/app/api/production/slides/generate/route";
+import {
+  runSlideDeckGeneration,
+  slideDeckGenerationRequestSchema,
+} from "../../src/app/api/production/slides/generate/route";
 import { failProductionJob } from "../../src/domains/production/jobs/production-jobs.service";
-import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
+import { methodNotAllowedResponse, parseVerifiedBackgroundBody } from "./shared/http";
 
-interface SlidesGenerationBackgroundRequest {
-  createdBy: string;
-  jobId?: string;
-  organizationId: string;
-  payload: {
-    componentId: string;
-    [key: string]: unknown;
-  };
-}
+const slidesGenerationBackgroundRequestSchema = z.object({
+  createdBy: z.string().uuid(),
+  jobId: z.string().uuid().optional(),
+  organizationId: z.string().uuid(),
+  payload: slideDeckGenerationRequestSchema,
+}).strict();
 
 export const handler: Handler = async (event) => {
   if (event.httpMethod !== "POST") return methodNotAllowedResponse();
 
-  const envelope = parseJsonBody<SignedBackgroundPayload>(event);
-  const request = verifyBackgroundPayload<SlidesGenerationBackgroundRequest>(envelope);
+  const untrustedRequest = await parseVerifiedBackgroundBody<unknown>(event);
+  const request = slidesGenerationBackgroundRequestSchema.parse(untrustedRequest);
   let authorizedComponent: Awaited<ReturnType<typeof getAuthorizedMaterialComponentAdminForTenant>> = null;
   try {
     authorizedComponent = await getAuthorizedMaterialComponentAdminForTenant(
@@ -33,15 +30,12 @@ export const handler: Handler = async (event) => {
       throw new Error("Componente de slides no encontrado para la organizacion firmada.");
     }
 
-    const result = await runSlideDeckGeneration({
+    await runSlideDeckGeneration({
       authorizedComponent,
       createdBy: request.createdBy,
       jobId: request.jobId,
-      payload: request.payload as Parameters<typeof runSlideDeckGeneration>[0]["payload"],
+      payload: request.payload,
     });
-    if (!result.ok) {
-      throw new Error(await result.text());
-    }
   } catch (error) {
     if (request.jobId && authorizedComponent) {
       await failProductionJob({

@@ -253,6 +253,34 @@ describe("HeyGen separated track client", () => {
     );
   });
 
+  it("rejects provider JSON that exceeds the shared response budget", async () => {
+    const client = new HeygenClient({
+      apiKey: "test-key",
+      fetchImpl: async () => Response.json({
+        data: [{ id: "voice-1", payload: "x".repeat(4 * 1024 * 1024) }],
+      }),
+    });
+
+    await assert.rejects(() => client.listVoices(), /excede el limite/);
+  });
+
+  it("bounds oversized provider errors without exposing their body", async () => {
+    const client = new HeygenClient({
+      apiKey: "test-key",
+      fetchImpl: async () => new Response("secret-".repeat(6_000), { status: 502 }),
+    });
+
+    await assert.rejects(
+      () => client.listVoices(),
+      (error: unknown) => {
+        assert.ok(error instanceof HeygenApiError);
+        assert.equal(error.status, 502);
+        assert.doesNotMatch(error.message, /secret/);
+        return true;
+      },
+    );
+  });
+
   it("only suggests lowering resolution when the provider actually mentions that restriction", () => {
     const genericHint = buildResolutionRejectionHint("1080p", {
       message: "temporary upstream error",

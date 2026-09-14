@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/utils/supabase/server";
 import {
   getAuthenticatedUser,
@@ -11,13 +11,19 @@ import {
   isHtmlSlideSource,
   rasterizeStoredOpenDesignHtmlSlides,
 } from "@/domains/production/validation/open-design-html-rasterizer.service";
+import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { mapExternalImportError } from "@/lib/server/external-import-error";
+import { withExternalImportCapacity } from "@/lib/server/external-import-concurrency";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
-interface ImportRequestBody {
-  urlOrId?: string;
-  type?: "voice" | "music" | "broll" | "avatar" | "slides";
-  componentId?: string;
-  accessToken?: string;
-}
+const MAX_GOOGLE_DRIVE_IMPORT_REQUEST_BYTES = 32 * 1024;
+const googleDriveImportSchema = z.object({
+  accessToken: z.string().min(1).max(16_000).optional(),
+  componentId: z.string().uuid(),
+  type: z.enum(["voice", "music", "broll", "avatar", "slides"]),
+  urlOrId: z.string().trim().min(1).max(4_000),
+}).strict();
 
 function isRenderableSlideImage(params: {
   mimeType?: string;
@@ -41,52 +47,52 @@ function isRenderableSlideImage(params: {
 }
 
 export async function POST(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.google_drive.import", { correlationId: requestId });
   try {
-    const { urlOrId, type, componentId, accessToken } = (await request.json()) as ImportRequestBody;
-
-    if (!urlOrId || !type || !componentId) {
-      return NextResponse.json(
-        { error: "Faltan parámetros: urlOrId, type y componentId son requeridos" },
-        { status: 400 }
-      );
+    const parsedRequest = await parseJsonRequest(request, googleDriveImportSchema, MAX_GOOGLE_DRIVE_IMPORT_REQUEST_BYTES);
+    if (!parsedRequest.success) {
+      return apiErrorResponse({
+        code: parsedRequest.reason === "too_large" ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
+        message: parsedRequest.reason === "too_large" ? "La solicitud excede el tamaño permitido." : "Solicitud de importación inválida.",
+        requestId,
+        status: parsedRequest.reason === "too_large" ? 413 : 400,
+      });
     }
-
-    const allowedTypes = new Set(["voice", "music", "broll", "avatar", "slides"]);
-    if (!allowedTypes.has(type)) {
-      return NextResponse.json(
-        { error: "El tipo de activo provisto no es válido" },
-        { status: 400 }
-      );
-    }
+    const { urlOrId, type, componentId, accessToken } = parsedRequest.data;
 
     // Authenticate User
     const supabase = await createClient();
     const authenticatedUser = await getAuthenticatedUser(supabase);
     if (!authenticatedUser) {
-      return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+      return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
     }
 
     const tenant = await resolveActiveTenantContext();
     if (!tenant) {
-      return NextResponse.json({ error: "Empresa no valida o no autorizada." }, { status: 403 });
+      return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 });
     }
 
     const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
     if (!authorizedComponent) {
-      return NextResponse.json({ error: "Componente no encontrado para esta empresa" }, { status: 404 });
+      return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Componente no encontrado para esta empresa.", requestId, status: 404 });
     }
 
     const admin = authorizedComponent.admin;
 
     // Call GoogleDriveService to download from Drive and upload to Storage
     const driveService = new GoogleDriveService();
-    const result = await driveService.importFile(
-      urlOrId,
-      type,
-      componentId,
-      accessToken,
-      authenticatedUser.userId,
-      tenant.organizationId,
+    const result = await withExternalImportCapacity(
+      "google_drive",
+      () => driveService.importFile(
+        urlOrId,
+        type,
+        componentId,
+        accessToken,
+        authenticatedUser.userId,
+        tenant.organizationId,
+      ),
+      request.signal,
     );
     const productionAssetId = await registerImportedHyperframesSourceAsset({
       componentId,
@@ -212,25 +218,23 @@ export async function POST(request: Request) {
     );
 
     if (updateError) {
-      console.error("[API /google-drive/import] DB update error:", updateError);
-      return NextResponse.json(
-        { error: "No se pudo actualizar el registro del componente en la base de datos" },
-        { status: 500 }
-      );
+      logger.error("production.google_drive.import.persistence_failed", updateError, { componentId });
+      return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo guardar el recurso importado.", requestId, retryable: true, status: 500 });
     }
 
-    return NextResponse.json({
-      success: true,
+    return apiSuccessResponse({
       publicUrl: result.publicUrl,
       storagePath: result.storagePath,
       productionAssetId,
       assets: updatedAssets,
-    });
+    }, { requestId });
   } catch (error: unknown) {
-    console.error("[API /google-drive/import] Unexpected error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Error interno al importar de Google Drive" },
-      { status: 500 }
-    );
+    logger.error("production.google_drive.import.failed", error);
+    const mapped = mapExternalImportError(error, "Google Drive");
+    return apiErrorResponse({
+      ...mapped,
+      headers: mapped.retryAfterSeconds ? { "Retry-After": String(mapped.retryAfterSeconds) } : undefined,
+      requestId,
+    });
   }
 }

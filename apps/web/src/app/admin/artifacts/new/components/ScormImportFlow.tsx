@@ -24,7 +24,13 @@ type Step = 'upload' | 'uploading' | 'analyzing' | 'review' | 'success';
 interface ScormProcessStatusResponse {
     artifactId: string | null;
     kind: 'ready' | 'active' | 'completed' | 'failed' | 'invalid';
+    manifest: ScormManifest | null;
+    recoverable: boolean;
     success: boolean;
+}
+
+interface ScormUploadResponse {
+    importId: string;
 }
 
 function wait(milliseconds: number) {
@@ -37,6 +43,21 @@ function getAxiosErrorMessage(error: unknown, fallback: string) {
     }
 
     return getErrorMessage(error, fallback);
+}
+
+async function readScormStatus(importId: string) {
+    const { data } = await axios.get<ScormProcessStatusResponse>(
+        '/api/admin/scorm/process',
+        { params: { importId } },
+    );
+    if (data.recoverable) {
+        const recovered = await axios.post<ScormProcessStatusResponse>(
+            '/api/admin/scorm/process',
+            { importId },
+        );
+        return recovered.data;
+    }
+    return data;
 }
 
 export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
@@ -61,30 +82,47 @@ export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
         const formData = new FormData();
         formData.append('file', file);
 
+        let interval: ReturnType<typeof setInterval> | null = null;
         try {
             // Simulated upload progress
-            const interval = setInterval(() => {
+            interval = setInterval(() => {
                 setProgress(prev => {
                     if (prev >= 90) return prev;
                     return prev + 10;
                 });
             }, SCORM_UPLOAD_PROGRESS_TICK_MS);
 
-            const { data } = await axios.post('/api/admin/scorm/upload', formData, {
+            const { data } = await axios.post<ScormUploadResponse>('/api/admin/scorm/upload', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
 
             clearInterval(interval);
+            interval = null;
             setProgress(100);
 
             setImportId(data.importId);
-            setManifest(data.manifest);
+            setStep('analyzing');
+            setProgress(55);
 
-            setTimeout(() => {
-                setStep('review');
-            }, SCORM_REVIEW_STEP_DELAY_MS);
+            for (let attempt = 0; attempt < SCORM_TRANSFORMATION_MAX_POLLS; attempt += 1) {
+                await wait(SCORM_TRANSFORMATION_POLL_INTERVAL_MS);
+                const status = await readScormStatus(data.importId);
+                setProgress(Math.min(95, 55 + Math.floor((attempt + 1) / 6)));
+                if (status.kind === 'ready' && status.manifest) {
+                    setManifest(status.manifest);
+                    setProgress(100);
+                    await wait(SCORM_REVIEW_STEP_DELAY_MS);
+                    setStep('review');
+                    return;
+                }
+                if (status.kind === 'failed' || status.kind === 'invalid') {
+                    throw new Error('El paquete SCORM no pudo analizarse.');
+                }
+            }
+            throw new Error('El análisis SCORM excedió el tiempo máximo de espera.');
 
         } catch (err: unknown) {
+            if (interval) clearInterval(interval);
             console.error(err);
             setError(getAxiosErrorMessage(err, 'Error al subir el archivo'));
             setStep('upload');
@@ -117,10 +155,7 @@ export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
 
             for (let attempt = 0; attempt < SCORM_TRANSFORMATION_MAX_POLLS; attempt += 1) {
                 await wait(SCORM_TRANSFORMATION_POLL_INTERVAL_MS);
-                const { data: status } = await axios.get<ScormProcessStatusResponse>(
-                    '/api/admin/scorm/process',
-                    { params: { importId } },
-                );
+                const status = await readScormStatus(importId);
                 setProgress(Math.min(99, 90 + Math.floor((attempt + 1) / 24)));
 
                 if (status.kind === 'completed' && status.artifactId) {

@@ -1,5 +1,10 @@
 import { getHeygenApiKey } from "../../../../lib/server/env";
 import {
+  OutboundResponseTooLargeError,
+  readJsonResponseWithLimit,
+  readResponseTextWithLimit,
+} from "../../../../lib/server/outbound-http";
+import {
   HEYGEN_API_BASE_URL,
   HEYGEN_DEFAULT_PAGE_SIZE,
   HEYGEN_REQUEST_TIMEOUT_MS,
@@ -19,6 +24,9 @@ import {
   heygenVideoDetailsProviderResponseSchema,
   toRecord,
 } from "./heygen.validators";
+
+const HEYGEN_JSON_RESPONSE_MAX_BYTES = 4 * 1024 * 1024;
+const HEYGEN_ERROR_RESPONSE_MAX_BYTES = 32 * 1024;
 
 export class HeygenApiError extends Error {
   readonly providerCode?: string;
@@ -356,7 +364,7 @@ export class HeygenClient {
         throw await this.buildApiError(response);
       }
 
-      return response.json() as Promise<unknown>;
+      return readJsonResponseWithLimit(response, HEYGEN_JSON_RESPONSE_MAX_BYTES);
     } catch (error) {
       if (error instanceof HeygenApiError) {
         throw error;
@@ -387,7 +395,15 @@ export class HeygenClient {
     const retryAfterSeconds = parseRetryAfter(
       response.headers.get("Retry-After"),
     );
-    const rawBody = await response.text();
+    let rawBody = "";
+    try {
+      rawBody = await readResponseTextWithLimit(
+        response,
+        HEYGEN_ERROR_RESPONSE_MAX_BYTES,
+      );
+    } catch (error) {
+      if (!(error instanceof OutboundResponseTooLargeError)) throw error;
+    }
     const parsedBody = parseErrorPayload(rawBody);
 
     return new HeygenApiError({

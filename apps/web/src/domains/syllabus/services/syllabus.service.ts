@@ -65,7 +65,6 @@ class SyllabusService {
     objetivos: string[];
     ideaCentral: string;
     iterationInstructions?: string;
-    accessToken?: string;
   }): Promise<
     TemarioEsp02 | { status: string; message: string; data?: TemarioEsp02 }
   > {
@@ -94,7 +93,6 @@ class SyllabusService {
           objetivos: params.objetivos,
           ideaCentral: params.ideaCentral,
           iterationInstructions: params.iterationInstructions,
-          accessToken: params.accessToken,
         }),
       });
 

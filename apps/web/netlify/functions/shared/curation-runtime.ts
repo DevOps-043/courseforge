@@ -1,10 +1,17 @@
 import { getErrorMessage } from "./errors";
 import {
+  OutboundResponseTooLargeError,
+  readResponseTextWithLimit,
+} from "../../../src/lib/server/outbound-http";
+import { fetchPublicUrlWithRedirects } from "../../../src/lib/server/public-url-policy";
+import {
   CURATION_CONTENT_VALIDATION_TIMEOUT_MS,
   CURATION_REDIRECT_RESOLUTION_TIMEOUT_MS,
 } from "./timing";
 
 const MIN_CONTENT_LENGTH = 500;
+const MAX_CONTENT_BYTES = 2 * 1024 * 1024;
+const MAX_REDIRECTS = 5;
 
 export const LESSONS_PER_BATCH = 2;
 export const SOURCES_PER_LESSON = 2;
@@ -21,21 +28,17 @@ export async function resolveRedirectUrl(
   timeoutMs = CURATION_REDIRECT_RESOLUTION_TIMEOUT_MS,
 ): Promise<string> {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-    const response = await fetch(url, {
+    const result = await fetchPublicUrlWithRedirects(url, {
       method: 'HEAD',
-      signal: controller.signal,
-      redirect: 'follow',
+      maximumRedirects: MAX_REDIRECTS,
+      timeoutMilliseconds: timeoutMs,
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
     });
-
-    clearTimeout(timeoutId);
-    return response.url || url;
+    await result.response.body?.cancel().catch(() => undefined);
+    return result.url.toString();
   } catch {
     return url;
   }
@@ -54,19 +57,15 @@ export async function validateUrlWithContent(
   };
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-    const response = await fetch(url, {
+    const { response } = await fetchPublicUrlWithRedirects(url, {
       method: 'GET',
-      signal: controller.signal,
-      redirect: 'follow',
+      maximumRedirects: MAX_REDIRECTS,
+      timeoutMilliseconds: timeoutMs,
       headers: browserHeaders,
     });
 
-    clearTimeout(timeoutId);
-
     if (response.status >= 400) {
+      await response.body?.cancel().catch(() => undefined);
       return {
         isValid: false,
         reason: `HTTP ${response.status}`,
@@ -74,7 +73,17 @@ export async function validateUrlWithContent(
       };
     }
 
-    const html = await response.text();
+    const contentType = response.headers.get("content-type") || "";
+    if (!/(?:text\/html|application\/xhtml\+xml|text\/plain)/i.test(contentType)) {
+      await response.body?.cancel().catch(() => undefined);
+      return {
+        isValid: false,
+        reason: "Unsupported content type",
+        contentLength: 0,
+      };
+    }
+
+    const html = await readResponseTextWithLimit(response, MAX_CONTENT_BYTES);
     const soft404Patterns = [
       /page\s*(not|no)\s*found/i,
       /404\s*(error|not found|página)/i,
@@ -110,9 +119,14 @@ export async function validateUrlWithContent(
 
     return { isValid: true, reason: 'OK', contentLength: textContent.length };
   } catch (error: unknown) {
+    const reason = error instanceof OutboundResponseTooLargeError
+      ? "Response too large (max 2 MiB)"
+      : error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")
+        ? "Validation timed out"
+        : getErrorMessage(error);
     return {
       isValid: false,
-      reason: getErrorMessage(error),
+      reason,
       contentLength: 0,
     };
   }

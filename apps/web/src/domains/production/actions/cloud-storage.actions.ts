@@ -12,6 +12,8 @@ import type {
   CloudStorageConnection,
   CloudStorageProvider,
 } from "@/domains/production/cloud-storage/types";
+import { fetchWithDeadline } from "@/lib/server/outbound-http";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
 export async function getCloudStorageConnectionsForTenant(params: {
   organizationId: string;
@@ -80,6 +82,10 @@ export async function getCloudStorageConnectionsAction(): Promise<{
 }
 
 export async function disconnectCloudStorageAction(provider: CloudStorageProvider) {
+  const logger = createOperationalLogger("cloud_storage.disconnect", {
+    correlationId: resolveCorrelationId(),
+    provider,
+  });
   try {
     const supabase = await createClient();
     const user = await getAuthenticatedUser(supabase);
@@ -93,13 +99,13 @@ export async function disconnectCloudStorageAction(provider: CloudStorageProvide
       const tokenToRevoke = decryptCredentialToken(creds.refresh_token || creds.access_token);
       try {
         if (provider === "google_drive") {
-          await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(tokenToRevoke)}`, {
+          await fetchWithDeadline(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(tokenToRevoke)}`, {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
           });
         }
       } catch (revokeErr) {
-        console.warn("[CloudStorageDisconnect] Token revocation failed:", revokeErr);
+        logger.warn("cloud_storage.disconnect.revocation_failed", { error: revokeErr });
       }
 
       await deleteCloudStorageCredentials(user.userId, tenant.organizationId, provider);
@@ -107,8 +113,11 @@ export async function disconnectCloudStorageAction(provider: CloudStorageProvide
     }
 
     return { success: true };
-  } catch (error: any) {
-    console.error("[CloudStorageDisconnect] Error:", error);
-    return { success: false, error: error.message || "Error al desvincular la integracion" };
+  } catch (error: unknown) {
+    logger.error("cloud_storage.disconnect.failed", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Error al desvincular la integracion",
+    };
   }
 }

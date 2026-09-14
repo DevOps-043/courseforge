@@ -1,5 +1,14 @@
 import { getSupabaseServiceRoleKey, getSupabaseUrl } from "@/lib/server/env";
+import {
+  fetchWithDeadline,
+  readResponseArrayBufferWithLimit,
+  readResponseTextWithLimit,
+} from "@/lib/server/outbound-http";
 import { validateRemotionBundle, type ValidationReport } from "@/domains/production/validation/bundle-validator";
+
+const TEMPLATE_BUNDLE_MAX_BYTES = 10 * 1024 * 1024;
+const TEMPLATE_BUNDLE_DOWNLOAD_TIMEOUT_MS = 60_000;
+const TEMPLATE_BUNDLE_ERROR_MAX_BYTES = 32 * 1024;
 
 type SupabaseAdminClient = any;
 
@@ -57,19 +66,20 @@ export function resolveBundleStorageLocation(storagePath: string) {
 async function downloadBundleArrayBuffer(storagePath: string): Promise<ArrayBuffer> {
   const bundleLocation = resolveBundleStorageLocation(storagePath);
   const downloadUrl = `${getSupabaseUrl()}/storage/v1/object/${bundleLocation.bucket}/${bundleLocation.path}`;
-  const response = await fetch(downloadUrl, {
+  const response = await fetchWithDeadline(downloadUrl, {
     headers: {
       Authorization: `Bearer ${getSupabaseServiceRoleKey()}`,
     },
     cache: "no-store",
-  });
+  }, TEMPLATE_BUNDLE_DOWNLOAD_TIMEOUT_MS);
 
   if (!response.ok) {
-    const errText = await response.text().catch(() => "Unknown error");
-    throw new Error(`HTTP ${response.status}: ${errText}`);
+    const errText = await readResponseTextWithLimit(response, TEMPLATE_BUNDLE_ERROR_MAX_BYTES)
+      .catch(() => "Unknown error");
+    throw new Error(`HTTP ${response.status}: ${errText.slice(0, 500)}`);
   }
 
-  return response.arrayBuffer();
+  return readResponseArrayBufferWithLimit(response, TEMPLATE_BUNDLE_MAX_BYTES);
 }
 
 export async function createTemplateVersionRecord(

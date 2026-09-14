@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/utils/supabase/server";
 import {
   getAuthenticatedUser,
@@ -6,25 +6,29 @@ import {
 } from "@/lib/server/artifact-action-auth";
 import { getCloudStorageService } from "@/domains/production/cloud-storage/cloud-storage.service";
 import { registerImportedHyperframesSourceAsset } from "@/domains/production/hyperframes/hyperframes-source-asset.service";
-import {
-  isCloudStorageProvider,
-  type ProductionAssetType,
-} from "@/domains/production/cloud-storage/types";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import {
   isHtmlSlideSource,
   rasterizeStoredOpenDesignHtmlSlides,
 } from "@/domains/production/validation/open-design-html-rasterizer.service";
+import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { mapExternalImportError } from "@/lib/server/external-import-error";
+import { withExternalImportCapacity } from "@/lib/server/external-import-concurrency";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
-interface ImportRequestBody {
-  accessToken?: string;
-  avatarGenerationMode?: "scene_clips" | "single_video";
-  componentId?: string;
-  fileIdOrUrl?: string;
-  provider?: unknown;
-  type?: ProductionAssetType;
-  urlOrId?: string;
-}
+const MAX_CLOUD_IMPORT_REQUEST_BYTES = 32 * 1024;
+const cloudImportSchema = z.object({
+  accessToken: z.string().min(1).max(16_000).optional(),
+  avatarGenerationMode: z.enum(["scene_clips", "single_video"]).optional(),
+  componentId: z.string().uuid(),
+  fileIdOrUrl: z.string().trim().min(1).max(4_000).optional(),
+  provider: z.enum(["google_drive", "onedrive"]),
+  type: z.enum(["voice", "music", "broll", "avatar", "slides"]),
+  urlOrId: z.string().trim().min(1).max(4_000).optional(),
+}).strict().refine((body) => Boolean(body.fileIdOrUrl || body.urlOrId), {
+  message: "Se requiere fileIdOrUrl o urlOrId.",
+});
 
 function isRenderableSlideImage(params: {
   mimeType?: string;
@@ -48,51 +52,50 @@ function isRenderableSlideImage(params: {
 }
 
 export async function POST(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.cloud_storage.import", { correlationId: requestId });
   try {
-    const body = (await request.json()) as ImportRequestBody;
-    const fileIdOrUrl = body.fileIdOrUrl || body.urlOrId;
+    const parsedRequest = await parseJsonRequest(request, cloudImportSchema, MAX_CLOUD_IMPORT_REQUEST_BYTES);
+    if (!parsedRequest.success) {
+      return apiErrorResponse({
+        code: parsedRequest.reason === "too_large" ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
+        message: parsedRequest.reason === "too_large" ? "La solicitud excede el tamaño permitido." : "Solicitud de importación inválida.",
+        requestId,
+        status: parsedRequest.reason === "too_large" ? 413 : 400,
+      });
+    }
+    const body = parsedRequest.data;
+    const fileIdOrUrl = body.fileIdOrUrl || body.urlOrId!;
     const { type, componentId, accessToken } = body;
-
-    if (!isCloudStorageProvider(body.provider)) {
-      return NextResponse.json({ error: "Proveedor cloud invalido" }, { status: 400 });
-    }
-
-    if (!fileIdOrUrl || !type || !componentId) {
-      return NextResponse.json(
-        { error: "Faltan parametros: fileIdOrUrl, type y componentId son requeridos" },
-        { status: 400 },
-      );
-    }
-
-    const allowedTypes = new Set(["voice", "music", "broll", "avatar", "slides"]);
-    if (!allowedTypes.has(type)) {
-      return NextResponse.json({ error: "El tipo de activo provisto no es valido" }, { status: 400 });
-    }
 
     const supabase = await createClient();
     const authenticatedUser = await getAuthenticatedUser(supabase);
     if (!authenticatedUser) {
-      return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+      return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
     }
 
     const tenant = await resolveActiveTenantContext();
     if (!tenant) {
-      return NextResponse.json({ error: "Empresa no valida o no autorizada." }, { status: 403 });
+      return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 });
     }
 
     const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
     if (!authorizedComponent) {
-      return NextResponse.json({ error: "Componente no encontrado para esta empresa" }, { status: 404 });
+      return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Componente no encontrado para esta empresa.", requestId, status: 404 });
     }
 
     const admin = authorizedComponent.admin;
-    const result = await getCloudStorageService(body.provider).importFile(
-      fileIdOrUrl,
-      type,
-      componentId,
-      authenticatedUser.userId,
-      tenant.organizationId,
-      accessToken,
+    const result = await withExternalImportCapacity(
+      body.provider,
+      () => getCloudStorageService(body.provider).importFile(
+        fileIdOrUrl,
+        type,
+        componentId,
+        authenticatedUser.userId,
+        tenant.organizationId,
+        accessToken,
+      ),
+      request.signal,
     );
     const productionAssetId = await registerImportedHyperframesSourceAsset({
       componentId,
@@ -252,25 +255,23 @@ export async function POST(request: Request) {
     );
 
     if (updateError) {
-      console.error("[API /cloud-storage/import] DB update error:", updateError);
-      return NextResponse.json(
-        { error: "No se pudo actualizar el registro del componente en la base de datos" },
-        { status: 500 },
-      );
+      logger.error("production.cloud_storage.import.persistence_failed", updateError, { componentId });
+      return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo guardar el recurso importado.", requestId, retryable: true, status: 500 });
     }
 
-    return NextResponse.json({
-      success: true,
+    return apiSuccessResponse({
       publicUrl: result.publicUrl,
       storagePath: result.storagePath,
       productionAssetId,
       assets: updatedAssets,
-    });
+    }, { requestId });
   } catch (error: unknown) {
-    console.error("[API /cloud-storage/import] Unexpected error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Error interno al importar del proveedor cloud" },
-      { status: 500 },
-    );
+    logger.error("production.cloud_storage.import.failed", error);
+    const mapped = mapExternalImportError(error, "el proveedor cloud");
+    return apiErrorResponse({
+      ...mapped,
+      headers: mapped.retryAfterSeconds ? { "Retry-After": String(mapped.retryAfterSeconds) } : undefined,
+      requestId,
+    });
   }
 }

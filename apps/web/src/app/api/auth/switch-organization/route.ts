@@ -1,8 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
 import { jwtVerify, SignJWT, type JWTPayload } from 'jose'
-import { getErrorMessage } from '@/lib/errors'
+import { z } from 'zod'
 import { getCourseforgeJwtSecret, isProductionEnvironment } from '@/lib/server/env'
+import { API_ERROR_CODE, parseJsonRequest } from '@/lib/server/api-contract'
+import { apiErrorResponse, apiSuccessResponse } from '@/lib/server/api-response'
+import { createOperationalLogger, resolveCorrelationId } from '@/lib/server/operational-logger'
 
 interface OrganizationSummary {
   id: string
@@ -12,9 +15,10 @@ interface OrganizationSummary {
   slug: string
 }
 
-interface SwitchOrganizationRequestBody {
-  organizationId?: string
-}
+const MAX_SWITCH_ORGANIZATION_REQUEST_BYTES = 4 * 1024
+const switchOrganizationRequestSchema = z.object({
+  organizationId: z.string().uuid(),
+}).strict()
 
 interface SwitchOrgAppMetadata {
   active_organization_id?: string | null
@@ -34,22 +38,25 @@ interface SwitchOrgJwtPayload extends JWTPayload {
  * Esto permite que las RLS policies filtren correctamente por organizacion.
  */
 export async function POST(request: NextRequest) {
+  const requestId = resolveCorrelationId(request.headers.get('x-request-id'))
+  const logger = createOperationalLogger('auth.switch_organization', { correlationId: requestId })
   try {
-    const { organizationId } =
-      (await request.json()) as SwitchOrganizationRequestBody
-
-    if (!organizationId) {
-      return NextResponse.json(
-        { error: 'organizationId es requerido' },
-        { status: 400 },
-      )
+    const parsedRequest = await parseJsonRequest(request, switchOrganizationRequestSchema, MAX_SWITCH_ORGANIZATION_REQUEST_BYTES)
+    if (!parsedRequest.success) {
+      return apiErrorResponse({
+        code: parsedRequest.reason === 'too_large' ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
+        message: parsedRequest.reason === 'too_large' ? 'La solicitud excede el tamaño permitido.' : 'organizationId inválido.',
+        requestId,
+        status: parsedRequest.reason === 'too_large' ? 413 : 400,
+      })
     }
+    const { organizationId } = parsedRequest.data
 
     const cookieStore = await cookies()
     const token = cookieStore.get('cf_access_token')?.value
 
     if (!token) {
-      return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+      return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: 'No autenticado.', requestId, status: 401 })
     }
 
     const secretKey = new TextEncoder().encode(getCourseforgeJwtSecret())
@@ -61,20 +68,14 @@ export async function POST(request: NextRequest) {
       })
       payload = verified.payload as SwitchOrgJwtPayload
     } catch {
-      return NextResponse.json(
-        { error: 'Token invalido o expirado' },
-        { status: 401 },
-      )
+      return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: 'Token inválido o expirado.', requestId, status: 401 })
     }
 
     const appMetadata = payload.app_metadata || {}
     const organizationIds: string[] = appMetadata.organization_ids || []
 
     if (!organizationIds.includes(organizationId)) {
-      return NextResponse.json(
-        { error: 'No tienes acceso a esta organizacion' },
-        { status: 403 },
-      )
+      return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: 'No tienes acceso a esta organización.', requestId, status: 403 })
     }
 
     const orgsRaw = cookieStore.get('cf_user_orgs')?.value
@@ -93,10 +94,7 @@ export async function POST(request: NextRequest) {
     )
 
     if (!targetOrg) {
-      return NextResponse.json(
-        { error: 'Organizacion no encontrada en tu lista' },
-        { status: 404 },
-      )
+      return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: 'Organización no encontrada en tu lista.', requestId, status: 404 })
     }
 
     const now = Math.floor(Date.now() / 1000)
@@ -142,8 +140,7 @@ export async function POST(request: NextRequest) {
       sameSite: 'lax',
     })
 
-    return NextResponse.json({
-      success: true,
+    return apiSuccessResponse({
       organization: {
         id: targetOrg.id,
         name: targetOrg.name,
@@ -151,12 +148,9 @@ export async function POST(request: NextRequest) {
         role: targetOrg.role,
         logo_url: targetOrg.logo_url,
       },
-    })
+    }, { requestId })
   } catch (error: unknown) {
-    console.error('[switch-org] Error:', getErrorMessage(error))
-    return NextResponse.json(
-      { error: 'Error interno del servidor' },
-      { status: 500 },
-    )
+    logger.error('auth.switch_organization.failed', error)
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: 'No se pudo cambiar la organización.', requestId, retryable: true, status: 500 })
   }
 }

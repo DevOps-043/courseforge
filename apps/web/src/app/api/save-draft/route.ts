@@ -1,4 +1,3 @@
-import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { savePublicationDraftRequestSchema } from '@/domains/publication/publication.schemas';
@@ -8,34 +7,59 @@ import {
     getServiceRoleClient,
 } from '@/lib/server/artifact-action-auth';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
+import { API_ERROR_CODE, parseJsonRequest } from '@/lib/server/api-contract';
+import { apiErrorResponse, apiSuccessResponse } from '@/lib/server/api-response';
+import { createOperationalLogger, resolveCorrelationId } from '@/lib/server/operational-logger';
+
+const MAX_SAVE_DRAFT_REQUEST_BYTES = 1024 * 1024;
 
 export async function POST(request: Request) {
+    const requestId = resolveCorrelationId(request.headers.get('x-request-id'));
+    const logger = createOperationalLogger('publication.draft.api', { correlationId: requestId });
     try {
-        const parsedRequest = savePublicationDraftRequestSchema.safeParse(await request.json());
+        const parsedRequest = await parseJsonRequest(request, savePublicationDraftRequestSchema, MAX_SAVE_DRAFT_REQUEST_BYTES);
         if (!parsedRequest.success) {
-            return NextResponse.json({ error: 'Borrador de publicación inválido.' }, { status: 400 });
+            return apiErrorResponse({
+                code: parsedRequest.reason === 'too_large' ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
+                message: parsedRequest.reason === 'too_large' ? 'El borrador excede el tamaño permitido.' : 'Borrador de publicación inválido.',
+                requestId,
+                status: parsedRequest.reason === 'too_large' ? 413 : 400,
+            });
         }
         const { artifactId, data } = parsedRequest.data;
 
         const supabase = await createClient();
         const authenticatedUser = await getAuthenticatedUser(supabase);
         if (!authenticatedUser) {
-            return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
+            return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: 'No autorizado.', requestId, status: 401 });
         }
 
         const admin = getServiceRoleClient();
         const tenant = await resolveActiveTenantContext();
         if (!tenant) {
-            return NextResponse.json({ error: 'Empresa no valida o no autorizada.' }, { status: 403 });
+            return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: 'Empresa no válida o no autorizada.', requestId, status: 403 });
         }
 
         const authorized = await getAuthorizedArtifactAdminForTenant(artifactId, tenant);
         if (!authorized) {
-            return NextResponse.json({ error: 'Artefacto no encontrado para esta empresa.' }, { status: 404 });
+            return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: 'Artefacto no encontrado para esta empresa.', requestId, status: 404 });
         }
 
         if (tenant.platformRole === 'CONSTRUCTOR') {
-            return NextResponse.json({ error: 'Falta de permisos. Solo Arquitectos y Admins pueden guardar para publicación.' }, { status: 403 });
+            return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: 'Falta de permisos. Solo Arquitectos y Admins pueden guardar para publicación.', requestId, status: 403 });
+        }
+
+        const { data: existingRequest, error: existingRequestError } = await admin
+            .from('publication_requests')
+            .select('publish_step, status')
+            .eq('artifact_id', artifactId)
+            .maybeSingle();
+        if (existingRequestError) throw existingRequestError;
+        if (
+            existingRequest?.status === 'READY'
+            && (existingRequest.publish_step === 'QUEUED' || existingRequest.publish_step === 'RUNNING')
+        ) {
+            return apiErrorResponse({ code: API_ERROR_CODE.conflict, message: 'La publicación está en curso; espera a que termine antes de modificar el borrador.', requestId, status: 409 });
         }
 
         const { error } = await admin
@@ -57,9 +81,9 @@ export async function POST(request: Request) {
 
         revalidatePath(`/admin/artifacts/${artifactId}/publish`);
         revalidatePath(`/${tenant.organizationSlug}/admin/artifacts/${artifactId}/publish`);
-        return NextResponse.json({ success: true });
+        return apiSuccessResponse({}, { requestId });
     } catch (error: unknown) {
-        console.error('[API /save-draft] Error:', error);
-        return NextResponse.json({ success: false, error: 'No se pudo guardar el borrador.' }, { status: 500 });
+        logger.error('publication.draft.failed', error);
+        return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: 'No se pudo guardar el borrador.', requestId, retryable: true, status: 500 });
     }
 }

@@ -1,4 +1,3 @@
-import { NextResponse } from 'next/server';
 import { PRODUCTION_MEDIA_CACHE_CONTROL_SECONDS } from '@/domains/production/media-storage.config';
 import { createClient } from '@/utils/supabase/server';
 import {
@@ -10,11 +9,18 @@ import {
     assertSafeExternalMediaUrl,
     readResponseWithLimit,
 } from '@/domains/production/external-media-import-policy';
+import { API_ERROR_CODE, parseJsonRequest } from '@/lib/server/api-contract';
+import { apiErrorResponse, apiSuccessResponse } from '@/lib/server/api-response';
+import { mapExternalImportError } from '@/lib/server/external-import-error';
+import { createOperationalLogger, resolveCorrelationId } from '@/lib/server/operational-logger';
+import { readJsonResponseWithLimit } from '@/lib/server/outbound-http';
 
 // Limit file sizes imported externally to 150MB to avoid server memory issues in serverless runtimes
 const MAX_IMPORT_SIZE_BYTES = 150 * 1024 * 1024;
 
 const IMPORT_TIMEOUT_MS = 60_000;
+const MAX_EXTERNAL_IMPORT_REQUEST_BYTES = 16 * 1024;
+const MAX_HEYGEN_STATUS_BYTES = 256 * 1024;
 const importExternalSchema = z.object({
     provider: z.enum(['heygen', 'custom']),
     componentId: z.string().uuid(),
@@ -23,13 +29,17 @@ const importExternalSchema = z.object({
 }).strict();
 
 export async function POST(request: Request) {
+    const requestId = resolveCorrelationId(request.headers.get('x-request-id'));
+    const logger = createOperationalLogger('production.external_media.import', { correlationId: requestId });
     try {
-        const parsedRequest = importExternalSchema.safeParse(await request.json());
+        const parsedRequest = await parseJsonRequest(request, importExternalSchema, MAX_EXTERNAL_IMPORT_REQUEST_BYTES);
         if (!parsedRequest.success) {
-            return NextResponse.json(
-                { error: 'Solicitud de importación inválida' },
-                { status: 400 },
-            );
+            return apiErrorResponse({
+                code: parsedRequest.reason === 'too_large' ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
+                message: parsedRequest.reason === 'too_large' ? 'La solicitud excede el tamaño permitido.' : 'Solicitud de importación inválida.',
+                requestId,
+                status: parsedRequest.reason === 'too_large' ? 413 : 400,
+            });
         }
         const { provider, componentId, videoId, videoUrl } = parsedRequest.data;
 
@@ -37,15 +47,12 @@ export async function POST(request: Request) {
         const supabase = await createClient();
         const authenticatedUser = await getAuthenticatedUser(supabase);
         if (!authenticatedUser) {
-            return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
+            return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: 'No autorizado.', requestId, status: 401 });
         }
 
         const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
         if (!authorizedComponent) {
-            return NextResponse.json(
-                { error: 'Componente no encontrado para esta empresa' },
-                { status: 404 },
-            );
+            return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: 'Componente no encontrado para esta empresa.', requestId, status: 404 });
         }
 
         const admin = authorizedComponent.admin;
@@ -63,10 +70,7 @@ export async function POST(request: Request) {
             if (!heygenApiKey) {
                 // If no API Key, we must rely on a direct videoUrl provided by frontend
                 if (!resolvedVideoUrl) {
-                    return NextResponse.json(
-                        { error: 'HEYGEN_API_KEY no está configurada y no se proporcionó una URL directa del video' },
-                        { status: 400 },
-                    );
+                    return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: 'Se requiere una URL directa para importar este video.', requestId, status: 400 });
                 }
             } else {
                 // Fetch direct download URL from Heygen API
@@ -79,30 +83,27 @@ export async function POST(request: Request) {
                 });
 
                 if (!heygenResponse.ok) {
-                    const errorDetails = await heygenResponse.text();
-                    console.error('[API /production/import-external] Heygen API error:', errorDetails);
-                    return NextResponse.json(
-                        { error: 'Error al consultar la API de Heygen' },
-                        { status: 500 },
-                    );
+                    logger.warn('production.external_media.heygen_lookup_failed', { status: heygenResponse.status });
+                    return apiErrorResponse({ code: API_ERROR_CODE.providerError, message: 'No se pudo consultar el video en HeyGen.', requestId, retryable: heygenResponse.status >= 500 || heygenResponse.status === 429, status: 502 });
                 }
 
-                const heygenData = await heygenResponse.json();
-                const status = heygenData.data?.status;
-                const url = heygenData.data?.video_url;
+                const heygenData = await readJsonResponseWithLimit<unknown>(
+                    heygenResponse,
+                    MAX_HEYGEN_STATUS_BYTES,
+                );
+                const data = typeof heygenData === 'object' && heygenData !== null && 'data' in heygenData
+                    && typeof heygenData.data === 'object' && heygenData.data !== null
+                    ? heygenData.data as Record<string, unknown>
+                    : null;
+                const status = typeof data?.status === 'string' ? data.status : undefined;
+                const url = typeof data?.video_url === 'string' ? data.video_url : undefined;
 
                 if (status === 'failed') {
-                    return NextResponse.json(
-                        { error: `El video de Heygen falló al generarse: ${heygenData.data?.error?.message || 'Error desconocido'}` },
-                        { status: 422 },
-                    );
+                    return apiErrorResponse({ code: API_ERROR_CODE.providerError, message: 'HeyGen informó que el video no pudo generarse.', requestId, status: 422 });
                 }
 
                 if (status !== 'completed' || !url) {
-                    return NextResponse.json(
-                        { error: 'El video de Heygen aún no está listo' },
-                        { status: 202, statusText: 'Processing' },
-                    );
+                    return apiSuccessResponse({ pending: true, message: 'El video de HeyGen aún no está listo.' }, { requestId, status: 202 });
                 }
 
                 resolvedVideoUrl = url;
@@ -110,10 +111,7 @@ export async function POST(request: Request) {
         }
 
         if (!resolvedVideoUrl) {
-            return NextResponse.json(
-                { error: 'No se pudo resolver la URL del video a importar' },
-                { status: 400 },
-            );
+            return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: 'No se pudo resolver la URL del video a importar.', requestId, status: 400 });
         }
 
         // 2. Reject internal networks and redirects before reading a bounded body.
@@ -123,15 +121,12 @@ export async function POST(request: Request) {
             signal: AbortSignal.timeout(IMPORT_TIMEOUT_MS),
         });
         if (!response.ok) {
-            return NextResponse.json(
-                { error: 'No se pudo descargar el video desde el origen externo' },
-                { status: 502 },
-            );
+            return apiErrorResponse({ code: API_ERROR_CODE.providerError, message: 'No se pudo descargar el video desde el origen externo.', requestId, retryable: response.status >= 500 || response.status === 429, status: 502 });
         }
 
         const sourceContentType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
         if (!['video/mp4', 'video/webm', 'application/octet-stream'].includes(sourceContentType)) {
-            return NextResponse.json({ error: 'El origen no devolvió un video compatible' }, { status: 415 });
+            return apiErrorResponse({ code: API_ERROR_CODE.unsupportedMediaType, message: 'El origen no devolvió un video compatible.', requestId, status: 415 });
         }
 
         let buffer: Buffer;
@@ -139,10 +134,7 @@ export async function POST(request: Request) {
             buffer = await readResponseWithLimit(response, MAX_IMPORT_SIZE_BYTES);
         } catch (error) {
             if (error instanceof Error && error.message === 'EXTERNAL_MEDIA_TOO_LARGE') {
-                return NextResponse.json(
-                    { error: 'El archivo excede el límite permitido para transferencia directa (150MB)' },
-                    { status: 413 },
-                );
+                return apiErrorResponse({ code: API_ERROR_CODE.payloadTooLarge, message: 'El archivo excede el límite permitido para transferencia directa (150 MB).', requestId, status: 413 });
             }
             throw error;
         }
@@ -160,11 +152,8 @@ export async function POST(request: Request) {
             });
 
         if (uploadError) {
-            console.error('[API /production/import-external] Storage upload error:', uploadError);
-            return NextResponse.json(
-                { error: 'No se pudo subir el archivo al almacenamiento de SofLIA - Engine' },
-                { status: 500 },
-            );
+            logger.error('production.external_media.storage_failed', uploadError, { componentId });
+            return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: 'No se pudo almacenar el video importado.', requestId, retryable: true, status: 500 });
         }
 
         // Resolve public URL
@@ -199,25 +188,19 @@ export async function POST(request: Request) {
         );
 
         if (updateError) {
-            console.error('[API /production/import-external] DB update error:', updateError);
-            return NextResponse.json(
-                { error: 'No se pudo guardar la referencia del video en la base de datos' },
-                { status: 500 },
-            );
+            logger.error('production.external_media.persistence_failed', updateError, { componentId });
+            return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: 'No se pudo guardar la referencia del video.', requestId, retryable: true, status: 500 });
         }
 
-        return NextResponse.json({
-            success: true,
+        return apiSuccessResponse({
             publicUrl,
             storagePath,
             assets: updatedAssets,
-        });
+        }, { requestId });
 
     } catch (error: unknown) {
-        console.error('[API /production/import-external] Unexpected error:', error);
-        return NextResponse.json(
-            { error: 'Error interno del servidor durante la importación' },
-            { status: 500 },
-        );
+        logger.error('production.external_media.import_failed', error);
+        const mapped = mapExternalImportError(error, 'el origen externo');
+        return apiErrorResponse({ ...mapped, requestId });
     }
 }

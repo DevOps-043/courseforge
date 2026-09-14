@@ -98,4 +98,26 @@ describe("HyperFrames Cloud client", () => {
       resolution: "1080p",
     });
   });
+
+  it("rejects oversized provider JSON before parsing it", async () => {
+    const client = new HyperframesCloudClient({
+      apiKey: "test-key-123456",
+      fetchImpl: async () => new Response("ignored", {
+        headers: {
+          "Content-Length": String((2 * 1024 * 1024) + 1),
+          "Content-Type": "application/json",
+        },
+        status: 200,
+      }),
+    });
+
+    await assert.rejects(
+      client.createRender({
+        aspectRatio: "16:9",
+        assetId: "asst_123",
+        idempotencyKey: "hf:render:oversized",
+      }),
+      /excede el limite/,
+    );
+  });
 });

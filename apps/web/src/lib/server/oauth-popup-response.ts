@@ -6,6 +6,7 @@ interface OAuthPopupResponseParams {
   status: "success" | "error";
   message?: string;
   redirectPath?: string;
+  requestId: string;
 }
 
 export function oauthPopupResponse({
@@ -13,11 +14,15 @@ export function oauthPopupResponse({
   status,
   message,
   redirectPath = "/admin/profile",
+  requestId,
 }: OAuthPopupResponseParams) {
+  const normalizedRedirectPath = redirectPath.startsWith("/") && !redirectPath.startsWith("//")
+    ? redirectPath
+    : "/admin/profile";
   const safeProvider = JSON.stringify(provider);
   const safeStatus = JSON.stringify(status);
   const safeMessage = JSON.stringify(message || "");
-  const safeRedirectPath = JSON.stringify(redirectPath);
+  const safeRedirectPath = JSON.stringify(normalizedRedirectPath);
   const visibleMessage = message
     ? message.replace(/[<>&"]/g, (char) => {
         const entities: Record<string, string> = {
@@ -72,7 +77,7 @@ export function oauthPopupResponse({
       <h1>${status === "success" ? "Conexion completada" : "No se pudo completar la conexion"}</h1>
       <p>${status === "success" ? "Esta ventana se cerrara automaticamente." : "Corrige la configuracion y vuelve a intentarlo desde SofLIA - Engine."}</p>
       ${visibleMessage ? `<code>${visibleMessage}</code>` : ""}
-      <p><a href="${redirectPath}">Volver a SofLIA - Engine</a></p>
+      <p><a href="${normalizedRedirectPath.replace(/[<>&"]/g, "")}">Volver a SofLIA - Engine</a></p>
     </main>
     <script>
       const payload = {
@@ -97,7 +102,11 @@ export function oauthPopupResponse({
 </html>`,
     {
       headers: {
+        "Cache-Control": "no-store",
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
         "Content-Type": "text/html; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+        "x-request-id": requestId,
       },
     },
   );

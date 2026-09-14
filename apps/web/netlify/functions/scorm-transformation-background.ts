@@ -8,8 +8,10 @@ import {
   unauthorizedBackgroundResponse,
 } from "./shared/http";
 import { createServiceRoleClient } from "./shared/bootstrap";
+import { createOperationalLogger, resolveCorrelationId } from "../../src/lib/server/operational-logger";
 
 interface ScormTransformationRequest {
+  correlationId?: unknown;
   importId?: unknown;
   organizationId?: unknown;
 }
@@ -29,6 +31,14 @@ export const handler: Handler = async (event) => {
   if (!importId.success || !organizationId.success) {
     return jsonResponse({ error: "Invalid SCORM transformation request" }, 400);
   }
+  const correlationId = resolveCorrelationId(
+    typeof request.correlationId === "string" ? request.correlationId : null,
+  );
+  const logger = createOperationalLogger("scorm.transformation.background", {
+    correlationId,
+    importId: importId.data,
+    organizationId: organizationId.data,
+  });
 
   try {
     const result = await new ScormTransformationService(createServiceRoleClient()).processImport(
@@ -41,11 +51,7 @@ export const handler: Handler = async (event) => {
       importId: importId.data,
     });
   } catch (error) {
-    console.error("[SCORM/background] Transformation failed", {
-      importId: importId.data,
-      organizationId: organizationId.data,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return jsonResponse({ error: "SCORM transformation failed" }, 500);
+    logger.error("scorm.transformation.failed", error);
+    return jsonResponse({ correlationId, error: "SCORM transformation failed" }, 500);
   }
 };

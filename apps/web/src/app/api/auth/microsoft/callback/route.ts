@@ -1,20 +1,22 @@
 import { validateOAuthState } from "@/lib/server/oauth-state";
 import { oauthPopupResponse } from "@/lib/server/oauth-popup-response";
-import { fetchWithDeadline } from "@/lib/server/outbound-http";
+import {
+  fetchIdempotentWithRetry,
+  fetchWithDeadline,
+  readJsonResponseWithLimit,
+} from "@/lib/server/outbound-http";
 import { upsertCloudStorageCredentials } from "@/domains/production/cloud-storage/credentials.repository";
+import {
+  parseAccessTokenPayload,
+  parseMicrosoftAccountProfile,
+} from "@/domains/production/providers/provider-json-contracts";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
-interface MicrosoftOAuthTokenResponse {
-  access_token?: string;
-  expires_in?: number;
-  refresh_token?: string;
-}
-
-interface MicrosoftProfileResponse {
-  mail?: string;
-  userPrincipalName?: string;
-}
+const OAUTH_RESPONSE_MAX_BYTES = 64 * 1024;
 
 export async function GET(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("auth.microsoft.callback", { correlationId: requestId });
   const requestUrl = new URL(request.url);
   const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
 
@@ -32,6 +34,7 @@ export async function GET(request: Request) {
         provider: "onedrive",
         status: "error",
         message: "microsoft_oauth_failed",
+        requestId,
       });
     }
 
@@ -53,32 +56,34 @@ export async function GET(request: Request) {
       throw new Error(`Microsoft rechazo el intercambio OAuth (HTTP ${tokenResponse.status}).`);
     }
 
-    const tokenData = (await tokenResponse.json()) as MicrosoftOAuthTokenResponse;
-    if (!tokenData.access_token || !tokenData.expires_in || !tokenData.refresh_token) {
+    const tokenData = parseAccessTokenPayload(
+      await readJsonResponseWithLimit(tokenResponse, OAUTH_RESPONSE_MAX_BYTES),
+      "Microsoft",
+      true,
+    );
+    if (!tokenData.refreshToken) {
       throw new Error("Microsoft no devolvio refresh_token. Revisa el scope offline_access.");
     }
 
-    const profileResponse = await fetchWithDeadline("https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName", {
-      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    const profileResponse = await fetchIdempotentWithRetry("https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName", {
+      headers: { Authorization: `Bearer ${tokenData.accessToken}` },
     });
 
     if (!profileResponse.ok) {
       throw new Error("No se pudo obtener el perfil de Microsoft Graph");
     }
 
-    const profile = (await profileResponse.json()) as MicrosoftProfileResponse;
-    const accountEmail = profile.mail || profile.userPrincipalName;
-    if (!accountEmail) {
-      throw new Error("Microsoft no devolvio email de cuenta");
-    }
+    const { email: accountEmail } = parseMicrosoftAccountProfile(
+      await readJsonResponseWithLimit(profileResponse, OAUTH_RESPONSE_MAX_BYTES),
+    );
 
     await upsertCloudStorageCredentials({
-      accessToken: tokenData.access_token,
+      accessToken: tokenData.accessToken,
       accountEmail,
-      expiresAt: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
+      expiresAt: new Date(Date.now() + tokenData.expiresIn * 1000).toISOString(),
       organizationId: state.organizationId,
       provider: "onedrive",
-      refreshToken: tokenData.refresh_token,
+      refreshToken: tokenData.refreshToken,
       scopes: ["openid", "email", "profile", "offline_access", "User.Read", "Files.ReadWrite"],
       userId: state.userId,
     });
@@ -87,16 +92,15 @@ export async function GET(request: Request) {
       provider: "onedrive",
       status: "success",
       redirectPath: `/${state.organizationSlug}/admin/integrations?onedrive_connected=true`,
+      requestId,
     });
   } catch (error: unknown) {
-    console.error(
-      "[Microsoft OAuth Callback Error]:",
-      error instanceof Error ? error.message : "unknown_error",
-    );
+    logger.error("microsoft_oauth.callback_failed", error);
     return oauthPopupResponse({
       provider: "onedrive",
       status: "error",
       message: "microsoft_oauth_failed",
+      requestId,
     });
   }
 }

@@ -1,48 +1,65 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
-import { ScormParserService } from '@/domains/scorm/services/scorm-parser.service';
-import type { ScormManifest } from '@/domains/scorm/types';
 import { randomUUID } from 'crypto';
-import { getErrorMessage } from '@/lib/errors';
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from '@/lib/server/artifact-action-auth';
+import { dispatchBackgroundFunctionJson } from '@/lib/server/background-function-client';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
+import { SCORM_IMPORT_STATUS, SCORM_PROCESSING_STEP } from '@/domains/scorm/scorm-job-contracts';
+import { createOperationalLogger, resolveCorrelationId } from '@/lib/server/operational-logger';
+import { API_ERROR_CODE } from '@/lib/server/api-contract';
+import { apiErrorResponse, apiSuccessResponse } from '@/lib/server/api-response';
 
 const MAX_SCORM_UPLOAD_BYTES = 100 * 1024 * 1024;
+const MAX_SCORM_MULTIPART_BYTES = MAX_SCORM_UPLOAD_BYTES + 1024 * 1024;
 
 export async function POST(req: NextRequest) {
+    const correlationId = resolveCorrelationId(req.headers.get('x-request-id'));
+    const logger = createOperationalLogger('scorm.upload', { correlationId });
     try {
         const supabase = await createClient();
 
         // 1. Auth + tenant check
         const authenticatedUser = await getAuthenticatedUser(supabase);
         if (!authenticatedUser) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: 'No autorizado.', requestId: correlationId, status: 401 });
         }
         const tenant = await resolveActiveTenantContext();
         if (!tenant) {
-            return NextResponse.json({ error: 'Empresa no valida o no autorizada.' }, { status: 403 });
+            return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: 'Empresa no válida o no autorizada.', requestId: correlationId, status: 403 });
         }
         if (!await canReviewContent(authenticatedUser.userId, tenant)) {
-            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+            return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: 'Falta de permisos.', requestId: correlationId, status: 403 });
         }
         const admin = getServiceRoleClient();
 
         // 2. Parse FormData
-        const formData = await req.formData();
+        const contentType = req.headers.get('content-type') || '';
+        if (!contentType.toLowerCase().startsWith('multipart/form-data')) {
+            return apiErrorResponse({ code: API_ERROR_CODE.unsupportedMediaType, message: 'Se requiere una solicitud multipart/form-data.', requestId: correlationId, status: 415 });
+        }
+        const declaredBytes = Number(req.headers.get('content-length'));
+        if (Number.isFinite(declaredBytes) && declaredBytes > MAX_SCORM_MULTIPART_BYTES) {
+            return apiErrorResponse({ code: API_ERROR_CODE.payloadTooLarge, message: 'El paquete SCORM debe pesar menos de 100 MB.', requestId: correlationId, status: 413 });
+        }
+
+        let formData: FormData;
+        try {
+            formData = await req.formData();
+        } catch {
+            return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: 'Formulario de carga inválido.', requestId: correlationId, status: 400 });
+        }
         const file = formData.get('file');
 
         if (!(file instanceof File)) {
-            return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
+            return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: 'No se recibió un archivo.', requestId: correlationId, status: 400 });
         }
 
         if (!file.name.endsWith('.zip')) {
-            return NextResponse.json({ error: 'Invalid file type. Only .zip allowed.' }, { status: 400 });
+            return apiErrorResponse({ code: API_ERROR_CODE.unsupportedMediaType, message: 'Tipo de archivo inválido. Solo se admite .zip.', requestId: correlationId, status: 415 });
         }
         if (file.size <= 0 || file.size > MAX_SCORM_UPLOAD_BYTES) {
-            return NextResponse.json({ error: 'El paquete SCORM debe pesar menos de 100 MB.' }, { status: 413 });
+            return apiErrorResponse({ code: API_ERROR_CODE.payloadTooLarge, message: 'El paquete SCORM debe pesar menos de 100 MB.', requestId: correlationId, status: 413 });
         }
-
-        const buffer = Buffer.from(await file.arrayBuffer());
 
         // 3. Upload to Storage
         const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(-160);
@@ -55,8 +72,8 @@ export async function POST(req: NextRequest) {
             });
 
         if (uploadError) {
-            console.error('Upload Error:', uploadError);
-            return NextResponse.json({ error: 'Failed to upload file to storage' }, { status: 500 });
+            logger.error('scorm.storage_upload.failed', uploadError);
+            return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: 'No se pudo almacenar el paquete SCORM.', requestId: correlationId, retryable: true, status: 500 });
         }
 
         // 4. Create DB Record (Initial)
@@ -65,66 +82,63 @@ export async function POST(req: NextRequest) {
             .insert({
                 original_filename: file.name,
                 storage_path: storagePath,
-                status: 'SCORM_UPLOADED',
+                status: SCORM_IMPORT_STATUS.parsing,
+                processing_step: SCORM_PROCESSING_STEP.parseQueued,
                 created_by: authenticatedUser.userId,
-                organization_id: tenant.organizationId
+                correlation_id: correlationId,
+                organization_id: tenant.organizationId,
+                updated_at: new Date().toISOString(),
             })
-            .select()
+            .select('id')
             .single();
 
         if (dbError) {
-            console.error('DB Insert Error:', dbError);
+            logger.error('scorm.import_record.create_failed', dbError);
             const { error: cleanupError } = await admin.storage
                 .from('scorm-packages')
                 .remove([storagePath]);
             if (cleanupError) {
-                console.error('SCORM orphan cleanup failed:', cleanupError);
+                logger.error('scorm.storage_cleanup.failed', cleanupError);
             }
-            return NextResponse.json({ error: 'Failed to create import record' }, { status: 500 });
+            return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: 'No se pudo registrar la importación.', requestId: correlationId, retryable: true, status: 500 });
         }
-
-        // 5. Trigger Async Parsing (Sync for now for MVP simplicity, can be moved to queue)
-        // In a real production env with large files, this should be a background job.
-        // We will do a quick parse here to validate manifest and update structure.
 
         try {
-            const parser = new ScormParserService();
-            const manifest = await parser.parsePackage(buffer);
-            const typedManifest = manifest as ScormManifest;
-
-            await admin
+            await dispatchBackgroundFunctionJson(
+                'scorm-parsing-background',
+                { correlationId, importId: importRecord.id, organizationId: tenant.organizationId },
+                {
+                    fallbackError: 'No se pudo despachar el análisis SCORM.',
+                    localHandlerLoader: () => import('../../../../../../netlify/functions/scorm-parsing-background'),
+                },
+            );
+        } catch (dispatchError) {
+            logger.error('scorm.parsing.dispatch_failed', dispatchError, { importId: importRecord.id });
+            const { error: rollbackError } = await admin
                 .from('scorm_imports')
                 .update({
-                    status: 'SCORM_ANALYZED',
-                    scorm_version: typedManifest.version,
-                    manifest_raw: typedManifest,
-                    organizations: typedManifest.organizations,
-                    resources: typedManifest.resources,
-                    sco_count: typedManifest.resources.filter((resource) => resource.type === 'sco').length
+                    processing_step: null,
+                    status: SCORM_IMPORT_STATUS.uploaded,
+                    updated_at: new Date().toISOString(),
                 })
-                .eq('id', importRecord.id);
-
-            return NextResponse.json({
-                success: true,
-                importId: importRecord.id,
-                manifest
-            });
-
-        } catch (parseError: unknown) {
-            console.error('Parse Error:', parseError);
-            await admin
-                .from('scorm_imports')
-                .update({
-                    status: 'FAILED',
-                    error_message: getErrorMessage(parseError)
-                })
-                .eq('id', importRecord.id);
-
-            return NextResponse.json({ error: 'Failed to parse SCORM package: ' + getErrorMessage(parseError) }, { status: 400 });
+                .eq('id', importRecord.id)
+                .eq('organization_id', tenant.organizationId)
+                .eq('processing_step', SCORM_PROCESSING_STEP.parseQueued);
+            if (rollbackError) {
+                logger.error('scorm.parsing.reservation_release_failed', rollbackError, {
+                    importId: importRecord.id,
+                });
+            }
+            return apiErrorResponse({ code: API_ERROR_CODE.dependencyUnavailable, message: 'No se pudo iniciar el análisis SCORM.', requestId: correlationId, retryable: true, status: 503 });
         }
 
+        return apiSuccessResponse({
+            importId: importRecord.id,
+            status: SCORM_IMPORT_STATUS.parsing,
+        }, { requestId: correlationId, status: 202 });
+
     } catch (error: unknown) {
-        console.error('API Error:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        logger.error('scorm.upload.failed', error);
+        return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: 'No se pudo procesar la carga SCORM.', requestId: correlationId, retryable: true, status: 500 });
     }
 }

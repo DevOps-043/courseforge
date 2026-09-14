@@ -25,32 +25,39 @@ import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { readResponseWithLimit } from "@/domains/production/external-media-import-policy";
 import {
   DEFAULT_OUTBOUND_DOWNLOAD_TIMEOUT_MS,
+  fetchIdempotentWithRetry,
   fetchWithDeadline,
+  OutboundCircuitBreaker,
+  readJsonResponseWithLimit,
 } from "@/lib/server/outbound-http";
+import {
+  parseAccessTokenPayload,
+  parseMicrosoftGraphItem,
+  parseMicrosoftGraphItemList,
+} from "../providers/provider-json-contracts";
 
 const MAX_ONEDRIVE_IMPORT_BYTES = 150 * 1024 * 1024;
+const MAX_MICROSOFT_GRAPH_JSON_BYTES = 2 * 1024 * 1024;
+const MAX_MICROSOFT_GRAPH_METADATA_BYTES = 256 * 1024;
+const MAX_MICROSOFT_TOKEN_BYTES = 64 * 1024;
+const microsoftGraphCircuitBreaker = new OutboundCircuitBreaker(5, 30_000);
 
 function fetchMicrosoftGraph(
   input: string,
   init: RequestInit = {},
   timeoutMilliseconds?: number,
 ) {
+  const method = (init.method || "GET").toUpperCase();
+  if (method === "GET" || method === "HEAD") {
+    return fetchIdempotentWithRetry(input, init, timeoutMilliseconds
+      ? {
+          perAttemptTimeoutMilliseconds: timeoutMilliseconds,
+          totalTimeoutMilliseconds: timeoutMilliseconds,
+          circuitBreaker: microsoftGraphCircuitBreaker,
+        }
+      : { circuitBreaker: microsoftGraphCircuitBreaker });
+  }
   return fetchWithDeadline(input, init, timeoutMilliseconds);
-}
-
-interface MicrosoftTokenResponse {
-  access_token: string;
-  expires_in: number;
-  refresh_token?: string;
-}
-
-interface GraphDriveItem {
-  id: string;
-  name: string;
-  size?: number;
-  webUrl?: string;
-  file?: { mimeType?: string };
-  folder?: unknown;
 }
 
 export class OneDriveService {
@@ -82,19 +89,23 @@ export class OneDriveService {
       throw new Error("La renovacion del token de Microsoft fallo. El usuario debe reconectar.");
     }
 
-    const tokenData = (await response.json()) as MicrosoftTokenResponse;
-    const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
+    const tokenData = parseAccessTokenPayload(
+      await readJsonResponseWithLimit(response, MAX_MICROSOFT_TOKEN_BYTES),
+      "Microsoft",
+      true,
+    );
+    const expiresAt = new Date(Date.now() + tokenData.expiresIn * 1000).toISOString();
 
     await updateCloudStorageAccessToken({
-      accessToken: tokenData.access_token,
+      accessToken: tokenData.accessToken,
       expiresAt,
       organizationId,
       provider: "onedrive",
-      refreshToken: tokenData.refresh_token,
+      refreshToken: tokenData.refreshToken,
       userId,
     });
 
-    return tokenData.access_token;
+    return tokenData.accessToken;
   }
 
   async createFolder(name: string, parentId: string | null, accessToken: string) {
@@ -119,7 +130,9 @@ export class OneDriveService {
       throw new Error(`Microsoft Graph rechazó la creación de carpeta (${response.status}).`);
     }
 
-    return (await response.json()) as GraphDriveItem;
+    return parseMicrosoftGraphItem(
+      await readJsonResponseWithLimit(response, MAX_MICROSOFT_GRAPH_METADATA_BYTES),
+    );
   }
 
   async setupArtifactFolderTree(
@@ -229,13 +242,14 @@ export class OneDriveService {
       throw new Error(`No se pudieron listar archivos de OneDrive: ${response.statusText}`);
     }
 
-    const data = (await response.json()) as { value?: GraphDriveItem[] };
-    return (data.value || [])
-      .filter((item) => !item.folder)
+    return parseMicrosoftGraphItemList(
+      await readJsonResponseWithLimit(response, MAX_MICROSOFT_GRAPH_JSON_BYTES),
+    )
+      .filter((item) => !item.isFolder)
       .map((item) => ({
         id: item.id,
         name: item.name,
-        mimeType: item.file?.mimeType || "application/octet-stream",
+        mimeType: item.mimeType || "application/octet-stream",
         size: item.size,
         webUrl: item.webUrl,
       }));
@@ -260,7 +274,9 @@ export class OneDriveService {
       throw new Error(`No se pudo leer metadata de OneDrive: ${metadataResponse.statusText}`);
     }
 
-    const metadata = (await metadataResponse.json()) as GraphDriveItem;
+    const metadata = parseMicrosoftGraphItem(
+      await readJsonResponseWithLimit(metadataResponse, MAX_MICROSOFT_GRAPH_METADATA_BYTES),
+    );
     if (typeof metadata.size === "number" && metadata.size > MAX_ONEDRIVE_IMPORT_BYTES) {
       throw new Error("El archivo de OneDrive supera el límite de importación de 150 MB.");
     }
@@ -288,7 +304,7 @@ export class OneDriveService {
       buffer,
       componentId,
       fileName: metadata.name || `onedrive-${itemId}`,
-      mimeType: metadata.file?.mimeType || contentResponse.headers.get("content-type") || "",
+      mimeType: metadata.mimeType || contentResponse.headers.get("content-type") || "",
       sourcePrefix: "onedrive",
       type,
     });

@@ -302,7 +302,6 @@ Publicacion:
 - `POST /api/admin/scorm/upload`
 - `POST /api/admin/scorm/process`
 - `POST /api/gpt/sources`
-- `GET /api/debug/soflia`
 - `POST /api/production/cloud-storage/import`
 - `GET /api/production/cloud-storage/list`
 - `POST /api/production/google-drive/import`

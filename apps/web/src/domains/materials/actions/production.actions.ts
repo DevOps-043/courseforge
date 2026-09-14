@@ -12,6 +12,12 @@ import { callBackgroundFunctionJson } from "@/lib/server/background-function-cli
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import { getVideoProviderAndId } from "@/lib/video-platform";
 import { getProductionApiBaseUrl } from "@/lib/server/production-api-url";
+import {
+  fetchIdempotentWithRetry,
+  fetchWithDeadline,
+  readJsonResponseWithLimit,
+  readResponseTextWithLimit,
+} from "@/lib/server/outbound-http";
 import { DesktopWorkerControlPlane } from "@/lib/server/desktop-worker-control-plane";
 import { RenderBatchService } from "@/domains/production/render-batches/render-batch.service";
 import {
@@ -47,6 +53,20 @@ import type {
   ProductionStatus,
   StoryboardItem,
 } from "../types/materials.types";
+
+const PRODUCTION_API_MUTATION_TIMEOUT_MS = 30_000;
+const PRODUCTION_API_RESPONSE_MAX_BYTES = 1024 * 1024;
+const PRODUCTION_API_ERROR_MAX_BYTES = 32 * 1024;
+
+function fetchProductionApiRead(input: RequestInfo | URL, init: RequestInit = {}) {
+  return fetchIdempotentWithRetry(input, init, {
+    attempts: 3,
+    baseDelayMilliseconds: 200,
+    maxDelayMilliseconds: 1_000,
+    perAttemptTimeoutMilliseconds: 10_000,
+    totalTimeoutMilliseconds: 20_000,
+  });
+}
 
 interface ProductionArtifactRelation {
   course_id?: string | null;
@@ -1355,7 +1375,7 @@ export async function assembleRemotionVideoAction(
       variablesKeys: Object.keys(variables || {}),
     });
 
-    const response = await fetch(`${productionApiUrl}/api/v1/production/remotion/render`, {
+    const response = await fetchWithDeadline(`${productionApiUrl}/api/v1/production/remotion/render`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1365,17 +1385,20 @@ export async function assembleRemotionVideoAction(
         componentId,
         templateId,
         variables
-      })
-    });
+      }),
+    }, PRODUCTION_API_MUTATION_TIMEOUT_MS);
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorText = await readResponseTextWithLimit(response, PRODUCTION_API_ERROR_MAX_BYTES)
+        .catch(() => "");
       let errorMessage = `HTTP Error ${response.status}`;
       let errorCode: string | undefined;
       try {
-        const errorJson = JSON.parse(errorText);
-        errorMessage = errorJson.error || errorMessage;
-        errorCode = typeof errorJson.code === "string" ? errorJson.code : undefined;
+        const errorJson: unknown = JSON.parse(errorText);
+        if (isRecord(errorJson)) {
+          errorMessage = typeof errorJson.error === "string" ? errorJson.error : errorMessage;
+          errorCode = typeof errorJson.code === "string" ? errorJson.code : undefined;
+        }
       } catch (_) {}
 
       // Revert status to PENDING in case of request error
@@ -1390,7 +1413,13 @@ export async function assembleRemotionVideoAction(
       return { success: false, error: errorMessage, code: errorCode };
     }
 
-    const result = await response.json();
+    const result = await readJsonResponseWithLimit<unknown>(
+      response,
+      PRODUCTION_API_RESPONSE_MAX_BYTES,
+    );
+    if (!isRecord(result)) {
+      throw new Error("El API de render devolvio una respuesta invalida.");
+    }
     if (result.status === "FAILED") {
       await supabase.rpc("patch_material_component_assets", {
         p_component_id: componentId,
@@ -1402,15 +1431,17 @@ export async function assembleRemotionVideoAction(
 
       return {
         success: false,
-        error: result.message || "El render fue rechazado por el proveedor",
-        code: result.code,
+        error: typeof result.message === "string"
+          ? result.message
+          : "El render fue rechazado por el proveedor",
+        code: typeof result.code === "string" ? result.code : undefined,
       };
     }
 
     return {
       success: true,
-      jobId: result.jobId,
-      status: result.status,
+      jobId: typeof result.jobId === "string" ? result.jobId : undefined,
+      status: typeof result.status === "string" ? result.status : undefined,
       productionStatus: "IN_PROGRESS" as ProductionStatus
     };
 
@@ -1488,7 +1519,7 @@ export async function getRemotionJobStatusAction(jobId: string) {
     if (!token) return { success: false, error: "No se encontro un token de autenticacion" };
 
     const productionApiUrl = getProductionApiBaseUrl();
-    const response = await fetch(`${productionApiUrl}/api/v1/production/jobs/${jobId}/status`, {
+    const response = await fetchProductionApiRead(`${productionApiUrl}/api/v1/production/jobs/${jobId}/status`, {
       headers: {
         "Authorization": `Bearer ${token}`,
       }
@@ -1498,7 +1529,13 @@ export async function getRemotionJobStatusAction(jobId: string) {
       return { success: false, error: `HTTP Error ${response.status}` };
     }
 
-    const job = await response.json();
+    const job = await readJsonResponseWithLimit<unknown>(
+      response,
+      PRODUCTION_API_RESPONSE_MAX_BYTES,
+    );
+    if (!isRecord(job)) {
+      return { success: false, error: "El API de render devolvio un estado invalido" };
+    }
     return {
       success: true,
       job
@@ -1646,10 +1683,10 @@ export async function getRenderWorkerStatusAction(artifactId: string) {
 
     const productionApiUrl = getProductionApiBaseUrl();
     const [readinessResponse, workersResponse] = await Promise.all([
-      fetch(`${productionApiUrl}/api/v1/production/remotion/readiness`, {
+      fetchProductionApiRead(`${productionApiUrl}/api/v1/production/remotion/readiness`, {
         headers: { "Authorization": `Bearer ${token}` },
       }),
-      fetch(
+      fetchProductionApiRead(
         `${productionApiUrl}/api/v1/production/remotion/workers?organizationId=${encodeURIComponent(organizationId)}`,
         {
           headers: { "Authorization": `Bearer ${token}` },
@@ -1657,16 +1694,28 @@ export async function getRenderWorkerStatusAction(artifactId: string) {
       ),
     ]);
 
-    const readiness = await readinessResponse.json().catch(() => ({}));
+    const readiness = await readJsonResponseWithLimit<unknown>(
+      readinessResponse,
+      PRODUCTION_API_RESPONSE_MAX_BYTES,
+    ).catch(() => ({}));
     if (!workersResponse.ok) {
       return { success: false, error: `HTTP Error ${workersResponse.status}` };
     }
 
-    const workerPayload = await workersResponse.json();
+    const workerPayload = await readJsonResponseWithLimit<unknown>(
+      workersResponse,
+      PRODUCTION_API_RESPONSE_MAX_BYTES,
+    );
+    if (!isRecord(workerPayload) || !Array.isArray(workerPayload.workers)) {
+      return { success: false, error: "El API de render devolvio workers invalidos" };
+    }
+    const readinessConfig = isRecord(readiness) && isRecord(readiness.config)
+      ? readiness.config
+      : null;
     const renderProvider =
-      typeof readiness?.config?.provider === "string"
-        ? readiness.config.provider
-        : typeof readiness?.provider === "string"
+      typeof readinessConfig?.provider === "string"
+        ? readinessConfig.provider
+        : isRecord(readiness) && typeof readiness.provider === "string"
           ? readiness.provider
           : null;
 
@@ -1675,7 +1724,7 @@ export async function getRenderWorkerStatusAction(artifactId: string) {
       apiUrl: productionApiUrl,
       renderProvider,
       requiresDesktopWorker: renderProvider === "desktop_worker",
-      workers: (workerPayload.workers || []) as RenderWorkerStatusView[],
+      workers: workerPayload.workers.filter(isRecord) as unknown as RenderWorkerStatusView[],
     };
   });
 }
@@ -1693,25 +1742,32 @@ export async function createRenderWorkerLinkCodeAction(artifactId: string) {
     }
 
     const productionApiUrl = getProductionApiBaseUrl();
-    const response = await fetch(`${productionApiUrl}/api/v1/production/remotion/workers/link-codes`, {
+    const response = await fetchWithDeadline(`${productionApiUrl}/api/v1/production/remotion/workers/link-codes`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`,
       },
       body: JSON.stringify({ organizationId }),
-    });
+    }, PRODUCTION_API_MUTATION_TIMEOUT_MS);
 
     if (!response.ok) {
       return { success: false, error: `HTTP Error ${response.status}` };
     }
 
-    const result = await response.json();
+    const result = await readJsonResponseWithLimit<unknown>(
+      response,
+      PRODUCTION_API_RESPONSE_MAX_BYTES,
+    );
+    if (!isRecord(result) || typeof result.code !== "string") {
+      return { success: false, error: "El API de render devolvio un codigo invalido" };
+    }
+    const linkCode = isRecord(result.linkCode) ? result.linkCode : null;
     return {
       success: true,
       apiUrl: productionApiUrl,
-      code: result.code as string,
-      expiresAt: result.linkCode?.expires_at as string | undefined,
+      code: result.code,
+      expiresAt: typeof linkCode?.expires_at === "string" ? linkCode.expires_at : undefined,
     };
   });
 }

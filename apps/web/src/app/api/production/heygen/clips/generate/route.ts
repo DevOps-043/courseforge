@@ -1,5 +1,3 @@
-import { NextResponse } from "next/server";
-import { z } from "zod";
 import { getErrorMessage } from "@/lib/errors";
 import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { signBackgroundPayload } from "@/lib/server/background-payload-signature";
@@ -21,40 +19,45 @@ import {
 } from "@/domains/production/providers/heygen/heygen-credential-resolver.service";
 import { heygenGenerateClipsRequestSchema } from "@/domains/production/providers/heygen/heygen.validators";
 import { createClient } from "@/utils/supabase/server";
+import { API_ERROR_CODE, parseJsonRequest, type ApiErrorCode } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
+
+const MAX_HEYGEN_CLIP_GENERATION_REQUEST_BYTES = 1024 * 1024;
 
 export async function POST(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.heygen.clips.generate", { correlationId: requestId });
   try {
-    const payload = heygenGenerateClipsRequestSchema.parse(
-      await request.json().catch(() => ({})),
-    );
+    const parsedRequest = await parseJsonRequest(request, heygenGenerateClipsRequestSchema, MAX_HEYGEN_CLIP_GENERATION_REQUEST_BYTES);
+    if (!parsedRequest.success) {
+      return apiErrorResponse({
+        code: parsedRequest.reason === "too_large" ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
+        message: parsedRequest.reason === "too_large" ? "La solicitud excede el tamaño permitido." : "Payload invalido para generar clips HeyGen.",
+        requestId,
+        status: parsedRequest.reason === "too_large" ? 413 : 400,
+      });
+    }
+    const payload = parsedRequest.data;
     const supabase = await createClient();
     const authenticatedUser = await getAuthenticatedUser(supabase);
     if (!authenticatedUser) {
-      return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+      return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
     }
 
     const canReview = await canReviewContent(authenticatedUser.userId);
     if (!canReview) {
-      return NextResponse.json(
-        { error: "No tienes permisos para generar clips con HeyGen." },
-        { status: 403 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para generar clips con HeyGen.", requestId, status: 403 });
     }
 
     const tenant = await resolveActiveTenantContext();
     if (!tenant) {
-      return NextResponse.json(
-        { error: "Empresa no valida o no autorizada." },
-        { status: 403 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no valida o no autorizada.", requestId, status: 403 });
     }
 
     const authorizedComponent = await getAuthorizedMaterialComponentAdmin(payload.componentId);
     if (!authorizedComponent) {
-      return NextResponse.json(
-        { error: "Componente no encontrado para esta empresa." },
-        { status: 404 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Componente no encontrado para esta empresa.", requestId, status: 404 });
     }
 
     const heygenAuth = await getHeygenClientForOrganization({
@@ -120,9 +123,8 @@ export async function POST(request: Request) {
       throw new HeygenScenesServiceError(message, 503);
     }
 
-    return NextResponse.json(
+    return apiSuccessResponse(
       {
-        success: true,
         data: {
           clips: queued.clips,
           jobs: [],
@@ -130,41 +132,47 @@ export async function POST(request: Request) {
           voiceClips: queued.voiceClips,
         },
       },
-      { status: 202 },
+      { requestId, status: 202 },
     );
   } catch (error: unknown) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Payload invalido para generar clips HeyGen." },
-        { status: 400 },
-      );
-    }
-
     if (error instanceof HeygenScenesServiceError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return apiErrorResponse({
+        code: mapServiceStatus(error.status),
+        message: error.message,
+        requestId,
+        retryable: error.status === 429 || error.status >= 500,
+        status: error.status,
+      });
     }
 
     if (error instanceof HeygenCredentialResolverError) {
-      return NextResponse.json(
-        { error: error.message, code: error.code },
-        { status: error.status },
-      );
+      return apiErrorResponse({ code: error.status === 409 ? API_ERROR_CODE.conflict : API_ERROR_CODE.invalidRequest, details: { providerCode: error.code }, message: error.message, requestId, status: error.status });
     }
 
     if (error instanceof HeygenApiError) {
-      return NextResponse.json(
-        { error: `No se pudo verificar el saldo de HeyGen antes de generar. ${error.message}` },
-        { status: error.status === 429 ? 429 : 502 },
-      );
+      const rateLimited = error.status === 429;
+      return apiErrorResponse({
+        code: rateLimited ? API_ERROR_CODE.rateLimited : API_ERROR_CODE.providerError,
+        details: { providerCode: error.providerCode || null },
+        headers: error.retryAfterSeconds ? { "Retry-After": String(error.retryAfterSeconds) } : undefined,
+        message: rateLimited ? "HeyGen alcanzó temporalmente su límite de solicitudes." : "No se pudo verificar la disponibilidad de HeyGen antes de generar.",
+        requestId,
+        retryable: rateLimited || error.status >= 500,
+        status: rateLimited ? 429 : 502,
+      });
     }
 
-    console.error("[API /production/heygen/clips/generate] Unexpected error:", {
-      message: getErrorMessage(error),
-    });
-
-    return NextResponse.json(
-      { error: "Error interno del servidor al generar clips HeyGen." },
-      { status: 500 },
-    );
+    logger.error("production.heygen.clips.generate_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "Error interno del servidor al generar clips HeyGen.", requestId, retryable: true, status: 500 });
   }
+}
+
+function mapServiceStatus(status: number): ApiErrorCode {
+  if (status === 403) return API_ERROR_CODE.tenantForbidden;
+  if (status === 404) return API_ERROR_CODE.resourceNotFound;
+  if (status === 409) return API_ERROR_CODE.conflict;
+  if (status === 429) return API_ERROR_CODE.rateLimited;
+  if (status === 503) return API_ERROR_CODE.dependencyUnavailable;
+  if (status >= 500) return API_ERROR_CODE.internalError;
+  return API_ERROR_CODE.invalidRequest;
 }

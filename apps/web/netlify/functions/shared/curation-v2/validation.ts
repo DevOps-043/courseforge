@@ -1,4 +1,12 @@
 import { createHash } from "node:crypto";
+import {
+  OutboundResponseTooLargeError,
+  readResponseTextWithLimit,
+} from "../../../../src/lib/server/outbound-http";
+import {
+  fetchPublicUrlWithRedirects,
+  type PublicAddressResolver,
+} from "../../../../src/lib/server/public-url-policy";
 import type {
   CurationValidationReport,
   PdfValidationResult,
@@ -7,6 +15,9 @@ import type {
 
 export const MINIMUM_SOURCE_CHARACTERS = 500;
 export const MINIMUM_PDF_CHARACTERS = 500;
+const MAXIMUM_SOURCE_BYTES = 2 * 1024 * 1024;
+const MAXIMUM_SOURCE_REDIRECTS = 5;
+const SOURCE_VALIDATION_TIMEOUT_MS = 15_000;
 
 const BLOCKED_DOMAINS = [
   "facebook.com",
@@ -137,9 +148,11 @@ function extractHtmlTitle(html: string) {
 export async function validateUrlSource(
   rawUrl: string,
   options: {
+    addressResolver?: PublicAddressResolver;
     existingNormalizedUrls?: Iterable<string>;
     fetchImpl?: typeof fetch;
     minimumCharacters?: number;
+    timeoutMilliseconds?: number;
   } = {},
 ): Promise<UrlValidationResult> {
   let normalizedUrl = rawUrl.trim();
@@ -171,22 +184,28 @@ export async function validateUrlSource(
     return { isValid: false, normalizedUrl, report };
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
-    const response = await (options.fetchImpl || fetch)(normalizedUrl, {
-      redirect: "follow",
-      signal: controller.signal,
+    const result = await fetchPublicUrlWithRedirects(normalizedUrl, {
+      addressResolver: options.addressResolver,
+      fetchImpl: options.fetchImpl,
+      maximumRedirects: MAXIMUM_SOURCE_REDIRECTS,
+      timeoutMilliseconds: options.timeoutMilliseconds || SOURCE_VALIDATION_TIMEOUT_MS,
       headers: {
         accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.2",
         "user-agent": "CourseforgeSourceValidator/2.0",
       },
     });
+    const { response } = result;
     checks.http_ok = response.ok;
     checks.valid_mime = /(?:text\/html|application\/xhtml\+xml|text\/plain)/i.test(
       response.headers.get("content-type") || "",
     );
-    const html = await response.text();
+    if (!checks.http_ok || !checks.valid_mime) {
+      await response.body?.cancel().catch(() => undefined);
+    }
+    const html = checks.http_ok && checks.valid_mime
+      ? await readResponseTextWithLimit(response, MAXIMUM_SOURCE_BYTES)
+      : "";
     const readable = extractReadableText(html);
     checks.soft_404 = isSoft404Content(readable);
     checks.paywall = hasPaywallContent(readable);
@@ -207,7 +226,7 @@ export async function validateUrlSource(
       !checks.paywall &&
       checks.minimum_content;
     const report = buildReport(isValid ? "valid" : "invalid", reason, checks);
-    report.normalized_url = normalizeSourceUrl(response.url || normalizedUrl);
+    report.normalized_url = normalizeSourceUrl(result.url.toString());
     report.http_status_code = response.status;
     report.content_characters = readable.length;
     report.content_excerpt = readable.slice(0, 6_000);
@@ -219,7 +238,9 @@ export async function validateUrlSource(
     };
   } catch (error) {
     const reason =
-      error instanceof Error && error.name === "AbortError"
+      error instanceof OutboundResponseTooLargeError
+        ? "La fuente excede el limite de respuesta de 2 MiB."
+        : error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")
         ? "La validacion excedio el tiempo limite."
         : error instanceof Error
           ? error.message
@@ -227,8 +248,6 @@ export async function validateUrlSource(
     const report = buildReport("review_required", reason, checks);
     report.normalized_url = normalizedUrl;
     return { isValid: false, normalizedUrl, report };
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

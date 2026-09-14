@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
   getAuthenticatedUser,
@@ -6,6 +5,9 @@ import {
 } from "@/lib/server/artifact-action-auth";
 import { PRODUCTION_JOB_TYPES } from "@/domains/production/types/production.types";
 import { createClient } from "@/utils/supabase/server";
+import { API_ERROR_CODE } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
 const querySchema = z.object({
   componentId: z.string().uuid(),
@@ -14,22 +16,25 @@ const querySchema = z.object({
 });
 
 export async function GET(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.slides.jobs", { correlationId: requestId });
+  try {
   const parsed = querySchema.safeParse({
     componentId: new URL(request.url).searchParams.get("componentId"),
     createdAfter: new URL(request.url).searchParams.get("createdAfter") || undefined,
     jobId: new URL(request.url).searchParams.get("jobId") || undefined,
   });
   if (!parsed.success) {
-    return NextResponse.json({ error: "Parametros invalidos." }, { status: 400 });
+    return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Parámetros inválidos.", requestId, status: 400 });
   }
 
   const supabase = await createClient();
   if (!(await getAuthenticatedUser(supabase))) {
-    return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+    return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
   }
   const authorized = await getAuthorizedMaterialComponentAdmin(parsed.data.componentId);
   if (!authorized) {
-    return NextResponse.json({ error: "Componente no encontrado." }, { status: 404 });
+    return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Componente no encontrado.", requestId, status: 404 });
   }
 
   let query = authorized.admin
@@ -46,7 +51,8 @@ export async function GET(request: Request) {
   }
   const { data, error } = await query.maybeSingle();
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    logger.error("production.slides.jobs_query_failed", error, { componentId: parsed.data.componentId });
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo consultar el trabajo de slides.", requestId, retryable: true, status: 500 });
   }
 
   const { data: component } = await authorized.admin
@@ -55,12 +61,15 @@ export async function GET(request: Request) {
     .eq("id", parsed.data.componentId)
     .single();
 
-  return NextResponse.json({
-    success: true,
+  return apiSuccessResponse({
     data: {
       assets: component?.assets || {},
       job: data || null,
       status: data?.status || "QUEUED",
     },
-  });
+  }, { requestId });
+  } catch (error) {
+    logger.error("production.slides.jobs_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo consultar el trabajo de slides.", requestId, retryable: true, status: 500 });
+  }
 }

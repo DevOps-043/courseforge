@@ -1,6 +1,4 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getErrorDetails, getErrorMessage } from "@/lib/errors";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -18,6 +16,11 @@ import {
   validateHyperframesCompositionId,
 } from "@/domains/production/hyperframes/hyperframes-request-validation";
 import { createClient } from "@/utils/supabase/server";
+import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
+
+const MAX_HYPERFRAMES_RENDER_REQUEST_BYTES = 16 * 1024;
 
 const renderRequestSchema = z.object({
   aspectRatio: z.enum(["16:9", "9:16", "1:1"]),
@@ -32,33 +35,26 @@ const renderRequestSchema = z.object({
 
 /** Returns durable provider work so a reopened editor can resume reconciliation. */
 export async function GET(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.hyperframes.renders", { correlationId: requestId });
   try {
     const compositionId = validateHyperframesCompositionId(
       new URL(request.url).searchParams.get("compositionId"),
     );
     if (!compositionId.success) {
-      return NextResponse.json(
-        { error: "Identificador de composición inválido.", code: "COMPOSITION_ID_INVALID" },
-        { status: 400 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, details: { reason: "COMPOSITION_ID_INVALID" }, message: "Identificador de composición inválido.", requestId, status: 400 });
     }
     const supabase = await createClient();
     const authenticatedUser = await getAuthenticatedUser(supabase);
     if (!authenticatedUser) {
-      return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+      return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
     }
     if (!(await canReviewContent(authenticatedUser.userId))) {
-      return NextResponse.json(
-        { error: "No tienes permisos para consultar renders de HyperFrames." },
-        { status: 403 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para consultar renders de HyperFrames.", requestId, status: 403 });
     }
     const tenant = await resolveActiveTenantContext();
     if (!tenant) {
-      return NextResponse.json(
-        { error: "Empresa no válida o no autorizada." },
-        { status: 403 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 });
     }
 
     const service = new HyperframesRenderRecoveryService(getServiceRoleClient());
@@ -66,55 +62,37 @@ export async function GET(request: Request) {
       compositionId: compositionId.data,
       organizationId: tenant.organizationId,
     });
-    return NextResponse.json(
-      { success: true, data: result },
-      { headers: { "Cache-Control": "private, no-store" } },
-    );
+    return apiSuccessResponse({ data: result }, { headers: { "Cache-Control": "private, no-store" }, requestId });
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
-      console.error("[API /production/hyperframes/renders GET] Recovery data validation failed:", {
-        issues: summarizeHyperframesValidationIssues(error),
-      });
-      return NextResponse.json(
-        {
-          error: "Los datos del render pendiente no cumplen el formato requerido.",
-          code: "RENDER_RECOVERY_DATA_INVALID",
-        },
-        { status: 422 },
-      );
+      const issues = summarizeHyperframesValidationIssues(error);
+      logger.warn("production.hyperframes.renders.recovery_data_invalid", { issues });
+      return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, details: { reason: "RENDER_RECOVERY_DATA_INVALID" }, message: "Los datos del render pendiente no cumplen el formato requerido.", requestId, status: 422 });
     }
-    console.error("[API /production/hyperframes/renders GET] Unexpected error:", {
-      ...getErrorDetails(error),
-      message: getErrorMessage(error),
-    });
-    return NextResponse.json(
-      { error: "Error interno al recuperar el render pendiente." },
-      { status: 500 },
-    );
+    logger.error("production.hyperframes.renders.recovery_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "Error interno al recuperar el render pendiente.", requestId, retryable: true, status: 500 });
   }
 }
 
 /** Submits an approved internal revision; it never accepts arbitrary HTML or ZIPs. */
 export async function POST(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.hyperframes.renders", { correlationId: requestId });
   try {
-    const input = renderRequestSchema.parse(await request.json().catch(() => ({})));
+    const parsed = await parseJsonRequest(request, renderRequestSchema, MAX_HYPERFRAMES_RENDER_REQUEST_BYTES);
+    if (!parsed.success) return apiErrorResponse({ code: parsed.reason === "too_large" ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest, message: parsed.reason === "too_large" ? "La solicitud excede el tamaño permitido." : "Payload inválido para renderizar el video.", requestId, status: parsed.reason === "too_large" ? 413 : 400 });
+    const input = parsed.data;
     const supabase = await createClient();
     const authenticatedUser = await getAuthenticatedUser(supabase);
     if (!authenticatedUser) {
-      return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+      return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
     }
     if (!(await canReviewContent(authenticatedUser.userId))) {
-      return NextResponse.json(
-        { error: "No tienes permisos para enviar renders de HyperFrames." },
-        { status: 403 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para enviar renders de HyperFrames.", requestId, status: 403 });
     }
     const tenant = await resolveActiveTenantContext();
     if (!tenant) {
-      return NextResponse.json(
-        { error: "Empresa no válida o no autorizada." },
-        { status: 403 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 });
     }
 
     const admin = getServiceRoleClient();
@@ -148,24 +126,21 @@ export async function POST(request: Request) {
         );
       }
     }
-    return NextResponse.json({ success: true, data: result }, { status: result.reused ? 200 : 202 });
+    return apiSuccessResponse({ data: result }, { requestId, status: result.reused ? 200 : 202 });
   } catch (error: unknown) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Payload inválido para renderizar el video." },
-        { status: 400 },
-      );
-    }
     if (error instanceof HyperframesRenderSubmissionError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return apiErrorResponse({ code: mapStatusToErrorCode(error.status), message: error.message, requestId, retryable: error.status === 503, status: error.status });
     }
-    console.error("[API /production/hyperframes/renders] Unexpected error:", {
-      ...getErrorDetails(error),
-      message: getErrorMessage(error),
-    });
-    return NextResponse.json(
-      { error: "Error interno al enviar el render de video." },
-      { status: 500 },
-    );
+    logger.error("production.hyperframes.renders.submission_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "Error interno al enviar el render de video.", requestId, retryable: true, status: 500 });
   }
+}
+
+function mapStatusToErrorCode(status: number) {
+  if (status === 400 || status === 422) return API_ERROR_CODE.invalidRequest;
+  if (status === 403) return API_ERROR_CODE.roleForbidden;
+  if (status === 404) return API_ERROR_CODE.resourceNotFound;
+  if (status === 409) return API_ERROR_CODE.conflict;
+  if (status === 503) return API_ERROR_CODE.dependencyUnavailable;
+  return API_ERROR_CODE.internalError;
 }

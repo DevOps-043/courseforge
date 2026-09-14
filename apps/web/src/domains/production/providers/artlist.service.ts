@@ -5,7 +5,11 @@ import {
 } from "@/domains/production/external-media-import-policy";
 import {
   DEFAULT_OUTBOUND_DOWNLOAD_TIMEOUT_MS,
+  fetchIdempotentWithRetry,
   fetchWithDeadline,
+  OutboundCircuitBreaker,
+  readJsonResponseWithLimit,
+  type IdempotentRetryOptions,
 } from "@/lib/server/outbound-http";
 import { PRODUCTION_MEDIA_CACHE_CONTROL_SECONDS } from "../media-storage.config";
 import {
@@ -14,16 +18,26 @@ import {
   type ArtlistTrack,
   type ArtlistVideo,
 } from "./artlist.types";
+import {
+  parseAccessTokenPayload,
+  parseArtlistDownloadPayload,
+  parseArtlistSearchResultsEnvelope,
+} from "./provider-json-contracts";
 
 const MAX_ARTLIST_IMPORT_BYTES = 150 * 1024 * 1024;
+const MAX_ARTLIST_JSON_BYTES = 2 * 1024 * 1024;
+const MAX_ARTLIST_TOKEN_BYTES = 64 * 1024;
+const artlistCircuitBreaker = new OutboundCircuitBreaker(5, 30_000);
 
-interface ArtlistTokenResponse {
-  access_token?: string;
-}
-
-interface ArtlistDownloadResponse {
-  download_url?: string;
-  duration?: number;
+function fetchArtlistRead(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  options: IdempotentRetryOptions = {},
+) {
+  return fetchIdempotentWithRetry(input, init, {
+    ...options,
+    circuitBreaker: artlistCircuitBreaker,
+  });
 }
 
 // ---------------------------------------------------------
@@ -139,15 +153,13 @@ export class ArtlistService {
       try {
         // Real Enterprise API search logic here
         const token = await this.getAccessToken();
-        const response = await fetchWithDeadline(`https://api.artlist.io/v1/${type}/search?q=${encodeURIComponent(query)}`, {
+        const response = await fetchArtlistRead(`https://api.artlist.io/v1/${type}/search?q=${encodeURIComponent(query)}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (response.ok) {
-          const data: unknown = await response.json();
+          const data = await readJsonResponseWithLimit(response, MAX_ARTLIST_JSON_BYTES);
           const results = parseArtlistSearchResults(
-            typeof data === "object" && data !== null && "results" in data
-              ? data.results
-              : undefined,
+            parseArtlistSearchResultsEnvelope(data),
             type,
           );
           if (results.length > 0) return results;
@@ -210,12 +222,14 @@ export class ArtlistService {
     if (!sourceUrl && this.isConfigured()) {
       try {
         const token = await this.getAccessToken();
-        const response = await fetchWithDeadline(`https://api.artlist.io/v1/${type}/${assetId}/download`, {
+        const response = await fetchArtlistRead(`https://api.artlist.io/v1/${type}/${assetId}/download`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (response.ok) {
-          const data = (await response.json()) as ArtlistDownloadResponse;
-          sourceUrl = data.download_url || "";
+          const data = parseArtlistDownloadPayload(
+            await readJsonResponseWithLimit(response, MAX_ARTLIST_JSON_BYTES),
+          );
+          sourceUrl = data.downloadUrl || "";
           duration = data.duration || 0;
         }
       } catch (err) {
@@ -229,10 +243,13 @@ export class ArtlistService {
 
     // 1. Validate and fetch the source with a bounded download window.
     await assertSafeExternalMediaUrl(sourceUrl);
-    const response = await fetchWithDeadline(
+    const response = await fetchArtlistRead(
       sourceUrl,
       {},
-      DEFAULT_OUTBOUND_DOWNLOAD_TIMEOUT_MS,
+      {
+        perAttemptTimeoutMilliseconds: DEFAULT_OUTBOUND_DOWNLOAD_TIMEOUT_MS,
+        totalTimeoutMilliseconds: DEFAULT_OUTBOUND_DOWNLOAD_TIMEOUT_MS,
+      },
     );
     if (!response.ok) {
       throw new Error(`No se pudo descargar el archivo desde el CDN de Artlist (HTTP ${response.status}).`);
@@ -298,10 +315,9 @@ export class ArtlistService {
       throw new Error("No se pudo obtener el Access Token de Artlist");
     }
 
-    const data = (await response.json()) as ArtlistTokenResponse;
-    if (!data.access_token) {
-      throw new Error("Artlist devolvio una respuesta de autenticacion incompleta");
-    }
-    return data.access_token;
+    return parseAccessTokenPayload(
+      await readJsonResponseWithLimit(response, MAX_ARTLIST_TOKEN_BYTES),
+      "Artlist",
+    ).accessToken;
   }
 }

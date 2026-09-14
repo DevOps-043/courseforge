@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { buildExternalAuthorBundleBaseZip } from "@/domains/production/bundle-agent/generation.service";
-import { sanitizeErrorMessage } from "@/domains/production/bundle-agent/redaction.service";
 import { resolveBundleAgentAuthContext } from "@/domains/production/bundle-agent/route-context";
+import { bundleAgentRouteErrorResponse } from "@/domains/production/bundle-agent/route-contract";
 import {
   buildSlideTemplatePackageZip,
   buildSlideTemplateSpecFromConversation,
 } from "@/domains/production/bundle-agent/slide-template-package.service";
+import { resolveCorrelationId } from "@/lib/server/operational-logger";
 
 export async function GET(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
   try {
     await resolveBundleAgentAuthContext();
     const url = new URL(request.url);
@@ -19,16 +21,16 @@ export async function GET(request: Request) {
         }))
       : await buildExternalAuthorBundleBaseZip();
 
-    return new NextResponse(Buffer.from(bundle.buffer), {
+    return new NextResponse(bundle.buffer, {
       headers: {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="${bundle.originalFileName}"`,
         "Cache-Control": "no-store",
         "X-Content-Type-Options": "nosniff",
+        "x-request-id": requestId,
       },
     });
   } catch (error) {
-    const message = sanitizeErrorMessage(error);
-    return NextResponse.json({ success: false, error: message }, { status: message.includes("No autorizado") ? 401 : 400 });
+    return bundleAgentRouteErrorResponse({ component: "admin.bundle-agent.base-bundle", error, requestId });
   }
 }

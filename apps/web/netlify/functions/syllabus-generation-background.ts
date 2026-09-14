@@ -41,16 +41,7 @@ import {
   type SyllabusModelClients,
 } from "../../src/domains/syllabus/lib/syllabus-model-provider";
 import { getTextModelProvider } from "../../src/shared/ai/text-model-provider";
-
-interface SyllabusBackgroundRequest {
-  accessToken?: string;
-  artifactId?: string;
-  ideaCentral?: string;
-  iterationInstructions?: string;
-  iterationNumber?: number;
-  objetivos?: string[];
-  route?: string;
-}
+import { syllabusGenerationBackgroundRequestSchema } from "../../src/domains/syllabus/syllabus-generation-request.schema";
 
 function buildCorrectionRules(objectiveCount: number) {
   return `
@@ -124,11 +115,16 @@ export const handler: Handler = async (event) => {
     return methodNotAllowedResponse();
   }
 
-  let body: SyllabusBackgroundRequest;
+  let verifiedBody: unknown;
   try {
-    body = await parseVerifiedBackgroundBody<SyllabusBackgroundRequest>(event);
+    verifiedBody = await parseVerifiedBackgroundBody<unknown>(event);
   } catch {
     return unauthorizedBackgroundResponse();
+  }
+
+  const parsedBody = syllabusGenerationBackgroundRequestSchema.safeParse(verifiedBody);
+  if (!parsedBody.success) {
+    return { statusCode: 400, body: "Invalid syllabus generation payload" };
   }
 
   const {
@@ -138,11 +134,7 @@ export const handler: Handler = async (event) => {
     route,
     iterationInstructions,
     iterationNumber,
-  } = body;
-
-  if (!artifactId || !Array.isArray(objetivos) || !ideaCentral) {
-    return { statusCode: 400, body: "Missing required fields" };
-  }
+  } = parsedBody.data;
 
   console.log(
     `[Syllabus Background] Iniciando generación para artifact: ${artifactId}`,

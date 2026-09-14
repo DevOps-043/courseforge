@@ -1,9 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
-import { signBackgroundPayload } from "@/lib/server/background-payload-signature";
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 import { SYLLABUS_PROMPT } from "@/domains/syllabus/config/syllabus.config";
-import { getErrorMessage } from "@/lib/errors";
 import {
   buildSyllabusResearchPrompt,
   calculateSyllabusEstimatedHours,
@@ -12,7 +9,6 @@ import {
 } from "@/domains/syllabus/lib/syllabus-generation";
 import { SyllabusGenerationMetadata } from "@/domains/syllabus/types/syllabus.types";
 import {
-  getDeploymentSiteUrl,
   getGeminiApiKey,
   getOptionalOpenAIApiKey,
   isNetlifyDeployment,
@@ -37,15 +33,13 @@ import {
   type SyllabusModelClients,
 } from "@/domains/syllabus/lib/syllabus-model-provider";
 import { getTextModelProvider } from "@/shared/ai/text-model-provider";
+import { syllabusGenerationRequestSchema } from "@/domains/syllabus/syllabus-generation-request.schema";
+import { dispatchBackgroundFunctionJson } from "@/lib/server/background-function-client";
+import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
-interface SyllabusRequestBody {
-  objetivos?: string[];
-  ideaCentral?: string;
-  route?: string;
-  artifactId?: string;
-  accessToken?: string;
-  iterationInstructions?: string;
-}
+const MAX_SYLLABUS_REQUEST_BYTES = 64 * 1024;
 
 interface GroundingMetadata {
   webSearchQueries?: string[];
@@ -69,151 +63,170 @@ function buildLocalPrompt(
     .replace(/{{.*?}}/g, "");
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("syllabus.api", { correlationId: requestId });
   try {
-    const body = (await request.json()) as SyllabusRequestBody;
+    const parsedRequest = await parseJsonRequest(
+      request,
+      syllabusGenerationRequestSchema,
+      MAX_SYLLABUS_REQUEST_BYTES,
+    );
+    if (!parsedRequest.success) {
+      return apiErrorResponse({
+        code: parsedRequest.reason === "too_large"
+          ? API_ERROR_CODE.payloadTooLarge
+          : API_ERROR_CODE.invalidRequest,
+        message: parsedRequest.reason === "too_large"
+          ? "La solicitud de temario excede el tamaño permitido."
+          : "Solicitud de generación de temario inválida.",
+        requestId,
+        status: parsedRequest.reason === "too_large" ? 413 : 400,
+      });
+    }
+
     const {
       objetivos,
       ideaCentral,
       route,
       artifactId,
-      accessToken,
       iterationInstructions,
-    } = body;
+    } = parsedRequest.data;
     let artifactGenerationMetadata: unknown;
     let reservedIteration: number | undefined;
 
-    if (!Array.isArray(objetivos) || !ideaCentral) {
-      return NextResponse.json(
-        { error: "objetivos e ideaCentral son requeridos" },
-        { status: 400 },
-      );
+    const supabase = await createClient();
+    const authenticatedUser = await getAuthenticatedUser(supabase);
+    if (!authenticatedUser) {
+      return apiErrorResponse({
+        code: API_ERROR_CODE.authRequired,
+        message: "No autorizado.",
+        requestId,
+        status: 401,
+      });
     }
 
-    if (artifactId) {
-      const supabase = await createClient();
-      const authenticatedUser = await getAuthenticatedUser(supabase);
-      if (!authenticatedUser) {
-        return NextResponse.json({ error: "No autorizado." }, { status: 401 });
-      }
+    const tenant = await resolveActiveTenantContext();
+    if (!tenant) {
+      return apiErrorResponse({
+        code: API_ERROR_CODE.tenantForbidden,
+        message: "Empresa no válida o no autorizada.",
+        requestId,
+        status: 403,
+      });
+    }
 
-      const tenant = await resolveActiveTenantContext();
-      if (!tenant) {
-        return NextResponse.json(
-          { error: "Empresa no valida o no autorizada." },
-          { status: 403 },
-        );
-      }
+    const authorized = await getAuthorizedArtifactAdminForTenant(
+      artifactId,
+      tenant,
+    );
+    if (!authorized) {
+      return apiErrorResponse({
+        code: API_ERROR_CODE.resourceNotFound,
+        message: "Artefacto no encontrado para esta empresa.",
+        requestId,
+        status: 404,
+      });
+    }
 
-      const authorized = await getAuthorizedArtifactAdminForTenant(
-        artifactId,
-        tenant,
-      );
-      if (!authorized) {
-        return NextResponse.json(
-          { error: "Artefacto no encontrado para esta empresa." },
-          { status: 404 },
-        );
-      }
-
-      const { data: currentSyllabus, error: syllabusLookupError } =
-        await authorized.admin
-          .from("syllabus")
-          .select("iteration_count")
-          .eq("artifact_id", artifactId)
-          .maybeSingle();
-
-      if (syllabusLookupError) {
-        throw syllabusLookupError;
-      }
-
-      if (!canIterateSyllabus(currentSyllabus?.iteration_count)) {
-        return NextResponse.json(
-          {
-            error: `El temario alcanzo el limite de ${SYLLABUS_MAX_ITERATIONS} iteraciones.`,
-          },
-          { status: 409 },
-        );
-      }
-
-      reservedIteration = getNextSyllabusIteration(
-        currentSyllabus?.iteration_count,
-      );
-      const { data: reservedSyllabus, error: reservationError } =
-        await authorized.admin
-          .from("syllabus")
-          .update({
-            iteration_count: reservedIteration,
-            state: "STEP_GENERATING",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("artifact_id", artifactId)
-          .eq("iteration_count", currentSyllabus?.iteration_count || 0)
-          .select("id")
-          .maybeSingle();
-
-      if (reservationError) {
-        throw reservationError;
-      }
-
-      if (!reservedSyllabus) {
-        return NextResponse.json(
-          {
-            error:
-              "Otra iteracion del temario fue iniciada al mismo tiempo. Actualiza la pagina antes de reintentar.",
-          },
-          { status: 409 },
-        );
-      }
-
-      const { data: artifactDurationSource } = await authorized.admin
-        .from("artifacts")
-        .select("generation_metadata")
-        .eq("id", artifactId)
+    const { data: currentSyllabus, error: syllabusLookupError } =
+      await authorized.admin
+        .from("syllabus")
+        .select("iteration_count")
+        .eq("artifact_id", artifactId)
         .maybeSingle();
-      artifactGenerationMetadata = artifactDurationSource?.generation_metadata;
+
+    if (syllabusLookupError) {
+      throw syllabusLookupError;
     }
+
+    if (!canIterateSyllabus(currentSyllabus?.iteration_count)) {
+      return apiErrorResponse({
+        code: API_ERROR_CODE.conflict,
+        message: `El temario alcanzó el límite de ${SYLLABUS_MAX_ITERATIONS} iteraciones.`,
+        requestId,
+        status: 409,
+      });
+    }
+
+    reservedIteration = getNextSyllabusIteration(
+      currentSyllabus?.iteration_count,
+    );
+    const { data: reservedSyllabus, error: reservationError } =
+      await authorized.admin
+        .from("syllabus")
+        .update({
+          iteration_count: reservedIteration,
+          state: "STEP_GENERATING",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("artifact_id", artifactId)
+        .eq("iteration_count", currentSyllabus?.iteration_count || 0)
+        .select("id")
+        .maybeSingle();
+
+    if (reservationError) {
+      throw reservationError;
+    }
+
+    if (!reservedSyllabus) {
+      return apiErrorResponse({
+        code: API_ERROR_CODE.conflict,
+        message: "Otra iteración del temario fue iniciada al mismo tiempo. Actualiza la página antes de reintentar.",
+        requestId,
+        status: 409,
+      });
+    }
+
+    const { data: artifactDurationSource } = await authorized.admin
+      .from("artifacts")
+      .select("generation_metadata")
+      .eq("id", artifactId)
+      .maybeSingle();
+    artifactGenerationMetadata = artifactDurationSource?.generation_metadata;
 
     if (isNetlifyDeployment()) {
-      const siteUrl = getDeploymentSiteUrl();
-      const backgroundUrl = `${siteUrl}/.netlify/functions/syllabus-generation-background`;
-
-      console.log(
-        `[API/ESP-02] Modo Netlify detectado. Disparando background a: ${backgroundUrl}`,
-      );
-
       try {
-        await fetch(backgroundUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(signBackgroundPayload({
+        await dispatchBackgroundFunctionJson(
+          "syllabus-generation-background",
+          {
             artifactId,
             objetivos,
             ideaCentral,
             route,
             iterationInstructions,
             iterationNumber: reservedIteration,
-            accessToken,
-          })),
-        });
-      } catch (backgroundError) {
-        console.error(
-          "[API/ESP-02] Falló el fetch a syllabus-generation-background:",
-          backgroundError,
+          },
+          {
+            fallbackError: "No se pudo iniciar la generación del temario.",
+          },
         );
+      } catch (backgroundError) {
+        await authorized.admin
+          .from("syllabus")
+          .update({
+            state: "STEP_ESCALATED",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("artifact_id", artifactId)
+          .eq("iteration_count", reservedIteration);
+        throw backgroundError;
       }
 
-      return NextResponse.json({
+      logger.info("syllabus.background_dispatched", {
+        artifactId,
+        iterationNumber: reservedIteration,
+      });
+      return apiSuccessResponse({
         status: "processing",
         message: "Generación de temario iniciada en background",
         artifactId,
-      });
+      }, { requestId });
     }
 
-    const tenant = await resolveActiveTenantContext();
     const syllabusSettings = await getPipelineModelSettings(
       "SYLLABUS",
-      tenant?.organizationId,
+      tenant.organizationId,
     );
     const searchModelName = syllabusSettings.fallback_model || syllabusSettings.model_name;
     const configuredModels = Array.from(
@@ -249,14 +262,15 @@ export async function POST(request: NextRequest) {
       researchMetadata =
         (researchResult.groundingMetadata as GroundingMetadata | undefined) || null;
 
-      console.log(
-        `[API/ESP-02] Investigación completada (${researchContext.length} chars).`,
-      );
+      logger.info("syllabus.research_completed", {
+        artifactId,
+        resultCharacters: researchContext.length,
+      });
     } catch (researchError) {
-      console.warn(
-        "[API/ESP-02] Falló la investigación con grounding, continuando con conocimiento base.",
-        researchError,
-      );
+      logger.warn("syllabus.research_failed", {
+        artifactId,
+        error: researchError,
+      });
       researchContext = "No se pudo realizar investigación previa.";
     }
 
@@ -303,20 +317,20 @@ export async function POST(request: NextRequest) {
 
     content.generation_metadata = metadata;
 
-    console.log(
-      "[API/ESP-02] Generado exitosamente:",
-      content.modules.length,
-      "módulos",
-    );
+    logger.info("syllabus.generation_completed", {
+      artifactId,
+      modulesCount: content.modules.length,
+    });
 
-    return NextResponse.json(content);
+    return apiSuccessResponse(content, { requestId });
   } catch (error) {
-    const message = getErrorMessage(
-      error,
-      "Error desconocido al generar el syllabus.",
-    );
-
-    console.error("[API/ESP-02] Error:", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    logger.error("syllabus.generation_failed", error);
+    return apiErrorResponse({
+      code: API_ERROR_CODE.internalError,
+      message: "No se pudo generar el temario.",
+      requestId,
+      retryable: true,
+      status: 500,
+    });
   }
 }

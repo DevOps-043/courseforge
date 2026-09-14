@@ -22,6 +22,8 @@
     "netlify/functions/shared/unified-curation-types.ts",
     "src/domains/curation/lib/curation-row-rules.ts",
     "src/domains/curation/types/curation.types.ts",
+    "src/lib/server/outbound-http.ts",
+    "src/lib/server/public-url-policy.ts",
     "src/shared/types/curation.types.ts",
     "netlify/functions/shared/curation-v2/__tests__/**/*.ts"
   ],

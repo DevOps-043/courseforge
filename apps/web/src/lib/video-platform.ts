@@ -24,7 +24,6 @@ export function detectVideoProvider(url: string): {
 
   return { provider: null, id: url };
 }
-
 export function getVideoProviderAndId(url: string): {
   provider: VideoProvider;
   id: string;
@@ -76,17 +75,6 @@ export function getEmbedVideoUrl(url?: string): {
   return { isEmbed: false, url };
 }
 
-function parseISODuration(duration: string): number {
-  const matches = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-  if (!matches) return 0;
-
-  const hours = parseInt(matches[1] || "0", 10);
-  const minutes = parseInt(matches[2] || "0", 10);
-  const seconds = parseInt(matches[3] || "0", 10);
-
-  return hours * 3600 + minutes * 60 + seconds;
-}
-
 /**
  * Client-safe version of fetchVideoMetadata.
  * Proxies the request through /api/video-metadata to avoid CORS restrictions
@@ -106,73 +94,4 @@ export async function fetchVideoMetadataClient(
     }
 
     return response.json() as Promise<{ duration: number; title: string }>;
-}
-
-/** Server-only: fetches video metadata directly from YouTube/Vimeo. Do not call from client components. */
-export async function fetchVideoMetadata(url: string) {
-  if (!url) return { duration: 0, title: "" };
-
-  try {
-    if (url.includes("vimeo.com")) {
-      const response = await fetch(
-        `https://vimeo.com/api/oembed.json?url=${encodeURIComponent(url)}`,
-      );
-      if (response.ok) {
-        const data = await response.json();
-        return {
-          duration: data.duration,
-          title: data.title,
-        };
-      }
-    }
-
-    if (url.includes("youtube.com") || url.includes("youtu.be")) {
-      const response = await fetch(url, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.9",
-          "Cache-Control": "no-cache",
-        },
-      });
-      const text = await response.text();
-      const titleMatch = text.match(/<title>([^<]*)<\/title>/);
-      const title = titleMatch ? titleMatch[1].replace(" - YouTube", "") : "";
-
-      // Pattern 1: lengthSeconds in ytInitialData JSON blob (most common)
-      const lengthMatch = text.match(/"lengthSeconds":"(\d+)"/);
-      if (lengthMatch?.[1]) {
-        return { duration: parseInt(lengthMatch[1], 10), title };
-      }
-
-      // Pattern 2: approxDurationMs (alternative serialization)
-      const approxMsMatch = text.match(/"approxDurationMs":"(\d+)"/);
-      if (approxMsMatch?.[1]) {
-        return { duration: Math.round(parseInt(approxMsMatch[1], 10) / 1000), title };
-      }
-
-      // Pattern 3: videoDurationSeconds without quotes (some page variants)
-      const durationSecondsMatch = text.match(/"videoDurationSeconds":(\d+)/);
-      if (durationSecondsMatch?.[1]) {
-        return { duration: parseInt(durationSecondsMatch[1], 10), title };
-      }
-
-      // Pattern 4: ISO 8601 duration in meta tag (older page versions)
-      const metaMatch = text.match(/itemprop="duration" content="([^"]+)"/);
-      if (metaMatch?.[1]) {
-        return { duration: parseISODuration(metaMatch[1]), title };
-      }
-
-      // Pattern 5: videoDurationSeconds with quotes (original fallback)
-      const jsonMatch = text.match(/"videoDurationSeconds":"(\d+)"/);
-      if (jsonMatch?.[1]) {
-        return { duration: parseInt(jsonMatch[1], 10), title };
-      }
-    }
-  } catch (error) {
-    console.error("Error fetching video metadata:", error);
-  }
-
-  return { duration: 0, title: "" };
 }
