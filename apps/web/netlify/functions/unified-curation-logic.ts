@@ -15,6 +15,7 @@ interface UnifiedCurationParams {
   supabaseKey: string;
   openAiApiKey?: string | null;
   resume?: boolean;
+  attemptNumber: number;
 }
 
 const OPENAI_CURATION_DEFAULTS = {
@@ -32,6 +33,7 @@ export async function processUnifiedCuration({
   supabaseKey,
   openAiApiKey,
   resume,
+  attemptNumber,
 }: UnifiedCurationParams) {
   if (!openAiApiKey) {
     throw new Error("OPENAI_API_KEY is required for curation v2.");
@@ -75,5 +77,6 @@ export async function processUnifiedCuration({
     openAiApiKey,
     supabase,
     resume,
+    attemptNumber,
   });
 }

@@ -52,6 +52,7 @@ export interface LessonPlanRecord {
 }
 
 export interface MaterialLessonRecord {
+  state?: string;
   id: string;
   lesson_id: string;
   lesson_title: string;
@@ -161,10 +162,8 @@ export function matchesLesson(
   const candidateTitle = normalizeLessonTitle(candidate.lesson_title);
   const lessonTitle = normalizeLessonTitle(lesson.lesson_title);
 
-  return (
-    (Boolean(candidateId) && candidateId === lessonId) ||
-    (Boolean(candidateTitle) && candidateTitle === lessonTitle)
-  );
+  if (candidateId && lessonId) return candidateId === lessonId;
+  return Boolean(candidateTitle) && candidateTitle === lessonTitle;
 }
 
 export function findLessonSources(

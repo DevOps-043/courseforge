@@ -19,6 +19,7 @@ export interface ArtifactGenerationMetadata {
 }
 
 export interface ArtifactValidationResultItem {
+  code?: string;
   message: string;
   passed: boolean;
 }

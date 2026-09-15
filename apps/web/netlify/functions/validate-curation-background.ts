@@ -33,10 +33,11 @@ const handler: Handler = async (event) => {
   }
 
   const supabase = createServiceRoleClient();
+  let attemptNumber: number | undefined;
   try {
     const { data: curation, error: curationError } = await supabase
       .from("curation")
-      .select("id")
+      .select("id, state, attempt_number")
       .eq("artifact_id", artifactId)
       .maybeSingle();
     if (curationError) throw new Error(curationError.message);
@@ -47,13 +48,21 @@ const handler: Handler = async (event) => {
       };
     }
 
-    await supabase
+    if (["PHASE2_GENERATING", "PHASE2_VALIDATING"].includes(curation.state)) {
+      return { statusCode: 409, body: JSON.stringify({ error: "La curaduría ya está en ejecución." }) };
+    }
+    attemptNumber = (curation.attempt_number || 0) + 1;
+    const { data: claimed, error: claimError } = await supabase
       .from("curation")
       .update({
         state: "PHASE2_VALIDATING",
+        attempt_number: attemptNumber,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", curation.id);
+      .eq("id", curation.id).eq("state", curation.state).eq("attempt_number", curation.attempt_number)
+      .select("id").maybeSingle();
+    if (claimError) throw claimError;
+    if (!claimed) return { statusCode: 409, body: "Curation changed" };
 
     const { data: rows, error: rowsError } = await supabase
       .from("curation_rows")
@@ -65,6 +74,11 @@ const handler: Handler = async (event) => {
 
     let processed = 0;
     for (const row of (rows || []) as PersistedCurationSource[]) {
+      const { data: active, error: heartbeatError } = await supabase.from("curation")
+        .update({ updated_at: new Date().toISOString() }).eq("id", curation.id)
+        .eq("attempt_number", attemptNumber).eq("state", "PHASE2_VALIDATING").select("id").maybeSingle();
+      if (heartbeatError) throw heartbeatError;
+      if (!active) return { statusCode: 200, body: JSON.stringify({ superseded: true }) };
       try {
         await validateAndPersistCurationSource(supabase, row);
       } catch (error) {
@@ -93,11 +107,17 @@ const handler: Handler = async (event) => {
     if (!openAiApiKey) {
       throw new Error("OPENAI_API_KEY is required for autonomous curation.");
     }
+    const { data: active, error: transitionError } = await supabase.from("curation")
+      .update({ state: "PHASE2_GENERATING", updated_at: new Date().toISOString() }).eq("id", curation.id)
+      .eq("attempt_number", attemptNumber).eq("state", "PHASE2_VALIDATING").select("id").maybeSingle();
+    if (transitionError) throw transitionError;
+    if (!active) return { statusCode: 200, body: JSON.stringify({ superseded: true }) };
     const inserted = await processUnifiedCuration({
       artifactId,
       curationId: curation.id,
       openAiApiKey,
       resume: true,
+      attemptNumber: attemptNumber!,
       supabaseUrl: getSupabaseUrl(),
       supabaseKey: getSupabaseServiceKey(),
     });
@@ -126,7 +146,8 @@ const handler: Handler = async (event) => {
           },
           updated_at: new Date().toISOString(),
         })
-        .eq("artifact_id", artifactId);
+        .eq("artifact_id", artifactId).eq("attempt_number", attemptNumber ?? -1)
+        .in("state", ["PHASE2_GENERATING", "PHASE2_VALIDATING"]);
     }
     return {
       statusCode: 500,

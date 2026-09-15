@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { PIPELINE_GENERATION_LIMITS, isPermanentProviderFailure } from "../../../../src/lib/pipeline-generation-policy";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CurationRowInsert } from "../../../../src/shared/types/curation.types";
 import {
@@ -32,6 +33,7 @@ export async function validateAutomaticCandidates(params: {
     options: { existingNormalizedUrls: Iterable<string> },
   ) => Promise<UrlValidationResult>;
   limit?: number;
+  shouldContinue?: () => Promise<boolean>;
 }) {
   const {
     candidates,
@@ -45,6 +47,7 @@ export async function validateAutomaticCandidates(params: {
   }> = [];
 
   for (const candidate of candidates) {
+    if (params.shouldContinue && !await params.shouldContinue()) break;
     if (selected.length >= limit) break;
     let candidateUrl: string;
     try {
@@ -75,6 +78,9 @@ export async function runCurationWorkflowV2(params: {
   reasoningEffort?: string;
   supabase: SupabaseClient;
   resume?: boolean;
+  attemptNumber: number;
+  search?: typeof searchLessonCandidates;
+  validate?: typeof validateUrlSource;
 }) {
   const {
     artifactId,
@@ -86,6 +92,15 @@ export async function runCurationWorkflowV2(params: {
     reasoningEffort = "low",
     supabase,
   } = params;
+  const deadline = Date.now() + PIPELINE_GENERATION_LIMITS.curationRunMs;
+  const checkpoint = async (rows: CurationRowInsert[] = [], completion: Record<string, unknown> | null = null) => {
+    const { data, error } = await supabase.rpc("commit_curation_progress", {
+      p_curation_id: curationId, p_attempt: params.attemptNumber, p_rows: rows, p_completion: completion,
+    });
+    if (error) throw error;
+    return data === true;
+  };
+  if (!await checkpoint()) return 0;
   const [planResult, artifactResult, syllabusResult] = await Promise.all([
     supabase
       .from("instructional_plans")
@@ -162,12 +177,12 @@ export async function runCurationWorkflowV2(params: {
     automaticRows,
   ).some((item) => !item.isCovered);
 
-  const client = new OpenAI({ apiKey: openAiApiKey });
+  const client = new OpenAI({ apiKey: openAiApiKey, maxRetries: 0, timeout: PIPELINE_GENERATION_LIMITS.requestTimeoutMs });
   let inserted = 0;
   let successfulSearchCalls = 0;
   let stalledRounds = 0;
 
-  for (let round = 1; round <= MAX_AUTONOMOUS_ROUNDS; round += 1) {
+  rounds: for (let round = 1; round <= MAX_AUTONOMOUS_ROUNDS; round += 1) {
     const coverage = calculateLessonCoverage(lessons, automaticRows);
     const missingIds = new Set(
       coverage.filter((item) => !item.isCovered).map((item) => item.lessonId),
@@ -188,34 +203,14 @@ export async function runCurationWorkflowV2(params: {
       offset += LESSONS_PER_BATCH
     ) {
       const batch = lessonsToSearch.slice(offset, offset + LESSONS_PER_BATCH);
-      const { data: signal } = await supabase
-        .from("curation")
-        .select("state")
-        .eq("id", curationId)
-        .single();
-      if (
-        ["PAUSED", "PAUSED_REQUESTED", "STOPPED", "STOPPED_REQUESTED"].includes(
-          signal?.state,
-        )
-      ) {
-        const nextState =
-          signal?.state === "PAUSED_REQUESTED"
-            ? "PAUSED"
-            : signal?.state === "STOPPED_REQUESTED"
-              ? "STOPPED"
-              : signal?.state;
-        await supabase
-          .from("curation")
-          .update({ state: nextState })
-          .eq("id", curationId);
-        return inserted;
-      }
+      if (!await checkpoint()) return inserted;
+      if (Date.now() >= deadline) break rounds;
 
       let candidates: CurationCandidate[] = [];
       let lastSearchError: unknown;
       for (let attempt = 0; attempt < SEARCH_ATTEMPTS; attempt += 1) {
         try {
-          candidates = await searchLessonCandidates({
+          candidates = await (params.search || searchLessonCandidates)({
             client,
             model,
             courseContext: context.fullCourseContext,
@@ -234,6 +229,7 @@ export async function runCurationWorkflowV2(params: {
           lastSearchError = undefined;
           break;
         } catch (error) {
+          if (isPermanentProviderFailure(error)) throw error;
           lastSearchError = error;
           console.error(
             `[Curation V2] Search attempt ${attempt + 1}/${SEARCH_ATTEMPTS} failed:`,
@@ -268,6 +264,8 @@ export async function runCurationWorkflowV2(params: {
           ),
           existingNormalizedUrls: lessonNormalizedUrls,
           limit: remainingSources,
+          validate: params.validate,
+          shouldContinue: async () => Date.now() < deadline && await checkpoint(),
         });
         const rows: CurationRowInsert[] = selected.map(
           ({ candidate, validation }) => ({
@@ -290,8 +288,7 @@ export async function runCurationWorkflowV2(params: {
           }),
         );
         if (rows.length > 0) {
-          const { error } = await supabase.from("curation_rows").insert(rows);
-          if (error) throw new Error(error.message);
+          if (!await checkpoint(rows)) return inserted;
           automaticRows.push(
             ...rows.map((row) => ({
               lesson_id: row.lesson_id,
@@ -337,20 +334,17 @@ export async function runCurationWorkflowV2(params: {
   const coverage = calculateLessonCoverage(lessons, finalAutomaticRows);
   const missing = coverage.filter((item) => !item.isCovered);
   const isComplete = missing.length === 0 && lessons.length > 0;
-  await supabase
-    .from("curation")
-    .update({
+  await checkpoint([], {
       state: isComplete ? "PHASE2_APPROVED" : "PHASE2_BLOCKED",
       qa_decision: {
         decision: isComplete ? "APPROVED" : "BLOCKED",
         notes: isComplete
           ? `Curaduria autonoma completada: ${coverage.reduce((total, item) => total + item.validCount, 0)} fuentes web validas para ${lessons.length} lecciones.`
-          : `La automatizacion agoto ${MAX_AUTONOMOUS_ROUNDS} rondas. Lecciones pendientes: ${missing.map((item) => `${item.lessonTitle} (${item.validCount}/${item.targetCount})`).join(", ")}`,
+          : `La búsqueda alcanzó su límite de tiempo o intentos. Reanuda para completar las fuentes conservadas. Lecciones pendientes: ${missing.map((item) => `${item.lessonTitle} (${item.validCount}/${item.targetCount})`).join(", ")}`,
         reviewed_by: "gpt:auto",
         reviewed_at: new Date().toISOString(),
       },
       updated_at: new Date().toISOString(),
-    })
-    .eq("id", curationId);
+    });
   return inserted;
 }

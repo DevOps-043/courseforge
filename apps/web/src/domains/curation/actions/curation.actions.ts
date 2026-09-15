@@ -249,17 +249,18 @@ export async function startCurationAction(
       throw new Error("No components found in the plan");
     }
 
-    const curationId = await ensureGeneratingCurationRecord(
+    const generation = await ensureGeneratingCurationRecord(
       admin,
       artifactId,
       attemptNumber,
     );
+    const curationId = generation.id;
 
     try {
       await triggerCurationGeneration({
         accessToken: accessToken!,
         artifactId,
-        attemptNumber,
+        attemptNumber: generation.attemptNumber,
         components,
         courseName: artifact.course_id || "Untitled Course",
         curationId,
@@ -267,6 +268,8 @@ export async function startCurationAction(
         ideaCentral: artifact.idea_central,
         resume,
         customPrompt: promptOverride?.trim() || undefined,
+        onFailure: async () => { await markCurationBlocked(admin, curationId,
+          "No se pudo ejecutar la búsqueda. Revisa la configuración del servidor y reanuda.", generation.attemptNumber); },
       });
     } catch (error) {
       const triggerError = getErrorMessage(error);
@@ -274,6 +277,7 @@ export async function startCurationAction(
         admin,
         curationId,
         `No se pudo iniciar el background de curaduria. Detalle: ${triggerError}`,
+        generation.attemptNumber,
       );
       throw error;
     }

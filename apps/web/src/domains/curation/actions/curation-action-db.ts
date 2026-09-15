@@ -2,6 +2,7 @@ import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { CURATION_STATES } from "@/lib/pipeline-constants";
 import type { Curation, CurationRow } from "../types/curation.types";
 import { SYSTEM_GENERATED_CURATION_ROW_FILTER } from "../lib/curation-row-rules";
+import { isGenerationStale } from "@/lib/pipeline-generation-policy";
 
 type ServiceRoleClient = ReturnType<typeof getServiceRoleClient>;
 
@@ -61,23 +62,16 @@ const CURATION_ROWS_SNAPSHOT_SELECT = `
   updated_at
 `;
 
-const STALE_GENERATING_CURATION_MS = 15 * 60 * 1000;
-
-function isStaleGeneratingCuration(curation: Curation, rowsCount: number) {
-  if (curation.state !== CURATION_STATES.GENERATING || rowsCount > 0) {
-    return false;
-  }
-
-  const updatedAt = Date.parse(curation.updated_at);
-  return Number.isFinite(updatedAt)
-    ? Date.now() - updatedAt > STALE_GENERATING_CURATION_MS
-    : false;
+function isStaleGeneratingCuration(curation: Curation) {
+  return (curation.state === CURATION_STATES.GENERATING || curation.state === CURATION_STATES.VALIDATING) && isGenerationStale(curation.updated_at);
 }
 
 export async function markCurationBlocked(
   admin: ServiceRoleClient,
   curationId: string,
   notes: string,
+  attemptNumber?: number,
+  updatedAt?: string,
 ) {
   const blockedDecision: NonNullable<Curation["qa_decision"]> = {
     decision: "BLOCKED",
@@ -86,14 +80,17 @@ export async function markCurationBlocked(
     reviewed_by: "system",
   };
 
-  const { error } = await admin
+  let query = admin
     .from("curation")
     .update({
       state: CURATION_STATES.BLOCKED,
       qa_decision: blockedDecision,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", curationId);
+    .eq("id", curationId).in("state", [CURATION_STATES.GENERATING, CURATION_STATES.VALIDATING]);
+  if (attemptNumber !== undefined) query = query.eq("attempt_number", attemptNumber);
+  if (updatedAt) query = query.eq("updated_at", updatedAt);
+  const { error } = await query;
 
   if (error) {
     throw new Error(error.message);
@@ -136,13 +133,15 @@ export async function fetchCurationSnapshot(
   const typedRows = (rows as CurationRow[] | null) || [];
   let typedCuration = curation as Curation;
 
-  if (isStaleGeneratingCuration(typedCuration, typedRows.length)) {
+  if (isStaleGeneratingCuration(typedCuration)) {
     const notes =
-      "La curaduria quedo en ejecucion sin fuentes generadas ni actividad reciente. El disparo del background pudo fallar o quedar bloqueado antes de iniciar la busqueda.";
+      "La curaduría no registró actividad dentro del tiempo permitido. Reanuda para completar las fuentes pendientes; se conserva el progreso guardado.";
     const blockedDecision = await markCurationBlocked(
       admin,
       typedCuration.id,
       notes,
+      typedCuration.attempt_number,
+      typedCuration.updated_at,
     );
     typedCuration = {
       ...typedCuration,
@@ -201,7 +200,7 @@ export async function ensureGeneratingCurationRecord(
 ) {
   const { data: existingCuration, error: existingError } = await admin
     .from("curation")
-    .select("id")
+    .select("id, state, attempt_number")
     .eq("artifact_id", artifactId)
     .maybeSingle();
 
@@ -210,20 +209,27 @@ export async function ensureGeneratingCurationRecord(
   }
 
   if (existingCuration?.id) {
-    const { error: updateError } = await admin
+    if ([CURATION_STATES.GENERATING, CURATION_STATES.VALIDATING].includes(existingCuration.state)) {
+      throw new Error("La búsqueda de fuentes ya está en curso.");
+    }
+    const nextAttempt = (existingCuration.attempt_number || 0) + 1;
+    const { data: claimed, error: updateError } = await admin
       .from("curation")
       .update({
         state: CURATION_STATES.GENERATING,
-        attempt_number: attemptNumber,
+        attempt_number: nextAttempt,
+        qa_decision: null,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", existingCuration.id);
+      .eq("id", existingCuration.id).eq("state", existingCuration.state)
+      .eq("attempt_number", existingCuration.attempt_number).select("id").maybeSingle();
 
     if (updateError) {
       throw new Error(updateError.message);
     }
 
-    return existingCuration.id;
+    if (!claimed) throw new Error("Otra solicitud modificó la curaduría. Actualiza e inténtalo nuevamente.");
+    return { id: existingCuration.id, attemptNumber: nextAttempt };
   }
 
   const { data: newCuration, error: createError } = await admin
@@ -242,7 +248,7 @@ export async function ensureGeneratingCurationRecord(
     );
   }
 
-  return newCuration.id;
+  return { id: newCuration.id, attemptNumber };
 }
 
 export async function clearGeneratedCurationRows(

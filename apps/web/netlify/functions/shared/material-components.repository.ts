@@ -3,24 +3,30 @@ import type { ComponentType, MaterialsGenerationOutput } from "../../../src/doma
 import type { VideoDurationContract } from "../../../src/domains/video-duration/video-duration-policy";
 import { buildMaterialComponentWrites } from "../../../src/domains/materials/generation/material-component-write";
 
-export async function saveGeneratedComponents(
+export async function commitGeneratedLesson(
   supabase: SupabaseClient,
   lessonId: string,
   content: MaterialsGenerationOutput,
   iteration: number,
   logPrefix: string,
-  onlyTypes?: string[],
+  onlyTypes: string[] | undefined,
   durationContractsByType: Partial<Record<ComponentType, VideoDurationContract>> = {},
+  execution: { materialsId: string; version: number; success: boolean; error?: string },
 ) {
   const rows = buildMaterialComponentWrites({
     lessonId, content, iteration, onlyTypes, durationContractsByType,
     generatedAt: new Date().toISOString(),
   });
-  if (!rows.length) return;
-  // The unique (material_lesson_id, type) index makes replacement atomic and preserves IDs.
-  const { error } = await supabase.from("material_components").upsert(rows, {
-    onConflict: "material_lesson_id,type",
+  const { data, error } = await supabase.rpc("commit_material_generation", {
+    p_materials_id: execution.materialsId,
+    p_version: execution.version,
+    p_lesson_id: lessonId,
+    p_iteration: iteration,
+    p_rows: rows,
+    p_success: execution.success,
+    p_error: execution.error || null,
   });
   if (error) throw error;
-  console.log(`${logPrefix} Saved ${rows.length} validated component(s)`);
+  if (data === true) console.log(`${logPrefix} Saved ${rows.length} validated component(s)`);
+  return data === true;
 }

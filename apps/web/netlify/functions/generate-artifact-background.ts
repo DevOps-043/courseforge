@@ -1,4 +1,6 @@
 import { Handler } from "@netlify/functions";
+import { markArtifactGenerationFailed } from "../../src/domains/artifacts/lib/artifact-generation-failure";
+import { PIPELINE_GENERATION_LIMITS } from "../../src/lib/pipeline-generation-policy";
 import { generateObject } from "ai";
 import {
   ArtifactBaseGenerationSchema,
@@ -43,7 +45,6 @@ const BLOOM_VERBS = [
   "explicar",
 ];
 
-const genAI = createGeminiClient();
 
 interface GenerateArtifactFormData {
   description?: string;
@@ -51,6 +52,7 @@ interface GenerateArtifactFormData {
 }
 
 interface GenerateArtifactRequestBody {
+  runId?: string;
   artifactId?: string;
   feedback?: string;
   formData?: GenerateArtifactFormData;
@@ -93,14 +95,14 @@ export const handler: Handler = async (event) => {
   }
 
   try {
-    const { artifactId, formData, userId, feedback, useGoogleDrive, organizationId } = body;
+    const { artifactId, runId, formData, userId, feedback, useGoogleDrive, organizationId } = body;
     const cloudStorageProvider = isCloudStorageProvider(body.cloudStorageProvider)
       ? body.cloudStorageProvider
       : useGoogleDrive
         ? "google_drive"
         : null;
 
-    if (!artifactId || !formData) {
+    if (!artifactId || !formData || !runId) {
       return { statusCode: 400, body: "Missing required fields" };
     }
 
@@ -109,7 +111,7 @@ export const handler: Handler = async (event) => {
     const serviceSupabase = createServiceRoleClient();
     const { data: scopedArtifact, error: artifactScopeError } = await serviceSupabase
       .from("artifacts")
-      .select("organization_id, generation_metadata")
+      .select("organization_id, generation_metadata, state")
       .eq("id", artifactId)
       .maybeSingle();
 
@@ -119,6 +121,9 @@ export const handler: Handler = async (event) => {
       scopedArtifact.organization_id !== (organizationId ?? null)
     ) {
       return { statusCode: 404, body: "Artifact not found" };
+    }
+    if (scopedArtifact.state !== "GENERATING" || scopedArtifact.generation_metadata?.run_id !== runId) {
+      return { statusCode: 200, body: JSON.stringify({ superseded: true }) };
     }
 
     if (cloudStorageProvider) {
@@ -162,9 +167,8 @@ export const handler: Handler = async (event) => {
 
     let researchContext = "";
     let detectedSearchQueries: string[] = [];
-    const searchModels = [modelConfig.model, modelConfig.fallbackModel].filter(
-      Boolean,
-    ) as string[];
+    const searchModels = [...new Set([modelConfig.model, modelConfig.fallbackModel])]
+      .filter((model) => model?.startsWith("gemini-"));
     let researchSuccess = false;
 
     const hardcodedResearchPrompt = `
@@ -193,10 +197,11 @@ export const handler: Handler = async (event) => {
       try {
         console.log(`[Background Job] Researching with ${modelName}...`);
 
-        const result = (await genAI.models.generateContent({
+        const result = (await createGeminiClient().models.generateContent({
           model: modelName,
           contents: researchPrompt,
           config: {
+            httpOptions: { timeout: PIPELINE_GENERATION_LIMITS.requestTimeoutMs },
             tools: [{ googleSearch: {} }],
             temperature: 0.7,
           },
@@ -276,6 +281,7 @@ export const handler: Handler = async (event) => {
 
     let content: GeneratedArtifactContent | null = null;
     let genModelUsed = "";
+    let lastGenerationError: unknown;
 
     for (const modelName of genModels) {
       try {
@@ -285,6 +291,8 @@ export const handler: Handler = async (event) => {
           schema: ArtifactBaseGenerationSchema,
           prompt: systemPrompt,
           temperature: 0.7,
+          abortSignal: AbortSignal.timeout(PIPELINE_GENERATION_LIMITS.requestTimeoutMs),
+          maxRetries: 0,
         });
         content = result.object;
         genModelUsed = modelName;
@@ -293,6 +301,7 @@ export const handler: Handler = async (event) => {
         );
         break;
       } catch (error: unknown) {
+        lastGenerationError = error;
         console.warn(
           `[Background Job] Generation failed with ${modelName}:`,
           getErrorMessage(error),
@@ -301,7 +310,7 @@ export const handler: Handler = async (event) => {
     }
 
     if (!content) {
-      throw new Error(
+      throw lastGenerationError || new Error(
         `Generation failed on all models (${genModels.join(", ")}).`,
       );
     }
@@ -373,7 +382,8 @@ export const handler: Handler = async (event) => {
         validation_report: { results: validationReport, all_passed: allPassed },
         state: allPassed ? "APPROVED" : "ESCALATED",
       })
-      .eq("id", artifactId);
+      .eq("id", artifactId).eq("state", "GENERATING")
+      .eq("generation_metadata->>run_id", runId);
 
     updateArtifactQuery = organizationId
       ? updateArtifactQuery.eq("organization_id", organizationId)
@@ -390,6 +400,9 @@ export const handler: Handler = async (event) => {
     return { statusCode: 200, body: JSON.stringify({ success: true }) };
   } catch (error: unknown) {
     console.error("[Background Job] Failed", error);
+    if (body.artifactId && body.runId) {
+      await markArtifactGenerationFailed(createServiceRoleClient(), body.artifactId, body.runId, error);
+    }
     return {
       statusCode: 500,
       body: JSON.stringify({ success: false, error: getErrorMessage(error) }),

@@ -29,9 +29,8 @@ import {
   fetchLessonComponentsSnapshot,
   fetchMaterialsSnapshot,
   fetchResettableMaterialsRecord,
-  resetGeneratingLessons,
   updateMaterialsState,
-  upsertGenerationMaterialsRecord,
+  startGenerationMaterialsRecord,
 } from "./materials-action-db";
 
 const RESTARTABLE_MATERIALS_STATES = new Set<Esp05StepState>([
@@ -142,7 +141,7 @@ export async function startMaterialsGenerationAction(artifactId: string) {
     }
 
     const { data: materials, error: upsertError } =
-      await upsertGenerationMaterialsRecord(context.admin, artifactId, existing);
+      await startGenerationMaterialsRecord(context.admin, artifactId, existing);
 
     if (upsertError || !materials?.id) {
       console.error(
@@ -157,14 +156,15 @@ export async function startMaterialsGenerationAction(artifactId: string) {
     try {
       await callMaterialsNetlifyFunction(
         "materials-generation-background",
-        { artifactId, materialsId: materials.id, mode: "init" },
+        { artifactId, materialsId: materials.id, version: materials.version, mode: "init" },
         "Error al iniciar la generacion de materiales",
         () => import("../../../../netlify/functions/materials-generation-background"),
       );
 
       return { success: true as const };
     } catch (error) {
-      await updateMaterialsState(context.admin, materials.id, "PHASE3_DRAFT");
+      await context.admin.from("materials").update({ state: "PHASE3_NEEDS_FIX" })
+        .eq("id", materials.id).eq("version", materials.version).eq("state", "PHASE3_GENERATING");
       console.error("[MaterialsActions] Error triggering generation:", error);
       return createMaterialsActionError(getErrorMessage(error));
     }
@@ -188,15 +188,20 @@ export async function runMaterialsFixIterationAction(
   }
 
   const nextIteration = context.lesson.iteration_count + 1;
+  if (context.lesson.state === "GENERATING") return createMaterialsActionError("La lección ya está en generación.");
+  const { data: parent, error: parentError } = await context.admin.from("materials")
+    .select("version").eq("id", context.lesson.materials_id).single();
+  if (parentError) return createMaterialsActionError(parentError.message);
 
-  const { error: updateError } = await context.admin
+  const { data: claimed, error: updateError } = await context.admin
     .from("material_lessons")
     .update({
       state: "GENERATING",
       iteration_count: nextIteration,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", lessonId);
+    .eq("id", lessonId).eq("iteration_count", context.lesson.iteration_count)
+    .neq("state", "GENERATING").select("id").maybeSingle();
 
   if (updateError) {
     console.error(
@@ -205,6 +210,7 @@ export async function runMaterialsFixIterationAction(
     );
     return createMaterialsActionError(updateError.message);
   }
+  if (!claimed) return createMaterialsActionError("Otra solicitud ya modificó la lección.");
 
   try {
     await callMaterialsNetlifyFunction(
@@ -215,6 +221,7 @@ export async function runMaterialsFixIterationAction(
         lessonId,
         fixInstructions,
         iterationNumber: nextIteration,
+        version: parent.version,
         mode: componentTypes && componentTypes.length > 0 ? "single-component" : "single-lesson",
         ...(componentTypes && componentTypes.length > 0 ? { componentTypes } : {}),
       },
@@ -224,6 +231,8 @@ export async function runMaterialsFixIterationAction(
 
     return { success: true as const };
   } catch (error) {
+    await context.admin.from("material_lessons").update({ state: "NEEDS_FIX" })
+      .eq("id", lessonId).eq("iteration_count", nextIteration).eq("state", "GENERATING");
     console.error("[MaterialsActions] Error triggering fix iteration:", error);
     return createMaterialsActionError(getErrorMessage(error));
   }
@@ -460,28 +469,11 @@ export async function forceResetMaterialsGenerationAction(artifactId: string) {
     );
   }
 
-  const { error: resetMaterialsError } = await updateMaterialsState(
-    context.admin,
-    materials.id,
-    "PHASE3_DRAFT",
-  );
-
-  if (resetMaterialsError) {
-    console.error("[MaterialsActions] Error resetting materials:", resetMaterialsError);
-    return createMaterialsActionError(resetMaterialsError.message);
-  }
-
-  const { error: resetLessonsError } = await resetGeneratingLessons(
-    context.admin,
-    materials.id,
-  );
-
-  if (resetLessonsError) {
-    console.warn(
-      "[MaterialsActions] Error resetting lesson states:",
-      resetLessonsError,
-    );
-  }
+  const { data: reset, error } = await context.admin.rpc("reset_material_generation", {
+    p_materials_id: materials.id, p_version: materials.version, p_stale_before: null,
+  });
+  if (error) return createMaterialsActionError(error.message);
+  if (!reset) return createMaterialsActionError("La ejecución cambió. Actualiza antes de cancelar.");
 
   return { success: true as const };
 }

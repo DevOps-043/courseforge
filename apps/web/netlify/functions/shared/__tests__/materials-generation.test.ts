@@ -4,57 +4,57 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GoogleGenAI } from "@google/genai";
 import type OpenAI from "openai";
 import { requestGeminiJson, requestOpenAiJson } from "../materials-model-client";
-import { saveGeneratedComponents } from "../material-components.repository";
-import { loadAptaSources, processGenerationResult } from "../materials-generation-runtime";
-import { generateWithRetry } from "../materials-generation-helpers";
+import { commitGeneratedLesson } from "../material-components.repository";
+import { generateLessonMaterials, loadAptaSources, processGenerationResult } from "../materials-generation-runtime";
+import { resolveVideoDurationPolicy } from "../../../../src/domains/video-duration/video-duration-policy";
+import { generateWithRetry, matchesLesson } from "../materials-generation-helpers";
+import { generationFailureMessage, isGenerationStale, isPermanentProviderFailure } from "../../../../src/lib/pipeline-generation-policy";
+import { markArtifactGenerationFailed } from "../../../../src/domains/artifacts/lib/artifact-generation-failure";
 import type { MaterialsGenerationInput, MaterialsGenerationOutput } from "../../../../src/domains/materials/types/materials.types";
 
 const content: MaterialsGenerationOutput = { components: { EXERCISE: { title: "Práctica", body_html: "Texto", instructions: "Comparar", expected_outcome: "Resultado" } }, source_refs_used: [] };
 const runtime = { temperature: 0.7, thinkingLevel: "medium" };
 
-function databaseStub(writeError: { message: string } | null = null) {
-  const writes: Array<{ table: string; operation: string; payload: unknown; options?: unknown }> = [];
-  const database = {
-    from(table: string) {
-      return {
-        upsert(payload: unknown, options: unknown) { writes.push({ table, operation: "upsert", payload, options }); return Promise.resolve({ error: writeError }); },
-        update(payload: unknown) { writes.push({ table, operation: "update", payload }); return { eq: () => Promise.resolve({ error: null }) }; },
-      };
-    },
-  } as unknown as SupabaseClient;
+const execution = { materialsId: "materials-1", version: 3 };
+function databaseStub(writeError: { message: string } | null = null, accepted = true) {
+  const writes: Array<Record<string, unknown>> = [];
+  const database = { rpc: async (name: string, payload: Record<string, unknown>) => {
+    assert.equal(name, "commit_material_generation");
+    writes.push(payload);
+    return { error: writeError, data: accepted };
+  } } as unknown as SupabaseClient;
   return { database, writes };
 }
 
-test("component replacement is one atomic upsert scoped to the generated types", async () => {
+test("component replacement and lesson state are committed atomically with execution ownership", async () => {
   const { database, writes } = databaseStub();
-  await saveGeneratedComponents(database, "lesson-1", content, 2, "[test]", ["EXERCISE"]);
+  await commitGeneratedLesson(database, "lesson-1", content, 2, "[test]", ["EXERCISE"], {}, { ...execution, success: true });
   assert.equal(writes.length, 1);
-  assert.equal(writes[0].operation, "upsert");
-  assert.deepEqual(writes[0].options, { onConflict: "material_lesson_id,type" });
-  const rows = writes[0].payload as Array<{ type: string }>;
-  assert.deepEqual(rows.map((row) => row.type), ["EXERCISE"]);
+  assert.equal(writes[0].p_version, 3);
+  assert.equal(writes[0].p_iteration, 2);
+  assert.equal(writes[0].p_success, true);
+  assert.deepEqual((writes[0].p_rows as Array<{ type: string }>).map(row => row.type), ["EXERCISE"]);
 });
 
 test("persistence failure never marks the lesson GENERATED", async () => {
   const { database, writes } = databaseStub({ message: "write failed" });
-  await assert.rejects(processGenerationResult({ supabase: database, lessonId: "lesson-1", lessonTitle: "Lección", result: { success: true, content }, iterationNumber: 2, logPrefix: "[test]" }));
-  assert.equal(writes.some((write) => write.table === "material_lessons"), false);
+  await assert.rejects(processGenerationResult({ execution, supabase: database, lessonId: "lesson-1", lessonTitle: "Lección", result: { success: true, content }, iterationNumber: 2, logPrefix: "[test]" }));
+  assert.equal(writes.length, 1);
 });
 
-test("partial failure saves successful materials and marks the lesson NEEDS_FIX", async () => {
+test("partial failure commits successful materials with NEEDS_FIX", async () => {
   const { database, writes } = databaseStub();
-  const result = await processGenerationResult({ supabase: database, lessonId: "lesson-1", lessonTitle: "Lección", result: { success: false, content, error: "VIDEO_DEMO/GENERATION_FAILED" }, iterationNumber: 2, logPrefix: "[test]" });
+  const result = await processGenerationResult({ execution, supabase: database, lessonId: "lesson-1", lessonTitle: "Lección", result: { success: false, content, error: "VIDEO_DEMO/GENERATION_FAILED" }, iterationNumber: 2, logPrefix: "[test]" });
   assert.equal(result.success, false);
-  assert.deepEqual(writes.map((write) => write.operation), ["upsert", "update"]);
-  assert.equal((writes[1].payload as { state: string }).state, "NEEDS_FIX");
+  assert.equal(writes[0].p_success, false);
+  assert.equal(writes[0].p_error, "VIDEO_DEMO/GENERATION_FAILED");
+  assert.equal((writes[0].p_rows as unknown[]).length, 1);
 });
 
-test("successful regeneration clears obsolete lesson errors before QA", async () => {
-  const { database, writes } = databaseStub();
-  await processGenerationResult({ supabase: database, lessonId: "lesson-1", lessonTitle: "Lección", result: { success: true, content }, iterationNumber: 2, logPrefix: "[test]" });
-  const lesson = writes[1].payload as { state: string; dod: { errors: string[] } };
-  assert.equal(lesson.state, "GENERATED");
-  assert.deepEqual(lesson.dod.errors, []);
+test("cancelled or replaced executions never report success", async () => {
+  const { database } = databaseStub(null, false);
+  const result = await processGenerationResult({ execution, supabase: database, lessonId: "lesson-1", lessonTitle: "Lección", result: { success: true, content }, iterationNumber: 2, logPrefix: "[test]" });
+  assert.deepEqual(result, { success: false, superseded: true });
 });
 
 test("Gemini requests are bounded and report termination and usage", async () => {
@@ -86,4 +86,45 @@ test("an exhausted lesson budget prevents non-video provider calls", async () =>
   const result = await generateWithRetry({} as MaterialsGenerationInput, "[test]", ["gemini-test"], runtime, undefined, undefined, undefined, Date.now() - 1);
   assert.equal(result.success, false);
   assert.match(result.error ?? "", /MATERIALS_TIME_BUDGET_EXHAUSTED/);
+});
+
+test("matching titles never assign another identified lesson's sources", () => {
+  assert.equal(matchesLesson({ lesson_id: "lesson-2", lesson_title: "Introduction" }, { lesson_id: "lesson-1-G1", lesson_title: "Introduction" }), false);
+  assert.equal(matchesLesson({ lesson_id: "lesson-1", lesson_title: "Introduction" }, { lesson_id: "lesson-1-G1", lesson_title: "Introduction" }), true);
+});
+
+test("source-required lessons fail before spending provider tokens when coverage is missing", async () => {
+  const { database, writes } = databaseStub();
+  const result = await generateLessonMaterials({ execution, supabase: database,
+    lesson: { id: "lesson-1", lesson_id: "lesson-1-G1", lesson_title: "Lesson", module_id: "module-1", module_title: "Module", expected_components: ["EXERCISE"], iteration_count: 1 },
+    generationContext: { artifactId: "artifact", lessonPlans: [], lessonSources: [], requiresSources: true, videoDurationPolicy: resolveVideoDurationPolicy(undefined) },
+    logPrefix: "[test]", models: ["invalid-model-must-never-be-called"], modelRuntimeConfig: runtime,
+  });
+  assert.equal(result.success, false);
+  assert.match(String(writes[0].p_error), /Fuentes insuficientes/);
+  assert.deepEqual(writes[0].p_rows, []);
+});
+
+test("provider failures are actionable without leaking response bodies", () => {
+  assert.match(generationFailureMessage({ status: 429, code: "insufficient_quota", message: "secret" }), /saldo/);
+  assert.equal(isPermanentProviderFailure({ status: 429, code: "insufficient_quota" }), true);
+  assert.equal(isPermanentProviderFailure({ status: 429 }), false);
+  assert.equal(generationFailureMessage(new Error("secret")).includes("secret"), false);
+  assert.equal(isGenerationStale(new Date(0).toISOString(), 16 * 60_000), true);
+  assert.equal(isGenerationStale("invalid"), false);
+});
+
+test("initial generation failures are persisted only for the owning running execution", async () => {
+  const filters: Array<[string, unknown]> = [];
+  let update: { state?: string; validation_report?: { results: Array<{ message: string }> } } = {};
+  const query = {
+    update: (payload: typeof update) => { update = payload; return query; },
+    eq: (key: string, value: unknown) => { filters.push([key, value]); return query; },
+    then: (resolve: (value: { error: null }) => unknown) => Promise.resolve({ error: null }).then(resolve),
+  };
+  const database = { from: () => query } as unknown as SupabaseClient;
+  await markArtifactGenerationFailed(database, "artifact-1", "run-1", { status: 429, code: "insufficient_quota" });
+  assert.equal(update.state, "ESCALATED");
+  assert.match(update.validation_report!.results[0].message, /saldo/);
+  assert.deepEqual(filters, [["id", "artifact-1"], ["state", "GENERATING"], ["generation_metadata->>run_id", "run-1"]]);
 });

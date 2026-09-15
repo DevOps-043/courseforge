@@ -19,6 +19,7 @@ interface LessonDod {
 
 interface MaterialsRecord {
     id: string;
+    version: number;
 }
 
 interface LessonQuizSpec {
@@ -26,6 +27,7 @@ interface LessonQuizSpec {
 }
 
 interface MaterialLessonRecord {
+    iteration_count?: number;
     expected_components?: string[] | null;
     id: string;
     lesson_title?: string | null;
@@ -81,6 +83,7 @@ export const handler: Handler = async (event) => {
     }
 
     let body: {
+        version?: number;
         materialsId?: string;
         artifactId?: string;
         lessonId?: string;
@@ -88,6 +91,7 @@ export const handler: Handler = async (event) => {
     };
     try {
         body = await parseVerifiedBackgroundBody<{
+            version?: number;
             materialsId?: string;
             artifactId?: string;
             lessonId?: string;
@@ -120,7 +124,7 @@ export const handler: Handler = async (event) => {
         if (materialsId) {
             const { data, error } = await supabase
                 .from('materials')
-                .select('id')
+                .select('id, version')
                 .eq('id', materialsId)
                 .single();
             if (error) throw new Error(`Materials not found: ${error.message}`);
@@ -128,17 +132,20 @@ export const handler: Handler = async (event) => {
         } else {
             const { data, error } = await supabase
                 .from('materials')
-                .select('id')
+                .select('id, version')
                 .eq('artifact_id', artifactId)
                 .single();
             if (error) throw new Error(`Materials not found: ${error.message}`);
             materials = data as MaterialsRecord;
         }
 
+        if (body.version !== undefined && materials.version !== body.version) {
+            return { statusCode: 200, body: JSON.stringify({ superseded: true }) };
+        }
         // 2. Get all lessons for this materials record
         const { data: lessons, error: lessonsError } = await supabase
             .from('material_lessons')
-            .select('id, materials_id, lesson_title, expected_components, quiz_spec, state')
+            .select('id, materials_id, lesson_title, expected_components, quiz_spec, state, iteration_count')
             .eq('materials_id', materials.id);
 
         if (lessonsError) throw new Error(`Error fetching lessons: ${lessonsError.message}`);
@@ -146,13 +153,13 @@ export const handler: Handler = async (event) => {
         console.log(`[Validate Materials] Found ${lessons?.length || 0} lessons to validate`);
 
         // 3. Validate each lesson
-        let allApprovable = true;
+        let allApprovable = Boolean(lessons?.length);
         let validatedCount = 0;
         let skippedCount = 0;
 
         for (const lesson of ((lessons || []) as MaterialLessonRecord[])) {
             // Skip lessons already marked as NEEDS_FIX (preserve user's manual marking)
-            if (lesson.state === 'NEEDS_FIX') {
+            if (!["GENERATED", "APPROVABLE"].includes(lesson.state || "")) {
                 console.log(`[Validate Materials] Skipping ${lesson.lesson_title} - already NEEDS_FIX`);
                 allApprovable = false;
                 skippedCount++;
@@ -160,10 +167,11 @@ export const handler: Handler = async (event) => {
             }
 
             // Get components for this lesson
-            const { data: components } = await supabase
+            const { data: components, error: componentsError } = await supabase
                 .from('material_components')
                 .select('id, type, content, assets, validation_status, validation_errors, iteration_number')
                 .eq('material_lesson_id', lesson.id);
+            if (componentsError) throw componentsError;
 
             const activeComponents = selectLatestComponentsByType(
                 (components || []) as MaterialComponentRecord[],
@@ -184,14 +192,16 @@ export const handler: Handler = async (event) => {
             }
 
             // Update lesson
-            await supabase
+            const { error: lessonError } = await supabase
                 .from('material_lessons')
                 .update({
                     dod,
                     state: newState,
                     updated_at: new Date().toISOString(),
                 })
-                .eq('id', lesson.id);
+                .eq('id', lesson.id).eq('state', lesson.state)
+                .eq('iteration_count', lesson.iteration_count);
+            if (lessonError) throw lessonError;
 
             validatedCount++;
             console.log(`[Validate Materials] Lesson ${lesson.lesson_title}: ${newState}`);
@@ -200,13 +210,14 @@ export const handler: Handler = async (event) => {
         // 4. Update global materials state
         const newGlobalState = allApprovable ? 'PHASE3_READY_FOR_QA' : 'PHASE3_NEEDS_FIX';
 
-        await supabase
+        const { error: completionError } = await supabase
             .from('materials')
             .update({
                 state: newGlobalState,
                 updated_at: new Date().toISOString(),
             })
-            .eq('id', materials.id);
+            .eq('id', materials.id).eq('version', materials.version).neq('state', 'PHASE3_DRAFT');
+        if (completionError) throw completionError;
 
         console.log(`[Validate Materials] Complete. Global state: ${newGlobalState}`);
 

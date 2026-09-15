@@ -12,7 +12,8 @@ import {
 import { generateMaterialsByComponent, type MaterialsGenerationResult } from "../../../src/domains/materials/generation/materials-generation.service";
 import { VIDEO_GENERATION_LIMITS } from "../../../src/domains/materials/generation/video-generation.contracts";
 import { generateAndTraceMaterialVideo } from "./materials-video-generation";
-import { saveGeneratedComponents } from "./material-components.repository";
+import { commitGeneratedLesson } from "./material-components.repository";
+import { getLessonSourceRequirement } from "../../../src/domains/curation/lib/lesson-source-requirement";
 import { getFunctionsBaseUrl } from "./bootstrap";
 import {
   buildMaterialsGenerationInput,
@@ -36,6 +37,7 @@ export interface MaterialsGenerationContext {
   lessonPlans: LessonPlanRecord[];
   lessonSources: CurationRowRecord[];
   videoDurationPolicy: VideoDurationPolicy;
+  requiresSources: boolean;
 }
 
 
@@ -76,14 +78,14 @@ export async function loadAptaSources(
     .eq("curation_id", curationRecord.id)
     .eq("apta", true);
   if (rowsError) throw rowsError;
-  return (rows || []) as CurationRowRecord[];
+  return (rows || []).filter((row) => !row.validation_report?.status || row.validation_report.status === "valid") as CurationRowRecord[];
 }
 
 export async function loadMaterialsGenerationContext(
   supabase: SupabaseClient,
   artifactId: string,
 ): Promise<MaterialsGenerationContext> {
-  const [lessonPlans, lessonSources, artifactResult] = await Promise.all([
+  const [lessonPlans, lessonSources, artifactResult, syllabusResult] = await Promise.all([
     loadLessonPlans(supabase, artifactId),
     loadAptaSources(supabase, artifactId),
     supabase
@@ -91,12 +93,15 @@ export async function loadMaterialsGenerationContext(
       .select("generation_metadata")
       .eq("id", artifactId)
       .single(),
+    supabase.from("syllabus").select("route").eq("artifact_id", artifactId).single(),
   ]);
   if (artifactResult.error) throw artifactResult.error;
+  if (syllabusResult.error) throw syllabusResult.error;
   return {
     artifactId,
     lessonPlans,
     lessonSources,
+    requiresSources: syllabusResult.data.route !== "B_NO_SOURCE",
     videoDurationPolicy: resolveArtifactVideoDurationPolicy(
       artifactResult.data?.generation_metadata,
     ),
@@ -108,10 +113,11 @@ export async function triggerNextLesson(
   artifactId: string,
   logPrefix: string,
   localFallback?: (signedBody: string) => Promise<void>,
+  version?: number,
 ) {
   const triggerTimeoutMilliseconds = 10_000;
   const signedBody = JSON.stringify(
-    signBackgroundPayload({ materialsId, artifactId, mode: "process-next" }),
+    signBackgroundPayload({ materialsId, artifactId, version, mode: "process-next" }),
   );
 
   if (shouldDispatchBackgroundInProcess({
@@ -175,55 +181,37 @@ export async function triggerNextLesson(
   }
 }
 
-export async function setLessonState(
-  supabase: SupabaseClient,
-  lessonId: string,
-  state: string,
-  extras: Record<string, unknown> = {},
-) {
-  const { error } = await supabase
-    .from("material_lessons")
-    .update({
-      state,
-      updated_at: new Date().toISOString(),
-      ...extras,
-    })
-    .eq("id", lessonId);
-  if (error) throw error;
-}
-
 export async function touchMaterialsRecord(
   supabase: SupabaseClient,
   materialsId: string,
 ) {
-  await supabase
+  const { error } = await supabase
     .from("materials")
     .update({ updated_at: new Date().toISOString() })
     .eq("id", materialsId);
+  if (error) throw error;
 }
 
 export async function markMaterialsValidating(
   supabase: SupabaseClient,
   materialsId: string,
+  version: number,
 ) {
-  await supabase
+  const { data: lessons, error: lessonsError } = await supabase.from("material_lessons")
+    .select("state").eq("materials_id", materialsId);
+  if (lessonsError) throw lessonsError;
+  const complete = Boolean(lessons?.length) && lessons!.every((lesson) =>
+    ["GENERATED", "APPROVABLE"].includes(lesson.state));
+  const { data: updated, error } = await supabase
     .from("materials")
-    .update({ state: "PHASE3_VALIDATING", updated_at: new Date().toISOString() })
-    .eq("id", materialsId);
-}
-
-export async function resetGeneratingLessons(
-  supabase: SupabaseClient,
-  materialsId: string,
-) {
-  return supabase
-    .from("material_lessons")
-    .update({ state: "PENDING", updated_at: new Date().toISOString() })
-    .eq("materials_id", materialsId)
-    .eq("state", "GENERATING");
+    .update({ state: complete ? "PHASE3_VALIDATING" : "PHASE3_NEEDS_FIX", updated_at: new Date().toISOString() })
+    .eq("id", materialsId).eq("version", version).eq("state", "PHASE3_GENERATING").select("id").maybeSingle();
+  if (error) throw error;
+  return complete && Boolean(updated);
 }
 
 export async function processGenerationResult(params: {
+  execution: { materialsId: string; version: number };
   supabase: SupabaseClient;
   lessonId: string;
   lessonTitle: string;
@@ -236,36 +224,28 @@ export async function processGenerationResult(params: {
   const { supabase, lessonId, lessonTitle, result, iterationNumber, logPrefix, onlyTypes, durationContractsByType } =
     params;
 
-  if (result.content && Object.keys(result.content.components).length) {
-    await saveGeneratedComponents(
+  const committed = await commitGeneratedLesson(
       supabase,
       lessonId,
-      result.content,
+      result.content || { components: {}, source_refs_used: [] },
       iterationNumber,
       logPrefix,
-      onlyTypes || Object.keys(result.content.components),
+      onlyTypes || Object.keys(result.content?.components || {}),
       durationContractsByType,
+      { ...params.execution, success: result.success, error: result.success ? undefined : result.error },
     );
-  }
+  if (!committed) return { success: false as const, superseded: true };
   if (result.success) {
-    await setLessonState(supabase, lessonId, "GENERATED", {
-      dod: { control3_consistency: "PENDING", control4_sources: "PENDING", control5_quiz: "PENDING", errors: [] },
-    });
     console.log(`${logPrefix} Generated ${lessonTitle}`);
     return { success: true as const };
   }
 
-  await setLessonState(supabase, lessonId, "NEEDS_FIX", {
-    dod: {
-      control3_consistency: "FAIL",
-      errors: [result.error || "Failed"],
-    },
-  });
   console.log(`${logPrefix} Failed ${lessonTitle}: ${result.error}`);
   return { success: false as const, error: result.error };
 }
 
 export async function generateLessonMaterials(params: {
+  execution: { materialsId: string; version: number };
   supabase: SupabaseClient;
   lesson: MaterialLessonRecord;
   generationContext: MaterialsGenerationContext;
@@ -296,6 +276,14 @@ export async function generateLessonMaterials(params: {
   const lessonSources = findLessonSources(generationContext.lessonSources, lesson);
   const planDetails = findPlanDetails(generationContext.lessonPlans, lesson);
   const currentIteration = iterationNumber || lesson.iteration_count || 1;
+  const requiredSources = getLessonSourceRequirement(planDetails).requiredSources;
+  if (generationContext.requiresSources && new Set(lessonSources.map((source) => source.source_ref)).size < requiredSources) {
+    return processGenerationResult({
+      supabase, lessonId: lesson.id, lessonTitle: lesson.lesson_title, iterationNumber: currentIteration,
+      logPrefix, execution: params.execution,
+      result: { success: false, error: `Fuentes insuficientes para la lección (${lessonSources.length}/${requiredSources}). Completa la curaduría antes de generar materiales.` },
+    });
+  }
   const input = buildMaterialsGenerationInput({
     lesson,
     planDetails,
@@ -330,6 +318,7 @@ export async function generateLessonMaterials(params: {
     }),
   });
   return processGenerationResult({
+    execution: params.execution,
     supabase,
     lessonId: lesson.id,
     lessonTitle: lesson.lesson_title,

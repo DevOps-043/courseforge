@@ -1,6 +1,10 @@
 "use server";
 
-import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
+import { dispatchBackgroundFunctionJson } from "@/lib/server/background-function-client";
+import { randomUUID } from "node:crypto";
+import { z } from "zod";
+import { markArtifactGenerationFailed } from "../lib/artifact-generation-failure";
+import { isGenerationStale } from "@/lib/pipeline-generation-policy";
 import { getErrorMessage } from "@/lib/errors";
 import { createClient } from "@/utils/supabase/server";
 import { getActiveOrganizationId } from "@/utils/auth/session";
@@ -35,7 +39,7 @@ export async function getArtifactGenerationSnapshotAction(artifactId: string) {
 
   const { data: artifact, error } = await authorized.admin
     .from("artifacts")
-    .select("descripcion, generation_metadata, nombres, objetivos, production_complete, qa_status, state, validation_report")
+    .select("descripcion, generation_metadata, nombres, objetivos, production_complete, qa_status, state, validation_report, updated_at")
     .eq("id", artifactId)
     .single();
 
@@ -43,6 +47,10 @@ export async function getArtifactGenerationSnapshotAction(artifactId: string) {
     return { success: false as const, error: error?.message || "Artifact snapshot unavailable" };
   }
 
+  if (artifact.state === "GENERATING" && isGenerationStale(artifact.updated_at)) {
+    await markArtifactGenerationFailed(authorized.admin, artifactId, artifact.generation_metadata?.run_id, new Error("timeout"), artifact.updated_at);
+    return getArtifactGenerationSnapshotAction(artifactId);
+  }
   return { success: true as const, artifact };
 }
 
@@ -55,6 +63,7 @@ export async function generateArtifactAction(formData: {
   cloudStorageProvider?: CloudStorageProvider | null;
   useGoogleDrive?: boolean;
   videoDurationPolicy?: VideoDurationPolicy;
+  requestId?: string;
 }) {
   const supabase = await createClient();
   const authUser = await getAuthenticatedUser(supabase);
@@ -62,8 +71,14 @@ export async function generateArtifactAction(formData: {
 
   const tenant = await resolveActiveTenantContext();
   const activeOrgId = tenant?.organizationId ?? (await getActiveOrganizationId());
+  const artifactId = formData.requestId || randomUUID();
+  const runId = randomUUID();
+  let created = false;
 
   try {
+    if (!z.uuid().safeParse(artifactId).success || !formData.description?.trim()) {
+      return { success: false, error: "Solicitud inválida: se requiere una descripción y un identificador válido." };
+    }
     const parsedVideoDurationPolicy = videoDurationPolicySchema.safeParse(formData.videoDurationPolicy);
     if (formData.videoDurationPolicy && !parsedVideoDurationPolicy.success) {
       return {
@@ -86,12 +101,14 @@ export async function generateArtifactAction(formData: {
     const { data: artifact, error } = await supabase
       .from("artifacts")
       .insert({
+        id: artifactId,
         course_id: finalCourseId,
         idea_central: formData.title,
         nombres: [],
         objetivos: [],
         descripcion: {},
         generation_metadata: {
+          run_id: runId,
           original_input: { ...formData, videoDurationPolicy },
           started_at: new Date().toISOString(),
           video_duration_policy: videoDurationPolicy,
@@ -104,13 +121,20 @@ export async function generateArtifactAction(formData: {
       .single();
 
     if (error) {
+      if (error.code === "23505") {
+        const { data: existing } = await supabase.from("artifacts").select("id")
+          .eq("id", artifactId).eq("created_by", authUser.userId).maybeSingle();
+        if (existing) return { success: true, artifactId: existing.id, status: "existing" };
+      }
       throw new Error(`Database Error: ${error.message}`);
     }
+    created = true;
 
-    await callBackgroundFunctionJson(
+    await dispatchBackgroundFunctionJson(
       "generate-artifact-background",
       {
         artifactId: artifact.id,
+        runId,
         formData: { ...formData, videoDurationPolicy },
         userId: authUser.userId,
           cloudStorageProvider:
@@ -122,11 +146,13 @@ export async function generateArtifactAction(formData: {
         fallbackError: "Error al iniciar la generacion del artefacto",
         localHandlerLoader: () =>
           import("../../../../netlify/functions/generate-artifact-background"),
+        onFailure: (error) => markArtifactGenerationFailed(supabase, artifactId, runId, error),
       },
     );
 
     return { success: true, artifactId: artifact.id, status: "queued" };
   } catch (error: unknown) {
+    if (created) await markArtifactGenerationFailed(supabase, artifactId, runId, error);
     console.error("[ArtifactActions] Generation error:", error);
     return {
       success: false,
@@ -182,7 +208,7 @@ export async function regenerateArtifactAction(
   const activeOrgId = tenant?.organizationId ?? (await getActiveOrganizationId());
   let artifactQuery = supabase
     .from("artifacts")
-    .select("generation_metadata")
+    .select("generation_metadata, state")
     .eq("id", artifactId);
 
   if (activeOrgId) {
@@ -191,6 +217,8 @@ export async function regenerateArtifactAction(
 
   const { data: artifact } = await artifactQuery.single();
   if (!artifact) return { success: false, error: "Artifact not found" };
+  if (artifact.state === "GENERATING") return { success: false, error: "La generación ya está en curso." };
+  const runId = randomUUID();
 
   const originalInput = artifact.generation_metadata?.original_input;
   if (!originalInput) return { success: false, error: "Original input lost" };
@@ -204,6 +232,8 @@ export async function regenerateArtifactAction(
       state: "GENERATING",
       generation_metadata: {
         ...artifact.generation_metadata,
+        run_id: runId,
+        started_at: new Date().toISOString(),
         feedback_history: [
           ...(artifact.generation_metadata.feedback_history || []),
           { date: new Date(), feedback },
@@ -211,20 +241,22 @@ export async function regenerateArtifactAction(
         last_feedback: feedback,
       },
     })
-    .eq("id", artifactId);
+    .eq("id", artifactId).eq("state", artifact.state);
 
   if (activeOrgId) {
     resetQuery = resetQuery.eq("organization_id", activeOrgId);
   }
 
-  const { error: resetError } = await resetQuery;
+  const { data: resetArtifact, error: resetError } = await resetQuery.select("id").maybeSingle();
   if (resetError) return { success: false, error: resetError.message };
+  if (!resetArtifact) return { success: false, error: "Otra solicitud ya inició la generación." };
 
   try {
-    await callBackgroundFunctionJson(
+    await dispatchBackgroundFunctionJson(
       "generate-artifact-background",
       {
         artifactId,
+        runId,
         userId: authUser.userId,
         organizationId: activeOrgId,
         formData: originalInput,
@@ -234,11 +266,13 @@ export async function regenerateArtifactAction(
         fallbackError: "Error al relanzar la generacion del artefacto",
         localHandlerLoader: () =>
           import("../../../../netlify/functions/generate-artifact-background"),
+        onFailure: (error) => markArtifactGenerationFailed(supabase, artifactId, runId, error),
       },
     );
 
     return { success: true };
   } catch (error: unknown) {
+    await markArtifactGenerationFailed(supabase, artifactId, runId, error);
     console.error("[ArtifactActions] Regeneration error:", error);
     return {
       success: false,

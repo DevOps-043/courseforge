@@ -239,7 +239,11 @@ export default function ArtifactClientView({
     setIsRegenerating(true);
 
     try {
-      await regenerateArtifactAction(artifact.id, feedback);
+      const result = await regenerateArtifactAction(artifact.id, feedback);
+      if (!result.success) {
+        showToast(result.error || "No se pudo iniciar la regeneración.", "error");
+        return;
+      }
       showToast("Regeneraciҳn iniciada.", "info");
       setReviewState("pending");
       setFeedback("");

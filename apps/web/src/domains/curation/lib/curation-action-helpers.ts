@@ -1,4 +1,4 @@
-import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
+import { callBackgroundFunctionJson, dispatchBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { CURATION_STATES, PLAN_STATES } from "@/lib/pipeline-constants";
 
 export interface CurationPlanComponent {
@@ -37,9 +37,9 @@ export function mapCurationStatus(status: string) {
     finalStatus = CURATION_STATES.BLOCKED;
     decision = "BLOCKED";
   } else if (status === CURATION_STATES.PAUSED_REQUESTED) {
-    finalStatus = CURATION_STATES.PAUSED_REQUESTED;
+    finalStatus = CURATION_STATES.PAUSED;
   } else if (status === CURATION_STATES.STOPPED_REQUESTED) {
-    finalStatus = CURATION_STATES.STOPPED_REQUESTED;
+    finalStatus = CURATION_STATES.STOPPED;
   }
 
   return { finalStatus, decision };
@@ -97,6 +97,7 @@ interface TriggerCurationGenerationParams {
   ideaCentral?: string | null;
   resume: boolean;
   customPrompt?: string;
+  onFailure?: (error: unknown) => Promise<void>;
 }
 
 export async function triggerCurationGeneration({
@@ -110,8 +111,9 @@ export async function triggerCurationGeneration({
   ideaCentral,
   resume,
   customPrompt,
+  onFailure,
 }: TriggerCurationGenerationParams) {
-  return callBackgroundFunctionJson(
+  return dispatchBackgroundFunctionJson(
     "curation-background",
     {
       curationId,
@@ -129,6 +131,7 @@ export async function triggerCurationGeneration({
       fallbackError: "Error al iniciar la curaduria",
       localHandlerLoader: () =>
         import("../../../../netlify/functions/curation-background"),
+      onFailure,
     },
   );
 }

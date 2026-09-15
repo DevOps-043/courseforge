@@ -1,6 +1,7 @@
 import type OpenAI from "openai";
 import { createCurationSearchResponseSchema } from "./structured-output.schemas";
 import type { CurationCandidate, CurationLesson } from "./types";
+import { PIPELINE_GENERATION_LIMITS } from "../../../../src/lib/pipeline-generation-policy";
 
 function responseText(response: unknown) {
   const value = response as { output_text?: unknown };
@@ -80,7 +81,11 @@ export async function searchLessonCandidates(params: {
         schema: createCurationSearchResponseSchema(maxCandidatesPerLesson),
       },
     },
-  } as unknown as Parameters<typeof client.responses.create>[0]);
+  } as unknown as Parameters<typeof client.responses.create>[0], {
+    timeout: PIPELINE_GENERATION_LIMITS.requestTimeoutMs,
+    maxRetries: 0,
+    signal: AbortSignal.timeout(PIPELINE_GENERATION_LIMITS.requestTimeoutMs),
+  });
 
   const parsed = JSON.parse(responseText(response)) as {
     lessons?: Array<{

@@ -1,4 +1,6 @@
 import { Handler } from "@netlify/functions";
+import { generationFailureMessage } from "../../src/lib/pipeline-generation-policy";
+import { signBackgroundPayload } from "../../src/lib/server/background-payload-signature";
 import {
   createServiceRoleClient,
   getGeminiApiKeySource,
@@ -22,8 +24,6 @@ import {
   loadMaterialsGenerationContext,
   markMaterialsValidating,
   PROCESS_NEXT_DELAY_MS,
-  resetGeneratingLessons,
-  setLessonState,
   START_JITTER_MS,
   touchMaterialsRecord,
   triggerNextLesson,
@@ -37,6 +37,7 @@ import {
 } from "../../src/domains/production/cloud-storage/types";
 
 interface RequestBody {
+  version?: number;
   artifactId?: string;
   materialsId: string;
   lessonId?: string;
@@ -48,6 +49,8 @@ interface RequestBody {
 }
 
 interface MaterialsLookupRecord {
+  version: number;
+  state: string;
   artifact_id: string;
   cloud_storage_provider?: CloudStorageProvider | null;
   created_by?: string | null;
@@ -63,6 +66,7 @@ async function triggerNextLessonWithLocalFallback(
   materialsId: string,
   artifactId: string,
   logPrefix: string,
+  version: number,
 ) {
   return triggerNextLesson(
     materialsId,
@@ -90,6 +94,7 @@ async function triggerNextLessonWithLocalFallback(
         throw new Error(responseMessage);
       }
     },
+    version,
   );
 }
 
@@ -109,7 +114,7 @@ async function loadMaterialsRecord(materialsId: string) {
   const supabase = createServiceRoleClient();
   const { data: materials, error } = await supabase
     .from("materials")
-    .select("id, artifact_id, artifacts!inner(created_by, generation_metadata, organization_id)")
+    .select("id, artifact_id, version, state, artifacts!inner(created_by, generation_metadata, organization_id)")
     .eq("id", materialsId)
     .single();
 
@@ -122,6 +127,8 @@ async function loadMaterialsRecord(materialsId: string) {
   const cloudStorage = metadata?.cloud_storage as Record<string, unknown> | undefined;
   const materialsRecord = {
     id: materials.id,
+    version: materials.version,
+    state: materials.state,
     artifact_id: materials.artifact_id,
     cloud_storage_provider: isCloudStorageProvider(cloudStorage?.provider)
       ? cloudStorage.provider
@@ -219,6 +226,7 @@ async function syncCloudStorageMaterialFolders(params: {
 }
 
 async function processSingleLesson(params: {
+  version: number;
   materialsId: string;
   lessonId: string;
   artifactId: string;
@@ -248,13 +256,16 @@ async function processSingleLesson(params: {
     artifactId,
   );
 
-  await setLessonState(supabase, lessonId, "GENERATING");
+  if (lesson.state !== "GENERATING" || lesson.iteration_count !== iterationNumber) {
+    return { statusCode: 200, body: JSON.stringify({ superseded: true }) };
+  }
 
   if (componentTypes && componentTypes.length > 0) {
     console.log(`${logPrefix} Partial regen requested: ${componentTypes.join(", ")}`);
   }
 
   const output = await generateLessonMaterials({
+    execution: { materialsId, version: params.version },
     supabase,
     lesson,
     generationContext,
@@ -274,6 +285,7 @@ async function processSingleLesson(params: {
 }
 
 async function processNextPendingLesson(params: {
+  version: number;
   materialsId: string;
   artifactId: string;
   organizationId?: string | null;
@@ -293,33 +305,39 @@ async function processNextPendingLesson(params: {
 
   await wait(Math.random() * START_JITTER_MS);
 
-  const { data: pendingLessons } = await supabase
-    .from("material_lessons")
-    .select("*")
-    .eq("materials_id", materialsId)
-    .eq("state", "PENDING")
-    .order("created_at", { ascending: true })
-    .limit(1);
+  const { data: claimedLesson, error: pendingError } = await supabase.rpc("claim_material_generation", {
+    p_materials_id: materialsId, p_version: params.version,
+  });
+  if (pendingError) throw pendingError;
 
-  if (!pendingLessons || pendingLessons.length === 0) {
-    const { data: stuckLessons } = await supabase
+  if (!claimedLesson) {
+    const { data: stuckLessons, error: activeError } = await supabase
       .from("material_lessons")
       .select("id")
       .eq("materials_id", materialsId)
       .eq("state", "GENERATING");
+    if (activeError) throw activeError;
 
     if (stuckLessons && stuckLessons.length > 0) {
-      console.log(`${logPrefix} Resetting ${stuckLessons.length} stuck lessons`);
-      await resetGeneratingLessons(supabase, materialsId);
-      await triggerNextLessonWithLocalFallback(materialsId, artifactId, logPrefix);
       return {
         statusCode: 200,
-        body: JSON.stringify({ success: true, action: "reset-stuck" }),
+        body: JSON.stringify({ success: true, action: "already-running" }),
       };
     }
 
     console.log(`${logPrefix} All lessons done. Setting VALIDATING.`);
-    await markMaterialsValidating(supabase, materialsId);
+    const complete = await markMaterialsValidating(supabase, materialsId, params.version);
+    if (complete) {
+      const { handler: validate } = await import("./validate-materials-background");
+      const response = await validate({
+        httpMethod: "POST", body: JSON.stringify(signBackgroundPayload({ materialsId, artifactId, version: params.version })),
+        headers: { "Content-Type": "application/json" },
+        rawUrl: buildLocalBackgroundHandlerUrl("validate-materials-background"), rawQuery: "",
+        path: "/.netlify/functions/validate-materials-background", multiValueHeaders: {},
+        queryStringParameters: null, multiValueQueryStringParameters: null, isBase64Encoded: false,
+      } as Parameters<Handler>[0], {} as Parameters<Handler>[1], () => {});
+      if (response && response.statusCode >= 400) throw new Error("Falló la validación de materiales.");
+    }
 
     return {
       statusCode: 200,
@@ -327,10 +345,10 @@ async function processNextPendingLesson(params: {
     };
   }
 
-  const lesson = pendingLessons[0] as MaterialLessonRecord;
+  const lesson = claimedLesson as MaterialLessonRecord;
   console.log(`${logPrefix} Processing: ${lesson.lesson_title}`);
 
-  await setLessonState(supabase, lesson.id, "GENERATING");
+  const nextIteration = lesson.iteration_count!;
   await touchMaterialsRecord(supabase, materialsId);
 
   try {
@@ -339,6 +357,7 @@ async function processNextPendingLesson(params: {
       artifactId,
     );
     await generateLessonMaterials({
+      execution: { materialsId, version: params.version },
       supabase,
       lesson,
       generationContext,
@@ -350,17 +369,16 @@ async function processNextPendingLesson(params: {
   } catch (error) {
     const message = getErrorMessage(error);
     console.error(`${logPrefix} Unexpected lesson failure:`, error);
-    await setLessonState(supabase, lesson.id, "NEEDS_FIX", {
-      dod: {
-        control3_consistency: "FAIL",
-        errors: [message],
-      },
+    const { error: saveError } = await supabase.rpc("commit_material_generation", {
+      p_materials_id: materialsId, p_version: params.version, p_lesson_id: lesson.id,
+      p_iteration: nextIteration, p_rows: [], p_success: false, p_error: message,
     });
+    if (saveError) throw saveError;
   }
 
   console.log(`${logPrefix} Waiting ${PROCESS_NEXT_DELAY_MS}ms before next...`);
   await wait(PROCESS_NEXT_DELAY_MS);
-  await triggerNextLessonWithLocalFallback(materialsId, artifactId, logPrefix);
+  await triggerNextLessonWithLocalFallback(materialsId, artifactId, logPrefix, params.version);
 
   return {
     statusCode: 200,
@@ -404,6 +422,11 @@ export const handler: Handler = async (event) => {
     console.log(`${logPrefix} Mode: ${mode}, materialsId: ${materialsId}`);
 
     const { materials } = await loadMaterialsRecord(materialsId);
+    if (artifactId && artifactId !== materials.artifact_id) throw new Error("Materials/artifact mismatch");
+    if (body.version !== materials.version ||
+      ((mode === "init" || mode === "process-next") && materials.state !== "PHASE3_GENERATING")) {
+      return { statusCode: 200, body: JSON.stringify({ superseded: true }) };
+    }
     const targetArtifactId = artifactId || materials.artifact_id;
     const targetOrganizationId = materials.organization_id;
 
@@ -438,7 +461,8 @@ export const handler: Handler = async (event) => {
     );
 
     if ((mode === "single-lesson" || mode === "single-component") && lessonId) {
-      return processSingleLesson({
+      return await processSingleLesson({
+        version: materials.version,
         materialsId,
         lessonId,
         fixInstructions,
@@ -468,7 +492,7 @@ export const handler: Handler = async (event) => {
         userId: materials.created_by,
       });
 
-      await triggerNextLessonWithLocalFallback(materialsId, targetArtifactId, logPrefix);
+      await triggerNextLessonWithLocalFallback(materialsId, targetArtifactId, logPrefix, materials.version);
       return {
         statusCode: 200,
         body: JSON.stringify({
@@ -479,7 +503,8 @@ export const handler: Handler = async (event) => {
     }
 
     if (mode === "process-next") {
-      return processNextPendingLesson({
+      return await processNextPendingLesson({
+        version: materials.version,
         materialsId,
         artifactId: targetArtifactId,
         organizationId: targetOrganizationId,
@@ -492,6 +517,18 @@ export const handler: Handler = async (event) => {
     throw new Error(`Unknown mode: ${mode}`);
   } catch (error) {
     console.error(`${logPrefix} Error:`, error);
+    if (body.materialsId && body.version !== undefined) {
+      const supabase = createServiceRoleClient();
+      if (body.lessonId) {
+        await supabase.rpc("commit_material_generation", {
+          p_materials_id: body.materialsId, p_version: body.version, p_lesson_id: body.lessonId,
+          p_iteration: body.iterationNumber, p_rows: [], p_success: false, p_error: generationFailureMessage(error),
+        });
+      }
+      await supabase.from("materials").update({ state: "PHASE3_NEEDS_FIX",
+        updated_at: new Date().toISOString(), qa_decision: { decision: "REJECTED", notes: generationFailureMessage(error), reviewed_by: "system", reviewed_at: new Date().toISOString() } })
+        .eq("id", body.materialsId).eq("version", body.version).in("state", ["PHASE3_GENERATING", "PHASE3_VALIDATING"]);
+    }
     return {
       statusCode: 500,
       body: JSON.stringify({
